@@ -14,8 +14,6 @@ describe("resolveFooterSpeeds", () => {
   })
 
   it("uses aggregate stats totals for an all-instances view (no serverState)", () => {
-    // Regression: aggregate views have no serverState, so footer speeds must come
-    // from the aggregated stats rather than reading 0.
     expect(
       resolveFooterSpeeds(true, { totalDownloadSpeed: 4096, totalUploadSpeed: 2048, totalDownloadData: 1024, totalUploadData: 512 }, null)
     ).toEqual({ downloadSpeed: 4096, uploadSpeed: 2048, downloadData: 1024, uploadData: 512 })

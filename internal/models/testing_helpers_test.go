@@ -10,12 +10,10 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// mockQuerier wraps sql.DB to implement dbinterface.Querier for tests
 type mockQuerier struct {
 	*sql.DB
 }
 
-// mockTx wraps sql.Tx to implement dbinterface.TxQuerier for tests
 type mockTx struct {
 	*sql.Tx
 }

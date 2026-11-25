@@ -60,8 +60,6 @@ function AppLayoutContent() {
   const topBarShowsSideways = isInstanceRoute || spreadsheetDisguise
 
   return (
-    // Where no top bar shows (the classes of Header and SpreadsheetRibbonTabs), the fade gap goes inside main instead, so it scrolls away with the page.
-    // Off an instance route, each page has 1rem of top padding of its own, so main adds a smaller part of the gap.
     <div className={cn("flex h-[calc(100dvh-var(--app-inset-top))] bg-background md:pt-(--app-fade-gap)", !topBarShowsSideways && "sideways:pt-0")}>
       <div
         ref={dockedSidebarRef}
@@ -124,7 +122,6 @@ function AppLayoutContent() {
         </main>
       </div>
 
-      {/* Mobile Footer Navigation */}
       <MobileFooterNav />
 
       <CommandPalette />
@@ -135,7 +132,6 @@ function AppLayoutContent() {
 }
 
 export function AppLayout() {
-  // Registers and applies stored custom themes for authenticated users.
   useCustomThemes()
   return (
     <LayoutRouteProvider>

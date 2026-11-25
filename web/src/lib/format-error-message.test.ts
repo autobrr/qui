@@ -7,9 +7,6 @@ import { describe, expect, it } from "vitest"
 
 import { formatErrorMessage } from "@/lib/format-error-message"
 
-// formatErrorMessage imports "@/i18n", which initializes English synchronously,
-// so "Unknown error" resolves here without any test setup.
-
 describe("formatErrorMessage", () => {
   it.each([
     ["undefined", undefined],
@@ -32,8 +29,6 @@ describe("formatErrorMessage", () => {
     expect(formatErrorMessage("tracker returned 403")).toBe("Tracker returned 403")
   })
 
-  // The prefixes end in a space, and the input is trimmed first, so a bare
-  // prefix keeps its own text rather than stripping to nothing.
   it("keeps a bare prefix as the message", () => {
     expect(formatErrorMessage("connection failed: ")).toBe("Connection failed:")
   })

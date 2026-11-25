@@ -48,8 +48,6 @@ func (f *fakeDiscResolver) GetTorrentRefs(context.Context, int, qbittorrent.Torr
 	return nil, nil
 }
 
-// fakeScanner blocks each scan until release is closed, so tests observe the
-// queue. It reports one progress sample before blocking.
 type fakeScanner struct {
 	started chan string
 	release chan struct{}
@@ -183,8 +181,6 @@ func TestDiscScanStart_DeniedWithoutFilesystemAccess(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, code)
 }
 
-// remoteModeStore returns the instance as it reads once SSH credentials and a
-// confirmed pin are stored, without local filesystem access.
 type remoteModeStore struct{ store *models.InstanceStore }
 
 func (s remoteModeStore) Get(ctx context.Context, id int) (*models.Instance, error) {
@@ -197,14 +193,10 @@ func (s remoteModeStore) Get(ctx context.Context, id int) (*models.Instance, err
 	return inst, nil
 }
 
-// BDInfo reads the qui host's filesystem, so a remote-mode instance is refused
-// before the save path is checked: over SFTP that Stat would pass and queue a
-// scan of a path that does not exist here (soup, #2739).
 func TestDiscScanStart_RefusesRemoteModeInstance(t *testing.T) {
 	fx := newDiscScanFixture(t, false)
 
 	store := remoteModeStore{fx.instances}
-	// The factory stands in for a remote host where the save path exists.
 	fx.handler.backendPool = fsops.NewPoolWithRemote(store, localbackend.NewBackend(), func(*models.Instance) fsops.Backend {
 		return localbackend.NewBackend()
 	})

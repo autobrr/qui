@@ -429,8 +429,6 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
-			// Cross-seeded torrent: data already on disk, downloaded ~ 0,
-			// qBit's Ratio explodes (uploaded / 0) but uploaded/total_size is sane.
 			name: "uploaded over size greater than 1.0 (cross-seeded torrent)",
 			cond: &RuleCondition{
 				Field:    FieldUploadedOverSize,
@@ -462,8 +460,6 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
-			// TotalSize == 0 should not divide-by-zero; field returns false
-			// regardless of operator, so an automation gated on this won't fire.
 			name: "uploaded over size returns false when total size is zero",
 			cond: &RuleCondition{
 				Field:    FieldUploadedOverSize,
@@ -620,7 +616,7 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 }
 
 func TestEvaluateCondition_SystemTimeFields(t *testing.T) {
-	evalTime := time.Date(2025, time.August, 15, 14, 30, 0, 0, time.Local) // Friday (5)
+	evalTime := time.Date(2025, time.August, 15, 14, 30, 0, 0, time.Local)
 	ctx := &EvalContext{
 		NowUnix: evalTime.Unix(),
 	}
@@ -661,7 +657,6 @@ func TestEvaluateCondition_SystemTimeFields(t *testing.T) {
 			cond:     &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2025"},
 			expected: true,
 		},
-		// False cases: verify non-matching values are rejected
 		{
 			name:     "system hour not equal",
 			cond:     &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "9"},
@@ -931,8 +926,6 @@ func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
 	}
 }
 
-// Read without trusted identity is a remote instance: the missing-files field
-// is known, the hardlink fields stay unknown.
 func TestEvaluateCondition_ReadWithoutIdentityLeavesHardlinkFieldsUnknown(t *testing.T) {
 	torrent := qbt.Torrent{Hash: "abc"}
 	ctx := &EvalContext{
@@ -956,8 +949,6 @@ func TestEvaluateCondition_ReadWithoutIdentityLeavesHardlinkFieldsUnknown(t *tes
 	}
 }
 
-// A remote instance's row gives it Read only, so the context built from it
-// leaves the hardlink fields unknown even when the index maps are filled.
 func TestEvalContextFromRemoteInstanceLeavesHardlinkFieldsUnknown(t *testing.T) {
 	remote := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
 	torrent := qbt.Torrent{Hash: "abc"}
@@ -1024,7 +1015,7 @@ func TestEvaluateCondition_ANDGroup(t *testing.T) {
 		Name:        "Test.Movie.2024.1080p.BluRay",
 		Category:    "movies",
 		Ratio:       2.5,
-		SeedingTime: 86400, // 1 day
+		SeedingTime: 86400,
 		State:       qbt.TorrentStateStalledUp,
 	}
 
@@ -1072,7 +1063,7 @@ func TestEvaluateCondition_ORGroup(t *testing.T) {
 		Name:        "Test.Movie.2024.1080p.BluRay",
 		Category:    "movies",
 		Ratio:       1.5,
-		SeedingTime: 3600, // 1 hour
+		SeedingTime: 3600,
 	}
 
 	tests := []struct {
@@ -1130,7 +1121,7 @@ func TestEvaluateCondition_NestedGroups(t *testing.T) {
 		Name:        "Test.Movie.2024.1080p.BluRay",
 		Category:    "movies",
 		Ratio:       2.5,
-		SeedingTime: 172800, // 2 days
+		SeedingTime: 172800,
 		State:       qbt.TorrentStateStalledUp,
 	}
 
@@ -1209,7 +1200,6 @@ func TestEvaluateCondition_NestedGroups(t *testing.T) {
 }
 
 func TestEvaluateCondition_MaxDepth(t *testing.T) {
-	// Create a deeply nested condition that exceeds max depth
 	cond := &RuleCondition{
 		Operator: OperatorAnd,
 		Conditions: []*RuleCondition{
@@ -1217,7 +1207,6 @@ func TestEvaluateCondition_MaxDepth(t *testing.T) {
 		},
 	}
 
-	// Build 25 levels of nesting (exceeds maxConditionDepth of 20)
 	current := cond
 	for range 25 {
 		nested := &RuleCondition{
@@ -1232,7 +1221,6 @@ func TestEvaluateCondition_MaxDepth(t *testing.T) {
 
 	torrent := qbt.Torrent{Category: "movies", Ratio: 2.0}
 
-	// Should return false because we hit max depth
 	result := EvaluateConditionWithContext(cond, torrent, nil, 0)
 	if result {
 		t.Error("expected false due to max depth, got true")
@@ -1250,12 +1238,10 @@ func TestEvaluateCondition_NilCondition(t *testing.T) {
 func TestEvaluateCondition_EmptyGroup(t *testing.T) {
 	torrent := qbt.Torrent{Name: "Test"}
 
-	// AND group with no conditions should return true (vacuous truth)
 	andCond := &RuleCondition{
 		Operator:   OperatorAnd,
 		Conditions: []*RuleCondition{},
 	}
-	// Empty conditions means it's not a group, so evaluateLeaf is called with unknown field
 	result := EvaluateConditionWithContext(andCond, torrent, nil, 0)
 	if result {
 		t.Error("empty AND group should return false (not a valid group)")
@@ -1282,8 +1268,6 @@ func TestEvaluateCondition_IsUnregistered_WithContext(t *testing.T) {
 	}
 }
 
-// A tag rule on "is unregistered" must not act on missing data: with no
-// snapshot it would remove the managed tag from every torrent.
 func TestProcessRuleForTorrent_TagSkipsWithoutTrackerHealth(t *testing.T) {
 	rule := &models.Automation{
 		ID:      1,
@@ -1473,9 +1457,6 @@ func TestEvaluateCondition_RlsYear(t *testing.T) {
 			expected: false,
 		},
 		{
-			// The documented invariant: an unparsed year never matches for ANY
-			// operator, including !=. Guards the year <= 0 short-circuit so a
-			// "!= X" condition can't silently sweep up every yearless release.
 			name:     "unparsed year never matches not equal",
 			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorNotEqual, Value: "2020"},
 			torrent:  qbt.Torrent{Name: noYear},
@@ -1483,8 +1464,6 @@ func TestEvaluateCondition_RlsYear(t *testing.T) {
 			expected: false,
 		},
 		{
-			// A whitespace-padded value must compare the same as the trimmed form
-			// (save-time validation accepts it); regression guard for compareInt64.
 			name:     "whitespace padded value matches",
 			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: " 2021 "},
 			torrent:  qbt.Torrent{Name: movie},
@@ -1504,7 +1483,6 @@ func TestEvaluateCondition_RlsYear(t *testing.T) {
 }
 
 func TestEvaluateCondition_ExistsIn(t *testing.T) {
-	// Build test torrents for the category index
 	torrents := []qbt.Torrent{
 		{Hash: "hash1", Name: "Test.Show.S01E01.1080p", Category: "tv"},
 		{Hash: "hash2", Name: "Test.Show.S01E01.1080p", Category: "imported-tv"},
@@ -1513,7 +1491,6 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 		{Hash: "hash5", Name: "Uncategorized.File", Category: ""},
 	}
 
-	// Build the category index
 	categoryIndex, categoryNames := BuildCategoryIndex(torrentRefs(torrents))
 	evalCtx := &EvalContext{
 		CategoryIndex: categoryIndex,
@@ -1534,7 +1511,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 				Value:    "imported-tv",
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Test.Show.S01E01.1080p", Category: "tv"},
-			expected: true, // hash2 has the same name in imported-tv
+			expected: true,
 		},
 		{
 			name: "EXISTS_IN - no match in target category",
@@ -1544,7 +1521,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 				Value:    "movies",
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Test.Show.S01E01.1080p", Category: "tv"},
-			expected: false, // No torrent with this name in movies
+			expected: false,
 		},
 		{
 			name: "EXISTS_IN - case insensitive matching",
@@ -1554,7 +1531,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 				Value:    "IMPORTED-TV",
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "test.show.s01e01.1080p", Category: "tv"},
-			expected: true, // Should match case-insensitively
+			expected: true,
 		},
 		{
 			name: "EXISTS_IN - self-exclusion (same hash)",
@@ -1564,7 +1541,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 				Value:    "imported-tv",
 			},
 			torrent:  qbt.Torrent{Hash: "hash2", Name: "Test.Show.S01E01.1080p", Category: "imported-tv"},
-			expected: false, // Only hash2 has this name in imported-tv, and it's the same torrent
+			expected: false,
 		},
 		{
 			name: "EXISTS_IN - missing category returns false",
@@ -1584,7 +1561,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 				Value:    "",
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Uncategorized.File", Category: "tv"},
-			expected: true, // hash5 has the same name with empty category
+			expected: true,
 		},
 		{
 			name: "EXISTS_IN - whitespace-only category treated as no match",
@@ -1605,7 +1582,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 				Negate:   true,
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Test.Show.S01E01.1080p", Category: "tv"},
-			expected: false, // Negated: name DOES exist, so negated result is false
+			expected: false,
 		},
 		{
 			name: "EXISTS_IN - only works with NAME field",
@@ -1615,7 +1592,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 				Value:    "imported-tv",
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Test.Show.S01E01.1080p", Category: "tv"},
-			expected: false, // EXISTS_IN only valid for NAME field
+			expected: false,
 		},
 		{
 			name: "EXISTS_IN - regex flag ignored",
@@ -1623,7 +1600,7 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 				Field:    FieldName,
 				Operator: OperatorExistsIn,
 				Value:    "imported-tv",
-				Regex:    true, // Should be ignored
+				Regex:    true,
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Test.Show.S01E01.1080p", Category: "tv"},
 			expected: true,
@@ -1641,17 +1618,14 @@ func TestEvaluateCondition_ExistsIn(t *testing.T) {
 }
 
 func TestEvaluateCondition_ContainsIn(t *testing.T) {
-	// Build test torrents for the category index
-	// Note: CONTAINS_IN requires names >= 10 chars normalized
 	torrents := []qbt.Torrent{
 		{Hash: "hash1", Name: "Test.Show.S01E01.1080p.BluRay", Category: "tv"},
 		{Hash: "hash2", Name: "Test.Show.S01E01.1080p", Category: "imported-tv"},
 		{Hash: "hash3", Name: "Test.Show.S01E01.1080p.WEB-DL", Category: "imported-tv"},
-		{Hash: "hash4", Name: "Short", Category: "movies"}, // Too short for CONTAINS_IN
+		{Hash: "hash4", Name: "Short", Category: "movies"},
 		{Hash: "hash5", Name: "Another.Long.Enough.Name", Category: "movies"},
 	}
 
-	// Build the category index
 	categoryIndex, categoryNames := BuildCategoryIndex(torrentRefs(torrents))
 	evalCtx := &EvalContext{
 		CategoryIndex: categoryIndex,
@@ -1671,7 +1645,6 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 				Operator: OperatorContainsIn,
 				Value:    "imported-tv",
 			},
-			// "test show s01e01 1080p bluray" contains "test show s01e01 1080p"
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Test.Show.S01E01.1080p.BluRay", Category: "tv"},
 			expected: true,
 		},
@@ -1682,7 +1655,6 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 				Operator: OperatorContainsIn,
 				Value:    "tv",
 			},
-			// hash1 has "test show s01e01 1080p bluray" which contains "test show s01e01 1080p"
 			torrent:  qbt.Torrent{Hash: "hash2", Name: "Test.Show.S01E01.1080p", Category: "imported-tv"},
 			expected: true,
 		},
@@ -1694,7 +1666,7 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 				Value:    "tv",
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Test.Show.S01E01.1080p.BluRay", Category: "tv"},
-			expected: false, // hash1 is the only torrent in "tv"
+			expected: false,
 		},
 		{
 			name: "CONTAINS_IN - short name skipped (current < 10 chars normalized)",
@@ -1704,7 +1676,7 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 				Value:    "movies",
 			},
 			torrent:  qbt.Torrent{Hash: "hashX", Name: "Tiny", Category: "tv"},
-			expected: false, // "tiny" is too short
+			expected: false,
 		},
 		{
 			name: "CONTAINS_IN - short target names skipped",
@@ -1713,10 +1685,8 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 				Operator: OperatorContainsIn,
 				Value:    "movies",
 			},
-			// "Short.Movie.Extended.Cut.2024" contains "short" but "Short" in movies is too short (<10 chars)
-			// so it's skipped and no match is found
 			torrent:  qbt.Torrent{Hash: "hashX", Name: "Short.Movie.Extended.Cut.2024", Category: "tv"},
-			expected: false, // Would match if short names weren't skipped
+			expected: false,
 		},
 		{
 			name: "CONTAINS_IN - no match",
@@ -1737,7 +1707,7 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 				Negate:   true,
 			},
 			torrent:  qbt.Torrent{Hash: "hash1", Name: "Test.Show.S01E01.1080p.BluRay", Category: "tv"},
-			expected: false, // Match found, negated = false
+			expected: false,
 		},
 		{
 			name: "CONTAINS_IN - only works with NAME field",
@@ -1771,9 +1741,6 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 	}
 }
 
-// TestEvaluateCondition_ContainsIn_Diacritics verifies that CONTAINS_IN matches
-// names that differ only by diacritics or ligatures, and that the match is
-// symmetric regardless of which side carries the accent.
 func TestEvaluateCondition_ContainsIn_Diacritics(t *testing.T) {
 	cond := &RuleCondition{
 		Field:    FieldName,
@@ -1783,12 +1750,11 @@ func TestEvaluateCondition_ContainsIn_Diacritics(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		categoryName  string // name stored in the "imported" category
-		evaluatedName string // name of the torrent being evaluated (category "tv")
+		categoryName  string
+		evaluatedName string
 		expected      bool
 	}{
 		{
-			// Accented query is a substring of the longer ASCII category member.
 			name:          "accented query partial-matches ASCII category member",
 			categoryName:  "Amelie.2001.1080p.BluRay.x264-GROUP",
 			evaluatedName: "Am\u00e9lie.2001.1080p",
@@ -1825,15 +1791,12 @@ func TestEvaluateCondition_ContainsIn_Diacritics(t *testing.T) {
 			expected:      false,
 		},
 		{
-			// A query of only combining marks folds to empty; the length guard
-			// must skip it, or an empty needle would match every member.
 			name:          "empty-folding query is skipped",
 			categoryName:  "Some.Long.Release.Name.2024",
 			evaluatedName: "\u0301\u0301\u0301\u0301\u0301",
 			expected:      false,
 		},
 		{
-			// Same guard on the category side.
 			name:          "empty-folding category member is skipped",
 			categoryName:  "\u0301\u0301\u0301\u0301\u0301",
 			evaluatedName: "Some.Long.Release.Name.2024",
@@ -1865,30 +1828,26 @@ func TestEvaluateCondition_ContainsIn_Diacritics(t *testing.T) {
 func TestBuildCategoryIndex(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "hash1", Name: "Test.Torrent.A", Category: "movies"},
-		{Hash: "hash2", Name: "Test.Torrent.A", Category: "movies"}, // Same name, different hash
-		{Hash: "hash3", Name: "Test.Torrent.B", Category: "MOVIES"}, // Different case category
-		{Hash: "hash4", Name: "Uncategorized", Category: ""},        // Empty category
+		{Hash: "hash2", Name: "Test.Torrent.A", Category: "movies"},
+		{Hash: "hash3", Name: "Test.Torrent.B", Category: "MOVIES"},
+		{Hash: "hash4", Name: "Uncategorized", Category: ""},
 	}
 
 	categoryIndex, categoryNames := BuildCategoryIndex(torrentRefs(torrents))
 
-	// Test CategoryIndex structure
 	if categoryIndex == nil {
 		t.Fatal("CategoryIndex should not be nil")
 	}
 
-	// Check that "movies" and "MOVIES" are normalized to same key
 	moviesNames, ok := categoryIndex["movies"]
 	if !ok {
 		t.Error("CategoryIndex should have 'movies' key")
 	}
 
-	// Should have two distinct names under movies
 	if len(moviesNames) != 2 {
 		t.Errorf("expected 2 names under movies, got %d", len(moviesNames))
 	}
 
-	// "test.torrent.a" should have two hashes
 	nameHashSet, ok := moviesNames["test.torrent.a"]
 	if !ok {
 		t.Error("CategoryIndex[movies] should have 'test.torrent.a'")
@@ -1897,7 +1856,6 @@ func TestBuildCategoryIndex(t *testing.T) {
 		t.Errorf("expected 2 hashes for test.torrent.a, got %d", len(nameHashSet))
 	}
 
-	// Test empty category
 	emptyNames, ok := categoryIndex[""]
 	if !ok {
 		t.Error("CategoryIndex should have empty string key for uncategorized")
@@ -1906,7 +1864,6 @@ func TestBuildCategoryIndex(t *testing.T) {
 		t.Errorf("expected 1 name under empty category, got %d", len(emptyNames))
 	}
 
-	// Test CategoryNames structure
 	if categoryNames == nil {
 		t.Fatal("CategoryNames should not be nil")
 	}
@@ -1930,8 +1887,6 @@ func TestNormalizeName(t *testing.T) {
 		{"UPPERCASE.NAME", "uppercase name"},
 		{"already normal", "already normal"},
 		{"", ""},
-		// Accents and the Nordic/Germanic letters fold to their ASCII base, so
-		// accented names match their plain form.
 		{"Am\u00e9lie.2001.1080p", "amelie 2001 1080p"},
 		{"\u0130stanbul.Nights.2019", "istanbul nights 2019"},
 		{"Bj\u00f6rk.Concert.2018", "bjork concert 2018"},
@@ -1939,8 +1894,8 @@ func TestNormalizeName(t *testing.T) {
 		{"\u00c6on.Flux.2005.1080p", "aeon flux 2005 1080p"},
 		{"Stra\u00dfe.Berlin.2020", "strasse berlin 2020"},
 		{"GRO\u1e9eSTADT.2024", "grossstadt 2024"},
-		{"\U0001d400lpha.2024", "alpha 2024"},      // mathematical capital A decomposes to uppercase ASCII
-		{"Cafe\u0301.Noir.2021", "cafe noir 2021"}, // decomposed accent (e + combining acute)
+		{"\U0001d400lpha.2024", "alpha 2024"},
+		{"Cafe\u0301.Noir.2021", "cafe noir 2021"},
 	}
 
 	for _, tt := range tests {
@@ -1956,7 +1911,7 @@ func TestNormalizeName(t *testing.T) {
 func TestEvaluateCondition_ErrorCases(t *testing.T) {
 	torrent := qbt.Torrent{
 		Name:        "Test.Torrent",
-		Size:        1073741824, // 1 GiB
+		Size:        1073741824,
 		Ratio:       2.0,
 		SeedingTime: 3600,
 	}
@@ -2067,7 +2022,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 				Operator: OperatorGreaterThan,
 				Value:    "",
 			},
-			expected: true, // 2.0 > 0
+			expected: true,
 		},
 	}
 
@@ -2082,7 +2037,6 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 }
 
 func TestEvaluateCondition_AgeFields(t *testing.T) {
-	// Fixed "now" for deterministic tests: 2024-01-15 12:00:00 UTC
 	nowUnix := int64(1705320000)
 
 	tests := []struct {
@@ -2092,15 +2046,14 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 		ctx      *EvalContext
 		expected bool
 	}{
-		// ADDED_ON_AGE tests
 		{
 			name: "added_on_age less than 1 hour - matches",
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorLessThan,
-				Value:    "3600", // 1 hour in seconds
+				Value:    "3600",
 			},
-			torrent:  qbt.Torrent{AddedOn: nowUnix - 1800}, // added 30 minutes ago
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 1800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
@@ -2109,9 +2062,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorLessThan,
-				Value:    "3600", // 1 hour in seconds
+				Value:    "3600",
 			},
-			torrent:  qbt.Torrent{AddedOn: nowUnix - 7200}, // added 2 hours ago
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 7200},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
@@ -2120,9 +2073,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorGreaterThan,
-				Value:    "86400", // 1 day in seconds
+				Value:    "86400",
 			},
-			torrent:  qbt.Torrent{AddedOn: nowUnix - 172800}, // added 2 days ago
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 172800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
@@ -2131,10 +2084,10 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorBetween,
-				MinValue: new(float64(3600)), // 1 hour
-				MaxValue: new(float64(7200)), // 2 hours
+				MinValue: new(float64(3600)),
+				MaxValue: new(float64(7200)),
 			},
-			torrent:  qbt.Torrent{AddedOn: nowUnix - 5400}, // added 1.5 hours ago
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 5400},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
@@ -2143,10 +2096,10 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorBetween,
-				MinValue: new(float64(3600)), // 1 hour
-				MaxValue: new(float64(7200)), // 2 hours
+				MinValue: new(float64(3600)),
+				MaxValue: new(float64(7200)),
 			},
-			torrent:  qbt.Torrent{AddedOn: nowUnix - 10800}, // added 3 hours ago
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 10800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
@@ -2162,15 +2115,14 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			expected: false,
 		},
 
-		// COMPLETION_ON_AGE tests
 		{
 			name: "completion_on_age less than 1 hour - matches",
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
 				Operator: OperatorLessThan,
-				Value:    "3600", // 1 hour
+				Value:    "3600",
 			},
-			torrent:  qbt.Torrent{CompletionOn: nowUnix - 1800}, // completed 30 min ago
+			torrent:  qbt.Torrent{CompletionOn: nowUnix - 1800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
@@ -2179,9 +2131,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
 				Operator: OperatorGreaterThan,
-				Value:    "86400", // 1 day
+				Value:    "86400",
 			},
-			torrent:  qbt.Torrent{CompletionOn: nowUnix - 172800}, // completed 2 days ago
+			torrent:  qbt.Torrent{CompletionOn: nowUnix - 172800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
@@ -2190,9 +2142,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
 				Operator: OperatorGreaterThan,
-				Value:    "0", // any age
+				Value:    "0",
 			},
-			torrent:  qbt.Torrent{CompletionOn: 0}, // never completed
+			torrent:  qbt.Torrent{CompletionOn: 0},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
@@ -2201,9 +2153,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
 				Operator: OperatorGreaterThanOrEqual,
-				Value:    "86400", // 1 day
+				Value:    "86400",
 			},
-			torrent:  qbt.Torrent{CompletionOn: -1}, // qBittorrent uses -1 for incomplete torrents
+			torrent:  qbt.Torrent{CompletionOn: -1},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
@@ -2215,49 +2167,41 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 				MinValue: new(float64(3600)),
 				MaxValue: new(float64(7200)),
 			},
-			torrent:  qbt.Torrent{CompletionOn: nowUnix - 5400}, // completed 1.5 hours ago
+			torrent:  qbt.Torrent{CompletionOn: nowUnix - 5400},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
 		{
-			// qBittorrent 4.2-4.6 serialize never-completed as minus the
-			// host's 1970 UTC offset, POSITIVE west of UTC. Without the
-			// sentinel guard this computes a ~56-year age and matches
-			// every never-completed torrent (delete actions reachable).
 			name: "completion_on_age west-of-UTC sentinel - does not match",
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
 				Operator: OperatorGreaterThan,
-				Value:    "2592000", // 30 days
+				Value:    "2592000",
 			},
-			torrent:  qbt.Torrent{CompletionOn: 28800}, // qbit 4.x sentinel on US Pacific
+			torrent:  qbt.Torrent{CompletionOn: 28800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
 		{
-			// qBittorrent 4.1 serializes never-completed as uint32(-1).
-			// Age clamps to 0, so without the guard this false-matches
-			// any "completed less than X ago" condition.
 			name: "completion_on_age uint32 sentinel - does not match",
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
 				Operator: OperatorLessThan,
-				Value:    "3600", // 1 hour
+				Value:    "3600",
 			},
-			torrent:  qbt.Torrent{CompletionOn: 4294967295}, // qbit 4.1 sentinel
+			torrent:  qbt.Torrent{CompletionOn: 4294967295},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
 
-		// LAST_ACTIVITY_AGE tests
 		{
 			name: "last_activity_age less than 1 hour - matches",
 			cond: &RuleCondition{
 				Field:    FieldLastActivityAge,
 				Operator: OperatorLessThan,
-				Value:    "3600", // 1 hour
+				Value:    "3600",
 			},
-			torrent:  qbt.Torrent{LastActivity: nowUnix - 1800}, // active 30 min ago
+			torrent:  qbt.Torrent{LastActivity: nowUnix - 1800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
@@ -2266,9 +2210,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldLastActivityAge,
 				Operator: OperatorGreaterThan,
-				Value:    "86400", // 1 day
+				Value:    "86400",
 			},
-			torrent:  qbt.Torrent{LastActivity: nowUnix - 172800}, // active 2 days ago
+			torrent:  qbt.Torrent{LastActivity: nowUnix - 172800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
@@ -2277,9 +2221,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldLastActivityAge,
 				Operator: OperatorGreaterThan,
-				Value:    "0", // any age
+				Value:    "0",
 			},
-			torrent:  qbt.Torrent{LastActivity: 0}, // never had activity
+			torrent:  qbt.Torrent{LastActivity: 0},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
@@ -2291,12 +2235,11 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 				MinValue: new(float64(3600)),
 				MaxValue: new(float64(7200)),
 			},
-			torrent:  qbt.Torrent{LastActivity: nowUnix - 5400}, // active 1.5 hours ago
+			torrent:  qbt.Torrent{LastActivity: nowUnix - 5400},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
 
-		// Clock skew handling (negative age clamped to 0)
 		{
 			name: "added_on_age with future timestamp (clock skew) - clamped to 0",
 			cond: &RuleCondition{
@@ -2304,9 +2247,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 				Operator: OperatorEqual,
 				Value:    "0",
 			},
-			torrent:  qbt.Torrent{AddedOn: nowUnix + 3600}, // timestamp in the future
+			torrent:  qbt.Torrent{AddedOn: nowUnix + 3600},
 			ctx:      &EvalContext{NowUnix: nowUnix},
-			expected: true, // age clamped to 0
+			expected: true,
 		},
 		{
 			name: "added_on_age with future timestamp - greater than fails",
@@ -2315,9 +2258,9 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 				Operator: OperatorGreaterThan,
 				Value:    "0",
 			},
-			torrent:  qbt.Torrent{AddedOn: nowUnix + 3600}, // timestamp in the future
+			torrent:  qbt.Torrent{AddedOn: nowUnix + 3600},
 			ctx:      &EvalContext{NowUnix: nowUnix},
-			expected: false, // clamped to 0, so not > 0
+			expected: false,
 		},
 	}
 
@@ -2491,7 +2434,7 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldHardlinkScope,
 				Operator: OperatorEqual,
-				Value:    "OUTSIDE_QBITTORRENT", // uppercase
+				Value:    "OUTSIDE_QBITTORRENT",
 			},
 			evalCtx: &EvalContext{
 				InstanceHasTrustedIdentity: true,
@@ -2573,11 +2516,10 @@ func TestEvaluateCondition_FreeSpaceWithProjectedFreedBytes(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorLessThan,
-				Value:    "500000000000", // 500GB
+				Value:    "500000000000",
 			},
 			evalCtx: &EvalContext{
 				activeFreeSpace: testFreeSpaceLedger(400000000000, 150000000000),
-				// Effective: 550GB > 500GB, so condition (< 500GB) is false
 			},
 			expected: false,
 		},
@@ -2586,11 +2528,10 @@ func TestEvaluateCondition_FreeSpaceWithProjectedFreedBytes(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorLessThan,
-				Value:    "500000000000", // 500GB
+				Value:    "500000000000",
 			},
 			evalCtx: &EvalContext{
 				activeFreeSpace: testFreeSpaceLedger(400000000000, 50000000000),
-				// Effective: 450GB < 500GB, so condition is true
 			},
 			expected: true,
 		},
@@ -2599,23 +2540,22 @@ func TestEvaluateCondition_FreeSpaceWithProjectedFreedBytes(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorLessThan,
-				Value:    "500000000000", // 500GB
+				Value:    "500000000000",
 			},
 			evalCtx: &EvalContext{
 				activeFreeSpace: testFreeSpaceLedger(400000000000, 0),
 			},
-			expected: true, // 400GB < 500GB
+			expected: true,
 		},
 		{
 			name: "free space greater than with Projected freed bytes",
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorGreaterThan,
-				Value:    "500000000000", // 500GB
+				Value:    "500000000000",
 			},
 			evalCtx: &EvalContext{
 				activeFreeSpace: testFreeSpaceLedger(400000000000, 200000000000),
-				// Effective: 600GB > 500GB
 			},
 			expected: true,
 		},
@@ -2624,11 +2564,10 @@ func TestEvaluateCondition_FreeSpaceWithProjectedFreedBytes(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorEqual,
-				Value:    "500000000000", // 500GB
+				Value:    "500000000000",
 			},
 			evalCtx: &EvalContext{
 				activeFreeSpace: testFreeSpaceLedger(300000000000, 200000000000),
-				// Effective: 500GB == 500GB
 			},
 			expected: true,
 		},
@@ -2637,12 +2576,11 @@ func TestEvaluateCondition_FreeSpaceWithProjectedFreedBytes(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorBetween,
-				MinValue: new(float64(400000000000)), // 400GB
-				MaxValue: new(float64(600000000000)), // 600GB
+				MinValue: new(float64(400000000000)),
+				MaxValue: new(float64(600000000000)),
 			},
 			evalCtx: &EvalContext{
 				activeFreeSpace: testFreeSpaceLedger(300000000000, 200000000000),
-				// Effective: 500GB, within [400GB, 600GB]
 			},
 			expected: true,
 		},
@@ -2651,12 +2589,11 @@ func TestEvaluateCondition_FreeSpaceWithProjectedFreedBytes(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldFreeSpace,
 				Operator: OperatorBetween,
-				MinValue: new(float64(400000000000)), // 400GB
-				MaxValue: new(float64(500000000000)), // 500GB
+				MinValue: new(float64(400000000000)),
+				MaxValue: new(float64(500000000000)),
 			},
 			evalCtx: &EvalContext{
 				activeFreeSpace: testFreeSpaceLedger(300000000000, 300000000000),
-				// Effective: 600GB, outside [400GB, 500GB]
 			},
 			expected: false,
 		},
@@ -2681,7 +2618,6 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 		torrent  qbt.Torrent
 		expected bool
 	}{
-		// EQUAL operator - tag-aware
 		{
 			name: "tags equals - single tag match in list",
 			cond: &RuleCondition{
@@ -2763,7 +2699,6 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 			expected: true,
 		},
 
-		// NOT_EQUAL operator - tag-aware
 		{
 			name: "tags not equals - tag not present",
 			cond: &RuleCondition{
@@ -2805,7 +2740,6 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 			expected: false,
 		},
 
-		// CONTAINS operator - tag-aware (any tag contains substring)
 		{
 			name: "tags contains - any tag contains substring",
 			cond: &RuleCondition{
@@ -2837,7 +2771,6 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 			expected: true,
 		},
 
-		// NOT_CONTAINS operator - tag-aware (no tag contains substring)
 		{
 			name: "tags not contains - no tag contains substring",
 			cond: &RuleCondition{
@@ -2859,7 +2792,6 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 			expected: false,
 		},
 
-		// STARTS_WITH operator - tag-aware (any tag starts with)
 		{
 			name: "tags starts with - any tag starts with value",
 			cond: &RuleCondition{
@@ -2891,7 +2823,6 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 			expected: true,
 		},
 
-		// ENDS_WITH operator - tag-aware (any tag ends with)
 		{
 			name: "tags ends with - any tag ends with value",
 			cond: &RuleCondition{
@@ -2913,7 +2844,6 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 			expected: false,
 		},
 
-		// MATCHES (regex) operator - operates on full string
 		{
 			name: "tags regex - word boundary match",
 			cond: &RuleCondition{
@@ -3076,8 +3006,6 @@ func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
 			expected: false,
 		},
 		{
-			// last_seen_complete has the same never-completed sentinel defect
-			// as completion_on (qbit 4.2-4.6, positive west of UTC).
 			name:     "seen complete west-of-UTC sentinel does not match",
 			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorGreaterThan, Value: "2592000"},
 			torrent:  qbt.Torrent{SeenComplete: 28800},
@@ -3227,7 +3155,6 @@ func TestEvaluateCondition_CrossInstanceFields(t *testing.T) {
 		ctx      *EvalContext
 		expected bool
 	}{
-		// EXISTS_ON_OTHER_INSTANCE
 		{
 			name: "exists on other instance - hash present in set",
 			cond: &RuleCondition{
@@ -3316,7 +3243,6 @@ func TestEvaluateCondition_CrossInstanceFields(t *testing.T) {
 			},
 			expected: false,
 		},
-		// SEEDING_ON_OTHER_INSTANCE
 		{
 			name: "seeding on other instance - hash present in seeding set",
 			cond: &RuleCondition{
@@ -3367,7 +3293,6 @@ func TestEvaluateCondition_CrossInstanceFields(t *testing.T) {
 			},
 			expected: true,
 		},
-		// EXISTS_ON_SAME_INSTANCE
 		{
 			name: "exists on same instance - cross-seed present",
 			cond: &RuleCondition{
@@ -3484,7 +3409,6 @@ func TestEvaluateCondition_CrossInstanceFields(t *testing.T) {
 			},
 			expected: false,
 		},
-		// SEEDING_ON_SAME_INSTANCE
 		{
 			name: "seeding on same instance - cross-seed seeding",
 			cond: &RuleCondition{
@@ -3674,7 +3598,6 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 		torrent  qbt.Torrent
 		expected bool
 	}{
-		// Status: positive matches across the alias / numeric value set.
 		{
 			name: "status working matches OK tracker",
 			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
@@ -3753,7 +3676,6 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 			torrent:  qbt.Torrent{},
 			expected: false,
 		},
-		// Status: DHT/PeX/LSD pseudo-trackers must be ignored (regression guard).
 		{
 			name: "pseudo DHT tracker is ignored, real tracker decides not_equal",
 			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorNotEqual, Value: "working"},
@@ -3772,7 +3694,6 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 			}},
 			expected: false,
 		},
-		// Message.
 		{
 			name: "message contains substring",
 			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorContains, Value: "Torrent deleted"},
@@ -3812,7 +3733,6 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 			torrent:  qbt.Torrent{},
 			expected: false,
 		},
-		// Message: pseudo-tracker empty message must not satisfy "nil" (regression guard).
 		{
 			name: "pseudo DHT empty message does not satisfy message nil",
 			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
@@ -3968,9 +3888,6 @@ func TestEvaluateCondition_CrossSeedTags(t *testing.T) {
 	}
 }
 
-// TestEvaluateCondition_TrackerFields_AllTrackers covers issue #2481: TRACKER and
-// TRACKERS must match every tracker a torrent announces to, not only the tracker
-// qBittorrent currently reports as working (torrent.Tracker is empty when none work).
 func TestEvaluateCondition_TrackerFields_AllTrackers(t *testing.T) {
 	deadGroupCtx := &EvalContext{
 		TrackerDisplayNameByDomain: map[string]string{
@@ -3979,7 +3896,6 @@ func TestEvaluateCondition_TrackerFields_AllTrackers(t *testing.T) {
 		},
 	}
 
-	// Every tracker is down, so qBittorrent leaves the primary tracker field empty.
 	allDead := qbt.Torrent{
 		Tracker: "",
 		Trackers: []qbt.TorrentTracker{
@@ -3989,7 +3905,6 @@ func TestEvaluateCondition_TrackerFields_AllTrackers(t *testing.T) {
 		},
 	}
 
-	// A working primary plus a second tracker on another domain.
 	multiTracker := qbt.Torrent{
 		Tracker: "https://primary.test/announce",
 		Trackers: []qbt.TorrentTracker{
@@ -3998,7 +3913,6 @@ func TestEvaluateCondition_TrackerFields_AllTrackers(t *testing.T) {
 		},
 	}
 
-	// qBittorrent also reports a pseudo label in the primary tracker field.
 	pseudoPrimary := qbt.Torrent{Tracker: "** [DHT] **"}
 
 	pseudoOnly := qbt.Torrent{
@@ -4095,19 +4009,13 @@ func TestEvaluateCondition_TrackerFields_AllTrackers(t *testing.T) {
 	}
 }
 
-// TestEvaluateCondition_BetweenWrapsClockFields pins the wrap semantics of BETWEEN.
-// A reversed range on a clock field crosses the wrap point: it matches from min
-// through the top of the field and from the bottom up to, but not including, max.
-// Every other numeric field treats a reversed range as empty.
 func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
-	// atHour returns an EvalContext whose evaluation time falls in the given hour.
 	atHour := func(hour int) *EvalContext {
 		return &EvalContext{NowUnix: time.Date(2025, time.August, 15, hour, 30, 0, 0, time.Local).Unix()}
 	}
 	atMinute := func(minute int) *EvalContext {
 		return &EvalContext{NowUnix: time.Date(2025, time.August, 15, 14, minute, 0, 0, time.Local).Unix()}
 	}
-	// atWeekday returns an EvalContext on the given weekday; 2025-08-10 is a Sunday (0).
 	atWeekday := func(weekday int) *EvalContext {
 		return &EvalContext{NowUnix: time.Date(2025, time.August, 10+weekday, 14, 30, 0, 0, time.Local).Unix()}
 	}
@@ -4125,7 +4033,6 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 		evalCtx  *EvalContext
 		expected bool
 	}{
-		// SYSTEM_HOUR 20..6: the reported case, active 20:00 through 05:59.
 		{name: "hour wrap below min", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(19), expected: false},
 		{name: "hour wrap at min", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(20), expected: true},
 		{name: "hour wrap above min", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(22), expected: true},
@@ -4133,12 +4040,10 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 		{name: "hour wrap below max", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(5), expected: true},
 		{name: "hour wrap at max is excluded", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(6), expected: false},
 		{name: "hour wrap above max", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(12), expected: false},
-		// A forward hour range keeps inclusive bounds on both ends.
 		{name: "hour forward at min", cond: between(models.FieldSystemHour, 6, 20), evalCtx: atHour(6), expected: true},
 		{name: "hour forward at max", cond: between(models.FieldSystemHour, 6, 20), evalCtx: atHour(20), expected: true},
 		{name: "hour forward outside", cond: between(models.FieldSystemHour, 6, 20), evalCtx: atHour(21), expected: false},
 
-		// SYSTEM_MINUTE 50..10.
 		{name: "minute wrap below min", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(49), expected: false},
 		{name: "minute wrap at min", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(50), expected: true},
 		{name: "minute wrap above min", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(55), expected: true},
@@ -4147,7 +4052,6 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 		{name: "minute wrap at max is excluded", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(10), expected: false},
 		{name: "minute wrap above max", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(30), expected: false},
 
-		// SYSTEM_DAY_OF_WEEK 5..1: Friday through Sunday, ending before Monday.
 		{name: "weekday wrap below min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(4), expected: false},
 		{name: "weekday wrap at min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(5), expected: true},
 		{name: "weekday wrap above min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(6), expected: true},
@@ -4155,7 +4059,6 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 		{name: "weekday wrap at max is excluded", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(1), expected: false},
 		{name: "weekday wrap above max", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(3), expected: false},
 
-		// SYSTEM_MONTH 11..3: the winter months, ending before March.
 		{name: "month wrap below min", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(10), expected: false},
 		{name: "month wrap at min", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(11), expected: true},
 		{name: "month wrap above min", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(12), expected: true},
@@ -4164,7 +4067,6 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 		{name: "month wrap at max is excluded", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(3), expected: false},
 		{name: "month wrap above max", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(7), expected: false},
 
-		// Non-clock fields treat a reversed range as empty, not as a wrap.
 		{name: "seeds reversed range stays false", cond: between(FieldNumSeeds, 10, 5), torrent: qbt.Torrent{NumSeeds: 12}, expected: false},
 		{name: "ratio reversed range stays false", cond: between(FieldRatio, 2, 1), torrent: qbt.Torrent{Ratio: 3}, expected: false},
 		{name: "system day reversed range stays false", cond: between(models.FieldSystemDay, 28, 3), evalCtx: atHour(14), expected: false},
@@ -4180,7 +4082,6 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 	}
 }
 
-// regression: #3870
 func TestEvaluateCondition_StateCompletedReadsProgress(t *testing.T) {
 	cond := &RuleCondition{Field: FieldState, Operator: OperatorEqual, Value: "completed"}
 
@@ -4199,7 +4100,6 @@ func TestEvaluateCondition_StateCompletedReadsProgress(t *testing.T) {
 	}
 }
 
-// regression: #3870
 func TestEvaluateCondition_StateDownloadingMatchesForcedMetaDL(t *testing.T) {
 	cond := &RuleCondition{Field: FieldState, Operator: OperatorEqual, Value: "downloading"}
 	torrent := qbt.Torrent{Hash: "hash1", State: qbt.TorrentStateForcedMetaDl}

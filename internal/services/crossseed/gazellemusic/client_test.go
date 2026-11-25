@@ -54,8 +54,6 @@ func TestNewClient_DefaultsToTrackerSite(t *testing.T) {
 	}
 }
 
-// TestClientTalksToATestServer is the positive half of the dial guard: a client
-// pointed at a loopback server must still work, over the guarded transport.
 func TestClientTalksToATestServer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"success","response":{"group":{"id":3,"name":"Album"},"torrent":{"id":7,"size":123}}}`))
@@ -79,8 +77,6 @@ func TestClientTalksToATestServer(t *testing.T) {
 	}
 }
 
-// A request that would wait in the queue past the deadline of ctx fails at
-// once. The caller must see that as the deadline, not as a failed lookup.
 func TestRequestQueuePastDeadlineIsDeadlineExceeded(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"success","response":{}}`))
@@ -91,7 +87,6 @@ func TestRequestQueuePastDeadlineIsDeadlineExceeded(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 	client.limiter = rate.NewLimiter(rate.Every(2*time.Second), 1)
-	// Take the one token, so the next request has to wait about 2 s.
 	client.limiter.Allow()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -106,12 +101,6 @@ func TestRequestQueuePastDeadlineIsDeadlineExceeded(t *testing.T) {
 	}
 }
 
-// TestDialGuardPanicsOnLiveTracker is the negative half. Calling the shared
-// transport's dialer directly keeps the panic on this goroutine, so it can be
-// recovered. Through an http.Client it lands on the transport's own dial
-// goroutine and takes the whole run down, which is the point: callers log a
-// failed lookup and carry on, so a returned error would keep the test green
-// while the request went out.
 func TestDialGuardPanicsOnLiveTracker(t *testing.T) {
 	defer func() {
 		if recover() == nil {
@@ -119,13 +108,9 @@ func TestDialGuardPanicsOnLiveTracker(t *testing.T) {
 		}
 	}()
 
-	// 192.0.2.1 is TEST-NET-1 (RFC 5737), reserved for documentation. The guard
-	// fires before connect, so nothing leaves the machine either way.
 	_, _ = sharedTransport.DialContext(t.Context(), "tcp", "192.0.2.1:9")
 }
 
-// The ban and wrong-key rows copy real tracker replies (wrong keys captured
-// 2026-09-22, the ban from #2807). Do not edit them to fit the code.
 func TestClientClassifiesAccessDenied(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -207,8 +192,6 @@ func TestClientClassifiesAccessDenied(t *testing.T) {
 	}
 }
 
-// A denial whose text reads like Gazelle's not-found reply must still stop the
-// lookup, not count as a hash miss.
 func TestSearchByHashKeepsAccessDenied(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

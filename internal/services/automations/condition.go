@@ -1,15 +1,12 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package automations provides an expression-based automation system for managing torrents.
-// This file re-exports condition types from models for convenience.
 package automations
 
 import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Re-export types from models for convenience
 type (
 	ConditionField    = models.ConditionField
 	ConditionOperator = models.ConditionOperator
@@ -20,9 +17,7 @@ type (
 	DeleteAction      = models.DeleteAction
 )
 
-// Re-export constants
 const (
-	// String fields
 	FieldName          = models.FieldName
 	FieldHash          = models.FieldHash
 	FieldInfohashV1    = models.FieldInfohashV1
@@ -52,7 +47,6 @@ const (
 	FieldTrackerMessage = models.FieldTrackerMessage
 	FieldComment        = models.FieldComment
 
-	// Numeric fields (bytes)
 	FieldSize              = models.FieldSize
 	FieldTotalSize         = models.FieldTotalSize
 	FieldCompleted         = models.FieldCompleted
@@ -63,7 +57,6 @@ const (
 	FieldAmountLeft        = models.FieldAmountLeft
 	FieldFreeSpace         = models.FieldFreeSpace
 
-	// Time fields (timestamp-backed ages + duration seconds)
 	FieldAddedOn                  = models.FieldAddedOn
 	FieldCompletionOn             = models.FieldCompletionOn
 	FieldLastActivity             = models.FieldLastActivity
@@ -77,12 +70,10 @@ const (
 	FieldSeedingTimeLimit         = models.FieldSeedingTimeLimit
 	FieldInactiveSeedingTimeLimit = models.FieldInactiveSeedingTimeLimit
 
-	// Legacy age aliases (time since timestamp)
 	FieldAddedOnAge      = models.FieldAddedOnAge
 	FieldCompletionOnAge = models.FieldCompletionOnAge
 	FieldLastActivityAge = models.FieldLastActivityAge
 
-	// Numeric fields (float64)
 	FieldRatio            = models.FieldRatio
 	FieldRatioLimit       = models.FieldRatioLimit
 	FieldMaxRatio         = models.FieldMaxRatio
@@ -91,13 +82,11 @@ const (
 	FieldAvailability     = models.FieldAvailability
 	FieldPopularity       = models.FieldPopularity
 
-	// Numeric fields (speeds)
 	FieldDlSpeed = models.FieldDlSpeed
 	FieldUpSpeed = models.FieldUpSpeed
 	FieldDlLimit = models.FieldDlLimit
 	FieldUpLimit = models.FieldUpLimit
 
-	// Numeric fields (counts/misc)
 	FieldNumSeeds      = models.FieldNumSeeds
 	FieldNumLeechs     = models.FieldNumLeechs
 	FieldNumComplete   = models.FieldNumComplete
@@ -106,7 +95,6 @@ const (
 	FieldPriority      = models.FieldPriority
 	FieldGroupSize     = models.FieldGroupSize
 
-	// Boolean fields
 	FieldPrivate                = models.FieldPrivate
 	FieldAutoManaged            = models.FieldAutoManaged
 	FieldFirstLastPiecePrio     = models.FieldFirstLastPiecePrio
@@ -123,34 +111,28 @@ const (
 	FieldSeedingOnSameInstance  = models.FieldSeedingOnSameInstance
 	FieldCrossSeedTags          = models.FieldCrossSeedTags
 
-	// Season pack fields
 	FieldSeasonPackStatus            = models.FieldSeasonPackStatus
 	FieldSeasonPackStatusAnyInstance = models.FieldSeasonPackStatusAnyInstance
 
-	// Enum-like fields
 	FieldHardlinkScope      = models.FieldHardlinkScope
 	FieldHardlinkScopeCross = models.FieldHardlinkScopeCross
 
-	// Hardlink scope values
 	HardlinkScopeNone               = models.HardlinkScopeNone
 	HardlinkScopeTorrentsOnly       = models.HardlinkScopeTorrentsOnly
 	HardlinkScopeOutsideQBitTorrent = models.HardlinkScopeOutsideQBitTorrent
 	HardlinkScopeBoth               = models.HardlinkScopeBoth
 	HardlinkScopeInsideQBitTorrent  = models.HardlinkScopeInsideQBitTorrent
 
-	// Season pack status values
 	SeasonPackStatusPack     = models.SeasonPackStatusPack
 	SeasonPackStatusPacked   = models.SeasonPackStatusPacked
 	SeasonPackStatusUnpacked = models.SeasonPackStatusUnpacked
 
-	// Delete modes
 	DeleteModeNone                        = models.DeleteModeNone
 	DeleteModeKeepFiles                   = models.DeleteModeKeepFiles
 	DeleteModeWithFiles                   = models.DeleteModeWithFiles
 	DeleteModeWithFilesPreserveCrossSeeds = models.DeleteModeWithFilesPreserveCrossSeeds
 	DeleteModeWithFilesIncludeCrossSeeds  = models.DeleteModeWithFilesIncludeCrossSeeds
 
-	// Operators
 	OperatorAnd                = models.OperatorAnd
 	OperatorOr                 = models.OperatorOr
 	OperatorEqual              = models.OperatorEqual
@@ -166,7 +148,6 @@ const (
 	OperatorBetween            = models.OperatorBetween
 	OperatorMatches            = models.OperatorMatches
 
-	// Cross-category lookup operators (NAME field only)
 	OperatorExistsIn   = models.OperatorExistsIn
 	OperatorContainsIn = models.OperatorContainsIn
 )

@@ -24,9 +24,6 @@ func TestBackupItemRangesMigrationSQLite(t *testing.T) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	// 010 rebuilds referenced tables and only runs with foreign keys off; the
-	// helper turns enforcement back on before the migration under test, which
-	// is the mode applyAllMigrations runs it in.
 	_, err = conn.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF")
 	require.NoError(t, err)
 	checkBackupItemRangesMigration(t.Context(), t, conn, migrationsFS, "migrations", "101_backup_item_ranges.sql", true)
@@ -81,7 +78,6 @@ func checkBackupItemRangesMigration(ctx context.Context, t *testing.T, conn *sql
 			id, str(name), str("http://localhost"), str("user")))
 	}
 	kind, status, by := str("hourly"), str("success"), str("scheduler")
-	// Run 2 is a run whose items never committed.
 	for id, instance := range map[int]int{1: 1, 2: 1, 3: 1, 4: 2} {
 		exec(fmt.Sprintf("INSERT INTO instance_backup_runs (id, instance_id, kind_id, status_id, requested_by_id) VALUES (%d, %d, %d, %d, %d)",
 			id, instance, kind, status, by))

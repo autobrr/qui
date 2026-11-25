@@ -5,10 +5,6 @@
 
 import type { TorrentFilters } from "@/types"
 
-/**
- * Build a TorrentFilters object with empty defaults for unit tests. Override
- * only the fields a test exercises (most commonly `expr`).
- */
 export function makeFilters(overrides: Partial<TorrentFilters> = {}): TorrentFilters {
   return {
     status: [],

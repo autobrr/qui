@@ -76,7 +76,6 @@ describe("useTorrentSelection — shift-click anchor", () => {
     expect(result.current.lastSelectedIndexRef.current).toBeNull()
   })
 
-  // regression: #3930
   it.each([
     ["Group copies turns off", true, false],
     ["grouped rows arrive after Grouping…", false, true],

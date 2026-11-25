@@ -12,9 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// MediaIDCacheEntry is one cached MediaInfo external-ID extraction for a
-// torrent. An entry with an empty IDType records a successful scan that found
-// no usable ID, so later searches skip the file read.
 type MediaIDCacheEntry struct {
 	TorrentKey       string    `json:"torrent_key"`
 	ContentType      string    `json:"content_type"`
@@ -24,18 +21,14 @@ type MediaIDCacheEntry struct {
 	CachedAt         time.Time `json:"cached_at"`
 }
 
-// MediaIDCacheStore manages the media_id_cache table.
 type MediaIDCacheStore struct {
 	db dbinterface.Querier
 }
 
-// NewMediaIDCacheStore creates a new MediaIDCacheStore.
 func NewMediaIDCacheStore(db dbinterface.Querier) *MediaIDCacheStore {
 	return &MediaIDCacheStore{db: db}
 }
 
-// Get returns the cached entry for a torrent key and content type, or nil when
-// no entry exists.
 func (s *MediaIDCacheStore) Get(ctx context.Context, torrentKey, contentType string) (*MediaIDCacheEntry, error) {
 	query := `
 		SELECT torrent_key, content_type, extractor_version, id_type, id_value, cached_at
@@ -68,8 +61,6 @@ func (s *MediaIDCacheStore) Get(ctx context.Context, torrentKey, contentType str
 	return &entry, nil
 }
 
-// Set upserts a cache entry. An empty IDType stores a no-ID result (both ID
-// columns NULL, enforced by a table constraint).
 func (s *MediaIDCacheStore) Set(ctx context.Context, entry *MediaIDCacheEntry) error {
 	var idType, idValue *string
 	if entry.IDType != "" {

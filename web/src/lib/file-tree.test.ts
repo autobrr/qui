@@ -74,7 +74,6 @@ describe("sortFileTree", () => {
   })
 
   it("sorts by progress ratio, ties broken by name asc", () => {
-    // Sub 1/3, Big 1/4; files: a 1, b 0.5, c2 0, c10 0
     expect(names(sorted({ column: "progress", direction: "desc" }))).toEqual(["Sub", "Big", "a.mkv", "b.mkv", "c2.mkv", "c10.mkv"])
     expect(names(sorted({ column: "progress", direction: "asc" }))).toEqual(["Big", "Sub", "c2.mkv", "c10.mkv", "b.mkv", "a.mkv"])
   })
@@ -82,7 +81,6 @@ describe("sortFileTree", () => {
   it("sorts by numeric priority, mixed folders count as normal", () => {
     const mixed = [...files, file(7, "Big/w.bin", 1, 0, 0)]
     const out = sortFileTree(buildFileTree(mixed, false, "hash").nodes, { column: "priority", direction: "desc" })
-    // Big is mixed (6 + 0) -> 1, Sub is 1: tie -> name asc
     expect(names(out)).toEqual(["Big", "Sub", "a.mkv", "c2.mkv", "b.mkv", "c10.mkv"])
   })
 

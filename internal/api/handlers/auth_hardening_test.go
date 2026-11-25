@@ -128,7 +128,6 @@ func TestLoginAndSetupRequireJSONContentType(t *testing.T) {
 	assert.Equal(t, http.StatusUnsupportedMediaType, h.postLogin(t, "", body).Code)
 	assert.Equal(t, http.StatusOK, h.postLogin(t, "application/json; charset=utf-8", body).Code)
 
-	// Setup is already complete, so a JSON request gets 400 and a non-JSON one 415.
 	assert.Equal(t, http.StatusUnsupportedMediaType, post(t, setup, "/api/auth/setup", "application/x-www-form-urlencoded", body).Code)
 	assert.Equal(t, http.StatusBadRequest, post(t, setup, "/api/auth/setup", "application/json", body).Code)
 }
@@ -179,7 +178,6 @@ func TestChangePasswordEndsEverySession(t *testing.T) {
 	assert.False(t, sessionAuthenticated(t, h, first))
 	assert.False(t, sessionAuthenticated(t, h, second))
 
-	// The browser that changed the password gets its cookie cleared.
 	cleared := sessionCookie(t, h, rec)
 	assert.Empty(t, cleared.Value)
 	assert.Negative(t, cleared.MaxAge)
@@ -188,8 +186,6 @@ func TestChangePasswordEndsEverySession(t *testing.T) {
 		`{"username":"alice","password":"password5678"}`).Code)
 }
 
-// failingDeleteStore makes RenewToken fail for a request that already carries
-// a session: scs deletes the old token before it issues the new one.
 type failingDeleteStore struct{ *memstore.MemStore }
 
 func (failingDeleteStore) Delete(string) error { return errors.New("store down") }
@@ -218,7 +214,6 @@ func TestLoginFailsWhenTokenRenewalFails(t *testing.T) {
 	h.sessionManager.LoadAndSave(http.HandlerFunc(h.Validate)).ServeHTTP(validateRec, validateReq)
 	assert.Equal(t, http.StatusUnauthorized, validateRec.Code)
 
-	// Login works again after the store recovers, with a new session token.
 	h.sessionManager.Store = store
 	retry := h.postLogin(t, "application/json", creds, existing)
 	require.Equal(t, http.StatusOK, retry.Code)

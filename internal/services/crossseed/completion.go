@@ -79,7 +79,6 @@ func (s *Service) getCompletionMaxAttempts() int {
 	return maxCompletionCheckingAttempts
 }
 
-// HandleTorrentCompletion evaluates completed torrents for cross-seed opportunities.
 func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 	if s == nil || instanceID <= 0 || s.isHelper(instanceID, torrent.Hash) {
 		return
@@ -92,7 +91,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		ctx = context.WithoutCancel(ctx)
 	}
 
-	// Load per-instance completion settings
 	if s.completionStore == nil {
 		log.Error().
 			Int("instanceID", instanceID).
@@ -171,7 +169,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			Msg("[CROSSSEED-COMPLETION] Failed to reload completion torrent")
 		return
 	}
-	// An errored torrent goes on to the refusal in content analysis.
 	switch s.sourceGate().check(readyTorrent, sourceFilter{}) {
 	case sourceMovingOrChecking:
 		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Torrent resumed checking before completion search")
@@ -198,7 +195,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
-	// Load global automation settings for cross-seed configuration (indexers, tags, etc.)
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		log.Warn().
@@ -229,7 +225,6 @@ func (s *Service) shouldSkipCompletionTorrent(instanceID int, torrent *qbt.Torre
 	}
 
 	if torrent.CompletionOn <= 0 || torrent.Hash == "" {
-		// Safety check – the qbittorrent completion hook should only fire for completed torrents.
 		return true
 	}
 
@@ -797,7 +792,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	defaults := defaultsFor(triggerCompletion, settings)
-	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
 	if completionSettings != nil {
 		defaults.sourceFilter = completionSourceFilter(completionSettings)
 	}
@@ -872,8 +866,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	return nil
 }
 
-// logCompletionGazelleLookups writes one line for each RED/OPS lookup: Info for a
-// match, Warn for a failure, and Debug for the rest.
 func logCompletionGazelleLookups(instanceID int, torrent *qbt.Torrent, lookups []GazelleLookup) {
 	for _, l := range lookups {
 		var event *zerolog.Event
@@ -898,8 +890,6 @@ func logCompletionGazelleLookups(instanceID int, torrent *qbt.Torrent, lookups [
 	}
 }
 
-// logCompletionSearchSummary emits every outcome count and promotes runs with
-// at least one addition from debug to info level.
 func logCompletionSearchSummary(instanceID int, torrent *qbt.Torrent, added, failed, skipped int) {
 	event := log.Debug()
 	message := "[CROSSSEED-COMPLETION] Completion search executed with no additions"
@@ -921,10 +911,6 @@ func hasCrossSeedTag(rawTags string) bool {
 	return slices.Contains(splitTags(rawTags), "cross-seed")
 }
 
-// stampCompletionSearchHistory marks the Torznab indexers that answered every
-// pass of a completion search, and the RED/OPS lookups that need no retry, as
-// the Library Scan does. A failed or rate-limited indexer stays unmarked, so
-// the next scheduled run asks it again.
 func (s *Service) stampCompletionSearchHistory(ctx context.Context, instanceID int, hash string, searchedAt time.Time, resp *TorrentSearchResponse, gazelleKeyMissing bool) {
 	if s.automationStore == nil || ctx.Err() != nil {
 		return

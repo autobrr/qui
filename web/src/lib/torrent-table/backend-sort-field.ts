@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Map TanStack Table column IDs to backend field names
 export function getBackendSortField(columnId: string): string {
   if (!columnId) {
     return "added_on"
@@ -13,9 +12,9 @@ export function getBackendSortField(columnId: string): string {
     case "status_icon":
       return "state"
     case "num_seeds":
-      return "num_complete" // Sort by total seeds, not connected
+      return "num_complete"
     case "num_leechs":
-      return "num_incomplete" // Sort by total peers, not connected
+      return "num_incomplete"
     default:
       return columnId
   }

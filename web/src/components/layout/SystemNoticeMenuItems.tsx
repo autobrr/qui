@@ -18,9 +18,6 @@ type SystemNoticeMenuItemsProps = {
   onOpen: (kind: string, menuButton: HTMLElement | null) => void
 }
 
-// SystemNoticeMenuItems lists the open notices at the top of a menu. The menu
-// closes when the user selects a row, so the caller shows the detail in a
-// SystemNoticeDialog outside the menu.
 export function SystemNoticeMenuItems({ notices, onOpen }: SystemNoticeMenuItemsProps) {
   const now = useNow()
   const labelId = useId()
@@ -62,7 +59,6 @@ function SystemNoticeMenuRow({ notice, now, onOpen }: { notice: SystemNotice; no
   )
 }
 
-// The menu names the button that opens it in aria-labelledby.
 function menuButtonOf(item: EventTarget | null): HTMLElement | null {
   const menuButtonId = item instanceof Element ? item.closest("[role=menu]")?.getAttribute("aria-labelledby") : null
   return menuButtonId ? document.getElementById(menuButtonId) : null

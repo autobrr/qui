@@ -45,11 +45,8 @@ type Service struct {
 	activityStore *models.AutomationActivityStore
 	config        *domain.Config
 
-	// slots is a process-wide counting semaphore; see executeAsync for how long a run holds one.
-	slots    chan struct{}
-	admitted atomic.Int32
-	// waiting holds a waitKey for each run that waits for a slot, so a rule that matches
-	// the same torrent on every pass queues it only once.
+	slots       chan struct{}
+	admitted    atomic.Int32
 	waiting     sync.Map
 	maxWaiting  int32
 	waitTimeout time.Duration
@@ -57,14 +54,10 @@ type Service struct {
 	helpers helperTorrents
 }
 
-// helperTorrents is the helper registry: it names the torrents that qui added
-// for a Transfer or a Share. A tag proves nothing.
 type helperTorrents interface {
 	IsHelper(instanceID int, hash string) bool
 }
 
-// SetHelperTorrents makes Execute refuse each helper torrent: no External
-// Program runs for one. Call it one time at start-up.
 func (s *Service) SetHelperTorrents(helpers helperTorrents) {
 	s.helpers = helpers
 }
@@ -192,8 +185,6 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 
 	args := extargs.BuildArguments(program.ArgsTemplate, torrentData)
 
-	// Build and execute command
-	// Use background context since the command runs async and parent context may be cancelled
 	cmd, policy := s.buildCommand(context.Background(), program, args)
 
 	key := waitKey{programID: program.ID, instanceID: req.InstanceID, hash: req.Torrent.Hash}
@@ -235,10 +226,6 @@ func (s *Service) executeProgram(ctx context.Context, program *models.ExternalPr
 	return SuccessResult(message)
 }
 
-// executeAsync waits for a slot until deadline, then runs the command and handles process lifecycle.
-// Windows GUI programs, terminals and Windows batch wrappers release their slot after startup;
-// owned console programs retain it until exit. Every process is reaped with Wait.
-// Windows wrappers report activity after exit so shell failures remain visible.
 func (s *Service) executeAsync(
 	cmd *exec.Cmd,
 	policy executionPolicy,
@@ -247,7 +234,6 @@ func (s *Service) executeAsync(
 	req ExecuteRequest,
 	deadline time.Time,
 ) {
-	// Use background context for activity logging since parent context may be cancelled
 	ctx := context.Background()
 
 	select {
@@ -286,7 +272,6 @@ func (s *Service) executeAsync(
 		release()
 	}
 
-	// Windows wrappers must also successfully dispatch their command.
 	if !policy.reportAfterExit {
 		s.logActivity(ctx, req.InstanceID, req.Torrent, program, req.RuleID, req.RuleName, true, "program started")
 	}
@@ -428,15 +413,12 @@ end tell`, escapeAppleScript(keepOpen))
 	case "gnome-terminal":
 		return "gnome-terminal", []string{"--", "bash", "-c", keepOpen}
 	case "konsole":
-		// konsole uses --hold flag to keep window open, so no need for "; exec bash"
 		return "konsole", []string{"--hold", "-e", "bash", "-c", cmdLine}
 	case "xfce4-terminal":
-		// xfce4-terminal uses --hold flag to keep window open, so no need for "; exec bash"
 		return "xfce4-terminal", []string{"--hold", "-e", "bash", "-c", cmdLine}
 	case "mate-terminal":
 		return "mate-terminal", []string{"-e", "bash", "-c", keepOpen}
 	case "xterm":
-		// xterm uses -hold flag to keep window open, so no need for "; exec bash"
 		return "xterm", []string{"-hold", "-e", "bash", "-c", cmdLine}
 	case "terminator":
 		return "terminator", []string{"-e", "bash", "-c", keepOpen}
@@ -459,8 +441,6 @@ func isTerminalAvailable(terminal string) bool {
 	}
 }
 
-// createTerminalCommand creates a command that spawns a terminal window on Unix/Linux/macOS.
-// With no terminal emulator it falls back to sh -c, which is not a launcher.
 func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cmd *exec.Cmd, launcher bool) {
 	if terminal, found := detectTerminalFromEnv(); found {
 		if isTerminalAvailable(terminal) {

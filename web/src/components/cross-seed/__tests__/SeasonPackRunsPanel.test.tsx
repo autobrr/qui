@@ -25,7 +25,6 @@ import { SeasonPackRunsPanel } from "../SeasonPackRunsPanel"
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  // The panel keeps its status filters in localStorage.
   localStorage.clear()
 })
 
@@ -64,7 +63,6 @@ describe("SeasonPackRunsPanel instances", () => {
 
   it("labels the reason of a failed routed apply", async () => {
     renderPanel(makeRun({ status: "failed", reason: "crossseed_instance_unavailable", instanceId: 1, addedInstanceId: 2 }))
-    // The panel shows only applied runs by default.
     fireEvent.click(screen.getByRole("button", { name: /^seasonPackRuns\.statusLabels\.failed / }))
 
     expect(screen.getByText("· crossseed:routeStatus.unavailable")).toBeTruthy()

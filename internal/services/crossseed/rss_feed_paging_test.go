@@ -45,7 +45,6 @@ func TestFeedPageContinuation(t *testing.T) {
 		require.Len(t, fresh, 2)
 		require.Equal(t, []int{1}, cont)
 
-		// An indexer that ignores the offset parameter returns the same page.
 		fresh, cont = feedPageContinuation(page, collected, neverHandled)
 		require.Empty(t, fresh)
 		require.Empty(t, cont)

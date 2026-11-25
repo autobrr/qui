@@ -11,25 +11,17 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// The delete modes that preserve or include cross-seeds keep the files that a
-// torrent on another instance needs, also while a local instance is offline.
-// Include mode deletes no torrent of another instance. Plain delete with files
-// does not change. The dry run and the preview select the torrents of the live
-// run.
-// regression: #3591
 func TestApplyRules_DeleteKeepsFilesThatAnotherInstanceNeeds(t *testing.T) {
 	const (
 		a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 		c = "cccccccccccccccccccccccccccccccccccccccc"
 	)
-	// a and c share files on this instance. b has no cross-seed here.
 	torrents := []stubTorrent{
 		{a, "Quiet.Coast.2020.1080p.BluRay.x264-GRP", "del", ""},
 		{b, "Silent.Shore.2021.1080p.BluRay.x264-GRP", "del", ""},
 		{c, "Quiet.Coast.2020.1080p.BluRay.x264-GRP", "", ""},
 	}
-	// Each torrent is 1000 bytes on a disk with 1000 bytes free.
 	freeSpaceRule := func(mode string) *models.Automation {
 		rule := deleteRule(mode, &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1500"})
 		rule.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldName, Direction: models.SortDirectionDESC}
@@ -79,7 +71,6 @@ func TestApplyRules_DeleteKeepsFilesThatAnotherInstanceNeeds(t *testing.T) {
 			wantDeleted: []string{a, b, c},
 		},
 		{
-			// The cross-seed service adds nothing to either set for a turned-off instance.
 			name:             "include deletes the files when no other instance needs them",
 			rule:             deleteRule(DeleteModeWithFilesIncludeCrossSeeds, tagsContain("del")),
 			wantDeleted:      []string{a, b, c},
@@ -93,7 +84,6 @@ func TestApplyRules_DeleteKeepsFilesThatAnotherInstanceNeeds(t *testing.T) {
 			wantFilesDeleted: []string{a, b},
 		},
 		{
-			// b frees no space, so the rule also takes a and c, which keep their files for each other.
 			name:        "a free space projection counts no space for kept files in preserve mode",
 			rule:        freeSpaceRule(DeleteModeWithFilesPreserveCrossSeeds),
 			shared:      set(b),

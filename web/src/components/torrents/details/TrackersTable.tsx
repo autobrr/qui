@@ -53,7 +53,6 @@ export const TrackersTable = memo(function TrackersTable({
   supportsTrackerEditing = false,
 }: TrackersTableProps) {
   const { t } = useTranslation("torrents")
-  // Default sort by status with disabled at bottom
   const [sorting, setSorting] = useState<SortingState>([{ id: "status", desc: false }])
   const { data: trackerIcons } = useTrackerIcons()
 
@@ -62,7 +61,6 @@ export const TrackersTable = memo(function TrackersTable({
       header: t("trackersTable.status"),
       cell: (info) => getTrackerStatusBadge(info.getValue(), true),
       size: 90,
-      // Custom sort: disabled (0) always at bottom
       sortFn: (rowA, rowB) => {
         const a = rowA.original.status
         const b = rowB.original.status
@@ -77,7 +75,6 @@ export const TrackersTable = memo(function TrackersTable({
         const url = info.getValue()
         const fullUrl = incognitoMode ? "https://tracker.example.com/announce" : url
 
-        // Extract hostname for display, fall back to full value for non-URLs (DHT, PeX, LSD)
         let hostname: string
         let isValidUrl = false
         if (incognitoMode) {
@@ -122,7 +119,6 @@ export const TrackersTable = memo(function TrackersTable({
 
         const hasLinks = containsLinks(msg)
 
-        // Render message with clickable links, no truncation - table will scroll
         return (
           <span className="whitespace-nowrap text-muted-foreground [&_a]:text-primary [&_a]:hover:underline">
             {hasLinks ? renderTextWithLinks(msg) : msg}

@@ -12,12 +12,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
 
-// AddTorrentDialog.tsx:550 suppresses this message by prefix, so api.ts must keep
-// it in English no matter the active language. The i18next singleton is set to
-// French here (not through "@/i18n") to stand in for a non-English user: if the
-// message is ever translated again, the dialog shows a raw status code instead of
-// its "check your input" hint, in all ten non-English locales.
-
 const STATUS_PREFIX = "HTTP error! status:"
 
 beforeAll(async () => {
@@ -47,14 +41,10 @@ describe("api.addTorrent generic error message", () => {
     expect(failure).toBeInstanceOf(Error)
     const message = (failure as Error).message
     expect(message).toBe("HTTP error! status: 500")
-    // The exact predicate AddTorrentDialog.tsx:550 runs.
     expect(message.startsWith(STATUS_PREFIX)).toBe(true)
   })
 
-  // The coupling breaks from either end, and mounting the dialog here would cost
-  // more than it proves, so the dialog's half is pinned as source text.
   it("is the same prefix AddTorrentDialog still matches on", () => {
-    // Vitest's cwd is web/, and import.meta.url is not a file URL under jsdom.
     const dialog = readFileSync(resolve(process.cwd(), "src/components/torrents/AddTorrentDialog.tsx"), "utf8")
     expect(dialog).toContain(`startsWith("${STATUS_PREFIX}")`)
   })

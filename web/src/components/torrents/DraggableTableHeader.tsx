@@ -85,7 +85,6 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
   const table = header.getContext().table
   const trackerColumn = isTrackerIconHeader ? table.getColumn("tracker") : null
 
-  // A stretched column's width is derived, so resizing it would only store an invisible value.
   const canResize = column.getCanResize() && !stretched
   const shouldShowSeparator = canResize || stretched || column.columnDef.enableResizing === false
   const shouldShowSortIndicator = !isSelectHeader && column.getIsSorted() && (isPriorityHeader || !isCompactHeader)
@@ -133,7 +132,6 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
         {...(column.id !== "select" ? attributes : {})}
         {...(column.id !== "select" ? listeners : {})}
       >
-        {/* Header content */}
         <div
           className={`flex items-center ${isCompactHeader ? "gap-0" : "gap-1"} flex-1 min-w-0 ${centerSelect || isCompactHeader ? "justify-center" : ""
           }`}
@@ -148,7 +146,6 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
               header.getContext()
             )}
           </span>
-          {/* Column filter button - only show for filterable columns */}
           {!isSelectHeader && !isPriorityHeader && !isTrackerIconHeader && !isStatusIconHeader && onFilterChange && (
             <span className={columnFilterIconVisibilityClassName}>
               <ColumnFilterPopover
@@ -170,7 +167,6 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
         </div>
       </div>
 
-      {/* Resize handle */}
       {shouldShowSeparator && (
         <div
           onMouseDown={canResize ? header.getResizeHandler() : undefined}

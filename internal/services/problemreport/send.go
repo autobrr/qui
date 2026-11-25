@@ -43,10 +43,6 @@ const (
 	titleLength         = 80
 )
 
-// RefusalError is a brrbin answer that qui passes on to the browser: a Send
-// that brrbin refused or could not take, for which qui stores no Sent reports
-// row, or a Delete that brrbin could not do. Status is the status that qui
-// answers with.
 type RefusalError struct {
 	Status int
 	Reason string
@@ -56,9 +52,6 @@ func (r *RefusalError) Error() string {
 	return "brrbin refused the request: " + r.Reason
 }
 
-// Report is the report that the browser sends. The parts other than the
-// text and the logs pass through as the browser showed them, and qui cleans
-// every string in them.
 type Report struct {
 	SubmissionID   string     `json:"submissionId"`
 	Text           string     `json:"text"`
@@ -135,9 +128,6 @@ func validate(report Report, image *Image) error {
 	return nil
 }
 
-// Send cleans the report and sends it to brrbin. It answers a *RefusalError when
-// brrbin refuses it or cannot take it, and an ErrInvalidRequest error when
-// qui refuses it before any request to brrbin.
 func (s *Service) Send(ctx context.Context, report Report, image *Image, shown Sender) (*SentReport, error) {
 	if err := validate(report, image); err != nil {
 		return nil, err
@@ -171,8 +161,6 @@ func (s *Service) Send(ctx context.Context, report Report, image *Image, shown S
 	if err != nil {
 		return nil, err
 	}
-	// From here the report can reach brrbin, so a closed tab must not stop
-	// qui from storing its Sent reports row. post has its own timeout.
 	ctx = context.WithoutCancel(ctx)
 	id, err := s.post(ctx, body, image, installKey, signIn)
 	if err != nil {
@@ -330,9 +318,6 @@ func (s *Service) post(ctx context.Context, report []byte, image *Image, install
 	return "", refusal(resp.StatusCode, answer.Error)
 }
 
-// refusal maps a brrbin answer that is not a success to the answer of qui.
-// qui never answers 401, because the web UI sends the user to the login page
-// on every 401.
 func refusal(status int, reason string) *RefusalError {
 	switch {
 	case status == http.StatusTooManyRequests && reason == ReasonAnonymousFull,

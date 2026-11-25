@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeTransfers is the Transfer store of instance 1.
 type fakeTransfers struct {
 	helpers map[string]bool
 	folders []string
@@ -34,8 +33,6 @@ func (f fakeTransfers) RunningFolders(_ context.Context, instanceID int) ([]stri
 	return f.folders, nil
 }
 
-// endingTransfer is a Transfer of instance 1 into folder, which runs until
-// ended.
 type endingTransfer struct {
 	ended  *atomic.Bool
 	folder string
@@ -50,9 +47,6 @@ func (e endingTransfer) RunningFolders(_ context.Context, instanceID int) ([]str
 	return []string{e.folder}, nil
 }
 
-// A Transfer that adds its torrent and ends while the scan reads the
-// torrents leaves its files covered: by its running folder, or by its torrent.
-// regression: #4231
 func TestScanKeepsTheFilesOfATransferThatEndsDuringTheRead(t *testing.T) {
 	t.Parallel()
 	svc, store, presentRoot, _ := newScanTestService(t)
@@ -91,9 +85,6 @@ func TestScanKeepsTheFilesOfATransferThatEndsDuringTheRead(t *testing.T) {
 	require.Equal(t, []string{filepath.Join(presentRoot, "orphan.mkv")}, found)
 }
 
-// A helper torrent adds no scan root, and the scan leaves the folder of a
-// running Transfer alone. A torrent of the user with the helper tag and no
-// registry row is a normal torrent.
 func TestScanSkipsHelperTorrentsAndRunningTransfers(t *testing.T) {
 	t.Parallel()
 	svc, store, presentRoot, _ := newScanTestService(t)

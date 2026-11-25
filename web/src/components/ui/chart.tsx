@@ -20,7 +20,6 @@ export type ChartConfig = {
   )
 }
 
-// recharts waits this long after the first change before it draws again. It is longer than the 300 ms slide of the sidebar.
 const CHART_RESIZE_DELAY_MS = 350
 
 function ChartContainer({
@@ -47,9 +46,6 @@ function ChartContainer({
       {...props}
     >
       <ChartStyle id={chartId} config={config} />
-      {/* A chart draws again once, at the end of a change in its width, such as the slide of the sidebar. Drawn at each
-          frame of the slide, the charts of a full page take longer than a frame. Until then, the box cuts off the part
-          of the old chart that is wider than the box. */}
       <RechartsPrimitive.ResponsiveContainer debounce={CHART_RESIZE_DELAY_MS}>
         {children}
       </RechartsPrimitive.ResponsiveContainer>

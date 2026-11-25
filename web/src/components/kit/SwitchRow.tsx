@@ -11,16 +11,13 @@ import { Switch } from "@/components/ui/switch"
 
 interface SwitchRowProps {
   label: ReactNode
-  /** Field help, in a tooltip after the label. */
   help?: ReactNode
-  /** Text that stays under the label, for a state or a warning. */
   description?: ReactNode
   checked: boolean
   onCheckedChange: (checked: boolean) => void
   disabled?: boolean
 }
 
-/** One on/off setting: the label and its help at the left, the switch at the right. */
 export function SwitchRow({ label, help, description, checked, onCheckedChange, disabled = false }: SwitchRowProps) {
   const id = useId()
   const descriptionId = useId()
@@ -36,7 +33,6 @@ export function SwitchRow({ label, help, description, checked, onCheckedChange, 
           <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground [overflow-wrap:anywhere]">{description}</p>
         )}
       </div>
-      {/* On a touch screen, the pseudo-element gives the switch a 44 px tap area. */}
       <Switch
         id={id}
         aria-describedby={description ? descriptionId : undefined}

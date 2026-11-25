@@ -22,14 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// TestInitPhaseWritesDirectlyToSocket pins the session writer's two-phase
-// contract: before the session is subscribed (the onSession init phase), Write
-// must reach the socket synchronously on the calling goroutine, with no drain
-// goroutine involved and nothing queued. onSession relies on this so its
-// per-subscription init snapshots never consume the bounded queue (no false
-// overflow drop on connections with many streams) and so the request goroutine
-// is the sole writer during init (it cannot race the drain on the response
-// header map).
 func TestInitPhaseWritesDirectlyToSocket(t *testing.T) {
 	rec := httptest.NewRecorder()
 	rc := http.NewResponseController(rec)
@@ -42,15 +34,6 @@ func TestInitPhaseWritesDirectlyToSocket(t *testing.T) {
 		"init-phase Write must reach the socket synchronously, before any Flush")
 }
 
-// TestMultiSubscriptionInitIsRaceFree connects a single multiplexed SSE
-// connection that requests several distinct stream views — the normal frontend
-// case, where the torrents table, title-bar speeds, and per-instance dashboard
-// all ride one EventSource. onSession writes one init snapshot per subscription;
-// with the single-phase buffered writer those synchronous Header().Set writes on
-// the request goroutine raced the drain goroutine's first socket write on the
-// response header map. Run under -race: the two-phase writer keeps the init
-// writes synchronous (and off the bounded queue), so they precede the drain and
-// cannot race or overflow-drop a healthy client.
 func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -61,8 +44,6 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 	instanceID := seedActiveInstance(t, manager)
 	srv := startStreamServer(t, manager)
 
-	// Exceed the bounded queue so the test also guards the >maxQueuedMessages
-	// init-burst false-drop, not just the header-map race.
 	subscriptions := maxQueuedMessages + 4
 
 	for c := range 3 {
@@ -71,7 +52,7 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 			payload = append(payload, map[string]any{
 				"key":        fmt.Sprintf("conn%d-view%d", c, i),
 				"instanceId": instanceID,
-				"page":       i, // distinct page => distinct subscription, no dedupe
+				"page":       i,
 				"limit":      50,
 				"sort":       "added_on",
 				"order":      "desc",
@@ -99,8 +80,6 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 	}
 }
 
-// sessionContext opens a connection with one subscription, as Serve does before
-// go-sse calls onSession.
 func sessionContext(t *testing.T, manager *StreamManager, key string) context.Context {
 	t.Helper()
 	conn := manager.openConnection(false, 0)
@@ -119,7 +98,6 @@ func TestOnSessionAbortsWhenInitWriteFails(t *testing.T) {
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
 
-	// The connection event goes out, and the init write fails.
 	topics, ok := manager.onSession(&erroringResponseWriter{okFlushes: 1}, req)
 
 	require.False(t, ok)
@@ -252,9 +230,6 @@ func quoteJSONString(s string) string {
 	return fmt.Sprintf("%q", s)
 }
 
-// erroringResponseWriter is a fake socket whose writes fail after okFlushes
-// flushes. With no okFlushes it drives the drain goroutine's write-error drop
-// path, which drops a client whose rolling streamWriteTimeout deadline fires.
 type erroringResponseWriter struct {
 	header    http.Header
 	okFlushes int
@@ -278,7 +253,6 @@ func (w *erroringResponseWriter) WriteHeader(int) {}
 
 func (w *erroringResponseWriter) Flush() { w.okFlushes-- }
 
-// flushErrorResponseWriter fails each flush after the first okFlushes.
 type flushErrorResponseWriter struct {
 	header    http.Header
 	okFlushes int
@@ -305,13 +279,8 @@ func (w *flushErrorResponseWriter) Flush() error {
 	return errors.New("socket flush failed")
 }
 
-// FlushError lets http.ResponseController reach Flush.
 func (w *flushErrorResponseWriter) FlushError() error { return w.Flush() }
 
-// TestDrainDropsOnWriteError covers the drain goroutine's error path (distinct
-// from the Flush queue-overflow drop): when a queued socket write fails, the
-// drain drops only this session — cancel fires once, the writer is marked failed
-// — and the goroutine exits cleanly without leaking.
 func TestDrainDropsOnWriteError(t *testing.T) {
 	rw := &erroringResponseWriter{}
 	rc := http.NewResponseController(rw)
@@ -321,13 +290,12 @@ func TestDrainDropsOnWriteError(t *testing.T) {
 
 	_, err := bw.Write([]byte("x"))
 	require.NoError(t, err)
-	bw.Flush() // enqueue; drain dequeues, the socket write errors -> drop + return
+	bw.Flush()
 
 	receive(t, bw.done, "the drain goroutine to exit")
 	require.Equal(t, int32(1), cancelCalls.Load(), "drain must drop the session when the socket write errors")
 	require.True(t, bw.failed.Load(), "drain must mark the session failed when the socket write errors")
 
-	// The drain goroutine has exited, so Close returns at once.
 	bw.Close()
 	require.Equal(t, int32(1), cancelCalls.Load(), "cancel must fire exactly once")
 }

@@ -41,7 +41,6 @@ const EMPTY_MANUAL: ManualValues = { baseUrl: DEFAULT_URL, apiKey: "", basicAuth
 
 type ManualErrors = Partial<Record<"baseUrl" | "apiKey" | "basicUsername" | "basicPassword", string>>
 
-/** The server and the credentials of one discovery. The import reuses them. */
 interface DiscoveryRequest {
   baseUrl: string
   apiKey: string
@@ -72,7 +71,6 @@ function isAbsoluteUrl(value: string) {
   }
 }
 
-/** Pairs each discovered indexer with the saved indexer that an import updates, if one matches. */
 function matchDiscovered(discovered: readonly JackettIndexer[], existing: readonly TorznabIndexer[], baseUrl: string): DiscoveredIndexer[] {
   return discovered.flatMap((indexer, rowIndex) => {
     const id = indexer.id.trim()
@@ -91,7 +89,6 @@ function matchDiscovered(discovered: readonly JackettIndexer[], existing: readon
   })
 }
 
-/** Finds the indexers of a Jackett or Prowlarr server, then imports the ones that the user selects. */
 export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDialogProps) {
   const { t } = useTranslation("settings")
   const savedConnections = deriveSavedConnections(indexers)
@@ -101,7 +98,6 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
   const [discovery, setDiscovery] = useState<Discovery | null>(null)
   const [pending, setPending] = useState(false)
   const inputs = useRef<Partial<Record<keyof ManualErrors, HTMLInputElement | null>>>({})
-  // Without saved connections, the manual fields are the only way in.
   const manual = savedConnections.length === 0 || source === "manual"
   const connection = typeof source === "object" ? source : null
 
@@ -136,7 +132,6 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
   }
 
   const discover = async () => {
-    // A saved connection sends no key: the server uses the key of the source indexer.
     const request = connection
       ? { baseUrl: normalizeBaseUrl(connection.baseUrl), apiKey: "", sourceId: connection.sourceIndexerId }
       : manualRequest()
@@ -185,10 +180,8 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
       try {
         let warnings: string[] | undefined
         if (indexer.existing) {
-          // The update leaves out enabled, so the indexer stays on or off as the user set it.
           const data: TorznabIndexerUpdate = {
             base_url: request.baseUrl,
-            // An empty key with a source copies the credentials of the saved connection.
             api_key: request.apiKey,
             source_indexer_id: request.sourceId,
             backend,

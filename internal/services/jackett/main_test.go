@@ -9,12 +9,6 @@ import (
 	"testing"
 )
 
-// roundTripOnly hides CloseIdleConnections from httptest.Server.Close.
-// Close calls it on http.DefaultTransport, which every client in this package
-// shares. On a response without a body, the transport puts the connection back
-// in the idle pool before it hands the response over, so a parallel test that
-// closes its server can break that request with
-// "http: CloseIdleConnections called".
 type roundTripOnly struct{ http.RoundTripper }
 
 func TestMain(m *testing.M) {

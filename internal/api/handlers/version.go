@@ -11,9 +11,6 @@ import (
 	"github.com/autobrr/qui/pkg/version"
 )
 
-// latestReleaseProvider exposes the cached latest release discovered by the
-// update service. It is satisfied by *update.Service and kept intentionally
-// small so the version handler can be exercised without a live update check.
 type latestReleaseProvider interface {
 	GetLatestRelease(ctx context.Context) *version.Release
 }
@@ -39,9 +36,6 @@ type LatestVersionResponse struct {
 	PublishedAt string `json:"published_at"`
 }
 
-// VersionResponse reports the version qui is currently running plus whether a
-// newer release has been detected. Intended for monitoring tools (e.g. Argus)
-// that track the deployed version of a service.
 type VersionResponse struct {
 	Version                     string `json:"version"`
 	LatestVersion               string `json:"latestVersion,omitempty"`
@@ -51,10 +45,6 @@ type VersionResponse struct {
 	Restart                     bool   `json:"restart"`
 }
 
-// GetVersion returns the version qui is currently running. When the update
-// service has detected a newer release, LatestVersion and UpdateAvailable are
-// populated from the cached result; otherwise UpdateAvailable is false and
-// LatestVersion is omitted.
 func (h *VersionHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	response := VersionResponse{
 		Version:                     h.currentVersion,

@@ -18,9 +18,6 @@ export type SystemNoticeDescription = {
 
 type TextField = Exclude<keyof SystemNoticeDescription, "action">
 
-// useSystemNoticeDescription returns the texts of one kind of System notice.
-// A reason replaces the texts that it has, such as the fix. A kind that this
-// frontend does not know gets the generic texts.
 export function useSystemNoticeDescription(kind: string, reason?: string): SystemNoticeDescription {
   const { t } = useTranslation("common")
   const text = (field: TextField) => t([

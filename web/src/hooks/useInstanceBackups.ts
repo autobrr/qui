@@ -44,8 +44,6 @@ export function useUpdateBackupSettings(instanceId: number) {
   })
 }
 
-// prependRun puts a fresh run at the top of every first-page runs query for
-// the instance so the history table shows it before the refetch lands.
 function prependRun(queryClient: QueryClient, instanceId: number, run: BackupRun) {
   queryClient.setQueriesData<BackupRunsResponse>(
     {

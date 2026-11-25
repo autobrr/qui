@@ -198,7 +198,6 @@ function CurrentTheme({ theme, palette, dark, variation, onVariationSelect }: Cu
   )
 }
 
-/** The number of columns that a CSS grid lays out now, or null before the browser lays it out. */
 function useGridColumns(grid: HTMLElement | null): number | null {
   const [columns, setColumns] = useState<number | null>(null)
   useLayoutEffect(() => {
@@ -216,7 +215,6 @@ function useGridColumns(grid: HTMLElement | null): number | null {
 }
 
 const COLLAPSED_ROWS = 2
-// Before the first measure, the grid assumes this many columns, so it draws a few tiles too many instead of every theme.
 const UNMEASURED_COLUMNS = 8
 
 function editorKey(target: CustomThemeEditorTarget): string {
@@ -226,7 +224,6 @@ function editorKey(target: CustomThemeEditorTarget): string {
 type ThemeFilter = "all" | ThemeGroup
 
 interface ThemeSelectorProps {
-  /** Opens Choose menu themes once, for a link to the dialog. */
   openMenu?: boolean
   onMenuOpened?: () => void
 }
@@ -243,7 +240,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
     isError: customThemesError,
     refetch: refetchCustomThemes,
   } = useCustomThemes()
-  // Subscribe so the picker re-renders when the async theme registry lands.
   const builtins = useBuiltinThemes()
   const [visibility, setThemesShown, replaceThemeVisibility] = useThemeVisibility()
   const defaultThemeVisit = useDefaultThemeVisit()
@@ -251,7 +247,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<ThemeFilter>("all")
   const [editorTarget, setEditorTarget] = useState<CustomThemeEditorTarget | null>(null)
-  // The editor that is already open for this target stays, so its draft and a running save keep their session.
   const openEditor = (next: CustomThemeEditorTarget) =>
     setEditorTarget(current => (current && editorKey(current) === editorKey(next) ? current : next))
   const editorRequest = useRef(0)
@@ -267,7 +262,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
     onSuccess: async () => {
       setRemoveTarget(null)
       toast.success(t("themes.custom.removed"))
-      // A failed reload shows as the load error of the box.
       await refreshCustomThemes(queryClient).catch(() => undefined)
     },
     onError: (error) => {
@@ -289,7 +283,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
     const id = theme.id.slice(CUSTOM_THEME_PREFIX.length)
     return { id, label: theme.name, css: theme.rawCss }
   }
-  // Edit reads the file again, because it can have changed by hand on the server, and a save of an old copy would undo that change.
   const editTheme = async (file: CustomThemeFileRef) => {
     const request = ++editorRequest.current
     let fresh: CustomThemeFile[]
@@ -301,7 +294,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
       }
       return
     }
-    // A later New theme or Edit wins over this one.
     if (request !== editorRequest.current) return
     const current = fresh.find(theme => theme.id === file.id)
     openEditor({ kind: "edit", id: file.id, filename: current?.filename ?? `${file.id}.css`, css: current?.css ?? file.css })
@@ -311,15 +303,12 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
     openEditor({ kind: "new" })
   }
 
-  // The server is the authority: a premium theme without a license arrives as
-  // a locked stub with no CSS, so the locked flag is the gate.
   const isThemeUnlocked = (themeId: string) => !getThemeById(themeId)?.locked
 
   const premiumThemes = themes.filter(theme => theme.isPremium)
   const themeCatalog = buildThemeCatalog(themes, customThemes)
   const lockedCount = themeCatalog.filter(theme => theme.locked).length
   const paletteOf = (theme: Theme) => themeThumbnailPalette(theme, dark, getThemeVariation(theme.id))
-  // Before the theme lists load, the registry can lack the theme in use. The applied theme then stands in for it.
   const activeTheme = getThemeById(currentTheme) ?? appliedTheme
 
   const searching = query.trim() !== ""
@@ -328,7 +317,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
   const filters: ThemeFilter[] = customThemes.length > 0 ? ["all", "free", "licensed", "custom"] : ["all", "free", "licensed"]
   const activeFilter = filters.includes(filter) ? filter : "all"
   const shownThemes = activeFilter === "all" ? matches : matches.filter(theme => themeGroup(theme) === activeFilter)
-  // Two rows of tiles keep the cards below in reach. A search shows every match.
   const collapsedCount = (columns ?? UNMEASURED_COLUMNS) * COLLAPSED_ROWS
   const canCollapse = !searching && shownThemes.length > collapsedCount
   const visibleThemes = canCollapse && !expanded ? shownThemes.slice(0, collapsedCount) : shownThemes
@@ -341,7 +329,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
 
   const toggleExpanded = () => {
     setExpanded(!expanded)
-    // After a collapse the button moves up, so it stays in view.
     if (expanded) requestAnimationFrame(() => toggleRef.current?.scrollIntoView({ block: "nearest" }))
   }
 
@@ -374,7 +361,6 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
 
   if (isLoading) {
     return (
-      // Not a Section query: Section would show a failed license check as a load error, and this tab shows the themes then.
       <Section title={t("themes.selector.title")} description={t("themes.selector.loadingDescription")}>
         <div className="animate-pulse space-y-4">
           <div className="flex items-center gap-4">

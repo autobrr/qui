@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// regression: #3726
 func TestParseLintPaths(t *testing.T) {
 	raw := []byte(`{"Issues": [
 		{"FromLinter": "gocognit", "Pos": {"Filename": "internal\\api\\handlers\\auth.go"}},
@@ -89,7 +88,6 @@ func TestLowerAllowlist(t *testing.T) {
 	}, compare(got, written, nil))
 }
 
-// regression: #4404
 func TestLowerAllowlistKeepsTheFileWhenCodeDoesNotCompile(t *testing.T) {
 	t.Chdir(t.TempDir())
 	require.NoError(t, os.MkdirAll(filepath.Dir(allowlistPath), 0o750))
@@ -103,8 +101,6 @@ func TestLowerAllowlistKeepsTheFileWhenCodeDoesNotCompile(t *testing.T) {
 	assert.Equal(t, counts{"gocognit": {"a.go": 2}}, allow)
 }
 
-// Each case matches what golangci-lint v2.14.0 does with the comment above a
-// function that breaks gocognit.
 func TestHidesGocognit(t *testing.T) {
 	tests := []struct {
 		comment string

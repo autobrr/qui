@@ -132,7 +132,6 @@ describe("useTorrentResults", () => {
 
   const waitOneRetry = () => act(() => vi.advanceTimersByTimeAsync(PARTIAL_RETRY_MS))
 
-  // regression: #4229
   it.each([
     ["an instance did not answer and nothing matched", PARTIAL_EMPTY, "commandPalette.searchFailed", false],
     ["an instance did not answer and others matched", answer({ partialResults: true, crossInstanceTorrents: [torrent], total: 1 }), "commandPalette.torrentMatches", false],
@@ -144,7 +143,6 @@ describe("useTorrentResults", () => {
     expect(result.current.noMatch).toBe(noMatch)
   })
 
-  // regression: #4229
   it("asks again while the answer is partial, and stops when it is complete", async () => {
     await search(PARTIAL_EMPTY, PARTIAL_EMPTY, answer({}))
 

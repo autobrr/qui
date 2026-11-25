@@ -20,21 +20,17 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// cannedSession answers every Resolve with one canned result and no member
-// files, as the fake CrossMatchers do.
 type cannedSession struct{ result *CrossMatchResult }
 
 func (s cannedSession) Resolve(context.Context, ResolveRequest) *CrossMatchResult {
 	return s.result
 }
 
-// recordingMatcher answers each group ask with the components of the asked
-// torrents in links, as the cross-seed session does, and records each request.
 type recordingMatcher struct {
 	links  map[string][]string
 	shared map[string]struct{}
-	files  map[string]qbt.TorrentFiles // MemberFiles of the answers
-	exists map[string]struct{}         // the torrents with a cross-seed on this instance
+	files  map[string]qbt.TorrentFiles
+	exists map[string]struct{}
 	mu     sync.Mutex
 	asks   []ResolveRequest
 }
@@ -90,7 +86,6 @@ func (m *recordingMatcher) requests() []ResolveRequest {
 	return slices.Clone(m.asks)
 }
 
-// componentHashes follows links both ways from hash.
 func componentHashes(links map[string][]string, hash string) []string {
 	seen := map[string]struct{}{hash: {}}
 	queue := []string{hash}
@@ -115,7 +110,6 @@ const (
 	sessionC = "cccccccccccccccccccccccccccccccccccccccc"
 )
 
-// newRecordingStubService serves a and c as cross-seeds and b alone.
 func newRecordingStubService(t *testing.T, tags map[string]string, localFS bool) (*Service, int, *stubQbt, *recordingMatcher) {
 	t.Helper()
 	return newRecordingStubServiceOf(t, []stubTorrent{
@@ -134,11 +128,8 @@ func newRecordingStubServiceOf(t *testing.T, torrents []stubTorrent, localFS boo
 	return svc, instanceIDs[0], stub, matcher
 }
 
-// deleteOutcome is what a run deletes: the torrents, and the torrents whose files go with them.
 type deleteOutcome struct{ deleted, filesDeleted []string }
 
-// runEachForm runs the rule live, as a dry run, and as a preview, each on a
-// new service, and checks the deletes and the asks of each.
 func runEachForm(t *testing.T, rule *models.Automation, tags map[string]string, localFS bool, want deleteOutcome, check func(t *testing.T, asks []ResolveRequest, stub *stubQbt)) {
 	t.Helper()
 	runEachFormOn(t, func(t *testing.T) (*Service, int, *stubQbt, *recordingMatcher) {
@@ -227,8 +218,6 @@ func TestRunSession_DeleteAsksTheTriggerGroupsAndTheSharedCheck(t *testing.T) {
 	}
 }
 
-// freeSpaceLibrary serves count torrents of 1000 bytes on a disk with 1000
-// free bytes. The name sort puts them in hash order.
 func freeSpaceLibrary(count int) []stubTorrent {
 	torrents := make([]stubTorrent, count)
 	for i := range torrents {
@@ -251,9 +240,6 @@ func stubHashes(torrents []stubTorrent) []string {
 	return hashes
 }
 
-// A FREE_SPACE rule that stops after 2 claims asks for the groups of one
-// read-ahead batch, not of the whole library. An include or preserve rule asks
-// for the Shared-file check with it.
 func TestRunSession_FreeSpaceDeleteReadsOneBatchAhead(t *testing.T) {
 	library := freeSpaceLibrary(2*freeSpaceReadAheadBatch + 5)
 	claimed := stubHashes(library[:2])
@@ -272,9 +258,6 @@ func TestRunSession_FreeSpaceDeleteReadsOneBatchAhead(t *testing.T) {
 	}
 }
 
-// The Shared-file check answers before the first claim, so a first claim that
-// shares a file with another instance frees no space and the rule claims one
-// more torrent.
 func TestRunSession_FreeSpacePreserveAsksTheSharedCheckBeforeTheFirstClaim(t *testing.T) {
 	library := freeSpaceLibrary(2*freeSpaceReadAheadBatch + 5)
 	claimed := stubHashes(library[:3])
@@ -289,8 +272,6 @@ func TestRunSession_FreeSpacePreserveAsksTheSharedCheckBeforeTheFirstClaim(t *te
 	})
 }
 
-// A rule that claims most of the library asks in a few rounds, each twice the
-// size of the one before.
 func TestRunSession_FreeSpaceReadAheadDoubles(t *testing.T) {
 	library := freeSpaceLibrary(3*freeSpaceReadAheadBatch + 5)
 	svc, instanceID, stub, matcher := newRecordingStubServiceOf(t, library, false)
@@ -305,8 +286,6 @@ func TestRunSession_FreeSpaceReadAheadDoubles(t *testing.T) {
 	}, matcher.requests())
 }
 
-// The deletes take the same torrents and files as with the groups of the
-// whole library.
 func TestRunSession_DeleteResultsMatchTheWholeLibrary(t *testing.T) {
 	tags := map[string]string{sessionA: "del", sessionB: "del"}
 	tests := []struct {
@@ -328,7 +307,6 @@ func TestRunSession_DeleteResultsMatchTheWholeLibrary(t *testing.T) {
 	}
 }
 
-// openTestRunSession opens a run session over torrents that answers from links.
 func openTestRunSession(t *testing.T, torrents []qbt.Torrent, links map[string][]string, files map[string]qbt.TorrentFiles) (*EvalContext, *recordingMatcher) {
 	t.Helper()
 	matcher := &recordingMatcher{links: links}
@@ -356,14 +334,8 @@ func (staticFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbit
 	return nil, nil
 }
 
-// An include delete that follows hardlinks asks for the hardlink copies of the
-// group and then their groups before the expansion, so the expansion meets no
-// miss and takes what the groups of the whole library take.
 func TestRunSession_HardlinkCopyLeadsToASecondGroup(t *testing.T) {
 	t.Parallel()
-	// source and copy are hardlink copies. copy shares files with pack, and
-	// pack with episode2. episode2 and copy2 are hardlink copies, and copy2
-	// shares files with pack2.
 	torrents := []qbt.Torrent{
 		{Hash: "source", SavePath: "/a", ContentPath: "/a/01.mkv", Tags: "delete-me"},
 		{Hash: "copy", SavePath: "/b", ContentPath: "/b/01.mkv"},
@@ -420,12 +392,8 @@ func TestRunSession_HardlinkCopyLeadsToASecondGroup(t *testing.T) {
 	require.Equal(t, []string{"copy", "copy2", "episode2", "pack", "pack2", "source"}, scoped)
 }
 
-// An include FREE_SPACE rule that follows hardlinks reads the hardlink copies
-// of its batch and their groups in one ask, before it counts the first claim.
-// It deletes and projects what it does with the groups of the whole library.
 func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 	t.Parallel()
-	// copyA and copyB are hardlink copies of source, each in its own group.
 	torrents := []qbt.Torrent{
 		{Hash: "source", SavePath: "/s", ContentPath: "/s/01.mkv", Size: 1000},
 		{Hash: "copyA", SavePath: "/a", ContentPath: "/a/01.mkv", Size: 1000},
@@ -441,7 +409,6 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 		"packB":  {{Name: "01.mkv", Size: 1000}, {Name: "02.mkv", Size: 1000}},
 	}
 	links := map[string][]string{"copyA": {"packA"}, "packA": {"copyA"}, "copyB": {"packB"}, "packB": {"copyB"}}
-	// All five torrents link one inode for 01.mkv.
 	id := hardlink.UnixFileID(1, 1)
 	hardlinks := &HardlinkIndex{
 		DeleteSafeSignatureByHash:  map[string]string{"source": "one", "copyA": "one", "copyB": "one"},
@@ -483,7 +450,6 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 	}
 
 	evalCtx, matcher := openTestRunSession(t, torrents, links, files)
-	// The run reads the file lists of the hardlink groups for this rule.
 	evalCtx.crossSeeds.session.loadFiles(t.Context(), hardlinks)
 	scoped := run(evalCtx, evalCtx.crossSeeds)
 	require.Equal(t, []ResolveRequest{
@@ -494,12 +460,9 @@ func TestRunSession_FreeSpaceReadAheadFollowsHardlinkCopies(t *testing.T) {
 	whole := &EvalContext{SameInstanceContentByHash: links, CrossSeedFilesByHash: files}
 	require.Equal(t, run(whole, buildCrossSeedGroups(torrentRefs(torrents), whole)), scoped)
 	require.Equal(t, []string{"copyA", "copyB", "packA", "packB", "source"}, scoped.selected)
-	// The shared inode counts once, plus 02.mkv of each pack.
 	require.Equal(t, int64(3000), scoped.ledger.projectedFreedBytes())
 }
 
-// A and B pick X, X picks neither, and qBittorrent does not return the file
-// list of X. A block list on any of them sees all three.
 func TestRunSession_OneWayLinkJoinsTheWholeComponent(t *testing.T) {
 	t.Parallel()
 	torrents := []qbt.Torrent{
@@ -523,8 +486,6 @@ func TestRunSession_OneWayLinkJoinsTheWholeComponent(t *testing.T) {
 	require.True(t, shouldBlockCategoryChangeForCrossSeeds(torrents[2], []string{"keep"}, evalCtx.crossSeeds), "the block list sees a")
 }
 
-// A torrent added after the session's snapshot is in no group, and a member
-// deleted after it is left out of the group.
 func TestRunSession_SnapshotAndTorrentListDiffer(t *testing.T) {
 	t.Parallel()
 	torrents := []qbt.Torrent{{Hash: "a"}, {Hash: "b"}, {Hash: "new"}}
@@ -534,9 +495,6 @@ func TestRunSession_SnapshotAndTorrentListDiffer(t *testing.T) {
 	require.Nil(t, evalCtx.crossSeeds.members("new"))
 }
 
-// The file lists of a later answer go into the map that the delete expansion
-// already holds. filesReader reads only the members that the answer holds no
-// list for.
 func TestRunSession_LaterAnswerFillsTheSameFilesMap(t *testing.T) {
 	t.Parallel()
 	torrents := []qbt.Torrent{{Hash: "a"}, {Hash: "b"}}
@@ -569,8 +527,6 @@ func (r *countingFilesReader) GetTorrentFilesBatch(ctx context.Context, instance
 	return r.staticFilesReader.GetTorrentFilesBatch(ctx, instanceID, hashes)
 }
 
-// A tag rule that does not include cross-seeds lets no expansion override a
-// tag, so its ownership check asks for no group.
 func TestRunSession_TagRuleWithoutCrossSeedsAsksNothing(t *testing.T) {
 	svc, instanceID, stub, matcher := newRecordingStubService(t, map[string]string{sessionA: "del"}, false)
 	tagRule := &models.Automation{
@@ -585,15 +541,8 @@ func TestRunSession_TagRuleWithoutCrossSeedsAsksNothing(t *testing.T) {
 	require.Empty(t, stub.writtenHashes()["tag"], "the tag rule matches no torrent, so each torrent runs the ownership check")
 }
 
-// A move asks once, before the rule loop, for the torrents whose move
-// condition matches and that are not at the target yet, and for the members
-// of their move GroupID. The plan step asks for nothing new, and the run plans
-// the moves that the groups of the whole library plan.
 func TestRunSession_MoveAsksOnlyTheMatchedTorrents(t *testing.T) {
 	t.Parallel()
-	// m1 and m1x share files. at is at the target, with its cross-seed atx.
-	// g2 shares the save path of m1, and files with g2x. px and py share files.
-	// m1, at and px carry the tag.
 	torrents := []qbt.Torrent{
 		{Hash: "m1", SavePath: "/old", ContentPath: "/old/m1.mkv", Tags: "mv"},
 		{Hash: "m1x", SavePath: "/old", ContentPath: "/old/m1x.mkv"},
@@ -625,7 +574,6 @@ func TestRunSession_MoveAsksOnlyTheMatchedTorrents(t *testing.T) {
 		wantMoved []string
 	}{
 		{"cross-seeds move along", moveTo(""), []string{"m1", "px"}, []string{"m1", "m1x", "px", "py"}},
-		// g2x holds files of g2, so the group cannot move.
 		{"group ID members", moveTo("bysave"), []string{"m1", "m1x", "g2", "px", "py"}, nil},
 	}
 	for _, tt := range tests {
@@ -662,8 +610,6 @@ func TestRunSession_MoveAsksOnlyTheMatchedTorrents(t *testing.T) {
 	}
 }
 
-// A live run and a dry run move the cross-seed of a matched torrent with it,
-// and ask only for the matched torrent.
 func TestRunSession_MoveTakesTheCrossSeedsAlong(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		t.Run(fmt.Sprintf("dryRun=%t", dryRun), func(t *testing.T) {
@@ -683,7 +629,6 @@ func TestRunSession_MoveTakesTheCrossSeedsAlong(t *testing.T) {
 	}
 }
 
-// unknownSession answers every ask with the asked torrents as Unknown.
 type unknownSession struct{}
 
 func (unknownSession) OpenCrossMatchSession(context.Context, int, CrossMatchNeeds) (CrossMatchSession, error) {
@@ -698,8 +643,6 @@ func (unknownSession) Resolve(_ context.Context, req ResolveRequest) *CrossMatch
 	return &CrossMatchResult{SameInstanceUnknown: unknown}
 }
 
-// A move of a torrent that no ask covered reads its group state first, so a
-// torrent with an Unknown state and no group stays where it is.
 func TestRunSession_MoveMissReadsTheStateFirst(t *testing.T) {
 	t.Parallel()
 	torrent := qbt.Torrent{Hash: "t", SavePath: "/old", ContentPath: "/old/t.mkv"}
@@ -715,8 +658,6 @@ func TestRunSession_MoveMissReadsTheStateFirst(t *testing.T) {
 	require.Equal(t, 1, stats.MoveBlockedByCrossSeed)
 }
 
-// The read-ahead asks for the members of a move GroupID once, not once for
-// each matched member.
 func TestMoveAsks_GroupMembersOnce(t *testing.T) {
 	t.Parallel()
 	torrents := make([]qbt.Torrent, 0, 20)
@@ -739,12 +680,8 @@ func TestMoveAsks_GroupMembersOnce(t *testing.T) {
 	require.Len(t, hashes, 2*len(torrents))
 }
 
-// Two rules with one GroupID each ask for their own group, also when the keys
-// of both groups are the same text.
 func TestMoveAsks_GroupsOfEachRule(t *testing.T) {
 	t.Parallel()
-	// Under a, c1 and c2 share the content path /data/x. Under b, s1 and s2
-	// share the save path /data/x.
 	torrents := []qbt.Torrent{
 		{Hash: "c1", SavePath: "/c", ContentPath: "/data/x", Tags: "a"},
 		{Hash: "c2", SavePath: "/d", ContentPath: "/data/x"},
@@ -771,7 +708,6 @@ func TestMoveAsks_GroupsOfEachRule(t *testing.T) {
 	require.Equal(t, []string{"c1", "c2", "s1", "s2"}, slices.Compact(hashes))
 }
 
-// factService serves library from a recording session that answers Exists from exists.
 func factService(library []stubTorrent, exists map[string]struct{}) func(t *testing.T) (*Service, int, *stubQbt, *recordingMatcher) {
 	return func(t *testing.T) (*Service, int, *stubQbt, *recordingMatcher) {
 		t.Helper()
@@ -785,9 +721,6 @@ func existsOnSameInstance() *models.RuleCondition {
 	return &models.RuleCondition{Field: models.FieldExistsOnSameInstance, Operator: models.OperatorEqual, Value: "true"}
 }
 
-// factLibrary serves 150 torrents with no cross-seed group: the first 50 on
-// the tracker scope.test, the rest on other.test. Every third torrent has a
-// cross-seed on this instance.
 func factLibrary() ([]stubTorrent, []string, map[string]struct{}) {
 	torrents := make([]stubTorrent, 0, 150)
 	scope := make([]string, 0, 50)
@@ -807,9 +740,6 @@ func factLibrary() ([]stubTorrent, []string, map[string]struct{}) {
 	return torrents, scope, exists
 }
 
-// A rule with an Exists condition asks once for the torrents in its tracker
-// scope, with no group, and deletes the same torrents as an ask for the whole
-// library.
 func TestRunSession_ExistsConditionAsksOnlyTheTrackerScope(t *testing.T) {
 	library, scope, exists := factLibrary()
 	rule := deleteRule(DeleteModeKeepFiles, existsOnSameInstance())
@@ -829,8 +759,6 @@ func TestRunSession_ExistsConditionAsksOnlyTheTrackerScope(t *testing.T) {
 	})
 }
 
-// A score sort on a cross-seed field scores every torrent, so the rule asks
-// once for the whole list.
 func TestRunSession_ScoreSortOnACrossSeedFieldAsksTheWholeList(t *testing.T) {
 	library, scope, exists := factLibrary()
 	rule := deleteRule(DeleteModeKeepFiles, &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "Fact"})
@@ -844,8 +772,6 @@ func TestRunSession_ScoreSortOnACrossSeedFieldAsksTheWholeList(t *testing.T) {
 	})
 }
 
-// A group delete checks the condition on every member of the GroupID group,
-// so the one ask also holds the members outside the tracker scope.
 func TestRunSession_GroupCheckAsksTheMembersOutsideTheScope(t *testing.T) {
 	library := make([]stubTorrent, 0, 150)
 	scope := make([]string, 0, 50)
@@ -859,7 +785,6 @@ func TestRunSession_GroupCheckAsksTheMembersOutsideTheScope(t *testing.T) {
 			exists[hash] = struct{}{}
 		}
 	}
-	// The first 10 share a content path with a torrent on another tracker.
 	for k := range 100 {
 		hash := fmt.Sprintf("%040x", 1000+k)
 		name := fmt.Sprintf("Other.Show.S01E%03d.1080p.WEB.x264-GRP", k)
@@ -892,16 +817,12 @@ func TestRunSession_GroupCheckAsksTheMembersOutsideTheScope(t *testing.T) {
 	})
 }
 
-// A move that blocks on a cross-seed checks its condition on the cross-seeds
-// of each matched torrent, so it asks for their facts in one ask before the
-// rule loop.
 func TestRunSession_MoveBlockAsksTheCrossSeedFactsOnce(t *testing.T) {
 	const (
 		sessionD = "dddddddddddddddddddddddddddddddddddddddd"
 		sessionE = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	)
 	scopeTracker, otherTracker := "https://scope.test/announce", "https://other.test/announce"
-	// c is the cross-seed of a, and e the cross-seed of d, both on another tracker.
 	library := []stubTorrent{
 		{sessionA, "Quiet.Coast.2020.1080p.BluRay.x264-GRP", "", scopeTracker},
 		{sessionB, "Silent.Shore.2021.1080p.BluRay.x264-GRP", "", scopeTracker},
@@ -925,8 +846,6 @@ func TestRunSession_MoveBlockAsksTheCrossSeedFactsOnce(t *testing.T) {
 	}, matcher.requests())
 }
 
-// A condition on a torrent that no ask covered reads its facts first, so it
-// never gets "known, no cross-seed" from a torrent that the session did not read.
 func TestRunSession_FactMissReadsTheTorrentFirst(t *testing.T) {
 	t.Parallel()
 	torrent := qbt.Torrent{Hash: sessionA}
@@ -940,8 +859,6 @@ func TestRunSession_FactMissReadsTheTorrentFirst(t *testing.T) {
 	require.Equal(t, []ResolveRequest{{Hashes: []string{sessionA}}}, matcher.requests())
 }
 
-// planRules runs rules through the rule loop and the Run plan, as a run with no
-// delete does.
 func planRules(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation, evalCtx *EvalContext, groups *crossSeedGroups) (runPlan, map[int]*ruleRunStats) {
 	t.Helper()
 	run := slices.Clone(torrents)
@@ -962,8 +879,6 @@ func planRules(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation,
 	return plan, stats
 }
 
-// openRulesRunSession opens a run session over torrents with the needs of
-// rules, answering from links.
 func openRulesRunSession(t *testing.T, torrents []qbt.Torrent, links map[string][]string, rules []*models.Automation) (*EvalContext, *recordingMatcher) {
 	t.Helper()
 	matcher := &recordingMatcher{links: links}
@@ -973,15 +888,8 @@ func openRulesRunSession(t *testing.T, torrents []qbt.Torrent, links map[string]
 	return evalCtx, matcher
 }
 
-// A category action that includes cross-seeds or has a block list asks once,
-// before the rule loop, for the torrents whose condition matches, and for the
-// members of their category GroupID. The plan step asks for nothing new, and
-// the run plans the changes that the groups of the whole library plan.
 func TestRunSession_CategoryAsksOnlyTheMatchedTorrents(t *testing.T) {
 	t.Parallel()
-	// c1 to c5 carry the tag. c1 shares files with c1x in the protected
-	// category, and c2 with c2x. o1 and o1x share files. o2 carries the tag
-	// and shares the save path of c3, outside the tracker scope.
 	const scope = "https://scope.test/announce"
 	torrents := []qbt.Torrent{
 		{Hash: "c1", SavePath: "/1", Tracker: scope, Tags: "cat"},
@@ -1017,7 +925,6 @@ func TestRunSession_CategoryAsksOnlyTheMatchedTorrents(t *testing.T) {
 	}{
 		{"block list", categoryTo(false, []string{"keep"}, ""), matched, []string{"c2", "c3", "c4", "c5"}},
 		{"include cross-seeds", categoryTo(true, nil, ""), matched, []string{"c1", "c1x", "c2", "c2x", "c3", "c4", "c5"}},
-		// The plan step checks the block list of o2 before the group of c3 changes.
 		{"block list with group ID members", categoryTo(false, []string{"keep"}, "bysave"), append(slices.Clone(matched), "o2"), []string{"c2", "c3", "c4", "c5", "o2"}},
 	}
 	for _, tt := range tests {
@@ -1042,14 +949,9 @@ func TestRunSession_CategoryAsksOnlyTheMatchedTorrents(t *testing.T) {
 	}
 }
 
-// When a due tag rule includes cross-seeds, the tag step asks once for the
-// tracker scope of each tag rule, because the ownership check of every tag
-// rule reads the group. The run plans the tags that the groups of the whole
-// library plan.
 func TestRunSession_TagAsksTheTrackerScopes(t *testing.T) {
 	t.Parallel()
 	const scope, other, none = "https://scope.test/announce", "https://other.test/announce", "https://none.test/announce"
-	// s1 shares files with s1x, s2 with n2, and o1 with o1x.
 	torrents := []qbt.Torrent{
 		{Hash: "s1", Tracker: scope, Tags: "t"},
 		{Hash: "s1x", Tracker: other},
@@ -1103,10 +1005,6 @@ func TestRunSession_TagAsksTheTrackerScopes(t *testing.T) {
 	}
 }
 
-// A live run, a dry run, and a preview of a category or tag action that
-// includes cross-seeds take the cross-seed of a matched torrent along. The
-// category asks only for the matched torrent, and the tag for its tracker
-// scope.
 func TestRunSession_CategoryAndTagTakeTheCrossSeedsAlong(t *testing.T) {
 	tagRule := &models.Automation{
 		ID: 3, Name: "tag", TrackerPattern: "*", Enabled: true, SortOrder: 3,

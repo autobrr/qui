@@ -29,10 +29,6 @@ func (c *Created) Rollback() error {
 	return rollback(c.Files, c.Dirs)
 }
 
-// MkdirAllTracked creates dir and any missing ancestors, like os.MkdirAll,
-// and returns the directories it actually created (shallowest first).
-// Pre-existing directories are not returned, so rollback never removes a
-// directory another attempt made.
 func MkdirAllTracked(dir string) ([]string, error) {
 	var created []string
 	err := mkdirAllTracked(dir, &created)
@@ -52,7 +48,6 @@ func mkdirAllTracked(dir string, created *[]string) error {
 	}
 	if err := os.Mkdir(dir, fsutil.ContentDirMode); err != nil {
 		if os.IsExist(err) {
-			// Lost a race with a concurrent attempt: it exists, but not ours
 			return nil
 		}
 		return err
@@ -63,14 +58,6 @@ func mkdirAllTracked(dir string, created *[]string) error {
 
 var ErrTargetExists = errors.New("target already exists")
 
-// targetSatisfiesPlan reports whether fp's target already is the hardlink
-// that Create would make, so Create can skip it. A target holding anything
-// else is the collision ErrTargetExists names.
-//
-// The target is read without following, so a symlink planted there reports
-// its own inode and never passes. The source is matched both ways: link(2)
-// follows a symlinked source on macOS and not on Linux, so the link an
-// earlier run made carries either identity depending on the host.
 func targetSatisfiesPlan(fp FilePlan) (bool, error) {
 	info, err := os.Lstat(fp.TargetPath)
 	if err != nil {
@@ -87,13 +74,6 @@ func targetSatisfiesPlan(fp FilePlan) (bool, error) {
 	return false, fmt.Errorf("%w: %s", ErrTargetExists, fp.TargetPath)
 }
 
-// Create materializes the hardlink tree plan on disk.
-// Creates necessary directories and hardlinks files from source to target paths.
-// On failure, attempts best-effort rollback of created files and returns a nil handle.
-//
-// On success, returns a handle recording what this call created. Targets that
-// already were hardlinks to the source are skipped and NOT recorded: they
-// belong to whoever created them first.
 func Create(plan *TreePlan) (*Created, error) {
 	if plan == nil {
 		return nil, errors.New("plan is nil")
@@ -138,10 +118,6 @@ func Create(plan *TreePlan) (*Created, error) {
 
 		if err := os.Link(fp.SourcePath, fp.TargetPath); err != nil {
 			if errors.Is(err, fs.ErrExist) {
-				// A target appeared between the check above and this Link. A
-				// concurrent run linking the same release to a shared path
-				// (discussion #2282) created the link we wanted, so take it;
-				// anything else is the collision link mode refuses.
 				if satisfied, satisfiedErr := targetSatisfiesPlan(fp); satisfiedErr == nil && satisfied {
 					continue
 				}
@@ -166,15 +142,12 @@ func rollback(files, dirs []string) error {
 		}
 	}
 
-	// Sort directories by depth (deepest first) to remove children before parents;
-	// length descending approximates depth
 	sortedDirs := make([]string, len(dirs))
 	copy(sortedDirs, dirs)
 	slices.SortFunc(sortedDirs, func(a, b string) int { return len(b) - len(a) })
 
 	for _, d := range sortedDirs {
 		if err := os.Remove(d); err != nil && !os.IsNotExist(err) {
-			// Ignore "directory not empty" errors - expected if other files exist
 			if !isDirNotEmpty(err) && firstErr == nil {
 				firstErr = fmt.Errorf("remove directory %s: %w", d, err)
 			}
@@ -184,8 +157,6 @@ func rollback(files, dirs []string) error {
 	return firstErr
 }
 
-// isDirNotEmpty reports whether os.Remove failed because the folder still has
-// entries. Windows reports ERROR_DIR_NOT_EMPTY, which is not syscall.ENOTEMPTY.
 func isDirNotEmpty(err error) bool {
 	return errors.Is(err, syscall.ENOTEMPTY) || isPlatformDirNotEmpty(err)
 }

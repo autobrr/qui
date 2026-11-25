@@ -283,8 +283,6 @@ func TestFilterCoveredScanRoots(t *testing.T) {
 	}
 }
 
-// A filesystem-root cover matches every descendant. Pruning with it would
-// drop every scan root; the walk must keep them and ignore the files instead.
 func TestFilterCoveredScanRoots_FilesystemRoot(t *testing.T) {
 	t.Parallel()
 
@@ -453,9 +451,6 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 	assert.NotContains(t, result.scanRoots, filepath.Dir(categoryRoot))
 }
 
-// Two torrents whose save paths differ only by case name the same physical
-// directory on a case-insensitive filesystem, so both spellings must resolve to
-// the same owned files. See issue #2314.
 func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
 	t.Parallel()
 
@@ -476,7 +471,6 @@ func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Each file must be found under either spelling of its directory.
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(lower, "Show.S01", "Show.S01E01.mkv")))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(upper, "Movie.2024", "Movie.2024.mkv")))
 }
@@ -490,21 +484,15 @@ func TestDedupeCaseVariantRoots(t *testing.T) {
 	lower := filepath.Join(base, "trackername")
 
 	if _, err := os.Lstat(lower); err == nil {
-		// Case-insensitive filesystem: one directory, two spellings, walk once.
 		assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(context.Background(), []string{upper, lower}, local.NewBackend(), nil))
 		return
 	}
 
-	// Case-sensitive filesystem: nothing may be dropped, because every spelling
-	// is a directory of its own.
 	require.NoError(t, os.MkdirAll(lower, 0o755))
 	missing := filepath.Join(base, "Gone")
 	roots := []string{upper, lower, missing, strings.ToLower(missing)}
 	assert.Equal(t, roots, dedupeCaseVariantRoots(context.Background(), roots, local.NewBackend(), nil))
 
-	// A symlink whose name is a case variant of its target must not evict the
-	// target: filepath.WalkDir does not follow a symlinked scan root, so the
-	// tree would stop being scanned.
 	linked := filepath.Join(base, "Linked")
 	require.NoError(t, os.MkdirAll(linked, 0o755))
 	link := filepath.Join(base, "linked")
@@ -533,8 +521,6 @@ func TestRootIdentityChecksUseBackend(t *testing.T) {
 	assert.Empty(t, metadataIgnoreRoots(t.Context(), []string{base, lower}, []string{upper}, backend, nil))
 }
 
-// A remote backend reports no file identity, so only a byte-identical root is
-// dropped; a case variant is kept because nothing confirms it is the same dir.
 func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T) {
 	noID := &fsops.LstatInfo{IsDir: true, FileIDErr: errors.New("no identity")}
 	root := "/remote/TrackerName"
@@ -544,12 +530,9 @@ func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T)
 		infos:   map[string]*fsops.LstatInfo{root: noID, lower: noID},
 	}
 
-	// root, lower, root is the no-identity case: Clean does not collapse it.
 	assert.Equal(t, []string{root, lower}, dedupeCaseVariantRoots(t.Context(), []string{root, lower, root}, backend, nil))
 }
 
-// Declaring the default save path alongside a torrent at the same root must not
-// walk it twice when the backend cannot confirm file identity.
 func TestExecuteScan_DropsExactDuplicateRootsWithoutIdentity(t *testing.T) {
 	t.Parallel()
 

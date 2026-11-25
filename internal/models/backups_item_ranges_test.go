@@ -59,11 +59,6 @@ func runBackupItemRangeTests(t *testing.T, open func(t *testing.T) *database.DB)
 	})
 }
 
-// waitForLockWaiters blocks until want writers are queued on one instance's
-// lock, so the Postgres tests order their writers without sleeping for a fixed
-// time. Advisory locks are database-wide while test schemas share a database,
-// so the instance id has to be part of the match or another schema's writer
-// would satisfy the wait.
 func waitForLockWaiters(t *testing.T, db *database.DB, instanceID, want int) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -73,7 +68,7 @@ func waitForLockWaiters(t *testing.T, db *database.DB, instanceID, want int) {
 			`SELECT COUNT(*) FROM pg_locks
 			 WHERE locktype = 'advisory' AND NOT granted
 			   AND classid = CAST(? AS INTEGER) AND objid = CAST(? AS INTEGER)
-			   AND objsubid = 2`, // 2 = the two-integer advisory lock form
+			   AND objsubid = 2`,
 			models.BackupItemsLockClass, instanceID).Scan(&waiting))
 		if waiting >= want {
 			return
@@ -125,7 +120,6 @@ func (f *backupFixture) rowCount() int {
 	return n
 }
 
-// itemKey is a BackupItem's snapshot content, independent of storage ids.
 func itemKey(item models.BackupItem) string {
 	s := func(p *string) string {
 		if p == nil {
@@ -161,8 +155,6 @@ func randomItem(rng *rand.Rand, n int) models.BackupItem {
 	return item
 }
 
-// mutateItem changes one field, often back to a value it held before, the way
-// a tracker tag or category flips.
 func mutateItem(rng *rand.Rand, item models.BackupItem) models.BackupItem {
 	v := reflect.ValueOf(&item).Elem()
 	fields := versionedItemFields()
@@ -184,8 +176,6 @@ func mutateItem(rng *rand.Rand, item models.BackupItem) models.BackupItem {
 	return item
 }
 
-// versionedItemFields lists the BackupItem fields that describe a torrent's
-// state, i.e. everything except storage bookkeeping.
 func versionedItemFields() []string {
 	var names []string
 	typ := reflect.TypeFor[models.BackupItem]()
@@ -193,7 +183,6 @@ func versionedItemFields() []string {
 		switch name := field.Name; name {
 		case "ID", "RunID", "CreatedAt":
 		case "TorrentHash":
-			// Changing the hash is a different torrent, covered by add/remove.
 		default:
 			names = append(names, name)
 		}
@@ -204,7 +193,7 @@ func versionedItemFields() []string {
 type modelRun struct {
 	id       int64
 	instance int
-	items    []models.BackupItem // nil when the run never committed items
+	items    []models.BackupItem
 }
 
 func checkRandomBackupHistory(t *testing.T, db *database.DB) {
@@ -223,7 +212,7 @@ func checkRandomBackupHistory(t *testing.T, db *database.DB) {
 		}
 	}
 
-	var retained []modelRun // commit order
+	var retained []modelRun
 	removeRun := func(i int) {
 		require.NoError(t, f.store.CleanupRun(f.ctx, retained[i].id))
 		retained = slices.Delete(retained, i, i+1)
@@ -259,7 +248,6 @@ func checkRandomBackupHistory(t *testing.T, db *database.DB) {
 				items = append(items, item)
 			}
 			if rng.IntN(10) == 0 {
-				// Imported manifests can list a torrent twice.
 				items = append(items, items[rng.IntN(len(items))])
 			}
 			id := f.run(inst)
@@ -328,12 +316,10 @@ func verifyBackupHistory(t *testing.T, f *backupFixture, rng *rand.Rand, retaine
 	require.NoError(t, err)
 	require.Len(t, forRuns, total, "step %d", step)
 
-	// Blob cleanup trusts that any stored row is still referenced by a retained run.
 	paths, err := f.store.ListTorrentBlobPaths(f.ctx)
 	require.NoError(t, err)
 	require.ElementsMatch(t, slices.Collect(maps.Keys(blobs)), paths, "step %d", step)
 
-	// The cached blob for a hash is the one from the newest run holding it.
 	for _, r := range retained {
 		for _, item := range r.items {
 			want := ""
@@ -396,9 +382,6 @@ func checkEveryItemFieldIsVersioned(t *testing.T, db *database.DB) {
 	}
 }
 
-// Three runs share most torrents, so most rows cover several of the runs. The
-// fourth run is outside the set and its blob must not appear. Padding ids
-// that match no run put the first run in another chunk than the others.
 func checkTorrentBlobPathsForRuns(t *testing.T, db *database.DB) {
 	f := newBackupFixture(t, db)
 	inst := f.instance("blob-paths")
@@ -449,9 +432,6 @@ func checkUnchangedSnapshotWritesNothing(t *testing.T, db *database.DB) {
 	require.Equal(t, before+1, f.rowCount())
 }
 
-// checkCommitRacesNewestRunDelete deletes the newest run while the next
-// snapshot commits. The commit reuses rows opened by the run being deleted, so
-// cleanup must not drop them underneath it.
 func checkCommitRacesNewestRunDelete(t *testing.T, db *database.DB) {
 	f := newBackupFixture(t, db)
 	inst := f.instance("race")
@@ -489,10 +469,6 @@ func checkCommitRacesNewestRunDelete(t *testing.T, db *database.DB) {
 	require.Zero(t, remaining)
 }
 
-// checkItemWritersSerialize holds the per-instance lock the way an in-flight
-// commit does and requires both item writers to wait for it. The race it
-// prevents (cleanup deleting open rows a commit is reusing) is too narrow for
-// the timing test above to hit reliably.
 func checkItemWritersSerialize(t *testing.T, db *database.DB) {
 	if db.Dialect() != string(database.DialectPostgres) {
 		t.Skip("SQLite serializes all writes on one connection")
@@ -527,9 +503,6 @@ func checkItemWritersSerialize(t *testing.T, db *database.DB) {
 	}
 }
 
-// checkDeleteDuringCommit deletes a run while its items wait to commit behind
-// the instance lock. Cleanup must read the run's snapshot after that commit,
-// or the committed rows outlive their run.
 func checkDeleteDuringCommit(t *testing.T, db *database.DB) {
 	if db.Dialect() != string(database.DialectPostgres) {
 		t.Skip("SQLite serializes all writes on one connection")
@@ -557,10 +530,10 @@ func checkDeleteDuringCommit(t *testing.T, db *database.DB) {
 
 	insertDone := make(chan error, 1)
 	go func() { insertDone <- f.store.InsertItems(f.ctx, committing, changed) }()
-	waitForLockWaiters(t, db, inst, 1) // InsertItems queues on the lock first
+	waitForLockWaiters(t, db, inst, 1)
 	cleanupDone := make(chan error, 1)
 	go func() { cleanupDone <- f.store.CleanupRun(f.ctx, committing) }()
-	waitForLockWaiters(t, db, inst, 2) // cleanup queues behind it
+	waitForLockWaiters(t, db, inst, 2)
 	require.NoError(t, holder.Rollback())
 	require.NoError(t, <-insertDone)
 	require.NoError(t, <-cleanupDone)
@@ -584,8 +557,6 @@ func checkDeleteDuringCommit(t *testing.T, db *database.DB) {
 	require.Equal(t, sortedKeys(kept), sortedKeys(gotItems))
 }
 
-// checkConcurrentCommits starts two snapshots for one instance at once. Both
-// must commit, with their own sequence number and their own item set.
 func checkConcurrentCommits(t *testing.T, db *database.DB) {
 	f := newBackupFixture(t, db)
 	inst := f.instance("concurrent-commits")

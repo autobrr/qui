@@ -14,10 +14,8 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// MaxCompletionDelaySeconds caps the per-instance completion delay (10 minutes).
 const MaxCompletionDelaySeconds = 600
 
-// InstanceCrossSeedCompletionSettings stores per-instance cross-seed completion configuration.
 type InstanceCrossSeedCompletionSettings struct {
 	InstanceID         int       `json:"instanceId"`
 	Enabled            bool      `json:"enabled"`
@@ -31,19 +29,13 @@ type InstanceCrossSeedCompletionSettings struct {
 	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
-// InstanceCrossSeedCompletionStore manages persistence for InstanceCrossSeedCompletionSettings.
-// It caches Get results: a burst of completions reads each instance's settings
-// once, and Upsert is the only writer.
 type InstanceCrossSeedCompletionStore struct {
 	db dbinterface.Querier
 
-	// mu is held across the cache-miss read, so concurrent misses for one
-	// burst share one query.
 	mu    sync.Mutex
 	cache map[int]InstanceCrossSeedCompletionSettings
 }
 
-// NewInstanceCrossSeedCompletionStore creates a new store.
 func NewInstanceCrossSeedCompletionStore(db dbinterface.Querier) *InstanceCrossSeedCompletionStore {
 	if db == nil {
 		panic("db cannot be nil")
@@ -51,8 +43,6 @@ func NewInstanceCrossSeedCompletionStore(db dbinterface.Querier) *InstanceCrossS
 	return &InstanceCrossSeedCompletionStore{db: db, cache: make(map[int]InstanceCrossSeedCompletionSettings)}
 }
 
-// DefaultInstanceCrossSeedCompletionSettings returns default values for a new instance.
-// Completion is disabled by default for safety.
 func DefaultInstanceCrossSeedCompletionSettings(instanceID int) *InstanceCrossSeedCompletionSettings {
 	return &InstanceCrossSeedCompletionSettings{
 		InstanceID:         instanceID,
@@ -67,7 +57,6 @@ func DefaultInstanceCrossSeedCompletionSettings(instanceID int) *InstanceCrossSe
 	}
 }
 
-// Get returns settings for an instance, falling back to defaults if missing.
 func (s *InstanceCrossSeedCompletionStore) Get(ctx context.Context, instanceID int) (*InstanceCrossSeedCompletionSettings, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -99,7 +88,6 @@ func (s *InstanceCrossSeedCompletionStore) get(ctx context.Context, instanceID i
 	return settings, nil
 }
 
-// List returns settings for all instances that have overrides. Instances without overrides are omitted.
 func (s *InstanceCrossSeedCompletionStore) List(ctx context.Context) ([]*InstanceCrossSeedCompletionSettings, error) {
 	const query = `SELECT instance_id, enabled, categories_json, tags_json,
 		exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, completion_delay_seconds, updated_at
@@ -127,7 +115,6 @@ func (s *InstanceCrossSeedCompletionStore) List(ctx context.Context) ([]*Instanc
 	return result, nil
 }
 
-// Upsert saves settings for an instance, creating or updating as needed.
 func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings *InstanceCrossSeedCompletionSettings) (*InstanceCrossSeedCompletionSettings, error) {
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")

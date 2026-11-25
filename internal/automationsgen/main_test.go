@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestGeneratedFilesAreCurrent also fails when a rule struct field has no doc tag, because generate returns an error.
 func TestGeneratedFilesAreCurrent(t *testing.T) {
 	root := filepath.Join("..", "..")
 	reference, err := generate(root)

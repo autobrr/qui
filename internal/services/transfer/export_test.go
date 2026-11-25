@@ -26,7 +26,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
-// exportPolls shortens the wait of an Export run for the target.
 func exportPolls(c *transfer.Config) {
 	c.ExportPolls, c.ExportPollInterval = 20, time.Millisecond
 }
@@ -44,7 +43,6 @@ func (r *rig) exportRequest(s show) transfer.ExportRequest {
 	}
 }
 
-// export runs an Export and waits for its end.
 func (r *rig) export(req transfer.ExportRequest) (*transfer.Record, transfer.ExportResult) {
 	r.t.Helper()
 	id, done, err := r.svc.Export(r.t.Context(), req)
@@ -55,13 +53,8 @@ func (r *rig) export(req transfer.ExportRequest) (*transfer.Record, transfer.Exp
 	return r.get(id), res
 }
 
-// An Export adds the torrent on the target, where its files already are,
-// and keeps the torrent and its files on the source. It runs on the
-// qBittorrent versions that Export supported before Transfer, and it shows
-// as an Export run in the list of Transfers.
 func TestExportAddsTheTorrentAndKeepsTheSource(t *testing.T) {
 	r := newRig(t, exportPolls)
-	// qBittorrent 4.6, older than Transfer needs.
 	r.src.WebAPIVersion, r.dst.WebAPIVersion = "2.9.3", "2.9.3"
 	s := newShow(t, showName)
 	r.seed(s)
@@ -85,7 +78,6 @@ func TestExportAddsTheTorrentAndKeepsTheSource(t *testing.T) {
 	require.Zero(t, r.src.Writes("torrents/delete"))
 }
 
-// deletes records who deletes torrents.
 type deletes struct {
 	mu     sync.Mutex
 	actors []qbittorrent.DeleteActor
@@ -103,10 +95,6 @@ func (d *deletes) list() []qbittorrent.DeleteActor {
 	return slices.Clone(d.actors)
 }
 
-// An Export whose files are not all on the target fails. qui takes the
-// torrent off the target in the name of the rule, and keeps the files there.
-// The failed run never runs again by itself: the next run of the rule starts
-// a new one.
 func TestExportFailsAndTheNextRuleRunTriesAgain(t *testing.T) {
 	r := newRig(t, exportPolls)
 	noted := &deletes{}
@@ -134,7 +122,6 @@ func TestExportFailsAndTheNextRuleRunTriesAgain(t *testing.T) {
 	r.svc.Wait()
 	require.Equal(t, 1, r.dst.Writes("torrents/add"), "the failed run does not run again")
 
-	// The next run of the rule reads the target fresh.
 	require.False(t, r.seeding(r.target.ID, s.hash))
 	write(t, filepath.Join(r.dstDir, showName), s.files)
 	again, res := r.export(r.exportRequest(s))
@@ -143,8 +130,6 @@ func TestExportFailsAndTheNextRuleRunTriesAgain(t *testing.T) {
 	require.True(t, r.seeding(r.target.ID, s.hash))
 }
 
-// holdAt holds each save of a step until release closes or the run stops.
-// held gets a value at each held save.
 type holdAt struct {
 	dbinterface.Querier
 	step    string
@@ -168,7 +153,6 @@ func (h holdAt) ExecContext(ctx context.Context, query string, args ...any) (sql
 	return res, err
 }
 
-// restartOn starts qui again with its store on q.
 func (r *rig) restartOn(q dbinterface.Querier) {
 	r.t.Helper()
 	closeService(r.t, r.svc)
@@ -187,9 +171,6 @@ func (r *rig) states(ids []int64) map[transfer.State]int {
 	return out
 }
 
-// Five Export runs go at a time, and the sixth waits for a free place. They
-// do not wait for the Transfer that copies from the same source, and hold
-// no claim on their torrents.
 func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 	r := newRig(t, exportPolls)
 	hold := newHoldAt(r.db, "add")
@@ -198,7 +179,6 @@ func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 	r.seed(moving)
 	copying, copyHeld := make(chan struct{}), make(chan struct{})
 	releaseCopy := sync.OnceFunc(func() { close(copyHeld) })
-	// The release comes before the stop of qui, also when the test fails.
 	t.Cleanup(releaseCopy)
 	holdCopy := sync.OnceFunc(func() {
 		close(copying)
@@ -245,30 +225,18 @@ func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 	require.Equal(t, transfer.StateDone, transferred.State, transferred.FailureReason)
 }
 
-// qui ends at each step of an Export run that it records, and at the add.
-// After the restart, the run adds the torrent once and checks it on the
-// target, or finishes its cleanup. A failed torrent whose add did not
-// answer stays on the target, because qui cannot tell who added it. A
-// second restart sends nothing.
 func TestExportResumesAfterACrash(t *testing.T) {
 	for _, tc := range []struct {
-		at        string
-		killAtAdd bool
-		// missing leaves the files off the target.
-		missing bool
-		// recheckFails makes the add paused, with a check, and makes the
-		// recheck after the restart fail.
+		at           string
+		killAtAdd    bool
+		missing      bool
 		recheckFails bool
 		want         transfer.State
-		// kept, when set, is a part of the failure reason of a run that
-		// keeps the failed torrent on the target.
-		kept string
+		kept         string
 	}{
 		{at: "after:add", want: transfer.StateDone},
 		{killAtAdd: true, want: transfer.StateDone},
-		// regression: #4231
 		{killAtAdd: true, missing: true, want: transfer.StateFailed, kept: "Files missing on target instance"},
-		// regression: #4231
 		{killAtAdd: true, recheckFails: true, want: transfer.StateFailed, kept: "Recheck on target failed"},
 		{at: "after:added", missing: true, want: transfer.StateFailed},
 		{at: "after:clean up", missing: true, want: transfer.StateFailed},
@@ -346,8 +314,6 @@ func TestExportResumesAfterACrash(t *testing.T) {
 	}
 }
 
-// wakeAtCommit wakes the Service after each commit on the store, as the
-// loop of Wake can between the record of an Export run and its start.
 type wakeAtCommit struct {
 	dbinterface.Querier
 	wake func()
@@ -374,9 +340,6 @@ func (t wakeTx) Commit() error {
 	return err
 }
 
-// A Wake that reads a new Export run before its Export call starts it
-// leaves the run to that call, so the caller gets the result.
-// regression: #4231
 func TestExportSendsItsResultWhenAWakeComesFirst(t *testing.T) {
 	r := newRig(t, exportPolls)
 	r.restartOn(wakeAtCommit{Querier: r.db, wake: func() { r.svc.Wake() }})
@@ -391,10 +354,6 @@ func TestExportSendsItsResultWhenAWakeComesFirst(t *testing.T) {
 	require.Equal(t, 1, r.dst.Writes("torrents/add"))
 }
 
-// qBittorrent does not check a torrent that was added stopped. When qui
-// stops between a paused add and its recheck, the run sends the recheck
-// after the restart, and the torrent passes its check on the target.
-// regression: #4231
 func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
 	r := newRig(t, exportPolls)
 	s := newShow(t, showName)
@@ -420,19 +379,10 @@ func TestExportRechecksAPausedAddAfterACrash(t *testing.T) {
 	require.True(t, r.dst.Stopped(s.hash), "the torrent stays paused")
 }
 
-// An Export run that resumes after a restart touches nothing on a target
-// that got a new address: the torrent there is not the one that qui added.
-// It stops before the add, after the add, and at its cleanup, also when it
-// cannot read the address.
-// regression: #4231
 func TestExportTouchesNothingOnATargetWithANewAddress(t *testing.T) {
 	for _, tc := range []struct {
-		at string
-		// has seeds the torrent on the client at the new address.
-		has bool
-		// unread fails each read of an instance by the Export run, as on a
-		// database that does not answer, while the clients still find the
-		// new address.
+		at     string
+		has    bool
 		unread bool
 	}{
 		{at: "after:add"},
@@ -481,15 +431,12 @@ func TestExportTouchesNothingOnATargetWithANewAddress(t *testing.T) {
 	}
 }
 
-// unanswered is a database whose single-row reads fail.
 type unanswered struct{ dbinterface.Querier }
 
 func (u unanswered) QueryRowContext(ctx context.Context, _ string, _ ...any) *sql.Row {
 	return u.Querier.QueryRowContext(ctx, "SELECT no_answer")
 }
 
-// The add on the target gets the parameters that the old Export path sends
-// for the fields of the rule.
 func TestExportAddsWithTheFieldsOfTheRule(t *testing.T) {
 	for _, tc := range []struct {
 		name string

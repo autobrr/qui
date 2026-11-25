@@ -5,7 +5,6 @@
 
 // i18n-namespace: crossseed
 
-/** What the run controls of a section show. A blocked state carries the reason for the disabled button, and a running state can name the active run. */
 export type RunState =
   | { kind: "ready" }
   | { kind: "blocked"; reason: string }
@@ -23,7 +22,6 @@ export interface RssRunInput {
   cooldown: { active: boolean; minutes: number; remaining: string }
 }
 
-/** A run in progress wins over every reason, so Cancel stays reachable. */
 export function rssRunState(input: RssRunInput, t: Translate): RunState {
   if (input.running) return input.cancelPending ? { kind: "cancelling" } : { kind: "running" }
   if (!input.hasEnabledIndexers) return { kind: "blocked", reason: t("automation.requiresTorznabIndexer") }
@@ -40,15 +38,11 @@ export interface LibraryRunInput {
   startPending: boolean
   running: boolean
   cancelPending: boolean
-  /** Torznab is off for the scan and Gazelle is not set up. */
   needsGazelle: boolean
-  /** An enabled Torznab indexer or a saved Gazelle setup exists. */
   hasSearchSource: boolean
-  /** The active run is a scheduled run. */
   scheduledRun: boolean
 }
 
-/** A scan in progress wins over every reason, so Cancel stays reachable. */
 export function libraryRunState(input: LibraryRunInput, t: Translate): RunState {
   if (input.running) {
     if (input.cancelPending) return { kind: "cancelling" }

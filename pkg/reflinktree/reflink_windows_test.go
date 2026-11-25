@@ -742,7 +742,6 @@ func TestSupportsReflink_ReportsProbeFailureReason(t *testing.T) {
 	}
 }
 
-// regression: #4074
 func TestCloneFile_AlignsIntegrityBeforeClone(t *testing.T) {
 	for _, tt := range []struct {
 		name        string

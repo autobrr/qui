@@ -17,21 +17,16 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// legacyRewriter is the startup pass every credential store exposes.
 type legacyRewriter interface {
 	RewriteLegacyCredentials(ctx context.Context) (int, error)
 }
 
 type legacyRewriteCase struct {
-	name string
-	// table is the table the pass updates, read back to check the stored format.
-	table string
-	// credentials maps each encrypted column to the plaintext seeded into it.
+	name        string
+	table       string
 	credentials map[string]string
-	// seed creates one row through the store's own writer, which keeps the
-	// fixture engine-agnostic.
-	seed     func(t *testing.T, db *database.DB, key []byte) int64
-	newStore func(t *testing.T, db *database.DB, current, legacy []byte) legacyRewriter
+	seed        func(t *testing.T, db *database.DB, key []byte) int64
+	newStore    func(t *testing.T, db *database.DB, current, legacy []byte) legacyRewriter
 }
 
 func legacyRewriteCases() []legacyRewriteCase {
@@ -141,7 +136,6 @@ func legacyRewriteCases() []legacyRewriteCase {
 	}
 }
 
-// writeLegacyCredentials replaces the row's columns with pre-HKDF ciphertext.
 func writeLegacyCredentials(t *testing.T, db *database.DB, table string, id int64, key []byte, credentials map[string]string) {
 	t.Helper()
 
@@ -170,8 +164,6 @@ func TestRewriteLegacyCredentialsPostgresIntegration(t *testing.T) {
 	runRewriteLegacyCredentialsTests(t, testdb.NewMigratedPostgres)
 }
 
-// newTestDB opens a migrated database for one engine. Each case takes its own,
-// because the stores enforce unique names and base URLs across rows.
 type newTestDB func(t testing.TB, name string) *database.DB
 
 func runRewriteLegacyCredentialsTests(t *testing.T, newDB newTestDB) {
@@ -179,8 +171,6 @@ func runRewriteLegacyCredentialsTests(t *testing.T, newDB newTestDB) {
 
 	currentKey := testKey(t, 0)
 	legacyKey := testKey(t, 100)
-	// Stands in for a session secret the operator changed, so neither
-	// configured key opens the stored values.
 	strangerKey := testKey(t, 200)
 
 	for _, tc := range legacyRewriteCases() {
@@ -195,8 +185,6 @@ func runRewriteLegacyCredentialsTests(t *testing.T, newDB newTestDB) {
 				require.NoError(t, err)
 				assert.Equal(t, 1, rewritten)
 
-				// Only the current key is configured on this reader, so a value
-				// that opens proves the row was re-sealed, not left alone.
 				reader, err := models.NewCredentialCipher(currentKey)
 				require.NoError(t, err)
 
@@ -237,8 +225,6 @@ func runRewriteLegacyCredentialsTests(t *testing.T, newDB newTestDB) {
 	}
 }
 
-// TestRewriteLegacyCredentialsKeepsNullColumnsNull covers the nullable basic auth
-// columns, which the pass must not turn into ciphertext of an empty string.
 func TestRewriteLegacyCredentialsKeepsNullColumnsNull(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "rewrite-null-columns")
 	currentKey := testKey(t, 0)
@@ -264,9 +250,6 @@ func TestRewriteLegacyCredentialsKeepsNullColumnsNull(t *testing.T) {
 	assert.Nil(t, basicPassword)
 }
 
-// TestRewriteLegacyCredentialsSkipsMixedRows pins the whole-row skip. One column
-// that does not decrypt abandons the row. A sibling that would have decrypted is
-// left legacy too, rather than leaving the row in two formats.
 func TestRewriteLegacyCredentialsSkipsMixedRows(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "rewrite-mixed-row")
 	currentKey := testKey(t, 0)
@@ -280,8 +263,6 @@ func TestRewriteLegacyCredentialsSkipsMixedRows(t *testing.T) {
 	require.NoError(t, err)
 	id := int64(created.ID)
 
-	// password_encrypted opens under the legacy key, basic_password_encrypted
-	// does not. The pass must rewrite neither.
 	writeLegacyCredentials(t, db, "instances", id, legacyKey, map[string]string{"password_encrypted": "instance-password"})
 	writeLegacyCredentials(t, db, "instances", id, strangerKey, map[string]string{"basic_password_encrypted": "instance-basic-password"})
 
@@ -302,18 +283,12 @@ func TestRewriteLegacyCredentialsSkipsMixedRows(t *testing.T) {
 	}
 }
 
-// TestRewriteLegacyCredentialsKeepsEmptyColumnsEmpty covers the NOT NULL columns
-// that default to the empty string, where an empty value means "not configured".
-// Sealing an empty string would produce a real ciphertext, which HasAPIKey,
-// apiKeyRedacted and getGazelleAPIKey all read as a key being set.
 func TestRewriteLegacyCredentialsKeepsEmptyColumnsEmpty(t *testing.T) {
 	currentKey := testKey(t, 0)
 	legacyKey := testKey(t, 100)
 
 	tests := []struct {
-		name string
-		// seeded is the one column carrying a legacy value, which makes the row
-		// a rewrite candidate so the empty columns are actually visited.
+		name   string
 		seeded string
 		empty  []string
 		seed   func(t *testing.T, db *database.DB, key []byte) int64
@@ -385,8 +360,6 @@ func TestRewriteLegacyCredentialsKeepsEmptyColumnsEmpty(t *testing.T) {
 	}
 }
 
-// TestRewriteLegacyCredentialsKeepsInstanceReadable checks the rewrite through
-// the store's own accessors rather than the raw column.
 func TestRewriteLegacyCredentialsKeepsInstanceReadable(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "rewrite-instance-api")
 	currentKey := testKey(t, 0)
@@ -426,13 +399,9 @@ func TestRewriteLegacyCredentialsKeepsInstanceReadable(t *testing.T) {
 	assert.Equal(t, "instance-basic-password", *decryptedBasic)
 }
 
-// legacyReadCase reads a store's credentials back through its own accessors.
-// The opts are threaded through so the same closure runs with and without the
-// legacy key, which is what makes the missing-option case observable.
 type legacyReadCase struct {
-	name  string
-	table string
-	// credentials maps each encrypted column to the plaintext seeded into it.
+	name        string
+	table       string
 	credentials map[string]string
 	seed        func(t *testing.T, db *database.DB, key []byte) int64
 	read        func(t *testing.T, db *database.DB, id int64, opts ...models.CredentialCipherOption) (map[string]string, error)
@@ -607,11 +576,6 @@ func legacyReadCases() []legacyReadCase {
 	}
 }
 
-// TestStoresReadLegacyCredentialsBeforeRewrite goes through each store's real
-// constructor and its own accessors, with no rewrite pass in between. The
-// without-option half pins the store-level contract only: a store built without
-// the legacy key returns the explicit missing-key error instead of guessing.
-// Nothing here exercises the wiring in main.go.
 func TestStoresReadLegacyCredentialsBeforeRewrite(t *testing.T) {
 	legacyKey := testKey(t, 100)
 

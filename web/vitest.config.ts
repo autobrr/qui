@@ -8,9 +8,6 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "vitest/config"
 
-// Standalone config (does not import vite.config.ts) so the PWA / node-polyfills /
-// tailwind plugins don't run during test startup. We only need the @/* alias and
-// the React plugin for transforming JSX/TSX.
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
@@ -24,7 +21,6 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // src/demo imports the built-in theme CSS from internal/themes/assets.
   server: {
     fs: {
       allow: [path.resolve(__dirname, "..")],

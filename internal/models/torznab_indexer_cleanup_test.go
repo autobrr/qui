@@ -34,7 +34,6 @@ func checkCleanupOldLatency(t *testing.T, db *database.DB) {
 
 	const window = 24 * time.Hour
 	now := time.Now().UTC()
-	// The store writes measured_at with the database clock, which has this form.
 	for operation, measuredAt := range map[string]time.Time{
 		"older": now.Add(-window - time.Hour),
 		"newer": now.Add(-window + time.Hour),

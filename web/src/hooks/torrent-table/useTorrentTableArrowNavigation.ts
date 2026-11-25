@@ -8,13 +8,11 @@ import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
 import type { Virtualizer } from "@tanstack/react-virtual"
 import { useEffect, type RefObject } from "react"
 
-// Mirrors useKeyboardNavigation: start pulling more rows this far from the end.
 const LOAD_MORE_THRESHOLD = 50
 
 export interface UseTorrentTableArrowNavigationParams {
   rows: TorrentRow[]
   virtualizer: Virtualizer<HTMLDivElement, Element>
-  /** Virtualized row count (progressive window), which can trail rows.length. */
   safeLoadedRows: number
   loadMore: () => void
   isReadOnly: boolean
@@ -39,17 +37,10 @@ function isTypingTarget(target: EventTarget | null): boolean {
     (element instanceof HTMLElement && element.isContentEditable) ||
     element.closest("[role=\"dialog\"]") !== null ||
     element.closest("[role=\"combobox\"]") !== null ||
-    // Focus inside the details panel: arrows belong to its own content there.
     element.closest("[data-torrent-details-panel]") !== null
   )
 }
 
-/**
- * Arrow up/down moves the focused row the same way a plain click does (replace
- * selection with that single row), and Enter opens the details panel for it.
- * The panel only *follows* the arrows once it is already open, so navigating a
- * list never pops it up; Escape (handled in Torrents.tsx) closes it again.
- */
 export function useTorrentTableArrowNavigation({
   rows,
   virtualizer,
@@ -65,8 +56,6 @@ export function useTorrentTableArrowNavigation({
 }: UseTorrentTableArrowNavigationParams) {
   useEffect(() => {
     const findCursorIndex = (): number => {
-      // Resolve by identity rather than a stored index: rows re-sort live, so a
-      // remembered index drifts onto a different torrent.
       if (selectedTorrent) {
         const identity = getSelectionIdentity(selectedTorrent)
         const index = rows.findIndex(row => getSelectionIdentity(row.original) === identity)
@@ -83,7 +72,6 @@ export function useTorrentTableArrowNavigation({
         }
       }
 
-      // Multi-selection: fall back to the click anchor.
       const anchor = lastSelectedIndexRef.current
       return anchor !== null && anchor >= 0 && anchor < rows.length ? anchor : -1
     }
@@ -108,7 +96,6 @@ export function useTorrentTableArrowNavigation({
       const cursorIndex = findCursorIndex()
 
       if (event.key === "Enter") {
-        // A focused button or link acts on Enter itself, for example the "+N" pill of a Copy group.
         if (event.target instanceof Element && event.target.closest("button, a[href]")) {
           return
         }
@@ -134,7 +121,6 @@ export function useTorrentTableArrowNavigation({
       event.preventDefault()
 
       if (isReadOnly) {
-        // Read-only mode has no row selection, so the panel is the only cursor.
         onTorrentSelect?.(targetRow.original)
       } else {
         selectOnly(targetRow.original, targetIndex)

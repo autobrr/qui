@@ -18,13 +18,8 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// explicitSeasonTag matches the original capture of a series tag that names a
-// season zero, such as S00 or S00E02. An absolute-numbered anime episode ("01")
-// also parses with season 0 but names no season, so it has no pack.
 var explicitSeasonTag = regexp.MustCompile(`(?i)^s\d`)
 
-// hasSingleSeason reports whether the release names exactly one season. A name
-// with more than one, such as S01-S03, is neither a pack nor an episode.
 func hasSingleSeason(r *rls.Release) bool {
 	count := 0
 	for _, tag := range r.Tags() {
@@ -40,10 +35,6 @@ func hasSingleSeason(r *rls.Release) bool {
 	return count == 1
 }
 
-// seasonPackKey identifies the season of one release in pack form. The field
-// list is deliberate: Subtitle stays out because an episode title lands there,
-// and REPACK, PROPER, and RERIP stay in through Other, so a repacked episode is
-// not covered by a plain pack. The key has to be safe under a delete action.
 func seasonPackKey(r *rls.Release) string {
 	return strings.Join([]string{
 		stringutils.NormalizeForMatching(r.Title),
@@ -65,8 +56,6 @@ func isSeasonPack(r *rls.Release) bool {
 	return r.Episode == 0 && !releases.IsEpisodeRange(r)
 }
 
-// addSeasonPack records the season a pack release covers. Episodes, episode
-// ranges, and names without a single season are ignored.
 func addSeasonPack(packs map[string]struct{}, r *rls.Release) {
 	if !isSeasonPack(r) || !hasSingleSeason(r) {
 		return
@@ -74,8 +63,6 @@ func addSeasonPack(packs map[string]struct{}, r *rls.Release) {
 	packs[seasonPackKey(r)] = struct{}{}
 }
 
-// seasonPackStatus reports pack, packed, unpacked, or "" for a release without
-// a season. An episode range counts as an episode.
 func seasonPackStatus(r *rls.Release, packs map[string]struct{}) string {
 	if !hasSingleSeason(r) {
 		return ""
@@ -89,7 +76,6 @@ func seasonPackStatus(r *rls.Release, packs map[string]struct{}) string {
 	return SeasonPackStatusUnpacked
 }
 
-// buildSeasonPackSet indexes the season packs among torrents.
 func buildSeasonPackSet(parser *releases.Parser, torrents []*qbt.Torrent) map[string]struct{} {
 	packs := make(map[string]struct{})
 	for i := range torrents {
@@ -98,9 +84,6 @@ func buildSeasonPackSet(parser *releases.Parser, torrents []*qbt.Torrent) map[st
 	return packs
 }
 
-// buildAnyInstanceSeasonPackSet indexes the season packs cached for every active
-// instance. Zero qBittorrent requests. An unreadable instance is skipped, as in
-// the hardlink cross-scope and cross-match builders.
 func (s *Service) buildAnyInstanceSeasonPackSet(ctx context.Context) map[string]struct{} {
 	instances, err := s.instanceStore.List(ctx)
 	if err != nil {

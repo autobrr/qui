@@ -34,7 +34,6 @@ const DENSITY_LABEL_KEYS = {
   stacked: "displayProfiles.settings.densities.stacked",
 } as const satisfies Record<DisplayProfileDensity, string>
 
-/** The row density and the filter sidebar of the desktop torrent table in one profile. */
 function useTableView(profileId: string): { density: DisplayProfileDensity; filterSidebarOpen: boolean } {
   const desktop = VIEW_MODE_SETTINGS.desktop
   const viewMode = useDisplayProfileSetting(profileId, desktop.storageKey, { defaultValue: desktop.defaultMode, parse: desktop.parse })
@@ -46,7 +45,6 @@ interface DisplayProfileEditorProps {
   profile: DisplayProfile
 }
 
-/** One profile in Settings, in the style of the "In use" block of Themes. */
 export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
   const { t } = useTranslation("torrents")
   const { profiles, active, settled, pick, setIcon, setColor, delete: deleteProfile } = useNamedDisplayProfiles()
@@ -85,7 +83,6 @@ export function DisplayProfileEditor({ profile }: DisplayProfileEditorProps) {
             <NameField profile={profile} titleId={titleId} lookLine={lookLine} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {/* Both labels take the same place, so the button keeps its width when the pick changes. */}
             <Button
               size="sm"
               variant="outline"
@@ -133,7 +130,6 @@ interface NameFieldProps {
   lookLine: string
 }
 
-/** The name of the profile with inline rename, and below it the look line, or the count and the errors while it renames. */
 function NameField({ profile, titleId, lookLine }: NameFieldProps) {
   const { t } = useTranslation("torrents")
   const { settled, rename } = useNamedDisplayProfiles()
@@ -147,7 +143,6 @@ function NameField({ profile, titleId, lookLine }: NameFieldProps) {
   const shownError = renaming ? check.shownError : null
 
   const finish = () => {
-    // The pencil comes back in place of the field, so focus can go back to it.
     flushSync(() => {
       setDraft(null)
       setSubmitted(false)
@@ -159,7 +154,6 @@ function NameField({ profile, titleId, lookLine }: NameFieldProps) {
     event.preventDefault()
     setSubmitted(true)
     if (draft === null || check.error) return
-    // An unchanged name stays unsaved, so Default keeps following the language of the app.
     if (draft.trim() !== profile.name) rename(profile.id, draft)
     finish()
   }

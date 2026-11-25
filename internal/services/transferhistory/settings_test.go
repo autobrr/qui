@@ -47,14 +47,10 @@ var (
 	day12 = day10.Add(48 * time.Hour)
 )
 
-// crossSeed is a complete torrent that downloaded nothing, so its upload is
-// upload from Statistics cross-seeds.
 func crossSeed(uploaded int64) transferhistory.Torrent {
 	return complete(torrent("c", uploaded, 0))
 }
 
-// twoDaysOfUpload records upload on day 10 and day 11, with a Recording gap that
-// ends at 12:00 on day 10. Its last reading is on day 11.
 var twoDaysOfUpload = []step{
 	reading(at(0), torrent("a", 0, 0), crossSeed(0)),
 	reading(at(5*time.Minute), torrent("a", 100, 50), crossSeed(30)),
@@ -62,7 +58,6 @@ var twoDaysOfUpload = []step{
 	reading(at(25*time.Hour), torrent("a", 400, 50), crossSeed(60)),
 }
 
-// twoDaysChecks are the answers of each grouping for twoDaysOfUpload when no fold ran.
 var twoDaysChecks = []step{
 	expect(period(day10, day12, transferhistory.BucketHour, transferhistory.GroupByTracker),
 		row("tracker.example", day10.Add(10*time.Hour), transferhistory.BucketHour, 130, 50, 30, 0),
@@ -83,7 +78,6 @@ var twoDaysChecks = []step{
 	expect(period(day10, day12, transferhistory.BucketTotal, transferhistory.GroupByCategory),
 		row("tv", day10, transferhistory.BucketTotal, 460, 50, 60, 5400),
 	),
-	// A period with no start.
 	expect(transferhistory.TransferQuery{To: day12, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker},
 		row("tracker.example", time.Time{}, transferhistory.BucketTotal, 460, 50, 60, 5400),
 	),
@@ -95,8 +89,6 @@ var twoDaysChecks = []step{
 func TestDetailRetentionPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
-	// A reading on day 101 starts a new UTC day. A retention of 90 days then
-	// folds day 10, and keeps day 11.
 	day101 := reading(day10.Add(91*24*time.Hour+10*time.Hour), torrent("a", 400, 50), crossSeed(60))
 	newYork, err := time.LoadLocation("America/New_York")
 	require.NoError(t, err)
@@ -113,12 +105,10 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 			name: "a fold changes no period total of any grouping",
 			steps: concat(twoDaysOfUpload, twoDaysChecks, []step{settings(true, 90), day101, {foldsDone: true}},
 				[]step{
-					// The hours of day 10 are one day row now.
 					expect(period(day10, day12, transferhistory.BucketHour, transferhistory.GroupByTracker),
 						row("tracker.example", day10, transferhistory.BucketDay, 360, 50, 60, 5400),
 						row("tracker.example", day11.Add(11*time.Hour), transferhistory.BucketHour, 100, 0, 0, 0),
 					),
-					// The day row is wider than the period.
 					expect(period(day10.Add(12*time.Hour), day10.Add(13*time.Hour), transferhistory.BucketHour, transferhistory.GroupByTracker),
 						row("tracker.example", day10, transferhistory.BucketDay, 360, 50, 60, 5400),
 					),
@@ -129,7 +119,6 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 				twoDaysChecks[1:]),
 		},
 		{
-			// 02:00 UTC on day 11 is 21:00 on November 10 in New York.
 			name: "a folded day stays a UTC day beside the local days of the hours",
 			steps: concat(twoDaysOfUpload[:3], []step{
 				reading(at(16*time.Hour), torrent("a", 350, 50), crossSeed(60)),
@@ -161,7 +150,6 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 		{
 			name: "a new retention folds at the next reading of the same day",
 			steps: concat(twoDaysOfUpload, []step{
-				// The first reading of day 101 folds nothing with 400 days.
 				reading(day10.Add(91*24*time.Hour+9*time.Hour), torrent("a", 400, 50), crossSeed(60)),
 				twoDaysChecks[0],
 				settings(true, 90),
@@ -184,10 +172,6 @@ func TestDetailRetentionPostgresIntegration(t *testing.T) {
 	}
 }
 
-// A reading that starts a new UTC day moves the torrent days before it out of
-// the recent days with each Detail retention, so that a write changes the rows
-// of few days, and the answers stay the same.
-// regression: #4119
 func TestANewUTCDayMovesTheTorrentDaysBeforeItPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	for _, retentionDays := range transferhistory.DetailRetentions {
@@ -214,9 +198,6 @@ func concat(parts ...[]step) []step {
 	return out
 }
 
-// A fold moves the days of a torrent before the Detail retention into one row
-// for each year. A query for the days of a torrent in a folded year returns
-// that row, and a period after the fold does not.
 func TestAFoldMovesTheDaysOfATorrentIntoItsYearPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	name := "Some.Show.S01E01.1080p.WEB-DL-GRP"
@@ -237,7 +218,6 @@ func TestAFoldMovesTheDaysOfATorrentIntoItsYearPostgresIntegration(t *testing.T)
 			expect(withGroup(days, "c"),
 				torrentRow("c", year, transferhistory.BucketYear, 60, 0, 0, c),
 			),
-			// A total starts at the first year that it covers.
 			expect(period(day10, day12, transferhistory.BucketTotal, transferhistory.GroupByTorrent),
 				torrentRow("a", year, transferhistory.BucketTotal, 400, 50, 5400, a),
 				torrentRow("c", year, transferhistory.BucketTotal, 60, 0, 5400, c),
@@ -252,9 +232,6 @@ func TestAFoldMovesTheDaysOfATorrentIntoItsYearPostgresIntegration(t *testing.T)
 	})
 }
 
-// An instance that moved no bytes after the fold has no hourly rows, and a
-// recent period of it still gets no folded year.
-// regression: #4113
 func TestARecentPeriodOfAnIdleInstanceGetsNoFoldedYearPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	later := day10.Add(100 * 24 * time.Hour)
@@ -264,7 +241,6 @@ func TestARecentPeriodOfAnIdleInstanceGetsNoFoldedYearPostgresIntegration(t *tes
 			settings(true, 90),
 			reading(later.Add(10*time.Hour), torrent("a", 400, 50), crossSeed(60)),
 			{foldsDone: true},
-			// The fold moved the days before 2026-11-20 into the year 2026.
 			expect(period(afterFold, afterFold.Add(24*time.Hour), transferhistory.BucketTotal, transferhistory.GroupByTorrent)),
 			expect(period(afterFold, afterFold.Add(24*time.Hour), transferhistory.BucketDay, transferhistory.GroupByTorrent)),
 		}))
@@ -291,13 +267,11 @@ func TestRecordingSwitchPostgresIntegration(t *testing.T) {
 				reading(at(0), torrent("a", 10, 0)),
 				reading(at(5*time.Minute), torrent("a", 110, 0)),
 				recordingOff,
-				// Without the switch, this reading would write.
 				reading(at(10*time.Minute), torrent("a", 210, 0)),
 				reading(at(20*time.Minute), torrent("a", 310, 0)),
 				expect(threeHours, row("tracker.example", day10.Add(10*time.Hour), transferhistory.BucketHour, 100, 0, 0, 0)),
 				recordingOn,
 				reading(at(2*time.Hour), torrent("a", 510, 0)),
-				// The gap starts at the last reading before the switch went off.
 				expect(threeHours,
 					row("tracker.example", day10.Add(10*time.Hour), transferhistory.BucketHour, 100, 0, 0, 0),
 					row("tracker.example", day10.Add(12*time.Hour), transferhistory.BucketHour, 400, 0, 0, int64((2*time.Hour-5*time.Minute)/time.Second)),
@@ -322,7 +296,6 @@ func TestRecordingSwitchPostgresIntegration(t *testing.T) {
 			steps: []step{
 				reading(at(0), torrent("a", 10, 0)),
 				reading(at(5*time.Minute), torrent("a", 110, 0)),
-				// No write is due yet.
 				reading(at(7*time.Minute), torrent("a", 160, 0)),
 				expect(allTime, allTimeRow(100)),
 				recordingOff,
@@ -353,7 +326,6 @@ func TestRecordingSwitchPostgresIntegration(t *testing.T) {
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1}, deleted("a", at(10*time.Minute), 0, 0, outside)),
 			},
 		},
-		// regression: #4085
 		{
 			name: "a delete note before the switch goes off keeps its cause",
 			steps: []step{
@@ -377,7 +349,6 @@ func TestRecordingSwitchPostgresIntegration(t *testing.T) {
 				reading(at(12*time.Minute), torrent("b", 0, 0)),
 				recordingOn,
 				reading(at(15*time.Minute), torrent("b", 0, 0)),
-				// No reading held the torrent since the restart.
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1}, transferhistory.DeleteEvent{
 					Time: at(15 * time.Minute).Truncate(time.Second), Hash: "a", Name: "Some.Show.S01E01.1080p.WEB-DL-GRP",
 					TrackerGroup: "tracker.example", Cause: outside,
@@ -439,7 +410,6 @@ func TestSetSettingsRefusesAnotherRetention(t *testing.T) {
 	require.ErrorIs(t, err, transferhistory.ErrInvalidSettings)
 }
 
-// unreadableSettings fails each read of the Statistics settings.
 type unreadableSettings struct{ *database.DB }
 
 func (u unreadableSettings) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
@@ -451,7 +421,6 @@ func (u unreadableSettings) QueryRowContext(ctx context.Context, query string, a
 	return u.DB.QueryRowContext(ctx, query, args...)
 }
 
-// regression: #4085
 func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	module := transferhistory.New(unreadableSettings{db}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
@@ -459,9 +428,6 @@ func TestShutdownReportsReadingsThatWaitForUnreadableSettings(t *testing.T) {
 	require.Error(t, module.Shutdown(t.Context()))
 }
 
-// An instance that goes offline keeps its last changes in memory. A fold
-// while it is away must not leave those changes to recreate a folded day.
-// regression: #4085
 func TestAFoldWritesTheChangesInMemoryFirstPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
@@ -469,7 +435,6 @@ func TestAFoldWritesTheChangesInMemoryFirstPostgresIntegration(t *testing.T) {
 			db := newDB(t)
 			foldWhileAway(t, db, db)
 		})
-		// The fourth write is the one before the fold. The next reading folds again.
 		t.Run("the write before the fold fails", func(t *testing.T) {
 			db := newDB(t)
 			foldWhileAway(t, &failedCommit{DB: db, fail: 4}, db)
@@ -490,9 +455,7 @@ func foldWhileAway(t *testing.T, q dbinterface.Querier, db *database.DB) {
 	}
 	record(away, at(0), 0)
 	record(away, at(5*time.Minute), 100)
-	// No write is due yet, and then the instance goes offline.
 	record(away, at(7*time.Minute), 150)
-	// Another instance starts a fold that covers day 10.
 	day101 := day10.Add(91*24*time.Hour + 10*time.Hour)
 	record(instanceID, day101, 0)
 	record(away, day101.Add(time.Hour), 150)
@@ -504,8 +467,6 @@ func foldWhileAway(t *testing.T, q dbinterface.Querier, db *database.DB) {
 	require.Equal(t, []transferhistory.TransferRow{row("tracker.example", day10, transferhistory.BucketDay, 150, 0, 0, 0)}, rows)
 }
 
-// blockedFold holds the first fold in the move of the torrent days until
-// release is called.
 type blockedFold struct {
 	*database.DB
 	hold, release func()
@@ -527,9 +488,6 @@ func (b *blockedFold) QueryContext(ctx context.Context, query string, args ...an
 	return b.DB.QueryContext(ctx, query, args...)
 }
 
-// A new Detail retention while a fold moves the days of the torrents starts
-// no fold that keeps the transfer queries waiting for that move.
-// regression: #4085
 func TestATransferQueryDoesNotWaitForTheTorrentDaysOfAnEarlierFold(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
 	q, folding := newBlockedFold(db)
@@ -537,7 +495,6 @@ func TestATransferQueryDoesNotWaitForTheTorrentDaysOfAnEarlierFold(t *testing.T)
 	t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 	t.Cleanup(q.release)
 
-	// The first reading after a start folds.
 	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: at(0), Torrents: []transferhistory.Torrent{torrent("a", 0, 0)}})
 	<-folding
 	require.NoError(t, module.SetSettings(t.Context(), transferhistory.Settings{Recording: true, DetailRetentionDays: 90}))

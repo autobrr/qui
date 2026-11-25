@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/pkg/version"
 )
 
-// stubReleaseProvider lets the version handler tests control the cached release
-// without performing a live update check.
 type stubReleaseProvider struct {
 	release *version.Release
 }

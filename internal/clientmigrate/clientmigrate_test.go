@@ -15,8 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testInfo is a 3-piece multi-file torrent: file a spans pieces 0-1, file b
-// spans pieces 1-2 (piece length 16384, total 42000 bytes)
 func testInfo() metainfo.Info {
 	return metainfo.Info{
 		Name:        "Test.Torrent.2024.1080p.WEB-TEST",
@@ -202,7 +200,6 @@ func TestTransmissionPieces(t *testing.T) {
 func TestTransmissionPiecesMultiBlockPieces(t *testing.T) {
 	t.Parallel()
 
-	// 32 KiB pieces over a 48 KiB file: piece 0 = blocks 0-1, piece 1 = block 2
 	info := metainfo.Info{
 		Name:        "Test.Torrent.2024.1080p.WEB-TEST.mkv",
 		PieceLength: 32768,
@@ -215,7 +212,6 @@ func TestTransmissionPiecesMultiBlockPieces(t *testing.T) {
 	assert.True(t, complete)
 	assert.Equal(t, "\x01\x01", pieces)
 
-	// blocks 0 and 2 present, block 1 missing: piece 0 incomplete
 	resume = TransmissionResumeFile{Progress: TransmissionResumeFileProgress{Blocks: "\xa0"}}
 	pieces, complete = transmissionPieces(&resume, &info)
 	assert.False(t, complete)
@@ -554,8 +550,6 @@ func TestFirstNonZero(t *testing.T) {
 }
 
 func TestDecodeTransmissionResumeFileStructuredPeers(t *testing.T) {
-	// newer Transmission writes peers2 as structured entries instead of a
-	// compact byte string; the importer must not fail on either form
 	for name, peers := range map[string]any{
 		"compact": "\x7f\x00\x00\x01\x1a\xe1",
 		"dict":    map[string]any{"address": "127.0.0.1", "port": 6881},
@@ -684,8 +678,6 @@ func TestCopyFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "d4:infod4:name4:testee", string(got))
 
-	// a read error mid-copy (src is a directory) must leave neither dst nor
-	// a temp file behind, or the next run would skip the torrent as imported
 	failDst := filepath.Join(dir, "fail.torrent")
 	require.Error(t, CopyFile(t.TempDir(), failDst))
 

@@ -16,9 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// Tag changes go through the full tag methods: qBittorrent 5.1 gets one
-// setTags for each tag set, older versions one addTags or removeTags for each
-// tag, and qui syncs after the edits so the list shows the new tags.
 func TestApplyTagChanges(t *testing.T) {
 	const (
 		hashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -64,7 +61,6 @@ func TestApplyTagChanges(t *testing.T) {
 			require.Equal(t, []string{"keep", "new1"}, stub.Tags(hashA))
 			require.Equal(t, []string{"new1", "new2"}, stub.Tags(hashB))
 			require.Eventually(t, func() bool { return stub.Syncs() > syncs }, 5*time.Second, 10*time.Millisecond)
-			// The list reads this cache, so the sync must put the new tags in it.
 			require.Eventually(t, func() bool {
 				cached := map[string][]string{}
 				for _, torrent := range client.SyncOwner().SnapshotUnchecked().Torrents() {

@@ -14,15 +14,12 @@ const (
 	ThemeSlotMobile  = "mobile"
 )
 
-// ThemeSettings is one stored theme selection (a theme slot).
 type ThemeSettings struct {
 	ThemeID   string `json:"themeId"`
 	Mode      string `json:"mode"`
 	Variation string `json:"variation,omitempty"`
 }
 
-// ThemeSlots holds every stored theme slot. A nil Mobile means the mobile
-// layout uses the default slot.
 type ThemeSlots struct {
 	Default *ThemeSettings `json:"default,omitempty"`
 	Mobile  *ThemeSettings `json:"mobile,omitempty"`
@@ -36,7 +33,6 @@ func NewThemeSettingsStore(db dbinterface.Querier) *ThemeSettingsStore {
 	return &ThemeSettingsStore{db: db}
 }
 
-// GetAll returns every stored theme slot.
 func (s *ThemeSettingsStore) GetAll(ctx context.Context) (ThemeSlots, error) {
 	var slots ThemeSlots
 
@@ -63,7 +59,6 @@ func (s *ThemeSettingsStore) GetAll(ctx context.Context) (ThemeSlots, error) {
 	return slots, rows.Err()
 }
 
-// Set stores the theme selection of one slot, replacing any previous one.
 func (s *ThemeSettingsStore) Set(ctx context.Context, slot string, ts *ThemeSettings) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO theme_settings (slot, theme_id, mode, variation)
@@ -77,7 +72,6 @@ func (s *ThemeSettingsStore) Set(ctx context.Context, slot string, ts *ThemeSett
 	return err
 }
 
-// Delete removes one slot.
 func (s *ThemeSettingsStore) Delete(ctx context.Context, slot string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM theme_settings WHERE slot = ?`, slot)
 	return err

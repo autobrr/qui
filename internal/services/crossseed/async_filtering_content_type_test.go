@@ -25,9 +25,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// newCachedFilteringSearchService builds a Service with one movie indexer and
-// a filtering cache. The returned counter counts the search requests that the
-// indexer gets.
 func newCachedFilteringSearchService(t *testing.T, filterCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]) (*Service, *atomic.Int32) {
 	t.Helper()
 
@@ -94,9 +91,6 @@ const (
 
 var cachedFilteringSourceHash = strings.Repeat("a", 40)
 
-// The Search scope must not honor a cached filtering run computed for a
-// different content type; category mapping rules can change the type between
-// runs (#2313).
 func TestCollectSearchScopeIgnoresCachedFilteringStateForDifferentContentType(t *testing.T) {
 	t.Parallel()
 
@@ -105,10 +99,7 @@ func TestCollectSearchScopeIgnoresCachedFilteringStateForDifferentContentType(t 
 		cachedContentType string
 		wantIndexerIDs    []int
 	}{
-		// Stale audiobook run cached an empty indexer set; a movie search must
-		// not reuse it and must ask the indexer.
 		{name: "mismatch refilters", cachedContentType: "audiobook", wantIndexerIDs: []int{cachedFilteringIndexerID}},
-		// Matching type with the same empty completed set is honored.
 		{name: "match reuses", cachedContentType: "movie"},
 	}
 
@@ -133,8 +124,6 @@ func TestCollectSearchScopeIgnoresCachedFilteringStateForDifferentContentType(t 
 	}
 }
 
-// The dialog waits for a content filter that is still running and asks no
-// indexer that the filter removes.
 func TestSearchTorrentMatchesWaitsForContentFilter(t *testing.T) {
 	t.Parallel()
 
@@ -145,8 +134,6 @@ func TestSearchTorrentMatchesWaitsForContentFilter(t *testing.T) {
 	}
 	filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 	filterCache.Set(asyncFilteringCacheKey(cachedFilteringInstanceID, cachedFilteringSourceHash), running, ttlcache.DefaultTTL)
-	// The indexer server stays outside the bubble: its accept loop would stop
-	// the fake clock.
 	service, searchRequests := newCachedFilteringSearchService(t, filterCache)
 
 	synctest.Test(t, func(t *testing.T) {
@@ -167,8 +154,6 @@ func TestSearchTorrentMatchesWaitsForContentFilter(t *testing.T) {
 	})
 }
 
-// A background worker whose cache entry was replaced by a newer run must not
-// write itself back into the cache when it finishes (#2313).
 func TestFinishedWorkerCannotRestoreReplacedCacheEntry(t *testing.T) {
 	t.Parallel()
 
@@ -192,8 +177,6 @@ func TestFinishedWorkerCannotRestoreReplacedCacheEntry(t *testing.T) {
 	}
 	svc.asyncFilteringCache.Set(key, stateB, ttlcache.DefaultTTL)
 
-	// Worker for the replaced run A completes (empty indexer list short-circuits
-	// content filtering, no other service dependencies needed).
 	svc.performAsyncContentFiltering(context.Background(), instanceID, hash, nil, nil, stateA)
 
 	snapshot := stateA.Clone()
@@ -204,8 +187,6 @@ func TestFinishedWorkerCannotRestoreReplacedCacheEntry(t *testing.T) {
 	require.Same(t, stateB, cached, "finished worker must not clobber the newer cache entry")
 }
 
-// failingListIndexerStore errors on List, the call AnalyzeTorrentForSearchAsync
-// uses for indexer discovery.
 type failingListIndexerStore struct {
 	failingEnabledIndexerStore
 }
@@ -214,8 +195,6 @@ func (s *failingListIndexerStore) List(context.Context) ([]*models.TorznabIndexe
 	return nil, s.err
 }
 
-// A failed indexer lookup must not be cached: it would complete as an empty
-// run and suppress searches for the whole TTL.
 func TestAnalyzeAsyncDoesNotCacheFailedIndexerDiscovery(t *testing.T) {
 	t.Parallel()
 
@@ -254,8 +233,6 @@ func TestAnalyzeAsyncDoesNotCacheFailedIndexerDiscovery(t *testing.T) {
 	require.NotSame(t, result.FilteringState, cached, "failed discovery run must not enter the cache")
 }
 
-// AnalyzeTorrentForSearchAsync only reuses a completed cached run for the same
-// content type (#2313).
 func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 	t.Parallel()
 
@@ -299,7 +276,6 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 	require.NotSame(t, cachedState, result.FilteringState, "different content type must not reuse the cached run")
 	require.NotEqual(t, []int{7}, result.TorrentInfo.FilteredIndexers)
 
-	// no indexers available here (nil jackett)
 	cached, found := svc.asyncFilteringCache.Get(asyncFilteringCacheKey(instanceID, hash))
 	require.True(t, found)
 	require.Same(t, result.FilteringState, cached, "fresh analysis must replace the stale differently typed cache entry")

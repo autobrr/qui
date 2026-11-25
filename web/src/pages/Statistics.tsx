@@ -62,7 +62,6 @@ import { useTranslation } from "react-i18next"
 interface PeriodState {
   choice: PeriodChoice
   period: StatisticsPeriod
-  // Set when the page moved a preset period forward, so that the old numbers stay until the new ones load.
   moved: boolean
 }
 
@@ -72,7 +71,6 @@ interface LiveGroups {
   error?: Error
 }
 
-/** Joins the live numbers of the instances that loaded once no query is pending, so that one failed instance does not hide the others. */
 function combineLiveGroups(results: UseQueryResult<LiveTrackerGroup[]>[]): LiveGroups {
   return {
     groups: results.every(result => !result.isPending) ? results.map(result => result.data ?? []) : undefined,
@@ -87,7 +85,6 @@ interface PageRows {
   allTime?: TransferHistoryRow[][]
   compared?: TransferHistoryRow[][]
   before?: TransferHistoryRow[][]
-  // The rows of the table when it does not group by Tracker group.
   grouped?: TransferHistoryRow[][]
   torrents?: TopTorrent[]
   library?: TransferHistoryLibraryRow[][]
@@ -105,11 +102,6 @@ function presetState(preset: PeriodPreset): PeriodState {
 
 const statisticsRoute = getRouteApi("/_authenticated/statistics")
 
-/**
- * Opens on the period of the address, saves it, and removes it from the address, so that a reload opens on the saved
- * period. The page waits until the first read of the saved settings ends (see useClientSettingsSettled), and saves the
- * address period after it, so that the read does not replace that period.
- */
 export function StatisticsRoute() {
   const { t } = useTranslation("statistics")
   const { period } = statisticsRoute.useSearch()
@@ -141,7 +133,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   const { preferences } = usePersistedDateTimePreferences()
   const [savedPreset, savePreset] = useStatisticsPeriod()
   const [periodState, setPeriodState] = useState<PeriodState>(() => presetState(initialPreset ?? savedPreset))
-  // A preset saved after the page opened, by the first read of the server or by another tab or device, opens here too, except over a custom range.
   const [followedPreset, setFollowedPreset] = useState(savedPreset)
   if (followedPreset !== savedPreset) {
     setFollowedPreset(savedPreset)
@@ -173,7 +164,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   const [grouping, setGrouping] = useState<TableGrouping>("tracker")
   const { period } = periodState
 
-  // An instance that starts recording while the page is open joins at the next move of the period.
   const statusQuery = useTransferHistoryStatus()
   const instancesQuery = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances() })
   const statuses = useMemo(() => statusQuery.data ?? [], [statusQuery.data])
@@ -198,7 +188,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   const top = useTopTorrents(selected, period, TOP_TORRENTS)
   const library = useTransferHistoryLibrary(selected, ready ? { from: period.from, to: period.to } : undefined)
 
-  // The live numbers describe the torrents in qBittorrent now, so a removed or disabled instance has none.
   const activeIds = useMemo(() => new Set((instancesQuery.data ?? []).filter(instance => instance.isActive).map(instance => instance.id)), [instancesQuery.data])
   const liveIds = useMemo(() => selected.map(status => status.instanceId).filter(id => activeIds.has(id)), [activeIds, selected])
   const liveQuery = (instanceId: number) => ({ queryKey: ["tracker-groups", instanceId], queryFn: () => api.getTrackerGroups(instanceId) })
@@ -225,9 +214,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
     }
   }
 
-  // A new period gives new query keys, so the queries hold no previous data to show while they load. After a move,
-  // the page shows the rows of the last complete load of the same choice and selection until each new query loaded,
-  // so that the numbers never mix two periods or two selections.
   const series = `${periodState.choice}:${selected.map(instance => instance.instanceId).join(",")}:${grouping}`
   const complete = ready && chart.rows !== undefined && (period.from !== undefined || allTime.rows !== undefined) && (!comparable || (compared.rows !== undefined && before.rows !== undefined)) && (byTracker || grouped.rows !== undefined) && top.torrents !== undefined && library.rows !== undefined
   const [lastComplete, setLastComplete] = useState<PageRows>()
@@ -245,7 +231,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   )
   const previousTotals = useMemo(() => shown.before && sumBytes(shown.before.flat(), false), [shown.before])
   const comparedTotals = useMemo(() => shown.compared && sumBytes(shown.compared.flat(), false), [shown.compared])
-  // The year view shows upload only, and the table takes its series colors from it.
   const yearView = showsYearView(shown.period, since)
   const chartMetric: Metric = yearView ? "uploaded" : metric
   const groups = useMemo(() => topGroups(shown.chart?.flat() ?? [], chartMetric), [shown.chart, chartMetric])
@@ -257,7 +242,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   const libraryPoints = useMemo(
     () => shown.library && buildLibraryPoints(shown.library, shown.period, selected.map(status => ({
       firstRecordedAt: status.firstRecordedAt,
-      // Until the instances load, each instance counts as recorded, so that a sum never leaves one out.
       recording: instancesQuery.data === undefined || activeIds.has(status.instanceId),
     }))),
     [shown.library, shown.period, selected, activeIds, instancesQuery.data]
@@ -267,7 +251,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   const growthError = statusQuery.error ?? library.error
   const eventDays = useMemo(() => shown.library && (buildEventDays(shown.library, shown.period, since) ?? []), [shown.library, shown.period, since])
 
-  // The tracker rows of the table add up the rows of the chart, so that they add up to the numbers at the top.
   const tableRows = useMemo(() => {
     const rows = byTracker ? shown.period.from ? shown.chart : shown.allTime : shown.grouped
     return rows && groupTotals(rows, !shown.period.from, byTracker ? live.groups : undefined)
@@ -289,7 +272,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
   }, [displayName, incognitoMode, t])
 
   const formatDay = (date: Date) => date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
-  // A phone leaves out the year of this year, so that the range leaves room for the instances.
   const formatRangeDay = (date: Date) => {
     if (!narrow) return formatCalendarDay(date, preferences)
     return date.getFullYear() === new Date().getFullYear() ? date.toLocaleDateString(locale, { day: "numeric", month: "short" }) : formatDay(date)
@@ -322,7 +304,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
       {partial && <Badge variant="outline" className="py-0 font-normal text-muted-foreground">{t("partial")}</Badge>}
     </span>
   )
-  // The period choice and the instance selection. A new one starts the lists of deletes and of top torrents again at their first rows.
   const listScope = `${periodState.choice === "custom" ? `${period.from?.getTime()}-${period.to.getTime()}` : periodState.choice}:${selectedIds.join(",")}`
 
   return (
@@ -346,7 +327,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
       <div className="@container space-y-4 sm:space-y-6">
         {error && <p className="text-sm text-destructive">{t("errors.load", { message: error.message })}</p>}
 
-        {/* A phone shows the five numbers in two columns of one card, the last across both, and a phone turned sideways in one row. Six tracks give rows of 3 and 2 without an empty cell. */}
         <div className="grid grid-cols-2 max-sm:rounded-xl max-sm:border max-sm:bg-card max-sm:shadow-sm sm:grid-cols-6 sm:gap-4 xl:grid-cols-5 sideways:grid-cols-5 sideways:gap-2 max-sm:sideways:gap-0">
           <Tile label={t("tiles.uploaded")} value={totals && formatBytes(totals.uploaded)} hint={change("uploaded")} />
           <Tile label={t("tiles.downloaded")} value={totals && formatBytes(totals.downloaded)} hint={change("downloaded")} />
@@ -397,7 +377,6 @@ export function Statistics({ initialPreset }: { initialPreset?: PeriodPreset }) 
           </CardContent>
         </Card>
 
-        {/* The two tables sit side by side when each half has room for all columns of the table by Tracker group. */}
         <div className="grid gap-4 sm:gap-6 @[118rem]:grid-cols-2">
           <Card className="gap-0 overflow-hidden pt-4 pb-4 sm:pt-6">
             <GroupTable

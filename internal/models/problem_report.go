@@ -17,21 +17,18 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// Report statuses of a Sent report.
 const (
 	ProblemReportReceived = "received"
 	ProblemReportIssue    = "issue"
 	ProblemReportClosed   = "closed"
 )
 
-// ProblemReportSignIn is the sign-in to brrbin that a signed-in Sender sends with.
 type ProblemReportSignIn struct {
 	Token    string
 	Provider string
 	Name     string
 }
 
-// SentProblemReport is one row of Sent reports.
 type SentProblemReport struct {
 	BrrbinID        string
 	SubmissionID    string
@@ -45,8 +42,6 @@ type SentProblemReport struct {
 	StatusChangedAt time.Time
 }
 
-// ProblemReportStore keeps the Install key, the sign-in to brrbin and Sent
-// reports. It encrypts the key and the token like instance passwords.
 type ProblemReportStore struct {
 	db     dbinterface.Querier
 	cipher *CredentialCipher
@@ -60,9 +55,6 @@ func NewProblemReportStore(db dbinterface.Querier, encryptionKey []byte) (*Probl
 	return &ProblemReportStore{db: db, cipher: credentialCipher}, nil
 }
 
-// InstallKey returns the Install key. The first call makes it: 32 random
-// bytes in base64url. A key that qui cannot decrypt, after a change of the
-// session secret, is replaced by a new one.
 func (s *ProblemReportStore) InstallKey(ctx context.Context) (string, error) {
 	var encrypted string
 	err := s.db.QueryRowContext(ctx, `SELECT install_key_encrypted FROM problem_report_install WHERE id = 1`).Scan(&encrypted)
@@ -82,8 +74,6 @@ func (s *ProblemReportStore) InstallKey(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Two Sends can find the same old key; only the first replaces it, and
-	// the other reads the winner's key.
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE problem_report_install
 		SET install_key_encrypted = ?, sign_in_token_encrypted = NULL, sign_in_provider = NULL, sign_in_name = NULL
@@ -104,7 +94,6 @@ func (s *ProblemReportStore) createInstallKey(ctx context.Context) (string, erro
 	if err != nil {
 		return "", err
 	}
-	// Two first Sends can race; the row that lands first wins.
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO problem_report_install (id, install_key_encrypted) VALUES (1, ?)
 		ON CONFLICT (id) DO NOTHING`, encrypted); err != nil {
@@ -126,8 +115,6 @@ func (s *ProblemReportStore) newInstallKey() (key, encrypted string, err error) 
 	return key, encrypted, nil
 }
 
-// SignIn returns the stored sign-in, or nil when the Sender is anonymous. A
-// token that qui cannot decrypt is dropped, and the Sender is anonymous.
 func (s *ProblemReportStore) SignIn(ctx context.Context) (*ProblemReportSignIn, error) {
 	var token, provider, name sql.NullString
 	err := s.db.QueryRowContext(ctx, `
@@ -148,7 +135,6 @@ func (s *ProblemReportStore) SignIn(ctx context.Context) (*ProblemReportSignIn, 
 	return &ProblemReportSignIn{Token: plain, Provider: provider.String, Name: name.String}, nil
 }
 
-// SaveSignIn stores a sign-in. It makes the Install key first when none exists.
 func (s *ProblemReportStore) SaveSignIn(ctx context.Context, signIn ProblemReportSignIn) error {
 	if _, err := s.InstallKey(ctx); err != nil {
 		return err
@@ -166,7 +152,6 @@ func (s *ProblemReportStore) SaveSignIn(ctx context.Context, signIn ProblemRepor
 	return nil
 }
 
-// ClearSignIn drops the sign-in, so the Sender is anonymous.
 func (s *ProblemReportStore) ClearSignIn(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE problem_report_install
@@ -177,8 +162,6 @@ func (s *ProblemReportStore) ClearSignIn(ctx context.Context) error {
 	return nil
 }
 
-// AddSentReport stores a Sent reports row. A row with the same brrbin id or
-// submission id already stands for the report, so it stores nothing then.
 func (s *ProblemReportStore) AddSentReport(ctx context.Context, report SentProblemReport) error {
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO problem_reports (
@@ -194,7 +177,6 @@ func (s *ProblemReportStore) AddSentReport(ctx context.Context, report SentProbl
 	return nil
 }
 
-// SentReports returns every Sent reports row, the newest first.
 func (s *ProblemReportStore) SentReports(ctx context.Context) ([]SentProblemReport, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT brrbin_id, submission_id, title, sent_at, status,
@@ -232,8 +214,6 @@ func (s *ProblemReportStore) SentReports(ctx context.Context) ([]SentProblemRepo
 	return reports, rows.Err()
 }
 
-// UpdateSentReportStatus stores the Report status of the row with the brrbin
-// id of report, and the time it changed.
 func (s *ProblemReportStore) UpdateSentReportStatus(ctx context.Context, report SentProblemReport) error {
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE problem_reports
@@ -247,7 +227,6 @@ func (s *ProblemReportStore) UpdateSentReportStatus(ctx context.Context, report 
 	return nil
 }
 
-// HasSentReport reports whether a Sent reports row has the brrbin id.
 func (s *ProblemReportStore) HasSentReport(ctx context.Context, brrbinID string) (bool, error) {
 	var found int
 	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM problem_reports WHERE brrbin_id = ?`, brrbinID).Scan(&found)
@@ -260,7 +239,6 @@ func (s *ProblemReportStore) HasSentReport(ctx context.Context, brrbinID string)
 	return true, nil
 }
 
-// DeleteSentReport removes the Sent reports row with the brrbin id.
 func (s *ProblemReportStore) DeleteSentReport(ctx context.Context, brrbinID string) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM problem_reports WHERE brrbin_id = ?`, brrbinID); err != nil {
 		return fmt.Errorf("delete sent report: %w", err)

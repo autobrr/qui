@@ -16,7 +16,6 @@ import { DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu"
 import type { TorrentTable, TorrentTableColumn } from "./tanstackTableFeatures"
 
 function SortableColumnItem({ column }: { column: TorrentTableColumn }) {
-  // The select column is pinned first; header drag disables it the same way.
   const disabled = column.id === "select"
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: column.id,
@@ -37,11 +36,6 @@ function SortableColumnItem({ column }: { column: TorrentTableColumn }) {
         alignItems: "center",
       }}
     >
-      {/*
-       * The wrapper div stops pointer-event bubbling after dnd-kit's listeners
-       * have fired on the button, preventing Radix's DismissableLayer from
-       * treating the drag-start as a "click outside" and closing the dropdown.
-       */}
       <div onPointerDown={(e) => e.stopPropagation()}>
         <button
           className="ml-1 flex-shrink-0 cursor-grab p-1 text-muted-foreground hover:text-foreground active:cursor-grabbing disabled:invisible"
@@ -65,7 +59,6 @@ function SortableColumnItem({ column }: { column: TorrentTableColumn }) {
   )
 }
 
-// sensors/onDragEnd are shared with the header drag so both paths use the same thresholds and reorder math.
 interface ColumnOrderMenuProps extends Pick<ColumnDnd, "sensors" | "onDragEnd"> {
   table: TorrentTable
   columnOrder: ColumnOrderState
@@ -74,7 +67,6 @@ interface ColumnOrderMenuProps extends Pick<ColumnDnd, "sensors" | "onDragEnd"> 
 export function ColumnOrderMenu({ table, columnOrder, sensors, onDragEnd }: ColumnOrderMenuProps) {
   const hideableColumns = table.getAllColumns().filter((col) => col.getCanHide())
 
-  // Preserve the persisted column order within the menu list.
   const sorted = [...hideableColumns].sort((a, b) => {
     const ai = columnOrder.indexOf(a.id)
     const bi = columnOrder.indexOf(b.id)

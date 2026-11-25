@@ -23,19 +23,10 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// Bracket-anime pack names parse as non-TV; the season structure lives only in
-// the episode file names. Trackers retitle listings but keep the original
-// info.name, so apply always compares the bracket name against an identical
-// local name: the release prefilter passes trivially, then match typing fails
-// because the target parses as a movie while the candidate files parse as
-// episodes. Field report: 19 packs found by search, all rejected on add with
-// "No matching torrents found with required files".
 var bracketAnimePackFiles = []struct {
 	name string
 	size int64
 }{
-	// Episodes must dominate the extras: content-type detection keys off the
-	// largest file, mirroring real packs (multi-GB episodes vs small NC clips).
 	{"Extras/[smol] Sakura Trick - NCED 1 - Kiss (and) Love [BD 1080p HEVC Opus] [8CD26C4D].mkv", 300},
 	{"Extras/[smol] Sakura Trick - NCED 2 - Sakura Sweet Kiss [BD 1080p HEVC Opus] [24D89805].mkv", 280},
 	{"Extras/[smol] Sakura Trick - NCOP - Won Chu KissMe! [BD 1080p HEVC Opus] [4FB63779].mkv", 260},
@@ -66,9 +57,6 @@ func bracketAnimePackTorrentFiles() qbt.TorrentFiles {
 	return files
 }
 
-// createSizedTestTorrent builds torrent bytes whose files carry the exact sizes
-// above, so the metainfo file list and the fake qbit candidate agree byte for
-// byte the way a real cross-seed pairing does.
 func createSizedTestTorrent(t *testing.T, name string) []byte {
 	t.Helper()
 
@@ -176,9 +164,6 @@ func TestReadApplyTargetPreservesExplicitRawGroupWhenFilesSupplyTVStructure(t *t
 	require.Equal(t, "KIRI", view.tagOrigin.Group, "the selected-file group remains available as veto evidence")
 }
 
-// applyFakeSyncManager extends fakeSyncManager just far enough for the add
-// stage: matching is the regression under test, the qbit add only has to not
-// error.
 type applyFakeSyncManager struct {
 	*fakeSyncManager
 }
@@ -187,7 +172,6 @@ func (f *applyFakeSyncManager) GetTorrentProperties(context.Context, int, string
 	return &qbt.TorrentProperties{SavePath: "/downloads"}, nil
 }
 
-// AddTorrent lists the files of the added torrent, as qBittorrent does.
 func (f *applyFakeSyncManager) AddTorrent(_ context.Context, _ int, data []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
 	meta, err := ParseTorrentMetadataWithInfo(data)
 	if err != nil {
@@ -293,9 +277,7 @@ func TestCrossSeedDoesNotReplaceExplicitTVGroupFromFiles(t *testing.T) {
 				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs: []int{instanceID},
 				SearchDecision: searchDecisionProvenance{
-					Class: tt.decisionClass,
-					// Search stored a strict verdict for a listing that names the
-					// local group.
+					Class:               tt.decisionClass,
 					SearchCandidateName: existingName,
 					SourceInstanceID:    instanceID,
 					SourceHash:          existingHash,
@@ -563,8 +545,6 @@ const (
 	seasonFolderPack = "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"
 )
 
-// seasonFolderEpisodes are the files of a pack whose info.name is only its
-// season folder. format takes the episode number.
 func seasonFolderEpisodes(format string) []string {
 	return []string{
 		fmt.Sprintf(format, 1),
@@ -591,8 +571,6 @@ func TestReadReleaseReadsSeasonFolderNameFromFiles(t *testing.T) {
 	require.Empty(t, parsed.Title, "a season folder name must parse without a title for this test to mean anything")
 	require.Equal(t, 2, parsed.Series)
 
-	// Apply without a search replay drops the files of a TV name, so the borrow
-	// runs before the drop.
 	for _, tt := range []struct {
 		name string
 		read func(qbt.TorrentFiles) namedRelease
@@ -630,8 +608,6 @@ func TestReadReleaseReadsSeasonFolderNameFromFiles(t *testing.T) {
 	}
 }
 
-// The tracker lists the pack under its full title, but the .torrent keeps the
-// season folder as its info.name.
 func TestCrossSeedAppliesSeasonFolderTorrent(t *testing.T) {
 	const (
 		instanceID = 1
@@ -701,8 +677,6 @@ func TestCrossSeedAppliesSeasonFolderTorrent(t *testing.T) {
 	}
 }
 
-// Only the "II" carries the season of these packs. The downloaded torrent keeps
-// its original root folder; the local copy can sit in a renamed "Season 02" one.
 func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 	const (
 		instanceID = 1
@@ -733,7 +707,6 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 			},
 		},
 		{
-			// The listing name has no season, but the download reads one from its files.
 			name:      "listing named as the download",
 			localRoot: "Season 02 [BD]",
 			decision:  searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: name},

@@ -18,7 +18,5 @@ func publishTemplate(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	// Replacing a winner can make a concurrent reader fail with a sharing
-	// violation. Flags 0 atomically publishes only when dst does not exist.
 	return windows.MoveFileEx(from, to, 0)
 }

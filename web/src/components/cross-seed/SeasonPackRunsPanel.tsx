@@ -99,7 +99,6 @@ export function SeasonPackRunsPanel({
   const { t } = useTranslation("crossseed")
   const { instances } = useInstances()
   const [open, setOpen] = useState(false)
-  // An instance that no longer exists keeps its id.
   const instanceName = (id: number) => instances?.find(instance => instance.id === id)?.name ?? String(id)
   const isRouted = (run: SeasonPackRun) =>
     run.instanceId !== undefined && run.addedInstanceId !== undefined && run.addedInstanceId !== run.instanceId
@@ -121,7 +120,6 @@ export function SeasonPackRunsPanel({
     return query ? runs.filter(run => run.torrentName.toLowerCase().includes(query)) : runs
   }, [runs, search])
 
-  // The empty-state links count only runs that match the name search, so a link never opens an empty list.
   const searchedCounts = useMemo(() => countByStatusFilter(searchedRuns), [searchedRuns])
 
   const filteredRuns = useMemo(
@@ -242,7 +240,6 @@ export function SeasonPackRunsPanel({
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:w-80 md:grid-cols-3">
                           <span>{t("seasonPackRuns.coverage")} <span className="font-medium text-foreground">{formatSeasonPackCoverage(run)}</span></span>
                           <span>{t("seasonPackRuns.episodes")} <span className="font-medium text-foreground">{run.matchedEpisodes}/{run.totalEpisodes || "?"}</span></span>
-                          {/* A routed label is long, so it takes the full row and the column keeps its width. */}
                           <span className={isRouted(run) ? "col-span-2 md:col-span-3" : undefined}>{t("seasonPackRuns.instance")} <span className="font-medium text-foreground">{instanceLabel(run)}</span></span>
                           <span>{t("seasonPackRuns.mode")} <span className="font-medium text-foreground">{run.linkMode || "—"}</span></span>
                           <span className="col-span-2 md:col-span-2">{formatDateValue(run.createdAt)}</span>

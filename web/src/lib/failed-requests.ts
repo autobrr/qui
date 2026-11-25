@@ -3,12 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/** A request of the API client that failed in this browser session. */
 export interface FailedRequest {
   method: string
-  /** The path without the query. */
   path: string
-  /** Missing when the request got no answer. */
   status?: number
   error: string
   time: string
@@ -17,7 +14,6 @@ export interface FailedRequest {
 const limit = 20
 let entries: readonly FailedRequest[] = []
 
-/** Keeps the request in memory only, and drops the oldest past the last 20. */
 export function recordFailedRequest(
   url: string,
   method: string | undefined,
@@ -35,7 +31,6 @@ export function recordFailedRequest(
   entries = [...entries.slice(1 - limit), entry]
 }
 
-/** The last 20 failed requests of this browser session, oldest first. */
 export function failedRequests(): readonly FailedRequest[] {
   return entries
 }

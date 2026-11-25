@@ -15,8 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// reorderWalkBackend replays the local walk in another order that still emits
-// each directory before its children, which is all a remote walk guarantees.
 type reorderWalkBackend struct {
 	fsops.Backend
 	reorder func([]fsops.WalkEntry) []fsops.WalkEntry
@@ -40,7 +38,6 @@ func (b *reorderWalkBackend) WalkDir(ctx context.Context, root string, opts fsop
 	return out, nil
 }
 
-// reverseSiblings is a depth-first walk with every directory listed backwards.
 func reverseSiblings(entries []fsops.WalkEntry) []fsops.WalkEntry {
 	out := slices.Clone(entries)
 	slices.SortFunc(out, func(a, b fsops.WalkEntry) int {
@@ -64,8 +61,6 @@ func reverseSiblings(entries []fsops.WalkEntry) []fsops.WalkEntry {
 	return out
 }
 
-// randomParentFirst picks the next entry at random among those whose parent
-// has already been emitted, so siblings across directories interleave.
 func randomParentFirst(seed uint64) func([]fsops.WalkEntry) []fsops.WalkEntry {
 	return func(entries []fsops.WalkEntry) []fsops.WalkEntry {
 		rng := rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15))
@@ -102,8 +97,7 @@ type orderTestFile struct {
 }
 
 type orderTestRoot struct {
-	files []orderTestFile
-	// orphans and dirs are what every walk order reports, relative to the root.
+	files   []orderTestFile
 	orphans []string
 	dirs    []string
 }
@@ -112,15 +106,11 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 	roots := []orderTestRoot{
 		{
 			files: []orderTestFile{
-				// Each partly seeded disc below has a walk-order shape that changed the
-				// result before #3008. Its extras must be reported in every walk order.
-				// Here the first disc file in walk order is an orphan.
 				{rel: "Partial/BDMV/CLIPINF/00001.clpi"},
 				{rel: "Partial/BDMV/PLAYLIST/00001.mpls"},
 				{rel: "Partial/BDMV/STREAM/00001.m2ts", inUse: true},
 				{rel: "Partial/Season 1/e01.mkv"},
 				{rel: "Partial/extra/deep/x/y.nfo"},
-				// The first disc file in walk order is the seeded one.
 				{rel: "InUseFirst/BDMV/CLIPINF/00001.clpi", inUse: true},
 				{rel: "InUseFirst/BDMV/STREAM/00001.m2ts"},
 				{rel: "InUseFirst/extra/y.nfo"},
@@ -130,20 +120,16 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 				{rel: "Orphaned/BDMV/index.bdmv"},
 				{rel: "Orphaned/BDMV/STREAM/00000.m2ts"},
 				{rel: "Orphaned/extra/y.nfo"},
-				// A second disc nested in the extras of a partly seeded one.
 				{rel: "Nested/BDMV/STREAM/00000.m2ts"},
 				{rel: "Nested/BDMV/STREAM/00001.m2ts", inUse: true},
 				{rel: "Nested/extra/Disc2/VIDEO_TS/VTS_01_1.VOB"},
 				{rel: "Nested/extra/Disc2/info.nfo"},
-				// A lexical walk visits "AUX" before "AUX.d", but "AUX.d/" sorts first as a string.
 				{rel: "Segments/BDMV/AUX/a.bin", inUse: true},
 				{rel: "Segments/BDMV/AUX.d/b.bin"},
 				{rel: "Segments/extra.nfo"},
-				// The mirror case, with the orphan in "AUX".
 				{rel: "Mirror/BDMV/AUX/a.bin"},
 				{rel: "Mirror/BDMV/AUX.d/b.bin", inUse: true},
 				{rel: "Mirror/extra.nfo"},
-				// Orphan and in-use disc files alternate in walk order.
 				{rel: "Interleaved/BDMV/CLIPINF/a.clpi"},
 				{rel: "Interleaved/BDMV/PLAYLIST/b.mpls", inUse: true},
 				{rel: "Interleaved/BDMV/STREAM/c.m2ts"},
@@ -152,7 +138,6 @@ func TestWalkScanRoot_DiscUnitsIgnoreWalkOrder(t *testing.T) {
 				{rel: "Sandwich/BDMV/PLAYLIST/b.mpls"},
 				{rel: "Sandwich/BDMV/STREAM/c.m2ts", inUse: true},
 				{rel: "Sandwich/extra/y.nfo"},
-				// One name is a prefix of the other.
 				{rel: "Prefix/BDMV/STREAM/00001", inUse: true},
 				{rel: "Prefix/BDMV/STREAM/00001.m2ts"},
 				{rel: "Prefix/extra.nfo"},

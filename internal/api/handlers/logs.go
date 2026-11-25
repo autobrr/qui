@@ -26,13 +26,11 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// LogsHandler handles log settings and streaming endpoints.
 type LogsHandler struct {
 	appConfig *config.AppConfig
 	shutdown  <-chan struct{}
 }
 
-// NewLogsHandler creates a new LogsHandler. The log stream ends when shutdown closes.
 func NewLogsHandler(appConfig *config.AppConfig, shutdown <-chan struct{}) *LogsHandler {
 	return &LogsHandler{
 		appConfig: appConfig,
@@ -40,7 +38,6 @@ func NewLogsHandler(appConfig *config.AppConfig, shutdown <-chan struct{}) *Logs
 	}
 }
 
-// Routes registers log settings and file routes; the server groups log streaming with the other SSE routes.
 func (h *LogsHandler) Routes(r chi.Router) {
 	logs := middleware.Permissions(models.AreaLogs)
 	r.With(logs.Read).Get("/log-settings", h.GetLogSettings)
@@ -49,28 +46,20 @@ func (h *LogsHandler) Routes(r chi.Router) {
 	r.With(logs.Read).Get("/logs/files/{filename}", h.DownloadLogFile)
 }
 
-// LogFileEntry describes a log file available for download.
 type LogFileEntry struct {
 	Name      string    `json:"name"`
 	SizeBytes int64     `json:"sizeBytes"`
 	ModTime   time.Time `json:"modTime"`
 }
 
-// rotationTimestampRegex matches lumberjack's backup timestamp
-// (2006-01-02T15-04-05.000).
 var rotationTimestampRegex = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}$`)
 
-// isQuiLogFile reports whether name is the configured log file or a lumberjack
-// rotation of it (base-{timestamp}{ext}). Anything else in the directory —
-// including .log files from other services — is not ours to serve.
 func isQuiLogFile(name, base string) bool {
 	if name == base {
 		return true
 	}
 	ext := filepath.Ext(base)
 	prefix := strings.TrimSuffix(base, ext) + "-"
-	// Only a rotation carries lumberjack's ".gz": the live file returned above is
-	// never compressed, so trimming here cannot widen what the live name matches.
 	name = strings.TrimSuffix(name, ".gz")
 	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ext) {
 		return false
@@ -78,9 +67,6 @@ func isQuiLogFile(name, base string) bool {
 	return rotationTimestampRegex.MatchString(strings.TrimSuffix(strings.TrimPrefix(name, prefix), ext))
 }
 
-// listLogFiles returns the active and rotated log files for the configured
-// log path. Returns an empty slice when file logging is not configured or
-// the directory does not exist.
 func (h *LogsHandler) listLogFiles() []LogFileEntry {
 	files := make([]LogFileEntry, 0)
 
@@ -96,8 +82,6 @@ func (h *LogsHandler) listLogFiles() []LogFileEntry {
 
 	base := filepath.Base(logPath)
 	for _, entry := range entries {
-		// Reject symlinks: a link named like a log file must not let the
-		// download endpoint serve a target outside the log directory.
 		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || !isQuiLogFile(entry.Name(), base) {
 			continue
 		}
@@ -115,18 +99,13 @@ func (h *LogsHandler) listLogFiles() []LogFileEntry {
 	return files
 }
 
-// ListLogFiles returns the log files available for download.
 func (h *LogsHandler) ListLogFiles(w http.ResponseWriter, _ *http.Request) {
 	RespondJSON(w, http.StatusOK, h.listLogFiles())
 }
 
-// DownloadLogFile serves a single log file from the configured log directory.
 func (h *LogsHandler) DownloadLogFile(w http.ResponseWriter, r *http.Request) {
 	filename := chi.URLParam(r, "filename")
 
-	// Traversal guard by construction: the requested name must exactly match
-	// a directory entry from the listing, so client input is never joined
-	// into a path unless it names one of qui's own log files.
 	found := false
 	for _, entry := range h.listLogFiles() {
 		if entry.Name == filename {
@@ -170,7 +149,6 @@ func (h *LogsHandler) DownloadLogFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, filename, info.ModTime(), file)
 }
 
-// GetLogSettings returns the current log settings.
 func (h *LogsHandler) GetLogSettings(w http.ResponseWriter, r *http.Request) {
 	settings := h.appConfig.GetLogSettings()
 
@@ -180,7 +158,6 @@ func (h *LogsHandler) GetLogSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// UpdateLogSettings updates the log settings.
 func (h *LogsHandler) UpdateLogSettings(w http.ResponseWriter, r *http.Request) {
 	var update config.LogSettingsUpdate
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
@@ -195,7 +172,6 @@ func (h *LogsHandler) UpdateLogSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Validate log level if provided
 	if update.Level != nil {
 		validLevels := map[string]bool{
 			"trace": true, "debug": true, "info": true, "warn": true, "error": true,
@@ -207,13 +183,11 @@ func (h *LogsHandler) UpdateLogSettings(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Validate maxSize if provided
 	if update.MaxSize != nil && *update.MaxSize < 1 {
 		http.Error(w, "maxSize must be at least 1 MB", http.StatusBadRequest)
 		return
 	}
 
-	// Validate maxBackups if provided
 	if update.MaxBackups != nil && *update.MaxBackups < 0 {
 		http.Error(w, "maxBackups cannot be negative", http.StatusBadRequest)
 		return
@@ -231,7 +205,6 @@ func (h *LogsHandler) UpdateLogSettings(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// StreamLogs streams log lines via SSE.
 func (h *LogsHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 	limit := h.parseLimit(r)
 
@@ -333,8 +306,6 @@ func writeSSEComment(w http.ResponseWriter, comment string) error {
 	return err
 }
 
-// GetHub returns the log hub from the handler's config.
-// This is useful for testing.
 func (h *LogsHandler) GetHub() *logstream.Hub {
 	return h.appConfig.GetLogManager().GetHub()
 }

@@ -31,7 +31,6 @@ interface CategoriesFormState {
   inheritSourceTags: boolean
 }
 
-// Exactly one category mode is active; priority when the flags disagree: custom > indexer > affix > reuse.
 function categoryModeOf(settings: CrossSeedAutomationSettings): CategoryMode {
   if (settings.useCustomCategory) return "custom"
   if (settings.useCategoryFromIndexer) return "indexer"
@@ -84,7 +83,6 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
         <CardDescription>{t("rules.tabDescriptions.categories")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Categories */}
         <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{t("rules.categories.title")}</p>
@@ -187,7 +185,6 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
           </RadioGroup>
         </div>
 
-        {/* Tagging */}
         <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{t("rules.tagging.title")}</p>

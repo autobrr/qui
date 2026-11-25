@@ -20,13 +20,9 @@ import (
 
 type TrackerCustomizationHandler struct {
 	store          *models.TrackerCustomizationStore
-	onMutationHook func() // Called after create/update/delete to allow cache invalidation
+	onMutationHook func()
 }
 
-// NewTrackerCustomizationHandler creates a new handler for tracker customization endpoints.
-// The onMutationHook parameter is called after any create/update/delete operation to allow
-// external components (like SyncManager) to invalidate caches when customizations change.
-// Pass nil if no cache invalidation is needed.
 func NewTrackerCustomizationHandler(store *models.TrackerCustomizationStore, onMutationHook func()) *TrackerCustomizationHandler {
 	return &TrackerCustomizationHandler{
 		store:          store,
@@ -34,8 +30,6 @@ func NewTrackerCustomizationHandler(store *models.TrackerCustomizationStore, onM
 	}
 }
 
-// invokeMutationHook safely calls the mutation hook if set.
-// It recovers from panics to prevent hook failures from breaking HTTP responses.
 func (h *TrackerCustomizationHandler) invokeMutationHook(action string, id int) {
 	if h.onMutationHook == nil {
 		return

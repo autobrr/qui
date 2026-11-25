@@ -28,66 +28,44 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// dedupCacheEntry stores cached deduplication results to avoid recomputation.
 type dedupCacheEntry struct {
 	deduplicated    []*qbt.Torrent
 	duplicateHashes map[string][]string
 }
 
-// minSearchIntervalSecondsGazelleOnly is the shortest wait between two
-// candidates of a Library Scan that searches only RED/OPS. Tests shorten it.
 var minSearchIntervalSecondsGazelleOnly = 5
 
-// SearchRunOptions configures how the library search automation operates.
 type SearchRunOptions struct {
-	// triggerDefaults is filled from settings at run start; callers never set it.
 	triggerDefaults
 
-	InstanceID            int
-	Categories            []string
-	Tags                  []string
-	ExcludeCategories     []string // Categories to exclude from source filtering
-	ExcludeTags           []string // Tags to exclude from source filtering
-	IntervalSeconds       int
-	IndexerIDs            []int
-	DisableTorznab        bool
-	CooldownMinutes       int
-	RequestedBy           string
-	SpecificHashes        []string
-	RescueTitleMismatches bool
-	// EnsembleSeasonSearch adds virtual season-pack searches for groups of
-	// seeded loose episodes. Derived from SeasonPackAutomationEnabled at run
-	// start; never set by callers.
-	EnsembleSeasonSearch bool
-	// SkipIndividualEpisodes excludes loose TV episodes from the searchable
-	// queue. Episodes still feed ensemble season grouping.
+	InstanceID             int
+	Categories             []string
+	Tags                   []string
+	ExcludeCategories      []string
+	ExcludeTags            []string
+	IntervalSeconds        int
+	IndexerIDs             []int
+	DisableTorznab         bool
+	CooldownMinutes        int
+	RequestedBy            string
+	SpecificHashes         []string
+	RescueTitleMismatches  bool
+	EnsembleSeasonSearch   bool
 	SkipIndividualEpisodes bool
-	// MaxAddedAgeDays retires torrents added more than this many days ago from
-	// re-searching. 0 disables the cutoff. Indexers that have never searched a
-	// torrent bypass it, so a newly added indexer still backfills everything.
-	MaxAddedAgeDays int
-	// Kind is manual when empty. A scheduled run searches only torrents added
-	// in the last ScheduleMaxAgeDays days, newest first, and stops after
-	// ScheduleMaxSearches torrents sent a search.
-	Kind                models.CrossSeedSearchRunKind
-	ScheduleMaxSearches int
-	ScheduleMaxAgeDays  int
+	MaxAddedAgeDays        int
+	Kind                   models.CrossSeedSearchRunKind
+	ScheduleMaxSearches    int
+	ScheduleMaxAgeDays     int
 }
 
-// errTorznabOffNoGazelle is the answer to a run with Torznab off and no
-// RED/OPS key.
 var errTorznabOffNoGazelle = errors.New("torznab disabled but gazelle not configured")
 
-// candidateStaleWork lists what still needs a remote search for one candidate.
 type candidateStaleWork struct {
 	indexerIDs []int
 	gazelle    bool
-	// unsearched is true when an indexer or RED/OPS never searched the
-	// candidate.
 	unsearched bool
 }
 
-// SearchRunStatus summarises the current state of the active search run.
 type SearchRunStatus struct {
 	Running                  bool                           `json:"running"`
 	Run                      *models.CrossSeedSearchRun     `json:"run,omitempty"`
@@ -95,13 +73,9 @@ type SearchRunStatus struct {
 	RecentResults            []models.CrossSeedSearchResult `json:"recentResults"`
 	NextRunAt                *time.Time                     `json:"nextRunAt,omitempty"`
 	EffectiveIntervalSeconds int                            `json:"effectiveIntervalSeconds,omitempty"`
-	// NextScheduledRunAt is when the Library Scan schedule starts its next
-	// run. It is set only while the schedule is on, and can be in the past
-	// while the run waits for an active run to end.
-	NextScheduledRunAt *time.Time `json:"nextScheduledRunAt,omitempty"`
+	NextScheduledRunAt       *time.Time                     `json:"nextScheduledRunAt,omitempty"`
 }
 
-// SearchCandidateStatus exposes metadata about the torrent currently being processed.
 type SearchCandidateStatus struct {
 	TorrentHash string   `json:"torrentHash"`
 	TorrentName string   `json:"torrentName"`
@@ -110,52 +84,29 @@ type SearchCandidateStatus struct {
 }
 
 type searchRunState struct {
-	run   *models.CrossSeedSearchRun
-	opts  SearchRunOptions
-	queue []*qbt.Torrent
-	index int
-	// skipCache stores cooldown evaluation results keyed by torrent hash so we
-	// don't hammer the database twice when calculating totals and iterating.
-	skipCache map[string]bool
-	// staleWork stores, for candidates that are not skipped, which indexers
-	// still need a search and whether the Gazelle lookup is due. Keyed like
-	// skipCache; a missing entry means unrestricted. A season group entry
-	// sets only unsearched.
-	staleWork map[string]candidateStaleWork
-	// duplicateHashes keeps track of deduplicated torrent hash sets keyed by the
-	// representative hash so cooldowns can be propagated to other copies.
-	duplicateHashes map[string][]string
-	// duplicateSourceSites maps a representative hash to the RED/OPS hosts of
-	// the other copies in its duplicate group.
+	run                  *models.CrossSeedSearchRun
+	opts                 SearchRunOptions
+	queue                []*qbt.Torrent
+	index                int
+	skipCache            map[string]bool
+	staleWork            map[string]candidateStaleWork
+	duplicateHashes      map[string][]string
 	duplicateSourceSites map[string][]string
 
 	currentCandidate *SearchCandidateStatus
 	recentResults    []models.CrossSeedSearchResult
-	// persistedResults counts the run.Results entries already written to
-	// results_json; see persistSearchRun.
 	persistedResults int
 	nextWake         time.Time
 	lastError        error
-	// lastCandidateErr remembers the most recent candidate-scoped failure so a
-	// run where every candidate failed can still finalize as failed.
 	lastCandidateErr error
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
-	// torznabErr reports that qui could not list the Torznab indexers, so the
-	// run asked only RED/OPS.
-	torznabErr error
-	// torznabSearched records that a Torznab indexer answered a candidate's
-	// search. Resolved indexers do not prove it: the filter or cooldown can
-	// skip every candidate.
-	torznabSearched bool
+	torznabErr                error
+	torznabSearched           bool
 
-	// searches counts the candidates that sent at least one search, for the
-	// cap of a scheduled run.
 	searches int
 
-	// gazelleClients caches configured Gazelle API clients for the duration of a seeded search run.
-	// This avoids repeated settings/key lookups for every candidate torrent.
 	gazelleClients *gazelleClientSet
 }
 
@@ -181,7 +132,6 @@ func searchRunLoopInterval(opts SearchRunOptions) time.Duration {
 	return time.Duration(intervalSeconds) * time.Second
 }
 
-// updateSearchRunWithRetry attempts to update the search run in the database with retries
 func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.CrossSeedSearchRun) error {
 	const maxRetries = 3
 	var lastErr error
@@ -204,7 +154,6 @@ func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.Cros
 	return lastErr
 }
 
-// StartSearchRun launches an on-demand search automation run for a single instance.
 func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*models.CrossSeedSearchRun, error) {
 	if s.automationStore == nil {
 		return nil, errors.New("cross-seed automation not configured")
@@ -225,8 +174,6 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	if gazelleErr != nil {
 		log.Warn().Err(gazelleErr).Str("kind", string(opts.Kind)).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
 	}
-	// Important: settings.RedactedAPIKey/OrpheusAPIKey are redacted placeholders when encrypted values exist.
-	// Only treat Gazelle as configured if we have at least one usable (decryptable) client.
 	hasGazelle := gazelleClients != nil && len(gazelleClients.byHost) > 0
 	var torznabErr error
 	if opts.DisableTorznab && !hasGazelle {
@@ -236,7 +183,6 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		if !hasGazelle {
 			return nil, fmt.Errorf("%w: torznab search is not configured", ErrNoIndexersConfigured)
 		}
-		// No Torznab backend configured; run in Gazelle-only mode.
 		opts.DisableTorznab = true
 	} else if !opts.DisableTorznab {
 		indexers, indexersErr := s.jackettService.GetEnabledIndexersInfo(ctx)
@@ -251,7 +197,6 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 			if !hasGazelle {
 				return nil, ErrNoIndexersConfigured
 			}
-			// No enabled indexers; Torznab contributes nothing for this run.
 			opts.DisableTorznab = true
 		}
 	}
@@ -264,8 +209,6 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		searchLimit = opts.ScheduleMaxSearches
 	}
 	opts.RescueTitleMismatches = settings.RescueTitleMismatches && !settings.SkipRecheck
-	// Targeted re-searches of specific torrents stay episode-scoped, and
-	// Gazelle-only runs have no TV indexers to ask for packs.
 	opts.EnsembleSeasonSearch = settings.SeasonPackAutomationEnabled &&
 		len(opts.SpecificHashes) == 0 && !opts.DisableTorznab
 
@@ -331,19 +274,15 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	s.searchState = state
 	s.searchMu.Unlock()
 
-	// Signal connected clients that a search run started so they switch to the
-	// while-running refresh cadence instead of polling. Published after releasing the lock.
 	if s.activityPublisher != nil {
 		s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedSearch, InstanceID: opts.InstanceID})
 	}
 
-	// One Library Scan run shares one memory of failed route folders.
 	go s.searchRunLoop(withRouteRun(runCtx), state)
 
 	return storedRun, nil
 }
 
-// CancelSearchRun stops the active search run, if any.
 func (s *Service) CancelSearchRun() {
 	s.searchMu.RLock()
 	cancel := s.searchCancel
@@ -353,7 +292,6 @@ func (s *Service) CancelSearchRun() {
 	}
 }
 
-// GetSearchRunStatus returns the latest information about the active search run.
 func (s *Service) GetSearchRunStatus(ctx context.Context) (*SearchRunStatus, error) {
 	status := &SearchRunStatus{Running: false, RecentResults: []models.CrossSeedSearchResult{}}
 
@@ -403,7 +341,6 @@ func cloneSearchRun(run *models.CrossSeedSearchRun) *models.CrossSeedSearchRun {
 	return &cloned
 }
 
-// ListSearchRuns returns stored search automation history for an instance.
 func (s *Service) ListSearchRuns(ctx context.Context, instanceID, limit, offset int) ([]*models.CrossSeedSearchRun, error) {
 	if s.automationStore == nil {
 		return []*models.CrossSeedSearchRun{}, nil
@@ -439,10 +376,7 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 		return fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, opts.InstanceID)
 	}
 
-	// Each match of a run on a Source instance goes to its Cross-seed instance,
-	// and a failed add keeps the match out of the search until its cooldown ends.
 	if s.crossSeedRoutes != nil {
-		// The stored route is enough: the start needs only its Cross-seed instance.
 		route, err := s.crossSeedRoutes.CrossSeedRouteStore.Get(ctx, instance.ID)
 		if err != nil {
 			return fmt.Errorf("read cross-seed route: %w", err)
@@ -516,9 +450,6 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 
 		s.setCurrentCandidate(state, candidate)
 
-		// Candidate-scoped failures are already recorded per item (TorrentsFailed
-		// plus a failed result entry); they must not mark the whole run failed.
-		// Only run-scoped errors abort and fail the run.
 		delayAfterCandidate, err := s.processSearchCandidate(ctx, state, candidate)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			if isSearchRunScopedError(state, err) {
@@ -550,8 +481,6 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 	}
 }
 
-// stopAtSearchLimit ends a scheduled run that reached its cap, and records how
-// many torrents in the rest of the queue are still due.
 func (s *Service) stopAtSearchLimit(ctx context.Context, state *searchRunState) {
 	waiting := 0
 	for _, torrent := range state.queue[state.index:] {
@@ -590,8 +519,6 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 		errMsg := state.lastError.Error()
 		state.run.ErrorMessage = &errMsg
 	} else if state.lastCandidateErr != nil && state.run.Processed > 0 && state.run.TorrentsFailed >= state.run.Processed {
-		// One failed candidate must not fail the run, but a run where every
-		// candidate failed is not a success either.
 		state.run.Status = models.CrossSeedSearchRunStatusFailed
 		errMsg := fmt.Sprintf("all %d searched candidates failed; last error: %v", state.run.Processed, state.lastCandidateErr)
 		state.run.ErrorMessage = &errMsg
@@ -633,27 +560,17 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	s.notifySearchRun(context.Background(), state, canceled)
 	s.wakeLibrarySchedule()
 
-	// Signal the search run finished so clients refetch and drop the while-running cadence.
-	// Published after releasing the lock.
 	if s.activityPublisher != nil {
 		s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedSearch, InstanceID: state.run.InstanceID})
 	}
 }
 
-// dedupCacheKey generates a cache key for deduplication results based on instance ID
-// and a signature derived from torrent hashes. Uses XOR of xxhash values for order-independent
-// hashing - the same set of torrents produces the same key regardless of order.
-//
-// Note: XOR has theoretical collision risk (different sets could produce same signature),
-// but the 5-minute TTL and count in key make practical impact negligible.
 func dedupCacheKey(instanceID int, torrents []*qbt.Torrent) string {
 	n := len(torrents)
 	if n == 0 {
 		return fmt.Sprintf("dedup:%d:0:0", instanceID)
 	}
 
-	// XOR all individual hash digests for order-independent signature.
-	// XOR is commutative and associative, so order doesn't matter.
 	var sig uint64
 	for i := range torrents {
 		sig ^= xxhash.Sum64String(torrents[i].Hash)
@@ -662,31 +579,11 @@ func dedupCacheKey(instanceID int, torrents []*qbt.Torrent) string {
 	return fmt.Sprintf("dedup:%d:%d:%x", instanceID, n, sig)
 }
 
-// deduplicateSourceTorrents removes duplicate torrents from the search queue by keeping only
-// the best representative of each unique content group. It prefers torrents that already
-// have a top-level folder (so subsequent cross-seeds inherit cleaner layouts) and falls back to
-// the oldest torrent when folder layout is identical. This prevents searching the same content
-// multiple times when cross-seeds exist in the source instance.
-//
-// The deduplication works by:
-//  1. Parsing each torrent's release info (title, year, series, episode, group)
-//  2. Grouping torrents with matching content using the same logic as cross-seed matching
-//  3. Selecting a representative per group by preferring torrents with top-level folders, then
-//     the earliest AddedOn timestamp
-//
-// This significantly reduces API calls and processing time when an instance contains multiple
-// cross-seeds of the same content from different trackers, while enforcing strict matching so
-// that season packs never collapse individual-episode queue entries.
-//
-// IMPORTANT: Returned slices are backed by cached data and must be treated as read-only.
-// Do not append to, reorder, or modify the returned slices in-place. This avoids defensive
-// copies on cache hits to reduce memory pressure from repeated deduplication calls.
 func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int, torrents []*qbt.Torrent) ([]*qbt.Torrent, map[string][]string) {
 	if len(torrents) <= 1 {
 		return torrents, map[string][]string{}
 	}
 
-	// Generate cache key from instance ID and an order-independent signature of torrent hashes.
 	cacheKey := dedupCacheKey(instanceID, torrents)
 	if s.dedupCache != nil {
 		if entry, ok := s.dedupCache.Get(cacheKey); ok && entry != nil {
@@ -694,10 +591,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 				Int("instanceID", instanceID).
 				Int("cachedCount", len(entry.deduplicated)).
 				Msg("[CROSSSEED-DEDUP] Using cached deduplication result")
-			// IMPORTANT: Returned slices are cache-backed. Do not modify.
-			// We intentionally avoid defensive copies here because the cache exists to reduce
-			// memory pressure from repeated deduplication. Cloning on every hit would defeat
-			// that purpose. Current callers (refreshSearchQueue) are read-only.
 			return entry.deduplicated, entry.duplicateHashes
 		}
 	}
@@ -721,30 +614,24 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		parsed = append(parsed, torrentWithRelease{torrent: torrent, read: read, titleKeys: s.matcher().titleKeys(read)})
 	}
 
-	// Index each torrent under every Title key, so that only torrents that can
-	// share a title meet the matcher. A grouping key can be looser than the
-	// matcher, never stricter: the matcher still decides each pair.
-	titleGroups := make(map[string][]int) // Title key -> indices in parsed
+	titleGroups := make(map[string][]int)
 	for i, item := range parsed {
 		for _, key := range item.titleKeys {
 			titleGroups[key] = append(titleGroups[key], i)
 		}
 	}
 
-	// Group torrents by matching content
-	// We'll track the preferred torrent (folder-aware, then oldest) for each unique content group
 	type contentGroup struct {
-		representativeIdx int      // index into parsed slice
-		duplicates        []string // Track duplicate names for logging
-		members           []int    // parsed indices in encounter order; members[0] seeds the fold
+		representativeIdx int
+		duplicates        []string
+		members           []int
 	}
 
 	groups := make([]*contentGroup, 0)
-	groupMap := make(map[string]int) // hash to group index
+	groupMap := make(map[string]int)
 	hasRootCache := make(map[string]bool)
-	verdictCache := make(map[string]bool) // cache Match verdicts per pair
+	verdictCache := make(map[string]bool)
 
-	// Helper to get cache key for a pair
 	getMatchCacheKey := func(idx1, idx2 int) string {
 		if idx1 < idx2 {
 			return fmt.Sprintf("%d:%d", idx1, idx2)
@@ -752,14 +639,9 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		return fmt.Sprintf("%d:%d", idx2, idx1)
 	}
 
-	// First pass: assign every torrent to a content group. Group membership
-	// depends only on the parsed release, never on the root folder, so this
-	// runs before any file list is fetched.
 	for i := range parsed {
 		current := &parsed[i]
 
-		// Try to find an existing group this torrent belongs to. The candidates are
-		// the earlier torrents in any bucket of its Title keys, in list order.
 		foundGroup := -1
 		var candidateIndices []int
 		for _, key := range current.titleKeys {
@@ -774,12 +656,10 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		candidateIndices = slices.Compact(candidateIndices)
 
 		for _, candidateIdx := range candidateIndices {
-			// Check cache first
 			cacheKey := getMatchCacheKey(i, candidateIdx)
 			matches, cached := verdictCache[cacheKey]
 			if !cached {
 				candidate := &parsed[candidateIdx]
-				// Dedup has no sizes in its verdict.
 				matches = s.matcher().matchVerdict(current.read, candidate.read, matchEvidence{}, matchPolicy{SkipSizeCheck: true}).Matched
 				verdictCache[cacheKey] = matches
 			}
@@ -803,9 +683,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		groupMap[current.torrent.Hash] = foundGroup
 	}
 
-	// Only a group with more than one member has a representative to choose, so
-	// only those torrents need a root-folder answer. A library of unique content
-	// costs no file requests here, instead of one per torrent.
 	var contested []string
 	for _, group := range groups {
 		if len(group.members) < 2 {
@@ -819,7 +696,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	if len(contested) > 0 && s.syncManager != nil {
 		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, contested)
 		if err != nil {
-			// Partial results still improve the choice, so keep whatever came back.
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to batch fetch torrent files for deduplication")
 		}
 		for _, hash := range contested {
@@ -828,8 +704,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Second pass: fold each contested group down to one representative. A top-level
-	// folder wins first, and the oldest torrent breaks the tie.
 	for _, group := range groups {
 		for _, idx := range group.members[1:] {
 			rep, current := &parsed[group.representativeIdx], &parsed[idx]
@@ -848,7 +722,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 	}
 
-	// Build deduplicated list from group representatives
 	deduplicated := make([]*qbt.Torrent, 0, len(groups))
 	totalDuplicates := 0
 
@@ -860,8 +733,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 			log.Trace().
 				Str("representative", rep.torrent.Name).
 				Str("representativeHash", rep.torrent.Hash).
-				// A top-level folder wins first, and the oldest torrent breaks
-				// the tie. Both fields are here so the entry explains its choice.
 				Bool("representativeHasRootFolder", hasRootCache[normalizeHash(rep.torrent.Hash)]).
 				Int64("addedOn", rep.torrent.AddedOn).
 				Int("duplicateCount", len(group.duplicates)).
@@ -886,7 +757,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		duplicateMap[rep.torrent.Hash] = append([]string(nil), group.duplicates...)
 	}
 
-	// Cache the result for future runs
 	if s.dedupCache != nil {
 		s.dedupCache.Set(cacheKey, &dedupCacheEntry{
 			deduplicated:    deduplicated,
@@ -931,8 +801,6 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 	}
 }
 
-// duplicateGazelleSites maps each representative hash in duplicates to the
-// RED/OPS hosts of its duplicate copies in torrents.
 func (s *Service) duplicateGazelleSites(torrents []*qbt.Torrent, duplicates map[string][]string) map[string][]string {
 	representativeOf := make(map[string]string)
 	for representative, hashes := range duplicates {
@@ -954,18 +822,15 @@ func (s *Service) duplicateGazelleSites(torrents []*qbt.Torrent, duplicates map[
 }
 
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
-	// A big instance spends a while here, so the run does not look hung.
 	queueStart := time.Now()
 	log.Info().Int("instanceID", state.opts.InstanceID).Str("kind", string(state.opts.Kind)).Msg("[CROSSSEED-SEARCH] Building search queue")
 
 	var filterOpts qbittorrent.TorrentRefFilter
 
-	// Apply category filter if only one category is specified
 	if len(state.opts.Categories) == 1 {
 		filterOpts.Category = state.opts.Categories[0]
 	}
 
-	// Apply tag filter if only one tag is specified
 	if len(state.opts.Tags) == 1 {
 		filterOpts.Tag = state.opts.Tags[0]
 	}
@@ -975,29 +840,22 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		return fmt.Errorf("list torrents: %w", err)
 	}
 
-	// Recover errored torrents by performing recheck (if enabled)
 	if s.recoverErroredTorrentsEnabled {
 		if err := s.recoverErroredTorrents(ctx, state.opts.InstanceID, torrents); err != nil {
 			log.Warn().Err(err).Int("instanceID", state.opts.InstanceID).Str("kind", string(state.opts.Kind)).Msg("Failed to recover some errored torrents")
 		}
 	}
 
-	// Filter torrents inline without creating intermediate copies
 	gate := s.sourceGate()
 	filtered := make([]*qbt.Torrent, 0, len(torrents))
 	for _, torrent := range torrents {
-		// A moving or checking torrent stays: the check at its turn reads its
-		// state then.
 		if answer := gate.check(torrent, state.opts.sourceFilter); answer == sourcePass || answer == sourceMovingOrChecking {
 			filtered = append(filtered, torrent)
 		}
 	}
 
-	// Deduplicate source torrents to avoid searching the same content multiple times
-	// when cross-seeds exist in the source instance
 	deduplicated, duplicates := s.deduplicateSourceTorrents(ctx, state.opts.InstanceID, filtered)
 
-	// Filter to specific hashes if provided
 	if len(state.opts.SpecificHashes) > 0 {
 		hashSet := make(map[string]bool, len(state.opts.SpecificHashes))
 		for _, h := range state.opts.SpecificHashes {
@@ -1012,9 +870,6 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		deduplicated = specific
 	}
 
-	// Same rule as skipIndividualEpisodes in dirscan/work_selection.go: an episode
-	// that cannot join a season pack search is dropped, never searched alone.
-	// Change both together.
 	searchable := deduplicated
 	if state.opts.SkipIndividualEpisodes {
 		searchable = slices.DeleteFunc(slices.Clone(deduplicated), func(t *qbt.Torrent) bool {
@@ -1034,10 +889,6 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		copyAddedOn = newestCopyAddedOn(filtered, duplicates)
 	}
 	if state.opts.EnsembleSeasonSearch {
-		// Pack suppression needs the instance's full torrent list: when the
-		// fetch above was server-side filtered by category/tag, a seeded pack
-		// outside the run scope is missing from it. The sync manager serves
-		// this from memory.
 		packSource := torrents
 		if filterOpts.Category != "" || filterOpts.Tag != "" {
 			if all, allErr := s.syncManager.GetTorrentRefs(ctx, state.opts.InstanceID, qbittorrent.TorrentRefFilter{}); allErr == nil {
@@ -1046,11 +897,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 				log.Warn().Err(allErr).Int("instanceID", state.opts.InstanceID).Str("kind", string(state.opts.Kind)).Msg("Failed to list all torrents for ensemble pack suppression; using run-scoped list")
 			}
 		}
-		// Grouping input is deduplicated, not searchable: episodes excluded
-		// from the queue must still form ensemble season groups.
 		if virtual := s.buildEnsembleSeasonCandidates(deduplicated, packSource, copyAddedOn); len(virtual) > 0 {
-			// searchable can alias cache-backed deduplicated; never append to
-			// it in place. Virtual entries go last so real torrents search first.
 			queue := make([]*qbt.Torrent, 0, len(searchable)+len(virtual))
 			queue = append(queue, searchable...)
 			queue = append(queue, virtual...)
@@ -1077,9 +924,6 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		}
 	}
 	if scheduled {
-		// A torrent that an indexer never searched goes before a repeat
-		// search, so the cap cannot spend each run on the same newest torrents.
-		// scheduledSearchQueue made the queue a copy, so the sort is safe.
 		unsearched := func(t *qbt.Torrent) bool {
 			return state.staleWork[stringutils.DefaultNormalizer.Normalize(t.Hash)].unsearched
 		}
@@ -1111,10 +955,6 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	return nil
 }
 
-// scheduledSearchQueue keeps the torrents added in the last maxAgeDays days,
-// newest first. An ensemble season entry carries the added time of its newest
-// episode, and groupAddedOn gives the added time of the newest copy of a
-// duplicate group. queue can alias cached data, so the result is a new slice.
 func scheduledSearchQueue(queue []*qbt.Torrent, groupAddedOn map[string]int64, maxAgeDays int, now time.Time) []*qbt.Torrent {
 	addedOn := func(t *qbt.Torrent) int64 { return max(t.AddedOn, groupAddedOn[t.Hash]) }
 	scheduled := slices.Clone(queue)
@@ -1126,9 +966,6 @@ func scheduledSearchQueue(queue []*qbt.Torrent, groupAddedOn map[string]int64, m
 	return scheduled
 }
 
-// newestCopyAddedOn returns, for each representative of a duplicate group,
-// the added time of the newest copy in the group. Deduplication keeps the
-// oldest copy, so without it a new copy of old content would leave the window.
 func newestCopyAddedOn(torrents []*qbt.Torrent, duplicates map[string][]string) map[string]int64 {
 	if len(duplicates) == 0 {
 		return nil
@@ -1187,8 +1024,6 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return true, nil
 	}
 
-	// Gazelle-only mode still processes all torrents; pre-skip only applies when we can
-	// prove the opposite-site hash already exists locally for OPS/RED-sourced torrents.
 	if state != nil && state.opts.DisableTorznab {
 		if s.gazelleTargetsSeeded(ctx, state.opts.InstanceID, torrent) {
 			if cacheKey != "" && state.skipCache != nil {
@@ -1205,9 +1040,6 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return false, nil
 	}
 
-	// A failed indexer resolution leaves the requested set empty; never skip on
-	// that, or the failure would be silently swallowed instead of surfacing on
-	// the first processed candidate.
 	if state.resolvedTorznabIndexerErr != nil && !state.opts.DisableTorznab {
 		if cacheKey != "" && state.skipCache != nil {
 			state.skipCache[cacheKey] = false
@@ -1215,8 +1047,6 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return false, nil
 	}
 
-	// Pseudo-keys (season: ensemble entries) have no per-indexer dimension;
-	// they keep the whole-entry cooldown gate on the per-torrent history table.
 	if strings.Contains(torrent.Hash, ":") {
 		last, found, err := s.automationStore.GetSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
 		if err != nil {
@@ -1247,20 +1077,12 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 	return skip, nil
 }
 
-// staleSearchWork returns what still needs a remote search for one candidate:
-// the Torznab indexers whose per-indexer cooldown lapsed (or that never
-// searched this torrent) and whether the Gazelle lookup is due again.
 func (s *Service) staleSearchWork(ctx context.Context, state *searchRunState, torrent *qbt.Torrent) (candidateStaleWork, error) {
 	cooldown := time.Duration(state.opts.CooldownMinutes) * time.Minute
 	tooOld := false
 	if state.opts.MaxAddedAgeDays > 0 && torrent.AddedOn > 0 {
 		tooOld = time.Since(time.Unix(torrent.AddedOn, 0)) > time.Duration(state.opts.MaxAddedAgeDays)*24*time.Hour
 	}
-	// Previously searched work is due again once its stamp outlives the cooldown
-	// (always, when the cooldown is disabled) unless the age cutoff retired the
-	// torrent. Never-searched work is always due: that is what backfills a newly
-	// added indexer, and it keeps the age cutoff from hiding a torrent an
-	// indexer has never seen.
 	var work candidateStaleWork
 	due := func(last time.Time, found bool) bool {
 		if !found {
@@ -1273,8 +1095,6 @@ func (s *Service) staleSearchWork(ctx context.Context, state *searchRunState, to
 		return cooldown <= 0 || time.Since(last) >= cooldown
 	}
 
-	// A completion search stamps only the copy that completed, so the newest
-	// stamp of any copy in the duplicate group counts.
 	hashes := append([]string{torrent.Hash}, state.duplicateHashes[torrent.Hash]...)
 	requested := state.resolvedTorznabIndexerIDs
 	if !state.opts.DisableTorznab && len(requested) > 0 {
@@ -1337,8 +1157,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	s.searchMu.Unlock()
 	processedAt := time.Now().UTC()
 
-	// Virtual ensemble entries have no real torrent behind their pseudo-hash,
-	// so they cannot go through per-torrent content analysis below.
 	if isEnsembleSeasonCandidate(torrent.Hash) {
 		return s.processEnsembleSeasonCandidate(ctx, state, torrent, processedAt)
 	}
@@ -1358,8 +1176,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return false, state.resolvedTorznabIndexerErr
 	}
 
-	// Restrict this search to the indexers whose per-indexer cooldown is due,
-	// and skip the Gazelle lookup when its per-torrent stamp is still fresh.
 	staleCacheKey := stringutils.DefaultNormalizer.Normalize(torrent.Hash)
 	staleWork, hasStaleWork := state.staleWork[staleCacheKey]
 	var cooldownIndexerIDs []int
@@ -1396,10 +1212,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		state.torznabErr = scope.torznabErr
 	}
 
-	// Stale indexers the per-torrent filter ruled out count as covered: they
-	// were considered and deliberately excluded, and leaving them unstamped
-	// would keep the candidate nominally eligible on every run.
-	// A failed indexer listing excluded nothing: qui did not ask those indexers.
 	var staleExcludedIndexerIDs []int
 	if hasStaleWork && scope.torznabErr == nil {
 		staleExcludedIndexerIDs = subtractInts(staleWork.indexerIDs, scope.torznabIndexerIDs)
@@ -1430,22 +1242,16 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return false, nil
 	}
 	var lookups []GazelleLookup
-	// A canceled run did not get an answer from RED/OPS, so it records no outcome.
 	canceled := ctx.Err() != nil
 	delayAfterCandidate := false
 	coveredIndexerIDs := staleExcludedIndexerIDs
 	if searchResp != nil {
 		lookups = searchResp.GazelleLookups
 		delayAfterCandidate = searchResp.torznabRequested || gazelleRequestsSent(lookups)
-		// searchTorrentMatches can return before the Torznab search, so only an
-		// indexer that answered proves one ran.
 		state.torznabSearched = state.torznabSearched || searchResp.TorznabAnswered
 		if searchResp.torznabErr != nil {
 			state.torznabErr = searchResp.torznabErr
 		}
-		// Torznab stamps per indexer, and only the covered ones: an indexer
-		// that was rate limited or failed a pass stays eligible next run.
-		// Filter-excluded stale indexers ride along (the store deduplicates).
 		coveredIndexerIDs = append(coveredIndexerIDs, searchResp.CoveredIndexerIDs...)
 	}
 	if !canceled {
@@ -1497,7 +1303,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	if len(searchResp.Results) == 0 {
-		// The failure row of a RED/OPS site already says why nothing matched.
 		if !gazelleFailed {
 			s.appendSearchResult(state, models.CrossSeedSearchResult{
 				TorrentHash:  torrent.Hash,
@@ -1539,9 +1344,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %w", counts.firstErr)
 }
 
-// stampSearchHistory stamps the Torznab indexers in coveredIndexerIDs for the
-// torrent and its duplicates, and the RED/OPS cooldown when the lookups need no
-// retry.
 func (s *Service) stampSearchHistory(ctx context.Context, state *searchRunState, hash string, processedAt time.Time, coveredIndexerIDs []int, lookups []GazelleLookup, gazelleKeyMissing bool) {
 	if s.automationStore == nil {
 		return
@@ -1550,9 +1352,6 @@ func (s *Service) stampSearchHistory(ctx context.Context, state *searchRunState,
 	s.propagateDuplicateSearchHistory(ctx, state, hash, processedAt, coveredIndexerIDs, gazelleStamped)
 }
 
-// stampTorrentSearchHistory stamps the Torznab indexers in coveredIndexerIDs
-// for one torrent, and the RED/OPS cooldown when the lookups need no retry. It
-// reports whether it stamped the RED/OPS cooldown.
 func (s *Service) stampTorrentSearchHistory(ctx context.Context, instanceID int, hash string, processedAt time.Time, coveredIndexerIDs []int, lookups []GazelleLookup, gazelleKeyMissing bool) bool {
 	gazelleStamped := gazelleCooldownDue(lookups, gazelleKeyMissing)
 	if gazelleStamped {
@@ -1566,8 +1365,6 @@ func (s *Service) stampTorrentSearchHistory(ctx context.Context, instanceID int,
 	return gazelleStamped
 }
 
-// recordGazelleLookups adds the lookups of one torrent to the RED/OPS summary
-// of the run.
 func (s *Service) recordGazelleLookups(state *searchRunState, lookups []GazelleLookup) {
 	if len(lookups) == 0 {
 		return
@@ -1599,9 +1396,6 @@ func (s *Service) recordGazelleLookups(state *searchRunState, lookups []GazelleL
 	}
 }
 
-// gazelleTargetsSeeded reports that the torrent comes from a RED/OPS site and
-// the instance already holds the target hash of each other site. gzlx computes
-// the target hash with a source-flag swap.
 func (s *Service) gazelleTargetsSeeded(ctx context.Context, instanceID int, torrent *qbt.Torrent) bool {
 	sourceSite, isGazelleSource := s.detectGazelleSourceSite(torrent)
 	if !isGazelleSource || s.syncManager == nil {
@@ -1630,9 +1424,6 @@ func (s *Service) gazelleTargetsSeeded(ctx context.Context, instanceID int, torr
 	return true
 }
 
-// skipRefusedSource adds the Skipped row of a torrent that cannot give files at
-// its turn. It writes no history, for the torrent and for its duplicates, so the
-// next run searches it.
 func (s *Service) skipRefusedSource(state *searchRunState, torrent *qbt.Torrent, err error, processedAt time.Time) bool {
 	refusal := sourceTurnRefusal(err)
 	if refusal == nil {
@@ -1649,10 +1440,6 @@ func (s *Service) skipRefusedSource(state *searchRunState, torrent *qbt.Torrent,
 	return true
 }
 
-// finishSearchCandidate puts one completed search candidate into exactly one
-// bucket, so torrentsWithCrossSeeds + torrentsFailed + torrentsSkipped stays
-// equal to processed. A candidate with one add and later apply failures counts
-// as added; the failures stay visible in run.Results.
 func (s *Service) finishSearchCandidate(state *searchRunState, crossSeedsAdded int, failed bool) {
 	s.searchMu.Lock()
 	switch {
@@ -1667,14 +1454,11 @@ func (s *Service) finishSearchCandidate(state *searchRunState, crossSeedsAdded i
 	s.persistSearchRun(state)
 }
 
-// reportIndexerOutcomes reports cross-seed outcomes to the jackett service for search history tracking.
-// For each indexer, it reports "added" if any torrents were added, "failed" if only failures occurred.
 func (s *Service) reportIndexerOutcomes(jobID uint64, indexerAdds, indexerFails map[int]int) {
 	if s.jackettService == nil || jobID == 0 {
 		return
 	}
 
-	// Collect all unique indexer IDs
 	allIndexers := make(map[int]struct{})
 	for id := range indexerAdds {
 		allIndexers[id] = struct{}{}
@@ -1684,8 +1468,6 @@ func (s *Service) reportIndexerOutcomes(jobID uint64, indexerAdds, indexerFails 
 	}
 
 	for indexerID := range allIndexers {
-		// Gazelle results use pseudo indexer IDs (negative) which should never be written
-		// to Jackett indexer outcome tracking.
 		if indexerID <= 0 {
 			continue
 		}
@@ -1693,17 +1475,13 @@ func (s *Service) reportIndexerOutcomes(jobID uint64, indexerAdds, indexerFails 
 		failCount := indexerFails[indexerID]
 
 		if addCount > 0 {
-			// Indexer contributed at least one successful add
 			s.jackettService.ReportIndexerOutcome(jobID, indexerID, "added", addCount, "")
 		} else if failCount > 0 {
-			// Indexer had attempts but all failed
 			s.jackettService.ReportIndexerOutcome(jobID, indexerID, "failed", 0, "add failed")
 		}
 	}
 }
 
-// executeCrossSeedSearchAttempt downloads a search match and applies it to the
-// target instance, returning the persisted automation result for that attempt.
 func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, instanceID int, defaults triggerDefaults, torrent *qbt.Torrent, match TorrentSearchResult, processedAt time.Time) (*models.CrossSeedSearchResult, error) {
 	result := &models.CrossSeedSearchResult{
 		TorrentHash:  torrent.Hash,
@@ -1793,8 +1571,6 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, instanceID 
 	return result, nil
 }
 
-// extractSuccessMessage returns pooled-completion detail only for the result
-// that owns it. Ordinary successful searches retain the generic indexer text.
 func extractSuccessMessage(results []InstanceCrossSeedResult, indexer string) string {
 	for _, result := range results {
 		if result.Success && result.partialPoolPending && strings.TrimSpace(result.Message) != "" {
@@ -1804,8 +1580,6 @@ func extractSuccessMessage(results []InstanceCrossSeedResult, indexer string) st
 	return "added via " + indexer
 }
 
-// classifyFailedCrossSeedSearchResult separates harmless no-add outcomes from
-// failures that should count against the automation run.
 func classifyFailedCrossSeedSearchResult(results []InstanceCrossSeedResult) models.CrossSeedSearchResultStatus {
 	if len(results) == 0 {
 		return models.CrossSeedSearchResultStatusFailed
@@ -1818,8 +1592,6 @@ func classifyFailedCrossSeedSearchResult(results []InstanceCrossSeedResult) mode
 	return models.CrossSeedSearchResultStatusSkipped
 }
 
-// extractFailureMessage returns a descriptive message from instance results.
-// Prefers Message over Status, falls back to a generic message if both are empty.
 func extractFailureMessage(results []InstanceCrossSeedResult, indexer string) string {
 	fallback := "no instances accepted torrent via " + indexer
 	if len(results) == 0 {
@@ -1837,9 +1609,6 @@ func extractFailureMessage(results []InstanceCrossSeedResult, indexer string) st
 func (s *Service) appendSearchResult(state *searchRunState, result models.CrossSeedSearchResult) {
 	s.searchMu.Lock()
 	state.run.Results = append(state.run.Results, result)
-	// Only track successfully added torrents in recentResults so the UI
-	// shows a stable sliding window of actual additions rather than being
-	// diluted by skipped/failed results.
 	if s.searchState == state && result.Status == models.CrossSeedSearchResultStatusAdded {
 		state.recentResults = append(state.recentResults, result)
 		if len(state.recentResults) > 10 {
@@ -1849,11 +1618,6 @@ func (s *Service) appendSearchResult(state *searchRunState, result models.CrossS
 	s.searchMu.Unlock()
 }
 
-// searchResultsFlushEvery bounds how many result entries a killed process can
-// lose: the results blob is rewritten once this many new entries have
-// accumulated, and on finalize. Counters are written on every call.
-// ponytail: each flush still rewrites the whole blob, so a run costs
-// O(n²/25) bytes; move results to their own table if that ever bites.
 const searchResultsFlushEvery = 25
 
 func (s *Service) persistSearchRun(state *searchRunState) {

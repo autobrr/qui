@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	day = 24 * time.Hour
-	// clockSkew is how far the clock of qBittorrent can be from the clock of qui.
+	day       = 24 * time.Hour
 	clockSkew = time.Hour
 )
 
@@ -38,8 +37,6 @@ func (b *bytesMoved) add(up, down int64) {
 	b.downloaded += down
 }
 
-// movedKey holds the values of the bytes of one torrent in one hour that the
-// totals group by. A part of a write sums the bytes of its torrents only.
 type movedKey struct {
 	record    *models.TransferHistoryRecord
 	hour      int64
@@ -57,54 +54,32 @@ type totalKey struct {
 	crossSeed bool
 }
 
-// instance is the state of one instance in memory: the last values of each
-// torrent, and the changes since the last write.
 type instance struct {
 	id              int
 	firstRecordedAt time.Time
 	lastReadingAt   time.Time
-	// writes is the number of writes that stored the instance.
-	writes int64
-	// resumed is set until the first reading after a load of stored history.
-	resumed     bool
-	lastWriteAt time.Time
-	// writeTimeout is the time limit of the next write, or zero for dbTimeout.
-	writeTimeout time.Duration
-	// records holds the record of each torrent that is in qBittorrent, and
-	// deleted holds the record of each other torrent, both by hash.
-	records map[string]*models.TransferHistoryRecord
-	deleted map[string]*models.TransferHistoryRecord
+	writes          int64
+	resumed         bool
+	lastWriteAt     time.Time
+	writeTimeout    time.Duration
+	records         map[string]*models.TransferHistoryRecord
+	deleted         map[string]*models.TransferHistoryRecord
 
-	// completeAt is the time of the last reading that a write stored with
-	// all its parts, or zero before the first such write. loaded is set from a
-	// load of stored history until the next reading. That reading compares a
-	// torrent without a stored record with completeAt, because a part that
-	// qui did not store can have held its record.
-	completeAt time.Time
-	loaded     bool
-	// deletedLate holds the time of the last delete of each record that a
-	// part of a write after completeAt marked deleted, by hash. The stored
-	// state of the record is that of that reading. It is set from a load until
-	// the next reading.
+	completeAt  time.Time
+	loaded      bool
 	deletedLate map[string]time.Time
-	// unsure is what the parts whose outcome qui does not know can have
-	// stored, since the last write that stored all its parts.
-	unsure unsure
+	unsure      unsure
 
-	// changedRecords changed in more than their last counters.
 	changedRecords  map[*models.TransferHistoryRecord]struct{}
 	changedCounters map[*models.TransferHistoryRecord]struct{}
 	moved           map[movedKey]*bytesMoved
-	// continued holds the record of each magnet whose life continued in the
-	// deleted record of its hash, with that record. A part holds both.
-	continued     map[*models.TransferHistoryRecord]*models.TransferHistoryRecord
-	gaps          map[int64]int64
-	hashChanges   []models.TransferHistoryHashChange
-	events        []models.TransferHistoryEvent
-	libraryDays   map[int64]*models.TransferHistoryLibraryDay
-	instanceHours map[int64]*models.TransferHistoryInstanceHour
-	// unwritten is set from the first reading until a write stores the instance.
-	unwritten bool
+	continued       map[*models.TransferHistoryRecord]*models.TransferHistoryRecord
+	gaps            map[int64]int64
+	hashChanges     []models.TransferHistoryHashChange
+	events          []models.TransferHistoryEvent
+	libraryDays     map[int64]*models.TransferHistoryLibraryDay
+	instanceHours   map[int64]*models.TransferHistoryInstanceHour
+	unwritten       bool
 }
 
 func newInstance(id int, row *models.TransferHistoryInstance, records []*models.TransferHistoryRecord) *instance {
@@ -146,11 +121,6 @@ func (inst *instance) reset() {
 	inst.unwritten = false
 }
 
-// pass is one reading while apply reads it. first is set for the first
-// reading of the instance, and previous is the time of the reading before.
-// After a load, previous is the time of the complete reading.
-// baselineOpen is set when the stored first write lacks parts, so a torrent
-// without a record can be one that qBittorrent had at the first recording.
 type pass struct {
 	reading      *Reading
 	first        bool
@@ -172,9 +142,6 @@ func (p *pass) present(hash string) bool {
 	return here
 }
 
-// apply adds the transfer and the events since the last reading to the
-// changes. It takes each note in notes whose torrent is gone, and drops each
-// note that is too old.
 func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *releases.Parser, notes map[string][]deleteNote) {
 	p := &pass{reading: &r, first: inst.firstRecordedAt.IsZero(), previous: inst.lastReadingAt, mapper: mapper}
 	if inst.loaded {
@@ -201,7 +168,6 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 		}
 		rec.Final.Ratio, rec.Final.SeedingSeconds = t.Ratio, t.SeedingSeconds
 
-		// The flag of the bytes is the flag before this reading.
 		crossSeed := rec.StatisticsCrossSeed != nil && *rec.StatisticsCrossSeed
 		if t.Uploaded != rec.LastUploaded || t.Downloaded != rec.LastDownloaded {
 			inst.changedCounters[rec] = struct{}{}
@@ -216,8 +182,6 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 		addTo(inst.moved, movedKey{record: rec, hour: hour, domain: rec.TrackerDomain, public: public, category: rec.Category, crossSeed: crossSeed}, up, down)
 	}
 
-	// Each torrent of the reading has a record in records now, so a larger
-	// number of records shows a delete.
 	if len(r.Torrents) < len(inst.records) {
 		for hash, rec := range inst.records {
 			if !p.present(hash) {
@@ -228,10 +192,6 @@ func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *rele
 	dropOldNotes(notes, r.Time)
 }
 
-// addLibrary keeps the library and the state of the instance that the
-// reading shows. The last reading of a day or an hour decides its values,
-// except the Unique size of a day, which a reading without one keeps, and the
-// speeds of an hour, which keep the highest.
 func (inst *instance) addLibrary(r *Reading, hour, today int64) {
 	library := inst.libraryDays[today]
 	if library == nil {
@@ -260,12 +220,7 @@ func (inst *instance) addLibrary(r *Reading, hour, today int64) {
 	state.MaxDownloadSpeed = max(state.MaxDownloadSpeed, r.MaxDownloadSpeed)
 }
 
-// read returns the record of t, whether the reading adds the torrent, whether
-// the torrent counts as one that qBittorrent had at the first recording, and
-// the bytes that the torrent moved since the last reading.
 func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryRecord, added, firstRecording bool, up, down int64) {
-	// A torrent that qBittorrent had before the last reading, but left out of
-	// it, did not move its bytes since then.
 	leftOut := t.AddedAt.Before(p.previous.Add(-clockSkew))
 	rec, known := inst.records[t.Hash]
 	if !known {
@@ -295,11 +250,7 @@ func (inst *instance) read(t *Torrent, p *pass) (rec *models.TransferHistoryReco
 	return rec, added, p.first, up, down
 }
 
-// add makes the record of a torrent that qui sees for the first time. Its
-// bytes are transfer, unless they are in the Baseline.
 func (inst *instance) add(t *Torrent, p *pass, leftOut bool) (rec *models.TransferHistoryRecord, added, firstRecording bool, up, down int64) {
-	// The stored first write lacks parts, so a torrent that qBittorrent can
-	// have had at the first recording goes into the Baseline.
 	firstRecording = p.first || (p.baselineOpen && t.AddedAt.Before(inst.firstRecordedAt.Add(clockSkew)))
 	rec = newRecord(t, p.mapper, p.reading.Time, firstRecording || leftOut)
 	inst.records[t.Hash] = rec
@@ -310,10 +261,6 @@ func (inst *instance) add(t *Torrent, p *pass, leftOut bool) (rec *models.Transf
 	return rec, true, firstRecording, up, down
 }
 
-// magnetOf returns the live record under the v1 infohash of t, when the hash
-// of that record is gone from the reading. qBittorrent changes the hash of a
-// magnet that it added by its v1 hash when the metadata shows a hybrid
-// torrent.
 func (inst *instance) magnetOf(t *Torrent, p *pass) *models.TransferHistoryRecord {
 	rec, known := inst.records[t.InfohashV1]
 	if !known || p.present(t.InfohashV1) {
@@ -329,10 +276,6 @@ func (inst *instance) changeHash(rec *models.TransferHistoryRecord, hash string)
 	inst.records[hash] = rec
 }
 
-// continueIn makes returned, the deleted record of a torrent, the record of
-// that torrent again, when its magnet got its hash back. The life of the
-// magnet continues in returned, so the change gives no event and no bytes. The
-// record of the magnet stays, as a deleted record.
 func (inst *instance) continueIn(returned, magnet *models.TransferHistoryRecord) {
 	returned.LastUploaded, returned.LastDownloaded = magnet.LastUploaded, magnet.LastDownloaded
 	returned.Completed, returned.UploadFirst24h = magnet.Completed, magnet.UploadFirst24h
@@ -350,9 +293,6 @@ func (inst *instance) continueIn(returned, magnet *models.TransferHistoryRecord)
 	inst.continued[magnet] = returned
 }
 
-// addEvents adds the add event and the completion event that the reading at
-// now shows for t. A torrent gets one completion event in each life. A torrent
-// that qBittorrent had at the first recording gives no event.
 func (inst *instance) addEvents(rec *models.TransferHistoryRecord, t *Torrent, added, firstRecording bool, now time.Time) {
 	if added && !firstRecording {
 		inst.events = append(inst.events, models.TransferHistoryEvent{Record: rec, Kind: models.TransferHistoryEventAdd, Time: now})
@@ -367,17 +307,12 @@ func (inst *instance) addEvents(rec *models.TransferHistoryRecord, t *Torrent, a
 	}
 }
 
-// keepBaselineFlag stores the Statistics cross-seed flag of the first life of
-// rec for its Baseline, before a new life decides the flag again.
 func keepBaselineFlag(rec *models.TransferHistoryRecord) {
 	if rec.BaselineStatisticsCrossSeed == nil {
 		rec.BaselineStatisticsCrossSeed = new(rec.StatisticsCrossSeed != nil && *rec.StatisticsCrossSeed)
 	}
 }
 
-// addAgain starts a new life of a deleted record. Its counters start at zero
-// and it gets its Statistics cross-seed flag again, unless qBittorrent left
-// the torrent out of the readings since the delete.
 func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, now time.Time, leftOut bool) {
 	rec.Deleted = false
 	delete(inst.deleted, rec.Hash)
@@ -386,8 +321,6 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 		return
 	}
 	rec.LastUploaded, rec.LastDownloaded = 0, 0
-	// The stored counters are those of the last life, also when the new
-	// counters are still zero.
 	inst.changedCounters[rec] = struct{}{}
 	rec.Completed = false
 	keepBaselineFlag(rec)
@@ -398,8 +331,6 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 	}
 }
 
-// delete marks rec as deleted and adds its delete event, with the cause of
-// its note in notes.
 func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, notes map[string][]deleteNote) {
 	cause := takeNote(notes, rec.Hash, now)
 	event := &models.TransferHistoryDelete{
@@ -417,8 +348,6 @@ func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, n
 	inst.changedRecords[rec] = struct{}{}
 }
 
-// newRecord returns the record of a torrent at its first sight. Its bytes go
-// into the Baseline when inBaseline is set.
 func newRecord(t *Torrent, mapper *trackergroup.Mapper, now time.Time, inBaseline bool) *models.TransferHistoryRecord {
 	rec := &models.TransferHistoryRecord{Hash: t.Hash}
 	if inBaseline {
@@ -431,8 +360,6 @@ func newRecord(t *Torrent, mapper *trackergroup.Mapper, now time.Time, inBaselin
 	return rec
 }
 
-// addGap stores a Recording gap that ends at r: the time since the last
-// stored reading of a resumed instance, or since the first failed read.
 func (inst *instance) addGap(r Reading) {
 	var start time.Time
 	if inst.resumed {
@@ -452,8 +379,6 @@ func (inst *instance) addGap(r Reading) {
 	}
 }
 
-// updateRecord copies the values of t into rec and reports whether one other
-// than the last counters changed.
 func updateRecord(rec *models.TransferHistoryRecord, t *Torrent, mapper *trackergroup.Mapper, parser *releases.Parser) bool {
 	changed := false
 	set := func(dst *string, v string) {
@@ -464,8 +389,6 @@ func updateRecord(rec *models.TransferHistoryRecord, t *Torrent, mapper *tracker
 	}
 	if rec.Name != t.Name || rec.ContentType == "" {
 		release := parser.Parse(t.Name)
-		// A name is parsed once in the life of a record, so the cache only
-		// holds memory: 50,000 names on the first reading hold over 100 MB.
 		parser.Clear(t.Name)
 		rec.ReleaseGroup = release.Group
 		rec.Resolution = release.Resolution
@@ -492,8 +415,6 @@ func updateRecord(rec *models.TransferHistoryRecord, t *Torrent, mapper *tracker
 	return changed
 }
 
-// isStatisticsCrossSeed reports whether a complete torrent downloaded less
-// than 1% of its size.
 func isStatisticsCrossSeed(t *Torrent) bool {
 	return t.Downloaded*100 < t.Size
 }
@@ -507,8 +428,6 @@ func addTo[K comparable](m map[K]*bytesMoved, key K, up, down int64) {
 	b.add(up, down)
 }
 
-// holdsDaysBefore reports whether the changes hold transfer or hourly state
-// of a UTC day before day.
 func (inst *instance) holdsDaysBefore(day int64) bool {
 	for key := range inst.moved {
 		if key.hour < day*24 {
@@ -527,19 +446,11 @@ func (inst *instance) hasChanges() bool {
 	return inst.unwritten || len(inst.changedRecords) > 0 || len(inst.changedCounters) > 0
 }
 
-// parts is one write of the changes since the last write, split into parts
-// that are stored in order, each in its own transaction. part holds the index
-// of the part of each torrent.
 type parts struct {
 	writes []*models.TransferHistoryWrite
 	part   map[*models.TransferHistoryRecord]int
 }
 
-// parts splits the changes into parts of at most size torrents. Each part
-// holds all changes of its torrents, and the first part also holds the
-// changes of the instance. Each part takes one write number, and only the
-// last one stores the time of its reading as the complete reading. The records in the parts
-// are the records of inst: the writes must finish before the next apply.
 func (inst *instance) parts(size int) parts {
 	part := make(map[*models.TransferHistoryRecord]int, len(inst.changedRecords)+len(inst.changedCounters))
 	for rec := range inst.changedRecords {
@@ -556,7 +467,6 @@ func (inst *instance) parts(size int) parts {
 	}
 	count := max(1, (len(part)+size-1)/size)
 	if count > 1 {
-		// The order of the hashes makes the parts of the same changes the same.
 		sorted := slices.SortedFunc(maps.Keys(part), func(a, b *models.TransferHistoryRecord) int { return strings.Compare(a.Hash, b.Hash) })
 		for i, rec := range sorted {
 			part[rec] = i / size
@@ -601,7 +511,6 @@ func (inst *instance) parts(size int) parts {
 	for rec := range inst.changedCounters {
 		w := writes[part[rec]]
 		w.Counters = append(w.Counters, rec)
-		// A record that a write with a lost answer stored has no id yet.
 		if _, listed := inst.changedRecords[rec]; !listed && rec.ID == 0 {
 			w.Records = append(w.Records, rec)
 		}
@@ -643,8 +552,6 @@ type torrentDay struct {
 	day    int64
 }
 
-// forget drops the changes of the first stored parts of p, which a write
-// stored. It drops all changes when the write stored each part.
 func (inst *instance) forget(p parts, stored int) {
 	inst.writes += int64(stored)
 	if stored == len(p.writes) {
@@ -661,7 +568,6 @@ func (inst *instance) forget(p parts, stored int) {
 	maps.DeleteFunc(inst.moved, func(k movedKey, _ *bytesMoved) bool { return isStored(k.record) })
 	maps.DeleteFunc(inst.continued, func(magnet, _ *models.TransferHistoryRecord) bool { return isStored(magnet) })
 	inst.events = slices.DeleteFunc(inst.events, func(e models.TransferHistoryEvent) bool { return isStored(e.Record) })
-	// The first part holds the changes of the instance.
 	inst.hashChanges = nil
 	clear(inst.gaps)
 	clear(inst.libraryDays)
@@ -669,20 +575,14 @@ func (inst *instance) forget(p parts, stored int) {
 	inst.unwritten = false
 }
 
-// unsure is what a part whose outcome qui does not know can have stored.
 type unsure int
 
 const (
 	sure unsure = iota
-	// sameRows is a part that holds no rows that add up, so a second write of
-	// it stores the same rows.
 	sameRows
-	// addedRows is a part whose rows would count twice in a second write.
 	addedRows
 )
 
-// markUnsure notes that the database can hold w, a part whose outcome qui
-// does not know.
 func (inst *instance) markUnsure(w *models.TransferHistoryWrite) {
 	if len(w.TorrentDays)+len(w.TrackerHours)+len(w.CategoryDays)+len(w.Gaps)+len(w.Events) > 0 {
 		inst.unsure = addedRows

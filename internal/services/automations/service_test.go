@@ -233,7 +233,6 @@ func TestNeedsForTrackerNames(t *testing.T) {
 			rule: rule(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}/{{ .IsolationFolderName }}"}}),
 			want: true,
 		},
-		// regression: #4242
 		{
 			name: "transfer save path uses Tracker",
 			rule: rule(&models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}"}}),
@@ -416,7 +415,6 @@ func TestPrepareRuleForDryRun(t *testing.T) {
 	assert.Equal(t, rule.Conditions, got.Conditions)
 	assert.Equal(t, rule.IntervalSeconds, got.IntervalSeconds)
 
-	// Original rule should remain unchanged.
 	assert.Equal(t, 99, rule.InstanceID)
 	assert.False(t, rule.Enabled)
 	assert.False(t, rule.DryRun)
@@ -442,7 +440,6 @@ func TestPrepareRuleForDryRun_AssignsEphemeralRuleIDForUnsavedRules(t *testing.T
 	assert.True(t, got.Enabled)
 	assert.True(t, got.DryRun)
 
-	// Original rule must remain untouched.
 	assert.Equal(t, 0, rule.ID)
 	assert.Equal(t, 10, rule.InstanceID)
 	assert.False(t, rule.Enabled)
@@ -462,7 +459,6 @@ func TestPrepareRuleForPreview_AssignsEphemeralRuleIDForUnsavedRules(t *testing.
 	require.Positive(t, got.ID)
 	assert.Equal(t, dryRunEphemeralRuleIDBase+11, got.ID)
 
-	// Ensure no mutation on caller-owned rule.
 	assert.Equal(t, 0, rule.ID)
 }
 
@@ -496,7 +492,7 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 				Tag: &models.TagAction{
 					Enabled:          true,
 					DeleteFromClient: true,
-					UseTrackerAsTag:  true, // not supported for reset collection
+					UseTrackerAsTag:  true,
 					Tags:             []string{"ignored"},
 				},
 			},
@@ -547,10 +543,6 @@ func TestCollectManagedTagsForClientReset(t *testing.T) {
 	require.Equal(t, []string{"managed"}, got)
 }
 
-// -----------------------------------------------------------------------------
-// normalizePath tests
-// -----------------------------------------------------------------------------
-
 func TestNormalizePath(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -595,8 +587,6 @@ func TestNormalizePath(t *testing.T) {
 		{name: "filesystem root", input: "/", want: "/"},
 		{name: "dot segment", input: "/a/./b", want: "/a/b"},
 		{name: "parent segment", input: "/a/b/../c", want: "/a/c"},
-		// A UNC prefix collapses, like cross-seed: a share and a local path with
-		// the same tail compare equal.
 		{name: "unc share", input: `\\server\share\\x`, want: "/server/share/x"},
 	}
 
@@ -631,7 +621,6 @@ func TestCrossSeedRuleRefsByKey(t *testing.T) {
 	keyA := crossSeeds.key(torrentByHash["h1"])
 	keyB := crossSeeds.key(torrentByHash["h2"])
 
-	// Selection must be stable regardless of incoming hash order.
 	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, got[keyA])
 	require.Equal(t, ruleRef{id: 20, name: "Rule B"}, got[keyB])
 	require.Equal(t, got[keyA], gotShuffled[keyA])
@@ -649,7 +638,6 @@ func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
 		"h1": {id: 10, name: "Non expanding rule"},
 		"h2": {id: 20, name: "Expanding rule"},
 	}
-	// Only h2 opts into cross-seed expansion, so rule attribution must use it.
 	expandableHashes := []string{"h2"}
 	crossSeeds := testCrossSeedGroups([]qbt.Torrent{torrentByHash["h1"], torrentByHash["h2"]})
 	got := crossSeedRuleRefsByKey(expandableHashes, torrentRefMap(torrentByHash), ruleByHash, crossSeeds)
@@ -691,7 +679,6 @@ func TestInheritRuleRefForCrossSeed(t *testing.T) {
 	inheritRuleRefForCrossSeed("x1", key, ruleByHash, ruleByCrossSeedKey)
 	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, ruleByHash["x1"])
 
-	// Existing explicit attribution should not be overwritten.
 	ruleByHash["x1"] = ruleRef{id: 99, name: "Explicit Rule"}
 	inheritRuleRefForCrossSeed("x1", key, ruleByHash, ruleByCrossSeedKey)
 	require.Equal(t, ruleRef{id: 99, name: "Explicit Rule"}, ruleByHash["x1"])
@@ -700,10 +687,6 @@ func TestInheritRuleRefForCrossSeed(t *testing.T) {
 	require.Equal(t, 1, counts[ruleRef{id: 10, name: "Rule A"}])
 	require.Equal(t, 1, counts[ruleRef{id: 99, name: "Explicit Rule"}])
 }
-
-// -----------------------------------------------------------------------------
-// limitHashBatch tests
-// -----------------------------------------------------------------------------
 
 func TestLimitHashBatch(t *testing.T) {
 	tests := []struct {
@@ -764,16 +747,14 @@ func TestLimitHashBatch(t *testing.T) {
 	}
 }
 
-// The per-torrent pass runs each enabled rule whose tracker pattern matches the torrent, in rule
-// order. The category of the last rule wins, so the winner shows the order.
 func TestProcessTorrents_RunsTheMatchingRules(t *testing.T) {
 	tests := []struct {
 		name        string
 		torrent     qbt.Torrent
 		rules       []*models.Automation
-		wantFirstID int   // 0 means expect empty slice
-		wantCount   int   // expected number of matching rules
-		wantIDs     []int // all expected matching rule IDs in order
+		wantFirstID int
+		wantCount   int
+		wantIDs     []int
 	}{
 		{
 			name:        "no rules returns empty",
@@ -851,20 +832,13 @@ func TestProcessTorrents_RunsTheMatchingRules(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// Category action tests
-// -----------------------------------------------------------------------------
-
 func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
-	// Test that last rule wins even when the last rule's category matches the current category.
-	// The processor should still set the desired state; the service filters no-ops.
 	torrent := qbt.Torrent{
 		Hash:     "abc123",
 		Name:     "Test Torrent",
-		Category: "movies", // Current category
+		Category: "movies",
 	}
 
-	// Rule 1 sets category to "archive"
 	rule1 := &models.Automation{
 		ID:      1,
 		Enabled: true,
@@ -874,7 +848,6 @@ func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 		},
 	}
 
-	// Rule 2 sets category to "movies" (same as current)
 	rule2 := &models.Automation{
 		ID:      2,
 		Enabled: true,
@@ -891,26 +864,21 @@ func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	// Process rules in order
 	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
 	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
-	// Last rule wins - category should be "movies"
-	// Even though it matches current, the processor should set it (service filters no-op)
 	require.NotNil(t, state.category)
 	assert.Equal(t, "movies", *state.category)
 }
 
 func TestCategoryWithCondition(t *testing.T) {
-	// Test that category action respects conditions
 	torrent := qbt.Torrent{
 		Hash:     "abc123",
 		Name:     "Test Torrent",
 		Category: "default",
-		Ratio:    2.5, // Above condition threshold
+		Ratio:    2.5,
 	}
 
-	// Rule with condition: only if ratio > 2.0
 	rule := &models.Automation{
 		ID:      1,
 		Enabled: true,
@@ -937,21 +905,18 @@ func TestCategoryWithCondition(t *testing.T) {
 
 	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
-	// Condition matched, category should be set
 	require.NotNil(t, state.category)
 	assert.Equal(t, "archive", *state.category)
 }
 
 func TestCategoryConditionNotMet(t *testing.T) {
-	// Test that category action is not applied when condition is not met
 	torrent := qbt.Torrent{
 		Hash:     "abc123",
 		Name:     "Test Torrent",
 		Category: "default",
-		Ratio:    1.0, // Below condition threshold
+		Ratio:    1.0,
 	}
 
-	// Rule with condition: only if ratio > 2.0
 	rule := &models.Automation{
 		ID:      1,
 		Enabled: true,
@@ -978,13 +943,8 @@ func TestCategoryConditionNotMet(t *testing.T) {
 
 	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
-	// Condition not met, category should not be set
 	assert.Nil(t, state.category)
 }
-
-// -----------------------------------------------------------------------------
-// crossSeedGroupMembers tests
-// -----------------------------------------------------------------------------
 
 func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 	torrents := []qbt.Torrent{
@@ -1096,8 +1056,6 @@ func TestSharedSidecarKeepsFilesAndBlocksGroupDeletion(t *testing.T) {
 }
 
 func TestCrossSeedGroupMembers(t *testing.T) {
-	// Two unrelated packs whose payload folder is a bare "Season 2", so qBittorrent
-	// reports the same content path for both while they hold different files.
 	trigger := qbt.Torrent{
 		Hash:        "trigger",
 		Name:        "[Subs] Silver Lantern Chronicle S2 (BD 1080p)",
@@ -1117,7 +1075,6 @@ func TestCrossSeedGroupMembers(t *testing.T) {
 		SavePath:    "/downloads/anime",
 	}
 
-	// Ten equal episodes, so a swapped file moves the overlap by exactly 10%.
 	episodes := func(title string, shared int) qbt.TorrentFiles {
 		files := make(qbt.TorrentFiles, 0, 10)
 		for i := 1; i <= 10; i++ {
@@ -1253,10 +1210,6 @@ func TestCrossSeedGroupMembers(t *testing.T) {
 		assert.Equal(t, []string{"ep1", "pack", "ep2"}, got, "deleting the pack breaks the second episode")
 	})
 }
-
-// -----------------------------------------------------------------------------
-// ruleUsesHardlinkSignatureGrouping tests
-// -----------------------------------------------------------------------------
 
 func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
 	tests := []struct {
@@ -1395,9 +1348,6 @@ func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
 	}
 }
 
-// HardlinkIndex.GetHardlinkCopies tests
-// -----------------------------------------------------------------------------
-
 func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	tests := []struct {
 		name                      string
@@ -1480,12 +1430,7 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// deleteFreesSpace tests with include mode
-// -----------------------------------------------------------------------------
-
 func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
-	// Same release cross-seeded to two trackers (identical files, different .torrent hashes)
 	allTorrents := []qbt.Torrent{
 		{Hash: "abc123", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
 		{Hash: "xyz789", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
@@ -1519,16 +1464,10 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// executeExternalProgramsFromAutomation tests
-// -----------------------------------------------------------------------------
-
 func TestExecuteExternalProgramsFromAutomation_NilExternalProgramService(_ *testing.T) {
-	// Test that nil externalProgramService is handled gracefully
-	// and doesn't panic (activity logging requires a real store, tested separately)
 	s := &Service{
 		externalProgramService: nil,
-		activityStore:          nil, // No activity store to avoid nil pointer dereference
+		activityStore:          nil,
 	}
 
 	executions := []pendingProgramExec{
@@ -1541,14 +1480,10 @@ func TestExecuteExternalProgramsFromAutomation_NilExternalProgramService(_ *test
 		},
 	}
 
-	// Should not panic - the nil check handles this gracefully
 	s.executeExternalProgramsFromAutomation(context.Background(), 1, executions)
 }
 
 func TestExecuteExternalProgramsFromAutomation_NilServiceWithActivityStore(t *testing.T) {
-	// Test that nil externalProgramService logs activities when activityStore is available
-	// Uses a mock querier to capture activity writes
-
 	mockDB := &mockQuerier{
 		activities: make([]*models.AutomationActivity, 0),
 	}
@@ -1576,25 +1511,20 @@ func TestExecuteExternalProgramsFromAutomation_NilServiceWithActivityStore(t *te
 		},
 	}
 
-	// Should not panic and should log activities
 	s.executeExternalProgramsFromAutomation(context.Background(), 1, executions)
 
-	// Verify activities were logged
 	require.Len(t, mockDB.activities, 2, "Expected 2 activity entries for 2 executions")
 
-	// Verify first activity
 	assert.Equal(t, "abc123", mockDB.activities[0].Hash)
 	assert.Equal(t, "Test Torrent 1", mockDB.activities[0].TorrentName)
 	assert.Equal(t, "external_program", mockDB.activities[0].Action)
 	assert.Equal(t, models.ActivityOutcomeFailed, mockDB.activities[0].Outcome)
 	assert.Contains(t, mockDB.activities[0].Reason, "not configured")
 
-	// Verify second activity
 	assert.Equal(t, "def456", mockDB.activities[1].Hash)
 	assert.Equal(t, "Test Torrent 2", mockDB.activities[1].TorrentName)
 }
 
-// dryRunTestPlan builds the Run plan from the states, as the run does before the dry run.
 func dryRunTestPlan(t *testing.T, s *Service, torrents []qbt.Torrent, states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, evalCtx *EvalContext) (runPlan, map[string]qbt.Torrent) {
 	t.Helper()
 	if evalCtx == nil {
@@ -1986,7 +1916,6 @@ func TestNotifyAutomationSummaryFiltersSuppressedRules(t *testing.T) {
 	require.NotContains(t, event.Message, "Suppressed.Release.2026")
 }
 
-// mockQuerier implements dbinterface.Querier for testing activity logging
 type mockQuerier struct {
 	activities []*models.AutomationActivity
 }
@@ -1996,7 +1925,6 @@ func (m *mockQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sq
 }
 
 func (m *mockQuerier) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
-	// Capture activity insertions
 	if len(args) >= 10 && strings.Contains(query, "automation_activity") {
 		activity := &models.AutomationActivity{
 			InstanceID:  args[0].(int),
@@ -2023,7 +1951,6 @@ func (m *mockQuerier) BeginTx(_ context.Context, _ *sql.TxOptions) (dbinterface.
 	return nil, nil
 }
 
-// mockResult implements sql.Result for the mock
 type mockResult struct{}
 
 func (m mockResult) LastInsertId() (int64, error) { return 0, nil }
@@ -2068,8 +1995,6 @@ func TestTrackerDataMissing(t *testing.T) {
 	}
 }
 
-// The live run drops an export that is already on the target, keeps a failed one for its
-// failure activity, and exports a ready torrent once, also while an earlier export of it runs.
 func TestReserveExports(t *testing.T) {
 	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
 	export := func(hash string, mark exportMark) pendingExportToInstance {
@@ -2094,7 +2019,6 @@ func TestReserveExports(t *testing.T) {
 }
 
 func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
-	// Another run exported the torrent after this run planned it.
 	s := &Service{
 		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
 		inFlightExports: map[string]struct{}{"2:done": {}},
@@ -2110,7 +2034,6 @@ func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
 	require.Empty(t, s.inFlightExports)
 }
 
-// noExports fails the test at each Export run.
 type noExports struct{ t *testing.T }
 
 func (n noExports) Export(context.Context, transfer.ExportRequest) (int64, <-chan transfer.ExportResult, error) {

@@ -111,7 +111,6 @@ func TestTestIndexerHonorsConfiguredExecutionTimeout(t *testing.T) {
 			_, _ = w.Write([]byte(`<?xml version="1.0"?><caps><searching><search available="yes" supportedParams="q"/></searching><categories/></caps>`))
 			return
 		}
-		// The fake indexer outlasts the default search timeout, but not the configured one.
 		time.Sleep(2 * defaultTimeout)
 		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`))
 		close(responseSent)

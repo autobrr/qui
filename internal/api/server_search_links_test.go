@@ -57,7 +57,6 @@ func (rig *secretsRig) searchLinks(t *testing.T, path, key string, cookie *http.
 	return links
 }
 
-// regression: #4473
 func TestSearchLinksNeedTorrentsWrite(t *testing.T) {
 	rig := newSecretsRig(t)
 	indexersRead := models.Permission{Area: models.AreaIndexers, Level: models.LevelRead}
@@ -71,11 +70,8 @@ func TestSearchLinksNeedTorrentsWrite(t *testing.T) {
 	routes := []struct {
 		path, body string
 	}{
-		// regression: #4473
 		{"/api/torznab/search", `{"query":"Show"}`},
-		// regression: #4473
 		{"/api/torznab/cross-seed/search", `{"query":"Show"}`},
-		// regression: #4473
 		{"/api/cross-seed/torrents/1/aaa/search", `{}`},
 	}
 	callers := []struct {
@@ -84,13 +80,9 @@ func TestSearchLinksNeedTorrentsWrite(t *testing.T) {
 		cookie *http.Cookie
 		full   bool
 	}{
-		// regression: #4473
 		{"key without Torrents write", withoutWrite, nil, false},
-		// regression: #4473
 		{"key with Torrents write", withWrite, nil, true},
-		// regression: #4473
 		{"browser session", "", cookie, true},
-		// regression: #4473
 		{"key without Torrents write after a full answer", withoutWrite, nil, false},
 	}
 	for _, route := range routes {
@@ -111,7 +103,6 @@ func TestSearchLinksNeedTorrentsWrite(t *testing.T) {
 	}
 }
 
-// regression: #4473
 func TestKeyWithoutTorrentsWriteAppliesSearchResultByHiddenGUID(t *testing.T) {
 	rig := newSecretsRig(t)
 	key := rig.key(t, models.Permission{Area: models.AreaCrossSeed, Level: models.LevelWrite})

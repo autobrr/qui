@@ -3,9 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Condition field types for expression-based automations
 export type ConditionField =
-  // String fields
   | "NAME"
   | "HASH"
   | "INFOHASH_V1"
@@ -33,7 +31,6 @@ export type ConditionField =
   | "TRACKER_STATUS"
   | "TRACKER_MESSAGE"
   | "COMMENT"
-  // Numeric fields (bytes)
   | "SIZE"
   | "TOTAL_SIZE"
   | "COMPLETED"
@@ -43,7 +40,6 @@ export type ConditionField =
   | "UPLOADED_SESSION"
   | "AMOUNT_LEFT"
   | "FREE_SPACE"
-  // Time fields (duration seconds and timestamp-backed ages)
   | "ADDED_ON"
   | "COMPLETION_ON"
   | "LAST_ACTIVITY"
@@ -56,18 +52,15 @@ export type ConditionField =
   | "MAX_INACTIVE_SEEDING_TIME"
   | "SEEDING_TIME_LIMIT"
   | "INACTIVE_SEEDING_TIME_LIMIT"
-  // Legacy age aliases (duration type)
   | "ADDED_ON_AGE"
   | "COMPLETION_ON_AGE"
   | "LAST_ACTIVITY_AGE"
-  // System Time fields
   | "SYSTEM_HOUR"
   | "SYSTEM_MINUTE"
   | "SYSTEM_DAY_OF_WEEK"
   | "SYSTEM_DAY"
   | "SYSTEM_MONTH"
   | "SYSTEM_YEAR"
-  // Numeric fields (float64)
   | "RATIO"
   | "RATIO_LIMIT"
   | "MAX_RATIO"
@@ -75,12 +68,10 @@ export type ConditionField =
   | "PROGRESS"
   | "AVAILABILITY"
   | "POPULARITY"
-  // Numeric fields (speeds)
   | "DL_SPEED"
   | "UP_SPEED"
   | "DL_LIMIT"
   | "UP_LIMIT"
-  // Numeric fields (counts/misc)
   | "NUM_SEEDS"
   | "NUM_LEECHS"
   | "NUM_COMPLETE"
@@ -88,7 +79,6 @@ export type ConditionField =
   | "TRACKERS_COUNT"
   | "PRIORITY"
   | "GROUP_SIZE"
-  // Boolean fields
   | "PRIVATE"
   | "AUTO_MANAGED"
   | "FIRST_LAST_PIECE_PRIO"
@@ -106,15 +96,12 @@ export type ConditionField =
   | "SEEDING_ON_SAME_INSTANCE"
   | "SEASON_PACK_STATUS"
   | "SEASON_PACK_STATUS_ANY_INSTANCE"
-  // Enum-like fields
   | "HARDLINK_SCOPE"
   | "HARDLINK_SCOPE_CROSS"
 
 export type ConditionOperator =
-  // Logical operators (for groups)
   | "AND"
   | "OR"
-  // Comparison operators
   | "EQUAL"
   | "NOT_EQUAL"
   | "CONTAINS"
@@ -127,12 +114,10 @@ export type ConditionOperator =
   | "LESS_THAN_OR_EQUAL"
   | "BETWEEN"
   | "MATCHES"
-  // Cross-category lookup operators (NAME field only)
   | "EXISTS_IN"
   | "CONTAINS_IN"
 
 export interface RuleCondition {
-  /** UI-only stable identifier (not persisted server-side) */
   clientId?: string
   field?: ConditionField
   operator: ConditionOperator
@@ -201,7 +186,7 @@ export interface GroupingConfig {
 export interface DeleteAction {
   enabled: boolean
   mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
-  includeHardlinks?: boolean // Only valid when mode is "deleteWithFilesIncludeCrossSeeds"
+  includeHardlinks?: boolean
   groupId?: string
   atomic?: "all"
   condition?: RuleCondition
@@ -260,10 +245,8 @@ export interface TransferToInstanceAction {
   savePath: string
   category?: string
   tags?: string[]
-  /** Default "removeWithFiles". */
   after?: "removeWithFiles" | "keepFiles" | "keepSeeding"
   leaveStopped?: boolean
-  /** Default "auto". */
   way?: "auto" | "copy" | "bittorrent"
   condition?: RuleCondition
 }
@@ -278,9 +261,7 @@ export interface ActionConditions {
   recheck?: RecheckAction
   reannounce?: ReannounceAction
   delete?: DeleteAction
-  // Legacy single-tag action (still accepted for existing automations)
   tag?: TagAction
-  // Preferred multi-tag actions
   tags?: TagAction[]
   category?: CategoryAction
   move?: MoveAction
@@ -340,7 +321,7 @@ export interface Automation {
   dryRun: boolean
   notify: boolean
   sortOrder: number
-  intervalSeconds?: number | null // null = use global default (15 minutes)
+  intervalSeconds?: number | null
   createdAt?: string
   updatedAt?: string
 }
@@ -355,7 +336,7 @@ export interface AutomationInput {
   dryRun?: boolean
   notify?: boolean
   sortOrder?: number
-  intervalSeconds?: number | null // null = use global default (15 minutes)
+  intervalSeconds?: number | null
 }
 
 export type PreviewView = "needed" | "eligible"
@@ -393,20 +374,15 @@ export interface AutomationActivity {
     limitKiB?: number
     count?: number
     type?: string
-    // Why a rule did not run on the instance
     field?: string
     requires?: string
     programId?: number
     programName?: string
-    // Tag activity details
-    added?: Record<string, number>   // tag -> count of torrents
-    removed?: Record<string, number> // tag -> count of torrents
-    // Category activity details
-    categories?: Record<string, number> // category -> count of torrents
-    // Speed/share limit activity details
-    limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
-    // Move activity details
-    paths?: Record<string, number> // path -> count of torrents
+    added?: Record<string, number>
+    removed?: Record<string, number>
+    categories?: Record<string, number>
+    limits?: Record<string, number>
+    paths?: Record<string, number>
   }
   createdAt: string
 }
@@ -449,10 +425,9 @@ export interface AutomationPreviewTorrent {
   contentPath?: string
   isUnregistered?: boolean
   isCrossSeed?: boolean
-  isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)
-  hardlinkScope?: string // none, torrents_only, outside_qbittorrent, both
-  hardlinkCrossScope?: string // cross-instance: none, torrents_only, outside_qbittorrent, both
-  // Additional fields for dynamic columns
+  isHardlinkCopy?: boolean
+  hardlinkScope?: string
+  hardlinkCrossScope?: string
   numSeeds: number
   numComplete: number
   numLeechs: number
@@ -466,7 +441,6 @@ export interface AutomationPreviewTorrent {
   score?: number
 }
 
-/** Why a rule gets no action on an instance: it reads a field that the instance does not send. */
 export interface AutomationRuleSkip {
   field: string
   requires: string
@@ -477,7 +451,7 @@ export interface AutomationPreviewResult {
   crossSeedCount?: number
   examples: AutomationPreviewTorrent[]
   skipped?: AutomationRuleSkip
-  warnings?: string[] // Warnings explaining why certain operations were skipped
+  warnings?: string[]
 }
 
 export interface RegexValidationError {

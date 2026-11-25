@@ -12,7 +12,6 @@ const GiB = 1024 ** 3
 
 const NOW = Date.parse("2026-11-15T12:00:00Z")
 
-/** Samples of one instance, each as [seconds before now, upload, download]. */
 function live(instances: Record<number, [number, number, number][]>): LiveSamples {
   return {
     now: new Date(NOW).toISOString(),
@@ -23,7 +22,6 @@ function live(instances: Record<number, [number, number, number][]>): LiveSample
   }
 }
 
-/** The slots of one half of a layer that hold a value, as slot index to value. */
 function filled(layer: ChartLayer | undefined, half: "up" | "down"): Record<number, number> {
   return Object.fromEntries((layer?.[half] ?? []).flatMap((value, index) => value === null ? [] : [[index, value]]))
 }
@@ -46,7 +44,6 @@ describe("buildLiveLayers", () => {
   })
 
   it("hides a single read with no other sample of its instance within 3 slots", () => {
-    // 60 s alone; 30 s and 22 s are 4 slots apart; 10 s and 4 s are 3 slots apart.
     const layers = buildLiveLayers(live({ 1: [[60, 1, 0], [30, 2, 0], [22, 3, 0], [10, 4, 0], [4, 5, 0]] }), instanceLayers([1]))
 
     expect(filled(layers[0], "up")).toEqual({ 84: 4, 85: 4, 86: 4, 87: 5, 88: 5, 89: 5 })
@@ -56,9 +53,7 @@ describe("buildLiveLayers", () => {
     expect(buildLiveLayers(live({ 1: [[60, 1, 0]] }), instanceLayers([1]))).toEqual([])
   })
 
-  // regression: #4192
   it("does not join two samples more than 6 seconds apart, also when their slots are 3 apart", () => {
-    // Slots 86 and 89, 7.8 seconds apart.
     expect(buildLiveLayers(live({ 1: [[7.9, 1, 0], [0.1, 2, 0]] }), instanceLayers([1]))).toEqual([])
   })
 
@@ -70,9 +65,7 @@ describe("buildLiveLayers", () => {
     expect(filled(layers[0], "up")).toEqual({ 87: 5, 88: 15, 89: 15 })
   })
 
-  // regression: #4192
   it("draws an instance that syncs a little slower than each 2 seconds without holes", () => {
-    // A sync each 2.2 s, as the stream sync loop does, and each 4.2 s for a slow instance.
     const steady = Array.from({ length: 80 }, (_, index): [number, number, number] => [178 - index * 2.2, 100, 0])
     const slow = Array.from({ length: 43 }, (_, index): [number, number, number] => [178 - index * 4.2, 10, 0])
     const layers = buildLiveLayers(live({ 1: steady, 2: slow }), instanceLayers([1, 2]))
@@ -99,12 +92,10 @@ describe("layerAt", () => {
   })
 
   it("follows the straight line of an area between two slots", () => {
-    // Halfway between slot 0 and slot 1, layer 0 ends at 15 and layer 1 at 35.
     expect([14, 16, 35, 36].map(value => layerAt(layers, "up", 0.5, value))).toEqual([0, 1, 1, undefined])
   })
 
   it("finds no layer in a hole, and the next layer above the line to its own base", () => {
-    // Between slot 1 and the hole of layer 0 in slot 2, layer 1 goes from 20..30 to 0..5: 10..17.5 halfway.
     expect([5, 12, 18].map(value => layerAt(layers, "up", 1.5, value))).toEqual([undefined, 1, undefined])
   })
 
@@ -124,7 +115,6 @@ describe("isLowDisk", () => {
     } as DashboardInstanceStats
   }
 
-  // regression: #4328
   it("never warns from an estimate, with no disk or with a disk that qui could not read", () => {
     expect(isLowDisk(instance(4 * GiB, 1000 * GiB, null))).toBe(false)
     expect(isLowDisk(instance(4 * GiB, 1000 * GiB, { freeBytes: null, totalBytes: null }))).toBe(false)

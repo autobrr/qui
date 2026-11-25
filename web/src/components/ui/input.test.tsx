@@ -24,25 +24,21 @@ function attributesOf(element: HTMLElement) {
 describe("password managers", () => {
   afterEach(cleanup)
 
-  // regression: #4237
   it("leave a plain field alone, such as the name of a Display profile", () => {
     render(<Input aria-label="Name" />)
     expect(attributesOf(screen.getByLabelText("Name"))).toEqual(IGNORE_ATTRIBUTES)
   })
 
-  // regression: #4237
   it("leave a secret of another service alone, such as an API key", () => {
     render(<Input aria-label="API key" type="password" autoComplete="off" />)
     expect(attributesOf(screen.getByLabelText("API key"))).toEqual(IGNORE_ATTRIBUTES)
   })
 
-  // regression: #4237
   it("leave a text area alone", () => {
     render(<Textarea aria-label="Notes" />)
     expect(attributesOf(screen.getByLabelText("Notes"))).toEqual(IGNORE_ATTRIBUTES)
   })
 
-  // regression: #4237
   it.each(["username", "current-password", "new-password", "one-time-code", "section-login username"])(
     "fill a sign-in field with autoComplete %s",
     (autoComplete) => {

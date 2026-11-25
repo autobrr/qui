@@ -32,7 +32,6 @@ type NewClientApiKey = Awaited<ReturnType<typeof api.createClientApiKey>>
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback
 
-/** The proxy path under the base URL of qui, unless the server already put it there. */
 function resolveProxyPath(proxyPath: string) {
   const normalizedProxyPath = proxyPath.startsWith("/") ? proxyPath : `/${proxyPath}`
   const base = getBaseUrl()
@@ -52,23 +51,19 @@ function resolveProxyPath(proxyPath: string) {
   return `${baseWithoutTrailingSlash}${normalizedProxyPath}`
 }
 
-/** The proxy URL as the browser reaches qui. */
 function fullProxyUrl(proxyPath: string) {
   const { protocol, hostname, port } = window.location
   const origin = port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`
   return `${origin}${resolveProxyPath(proxyPath)}`
 }
 
-/** The Client proxy tab: the keys that let other apps reach qBittorrent through qui. */
 export function ClientApiKeysManager() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [editorOpen, setEditorOpen] = useState(false)
-  // A new key on each open gives the form fresh state.
   const [editorSession, setEditorSession] = useState(0)
-  // The server returns the proxy URL only in the reply to the create, so it shows until the user dismisses it.
   const [newKey, setNewKey] = useState<NewClientApiKey | null>(null)
 
   const keysQuery = useQuery({
@@ -76,7 +71,6 @@ export function ClientApiKeysManager() {
     queryFn: () => api.getClientApiKeys(),
     staleTime: 30 * 1000,
     retry: (failureCount, error) => {
-      // Don't retry on 404 - endpoint might not be available
       if (error && error.message?.includes("404")) {
         return false
       }
@@ -111,7 +105,6 @@ export function ClientApiKeysManager() {
     },
   })
 
-  // A second key would replace the proxy URL of the first, so the next create waits until the user dismisses it.
   const canCreate = keysQuery.isSuccess && !newKey
   const openEditor = () => {
     createMutation.reset()
@@ -157,7 +150,6 @@ export function ClientApiKeysManager() {
               key.lastUsedAt
                 ? t("clientApiKeys.lastUsed", { date: formatDate(new Date(key.lastUsedAt)) })
                 : t("clientApiKeys.neverUsed"),
-              // Two keys of one client for one instance differ only here.
               t("clientApiKeys.created", { date: formatDate(new Date(key.createdAt)) }),
             ],
             actions: [
@@ -195,7 +187,6 @@ export function ClientApiKeysManager() {
   )
 }
 
-// The server shows the proxy URL of a new key only once, so the notice stays until the user presses Done.
 function NewKeyNotice({ newKey, onDone }: { newKey: NewClientApiKey; onDone: () => void }) {
   const { t } = useTranslation("settings")
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()

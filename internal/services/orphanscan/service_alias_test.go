@@ -1,7 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// aliasWalkBackend spells unix FileIDs.
 //go:build !windows
 
 package orphanscan
@@ -38,7 +37,6 @@ func (f *orphanOnlyFixture) listedPaths(t *testing.T) []string {
 	return listed
 }
 
-// The alias sits in another scan root, walked before or after the torrent's.
 func TestExecuteScan_KeepsAliasOfInUseFileInAnotherRoot(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
@@ -92,19 +90,14 @@ func TestExecuteScan_ListsOrphanAliasesAcrossRootsOnce(t *testing.T) {
 	require.Equal(t, []string{first}, f.listedPaths(t))
 }
 
-// The torrent's save path is itself a symlink. Its files are in use at the
-// link's path, so their twins at the target are not orphans, and nothing is
-// listed through the link.
 func TestExecuteScan_KeepsFilesOfASymlinkedSavePath(t *testing.T) {
 	inside := func(d string) string { return filepath.Join(d, "mydata") }
 	for _, tc := range []struct {
-		name   string
-		link   func(defaultSavePath string) string
-		ignore string // relative to the link
-		// hardlink gives the torrent's file a second link outside the scan roots.
+		name     string
+		link     func(defaultSavePath string) string
+		ignore   string
 		hardlink bool
 	}{
-		// The torrent's file is below an ignore path spelled at the link.
 		{name: "link inside the default save path", link: inside, ignore: "keep"},
 		{name: "link outside pointing in", link: func(d string) string { return filepath.Join(filepath.Dir(d), "aa-out") }, ignore: "keep"},
 		{name: "link itself ignored", link: inside, ignore: "."},
@@ -134,7 +127,6 @@ func TestExecuteScan_KeepsFilesOfASymlinkedSavePath(t *testing.T) {
 				writeFile(t, stray)
 			})
 
-			// The stray is found by the walk of the default save path, at its own path.
 			require.ElementsMatch(t, []string{junk, stray}, f.listedPaths(t))
 
 			f.svc.executeDeletion(t.Context(), 1, f.runID)
@@ -145,8 +137,6 @@ func TestExecuteScan_KeepsFilesOfASymlinkedSavePath(t *testing.T) {
 	}
 }
 
-// failFollowRootBackend fails each walk that follows its root, as a broken
-// mount below the link does.
 type failFollowRootBackend struct{ fsops.Backend }
 
 func (b failFollowRootBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
@@ -159,10 +149,6 @@ func (b failFollowRootBackend) WalkDir(ctx context.Context, root string, opts fs
 	return ch, nil
 }
 
-// The walk of an ignored symlinked save path can fail after the target is
-// walked, and the twins of its files stay listed at the target. The run is then
-// partial, so a scheduled run does not delete them by itself. A link whose
-// target is gone has no twins, so it does not make the run partial.
 func TestExecuteScan_IgnoredSymlinkedSavePathReadError(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -198,14 +184,11 @@ func TestExecuteScan_IgnoredSymlinkedSavePathReadError(t *testing.T) {
 
 			run, err := f.store.GetRun(t.Context(), f.runID)
 			require.NoError(t, err)
-			// A partial run skips automatic cleanup before it starts a delete.
 			require.Equal(t, tc.wantPartial, run.Partial, "run message: %s", run.ErrorMessage)
 		})
 	}
 }
 
-// vanishFollowRootBackend removes gone when a walk that follows its root
-// emits its first entry below the root, as a folder deleted mid-walk does.
 type vanishFollowRootBackend struct {
 	fsops.Backend
 	gone string
@@ -231,9 +214,6 @@ func (b vanishFollowRootBackend) WalkDir(ctx context.Context, root string, opts 
 	return out, nil
 }
 
-// A folder below the target of an ignored symlinked save path can vanish
-// while it is walked. It has no files left to protect, so the walk goes on
-// and the torrent's file at the target is not listed.
 func TestExecuteScan_IgnoredSymlinkedSavePathVanishedFolder(t *testing.T) {
 	var target, gone string
 	opts := orphanOnlyOptions{
@@ -249,8 +229,6 @@ func TestExecuteScan_IgnoredSymlinkedSavePathVanishedFolder(t *testing.T) {
 		gone = filepath.Join(target, "ab-gone")
 		require.NoError(t, os.Rename(link, target))
 		require.NoError(t, os.Symlink(target, link))
-		// More files than the walk buffers, so the walk is still in aa-fill
-		// when ab-gone is removed.
 		for i := range 128 {
 			writeFile(t, filepath.Join(target, "aa-fill", fmt.Sprintf("%03d.mkv", i)))
 		}
@@ -268,9 +246,6 @@ func TestExecuteScan_IgnoredSymlinkedSavePathVanishedFolder(t *testing.T) {
 	require.FileExists(t, owned)
 }
 
-// A walk of a symlinked root lists nothing, whatever the files below it are:
-// an ignore path, another torrent or a hardlink spelled at the target would not
-// protect the link's spelling.
 func TestScanWalker_SymlinkedRootListsNothing(t *testing.T) {
 	base := t.TempDir()
 	target := filepath.Join(base, "real")
@@ -295,8 +270,6 @@ func TestScanWalker_SymlinkedRootListsNothing(t *testing.T) {
 	require.Empty(t, keys.others)
 }
 
-// The walk of a symlinked root skips a denied subtree but fails on a cut
-// connection, as the scan walk does, so a cut-short tree never reads as whole.
 func TestRecordInUse_Errors(t *testing.T) {
 	base := t.TempDir()
 	target := filepath.Join(base, "real")
@@ -335,9 +308,6 @@ func TestRecordInUse_Errors(t *testing.T) {
 	}
 }
 
-// A file in use below a symlinked root whose identity cannot be read fails the
-// walk, so the run is partial and its twin at the target is not deleted by
-// itself. Over sftp no file has an identity, so the walk goes on.
 func TestRecordInUse_FileIDErr(t *testing.T) {
 	base := t.TempDir()
 	target := filepath.Join(base, "real")
@@ -370,10 +340,6 @@ func TestRecordInUse_FileIDErr(t *testing.T) {
 	}
 }
 
-// A hardlink of a torrent's file is its own directory entry, so in another
-// root it is an orphan like any other file, and its delete leaves the
-// torrent's file in place.
-// regression: #3908
 func TestExecuteScan_ListsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
@@ -405,11 +371,6 @@ func TestExecuteScan_ListsHardlinkOfInUseFileInAnotherRoot(t *testing.T) {
 	}
 }
 
-// Another scan root reaches the torrent's folder through a symlinked folder,
-// as a bind mount would. The torrent's file has a second link outside the
-// roots, so its link count does not tell the alias from a hardlink: the
-// folder and the name do.
-// regression: #3908
 func TestExecuteScan_KeepsAliasOfAHardlinkedTorrentFileThroughASymlinkedFolder(t *testing.T) {
 	for _, category := range []string{"aaa", "zzz"} {
 		t.Run(category, func(t *testing.T) {
@@ -440,8 +401,6 @@ func TestExecuteScan_KeepsAliasOfAHardlinkedTorrentFileThroughASymlinkedFolder(t
 	}
 }
 
-// No walk enters an ignore path, so a torrent's file at or below one is keyed
-// by a walk of its own, and a second path to it in this or another root is kept.
 func TestExecuteScan_KeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -481,9 +440,6 @@ func TestExecuteScan_KeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
 	}
 }
 
-// An ignore path that is or holds a torrent's file is often unmounted
-// (#2483), so a missing one is no walk error. Any other error leaves the twins
-// of its files unprotected, so the run is partial and no cleanup runs by itself.
 func TestExecuteScan_IgnoredTorrentDirWalkErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -523,9 +479,6 @@ func TestExecuteScan_IgnoredTorrentDirWalkErrors(t *testing.T) {
 	}
 }
 
-// linkedPeerFixture adds instance 2, an instance on the same filesystem that
-// seeds movie.mkv with the save path rel below the fixture's root. linked is
-// a symlink to real, so a rel below linked puts movie.mkv below real.
 func linkedPeerFixture(t *testing.T, f *modeFixture, path func(string) string, rel string) (movie string) {
 	t.Helper()
 
@@ -562,13 +515,6 @@ func linkedPeerFixture(t *testing.T, f *modeFixture, path func(string) string, r
 	return movie
 }
 
-// The save path of an overlapping instance is a symlink inside the scan root,
-// or a folder below one. The walk skips the link and finds the file only at
-// the target, so the scan reads its identity through the link and keeps it
-// (#3572). On a filesystem that ignores case, the peer can spell the scan
-// root in another case.
-//
-// regression: #3572
 func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -595,7 +541,6 @@ func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 			}
 			save := path
 			if tc.fold {
-				// A symlink stands in for a filesystem that ignores case.
 				root := filepath.Dir(f.orphan)
 				parent := filepath.Dir(root)
 				foldedParent := filepath.Join(filepath.Dir(parent), strings.ToUpper(filepath.Base(parent)))
@@ -607,8 +552,6 @@ func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 			}
 			movie := linkedPeerFixture(t, f, save, tc.rel)
 			if tc.twin {
-				// On a filesystem that keeps case, the real folder LINKED is a
-				// scan root of its own, and the link linked is another folder.
 				twin := filepath.Join(filepath.Dir(f.orphan), "LINKED")
 				writeFile(t, filepath.Join(twin, "keep.mkv"))
 				sync := stubSync(f.svc)
@@ -645,10 +588,6 @@ func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 	}
 }
 
-// A failed walk of a peer's save path behind a symlink leaves its files
-// unkeyed, so the run is partial with an incomplete identity. A link whose
-// target is gone has no files to key, and a peer's save path that the scan
-// walk reaches gets no walk of its own.
 func TestExecuteScan_PeerBehindASymlinkWalk(t *testing.T) {
 	for _, tc := range []struct {
 		name        string

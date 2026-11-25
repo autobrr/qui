@@ -18,19 +18,13 @@ import { DisplayProfileEditor } from "./DisplayProfileEditor"
 import { DisplayProfileList } from "./DisplayProfileList"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
-/**
- * Settings > General > Display profiles: the profiles in a list next to an editor. Below 768 px only the list shows:
- * a tap on a row picks that profile for this browser, and a › opens the editor in a sheet. Each change saves at once.
- */
 export function DisplayProfilesSettings() {
   const { t } = useTranslation("torrents")
   const { profiles, active, settled, pick } = useNamedDisplayProfiles()
   const narrow = useIsMobile()
   const [selectedId, setSelectedId] = useState(active.id)
-  // The editor keeps its profile after it closes, so the profile stays in it while it slides out.
   const [sheet, setSheet] = useState<{ profileId: string; open: boolean } | null>(null)
   const [newProfileOpen, setNewProfileOpen] = useState(false)
-  // A deleted profile leaves the editor on the profile of this browser, and closes the sheet.
   const shown = profiles.find((profile) => profile.id === selectedId) ?? active
   const sheetProfile = profiles.find((profile) => profile.id === sheet?.profileId)
 

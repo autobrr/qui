@@ -17,12 +17,8 @@ import (
 	"github.com/autobrr/qui/internal/services/problemreport"
 )
 
-// ProblemReportsOff is the answer of every report route while the config
-// turns Problem reports off.
 const ProblemReportsOff = "Problem reports are off in the qui config."
 
-// maxReportPart is the largest report part that qui reads. qui cuts the
-// report to problemreport.MaxReportSize before it sends it.
 const maxReportPart = 16 << 20
 
 type ProblemReportHandler struct {
@@ -33,8 +29,6 @@ func NewProblemReportHandler(service *problemreport.Service) *ProblemReportHandl
 	return &ProblemReportHandler{service: service}
 }
 
-// RequireProblemReports answers 403 on every report route while enabled
-// returns false.
 func RequireProblemReports(enabled func() bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +41,6 @@ func RequireProblemReports(enabled func() bool) func(http.Handler) http.Handler 
 	}
 }
 
-// Facts handles GET /api/problem-reports/facts.
 func (h *ProblemReportHandler) Facts(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	req := problemreport.FactsRequest{StartedFrom: query.Get("startedFrom"), Hash: strings.TrimSpace(query.Get("hash"))}
@@ -81,8 +74,6 @@ func (h *ProblemReportHandler) Facts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Send handles POST /api/problem-reports: a multipart body with a report
-// part and an optional image part.
 func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxReportPart+problemreport.MaxImageSize+1<<20)
 	reader, err := r.MultipartReader()
@@ -150,8 +141,6 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SentReports handles GET /api/problem-reports: Sent reports, the newest
-// first, with the Report statuses that brrbin answers now.
 func (h *ProblemReportHandler) SentReports(w http.ResponseWriter, r *http.Request) {
 	reports, err := h.service.SentReports(r.Context())
 	if err != nil {
@@ -162,7 +151,6 @@ func (h *ProblemReportHandler) SentReports(w http.ResponseWriter, r *http.Reques
 	RespondJSON(w, http.StatusOK, reports)
 }
 
-// Delete handles DELETE /api/problem-reports/{id}.
 func (h *ProblemReportHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.service.Delete(r.Context(), chi.URLParam(r, "id"))
 	if refusal, ok := errors.AsType[*problemreport.RefusalError](err); ok {

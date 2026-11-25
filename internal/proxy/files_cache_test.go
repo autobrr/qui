@@ -16,7 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 )
 
-// regression: #3934
 func TestProxyClearsCachedFilesForUppercaseHash(t *testing.T) {
 	t.Parallel()
 

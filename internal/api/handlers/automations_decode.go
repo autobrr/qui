@@ -18,27 +18,15 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 )
 
-// ignoredRuleKeys are keys that the rule structs do not have but that clients send.
-// The on/off switch sends the whole stored rule, with the server-set keys.
-// The query builder adds clientId to each condition.
 var ignoredRuleKeys = map[reflect.Type][]string{
 	reflect.TypeFor[AutomationPayload]():    {"id", "instanceId", "createdAt", "updatedAt"},
 	reflect.TypeFor[models.RuleCondition](): {"clientId"},
 }
 
-// ruleErrors is the list of problems in rule JSON, one line per problem.
 type ruleErrors []string
 
 func (p ruleErrors) Error() string { return strings.Join(p, "\n") }
 
-// decodeAutomationPayload decodes rule JSON strictly and runs the rule check.
-// It reports an unknown key at any depth, a value of the wrong JSON type, and a condition field, operator or enum value
-// that automations.ConditionFields does not allow, each with its JSON path.
-// stored is the rule that an update replaces, or nil. The field, operator and enum checks skip the conditions and the sorting
-// when they equal those of stored, so a stored rule with a bad operator can still be switched on or off and renamed.
-// The group ID checks skip them the same way, but check the score conditions also when conditions.grouping changed.
-// When saves is true, the request stores the rule, and the running actions must have one condition unless the conditions equal those of stored.
-// It does not check that a referenced instance or external program exists.
 func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.Instance, stored *models.Automation, saves bool) (*AutomationPayload, error) {
 	data, err := io.ReadAll(body)
 	if err != nil {
@@ -55,7 +43,6 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	var payload AutomationPayload
 	unmarshalErr := json.Unmarshal(data, &payload)
 	var unchanged []string
-	// The score conditions name groups from conditions.grouping, so their group IDs need a check when either changes.
 	scoreGroupsUnchanged := false
 	if stored != nil && unmarshalErr == nil {
 		payload.Conditions.Normalize()
@@ -96,9 +83,6 @@ func decodeAutomationPayload(body io.Reader, instanceID int, instance *models.In
 	return &payload, nil
 }
 
-// differentConditions names the first two running actions that have different conditions, or returns "".
-// An action runs when it is enabled. An action without a condition differs from one that has a condition,
-// and the order of child conditions counts.
 func differentConditions(conditions *models.ActionConditions) string {
 	var first *models.ActionCondition
 	for c := range conditions.Conditions() {
@@ -119,10 +103,6 @@ func sameJSON(a, b any) bool {
 	return errA == nil && errB == nil && bytes.Equal(aJSON, bJSON)
 }
 
-// checkJSONShape compares a value decoded with UseNumber against the Go type that it decodes into.
-// Like encoding/json, it accepts null for every type. It also runs checkCondition on each condition
-// and checks the action enums (contentLayout, Transfer after and way, tag and delete mode, share limit action and mode),
-// except under the top-level keys in unchanged.
 func checkJSONShape(problems []string, path string, v any, t reflect.Type, unchanged []string) []string {
 	if v == nil {
 		return problems
@@ -174,13 +154,10 @@ func checkJSONShape(problems []string, path string, v any, t reflect.Type, uncha
 			return wrongType("a number")
 		}
 	default:
-		// No rule struct has a field of another kind. json.Unmarshal still checks it.
 	}
 	return problems
 }
 
-// checkJSONObject checks each key of obj against the struct type t, then runs the rule checks for t
-// unless the top-level key of path is in unchanged.
 func checkJSONObject(problems []string, path string, obj map[string]any, t reflect.Type, unchanged []string) []string {
 	fields := jsonFields(t)
 	for _, key := range slices.Sorted(maps.Keys(obj)) {
@@ -202,7 +179,6 @@ func checkJSONObject(problems []string, path string, obj map[string]any, t refle
 	return checkRuleValues(problems, path, obj, t)
 }
 
-// checkRuleValues runs checkCondition on a condition and checks the enums of an action.
 func checkRuleValues(problems []string, path string, obj map[string]any, t reflect.Type) []string {
 	switch t {
 	case reflect.TypeFor[models.RuleCondition]():
@@ -217,7 +193,6 @@ func checkRuleValues(problems []string, path string, obj map[string]any, t refle
 	case reflect.TypeFor[models.DeleteAction]():
 		problems = checkEnumKey(problems, path, obj, "mode", automations.DeleteModes)
 	case reflect.TypeFor[models.ShareLimitsAction]():
-		// 'Default' in any case uses the global setting, the same as an empty value.
 		if value, _ := obj["shareLimitAction"].(string); !strings.EqualFold(value, "Default") {
 			problems = checkEnumKey(problems, path, obj, "shareLimitAction", automations.ShareLimitActions)
 		}
@@ -228,7 +203,6 @@ func checkRuleValues(problems []string, path string, obj map[string]any, t refle
 	return problems
 }
 
-// checkEnumKey reports a non-empty string at obj[key] that is not one of allowed.
 func checkEnumKey(problems []string, path string, obj map[string]any, key string, allowed []string) []string {
 	if value, _ := obj[key].(string); value != "" && !slices.Contains(allowed, value) {
 		problems = append(problems, fmt.Sprintf("%s.%s: %s does not allow %q; it allows %s",
@@ -237,9 +211,6 @@ func checkEnumKey(problems []string, path string, obj map[string]any, key string
 	return problems
 }
 
-// checkCondition checks the field, operator and value of one condition against automations.ConditionFields.
-// A group (AND or OR with child conditions) has no field, and checkJSONShape checks its children.
-// The evaluator runs AND or OR without children as a condition, so it is checked as one.
 func checkCondition(problems []string, path string, obj map[string]any) []string {
 	operator, _ := obj["operator"].(string)
 	op := models.ConditionOperator(operator)
@@ -248,7 +219,7 @@ func checkCondition(problems []string, path string, obj map[string]any) []string
 	}
 	field, isString := obj["field"].(string)
 	if !isString && obj["field"] != nil {
-		return problems // checkJSONShape reported the wrong type
+		return problems
 	}
 	spec, ok := automations.ConditionFields[models.ConditionField(field)]
 	if !ok {
@@ -264,8 +235,6 @@ func checkCondition(problems []string, path string, obj map[string]any) []string
 		}
 	}
 
-	// The evaluator ignores case. Another operator, or a regex on a string field, compares free text.
-	// The other fields ignore regex. An empty value passes, except on a yes/no field, which reads it as false.
 	value, _ := obj["value"].(string)
 	regex, _ := obj["regex"].(bool)
 	pattern := regex && spec.Type == automations.ValueString
@@ -293,7 +262,6 @@ func joinOperators(ops []models.ConditionOperator) string {
 	return strings.Join(names, ", ")
 }
 
-// jsonFields maps each JSON key of a struct to its field. Each rule struct field has a json tag, and none is embedded.
 func jsonFields(t reflect.Type) map[string]reflect.StructField {
 	fields := make(map[string]reflect.StructField, t.NumField())
 	for field := range t.Fields() {

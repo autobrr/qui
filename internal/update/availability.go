@@ -12,14 +12,12 @@ import (
 	"github.com/autobrr/qui/internal/buildinfo"
 )
 
-// Inputs are the facts that decide Availability. qui measures them once at startup.
 type Inputs struct {
 	AppContainer      bool
 	DisableSelfUpdate bool
 	ReleaseVersion    bool
 	DirWritable       bool
-	// BinaryPath is the resolved binary that a Restart execs. Decide ignores it.
-	BinaryPath string
+	BinaryPath        string
 }
 
 type Availability struct {
@@ -77,11 +75,6 @@ func Measure(log zerolog.Logger, disableSelfUpdate bool, version string) Inputs 
 	return in
 }
 
-// appContainer reports whether qui runs as the application of a container.
-// Unlike config.detectContainer it ignores /dev/.lxc-boot-id: a system container
-// such as Proxmox LXC runs qui under its own init, so a Restart works there.
-// The kubelet sets KUBERNETES_SERVICE_HOST in every pod, which covers a pod on
-// containerd where qui is not PID 1 (shareProcessNamespace, an init wrapper).
 func appContainer(exists func(path string) bool, pid int, kubernetes bool) bool {
 	return exists("/.dockerenv") || exists("/run/.containerenv") || pid == 1 || kubernetes
 }

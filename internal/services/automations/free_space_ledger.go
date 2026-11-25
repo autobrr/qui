@@ -16,25 +16,16 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// freeSpaceLedger is the count of one rule that reads FREE_SPACE: the free space of the
-// source of the rule at the start of the run, and the Projected freed bytes of the rule.
 type freeSpaceLedger struct {
-	startBytes int64
-	// projectsDeletes is true for a delete rule whose Condition reads FREE_SPACE, outside
-	// the "eligible" preview view.
+	startBytes       int64
 	projectsDeletes  bool
 	deleteMode       string
 	includeHardlinks bool
 	freedBytes       int64
-	// countedPaths holds the largest size counted for each file path of a plain
-	// delete-with-files rule.
-	countedPaths map[string]int64
-	// countedMembers holds the cross-seed members counted by an include-cross-seeds rule.
-	countedMembers map[string]struct{}
+	countedPaths     map[string]int64
+	countedMembers   map[string]struct{}
 }
 
-// newFreeSpaceLedger makes the ledger of the rule. In the "eligible" preview view the
-// ledger counts nothing, so the Condition keeps the free space at the start.
 func newFreeSpaceLedger(rule *models.Automation, startBytes int64, eligibleView bool) *freeSpaceLedger {
 	ledger := &freeSpaceLedger{startBytes: startBytes}
 	if eligibleView || rule.Conditions == nil {
@@ -52,15 +43,10 @@ func newFreeSpaceLedger(rule *models.Automation, startBytes int64, eligibleView 
 	return ledger
 }
 
-// freeSpaceLedgers makes one ledger for each rule that reads FREE_SPACE in an enabled
-// Action Condition or in its sort, keyed by rule ID. It reads the free space of each
-// source one time. A rule that reads FREE_SPACE needs the instance.
 func (s *Service) freeSpaceLedgers(ctx context.Context, instance *models.Instance, rules []*models.Automation, eligibleView bool) (map[int]*freeSpaceLedger, error) {
 	return s.buildFreeSpaceLedgers(ctx, instance, rules, eligibleView, s.usageUnder)
 }
 
-// buildFreeSpaceLedgers is freeSpaceLedgers with the measurement of an allowance
-// source as an argument: a run measures, and a preview may reuse a measurement.
 func (s *Service) buildFreeSpaceLedgers(ctx context.Context, instance *models.Instance, rules []*models.Automation, eligibleView bool,
 	usageUnder func(context.Context, *models.Instance, string) (int64, error)) (map[int]*freeSpaceLedger, error) {
 	ledgers := make(map[int]*freeSpaceLedger)
@@ -74,7 +60,6 @@ func (s *Service) buildFreeSpaceLedgers(ctx context.Context, instance *models.In
 		}
 		sourceKey := GetFreeSpaceSourceKey(rule.FreeSpaceSource)
 		allowance := rule.FreeSpaceSource != nil && rule.FreeSpaceSource.Type == models.FreeSpaceSourceAllowance
-		// For an allowance source the map holds the usage under the path.
 		startBytes, read := startBySource[sourceKey]
 		if !read {
 			var err error
@@ -90,8 +75,6 @@ func (s *Service) buildFreeSpaceLedgers(ctx context.Context, instance *models.In
 			startBySource[sourceKey] = startBytes
 		}
 		if allowance {
-			// Above the allowance the figure is negative, so the rule still
-			// has to free the excess before it reaches its target.
 			startBytes = rule.FreeSpaceSource.AllowanceBytes - startBytes
 		}
 		ledgers[rule.ID] = newFreeSpaceLedger(rule, startBytes, eligibleView)
@@ -114,13 +97,10 @@ func (l *freeSpaceLedger) projectedFreedBytes() int64 {
 	return l.freedBytes
 }
 
-// projects reports whether the ledger counts the Delete triggers of its rule.
 func (l *freeSpaceLedger) projects() bool {
 	return l != nil && l.projectsDeletes
 }
 
-// hardlinks returns the hardlink index that the ledger follows when it counts a cross-seed
-// group, or nil when it follows none.
 func (l *freeSpaceLedger) hardlinks(evalCtx *EvalContext) *HardlinkIndex {
 	if !l.projects() || l.deleteMode != DeleteModeWithFilesIncludeCrossSeeds || !l.includeHardlinks {
 		return nil
@@ -137,14 +117,10 @@ func (l *freeSpaceLedger) reset() {
 	clear(l.countedMembers)
 }
 
-// count adds the bytes that the delete of one Delete trigger frees. A Shared file counts
-// one time. It returns false when it cannot estimate the bytes of the torrent, and then
-// counts nothing. A ledger that does not project counts nothing and returns true.
 func (l *freeSpaceLedger) count(torrent qbt.Torrent, crossSeeds *crossSeedGroups, evalCtx *EvalContext) bool {
 	if !l.projects() {
 		return true
 	}
-	// Keep-files mode, and preserve mode when a Shared file stays, free nothing.
 	if !deleteFreesSpace(l.deleteMode, torrent, crossSeeds, evalCtx.CrossSeedFilesByHash) {
 		return true
 	}
@@ -160,13 +136,10 @@ func (l *freeSpaceLedger) count(torrent qbt.Torrent, crossSeeds *crossSeedGroups
 			return l.countFiles(torrent, evalCtx.CrossSeedFilesByHash[torrent.Hash])
 		}
 	}
-	// The torrent shares no file: preserve mode verified that above, and a
-	// file delete outside a group has nothing to share.
 	l.freedBytes += torrent.Size
 	return true
 }
 
-// countFiles counts each file path of the torrent one time, at its largest size.
 func (l *freeSpaceLedger) countFiles(torrent qbt.Torrent, files qbt.TorrentFiles) bool {
 	if len(files) == 0 {
 		return false
@@ -181,8 +154,6 @@ func (l *freeSpaceLedger) countFiles(torrent qbt.Torrent, files qbt.TorrentFiles
 	return true
 }
 
-// countCrossSeedGroup counts the verified group of the torrent one time, with its
-// hardlink copies when the rule includes hardlinks.
 func (l *freeSpaceLedger) countCrossSeedGroup(torrent qbt.Torrent, crossSeeds *crossSeedGroups, evalCtx *EvalContext) bool {
 	if _, counted := l.countedMembers[torrent.Hash]; counted {
 		return true
@@ -203,7 +174,6 @@ func (l *freeSpaceLedger) countCrossSeedGroup(torrent qbt.Torrent, crossSeeds *c
 	if !ok {
 		return false
 	}
-	// The selection keeps the files of the whole group, so the group frees nothing.
 	if _, keep := groupKeepsFilesForOtherInstances(evalCtx, slices.Collect(maps.Keys(expanded.expandedSet))); keep {
 		maps.Copy(l.countedMembers, expanded.expandedSet)
 		return true

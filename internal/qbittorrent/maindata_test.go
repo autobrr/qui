@@ -115,7 +115,6 @@ func TestResolveMainDataPicksTrackerGetterByMode(t *testing.T) {
 			require.Contains(t, got.Categories, "movies")
 			require.Equal(t, "connected", got.ServerState.ConnectionStatus)
 
-			// Never populated: cloning it is the cost this assembly avoids.
 			require.Nil(t, got.Torrents)
 		})
 	}

@@ -22,13 +22,10 @@ import { DisplayProfileTile } from "./DisplayProfileTile"
 interface NewDisplayProfileDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Called with the id of the new profile, after this browser starts to use it. */
   onCreated?: (profileId: string) => void
-  /** Gets the focus when the dialog closes, for an opener that a menu removes. Default: the element focused at open. */
   returnFocusRef?: RefObject<HTMLElement | null>
 }
 
-/** Makes a profile from the setup of this browser, and this browser then uses it. */
 export function NewDisplayProfileDialog({ open, onOpenChange, onCreated, returnFocusRef }: NewDisplayProfileDialogProps) {
   const nameRef = useRef<HTMLInputElement>(null)
   const returnFocus = useReturnFocus(returnFocusRef)
@@ -43,7 +40,6 @@ export function NewDisplayProfileDialog({ open, onOpenChange, onCreated, returnF
         }}
         onCloseAutoFocus={returnFocus.restore}
       >
-        {/* The content unmounts on close, so a cancelled draft does not come back. */}
         <NewDisplayProfileForm
           nameRef={nameRef}
           onCreated={(profileId) => {
@@ -68,13 +64,11 @@ function NewDisplayProfileForm({ nameRef, onCreated, onCancel }: NewDisplayProfi
   const { active, settled, create } = useNamedDisplayProfiles()
   const [name, setName] = useState("")
   const [submitted, setSubmitted] = useState(false)
-  // null while the icon still follows the name.
   const [pickedIcon, setPickedIcon] = useState<string | null>(null)
   const [color, setColor] = useState<DisplayProfileColor | null>(null)
   const nameId = useId()
   const messageId = useId()
 
-  // The guess and the picker give only icons of the list.
   const icon = pickedIcon ?? guessDisplayProfileIcon(name)
   const iconLabelKey = findDisplayProfileIcon(icon)!.labelKey
   const { error, shownError, errorTexts, count } = useDisplayProfileNameCheck(name, submitted)

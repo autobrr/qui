@@ -47,16 +47,12 @@ func mergeTorrentSearchResults(gazelleResults, torznabResults []TorrentSearchRes
 		}
 	}
 
-	// Gazelle first: deterministic, low-volume matches from target trackers.
 	appendUnique(gazelleResults)
 	appendUnique(torznabResults)
 
 	return merged
 }
 
-// searchUsablePredicate reports whether the shared search classifier accepts a
-// primary-pass result. The main result loop classifies with the same base
-// input, so alternate-query scheduling cannot drift from it.
 func (s *Service) searchUsablePredicate(base searchCandidateInput) func(jackett.SearchResult) bool {
 	return func(r jackett.SearchResult) bool {
 		input := base
@@ -66,7 +62,6 @@ func (s *Service) searchUsablePredicate(base searchCandidateInput) func(jackett.
 	}
 }
 
-// SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
 	search, err := s.prepareManualSearch(ctx, instanceID, hash, opts)
 	if err != nil {
@@ -75,8 +70,6 @@ func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash
 	return s.searchSourceMatches(ctx, search.instance, search.source, search.opts, search.scope, search.gazelleClients)
 }
 
-// manualSearch is what a manual search of one torrent reads before it asks
-// any indexer.
 type manualSearch struct {
 	opts           TorrentSearchOptions
 	gazelleClients *gazelleClientSet
@@ -119,8 +112,6 @@ func (s *Service) prepareManualSearch(ctx context.Context, instanceID int, hash 
 	return &manualSearch{opts: opts, gazelleClients: gazelleClients, instance: instance, source: sourceTorrent, scope: scope}, nil
 }
 
-// loadSearchSource loads the instance and the complete torrent that a search
-// starts from.
 func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash string) (*models.Instance, *qbt.Torrent, error) {
 	if instanceID <= 0 {
 		return nil, nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
@@ -159,16 +150,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	return s.searchSourceMatches(ctx, instance, sourceTorrent, opts, scope, gazelleClients)
 }
 
-// searchSourceMatches searches for a source that loadSearchSource loaded. When
-// it returns an error after the RED/OPS lookup ran, the response is not nil: it
-// holds only GazelleLookups and torznabRequested, for the cooldown of the
-// Library Scan.
 func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Instance, sourceTorrent *qbt.Torrent, opts TorrentSearchOptions, scope searchScope, gazelleClients *gazelleClientSet) (*TorrentSearchResponse, error) {
 	instanceID := instance.ID
 	hash := sourceTorrent.Hash
 	normalizedHash := normalizeHash(hash)
 
-	// Get files to find the largest file for better content type detection
 	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
@@ -180,11 +166,7 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 
 	searchSource, contentInfo := s.readSearchSource(ctx, sourceTorrent, sourceFiles)
 	searchRelease := searchSource.release
-	// Keep contentInfo as the Torznab category decision; searchRelease is selected from it
-	// so later release matching follows the same search mode.
-	// Stops TV torznab searches from being miscategorized as movie when ARR/release matching.
 
-	// Detect disc layout for this torrent
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
 
 	sourceInfo := TorrentInfo{
@@ -210,7 +192,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	scope.sourceInstanceID = instanceID
 	waitGazelle := s.startGazelleSearch(ctx, sourceTorrent, sourceFiles, scope, gazelleClients)
 	torznabRequested := false
-	// failed returns err with the lookups that the caller still needs.
 	failed := func(gazelle gazelleSearchOutcome, err error) (*TorrentSearchResponse, error) {
 		return &TorrentSearchResponse{GazelleLookups: gazelle.lookups, torznabRequested: torznabRequested}, err
 	}
@@ -237,7 +218,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		}, nil
 	}
 
-	// ARR-driven ID lookup for enhanced Torznab searching
 	var externalIDs *models.ExternalIDs
 	var arrTitles []string
 	var episodeMap *models.EpisodeMap
@@ -250,19 +230,11 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		episodeMap = arrResult.EpisodeMap
 	}
 
-	// When the arr path yields no ID, fall back to the external ID embedded in
-	// the torrent's MKV metadata (cached per torrent in media_id_cache) and run
-	// the primary search ID-first through the same mixed-mode path as arr IDs.
-	// The tag is trusted blind: candidates are verified against the source name
-	// and size, so a wrong muxer tag cannot produce a wrong match, and the
-	// title rescue pass below re-covers any indexer a wrong tag leaves empty.
 	tagSourcedIDs := false
 	if externalIDs == nil {
 		if mediaIDs := s.lookupMediaFileIDs(ctx, instance, sourceTorrent, sourceFiles, contentInfo.ContentType); mediaIDs != nil {
 			externalIDs = mediaIDs
 			tagSourcedIDs = true
-			// The primary search now runs at ID quality, so the "searched by
-			// title only" degradation notice no longer holds.
 			queryDegraded = ""
 		}
 	}
@@ -282,7 +254,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	})
 	searchReq := gatherIn.Req
 
-	// Apply category filtering to the search request with indexer-specific optimization
 	if len(searchReq.Categories) > 0 {
 		searchReq.Categories = s.jackettService.GetOptimalCategoriesForIndexers(ctx, searchReq.Categories, searchReq.IndexerIDs)
 		log.Debug().
@@ -308,11 +279,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer waitCancel()
 
-	// torznabFailed degrades a fatal Torznab-leg error to a Gazelle-only
-	// partial response when Gazelle already produced matches; a failing
-	// tracker must not discard results the other source already returned.
-	// Caller cancellation is not a tracker failure: propagate it so a
-	// canceled candidate is never recorded as a partial success.
 	torznabFailed := func(err error) (*TorrentSearchResponse, error) {
 		gazelle := waitGazelle()
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -340,8 +306,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		}, nil
 	}
 
-	// Capture per-indexer failures for the decision trace. The callback is
-	// copied into every retry pass request, so later passes report here too.
 	traceIndexerErrs := &searchIndexerErrors{}
 	searchReq.OnComplete = traceIndexerErrs.record
 
@@ -366,7 +330,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	var lateFilterSnapshot *AsyncIndexerFilteringState
 	var lateExcludedCount int
 
-	// Count raw results before the late content filter drops any; the breakdown subtracts LateContentFiltered from this total.
 	totalResults := len(searchResults)
 	traceCandidateCounts := make(map[int]int)
 	for _, res := range searchResults {
@@ -389,10 +352,6 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 	traceRejections := &searchTraceRejections{}
 	for _, res := range searchResults {
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		// Search has only the source torrent's full size and Torznab's advertised
-		// candidate size. Positive exact equality may replace a relaxable release
-		// or structure check; the downloaded torrent is inspected later by the
-		// normal apply pipeline.
 		input := searchBase
 		input.Candidate = namedRelease{release: candidateRelease, rawName: res.Title}
 		input.CandidateSize = res.Size
@@ -461,13 +420,9 @@ func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Inst
 		})
 	}
 
-	// Classify every result before deduplication, then use the existing evidence
-	// ordering so a rejected or tolerance-only occurrence cannot hide an exact-size
-	// occurrence with the same GUID/download URL. Keyless results remain distinct.
 	sortScoredTorrentSearchResults(scored)
 	scored = deduplicateScoredTorrentSearchResults(scored)
 
-	// Log filtering statistics
 	matchedResults := len(scored)
 	log.Debug().
 		Str("torrentName", sourceTorrent.Name).
@@ -663,8 +618,6 @@ func searchCandidateClassPriority(class searchCandidateClass) int {
 	return 0
 }
 
-// applyContentFilterSnapshot copies a finished content filter into the source
-// torrent of a search response.
 func applyContentFilterSnapshot(info *TorrentInfo, snapshot *AsyncIndexerFilteringState) {
 	info.AvailableIndexers = snapshot.CapabilityIndexers
 	info.FilteredIndexers = snapshot.FilteredIndexers

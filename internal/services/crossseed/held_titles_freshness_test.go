@@ -219,7 +219,6 @@ func TestCheckFindsAProxiedAddInTheSyncThatRunsOrIsDue(t *testing.T) {
 			f.proxiedAdd()
 			pass(time.Second)
 		}, waits: 500 * ms},
-		// regression: #4475
 		"1 s after an add while a slow sync runs": {takes: 1200 * ms, before: func(f *freshInstance) {
 			f.startSync()
 			pass(100 * ms)

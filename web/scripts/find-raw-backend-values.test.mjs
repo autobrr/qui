@@ -40,14 +40,12 @@ function scan(t, source) {
   return result
 }
 
-// regression: #4178
 test("ignores a raw value that is only a key prop", (t) => {
   const result = scan(t, "<Row key={notice.kind} label={t(\"row\")} />\n<li key={`${issue.instanceId}-${issue.kind}`}>\n")
 
   assert.equal(result.status, 0, result.stdout + result.stderr)
 })
 
-// regression: #4178
 test("still reports a raw value rendered beside a key prop", (t) => {
   const result = scan(t, "<span key={notice.kind}>{notice.kind}</span>\n")
 
@@ -56,7 +54,6 @@ test("still reports a raw value rendered beside a key prop", (t) => {
   assert.match(result.stdout, /Code: <span key=\{notice.kind\}>\{notice.kind\}<\/span>/)
 })
 
-// regression: #4178
 test("still reports key={...} that a tag renders as text", (t) => {
   const result = scan(t, "<span>key={notice.kind}</span>\n")
 
@@ -64,7 +61,6 @@ test("still reports key={...} that a tag renders as text", (t) => {
   assert.match(result.stdout, /Line 1: \[RAW_BACKEND_VALUE\] \(kind\)/)
 })
 
-// regression: #4178
 test("still reports key={...} after a space in tag text", (t) => {
   const result = scan(t, "<span> key={notice.kind}</span>\n")
 
@@ -72,7 +68,6 @@ test("still reports key={...} after a space in tag text", (t) => {
   assert.match(result.stdout, /Line 1: \[RAW_BACKEND_VALUE\] \(kind\)/)
 })
 
-// regression: #4178
 test("still reports key={...} on its own line between tags", (t) => {
   const result = scan(t, "<span>\n  key={notice.kind}\n</span>\n")
 
@@ -80,14 +75,12 @@ test("still reports key={...} on its own line between tags", (t) => {
   assert.match(result.stdout, /Line 2: \[RAW_BACKEND_VALUE\] \(kind\)/)
 })
 
-// regression: #4178
 test("ignores a key prop after an arrow function prop", (t) => {
   const result = scan(t, "<Row onOpen={() => open(notice)} key={notice.kind} />\n")
 
   assert.equal(result.status, 0, result.stdout + result.stderr)
 })
 
-// regression: #4178
 test("ignores a key prop after a comparison or a quoted bracket", (t) => {
   const result = scan(t, "<Row hidden={count > 0} key={notice.kind} />\n<Row title=\"a > b\" key={notice.kind} />\n")
 

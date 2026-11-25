@@ -10,18 +10,8 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// CleanPath cleans a path without changing its casing.
-// Uses the backend's path dialect and NFC unicode normalization to
-// avoid mismatches between canonically-equivalent strings (e.g. composed vs
-// decomposed forms on some platforms).
-// Tradeoff: canonically-equivalent names collapse to one key, so byte-distinct
-// NFC/NFD twins on normalization-sensitive filesystems are treated as one path.
-// Use this when the result is shown to the user or stored; use NormalizePath
-// when the result is only compared against another path.
 func CleanPath(d PathDialect, path string) string {
 	p := d.Clean(path)
-	// On Unix, paths can contain arbitrary bytes (not always valid UTF-8).
-	// Avoid normalizing invalid UTF-8 to prevent replacing bytes with U+FFFD.
 	if !utf8.ValidString(p) {
 		return p
 	}
@@ -34,7 +24,6 @@ func CleanPath(d PathDialect, path string) string {
 func NormalizePath(d PathDialect, path string) string {
 	p := d.Clean(path)
 	if isASCII(p) {
-		// Already NFC, and lowering ASCII cannot unclean it.
 		return strings.ToLower(p)
 	}
 	return CleanPath(d, strings.ToLower(CleanPath(d, p)))

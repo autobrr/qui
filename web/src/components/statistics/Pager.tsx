@@ -8,23 +8,16 @@ import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
-// The number of rows of one page of a desktop table.
 export const PAGE_ROWS = 10
 
 interface PagerProps {
-  // The page that shows, from 0.
   page: number
   total: number
-  // Set while the rows of the next page load.
   waiting?: boolean
   onPageChange: (page: number) => void
   children?: ReactNode
 }
 
-/**
- * The line below a desktop table that shows one page of its rows: the range of the rows, and the buttons to the page
- * before and after when the table has more than one page. The children show between the range and the buttons.
- */
 export function Pager({ page, total, waiting = false, onPageChange, children }: PagerProps) {
   const { t, i18n } = useTranslation("statistics")
   const formatCount = new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language)

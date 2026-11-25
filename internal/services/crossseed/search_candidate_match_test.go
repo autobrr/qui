@@ -27,9 +27,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// The existing torrent's files carry the season the search decision relaxed, so
-// the name-derived match gate rejects the pairing the release prefilter just
-// admitted. The bound source torrent must reach file-level validation instead.
 func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 	const (
 		instanceID   = 1
@@ -70,8 +67,6 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 }
 
-// A CRC tag on one name is no difference, so the web source relabel stays the
-// only one, and apply keeps that verdict.
 func TestFindCandidatesKeepsOneSidedChecksumWithWebRelabel(t *testing.T) {
 	const (
 		instanceID    = 1
@@ -119,10 +114,6 @@ func TestFindCandidatesKeepsOneSidedChecksumWithWebRelabel(t *testing.T) {
 }
 
 func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
-	// Bracket-anime pack names carry no season token, so the raw name parses as
-	// non-TV. Search matched these via file-derived TV structure; the apply
-	// prefilter must re-derive the same structure for the search-source torrent
-	// instead of hard-rejecting on "not recognized as TV".
 	const (
 		instanceID = 1
 		sourceHash = "existing"
@@ -152,7 +143,6 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 		}
 		service := newService(existing, files)
 
-		// Without search provenance the raw-name prefilter stays strict.
 		direct, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 			TorrentName:       targetName,
 			TargetInstanceIDs: []int{instanceID},
@@ -265,9 +255,6 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.Contains(t, decision.MatchReason, "relaxed hdr")
 }
 
-// A Season numeral is a second season marker. Exact size does not relax a
-// season that the numeral of the candidate confirms, and title rescue does not
-// read the numeral of another title as a season.
 func TestClassifySearchCandidateSeasonNumeral(t *testing.T) {
 	m := matcher{releaseCache: NewReleaseCache(), stringNormalizer: stringutils.NewDefaultNormalizer()}
 	for _, tt := range []struct {
@@ -275,8 +262,7 @@ func TestClassifySearchCandidateSeasonNumeral(t *testing.T) {
 		source    string
 		candidate string
 		rescue    bool
-		// reason is "" for an accepted pair.
-		reason string
+		reason    string
 	}{
 		{
 			name:      "exact size relaxes the season of two packs",
@@ -336,9 +322,6 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	require.Equal(t, searchSizeEvidenceNone, decision.SizeEvidence)
 }
 
-// Anime torrent names carry a CRC32 tag that indexer titles routinely drop, so
-// one side alone holding a checksum is no difference. Two checksums that
-// disagree stay fatal; TestClassifySearchCandidateExactSizeHardIdentity pins that.
 func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -436,9 +419,6 @@ func TestFindCandidatesKeepsSourceChecksumWithoutGroup(t *testing.T) {
 		"a one-sided checksum is missing evidence even when neither title has a group")
 }
 
-// Neither the local name nor the listing has a group, so a group in the
-// downloaded name is no new difference. The stored verdict holds, and the file
-// check decides.
 func TestFindCandidatesKeepsVerdictWhenDownloadAddsGroup(t *testing.T) {
 	const (
 		instanceID     = 1
@@ -820,9 +800,6 @@ func TestFindCandidatesRecordedDifferenceCannotHideNewDifference(t *testing.T) {
 		"a recorded collection difference cannot authorize a new codec difference")
 }
 
-// The listing omits the codec, so the codec in the downloaded name is no
-// difference from the listing. The stored verdict holds, and the file check
-// decides.
 func TestFindCandidatesLeavesOmittedListingFieldToFileCheck(t *testing.T) {
 	const (
 		instanceID     = 1
@@ -866,11 +843,6 @@ func TestFindCandidatesLeavesOmittedListingFieldToFileCheck(t *testing.T) {
 	require.Len(t, response.Candidates, 1)
 }
 
-// The listing has a group tag, and the downloaded torrent keeps the info.name
-// of the local torrent, which has none. The group is only in the file names.
-// The download brings no new difference, so the strict verdict holds.
-//
-// regression: #3697
 func TestFindCandidatesKeepsStrictVerdictWhenDownloadNameDropsGroup(t *testing.T) {
 	t.Parallel()
 
@@ -1031,8 +1003,6 @@ func TestFindCandidatesKeepsDirectionalVariantMismatch(t *testing.T) {
 		"apply must keep a recorded variant when the reverse comparison reports its other label")
 }
 
-// A CRC tag on one name is no difference, whichever release carries it, so
-// search gives a strict verdict and apply keeps it.
 func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 	const (
 		instanceID   = 1
@@ -1100,8 +1070,6 @@ func TestFindCandidatesKeepsOneSidedChecksumBothDirections(t *testing.T) {
 	}
 }
 
-// A CRC tag on one name decides nothing in either direction, also without exact
-// sizes. The file check after the download decides.
 func TestClassifySearchCandidateIgnoresOneSidedChecksumWithoutExactSize(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -1142,9 +1110,6 @@ func TestClassifySearchCandidateIgnoresOneSidedChecksumWithoutExactSize(t *testi
 	}
 }
 
-// A tracker with one entry per cour stamps S01 on every season, so an equal-size
-// pack can carry the wrong season label. Equal reported size plus identity checks
-// outrank the label, but only for the pairing they cover.
 func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -1189,9 +1154,6 @@ func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 	}
 }
 
-// compareTVStructure reports a season mismatch before it compares pack against
-// episode, so a differing season would otherwise skip the shape check. Only a
-// like-for-like shape may retire a season or episode number.
 func TestClassifySearchCandidateKeepsTVShapeHardWhenNumbersDiffer(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(20_000_000_000)
@@ -1269,9 +1231,6 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	require.Equal(t, "group mismatch", rejected.RejectReason)
 }
 
-// Field case: the user's own movie re-uploaded as a bare .mkv, byte-identical,
-// listing retitled with a "cdn-" prefix and the -GROUP tag dropped. The rescue
-// probe must tolerate the absent group; the strict matcher must not.
 func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -1375,8 +1334,6 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	require.Equal(t, searchCandidateClassStrict, decision.Class)
 	require.Equal(t, []string{"Money Heist"}, decision.SourceTitles)
 
-	// The decision owns the title lineage it accepted; later mutations of the ARR
-	// response must not alter an in-flight or cached search result.
 	sourceTitles[0] = "mutated"
 	require.Equal(t, []string{"Money Heist"}, decision.SourceTitles)
 
@@ -1575,10 +1532,6 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
 
-	// Episode numbering is relaxable on equal reported size because indexers renumber it,
-	// so this pairing is admitted and recorded. The recorded difference is a
-	// report; the strict rejection it overrode is what forces the recheck at
-	// apply. See TestProcessCrossSeedCandidateVerifiesRelaxedStructure.
 	t.Run("different episode is relaxed and recorded", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01E02.2160p.ATVP.WEB-DL.H.265-NTb")
@@ -1888,8 +1841,6 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 	require.Equal(t, skippedRecheckMessage, blocked.Results[0].Error)
 	require.Zero(t, downloads.Load())
 
-	// The block must not consume a rescue slot: with Skip recheck off again,
-	// all three attempts remain available.
 	settings = models.DefaultCrossSeedAutomationSettings()
 	withAdder(service)
 	allowed, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
@@ -2133,10 +2084,8 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	existing := qbt.Torrent{
-		Hash: existingHash,
-		Name: existingName,
-		// Search already established exact size. Apply must not replace that
-		// evidence with a new comparison against downloaded metainfo.
+		Hash:     existingHash,
+		Name:     existingName,
 		Size:     torrentSize + 1,
 		Progress: 1,
 	}
@@ -2265,8 +2214,6 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	// The listing names the local show, and the download uses the other title.
-	// Only the aliases let the download read as the listing.
 	request := func(hash string) *FindCandidatesRequest {
 		return &FindCandidatesRequest{
 			TorrentName:       targetName,
@@ -2281,36 +2228,27 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 		}
 	}
 
-	// The aliases admit exactly the torrent the search resolved them for. The
-	// unrelated same-season torrent must not inherit them: with the aliases on
-	// every candidate, the target's own alias satisfies the title overlap and
-	// the whole library passes discovery.
 	response, err := service.FindCandidates(context.Background(), request(sourceHash))
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1)
 	require.Len(t, response.Candidates[0].Torrents, 1)
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 
-	// Hash comparison is normalized, so casing differences still bind the
-	// aliases to the source torrent.
 	response, err = service.FindCandidates(context.Background(), request(strings.ToUpper(sourceHash)))
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1)
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 
-	// Without the aliases the download does not read as the listing.
 	noAliases := request(sourceHash)
 	noAliases.SearchDecision.SourceTitles = nil
 	response, err = service.FindCandidates(context.Background(), noAliases)
 	require.NoError(t, err)
 	require.Empty(t, response.Candidates)
 
-	// Without a matching source hash the aliases attach to nothing.
 	response, err = service.FindCandidates(context.Background(), request("different-hash"))
 	require.NoError(t, err)
 	require.Empty(t, response.Candidates)
 
-	// A matching hash on the wrong instance attaches nothing either.
 	wrongInstance := request(sourceHash)
 	wrongInstance.SearchDecision.SourceInstanceID = instanceID + 1
 	response, err = service.FindCandidates(context.Background(), wrongInstance)
@@ -2318,8 +2256,6 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 	require.Empty(t, response.Candidates)
 }
 
-// The listing named the local show, and the downloaded info.name uses the
-// other title. Only the stored aliases let the download read as the listing.
 func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	const (
 		instanceID   = 1
@@ -2375,9 +2311,6 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	require.Contains(t, aliased.Results[0].Message, "torrent properties")
 }
 
-// TestCrossSeedRevalidatesARRCandidateTitles mirrors the SourceTitles
-// revalidation above for announce-origin aliases. The aliases stay bound to
-// the decision's source torrent.
 func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
 	const (
 		instanceID   = 1
@@ -2427,7 +2360,6 @@ func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
 
 	require.Equal(t, "no_match", apply(nil, existingHash).Results[0].Status)
 	require.Equal(t, "no_match", apply([]string{"Unrelated Show"}, existingHash).Results[0].Status)
-	// The aliases stay bound to the decision's source torrent.
 	require.Equal(t, "no_match", apply([]string{"La Casa de Papel"}, "different-hash").Results[0].Status)
 
 	aliased := apply([]string{"Money Heist", "La Casa de Papel"}, existingHash)
@@ -2571,7 +2503,6 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		require.Contains(t, result.Message, "torrent properties")
 	})
 
-	// Last: this search overwrites the cached results the apply subtests consume.
 	t.Run("arr lookup error reaches the response", func(t *testing.T) {
 		arrLookup.err = errors.New("arr offline")
 		defer func() { arrLookup.err = nil }()
@@ -2580,8 +2511,6 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	})
 }
 
-// The download must read as the listing that search judged, apart from the
-// fields that the stored verdict lists as different.
 func TestDownloadReadsAsListing(t *testing.T) {
 	t.Parallel()
 
@@ -2686,7 +2615,6 @@ func TestDownloadReadsAsListing(t *testing.T) {
 			local:    "Kaiju.Squad.S02E06.1080p.WEB.H264-GRP",
 			download: "Kaiju.Squad.S02E06.1080p.WEB.H264-OTHER",
 		},
-		// regression: #3697
 		{
 			name:     "the download drops the group that the listing has",
 			class:    searchCandidateClassStrict,
@@ -2788,8 +2716,6 @@ func TestClassifySearchCandidateHybridPackAgainstEpisodeSkipsSizeCheck(t *testin
 		candidateName = "Kaiju.Squad.S01E01.1080p.BluRay.x264-GRP"
 	)
 
-	// Cross-seed episodes from packs skips the size check, as it does for a
-	// strict match.
 	decision := service.matcher().classifySearchCandidate(searchCandidateInput{
 		Source:                 namedRelease{release: service.releaseCache.Parse(sourceName), rawName: sourceName},
 		Candidate:              namedRelease{release: service.releaseCache.Parse(candidateName), rawName: candidateName},

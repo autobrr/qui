@@ -52,15 +52,12 @@ function getDurationInputUnits() {
   ];
 }
 
-// Detect best duration unit from seconds value
 function detectDurationUnit(secs: number): number {
   if (secs >= 86400 && secs % 86400 === 0) return 86400;
   if (secs >= 3600 && secs % 3600 === 0) return 3600;
   return 60;
 }
 
-// The value is the byte multiplier and stays numeric; only the label is localized, and it is
-// built on call so it follows a language switch.
 const SPEED_INPUT_LADDER = ["B", "KiB", "MiB"] as const;
 const BYTES_INPUT_LADDER = ["MiB", "GiB", "TiB"] as const;
 
@@ -70,7 +67,6 @@ const getSpeedInputUnits = () =>
 const getBytesInputUnits = () =>
   BYTES_INPUT_LADDER.map((unit) => ({ value: BYTES_PER_UNIT[unit], label: unitLabel(unit) }));
 
-// Decimal precision by unit to avoid float artifacts (e.g., 24.199999999999818)
 const MiB = 1024 * 1024;
 const GiB = 1024 * 1024 * 1024;
 const TiB = 1024 * 1024 * 1024 * 1024;
@@ -83,9 +79,9 @@ const DECIMALS_BY_BYTES_UNIT: Record<number, number> = {
 };
 
 const DECIMALS_BY_SPEED_UNIT: Record<number, number> = {
-  1: 0,      // B/s
-  [KiB]: 0,  // KiB/s
-  [MiB]: 1,  // MiB/s
+  1: 0,
+  [KiB]: 0,
+  [MiB]: 1,
 };
 
 const DEFAULT_GROUP_ID = "cross_seed_content_save_path";
@@ -94,7 +90,6 @@ function isGroupingConditionField(field: ConditionField | undefined): boolean {
   return field === "GROUP_SIZE" || field === "IS_GROUPED";
 }
 
-// Format numeric value for display, avoiding floating-point artifacts
 function formatNumericInput(value: number, decimals: number): string {
   return String(Number(value.toFixed(decimals)));
 }
@@ -103,13 +98,10 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-// Detect best bytes unit from value
 function detectBytesUnit(bytes: number): number {
   const tib = 1024 * 1024 * 1024 * 1024;
   const gib = 1024 * 1024 * 1024;
   const mib = 1024 * 1024;
-  // Use magnitude-based detection so fractional values like "24.5 TiB" re-open as TiB,
-  // rather than being reduced to "GiB" due to exact divisibility.
   if (bytes >= tib) return tib;
   if (bytes >= gib) return gib;
   return mib;
@@ -121,13 +113,9 @@ interface LeafConditionProps {
   onChange: (condition: RuleCondition) => void;
   onRemove: () => void;
   isOnly?: boolean;
-  /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
-  /** Optional list of fields to disable with reasons */
   disabledFields?: DisabledField[];
-  /** Optional list of "state" option values to disable with reasons */
   disabledStateValues?: DisabledStateValue[];
-  /** Available grouping IDs for GROUP_SIZE / IS_GROUPED leaf conditions */
   groupOptions?: GroupOption[];
 }
 
@@ -161,34 +149,28 @@ export function LeafCondition({
   const availableGroupOptions = (groupOptions && groupOptions.length > 0)? groupOptions: [{ id: DEFAULT_GROUP_ID, label: t("queryBuilder.defaultGroupLabel") }];
   const groupIdValue = condition.groupId || DEFAULT_GROUP_ID;
 
-  // Track duration unit separately so it persists when value is empty
   const [durationUnit, setDurationUnit] = useState<number>(() =>
     detectDurationUnit(parseFloat(condition.value ?? "0") || 0)
   );
 
-  // Track speed unit separately so it persists when value is empty
   const [speedUnit, setSpeedUnit] = useState<number>(() => {
-    // Initialize from existing value if present, default to MiB/s
     const bytesPerSec = parseFloat(condition.value ?? "0") || 0;
     const mib = 1024 * 1024;
     const kib = 1024;
     if (bytesPerSec >= mib && bytesPerSec % mib === 0) return mib;
     if (bytesPerSec >= kib && bytesPerSec % kib === 0) return kib;
-    if (bytesPerSec === 0) return mib; // Default to MiB/s for new conditions
+    if (bytesPerSec === 0) return mib;
     return 1;
   });
 
-  // Track duration unit for BETWEEN operator (shared for min/max)
   const [betweenDurationUnit, setBetweenDurationUnit] = useState<number>(() =>
     detectDurationUnit(condition.minValue ?? condition.maxValue ?? 0)
   );
 
-  // Track bytes unit separately so it persists when value is empty
   const [bytesUnit, setBytesUnit] = useState<number>(() =>
     detectBytesUnit(parseFloat(condition.value ?? "0") || 0)
   );
 
-  // Track bytes unit for BETWEEN operator (shared for min/max)
   const [betweenBytesUnit, setBetweenBytesUnit] = useState<number>(() =>
     detectBytesUnit(condition.minValue ?? condition.maxValue ?? 0)
   );
@@ -197,7 +179,6 @@ export function LeafCondition({
     const newFieldType = getFieldType(field);
     const defaultOperator = getOperatorsForField(field)[0] ?? "EQUAL";
 
-    // Determine default value based on field type
     let defaultValue = "";
     if (newFieldType === "boolean") {
       defaultValue = "true";
@@ -255,15 +236,12 @@ export function LeafCondition({
     onChange({ ...condition, value: actualValue });
   };
 
-  // A CONTENT_TYPE condition saved with regex on holds a pattern, not a type, so it keeps the free-text input.
   const isContentTypeEqualityOperator =
     condition.field === "CONTENT_TYPE" &&
     (condition.operator === "EQUAL" || condition.operator === "NOT_EQUAL") &&
     !condition.regex;
 
   const contentTypeOptions = isContentTypeEqualityOperator ? getTranslatedContentTypes(t) : [];
-  // The evaluator ignores case, so a saved "TV" selects "tv". Any other saved value stays
-  // selected as a flagged option, because rewriting it would change what the rule matches.
   const savedContentType = condition.value ?? "";
   const knownContentType = contentTypeOptions.find((option) => option.value === savedContentType.toLowerCase());
   const contentTypeValue = knownContentType?.value ?? savedContentType;
@@ -292,9 +270,7 @@ export function LeafCondition({
     onChange({ ...condition, regex: !condition.regex });
   };
 
-  // Duration handling - parse seconds to display value using tracked unit
   const getDurationDisplay = (): { value: string; unit: number } => {
-    // Check raw stored value to distinguish empty from "0"
     if (condition.value == null || condition.value === "") {
       return { value: "", unit: durationUnit };
     }
@@ -306,9 +282,7 @@ export function LeafCondition({
   const durationDisplay = fieldType === "duration" ? getDurationDisplay() : null;
 
   const handleDurationChange = (value: string, unit: number) => {
-    // Always update the unit preference
     setDurationUnit(unit);
-    // Only update condition value if there's an actual value
     if (value === "") {
       onChange({ ...condition, value: "" });
     } else {
@@ -318,9 +292,7 @@ export function LeafCondition({
     }
   };
 
-  // Speed handling - parse bytes/s to display value using tracked unit
   const getSpeedDisplay = (): { value: string; unit: number } => {
-    // Check raw stored value to distinguish empty from "0"
     if (condition.value == null || condition.value === "") {
       return { value: "", unit: speedUnit };
     }
@@ -333,9 +305,7 @@ export function LeafCondition({
   const speedDisplay = fieldType === "speed" ? getSpeedDisplay() : null;
 
   const handleSpeedChange = (value: string, unit: number) => {
-    // Always update the unit preference
     setSpeedUnit(unit);
-    // Only update condition value if there's an actual value
     if (value === "") {
       onChange({ ...condition, value: "" });
     } else {
@@ -345,7 +315,6 @@ export function LeafCondition({
     }
   };
 
-  // BETWEEN duration display - convert seconds to display unit
   const getBetweenDurationDisplay = (): { minValue: string; maxValue: string; unit: number } => {
     return {
       minValue: condition.minValue === undefined ? "" : formatNumericInput(condition.minValue / betweenDurationUnit, 2),
@@ -363,9 +332,7 @@ export function LeafCondition({
 
   const betweenDurationDisplay = (fieldType === "duration" && condition.operator === "BETWEEN") ? getBetweenDurationDisplay() : null;
 
-  // Bytes handling - parse bytes to display value using tracked unit
   const getBytesDisplay = (): { value: string; unit: number } => {
-    // Check raw stored value to distinguish empty from "0"
     if (condition.value == null || condition.value === "") {
       return { value: "", unit: bytesUnit };
     }
@@ -378,9 +345,7 @@ export function LeafCondition({
   const bytesDisplay = fieldType === "bytes" ? getBytesDisplay() : null;
 
   const handleBytesChange = (value: string, unit: number) => {
-    // Always update the unit preference
     setBytesUnit(unit);
-    // Only update condition value if there's an actual value
     if (value === "") {
       onChange({ ...condition, value: "" });
     } else {
@@ -390,7 +355,6 @@ export function LeafCondition({
     }
   };
 
-  // BETWEEN bytes display - convert bytes to display unit
   const getBetweenBytesDisplay = (): { minValue: string; maxValue: string; unit: number } => {
     const decimals = DECIMALS_BY_BYTES_UNIT[betweenBytesUnit] ?? 2;
     return {
@@ -409,7 +373,6 @@ export function LeafCondition({
 
   const betweenBytesDisplay = (fieldType === "bytes" && condition.operator === "BETWEEN") ? getBetweenBytesDisplay() : null;
 
-  // Percentage handling - stored as 0-1, displayed as 0-100
   const getPercentageDisplay = (): string => {
     if (condition.value == null || condition.value === "") {
       return "";
@@ -419,8 +382,6 @@ export function LeafCondition({
       return "";
     }
 
-    // Backwards compatibility: older workflows may have stored percentages directly (e.g. 100),
-    // instead of a 0-1 float. Treat those as already-percent values for display.
     const percent = stored > 1 ? stored : stored * 100;
     return formatNumericInput(clampNumber(percent, 0, 100), 2);
   };
@@ -436,7 +397,6 @@ export function LeafCondition({
     }
   };
 
-  // BETWEEN percentage display - convert 0-1 to 0-100 for display
   const getBetweenPercentageDisplay = (): { minValue: string; maxValue: string } => {
     return {
       minValue: condition.minValue === undefined ? "" : formatNumericInput(clampNumber((condition.minValue > 1 ? condition.minValue : condition.minValue * 100), 0, 100), 2),
@@ -454,7 +414,6 @@ export function LeafCondition({
 
   const betweenPercentageDisplay = (fieldType === "percentage" && condition.operator === "BETWEEN") ? getBetweenPercentageDisplay() : null;
 
-  // A reversed range on a clock field is a wrap, not a mistake, so say what it covers.
   const wrapsBetween = condition.operator === "BETWEEN" &&
     condition.field !== undefined &&
     WRAPPING_BETWEEN_FIELDS.has(condition.field) &&
@@ -472,7 +431,6 @@ export function LeafCondition({
         condition.negate && "border-destructive/50"
       )}
     >
-      {/* Drag handle */}
       <button
         type="button"
         className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
@@ -482,7 +440,6 @@ export function LeafCondition({
         <GripVertical className="size-5 sm:size-4" />
       </button>
 
-      {/* Negate toggle */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -503,10 +460,8 @@ export function LeafCondition({
         </TooltipContent>
       </Tooltip>
 
-      {/* Field selector */}
       <FieldCombobox value={condition.field ?? ""} onChange={handleFieldChange} disabledFields={disabledFields} />
 
-      {/* Operator selector */}
       <div className="order-2 sm:order-none w-full sm:w-auto">
         <Select
           value={condition.operator ?? ""}
@@ -566,7 +521,6 @@ export function LeafCondition({
         </div>
       )}
 
-      {/* Value input - varies by field type */}
       <div className="order-4 sm:order-none w-full sm:w-auto flex items-center gap-1">
         {condition.operator === "BETWEEN" && fieldType === "duration" && betweenDurationDisplay ? (
           <div className="flex items-center gap-1">
@@ -912,7 +866,6 @@ export function LeafCondition({
               onChange={(e) => handleValueChange(e.target.value)}
               placeholder={getPlaceholder(fieldType, t)}
             />
-            {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
             {fieldType === "string" &&
             condition.operator !== "MATCHES" &&
             condition.operator !== "EXISTS_IN" &&
@@ -946,7 +899,6 @@ export function LeafCondition({
         )}
       </div>
 
-      {/* Remove button */}
       <Button
         type="button"
         variant="ghost"

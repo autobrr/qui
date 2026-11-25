@@ -42,9 +42,8 @@ func TestBuildTorznabRequest(t *testing.T) {
 	tvdb := &models.ExternalIDs{TVDbID: 424242}
 
 	tests := []struct {
-		name  string
-		input torznabRequestInput
-		// want gets the fields that every request shares from the input of the row.
+		name          string
+		input         torznabRequestInput
 		want          jackett.TorznabSearchRequest
 		wantAltTitle  string
 		wantAltSeason *int
@@ -200,7 +199,6 @@ func TestBuildTorznabRequest(t *testing.T) {
 	}
 }
 
-// The search dialog sends the query that the user typed to the indexer.
 func TestSearchTorrentMatches_DialogSendsTypedQuery(t *testing.T) {
 	const (
 		sourceHash = "4c1b7f0e9d3a2865bd10c7e4f2a93b6d8e015c72"

@@ -36,8 +36,6 @@ func TestBuildCrossSeedAddPlan_ContentLayoutAndSavePathOverride(t *testing.T) {
 			wantLayout:     "Subfolder",
 		},
 		{
-			// qBittorrent reports the full FILE path for a single-file-in-folder torrent, so the
-			// override must be the recovered storage FOLDER, not the raw content path.
 			name:             "rootless single file name mismatch with content path pins into matched folder",
 			sourceName:       "Movie.2015.1080p.BluRay.x264-GROUP.mkv",
 			candidateName:    "Movie.2015.LIMITED.1080p.BluRay.x264-GROUP",

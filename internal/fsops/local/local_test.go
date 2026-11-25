@@ -46,10 +46,6 @@ func TestStat_ExistingFile(t *testing.T) {
 }
 
 func TestPortableNotExistErrors(t *testing.T) {
-	// The Backend contract promises errors.Is(err, fs.ErrNotExist) for
-	// missing paths from every read/mutate method, not just Stat — remote
-	// backends must map onto the same sentinels, so the local backend is
-	// the reference.
 	b := newBackend()
 	ctx := context.Background()
 	missing := filepath.Join(t.TempDir(), "nope", "missing.mkv")
@@ -83,8 +79,6 @@ func TestStat_FollowsSymlinkIdentity(t *testing.T) {
 	direct, err := b.Stat(context.Background(), target)
 	require.NoError(t, err)
 
-	// Stat follows the link: metadata and identity describe the target, so
-	// symlinked torrent data keeps already-seeding detection.
 	assert.False(t, viaLink.IsSymlink)
 	assert.Equal(t, direct.Size, viaLink.Size)
 	require.NoError(t, viaLink.FileIDErr)
@@ -280,7 +274,6 @@ func TestWalkDir_IgnoreDirNamesAndPrefixes(t *testing.T) {
 	}
 	assert.Contains(t, relPaths, "keep.txt")
 	assert.NotContains(t, relPaths, filepath.Join("node_modules", "pkg.js"))
-	// Matching is case-insensitive: metadata dir case varies on disk.
 	assert.NotContains(t, relPaths, filepath.Join("$recycle.bin", "old.mkv"))
 	assert.NotContains(t, relPaths, filepath.Join(".trash-1000", "deleted.mkv"))
 }
@@ -305,7 +298,6 @@ func TestWalkDir_RootAndFileAreNotNameFiltered(t *testing.T) {
 	}
 }
 
-// A root that is itself an IgnorePaths entry walks nothing, as it does over sftp.
 func TestWalkDir_IgnoredRootWalksNothing(t *testing.T) {
 	b := newBackend()
 	root := t.TempDir()
@@ -357,8 +349,6 @@ func TestWalkDir_FollowRootWalksASymlinkedRootUnderItsOwnPath(t *testing.T) {
 func TestWalkDir_ContextCancellation(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
-	// More files than the walk channel buffers (64), so the walk cannot
-	// complete before the first receive and cancellation must cut it short.
 	const total = 150
 	for i := range total {
 		writeFile(t, filepath.Join(dir, fmt.Sprintf("f%03d.txt", i)), "x")
@@ -380,16 +370,10 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 	for range ch {
 		count++
 	}
-	// After cancel, at most the buffered entries (64) plus one in-flight
-	// send can still arrive; anything near the full tree means the walk
-	// ignored cancellation.
 	assert.Less(t, count, 100)
 }
 
 func TestStatfs_FilePath(t *testing.T) {
-	// The contract is "the filesystem containing path" — a regular file is a
-	// valid argument. unix.Statfs accepts files natively; the Windows
-	// implementation resolves to the containing directory.
 	b := newBackend()
 	dir := t.TempDir()
 	file := filepath.Join(dir, "content.mkv")
@@ -594,7 +578,6 @@ func TestSupportsReflink(t *testing.T) {
 
 	supported, reason, err := b.SupportsReflink(context.Background(), dir)
 	require.NoError(t, err)
-	// Result depends on the filesystem, but the call should not error.
 	_ = supported
 	_ = reason
 }

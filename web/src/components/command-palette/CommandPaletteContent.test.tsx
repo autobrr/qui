@@ -23,7 +23,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("react-i18next", () => ({ useTranslation: () => mocks.translation }))
 vi.mock("./useDestinations", () => ({ useDestinations: () => mocks.destinations }))
-// With text, the palette gets the row that searches the torrents, and no torrent.
 vi.mock("./useTorrentResults", () => ({ useTorrentResults: (query: string) => (query ? mocks.torrentSearch : mocks.noTorrents) }))
 
 function entry(id: string, label: string, extra: Partial<PaletteEntry> = {}): PaletteEntry {
@@ -40,7 +39,6 @@ mocks.destinations.push({
   ],
 })
 
-/** The row that the search field names to a screen reader. */
 function namedRow() {
   const id = screen.getByRole("combobox").getAttribute("aria-activedescendant")
   return id === null ? null : document.getElementById(id)
@@ -147,7 +145,6 @@ describe("CommandPaletteContent", () => {
     expect(highlightedRow()).toBeUndefined()
     expect(namedRow()).toBeNull()
 
-    // jsdom moves no focus on a press. The palette keeps the cursor when it cancels the press.
     const pressGoesToTheBrowser = fireEvent.mouseDown(screen.getByRole("option"))
     fireEvent.click(screen.getByRole("option"))
 

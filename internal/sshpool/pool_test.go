@@ -33,8 +33,6 @@ func pinnedInstanceAt(t *testing.T, addr string) *models.Instance {
 	return inst
 }
 
-// poolFor is a pool whose store answers Get with inst, the way the real store
-// does: every dial reads that row.
 func poolFor(pin []byte, inst *models.Instance) *Pool {
 	return NewPool(NewDialer(&fakeCreds{key: testClientKey, pin: pin, inst: inst}))
 }
@@ -108,10 +106,6 @@ func TestPoolBacksOffAfterDialFailure(t *testing.T) {
 	entry.unlock()
 }
 
-// A caller queued behind another caller's dial is bounded by its own ctx, not
-// by that dial: every operation on the pool is cancellable, waiting included.
-// The test holds the entry, as a dial in progress does, so the bubble can see
-// the waiter queue on it before the cancel.
 func TestPoolWaiterHonoursContext(t *testing.T) {
 	t.Parallel()
 
@@ -137,10 +131,6 @@ func TestPoolWaiterHonoursContext(t *testing.T) {
 	})
 }
 
-// A caller that was already waiting on the entry when Close ran must not dial
-// through the orphaned entry afterwards, whichever of the two took the entry
-// first. The test holds the entry, as a dial in progress does, so the bubble
-// can see the waiter and Close queue on it.
 func TestPoolCloseRefusesAWaitingCaller(t *testing.T) {
 	t.Parallel()
 
@@ -313,7 +303,6 @@ func TestPoolRunningSFTPCallKeepsTheConnectionFromIdleClose(t *testing.T) {
 	defer close(done)
 	go entry.keepalive(inst.ID, entry.client, entry.calls, done, 20*time.Millisecond)
 
-	// The loop pings only on a tick that found the connection in use.
 	require.Eventually(t, func() bool { return server.Keepalives() >= 2 }, 5*time.Second, 10*time.Millisecond,
 		"the idle close must leave a connection with a running sftp call open")
 	select {
@@ -331,7 +320,6 @@ func TestPoolRunningSFTPCallKeepsTheConnectionFromIdleClose(t *testing.T) {
 	assert.Equal(t, 1, server.Accepts())
 }
 
-// regression: #4231
 func TestPoolClosesAConnectionWhoseSFTPCallsGetNoAnswer(t *testing.T) {
 	t.Parallel()
 
@@ -357,12 +345,9 @@ func TestPoolClosesAConnectionWhoseSFTPCallsGetNoAnswer(t *testing.T) {
 	defer close(done)
 	go entry.keepalive(inst.ID, entry.client, entry.calls, done, 20*time.Millisecond)
 
-	// The server's own stall timer answers the call after a few seconds, so
-	// only a close by the pool makes it fail.
 	require.Error(t, <-call, "the pool must close a connection whose sftp calls get no answer")
 }
 
-// regression: #4231
 func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 	t.Parallel()
 
@@ -385,7 +370,6 @@ func TestPoolAnswerOfALongCallNeverLooksIdle(t *testing.T) {
 	assert.False(t, unused(calls, &lastUsed))
 }
 
-// regression: #4231
 func TestPoolSFTPCallsStallOnlyWithoutAnAnswer(t *testing.T) {
 	t.Parallel()
 
@@ -423,13 +407,11 @@ type discardCloser struct{ io.Writer }
 
 func (discardCloser) Close() error { return nil }
 
-// regression: #4231
 func TestPoolSFTPAnswersPastTheStderrOfTheServer(t *testing.T) {
 	t.Parallel()
 
 	hostKey := sshtest.NewSigner()
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
-	// Twice the 2 MiB window of an x/crypto channel.
 	server.SetStderr(4 << 20)
 	inst := pinnedInstanceAt(t, server.Addr)
 	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
@@ -662,7 +644,6 @@ func TestPoolClosesIdleConnection(t *testing.T) {
 	pool.mu.Unlock()
 	entry.lastUsed.Store(time.Now().Add(-idleTimeout - time.Second).UnixNano())
 	done := make(chan struct{})
-	// A poll by sftp call would itself be use, so the test waits for the close.
 	closed := make(chan error, 1)
 	go func() { closed <- client.Wait() }()
 	go entry.keepalive(inst.ID, entry.client, entry.calls, done, 20*time.Millisecond)
@@ -732,8 +713,6 @@ func TestPoolReconnectsAfterDrop(t *testing.T) {
 
 	server.DropConnections()
 
-	// The watcher clears the entry asynchronously, so the redial is what is
-	// being waited for here, not the drop.
 	require.Eventually(t, func() bool {
 		client, err := pool.SFTP(t.Context(), inst)
 		if err != nil {
@@ -842,7 +821,6 @@ func TestPoolSFTPConnsTakesFewerWhenTheHostRefuses(t *testing.T) {
 	assert.Equal(t, dials+2, server.Dials(), "the next caller asks the host again")
 }
 
-// regression: #4231
 func TestPoolSFTPInitWithNoEndStopsAtTheTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -850,7 +828,6 @@ func TestPoolSFTPInitWithNoEndStopsAtTheTimeout(t *testing.T) {
 	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
 	inst := pinnedInstanceAt(t, server.Addr)
 	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
-	// The dials share this timeout, so it leaves them room on a slow runner.
 	pool.dialer.timeout = time.Second
 	t.Cleanup(pool.Close)
 	release := make(chan struct{})
@@ -981,7 +958,6 @@ func TestPoolRunningSFTPCallKeepsAnExtraConnectionOpen(t *testing.T) {
 
 	require.Eventually(t, func() bool { return len(firstClosed) > 0 }, 5*time.Second, 10*time.Millisecond,
 		"the first connection has no call running and closes as idle")
-	// The loop pings only on a tick that found the connection in use.
 	require.Eventually(t, func() bool { return server.Keepalives() >= 2 }, 5*time.Second, 10*time.Millisecond,
 		"the idle close must leave an extra connection with a running sftp call open")
 	select {

@@ -20,47 +20,23 @@ import (
 	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
-// linkModeResult represents the outcome of hardlink or reflink mode processing.
 type linkModeResult struct {
-	// Used indicates whether link mode was used for this cross-seed.
-	Used bool
-	// Success indicates the link mode completed successfully.
-	Success bool
-	// RequiresFullRecheck indicates that fallback to regular mode is allowed,
-	// but the regular add must only auto-resume after a full 100% recheck.
+	Used                bool
+	Success             bool
 	RequiresFullRecheck bool
-	// FallbackToRegular indicates link mode explicitly fell through to regular mode.
-	FallbackToRegular bool
-	// Result is the final InstanceCrossSeedResult when link mode is used.
-	// Only valid when Used is true.
-	Result InstanceCrossSeedResult
+	FallbackToRegular   bool
+	Result              InstanceCrossSeedResult
 }
 
-// linkMode lists everything that differs between hardlink and reflink mode.
-// processLinkMode is the one body behind both; see docs/adr/0006.
 type linkMode struct {
-	name string
-	// addedStatus and errorStatus are the result statuses of the mode, written
-	// out so that a code search finds each status.
-	addedStatus, errorStatus string
-	enabled                  func(*models.Instance) bool
-	// poolMode is the persisted partial-pool mode value, kept apart from name so
-	// a display rename never changes a stored row.
-	poolMode string
-	// poolReplaceable allows the pool to replace placeholders that qBittorrent
-	// creates at paths missing before the add. Existing files stay protected.
-	poolReplaceable bool
-	// linkedPathsForResume hands the linked file set to Settle,
-	// which refuses to download into a linked file (ADR 0004). A reflink clone is
-	// copy-on-write, so reflink mode stays exempt.
-	linkedPathsForResume bool
-	// recoverMissingFilesWithResume lets Settle nudge a missingFiles torrent
-	// back to life.
+	name                          string
+	addedStatus, errorStatus      string
+	enabled                       func(*models.Instance) bool
+	poolMode                      string
+	poolReplaceable               bool
+	linkedPathsForResume          bool
 	recoverMissingFilesWithResume bool
-	// regularFallbackOnCreateError falls back to regular mode when the plan build
-	// or the tree creation fails. Reflink mode refuses regular fallback there so
-	// the add never lands inside the matched torrent's path.
-	regularFallbackOnCreateError bool
+	regularFallbackOnCreateError  bool
 }
 
 func (s *Service) processHardlinkMode(
@@ -104,9 +80,6 @@ func (s *Service) processReflinkMode(
 	props *qbt.TorrentProperties,
 	baseCategory, crossCategory string,
 ) linkModeResult {
-	// A reflink clone is copy-on-write, so qBittorrent can repair bytes in the
-	// clone without touching the source. That is why reflink mode skips the
-	// linked-file resume gate and never falls back to regular mode on a create error.
 	return s.processLinkMode(ctx, check, candidate, torrentBytes, torrentHash, torrentName, req,
 		matchedTorrent, matchType, sourceFiles, candidateFiles, props, baseCategory, crossCategory,
 		linkMode{
@@ -134,9 +107,6 @@ func shouldWarnForReflinkCreateError(err error) bool {
 	return !joined
 }
 
-// linkSources finds the source file of each torrent file to link: the
-// validated pairs of a catalog match, or else the match by path, name, and
-// size.
 func linkSources(d fsops.PathDialect, pairs []catalogFilePair, toLink []hardlinktree.TorrentFile, existing []hardlinktree.ExistingFile) ([]linktree.Link, error) {
 	if len(pairs) > 0 {
 		return catalogLinks(d, pairs, existing)
@@ -202,13 +172,6 @@ func (s *Service) planSingleAddTree(
 	})
 }
 
-// processLinkMode attempts to add a cross-seed torrent by creating a linked
-// file tree that matches the incoming torrent's layout, which removes the need
-// for reuse+rename alignment.
-//
-// Returns Used=false if the mode is not applicable (disabled, instance lacks
-// local access, filesystem mismatch, etc). Returns Used=true with the final
-// result when the mode is attempted.
 func (s *Service) processLinkMode(
 	ctx context.Context,
 	check PreAddCheck,
@@ -221,12 +184,11 @@ func (s *Service) processLinkMode(
 	matchType string,
 	sourceFiles, candidateFiles qbt.TorrentFiles,
 	props *qbt.TorrentProperties,
-	_, crossCategory string, // baseCategory unused, crossCategory used for torrent options
+	_, crossCategory string,
 	mode linkMode,
 ) linkModeResult {
 	logPrefix := "[CROSSSEED] " + mode.name + " mode: "
 
-	// failure is a Used=true result that stops the dispatcher from trying regular mode.
 	failure := func(status, message string) linkModeResult {
 		return linkModeResult{Used: true, Result: candidate.newResult(status, message)}
 	}
@@ -235,32 +197,23 @@ func (s *Service) processLinkMode(
 	var instance *models.Instance
 	var err error
 	if candidate.route != nil {
-		// A routed add uses the Source instance's row from its one capability read.
 		instance = candidate.route.source
 	} else if instance, err = s.instanceStore.Get(ctx, candidate.InstanceID); err != nil || instance == nil {
-		// If we can't get the instance, we can't check if the mode is enabled.
-		// This is not a link error, just return linkModeResult{}
 		return linkModeResult{}
 	}
 
-	// Check if the mode is disabled for this instance - only case where we return linkModeResult{}
 	if !mode.enabled(instance) {
 		return linkModeResult{}
 	}
 
-	// Reject unsafe paths before any error can fall back to regular mode.
 	for _, file := range candidateFiles {
 		if _, ok := safeTorrentRelativeFilePath(file.Name); !ok {
 			return linkError(fmt.Sprintf("Unsafe candidate file path: %q", file.Name))
 		}
 	}
 
-	// From here on, link mode is ENABLED
-	// Check if fallback is enabled - if so, errors return linkModeResult{} instead of <mode>_error.
-	// A routed add ignores the setting and never falls back (ADR 0035).
 	fallbackEnabled := instance.FallbackToRegularMode && candidate.route == nil
 
-	// Helper to handle errors based on fallback setting
 	handleError := func(message string) linkModeResult {
 		if fallbackEnabled {
 			log.Info().
@@ -295,9 +248,6 @@ func (s *Service) processLinkMode(
 		handlePlanError, handleCreateError = handleError, handleFullRecheckFallback
 	}
 
-	// Build LINKABLE source files list. The selector keeps rename-friendly
-	// matching for content files but does not materialize sidecars on size alone.
-	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
 	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	if len(candidate.filePairs) > 0 {
 		candidateTorrentFilesToLink = make([]hardlinktree.TorrentFile, 0, len(candidate.filePairs))
@@ -317,12 +267,10 @@ func (s *Service) processLinkMode(
 		SkipAutoResume:      req.SkipAutoResume,
 	}
 
-	// Refuse before any plan building, so a refused add leaves no link tree.
 	if v := facts.Verdict(); v.Refused {
 		return failure(v.Status, v.Message)
 	}
 
-	// Validate base directory is configured (reflink mode reuses the hardlink base dir)
 	if instance.HardlinkBaseDir == "" {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
@@ -330,7 +278,6 @@ func (s *Service) processLinkMode(
 		return handleError(mode.name + " mode enabled but base directory is not configured")
 	}
 
-	// Verify qui may write link trees on the instance
 	if !models.FilesystemCapabilitiesOf(instance).Write {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
@@ -339,7 +286,6 @@ func (s *Service) processLinkMode(
 		return handleError(fmt.Sprintf("Instance '%s' does not have filesystem write access", candidate.InstanceName))
 	}
 
-	// Need a valid file path from matched torrent to check filesystem
 	if len(candidateFiles) == 0 {
 		return handleError("No candidate files available for " + mode.name + " matching")
 	}
@@ -375,7 +321,6 @@ func (s *Service) processLinkMode(
 	}
 	d := backend.Paths()
 
-	// The partial pool registers its members on the Source instance, so a routed add stays out.
 	pooledCompletion := candidate.route == nil && s.partialPool.joinEnabled(ctx, instance, hasExtras, req, facts.Verify != VerifyNone || addPolicy.DiscLayout)
 	var poolDescriptors []partialPoolFileDescriptor
 	var poolDescriptorErr error
@@ -425,12 +370,6 @@ func (s *Service) processLinkMode(
 		if treeErr.Partial {
 			message += "; a partial link tree can remain in " + treeErr.Dir
 		}
-		// The target dir already holds a file: a crashed earlier run or a
-		// second tracker sharing the link path. Falling back would add the
-		// torrent in regular mode inside the matched torrent's path and leave
-		// the partial tree, so refuse and let the user clean up (#2942). The
-		// cause, not the kind, decides: a lost connection on another base
-		// directory changes the kind.
 		if errors.Is(treeErr.Err, hardlinktree.ErrTargetExists) {
 			handle = handleMaterializationError
 		}
@@ -438,8 +377,6 @@ func (s *Service) processLinkMode(
 		return handle(message)
 	}
 
-	// Rollback removes only what this add created: the destination can be shared
-	// with an earlier successful add for the same release (discussion #2282).
 	rollback := func() {
 		if rollbackErr := tree.Rollback(ctx); rollbackErr != nil {
 			log.Warn().
@@ -449,7 +386,6 @@ func (s *Service) processLinkMode(
 		}
 	}
 
-	// savePath is the save path of the tree, mapped to the Cross-seed instance for a routed add.
 	savePath := tree.SavePath
 	if candidate.route != nil {
 		var mapped bool
@@ -470,8 +406,6 @@ func (s *Service) processLinkMode(
 		}
 	}
 
-	// Ensure cross-seed category exists with the correct save path derived from
-	// the base directory and directory preset, rather than the matched torrent's save path.
 	categoryCreationFailed := false
 	if crossCategory != "" {
 		categorySavePath := linkCategorySavePath(d, tree, candidate.route)
@@ -504,9 +438,6 @@ func (s *Service) processLinkMode(
 		poolReplaceablePaths = partialPoolReplaceableTargets(tree.SavePath, poolDescriptors)
 	}
 
-	// Link mode: files are pre-created, so the save path points to the tree root.
-	// Force contentLayout=Original to match the link tree layout exactly
-	// and avoid double-folder nesting when instance default is Subfolder.
 	placement := AddPlacement{
 		SavePath:      savePath,
 		Category:      crossCategory,
@@ -589,7 +520,6 @@ func (s *Service) processLinkMode(
 		return handleError(added.Message)
 	}
 
-	// Build result message
 	var statusMsg string
 	switch {
 	case categoryCreationFailed:
@@ -604,7 +534,6 @@ func (s *Service) processLinkMode(
 		s.partialPool.wake(partialPoolWake{poolID: pooledMember.PoolID})
 		statusMsg += " - pooled completion pending"
 	}
-	// Add note about low completion behavior
 	if hasExtras {
 		statusMsg += " (below threshold = remains paused for manual review)"
 	}

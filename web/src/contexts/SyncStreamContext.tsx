@@ -17,29 +17,12 @@ const MAX_RETRY_ATTEMPTS = 6
 const HANDOFF_GRACE_PERIOD_MS = 1200
 const ENTRY_TEARDOWN_DELAY_MS = 200
 
-// The backend emits a heartbeat every 5s. Once any event has arrived, if none
-// follows within this window the connection is considered dead even when the
-// browser still reports it open, so we force a reconnect.
 const STREAM_STALE_TIMEOUT_MS = 15000
-// Slow instances can legitimately take 60 seconds between accepted snapshots.
-// Allow two such intervals before adding REST fallback load.
 const STREAM_DATA_STALE_TIMEOUT_MS = 120000
 
-// Grace window applied until the FIRST event of a fresh connection arrives. The
-// init snapshot is a single large SSE event (hundreds of KB on big instances), and
-// SSE is ordered, so the 5s heartbeats are queued behind it and cannot arrive until
-// it fully drains. A flat 15s watchdog therefore fires mid-init on a slow link,
-// tears down the in-flight download, and reconnects into a fresh full init - a
-// self-sustaining reconnect storm that saturates the (shared, h2) connection and
-// starves every other request. This longer pre-first-event budget lets the init
-// land; REST polling still serves data meanwhile (the stream isn't "connected"
-// until its first event), and the normal 15s budget resumes once events flow.
 const STREAM_INITIAL_TIMEOUT_MS = 60000
 
 export interface StreamParams {
-  // Single-instance subscription is keyed by instanceId. For an aggregated
-  // (all-instances / cross-instance) subscription, set instanceId to 0 and provide
-  // the concrete member ids in instanceIds.
   instanceId: number
   instanceIds?: number[]
   page: number
@@ -50,7 +33,6 @@ export interface StreamParams {
   filters?: TorrentFilters
   summary?: boolean
   groupCopies?: boolean
-  // uniqueSize adds the Unique size to the stats of a single-instance view.
   uniqueSize?: boolean
 }
 
@@ -97,9 +79,6 @@ interface SyncStreamContextValue {
   ) => () => void
   getState: (key: string | null) => StreamState | undefined
   subscribe: (key: string, listener: (state: StreamState) => void) => () => void
-  // registerActivity keeps the multiplexed EventSource open to receive qui-owned
-  // server activity events even when no torrent view is mounted. Returns an
-  // unsubscribe that releases that interest.
   registerActivity: () => () => void
   subscribeActivity: (listener: (event: ActivityEvent) => void) => () => void
 }
@@ -121,10 +100,6 @@ interface StreamEntry {
   sourceGeneration: number
   handoffTimer?: number
   handoffPending?: boolean
-  // Set once the replacement connection's socket has demonstrably opened during a
-  // view-parameter swap. A connection that has opened but is still awaiting a slow
-  // first snapshot must not be declared offline, so the handoff timer skips the
-  // flip when this is true and onopen clears the timer outright.
   handoffOpened?: boolean
   teardownTimer?: number
 }
@@ -140,24 +115,15 @@ interface StreamConnection {
     connection: (event: MessageEvent | Event) => void
   }
   signature?: string
-  // The server names the connection in its first event. With the id, a view
-  // joins or leaves the open source with a change request instead of a reopen.
   connectionId?: string
   streams?: StreamSubscription[]
   activity?: boolean
-  // Change requests run one at a time, so the server applies them in order.
   changes?: Promise<void>
-  // The views that joined with a change and have no frame yet. Their init
-  // gets the initial grace, as it did when a view change reopened the stream.
   joining?: Set<string>
   retryAttempt: number
   retryTimer?: number
   nextRetryAt?: number
   staleTimer?: number
-  // False until the first event of the current source arrives. While false the
-  // watchdog uses the longer STREAM_INITIAL_TIMEOUT_MS so a large init has time to
-  // drain; the first event flips it true and the normal STREAM_STALE_TIMEOUT_MS
-  // applies thereafter. Reset to false whenever a new EventSource is created.
   firstEventSeen?: boolean
 }
 
@@ -187,20 +153,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const scheduleReconnectRef = useRef<() => void>(() => {})
   const ensureConnectionRef = useRef<(options?: { preserveState?: boolean; force?: boolean }) => void>(() => {})
   const requestRecoveryRef = useRef<(key: string) => void>(() => {})
-  // Re-armable handle to the live connection's stale watchdog. openConnection owns
-  // resetStaleTimer (it closes over that connection's handlers); we mirror it here so
-  // the visibility effect can re-arm a FRESH timer on tab refocus without reaching
-  // into openConnection's closure. It always reads connectionRef.current internally.
   const resetStaleTimerRef = useRef<() => void>(() => {})
   const pendingConnectionUpdateRef = useRef<PendingConnectionUpdate | null>(null)
-  // Count of active activity subscribers. While > 0 the EventSource stays open
-  // (in activity-only mode if there are no torrent streams) so server events keep
-  // flowing. When 0, behaviour is identical to before this feature.
   const activityCountRef = useRef(0)
-  // Armed once an activity-capable connection has opened. A *subsequent* open is a
-  // reconnect: events emitted while the stream was down were never replayed, so we
-  // reconcile every activity-backed query. Reset when activity interest drops to 0
-  // so the next fresh session's first open doesn't redundantly refetch.
   const activityReconnectArmedRef = useRef(false)
   const activityListenersRef = useRef(new Set<(event: ActivityEvent) => void>())
   const queryClient = useQueryClient()
@@ -433,8 +388,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       connection.signature = undefined
       connection.connectionId = undefined
       connection.streams = undefined
-      // A change request of the old source can stay open forever. The next
-      // source must not wait for it.
       connection.changes = undefined
       connection.joining = undefined
 
@@ -447,10 +400,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
   const buildStreamPayload = (entries: StreamEntry[]) =>
     entries
-      // Defense in depth: the backend rejects the entire multiplexed batch if an
-      // entry has neither a positive instanceId nor a non-empty instanceIds list,
-      // which would make the shared EventSource reconnect forever. Drop invalid
-      // entries so one buggy consumer can't poison the stream.
       .filter(entry => entry.params.instanceId > 0 || (normalizeInstanceIds(entry.params.instanceIds) !== undefined))
       .map(entry => ({
         key: entry.key,
@@ -478,9 +427,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const wantActivity = activityCountRef.current > 0
 
       if (normalized.length === 0 && !wantActivity) {
-        // No streamable entries (e.g. only invalid instanceId <= 0 entries) and no
-        // activity interest. Tear the connection down instead of opening a doomed one
-        // that the backend rejects and the client reconnects against forever.
         entries.forEach(entry => {
           if (entry.connected) {
             entry.connected = false
@@ -497,8 +443,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       const signature = JSON.stringify({ streams: normalized, activity: wantActivity })
 
-      // The scheduled recovery owns the next connection attempt. It reads live
-      // subscriptions when it fires, so intervening mounts and view changes coalesce.
       if (connection.recovering && connection.retryTimer !== undefined) {
         return
       }
@@ -507,19 +451,13 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         return
       }
 
-      // The other views of an open source get no new init when a view joins or
-      // leaves it. A failed change reopens the source with every current view.
       if (!options.force && connection.source && connection.connectionId && connection.activity === wantActivity) {
         const { source, connectionId } = connection
         const previous = new Set(connection.streams?.map(stream => stream.key))
-        // A view that waits for its teardown leaves with this change, so a
-        // switch between two views is one change.
         const kept = normalized.filter(stream => streamsRef.current[stream.key]?.teardownTimer === undefined)
         const next = new Set(kept.map(stream => stream.key))
         const add = kept.filter(stream => !previous.has(stream.key))
         const remove = [...previous].filter(key => !next.has(key))
-        // The signature names what the server holds, so a view that mounts
-        // again before its teardown joins again.
         connection.streams = kept
         connection.signature = JSON.stringify({ streams: kept, activity: wantActivity })
         if (add.length === 0 && remove.length === 0) {
@@ -532,11 +470,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           if (connectionRef.current.source !== source) {
             return
           }
-          // Changes run one at a time. The server answers a change only after
-          // it sent the first inits, so a request gets the init grace. After
-          // that, the request fails and the catch reopens the stream.
           const abort = new AbortController()
-          // A timeout is a failure, so the failed-request list of a Problem report keeps it.
           const timer = window.setTimeout(
             () => abort.abort(new DOMException("The stream subscription change timed out.", "TimeoutError")),
             STREAM_INITIAL_TIMEOUT_MS
@@ -603,9 +537,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             if (!entry.handoffPending) {
               return
             }
-            // The replacement socket opened during the grace window: keep the stream
-            // connected and let the slow first snapshot (or the 15s stale watchdog)
-            // resolve it, instead of flipping offline and re-enabling REST polling.
             if (entry.handoffOpened) {
               return
             }
@@ -637,8 +568,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
         Object.values(streamsRef.current).forEach(entry => {
           clearHandoffState(entry)
-          // Replace a server error too: it stops the fallback poll, and a dropped
-          // connection must poll until the stream is back.
           entry.error = STREAM_ERROR_DISCONNECTED
           entry.connected = false
           entry.initialized = false
@@ -650,13 +579,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         scheduleReconnectRef.current()
       }
 
-      // The browser fires onerror on transient drops while it is already
-      // auto-reconnecting (readyState stays CONNECTING; native retry is ~1-3s and
-      // invisible). Calling closeConnection() here would source.close() and abort
-      // that native retry, flipping the UI offline and re-enabling REST polling.
-      // So: while CONNECTING, do nothing and let native retry proceed. Only escalate
-      // (teardown + our own backoff) when the source is terminal/CLOSED or gone.
-      // The 15s stale watchdog still escalates a connection stuck in CONNECTING.
       const handleSourceError = () => {
         const source = connectionRef.current.source
         if (source && source.readyState === EventSource.CONNECTING) {
@@ -665,11 +587,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         handleNetworkError()
       }
 
-      // Watchdog: any inbound event (init/update/delta/stream-error/heartbeat) proves
-      // the connection is alive and resets the timer. If it elapses, the connection is
-      // treated as dead and reconnected even when the browser still reports it open.
-      // Before the first event the longer STREAM_INITIAL_TIMEOUT_MS applies so a large
-      // init has time to drain without being killed mid-download (see that constant).
       const resetStaleTimer = () => {
         const conn = connectionRef.current
         if (conn.staleTimer !== undefined) {
@@ -680,12 +597,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           }
           conn.staleTimer = undefined
         }
-        // While the tab is hidden, background timer throttling makes the watchdog
-        // unreliable: incoming heartbeats keep calling this, so a re-armed timer
-        // could false-fire (flipping the stream offline and re-enabling REST
-        // polling in the background) or fire overdue on refocus and kill a healthy
-        // connection. Stay disarmed while hidden; the visibilitychange handler
-        // re-arms a fresh timer on refocus (or reconnects a closed source).
         if (typeof document !== "undefined" && document.visibilityState !== "visible") {
           return
         }
@@ -776,7 +687,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
               : normalizeStreamedSnapshot(payload.data)
           }
           if (restoreSnapshot && entry.snapshot) {
-            // Some listeners discard their row baseline while fallback polling runs.
             payload = { ...payload, type: "init", data: entry.snapshot, delta: undefined }
           }
           if (connection.recovering && (connection.streams ?? normalized).every(({ key }) => {
@@ -790,8 +700,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
         clearHandoffState(entry)
 
-        // Notify listeners with individual error handling to prevent one failure from affecting others.
-        // listeners is a Set, whose forEach yields the value as the second arg (not an index), so track it manually.
         let listenerIndex = 0
         entry.listeners.forEach(listener => {
           const index = listenerIndex++
@@ -839,7 +747,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
       }
 
-      // The connection event comes before the first init, so it keeps the init grace.
       const connectionHandler = (event: MessageEvent | Event) => {
         resetStaleTimer()
         const rawData = "data" in event && typeof event.data === "string" ? event.data.trim() : ""
@@ -852,8 +759,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           const retried = conn.connectionId !== undefined
           conn.connectionId = payload.connectionId || undefined
           if (retried) {
-            // A native retry gets a new server connection with the views in the
-            // URL, so send it the views that changed since the source opened.
             conn.streams = normalized
             conn.signature = signature
             ensureConnectionRef.current({ preserveState: true })
@@ -886,25 +791,14 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       source.addEventListener("activity", activityHandler)
       source.addEventListener("connection", connectionHandler)
       source.onopen = () => {
-        // A non-zero retryAttempt means this open followed one or more failed
-        // attempts, so events could have been missed before we ever connected -
-        // reconcile even on the first successful open, not just on later reconnects.
         const openedAfterFailures = connection.retryAttempt > 0
-        // A native retry sends a new init, which gets the same grace as the first.
         connection.firstEventSeen = false
         resetStaleTimer()
-        // An open socket does not prove that rejected frames have recovered.
-        // Keep the retry budget until every subscription accepts a baseline.
         if (!connection.recovering) {
           clearConnectionRetryState()
         }
         if (activityCountRef.current > 0) {
           if (activityReconnectArmedRef.current || openedAfterFailures) {
-            // Reconnect (or a first open that followed failures): the previous
-            // connection's per-session activity topic is gone, so any event published
-            // while we were down was dropped. Idle feeds dropped their refetch
-            // interval, so reconcile them all once now. Mounted queries refetch; the
-            // rest are just marked stale.
             invalidateAllActivity(queryClientRef.current)
           }
           activityReconnectArmedRef.current = true
@@ -915,10 +809,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             return
           }
           if (entry.handoffPending) {
-            // The replacement socket has opened but its first snapshot may still be
-            // in flight. Mark the handoff as opened and clear the fixed grace timer so
-            // a slow init can no longer flip the stream offline; the stale watchdog
-            // still guards a socket that opens but never delivers any event.
             entry.handoffOpened = true
             if (entry.handoffTimer !== undefined) {
               if (typeof window !== "undefined") {
@@ -937,8 +827,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       source.onerror = handleSourceError
 
       connection.source = source
-      // Fresh source: no event has arrived yet, so the watchdog grants the longer
-      // init grace until the first one lands (see STREAM_INITIAL_TIMEOUT_MS).
       connection.firstEventSeen = false
       connection.handlers = {
         payload: payloadHandler,
@@ -951,14 +839,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       connection.streams = normalized
       connection.activity = wantActivity
 
-      // Arm the stale watchdog now, at connection creation - not only in onopen. A
-      // connection whose server is unreachable from the start never fires onopen,
-      // and handleSourceError deliberately defers to the browser's native retry
-      // while readyState is CONNECTING. Without a watchdog armed here, such a
-      // cold-start outage (or a replacement socket from a view swap that never
-      // opens) would never escalate to qui's own backoff/offline state. The timer
-      // is reset on every inbound event and on a successful open, so this only
-      // fires if the connection produces nothing for STREAM_STALE_TIMEOUT_MS.
       resetStaleTimer()
     },
     [acceptStreamData, armDataWatchdog, clearConnectionRetryState, clearDataWatchdog, clearHandoffState, closeConnection, notifyStateSubscribers]
@@ -1019,13 +899,10 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       }
       connectionRef.current.recovering = true
       closeConnection({ preserveRetry: true })
-      // Recovery stops the shared source, so no subscription has a live
-      // baseline during backoff, including those that accepted their last frame.
       Object.values(streamsRef.current).forEach(entry => {
         entry.connected = false
         entry.initialized = false
         entry.version = undefined
-        // A server error stops the fallback poll, and the closed source cannot clear it.
         if (entry.error && !isClientConnectionErrorCode(entry.error)) {
           entry.error = STREAM_ERROR_DISCONNECTED
         }
@@ -1148,7 +1025,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const needsInit = entry.connected || entry.initialized
       entry.listeners.add(listener)
       if (entry.initialized && entry.snapshot) {
-        // Let mount effects reset their local state before replaying the baseline.
         queueMicrotask(() => {
           if (!entry.listeners.has(listener) || !entry.initialized || !entry.snapshot || !entry.connected || entry.error) {
             return
@@ -1164,8 +1040,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         entry.dataStalled = false
         entry.version = undefined
         clearDataWatchdog(entry)
-        // A view that the source does not hold yet gets its init when it joins.
-        // Only a view that the source already holds needs a reopen for an init.
         const subscribed = connectionRef.current.streams?.some(stream => stream.key === entry.key) ?? false
         queueConnectionUpdate({ preserveState: true, force: subscribed })
       }
@@ -1218,9 +1092,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     return () => {
       activityCountRef.current = Math.max(0, activityCountRef.current - 1)
       if (activityCountRef.current === 0) {
-        // Last subscriber gone: re-evaluate; the connection closes only if there are
-        // also no torrent streams. Disarm reconnect reconciliation so a future fresh
-        // activity session's first open doesn't refetch queries that just mounted.
         activityReconnectArmedRef.current = false
         queueConnectionUpdate({ preserveState: true })
       }
@@ -1269,9 +1140,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const connection = connectionRef.current
 
       if (document.visibilityState !== "visible") {
-        // Background tabs throttle timers, so the stale watchdog's remaining delay is
-        // meaningless. Clear it now; we re-arm a fresh one on refocus. Otherwise an
-        // overdue throttled timer could fire on return and kill a healthy connection.
         if (connection.staleTimer !== undefined) {
           if (typeof window !== "undefined") {
             window.clearTimeout(connection.staleTimer)
@@ -1280,7 +1148,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           }
           connection.staleTimer = undefined
         }
-        // Data deadlines remain active for subscriptions serving background title speeds.
         return
       }
 
@@ -1298,8 +1165,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         return
       }
 
-      // Source is OPEN and healthy: re-arm a FRESH stale timer so an overdue
-      // throttled watchdog cannot immediately declare the live connection dead.
       resetStaleTimerRef.current()
 
       const now = Date.now()
@@ -1442,12 +1307,6 @@ export function useSyncStreamManager(): SyncStreamContextValue {
   return context
 }
 
-// useActivityStream registers interest in qui-owned server activity events for
-// the lifetime of the calling component. While at least one component is
-// registered, the shared EventSource stays open (in activity-only mode if no
-// torrent view is mounted) and incoming events invalidate the matching cached
-// queries. Hooks that previously polled qui-owned state call this and drop their
-// idle refetch interval.
 export function useActivityStream(enabled: boolean = true): void {
   const context = useContext(SyncStreamContext)
   if (!context) {

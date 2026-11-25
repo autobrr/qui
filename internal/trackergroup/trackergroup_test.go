@@ -91,8 +91,6 @@ func TestMapper(t *testing.T) {
 			stored := mapper.StoredDomain(tt.domains)
 			assert.Equal(t, tt.wantStored, stored)
 
-			// The stored domain gives the same group when read later. Public
-			// comes from the private flag, which the domain does not carry.
 			if tt.wantGroup.Kind == trackergroup.Public || stored == "" {
 				return
 			}

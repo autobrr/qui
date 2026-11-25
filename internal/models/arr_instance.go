@@ -18,7 +18,6 @@ var (
 	ErrArrInstanceNotFound = errors.New("arr instance not found")
 )
 
-// ArrInstanceType represents the type of ARR instance (sonarr or radarr)
 type ArrInstanceType string
 
 const (
@@ -26,7 +25,6 @@ const (
 	ArrInstanceTypeRadarr ArrInstanceType = "radarr"
 )
 
-// ParseArrInstanceType validates and normalizes an ARR instance type string.
 func ParseArrInstanceType(value string) (ArrInstanceType, error) {
 	switch ArrInstanceType(strings.ToLower(value)) {
 	case ArrInstanceTypeSonarr:
@@ -38,7 +36,6 @@ func ParseArrInstanceType(value string) (ArrInstanceType, error) {
 	}
 }
 
-// ArrInstance represents a Sonarr or Radarr instance used for ID lookups
 type ArrInstance struct {
 	ID                     int             `json:"id"`
 	Type                   ArrInstanceType `json:"type"`
@@ -57,7 +54,6 @@ type ArrInstance struct {
 	UpdatedAt              time.Time       `json:"updated_at"`
 }
 
-// ArrInstanceUpdateParams captures optional fields for updating an ARR instance.
 type ArrInstanceUpdateParams struct {
 	Name           *string
 	BaseURL        *string
@@ -79,7 +75,6 @@ type arrInstanceCreateParams struct {
 	timeoutSeconds int
 }
 
-// ArrInstanceStore manages ARR instances in the database
 type ArrInstanceStore struct {
 	db     dbinterface.Querier
 	cipher *CredentialCipher
@@ -112,7 +107,6 @@ func validateBasicAuth(username *string, password *string) (*string, *string, er
 	return &trimmedUser, &trimmedPass, nil
 }
 
-// NewArrInstanceStore creates a new ArrInstanceStore
 func NewArrInstanceStore(db dbinterface.Querier, encryptionKey []byte, opts ...CredentialCipherOption) (*ArrInstanceStore, error) {
 	credentialCipher, err := NewCredentialCipher(encryptionKey, opts...)
 	if err != nil {
@@ -122,18 +116,14 @@ func NewArrInstanceStore(db dbinterface.Querier, encryptionKey []byte, opts ...C
 	return &ArrInstanceStore{db: db, cipher: credentialCipher}, nil
 }
 
-// encrypt encrypts a string using AES-GCM
 func (s *ArrInstanceStore) encrypt(plaintext string) (string, error) {
 	return s.cipher.Encrypt(plaintext, nil)
 }
 
-// decrypt decrypts a string encrypted with encrypt
 func (s *ArrInstanceStore) decrypt(ciphertext string) (string, error) {
 	return s.cipher.Decrypt(ciphertext, nil)
 }
 
-// RewriteLegacyCredentials re-encrypts stored *arr instance credentials that still
-// carry the pre-HKDF format and reports how many rows it rewrote.
 func (s *ArrInstanceStore) RewriteLegacyCredentials(ctx context.Context) (int, error) {
 	return s.cipher.rewriteLegacyRows(ctx, s.db, legacyCredentialTable{
 		table: "arr_instances",
@@ -144,7 +134,6 @@ func (s *ArrInstanceStore) RewriteLegacyCredentials(ctx context.Context) (int, e
 	})
 }
 
-// Create creates a new ARR instance
 func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceType, name, baseURL, apiKey string, basicUsername, basicPassword *string, enabled bool, priority, timeoutSeconds int) (*ArrInstance, error) {
 	prepared, err := prepareCreateParams(instanceType, name, baseURL, apiKey, basicUsername, basicPassword, timeoutSeconds)
 	if err != nil {
@@ -156,7 +145,6 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 		return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 	}
 
-	// Encrypt basic auth password if provided
 	var encryptedBasicPassword *string
 	if prepared.basicPassword != nil && *prepared.basicPassword != "" {
 		encrypted, err := s.encrypt(*prepared.basicPassword)
@@ -166,14 +154,12 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 		encryptedBasicPassword = &encrypted
 	}
 
-	// Begin transaction for string interning and insert
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Intern strings into string_pool
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &prepared.name, &prepared.baseURL, prepared.basicUsername)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern strings: %w", err)
@@ -249,7 +235,6 @@ func prepareCreateParams(instanceType ArrInstanceType, name, baseURL, apiKey str
 	}, nil
 }
 
-// Get retrieves an ARR instance by ID using the view
 func (s *ArrInstanceStore) Get(ctx context.Context, id int) (*ArrInstance, error) {
 	query := `
 		SELECT id, type, name, base_url, basic_username, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
@@ -305,7 +290,6 @@ func (s *ArrInstanceStore) Get(ctx context.Context, id int) (*ArrInstance, error
 	return &instance, nil
 }
 
-// List retrieves all ARR instances using the view, ordered by type, priority (descending), and name
 func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 	query := `
 		SELECT id, type, name, base_url, basic_username, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
@@ -373,7 +357,6 @@ func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 	return instances, nil
 }
 
-// ListEnabled retrieves all enabled ARR instances, ordered by type, priority (descending), and name
 func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, error) {
 	query := `
 		SELECT id, type, name, base_url, basic_username, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
@@ -442,7 +425,6 @@ func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, err
 	return instances, nil
 }
 
-// ListEnabledByType retrieves all enabled ARR instances of a specific type, ordered by priority (descending)
 func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType ArrInstanceType) ([]*ArrInstance, error) {
 	query := `
 		SELECT id, type, name, base_url, basic_username, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
@@ -539,7 +521,6 @@ func normalizeUpdateParams(_ context.Context, params *ArrInstanceUpdateParams, e
 }
 
 func encryptCredentials(existing *ArrInstance, params *ArrInstanceUpdateParams, encryptFn func(string) (string, error)) error {
-	// Handle API key update
 	if params.APIKey != nil {
 		normalizedAPIKey := normalizeAPIKey(*params.APIKey)
 		if normalizedAPIKey == "" {
@@ -552,7 +533,6 @@ func encryptCredentials(existing *ArrInstance, params *ArrInstanceUpdateParams, 
 		existing.APIKeyEncrypted = encryptedAPIKey
 	}
 
-	// Handle basic auth update
 	if params.BasicUsername != nil {
 		normalizedBasicUser, normalizedBasicPass, err := validateBasicAuth(params.BasicUsername, params.BasicPassword)
 		if err != nil {
@@ -567,7 +547,6 @@ func encryptCredentials(existing *ArrInstance, params *ArrInstanceUpdateParams, 
 
 		existing.BasicUsername = normalizedBasicUser
 
-		// Only update password when explicitly provided.
 		if params.BasicPassword != nil {
 			if normalizedBasicPass == nil {
 				existing.BasicPasswordEncrypted = nil
@@ -579,7 +558,6 @@ func encryptCredentials(existing *ArrInstance, params *ArrInstanceUpdateParams, 
 				existing.BasicPasswordEncrypted = &encrypted
 			}
 		}
-		// If enabling basic auth and no password exists, require it.
 		if existing.BasicPasswordEncrypted == nil || *existing.BasicPasswordEncrypted == "" {
 			return ErrBasicAuthPasswordRequired
 		}
@@ -589,14 +567,12 @@ func encryptCredentials(existing *ArrInstance, params *ArrInstanceUpdateParams, 
 }
 
 func persistUpdateWithIntern(ctx context.Context, txProvider dbinterface.Querier, existing *ArrInstance) error {
-	// Begin transaction for string interning and update
 	tx, err := txProvider.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Intern strings into string_pool
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &existing.Name, &existing.BaseURL, existing.BasicUsername)
 	if err != nil {
 		return fmt.Errorf("failed to intern strings: %w", err)
@@ -631,7 +607,6 @@ func persistUpdateWithIntern(ctx context.Context, txProvider dbinterface.Querier
 	return nil
 }
 
-// Update updates an existing ARR instance
 func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstanceUpdateParams) (*ArrInstance, error) {
 	if params == nil {
 		return nil, errors.New("params cannot be nil")
@@ -657,8 +632,6 @@ func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstan
 	return s.Get(ctx, id)
 }
 
-// Delete deletes an ARR instance
-// String pool cleanup is handled by the centralized CleanupUnusedStrings() function
 func (s *ArrInstanceStore) Delete(ctx context.Context, id int) error {
 	query := `DELETE FROM arr_instances WHERE id = ?`
 
@@ -679,7 +652,6 @@ func (s *ArrInstanceStore) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-// UpdateTestStatus updates the test status of an ARR instance
 func (s *ArrInstanceStore) UpdateTestStatus(ctx context.Context, id int, status string, errorMsg *string) error {
 	query := `
 		UPDATE arr_instances
@@ -704,12 +676,10 @@ func (s *ArrInstanceStore) UpdateTestStatus(ctx context.Context, id int, status 
 	return nil
 }
 
-// GetDecryptedAPIKey returns the decrypted API key for an ARR instance
 func (s *ArrInstanceStore) GetDecryptedAPIKey(instance *ArrInstance) (string, error) {
 	return s.decrypt(instance.APIKeyEncrypted)
 }
 
-// GetDecryptedBasicPassword returns the decrypted basic auth password for an ARR instance.
 func (s *ArrInstanceStore) GetDecryptedBasicPassword(instance *ArrInstance) (string, error) {
 	if instance.BasicPasswordEncrypted == nil || *instance.BasicPasswordEncrypted == "" {
 		return "", nil

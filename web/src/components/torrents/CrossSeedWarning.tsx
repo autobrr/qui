@@ -29,14 +29,12 @@ interface CrossSeedWarningProps {
   className?: string
 }
 
-/** Extract tracker domain from URL, e.g. "https://tracker.example.com:443/announce" -> "tracker.example.com" */
 function getTrackerDomain(trackerUrl: string | undefined): string | null {
   if (!trackerUrl) return null
   try {
     const url = new URL(trackerUrl)
     return url.hostname
   } catch {
-    // If not a valid URL, try to extract domain-like pattern
     const match = trackerUrl.match(/(?:https?:\/\/)?([^:/]+)/)
     return match?.[1] || null
   }
@@ -58,9 +56,7 @@ export function CrossSeedWarning({
   const [isExpanded, setIsExpanded] = useState(false)
   const [incognitoMode] = useIncognitoMode()
 
-  // Idle state - show search prompt with contextual urgency
   if (searchState === "idle") {
-    // More prominent when deleting files (higher risk of breaking cross-seeds)
     const isHighRisk = deleteFiles
 
     return (
@@ -104,7 +100,6 @@ export function CrossSeedWarning({
     )
   }
 
-  // Searching state
   if (searchState === "searching") {
     return (
       <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
@@ -114,7 +109,6 @@ export function CrossSeedWarning({
     )
   }
 
-  // Error state
   if (searchState === "error") {
     return (
       <div className={cn("flex items-center gap-2 py-2 text-xs text-muted-foreground", className)}>
@@ -133,7 +127,6 @@ export function CrossSeedWarning({
     )
   }
 
-  // The list can miss torrents on an instance that the check did not read.
   const uncheckedNotes = uncheckedInstances.map(instance => (
     <p key={instance.instanceId} className="mt-1 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -143,7 +136,6 @@ export function CrossSeedWarning({
     </p>
   ))
 
-  // Complete state - no cross-seeds found
   if (searchState === "complete" && !hasWarning) {
     return (
       <div className={cn("py-2", className)}>
@@ -156,8 +148,6 @@ export function CrossSeedWarning({
     )
   }
 
-  // Complete state - cross-seeds found, show warning
-  // Group by instance
   const byInstance = affectedTorrents.reduce<Record<string, CrossSeedTorrent[]>>(
     (acc, torrent) => {
       const key = torrent.instanceName || `Instance ${torrent.instanceId}`
@@ -174,18 +164,14 @@ export function CrossSeedWarning({
   const linkedCopyCount = affectedTorrents.filter(
     torrent => getLocalMatchTypeInfo(torrent.matchType).independentlyUsable
   ).length
-  // Hardlink and ReFS reflink copies remain usable after source deletion.
-  // Only torrents sharing the source content path break.
   const hasSharedPathMatches = hasBreakableLocalMatches(affectedTorrents)
   const linkedCopiesOnly = linkedCopyCount === affectedTorrents.length
   const hardlinkCopiesOnly = linkedCopiesOnly && affectedTorrents.every(
     torrent => torrent.matchType === "hardlink"
   )
   const hasReflinkCopies = affectedTorrents.some(torrent => torrent.matchType === "reflink")
-  // Show destructive styling if deleting files breaks cross-seeds OR if user opted to delete them
   const isDestructive = deleteCrossSeeds || (deleteFiles && hasSharedPathMatches)
 
-  // Collect unique trackers for summary
   const uniqueTrackers = new Set<string>()
   affectedTorrents.forEach((t) => {
     const domain = getTrackerDomain(t.tracker)
@@ -200,7 +186,6 @@ export function CrossSeedWarning({
         className
       )}
     >
-      {/* Header */}
       <div className="flex items-start gap-3">
         {isDestructive ? (
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" />
@@ -233,7 +218,6 @@ export function CrossSeedWarning({
         </div>
       </div>
 
-      {/* Delete cross-seeds option */}
       <div className="mt-3 flex items-center gap-2">
         <Checkbox
           id="deleteCrossSeeds"
@@ -249,7 +233,6 @@ export function CrossSeedWarning({
         </label>
       </div>
 
-      {/* Expandable torrent list */}
       <div className="mt-3">
         <button
           type="button"

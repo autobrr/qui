@@ -58,8 +58,6 @@ func TestOrphanScanSettings_CategoryPathsRequireDefaultSavePath(t *testing.T) {
 	}
 }
 
-// Ignore paths are checked in the grammar of the instance's backend, so a remote
-// instance takes a slash path on any host.
 func TestOrphanScanSettings_IgnorePathsUseTheBackendDialect(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "orphan-scan-ignore-dialect")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -249,7 +247,6 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(accepted.Body.Bytes(), &body))
 	require.Equal(t, "canceled", status(oldRemote))
-	// The service has no backend pool, so the new run fails fast. Wait for it before the database closes.
 	waitForActivity(t, events, func() bool { return status(body.RunID) == "failed" })
 
 	local := newOrphanScanInstance(t, instances, models.FilesystemModeLocal)

@@ -3,12 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// EventSource stand-in for the demo build. Serves the multiplexed /api/stream
-// contract that SyncStreamContext speaks: a `connection` event, one `init` per
-// subscribed stream key, then a full `update` per key every tick with the minor
-// version incremented, and a `heartbeat` often enough to keep the stale
-// watchdog quiet. changeDemoSubscriptions serves POST /api/stream/subscriptions.
-
 import type { TorrentFilters } from "@/types/torrents"
 import type { DemoStore } from "./store"
 
@@ -30,8 +24,6 @@ export const DEMO_HEARTBEAT_MS = 5000
 const openSources = new Map<string, { change: (add: StreamEntry[], remove: string[]) => void }>()
 let nextConnectionId = 0
 
-// changeDemoSubscriptions removes first, and an added key replaces the stream
-// with the same key. It returns false when no open source has the id.
 export function changeDemoSubscriptions(connectionId: string, add: StreamEntry[], remove: string[]): boolean {
   const source = openSources.get(connectionId)
   source?.change(add, remove)
@@ -64,7 +56,6 @@ export function createDemoEventSource(store: DemoStore) {
       } catch {
         this.streams = []
       }
-      // Listeners attach after construction, so the first frames wait a task.
       setTimeout(() => this.open(), 0)
     }
 

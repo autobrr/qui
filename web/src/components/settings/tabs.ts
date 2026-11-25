@@ -5,7 +5,6 @@
 
 // i18n-namespace: settings
 
-/** Nav sections in display order. A group without a label renders its tabs without a heading. */
 export const SETTINGS_NAV_GROUPS = [
   {
     labelKey: "nav.general",
@@ -43,7 +42,6 @@ export const SETTINGS_NAV_GROUPS = [
 
 export type SettingsTab = (typeof SETTINGS_NAV_GROUPS)[number]["tabs"][number]["tab"]
 
-/** Tab values as they appear in the URL search parameter. The cast gives z.enum the tuple it needs. */
 export const SETTINGS_TABS = SETTINGS_NAV_GROUPS.flatMap(group => group.tabs.map(entry => entry.tab)) as [SettingsTab, ...SettingsTab[]]
 
 export const DEFAULT_SETTINGS_TAB: SettingsTab = "application"

@@ -85,7 +85,6 @@ interface TransferRequest {
 let statuses: TransferHistoryInstance[]
 let configuredIds: number[]
 let answer: (request: TransferRequest) => TransferHistoryRow[]
-// The answer of a query by torrent. The mock limits the rows to the group of a query for one torrent.
 let torrentAnswer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
 let liveGroups: (instanceId: number) => LiveTrackerGroup[]
@@ -155,7 +154,6 @@ function expandedRows(table: HTMLElement): string[] {
   return [...table.querySelectorAll("button[aria-expanded=true]")].map(wideText)
 }
 
-// A full date shows in the date format of the settings, which is ISO when nothing is saved.
 function isoDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 }
@@ -227,7 +225,6 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
-  // A test that opens a Select or uses Show fewer stubs it, as jsdom has no layout.
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
   localStorage.clear()
   _resetClientSettingsForTests()
@@ -243,7 +240,6 @@ function renderRoute() {
   )
 }
 
-// The two calls that useClientSettingsSync makes for the first server snapshot.
 function loadServerSnapshot(settings: Record<string, string> = {}) {
   act(() => {
     applyServerSettings(settings)
@@ -282,7 +278,6 @@ describe("Statistics period", () => {
     expect(selectedPeriod()).toBe("periods.24h")
   })
 
-  // regression: #4192
   it("moves to a preset that the server or another tab saves after the page opened", async () => {
     renderPage()
     await screen.findByText("periods.7d")
@@ -292,7 +287,6 @@ describe("Statistics period", () => {
     expect(selectedPeriod()).toBe("periods.7d")
   })
 
-  // regression: #4192
   it("waits for the saved period from the server before it shows the periods, so that a tap is not lost", async () => {
     renderRoute()
     expect(screen.queryByText("periods.30d")).toBeNull()
@@ -302,7 +296,6 @@ describe("Statistics period", () => {
     expect(selectedPeriod()).toBe("periods.7d")
   })
 
-  // regression: #4192
   it("keeps the period of the address over an older server value when the local copy already holds it", async () => {
     localStorage.setItem("qui-statistics-period", JSON.stringify("24h"))
     mocks.search = { period: "24h" }
@@ -364,7 +357,6 @@ describe("Statistics", () => {
     expect(await screen.findByText(/^customRange\.range from=/)).toBeTruthy()
   })
 
-  // regression: #4132
   it("does not keep the deleted torrents of a custom range when only its last day changes", async () => {
     let releaseSecond = () => {}
     const second = new Promise<void>(resolve => {
@@ -474,7 +466,6 @@ describe("Statistics", () => {
     }
   })
 
-  // regression: #4084
   it("does not show the numbers of other instances when the period moves while a new selection loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
@@ -483,7 +474,6 @@ describe("Statistics", () => {
       fireEvent.pointerDown(await screen.findByText("instances.all"), { button: 0, pointerType: "mouse" })
       fireEvent.click(await screen.findByText("Seedbox"))
       await expectTile("tiles.uploaded", "1 KiB | ")
-      // The period moves at the tick of minute 5, and next at the tick of minute 10.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(9 * 60_000 + 30_000)
       })
@@ -501,11 +491,9 @@ describe("Statistics", () => {
     }
   })
 
-  // regression: #4084
   it("keeps the totals and the change of one period until each query of the moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
-      // The comparison ends at a whole hour, so only a move into the next hour gives it new queries.
       const nearTheHour = new Date()
       nearTheHour.setMinutes(57, 0, 0)
       vi.setSystemTime(nearTheHour)
@@ -556,7 +544,6 @@ describe("Statistics", () => {
     }
   })
 
-  // regression: #4084
   it("does not apply a custom range that starts after today", async () => {
     renderPage()
     fireEvent.click(await screen.findByText("periods.custom"))
@@ -602,7 +589,6 @@ describe("Statistics", () => {
       if (bucket === "day") {
         return [row("a.test", 4096, 1024, { width: "day" })]
       }
-      // The period ends at the start of the hour that still runs. The period before ends 30 days back.
       return to === runningHour ? [row("a.test", 3072, 1024, { width: "total" })] : [row("a.test", 2048, 2048, { width: "total" })]
     }
     renderPage()
@@ -627,7 +613,6 @@ describe("Statistics", () => {
     expect(screen.queryByText("chart.empty")).toBeNull()
   })
 
-  // regression: #4099
   it("shows the error in the table when the status fails", async () => {
     server.use(http.get("*/api/transfer-history/status", () => HttpResponse.json({ error: "database is locked" }, { status: 500 })))
     renderPage()
@@ -709,7 +694,6 @@ describe("Statistics", () => {
     expect(nameButton("groups.noTracker").querySelector("img, span[aria-hidden=true]")).toBeNull()
   })
 
-  // regression: #4099
   it("keeps the live numbers of the instances that loaded when one instance fails", async () => {
     answer = ({ bucket }) => bucket === "day" ? [row("a.test", 1024, 0, { width: "day" })] : []
     liveGroups = () => [{ group: "a.test", torrents: 2, size: 2048, uploaded: 4096 }]
@@ -721,7 +705,6 @@ describe("Statistics", () => {
     expect(await screen.findByText(/^table\.liveError message=/)).toBeTruthy()
   })
 
-  // regression: #4099
   it("does not ask a disabled instance for its live numbers", async () => {
     server.use(http.get("*/api/instances", () => HttpResponse.json([{ id: 1, name: "instance 1", isActive: true }, { id: 2, name: "instance 2", isActive: false }])))
     const liveRequests: string[] = []
@@ -909,7 +892,6 @@ describe("Statistics", () => {
     await expectFact("detail.share", "25% | detail.shareOf total=8 KiB")
   })
 
-  // regression: #4099
   it("leaves the days before the first recording out of the average of the detail band", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -921,7 +903,6 @@ describe("Statistics", () => {
     await expectFact("detail.averageDay", "1 KiB | ")
   })
 
-  // regression: #4114
   it("masks the release groups of the table in incognito mode", async () => {
     mocks.incognitoMode = [true, () => {}]
     answer = ({ bucket, groupBy }) => groupBy === "releaseGroup" && bucket === "total" ? [row("PRIVATEGRP", 1024, 0, { width: "total" }), row("", 512, 0, { width: "total" })] : []
@@ -1005,12 +986,10 @@ describe("Statistics", () => {
 
     await vi.waitFor(() => expect(screen.getByTestId("group-chart")).toBeTruthy())
     expect(requests.filter(request => request.groupBy === "torrent" && request.bucket === "day").map(request => [request.instanceId, request.group])).toEqual([[2, "h3"]])
-    // The 30 days of the period start at a local midnight, so they touch 30 or 31 UTC days.
     expect(Number(screen.getByTestId("group-chart").getAttribute("data-bars"))).toBeGreaterThanOrEqual(30)
     expect(screen.getByText("topTorrents.utcNote")).toBeTruthy()
   })
 
-  // regression: #4179
   it("puts the numbers of a top torrent that a narrow table has no column for below its name, without an empty First 24 hours", async () => {
     torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? [torrentRow("h1", "Alpha", 3072, { uploadFirst24h: 1024 }, { downloaded: 1024 }), torrentRow("h2", "Bravo", 2048)] : []
     renderPage()
@@ -1062,7 +1041,6 @@ describe("Statistics", () => {
     }
   })
 
-  // regression: #4358
   it("shows a cut-off tracker on a tap, and the tap still opens the row", async () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
@@ -1087,7 +1065,6 @@ describe("Statistics", () => {
     }
   })
 
-  // regression: #4358
   it("shows a cut-off tracker on a tap on a phone, where the tracker sits under the name, and the tap still opens the row", async () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
@@ -1128,7 +1105,6 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("topTorrents.crossSeed"))
   })
 
-  // regression: #4179
   it("shows five top torrents on a phone, each after Show all, and five again after Show fewer", async () => {
     stubPhone("upright")
     torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
@@ -1150,7 +1126,6 @@ describe("Statistics", () => {
     expect(scrollIntoView).toHaveBeenCalledOnce()
   })
 
-  // regression: #4179
   it("shows five top torrents on a phone turned sideways, which is wider than the phone layout", async () => {
     stubPhone("sideways")
     torrentAnswer = ({ instanceId, bucket }) => bucket === "total" && instanceId === 1 ? Array.from({ length: 7 }, (_, index) => torrentRow(`h${index + 1}`, `Torrent ${index + 1}`, (7 - index) * 1024)) : []
@@ -1160,7 +1135,6 @@ describe("Statistics", () => {
     expect(within(screen.getByRole("table")).queryByText("Torrent 6")).toBeNull()
   })
 
-  // regression: #4179
   it("shows ten group rows and five top torrents again on a phone after a return to an earlier period", async () => {
     stubPhone("upright")
     Element.prototype.scrollIntoView = vi.fn()
@@ -1189,7 +1163,6 @@ describe("Statistics", () => {
     expect(screen.getByText("table.shown shown=5 total=7")).toBeTruthy()
   })
 
-  // regression: #4179
   it("shows five top torrents again on a phone after another period", async () => {
     stubPhone("upright")
     Element.prototype.scrollIntoView = vi.fn()
@@ -1207,7 +1180,6 @@ describe("Statistics", () => {
     expect(screen.getByText("table.showAll")).toBeTruthy()
   })
 
-  // regression: #4113
   it("keeps the top torrents on the period of the other numbers while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
@@ -1242,7 +1214,6 @@ describe("Statistics", () => {
     }
   })
 
-  // regression: #4113
   it("keeps the top torrents of an open row while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
@@ -1271,7 +1242,6 @@ describe("Statistics", () => {
     }
   })
 
-  // regression: #4113
   it("keeps the daily chart of an open torrent on the period of the shown rows while a moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
@@ -1404,7 +1374,6 @@ describe("Statistics", () => {
     await expectTile("tiles.unique", "– | tiles.uniqueNone")
   })
 
-  // regression: #4179
   it("keeps the description of the last grouping until the rows of the next grouping load", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1424,7 +1393,6 @@ describe("Statistics", () => {
     expect(await screen.findByText("table.descriptionRelease")).toBeTruthy()
   })
 
-  // regression: #4179
   it("shows ten rows of the table again on a phone after another custom range", async () => {
     stubPhone("upright")
     const now = new Date()
@@ -1452,7 +1420,6 @@ describe("Statistics", () => {
     expect(within(screen.getByRole("table")).queryByText("t11.test")).toBeNull()
   })
 
-  // regression: #4179
   it("keeps the rows of the last grouping, dimmed, until the rows of the next grouping load", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1473,7 +1440,6 @@ describe("Statistics", () => {
     expect(screen.getByRole("table").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("false")
   })
 
-  // regression: #4179
   it("puts the live numbers of a Tracker group in its detail band, for a narrow table that has no column for them", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1490,7 +1456,6 @@ describe("Statistics", () => {
     expect(within(facts).getByText("table.columns.seeded").nextElementSibling?.textContent).toBe("table.seededValue value=2.00")
   })
 
-  // regression: #4179
   it("puts the Buffer of a group in its detail band, for a phone row that has no room for it", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1502,7 +1467,6 @@ describe("Statistics", () => {
     expect(within(facts).getByText("table.columns.buffer").nextElementSibling?.textContent).toBe("+4 KiB")
   })
 
-  // regression: #4179
   it("shows no rows of the last period while the rows of another period load", async () => {
     const now = new Date()
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
@@ -1518,7 +1482,6 @@ describe("Statistics", () => {
     await within(await screen.findByRole("table")).findByText("a.test")
   })
 
-  // regression: #4179
   it("leaves the year of this year out of the custom range on a phone", async () => {
     stubPhone("upright")
     const year = new Date().getFullYear()
@@ -1532,7 +1495,6 @@ describe("Statistics", () => {
     expect(await screen.findByText(`customRange.range from=${day} to=${day}`)).toBeTruthy()
   })
 
-  // regression: #4179
   it("loads the rows of a grouping once when the pointer reaches its tab, and shows them at once on a click", async () => {
     const preloads = () => requests.filter(request => request.bucket === "total" && request.groupBy !== "tracker" && request.groupBy !== "torrent")
     answer = ({ bucket, groupBy }) => groupBy === "category" && bucket === "total" ? [row("tv", 1024, 0, { width: "total" })] : []
@@ -1550,18 +1512,15 @@ describe("Statistics", () => {
     fireEvent.pointerEnter(category)
     fireEvent.pointerEnter(screen.getByText("table.groupings.source"))
 
-    // A preload starts its request at once, so no running query means that each request reached the server.
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
     expect(preloads().map(request => request.groupBy).sort()).toEqual(["category", "category", "source", "source"])
 
     fireEvent.mouseDown(category, { button: 0 })
 
     expect(cells(screen.getByRole("table"), "tv")[1]).toBe("2 KiB")
-    // The table reads its cached rows again in the background. A request that lands after the test would count in the next one.
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
   })
 
-  // regression: #4179
   it("loads the rows of each other grouping when a phone opens the grouping picker, and shows them at once on a pick", async () => {
     stubPhone("upright")
     Element.prototype.scrollIntoView = vi.fn()
@@ -1575,7 +1534,6 @@ describe("Statistics", () => {
     fireEvent.keyDown(picker, { key: "Enter" })
 
     await vi.waitFor(() => expect(preloads()).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
-    // Ten preloads and the queries of the page take more than the 1 s default of waitFor.
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0), { timeout: 5000 })
 
     fireEvent.click(await screen.findByRole("option", { name: "table.groupings.resolution" }))
@@ -1584,7 +1542,6 @@ describe("Statistics", () => {
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
   })
 
-  // regression: #4179
   it("shows ten rows of the table on a phone, each row after Show all, and ten again after Show fewer", async () => {
     stubPhone("upright")
     const now = new Date()
@@ -1623,7 +1580,6 @@ describe("Statistics", () => {
     expect(within(table.querySelector("thead")!).queryAllByRole("button")).toEqual([])
   })
 
-  // regression: #4179
   it("keeps each row of the last grouping on a phone after Show all until the next grouping loads, then shows ten of it", async () => {
     stubPhone("upright")
     Element.prototype.scrollIntoView = vi.fn()
@@ -1765,7 +1721,6 @@ describe("Statistics year view", () => {
     fireEvent.click(await within(await screen.findByRole("table")).findByText("a.test"))
 
     expect(await screen.findByText("detail.chartWeek group=a.test")).toBeTruthy()
-    // 365 days touch 53 or 54 weeks from Monday on.
     await vi.waitFor(() => expect([53, 54]).toContain(Number(screen.getByTestId("group-chart").getAttribute("data-bars"))))
   })
 })

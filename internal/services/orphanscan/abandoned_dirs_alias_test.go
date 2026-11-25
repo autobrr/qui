@@ -24,15 +24,9 @@ import (
 
 const dirAliasStatus = "skipped: a torrent now uses this directory through another path"
 
-// Each row reaches an empty folder under the scan root only through a symlink,
-// so comparing paths lists it. The folder holding it can never be emptied, so
-// it is not listed either. leftover is reached by nothing and is still listed.
-// regression: #3652
 func TestExecuteScan_KeepsEmptyFolderATorrentReachesThroughAnAlias(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		// reach makes the folders below defaultSavePath and the links in base,
-		// and returns the torrent's save path and file.
+		name  string
 		reach func(t *testing.T, defaultSavePath, base string) (savePath, file string)
 	}{
 		{"save path below a symlinked folder, not created yet", func(t *testing.T, defaultSavePath, base string) (string, string) {
@@ -67,7 +61,6 @@ func TestExecuteScan_KeepsEmptyFolderATorrentReachesThroughAnAlias(t *testing.T)
 	}
 }
 
-// eioLstatBackend fails Lstat of one path with an I/O error.
 type eioLstatBackend struct {
 	fsops.Backend
 	path string
@@ -80,9 +73,6 @@ func (b eioLstatBackend) Lstat(ctx context.Context, p string) (*fsops.LstatInfo,
 	return b.Backend.Lstat(ctx, p)
 }
 
-// A listed folder whose own identity cannot be read could be one a torrent
-// reaches, so the scan leaves it out, and the folder that holds it with it.
-// regression: #3652
 func TestExecuteScan_FolderWithoutIdentityIsNotListed(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -111,8 +101,6 @@ func TestExecuteScan_FolderWithoutIdentityIsNotListed(t *testing.T) {
 	}
 }
 
-// lockOrSkip makes link in the folder locked point to target, then denies
-// every lookup in locked.
 func lockOrSkip(t *testing.T, locked, target string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -127,9 +115,6 @@ func lockOrSkip(t *testing.T, locked, target string) {
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o750) })
 }
 
-// A torrent folder qui may not look up could be an alias that qBittorrent can
-// follow to a listed folder, so the scan lists no folder and says why.
-// regression: #3652
 func TestExecuteScan_DeniedTorrentFolderListsNoFolder(t *testing.T) {
 	var locked string
 	opts := orphanOnlyOptions{beforeScan: func(svc *Service, ownedSavePath string) {
@@ -150,10 +135,6 @@ func TestExecuteScan_DeniedTorrentFolderListsNoFolder(t *testing.T) {
 	require.Contains(t, run.ErrorMessage, "permission denied")
 }
 
-// A torrent folder whose identity cannot be read could be any listed folder,
-// so the scan lists no folder. Files are judged without it, so they are still
-// listed, and the run is partial, so it does not clean up by itself.
-// regression: #3652
 func TestExecuteScan_UnreadableTorrentFolderListsNoFolder(t *testing.T) {
 	var junk, broken string
 	opts := orphanOnlyOptions{
@@ -183,10 +164,6 @@ func TestExecuteScan_UnreadableTorrentFolderListsNoFolder(t *testing.T) {
 	require.FileExists(t, junk)
 }
 
-// A torrent added since the scan reaches a listed empty folder through a
-// symlink, so the delete keeps it and says why. Its parent now holds it, and
-// leftover is reached by nothing and goes.
-// regression: #3652
 func TestExecuteDeletion_KeepsEmptyFolderATorrentReachesThroughAnAliasSinceTheScan(t *testing.T) {
 	var pack, movie, leftover string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-dir-alias-late", orphanOnlyOptions{}, func(defaultSavePath string) {
@@ -211,8 +188,6 @@ func TestExecuteDeletion_KeepsEmptyFolderATorrentReachesThroughAnAliasSinceTheSc
 	require.Equal(t, "deleted: ", statuses[leftover])
 }
 
-// lateDirIdentityBackend reports the folder at *path without its identity,
-// once the test sets path.
 type lateDirIdentityBackend struct {
 	fsops.Backend
 	path *string
@@ -226,22 +201,12 @@ func (b lateDirIdentityBackend) Lstat(ctx context.Context, p string) (*fsops.Lst
 	return info, err
 }
 
-// The delete reads each torrent folder before it deletes anything. One it
-// cannot read for any reason but a missing lookup could be a listed folder, so
-// the run stops. A listed folder whose own identity is unreadable
-// fails alone. A missing torrent folder protects nothing. A denied one could
-// be an alias to a listed folder that qBittorrent can follow, so it stops the
-// run too.
-// regression: #3652
 func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		// late runs after the scan, with opaque the folder to deny identity to.
-		late func(t *testing.T, f *orphanOnlyFixture, opaque *string, broken *string, base string)
-		// wantFailedRun is a run error, or "" when the run completes.
+		name          string
+		late          func(t *testing.T, f *orphanOnlyFixture, opaque *string, broken *string, base string)
 		wantFailedRun string
-		// wantMovie is movie's status, or "" when it is deleted.
-		wantMovie string
+		wantMovie     string
 	}{
 		{"torrent folder read fails", func(t *testing.T, f *orphanOnlyFixture, _ *string, broken *string, base string) {
 			*broken = filepath.Join(base, "late", "Sub")
@@ -304,16 +269,10 @@ func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
 	}
 }
 
-// A run reads the torrent files only when it lists a file, and the torrent
-// folders only when it lists a folder, so one it cannot read of the other kind
-// does not stop it.
-// regression: #3652
 func TestExecuteDeletion_ReadsOnlyTheTorrentPathsOfWhatItLists(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		// listed makes what the scan lists, below defaultSavePath.
-		listed func(t *testing.T, defaultSavePath string) string
-		// unreadable is the torrent path, below the late save path, whose Stat fails.
+		name       string
+		listed     func(t *testing.T, defaultSavePath string) string
 		unreadable string
 	}{
 		{"files only, a torrent folder unreadable", func(t *testing.T, defaultSavePath string) string {
@@ -351,8 +310,6 @@ func TestExecuteDeletion_ReadsOnlyTheTorrentPathsOfWhatItLists(t *testing.T) {
 	}
 }
 
-// lateEIOStatBackend fails Stat of *path with an I/O error, once the test sets
-// path.
 type lateEIOStatBackend struct {
 	fsops.Backend
 	path *string
@@ -362,8 +319,6 @@ func (b lateEIOStatBackend) Stat(ctx context.Context, p string) (*fsops.LstatInf
 	return eioStatBackend{Backend: b.Backend, path: *b.path}.Stat(ctx, p)
 }
 
-// enableAbandonedDirs turns on Delete Abandoned Directories for the fixture's
-// instance.
 func (f *modeFixture) enableAbandonedDirs(t *testing.T) {
 	t.Helper()
 
@@ -374,7 +329,6 @@ func (f *modeFixture) enableAbandonedDirs(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// findBatches counts the batch stats the server ran: a find at depth 0.
 func findBatches(server *sshtest.Server) int {
 	n := 0
 	for _, words := range server.Commands() {
@@ -385,9 +339,6 @@ func findBatches(server *sshtest.Server) int {
 	return n
 }
 
-// The exec tier reads folder identities over SSH, so a folder a torrent
-// reaches through a symlink is kept there too, before and after the scan.
-// regression: #3652
 func TestExecuteScan_RemoteExecTierKeepsEmptyFolderATorrentReachesThroughAnAlias(t *testing.T) {
 	t.Parallel()
 
@@ -412,7 +363,6 @@ func TestExecuteScan_RemoteExecTierKeepsEmptyFolderATorrentReachesThroughAnAlias
 	require.Greater(t, findBatches(server), before, "the scan reads folder identities in a find batch")
 	require.NoError(t, f.svc.CancelRun(t.Context(), run.ID))
 
-	// Listed by a scan no torrent reached it in, then reached before the delete.
 	addTorrentAfterScan(f.svc, sftpPath(root), qbt.Torrent{SavePath: sftpPath(filepath.Join(t.TempDir(), "elsewhere"))}, "x.mkv")
 	run = f.scan(t, "manual")
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
@@ -425,9 +375,6 @@ func TestExecuteScan_RemoteExecTierKeepsEmptyFolderATorrentReachesThroughAnAlias
 	require.Equal(t, dirAliasStatus, fileStatuses(t, f.store, run.ID)[sftpPath(movie)])
 }
 
-// The sftp tier reads no identity, so it lists folders by spelling, as before.
-// It cannot delete them, so a folder kept only by identity is never at risk.
-// regression: #3652
 func TestExecuteScan_SFTPTierListsEmptyFolderBySpelling(t *testing.T) {
 	t.Parallel()
 
@@ -446,8 +393,6 @@ func TestExecuteScan_SFTPTierListsEmptyFolderBySpelling(t *testing.T) {
 	require.False(t, run.Partial, "run message: %s", run.ErrorMessage)
 }
 
-// fileListLess makes the fake client report, besides the owned torrent, one
-// torrent at savePath whose file list qBittorrent does not have yet.
 func fileListLess(svc *Service, ownedSavePath, savePath string, magnet bool) {
 	late := qbt.Torrent{Hash: "late", SavePath: savePath, State: qbt.TorrentStateCheckingResumeData}
 	if magnet {
@@ -461,16 +406,10 @@ func fileListLess(svc *Service, ownedSavePath, savePath string, magnet bool) {
 	}
 }
 
-// A magnet without metadata, or a torrent qBittorrent is still checking, has
-// no file list, so only its save path says where it will write. A save path
-// that is a symlink to an empty folder keeps that folder, in the scan and in
-// the delete, and so does one whose not yet created parent is such a symlink.
-// regression: #3652
 func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlias(t *testing.T) {
 	for _, tc := range []struct {
 		magnet bool
-		// below is the save path below the symlink, not created yet.
-		below string
+		below  string
 	}{{true, ""}, {false, ""}, {true, filepath.Join("not-yet", "deeper")}, {false, filepath.Join("not-yet", "deeper")}} {
 		magnet := tc.magnet
 		name := map[bool]string{true: "magnet without metadata", false: "torrent being checked"}[magnet]
@@ -514,9 +453,6 @@ func TestOrphanScan_KeepsEmptyFolderATorrentWithoutAFileListReachesThroughAnAlia
 	}
 }
 
-// A run that lists no folder reads no torrent folder, so a failed read names
-// only the files.
-// regression: #3652
 func TestExecuteDeletion_FilesOnlyRunErrorNamesOnlyFiles(t *testing.T) {
 	var junk, broken string
 	opts := orphanOnlyOptions{wrapBackend: func(b fsops.Backend, _ string) fsops.Backend {
@@ -541,9 +477,6 @@ func TestExecuteDeletion_FilesOnlyRunErrorNamesOnlyFiles(t *testing.T) {
 	require.FileExists(t, junk)
 }
 
-// A disc unit holding a symlink to a folder a torrent reaches is still deleted
-// whole, as before: only a torrent's file inside a unit keeps it (#3612).
-// regression: #3652
 func TestExecuteDeletion_DiscUnitHoldingASymlinkToAFolderATorrentReachesIsDeleted(t *testing.T) {
 	var unit, stored string
 	f := newOrphanOnlyFixture(t, "orphanscan-delete-disc-dir-link", orphanOnlyOptions{}, func(defaultSavePath string) {

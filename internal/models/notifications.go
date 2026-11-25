@@ -18,7 +18,6 @@ import (
 
 var ErrNotificationTargetNotFound = errors.New("notification target not found")
 
-// NotificationTarget represents a configured notification destination.
 type NotificationTarget struct {
 	ID         int       `json:"id"`
 	Name       string    `json:"name"`
@@ -29,7 +28,6 @@ type NotificationTarget struct {
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
-// NotificationTargetCreate represents data needed to create a notification target.
 type NotificationTargetCreate struct {
 	Name       string   `json:"name"`
 	URL        string   `json:"url"`
@@ -37,7 +35,6 @@ type NotificationTargetCreate struct {
 	EventTypes []string `json:"eventTypes"`
 }
 
-// NotificationTargetUpdate represents data needed to update a notification target.
 type NotificationTargetUpdate struct {
 	Name       string   `json:"name"`
 	URL        string   `json:"url"`
@@ -45,8 +42,6 @@ type NotificationTargetUpdate struct {
 	EventTypes []string `json:"eventTypes"`
 }
 
-// NotificationTargetStore manages persistence for notification targets.
-// It caches ListEnabled, because each event reads it; its writes clear the cache.
 type NotificationTargetStore struct {
 	db dbinterface.Querier
 

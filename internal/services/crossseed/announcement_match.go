@@ -15,10 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// announceAliasLookupTimeout bounds the ARR alias lookup on announce paths.
-// Announce checks answer autobrr inside its webhook timeout, so a hung ARR
-// instance must degrade the check to name-only matching, not stall it for the
-// full per-instance HTTP timeouts. Search paths keep their own patience.
 const announceAliasLookupTimeout = 5 * time.Second
 
 type announcementMatchPolicy struct {
@@ -26,19 +22,11 @@ type announcementMatchPolicy struct {
 	rescueTitleMismatches  bool
 	allowUnknownSize       bool
 	skipRecheck            bool
-	// candidateTitles are ARR alternate titles for the announced release. They
-	// attach to the candidate side only, so they can never widen the identity
-	// of an unrelated source torrent.
-	candidateTitles []string
-	// episodeMap is the Sonarr triple for the announced release, resolved with
-	// the alias titles.
-	episodeMap       *models.EpisodeMap
-	lookupEpisodeMap func() *models.EpisodeMap
-	sourceTitles     []string
-	// sourceReads holds the local torrents of the scan that a local read
-	// (requestLocalReads) read from their files. Without it, a local torrent
-	// reads by its name.
-	sourceReads localReads
+	candidateTitles        []string
+	episodeMap             *models.EpisodeMap
+	lookupEpisodeMap       func() *models.EpisodeMap
+	sourceTitles           []string
+	sourceReads            localReads
 }
 
 type announcementCandidateDecision struct {
@@ -73,10 +61,6 @@ func (s *Service) classifyAnnouncementSource(
 	return announcementCandidateDecision{decision: decision, replayable: true}
 }
 
-// classifyWebhookAnnouncementSource keeps external preflight and apply
-// planning cheap until positive exact bytes justify selected-file inference.
-// The generic adapter remains file-aware for every positive size so RSS and
-// search callers retain their parity contract.
 func (s *Service) classifyWebhookAnnouncementSource(
 	ctx context.Context,
 	instanceID int,
@@ -87,7 +71,6 @@ func (s *Service) classifyWebhookAnnouncementSource(
 ) announcementCandidateDecision {
 	if candidateSize <= 0 || positiveExactSize(searchSourceSize(source), candidateSize) {
 		result := s.classifyAnnouncementSource(ctx, instanceID, source, candidate, candidateSize, policy)
-		// The webhook decides before any file comparison, so HYBRID stays strict.
 		if result.decision.Class == searchCandidateClassHybridTolerance {
 			result.decision.Accepted = false
 			result.decision.Class = searchCandidateClassRejected
@@ -106,7 +89,6 @@ func (s *Service) classifyWebhookAnnouncementSource(
 	return announcementCandidateDecision{decision: decision, replayable: true}
 }
 
-// webhookSkipRecheckReason rejects a match that Skip recheck cannot verify.
 const webhookSkipRecheckReason = "skip recheck needs a verified match"
 
 func (s *Service) webhookDecision(ctx context.Context, input webhookCheckInput, instanceID int, torrent *qbt.Torrent, sourceReads localReads) searchCandidateDecision {
@@ -208,9 +190,6 @@ func mixesNumbering(a, b *rls.Release) bool {
 	return a.Episode > 0 && b.Episode > 0 && (a.Series > 0) != (b.Series > 0)
 }
 
-// classifyUnknownSizePreflight asks the Match verdict as if the sizes were
-// equal. Announces often leave out the group, so a group or site that only the
-// local name carries does not count.
 func (s *Service) classifyUnknownSizePreflight(input searchCandidateInput, skipRecheck bool) searchCandidateDecision {
 	input.CandidateSize = input.SourceSize
 	input.RescueTitleMismatches = false
@@ -233,7 +212,6 @@ func allowsUnknownSizePreflight(decision searchCandidateDecision, skipRecheck bo
 		return true
 	case searchCandidateClassExactSizeFallback:
 		allowed := encodeDifferences
-		// A split group needs a full recheck, which skip recheck turns off.
 		if !skipRecheck {
 			allowed |= differencesOf(differenceGroup)
 		}

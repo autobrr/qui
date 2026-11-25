@@ -17,15 +17,10 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// linkName is the hardlink through which a check-only helper checks a file
-// that was on the target before the Transfer. qBittorrent's setting "Append
-// .!qB extension to incomplete files" can rename only the link, and never
-// the file of the user. qui never writes through a link.
 func (j *job) linkName(name string) string {
 	return fmt.Sprintf("%s.qui-link-%d", name, j.rec.ID)
 }
 
-// checkName is the name under which a check-only helper finds a file.
 func (j *job) checkName(f file) string {
 	if f.onTarget {
 		return j.linkName(f.name)
@@ -37,16 +32,10 @@ func (j *job) inTheWay(rel string) error {
 	return permanent("Conflict: a file is in the way on %s at %s.", j.target.Name, j.targetPath(rel))
 }
 
-// cannotLook is a lookup for a file in the way that got no answer, such as
-// on a dropped SFTP connection. It found no file, so the Transfer tries
-// again later.
 func cannotLook(instance string, err error) error {
 	return temporary("qui cannot look for a file in the way on %s: %w", instance, err)
 }
 
-// findOnTarget marks each file of the group that the target already has. A
-// regular file of the right size is a head start, and anything else is a
-// conflict, as is any file at a name that qui writes.
 func (j *job) findOnTarget(ctx context.Context) error {
 	for _, f := range j.files {
 		for _, name := range []string{j.tempName(f.rel), j.tempName(f.rel) + incompleteExt, j.linkName(f.rel), j.linkName(f.rel) + incompleteExt} {
@@ -74,7 +63,6 @@ func (j *job) findOnTarget(ctx context.Context) error {
 	return nil
 }
 
-// markOnTarget marks the files of each member that the target had.
 func (j *job) markOnTarget() {
 	for _, p := range j.parts {
 		for i := range p.plan {
@@ -89,12 +77,6 @@ func (p *part) hasOnTarget() bool {
 	return slices.ContainsFunc(p.plan, func(f file) bool { return f.onTarget })
 }
 
-// headStart checks the files that were on the target before the copy, with
-// the pieces of each member that has one. A file passes when every piece
-// that lies fully inside it passes, so a piece that it shares with a missing
-// file does not count against it. In the BitTorrent way, its bytes in such a
-// piece must also match the source. A file that fails is a conflict, and qui
-// never writes into it or over it.
 func (j *job) headStart(ctx context.Context) error {
 	if !slices.ContainsFunc(j.files, func(f *groupFile) bool { return f.onTarget }) {
 		return nil
@@ -148,10 +130,6 @@ func (j *job) differs(p *part, f file) error {
 	return permanent("Conflict: the file at %s on %s differs from the torrent.", j.targetPath(p.rel(f)), j.target.Name)
 }
 
-// sameEdges compares with the source the bytes of each file of the member
-// that was on the target in each piece that failed the check: a piece that
-// the file shares with another file. The Transfer torrent downloads such a
-// piece through the link to the file.
 func (j *job) sameEdges(ctx context.Context, p *part, states []qbt.PieceState) error {
 	length := p.src.info.PieceLength
 	for _, f := range p.plan {
@@ -180,8 +158,6 @@ func (j *job) sameEdges(ctx context.Context, p *part, states []qbt.PieceState) e
 	return nil
 }
 
-// sameBytes reports whether n bytes from offset of a file of the member are
-// the same on the target and on the source.
 func (j *job) sameBytes(ctx context.Context, p *part, f file, offset, n int64) (bool, error) {
 	paths := j.srcFiles.Paths()
 	theirs, ours := make([]byte, n), make([]byte, n)
@@ -204,10 +180,6 @@ func readAt(ctx context.Context, files fsops.Backend, name string, offset int64,
 	return err
 }
 
-// link makes the hardlink of each file of the member that was on the
-// target. A file that qui cannot link is a conflict, whatever the error: it
-// differs between filesystems and SFTP servers. A dropped connection is no
-// such answer, so the Transfer tries again.
 func (j *job) link(ctx context.Context, p *part) error {
 	for _, f := range p.plan {
 		if !f.onTarget {
@@ -225,7 +197,6 @@ func (j *job) link(ctx context.Context, p *part) error {
 	return nil
 }
 
-// unlink removes the hardlinks of the check, also under their .!qB names.
 func (j *job) unlink(ctx context.Context, p *part) {
 	for _, f := range p.plan {
 		if f.onTarget {

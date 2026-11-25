@@ -14,8 +14,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// A localized Windows words ERROR_DIR_NOT_EMPTY in its own language, so the
-// code has to match on its own. The German text below holds no "not empty".
 func TestIsDirNotEmptyMatchesWindowsCodeInAnyLanguage(t *testing.T) {
 	t.Parallel()
 	err := fmt.Errorf("cleanup: %w", &fs.PathError{Op: "remove", Path: `D:\data\x`, Err: windows.ERROR_DIR_NOT_EMPTY})

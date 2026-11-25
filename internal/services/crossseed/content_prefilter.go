@@ -16,9 +16,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// contentPrefilterPolicy is the Match policy of the content prefilter. The file
-// layout check after the verdict compares the file sizes with the same
-// tolerance, so the verdict skips its own size check.
 var contentPrefilterPolicy = matchPolicy{SizeTolerancePercent: 0, SkipSizeCheck: true}
 
 type contentPrefilterCandidate struct {
@@ -89,8 +86,6 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 			continue
 		}
 
-		// The source is the local side. The other local torrent takes the new
-		// side, in place of a search result from its tracker.
 		matchResult := s.matcher().getMatchTypeWithReason(sourceRead.release, candidate.read.release, sourceFiles, candidateFiles, contentPrefilterPolicy.SizeTolerancePercent)
 		candidateLayout := contentPrefilterLayoutSummary(candidateFiles, normalizer)
 		if contentPrefilterAcceptsMatchType(matchResult.MatchType) && !holdsEveryUsableFile(candidateFiles, sourceFiles, normalizer) {

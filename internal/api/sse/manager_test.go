@@ -45,8 +45,6 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 
 		manager.HandleSyncError(sub.options.View.InstanceID, errors.New("sync failed"))
 
-		// HandleSyncError publishes asynchronously so a slow subscriber can't block
-		// the sync loop's OnError callback, so wait for the broadcast to land.
 		synctest.Wait()
 
 		messages := provider.messagesFor(sub.id)
@@ -204,9 +202,6 @@ func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
 
-		// Source the last good sync from a fixed point well in the past so the test can
-		// prove the error meta reports when data was last fresh, not when the failure
-		// happened. That distinction is the whole point of issue #2052's staleness badge.
 		lastGood := time.Now().Add(-90 * time.Second)
 		manager.lastSuccessfulSyncFn = func(_ context.Context, _ int) time.Time {
 			return lastGood
@@ -231,8 +226,6 @@ func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
 		require.Equal(t, streamEventError, payload.Type)
 		require.NotNil(t, payload.Meta.LastSuccessfulSync, "error meta must carry the last successful sync time")
 		require.WithinDuration(t, lastGood, *payload.Meta.LastSuccessfulSync, time.Second)
-		// It must reflect the last good sync, not "now" when the failure fired, otherwise
-		// the staleness badge would reset on every failed attempt.
 		require.True(t, payload.Meta.LastSuccessfulSync.Before(time.Now().Add(-30*time.Second)),
 			"last successful sync must not advance on a failed attempt")
 	})
@@ -240,8 +233,6 @@ func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
 
 func TestStreamManagerHandleSyncErrorResolvesStampOffCallbackGoroutine(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		// The staleness stamp is resolved on a fresh goroutine so this callback's fan-out
-		// does not hold up the qBittorrent sync loop.
 		manager := NewStreamManager(nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
@@ -270,16 +261,12 @@ func TestStreamManagerHandleSyncErrorResolvesStampOffCallbackGoroutine(t *testin
 			close(returned)
 		}()
 
-		// The stamp must run on a separate goroutine...
 		select {
 		case <-stampStarted:
 		case <-time.After(2 * time.Second):
 			t.Fatal("lastSuccessfulSyncFn was never invoked")
 		}
 
-		// ...and HandleSyncError must have already returned to the (lock-holding) sync
-		// loop even though the stamp is still in flight. If the stamp were resolved
-		// synchronously, HandleSyncError would block here on releaseStamp.
 		select {
 		case <-returned:
 		case <-time.After(2 * time.Second):
@@ -295,8 +282,6 @@ func TestStreamManagerHandleSyncErrorResolvesStampOffCallbackGoroutine(t *testin
 
 func TestStreamManagerHandleSyncErrorOmitsLastSuccessfulSyncWhenUnknown(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		// A nil client pool means the default source cannot resolve a sync time, so the
-		// field must be omitted rather than serialized as the time.Time zero value.
 		manager := NewStreamManager(nil, nil, nil, nil)
 		provider := newRecordingProvider()
 		manager.server.Provider = provider
@@ -443,7 +428,6 @@ func TestStreamManagerServeMissingInstanceStore(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, recorder.Code)
 }
 
-// recordingProvider is a minimal sse.Provider that captures published messages for assertions.
 type recordingProvider struct {
 	mu       sync.Mutex
 	messages map[string][]*sse.Message
@@ -538,23 +522,18 @@ func newTestInstanceStore(t *testing.T) *models.InstanceStore {
 func TestMarkSyncFailure_ExponentialBackoff(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil, nil)
 
-	// First failure: 2s * 2^1 = 4s
 	interval1 := manager.markSyncFailure(1)
 	require.Equal(t, 4*time.Second, interval1, "first failure should yield 4s interval")
 
-	// Second failure: 2s * 2^2 = 8s
 	interval2 := manager.markSyncFailure(1)
 	require.Equal(t, 8*time.Second, interval2, "second failure should yield 8s interval")
 
-	// Third failure: 2s * 2^3 = 16s
 	interval3 := manager.markSyncFailure(1)
 	require.Equal(t, 16*time.Second, interval3, "third failure should yield 16s interval")
 
-	// Fourth failure: 2s * 2^4 = 32s -> capped to 30s
 	interval4 := manager.markSyncFailure(1)
 	require.Equal(t, 30*time.Second, interval4, "fourth failure should yield 30s (capped)")
 
-	// Fifth failure: still capped at 30s
 	interval5 := manager.markSyncFailure(1)
 	require.Equal(t, 30*time.Second, interval5, "fifth failure should still be 30s (capped)")
 }
@@ -569,9 +548,6 @@ func TestMarkSyncSuccess_ResetsBackoff(t *testing.T) {
 	require.Equal(t, 4*time.Second, manager.markSyncFailure(1), "the streak should start over after a success")
 }
 
-// TestStreamManager_syncTimeout_followsClientTimeout verifies the full-sync budget
-// is raised to the pool's HTTP transport timeout when the operator configured a
-// larger one, and never lowered below syncTimeoutFull (#2037 reasoning).
 func TestStreamManager_syncTimeout_followsClientTimeout(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -595,8 +571,6 @@ func TestStreamManager_syncTimeout_followsClientTimeout(t *testing.T) {
 }
 
 func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
-	// syncTimeout reads backoffState fields that markSyncSuccess/markSyncFailure
-	// mutate under m.mu. This must stay race-free; run under `go test -race`.
 	manager := NewStreamManager(nil, nil, nil, nil)
 
 	const goroutines = 8
@@ -628,7 +602,6 @@ func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
 
 	wg.Wait()
 
-	// State stays readable and yields a valid budget after concurrent access.
 	require.Contains(t, []time.Duration{syncTimeoutIncremental, syncTimeoutFull}, manager.syncTimeout(1))
 }
 
@@ -656,7 +629,6 @@ func TestStreamManager_failureAfterPrimeKeepsFull_thenRecovers(t *testing.T) {
 func TestStreamManager_unprimedFirstSyncUsesFull(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil, nil)
 
-	// Failure before the first success creates an unprimed entry (the wedge condition).
 	manager.markSyncFailure(1)
 	require.Equal(t, syncTimeoutFull, manager.syncTimeout(1), "unprimed instance uses full budget")
 
@@ -688,16 +660,14 @@ func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
 
-	// Run concurrent subscribe/unsubscribe operations
 	for i := range numGoroutines {
 		go func(workerID int) {
 			defer wg.Done()
 
 			for j := range numIterations {
-				instanceID := (workerID % 5) + 1 // Use 5 different instances
+				instanceID := (workerID % 5) + 1
 				subID := "sub-" + string(rune('A'+workerID)) + "-" + string(rune('0'+j%10))
 
-				// Create subscription
 				sub := withConn(&subscriptionState{
 					id:        subID,
 					options:   StreamOptions{View: qbittorrent.TorrentListView{InstanceID: instanceID, Limit: 50}},
@@ -706,7 +676,6 @@ func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 					clientKey: "client-" + subID,
 				})
 
-				// Register subscription
 				manager.mu.Lock()
 				manager.subscriptions[sub.id] = sub
 				if manager.instanceIndex[instanceID] == nil {
@@ -715,7 +684,6 @@ func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 				manager.instanceIndex[instanceID][sub.id] = sub
 				manager.mu.Unlock()
 
-				// Immediately unregister
 				manager.Unregister(sub.id)
 			}
 		}(i)
@@ -723,7 +691,6 @@ func TestStreamManager_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 
 	wg.Wait()
 
-	// Verify manager is in a consistent state
 	manager.mu.RLock()
 	subCount := len(manager.subscriptions)
 	manager.mu.RUnlock()
@@ -736,7 +703,6 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
-	// Create several active subscriptions
 	for i := 1; i <= 3; i++ {
 		sub := withConn(&subscriptionState{
 			id:        "sub-" + string(rune('0'+i)),
@@ -755,11 +721,9 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 		manager.mu.Unlock()
 	}
 
-	// Start concurrent operations
 	var wg sync.WaitGroup
 	published := make(chan struct{})
 
-	// Goroutine 1: Publishing events
 	wg.Go(func() {
 		for i := range 100 {
 			if manager.closing.Load() {
@@ -772,7 +736,6 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 		}
 	})
 
-	// Goroutine 2: Shutdown once publishing has started
 	wg.Go(func() {
 		<-published
 		_ = manager.Shutdown(context.Background())
@@ -780,7 +743,6 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 
 	wg.Wait()
 
-	// Verify shutdown completed
 	require.True(t, manager.closing.Load(), "manager should be marked as closing")
 }
 
@@ -789,7 +751,6 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	provider := newRecordingProvider()
 	manager.server.Provider = provider
 
-	// Create two subscriptions with identical StreamOptions (same group)
 	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 50, Sort: "added_on", Order: "desc"}}
 	groupKey := streamOptionsKey(opts)
 
@@ -808,7 +769,6 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 		clientKey: "client-2",
 	})
 
-	// Create group with both subscribers
 	group := &subscriptionGroup{
 		key:     groupKey,
 		options: opts,
@@ -817,7 +777,6 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	group.subs[sub1.id] = sub1
 	group.subs[sub2.id] = sub2
 
-	// Register both subscriptions
 	manager.mu.Lock()
 	manager.subscriptions[sub1.id] = sub1
 	manager.subscriptions[sub2.id] = sub2
@@ -831,10 +790,8 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	}
 	manager.mu.Unlock()
 
-	// Unregister sub1
 	manager.Unregister(sub1.id)
 
-	// Verify sub1 is removed but sub2 remains
 	manager.mu.RLock()
 	_, sub1Exists := manager.subscriptions[sub1.id]
 	_, sub2Exists := manager.subscriptions[sub2.id]
@@ -849,7 +806,6 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	require.True(t, instanceIndexExists, "instance index should still exist")
 	require.True(t, instanceGroupsExist, "instance groups should still exist")
 
-	// Verify group still has sub2
 	group.subsMu.RLock()
 	_, sub1InGroup := group.subs[sub1.id]
 	_, sub2InGroup := group.subs[sub2.id]
@@ -860,7 +816,6 @@ func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	require.True(t, sub2InGroup, "sub2 should still be in group")
 	require.Equal(t, 1, groupSubCount, "group should have exactly 1 subscriber")
 
-	// Unregister sub2 - now everything should be cleaned up
 	manager.Unregister(sub2.id)
 
 	manager.mu.RLock()
@@ -896,7 +851,6 @@ func TestHandleSyncError_NilError(t *testing.T) {
 	}
 	manager.mu.Unlock()
 
-	// Call with nil error - should return early without publishing
 	manager.HandleSyncError(sub.options.View.InstanceID, nil)
 
 	messages := provider.allMessages()
@@ -985,7 +939,7 @@ func TestParseStreamRequests_LimitExceedsMax(t *testing.T) {
 			"key":        "test-stream",
 			"instanceId": 1,
 			"page":       0,
-			"limit":      3000, // exceeds maxLimit of 2000
+			"limit":      3000,
 			"sort":       "added_on",
 			"order":      "desc",
 		},
@@ -1020,11 +974,9 @@ func TestParseStreamRequests_NegativePage(t *testing.T) {
 }
 
 func TestParseStreamRequests_DefaultsApplied(t *testing.T) {
-	// Request with minimal fields - defaults should be applied
 	payload := []map[string]any{
 		{
 			"instanceId": 1,
-			// page, limit, sort, order all omitted
 		},
 	}
 	raw, err := json.Marshal(payload)
@@ -1050,7 +1002,7 @@ func TestParseStreamRequests_OrderNormalization(t *testing.T) {
 	}{
 		{"ASC", "asc"},
 		{"DESC", "desc"},
-		{"invalid", "desc"}, // invalid values should default to desc
+		{"invalid", "desc"},
 	}
 
 	for _, tt := range tests {
@@ -1076,11 +1028,9 @@ func TestParseStreamRequests_OrderNormalization(t *testing.T) {
 func TestRegisterSubscription_DuringShutdown(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil, nil)
 
-	// Start shutdown
 	err := manager.Shutdown(context.Background())
 	require.NoError(t, err)
 
-	// Attempt to register after shutdown
 	_, err = manager.registerSubscription(StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 50}}, "test-key", manager.openConnection(false, 0), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "shutting down")
@@ -1089,7 +1039,6 @@ func TestRegisterSubscription_DuringShutdown(t *testing.T) {
 func TestShutdown_WithNilContext(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil, nil)
 
-	// Shutdown with nil context should not panic
 	var shutdownCtx context.Context
 	err := manager.Shutdown(shutdownCtx)
 	require.NoError(t, err)
@@ -1099,11 +1048,9 @@ func TestShutdown_WithNilContext(t *testing.T) {
 func TestShutdown_Idempotent(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil, nil)
 
-	// First shutdown
 	err := manager.Shutdown(context.Background())
 	require.NoError(t, err)
 
-	// Second shutdown should be a no-op (idempotent)
 	err = manager.Shutdown(context.Background())
 	require.NoError(t, err)
 	require.True(t, manager.closing.Load())
@@ -1130,7 +1077,6 @@ func TestParseStreamRequests_Summary(t *testing.T) {
 	require.Error(t, err, "a cross-instance view has no summary")
 }
 
-// withConn puts sub on a connection of its own, with the id of sub as its topic.
 func withConn(sub *subscriptionState) *subscriptionState {
 	sub.conn = &streamConnection{id: sub.id, subs: map[string]*subscriptionState{sub.id: sub}}
 	return sub

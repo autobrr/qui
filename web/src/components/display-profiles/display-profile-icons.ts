@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Each icon is a named import, so the bundle holds these 32 and not the full lucide set.
 import {
   AppWindow,
   Bed,
@@ -45,7 +44,6 @@ import type { DisplayProfileColor } from "@/lib/display-profiles"
 // i18n-namespace: torrents
 
 export interface DisplayProfileIcon {
-  /** The lucide name that the profile stores. */
   name: string
   labelKey: string
   Icon: LucideIcon
@@ -115,16 +113,13 @@ export const DISPLAY_PROFILE_ICONS: readonly DisplayProfileIcon[] = DISPLAY_PROF
 
 const ICONS_BY_NAME = new Map(DISPLAY_PROFILE_ICONS.map((icon) => [icon.name, icon]))
 
-/** The icon for a stored lucide name, or undefined when the list does not know the name. */
 export function findDisplayProfileIcon(name: string): DisplayProfileIcon | undefined {
   return ICONS_BY_NAME.get(name)
 }
 
 export interface DisplayProfileColorOption {
-  /** null is the color None. */
   color: DisplayProfileColor | null
   labelKey: string
-  /** Whole class names, so that Tailwind finds each one. None has no class and uses the text color of the theme. */
   className: string
 }
 

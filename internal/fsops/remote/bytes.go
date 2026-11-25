@@ -24,9 +24,6 @@ func (b *Backend) OpenWrite(ctx context.Context, p string, offset int64) (fsops.
 	return b.open(ctx, p, os.O_WRONLY|os.O_CREATE, offset)
 }
 
-// open waits for the server's answer also after a cancel, as a write does: a
-// handle that the server opens after the caller left would stay open on the
-// shared connection.
 func (b *Backend) open(ctx context.Context, p string, flag int, offset int64) (*file, error) {
 	client, err := b.client(ctx)
 	if err != nil {
@@ -66,7 +63,6 @@ func (f *file) Write(p []byte) (int, error) {
 }
 
 func (f *file) Flush() (bool, error) {
-	// pkg/sftp sends an fsync only to a server that advertises version 1.
 	if version, ok := f.client.HasExtension(fsyncExtension); !ok || version != "1" {
 		return false, nil
 	}

@@ -12,10 +12,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestWebSourceRelabel covers the cross-tracker relabel rule that lets the
-// same web encode through when only its WEBRip/WEB-DL label differs. The real
-// motivating case is "Law & Order: SVU" S05, which trackers list as both
-// WEBRip (the seeded copy) and WEB-DL (the relabel) at the same content size.
 func TestWebSourceRelabel(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
@@ -98,10 +94,6 @@ func TestWebSourceRelabel(t *testing.T) {
 	}
 }
 
-// TestWebSourceRelabelSizeGate covers the size gate of the relabel, including
-// the regression where a single-episode WEB relabel of a season-pack source was
-// dropped on the full-pack vs episode size mismatch before the episode-size
-// bypass could apply (P1). The pack is ~100GB, the episode ~5GB.
 func TestWebSourceRelabelSizeGate(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 

@@ -36,9 +36,6 @@ func (m *StreamManager) instanceSubCount(instanceID int) int {
 	return len(m.instanceIndex[instanceID])
 }
 
-// A multi-instance subscription must register under each member instance, and a
-// member's sync/heartbeat loop must survive until no subscription (single or multi)
-// still depends on it.
 func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
 	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
@@ -54,14 +51,11 @@ func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
 	}
 	require.Equal(t, 3, manager.instanceLoopCount())
 
-	// A single-instance subscription that overlaps member instance 2.
 	singleOpts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 2, Limit: 100, Sort: "added_on", Order: "desc"}}
 	single, err := manager.registerSubscription(singleOpts, "single", conn, false)
 	require.NoError(t, err)
 	require.Equal(t, 2, manager.instanceSubCount(2))
 
-	// Removing the multi-instance subscription tears down its exclusive members (1, 3)
-	// but must keep instance 2 alive for the remaining single-instance subscription.
 	manager.Unregister(multi.id)
 	require.False(t, manager.hasInstance(1))
 	require.False(t, manager.hasInstance(3))
@@ -74,8 +68,6 @@ func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
 	require.Equal(t, 0, manager.instanceLoopCount())
 }
 
-// toStreamOptions must treat instanceIds as a multi-instance subscription, dedupe
-// and validate members, and reject invalid ids.
 func TestToStreamOptionsMultiInstance(t *testing.T) {
 	t.Run("dedupes and marks multi-instance", func(t *testing.T) {
 		opts, err := streamRequestPayload{InstanceIDs: []int{3, 1, 1, 2}}.toStreamOptions()
@@ -179,8 +171,6 @@ func TestMaterializeGroupResponseOmitsRetryForMultiMemberAggregateWithDifferentB
 	require.Nil(t, errPayload.Meta.LastSuccessfulSync, "multi-member aggregate freshness must not expose one member timestamp")
 }
 
-// A member instance's update must rebuild the multi-instance group through the
-// cross-instance provider rather than the single-instance one.
 func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 	provider := &fakeSyncProvider{
 		crossInstanceResponse: &qbittorrent.TorrentResponse{Total: 2, IsCrossInstance: true},
@@ -192,7 +182,6 @@ func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
 	require.NoError(t, err)
 	builds := provider.signalBuilds()
 
-	// An update from either member must rebuild the aggregated group.
 	manager.HandleSyncUpdate(2, qbt.SyncUpdate{})
 	receive(t, builds, "the aggregated group build")
 

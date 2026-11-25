@@ -26,8 +26,6 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// Request is the Share of one whole torrent. A zero Days and a nil field
-// take the default of the settings.
 type Request struct {
 	InstanceID          int
 	Hash                string
@@ -106,7 +104,6 @@ func describe(res torrentadd.Result) string {
 	return "qBittorrent does not list the torrent"
 }
 
-// fail ends a Share that did not start, also after the caller left.
 func (s *Service) fail(ctx context.Context, sh *Share, reason string) {
 	if err := s.end(context.WithoutCancel(ctx), sh, reason, "a failed start"); err != nil {
 		log.Error().Err(err).Int64("share", sh.ID).Msg("share: cannot end the Share that did not start")
@@ -248,9 +245,6 @@ func (s *Service) admit(ctx context.Context, inst *models.Instance, hash string,
 	return nil
 }
 
-// trackerOf picks the Share tracker: qui's own tracker when it has a port
-// and a public address, else the outside tracker URL. base is the announce
-// URL, to which qui's own tracker adds the secret.
 func trackerOf(trackerSettings sharetracker.Settings, options Options) (TrackerKind, string, error) {
 	if trackerSettings.Port != 0 && trackerSettings.PublicAddress != "" {
 		return TrackerOwn, strings.TrimSuffix(trackerSettings.PublicAddress, "/") + "/announce/", nil
@@ -261,7 +255,6 @@ func trackerOf(trackerSettings sharetracker.Settings, options Options) (TrackerK
 	return "", "", refuse("Set a tracker in Settings → Shares: the port and the public address of qui's tracker, or a tracker URL.")
 }
 
-// supported refuses an instance before qBittorrent 5.1.
 func (s *Service) supported(ctx context.Context, inst *models.Instance) error {
 	client, err := s.deps.Sync.GetClient(ctx, inst.ID)
 	if err != nil {
@@ -314,8 +307,6 @@ func (s *Service) readTorrent(ctx context.Context, inst *models.Instance, hash s
 	return src, nil
 }
 
-// withAnnounce returns the .torrent with announce as its only tracker. The
-// announce URL is outside the info dictionary, so the infohash stays.
 func withAnnounce(torrent []byte, announce string) ([]byte, error) {
 	var in struct {
 		Info bencode.Bytes `bencode:"info"`

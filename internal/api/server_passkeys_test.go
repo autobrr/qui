@@ -36,8 +36,6 @@ const (
 	queryTracker = queryOrigin + "/announce?passkey=" + queryPasskey
 )
 
-// newQBittorrentStub answers as a qBittorrent with two torrents on one content
-// path, each with a passkey in another place of its announce URL.
 func newQBittorrentStub(t *testing.T) *httptest.Server {
 	t.Helper()
 	torrent := func(name, tracker string, addedOn int) map[string]any {
@@ -168,8 +166,6 @@ func (rig *passkeyRig) fetch(t *testing.T, method, path, key, body string, cooki
 	return resp.StatusCode, string(raw)
 }
 
-// streamInit opens a stream and returns the data of its init frame. The stream
-// stays open until ctx ends.
 func (rig *passkeyRig) streamInit(ctx context.Context, t *testing.T, limit int, key string, cookie *http.Cookie, expression string) string {
 	t.Helper()
 	filters, err := json.Marshal(qbittorrent.FilterOptions{Expr: expression})
@@ -235,7 +231,6 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 				require.Contains(t, body, origin)
 			}
 
-			// After the read key, so that the read key cannot have changed a cached row.
 			for name, request := range map[string]struct {
 				key    string
 				cookie *http.Cookie
@@ -272,8 +267,6 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 	})
 }
 
-// The list rows of a read key hide the passkeys, and the torrents of the Sync
-// snapshot, which every reader shares, keep their tracker URLs.
 func TestReadKeyListLeavesTheSyncSnapshotWhole(t *testing.T) {
 	rig := newPasskeyRig(t)
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
@@ -320,8 +313,6 @@ func TestMagnetFieldNeedsTorrentsWrite(t *testing.T) {
 	require.Contains(t, body, pathPasskey)
 }
 
-// A subscriber that joins a group gets the retained frame of the group, so the
-// test runs each order of a read key and a session on the same stream.
 func TestStreamKeepsPasskeysFromReadKey(t *testing.T) {
 	rig := newPasskeyRig(t)
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
@@ -356,7 +347,6 @@ func TestStreamKeepsPasskeysFromReadKey(t *testing.T) {
 	})
 }
 
-// regression: #3852
 func TestReadKeyCannotFilterTrackerPasskeys(t *testing.T) {
 	rig := newPasskeyRig(t)
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})

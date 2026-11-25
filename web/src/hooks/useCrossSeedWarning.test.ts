@@ -38,7 +38,6 @@ afterEach(() => {
 })
 
 describe("useCrossSeedWarning", () => {
-  // regression: #3341
   it("checks every selected torrent in Select all mode with one request", async () => {
     getDeleteCrossSeeds.mockResolvedValue({ matches: [match], uncheckedInstances: [] })
     const selectAll = { filters: { status: ["completed"] } as never, search: "show", excludeHashes: ["ccc"], instanceIds: [1] }
@@ -65,9 +64,6 @@ describe("useCrossSeedWarning", () => {
     expect(result.current.hasWarning).toBe(false)
   })
 
-  // A match on another instance keeps its instance, so "Also delete cross-seeds"
-  // targets it there, and the instances that the check did not read reach the dialog.
-  // regression: #3592
   it("keeps a match on another instance and the unchecked instances", async () => {
     const uncheckedInstances = [{ instanceId: 3, instanceName: "gamma", reason: "offline" }]
     getDeleteCrossSeeds.mockResolvedValue({ matches: [{ ...match, instanceId: 2, instanceName: "beta" }], uncheckedInstances })
@@ -82,7 +78,6 @@ describe("useCrossSeedWarning", () => {
     expect(result.current.uncheckedInstances).toEqual([])
   })
 
-  // regression: #3341
   it("stops the request on unmount", () => {
     getDeleteCrossSeeds.mockReturnValue(new Promise(() => {}))
     const { result, unmount } = renderHook(() => useCrossSeedWarning({ instanceId: 1, torrents: loaded }))
@@ -108,9 +103,6 @@ describe("useCrossSeedWarning", () => {
     expect(result.current.searchState).toBe("idle")
   })
 
-  // A response can finish reading after the abort, because the browser reads
-  // the body before it resolves response.json() in a later task.
-  // regression: #3341
   it("drops a result that arrives after reset", async () => {
     let resolve: (result: { matches: LocalCrossSeedMatch[]; uncheckedInstances: [] }) => void = () => {}
     getDeleteCrossSeeds.mockReturnValue(new Promise(r => { resolve = r }))

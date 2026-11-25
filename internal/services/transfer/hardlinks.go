@@ -21,10 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
-// versionsOf returns the torrents of stay that have the same files as first:
-// each content file of the one is a hardlink of a content file of the other.
-// A cross-seed that has another file too, such as a longer pack, is none. The
-// file list of a torrent that did not change comes from the cache.
 func (s *Service) versionsOf(ctx context.Context, inst *models.Instance, first *source, stay []string) ([]string, error) {
 	if len(stay) == 0 {
 		return nil, nil
@@ -57,9 +53,6 @@ func (s *Service) versionsOf(ctx context.Context, inst *models.Instance, first *
 	return versions, nil
 }
 
-// contentKeys returns the identity on disk of each content file of a torrent,
-// nil when qui cannot read one. A file without bytes and a sidecar of the
-// cross-seed matcher, such as an .nfo or a subtitle, are no content.
 func contentKeys(ctx context.Context, backend fsops.Backend, inst *models.Instance, savePath string, files qbt.TorrentFiles) map[fsops.FileKey]struct{} {
 	d := backend.Paths()
 	keys := make(map[fsops.FileKey]struct{}, len(files))
@@ -80,10 +73,6 @@ func contentKeys(ctx context.Context, backend fsops.Backend, inst *models.Instan
 	return keys
 }
 
-// findHardlinks marks each file of the group that is, on the source, a
-// hardlink of a file before it. Only qui's own disk tells, and a file whose
-// identity qui cannot read counts as a file of its own. A Transfer torrent
-// downloads each file on its own, so the free space counts each one.
 func (j *job) findHardlinks(ctx context.Context) {
 	if j.rec.Way == WayBitTorrent || !models.FilesystemCapabilitiesOf(j.source).TrustedIdentity {
 		return
@@ -110,19 +99,11 @@ func (j *job) findHardlinks(ctx context.Context) {
 	}
 }
 
-// linksCopyLater reports whether qui means to link the file on the target
-// to the copy of the file that it is a hardlink of, and has not made its
-// temporary file yet.
 func (j *job) linksCopyLater(f *groupFile) bool {
 	_, made := j.made[f]
 	return !made && !f.onTarget && f.hardlinkOf != nil && !f.hardlinkOf.onTarget
 }
 
-// linkCopies makes the temporary file of each hardlink of the group a
-// hardlink to the temporary file of the file that it links to, so that qui
-// copies the bytes once. A file that the target cannot link gets a copy of
-// its own, and qui reserves the free space for it. A dropped connection is
-// no sign that the target cannot link: copyAll links the file again.
 func (j *job) linkCopies(ctx context.Context) error {
 	for _, f := range j.files {
 		if !j.linksCopyLater(f) {
@@ -162,10 +143,6 @@ func (j *job) linkCopies(ctx context.Context) error {
 	return nil
 }
 
-// relink keeps the temporary file of each hardlink that an earlier run
-// linked to the temporary file of the file that it links to, and the copy
-// of its own of each hardlink that the target could not link. It removes the
-// other temporary files of hardlinks, so that linkCopies links them again.
 func (j *job) relink(ctx context.Context) {
 	for _, f := range j.files {
 		if _, made := j.made[f]; !made || f.hardlinkOf == nil {
@@ -183,8 +160,6 @@ func (j *job) relink(ctx context.Context) {
 	}
 }
 
-// tempOf is the name of the temporary file of f, also when a check gave it
-// the .!qB name.
 func (j *job) tempOf(ctx context.Context, f *groupFile) string {
 	name := j.tempName(f.rel)
 	if _, err := j.root.Lstat(ctx, name); errors.Is(err, fs.ErrNotExist) {
@@ -193,8 +168,6 @@ func (j *job) tempOf(ctx context.Context, f *groupFile) string {
 	return name
 }
 
-// hardlinkBytes returns the count and the size of the files that qui links
-// to the copy of the file that they are a hardlink of.
 func (j *job) hardlinkBytes() (int, int64) {
 	var n int
 	var size int64

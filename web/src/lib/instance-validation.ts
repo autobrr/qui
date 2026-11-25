@@ -22,7 +22,6 @@ export const DEFAULT_REANNOUNCE_SETTINGS: InstanceReannounceSettings = {
   trackers: [],
 }
 
-// URL validation schema for instance host URLs
 export const instanceUrlSchema = z
   .string()
   .min(1, "URL is required")
@@ -45,13 +44,10 @@ export const instanceUrlSchema = z
     const parsed = new URL(url)
     const hostname = parsed.hostname
 
-    // Validate each octet is 0-255
     const isIPv4 = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/.test(hostname)
-    // new URL() returns unbracketed IPv6 addresses (e.g., "::1" not "[::1]")
     const isIPv6 = hostname.includes(":") && !isIPv4
 
     if (isIPv4 || isIPv6) {
-      // default ports such as 80 and 443 are omitted from the result of new URL()
       const hasExplicitPort = url.match(/:(\d+)(?:[/?#]|$)/)
       if (!hasExplicitPort) {
         return false

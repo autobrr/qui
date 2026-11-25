@@ -351,8 +351,6 @@ func TestCreate_ExistingTargetIsErrTargetExists(t *testing.T) {
 	}
 }
 
-// targetSatisfiesPlan decides both the pre-Link check and the EEXIST branch, so
-// the racing-collision classification turns on these three answers.
 func TestTargetSatisfiesPlan(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.mkv")
@@ -369,8 +367,6 @@ func TestTargetSatisfiesPlan(t *testing.T) {
 	}
 
 	symlinkAtTarget := filepath.Join(dir, "planted.mkv")
-	// A symlinked source: the link an earlier run made follows it on macOS
-	// and not on Linux, and both forms must read as already done.
 	viaSymlink := filepath.Join(dir, "src.via-symlink.mkv")
 	linkOfSymlinked := filepath.Join(dir, "link-of-symlinked.mkv")
 	symlinkErr := os.Symlink(src, symlinkAtTarget)

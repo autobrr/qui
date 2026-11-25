@@ -5,7 +5,6 @@ package jackett
 
 import "context"
 
-// SearchPriority returns the desired scheduler priority embedded in ctx via WithSearchPriority.
 func SearchPriority(ctx context.Context) (RateLimitPriority, bool) {
 	return getSearchPriorityFromContext(ctx)
 }

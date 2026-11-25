@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// regression: #4181
 func TestCatalogPlacementKeepsValidatedEdges(t *testing.T) {
 	root := t.TempDir()
 	left := qbt.TorrentFiles{{Index: 0, Name: "Incoming/new.flac", Size: 2}, {Index: 1, Name: "Incoming/exact.flac", Size: 2}}
@@ -55,7 +54,6 @@ func TestCatalogPlacementKeepsValidatedEdges(t *testing.T) {
 	require.ElementsMatch(t, []FileRename{{OldPath: "Incoming/new.flac", NewPath: "Existing/old.flac"}, {OldPath: "Incoming/exact.flac", NewPath: "Existing/exact.flac"}}, alignment.Files)
 }
 
-// regression: #4219
 func TestCatalogRootOnlyAlignment(t *testing.T) {
 	left := qbt.TorrentFiles{{Index: 0, Name: "Incoming/CD1/01.flac", Size: 100}, {Index: 1, Name: "Incoming/CD2/01.flac", Size: 100}}
 	right := qbt.TorrentFiles{{Index: 0, Name: "Existing/CD1/01.flac", Size: 100}, {Index: 1, Name: "Existing/CD2/01.flac", Size: 100}}
@@ -71,7 +69,6 @@ func TestCatalogRootOnlyAlignment(t *testing.T) {
 	require.Error(t, err, "folder optimization must retain added-file identity validation")
 }
 
-// regression: #4219
 func TestCatalogMixedRootAlignment(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
@@ -99,7 +96,6 @@ func TestCatalogMixedRootAlignment(t *testing.T) {
 	}
 }
 
-// regression: #4181
 func TestCatalogPairing(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
@@ -151,7 +147,6 @@ func TestCatalogPairing(t *testing.T) {
 	}
 }
 
-// regression: #4181
 func TestCatalogPairingKeepsFullPathPriority(t *testing.T) {
 	files := qbt.TorrentFiles{
 		{Name: "Album/CD1/01.flac", Size: 100},
@@ -168,7 +163,6 @@ func TestCatalogPairingKeepsFullPathPriority(t *testing.T) {
 	}
 }
 
-// regression: #4181
 func TestCatalogAdmissionAndSnapshots(t *testing.T) {
 	s := &Service{releaseCache: NewReleaseCache()}
 	files := qbt.TorrentFiles{{Name: "Album/01.flac", Size: 100, Progress: 1}, {Name: "Album/booklet.pdf", Size: 10, Progress: 1}}

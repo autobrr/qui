@@ -19,7 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/services/systemnotice"
 )
 
-// A save that changes an OPS or RED key checks the key with the tracker first (#2809).
 func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 	const (
 		accepted = `{"status":"success","response":{"username":"user"}}`
@@ -29,11 +28,11 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 		name         string
 		method       string
 		body         string
-		reply        string // "" means the tracker is down
+		reply        string
 		wantStatus   int
 		wantRequests int32
 		wantText     string
-		keyName      string // stored key to read; "" means orpheus
+		keyName      string
 		wantStored   string
 	}{
 		{
@@ -78,7 +77,7 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 			method:     http.MethodPatch,
 			body:       `{"gazelleEnabled":false,"orpheusApiKey":"bad-key"}`,
 			reply:      rejected,
-			wantStatus: http.StatusOK, // the store hides keys while gazelle is off
+			wantStatus: http.StatusOK,
 		},
 		{
 			name:         "other tracker failure saves with a warning",
@@ -118,7 +117,7 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 			if tt.reply == "" {
-				server.Close() // loopback with nothing listening: a connection error
+				server.Close()
 			}
 
 			handler, store := newTestCrossSeedHandler(t)
@@ -151,8 +150,6 @@ func TestAutomationSettingsChecksGazelleKeyOnSave(t *testing.T) {
 	}
 }
 
-// A save closes the key rejected notice of a site whose key passed the check,
-// whose key it cleared, or when it turns RED/OPS off.
 func TestAutomationSettingsSaveClosesKeyRejectedNotice(t *testing.T) {
 	tests := []struct {
 		name     string

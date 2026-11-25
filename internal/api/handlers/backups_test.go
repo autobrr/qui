@@ -59,13 +59,10 @@ func newRequestWithParamsAndQuery(method, path string, params map[string]string,
 func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string) {
 	t.Helper()
 
-	// Create test database
 	db := testdb.NewMigratedSQLite(t, "backups-handler")
 
-	// Create test data directory
 	dataDir := t.TempDir()
 
-	// Create backup service
 	backupStore := models.NewBackupStore(db)
 	cfg := backups.Config{
 		DataDir:      dataDir,
@@ -96,7 +93,6 @@ func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instance
 	err := store.CreateRun(ctx, run)
 	require.NoError(t, err)
 
-	// Create manifest manually
 	manifest := &backups.Manifest{
 		InstanceID:   instanceID,
 		Kind:         "manual",
@@ -119,7 +115,6 @@ func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instance
 		},
 	}
 
-	// Insert backup items into database
 	items := []models.BackupItem{
 		{
 			RunID:           run.ID,
@@ -141,7 +136,6 @@ func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instance
 	err = store.InsertItems(ctx, run.ID, items)
 	require.NoError(t, err)
 
-	// Save manifest to file
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	require.NoError(t, err)
 
@@ -150,7 +144,6 @@ func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instance
 	require.NoError(t, os.MkdirAll(filepath.Dir(absManifestPath), 0755))
 	require.NoError(t, os.WriteFile(absManifestPath, manifestData, 0o600))
 
-	// Update run with manifest path
 	err = store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
 		r.ManifestPath = &manifestPath
 		return nil
@@ -163,14 +156,11 @@ func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instance
 func createTestTorrentFiles(t *testing.T, dataDir string) {
 	t.Helper()
 
-	// Create test torrent files in the cache directory
 	cacheDir := filepath.Join(dataDir, "backups", "torrents")
 	require.NoError(t, os.MkdirAll(cacheDir, 0755))
 
-	// Create test torrent data
 	testData := []byte("test torrent data")
 
-	// Create files with subdirectories (using the new structure)
 	subdir1 := filepath.Join(cacheDir, "ab", "cd")
 	subdir2 := filepath.Join(cacheDir, "ef", "gh")
 	require.NoError(t, os.MkdirAll(subdir1, 0755))
@@ -231,7 +221,6 @@ func TestDownloadRun_BackupNotFound(t *testing.T) {
 func TestDownloadRun_BackupNotAvailable(t *testing.T) {
 	handler, db, _ := setupTestBackupHandler(t)
 
-	// Create a test instance
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -239,7 +228,6 @@ func TestDownloadRun_BackupNotAvailable(t *testing.T) {
 	require.NoError(t, err)
 	instanceID := int(instanceID64)
 
-	// Create a backup run with pending status
 	run := &models.BackupRun{
 		InstanceID:   instanceID,
 		Kind:         models.BackupRunKindManual,
@@ -268,7 +256,6 @@ func TestDownloadRun_BackupNotAvailable(t *testing.T) {
 func TestDownloadRun_UnsupportedFormat(t *testing.T) {
 	handler, db, dataDir := setupTestBackupHandler(t)
 
-	// Create a test instance and successful backup run
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -295,7 +282,6 @@ func TestDownloadRun_UnsupportedFormat(t *testing.T) {
 func TestDownloadRun_ZIPFormat(t *testing.T) {
 	handler, db, dataDir := setupTestBackupHandler(t)
 
-	// Create a test instance and successful backup run
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -321,11 +307,9 @@ func TestDownloadRun_ZIPFormat(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
 	assert.Contains(t, w.Header().Get("Content-Disposition"), ".zip")
 
-	// Verify ZIP content
 	zipReader, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
 	require.NoError(t, err)
 
-	// Should contain manifest.json and torrent files
 	files := make(map[string]bool)
 	for _, file := range zipReader.File {
 		files[file.Name] = true
@@ -339,7 +323,6 @@ func TestDownloadRun_ZIPFormat(t *testing.T) {
 func TestDownloadRun_TarGzFormat(t *testing.T) {
 	handler, db, dataDir := setupTestBackupHandler(t)
 
-	// Create a test instance and successful backup run
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -365,7 +348,6 @@ func TestDownloadRun_TarGzFormat(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
 	assert.Contains(t, w.Header().Get("Content-Disposition"), ".tar.gz")
 
-	// Verify tar.gz content
 	gzipReader, err := gzip.NewReader(bytes.NewReader(w.Body.Bytes()))
 	require.NoError(t, err)
 	defer gzipReader.Close()
@@ -389,7 +371,6 @@ func TestDownloadRun_TarGzFormat(t *testing.T) {
 func TestDownloadRun_TarZstFormat(t *testing.T) {
 	handler, db, dataDir := setupTestBackupHandler(t)
 
-	// Create a test instance and successful backup run
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -415,7 +396,6 @@ func TestDownloadRun_TarZstFormat(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
 	assert.Contains(t, w.Header().Get("Content-Disposition"), ".tar.zst")
 
-	// Verify tar.zst content
 	zstdReader, err := zstd.NewReader(bytes.NewReader(w.Body.Bytes()))
 	require.NoError(t, err)
 	defer zstdReader.Close()
@@ -439,7 +419,6 @@ func TestDownloadRun_TarZstFormat(t *testing.T) {
 func TestDownloadRun_TarBrFormat(t *testing.T) {
 	handler, db, dataDir := setupTestBackupHandler(t)
 
-	// Create a test instance and successful backup run
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -465,7 +444,6 @@ func TestDownloadRun_TarBrFormat(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
 	assert.Contains(t, w.Header().Get("Content-Disposition"), ".tar.br")
 
-	// Verify tar.br content
 	brotliReader := brotli.NewReader(bytes.NewReader(w.Body.Bytes()))
 	tarReader := tar.NewReader(brotliReader)
 	files := make(map[string]bool)
@@ -486,7 +464,6 @@ func TestDownloadRun_TarBrFormat(t *testing.T) {
 func TestDownloadRun_TarXzFormat(t *testing.T) {
 	handler, db, dataDir := setupTestBackupHandler(t)
 
-	// Create a test instance and successful backup run
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -512,7 +489,6 @@ func TestDownloadRun_TarXzFormat(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
 	assert.Contains(t, w.Header().Get("Content-Disposition"), ".tar.xz")
 
-	// Verify tar.xz content
 	xzReader, err := xz.NewReader(bytes.NewReader(w.Body.Bytes()))
 	require.NoError(t, err)
 
@@ -535,7 +511,6 @@ func TestDownloadRun_TarXzFormat(t *testing.T) {
 func TestDownloadRun_TarFormat(t *testing.T) {
 	handler, db, dataDir := setupTestBackupHandler(t)
 
-	// Create a test instance and successful backup run
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -561,7 +536,6 @@ func TestDownloadRun_TarFormat(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
 	assert.Contains(t, w.Header().Get("Content-Disposition"), ".tar")
 
-	// Verify tar content
 	tarReader := tar.NewReader(bytes.NewReader(w.Body.Bytes()))
 	files := make(map[string]bool)
 	for {
@@ -581,7 +555,6 @@ func TestDownloadRun_TarFormat(t *testing.T) {
 func TestDownloadRun_DefaultFormat(t *testing.T) {
 	handler, db, dataDir := setupTestBackupHandler(t)
 
-	// Create a test instance and successful backup run
 	ctx := context.Background()
 	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (1, 1, 1, 'pass')")
 	require.NoError(t, err)
@@ -592,7 +565,6 @@ func TestDownloadRun_DefaultFormat(t *testing.T) {
 	run := createTestBackupRun(t, db, dataDir, instanceID)
 	createTestTorrentFiles(t, dataDir)
 
-	// Test without format parameter (should default to zip)
 	req := newRequestWithParams(http.MethodGet, fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, run.ID), map[string]string{
 		"instanceID": strconv.Itoa(instanceID),
 		"runID":      strconv.FormatInt(run.ID, 10),
@@ -606,8 +578,6 @@ func TestDownloadRun_DefaultFormat(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Disposition"), ".zip")
 }
 
-// Archive entry names are attacker-controlled, so the check must reject POSIX
-// and Windows escapes regardless of which OS the extraction runs on.
 func TestSafeArchiveEntryPath(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -634,7 +604,6 @@ func TestSafeArchiveEntryPath(t *testing.T) {
 	}
 }
 
-// archiveEntry is one file to put in a test archive.
 type archiveEntry struct {
 	name string
 	body []byte
@@ -680,11 +649,6 @@ func buildTestTar(t *testing.T, entries []archiveEntry) string {
 	return archivePath
 }
 
-// An archive whose entries resolve to one destination is ambiguous about which
-// payload belongs to which manifest item, so extraction refuses it rather than
-// letting the later entry replace the earlier one. Case-only differences count:
-// they are the same file on Windows and on a default macOS volume, and an
-// archive that imports on one host and not another is worse than a refusal.
 func TestExtractRejectsCollidingEntryNames(t *testing.T) {
 	manifest := archiveEntry{name: "manifest.json", body: []byte(`{"items":[]}`)}
 
@@ -744,8 +708,6 @@ func TestExtractRejectsCollidingEntryNames(t *testing.T) {
 	}
 }
 
-// A valid archive still extracts: the guards above must not reject entries that
-// only look similar.
 func TestExtractAcceptsDistinctEntryNames(t *testing.T) {
 	entries := []archiveEntry{
 		{name: "manifest.json", body: []byte(`{"items":[]}`)},
@@ -768,9 +730,6 @@ func TestExtractAcceptsDistinctEntryNames(t *testing.T) {
 	})
 }
 
-// The claim map catches destinations that collide as strings, case folded. The
-// writers are the backstop for whatever else a filesystem folds together, so
-// they must refuse an existing destination rather than truncate it.
 func TestExtractionWritersRefuseExistingDestination(t *testing.T) {
 	t.Run("copyStreamToFile", func(t *testing.T) {
 		destPath := filepath.Join(t.TempDir(), "one.torrent")

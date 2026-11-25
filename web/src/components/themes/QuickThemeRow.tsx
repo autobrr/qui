@@ -22,7 +22,6 @@ interface QuickThemeRowProps {
   isCurrent: boolean
 }
 
-/** One theme in a quick theme picker: its thumbnail, its name, and a mark for the theme in use, a lock, or its color variations. */
 export function QuickThemeRow({ theme, palette, variations, isCurrent }: QuickThemeRowProps) {
   const { t } = useTranslation("settings")
   return (
@@ -57,7 +56,6 @@ interface QuickThemeVariationsProps {
 
 const keepInParent = (event: MouseEvent | PointerEvent) => event.stopPropagation()
 
-/** The color variations of the theme in use, as buttons. A click picks the variation and does not reach the row around it. */
 export function QuickThemeVariations({ variations, selected, onSelect, className }: QuickThemeVariationsProps) {
   const { t } = useTranslation("settings")
   return (

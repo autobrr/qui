@@ -10,7 +10,6 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// TrackerOrigin returns the scheme and host of an announce URL. Any other value can hold a passkey and becomes empty.
 func TrackerOrigin(announceURL string) string {
 	if u, err := url.Parse(announceURL); err == nil && u.Scheme != "" && u.Host != "" {
 		return u.Scheme + "://" + u.Host
@@ -21,14 +20,12 @@ func TrackerOrigin(announceURL string) string {
 	return ""
 }
 
-// HideTrackerURLs replaces each URL with its origin, in place.
 func HideTrackerURLs(urls []string) {
 	for i, announceURL := range urls {
 		urls[i] = TrackerOrigin(announceURL)
 	}
 }
 
-// TrackersWithoutPasskeys copies the list, because it can come from a cache.
 func TrackersWithoutPasskeys(trackers []qbt.TorrentTracker) []qbt.TorrentTracker {
 	hidden := slices.Clone(trackers)
 	for i := range hidden {
@@ -44,7 +41,6 @@ func torrentWithoutPasskeys(t *qbt.Torrent) qbt.Torrent {
 	return hidden
 }
 
-// withoutTrackerPasskeys copies the rows, because they point into the sync cache.
 func (r *TorrentResponse) withoutTrackerPasskeys() *TorrentResponse {
 	hidden := *r
 	hidden.Torrents = slices.Clone(r.Torrents)

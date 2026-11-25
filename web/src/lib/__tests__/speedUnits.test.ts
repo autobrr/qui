@@ -73,7 +73,6 @@ describe("useSpeedUnits cross-component / cross-tab sync", () => {
 
     act(() => hookA.result.current[1]("bits"))
 
-    // hookB never called its own setter; it only saw the custom window event.
     expect(hookB.result.current[0]).toBe("bits")
   })
 
@@ -81,7 +80,6 @@ describe("useSpeedUnits cross-component / cross-tab sync", () => {
     const { result } = renderHook(() => useSpeedUnits())
     expect(result.current[0]).toBe("bytes")
 
-    // Simulate another tab having written the new value.
     localStorage.setItem(STORAGE_KEY, "bits")
     act(() => {
       window.dispatchEvent(new Event("storage"))
@@ -101,11 +99,8 @@ describe("formatSpeedWithUnit - bytes mode scaling and decimals", () => {
   })
 
   it("applies the decimals rule (>=100 -> 0, >=10 -> 1, else 2)", () => {
-    // value 256 -> 0 decimals
     expect(formatSpeedWithUnit(256, "bytes")).toBe("256 B/s")
-    // value ~15.5 KiB -> 1 decimal
     expect(formatSpeedWithUnit(Math.round(15.5 * 1024), "bytes")).toBe("15.5 KiB/s")
-    // value 1.5 KiB -> 2 decimals
     expect(formatSpeedWithUnit(Math.round(1.5 * 1024), "bytes")).toBe("1.5 KiB/s")
     expect(formatSpeedWithUnit(Math.round(1.25 * 1024), "bytes")).toBe("1.25 KiB/s")
   })
@@ -118,25 +113,18 @@ describe("formatSpeedWithUnit - bytes mode scaling and decimals", () => {
 
 describe("formatSpeedWithUnit - bits mode scaling and decimals", () => {
   it("multiplies bytes by 8 and scales with decimal k=1000", () => {
-    // 125 bytes/s -> 1000 bits/s -> 1 Kb/s
     expect(formatSpeedWithUnit(125, "bits")).toBe("1 Kb/s")
-    // 125000 bytes/s -> 1,000,000 bits/s -> 1 Mb/s
     expect(formatSpeedWithUnit(125000, "bits")).toBe("1 Mb/s")
-    // 1 byte/s -> 8 b/s
     expect(formatSpeedWithUnit(1, "bits")).toBe("8 b/s")
   })
 
   it("applies the bits-mode decimals rule across all branches (>=100 -> 0, >=10 -> 1, else 2)", () => {
-    // 1937.5 bytes/s -> 15500 b/s -> 15.5 Kb/s (value ~15.5 -> 1 decimal)
     expect(formatSpeedWithUnit(1937.5, "bits")).toBe("15.5 Kb/s")
-    // 32000 bytes/s -> 256000 b/s -> 256 Kb/s (value 256 -> 0 decimals)
     expect(formatSpeedWithUnit(32000, "bits")).toBe("256 Kb/s")
-    // 156.25 bytes/s -> 1250 b/s -> 1.25 Kb/s (value <10 -> 2 decimals)
     expect(formatSpeedWithUnit(156.25, "bits")).toBe("1.25 Kb/s")
   })
 
   it("bits-mode suffixes are identical for compact and non-compact (only zero short-circuit differs)", () => {
-    // The compact flag must NOT change the suffix in bits mode.
     expect(formatSpeedWithUnit(125, "bits", true)).toBe("1 Kb/s")
     expect(formatSpeedWithUnit(125, "bits", false)).toBe("1 Kb/s")
   })
@@ -172,13 +160,11 @@ describe("formatSpeedWithUnit - non-positive / non-finite short-circuit", () => 
 
 describe("formatSpeedWithUnit - sub-unit rounding underflow", () => {
   it("returns the zero string when a tiny positive value rounds to 0", () => {
-    // 0.001 bytes/s is positive (passes the finite/>0 guard) but rounds to 0.
     expect(formatSpeedWithUnit(0.001, "bytes")).toBe("0 B/s")
     expect(formatSpeedWithUnit(0.001, "bytes", true)).toBe("0")
   })
 
   it("returns the zero string for a tiny positive bits value that rounds to 0", () => {
-    // 0.0001 bytes -> 0.0008 b/s, rounds to 0 at 2 decimals.
     expect(formatSpeedWithUnit(0.0001, "bits")).toBe("0 b/s")
     expect(formatSpeedWithUnit(0.0001, "bits", true)).toBe("0")
   })

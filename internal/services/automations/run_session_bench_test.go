@@ -24,10 +24,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// benchRunService serves pairs cross-seed pairs that share their file on the
-// tracker main.test and as many torrents without a cross-seed on side.test
-// from a stub qBittorrent, and runs the real cross-seed service. fileReads
-// counts the torrents/files requests.
 func benchRunService(b *testing.B, pairs int) (*Service, *models.Instance, *atomic.Int64) {
 	b.Helper()
 	var entries []string
@@ -76,10 +72,6 @@ func benchRunService(b *testing.B, pairs int) (*Service, *models.Instance, *atom
 	return svc, instance, fileReads
 }
 
-// BenchmarkRunSessionDeletionSelection measures what a run reads before its
-// actions: buildEvalContext, the load step and the Deletion selection. The
-// include rule matches no torrent. The FREE_SPACE rule claims most of the
-// library.
 func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 	quietBenchLogs(b)
 
@@ -108,7 +100,6 @@ func BenchmarkRunSessionDeletionSelection(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				// As applyRulesForInstance does, with the free space of the stub.
 				evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(1000, freeSpace)
 				groups := buildCrossSeedGroups(torrents, evalCtx)
 				svc.loadCrossSeedFiles(ctx, instance.ID, groups, evalCtx, nil)
@@ -128,12 +119,6 @@ func quietBenchLogs(b *testing.B) {
 	b.Cleanup(func() { zerolog.SetGlobalLevel(previousLevel) })
 }
 
-// BenchmarkRunSessionMove measures a run with one move rule, from
-// buildEvalContext to the Run plan. In the first two cases the rule matches the
-// whole library, with every torrent still to move or with every torrent at the
-// target. In the last case the rule groups the whole library by save path, and
-// the 2000 Harbor.Watch triggers cannot move because the Quiet.Coast torrents
-// fail the condition.
 func BenchmarkRunSessionMove(b *testing.B) {
 	quietBenchLogs(b)
 	ratioAbove1 := &models.RuleCondition{Field: FieldRatio, Operator: models.OperatorGreaterThan, Value: "1"}
@@ -158,10 +143,6 @@ func BenchmarkRunSessionMove(b *testing.B) {
 	}
 }
 
-// BenchmarkRunSessionCategoryAndTag measures a run with one category or tag
-// rule that reads groups, from buildEvalContext to the Run plan. The
-// condition matches the 2000 Harbor.Watch cross-seeds, two thirds of the
-// library. The tag rule checks the group of every torrent in its scope.
 func BenchmarkRunSessionCategoryAndTag(b *testing.B) {
 	quietBenchLogs(b)
 	harbor := &models.RuleCondition{Field: FieldName, Operator: models.OperatorContains, Value: "Harbor"}
@@ -187,8 +168,6 @@ func BenchmarkRunSessionCategoryAndTag(b *testing.B) {
 	}
 }
 
-// benchmarkPlanRun runs rule from buildEvalContext to the Run plan, and checks
-// that the plan holds want changes.
 func benchmarkPlanRun(b *testing.B, rule *models.Automation, want int, planned func(runPlan) int) {
 	rules := []*models.Automation{rule}
 	svc, instance, fileReads := benchRunService(b, 1000)
@@ -224,10 +203,6 @@ func benchmarkPlanRun(b *testing.B, rule *models.Automation, want int, planned f
 	b.ReportMetric(float64(fileReads.Load())/float64(b.N), "fileReads/op")
 }
 
-// BenchmarkRunSessionCrossSeedFacts measures a run with one delete rule whose
-// condition reads Exists on the same instance, from buildEvalContext to the
-// Deletion selection. The tracker scope main.test holds the 2000 cross-seeds,
-// two thirds of the library. The keep-files mode reads no group.
 func BenchmarkRunSessionCrossSeedFacts(b *testing.B) {
 	quietBenchLogs(b)
 	rule := deleteRule(DeleteModeKeepFiles, &models.RuleCondition{Field: FieldExistsOnSameInstance, Operator: models.OperatorEqual, Value: "true"})

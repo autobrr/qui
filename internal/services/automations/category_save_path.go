@@ -21,8 +21,6 @@ func usesSavePathVariable(path string) bool {
 	return strings.Contains(path, categorySavePathVariable) || strings.Contains(path, defaultSavePathVariable)
 }
 
-// ruleTemplatesUseSavePaths reports whether an enabled move path, export save
-// path, or transfer save path references .CategorySavePath or .DefaultSavePath.
 func ruleTemplatesUseSavePaths(ac *models.ActionConditions) bool {
 	if move := ac.Move; move != nil && move.Enabled && usesSavePathVariable(move.Path) {
 		return true
@@ -34,14 +32,7 @@ func ruleTemplatesUseSavePaths(ac *models.ActionConditions) bool {
 	return transfer != nil && transfer.Enabled && usesSavePathVariable(transfer.SavePath)
 }
 
-// buildCategorySavePaths resolves every category's save path the way
-// qBittorrent's categorySavePath does for Auto TMM. The "" key holds the
-// default save path, for uncategorized torrents. It keeps its own separator
-// handling because qbittorrent.CategorySavePath needs a backend's path dialect,
-// and a move needs no file access.
 func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath string, rule qbittorrent.CategoryPathRule) map[string]string {
-	// qBittorrent reports its default save path absolute and with native
-	// separators, so only a POSIX host's starts with "/".
 	g := savePathGrammar{windows: !strings.HasPrefix(defaultSavePath, "/")}
 	resolved := make(map[string]string, len(categories)+1)
 	resolved[""] = g.trimTrailingSeparators(defaultSavePath)
@@ -57,14 +48,11 @@ func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath 
 			if parent, leaf, found := strings.CutLast(name, "/"); rule.Nest && found {
 				base, folder = resolve(parent), leaf
 			}
-			// A folder name is always relative, even "a:b" from a qBittorrent 5.3+ Linux build.
 			p = g.join(base, qbittorrent.CategoryFolderName(folder, rule))
 		} else if !g.isAbs(p) {
 			p = g.join(defaultSavePath, p)
 		}
 		p = g.trimTrailingSeparators(p)
-		// A missing parent still resolves implicitly, but must not become a
-		// known category: a torrent in it has no category save path.
 		if _, known := categories[name]; known {
 			resolved[name] = p
 		}
@@ -77,9 +65,6 @@ func buildCategorySavePaths(categories map[string]qbt.Category, defaultSavePath 
 	return resolved
 }
 
-// savePathGrammar reads paths the way qBittorrent's Path does on its host,
-// independent of the OS qui runs on. On a POSIX host a backslash is a file
-// name character.
 type savePathGrammar struct {
 	windows bool
 }
@@ -91,8 +76,6 @@ func (g savePathGrammar) separators() string {
 	return "/"
 }
 
-// isAbs follows QDir::isAbsolutePath: on Windows a leading separator or a
-// drive letter, even "C:x", counts as absolute.
 func (g savePathGrammar) isAbs(p string) bool {
 	if strings.HasPrefix(p, "/") {
 		return true
@@ -103,7 +86,6 @@ func (g savePathGrammar) isAbs(p string) bool {
 	return strings.HasPrefix(p, `\`) || len(p) >= 2 && p[1] == ':' && ('a' <= p[0] && p[0] <= 'z' || 'A' <= p[0] && p[0] <= 'Z')
 }
 
-// trimTrailingSeparators keeps "{{.CategorySavePath}}/x" from rendering "//x", which never matches the stored path.
 func (g savePathGrammar) trimTrailingSeparators(p string) string {
 	trimmed := strings.TrimRight(p, g.separators())
 	switch {
@@ -115,8 +97,6 @@ func (g savePathGrammar) trimTrailingSeparators(p string) string {
 	return trimmed
 }
 
-// join puts rel, whose slashes may separate category names, under base with
-// the host's separator.
 func (g savePathGrammar) join(base, rel string) string {
 	if g.windows {
 		return strings.TrimRight(base, g.separators()) + `\` + strings.ReplaceAll(rel, "/", `\`)

@@ -27,7 +27,6 @@ const INSTANCES_KEY = ["arrInstances"]
 const TOGGLE_KEY = ["arrInstances", "toggle"]
 const TEST_KEY = ["arrInstances", "test"]
 
-// The server keeps the saved basic auth password when the update sends this value back.
 const REDACTED = "<redacted>"
 
 const TYPES: readonly ArrInstanceType[] = ["sonarr", "radarr"]
@@ -39,14 +38,12 @@ type SaveRequest =
   | { id: null; data: ArrInstanceFormData }
   | { id: number; data: ArrInstanceUpdateData }
 
-/** The Integrations tab: the Sonarr and Radarr instances that cross-seed asks for IDs. */
 export function ArrInstancesManager() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<ArrInstance | null>(null)
-  // A new key on each open gives the form fresh state.
   const [editorSession, setEditorSession] = useState(0)
 
   const instancesQuery = useQuery({
@@ -54,7 +51,6 @@ export function ArrInstancesManager() {
     queryFn: () => api.listArrInstances(),
     staleTime: 30 * 1000,
   })
-  // In the order of TYPES, so that the headings keep their order.
   const instances = TYPES.flatMap((type) => instancesQuery.data?.filter((instance) => instance.type === type) ?? [])
   const typeName = (type: ArrInstanceType) => t(type === "sonarr" ? "arrInstances.form.types.sonarrShort" : "arrInstances.form.types.radarrShort")
 
@@ -73,10 +69,8 @@ export function ArrInstancesManager() {
   const setEnabledInCache = (id: number, enabled: boolean) =>
     queryClient.setQueryData<ArrInstance[]>(INSTANCES_KEY, (old) => old?.map((item) => item.id === id ? { ...item, enabled } : item))
 
-  // The switch of an instance takes no input while its save runs, so two saves of one instance never overlap.
   const toggleMutation = useMutation({
     mutationKey: TOGGLE_KEY,
-    // The server changes only the fields that the request holds.
     mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) => api.updateArrInstance(id, { enabled }),
     onMutate: async ({ id, enabled }) => {
       await queryClient.cancelQueries({ queryKey: INSTANCES_KEY })
@@ -191,7 +185,6 @@ export function ArrInstancesManager() {
           }}
         />
       </Section>
-      {/* Outside the section, so a failed refetch of the list never takes an open form away. */}
       <ArrInstanceEditor
         key={editorSession}
         open={editorOpen}
@@ -208,19 +201,16 @@ export function ArrInstancesManager() {
 interface ArrInstanceEditorProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** The instance to edit, or null for a new one. */
   instance: ArrInstance | null
   pending: boolean
   error?: string
   onSave: (request: SaveRequest) => void
 }
 
-// A new test clears the last result, so the result mounts again, and comes into view, after each test.
 const scrollIntoView = (element: HTMLElement | null) => element?.scrollIntoView({ block: "nearest" })
 
 type FieldName = "name" | "baseUrl" | "apiKey" | "basicUsername" | "basicPassword"
 type FormErrors = Partial<Record<FieldName, string>>
-// The order of the fields in the form, for the focus on the first error.
 const FIELD_ORDER: readonly FieldName[] = ["name", "baseUrl", "apiKey", "basicUsername", "basicPassword"]
 
 function ArrInstanceEditor({ open, onOpenChange, instance, pending, error, onSave }: ArrInstanceEditorProps) {
@@ -262,7 +252,6 @@ function ArrInstanceEditor({ open, onOpenChange, instance, pending, error, onSav
     ? { success: false, error: errorMessage(testMutation.error, unknownError) }
     : testMutation.data ?? null
 
-  /** Shows the errors, and focuses the first field that has one. Returns true when the form has none. */
   const check = (next: FormErrors) => {
     setErrors(next)
     const first = FIELD_ORDER.find((field) => next[field])
@@ -339,7 +328,6 @@ function ArrInstanceEditor({ open, onOpenChange, instance, pending, error, onSav
     }
   }
 
-  /** The props of a text input of the form: its value, its ref for the focus on an error, and the reset of its error. */
   const input = (field: FieldName, value: string, setValue: (value: string) => void) => ({
     ref: (element: HTMLInputElement | null) => {
       inputs.current[field] = element

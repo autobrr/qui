@@ -14,7 +14,6 @@ import (
 	"golang.org/x/net/idna"
 )
 
-// HostAllowlist matches the received HTTP Host against a fixed list.
 type HostAllowlist struct {
 	hosts []string
 }
@@ -42,7 +41,6 @@ func (list *HostAllowlist) Allows(host string) bool {
 	if len(list.hosts) == 0 {
 		return true
 	}
-	// HTTP IPv6 literals use brackets, with or without a port.
 	if strings.Contains(host, ":") && (!strings.HasPrefix(host, "[") || !strings.HasSuffix(host, "]")) {
 		name, port, err := net.SplitHostPort(host)
 		if err != nil {
@@ -51,7 +49,6 @@ func (list *HostAllowlist) Allows(host string) bool {
 		if _, err := strconv.ParseUint(port, 10, 16); err != nil {
 			return false
 		}
-		// Preserve brackets so malformed bracketed DNS names remain invalid.
 		if strings.HasPrefix(host, "[") {
 			name = "[" + name + "]"
 		}
@@ -94,7 +91,6 @@ func normalizeHost(host string) (string, error) {
 	if len(host) > 253 {
 		return "", errors.New("hostname is too long")
 	}
-	// Check lengths after IDNA maps all DNS dot forms and removes one final dot.
 	for label := range strings.SplitSeq(host, ".") {
 		if len(label) == 0 || len(label) > 63 {
 			return "", errors.New("invalid hostname label length")

@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-// BoolToSQLite converts a bool to SQLite integer representation (0 or 1).
 func BoolToSQLite(v bool) int {
 	if v {
 		return 1
@@ -17,13 +16,10 @@ func BoolToSQLite(v bool) int {
 	return 0
 }
 
-// SQLiteIntToBool converts SQLite/Postgres integer-backed boolean columns to bool.
 func SQLiteIntToBool(v int) bool {
 	return v != 0
 }
 
-// SanitizeStringSlice trims whitespace, removes empty strings, and deduplicates case-insensitively.
-// Original casing is preserved for the first occurrence of each unique value.
 func SanitizeStringSlice(values []string) []string {
 	if len(values) == 0 {
 		return []string{}
@@ -45,8 +41,6 @@ func SanitizeStringSlice(values []string) []string {
 	return result
 }
 
-// SanitizeCommaSeparatedStringSlice splits values on comma, trims whitespace, removes empty strings,
-// lowercases entries, and deduplicates case-insensitively.
 func SanitizeCommaSeparatedStringSlice(values []string) []string {
 	if len(values) == 0 {
 		return []string{}
@@ -70,7 +64,6 @@ func SanitizeCommaSeparatedStringSlice(values []string) []string {
 	return result
 }
 
-// EncodeStringSliceJSON marshals a string slice to JSON. Returns "[]" for empty/nil slices.
 func EncodeStringSliceJSON(values []string) (string, error) {
 	if len(values) == 0 {
 		return "[]", nil
@@ -82,8 +75,6 @@ func EncodeStringSliceJSON(values []string) (string, error) {
 	return string(payload), nil
 }
 
-// DecodeStringSliceJSON unmarshals a JSON string to a sanitized string slice.
-// Returns an empty slice for NULL or empty database values.
 func DecodeStringSliceJSON(raw sql.NullString) ([]string, error) {
 	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
 		return []string{}, nil

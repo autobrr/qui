@@ -20,27 +20,15 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// mediaIDExtractorVersion invalidates cached rows when the tag parsing or
-// selection rules below change. Bump it on any behavioral change here.
 const mediaIDExtractorVersion = 1
 
-// mediaIDAnalyzeTimeout bounds one MKV metadata read so a slow network
-// mount degrades to "no ID" instead of holding the search slot. Local
-// reads finish in milliseconds. The context is observed between reads, so
-// a single read blocked in the OS still returns only when the OS completes it.
 const mediaIDAnalyzeTimeout = 30 * time.Second
 
-// mediaIDCache captures the media_id_cache store methods the service uses.
 type mediaIDCache interface {
 	Get(ctx context.Context, torrentKey, contentType string) (*models.MediaIDCacheEntry, error)
 	Set(ctx context.Context, entry *models.MediaIDCacheEntry) error
 }
 
-// lookupMediaFileIDs resolves external IDs from Matroska metadata embedded in
-// the torrent's largest .mkv file, backed by the media_id_cache table. It
-// returns nil when no usable ID exists. Transient failures (no local access,
-// unreadable file, parse error) return nil without caching so a later search
-// can retry; a successful scan is cached even when it finds no ID.
 func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Instance, torrent *qbt.Torrent, files qbt.TorrentFiles, contentType string) *models.ExternalIDs {
 	if s.mediaIDCacheStore == nil {
 		return nil
@@ -51,8 +39,6 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 		return nil
 	}
 
-	// qBittorrent's Hash is the v1 infohash for v1 and hybrid torrents, so
-	// the same content shares one row across instances.
 	key := normalizeHash(torrent.Hash)
 	if key == "" {
 		return nil
@@ -83,8 +69,6 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 	analyze := s.analyzeMediaFile
 	if analyze == nil {
 		analyze = func(ctx context.Context, path string) (mediainfo.Report, error) {
-			// Speed 0 keeps codec/cluster probing bounded to a few packets per
-			// track; the Matroska Tags reads are ParseSpeed-independent.
 			// #nosec G304 -- path is constructed from the instance save path via resolveLocalTorrentFile.
 			return mediainfo.AnalyzeFileContext(ctx, path, mediainfo.WithParseSpeed(0))
 		}
@@ -134,13 +118,7 @@ func mediaIDsToExternalIDs(idType, idValue string) *models.ExternalIDs {
 	return nil
 }
 
-// largestMKVPath returns the resolved local path of the torrent's largest
-// .mkv file, or "" when none resolves. qBittorrent returns files in stable
-// index order, so the pick is deterministic.
 func largestMKVPath(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles) string {
-	// Filter first: forEachLocalTorrentFile stats every file it is given.
-	// Skip deselected/partial files: a stub can sit on disk at the declared
-	// size and would cache a wrong "no tags" row over the complete file.
 	var mkvs qbt.TorrentFiles
 	for _, file := range files {
 		if file.Progress >= 1 && file.Size > 0 && stringutils.HasSuffixFold(file.Name, ".mkv") {
@@ -152,7 +130,6 @@ func largestMKVPath(ctx context.Context, backend fsops.Backend, savePath string,
 	})
 
 	var bestPath string
-	// Best-effort lookup: an unresolvable name just means no mediainfo source here.
 	_ = forEachLocalTorrentFile(ctx, backend, savePath, mkvs, func(_ qbt.TorrentFile, fullPath string, _ *fsops.LstatInfo) bool {
 		bestPath = fullPath
 		return false
@@ -160,11 +137,6 @@ func largestMKVPath(ctx context.Context, backend fsops.Backend, savePath string,
 	return bestPath
 }
 
-// extractMediaExternalIDs selects one external ID from the Matroska file-level
-// tags in a MediaInfo report. Namespaces are tried in a fixed,
-// content-type-dependent order; a namespace whose tags disagree is skipped.
-// Only explicitly namespaced TMDb/TVDb forms that match the content type are
-// accepted, because muxer tags carry no library-level trust.
 func extractMediaExternalIDs(report mediainfo.Report, contentType string) (idType, idValue string) {
 	imdb := map[string]struct{}{}
 	tmdb := map[string]struct{}{}
@@ -221,9 +193,6 @@ func normalizeIMDbTag(value string) (string, bool) {
 	return value, true
 }
 
-// normalizeTMDbTag accepts mkvmerge-style namespaced TMDb tags ("movie/278",
-// "tv/1399"). Bare numbers are ambiguous between the movie and TV databases
-// and collection IDs are a different object entirely, so both are rejected.
 func normalizeTMDbTag(value, contentType string) (string, bool) {
 	prefix := "movie/"
 	if contentType != "movie" {
@@ -236,10 +205,6 @@ func normalizeTMDbTag(value, contentType string) (string, bool) {
 	return digits, true
 }
 
-// normalizeTVDbTag accepts the classic bare series ID and the TheTVDB v4
-// namespaced forms ("series/431162", "movies/19799"). A bare number is only
-// meaningful for series content; movie content requires the explicit
-// "movies/" namespace.
 func normalizeTVDbTag(value, contentType string) (string, bool) {
 	if contentType == "movie" {
 		digits, ok := strings.CutPrefix(value, "movies/")
@@ -255,8 +220,6 @@ func normalizeTVDbTag(value, contentType string) (string, bool) {
 	return digits, true
 }
 
-// isDecimalID reports whether s is a plain non-empty decimal number
-// (ParseUint rejects signs, underscores, and the empty string).
 func isDecimalID(s string) bool {
 	_, err := strconv.ParseUint(s, 10, 64)
 	return err == nil

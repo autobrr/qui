@@ -22,8 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// hashFilteringSyncManager honors the Hashes filter in GetTorrentRefs so
-// per-candidate lookups see only the requested torrent.
 type hashFilteringSyncManager struct {
 	gazelleSkipHashSyncManager
 }
@@ -45,10 +43,6 @@ func (g *hashFilteringSyncManager) GetTorrentRefs(_ context.Context, _ int, opts
 	return testTorrentRefs(out), nil
 }
 
-// newSearchRunLoopFixture builds a Service with a running search-run state
-// backed by a migrated SQLite store, ready for searchRunLoop. Gazelle match
-// lookups are stubbed to find nothing, and the run does not wait between
-// candidates.
 func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilteringSyncManager) (*Service, *searchRunState) {
 	t.Helper()
 	prevInterval := minSearchIntervalSecondsGazelleOnly
@@ -120,12 +114,6 @@ func runSearchLoopToCompletion(t *testing.T, svc *Service, state *searchRunState
 	}
 }
 
-// Regression: one failed candidate must not mark a completed search run as
-// failed. Discord report: a cross-seed search across multiple indexers is
-// reported as failed when a single tracker/candidate search errors, even
-// though every other candidate was processed normally. Candidate failures are
-// already recorded per-item (TorrentsFailed + result entries); the run-level
-// status should only fail when the run itself aborts.
 func TestSearchRunLoop_OneFailedCandidateDoesNotFailWholeRun(t *testing.T) {
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
 	sourceHashNorm := strings.ToLower(sourceHash)
@@ -139,8 +127,6 @@ func TestSearchRunLoop_OneFailedCandidateDoesNotFailWholeRun(t *testing.T) {
 	sourceFiles := qbt.TorrentFiles{
 		{Name: "During - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
 	}
-	// This candidate's files are missing from the sync manager, so its
-	// per-torrent search fails ("torrent files not found").
 	brokenTorrent := qbt.Torrent{
 		Hash:     "aaaa59985c562a644428312c8cd3585d04686847",
 		Name:     "Broken - Candidate (2024 WF)",
@@ -218,12 +204,7 @@ func TestSearchRunLoop_OneFailedCandidateDoesNotFailWholeRun(t *testing.T) {
 	require.Nil(t, errorMessage)
 }
 
-// Regression (PR #2156 review): a run where EVERY candidate fails must still
-// finalize as failed; only runs with at least one non-failed candidate count
-// as success.
 func TestSearchRunLoop_AllCandidatesFailedMarksRunFailed(t *testing.T) {
-	// Its files are missing from the sync manager, so the only candidate's
-	// per-torrent search fails.
 	brokenTorrent := qbt.Torrent{
 		Hash:     "aaaa59985c562a644428312c8cd3585d04686847",
 		Name:     "Broken - Candidate (2024 WF)",
@@ -253,9 +234,6 @@ func TestSearchRunLoop_AllCandidatesFailedMarksRunFailed(t *testing.T) {
 	require.Contains(t, *errorMessage, "all 1 searched candidates failed")
 }
 
-// The per-candidate write must not grow with the run: counters land on every
-// persist, the results blob only every searchResultsFlushEvery entries and on
-// finalize (#2572).
 func TestPersistSearchRun_FlushesResultsEveryN(t *testing.T) {
 	ctx := t.Context()
 	db := testdb.NewMigratedSQLite(t, "search-run-flush")
@@ -304,7 +282,6 @@ func TestPersistSearchRun_FlushesResultsEveryN(t *testing.T) {
 	require.Len(t, storedRun().Results, searchResultsFlushEvery+1, "finalize writes the full row")
 }
 
-// listFailingIndexerStore fails the indexer listing of the content filter.
 type listFailingIndexerStore struct {
 	failingEnabledIndexerStore
 }
@@ -313,9 +290,6 @@ func (s *listFailingIndexerStore) List(context.Context) ([]*models.TorznabIndexe
 	return nil, errors.New("prowlarr down")
 }
 
-// A failed indexer listing removes every Torznab indexer from the scope. qui
-// did not ask those indexers, so the Library Scan must not start their
-// cooldown.
 func TestProcessSearchCandidate_IndexerListingFailureStampsNoIndexer(t *testing.T) {
 	ctx, env := newSearchHistoryTestEnv(t, "crossseed-listing-failure-history", 2)
 	instanceStore, err := models.NewInstanceStore(env.db, []byte("01234567890123456789012345678901"))

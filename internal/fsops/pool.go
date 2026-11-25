@@ -20,16 +20,10 @@ type instanceGetter interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 }
 
-// NewPool creates a Backend pool backed by the given instance store and local
-// backend. Without a remote factory a remote-mode instance is an error, not a
-// silent "not configured": NewPoolWithRemote is the constructor that wires one.
 func NewPool(store instanceGetter, local Backend) *Pool {
 	return NewPoolWithRemote(store, local, nil)
 }
 
-// NewPoolWithRemote is NewPool plus a remote-backend factory, called per
-// resolution: the backend it returns is a thin handle over the shared SSH
-// connection pool, which owns the connections and their lifetime.
 func NewPoolWithRemote(store instanceGetter, local Backend, remote func(*models.Instance) Backend) *Pool {
 	return &Pool{
 		instanceStore: store,
@@ -43,9 +37,6 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 	return backend, err
 }
 
-// Resolve is GetBackend plus the mode the backend was chosen for, both from
-// one instance read, so a caller that records the mode cannot label a walk
-// with a mode the instance changed to in between.
 func (p *Pool) Resolve(ctx context.Context, instanceID int) (Backend, models.FilesystemMode, error) {
 	instance, err := p.load(ctx, instanceID)
 	if err != nil {
@@ -54,10 +45,6 @@ func (p *Pool) Resolve(ctx context.Context, instanceID int) (Backend, models.Fil
 	return p.backendFor(instance)
 }
 
-// Require returns the backend and the instance row for an instance whose mode
-// grants every capability, both from one read, so a caller cannot check one
-// row and act on another. Any other instance fails with ErrNotCapable before a
-// backend is built.
 func (p *Pool) Require(ctx context.Context, instanceID int, capability models.FilesystemCapability, more ...models.FilesystemCapability) (Backend, *models.Instance, error) {
 	instance, err := p.load(ctx, instanceID)
 	if err != nil {
@@ -100,7 +87,5 @@ func (p *Pool) backendFor(instance *models.Instance) (Backend, models.Filesystem
 	case models.FilesystemModeNone:
 		return noopBackend{}, mode, nil
 	}
-	// No default arm, so exhaustive flags a new mode here instead of letting
-	// it fall through to "not configured".
 	return nil, "", fmt.Errorf("instance %d: unknown filesystem mode %q", instance.ID, mode)
 }

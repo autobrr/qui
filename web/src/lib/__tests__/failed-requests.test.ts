@@ -48,7 +48,6 @@ describe("failed requests of the browser session", () => {
         }
       },
     })
-    // MSW answers only once the body is in, so the answer comes from fetch itself.
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body, { status: 500, headers: { "Content-Type": "application/json" } }))
 
     await expect(api.downloadLogFile("qui.log")).rejects.toThrow()
@@ -64,7 +63,6 @@ describe("failed requests of the browser session", () => {
       status: 403,
       headers: { "Content-Type": "text/html" },
     })))
-    // A recovery navigation already ran in this tab, so the call fails in place of a second one.
     sessionStorage.setItem("qui_sso_recovery_attempted", "1")
 
     await expect(api.getInstances()).rejects.toThrow()

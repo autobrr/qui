@@ -19,7 +19,6 @@ vi.mock("react-i18next", () => ({ useTranslation: () => translation }))
 vi.mock("@/lib/incognito", () => ({ useIncognitoMode: () => incognito }))
 
 describe("the password widget of the qBittorrent preferences", () => {
-  // regression: #4237
   it("keeps the password managers away, because the password belongs to qBittorrent", () => {
     const field: PreferenceField = { key: "mail_notification_password", value: "", tab: "downloads", section: "mail", control: "password" }
     const Widget = preferenceWidgets.password

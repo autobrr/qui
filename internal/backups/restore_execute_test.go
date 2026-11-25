@@ -22,8 +22,7 @@ type captureTorrentWriter struct {
 	addOptions []map[string]string
 	postAdd    []string
 	deletes    []restoreDelete
-	// failBatch makes a delete of more than one torrent fail.
-	failBatch bool
+	failBatch  bool
 }
 
 type restoreDelete struct {

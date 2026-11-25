@@ -32,8 +32,6 @@ func TestTransferHistoryEventsMigrationPostgresIntegration(t *testing.T) {
 	checkTransferHistoryEventsMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations")
 }
 
-// A record that completed before the upgrade must not get a completion event
-// at the first reading after it.
 func checkTransferHistoryEventsMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadFileFS, dir string) {
 	t.Helper()
 

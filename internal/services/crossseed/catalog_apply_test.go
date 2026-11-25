@@ -21,7 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
-// regression: #4181
 func TestCatalogApplyObligations(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
@@ -122,7 +121,6 @@ func TestCatalogApplyObligations(t *testing.T) {
 	}
 }
 
-// regression: #4181
 func TestCatalogFileOrderUsesPathAndSize(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -183,7 +181,6 @@ func TestCatalogFileOrderUsesPathAndSize(t *testing.T) {
 	}
 }
 
-// regression: #4181
 func TestCatalogMappedAlignmentStartsPaused(t *testing.T) {
 	for _, shape := range []string{"flattened source", "renamed source root", "rootless incoming"} {
 		for _, skip := range []bool{false, true} {

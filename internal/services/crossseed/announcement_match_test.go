@@ -26,9 +26,6 @@ func (m *announcementLookupCountingSyncManager) GetTorrentFilesBatch(ctx context
 	return m.fakeSyncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 }
 
-// TestClassifyAnnouncementSourceKnownSize protects the announcement adapter
-// from drifting from the search classifier. The selected file is intentional:
-// announcement matching must reconstruct the same source view as search.
 func TestClassifyAnnouncementSourceKnownSize(t *testing.T) {
 	const (
 		instanceID = 1
@@ -179,8 +176,6 @@ func TestClassifyAnnouncementSourceUnknownSizePreflight(t *testing.T) {
 		{"season", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S02E05.1080p.WEB-DL.H.264-KIRI", false, false},
 		{"episode", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S01E06.1080p.WEB-DL.H.264-KIRI", false, false},
 		{"missing announcement group", "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb", "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264", false, true},
-		// Without a resolution the pair cannot take the exact size class, so only
-		// a strict match or a web source relabel admits it.
 		{"missing announcement group without resolution", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.264", false, true},
 		{"missing announcement group with web relabel", "Sample.Show.S08E11.WEBRip.H.264-NTb", "Sample Show S08E11 WEB-DL H.264", false, true},
 		{"missing announcement group with codec", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.265", false, false},
@@ -229,8 +224,6 @@ func TestClassifyWebhookAnnouncementSourceUnknownSizeRejectsUnrelatedTitleCheapl
 
 	require.False(t, got.decision.Accepted)
 	require.False(t, got.replayable)
-	// Unknown size adds one hard-identity check to the same title rejection.
-	// Collecting every relaxed difference adds substantially more work.
 	require.LessOrEqual(t, allocations, controlAllocations+6)
 }
 
@@ -258,11 +251,6 @@ func TestClassifyWebhookAnnouncementSourceNonexactRequiresStrictMatch(t *testing
 	require.True(t, got.replayable)
 }
 
-// TestClassifyWebhookAnnouncementSourceCandidateTitles protects the announce
-// classifier's ARR alias handling: alias titles attach to the announced
-// candidate only, recover exact-size and unknown-size matches that plain title
-// overlap rejects, and never widen an unrelated source torrent. Names follow
-// the scrubbed repro from issue #2492.
 func TestClassifyWebhookAnnouncementSourceCandidateTitles(t *testing.T) {
 	const (
 		instanceID = 1
@@ -278,7 +266,7 @@ func TestClassifyWebhookAnnouncementSourceCandidateTitles(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		sourceName      string // empty means the seeded Frieren source
+		sourceName      string
 		candidateName   string
 		candidateSize   int64
 		candidateTitles []string
@@ -346,16 +334,12 @@ func TestClassifyWebhookAnnouncementSourceCandidateTitles(t *testing.T) {
 	}
 }
 
-// TestClassifyWebhookAnnouncementSourceIgnoresOneSidedChecksum: IRC announce
-// sizes are rounded, so only a strict match passes the webhook check. A CRC tag
-// on one name is no difference, so it does not veto that strict match. Two
-// tags that differ still do.
 func TestClassifyWebhookAnnouncementSourceIgnoresOneSidedChecksum(t *testing.T) {
 	const (
 		sourceName   = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
 		announceName = "Frieren: Beyond Journey's End S02E10 1080p CR WEB-DL AAC 2.0 H.264-KiraSubs"
 		size         = int64(1_468_228_504)
-		roundedSize  = int64(1_471_026_298) // 1.37 GiB: what the IRC announce advertises
+		roundedSize  = int64(1_471_026_298)
 	)
 	aliasTitles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"}
 
@@ -413,8 +397,6 @@ func TestClassifyWebhookAnnouncementSourceIgnoresOneSidedChecksum(t *testing.T) 
 	}
 }
 
-// TestUnknownSizePreflightDecisionAllowlist catches a future classifier
-// relaxation becoming an unknown-size download recommendation by default.
 func TestUnknownSizePreflightDecisionAllowlist(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -530,9 +512,6 @@ func TestClassifyAnnouncementSourceAvoidsUnnecessaryFileLookups(t *testing.T) {
 	}
 }
 
-// TestAnnounceAliasTitlesBoundsLookup catches an announce-path alias lookup
-// without a deadline: a hung ARR instance would then stall every announce
-// check for the full per-instance HTTP timeouts.
 func TestAnnounceAliasTitlesBoundsLookup(t *testing.T) {
 	t.Parallel()
 
@@ -545,9 +524,6 @@ func TestAnnounceAliasTitlesBoundsLookup(t *testing.T) {
 	require.LessOrEqual(t, time.Until(spy.deadline), announceAliasLookupTimeout)
 }
 
-// TestClassifyWebhookAnnouncementSourceColonTitleAbsoluteEpisode: a Sonarr
-// announce keeps the series title's colon and S04E15; the file on disk cannot
-// hold a colon and carries the absolute number. Exact size admits the pair.
 func TestClassifyWebhookAnnouncementSourceColonTitleAbsoluteEpisode(t *testing.T) {
 	const (
 		sourceHash   = "colon-absolute-source"
@@ -587,7 +563,6 @@ func TestWebhookDecision(t *testing.T) {
 		source      string
 		announce    string
 		skipRecheck bool
-		// unknownSize leaves the local torrent without a reported size.
 		unknownSize bool
 		wantClass   searchCandidateClass
 		wantReason  string

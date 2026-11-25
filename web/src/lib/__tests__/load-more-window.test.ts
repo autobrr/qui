@@ -11,7 +11,6 @@ function run(events: LoadMoreWindowEvent[], state: LoadMoreWindow = EMPTY_LOAD_M
   return events.reduce(loadMoreWindowReducer, state)
 }
 
-// 1,000 rows in memory, and the user scrolled to row 400.
 const scrolled = run([
   { type: "dataArrived", length: 1000 },
   { type: "nearEnd", hasMorePages: true },

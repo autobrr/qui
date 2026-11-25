@@ -5,7 +5,6 @@
 
 import type { TransferHistoryInstance } from "./statistics"
 
-/** Days that qui keeps the hourly totals and the daily bytes of each torrent. 0 keeps them forever. */
 export type DetailRetentionDays = 0 | 90 | 400
 
 export interface TransferHistorySettings {

@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// regression: #4219
 func TestFindMatchBroadFilenameFallback(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
@@ -61,7 +60,6 @@ func TestFindMatchBroadFilenameFallback(t *testing.T) {
 	}
 }
 
-// regression: #4181
 func TestFindMatchEqualTotalNeedsNoMetadata(t *testing.T) {
 	for _, tt := range []struct {
 		name              string
@@ -112,11 +110,6 @@ func legacyFlagTorrent(t *testing.T) []byte {
 	return body
 }
 
-// TestFindMatch_HashLookupFindsLegacyFlagUpload: the RED copy was uploaded as
-// PTH, so the RED-flag hash misses and the PTH-flag hash hits. The filename
-// search must not run. OPS leaves infoHash out of the answer unless the user
-// snatched or uploaded the torrent, so a hit without it is still a hash match.
-// regression: #4213
 func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 	const pthHash = "2d95e58ed6b0430e79a00d41c506fe3715b43874"
 	for _, tc := range []struct {
@@ -168,9 +161,6 @@ func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 	}
 }
 
-// TestFindMatch_FailedLookupIsAnErrorNotAMiss: a tracker that cannot answer
-// must surface as an error so the caller leaves the torrent eligible, instead
-// of a nil match that stamps its cooldown.
 func TestFindMatch_FailedLookupIsAnErrorNotAMiss(t *testing.T) {
 	tests := []struct {
 		name         string

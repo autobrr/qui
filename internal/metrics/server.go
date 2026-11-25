@@ -65,11 +65,8 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 
 	addr := fmt.Sprintf("%s:%d", host, port)
 	s.server = &http.Server{
-		Addr:    addr,
-		Handler: router,
-		// Same header timeout the API server uses: a metrics scraper that
-		// opens a connection and never finishes its request should not hold
-		// one open indefinitely.
+		Addr:              addr,
+		Handler:           router,
 		ReadHeaderTimeout: 15 * time.Second,
 	}
 

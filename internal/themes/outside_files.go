@@ -31,12 +31,6 @@ func (e *OutsideFileError) Error() string {
 
 const cssSpace = " \t\n\r\f"
 
-// CheckNoOutsideFiles refuses CSS that can load a file from another host:
-// @import, image-set(), a url() whose target is not a data: address or a
-// #fragment, and a backslash outside a quoted string (an escape can spell
-// url or @import). Comments are ignored. A token that the browser would
-// drop, such as a string with a line break, is refused too. It returns an
-// *OutsideFileError, or nil.
 func CheckNoOutsideFiles(content string) error {
 	lexer := css.NewLexer(tdparse.NewInputString(content))
 	line := 1
@@ -81,9 +75,6 @@ func tokenReason(tt css.TokenType, data []byte) string {
 	return ""
 }
 
-// urlTargetReason reads the lexer's url() token, which holds both the
-// unquoted form and the quoted form. Escapes stay unresolved, so an escape
-// in the data: prefix is refused.
 func urlTargetReason(data []byte) string {
 	_, after, _ := bytes.Cut(data, []byte{'('})
 	inner := strings.TrimSuffix(strings.Trim(string(after), cssSpace), ")")

@@ -25,7 +25,6 @@ export const TorrentPieceSize = {
 
 export type TorrentPieceSizeValue = (typeof TorrentPieceSize)[keyof typeof TorrentPieceSize]
 
-// Fixed sizes only, since the dialog translates Auto; built on call because the unit label is localized.
 export const getPieceSizeOptions = (): { value: TorrentPieceSizeValue; label: string }[] =>
   Object.values(TorrentPieceSize)
     .filter((value) => value !== TorrentPieceSize.Auto)

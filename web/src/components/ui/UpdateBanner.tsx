@@ -16,7 +16,6 @@ import { Download, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useUpdateBannerDismissed } from "@/hooks/useUpdateBannerDismissed"
 
-/** The update notice of the sidebar. With iconOnly, it is one icon that opens the Install dialog in Settings. */
 export function UpdateBanner({ iconOnly = false, installInSettings = false }: { iconOnly?: boolean; installInSettings?: boolean }) {
   const { t } = useTranslation("common")
   const [dismissed, dismiss] = useUpdateBannerDismissed()
@@ -25,9 +24,7 @@ export function UpdateBanner({ iconOnly = false, installInSettings = false }: { 
   const { data: updateInfo } = useQuery({
     queryKey: ["latest-version"],
     queryFn: () => api.getLatestVersion(),
-    // Check for updates every 2 minutes
     refetchInterval: 2 * 60 * 1000,
-    // Don't show loading state on mount, run in background
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   })
@@ -40,7 +37,6 @@ export function UpdateBanner({ iconOnly = false, installInSettings = false }: { 
         <div>
           <div inert={iconOnly} className={collapseRowClassName(iconOnly)}>
             <div className="min-h-0 overflow-hidden">
-              {/* The card keeps its full width while the sidebar gets narrow, so its text does not wrap again. */}
               <div className={cn(
                 "mb-3 rounded-md border border-green-200 bg-green-50 p-3",
                 "dark:border-green-800 dark:bg-green-950/50",
@@ -55,7 +51,6 @@ export function UpdateBanner({ iconOnly = false, installInSettings = false }: { 
                     <p className="text-xs text-green-700 dark:text-green-300 mt-1">
                       {t("updateBanner.versionAvailable", { version: updateInfo.tag_name })}
                     </p>
-                    {/* The Install dialog links the release notes, so one button is enough. */}
                     <div className="mt-2">
                       {installInSettings ? (
                         <Button asChild variant="outline" size="sm" className={bannerButtonClass}>
@@ -104,8 +99,6 @@ export function UpdateBanner({ iconOnly = false, installInSettings = false }: { 
           </div>
         </div>
       )}
-      {/* Outside the banner: while qui is down, the update check fails and
-          updateInfo turns null. */}
       <RestartOverlay state={selfUpdate.overlay} update={selfUpdate.update} />
     </>
   )

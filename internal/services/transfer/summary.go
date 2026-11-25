@@ -10,23 +10,14 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Summary is what the Transfer dialog shows before the user starts the
-// Transfer.
 type Summary struct {
 	Preview
-	// Free is the free space at the target folder when FreeKnown.
-	Free      int64
-	FreeKnown bool
-	// NoFileAccess is set for a target whose files qui cannot see: a file
-	// with other content at the same path can be replaced there.
+	Free         int64
+	FreeKnown    bool
 	NoFileAccess bool
-	// Hints is the advice that the log of a Transfer torrent gives.
-	Hints []Hint
+	Hints        []Hint
 }
 
-// Summary plans the Transfer as Preview does, with its refusals, and reads
-// the free space on the target. It records, claims, and starts nothing. A
-// free space that qui cannot read is not known.
 func (s *Service) Summary(ctx context.Context, req Request) (*Summary, error) {
 	preview, err := s.Preview(ctx, req)
 	if err != nil {
@@ -57,8 +48,6 @@ func (s *Service) Summary(ctx context.Context, req Request) (*Summary, error) {
 	if summary.NoFileAccess {
 		summary.Free, summary.FreeKnown, _ = s.clientFreeSpace(ctx, target, d, dir)
 	} else {
-		// The target folder may not exist yet: the free space of the
-		// nearest folder that exists is the free space there.
 		for {
 			if stat, err := targetFiles.Statfs(ctx, dir); err == nil {
 				summary.Free, summary.FreeKnown = stat.BytesAvailable, true

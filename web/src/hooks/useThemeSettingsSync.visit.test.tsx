@@ -9,7 +9,6 @@ import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ThemeSlots } from "@/types"
 
-// The visit starts from the address at page load, so it is set before the modules load.
 vi.hoisted(() => window.history.replaceState(null, "", "/?theme=default"))
 
 const { mockApi } = vi.hoisted(() => ({
@@ -66,7 +65,6 @@ describe("theme slots during a default theme visit", () => {
     expect(mockApi.updateThemeSettings).not.toHaveBeenCalled()
   })
 
-  // regression: #4124
   it("keeps the switch for a separate mobile theme off, so no slot is written", async () => {
     const Wrapper = withSlots({ default: { themeId: "custom:broken", mode: "dark" } })
     render(<Wrapper><ThemeLayoutSettings /></Wrapper>)

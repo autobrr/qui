@@ -23,9 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// episodeSearcher answers a season search with the season result and an
-// episode search with the result for that episode. It records each search and
-// counts the answers with a result, since each one leads to a torrent download.
 type episodeSearcher struct {
 	noIDSearchCaps
 	indexerID int
@@ -54,12 +51,6 @@ func (s *episodeSearcher) SearchWithScope(_ context.Context, req *jackett.Torzna
 	return nil
 }
 
-// An injected single episode does not cover the other episodes of its season,
-// so the run still searches them. An injected season pack does. An episode
-// that waits for an offline linked instance stays pending after a season
-// search with no result.
-//
-// regression: #3571
 func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 	t.Parallel()
 
@@ -116,7 +107,6 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 				})
 			}
 
-			// Each result is a cache hit, so no download leaves the test.
 			cache := models.NewTorznabTorrentCacheStore(db)
 			searcher := &episodeSearcher{indexerID: indexer.ID, episodes: map[int][]jackett.SearchResult{}}
 			addResult := func(guid string, info *metainfo.Info) jackett.SearchResult {
@@ -182,8 +172,6 @@ func TestProcessRootSearchee_TVGroupSkip(t *testing.T) {
 			_, added := svc.processRootSearchee(ctx, dir, localScanTarget(), root, work.roots[0].items, &seedingIndex{}, trackedFiles,
 				map[tvGroupKey]struct{}{}, settings, NewMatcher(MatchModeStrict, 0), 1, 0, 0, enabled, &l)
 
-			// Each download is a cache hit that starts a detached touch; join them
-			// before SQLite and TempDir cleanup.
 			for range searcher.answered {
 				select {
 				case <-cacheDB.done:

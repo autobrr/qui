@@ -143,11 +143,8 @@ func TestPoolWritesTheTierOnConnect(t *testing.T) {
 		{"an existing instance moves up", sshtest.ExecGNU, models.SSHTierSFTP, models.SSHTierExec},
 		{"a key that lost its shell moves down", sshtest.ExecSFTPOnly, models.SSHTierExec, models.SSHTierSFTP},
 		{"a bsd userland moves down", sshtest.ExecBSD, models.SSHTierExec, models.SSHTierSFTP},
-		// regression: #4345
 		{"a fish login shell moves up", sshtest.ExecNonPOSIX, models.SSHTierSFTP, models.SSHTierExec},
-		// regression: #4345
 		{"a nushell login shell moves up", sshtest.ExecSplitQuote, models.SSHTierSFTP, models.SSHTierExec},
-		// regression: #4345
 		{"a csh login shell moves up", sshtest.ExecCsh, models.SSHTierSFTP, models.SSHTierExec},
 	}
 	for _, tt := range tests {
@@ -334,8 +331,6 @@ func TestExecWaitsWhenTheSessionThatFilledTheHostEndsFirst(t *testing.T) {
 		_, err := conn.Output(t.Context(), Command{Name: "sleep", Paths: []string{"0.05"}})
 		first <- err
 	}()
-	// The first command now holds the host's last session, and it ends before
-	// the refusal of the next open arrives.
 	<-opened
 	_, err = conn.Output(t.Context(), Command{Name: "true"})
 	require.NoError(t, err)

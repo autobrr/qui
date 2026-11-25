@@ -33,7 +33,6 @@ func TestAPIKeyStoreValidateAPIKeyRecordsLastUsed(t *testing.T) {
 		return *lastUsed()
 	}
 
-	// The request ends as soon as validation returns; the write must survive it.
 	reqCtx, cancel := context.WithCancel(ctx)
 	_, err = store.ValidateAPIKey(reqCtx, rawKey)
 	cancel()
@@ -51,7 +50,6 @@ func TestAPIKeyStoreValidateAPIKeyRecordsLastUsed(t *testing.T) {
 	require.NoError(t, err)
 	require.Eventually(t, func() bool { return lastUsed().After(stale) }, 5*time.Second, 10*time.Millisecond)
 
-	// A Postgres session east of UTC stores local time, so the value looks like the future.
 	future := setLastUsed("+2 hours")
 	_, err = store.ValidateAPIKey(ctx, rawKey)
 	require.NoError(t, err)
@@ -59,7 +57,6 @@ func TestAPIKeyStoreValidateAPIKeyRecordsLastUsed(t *testing.T) {
 }
 
 func TestAPIKeyStoreLastUsedPostgresIntegrationSessionTimeZone(t *testing.T) {
-	// A session west of UTC stores CURRENT_TIMESTAMP hours in the past, so the throttle would never hold.
 	t.Setenv("PGTZ", "America/New_York")
 
 	ctx := t.Context()

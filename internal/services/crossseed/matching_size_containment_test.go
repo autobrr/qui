@@ -82,10 +82,6 @@ func TestGetMatchTypeWithReason_SizeContainment(t *testing.T) {
 			want:     "",
 		},
 		{
-			// Track names parse no release keys, so every name-aware tier fails,
-			// and the largest local file differs so the largest-file fallback
-			// stays out. The shared base name then breaks the same-size tie inside
-			// the size-only pairing.
 			name:         "same base name breaks the same-size tie",
 			localRelease: &albumPackRelease,
 			newRelease:   &albumRelease,
@@ -98,9 +94,6 @@ func TestGetMatchTypeWithReason_SizeContainment(t *testing.T) {
 			want:     "size-partial-in-pack",
 		},
 		{
-			// The extra file keeps the totals inside the 5% tolerance, so the
-			// total-size tier would claim this pair. Containment must win when the
-			// file counts differ, or apply misses the episode-in-pack layout.
 			name:         "containment beats tolerant total-size when counts differ",
 			localRelease: &packRelease,
 			newRelease:   &episodeRelease,
@@ -155,8 +148,6 @@ func TestFindBestCandidateMatch_SizeContainmentAgainstRenamedPack(t *testing.T) 
 
 	candidate := CrossSeedCandidate{
 		Torrents: []*qbt.Torrent{
-			// Same show and season as the source: the discovery gates only pass
-			// same-release packs, so the fixture must model one.
 			{Hash: "pack", Name: "Show.S01.1080p.WEB-DL", Progress: 1.0},
 		},
 	}
@@ -169,8 +160,6 @@ func TestFindBestCandidateMatch_SizeContainmentAgainstRenamedPack(t *testing.T) 
 	)
 	require.NotNil(t, matched, "expected a match, got reject reason: %s", rejectReason)
 	require.Len(t, matchedFiles, 2)
-	// The matcher runs with swapped sides at apply, so the swapped-back type must
-	// read as "the new torrent's files are inside the existing pack".
 	require.Equal(t, "size-partial-in-pack", matchType)
 }
 

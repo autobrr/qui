@@ -125,7 +125,6 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, writes ma
 	allCachedFiles := make([]CachedFile, 0, fileCount)
 	allSyncInfos := make([]SyncInfo, 0, len(writes))
 	seed, notSeed := true, false
-	// TIMESTAMP has no zone: Postgres reads a local time back as UTC.
 	syncedAt := time.Now().UTC()
 
 	for hash, write := range writes {
@@ -209,7 +208,6 @@ func (s *Service) CleanupRemovedTorrentsCache(ctx context.Context, instanceID in
 
 func (s *Service) StartOrphanCleanup(ctx context.Context, instances InstanceLister, hashes TorrentHashProvider) {
 	go func() {
-		// Run cleanup on startup after a short delay to let instances connect
 		select {
 		case <-ctx.Done():
 			return

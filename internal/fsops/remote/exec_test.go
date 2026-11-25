@@ -27,14 +27,10 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// SetSSHProbe leaves the row alone: each test picks the tier its backend
-// reads, and the pool tests cover the write.
 func (fakeCreds) SetSSHProbe(context.Context, *models.Instance, models.SSHTier, bool) error {
 	return nil
 }
 
-// newExecBackend is newBackend on the exec tier. The fake server runs each
-// command through the local sh, against the files the sftp subsystem serves.
 func newExecBackend(t *testing.T) (*Backend, *sshtest.Server) {
 	t.Helper()
 	if runtime.GOOS != "linux" {
@@ -55,7 +51,6 @@ func unixID(t *testing.T, p string, follow bool) (hardlink.FileID, uint64) {
 	require.NoError(t, err)
 	id, nlink, err := hardlink.GetFileID(fi, p)
 	require.NoError(t, err)
-	// The unix ID holds dev and ino in the layout remoteFileID writes.
 	return hardlink.RemoteFileID(id.Bytes()[1:17]), nlink
 }
 
@@ -135,9 +130,6 @@ func TestExecSameFilesystem(t *testing.T) {
 	require.Error(t, err)
 }
 
-// walkTree builds a fixture with the names find output has to survive: a
-// space, a newline, a quote, a leading dash, and a hardlink across
-// directories.
 func walkTree(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -176,9 +168,6 @@ func walkAll(t *testing.T, backend *Backend, root string, opts fsops.WalkOptions
 	return out, entries
 }
 
-// The exec walk and the sftp walk give the same entries on one tree. The
-// sftp walk lists sibling directories concurrently, so only the exec order
-// is fixed: lexical within a directory, a directory before its contents.
 func TestExecWalkMatchesTheSFTPWalk(t *testing.T) {
 	t.Parallel()
 
@@ -222,8 +211,6 @@ func relPaths(entries []walked) []string {
 	return out
 }
 
-// find exits non-zero for a directory it cannot read, and cannot say which
-// one in a form worth parsing. The walk then runs over sftp, which names it.
 func TestExecWalkFallsBackToSFTPOnAnUnreadableDirectory(t *testing.T) {
 	t.Parallel()
 	if os.Geteuid() == 0 {
@@ -278,8 +265,6 @@ func TestExecWalkFallsBackToSFTPOnATornRecord(t *testing.T) {
 	assert.ErrorIs(t, files[0].FileIDErr, errNoIdentity, "the sftp walk carries no identity")
 }
 
-// The walk ends with nothing but the root sent, because an sftp walk on the redialled connection reads no identity.
-// regression: #3838
 func TestExecWalkEndsWhenFindLosesTheConnection(t *testing.T) {
 	t.Parallel()
 
@@ -309,7 +294,6 @@ func TestExecWalkEndsWhenFindLosesTheConnection(t *testing.T) {
 			cut := entries[1]
 			require.ErrorIs(t, cut.Err, fsops.ErrConnectionLost)
 			require.Equal(t, root, cut.Path)
-			// The pool hands out the dropped client until its watcher clears the entry.
 			require.Eventually(t, func() bool {
 				_, err := backend.Lstat(t.Context(), root)
 				return err == nil
@@ -393,7 +377,6 @@ func TestComparePaths(t *testing.T) {
 	assert.Equal(t, []string{"a", "a/a", "a/a/z", "a/b", "a b", "a-b", "b"}, paths)
 }
 
-// sftpFixturePath maps a host fixture into pkg/sftp's POSIX namespace, including /C:/ on Windows.
 func sftpFixturePath(p string) string {
 	return fsops.SlashPaths.Join("/", filepath.ToSlash(p))
 }
@@ -435,8 +418,6 @@ func finds(server *sshtest.Server) int {
 
 type batchFunc func(context.Context, []string) ([]*fsops.LstatInfo, []error)
 
-// assertBatchMatches compares each answer of batch with single. sftp attrs
-// carry whole seconds, so the mtimes compare at that precision.
 func assertBatchMatches(t *testing.T, batch batchFunc, single func(context.Context, string) (*fsops.LstatInfo, error), paths []string) {
 	t.Helper()
 	infos, errs := batch(t.Context(), paths)
@@ -463,7 +444,6 @@ func TestExecLstatBatchMatchesLstat(t *testing.T) {
 
 	backend, server := newExecBackend(t)
 	paths := lstatBatchTree(t)
-	// Connect first: the connect probe runs its own commands through the shell.
 	_, err := backend.exec(t.Context())
 	require.NoError(t, err)
 
@@ -489,8 +469,6 @@ func TestExecLstatBatchMatchesLstat(t *testing.T) {
 	assert.Equal(t, infos[0].FileID, infos[1].FileID, "a hardlink has the identity of its source")
 	assert.True(t, infos[2].FileID.IsZero(), "LstatBatch never follows a symlink")
 
-	// Lstat runs a stat per path, so the field by field check reads the
-	// special paths and one file from each batch.
 	assertBatchMatches(t, backend.LstatBatch, backend.Lstat, append(paths[:6:6], paths[len(paths)-1]))
 }
 
@@ -504,9 +482,6 @@ func TestSFTPLstatBatchIsLstat(t *testing.T) {
 	assert.Zero(t, finds(server))
 }
 
-// find reads a leading "-", "!" or "(" as the start of its expression, so a
-// path that is not absolute never reaches it: the entry gets an error and
-// the batch answers the rest.
 func TestExecLstatBatchRefusesARelativePath(t *testing.T) {
 	t.Parallel()
 
@@ -553,11 +528,6 @@ func TestExecStatBatchFollowsLinks(t *testing.T) {
 	assertBatchMatches(t, backend.StatBatch, backend.Stat, paths)
 }
 
-// Each single stat is a round trip, so answering n paths one after the other
-// costs n round trips. On the sftp tier every path is a single stat, and on
-// the exec tier every path that find does not print is one, such as the files
-// of a torrent that were moved away. The latency gives the single stats time
-// to overlap, which the server counts.
 func TestBatchSingleStatsOverlapRoundTrips(t *testing.T) {
 	t.Parallel()
 

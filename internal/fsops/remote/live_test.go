@@ -48,11 +48,6 @@ func (c liveCreds) GetHostKeyPin(*models.Instance) ([]byte, error) {
 	return c.pin, nil
 }
 
-// TestLive_WriteOperations is the field test for #2725. It runs only with
-// QUI_SFTP_LIVE_HOST (host or host:port), QUI_SFTP_LIVE_USER and
-// QUI_SFTP_LIVE_KEY (private key file) set, works in a fresh child of
-// QUI_SFTP_LIVE_DIR (default qui-fsops-live-test, relative to the sftp home)
-// and removes that child.
 func TestLive_WriteOperations(t *testing.T) {
 	hostPort, user, keyFile := os.Getenv("QUI_SFTP_LIVE_HOST"), os.Getenv("QUI_SFTP_LIVE_USER"), os.Getenv("QUI_SFTP_LIVE_KEY")
 	if hostPort == "" || user == "" || keyFile == "" {
@@ -83,8 +78,6 @@ func TestLive_WriteOperations(t *testing.T) {
 	require.NoError(t, err)
 
 	base := cmp.Or(os.Getenv("QUI_SFTP_LIVE_DIR"), "qui-fsops-live-test")
-	// A fresh child, so the recursive cleanup never reaches what base held
-	// before; a run that dies mid-way leaves its own child behind.
 	root := path.Join(base, "run-"+rand.Text())
 	t.Cleanup(func() {
 		require.NoError(t, b.Remove(context.WithoutCancel(ctx), root, fsops.RemoveOptions{Recursive: true}))
@@ -157,8 +150,6 @@ func TestLive_WriteOperations(t *testing.T) {
 		writeRemote(path.Join(keep, "precious"))
 		writeRemote(path.Join(orphan, "a", "f1"))
 		writeRemote(path.Join(orphan, "f2"))
-		// An absolute target: a relative one resolves from the link's own
-		// directory and would dangle.
 		target, err := client.RealPath(keep)
 		require.NoError(t, err)
 		require.NoError(t, client.Symlink(target, path.Join(orphan, "a", "linkdir")))

@@ -24,7 +24,6 @@ var (
 )
 
 const (
-	// Dodo "live" base URL per vendor docs.
 	dodoAPIBaseURL      = "https://live.dodopayments.com"
 	dodoTestBaseURL     = "https://test.dodopayments.com"
 	requestTimeout      = 30 * time.Second
@@ -52,7 +51,6 @@ type Client struct {
 
 type OptFunc func(*Client)
 
-// WithEnvironment sets the Dodo Payments environment ("test_mode" or "live_mode").
 func WithEnvironment(env string) OptFunc {
 	return func(c *Client) {
 		switch strings.TrimSpace(strings.ToLower(env)) {

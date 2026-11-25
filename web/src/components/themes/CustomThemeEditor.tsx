@@ -65,7 +65,6 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
     case "name":
       return { ...state, name: action.name, phase: clearedError(state.phase) }
     case "css": {
-      // Only a new @name fills the field, so an edit elsewhere in the CSS keeps a name that the user typed.
       const header = readThemeName(action.css)
       return {
         ...state,
@@ -85,7 +84,6 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
   }
 }
 
-// An edit makes a refused save stale, so its message gives way to the live status.
 function clearedError(phase: EditorPhase): EditorPhase {
   return phase.kind === "editing" ? { kind: "editing", error: null } : phase
 }
@@ -107,11 +105,6 @@ interface CustomThemeEditorProps {
   onClose: () => void
 }
 
-/**
- * Edits one custom theme with a live preview in this browser. Closing it in
- * any way paints the active theme again; a saved new theme becomes the active
- * theme of the slot that the picker changes.
- */
 export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
@@ -123,10 +116,8 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
   const previewCss = useDebounce(state.css, PREVIEW_DELAY_MS)
   const previewProblem = useMemo(() => findPreviewProblem(previewCss), [previewCss])
   const [openedCss] = useState(state.css)
-  // A default theme visit is for repair, and the saved CSS can hide the page, so only a change previews.
   const waitsForChange = isDefaultThemeVisit() && previewCss === openedCss
 
-  // CSS with a problem leaves the last good preview on the page.
   useEffect(() => {
     if (waitsForChange) void endCustomThemePreview()
     else previewCustomTheme(previewCss)
@@ -237,7 +228,6 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
                   </span>
                 </p>
               )}
-              {/* Stays mounted so that a screen reader hears each change of the status. */}
               <div role="status">
                 {state.phase.kind === "editing" && state.phase.error ? null : previewProblem && previewProblem.kind !== "empty" ? (
                   <p className="flex items-start gap-1.5 text-xs text-yellow-700 dark:text-yellow-400">

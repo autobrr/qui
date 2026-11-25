@@ -96,9 +96,6 @@ func TestBuildSearchIndexerOutcomes(t *testing.T) {
 	}
 }
 
-// Regression (PR #2427 review): the breakdown subtracts the late content
-// filter from the candidate total, so the total and the per-indexer counts
-// must come from the raw results, before that filter removes any.
 func TestSearchTorrentMatches_TraceCountsRawCandidates(t *testing.T) {
 	const (
 		instanceID = 1
@@ -114,8 +111,6 @@ func TestSearchTorrentMatches_TraceCountsRawCandidates(t *testing.T) {
 		FilteredIndexers:      []int{1},
 	}, ttlcache.DefaultTTL)
 
-	// The content filter finishes while the search runs and excludes the only
-	// indexer, so its one result is dropped after it was already returned.
 	lateState := &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
 		ContentCompleted:      true,

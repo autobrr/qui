@@ -6,10 +6,6 @@
 import { applyOrderedDelta, mergeStreamedFirstPage } from "@/lib/stream-merge"
 import type { CrossInstanceTorrent, Torrent, TorrentResponse, TorrentStreamPayload } from "@/types"
 
-// RawCrossInstanceTorrent models a cross-instance torrent before normalization.
-// The backend's CrossInstanceTorrentView serializes instance metadata as
-// snake_case (instance_id / instance_name) over both the REST endpoint and the
-// SSE stream, so callers may receive either casing.
 export type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | "instanceName"> & {
   instanceId?: number
   instanceName?: string
@@ -17,11 +13,6 @@ export type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | 
   instance_name?: string
 }
 
-// normalizeCrossInstanceTorrents promotes snake_case instance metadata to the
-// camelCase instanceId / instanceName the UI consumes. It is a no-op when the
-// torrents already carry camelCase fields, and drops rows that lack instance
-// identity entirely rather than render blank Instance cells. Shared by the REST
-// query and the SSE stream handler so both paths produce identical row shapes.
 export function normalizeCrossInstanceTorrents(
   torrents?: RawCrossInstanceTorrent[] | null
 ): CrossInstanceTorrent[] | undefined {
@@ -63,14 +54,6 @@ export function normalizeCrossInstanceTorrents(
   return normalizedTorrents
 }
 
-// normalizeStreamedSnapshot returns the SSE snapshot with its cross-instance
-// torrents promoted to camelCase, leaving every other field untouched. The
-// stream handler feeds this single normalized object to all of its sinks (the
-// React Query cache, the retained snapshot, and the table rows) so they never
-// disagree. Writing a raw snake_case snapshot into the query cache would let the
-// REST-processing effect overwrite the table with un-normalized rows on the next
-// tick, flickering the Instance column. Returns the input unchanged when there
-// are no cross-instance torrents to normalize (e.g. single-instance streams).
 export function normalizeStreamedSnapshot(data: TorrentResponse): TorrentResponse {
   const normalized = normalizeCrossInstanceTorrents(
     (data.crossInstanceTorrents ?? data.cross_instance_torrents) as RawCrossInstanceTorrent[] | undefined
@@ -87,12 +70,6 @@ export function normalizeStreamedSnapshot(data: TorrentResponse): TorrentRespons
   }
 }
 
-// resolveStreamedCrossInstanceTorrents turns an SSE stream snapshot into the row
-// list the unified table renders. Aggregated streams deliver the full first page,
-// so the snapshot is authoritative: an empty result (or total 0) clears the table,
-// and the torrents are normalized to camelCase before they reach the Instance
-// column. Keeping this beside the normalizer makes the stream call site testable
-// and prevents regressing back to setting raw snake_case rows.
 export function resolveStreamedCrossInstanceTorrents(
   data: Pick<TorrentResponse, "total" | "crossInstanceTorrents" | "cross_instance_torrents">
 ): CrossInstanceTorrent[] {
@@ -107,23 +84,11 @@ export function resolveStreamedCrossInstanceTorrents(
   return normalized
 }
 
-// A cross-instance row's identity is instanceId+hash, not hash alone: the same
-// torrent cross-seeded onto two instances shares a hash but is two distinct rows.
 const crossInstanceRowKey = (torrent: CrossInstanceTorrent): string =>
   `${torrent.instanceId}:${torrent.hash}`
 
-// A single-instance row's identity is its torrent hash.
 const singleInstanceRowKey = (torrent: Torrent): string => torrent.hash
 
-// applyStreamDelta reconstructs a full page-0 snapshot from the previous snapshot
-// and an incremental delta frame, routing single-instance vs cross-instance shapes
-// and normalizing the changed cross-instance rows to camelCase. The delta frame's
-// `data` carries every aggregate field plus only the added/changed rows (in
-// `torrents` or `cross_instance_torrents`); this swaps those changed rows back for
-// the reconstructed full page so the result is shaped exactly like a full snapshot
-// and can flow through the same sinks. `changed` is false on an aggregate-only tick
-// (no row adds/removes/reorders/changes), letting the caller leave table state
-// untouched while still refreshing stats and server state.
 export function applyStreamDelta(
   prev: TorrentResponse,
   payload: TorrentStreamPayload,
@@ -131,7 +96,6 @@ export function applyStreamDelta(
 ): { data: TorrentResponse; changed: boolean } {
   const order = payload.delta?.order
   const frame = payload.data ?? ({} as TorrentResponse)
-  // Only counts use omission to mean "unchanged".
   const snapshot = {
     counts: prev.counts,
     ...frame,
@@ -168,15 +132,6 @@ export function applyStreamDelta(
   }
 }
 
-// mergeStreamedCrossInstanceFirstPage folds an aggregated SSE snapshot into the
-// list the unified table already displays. The stream only ever serves page 0, so
-// a wholesale replace would wipe any later pages the user paginated in via REST and
-// the unified view could never scroll past the first page (issue #1983). Instead we
-// merge: page 0 stays authoritative for its own window, while pagination-loaded
-// trailing pages are preserved and de-duplicated by instanceId+hash. `prev` is the
-// state list typed as the Torrent supertype; in aggregated scope every row is in
-// fact a CrossInstanceTorrent (it carries instanceId+instanceName), so we treat it
-// as such for the identity key.
 export function mergeStreamedCrossInstanceFirstPage(
   prev: Torrent[],
   data: Pick<TorrentResponse, "total" | "crossInstanceTorrents" | "cross_instance_torrents">

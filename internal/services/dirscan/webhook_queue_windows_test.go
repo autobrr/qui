@@ -13,8 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// A local directory written with forward slashes is still a Windows path.
-// regression: #2919
 func TestPathWithinDirectoryWindowsForwardSlashDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -36,7 +34,6 @@ func TestPathWithinDirectoryWindowsForwardSlashDirectory(t *testing.T) {
 	}
 }
 
-// regression: #2919
 func TestMergeWebhookScanRootsWindowsRoots(t *testing.T) {
 	t.Parallel()
 

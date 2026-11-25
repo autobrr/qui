@@ -11,20 +11,14 @@ export interface UseTorrentTableHotkeysParams {
   selectAll: () => void
 }
 
-/**
- * Keyboard-shortcut wiring for the table: platform detection (for showing
- * ⌘ vs Ctrl) and the Cmd/Ctrl+A "select all" handler consumed by SelectAllHotkey.
- */
 export function useTorrentTableHotkeys({
   sortedTorrents,
   selectAll,
 }: UseTorrentTableHotkeysParams) {
-  // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
     return typeof window !== "undefined" && /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
   }, [])
 
-  // Apply Ctrl/Cmd+A shortcut to select all torrents
   const selectAllWithShortcut = useCallback(() => {
     if (sortedTorrents.length === 0) {
       return
