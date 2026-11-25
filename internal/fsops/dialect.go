@@ -13,28 +13,18 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// PathDialect is the path grammar of a backend's filesystem. A path that goes
-// to or comes from a Backend is manipulated with that backend's dialect, never
-// with the host's filepath: a remote unix path on a Windows host is still
-// slash-delimited and still absolute. Ext is absent on purpose, it reads the
-// same under both grammars.
 type PathDialect interface {
-	// Join takes two parts, which is every backend-path join in qui; a
-	// variadic slice would escape through the interface call on each file.
 	Join(base, name string) string
 	Dir(p string) string
 	Base(p string) string
 	Clean(p string) string
 	IsAbs(p string) bool
 	Rel(base, target string) (string, error)
-	// FromSlash and ToSlash convert between slash-delimited names, which is
-	// how qBittorrent reports every file, and the dialect's own form.
 	FromSlash(p string) string
 	ToSlash(p string) string
 	Separator() string
 }
 
-// hardlinktree builds plans through its own subset of this interface.
 var _ hardlinktree.PathDialect = PathDialect(nil)
 
 var HostPaths PathDialect = hostPaths{}
@@ -43,9 +33,6 @@ var SlashPaths PathDialect = slashPaths{}
 
 var WindowsPaths PathDialect = windowsPaths{}
 
-// ClientPaths is the dialect of a path that a qBittorrent reports, for an
-// instance whose files qui cannot reach: Windows rules for a path that starts
-// with a drive letter or a UNC prefix, and slash rules for any other.
 func ClientPaths(savePath string) PathDialect {
 	if windowsVolume(savePath) != "" {
 		return WindowsPaths
@@ -67,9 +54,6 @@ func (hostPaths) FromSlash(p string) string { return filepath.FromSlash(p) }
 func (hostPaths) ToSlash(p string) string   { return filepath.ToSlash(p) }
 func (hostPaths) Separator() string         { return string(filepath.Separator) }
 
-// shareRootWithSeparator gives a UNC share root one spelling: filepath.Rel never
-// returns for \\host\share against \\host\share\ (Go 1.27.3). A volume the
-// separator would change, such as \\host with no share, stays as it is.
 func shareRootWithSeparator(p string) string {
 	vol := filepath.VolumeName(p)
 	if vol == "" {
@@ -91,9 +75,6 @@ func (slashPaths) Clean(p string) string         { return path.Clean(p) }
 func (slashPaths) IsAbs(p string) bool           { return path.IsAbs(p) }
 
 func (slashPaths) Rel(base, target string) (string, error) {
-	// filepath.Rel is separator-aware through filepath.Separator, so on a
-	// Windows host it would treat "/" as a plain character. Route through a
-	// slash-only implementation instead.
 	return relSlash(path.Clean(base), path.Clean(target), func(a, b string) bool { return a == b })
 }
 
@@ -136,9 +117,6 @@ func splitSlash(p string) []string {
 	return strings.Split(p, "/")
 }
 
-// windowsPaths follows path/filepath on Windows for drive and UNC paths. Both /
-// and \ separate, and each method returns \. Device paths (\\?\, \\.\) are
-// outside it.
 type windowsPaths struct{}
 
 func (windowsPaths) Join(base, name string) string {
@@ -148,11 +126,8 @@ func (windowsPaths) Join(base, name string) string {
 	case base == "":
 		return windowsPaths{}.Clean(name)
 	case isWindowsSeparator(base[len(base)-1]):
-		// More separators after base could make a UNC prefix of it.
 		name = strings.TrimLeft(name, `\/`)
 	case base[len(base)-1] != ':':
-		// A drive without a separator (C:) gets none: the path stays
-		// relative to the current folder of that drive.
 		name = `\` + name
 	}
 	return windowsPaths{}.Clean(base + name)
@@ -164,7 +139,6 @@ func (windowsPaths) Dir(p string) string {
 	dir := windowsPaths{}.Clean(p[len(vol) : i+1])
 	vol = windowsPaths{}.FromSlash(vol)
 	if dir == "." && len(vol) > 2 {
-		// A UNC share has no parent.
 		return vol
 	}
 	return vol + dir
@@ -210,8 +184,6 @@ func (windowsPaths) IsAbs(p string) bool {
 	return vol != "" && len(p) > len(vol) && isWindowsSeparator(p[len(vol)])
 }
 
-// Rel compares names without case, as Windows does. A share root reads the
-// same with and without its trailing separator.
 func (windowsPaths) Rel(base, target string) (string, error) {
 	d := windowsPaths{}
 	baseVol, targetVol := d.FromSlash(windowsVolume(base)), d.FromSlash(windowsVolume(target))
@@ -236,8 +208,6 @@ func (windowsPaths) FromSlash(p string) string { return strings.ReplaceAll(p, "/
 func (windowsPaths) ToSlash(p string) string   { return strings.ReplaceAll(p, `\`, "/") }
 func (windowsPaths) Separator() string         { return `\` }
 
-// windowsVolume is the drive (C:) or the UNC share (\\host\share) at the start
-// of p, as it is written there, or "". A share with a .. part is no volume.
 func windowsVolume(p string) string {
 	switch {
 	case len(p) >= 2 && p[1] == ':' && !isWindowsSeparator(p[0]):

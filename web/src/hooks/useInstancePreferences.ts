@@ -15,12 +15,8 @@ interface UseInstancePreferencesOptions {
 
 export const valuesOf = (fields: PreferenceField[]) => Object.fromEntries(fields.map(field => [field.key, field.value]))
 
-// The view holds only the keys that the catalog shows. usePreferenceValues.test.tsx fails when a
-// screen reads a key outside the view.
 const preferencesOf = (fields: PreferenceField[]) => valuesOf(fields) as unknown as AppPreferences
 
-// Reads the preference values from the preferences view. The view is fetched when a screen opens
-// and set again from the view that a save returns.
 export function useInstancePreferences(
   instanceId: number | undefined,
   options: UseInstancePreferencesOptions = {}
@@ -35,7 +31,6 @@ export function useInstancePreferences(
   const { data: preferences } = useQuery({
     queryKey,
     queryFn: async () => preferencesOf(await api.getInstancePreferenceView(instanceId!)),
-    // Instance 0 is the all-instances view, which has no preferences.
     enabled: enabled && instanceId !== undefined && instanceId > 0,
     gcTime: 1800000,
   })

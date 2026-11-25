@@ -7,13 +7,11 @@ import { afterEach, expect, it, vi } from "vitest"
 import { cleanup, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
-// initReactI18next is pulled in through the import graph, so keep the module's other exports.
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-// The form's reset effect depends on the query data, so the mocks hand back the same objects every render.
 const { settingsQuery, mutation } = vi.hoisted(() => ({
   settingsQuery: {
     isLoading: false,

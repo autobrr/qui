@@ -52,8 +52,6 @@ beforeEach(() => {
   scrollToIndex.mockClear()
 })
 
-// No global setup file, so RTL's auto-cleanup never runs: without this each
-// hook's window listener survives and answers the next test's keypress.
 afterEach(cleanup)
 
 describe("useTorrentTableArrowNavigation", () => {
@@ -68,7 +66,6 @@ describe("useTorrentTableArrowNavigation", () => {
   })
 
   it("moves relative to the focused torrent, not a stored index", () => {
-    // Rows re-sorted since the click: the anchor index is stale, identity is not.
     const props = baseProps({
       rows: makeRows(10),
       selectedTorrent: { hash: "hash4" } as Torrent,
@@ -121,7 +118,6 @@ describe("useTorrentTableArrowNavigation", () => {
     expect(event.defaultPrevented).toBe(false)
   })
 
-  // regression: #3922
   it("leaves Enter on a focused button to that button", () => {
     const props = baseProps({ selectedKeys: new Set(["hash2"]) })
     renderHook(() => useTorrentTableArrowNavigation(props))
@@ -159,8 +155,6 @@ describe("useTorrentTableArrowNavigation", () => {
   })
 
   it("stops at the virtualized window, not the full row count", () => {
-    // Rows past safeLoadedRows exist in the row model but have no virtual item,
-    // so scrolling to them would land on nothing.
     const props = baseProps({ rows: makeRows(200), safeLoadedRows: 100, selectedKeys: new Set(["hash99"]) })
     renderHook(() => useTorrentTableArrowNavigation(props))
 
@@ -179,7 +173,6 @@ describe("useTorrentTableArrowNavigation", () => {
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }))
     input.remove()
 
-    // Arrows inside the details panel scroll its own content.
     const panel = document.createElement("div")
     panel.setAttribute("data-torrent-details-panel", "")
     const inPanel = document.createElement("button")

@@ -6,9 +6,7 @@
 import { useEffect } from "react"
 
 export interface UseTorrentListEscapeParams {
-  /** The details panel is open, or rows are selected. */
   hasSelection: boolean
-  /** The list has a search text. */
   hasSearch: boolean
   clearSelection: () => void
   clearSearch: () => void
@@ -16,12 +14,6 @@ export interface UseTorrentListEscapeParams {
 
 const TEXT_FIELD = "input, textarea, select, [contenteditable='true']"
 
-/**
- * Escape on a torrent list. Each press clears one level: first the details panel
- * and the selected rows, then the search text of the list. An open dialog keeps
- * its own Escape. A text field outside the header search, which handles its own
- * Escape, does not clear the search of the list.
- */
 export function useTorrentListEscape({ hasSelection, hasSearch, clearSelection, clearSearch }: UseTorrentListEscapeParams) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {

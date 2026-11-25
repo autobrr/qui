@@ -12,8 +12,6 @@ export interface SavedDiscoveryConnection {
   indexerCount: number
 }
 
-// Native indexers point at the tracker itself, not a Prowlarr/Jackett server,
-// so they are not reusable discovery connections.
 export function deriveSavedConnections(indexers: TorznabIndexer[]): SavedDiscoveryConnection[] {
   const groups = new Map<string, SavedDiscoveryConnection>()
   for (const indexer of indexers) {

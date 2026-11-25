@@ -169,7 +169,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 				UseReflinks:              true,
 				FallbackToRegularMode:    true,
 				HasLocalFilesystemAccess: true,
-				HardlinkBaseDir:          "", // force reflink mode failure (fallback to regular)
+				HardlinkBaseDir:          "",
 			},
 		},
 	}
@@ -244,7 +244,6 @@ func TestProcessCrossSeedCandidate_ReflinkAddAllowsSizeMismatch(t *testing.T) {
 	withAdder(service)
 	result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), "newhash", "", torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
 
-	// The rig has no reflink base directory, so the add reaches reflink mode and fails there.
 	require.Equal(t, "reflink_error", result.Status)
 }
 

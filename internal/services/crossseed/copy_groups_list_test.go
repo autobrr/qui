@@ -36,6 +36,9 @@ func TestCopyGroupsInTheListResponse(t *testing.T) {
 	pool, err := qbittorrent.NewClientPool(instances, models.NewInstanceErrorStore(db), 60*time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
+	client, err := pool.GetClient(ctx, instance.ID)
+	require.NoError(t, err)
+	waitForSyncsAtCleanup(t, client)
 	sm := qbittorrent.NewSyncManager(pool, nil)
 
 	svc := NewService(instances, sm, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil)

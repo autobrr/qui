@@ -32,38 +32,24 @@ type Instance struct {
 	SortOrder                int     `json:"sortOrder"`
 	IsActive                 bool    `json:"isActive"`
 	HasLocalFilesystemAccess bool    `json:"hasLocalFilesystemAccess"`
-	// Hardlink mode settings (per-instance)
-	UseHardlinks      bool   `json:"useHardlinks"`
-	HardlinkBaseDir   string `json:"hardlinkBaseDir"`
-	HardlinkDirPreset string `json:"hardlinkDirPreset"` // "flat", "by-tracker", "by-instance"
-	// Reflink mode (copy-on-write clones) - mutually exclusive with hardlink mode
-	UseReflinks bool `json:"useReflinks"`
-	// Fallback to regular mode when reflink/hardlink fails
-	FallbackToRegularMode bool `json:"fallbackToRegularMode"`
+	UseHardlinks             bool    `json:"useHardlinks"`
+	HardlinkBaseDir          string  `json:"hardlinkBaseDir"`
+	HardlinkDirPreset        string  `json:"hardlinkDirPreset"`
+	UseReflinks              bool    `json:"useReflinks"`
+	FallbackToRegularMode    bool    `json:"fallbackToRegularMode"`
 
-	// SSH access for instances whose torrent data lives on another host.
-	// Not part of the JSON contract yet: the API shape lands with the
-	// ssh-test/credentials endpoints, which are also what first writes these.
-	SSHHost     string `json:"-"`
-	SSHPort     int    `json:"-"`
-	SSHUsername string `json:"-"`
-	// Both ciphertexts are AEAD-bound to this row; see instance_ssh.go.
-	SSHKeyEncrypted string `json:"-"`
-	// Marshaled host public key, empty until the user confirms it.
-	SSHHostKeyEncrypted string `json:"-"`
-	// SSHTier is written by every probe of the host, so it follows the key.
-	SSHTier SSHTier `json:"-"`
-	// SSHHardlink is whether the server advertises hardlink@openssh.com, as
-	// the last probe found; nil until a probe answers.
-	SSHHardlink *bool `json:"-"`
+	SSHHost             string  `json:"-"`
+	SSHPort             int     `json:"-"`
+	SSHUsername         string  `json:"-"`
+	SSHKeyEncrypted     string  `json:"-"`
+	SSHHostKeyEncrypted string  `json:"-"`
+	SSHTier             SSHTier `json:"-"`
+	SSHHardlink         *bool   `json:"-"`
 
-	// PublicPeerAddress is the host:port that the user set for other
-	// BitTorrent clients. Empty lets peeraddress work it out at each use.
 	PublicPeerAddress string `json:"-"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
-	// Create the JSON structure with redacted password fields
 	return json.Marshal(&struct {
 		ID                       int        `json:"id"`
 		Name                     string     `json:"name"`
@@ -112,7 +98,6 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 }
 
 func (i *Instance) UnmarshalJSON(data []byte) error {
-	// Temporary struct for unmarshaling
 	var temp struct {
 		ID                       int        `json:"id"`
 		Name                     string     `json:"name"`
@@ -140,7 +125,6 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Copy non-secret fields
 	i.ID = temp.ID
 	i.Name = temp.Name
 	i.Host = temp.Host
@@ -157,12 +141,10 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 
 	i.IsActive = temp.IsActive
 
-	// HasLocalFilesystemAccess defaults to false if not provided (opt-in feature)
 	if temp.HasLocalFilesystemAccess != nil {
 		i.HasLocalFilesystemAccess = *temp.HasLocalFilesystemAccess
 	}
 
-	// Hardlink settings (all default to false/empty if not provided)
 	if temp.UseHardlinks != nil {
 		i.UseHardlinks = *temp.UseHardlinks
 	}
@@ -172,26 +154,21 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	if temp.HardlinkDirPreset != nil {
 		i.HardlinkDirPreset = *temp.HardlinkDirPreset
 	}
-	// Reflink setting (defaults to false if not provided)
 	if temp.UseReflinks != nil {
 		i.UseReflinks = *temp.UseReflinks
 	}
-	// Fallback to regular mode setting (defaults to false if not provided)
 	if temp.FallbackToRegularMode != nil {
 		i.FallbackToRegularMode = *temp.FallbackToRegularMode
 	}
 
-	// Handle password - don't overwrite if redacted
 	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
 		i.PasswordEncrypted = temp.Password
 	}
 
-	// Handle API key - don't overwrite if redacted
 	if temp.APIKey != "" && !domain.IsRedactedString(temp.APIKey) {
 		i.APIKeyEncrypted = temp.APIKey
 	}
 
-	// Handle basic password - don't overwrite if redacted
 	if temp.BasicPassword != "" && !domain.IsRedactedString(temp.BasicPassword) {
 		i.BasicPasswordEncrypted = &temp.BasicPassword
 	}
@@ -213,18 +190,14 @@ func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte, opts ...Cred
 	return &InstanceStore{db: db, cipher: credentialCipher}, nil
 }
 
-// encrypt encrypts a string using AES-GCM
 func (s *InstanceStore) encrypt(plaintext string) (string, error) {
 	return s.cipher.Encrypt(plaintext, nil)
 }
 
-// decrypt decrypts a string encrypted with encrypt
 func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
 	return s.cipher.Decrypt(ciphertext, nil)
 }
 
-// RewriteLegacyCredentials re-encrypts stored qBittorrent instance credentials that still
-// carry the pre-HKDF format and reports how many rows it rewrote.
 func (s *InstanceStore) RewriteLegacyCredentials(ctx context.Context) (int, error) {
 	return s.cipher.rewriteLegacyRows(ctx, s.db, legacyCredentialTable{
 		table: "instances",
@@ -236,34 +209,26 @@ func (s *InstanceStore) RewriteLegacyCredentials(ctx context.Context) (int, erro
 	})
 }
 
-// validateAndNormalizeHost validates and normalizes a qBittorrent instance host URL
 func validateAndNormalizeHost(rawHost string) (string, error) {
-	// Trim whitespace
 	rawHost = strings.TrimSpace(rawHost)
 
-	// Check for empty host
 	if rawHost == "" {
 		return "", errors.New("host cannot be empty")
 	}
 
-	// Check if host already has a valid scheme
 	if !strings.Contains(rawHost, "://") {
-		// No scheme, add http://
 		rawHost = "http://" + rawHost
 	}
 
-	// Parse the URL
 	u, err := url.Parse(rawHost)
 	if err != nil {
 		return "", fmt.Errorf("invalid URL format: %w", err)
 	}
 
-	// Validate scheme
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return "", fmt.Errorf("unsupported scheme %q: must be http or https", u.Scheme)
 	}
 
-	// Validate host
 	if u.Host == "" {
 		return "", errors.New("URL must include a host")
 	}
@@ -277,24 +242,20 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	} else {
 		apiKey = []string{""}
 	}
-	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
 		return nil, err
 	}
 
-	// API key auth does not use username/password login.
 	if apiKey[0] != "" {
 		username = ""
 		password = ""
 	}
 
-	// Localhost bypass auth uses an empty username, and the qBittorrent client should not attempt a login.
 	if username == "" {
 		password = ""
 	}
 
-	// Encrypt the password
 	encryptedPassword, err := s.encrypt(password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt password: %w", err)
@@ -308,7 +269,6 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		}
 	}
 
-	// Encrypt basic auth password if provided
 	var encryptedBasicPassword *string
 	if basicPassword != nil && *basicPassword != "" {
 		encrypted, err := s.encrypt(*basicPassword)
@@ -318,21 +278,17 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		encryptedBasicPassword = &encrypted
 	}
 
-	// Start a transaction to ensure atomicity
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Intern all strings in a single call
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern strings: %w", err)
 	}
 
-	// Ensure required fields (name, host, username) have valid IDs
-	// If username is empty (localhost bypass), intern the empty string
 	nameID := allIDs[0].Int64
 	hostID := allIDs[1].Int64
 
@@ -340,14 +296,12 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	if allIDs[2].Valid {
 		usernameID = allIDs[2].Int64
 	} else {
-		// Username was empty - intern empty string for localhost bypass auth
 		usernameID, err = dbinterface.InternEmptyString(ctx, tx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to intern empty username: %w", err)
 		}
 	}
 
-	// Insert instance with the interned IDs
 	var instanceID int
 	var passwordEncrypted sql.NullString
 	var basicPasswordEncrypted sql.NullString
@@ -356,7 +310,6 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	var sortOrder int
 	var isActive int
 
-	// Default hasLocalFilesystemAccess to false if not provided (opt-in feature)
 	localAccess := false
 	if hasLocalFilesystemAccess != nil {
 		localAccess = *hasLocalFilesystemAccess
@@ -430,10 +383,8 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	return instance, nil
 }
 
-// instanceViewColumns is the column list for instances_view queries.
 const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_key_encrypted, ssh_host_key_encrypted, ssh_tier, ssh_hardlink, public_peer_address`
 
-// scanInstance scans a row from instances_view into an Instance.
 func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 	var instanceID int
 	var name, host, username, passwordEncrypted, apiKeyEncrypted string
@@ -547,7 +498,6 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	return instances, nil
 }
 
-// InstanceUpdateParams contains optional fields for updating an instance.
 type InstanceUpdateParams struct {
 	TLSSkipVerify            *bool
 	HasLocalFilesystemAccess *bool
@@ -564,7 +514,6 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	if len(apiKey) > 0 {
 		apiKeyUpdate = apiKey[0]
 	}
-	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
 		return nil, err
@@ -575,28 +524,22 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		password = ""
 	}
 
-	// Start a transaction
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Prepare strings to intern - always intern name, host, username
-	// Also intern basic_username if it's provided and not empty
 	var basicUsernameToIntern *string
 	if basicUsername != nil && *basicUsername != "" {
 		basicUsernameToIntern = basicUsername
 	}
 
-	// Intern all strings in a single call
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsernameToIntern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern strings: %w", err)
 	}
 
-	// Ensure required fields (name, host, username) have valid IDs
-	// If username is empty (localhost bypass), intern the empty string
 	nameID := allIDs[0].Int64
 	hostID := allIDs[1].Int64
 
@@ -604,30 +547,24 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	if allIDs[2].Valid {
 		usernameID = allIDs[2].Int64
 	} else {
-		// Username was empty - intern empty string for localhost bypass auth
 		usernameID, err = dbinterface.InternEmptyString(ctx, tx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to intern empty username: %w", err)
 		}
 	}
 
-	// Build UPDATE query
 	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
 	args := []any{nameID, hostID, usernameID}
 
-	// Handle basic_username update
 	if basicUsername != nil {
 		if *basicUsername == "" {
-			// Empty string explicitly provided - clear the basic username
 			query += ", basic_username_id = NULL"
 		} else {
-			// Basic username provided - use the already interned ID
 			query += ", basic_username_id = ?"
 			args = append(args, allIDs[3])
 		}
 	}
 
-	// Handle password update - encrypt if provided
 	passwordToStore := password
 	if username == "" {
 		passwordToStore = ""
@@ -653,13 +590,10 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		args = append(args, encryptedAPIKey)
 	}
 
-	// Handle basic password update
 	if basicPassword != nil {
 		if *basicPassword == "" {
-			// Empty string explicitly provided - clear the basic password
 			query += ", basic_password_encrypted = NULL"
 		} else {
-			// Basic password provided - encrypt and update
 			encryptedBasicPassword, err := s.encrypt(*basicPassword)
 			if err != nil {
 				return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
@@ -842,12 +776,10 @@ func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-// GetDecryptedPassword returns the decrypted password for an instance
 func (s *InstanceStore) GetDecryptedPassword(instance *Instance) (string, error) {
 	return s.decrypt(instance.PasswordEncrypted)
 }
 
-// GetDecryptedAPIKey returns the decrypted API key for an instance.
 func (s *InstanceStore) GetDecryptedAPIKey(instance *Instance) (string, error) {
 	if instance.APIKeyEncrypted == "" {
 		return "", nil
@@ -856,7 +788,6 @@ func (s *InstanceStore) GetDecryptedAPIKey(instance *Instance) (string, error) {
 	return s.decrypt(instance.APIKeyEncrypted)
 }
 
-// GetDecryptedBasicPassword returns the decrypted basic auth password for an instance
 func (s *InstanceStore) GetDecryptedBasicPassword(instance *Instance) (*string, error) {
 	if instance.BasicPasswordEncrypted == nil {
 		return nil, nil

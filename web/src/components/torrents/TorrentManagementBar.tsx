@@ -39,7 +39,6 @@ import { useBulkActions } from "./bulk-actions/bulk-actions-context"
 
 interface TorrentManagementBarProps {
   instanceId?: number
-  // The Action target that the desktop table publishes (ADR 0034).
   actionTarget: ActionTarget
 }
 
@@ -60,7 +59,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const hasSelection = selectionCount > 0 || isAllSelected
   const isDisabled = !hasActionScope || !hasSelection
 
-  // Keep this guard after hooks so their invocation order stays stable.
   if (!hasActionScope || !hasSelection) {
     return null
   }
@@ -78,7 +76,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       </div>
 
       <div className="flex items-center gap-1">
-        {/* Primary Actions */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -198,7 +195,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
           <TooltipContent>{t("managementBar.setLocation")}</TooltipContent>
         </Tooltip>
 
-        {/* Queue Priority */}
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -246,7 +242,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Share/Speed Limits */}
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -280,7 +275,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* TMM Toggle */}
         {(() => {
           const tmmStates = selectedTorrents.map(t => t.auto_tmm)
           const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
@@ -305,7 +299,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
           )
         })()}
 
-        {/* Delete Action */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

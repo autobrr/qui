@@ -20,7 +20,6 @@ import (
 
 var errStopAfterDownload = errors.New("stop after the download")
 
-// regression: #4473
 func TestApplyTorrentSearchResultsFindsSelectionByHiddenGUID(t *testing.T) {
 	t.Parallel()
 
@@ -30,7 +29,6 @@ func TestApplyTorrentSearchResultsFindsSelectionByHiddenGUID(t *testing.T) {
 		wantError      string
 		wantDownloaded []string
 	}{
-		// regression: #4473
 		{
 			name: "torznab result",
 			cached: TorrentSearchResult{
@@ -44,7 +42,6 @@ func TestApplyTorrentSearchResultsFindsSelectionByHiddenGUID(t *testing.T) {
 			wantError:      "download torrent: stop after the download",
 			wantDownloaded: []string{"https://indexer.example.invalid/dl/1?passkey=made-up-passkey"},
 		},
-		// regression: #4473
 		{
 			name: "RED or OPS result",
 			cached: TorrentSearchResult{

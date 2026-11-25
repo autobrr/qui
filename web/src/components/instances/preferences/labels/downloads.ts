@@ -37,7 +37,6 @@ export const downloadsLabels: TabLabels = {
       },
     },
     add_to_top_of_queue: { labelKey: "preferences.fields.addToTopOfQueue" },
-    // qBittorrent 5.0 renamed start_paused_enabled to add_stopped_enabled. It sends one of the two.
     start_paused_enabled: startPaused,
     add_stopped_enabled: startPaused,
     torrent_stop_condition: {
@@ -127,7 +126,6 @@ export const downloadsLabels: TabLabels = {
       descriptionKey: "preferences.fields.mailNotificationSmtpDescription",
       placeholderKey: "preferences.fields.mailNotificationSmtpPlaceholder",
     },
-    // qBittorrent 5.3 replaced mail_notification_ssl_enabled with mail_notification_encryption_type.
     mail_notification_ssl_enabled: { labelKey: "preferences.fields.mailNotificationSslEnabled" },
     mail_notification_encryption_type: {
       labelKey: "preferences.fields.mailNotificationEncryptionType",

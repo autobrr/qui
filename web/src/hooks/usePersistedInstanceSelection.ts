@@ -11,7 +11,6 @@ const parseInstanceId = (raw: string): number | undefined => {
   return parsed
 }
 
-// "" is the cleared sentinel; settings never remove their key.
 const serializeInstanceId = (value: number | undefined): string =>
   typeof value === "number" ? JSON.stringify(value) : ""
 
@@ -23,10 +22,6 @@ export function usePersistedInstanceSelection(storageNamespace: string) {
   })
 }
 
-/**
- * The selection an instance picker should hold given the current instance
- * list. Keeps the saved selection while the list is still loading (undefined).
- */
 export function resolveInstanceSelection(
   instances: Array<{ id: number; connected: boolean }> | undefined,
   selected: number | undefined

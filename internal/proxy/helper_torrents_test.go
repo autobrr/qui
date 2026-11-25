@@ -29,9 +29,6 @@ func newHelperProxyRig(t *testing.T) *proxyRig {
 	return r
 }
 
-// A proxy client such as Sonarr cannot delete the files of a helper torrent:
-// they are the files of a real torrent. It can delete the helper torrent and
-// keep its files.
 func TestProxyRefusesDeleteWithFilesOfAHelperTorrent(t *testing.T) {
 	t.Parallel()
 	r := newHelperProxyRig(t)
@@ -55,8 +52,6 @@ func TestProxyRefusesDeleteWithFilesOfAHelperTorrent(t *testing.T) {
 	require.Equal(t, 1, r.stub.Calls("torrents/delete"))
 }
 
-// Only the registry makes a helper torrent: without a row, the user's torrent
-// is deleted with its files.
 func TestProxyDeletesTheFilesOfATorrentThatIsNoHelper(t *testing.T) {
 	t.Parallel()
 	r := newHelperProxyRig(t)
@@ -67,9 +62,6 @@ func TestProxyDeletesTheFilesOfATorrentThatIsNoHelper(t *testing.T) {
 	r.requireGone("torrents/tv/Show.S01E02-GRP")
 }
 
-// A delete of all torrents with files sees a helper torrent that qBittorrent
-// added after the last sync.
-// regression: #4231
 func TestProxyRefusesDeleteOfAllWithFilesAfterANewHelper(t *testing.T) {
 	t.Parallel()
 	r := newProxyRigWorker(t, false)
@@ -85,9 +77,6 @@ func TestProxyRefusesDeleteOfAllWithFilesAfterANewHelper(t *testing.T) {
 	require.Zero(t, r.stub.Calls("torrents/delete"), "qBittorrent gets no delete")
 }
 
-// While the instance has no helper torrent, a delete of all torrents with
-// files reads no maindata before it reaches qBittorrent.
-// regression: #4231
 func TestProxyDeleteOfAllWithFilesReadsNoMaindataWithoutAHelper(t *testing.T) {
 	t.Parallel()
 	r := newProxyRigWorker(t, false)
@@ -104,11 +93,6 @@ func TestProxyDeleteOfAllWithFilesReadsNoMaindataWithoutAHelper(t *testing.T) {
 	require.Equal(t, reads, r.stub.Calls("sync/maindata"))
 }
 
-// qui cannot tell whether a delete that it cannot read names a helper
-// torrent, so it refuses the delete. qBittorrent reads a multipart body
-// without its closing boundary, and a Content-Type that only starts with the
-// urlencoded type.
-// regression: #4231
 func TestProxyRefusesADeleteThatQuiCannotRead(t *testing.T) {
 	t.Parallel()
 	r := newHelperProxyRig(t)

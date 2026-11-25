@@ -18,10 +18,6 @@ import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-// DiscReportButton is the BDInfo action on a Disc node in the Content tab. Its
-// icon tells the state: no report yet, a scan queued or running, a report
-// cached, or a failed scan. A canceled run looks like "no report", and a click
-// on it starts a new scan.
 export function DiscReportButton({
   status,
   disabled,
@@ -72,12 +68,6 @@ interface TorrentDiscReportDialogProps {
   scans: DiscScans
 }
 
-// TorrentDiscReportDialog shows one Disc scan: its place in the queue, its
-// progress, its error, or the cached Disc report with a Quick Summary tab and a
-// Forum tab. The run comes from the scans of the torrent, so activity refetches
-// move the dialog from state to state without a query of its own. On a phone
-// it is a bottom sheet that shows only the Quick Summary; the Forum block is a
-// fixed-width table that no phone can show, so it is copy-only there.
 export function TorrentDiscReportDialog({ discPath, onClose, scans }: TorrentDiscReportDialogProps) {
   const { t } = useTranslation("torrents")
   const isMobile = useIsMobile()

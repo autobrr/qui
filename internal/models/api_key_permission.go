@@ -9,12 +9,8 @@ import (
 	"slices"
 )
 
-// PermissionArea is a part of the qui API that an API key Permission covers.
 type PermissionArea string
 
-// PermissionLevel is what a Permission lets a key do in its area. Write
-// includes read and run. Run does not include read, because settings hold
-// credentials.
 type PermissionLevel string
 
 const (
@@ -46,8 +42,6 @@ type Permission struct {
 	Level PermissionLevel `json:"level"`
 }
 
-// PermissionAreaInfo is one row of the area table. `make generate` writes a
-// TypeScript copy of the table for the Settings dialog.
 type PermissionAreaInfo struct {
 	Area   PermissionArea
 	Label  string
@@ -84,7 +78,6 @@ func lookupPermissionArea(area PermissionArea) (PermissionAreaInfo, bool) {
 	return PermissionAreas[i], true
 }
 
-// String names the Permission as a user reads it, for example "Torrents: write".
 func (p Permission) String() string {
 	label := string(p.Area)
 	if info, ok := lookupPermissionArea(p.Area); ok {
@@ -93,8 +86,6 @@ func (p Permission) String() string {
 	return label + ": " + string(p.Level)
 }
 
-// AllPermissions returns the list that grants every route a key can reach: the
-// highest level of each area. Existing keys got this list on upgrade.
 func AllPermissions() []Permission {
 	perms := make([]Permission, 0, len(PermissionAreas)+1)
 	for _, info := range PermissionAreas {
@@ -109,8 +100,6 @@ func AllPermissions() []Permission {
 	return perms
 }
 
-// ValidatePermissions refuses an empty list, an unknown area, and a level that
-// the area does not allow.
 func ValidatePermissions(perms []Permission) error {
 	if len(perms) == 0 {
 		return errors.New("API key needs at least one permission")
@@ -127,15 +116,12 @@ func ValidatePermissions(perms []Permission) error {
 	return nil
 }
 
-// Allows reports whether the key holds level in area. Write includes read and run.
 func (k *APIKey) Allows(area PermissionArea, level PermissionLevel) bool {
 	return slices.ContainsFunc(k.Permissions, func(p Permission) bool {
 		return p.Area == area && (p.Level == level || p.Level == LevelWrite)
 	})
 }
 
-// ReachesInstance reports whether the Instance limit of the key holds the
-// instance. A key with no Instance limit reaches every instance.
 func (k *APIKey) ReachesInstance(instanceID int) bool {
 	return len(k.InstanceIDs) == 0 || slices.Contains(k.InstanceIDs, instanceID)
 }

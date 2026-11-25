@@ -13,13 +13,10 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-// The dialog must route modifiedAt through the preference-aware formatter,
-// not the browser-locale toLocaleString().
 vi.mock("@/hooks/useDateTimeFormatters", () => ({
   useDateTimeFormatters: () => ({ formatISOTimestamp: (iso: string) => `pref:${iso}` }),
 }))
 
-// Stable singletons: a fresh object per render would retrigger the page-merge effect forever.
 const { runQuery, confirmMutation } = vi.hoisted(() => {
   const files: OrphanScanFile[] = [
     { id: 1, runId: 1, filePath: "/data/a.mkv", fileSize: 10, isAbandonedDir: false, status: "pending", modifiedAt: "2026-01-02T03:04:05Z" },
@@ -71,7 +68,6 @@ it("shows no size for an abandoned directory row", () => {
     </TooltipProvider>
   )
 
-  // Rows follow the fixture order: two files, then the directory.
   const sizes = [...document.body.querySelectorAll("tbody td:nth-child(2)")].map((td) => td.textContent)
   expect(sizes[2]).toBe("-")
   expect(sizes[0]).not.toBe("-")

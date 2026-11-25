@@ -58,7 +58,6 @@ describe("themeThumbnailPalette", () => {
     expect(palette.primary).toBe("skyblue")
   })
 
-  // regression: a variation named "color" made the lookup call itself until the stack ran out.
   it("reads a variation named color as a plain token", () => {
     const palette = themeThumbnailPalette(theme(
       { light: { "--primary": "var(--variation-color)", "--variation-color": "teal" }, dark: {} },

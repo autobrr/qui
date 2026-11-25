@@ -140,7 +140,10 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 		if inst == nil || inst.index == nil {
 			continue
 		}
-		if held, waiting := inst.index.candidates(keys, query.size); len(held)+len(waiting) > 0 {
+		isHelper := func(hash string) bool { return h.svc.isHelper(id, hash) }
+		held, waiting := inst.index.candidates(keys, query.size)
+		held, waiting = slices.DeleteFunc(held, isHelper), slices.DeleteFunc(waiting, isHelper)
+		if len(held)+len(waiting) > 0 {
 			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting), alternateTitles: inst.alternateTitles(held)}
 		}
 	}

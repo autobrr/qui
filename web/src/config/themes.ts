@@ -13,11 +13,8 @@ export interface Theme {
   description?: string;
   lightOnly?: boolean;
   variations?: string[];
-  /** True for sideloaded custom themes loaded at runtime from disk. */
   isCustom?: boolean;
-  /** Locked premium stub: preview colors only, never applicable (no license). */
   locked?: boolean;
-  /** Raw CSS for custom themes, injected verbatim as a <style> element. */
   rawCss?: string;
   cssVars: {
     light: Record<string, string>;
@@ -25,19 +22,16 @@ export interface Theme {
   };
 }
 
-// The last applied theme, cached with its full CSS vars by applyTheme
-// (utils/theme.ts) so a refresh paints it before the registry arrives from
-// the API. Exported for tests.
 export function parseCachedTheme(raw: string | null): Theme | null {
   try {
     const theme = raw ? JSON.parse(raw) as Theme : null;
     if (theme?.id && theme.id !== FALLBACK_THEME.id && theme.cssVars?.light && theme.cssVars?.dark) {
       return theme;
     }
+    return null;
   } catch {
-    // Ignore malformed cache
+    return null;
   }
-  return null;
 }
 
 function hydrateCachedTheme(): Theme[] {
@@ -45,9 +39,6 @@ function hydrateCachedTheme(): Theme[] {
   return cached ? [cached] : [];
 }
 
-// Starts as the bundled fallback plus the cached last-applied theme; the full
-// built-in list is fetched from GET /api/themes and swapped in here (see
-// BuiltinThemesLoader). The array is mutated in place so existing imports stay live.
 export const themes: Theme[] = [FALLBACK_THEME, ...hydrateCachedTheme()];
 
 export function registerBuiltinThemes(list: Theme[]): void {
@@ -55,15 +46,12 @@ export function registerBuiltinThemes(list: Theme[]): void {
   themes.splice(0, themes.length, ...list);
 }
 
-// Sideloaded custom themes are fetched at runtime (premium-gated) and registered
-// here so the synchronous theme lookups below can resolve their "custom:" ids.
 let customThemes: Theme[] = [];
 
 export function registerCustomThemes(list: Theme[]): void {
   customThemes = list;
 }
 
-// Helper functions
 export function getThemeById(id: string): Theme | undefined {
   return themes.find(theme => theme.id === id) ?? customThemes.find(theme => theme.id === id);
 }

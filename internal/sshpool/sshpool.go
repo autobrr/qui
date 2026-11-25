@@ -20,11 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// dialTimeout bounds the TCP connect and the handshake always, and — on a
-// one-shot connection, where the deadline is left in place — the probe that
-// follows it too. A user is waiting on the response, so it is short enough to
-// fail the page rather than hold the request open on a host that answers the
-// connect and then stalls.
 const dialTimeout = 15 * time.Second
 
 type credentialSource interface {
@@ -46,23 +41,17 @@ func NewDialer(creds credentialSource) *Dialer {
 type Status string
 
 const (
-	StatusUnpinned Status = "unpinned"
-	StatusPinned   Status = "pinned"
-	StatusMismatch Status = "mismatch"
-	// StatusPinUnreadable: the stored pin does not decrypt. The presented key
-	// is reported so the user can replace the pin through the same heavy
-	// confirmation a mismatch gets; nothing is trusted and nothing is probed.
+	StatusUnpinned      Status = "unpinned"
+	StatusPinned        Status = "pinned"
+	StatusMismatch      Status = "mismatch"
 	StatusPinUnreadable Status = "pin_unreadable"
 )
 
-// Report is the outcome of Test. A mismatch is a result, not a failure: the
-// user has to see both keys to decide whether the host was re-keyed or
-// replaced.
 type Report struct {
 	Status       Status
 	HostKey      ssh.PublicKey
-	PinnedKey    ssh.PublicKey // mismatch only
-	Capabilities *Capabilities // nil on mismatch and pin_unreadable: no session is opened
+	PinnedKey    ssh.PublicKey
+	Capabilities *Capabilities
 }
 
 type Capabilities struct {
@@ -77,14 +66,8 @@ type Capabilities struct {
 
 var errPinUnreadable = errors.New("stored host key pin is unreadable")
 
-// ErrConnect marks a failure to reach the host or complete the handshake, as
-// opposed to a fault in what qui stored: the caller answers the two
-// differently, and only the first earns an unreadable pin its precedence.
 var ErrConnect = errors.New("could not connect to the SSH host")
 
-// MismatchError reports that the host presented a key other than the expected
-// one. Error prints fingerprints only, so the message is safe to log; the
-// fields carry the keys for callers that need them.
 type MismatchError struct {
 	Presented ssh.PublicKey
 	Pinned    ssh.PublicKey
@@ -110,10 +93,6 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 	var presented ssh.PublicKey
 	var first sync.Once
 	callback := func(_ string, _ net.Addr, key ssh.PublicKey) error {
-		// x/crypto runs this on every key exchange, and a server may start a
-		// rekey at any time — including while the probe is using the
-		// connection, from a goroutine this one does not synchronise with. Only
-		// the first key is kept: it is the one the report is about.
 		first.Do(func() { presented = key })
 		switch {
 		case unreadable:
@@ -133,10 +112,6 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 			return &Report{Status: StatusPinUnreadable, HostKey: presented}, nil
 		}
 		if unreadable && errors.Is(err, ErrConnect) {
-			// Tampering outranks an unreachable host: a corrupt pin and a host
-			// that does not answer is what a redirected instance looks like.
-			// A fault in the stored key is not the host's doing and is reported
-			// as itself.
 			return &Report{Status: StatusPinUnreadable}, nil
 		}
 		return nil, err
@@ -150,8 +125,6 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 
 	capabilities, err := probe(ctx, client, d.timeout)
 	if err != nil {
-		// The probe sees a closed socket either way; the caller's own reason
-		// is the one to report.
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -161,11 +134,6 @@ func (d *Dialer) Test(ctx context.Context, inst *models.Instance) (*Report, erro
 	return &Report{Status: status, HostKey: presented, Capabilities: capabilities}, nil
 }
 
-// Confirm dials the instance and succeeds only if the host presents hostKey, so
-// the caller can pin the key the user was shown rather than whatever the host
-// offers at pin time. hostKey is in SSH wire format, the form the pin column
-// holds. It then probes the host, on the key it just verified, so the caller
-// can store the tier with the pin.
 func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []byte) (*Capabilities, error) {
 	expected, err := ssh.ParsePublicKey(hostKey)
 	if err != nil {
@@ -183,25 +151,14 @@ func (d *Dialer) Confirm(ctx context.Context, inst *models.Instance, hostKey []b
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		// The handshake verified the key, which is what a pin records. A host
-		// whose session channels misbehave is still one the user may pin; the
-		// tier stays unknown until a connect probes it.
 		log.Debug().Err(err).Int("instanceID", inst.ID).Msg("sshpool: host key confirmed, exec probe got no answer")
 		return nil, nil
 	}
 	return capabilities, nil
 }
 
-// ErrPinUnusable marks the errors Connect raises before it dials, when the
-// stored pin is missing or will not decrypt or parse. The pool dials only rows
-// in remote mode, which carry a pin, so there it means a pin that will not
-// decrypt or parse. That lasts until the pin changes, which is why the pool
-// tells it apart from a host that is merely down.
 var ErrPinUnusable = errors.New("host key pin is unusable")
 
-// Connect opens a long-lived connection to a host whose key is already pinned.
-// A background connection has no first contact and nobody to confirm one, so
-// unpinned and unreadable both refuse rather than trust what the host presents.
 func (d *Dialer) Connect(ctx context.Context, inst *models.Instance) (*ssh.Client, error) {
 	pin, err := d.creds.GetHostKeyPin(inst)
 	if err != nil {
@@ -231,21 +188,6 @@ func matchKey(presented, expected ssh.PublicKey) error {
 	return &MismatchError{Presented: presented, Pinned: expected}
 }
 
-// hostKeyAlgorithms puts the expected key's algorithm first, because the client
-// list decides which host key the server offers: a host holding several keys
-// would otherwise present one we never pinned and read as a mismatch. A pinned
-// RSA key negotiates under the SHA-2 signature names, so all three come first
-// for it. First contact has no pinned key and leads with ed25519, so a host
-// holding several keys pins its strongest one. The remaining algorithms stay
-// allowed so a host that genuinely changed key type reports as a mismatch the
-// user can act on, rather than as a failed negotiation nobody can interpret.
-// Verification is the callback's byte comparison either way.
-//
-// The list is never left empty. x/crypto's default applies then, and it admits
-// SHA-1 ssh-rsa, ssh-dss and their certificate forms. No pinned dial admits
-// those, apart from ssh-rsa for a pinned RSA key, so the policy would be
-// loosest at the one moment the host is unverified and the user is being asked
-// to trust it for good.
 func hostKeyAlgorithms(pinned ssh.PublicKey) []string {
 	switch {
 	case pinned == nil:
@@ -284,10 +226,6 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 		return nil, fmt.Errorf("%w: dial %s: %w", ErrConnect, addr, err)
 	}
 
-	// ssh.ClientConfig.Timeout would buy nothing here: x/crypto reads it only
-	// in ssh.Dial, which this code does not use. One deadline on the socket
-	// bounds the handshake; keepOpen decides whether it stays on afterwards and
-	// bounds the caller's work too, which is sound only on a one-shot dial.
 	_ = conn.SetDeadline(time.Now().Add(d.timeout))
 
 	config := &ssh.ClientConfig{
@@ -302,8 +240,6 @@ func (d *Dialer) dial(ctx context.Context, inst *models.Instance, callback ssh.H
 		err    error
 	}
 
-	// ssh.NewClientConn takes no context, so the handshake runs in a goroutine
-	// and cancellation closes the raw connection underneath it.
 	done := make(chan dialResult, 1)
 	go func() {
 		clientConn, chans, reqs, err := ssh.NewClientConn(conn, addr, config)

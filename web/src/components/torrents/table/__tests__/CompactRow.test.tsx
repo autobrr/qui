@@ -12,7 +12,6 @@ import type { Torrent } from "@/types"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import "@/i18n"
 
-// Keep the real react-i18next module and swap only useTranslation for a passthrough translator.
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({

@@ -21,7 +21,6 @@ import { cn, formatBytes } from "@/lib/utils"
 const STATS_QUERY_KEY = ["torznab", "search-cache", "stats"] as const
 const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
 
-/** The Search cache tab: what the Torznab search cache holds, and how long it keeps results. */
 export function TorznabSearchCachePanel() {
   const { t } = useTranslation("settings")
   const { formatDate } = useDateTimeFormatters()
@@ -73,7 +72,6 @@ export function TorznabSearchCachePanel() {
 function CacheTTLSection({ ttlMinutes }: { ttlMinutes: number }) {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
-  // null: the field shows the saved value. A refetch of the stats does not replace what the user typed.
   const [draft, setDraft] = useState<string | null>(null)
   const [error, setError] = useState<string>()
   const input = useRef<HTMLInputElement>(null)

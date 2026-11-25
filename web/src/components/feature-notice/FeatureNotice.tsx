@@ -16,20 +16,11 @@ import { FEATURE_NOTICES, type FeatureNoticeEntry, type FeatureNoticeId } from "
 
 interface FeatureNoticeProps {
   id: FeatureNoticeId
-  /** Turns the feature on. Called from the primary button of the bubble. */
   onAction: () => void
-  /** The side of the control that the bubble prefers. */
   side?: "top" | "bottom"
-  /** The control the bubble points at. It must take a ref and a className. */
   children: ReactNode
 }
 
-/**
- * Points a one-time bubble at the wrapped control while its notice is due. The
- * notice counts as seen after Got it, the primary button, or once the feature
- * is in use while the control is in the page. A control that opens calls
- * markFeatureNoticeSeen from its open handler.
- */
 export function FeatureNotice(props: FeatureNoticeProps) {
   if (isDemo) return props.children
   return <FeatureNoticeBubble {...props} />
@@ -50,7 +41,6 @@ function FeatureNoticeBubble({ id, onAction, side = "bottom", children }: Featur
 
   const open = loaded && present && !seen && !inUse && getDueNoticeId() === id
 
-  // The bubble goes away with its buttons. A button that had focus hands it to the control.
   const close = (button: HTMLElement) => {
     if (button === document.activeElement) control?.focus()
     setSeen(true)
@@ -91,8 +81,6 @@ function NoticeBubble({ notice, side, onDismiss, onAction }: NoticeBubbleProps) 
   const { t } = useTranslation()
   const titleId = useId()
 
-  // Popper, not Popover: the bubble takes no focus, keeps no Esc key or outside click, and is not a dialog.
-  // No portal: the bubble follows its control in the tab order.
   return (
     <PopperPrimitive.Content
       side={side}

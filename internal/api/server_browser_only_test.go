@@ -68,7 +68,6 @@ var browserOnlyRoutes = []browserOnlyRoute{
 	{http.MethodPost, "/api/problem-reports/sign-in", http.StatusBadRequest},
 	{http.MethodGet, "/api/problem-reports/sign-in", http.StatusOK},
 	{http.MethodDelete, "/api/problem-reports/sign-in", http.StatusNoContent},
-	// Last: a session that reaches logout ends.
 	{http.MethodPost, "/api/auth/logout", http.StatusOK},
 }
 
@@ -117,7 +116,6 @@ func TestBrowserOnlyRoutesRefuseAPIKeys(t *testing.T) {
 	})
 
 	t.Run("API key reaches other routes", func(t *testing.T) {
-		// 400: the handler read the empty body.
 		for _, tc := range []struct {
 			method, path, key string
 			want              int

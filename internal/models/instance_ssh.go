@@ -15,12 +15,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// SSH credential ciphertexts are bound to the row they belong to via the
-// AEAD's additional data, so a credential blob copied onto another instance —
-// or a pin kept while the host column is rewritten underneath it — fails to
-// decrypt instead of quietly authorising a connection nobody configured.
-// The scope is a database-write attacker, which is a realistic position when
-// Postgres runs on a different host than qui and its session secret.
 const (
 	aadFieldSSHKey     = "ssh_key"
 	aadFieldSSHHostKey = "ssh_host_key"
@@ -31,29 +25,17 @@ var (
 	ErrSSHEndpointChanged      = errors.New("ssh endpoint changed while pinning the host key")
 	ErrSSHHostKeyAlreadyPinned = errors.New("ssh host key is already pinned")
 	ErrSSHKeyNotConfigured     = errors.New("ssh private key is not configured")
-	// ErrInvalidSSHCredentials marks what the submitter can fix, so a caller can
-	// tell it apart from the cipher and database faults SetSSHCredentials also
-	// returns and which are nobody's to act on.
-	ErrInvalidSSHCredentials = errors.New("invalid ssh credentials")
+	ErrInvalidSSHCredentials   = errors.New("invalid ssh credentials")
 )
 
 func sshKeyAAD(instanceID int) []byte {
 	return []byte(strconv.Itoa(instanceID) + "|" + aadFieldSSHKey)
 }
 
-// hostKeyPinAAD binds the pin to the endpoint it was confirmed for. Redirecting
-// an instance by editing ssh_host or ssh_port then reads as a decryption
-// failure — unambiguous tampering — rather than as a host-key mismatch, which
-// is also what a legitimate re-key looks like. The decimal port goes last so
-// the final "|" stays unambiguous whatever the host contains; add new parts
-// after it.
 func hostKeyPinAAD(instanceID int, host string, port int) []byte {
 	return []byte(strconv.Itoa(instanceID) + "|" + aadFieldSSHHostKey + "|" + host + "|" + strconv.Itoa(port))
 }
 
-// SetSSHCredentials stores the SSH endpoint and private key for an instance.
-// Changing the host or port drops any existing pin: the pin was confirmed for
-// one endpoint, and the new one has never been seen before.
 func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, host string, port int, username, privateKey string) error {
 	host, username, err := validateSSHCredentials(host, port, username, privateKey)
 	if err != nil {
@@ -72,13 +54,9 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 		    ssh_tier = ?, ssh_hardlink = NULL
 		WHERE id = ?
 	`
-	// A new key may run a different shell: the tier is unknown until a
-	// connect probes it, so the row says sftp and fails closed meanwhile.
 	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, host, port, username, encryptedKey, host, port, string(SSHTierSFTP), instanceID)
 }
 
-// validateSSHCredentials returns the stored form of the endpoint, or the reason
-// the submission is unusable.
 func validateSSHCredentials(host string, port int, username, privateKey string) (normalizedHost, trimmedUsername string, err error) {
 	normalizedHost, err = normalizeSSHHost(host)
 	if err != nil {
@@ -95,9 +73,6 @@ func validateSSHCredentials(host string, port int, username, privateKey string) 
 		return "", "", errors.New("ssh private key is required")
 	}
 
-	// Reject at write time what the dial would only discover later: passphrase
-	// protected keys are not supported, and an unparseable key is never going
-	// to authenticate.
 	if _, err := ssh.ParseRawPrivateKey([]byte(privateKey)); err != nil {
 		if _, ok := errors.AsType[*ssh.PassphraseMissingError](err); ok {
 			return "", "", errors.New("passphrase-protected ssh keys are not supported: provide a key without a passphrase")
@@ -108,11 +83,6 @@ func validateSSHCredentials(host string, port int, username, privateKey string) 
 	return normalizedHost, trimmedUsername, nil
 }
 
-// normalizeSSHHost returns the one stored form of a host so that a cosmetic
-// re-save ("Example.com", "fd00:0:0:0:0:0:0:1") is not an endpoint change that
-// drops a good pin. IP literals take netip's canonical text, which keeps an
-// IPv6 zone's case: interface names match exactly. The literal is stored
-// unbracketed and net.JoinHostPort brackets it at dial time.
 func normalizeSSHHost(host string) (string, error) {
 	host = strings.TrimSpace(host)
 	switch {
@@ -131,10 +101,6 @@ func normalizeSSHHost(host string) (string, error) {
 	return host, nil
 }
 
-// SSHEndpointChanged reports whether host and port name a different endpoint
-// than the one inst stores, which is what SetSSHCredentials drops the pin for.
-// An unusable host counts as changed: SetSSHCredentials refuses it anyway, with
-// the reason.
 func SSHEndpointChanged(inst *Instance, host string, port int) bool {
 	normalized, err := normalizeSSHHost(host)
 	if err != nil {
@@ -143,8 +109,6 @@ func SSHEndpointChanged(inst *Instance, host string, port int) bool {
 	return normalized != inst.SSHHost || port != inst.SSHPort
 }
 
-// ClearSSHCredentials removes the credentials but keeps the pin: the pin
-// belongs to the host, not to whoever last authenticated against it.
 func (s *InstanceStore) ClearSSHCredentials(ctx context.Context, instanceID int) error {
 	query := `
 		UPDATE instances
@@ -154,15 +118,6 @@ func (s *InstanceStore) ClearSSHCredentials(ctx context.Context, instanceID int)
 	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, string(SSHTierSFTP), instanceID)
 }
 
-// SetHostKeyPin pins the marshaled host public key the caller confirmed for
-// host and port. The endpoint comes from the caller, not the stored row: a key
-// confirmed for one host must not be pinned to whatever host the row carries by
-// the time the confirmation lands, so a row whose endpoint no longer matches is
-// refused with ErrSSHEndpointChanged.
-//
-// Pinning an already-pinned instance is refused: overwriting a live pin is
-// exactly the silent re-pin the mismatch flow exists to prevent, so replacing
-// one has to be asked for by name rather than fallen into.
 func (s *InstanceStore) SetHostKeyPin(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
 	host, err := normalizeSSHHost(host)
 	if err != nil {
@@ -183,10 +138,6 @@ func (s *InstanceStore) SetHostKeyPin(ctx context.Context, instanceID int, host 
 	return s.setHostKeyPinFor(ctx, instanceID, host, port, marshaledKey, false)
 }
 
-// ReplaceHostKeyPin overwrites the pin after the user confirmed a mismatch. It
-// is the mirror of SetHostKeyPin: an instance with nothing pinned is refused
-// with ErrSSHHostKeyNotPinned, since a replacement the user never compared
-// against an existing pin is just a silent TOFU by another name.
 func (s *InstanceStore) ReplaceHostKeyPin(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
 	host, err := normalizeSSHHost(host)
 	if err != nil {
@@ -196,10 +147,6 @@ func (s *InstanceStore) ReplaceHostKeyPin(ctx context.Context, instanceID int, h
 	return s.setHostKeyPinFor(ctx, instanceID, host, port, marshaledKey, true)
 }
 
-// validateMarshaledHostKey enforces that the column only ever holds SSH wire
-// format. Host key verification pins the algorithm by parsing it back out of
-// this value, so a display-form key ("ssh-ed25519 AAAA...") stored here would
-// be unusable at dial time with nothing pointing at why.
 func validateMarshaledHostKey(marshaledKey []byte) error {
 	if len(marshaledKey) == 0 {
 		return errors.New("host key is empty")
@@ -210,14 +157,6 @@ func validateMarshaledHostKey(marshaledKey []byte) error {
 	return nil
 }
 
-// setHostKeyPinFor is the only write that stores a pin (the credential update
-// only ever clears one), so the wire-format check lives here rather than at a
-// caller. The UPDATE is a compare-and-set on the endpoint the AAD was built
-// from: an interleaved credential update would otherwise leave a pin that can
-// never decrypt again, with nothing pointing at why. replace flips which pin
-// state the compare-and-set accepts, first pin or confirmed replacement, so a
-// zero-row result is classified rather than assumed to be an endpoint change:
-// the WHERE also refuses a row in the wrong pin state.
 func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte, replace bool) error {
 	if err := validateMarshaledHostKey(marshaledKey); err != nil {
 		return err
@@ -228,14 +167,10 @@ func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, ho
 		return fmt.Errorf("encrypt host key pin: %w", err)
 	}
 
-	// The predicate is a local literal, never an argument, so the statement
-	// stays fully parameterised.
 	pinnedTerm := "= ''"
 	if replace {
 		pinnedTerm = "<> ''"
 	}
-	// A new pin may be a different host: the tier is unknown until a probe
-	// answers, so the row says sftp and fails closed meanwhile.
 	query := `
 		UPDATE instances
 		SET ssh_host_key_encrypted = ?, ssh_tier = ?, ssh_hardlink = NULL
@@ -258,9 +193,6 @@ func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, ho
 	return ErrSSHEndpointChanged
 }
 
-// GetDecryptedSSHKey returns the private key for an instance, or
-// ErrSSHKeyNotConfigured when the instance has none: an empty key is not a
-// credential, and returning one would let a dial try an empty-key auth.
 func (s *InstanceStore) GetDecryptedSSHKey(instance *Instance) (string, error) {
 	if instance.SSHKeyEncrypted == "" {
 		return "", ErrSSHKeyNotConfigured
@@ -269,10 +201,6 @@ func (s *InstanceStore) GetDecryptedSSHKey(instance *Instance) (string, error) {
 	return s.cipher.Decrypt(instance.SSHKeyEncrypted, sshKeyAAD(instance.ID))
 }
 
-// GetHostKeyPin returns the marshaled host public key confirmed for this
-// instance. A decryption failure is returned as-is and never degrades to
-// "unpinned": falling back to trust-on-first-use here would hand an attacker
-// who can write the database exactly the re-pin the mismatch flow refuses.
 func (s *InstanceStore) GetHostKeyPin(instance *Instance) ([]byte, error) {
 	if instance.SSHHostKeyEncrypted == "" {
 		return nil, ErrSSHHostKeyNotPinned
@@ -286,8 +214,6 @@ func (s *InstanceStore) GetHostKeyPin(instance *Instance) ([]byte, error) {
 	return []byte(pin), nil
 }
 
-// execInstanceUpdate runs a single-row UPDATE and returns noRow when the WHERE
-// clause matched nothing.
 func (s *InstanceStore) execInstanceUpdate(ctx context.Context, noRow error, query string, args ...any) error {
 	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -305,12 +231,6 @@ func (s *InstanceStore) execInstanceUpdate(ctx context.Context, noRow error, que
 	return nil
 }
 
-// SetSSHProbe records what a probe of the host found: the tier, and whether
-// the server advertises hardlink@openssh.com. An empty tier is a probe whose
-// exec half got no answer: the stored tier stays, only the flag is written.
-// probed is the row the probe dialed with; a row whose endpoint, key or pin
-// changed since keeps the reset those changes wrote, and the next probe
-// answers for the new settings.
 func (s *InstanceStore) SetSSHProbe(ctx context.Context, probed *Instance, tier SSHTier, hardlink bool) error {
 	query := `
 		UPDATE instances

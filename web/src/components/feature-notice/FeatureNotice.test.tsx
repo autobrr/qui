@@ -19,7 +19,6 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("./notices", async () => {
   const { readRaw } = await import("@/lib/client-settings")
-  // Fake keys, built so that the i18n checker does not look them up.
   const testNotice = (id: string) => ({
     id,
     titleKey: `${id}.title`,
@@ -41,7 +40,6 @@ function Absent() {
   return null
 }
 
-// The mocked list has its own ids.
 function noticeTree(id: string, onAction: () => void) {
   return (
     <FeatureNotice id={id as FeatureNoticeId} onAction={onAction}>
@@ -55,7 +53,6 @@ function renderNotice(id: string, onAction = vi.fn()) {
   return onAction
 }
 
-// The same two calls that useClientSettingsSync makes for the first server snapshot.
 function loadServerSnapshot(settings: Record<string, string> = {}) {
   act(() => {
     applyServerSettings(settings)
@@ -149,7 +146,6 @@ describe("FeatureNotice", () => {
     loadServerSnapshot()
     render(<button type="button">elsewhere</button>)
     renderNotice("first")
-    // An outside-click listener would attach on the next tick, as the one of a Radix popover does.
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
 
     const elsewhere = screen.getByRole("button", { name: "elsewhere" })
@@ -158,7 +154,6 @@ describe("FeatureNotice", () => {
     fireEvent.click(elsewhere)
     expect(bubbleShown()).toBe(true)
 
-    // The torrent page clears its selection on an Esc that is not prevented while no dialog is open.
     const pageEscape = vi.fn((event: KeyboardEvent) => ({
       prevented: event.defaultPrevented,
       dialogOpen: document.querySelector("[role=\"dialog\"]") !== null,
@@ -223,7 +218,6 @@ describe("FeatureNotice", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "next control" }))
   })
 
-  // regression: #4070
   it.each([
     ["Got it", "common:featureNotice.gotIt"],
     ["the primary action", "first.action"],

@@ -64,7 +64,6 @@ func TestQueuedSearchAllowsIndexerTimeout(t *testing.T) {
 			done := make(chan struct{})
 			resultCallback := func(uint64, []Result, []int, error) { close(done) }
 			var err error
-			// executeQueuedSearch skips the scheduler when searchExecutor is set.
 			if scheduled {
 				err = service.searchIndexersWithScheduler(t.Context(), []*models.TorznabIndexer{idx}, nil, nil, nil, resultCallback)
 			} else {

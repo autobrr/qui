@@ -7,7 +7,6 @@ import { z } from "zod"
 
 // i18n-namespace: automations
 
-/** Nav sections in display order. */
 export const AUTOMATIONS_NAV_GROUPS = [
   {
     tabs: [
@@ -20,12 +19,10 @@ export const AUTOMATIONS_NAV_GROUPS = [
 
 export type AutomationsTab = (typeof AUTOMATIONS_NAV_GROUPS)[number]["tabs"][number]["tab"]
 
-/** Tab values as they appear in the URL search parameter. The cast gives z.enum the tuple it needs. */
 export const AUTOMATIONS_TABS = AUTOMATIONS_NAV_GROUPS.flatMap(group => group.tabs.map(entry => entry.tab)) as [AutomationsTab, ...AutomationsTab[]]
 
 export const DEFAULT_AUTOMATIONS_TAB: AutomationsTab = "workflows"
 
-/** An unknown tab value drops to undefined, as with no tab: a wide screen shows the default tab, and a phone shows the menu. */
 export const automationsSearchSchema = z.object({
   tab: z.enum(AUTOMATIONS_TABS).optional().catch(undefined),
 })

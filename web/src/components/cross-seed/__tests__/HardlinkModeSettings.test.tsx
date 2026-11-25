@@ -71,8 +71,6 @@ remote.filesystemMode = "remote"
 const cases = [
   { name: "a local instance", instance: makeInstance(true, { read: true, identity: true, trustedIdentity: true, write: true, content: true }), canWrite: true, canReflink: true },
   { name: "an instance without filesystem access", instance: makeInstance(false, noCapabilities), canWrite: false, canReflink: false },
-  // A remote instance has Write (#2942) but nothing clones files over sftp, so
-  // hardlink mode is offered and reflink mode is not.
   { name: "a remote instance", instance: remote, canWrite: true, canReflink: false },
 ]
 
@@ -85,7 +83,6 @@ describe("HardlinkModeSettings", () => {
     expect(screen.getByRole("radio", { name: "rules.hardlink" }).hasAttribute("disabled")).toBe(!canWrite)
     expect(screen.getByRole("radio", { name: "rules.reflink" }).hasAttribute("disabled")).toBe(!canReflink)
     expect(screen.queryByText("rules.noLocalAccess") === null).toBe(canWrite)
-    // The route form gets the same Write plus local mode check as reflink mode.
     expect(mocks.routeFormProps.at(-1)?.localWrite).toBe(canReflink)
 
     fireEvent.change(screen.getByPlaceholderText("rules.baseDirectoriesPlaceholder"), { target: { value: "/data/links2" } })
@@ -138,7 +135,6 @@ describe("HardlinkModeSettings", () => {
     })
 
     it.each(["/data/new", "/data//new"])("asks before a save that removes a base folder added after the route save (%s)", async (added) => {
-      // The route read gives the newer base folder an empty row, and the orphan scan protects the torrents under it.
       mocks.translation.t = ((key: string, options?: { count?: number }) => options?.count === undefined ? key : `${key}:${options.count}`) as typeof mocks.translation.t
       mocks.getCrossSeedRoute.mockResolvedValue({
         sourceInstanceId: 1,
@@ -181,7 +177,6 @@ describe("HardlinkModeSettings", () => {
       saveBaseDirs("/data/more")
 
       expect(screen.getByRole<HTMLButtonElement>("button", { name: "rules.saveChanges" }).disabled).toBe(true)
-      // The dialog counts the form read at Save, so an edit now would save folders it did not count.
       expect(screen.getByPlaceholderText<HTMLInputElement>("rules.baseDirectoriesPlaceholder").disabled).toBe(true)
       expect(mocks.instances.updateInstance).not.toHaveBeenCalled()
       await act(async () => answer?.(null))

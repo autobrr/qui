@@ -1,9 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package logbudget counts the log lines of a call, so a test can show that
-// the lines at the default level do not grow with the size of the library.
-// A test that uses it swaps the global logger, so it cannot run in parallel.
 package logbudget
 
 import (
@@ -21,16 +18,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Lines holds the number of log lines for each level and message.
 type Lines map[Line]int
 
-// Line is one log message at one level.
 type Line struct {
 	Level   string
 	Message string
 }
 
-// Message returns the number of lines with msg at every level.
 func (l Lines) Message(msg string) int {
 	total := 0
 	for line, n := range l {
@@ -41,8 +35,6 @@ func (l Lines) Message(msg string) int {
 	return total
 }
 
-// Count runs fn with the global logger at TRACE and returns the lines that fn
-// wrote, also from goroutines that end before fn returns.
 func Count(t testing.TB, fn func()) Lines {
 	t.Helper()
 	lines := make(Lines)
@@ -78,7 +70,6 @@ func record(t testing.TB, fn func()) []entry {
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for scanner.Scan() {
 		line := entry{text: scanner.Text()}
-		// zerolog repeats a key when an event sets a field of its logger again.
 		if err := json.Unmarshal(scanner.Bytes(), &line, jsontext.AllowDuplicateNames(true)); err != nil {
 			t.Fatalf("logbudget: read log line %q: %v", scanner.Text(), err)
 		}
@@ -105,11 +96,6 @@ func AssertSilent(t testing.TB, fn func(), words ...string) {
 	}
 }
 
-// AssertFlat fails for each message at DEBUG or above that large writes more
-// often than small. Run the same work on a small and a large library: a line
-// that grows with the library belongs at TRACE. Make the small library bigger
-// than each cap on DEBUG lines, or a capped line looks like growth. AssertFlat
-// compares message text, so put a count in a field, not in the message.
 func AssertFlat(t testing.TB, small, large Lines) {
 	t.Helper()
 	var grown []Line

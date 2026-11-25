@@ -24,8 +24,6 @@ func NewTrackerGroupsHandler(syncManager *qbittorrent.SyncManager, customization
 	return &TrackerGroupsHandler{syncManager: syncManager, customizations: customizations}
 }
 
-// LiveTrackerGroup holds the torrents of one Tracker group that are in
-// qBittorrent now. Uploaded is their lifetime upload.
 type LiveTrackerGroup struct {
 	Group    string `json:"group"`
 	Torrents int    `json:"torrents"`
@@ -37,9 +35,6 @@ type trackerGroupsResponse struct {
 	Groups []LiveTrackerGroup `json:"groups"`
 }
 
-// List returns the torrents of one instance that are in qBittorrent now,
-// added up by Tracker group. A torrent counts toward one group.
-// GET /api/instances/{instanceID}/tracker-groups
 func (h *TrackerGroupsHandler) List(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -63,9 +58,6 @@ func (h *TrackerGroupsHandler) List(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, trackerGroupsResponse{Groups: liveTrackerGroups(groups)})
 }
 
-// liveTrackerGroups adds up the groups that share a name, for example a
-// customization whose display name equals a tracker domain, so that each name
-// is one row, as in the rows of the transfer query.
 func liveTrackerGroups(groups map[trackergroup.Group]qbittorrent.TrackerTransferStats) []LiveTrackerGroup {
 	byName := make(map[string]*LiveTrackerGroup, len(groups))
 	for group, stats := range groups {

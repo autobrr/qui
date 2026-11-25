@@ -14,12 +14,6 @@ export interface TrackerIconCache {
   trackerCustomizationLookup: TrackerCustomizationLookup
 }
 
-/**
- * Wraps the tracker-icon and tracker-customization queries with shallow-equality
- * ref caching so the table keeps stable references across polls. New query data
- * with identical contents returns the previously cached value, which prevents
- * unnecessary row re-renders.
- */
 export function useTrackerIconCache(): TrackerIconCache {
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
@@ -38,7 +32,6 @@ export function useTrackerIconCache(): TrackerIconCache {
     return latest
   }, [trackerIconsQuery.data])
 
-  // Tracker customizations for custom display names and merged domains
   const trackerCustomizationsQuery = useTrackerCustomizations()
   const trackerCustomizationsRef = useRef<{ key: string; lookup: TrackerCustomizationLookup } | undefined>(undefined)
   const trackerCustomizationLookup = useMemo(() => {
@@ -47,16 +40,13 @@ export function useTrackerIconCache(): TrackerIconCache {
       return trackerCustomizationsRef.current?.lookup ?? new Map()
     }
 
-    // Build a cache key from ids + updatedAt to detect any changes
     const newKey = getTrackerCustomizationsCacheKey(latest)
 
-    // Check if the lookup has changed using the cache key
     const previous = trackerCustomizationsRef.current
     if (previous && previous.key === newKey) {
       return previous.lookup
     }
 
-    // Build a new lookup map from the customizations
     const newLookup = buildTrackerCustomizationLookup(latest)
     trackerCustomizationsRef.current = { key: newKey, lookup: newLookup }
     return newLookup

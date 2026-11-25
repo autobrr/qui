@@ -154,16 +154,15 @@ export const CrossSeedTable = memo(function CrossSeedTable({
         const tracker = info.getValue()
         if (!tracker) return <span className="text-muted-foreground">-</span>
 
-        let hostname = tracker
+        let hostname: string
         try {
           hostname = new URL(tracker).hostname
         } catch {
-          // Keep original if parsing fails
+          hostname = tracker
         }
 
         const displayName = incognitoMode? getLinuxTracker(`${info.row.original.hash}-0`): trackerDisplayNames.get(hostname.toLowerCase()) || hostname
 
-        // In incognito mode, pass obfuscated key to prevent real tracker icon lookup
         const iconKey = incognitoMode ? displayName : hostname
 
         return (
@@ -278,7 +277,6 @@ export const CrossSeedTable = memo(function CrossSeedTable({
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs gap-2">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">
@@ -365,7 +363,6 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                     onNavigateToTorrent && "cursor-pointer"
                   )}
                   onClick={(e) => {
-                    // Don't navigate if clicking checkbox or button
                     if ((e.target as HTMLElement).closest("button, [role=\"checkbox\"]")) return
                     if (onNavigateToTorrent) {
                       onNavigateToTorrent(row.original.instanceId, row.original.hash)

@@ -137,7 +137,6 @@ func TestTransfersIntoOneFolderRunOneAfterTheOther(t *testing.T) {
 	require.True(t, r.dst.Has(second.hash))
 }
 
-// regression: #4347
 func TestCancelOfATransferThatWaitsForItsPathLeavesTheTarget(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.PerSource = 2 })
 	first := newShow(t, showName)

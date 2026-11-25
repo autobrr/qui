@@ -80,8 +80,6 @@ var (
 	ErrUnstorableName = errors.New("destination cannot store torrent path")
 )
 
-// PathDialect is the path grammar of the filesystem a plan targets.
-// fsops.PathDialect satisfies it; fsops imports this package, so it is declared here.
 type PathDialect interface {
 	Join(base, name string) string
 	Rel(base, target string) (string, error)
@@ -97,17 +95,6 @@ const (
 	LayoutNoSubfolder ContentLayout = "NoSubfolder"
 )
 
-// BuildPlan creates a hardlink tree plan that maps existing files to the incoming torrent's layout.
-//
-// Parameters:
-//   - d: Path grammar of the filesystem destDir and the existing files live on
-//   - candidateFiles: Files as they appear in the INCOMING torrent (target layout)
-//   - existingFiles: Files from the MATCHED torrent that already exist on disk
-//   - layout: How qBittorrent will organize the torrent (from instance preferences)
-//   - torrentName: Name of the incoming torrent (used for Subfolder layout)
-//   - destDir: Base directory for the hardlink tree
-//
-// The resulting tree will match what qBittorrent expects when adding the torrent.
 func BuildPlan(
 	d PathDialect,
 	candidateFiles []TorrentFile,
@@ -161,11 +148,6 @@ func BuildPlan(
 	return plan, nil
 }
 
-// MatchFiles finds the existing file that each candidate file links to. A
-// match has the size of the candidate and, in this order, its path, its base
-// name, its name without punctuation, or is the only file of that size left.
-// Each result holds the AbsPath of the existing file and the path of the
-// candidate as RelPath, in the order of candidateFiles. It does no I/O.
 func MatchFiles(candidateFiles []TorrentFile, existingFiles []ExistingFile) ([]ExistingFile, error) {
 	existingBySize := make(map[int64][]*existingEntry)
 	for i := range existingFiles {
@@ -308,21 +290,15 @@ type existingEntry struct {
 	used       bool
 }
 
-// computeTargetPath determines the full target path based on content layout.
-// candidatePath is a validated slash path; it is converted only where it is joined.
 func computeTargetPath(d PathDialect, candidatePath string, layout ContentLayout, torrentName, destDir string) string {
 	switch layout {
 	case LayoutSubfolder:
-		// Wrap in a folder named after the torrent
-		// For single-file torrents, qBittorrent strips the extension from folder name
 		folderName := torrentName
 		if !strings.Contains(candidatePath, "/") {
 			if ext := filepath.Ext(torrentName); ext != "" {
 				folderName = strings.TrimSuffix(torrentName, ext)
 			}
 		}
-		// Sanitize folder name for Windows compatibility (removes illegal characters)
-		// but keep candidatePath unchanged to match incoming torrent layout
 		folderName = pathutil.SanitizePathSegment(folderName)
 		return d.Join(d.Join(destDir, folderName), d.FromSlash(candidatePath))
 
@@ -348,17 +324,11 @@ func ValidateRelativePath(d PathDialect, name string) error {
 	return nil
 }
 
-// validateCandidatePath checks if a torrent file path is safe (no path traversal)
-// and that every component is a name the destination dialect d can store. It
-// reads the name in slash grammar on every host, so the answer depends on the
-// destination, not on the OS qui runs on.
 func validateCandidatePath(d PathDialect, name string) error {
 	if name == "" {
 		return errors.New("empty file path in torrent")
 	}
 
-	// Torrent paths are slash-delimited. Reject both platform-native and
-	// foreign absolute/traversal forms on every host OS.
 	if strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) {
 		return errors.New("absolute path not allowed in torrent: " + name)
 	}
@@ -369,7 +339,6 @@ func validateCandidatePath(d PathDialect, name string) error {
 		return errors.New("volume prefix not allowed in torrent path: " + name)
 	}
 
-	// path.Clean leaves ".." only as leading segments.
 	p := path.Clean(name)
 	if p == "." {
 		return errors.New("current directory path not allowed: " + name)
@@ -378,7 +347,6 @@ func validateCandidatePath(d PathDialect, name string) error {
 		return errors.New("parent directory traversal not allowed: " + name)
 	}
 
-	// A backslash separator means a Windows destination, which cannot store every POSIX name.
 	if d.Separator() == `\` {
 		for component := range strings.SplitSeq(p, "/") {
 			if err := windowsNameError(component); err != nil {
@@ -390,9 +358,6 @@ func validateCandidatePath(d PathDialect, name string) error {
 	return nil
 }
 
-// windowsNameError reports why Windows cannot store component as a file name.
-// NTFS reads "name:stream" as an alternate data stream of "name", so a colon
-// would silently address another file.
 func windowsNameError(component string) error {
 	if i := strings.IndexFunc(component, func(r rune) bool { return r < 0x20 || strings.ContainsRune(`<>:"|?*`, r) }); i >= 0 {
 		return fmt.Errorf("character %q not allowed in Windows file name %q", component[i], component)

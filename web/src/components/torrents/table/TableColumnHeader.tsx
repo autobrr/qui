@@ -21,18 +21,10 @@ export interface TableColumnHeaderProps {
   setColumnFilters: Dispatch<SetStateAction<ColumnFilter[]>>
   minTableWidth: number
   viewMode: ViewMode
-  // Spreadsheet theme only: reserve the blank corner above the row-number gutter.
   showRowGutter?: boolean
-  // Column whose width is derived from the container (stretch mode); its resize handle is inert.
   stretchedColumnId?: string
 }
 
-/**
- * The draggable, filterable table header row. Rendered only in the normal/dense
- * table views (returns null for compact). The DnD wiring — sensors and the drop
- * handler — is owned by useColumnDnd and threaded in; this component renders the
- * header sub-tree verbatim.
- */
 export function TableColumnHeader({
   table,
   sensors,

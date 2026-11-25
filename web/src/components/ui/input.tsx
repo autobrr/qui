@@ -8,7 +8,6 @@ import * as React from "react"
 import { passwordManagerAttributes } from "@/lib/password-manager"
 import { cn } from "@/lib/utils"
 
-/** Password managers leave the field alone, unless autoComplete holds a sign-in token, such as current-password. */
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <input

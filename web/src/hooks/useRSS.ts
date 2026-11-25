@@ -19,7 +19,6 @@ import type {
   SetRSSFeedURLRequest
 } from "@/types"
 
-// Query keys
 export const rssKeys = {
   all: ["rss"] as const,
   feeds: (instanceId: number) => [...rssKeys.all, "feeds", instanceId] as const,
@@ -27,10 +26,6 @@ export const rssKeys = {
   matching: (instanceId: number, ruleName: string) =>
     [...rssKeys.all, "matching", instanceId, ruleName] as const,
 }
-
-// ============================================================================
-// Queries
-// ============================================================================
 
 export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; withData?: boolean }) {
   const shouldEnable = (options?.enabled ?? true) && instanceId > 0
@@ -42,7 +37,6 @@ export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; w
   )
   const [sseReconnectAttempt, setSseReconnectAttempt] = useState(0)
 
-  // Handle SSE updates - update query cache directly
   const handleFeedsUpdate = useCallback(
     (data: FeedsUpdatePayload) => {
       if (data.instanceId === instanceId) {
@@ -52,7 +46,6 @@ export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; w
     [instanceId, queryClient]
   )
 
-  // Setup SSE connection
   useEffect(() => {
     if (!shouldEnable) {
       setSseStatus("disabled")
@@ -96,13 +89,11 @@ export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; w
     }
   }, [instanceId, shouldEnable, handleFeedsUpdate])
 
-  // Initial data fetch - SSE handles subsequent updates
   const query = useQuery({
     queryKey: rssKeys.feeds(instanceId),
     queryFn: () => api.getRSSItems(instanceId, withData),
     enabled: shouldEnable,
-    staleTime: Infinity, // SSE handles freshness, no automatic refetching
-    // No refetchInterval - SSE replaces polling
+    staleTime: Infinity,
   })
 
   return {
@@ -137,10 +128,6 @@ export function useRSSMatchingArticles(
     staleTime: 5_000,
   })
 }
-
-// ============================================================================
-// Feed Mutations
-// ============================================================================
 
 export function useAddRSSFeed(instanceId: number) {
   const queryClient = useQueryClient()
@@ -192,7 +179,6 @@ export function useRefreshRSSFeed(instanceId: number) {
   return useMutation({
     mutationFn: (data: RefreshRSSItemRequest) => api.refreshRSSItem(instanceId, data),
     onSuccess: () => {
-      // Invalidate after a short delay to allow qBittorrent to process the refresh
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
       }, 1000)
@@ -211,10 +197,6 @@ export function useSetRSSFeedURL(instanceId: number) {
   })
 }
 
-// ============================================================================
-// Article Mutations
-// ============================================================================
-
 export function useMarkRSSAsRead(instanceId: number) {
   const queryClient = useQueryClient()
 
@@ -225,10 +207,6 @@ export function useMarkRSSAsRead(instanceId: number) {
     },
   })
 }
-
-// ============================================================================
-// Rule Mutations
-// ============================================================================
 
 export function useSetRSSRule(instanceId: number) {
   const queryClient = useQueryClient()
@@ -258,7 +236,6 @@ export function useReprocessRSSRules(instanceId: number) {
   return useMutation({
     mutationFn: () => api.reprocessRSSRules(instanceId),
     onSuccess: () => {
-      // Invalidate feeds to reflect any changes from auto-download
       queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
     },
   })

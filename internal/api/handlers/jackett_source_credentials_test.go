@@ -69,7 +69,7 @@ func TestCreateIndexerCopiesKeyFromSource(t *testing.T) {
 	source, err := store.CreateWithIndexerID(ctx, "Aither", "http://localhost:9696", "aither", "prowlarr-key", &user, &pass, true, 0, 30, models.TorznabBackendProwlarr)
 	require.NoError(t, err)
 
-	handler := &JackettHandler{indexerStore: store} // service nil: caps provided in request, sync skipped
+	handler := &JackettHandler{indexerStore: store}
 
 	body := fmt.Sprintf(`{
 		"name": "Blutopia",
@@ -103,9 +103,6 @@ func TestCreateIndexerCopiesKeyFromSource(t *testing.T) {
 	require.Equal(t, "proxypass", password)
 }
 
-// Two servers can expose the same indexer name (e.g. Jackett and Prowlarr side
-// by side). Importing via a saved connection must move the URL, API key, and
-// basic auth together, not keep the old server's credentials.
 func TestUpdateIndexerCopiesCredentialsFromSource(t *testing.T) {
 	ctx := t.Context()
 	store := newTorznabStore(t)
@@ -147,7 +144,6 @@ func TestUpdateIndexerCopiesCredentialsFromSource(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "b-key", apiKey)
 
-	// The source has no basic auth, so the copied connection must clear it.
 	require.Nil(t, stored.BasicUsername)
 	require.Nil(t, stored.BasicPasswordEncrypted)
 }

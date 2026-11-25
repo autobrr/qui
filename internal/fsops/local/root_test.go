@@ -38,8 +38,6 @@ func create(t *testing.T, root fsops.Root, name, content string) {
 	require.NoError(t, w.Close())
 }
 
-// A new file and its folders keep the group able to write them, whatever
-// the umask, so that qBittorrent can delete them later.
 func TestRoot_CreatesFilesTheGroupCanWrite(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "save")
 	root := openRoot(t, dir)

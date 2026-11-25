@@ -116,8 +116,6 @@ func TestPool_RemoteAccess(t *testing.T) {
 	backend, err := pool.GetBackend(context.Background(), 3)
 	require.NoError(t, err)
 	assert.Equal(t, Backend(remote), backend)
-	// The factory gets the loaded row, not just the id: the remote backend
-	// dials from the instance's own SSH columns.
 	assert.Same(t, instance, got)
 }
 
@@ -172,7 +170,6 @@ func TestPool_RequireGrantsByMode(t *testing.T) {
 		capability  models.FilesystemCapability
 		wantBackend Backend
 	}{
-		// TestFilesystemCapabilitiesOf in models holds the full capability matrix.
 		{1, models.CapabilityContent, local},
 		{2, models.CapabilityRead, nil},
 		{3, models.CapabilityWrite, remote},

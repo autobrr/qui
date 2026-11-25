@@ -1,4 +1,4 @@
-export const commentDirective = /^(\s*eslint-(disable|enable)\b|\s*@ts-(expect-error|nocheck)\b|\/\s*<reference\s|\s*i18n-namespace:\s|\s*regression: #\d+|[\s*]*Copyright \(c\) |[\s*]*@deprecated\b)/
+const commentDirective = /^(\s*eslint-(disable|enable)\b|\s*@ts-(expect-error|nocheck)\b|\/\s*<reference\s|\s*i18n-namespace:\s|[\s*]*Copyright \(c\) |[\s*]*@deprecated\b)/
 
 export const noComments = {
   meta: {

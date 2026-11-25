@@ -84,7 +84,6 @@ func (s *stubBackend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreeP
 	return s.Backend.HardlinkTree(ctx, plan)
 }
 
-// ReflinkTree hardlinks: a temporary folder seldom supports clones.
 func (s *stubBackend) ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	return s.HardlinkTree(ctx, plan)
 }

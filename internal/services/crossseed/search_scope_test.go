@@ -37,10 +37,9 @@ func TestDecideSearchScope(t *testing.T) {
 	torznabFailed := fmt.Errorf("load torznab indexers: %w", discoveryErr)
 
 	tests := []struct {
-		name  string
-		facts searchScopeFacts
-		want  scopeWant
-		// wantErr is a part of the error text; a row with it ignores want.
+		name    string
+		facts   searchScopeFacts
+		want    scopeWant
 		wantErr string
 	}{
 		{
@@ -322,9 +321,6 @@ func TestDecideSearchScope(t *testing.T) {
 	}
 }
 
-// scopeWant is what one row of TestDecideSearchScope expects. reasons checks
-// the not_asked reason of some sites. cooldown is the RED/OPS cooldown verdict
-// of a scope that asks no site.
 type scopeWant struct {
 	torznab    []int
 	skipReason string
@@ -335,8 +331,6 @@ type scopeWant struct {
 	cooldown   bool
 }
 
-// A Library Scan that asks RED/OPS nothing for a torrent that fails the music
-// check still starts the RED/OPS cooldown, so the next run skips the torrent.
 func TestSearchRunLoop_FailedMusicCheckStartsGazelleCooldown(t *testing.T) {
 	name := "Some.Movie.2019.1080p.BluRay.x264-GRP"
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 7), Name: name, Progress: 1.0, Size: 8_000, Tracker: "https://tracker.example.invalid/announce"}
@@ -359,9 +353,6 @@ func TestSearchRunLoop_FailedMusicCheckStartsGazelleCooldown(t *testing.T) {
 	require.True(t, found, "the failed music check must start the RED/OPS cooldown")
 }
 
-// A Library Scan that picks a copy from another tracker for an album that also
-// seeds from RED asks OPS, also when the picked copy fails the music check. The
-// RED/OPS cooldown then covers both copies.
 func TestSearchRunLoop_DuplicateGroupWithREDCopyAsksOPS(t *testing.T) {
 	name := "Artist - Album (2024) [WEB FLAC]"
 	picked := qbt.Torrent{Hash: fmt.Sprintf("%040x", 1), Name: name, Progress: 1.0, Size: 9_000, AddedOn: 1, Tracker: "https://tracker.example.invalid/announce"}
@@ -369,7 +360,6 @@ func TestSearchRunLoop_DuplicateGroupWithREDCopyAsksOPS(t *testing.T) {
 	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-duplicate-group-cooldown", &hashFilteringSyncManager{
 		torrents: []qbt.Torrent{picked, redCopy},
 		filesByHash: map[string]qbt.TorrentFiles{
-			// A concert video outweighs the tracks, so this copy fails the music check.
 			picked.Hash:  {{Name: name + "/01 - Track.flac", Size: 1_000}, {Name: name + "/concert.mkv", Size: 8_000}},
 			redCopy.Hash: {{Name: name + "/01 - Track.flac", Size: 1_000}},
 		},
@@ -391,8 +381,6 @@ func TestSearchRunLoop_DuplicateGroupWithREDCopyAsksOPS(t *testing.T) {
 	}
 }
 
-// A Library Scan whose RED/OPS lookup runs out of time records the timeout and
-// starts no RED/OPS cooldown, so the next run asks RED/OPS again.
 func TestSearchRunLoop_GazelleTimeoutStartsNoCooldown(t *testing.T) {
 	name := "Artist - Album (2024) [WEB FLAC]"
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 9), Name: name, Progress: 1.0, Size: 1_000, Tracker: "https://tracker.example.invalid/announce"}
@@ -413,10 +401,7 @@ func TestSearchRunLoop_GazelleTimeoutStartsNoCooldown(t *testing.T) {
 	require.False(t, found, "a RED/OPS timeout must start no cooldown")
 }
 
-// When qui cannot list the Torznab indexers, the search dialog still asks
-// RED/OPS and reports that Torznab failed.
 func TestSearchTorrentMatches_FailedIndexerDiscoveryAsksREDOPSAndReportsTorznabFailed(t *testing.T) {
-	// Not parallel: the test replaces the package-level newGazelleClient.
 	const (
 		instanceID = 1
 		sourceHash = "0123456789abcdef0123456789abcdef01234567"
@@ -460,8 +445,6 @@ func TestSearchTorrentMatches_FailedIndexerDiscoveryAsksREDOPSAndReportsTorznabF
 	require.Positive(t, gazelleRequests.Load(), "the search must still ask RED/OPS")
 }
 
-// newTorznabSearchRunFixture extends newSearchRunLoopFixture with Torznab on:
-// one music indexer at trackerURL that the content filter keeps for torrent.
 func newTorznabSearchRunFixture(t *testing.T, dbName, trackerURL string, torrent qbt.Torrent, files qbt.TorrentFiles) (*Service, *searchRunState) {
 	t.Helper()
 	svc, state := newSearchRunLoopFixture(t, dbName, &hashFilteringSyncManager{
@@ -506,7 +489,6 @@ func torznabMatchTracker(t *testing.T, title string) string {
 	return trackerURL
 }
 
-// regression: #4379
 func TestSearchRunLoop_MissingKeyWithoutSearchStartsNoGazelleCooldown(t *testing.T) {
 	name := "Artist - Album (2024) [WEB FLAC]"
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 13), Name: name, Progress: 1.0, Size: 1_000, Tracker: redTracker}
@@ -527,8 +509,6 @@ func TestSearchRunLoop_MissingKeyWithoutSearchStartsNoGazelleCooldown(t *testing
 	require.False(t, found, "an OPS key that the user adds later must work at the next run")
 }
 
-// A Library Scan where Torznab finds a match and RED/OPS runs out of time adds
-// the Torznab match and records the RED/OPS timeout.
 func TestSearchRunLoop_GazelleTimeoutBesideTorznabMatchIsRecorded(t *testing.T) {
 	name := "During - LMK (2024 WF)"
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 11), Name: name, Progress: 1.0, Size: 123, Tracker: "https://tracker.example.invalid/announce"}
@@ -559,8 +539,6 @@ func TestSearchRunLoop_GazelleTimeoutBesideTorznabMatchIsRecorded(t *testing.T) 
 	require.Contains(t, messages, "timed out")
 }
 
-// A Library Scan whose Torznab search fails at search time keeps the RED/OPS
-// match and reports in the run that Torznab failed.
 func TestSearchRunLoop_TorznabSearchFailureIsReported(t *testing.T) {
 	name := "During - LMK (2024 WF)"
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 12), Name: name, Progress: 1.0, Size: 123, Tracker: "https://tracker.example.invalid/announce"}
@@ -609,8 +587,6 @@ func TestSkippedTorznabIndexers(t *testing.T) {
 	assert.Empty(t, asked)
 	assert.Equal(t, map[int]string{1: "within cooldown", 2: "does not support the required caps"}, reasons)
 
-	// regression: #4288
-	// The content filter finishes at once when no indexer supports the caps.
 	asked, reasons = skipped(searchScopeFacts{
 		requestedIndexerIDs: []int{1, 2},
 		contentFilter:       contentFilterFacts{done: true, indexerIDs: []int{}, noCapableIndexers: true},

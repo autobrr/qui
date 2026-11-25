@@ -5,9 +5,6 @@
 
 import type { TFunction } from "i18next"
 
-// Shared helpers for deriving Torznab parameters from UI selections
-// Mirrors backend category groupings in internal/services/jackett.
-
 export type SearchType = "movies" | "tv" | "music" | "books" | "apps" | "xxx"
 
 export type SearchTypeOption = {
@@ -76,10 +73,6 @@ export function getSearchTypeLabel(type: SearchType, t: TFunction): string {
   return t(SEARCH_TYPE_KEYS[type])
 }
 
-/**
- * Filter a recent search's saved indexer ids down to the ones still enabled.
- * Returns null when nothing usable remains, so callers keep their current selection.
- */
 export function resolveSuggestionIndexerIds(savedIds: number[] | null | undefined, enabledIds: number[]): Set<number> | null {
   const enabled = new Set(enabledIds)
   const filtered = savedIds?.filter(id => enabled.has(id)) ?? []

@@ -37,15 +37,11 @@ func multiTrackerTorrentData(t *testing.T, announce string, announceList [][]str
 	return data
 }
 
-// qBittorrent reports its first working tracker in Tracker, so a torrent with
-// several announce hosts changes it between runs without anything else changing.
 func TestExecuteBackupArchivePathIgnoresWorkingTrackerFlip(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		// persistRuns stores each run's items so later runs read the cached
-		// blob instead of exporting again.
+		name        string
 		persistRuns bool
 	}{
 		{name: "live export", persistRuns: false},
@@ -85,7 +81,6 @@ func TestExecuteBackupArchivePathIgnoresWorkingTrackerFlip(t *testing.T) {
 			paths := make([]string, 0, len(workingTrackers))
 			for _, working := range workingTrackers {
 				sm.torrents[0].Tracker = "udp://" + working + ":6969/announce"
-				// SyncManager.ExportTorrent derives its domain from the same field.
 				sm.exportTrack = working
 
 				run := &models.BackupRun{InstanceID: instanceID, Kind: models.BackupRunKindManual, Status: models.BackupRunStatusSuccess, RequestedBy: "tester", RequestedAt: now}

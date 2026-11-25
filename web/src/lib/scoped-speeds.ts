@@ -3,14 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/**
- * Resolve the download/upload speeds shown in the torrent list footer.
- *
- * Single-instance views read live rates from the instance's serverState. Aggregate
- * (all-instances / cross-instance) views have no single serverState, so they must
- * use the aggregated stats totals instead - otherwise the footer reads 0 even while
- * torrents are actively transferring.
- */
 export function resolveFooterSpeeds(
   isAggregate: boolean,
   stats: { totalDownloadSpeed?: number; totalUploadSpeed?: number; totalDownloadData?: number; totalUploadData?: number } | null | undefined,

@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
-// newStepRig boots a Service against a stub qBittorrent that serves the torrents. Each
-// torrent gets the fields of a seeding torrent unless it sets them.
 func newStepRig(t *testing.T, torrents map[string]map[string]any, configure func(*stubQbt)) (*Service, int, *stubQbt) {
 	t.Helper()
 	full := make(map[string]map[string]any, len(torrents))
@@ -49,7 +47,6 @@ func tagCondition(tag string) *models.RuleCondition {
 	return &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: tag}
 }
 
-// stepActivityView is what a user sees of one Activity row: the row and its torrents in the run dialog.
 type stepActivityView struct {
 	Action  string
 	Details string
@@ -69,7 +66,6 @@ func viewActivities(t *testing.T, svc *Service, instanceID int, activities []*mo
 	return views
 }
 
-// The dry run must write the same Activity details as a live run that qBittorrent accepts in full.
 func TestPlanSteps_DryRunMatchesLiveRun(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -121,8 +117,6 @@ func TestPlanSteps_DryRunMatchesLiveRun(t *testing.T) {
 	}
 }
 
-// A new Action adds a field to the Run plan (ADR 0028). It needs a step, so that the live
-// run and the dry run cannot drift for it.
 func TestPlanSteps_CoverEveryRunPlanField(t *testing.T) {
 	ownCode := map[string]bool{"programs": true, "exports": true, "deletions": true, "transfers": true}
 	covered := make(map[string]bool)
@@ -145,9 +139,6 @@ func TestPlanSteps_CoverEveryRunPlanField(t *testing.T) {
 	}
 }
 
-// regression: #3710
-// Two share-limit groups with the same ratio and seeding time add up in the Activity, also
-// when they differ in the share action.
 func TestPlanSteps_ShareLimitsAddUpGroupsWithTheSameLimits(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		t.Run(map[bool]string{false: "live", true: "dry run"}[dryRun], func(t *testing.T) {
@@ -171,9 +162,8 @@ func TestPlanSteps_ShareLimitsAddUpGroupsWithTheSameLimits(t *testing.T) {
 	}
 }
 
-// A tag Activity counts only the torrents that qBittorrent accepted.
 func TestPlanSteps_TagsCountOnlyAcceptedTorrents(t *testing.T) {
-	for _, webAPI := range []string{"2.10.0", "2.11.4"} { // addTags, then setTags from qBittorrent 5.1
+	for _, webAPI := range []string{"2.10.0", "2.11.4"} {
 		t.Run(webAPI, func(t *testing.T) {
 			svc, instanceID, _ := newStepRig(t, map[string]map[string]any{"a": nil, "b": nil}, func(stub *stubQbt) {
 				stub.webAPIVersion = webAPI
@@ -196,7 +186,6 @@ func TestPlanSteps_TagsCountOnlyAcceptedTorrents(t *testing.T) {
 	}
 }
 
-// The move rows list only the paths that have a torrent with that outcome.
 func TestPlanSteps_MoveRowsListOnlyPathsWithTorrents(t *testing.T) {
 	svc, instanceID, _ := newStepRig(t, map[string]map[string]any{
 		"a": {"tags": "one"},
@@ -221,8 +210,6 @@ func TestPlanSteps_MoveRowsListOnlyPathsWithTorrents(t *testing.T) {
 	require.JSONEq(t, `{"paths":{"/two":1}}`, string(activities[1].Details))
 }
 
-// A refused pause batch only logs. The pause Activity counts the accepted batch. Resume,
-// recheck, reannounce, auto management and category take the same branch.
 func TestPlanSteps_RefusedPauseBatchWritesNoFailedRow(t *testing.T) {
 	svc, instanceID, _ := newStepRig(t, map[string]map[string]any{"a": nil, "b": nil}, func(stub *stubQbt) {
 		stub.refuse = func(path string, form url.Values) bool {
@@ -247,8 +234,6 @@ func (n *recordingNotifier) Notify(_ context.Context, event notifications.Event)
 	n.events = append(n.events, event)
 }
 
-// A cross-seed with no category rule of its own can join two categories in one run. Its
-// rule counts it once in the notification.
 func TestPlanSteps_CategoryNotificationCountsEachTorrentOnce(t *testing.T) {
 	svc, instanceID, _ := newStepRig(t, map[string]map[string]any{
 		"a": {"tags": "x", "content_path": "/data/shared"},

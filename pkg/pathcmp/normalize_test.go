@@ -22,19 +22,12 @@ func TestNormalizePath(t *testing.T) {
 		{"z:/", "z:/"},
 		{"./C:", "./C:"},
 		{"folder/../movie.mkv", "movie.mkv"},
-		// regression: #4431
 		{"folder/../C:/movie.mkv", "./C:/movie.mkv"},
-		// regression: #4431
 		{`folder\..\C:\movie.mkv`, "./C:/movie.mkv"},
-		// regression: #4431
 		{"./C:.", "./C:."},
-		// regression: #4431
 		{"C:.", "C:"},
-		// regression: #4431
 		{"C:folder/..", "C:"},
-		// regression: #4431
 		{"//../share/movie.mkv", "/share/movie.mkv"},
-		// regression: #4431
 		{"//server/../movie.mkv", "/movie.mkv"},
 		{"", ""},
 	} {

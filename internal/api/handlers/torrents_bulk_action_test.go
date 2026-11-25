@@ -124,8 +124,6 @@ func TestAppendTargetsFromCrossInstanceTorrents_RespectsExclusions(t *testing.T)
 			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ccc"}},
 			InstanceID:  2,
 		},
-		// A hybrid torrent excluded by its v1 hash: the row lists it under Hash
-		// (the v2 hash), so a Hash-only match would still act on it (#1481, #1571).
 		{
 			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ddd", InfohashV1: "eee"}},
 			InstanceID:  1,
@@ -223,9 +221,6 @@ func TestParseInstanceIDsParam(t *testing.T) {
 	}
 }
 
-// TestBulkAction_UnifiedScopeRejectsBareHashes pins the unified-scope contract:
-// a hash names a torrent, not an instance, so hashes without targets are a 400
-// instead of a fan-out to every instance that holds the hash (issue #2527).
 func TestBulkAction_UnifiedScopeRejectsBareHashes(t *testing.T) {
 	t.Parallel()
 
@@ -242,9 +237,6 @@ func TestBulkAction_UnifiedScopeRejectsBareHashes(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "targets")
 }
 
-// TestBulkAction_UnifiedScopeTargetsReachOneInstance is the mirror case: the same
-// payload with targets for one instance reaches only that instance, even though
-// the other instance holds the same hash.
 func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	t.Parallel()
 
@@ -295,9 +287,6 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	require.EqualValues(t, 0, recheckHits["beta"].Load())
 }
 
-// TestBulkAction_SelectAllExcludesHybridByV1Hash drives story 7 of #2749 through
-// the handler: a unified select-all skips a hybrid torrent excluded by its v1
-// hash, the same rule the copy route applies.
 func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	t.Parallel()
 
@@ -349,17 +338,13 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	require.Equal(t, []string{"aaa"}, rechecked)
 }
 
-// regression: #3868
-// TestBulkAction_SelectAllFollowsTheTorrentListRule drives Select all mode
-// through the handler: it acts on the rows that its filters show, and a filter
-// value that qui does not know touches nothing.
 func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		name    string
 		filters map[string]any
-		want    []string // the rechecked hashes; nil when the action touches nothing
+		want    []string
 	}{
 		{"running leaves out a paused torrent of qBittorrent 4.x", map[string]any{"status": []string{"running"}}, []string{"aaa"}},
 		{"an unknown excludeStatus value", map[string]any{"excludeStatus": []string{"tpyo"}}, nil},
@@ -427,7 +412,6 @@ func (d *recordingDeleter) DeleteTorrents(_ context.Context, _ int, _ []string, 
 	return nil
 }
 
-// A delete from the web UI or the API names the user in qui.
 func TestBulkAction_DeleteNamesTheUser(t *testing.T) {
 	t.Parallel()
 

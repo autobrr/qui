@@ -20,7 +20,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => i18n,
 }))
 
-// jsdom has no layout, so the chart gets a fixed size in place of the size of its container.
 vi.mock("recharts", async (importOriginal) => ({
   ...await importOriginal<typeof import("recharts")>(),
   ResponsiveContainer: ({ children }: { children: ReactNode }) => isValidElement(children) ? cloneElement(children, { width: 800, height: 200 } as object) : null,
@@ -33,7 +32,6 @@ function bar(start: Date, width: StatisticsBar["width"]): StatisticsBar {
 }
 
 describe("GroupChart", () => {
-  // regression: #4113
   it("labels the bar of a folded year with its year", () => {
     const bars = [bar(new Date(2024, 0, 1), "year"), bar(new Date(2025, 0, 1), "year"), bar(new Date(2026, 0, 5), "day")]
     const { container } = render(<GroupChart bars={bars} unit="day" color={undefined} />)

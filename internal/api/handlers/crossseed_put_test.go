@@ -44,8 +44,6 @@ func newTestCrossSeedHandler(t *testing.T) (*CrossSeedHandler, *models.CrossSeed
 func TestAutomationSettingsTitleRescuePatch(t *testing.T) {
 	handler, store := newTestCrossSeedHandler(t)
 
-	// Enable then disable in order: the false patch must count as a real
-	// update, not an empty request.
 	steps := []struct {
 		name string
 		body string
@@ -237,9 +235,9 @@ func TestAutomationSettingsAutoResumeBudget(t *testing.T) {
 		name       string
 		method     string
 		body       string
-		setup      string // optional PUT body applied first
+		setup      string
 		want       int
-		wantStatus int // 0 means 200 OK
+		wantStatus int
 	}{
 		{
 			name:   "put without the field keeps the default",
@@ -423,7 +421,6 @@ func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
 		require.Equal(t, map[string]string{models.GazelleKeyRedacted: "red", models.GazelleKeyOrpheus: "ops"}, keys.Keys)
 	}
 
-	// An unrelated save under the new key keeps every secret, so restoring the old key brings them back.
 	patch(`{"runIntervalMinutes":240}`)
 	requireOldGazelleKeys()
 	tvdbKey, tvdbPin, err := oldStore.GetDecryptedSeasonPackTVDBCredentials(ctx)
@@ -431,7 +428,6 @@ func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
 	require.Equal(t, "tvdb", tvdbKey)
 	require.Equal(t, "pin", tvdbPin)
 
-	// The old PIN cannot block a new key, and the new key deletes no other secret.
 	patch(`{"seasonPackTvdbApiKey":"new-tvdb"}`)
 	tvdbKey, tvdbPin, err = newStore.GetDecryptedSeasonPackTVDBCredentials(ctx)
 	require.NoError(t, err)
@@ -443,8 +439,6 @@ func TestAutomationSettingsSecretsAcrossSessionSecretChange(t *testing.T) {
 	require.Equal(t, domain.RedactedStr, settings.SeasonPackTVDBPIN)
 }
 
-// putFieldsSettings holds the settings that PUT could not carry before #3691,
-// with the lists set away from their defaults and every boolean false.
 func putFieldsSettings() *models.CrossSeedAutomationSettings {
 	s := models.DefaultCrossSeedAutomationSettings()
 	s.RSSSourceCategories = []string{"movies"}
@@ -493,9 +487,7 @@ func settingsBodyWithoutTimestamps(t *testing.T, body string) map[string]any {
 	return fields
 }
 
-// regression: #3691
 func TestAutomationSettingsPutRoundTripKeepsEveryField(t *testing.T) {
-	// One boolean true per row, so a dropped or swapped boolean changes the body.
 	rows := map[string]func(*models.CrossSeedAutomationSettings){
 		"inheritSourceTags":            func(s *models.CrossSeedAutomationSettings) { s.InheritSourceTags = true },
 		"skipAutoResumeRss":            func(s *models.CrossSeedAutomationSettings) { s.SkipAutoResumeRSS = true },
@@ -522,7 +514,6 @@ func TestAutomationSettingsPutRoundTripKeepsEveryField(t *testing.T) {
 	}
 }
 
-// regression: #3691
 func TestAutomationSettingsPutWithoutFieldsKeepsDefaults(t *testing.T) {
 	tests := []struct {
 		name     string

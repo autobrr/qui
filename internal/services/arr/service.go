@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -19,22 +20,18 @@ import (
 )
 
 const (
-	// DefaultPositiveCacheTTL is the default TTL for positive cache entries (IDs found)
-	// Long TTL because external IDs (IMDb, TMDb, TVDb, TVMaze) are immutable
 	DefaultPositiveCacheTTL = 30 * 24 * time.Hour
 
-	// cacheWriteTimeout bounds detached cache writes so a wedged SQLite writer
-	// cannot hold them forever.
 	cacheWriteTimeout = 5 * time.Second
 
-	// DefaultNegativeCacheTTL is the default TTL for negative cache entries (no IDs found)
-	// Short TTL because content may be added to *arr instances later
 	DefaultNegativeCacheTTL = 1 * time.Hour
 
 	incompleteCacheTTL = 10 * time.Minute
 
 	cacheCleanupInterval = 30 * time.Minute
 )
+
+var ErrTitleUnanswered = errors.New("arr lookup: an instance answered but could not look up this title")
 
 type ContentType string
 
@@ -46,18 +43,16 @@ const (
 )
 
 type ExternalIDsResult struct {
-	IDs         *models.ExternalIDs `json:"ids,omitempty"`
-	Titles      []string            `json:"titles,omitempty"`
-	TitlesKnown bool                `json:"-"`
-	// EpisodeMap is set when Sonarr named exactly one absolute-numbered episode.
-	// EpisodeMapKnown reports that the map was read; a cached row without it refetches.
-	EpisodeMap      *models.EpisodeMap `json:"episode_map,omitempty"`
-	EpisodeMapKnown bool               `json:"-"`
-	Incomplete      bool               `json:"-"`
-	FromCache       bool               `json:"from_cache"`
-	ArrInstanceID   *int               `json:"arr_instance_id,omitempty"`
-	ContentType     ContentType        `json:"content_type"`
-	Source          string             `json:"source,omitempty"`
+	IDs             *models.ExternalIDs `json:"ids,omitempty"`
+	Titles          []string            `json:"titles,omitempty"`
+	TitlesKnown     bool                `json:"-"`
+	EpisodeMap      *models.EpisodeMap  `json:"episode_map,omitempty"`
+	EpisodeMapKnown bool                `json:"-"`
+	Incomplete      bool                `json:"-"`
+	FromCache       bool                `json:"from_cache"`
+	ArrInstanceID   *int                `json:"arr_instance_id,omitempty"`
+	ContentType     ContentType         `json:"content_type"`
+	Source          string              `json:"source,omitempty"`
 }
 
 type SeasonEpisodeTotalResult struct {
@@ -126,9 +121,6 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 
 	result, err := s.lookupExternalIDsFromParse(ctx, titleHash, title, contentType, instances, cacheResult == nil)
 	if err != nil {
-		// Instances unreachable: fall back to the cached IDs that triggered this
-		// re-query (e.g. a legacy entry awaiting title hydration) rather than
-		// discarding known-good data over a transient outage.
 		if cacheResult != nil {
 			cacheResult.Incomplete = true
 			return cacheResult, nil
@@ -224,10 +216,6 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 
 func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance, cacheNegative bool) (*ExternalIDsResult, error) {
 	anyQueried := false
-	// Parse mis-reads some names (e.g. a yearless title whose group tag ends in
-	// digits parses with a bogus year), so when it yields no IDs, retry as a plain
-	// title search against the instance's lookup endpoint. The rls year (when the
-	// name carries one) disambiguates same-title remakes among lookup candidates.
 	parsedRelease := rls.ParseString(title)
 	lookupTerm := strings.TrimSpace(parsedRelease.Title)
 	lookupYear := parsedRelease.Year
@@ -258,11 +246,6 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	}
 
 	for _, a := range asked {
-		// anyQueried gates negative caching and the total-failure error: an
-		// instance counts as queried only when its lookup cycle reached an
-		// authoritative empty answer. A parse-empty followed by a lookup error
-		// is inconclusive — parse-empty is exactly the state the title-lookup
-		// fallback exists to distrust.
 		if lookupTerm != "" {
 			lookupResult, lookupErr := a.client.LookupByTerm(ctx, lookupTerm, lookupYear)
 			if lookupErr != nil {
@@ -292,8 +275,9 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	}
 
 	if !anyQueried {
-		// Every instance failed before giving an authoritative answer: surface
-		// the outage instead of a look-alike "no IDs" result, and cache nothing.
+		if slices.ContainsFunc(asked, func(a askedInstance) bool { return a.parseAnswered }) {
+			return nil, ErrTitleUnanswered
+		}
 		return nil, fmt.Errorf("arr lookup: all %d instance(s) failed to answer", len(instances))
 	}
 
@@ -401,11 +385,6 @@ func (s *Service) clientForInstance(instance *models.ArrInstance) *Client {
 	return NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 }
 
-// LookupSeasonEpisodeTotal queries Sonarr instances for the episode count of a specific
-// season, plus the show's alternate titles usable for that season. When the series
-// resolves but the season's episode rows are unavailable (anime is often stored as one
-// absolute-numbered season), it returns a partial result with TotalEpisodes 0 and the
-// titles intact, so callers must check TotalEpisodes before trusting the count.
 func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, seasonNumber int) (*SeasonEpisodeTotalResult, error) {
 	if title == "" {
 		return nil, errors.New("title cannot be empty")
@@ -445,10 +424,6 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 			continue
 		}
 
-		// Sonarr's /parse embeds the series WITHOUT alternateTitles: only the series
-		// endpoints populate them (SeriesController.PopulateAlternateTitles, from scene
-		// mappings). Hydrate via /series/{id} so alias matching sees them; on failure
-		// fall back to the canonical title alone.
 		series := parseResp.Series
 		if full, hydrateErr := client.sonarrSeriesByID(ctx, series.ID); hydrateErr == nil && full != nil && full.ID > 0 {
 			series = full
@@ -471,9 +446,6 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 				Msg("[ARR-LOOKUP] Sonarr season episode lookup failed")
 		}
 		if err != nil || len(episodes) == 0 {
-			// The series resolved but the season has no episode rows (common for anime
-			// stored as one absolute-numbered season) or the call failed. Keep the alias
-			// titles so the caller's metadata-total fallback can still alias-match.
 			if partial == nil {
 				instanceID := instance.ID
 				partial = &SeasonEpisodeTotalResult{
@@ -663,9 +635,6 @@ func (s *Service) maybeScheduleCacheCleanup() {
 	}()
 }
 
-// detachedCacheWriteContext survives the caller's cancellation, so a lookup
-// that finishes near the caller's deadline still caches, while its own
-// timeout keeps the write from blocking forever on the serialized writer.
 func detachedCacheWriteContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), cacheWriteTimeout)
 }

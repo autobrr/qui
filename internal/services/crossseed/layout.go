@@ -13,8 +13,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TorrentLayout classifies how a torrent stores its payload so we can avoid
-// cross-seeding across fundamentally different file structures.
 type TorrentLayout string
 
 const (
@@ -25,11 +23,6 @@ const (
 
 var rarVolumeSuffix = regexp.MustCompile(`(?i)\.[r-z][0-9]{2}$`)
 
-// classifyTorrentLayout inspects the largest non-ignored file inside a torrent
-// to determine whether the content is stored as archives (.rar/.r00/etc.) or as
-// regular media files (.mkv/.mp4/.flac/etc.). This heuristic mirrors how scene
-// releases are structured in practice—the main payload is always the largest
-// file, and any side files (.nfo, .sfv, etc.) are tiny.
 func classifyTorrentLayout(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) TorrentLayout {
 	var largestName string
 	var largestSize int64
@@ -61,8 +54,6 @@ func isArchiveFilename(nameLower string) bool {
 		return true
 	}
 
-	// Handle multi-part suffixes (e.g. .tar.gz) by checking against known
-	// suffix list before falling back to simple extension matching.
 	archiveSuffixes := []string{
 		".tar.gz",
 		".tar.xz",

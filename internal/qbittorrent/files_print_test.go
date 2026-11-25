@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Backstops of these hashes: longHash 21h34m53s, shortHash 13h22m13s.
 const (
 	longHash  = "0000000000000000000000000000000000000000"
 	shortHash = "3333333333333333333333333333333333333333"
@@ -63,7 +62,6 @@ func TestFilesBackstopSpreadsByHash(t *testing.T) {
 	require.Equal(t, 13*time.Hour+22*time.Minute+13*time.Second, filesBackstopFor(shortHash))
 }
 
-// maindataFilesClient is a qBittorrent with maindata entries and file lists.
 type maindataFilesClient struct {
 	mu           sync.Mutex
 	maindata     map[string]qbt.Torrent
@@ -71,8 +69,7 @@ type maindataFilesClient struct {
 	fileRequests []string
 	checkedReads int
 	visited      int
-	// onFetch runs after each file request, outside the lock.
-	onFetch func()
+	onFetch      func()
 }
 
 func (c *maindataFilesClient) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
@@ -130,8 +127,6 @@ func seededFiles() qbt.TorrentFiles {
 	return qbt.TorrentFiles{{Name: "Show.S01/e01.mkv", Size: 2048}}
 }
 
-// filesModeRig is a SyncManager over a fake qBittorrent with one maindata
-// entry per hash and a fake files cache. Ages count back from now.
 type filesModeRig struct {
 	sm     *SyncManager
 	client *maindataFilesClient
@@ -153,7 +148,6 @@ func newFilesModeRig(hashes ...string) *filesModeRig {
 	return rig
 }
 
-// useFilesManager rebuilds the SyncManager over fm.
 func (r *filesModeRig) useFilesManager(fm FilesManager) {
 	r.sm = &SyncManager{
 		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
@@ -163,7 +157,6 @@ func (r *filesModeRig) useFilesManager(fm FilesManager) {
 	r.sm.SetFilesManager(fm)
 }
 
-// store puts a row of age into the fake cache. A nil print stores none.
 func (r *filesModeRig) store(hash string, p *int64, age time.Duration) {
 	r.fm.cached[hash] = seededFiles()
 	r.fm.prints[hash] = p
@@ -287,9 +280,6 @@ func TestGetTorrentFilesBatch_UntilChangedFetchesNoPrintOnce(t *testing.T) {
 func TestGetTorrentFilesBatch_FilesModePrecedence(t *testing.T) {
 	t.Parallel()
 
-	// Each row is 30 h old. A moved print is fetched by each mode and served by
-	// a max age of 100 h. A matching print is served by WithFilesUntilChanged
-	// and fetched by WithFilesUntilChangedOrStale, past its backstop.
 	matchingPrint := new(FilesPrint(seededTorrent(longHash)))
 	movedPrint := new(*matchingPrint + 1)
 	tests := []struct {

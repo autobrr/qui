@@ -23,12 +23,10 @@ vi.mock("@/components/instances/preferences/ReannounceEnableWarning", () => ({
   ReannounceEnableWarningDialog: () => null,
 }))
 
-// SettingsSummary.test.tsx covers the pair layout, so this file checks only the pairs the card passes in.
 vi.mock("@/components/instances/preferences/SettingsSummary", () => ({
   SettingsSummary: ({ parts }: { parts: string[] }) => <span data-testid="settings-summary">{JSON.stringify(parts)}</span>,
 }))
 
-// Stable singletons: a fresh object per render would rerun effects forever.
 const { instancesQuery, activityQueries, queryClient, formatters } = vi.hoisted(() => {
   const settings = {
     enabled: true,
@@ -97,7 +95,6 @@ function renderExpanded() {
       <ReannounceOverview />
     </TooltipProvider>
   )
-  // The card keeps its own expansion state and starts collapsed.
   fireEvent.click(view.getByRole("button", { name: "preferences.reannounceOverview.expand" }))
   return view
 }

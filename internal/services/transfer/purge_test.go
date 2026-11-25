@@ -15,15 +15,11 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// ended stores a Transfer of hash that ended in state, with a helper torrent
-// in the registry.
 func (r *rig) ended(hash string, state transfer.State) int64 {
 	r.t.Helper()
 	return r.endedWithHelper(hash, state, r.target.ID, "helper"+hash)
 }
 
-// endedWithHelper stores a Transfer of hash that ended in state, with the
-// helper torrent helperHash on instanceID in the registry.
 func (r *rig) endedWithHelper(hash string, state transfer.State, instanceID int, helperHash string) int64 {
 	r.t.Helper()
 	ctx := r.t.Context()
@@ -37,9 +33,6 @@ func (r *rig) endedWithHelper(hash string, state transfer.State, instanceID int,
 	return record.ID
 }
 
-// nextClockStep waits until the clock moves on. qui counts a sync as later
-// than a time only when its time is later, and the clock of Windows moves in
-// steps of up to 16 ms: a sync after this call is later on every host.
 func nextClockStep() {
 	start := time.Now()
 	for now := time.Now(); !now.After(start) || !now.Round(0).After(start.Round(0)); now = time.Now() {
@@ -47,7 +40,6 @@ func nextClockStep() {
 	}
 }
 
-// waiting stores a Transfer of hash that waits for its retry.
 func (r *rig) waiting(hash string) *transfer.Record {
 	r.t.Helper()
 	record := group(hash)
@@ -63,8 +55,6 @@ func (r *rig) exists(id int64) bool {
 	return err == nil
 }
 
-// qui removes the rows of Transfers that finished more than 30 days ago, and
-// keeps every other row.
 func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	r := newRig(t)
 	old := r.ended("aaaa", transfer.StateDone)
@@ -80,12 +70,6 @@ func TestTransfersRemoveFinishedRowsAfter30Days(t *testing.T) {
 	require.True(t, r.exists(running.ID), "a Transfer that runs stays")
 }
 
-// regression: #4242
-// When the row of a Transfer goes, by the user or after 30 days, qui forgets
-// a helper torrent only when it sees that the helper is gone: the client is
-// connected and its synced torrent list, from a sync after the end of the
-// Transfer, does not hold it. A helper that is still there, or one on an
-// offline instance, stays protected, also after a restart.
 func TestTheRowOfATransferTakesOnlyItsGoneHelpersAlong(t *testing.T) {
 	removals := []struct {
 		name   string
@@ -100,13 +84,10 @@ func TestTheRowOfATransferTakesOnlyItsGoneHelpersAlong(t *testing.T) {
 		}},
 	}
 	helpers := []struct {
-		name string
-		// helper registers the helper torrent, and returns its instance and
-		// its hash.
+		name      string
 		helper    func(r *rig) (int, string)
 		protected bool
-		// stale leaves the last sync of the target before the end.
-		stale bool
+		stale     bool
 	}{
 		{name: "still on the client", protected: true, helper: func(r *rig) (int, string) {
 			file, hash := singleFileTorrent(r.t, "Show.S01E01.mkv", []byte("helper"))
@@ -159,12 +140,6 @@ func TestTheRowOfATransferTakesOnlyItsGoneHelpersAlong(t *testing.T) {
 	}
 }
 
-// regression: #4242
-// A helper torrent that qui kept when the row of its Transfer went, because
-// qui could not see it gone yet, goes at a later hourly pass once its instance
-// has synced and the synced torrent list does not hold it. A helper that is
-// still there, one on an offline instance, and one on an instance with no
-// sync since stay protected, also after a restart.
 func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 	removals := []struct {
 		name   string
@@ -182,7 +157,6 @@ func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 		{name: "the rows went before the last restart", remove: func(r *rig, _ []int64) {
 			r.setClock(time.Now().Add(31 * 24 * time.Hour))
 			r.restart()
-			// The start checks the kept helpers against syncs after now.
 			r.restart()
 			nextClockStep()
 		}},
@@ -218,8 +192,6 @@ func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 			for i, h := range helpers {
 				ids = append(ids, r.endedWithHelper(fmt.Sprintf("aaa%d", i), transfer.StateCancelled, h.instanceID, h.hash))
 			}
-			// qui wakes each millisecond only now: a wake runs a row that has
-			// not ended yet.
 			r.deps.Config.WakeInterval = time.Millisecond
 			r.restart()
 
@@ -256,17 +228,9 @@ func TestAKeptHelperGoesAtALaterHourlyPassOnceQuiSeesItGone(t *testing.T) {
 	}
 }
 
-// regression: #4242
-// A partial sync of qBittorrent before 5.3.0rc1 can name a new torrent
-// without its fields, and qui leaves it out of the synced torrent list until
-// the next full sync. A helper torrent that a sync left out is not gone: qui
-// keeps it protected, at the removal of the row and at the hourly recheck,
-// until a sync that leaves nothing out shows it gone.
 func TestAHelperThatASyncLeftOutStaysProtectedUntilAFullSync(t *testing.T) {
 	ways := []struct {
-		name string
-		// leftOut removes the row of id around a sync that leaves the helper
-		// out, and runs each check that must then keep the helper.
+		name    string
 		leftOut func(r *rig, id int64, sync func())
 	}{
 		{name: "the user removes the row", leftOut: func(r *rig, id int64, sync func()) {
@@ -291,7 +255,7 @@ func TestAHelperThatASyncLeftOutStaysProtectedUntilAFullSync(t *testing.T) {
 				t.Helper()
 				require.NoError(t, owner.Sync(t.Context()))
 			}
-			sync() // a full sync, before qui adds the helper
+			sync()
 			file, hash := singleFileTorrent(t, "Show.S01E01.mkv", []byte("helper"))
 			r.dst.Seed(file, r.dstDir)
 			id := r.endedWithHelper("aaaa", transfer.StateCancelled, r.target.ID, hash)
@@ -301,7 +265,7 @@ func TestAHelperThatASyncLeftOutStaysProtectedUntilAFullSync(t *testing.T) {
 			require.True(t, r.store.IsHelper(r.target.ID, hash), "the sync left the helper out")
 
 			r.dst.DeleteElsewhere(hash)
-			sync() // a full sync, which qui asks for after a sync left a torrent out
+			sync()
 			forgot, err := r.store.ForgetGoneHelpers(t.Context(), r.sync.TorrentGoneSince)
 			require.NoError(t, err)
 			require.Equal(t, 1, forgot, "the full sync shows the helper gone")
@@ -310,9 +274,6 @@ func TestAHelperThatASyncLeftOutStaysProtectedUntilAFullSync(t *testing.T) {
 	}
 }
 
-// regression: #4242
-// A removal that comes between the two reads of Get leaves the Transfer
-// without its torrents: Get reports it as not found.
 func TestGetOfATransferThatARemovalTook(t *testing.T) {
 	r := newRig(t)
 	id := r.ended("aaaa", transfer.StateDone)

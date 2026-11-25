@@ -23,7 +23,6 @@ vi.mock("./useDirectoryContent", () => {
   const results = new Map<string, { data: string[] }>()
   return {
     useDirectoryContent: (_id: number, path: string, options: { mode?: string; enabled?: boolean }) => {
-      // A disabled query has no data, as in React Query.
       if (options.enabled === false) return { data: undefined }
       const key = `${options.mode ?? "dirs"}:${path}`
       if (path) requestedPaths.push(path)
@@ -201,7 +200,6 @@ describe("usePathAutocomplete keyboard navigation", () => {
     requestedPaths.length = 0
   })
 
-  // regression: #3204
   it.each([false, true])("arrow keys move and wrap the highlight with includeFiles %s", (includeFiles) => {
     const onSelect = vi.fn()
     const { result } = renderHook(() => usePathAutocomplete(onSelect, 1, { includeFiles }))
@@ -223,7 +221,6 @@ describe("usePathAutocomplete keyboard navigation", () => {
     expect(onSelect).toHaveBeenCalledWith("/data/alps/")
   })
 
-  // regression: #3204
   it("typing new input resets the highlight to the first suggestion", () => {
     const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1))
     mountRefs(result)
@@ -250,7 +247,6 @@ describe("usePathAutocomplete keyboard navigation", () => {
     const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1))
     mountRefs(result)
     act(() => result.current.handleInputChange("/data/al"))
-    // Type and delete a character in one render, so the deferred input never changes.
     act(() => {
       result.current.handleInputChange("/data/alp")
       result.current.handleInputChange("/data/al")

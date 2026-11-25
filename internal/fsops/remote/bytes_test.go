@@ -78,8 +78,6 @@ func TestOpenBytes_MissingPath(t *testing.T) {
 	assert.Contains(t, err.Error(), missing)
 }
 
-// A transport that drops under an open file is a lost connection, so a copy
-// can tell it from a refused path.
 func TestByteCallsReportADroppedTransportAsConnectionLost(t *testing.T) {
 	t.Parallel()
 
@@ -118,7 +116,6 @@ func TestByteCallsReportADroppedTransportAsConnectionLost(t *testing.T) {
 			writeFile(t, file, "0123456789")
 			b, server := newBackend(t)
 			server.SetFsync(true)
-			// Connected first, so the drop cuts a request and not the dial.
 			_, err := b.Stat(t.Context(), file)
 			require.NoError(t, err)
 

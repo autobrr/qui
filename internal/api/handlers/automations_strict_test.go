@@ -282,7 +282,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 	})
 
 	t.Run("update skips the field check when the conditions did not change", func(t *testing.T) {
-		// A rule saved before the field check, with an operator that never matches.
 		bad, err := store.Create(t.Context(), &models.Automation{
 			InstanceID:     instance.ID,
 			Name:           "bad operator",
@@ -316,7 +315,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 		}))
 		require.Equal(t, []string{"conditions.pause.condition.operator: PRIVATE does not allow GREATER_THAN; it allows EQUAL, NOT_EQUAL"}, errorLines(t, rec))
 
-		// The sorting changes and the conditions stay the same, so only the sorting is checked.
 		rec = serveRule(handler.Update, bad.ID, edit(func(body map[string]any) {
 			body["sortingConfig"] = map[string]any{"schemaVersion": "1", "type": "simple", "direction": "ASC", "field": "SIZE"}
 		}))
@@ -334,7 +332,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 	})
 
 	t.Run("update skips the group ID checks when the conditions and sorting did not change", func(t *testing.T) {
-		// A rule saved before the group ID checks, with a misspelled group in an action and in a score rule.
 		bad, err := store.Create(t.Context(), &models.Automation{
 			InstanceID:     instance.ID,
 			Name:           "bad group",
@@ -411,7 +408,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 		require.Equal(t, []string{"Unknown grouping ID 'my_group' in grouped condition"}, errorLines(t, rec))
 	})
 
-	// regression: #4186
 	t.Run("a saved rule has one condition for its running actions", func(t *testing.T) {
 		const packed = `{"field":"NAME","operator":"CONTAINS","value":"packed"}`
 		const unpacked = `{"field":"NAME","operator":"CONTAINS","value":"unpacked"}`
@@ -492,7 +488,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 			require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
 		})
 
-		// A rule saved before the check.
 		condition := func(value string) *models.RuleCondition {
 			return &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: value}
 		}

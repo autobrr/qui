@@ -47,8 +47,7 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
     setManualCrossSeedTarget({ hash: torrent.hash, name: torrent.name })
   }, [])
 
-  // Memoize props to avoid unnecessary re-renders
-  const memoizedProps = props // If props are stable, this is fine; otherwise use useMemo
+  const memoizedProps = props
 
   const manualCrossSeedDialog = allowCrossSeedSearch ? (
     <ManualCrossSeedDialog

@@ -20,7 +20,6 @@ func TestDropFeedItemsLastRunIDMigrationSQLite(t *testing.T) {
 	conn, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	// PRAGMA foreign_keys is per connection.
 	conn.SetMaxOpenConns(1)
 	checkDropFeedItemsLastRunIDMigration(t.Context(), t, conn, migrationsFS, "migrations/122_drop_cross_seed_feed_items_last_run_id.sql", true)
 }
@@ -71,7 +70,6 @@ func checkDropFeedItemsLastRunIDMigration(ctx context.Context, t *testing.T, con
 		require.NoError(t, err)
 	}
 	if sqlite {
-		// A row left behind while foreign keys were off. qui migrates with them on.
 		for _, stmt := range []string{
 			"PRAGMA foreign_keys = OFF",
 			"INSERT INTO cross_seed_feed_items (guid, indexer_id, last_status) VALUES ('orphan', 99, 'skipped')",
@@ -113,7 +111,6 @@ func checkDropFeedItemsLastRunIDMigration(ctx context.Context, t *testing.T, con
 		assert.Equal(t, []string{"torznab_indexers indexer_id id CASCADE"}, queryStrings(ctx, t, conn, `SELECT "table" || ' ' || "from" || ' ' || "to" || ' ' || on_delete FROM pragma_foreign_key_list('cross_seed_feed_items')`))
 		assert.Equal(t, []string{"indexer_id 0"}, queryStrings(ctx, t, conn, "SELECT name || ' ' || \"desc\" FROM pragma_index_xinfo('idx_cross_seed_feed_items_indexer') WHERE key = 1"))
 		assert.Equal(t, []string{"last_seen_at 1"}, queryStrings(ctx, t, conn, "SELECT name || ' ' || \"desc\" FROM pragma_index_xinfo('idx_cross_seed_feed_items_last_seen') WHERE key = 1"))
-		// The touch trigger was dropped on purpose; the rebuild must not recreate it.
 		var triggers int
 		require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'cross_seed_feed_items'").Scan(&triggers))
 		assert.Zero(t, triggers)

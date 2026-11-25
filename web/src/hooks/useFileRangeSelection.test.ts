@@ -85,7 +85,6 @@ describe("useFileRangeSelection", () => {
       result.current.handleCheckboxPointerDown(pointer(false))
       result.current.handleFileCheckbox(asFile(10), 0, true)
     })
-    // Anchor (index 10) gets filtered out of the visible rows (e.g. a search).
     rows = [fileRow(11), fileRow(12)]
     rerender({ rk: "hashA" })
     act(() => {
@@ -108,7 +107,7 @@ describe("useFileRangeSelection", () => {
       result.current.handleCheckboxPointerDown(pointer(false))
       result.current.handleFileCheckbox(asFile(10), 0, true)
     })
-    rerender({ rk: "hashB" }) // user switched to a different torrent
+    rerender({ rk: "hashB" })
     act(() => {
       result.current.handleCheckboxPointerDown(pointer(true))
       result.current.handleFileCheckbox(asFile(12), 2, true)

@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeHelpers is the helper registry: the kind of each helper torrent of
-// instance 1.
 type fakeHelpers map[string]string
 
 func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
@@ -23,9 +21,6 @@ func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
 	return f
 }
 
-// A Transfer torrent shows a full-size download and upload, so Statistics
-// counts no helper torrent. A torrent of the user with the helper tag and no
-// registry row counts as before.
 func TestStatisticsCountNoHelperTorrent(t *testing.T) {
 	const (
 		seed   = "aaaa000000000000000000000000000000000001"

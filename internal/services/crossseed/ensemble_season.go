@@ -21,28 +21,14 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// Ensemble season search synthesizes virtual "season pack" queue entries from
-// groups of seeded loose episodes, so a normal library run can search trackers
-// for the pack and hand admitted candidates to the season-pack assembly
-// pipeline via the regular cross-seed apply path. Virtual entries ride the
-// ordinary search queue under a synthetic pseudo-hash, which reuses the
-// per-hash search-history cooldown unchanged: new episodes in a season do not
-// change the pseudo-hash, so they do not bypass the cooldown.
 const (
 	ensembleSeasonHashPrefix = "season:"
 
-	// ensembleMinEpisodes is the seeded-episode floor before a season is worth
-	// a pack search. Deliberately not a setting.
 	ensembleMinEpisodes = 3
 
-	// ponytail: hard cap on apply attempts (each downloads a .torrent) per
-	// group per run; raise only if field data shows viable packs ranked below
-	// the cap.
 	ensembleMaxApplyAttempts = 3
 )
 
-// ensembleGroupKey identifies a show season assembled from loose episodes.
-// Season 0 groups absolute-numbered (seasonless anime) episodes.
 type ensembleGroupKey struct {
 	normalizedTitle string
 	season          int
@@ -52,9 +38,6 @@ func isEnsembleSeasonCandidate(hash string) bool {
 	return strings.HasPrefix(hash, ensembleSeasonHashPrefix)
 }
 
-// seasonRangeRe matches multi-season range markers: S01-S05, S01-05,
-// Season 1-5. rls only surfaces the range for the S01-S05 form (as a second
-// series tag), so detection works on the raw name instead.
 var seasonRangeRe = regexp.MustCompile(`(?i)\bS(?:eason[ ._-]?)?(\d{1,2})[ ._-]?-[ ._-]?S?(\d{1,2})\b`)
 
 func isSeasonRangePack(name string) bool {
@@ -71,9 +54,6 @@ func ensembleSeasonPseudoHash(key ensembleGroupKey) string {
 	return fmt.Sprintf("%s%s:s%02d", ensembleSeasonHashPrefix, key.normalizedTitle, key.season)
 }
 
-// parseEnsembleSeasonPseudoHash recovers the group identity from the synthetic
-// hash. Identity deliberately never round-trips through rls re-parsing of the
-// virtual display name, which is lossy for unusual titles.
 func parseEnsembleSeasonPseudoHash(hash string) (ensembleGroupKey, bool) {
 	rest, ok := strings.CutPrefix(hash, ensembleSeasonHashPrefix)
 	if !ok {
@@ -90,15 +70,6 @@ func parseEnsembleSeasonPseudoHash(hash string) (ensembleGroupKey, bool) {
 	return ensembleGroupKey{normalizedTitle: rest[:idx], season: season}, true
 }
 
-// buildEnsembleSeasonCandidates groups completed loose episodes by normalized
-// show title + season and returns one virtual queue entry per group with at
-// least ensembleMinEpisodes distinct episodes and no seeded pack for the same
-// key. Input torrents have already passed the run's category/tag filters and
-// content dedup, so groups inherit the run scoping. packSource is the
-// instance's full torrent list: a seeded pack outside the run scope must still
-// suppress its group, or the search re-downloads a pack the user already has.
-// copyAddedOn gives the added time of the newest copy of a deduplicated
-// episode, which dates the group for a scheduled run.
 func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torrent, copyAddedOn map[string]int64) []*qbt.Torrent {
 	type groupInfo struct {
 		displayTitle string
@@ -108,15 +79,11 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torr
 	groups := make(map[ensembleGroupKey]*groupInfo)
 	packs := make(map[ensembleGroupKey]struct{})
 
-	// Any seeded or downloading pack suppresses its group; progress does not
-	// matter because the pack's presence already makes a search pointless.
 	for _, pack := range packSource {
 		release := s.releaseCache.Parse(pack.Name)
 		if !isTVSeasonPack(release) {
 			continue
 		}
-		// A multi-episode range ("S01E01E02") parses as a pack but is not the
-		// season: owning a two-parter must not cancel the season search.
 		if releases.IsEpisodeRange(release) {
 			continue
 		}
@@ -155,7 +122,6 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torr
 		}
 		group.addedOn = max(group.addedOn, torrent.AddedOn, copyAddedOn[torrent.Hash])
 		if isRange {
-			// A range counts each episode it names toward the group.
 			for _, se := range release.SeriesEpisodes() {
 				if se[0] == release.Series {
 					group.episodes[se[1]] = struct{}{}
@@ -182,8 +148,7 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torr
 			Hash:     ensembleSeasonPseudoHash(key),
 			Name:     name,
 			Progress: 1.0,
-			// The newest episode dates the group for a scheduled run.
-			AddedOn: group.addedOn,
+			AddedOn:  group.addedOn,
 		})
 	}
 
@@ -193,16 +158,9 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []*qbt.Torr
 	return virtual
 }
 
-// processEnsembleSeasonCandidate searches trackers for a season pack matching
-// a virtual episode-group entry and feeds admitted candidates through the
-// regular apply path, where the season-pack diversion assembles them from
-// local episodes. Admission is name-level only (show + season + is-pack): the
-// virtual entry has no meaningful size, and the assembly pipeline's per-file
-// coverage check is the real gate.
 func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *searchRunState, torrent *qbt.Torrent, processedAt time.Time) (bool, error) {
 	key, ok := parseEnsembleSeasonPseudoHash(torrent.Hash)
 	if !ok {
-		// Unreachable: every queued pseudo-hash is minted by ensembleSeasonPseudoHash.
 		log.Debug().Str("hash", torrent.Hash).Msg("[CROSSSEED-ENSEMBLE] Unparseable ensemble candidate")
 		return false, nil
 	}
@@ -240,8 +198,6 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 			return true, nil
 		}
 		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusFailed, fmt.Sprintf("search failed: %v", err))
-		// As for a torrent, a sent search counts also when it failed: the run
-		// waits the interval, and a scheduled run counts it toward its cap.
 		return true, err
 	}
 	if answered {
@@ -258,9 +214,6 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 	return true, nil
 }
 
-// applyEnsembleSearchResults admits season-pack results for an ensemble group
-// and attempts each admitted candidate through the regular apply path until
-// one is added or the attempt cap is reached.
 func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchRunState, torrent *qbt.Torrent, key ensembleGroupKey, query string, resp *jackett.SearchResponse, processedAt time.Time) {
 	admitted := 0
 	successCount := 0
@@ -273,9 +226,6 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 		if !s.ensemblePackAdmissible(res.Title, key) {
 			continue
 		}
-		// The same pack circulates under one name with a distinct GUID per
-		// indexer; retrying an identical name from another indexer fails the
-		// same way and must not consume another cap slot.
 		normName := canonicalReleaseNameKey(res.Title)
 		if _, dup := attemptedNames[normName]; dup {
 			continue
@@ -310,8 +260,6 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 				failedAttempt = true
 				indexerFails[match.IndexerID]++
 			case models.CrossSeedSearchResultStatusSkipped:
-				// harmless no-add (e.g. already exists); falls through to the
-				// skipped outcome below
 			}
 			s.appendSearchResult(state, *attemptResult)
 		}
@@ -343,16 +291,12 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 
 func (s *Service) ensemblePackAdmissible(title string, key ensembleGroupKey) bool {
 	candidate := s.releaseCache.Parse(title)
-	// A multi-season range pack can never assemble from one season's
-	// episodes; admitting one is a guaranteed wasted download.
 	return isTVSeasonPack(candidate) &&
 		!isSeasonRangePack(title) &&
 		s.stringNormalizer.Normalize(candidate.Title) == key.normalizedTitle &&
 		(key.season == 0 || candidate.Series == key.season)
 }
 
-// recordEnsembleOutcome appends a summary result row for an ensemble candidate
-// that produced no per-attempt rows, bumping the matching run counter.
 func (s *Service) recordEnsembleOutcome(state *searchRunState, torrent *qbt.Torrent, processedAt time.Time, status models.CrossSeedSearchResultStatus, message string) {
 	s.appendSearchResult(state, models.CrossSeedSearchResult{
 		TorrentHash: torrent.Hash,

@@ -23,12 +23,9 @@ import { toast } from "sonner"
 
 interface OrphanScanSettingsFormProps {
   instanceId: number
-  /** The instance is remote, where deletion and auto-cleanup need file identity. */
   isRemote?: boolean
-  /** The instance reads file identity. */
   hasIdentity?: boolean
   onSuccess?: () => void
-  /** Form ID for external submit button. When provided, the internal submit button is hidden. */
   formId?: string
 }
 
@@ -60,13 +57,10 @@ export function OrphanScanSettingsForm({
   const [settings, setSettings] = useState<typeof DEFAULT_SETTINGS>(() => ({ ...DEFAULT_SETTINGS }))
   const [ignorePathsText, setIgnorePathsText] = useState("")
 
-  // Track acknowledgment for enabling auto-cleanup
   const [autoCleanupAcknowledged, setAutoCleanupAcknowledged] = useState(false)
 
-  // Track whether auto-cleanup was already enabled when form loaded
   const [initialAutoCleanupEnabled, setInitialAutoCleanupEnabled] = useState(false)
 
-  // Reset settings when query data changes
   useEffect(() => {
     if (settingsQuery.data) {
       setSettings({
@@ -84,21 +78,17 @@ export function OrphanScanSettingsForm({
       })
       setIgnorePathsText(settingsQuery.data.ignorePaths.join("\n"))
       setInitialAutoCleanupEnabled(settingsQuery.data.autoCleanupEnabled)
-      // If auto-cleanup is already enabled, user doesn't need to re-acknowledge
       setAutoCleanupAcknowledged(settingsQuery.data.autoCleanupEnabled)
     }
   }, [settingsQuery.data])
 
-  // Reset acknowledgment when user enables auto-cleanup (if it wasn't initially enabled)
   const handleAutoCleanupToggle = (checked: boolean) => {
     setSettings(prev => ({ ...prev, autoCleanupEnabled: checked }))
-    // Only require acknowledgment if enabling and it wasn't initially enabled
     if (checked && !initialAutoCleanupEnabled) {
       setAutoCleanupAcknowledged(false)
     }
   }
 
-  // Check if we need acknowledgment for saving
   const needsAutoCleanupAcknowledgment = settings.autoCleanupEnabled && !initialAutoCleanupEnabled && !autoCleanupAcknowledged
 
   const persistSettings = (nextSettings: typeof DEFAULT_SETTINGS, successMessage?: string) => {
@@ -112,8 +102,6 @@ export function OrphanScanSettingsForm({
       autoCleanupEnabled: nextSettings.autoCleanupEnabled,
       autoCleanupMaxFiles: Math.max(1, nextSettings.autoCleanupMaxFiles),
       scanDefaultSavePath: nextSettings.scanDefaultSavePath,
-      // Categories are a refinement of the default save path; persisting them
-      // as enabled while that is off would scan a subset of what the label says.
       scanCategoryPaths: nextSettings.scanDefaultSavePath && nextSettings.scanCategoryPaths,
       deleteAbandonedDirs: nextSettings.deleteAbandonedDirs,
     }
@@ -205,7 +193,7 @@ export function OrphanScanSettingsForm({
             <Select
               value={String(settings.scanIntervalHours)}
               onValueChange={(value) => {
-                if (!value) return // Ignore empty values from Radix Select quirk
+                if (!value) return
                 setSettings(prev => ({ ...prev, scanIntervalHours: Number(value) }))
               }}
             >
@@ -391,7 +379,6 @@ export function OrphanScanSettingsForm({
 
           {settings.autoCleanupEnabled && (
             <div className="space-y-4 pl-3 border-l-2 border-muted">
-              {/* Warning banner when enabling auto-cleanup */}
               {!initialAutoCleanupEnabled && (
                 <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/5 p-4 space-y-3">
                   <div className="flex items-start gap-3">

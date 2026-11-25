@@ -50,9 +50,6 @@ type AppConfig struct {
 	logManager *LogManager
 }
 
-// zerolog keeps its formatting settings in package globals. Set them once at
-// startup: writing them again on a config reload races with any goroutine that
-// logs at the same time.
 func init() {
 	zerolog.TimeFieldFormat = time.RFC3339
 }
@@ -107,9 +104,6 @@ func (c *AppConfig) defaults() {
 		host = "0.0.0.0"
 	}
 
-	// Generate secure session secret if not provided. crypto/rand cannot fail on
-	// Go 1.24+, and a guessable fallback secret would silently weaken every
-	// stored credential, so refuse to start instead.
 	sessionSecret, err := generateSecureToken(encryptionKeySize)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to generate a secure session secret")
@@ -126,8 +120,8 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("logMaxSize", 50)
 	c.viper.SetDefault("logMaxBackups", 10)
-	c.viper.SetDefault("dataDir", "")   // Empty means auto-detect (next to config file)
-	c.viper.SetDefault("backupDir", "") // Empty means <dataDir>/backups
+	c.viper.SetDefault("dataDir", "")
+	c.viper.SetDefault("backupDir", "")
 	c.viper.SetDefault("databaseEngine", "sqlite")
 	c.viper.SetDefault("databaseDsn", "")
 	c.viper.SetDefault("databaseHost", "localhost")
@@ -146,7 +140,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("problemReportsURL", "https://bin.getqui.com")
 	c.viper.SetDefault("disableSelfUpdate", false)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
-	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
+	c.viper.SetDefault("customThemesDir", "")
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("pprofAddr", "127.0.0.1:6060")
@@ -183,7 +177,6 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 	c.viper.SetConfigFile(configPath)
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		// With SetConfigFile, viper reports a missing file as a plain fs error, never ConfigFileNotFoundError.
 		if !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
@@ -201,17 +194,13 @@ func (c *AppConfig) loadFromStandardLocations() error {
 	return c.loadFromPath(standardConfigPath())
 }
 
-// standardConfigPath falls back to the default path, where loadFromPath writes a default config.
 func standardConfigPath() string {
-	// Match config.toml only: viper's name-only search also matched config.ini and other
-	// extensions, then decoded them as TOML (#2669).
 	defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
 	workDirConfigPath, err := filepath.Abs("config.toml")
 	if err != nil {
 		return defaultConfigPath
 	}
 	for _, candidate := range []string{workDirConfigPath, defaultConfigPath} {
-		// Skip on any stat error, so an unreadable working directory falls through to the default dir.
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate
 		}
@@ -221,10 +210,6 @@ func standardConfigPath() string {
 
 //nolint:errcheck // BindEnv only errors on empty key, which can't happen with static strings
 func (c *AppConfig) loadFromEnv() {
-	// DO NOT use AutomaticEnv() - it reads ALL env vars and causes conflicts with K8s
-	// Instead, explicitly bind only the environment variables we want
-
-	// Use double underscore to avoid conflicts with K8s deployment_PORT patterns
 	c.viper.BindEnv("host", envPrefix+"HOST")
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
@@ -282,9 +267,6 @@ func (c *AppConfig) loadFromEnv() {
 }
 
 func (c *AppConfig) watchConfig() {
-	// Register the handler before the watcher starts: viper reads onConfigChange
-	// from the watcher goroutine without a lock, so setting it after WatchConfig
-	// races with an event that arrives right away.
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
 		c.watchMu.Lock()
 		defer c.watchMu.Unlock()
@@ -292,8 +274,6 @@ func (c *AppConfig) watchConfig() {
 			return
 		}
 		log.Info().Msgf("Config file changed: %s", e.Name)
-		// An editor can save in several writes, and a part-written file can
-		// clear keys such as oidcAllowedSubject. Read the file once it is quiet.
 		time.Sleep(configReloadDelay)
 		c.reload()
 	})
@@ -312,7 +292,6 @@ func (c *AppConfig) reload() {
 	c.configMu.Lock()
 	defer c.configMu.Unlock()
 
-	// The watcher read the file before the delay. Read the file as it is now.
 	if err := c.viper.ReadInConfig(); err != nil {
 		log.Error().Err(err).Msg("Failed to read configuration file")
 		return
@@ -338,8 +317,6 @@ func (c *AppConfig) reload() {
 	c.Config.Publish()
 }
 
-// PublishConfig publishes the changes that startup made after New, for example
-// from CLI flags.
 func (c *AppConfig) PublishConfig() {
 	c.configMu.Lock()
 	defer c.configMu.Unlock()
@@ -407,7 +384,6 @@ func WarnIfOIDCAllowedUserUnset(cfg *domain.Config) {
 func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.Host = c.viper.GetString("host")
 	c.Config.Port = c.viper.GetInt("port")
-	// Canonical "/prefix/" form; the index.html redirect breaks on a slashless base.
 	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
 	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
@@ -506,8 +482,6 @@ func (c *AppConfig) loadAllowedHosts() error {
 	return nil
 }
 
-// withLocalHosts admits loopback names and the machine hostname, as Sonarr and Radarr do,
-// so a list that names only the public hostname does not lock out local access.
 func withLocalHosts(entries []string) []string {
 	local := []string{"localhost", "127.0.0.1", "::1"}
 	if name, err := os.Hostname(); err == nil {
@@ -812,9 +786,6 @@ sessionSecret = "{{ .sessionSecret }}"
 		return fmt.Errorf("failed to parse config template: %w", err)
 	}
 
-	// Create config file with owner-only permissions. It holds the session
-	// secret, so it must never be group/world readable or writable, regardless
-	// of the process umask (e.g. when UMASK is set for content sharing).
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
@@ -825,7 +796,6 @@ sessionSecret = "{{ .sessionSecret }}"
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
-	// Absolute, so a mistyped --config-dir that lands on a fresh config is easy to spot.
 	if absPath, absErr := filepath.Abs(path); absErr == nil {
 		path = absPath
 	}
@@ -834,7 +804,6 @@ sessionSecret = "{{ .sessionSecret }}"
 }
 
 func GetDefaultConfigDir() string {
-	// First check if XDG_CONFIG_HOME is set (Docker containers set this to /config)
 	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
 		if xdgConfig == "/config" {
 			return xdgConfig
@@ -935,12 +904,10 @@ func isDevBuild(version string) bool {
 }
 
 func (c *AppConfig) resolveConfigPath(configDirOrPath string) string {
-	// Check if it's a direct file path (ends with .toml) - backward compatibility
 	if strings.HasSuffix(strings.ToLower(configDirOrPath), ".toml") {
 		return configDirOrPath
 	}
 
-	// Check if the path points to an existing file (backward compatibility)
 	if info, err := os.Stat(configDirOrPath); err == nil && !info.IsDir() {
 		return configDirOrPath
 	}
@@ -1000,8 +967,6 @@ func (c *AppConfig) GetCustomThemesDir() string {
 	return dir
 }
 
-// EnsureCustomThemesDir resolves the custom themes directory and creates it if missing.
-// The resolved path is returned even when creation fails so callers can report it.
 func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
 	dir := c.GetCustomThemesDir()
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -1010,8 +975,6 @@ func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
 	return dir, nil
 }
 
-// SetDefaultLogPath sets the log path that applies when the config file, the
-// environment, and the flags set none. A config reload keeps it.
 func (c *AppConfig) SetDefaultLogPath(path string) {
 	c.configMu.Lock()
 	defer c.configMu.Unlock()
@@ -1046,18 +1009,12 @@ func WriteDefaultConfig(path string) error {
 func (c *AppConfig) GetEncryptionKey() []byte {
 	key, err := hkdf.Key(sha256.New, []byte(c.Config.SessionSecret), nil, encryptionKeyInfo, encryptionKeySize)
 	if err != nil {
-		// Reachable only under GODEBUG=fips140=only, which rejects a secret
-		// shorter than 112 bits. That host opted into the policy, so refusing to
-		// start is right even though a short secret only warns everywhere else.
 		log.Fatal().Err(err).Int("length", len(c.Config.SessionSecret)).Msg(
 			"sessionSecret is too short to derive the credential encryption key in FIPS 140-only mode. Lengthening it makes stored credentials unreadable, so re-enter them in the UI afterwards")
 	}
 	return key
 }
 
-// GetLegacyEncryptionKey returns the pre-HKDF key, the session secret truncated
-// to 32 bytes or zero-padded up to it. Credentials written before the derived
-// key shipped are still readable only with this.
 func (c *AppConfig) GetLegacyEncryptionKey() []byte {
 	secret := c.Config.SessionSecret
 	if len(secret) >= encryptionKeySize {
@@ -1069,13 +1026,7 @@ func (c *AppConfig) GetLegacyEncryptionKey() []byte {
 	return padded
 }
 
-// validateSessionSecret rejects an empty session secret. Viper only falls back
-// to the generated default when the key is absent, so an explicit empty value in
-// config.toml survives loading. Every install would then derive the same
-// credential key from the empty string.
 func (c *AppConfig) validateSessionSecret() error {
-	// Validated on the trimmed value but never stored trimmed. Rewriting the
-	// secret would change the derived key and break stored credentials.
 	if strings.TrimSpace(c.Config.SessionSecret) != "" {
 		return nil
 	}
@@ -1083,10 +1034,6 @@ func (c *AppConfig) validateSessionSecret() error {
 	return errors.New("sessionSecret is empty. Set it in config.toml or QUI__SESSION_SECRET to a random value of at least 32 characters. Credentials saved while it was empty will not decrypt under the new value, so enter them again in the UI")
 }
 
-// warnWeakSessionSecret reports a session secret shorter than the key HKDF
-// derives from it. HKDF spreads the secret over 32 bytes. It cannot add entropy
-// the secret does not have. This warns and never refuses, because lengthening
-// the secret would make every stored credential undecryptable.
 func (c *AppConfig) warnWeakSessionSecret() {
 	length := len(c.Config.SessionSecret)
 	if length >= encryptionKeySize {

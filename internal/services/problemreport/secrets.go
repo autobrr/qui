@@ -22,14 +22,8 @@ import (
 	"github.com/autobrr/qui/pkg/redact"
 )
 
-// Secrets are what qui removes from every text part of a Problem report by
-// exact match.
 type Secrets struct {
-	// Values are the secrets that qui stores in plain or encrypted form, and
-	// the address and user names of each instance.
-	Values []string
-	// KeyHashes are the hashes of the qui API keys, which qui stores only as
-	// a hash.
+	Values    []string
 	KeyHashes map[string]struct{}
 }
 
@@ -48,7 +42,6 @@ type StoreSecrets struct {
 func ConfigSecrets(cfg *domain.Config) []string {
 	secrets := []string{cfg.SessionSecret, cfg.DatabasePassword, cfg.OIDCClientSecret}
 	if dsn := strings.TrimSpace(cfg.DatabaseDSN); dsn != "" {
-		// The same parser as the database connection, for the URL and the key/value form.
 		if parsed, err := pgconn.ParseConfig(dsn); err == nil {
 			secrets = append(secrets, parsed.Password)
 		}
@@ -83,8 +76,6 @@ func (c *secretCollector) add(values ...string) {
 	}
 }
 
-// decrypted adds a value that qui could decrypt. A value that it cannot
-// decrypt cannot reach a log line either.
 func (c *secretCollector) decrypted(value string, err error) {
 	if err == nil {
 		c.add(value)
@@ -165,7 +156,6 @@ func (s StoreSecrets) crossSeedSecrets(ctx context.Context, c *secretCollector) 
 	if err != nil && !errors.Is(err, models.ErrUndecryptableCredential) {
 		return fmt.Errorf("read TVDB credentials: %w", err)
 	}
-	// A key that does not decrypt comes back empty, and cannot reach a log line either.
 	c.add(apiKey, pin)
 	return nil
 }
@@ -206,8 +196,6 @@ func (s StoreSecrets) notificationSecrets(ctx context.Context, c *secretCollecto
 	return nil
 }
 
-// licenseSecrets adds the license keys. The web app removes a license with
-// its key in the path, so a failed request can hold one.
 func (s StoreSecrets) licenseSecrets(ctx context.Context, c *secretCollector) error {
 	if s.Licenses == nil {
 		return nil
@@ -222,18 +210,10 @@ func (s StoreSecrets) licenseSecrets(ctx context.Context, c *secretCollector) er
 	return nil
 }
 
-// hostCredentialSchemes are the notification URL schemes whose host is a
-// credential and not a server: the Notifiarr API key, the Pushover user key,
-// the Pushbullet token, the IFTTT webhook key and the WeCom webhook key.
 var hostCredentialSchemes = map[string]bool{
 	"notifiarr": true, "notifiarrapi": true, "pushover": true, "pushbullet": true, "ifttt": true, "wecom": true,
 }
 
-// notificationURLSecrets returns a notification URL and each part of it
-// that can hold a credential, because a text can hold one part alone: the
-// user name and the password, which hold the token of a discord:// or a
-// telegram:// URL, each path segment that is not in urlStructureWords, and
-// the host of a URL whose scheme is in hostCredentialSchemes.
 func notificationURLSecrets(raw string) []string {
 	secrets := []string{raw}
 	parsed, err := url.Parse(strings.TrimSpace(raw))
@@ -255,17 +235,10 @@ func notificationURLSecrets(raw string) []string {
 	return secrets
 }
 
-// urlStructureWords are the fixed path words of notification URLs. They
-// stay in the report text, so that a text that names them keeps its meaning.
-// Every other path segment can be a credential, such as an ntfy topic.
 var urlStructureWords = map[string]bool{
 	"webhook": true, "webhooks": true, "message": true, "messages": true, "services": true, "notify": true,
 }
 
-// instanceAddress returns the forms of an instance address that a text can
-// hold: the URL, the host with the port, and the host name. A host name with
-// no dot that is no IP address, such as localhost, identifies nobody, so it
-// stays, also as a bare URL such as http://localhost.
 func instanceAddress(host string) []string {
 	host = strings.TrimSpace(host)
 	if host == "" {
@@ -296,9 +269,6 @@ func instanceAddress(host string) []string {
 
 var apiKeyRegex = regexp.MustCompile(`\b[0-9a-f]{64}\b`)
 
-// licensePathRegex matches a license API path and the segment after it. The
-// web app removes a license with its key in that segment, and qui no longer
-// stores the key once a retry removed it.
 var licensePathRegex = regexp.MustCompile(`/api/license/[^/?#\s"'<>\\]+`)
 
 var licenseRoutes = map[string]bool{"licensed": true, "licenses": true, "activate": true, "validate": true, "refresh": true}

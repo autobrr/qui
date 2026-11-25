@@ -5,6 +5,7 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 ## Commands
 
 - `make precommit`: `check-mojibake` and `generate`, then fmt + gofix on changed files, then `make lint`, `make lint-ratchet`, `make typecheck-frontend`, `make check-i18n`, and `make test-frontend-changed`.
+- `make prepush`: the checks before a push, picked from the files that the branch changes since the `origin/develop` merge-base, an uncommitted or untracked file included. It runs `actionlint` on each changed workflow, `bash -n` on each changed `.sh` file, `node --check` on each changed `.js` file outside `documentation/`, where Docusaurus files hold JSX, and the unit tests of `.github/scripts/` when a file there changed. Then it runs `make precommit` and `go test -count=1` on the package of each changed Go file, and says that the final report also needs `make build`. When each changed file is under `.github/`, or is a `.sh`, `.py`, `.md`, or `.txt` file under `scripts/`, it runs `make check-mojibake` in place of those two, and no build is needed.
 - `make lint`: golangci-lint on Go issues that are new since the `origin/develop` merge-base, then the `unused` linter on the whole repo, then the full `pnpm lint`. A change can make unchanged code unused, so the `unused` run does not stop at changed lines. A frontend lint error in any file fails it, not only an error in a changed file. `pnpm lint` also fails on a warning, so each frontend rule is `error` or off. CI runs the same full `pnpm lint` when a pull request changes a file under `web/`.
 - `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. The target first lowers each entry above the count of its file (rule 2): commit that change to `allowlist.json`. CI runs the same check on each pull request, without the lowering. The target compares with the allowlist at the merge base of `origin/develop` and your branch, so a count that `develop` lowered after your branch started is not growth. In a shallow clone without that merge base, the target compares with `origin/develop`. If a merge is not committed yet, or your `origin/develop` is behind, the target reports growth that is not real. Commit the merge first, or run `git fetch origin develop`.
 - `make typecheck-frontend`: `tsc -b` in `web/`, the type check that the frontend build runs first. ESLint and Vitest do not report type errors.
@@ -38,7 +39,7 @@ To prove that a new forbidigo or depguard rule fires, add a temporary violation 
 
 ## Ratchet
 
-The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The total of a linter can only go down. `go run ./scripts/ratchet` applies seven rules:
+The linters in `scripts/ratchet/golangci.yml` are rules that existing code does not pass yet. `scripts/ratchet/allowlist.json` records the number of problems in each file that broke a rule when the rule was added. The total of a linter can only go down. `go run ./scripts/ratchet` applies eight rules:
 
 1. A file reports no more problems than its entry allows. A file without an entry must have no problems.
 2. An entry is not higher than the number that the file reports, and an entry at 0 is deleted. `make lint-ratchet` writes both changes.
@@ -47,25 +48,26 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 5. A `nolint` comment names only linters that `.golangci.yml` or `scripts/ratchet/golangci.yml` runs. A name of a linter that is off hides nothing: delete it.
 6. `web/eslint-suppressions.json` has entries only for the rules in `suppressedRules` of `scripts/ratchet/comments.go`, each of those rules has an entry, and the total of each rule does not grow. See "Suppressed ESLint Rules" below.
 7. No code file crosses the size limit in `.file-size.json`, and that file does not get looser. See "File Size" below.
+8. No Go file has a comment. See "Comments" below.
 
 - The other linters in the ratchet accept `//nolint:<linter> // reason` when the code is correct on purpose.
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
 - If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
-Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `comments`, `offlog`, `mapany`, or `testsleep` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
+Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `offlog`, `mapany`, or `testsleep` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
 
 ### Comments
 
-`docs/standards/simplicity.md` bans comments. The ratchet holds the comments from before the ban, in two places:
+`docs/standards/simplicity.md` bans comments (ADR 0070). No allowlist holds one:
 
-- **Go:** the `comments` key of `allowlist.json` is not a golangci-lint linter. The ratchet command counts the comments in each tracked Go file itself, with `scripts/comments/gocomments`. Rules 1 to 3 apply to it as to each linter, so a comment that moves to another file with its code does not fail the check.
-- **TypeScript:** ESLint reports each comment as `qui/no-comments`, one of the suppressed ESLint rules below.
+- **Go:** the ratchet command reads each tracked Go file itself, with `scripts/gocomments`, and fails on each comment. It skips generated files.
+- **TypeScript:** ESLint reports each comment as `qui/no-comments`. The rule has no fix, so that `make fmt`, which runs `eslint --fix`, deletes no comment. It is off in `src/**/*.generated.ts`.
 
-`web/scripts/no-comments-rule.mjs` and `scripts/comments/gocomments` list the markers that are not comments for this rule. The ESLint rule has no fix, because `make fmt` runs `eslint --fix` and must not delete a comment that nobody read. The `/delete-comment` skill sorts the comments of a file and deletes them.
+`scripts/gocomments` and `web/scripts/no-comments-rule.mjs` list the markers that are not comments for this rule.
 
 ### Lines About an Off Feature
 
-`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. Like `comments`, it is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter.
+`docs/standards/logging.md` bans a DEBUG or INFO line about a feature that is off or not set up (ADR 0074). The `offlog` key of `allowlist.json` holds the lines from before the ban. It is not a golangci-lint linter: the ratchet command counts the lines in each tracked Go file itself, with `scripts/offlog`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter.
 
 A line counts when its level is DEBUG or INFO, and one of these is true:
 
@@ -78,11 +80,11 @@ The counter reads only the syntax tree. It cannot read the text of a message tha
 
 ### Maps of Any
 
-Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `comments`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
+Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `offlog`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
 
 ### Sleeps in Tests
 
-`docs/standards/tests.md` bans a real `time.Sleep` in a test, because it makes the test slow, and the test fails at random on a slow CI runner. The `testsleep` key of `allowlist.json` holds the sleeps from before the rule. Like `comments`, it is not a golangci-lint linter: `scripts/ratchet/testsleep.go` counts each `time.Sleep` in each tracked `_test.go` file. A sleep does not count in the function that a test passes to `synctest.Test`, or in a function that calls `synctest.Wait`, because `synctest.Wait` works only in a bubble. A sleep in code that runs while Go evaluates the arguments of `synctest.Test`, for example in a function that builds the test function, still counts. Rules 1 to 3 apply to it as to each linter, and it has no `nolint` marker.
+`docs/standards/tests.md` bans a real `time.Sleep` in a test, because it makes the test slow, and the test fails at random on a slow CI runner. The `testsleep` key of `allowlist.json` holds the sleeps from before the rule. Like `offlog`, it is not a golangci-lint linter: `scripts/ratchet/testsleep.go` counts each `time.Sleep` in each tracked `_test.go` file. A sleep does not count in the function that a test passes to `synctest.Test`, or in a function that calls `synctest.Wait`, because `synctest.Wait` works only in a bubble. A sleep in code that runs while Go evaluates the arguments of `synctest.Test`, for example in a function that builds the test function, still counts. Rules 1 to 3 apply to it as to each linter, and it has no `nolint` marker.
 
 The counter reads one file at a time. It counts a sleep in a function that runs in a bubble but does not call `synctest.Wait`, for example a body that a helper passes to `synctest.Test`. Call `synctest.Wait` after the sleep. It returns once every other goroutine of the bubble has ended or is blocked, for example on a channel or on a timer that has not fired yet. A goroutine can block before its work is done, so a test that checks the result of that work also waits for the result on a channel. The counter does not see a sleep in a file that is not a `_test.go` file.
 
@@ -95,14 +97,27 @@ The counter reads one file at a time. It counts a sleep in a function that runs 
 - `qui/disable-reason` reports an `eslint-disable` comment that gives no reason. See "Exceptions" below.
 - `qui/entry-files` reports an import into a subfolder of a feature folder, such as `components/instances/marks`, from a file outside that feature. The files at the root of a feature folder are its entry files, and the tests are outside the rule. ADR 0081 has the reason.
 - `qui/layer-order` reports an import from a folder of `web/src` that comes later in the folder order than the folder of the file. `layers` in `web/eslint.config.js` holds the order, and the tests are outside the rule. ADR 0076 has the reason.
-- `qui/no-comments` reports each comment.
 - `qui/no-direct-effect` reports each call of `useEffect`, `useLayoutEffect`, or `useInsertionEffect` outside the tests and outside the hooks in `effectHooks` of `web/eslint.config.js`. ADR 0073 has the reason.
 - `react-hooks/exhaustive-deps` reports a hook whose dependency list does not match the values that the hook reads.
 - `react-refresh/only-export-components` reports a file that exports a component and another value, because fast refresh then reloads the whole file.
+- `shadcn/require-static-classes` reports a dynamically built `className` on a UI primitive that `@shadcn/lint` cannot read, outside the tests, `src/test`, `src/components/ui`, and `src/components/kit`. ADR 0090 has the reason.
 
 After you fix a report of one of these rules, run `pnpm exec eslint --prune-suppressions <file>` in `web/`. Do not add to the file with `--suppress-rule`. Rule 6 compares the total of each rule with the total on the base branch, so code that moves to another file with its count does not fail the check. When the last entry of a rule goes, delete the rule from `suppressedRules` in the same change, or rule 6 fails. A rule that is not in that list may have no entries, so its reports cannot come back.
 
 A new rule that old code breaks starts the same way: add its name to `suppressedRules`, and write its reports to the file one time with `pnpm exec eslint --suppress-rule <rule>` and the paths of the `lint` script in `web/package.json`.
+
+### UI Primitive Styling (`@shadcn/lint`)
+
+`@shadcn/lint` guards the styling of UI primitives (ADR 0090). Each rule turns on in its own change with its settings. A rule that holds existing findings also gets its held counts in `web/eslint-suppressions.json` and its name in `suppressedRules` of `scripts/ratchet/comments.go`.
+
+- **What the rules do not see:** a plain `<button>` or `<span>`, the files in `web/src/components/ui/` (primitives), and `web/src/components/kit/` (the kit). `shadcn/no-unknown-classes` covers all three, and so does `shadcn/no-raw-colors` once enabled. `shadcn/no-arbitrary-values` covers plain elements once enabled. Test files and `src/test/` stay outside all `@shadcn/lint` rules.
+- **Classes that generate no CSS:** `shadcn/no-unknown-classes` reports a class that Tailwind cannot generate. It holds no findings: correct the spelling, or delete the class. Its allow list in `web/eslint.config.js` has three entries for classes from a stylesheet that the plugin cannot see: `ss-*` (`web/src/spreadsheet-chrome.css`), `fi` (the `flag-icons` CSS), and `animated-logo-element` (a `<style>` block in `AnimatedLogo.tsx`). The fourth, `toaster`, names the toaster in `sonner.tsx` and has no CSS of its own. A new entry needs a stylesheet that defines the class. The rule does not see a color that the theme does not define, such as `text-warning`, which `shadcn/no-raw-colors` reports once enabled. It also does not see a class that code picks with a computed key or gets from a function.
+- **Known limit of held counts:** `web/eslint-suppressions.json` holds one count per rule per file, so in a file that already holds findings, a new finding can replace a fixed one without raising the count. Reviewers read the touched lines of files with held findings.
+- **Degraded-load guard:** `@shadcn/lint` writes a `[@shadcn/lint]` warning to stderr when configuration cannot be read or (for rules that load the stylesheet) when Tailwind or the theme stylesheet fails to load and the plugin falls back to its bundled grammar. The `Lint frontend` step in `.github/workflows/lint.yml` fails if stderr contains `[@shadcn/lint]`.
+- **Updating `@shadcn/lint`:** the plugin is pinned at an exact version in `web/package.json` and excluded from Dependabot's monthly `npm` group in `.github/dependabot.yml`, so its updates arrive in a standalone PR instead of blocking the monthly group, because counts can shift between versions and it calls an unstable Tailwind API. To update it (or finish its Dependabot PR):
+  1. Run `pnpm --dir web add -D -E @shadcn/lint@<version>`.
+  2. Run `pnpm --dir web lint` and verify stderr contains no `[@shadcn/lint]` warning.
+  3. If counts changed for a held `shadcn/*` rule on unchanged code, re-record that rule in `web/eslint-suppressions.json` (remove its old entries, run `pnpm --dir web exec eslint --suppress-rule <rule> "src/**/*.{ts,tsx,js,jsx}" "*.{js,ts}" "scripts/**/*.mjs"`, and review the diff). Note that `scripts/ratchet` rejects a total increase against `origin/develop`, so a version bump that raises counts is reviewed and merged by a maintainer.
 
 ### Held Effects
 

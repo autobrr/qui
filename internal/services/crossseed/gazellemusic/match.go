@@ -34,7 +34,6 @@ type Match struct {
 	QueriedHash string
 }
 
-// FindMatch distinguishes a completed lookup from a transport or identity failure.
 func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles map[string]int64, totalSize int64) (*Match, error) {
 	if torrentBytes != nil {
 		if hashes, err := c.TargetHashes(torrentBytes); err == nil {
@@ -44,8 +43,6 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 					return nil, err
 				}
 				if res != nil {
-					// OPS names the hash only on a torrent the user snatched or
-					// uploaded. The hit itself confirms the queried hash.
 					if res.InfoHash == "" {
 						res.InfoHash = targetHash
 					}

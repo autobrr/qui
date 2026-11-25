@@ -149,7 +149,6 @@ export function useTitleBarSpeeds({
   }, [isHidden])
 
   useEffect(() => {
-    // Mark foreground as fresh when speeds update or when visibility returns.
     if (!isHidden && foregroundSpeeds) {
       lastForegroundUpdateAtRef.current = Date.now()
     }

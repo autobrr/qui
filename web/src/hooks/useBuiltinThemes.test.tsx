@@ -44,7 +44,6 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   localStorage.clear()
-  // Reset the module-level registry to just the bundled fallback.
   themes.splice(1, themes.length - 1)
 })
 
@@ -74,8 +73,6 @@ describe("applyBuiltinThemesPayload", () => {
   })
 
   it("trusts the server premium flag over the CSS header", () => {
-    // Directory-classified premium theme: full CSS (licensed), no @premium
-    // header. The server flag is the only premium signal.
     applyBuiltinThemesPayload({
       themes: [{ id: "dirpremium", name: "Dirpremium", premium: true, css: TEST_CSS }],
     })
@@ -91,13 +88,11 @@ describe("applyBuiltinThemesPayload", () => {
       themes: [{ id: "testfree", name: "Testfree", premium: false, css: TEST_CSS }],
     })
 
-    // System change: hydration must never be pushed to the server.
     expect(mockSetTheme).toHaveBeenCalledWith("testfree", undefined, undefined, true)
   })
 
   it("re-applies a stored selection that resolved to a locked stub without rewriting it", () => {
     localStorage.setItem("color-theme", "locked")
-    // The server payload always contains the default theme (pinned server-side).
     const minimalCss = TEST_CSS.replace("@name: Testfree", "@name: Minimal")
     applyBuiltinThemesPayload({
       themes: [
@@ -106,8 +101,6 @@ describe("applyBuiltinThemesPayload", () => {
       ],
     })
 
-    // setTheme's locked fallback paints the default itself, without touching
-    // the stored selection, so the payload apply passes the stored id through.
     expect(mockSetTheme).toHaveBeenCalledWith("locked", undefined, undefined, true)
     expect(localStorage.getItem("color-theme")).toBe("locked")
   })
@@ -118,10 +111,7 @@ describe("applyBuiltinThemesPayload", () => {
       themes: [{ id: "minimal", name: "Minimal", premium: false, css: minimalCss }],
     })
 
-    // The boot paint used the bundled fallback; the fetched default is the
-    // authority and must repaint, as a system change.
     expect(mockSetTheme).toHaveBeenCalledWith("minimal", undefined, undefined, true)
-    // A system restore, not a selection: setTheme stores the id itself.
   })
 
   it("leaves an unresolvable stored selection alone", () => {
@@ -171,8 +161,6 @@ describe("useBuiltinThemes", () => {
     }, { wrapper })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    // The very first isSuccess render must already see the registered theme;
-    // an effect-based registrar leaves it reading the pre-registration array.
     expect(seenOnSuccess[0]).toBe(true)
   })
 
@@ -180,7 +168,6 @@ describe("useBuiltinThemes", () => {
     mockApi.getBuiltinThemes.mockRejectedValue(new Error("boom"))
 
     const { result } = renderHook(() => useBuiltinThemes(), { wrapper })
-    // The hook retries once with backoff before settling into error state.
     await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 5000 })
 
     expect(result.current.isSuccess).toBe(false)

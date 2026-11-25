@@ -25,19 +25,15 @@ import { useTranslation } from "react-i18next"
 const PHONE_ROWS = 5
 
 interface TopTorrentsProps {
-  // A new scope, another period choice or instance selection, shows five rows on a phone again.
   scope: string
-  // Undefined while the rows load.
   torrents?: TopTorrent[]
   error?: Error
-  // The period of the rows, which an open row draws.
   period: StatisticsPeriod
   instances: TransferHistoryInstance[]
   since?: Date
   displayGroup: (group: string) => string
 }
 
-/** The torrents with the most upload in the period. A click on a row shows the upload of that torrent for each day. */
 export function TopTorrents({ scope, torrents: shown, error, period, instances, since, displayGroup }: TopTorrentsProps) {
   const { t, i18n } = useTranslation("statistics")
   const torrentName = useTorrentName()
@@ -165,13 +161,11 @@ interface TorrentDaysProps {
   since?: Date
 }
 
-/** The band below an open torrent: its upload and download for each UTC day of the period. */
 function TorrentDays({ torrent, name, instances, period, since }: TorrentDaysProps) {
   const { t } = useTranslation("statistics")
   const instance = useMemo(() => instances.filter(candidate => candidate.instanceId === torrent.instanceId), [instances, torrent.instanceId])
   const transfer = useTransferHistoryRows(instance, { from: period.from, to: period.to, bucket: "day", groupBy: "torrent", group: torrent.hash })
 
-  // After the period moves, the band keeps its chart until the rows of the new period load.
   const [last, setLast] = useState<{ rows: TransferHistoryRow[][]; period: StatisticsPeriod }>()
   if (transfer.rows && last?.rows !== transfer.rows) {
     setLast({ rows: transfer.rows, period })

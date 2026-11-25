@@ -319,7 +319,6 @@ func filterSeededTrackerIndexer(t *testing.T, source seededTrackerTorrent, other
 	return asked, rejected
 }
 
-// regression: #4320
 func TestFilterIndexersByExistingContentSeededTracker(t *testing.T) {
 	t.Parallel()
 
@@ -595,7 +594,6 @@ func TestBuildTorrentSearchResultsKeepsDuplicateRejectedByContentPrefilter(t *te
 	require.Empty(t, results)
 }
 
-// regression: #4320
 func TestBuildTorrentSearchResultsDropsEpisodeOfPackSearchThatInstanceSeeds(t *testing.T) {
 	t.Parallel()
 

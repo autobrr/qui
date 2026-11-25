@@ -12,16 +12,10 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// runShell runs request through the local sh with script on its stdin, the
-// way sshd hands a session to the login shell, against the filesystem the
-// sftp subsystem serves. It records the words of script for the quoting tests.
 func (s *Server) runShell(channel ssh.Channel, request, script string) uint32 {
 	s.mu.Lock()
 	s.commands = append(s.commands, shellWords(script))
 	s.mu.Unlock()
-
-	// The command ends on its own: a client that gives up closes only the
-	// channel, which a command that writes nothing does not see.
 
 	cmd := exec.CommandContext(context.Background(), "sh", "-c", request)
 	cmd.Stdin = strings.NewReader(script)
@@ -37,17 +31,12 @@ func (s *Server) runShell(channel ssh.Channel, request, script string) uint32 {
 	return 0
 }
 
-// Commands returns the words of each command the shell read from the stdin
-// of a session, in order.
 func (s *Server) Commands() [][]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([][]string(nil), s.commands...)
 }
 
-// shellWords splits a command line the way a POSIX shell splits words made of
-// bare text, single-quoted text and backslash escapes. It covers what the
-// client sends, not the whole shell grammar.
 func shellWords(line string) []string {
 	var words []string
 	var word strings.Builder
@@ -82,10 +71,6 @@ func shellWords(line string) []string {
 	return words
 }
 
-// quotedAny reports whether match holds for the text of any single-quoted part
-// of a command line, read the POSIX way, so a mode can model a shell that
-// reads that text differently. It knows only single quotes and backslash
-// escapes, not double quotes, which shellQuote never writes.
 func quotedAny(line string, match func(string) bool) bool {
 	for i := 0; i < len(line); i++ {
 		switch line[i] {

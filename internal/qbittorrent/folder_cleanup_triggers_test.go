@@ -25,15 +25,8 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// rigTick is the worker tick in the rig. It stays above the 200 ms debounced
-// sync after a write: a hint on every tick closer than that would keep
-// postponing the sync the worker waits on.
 const rigTick = 250 * time.Millisecond
 
-// rigKeptWait outlasts two full ticks plus the debounced sync, so a folder
-// removed by mistake is gone by the time requireKept looks, even when the
-// worker first waits a tick for the sync to drop the torrent's row. In the
-// rig a removal lands about 0.3 s after the request.
 const rigKeptWait = 2*rigTick + 500*time.Millisecond
 
 const (
@@ -42,9 +35,6 @@ const (
 	hashC = "cccccccccccccccccccccccccccccccccccccccc"
 )
 
-// triggerRig is a SyncManager wired to a real FolderCleanup, a real backend
-// pool over the local filesystem, and a qBittorrent stub that deletes and
-// moves files in a temp dir.
 type triggerRig struct {
 	t          *testing.T
 	root       string
@@ -90,7 +80,6 @@ func newTriggerRig(t *testing.T) *triggerRig {
 
 func (r *triggerRig) p(rel string) string { return filepath.Join(r.root, filepath.FromSlash(rel)) }
 
-// add puts torrents in the stub and syncs them into the cache.
 func (r *triggerRig) add(torrents ...qbtstub.Torrent) {
 	for _, t := range torrents {
 		r.stub.Add(t)
@@ -108,7 +97,6 @@ func (r *triggerRig) requireGone(rel string) {
 	}, 5*time.Second, 20*time.Millisecond, "%s must be removed", rel)
 }
 
-// requireKept waits out a tick and the sync, then checks rels are still there.
 func (r *triggerRig) requireKept(rels ...string) {
 	r.t.Helper()
 	time.Sleep(rigKeptWait)
@@ -117,13 +105,11 @@ func (r *triggerRig) requireKept(rels ...string) {
 	}
 }
 
-// perRelease is the autobrr layout: a save path per release, no subfolder.
 func (r *triggerRig) perRelease(hash, category string) qbtstub.Torrent {
 	return qbtstub.Torrent{Hash: hash, Name: "Show.S01E01-GRP", SavePath: r.p("torrents/tv/Show.S01E01-GRP"),
 		Category: category, Layout: qbtstub.NoRootFolder, Files: []string{"Show.S01E01.mkv"}}
 }
 
-// The monitored folders arrive with the preferences qui already reads.
 func TestFolderCleanupTriggerKeepsMonitoredFolders(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -140,9 +126,6 @@ func TestFolderCleanupTriggerKeepsMonitoredFolders(t *testing.T) {
 	r.requireKept("torrents/watch", "torrents/from-watch")
 }
 
-// A default save path changed in qBittorrent's WebUI is a stop folder on the
-// next check, while qui's cached preferences still hold the old one, which
-// lies above it.
 func TestFolderCleanupTriggerReadsPreferencesFresh(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -159,8 +142,6 @@ func TestFolderCleanupTriggerReadsPreferencesFresh(t *testing.T) {
 	r.requireKept("torrents/new")
 }
 
-// The worker reads the view on every check, so the requests it costs must not
-// grow with the torrents in the cache or the hashes it asks about.
 func TestFolderCleanupViewRequestsDoNotGrowWithTorrents(t *testing.T) {
 	t.Parallel()
 	requests := func(hashes ...string) map[string]int {
@@ -196,8 +177,6 @@ func TestFolderCleanupTriggerBulkDeleteWithFiles(t *testing.T) {
 	require.DirExists(t, r.p("torrents/tv"))
 }
 
-// A delete with files of a torrent whose first file was never downloaded
-// still removes the save path and the subfolder it leaves.
 func TestFolderCleanupTriggerDeleteWithFirstFileMissing(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -217,13 +196,10 @@ func TestFolderCleanupTriggerBulkDeleteKeepsFiles(t *testing.T) {
 
 	require.NoError(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, false, DeleteActor{Kind: DeleteActorUser}))
 	require.FileExists(t, r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv"))
-	// Had the delete queued work, an emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
 
-// The worker owns the cleanup, so a client that disconnects after qBittorrent
-// accepted the delete still gets its folders removed.
 func TestFolderCleanupTriggerRunsAfterRequestCancellation(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -245,8 +221,6 @@ func TestFolderCleanupTriggerSetLocation(t *testing.T) {
 	require.FileExists(t, r.p("torrents/movies/Show.S01E01.mkv"))
 }
 
-// An ATM torrent without a root folder: libtorrent moves the files and leaves
-// the subfolder they sat in.
 func TestFolderCleanupTriggerSetCategory(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -269,11 +243,6 @@ func TestFolderCleanupTriggerEnableATM(t *testing.T) {
 	require.FileExists(t, r.p("torrents/movies/Show.S01E01.mkv"))
 }
 
-// Turning ATM off never moves a torrent, so it queues nothing. The snapshot
-// already skips a torrent in ATM for the ATM kind, so only a torrent with ATM
-// off, as in a mixed selection, could show a wrongly queued item. Another
-// client then deletes it with its files: had the request queued it, its
-// emptied folder would be removed, though qui deleted nothing.
 func TestFolderCleanupTriggerDisableATMIsNotATrigger(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -284,9 +253,6 @@ func TestFolderCleanupTriggerDisableATMIsNotATrigger(t *testing.T) {
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
 
-// Editing a category's save path moves its ATM torrents; the old category
-// tree is removed up to the default save path, and a manual torrent in the
-// category keeps its folder.
 func TestFolderCleanupTriggerEditCategory(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -307,8 +273,6 @@ func TestFolderCleanupTriggerEditCategory(t *testing.T) {
 	require.FileExists(t, r.p("torrents/manual/C-GRP/c.mkv"))
 }
 
-// Up to qBittorrent 5.2 an edit replaces every option of the category, so an
-// edit of the save path sends the download path option the category has.
 func TestEditCategoryKeepsTheDownloadPath(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -330,10 +294,6 @@ func TestEditCategoryKeepsTheDownloadPath(t *testing.T) {
 	}
 }
 
-// Before WebAPI 2.11.10 a partial maindata update leaves download_path out
-// when a category goes back to inherit, so the cache can still hold a path.
-// The edit reads the option from qBittorrent instead: here the cache synced
-// before the category went back to inherit.
 func TestEditCategoryReadsTheDownloadPathFresh(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -345,9 +305,6 @@ func TestEditCategoryReadsTheDownloadPathFresh(t *testing.T) {
 	require.Nil(t, r.stub.CategoryDownloadPath("archive"))
 }
 
-// With the download path kept, an edit to the same save path changes nothing,
-// which qBittorrent 5.1 answers with 409. For a category that exists, that is
-// a success with nothing to do.
 func TestEditCategoryAcceptsAnEditThatChangesNothing(t *testing.T) {
 	t.Parallel()
 	option := &qbt.CategoryDownloadPath{Enabled: true, Path: "/data/incomplete/archive"}
@@ -372,14 +329,9 @@ func TestEditCategoryFails(t *testing.T) {
 		fail      func(s *qbtstub.Server)
 		sendsEdit bool
 	}{
-		// Only a 409 for a category that exists counts as nothing to do.
 		{name: "qBittorrent rejects the edit", category: "archive", fail: func(s *qbtstub.Server) { s.Reject = http.StatusInternalServerError }, sendsEdit: true},
-		// Which branch an edit takes depends on the version.
 		{name: "version read fails", category: "archive", fail: func(s *qbtstub.Server) { s.WebAPIVersionStatus = http.StatusBadGateway }},
-		// Without the category's download path the edit would reset it.
 		{name: "category read fails", category: "archive", fail: func(s *qbtstub.Server) { s.CategoriesStatus = http.StatusInternalServerError }},
-		// 5.1 answers a missing category with the same 409 as an edit that
-		// changes nothing.
 		{name: "missing category", category: "missing", fail: func(*qbtstub.Server) {}, sendsEdit: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -396,9 +348,6 @@ func TestEditCategoryFails(t *testing.T) {
 	}
 }
 
-// The edit reads the version before each edit and sends the save path alone
-// only from WebAPI 2.16.1 (qBittorrent 5.3), where an edit keeps what it
-// leaves out.
 func TestEditCategoryFollowsTheVersion(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -408,10 +357,7 @@ func TestEditCategoryFollowsTheVersion(t *testing.T) {
 		sendsSavePathOnly bool
 	}{
 		{name: "qBittorrent 5.3", cachedVersion: "2.16.1", version: "2.16.1", sendsSavePathOnly: true},
-		// The client's capabilities can predate an in-place downgrade.
 		{name: "downgrade from 5.3", cachedVersion: "2.16.2", version: "2.15.1"},
-		// The partial edit landed while qBittorrent still reported 2.16.0, so
-		// a 2.16.0 build may replace every option.
 		{name: "WebAPI 2.16.0", cachedVersion: "2.16.0", version: "2.16.0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -426,7 +372,6 @@ func TestEditCategoryFollowsTheVersion(t *testing.T) {
 			r.stub.AddCategory("archive", r.p("torrents/old/archive"))
 			r.stub.SetCategoryDownloadPath("archive", option)
 			if tc.sendsSavePathOnly {
-				// The save path alone needs no read of the category.
 				r.stub.CategoriesStatus = http.StatusInternalServerError
 			}
 			require.NoError(t, r.sm.EditCategory(t.Context(), r.instanceID, "archive", r.p("torrents/new")))
@@ -436,10 +381,6 @@ func TestEditCategoryFollowsTheVersion(t *testing.T) {
 	}
 }
 
-// qBittorrent sets an ATM torrent's save path at once and its content path
-// only once the files have moved, so the sync right after the request caches
-// the new save path with the old content path. The cleanup waits for the
-// content path, or the stale one would protect the folder it is to remove.
 func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -498,7 +439,6 @@ func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 				row := client.SyncOwner().SnapshotUnchecked().Torrents()[0]
 				return row.SavePath != before.SavePath && row.ContentPath == before.ContentPath
 			}, 5*time.Second, 20*time.Millisecond, "the cache must show the new save path with the old content path")
-			// Let the second sync after the request land before the files move.
 			require.Eventually(t, func() bool { return r.stub.Syncs() >= syncs+2 }, 5*time.Second, 10*time.Millisecond)
 
 			r.stub.FinishMoves()
@@ -508,8 +448,6 @@ func TestFolderCleanupTriggerSlowATMMove(t *testing.T) {
 	}
 }
 
-// The request returns once qBittorrent accepted it; the folders wait in the
-// queue for the worker.
 func TestFolderCleanupTriggerDoesNotWaitForCleanup(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -527,8 +465,6 @@ func TestFolderCleanupTriggerDoesNotWaitForCleanup(t *testing.T) {
 	r.requireGone("torrents/tv/Show.S01E01-GRP")
 }
 
-// qBittorrent can move some torrents and then reject the request. Nothing is
-// queued; the moved torrents' folders are left to orphan scan.
 func TestFolderCleanupTriggerPartialSetCategory(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -545,8 +481,6 @@ func TestFolderCleanupTriggerPartialSetCategory(t *testing.T) {
 	r.requireKept("torrents/tv/A")
 }
 
-// A rejected delete: a rejected move would also be held by its unmoved row,
-// so only a delete shows that nothing was queued.
 func TestFolderCleanupTriggerRejectedRequest(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -554,15 +488,10 @@ func TestFolderCleanupTriggerRejectedRequest(t *testing.T) {
 	r.stub.Reject = 500
 
 	require.Error(t, r.sm.DeleteTorrents(t.Context(), r.instanceID, []string{hashA}, true, DeleteActor{Kind: DeleteActorUser}))
-	// Had the request queued work, the emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
 
-// qBittorrent acts only on a hash of exactly 40 hex characters naming the
-// torrent's own hash (TorrentID::fromString, then Session::getTorrent), and
-// answers 200 for any other. The snapshot takes no other torrent, so a
-// request qBittorrent ignores queues nothing.
 func TestFolderCleanupSnapshotsOnlyHashesQBittorrentActsOn(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -591,11 +520,6 @@ func TestFolderCleanupSnapshotsOnlyHashesQBittorrentActsOn(t *testing.T) {
 	}
 }
 
-// Without a root folder the content reads as there when any top-level entry
-// is, so a first file set to Do Not Download or removed by hand does not leave
-// the folder behind. Only the first folderCleanupContentProbes entries are
-// checked, a junk name such as Thumbs.db never counts, since an empty mount
-// point can hold one, and a passed deadline reads as missing.
 func TestFolderCleanupMarkContentChecksEachTopLevelEntry(t *testing.T) {
 	t.Parallel()
 	files := []string{"Show.S01E01.nfo", "Sample/sample.mkv", "Show.S01E01.mkv"}
@@ -638,10 +562,6 @@ func TestFolderCleanupMarkContentChecksEachTopLevelEntry(t *testing.T) {
 	}
 }
 
-// qBittorrent's setDownloadPath moves an incomplete torrent with ATM off from
-// where its content sits into the new path. A complete torrent does not move,
-// and admitting every one of a bulk change over seeding torrents would hold
-// the queue for the deadline.
 func TestFolderCleanupSetDownloadPathAdmits(t *testing.T) {
 	t.Parallel()
 	const save, download = "/data/torrents/tv/Rel-GRP", "/data/torrents/incomplete/Rel-GRP"
@@ -669,8 +589,6 @@ func TestFolderCleanupSetDownloadPathAdmits(t *testing.T) {
 	}
 }
 
-// A torrent still fetching metadata reports no content path. Clean would
-// make that ".", qui's working folder, so no operation snapshots it.
 func TestFolderCleanupSkipsTorrentsWithoutContentPath(t *testing.T) {
 	t.Parallel()
 	torrent := qbt.Torrent{SavePath: "/data/torrents/tv", Category: "tv"}
@@ -680,10 +598,6 @@ func TestFolderCleanupSkipsTorrentsWithoutContentPath(t *testing.T) {
 	}
 }
 
-// hungBackend is a mount where a Stat under hang returns only once release is
-// closed, whatever its context, as os.Stat does on a hung NFS mount. stats
-// counts every Stat that reached it, and hung waits for the hung ones to
-// return.
 type hungBackend struct {
 	fsops.Backend
 	hang    string
@@ -732,8 +646,6 @@ func (h hungRequirer) Require(ctx context.Context, instanceID int, capability mo
 	return h.backend, instance, nil
 }
 
-// hungRig holds hashA in tv and hashB in movies, with every Stat under hashB's
-// save path hung until the test ends.
 func hungRig(t *testing.T) (*triggerRig, *hungBackend) {
 	r := newTriggerRig(t)
 	r.add(r.perRelease(hashA, "tv"), qbtstub.Torrent{Hash: hashB, Name: "Film-GRP", SavePath: r.p("torrents/movies/Film-GRP"),
@@ -750,9 +662,6 @@ func hungRig(t *testing.T) (*triggerRig, *hungBackend) {
 	return r, backend
 }
 
-// A prepare returns at its budget even while a Stat that ignores its context
-// hangs. The torrent checked by then reads as existing, the hung one as
-// missing, and the abandoned Stat changes nothing once it returns.
 func TestFolderCleanupPrepareReturnsPastAHungStat(t *testing.T) {
 	t.Parallel()
 	for _, proxied := range []bool{false, true} {
@@ -783,8 +692,6 @@ func TestFolderCleanupPrepareReturnsPastAHungStat(t *testing.T) {
 	}
 }
 
-// An automation deletes under a 60 s timeout, so a hung Stat may cost it the
-// cleanup but not the delete. The healthy torrent's folder is still cleaned.
 func TestFolderCleanupBulkDeletePastAHungStat(t *testing.T) {
 	t.Parallel()
 	r, _ := hungRig(t)
@@ -798,8 +705,6 @@ func TestFolderCleanupBulkDeletePastAHungStat(t *testing.T) {
 	require.NoFileExists(t, r.p("torrents/movies/Film-GRP/Film.mkv"))
 }
 
-// With ctx already done no Stat starts, so the outcome at the deadline does
-// not depend on which ready case select picks.
 func TestFolderCleanupSnapshotStartsNoStatPastTheDeadline(t *testing.T) {
 	t.Parallel()
 	r, backend := hungRig(t)
@@ -818,15 +723,12 @@ func TestFolderCleanupSnapshotStartsNoStatPastTheDeadline(t *testing.T) {
 	require.Equal(t, stats, backend.stats.Load())
 }
 
-// remoteRowStore answers every instance read with a row in remote mode.
 type remoteRowStore struct{}
 
 func (remoteRowStore) Get(_ context.Context, id int) (*models.Instance, error) {
 	return &models.Instance{ID: id, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}, nil
 }
 
-// batchSpy stands in for the SSH host: it answers from the local disk and
-// counts the batch stats and the single stats that reached it.
 type batchSpy struct {
 	fsops.Backend
 	batches atomic.Int32
@@ -848,8 +750,6 @@ func (s *batchSpy) LstatBatch(ctx context.Context, paths []string) ([]*fsops.Lst
 	return fsops.LstatAll(ctx, s.Backend, paths)
 }
 
-// Over SSH a Stat per torrent costs a round trip each, so a remote instance
-// checks the content of the whole batch with one batch stat.
 func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 	t.Parallel()
 	r := newTriggerRig(t)
@@ -875,7 +775,6 @@ func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 	require.Equal(t, map[string]bool{hashA: true, hashB: true, hashC: false}, existed)
 }
 
-// regression: #3739
 func TestBulkDeleteNotifiesFilesChanged(t *testing.T) {
 	t.Parallel()
 	for _, deleteFiles := range []bool{false, true} {
@@ -900,7 +799,6 @@ func TestBulkDeleteNotifiesFilesChanged(t *testing.T) {
 	}
 }
 
-// syncPending reports whether an edit started a sync that has not finished.
 func (r *triggerRig) syncPending() bool {
 	r.sm.syncDebounceMu.Lock()
 	defer r.sm.syncDebounceMu.Unlock()
@@ -908,8 +806,6 @@ func (r *triggerRig) syncPending() bool {
 	return ok
 }
 
-// Each rule of the edit path, tested once through one edit. The accepted Set
-// Location that queues folder cleanup is TestFolderCleanupTriggerSetLocation.
 func TestEditPath(t *testing.T) {
 	t.Parallel()
 
@@ -945,13 +841,11 @@ func TestEditPath(t *testing.T) {
 		require.NoError(t, r.sm.SetTags(t.Context(), r.instanceID, []string{hashA}, "keep"))
 		require.Equal(t, []string{"keep"}, r.stub.Tags(hashA))
 		require.True(t, r.syncPending(), "an accepted edit starts a sync")
-		// One sync after an edit sends two maindata requests (runDebouncedSync).
 		require.Eventually(t, func() bool { return !r.syncPending() }, 5*time.Second, 10*time.Millisecond)
 		require.Equal(t, syncs+2, r.stub.Syncs(), "an accepted edit starts one sync")
 	})
 }
 
-// A delete names its actor, so BulkAction refuses one and sends nothing.
 func TestBulkActionRefusesDelete(t *testing.T) {
 	t.Parallel()
 	for _, action := range []string{"delete", "deleteWithFiles"} {

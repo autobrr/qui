@@ -49,17 +49,12 @@ func expectLibrary(want ...transferhistory.LibraryRow) step {
 	return step{library: &libraryCheck{query: twoDays, want: want}}
 }
 
-// allTime is each byte of the instance up to day 12, by tracker, as one total.
 var allTime = transferhistory.TransferQuery{To: day12, Bucket: transferhistory.BucketTotal, GroupBy: transferhistory.GroupByTracker}
 
 func allTimeRow(uploaded int64, baseline *transferhistory.Bytes) transferhistory.TransferRow {
 	return transferhistory.TransferRow{Group: "tracker.example", Width: transferhistory.BucketTotal, Uploaded: uploaded, Baseline: baseline}
 }
 
-// twoDaysWithEvents records upload, an add, and a delete on day 10 and on day
-// 11. Torrent "a" is in the Baseline with 10. On day 10, "a" uploads 100 and
-// "gone" uploads 20 and goes. On day 11, "a" uploads 300, "new" comes, and
-// "late" goes.
 var twoDaysWithEvents = []step{
 	reading(at(0), torrent("a", 10, 0), torrent("gone", 0, 0), torrent("late", 0, 0)),
 	reading(at(5*time.Minute), torrent("a", 110, 0), torrent("gone", 20, 0), torrent("late", 0, 0), addedAt(torrent("new1", 0, 0), at(5*time.Minute))),
@@ -108,25 +103,20 @@ func TestDeleteHistoryPostgresIntegration(t *testing.T) {
 		{
 			name: "a delete before a date keeps the rows from that date on",
 			steps: concat(twoDaysWithEvents, []step{
-				// The UTC day of Before is day 11.
 				deleteHistory(instanceID, at(24*time.Hour)),
 				expect(days, row("tracker.example", day11, transferhistory.BucketDay, 300, 0, 0, 0)),
 				expect(period(day10, day12, transferhistory.BucketDay, transferhistory.GroupByCategory),
 					row("tv", day11, transferhistory.BucketDay, 300, 0, 0, 0)),
-				// The Baseline is from before day 11, so it goes too.
 				expect(allTime, allTimeRow(300, nil)),
 				expectLibrary(transferhistory.LibraryRow{Day: day11, Torrents: new(int64(3)), TotalSize: new(int64(3000)), Added: 1, Deleted: 1}),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1}, deleted("late", at(26*time.Hour), 0, 0, outside)),
 				expectInstances(transferhistory.InstanceStatus{InstanceID: instanceID, FirstRecordedAt: day11}),
-				// The record of "gone" went with its day. When the user adds it
-				// again, it is new, and "a" counts from its stored counters.
 				reading(at(27*time.Hour), torrent("a", 420, 0), torrent("new1", 0, 0), torrent("new2", 0, 0), addedAt(torrent("gone", 20, 0), at(27*time.Hour))),
 				reading(at(28*time.Hour), torrent("a", 420, 0), torrent("new1", 0, 0), torrent("new2", 0, 0), torrent("gone", 20, 0)),
 				expect(allTime, allTimeRow(330, nil)),
 			}),
 		},
 		{
-			// No reading on day 11 moved the torrent days of day 10 yet.
 			name: "a delete before a date deletes the torrent days that wait to move",
 			steps: []step{
 				reading(at(0), torrent("a", 10, 0)),
@@ -144,7 +134,6 @@ func TestDeleteHistoryPostgresIntegration(t *testing.T) {
 			}),
 		},
 		{
-			// regression: #4101
 			name: "a delete before a date while recording is off keeps the Recording gap",
 			steps: []step{
 				reading(at(0), torrent("a", 0, 0)),
@@ -193,7 +182,6 @@ func TestDeleteHistoryOfARemovedInstancePostgresIntegration(t *testing.T) {
 		module.Record(transferhistory.Reading{InstanceID: removed.ID, Time: at(0), Torrents: []transferhistory.Torrent{torrent("a", 0, 0)}})
 		require.NoError(t, instances.Delete(t.Context(), removed.ID))
 		require.NoError(t, module.DeleteHistory(t.Context(), transferhistory.HistoryDelete{InstanceID: removed.ID}))
-		// A sync that ran during the removal gives one more reading.
 		module.Record(transferhistory.Reading{InstanceID: removed.ID, Time: at(time.Minute), Torrents: []transferhistory.Torrent{torrent("a", 10, 0)}})
 
 		status, err := module.Status(t.Context())
@@ -219,7 +207,6 @@ func TestADeleteOfEverythingStartsANewBaselinePostgresIntegration(t *testing.T) 
 			reading(at(10*time.Minute), torrent("a", 200, 0), addedAt(torrent("b", 40, 0), at(10*time.Minute))),
 			reading(at(15*time.Minute), torrent("a", 260, 0), torrent("b", 40, 0)),
 			expect(allTime, allTimeRow(60, &transferhistory.Bytes{Uploaded: 240})),
-			// The new Baseline gives no event, and the library of the day starts again.
 			expectLibrary(libraryRow(day10, 2, 2000, nil)),
 			expectInstances(transferhistory.InstanceStatus{InstanceID: instanceID, Name: "Seedbox", FirstRecordedAt: at(10 * time.Minute)}),
 		})

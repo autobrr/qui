@@ -5,5 +5,4 @@ package sharetracker
 
 import "golang.org/x/sys/windows"
 
-// syscall.EADDRINUSE on Windows is a made-up errno that no bind returns.
 const errAddrInUse = windows.WSAEADDRINUSE

@@ -22,7 +22,6 @@ import (
 	"github.com/autobrr/qui/pkg/sharedextents"
 )
 
-// newLocalMatch creates a LocalMatch from instance and torrent data.
 func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceTorrentView, matchType string) LocalMatch {
 	return LocalMatch{
 		InstanceID:    instance.ID,
@@ -42,42 +41,30 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 	}
 }
 
-// localMatchContext holds source file data for file-level matching.
-// Source files are fetched on first use, so a source without a link check
-// reads no files.
 type localMatchContext struct {
 	ctx                   context.Context
 	svc                   *Service
 	sourceInstanceID      int
-	sourceInstance        *models.Instance // scopes sourceFileIDs; nil reads as the qui host
+	sourceInstance        *models.Instance
 	sourceHash            string
 	sourceSavePath        string
 	sourceContentPath     string
 	sourceHasFileIdentity bool
 	sourceLocal           bool
-	// trustedIdentityOnly limits linked matches to instances with
-	// TrustedIdentity. A delete dialog can add linked matches to the delete,
-	// and identity that a remote host reports never expands a destructive
-	// action.
-	trustedIdentityOnly bool
+	trustedIdentityOnly   bool
 
-	// Lazy-loaded source file data
 	fetched        bool
-	sourceFilesErr error            // Error from fetching/parsing source files
-	sourceFiles    qbt.TorrentFiles // without the files that contentFiles removes
+	sourceFilesErr error
+	sourceFiles    qbt.TorrentFiles
 	sourceData     sameDataFiles
 
-	// Lazy-loaded FileIDs of the source's hard-linked files (nlink > 1),
-	// used to detect hardlinked cross-seed copies.
 	fileIDsFetched bool
 	sourceFileIDs  map[fsops.FileKey]struct{}
 
-	// Local verification errors (first error per category, for strict mode).
 	candidateFilesErr error
 	verificationErr   error
 }
 
-// getSourceFiles lazily fetches and caches the source file list.
 func (m *localMatchContext) getSourceFiles() error {
 	if m.fetched {
 		return m.sourceFilesErr
@@ -90,9 +77,6 @@ func (m *localMatchContext) getSourceFiles() error {
 		return err
 	}
 
-	// Treat empty file list as an error - qBittorrent should always return files for a valid torrent.
-	// An empty list could indicate a stale/removed torrent or API issue, and silently skipping
-	// overlap checks would produce false negatives in delete dialogs.
 	if len(srcFiles) == 0 {
 		m.sourceFilesErr = fmt.Errorf("source torrent %s returned empty file list", normalizeHash(m.sourceHash))
 		return m.sourceFilesErr
@@ -104,11 +88,6 @@ func (m *localMatchContext) getSourceFiles() error {
 	return nil
 }
 
-// getSourceFileIDs lazily stats the source torrent's files on the local filesystem
-// and caches the FileIDs of its hard-linked files (nlink > 1). Only files with
-// extra links can be shared with another torrent, so nlink == 1 files are skipped.
-// Fetch errors are recorded by getSourceFiles for strict mode; stat failures are
-// best-effort skips since a missing file carries no hardlink evidence.
 func (m *localMatchContext) getSourceFileIDs() map[fsops.FileKey]struct{} {
 	if m.fileIDsFetched {
 		return m.sourceFileIDs
@@ -121,9 +100,6 @@ func (m *localMatchContext) getSourceFileIDs() map[fsops.FileKey]struct{} {
 
 	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID, m.identity())
 	if err != nil {
-		// Unlike a per-file stat failure, a backend outage discards ALL
-		// hardlink evidence for the instance — record it so strict mode
-		// (delete dialogs) fails the check instead of reading "no cross-seeds".
 		if m.verificationErr == nil {
 			m.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", m.sourceInstanceID, err)
 		}
@@ -166,9 +142,6 @@ func candidateSharesSourceFileID(
 	return false, err
 }
 
-// identity is the capability an instance needs for its file identity to
-// count in this match. The backends ask for it again, since the instance
-// list the match started from can be older than the row.
 func (m *localMatchContext) identity() models.FilesystemCapability {
 	if m.trustedIdentityOnly {
 		return models.CapabilityTrustedIdentity
@@ -193,7 +166,6 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 	sourceIDs := matchCtx.getSourceFileIDs()
-	// The allocation check is a syscall on qui's own disk, so both paths must be local.
 	var filesShareAllocation func(sourcePath, candidatePath string) (bool, error)
 	if matchCtx.sourceLocal && models.FilesystemAccessMode(candidateInstance) == models.FilesystemModeLocal {
 		filesShareAllocation = s.filesShareAllocation
@@ -209,13 +181,10 @@ func (s *Service) localLinkedMatchType(
 	if !ok {
 		return ""
 	}
-	// A linked subtitle alone does not make a different video a cross-seed.
 	candidateFiles = contentFiles(candidateFiles, normalizerForService(s))
 
 	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID, matchCtx.identity())
 	if err != nil {
-		// A backend outage discards all evidence for the candidate — record it
-		// so strict mode fails the check instead of reading "no cross-seeds".
 		if matchCtx.verificationErr == nil {
 			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", candidateInstance.ID, err)
 		}
@@ -273,8 +242,6 @@ func (s *Service) getLocalMatchCandidateFiles(
 ) (qbt.TorrentFiles, bool) {
 	candidateFiles, err := s.getTorrentFilesCached(matchCtx.ctx, candidate.InstanceID, candidate.Hash)
 	if err == nil && len(candidateFiles) == 0 {
-		// An empty file list means a stale torrent or API issue, not evidence
-		// that no linked files exist.
 		err = fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candidate.Hash))
 	}
 	if err != nil {
@@ -286,12 +253,6 @@ func (s *Service) getLocalMatchCandidateFiles(
 	return candidateFiles, true
 }
 
-// forEachLocalFileID stats each torrent file under savePath through the instance's
-// filesystem backend and invokes fn with its FileID and link count until fn returns
-// false. The save path must be absolute; file names that escape it are refused so
-// malicious torrent metadata cannot probe arbitrary filesystem locations, and
-// refusals are returned as an error because a name that resolves to nothing carries
-// no evidence either way. Files that cannot be statted are skipped.
 func forEachLocalFileID(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) error {
 	return forEachLocalTorrentFile(ctx, backend, savePath, files, func(_ qbt.TorrentFile, _ string, info *fsops.LstatInfo) bool {
 		if info.FileID.IsZero() {
@@ -389,8 +350,6 @@ func pairLocalTorrentFiles(
 
 func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, instance *models.Instance, savePath string, files qbt.TorrentFiles) []localTorrentFile {
 	localFiles := make([]localTorrentFile, 0, len(files))
-	// Unresolvable names are already recorded by the FileID pass over both torrents
-	// in localLinkedMatchType, which runs before any pairing.
 	_ = forEachLocalTorrentFile(ctx, backend, savePath, files, func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool {
 		if file.Size == 0 {
 			return true
@@ -427,21 +386,10 @@ func localFileSizeKey(name string, size int64) string {
 	return name + "|" + strconv.FormatInt(size, 10)
 }
 
-// normalizeTorrentRelativePath keys a name for pairing. Every name reaching it
-// has already cleared resolveLocalTorrentFile, so backslashes were refused, not
-// rewritten.
 func normalizeTorrentRelativePath(name string) string {
 	return strings.ToLower(path.Clean(name))
 }
 
-// forEachLocalTorrentFile resolves each torrent file under savePath and invokes fn
-// until fn returns false. It returns the first name that cannot be mapped to a path
-// under savePath at all: such a file can never yield link evidence, so callers with a
-// localMatchContext must fail closed instead of reporting "not linked". It also
-// returns the first Lstat failure other than a missing path, such as a permission
-// error, which hides link evidence the same way. A missing or non-regular file is a
-// silent skip, because partially downloaded torrents are normal. A non-absolute
-// savePath returns nil.
 func forEachLocalTorrentFile(
 	ctx context.Context,
 	backend fsops.Backend,
@@ -455,12 +403,9 @@ func forEachLocalTorrentFile(
 		return nil
 	}
 
-	// Resolve every name first, so a backend with a batch lstats them in one
-	// round trip. A backend without one lstats inside the loop, so a callback
-	// that stops early costs one lstat, not one per file.
 	type resolved struct {
 		file     qbt.TorrentFile
-		fullPath string // empty when the name does not resolve under base
+		fullPath string
 	}
 	entries := make([]resolved, 0, len(files))
 	paths := make([]string, 0, len(files))
@@ -498,7 +443,6 @@ func forEachLocalTorrentFile(
 		}
 		next++
 		if err != nil {
-			// ENOTDIR: a parent of the path is a file, so this file is missing too.
 			if firstErr == nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTDIR) {
 				firstErr = err
 			}
@@ -515,9 +459,6 @@ func forEachLocalTorrentFile(
 }
 
 func resolveLocalTorrentFile(d fsops.PathDialect, base, name string) (string, bool) {
-	// Names carrying a literal backslash are rejected rather than rewritten:
-	// backslash is a legal filename byte on Linux, and inventing a nested
-	// path from it makes the file read as missing while it exists.
 	if name == "" || strings.ContainsRune(name, '\\') ||
 		strings.HasPrefix(name, "/") ||
 		hasWindowsDrivePrefix(name) {

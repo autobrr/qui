@@ -25,8 +25,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// recheckResumeSyncManager records bulk actions and answers file and piece
-// reads; the partial pool tests embed it.
 type recheckResumeSyncManager struct {
 	bulkActions             []string
 	resumeFailuresRemaining int
@@ -391,7 +389,6 @@ func TestSelectPartialPoolDownloaderChecksMissingFilesHardlinkAdmission(t *testi
 	member.Status = models.CrossSeedPartialPoolMemberStatusVerifying
 	member.LastError = partialPoolRecheckPending
 	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{member}}
-	// qBittorrent 5.2 reports a stopped skip_checking add with a missing extra file as missingFiles.
 	snapshot := partialPoolTestSnapshot(member, 4)
 	snapshot.torrent.State = qbt.TorrentStateMissingFiles
 	snapshots := map[int64]*partialPoolMemberSnapshot{1: snapshot}
@@ -758,8 +755,6 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 	require.Equal(t, []string{"recheck:candidate-alpha", "recheck:candidate-beta"}, sync.bulkActions)
 }
 
-// startPartialPoolCoordinator runs the coordinator until the test ends, and
-// waits for it to stop before a cleanup restores a timer that it reads.
 func startPartialPoolCoordinator(t *testing.T, service *partialPoolCoordinator) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -2697,8 +2692,6 @@ func (*recheckResumeSyncManager) GetDirectoryContentCtx(context.Context, int, st
 	return nil, nil
 }
 
-// snapshotPartialPoolSyncManager answers GetSyncOwner with a sync owner over a
-// qBittorrent stub that holds the torrent with hash "source".
 type snapshotPartialPoolSyncManager struct {
 	recheckResumeSyncManager
 	owner *syncowner.Owner

@@ -16,8 +16,6 @@ import (
 
 var errNotStubbed = errors.New("orphanscan test: call not stubbed")
 
-// fakeSync stands in for the sync manager and the stores. A nil field fails
-// the call, so a test stubs only what its path reads.
 type fakeSync struct {
 	getAllTorrents       func(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
 	getTorrentFilesBatch func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
@@ -25,17 +23,13 @@ type fakeSync struct {
 	listInstances        func(ctx context.Context) ([]*models.Instance, error)
 	getLastCompletedRun  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
 	instanceFolders      func(ctx context.Context, instanceID int) (qbittorrent.InstanceFolders, error)
-	// hostKeyPins holds each instance's pinned host key by ID. A missing ID is unpinned.
-	hostKeyPins map[int][]byte
+	hostKeyPins          map[int][]byte
 }
 
-// folders stubs the Instance folders with a ready value.
 func (f *fakeSync) folders(folders qbittorrent.InstanceFolders) {
 	f.instanceFolders = func(context.Context, int) (qbittorrent.InstanceFolders, error) { return folders, nil }
 }
 
-// stubSync installs a fakeSync on svc the first time it is called and returns
-// it. A service built with a store keeps reading last runs from that store.
 func stubSync(svc *Service) *fakeSync {
 	if f, ok := svc.sync.(*fakeSync); ok {
 		return f
@@ -81,7 +75,6 @@ func (f *fakeSync) List(ctx context.Context) ([]*models.Instance, error) {
 	return f.listInstances(ctx)
 }
 
-// Get reads the listInstances stub, so a test flips an instance's mode in one place.
 func (f *fakeSync) Get(ctx context.Context, id int) (*models.Instance, error) {
 	instances, err := f.List(ctx)
 	if err != nil {

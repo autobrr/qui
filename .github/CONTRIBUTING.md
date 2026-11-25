@@ -44,7 +44,6 @@ Make sure you have the following dependencies installed before setting up your d
 - [Go](https://golang.org/dl/) 1.27 or later (see [go.mod](../go.mod#L3) for exact version)
 - [Node.js](https://nodejs.org) (we usually use the latest Node LTS version - for further information see `@types/node` major version in [package.json](../web/package.json))
 - [pnpm](https://pnpm.io/installation)
-- [prek](https://github.com/prefix-dev/prek) (optional, for pre-commit hooks)
 
 ## How to contribute
 

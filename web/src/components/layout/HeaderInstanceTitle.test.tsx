@@ -42,7 +42,6 @@ function renderTitle(activeInstances: InstanceResponse[], instanceName: string) 
 afterEach(cleanup)
 
 describe("HeaderInstanceTitle", () => {
-  // regression: #4359
   it("shows the only enabled instance as a title, with no menu", () => {
     const { container } = renderTitle([instance(1, "main")], "main")
 

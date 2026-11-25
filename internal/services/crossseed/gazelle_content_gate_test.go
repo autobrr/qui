@@ -69,8 +69,6 @@ func TestGazellePlausibleContent(t *testing.T) {
 			want:  false,
 		},
 		{
-			// The cross-seed ignore keywords match on the whole path, so a
-			// release directory named "[Bonus Tracks]" hides every file below it.
 			name: "flac album under a bonus tracks directory",
 			files: qbt.TorrentFiles{
 				{Name: "Artist - Album (Deluxe) [Bonus Tracks]/01 - Track.flac", Size: 40_000_000},
@@ -79,7 +77,6 @@ func TestGazellePlausibleContent(t *testing.T) {
 			want: true,
 		},
 		{
-			// Booklet scans outweigh individual tracks in many lossy releases.
 			name: "mp3 album with booklet scans larger than any track",
 			files: qbt.TorrentFiles{
 				{Name: "Artist - Album [MP3 V0]/01.mp3", Size: 9_000_000},

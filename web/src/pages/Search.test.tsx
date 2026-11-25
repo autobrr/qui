@@ -94,7 +94,6 @@ async function searchFor(query: string) {
 const sent = (call: number): TorznabSearchRequest => api.searchTorznab.mock.calls[call][0]
 
 describe("Search", () => {
-  // regression: #4354
   it("offers a recent search only once the indexer list loads, so the pick searches its own indexers", async () => {
     let loadIndexers: (list: TorznabIndexer[]) => void = () => {}
     api.listTorznabIndexers.mockImplementation(() => new Promise(resolve => { loadIndexers = resolve }))
@@ -114,7 +113,6 @@ describe("Search", () => {
     expect(sent(0).indexer_ids).toEqual([2])
   })
 
-  // regression: #4354
   it("says when the indexer list fails to load, and loads it again on Try again", async () => {
     api.listTorznabIndexers.mockRejectedValueOnce(new Error("server down")).mockResolvedValue([indexer(1)])
     api.getRecentTorznabSearches.mockResolvedValue([])
@@ -127,7 +125,6 @@ describe("Search", () => {
     expect(screen.queryByText("Failed to load indexers")).toBeNull()
   })
 
-  // regression: #4354
   it("shows the results without waiting for the recent searches to load again", async () => {
     api.listTorznabIndexers.mockResolvedValue([indexer(1)])
     api.getRecentTorznabSearches.mockResolvedValueOnce([]).mockImplementation(never)
@@ -139,7 +136,6 @@ describe("Search", () => {
     expect(await screen.findByText("No results found for \"Sample Film 2023\"")).toBeTruthy()
   })
 
-  // regression: #4354
   it("offers Refresh when a cached search found nothing", async () => {
     api.listTorznabIndexers.mockResolvedValue([indexer(1)])
     api.getRecentTorznabSearches.mockResolvedValue([])
@@ -154,7 +150,6 @@ describe("Search", () => {
     expect(sent(1).cache_mode).toBe("bypass")
   })
 
-  // regression: #4354
   it("does not bypass the cache again on Try again after a failed refresh", async () => {
     api.listTorznabIndexers.mockResolvedValue([indexer(1)])
     api.getRecentTorznabSearches.mockResolvedValue([])
@@ -171,7 +166,6 @@ describe("Search", () => {
     expect(sent(2).cache_mode).toBeUndefined()
   })
 
-  // regression: #4354
   it("offers Search all indexers when an enabled indexer was not in the search", async () => {
     api.listTorznabIndexers.mockResolvedValue([indexer(1)])
     api.getRecentTorznabSearches.mockResolvedValue([])

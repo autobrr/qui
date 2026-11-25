@@ -5,8 +5,6 @@
 
 import type { Instance } from "@/types"
 
-// What a remote instance cannot do, from its stored probe. The keys name
-// instances.json entries under access.limits.
 export type RemoteAccessLimit = "noIdentity" | "noReflinks" | "noHardlinkExtension"
 
 export function remoteAccessLimits(instance: Pick<Instance, "filesystemMode" | "sshTier" | "sshHardlink">): RemoteAccessLimit[] {
@@ -18,7 +16,6 @@ export function remoteAccessLimits(instance: Pick<Instance, "filesystemMode" | "
     limits.push("noIdentity")
   }
   limits.push("noReflinks")
-  // An unknown flag (no probe yet) claims nothing.
   if (instance.sshHardlink === false) {
     limits.push("noHardlinkExtension")
   }

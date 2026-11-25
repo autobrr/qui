@@ -13,7 +13,6 @@ const html = readFileSync(resolve(webRoot, "index.html"), "utf8")
 const head = html.match(/<head>([\s\S]*)<\/head>/)?.[1] ?? ""
 const inlineScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? ""
 
-// Mounts index.html's <head> and runs its inline anti-FOUC script against the seeded theme cache.
 function loadIcon(themeCache?: object): HTMLLinkElement {
   if (themeCache) localStorage.setItem("theme-cache", JSON.stringify(themeCache))
   document.head.innerHTML = head
@@ -29,7 +28,6 @@ afterEach(() => {
 })
 
 describe("static favicon in index.html", () => {
-  // Firefox defers useDynamicFavicon in background tabs, so whatever index.html ships is what shows until focus.
   it("ships a real icon before JS runs", () => {
     expect(loadIcon().getAttribute("href")).toBe("/favicon.png")
     expect(existsSync(resolve(webRoot, "public", "favicon.png"))).toBe(true)

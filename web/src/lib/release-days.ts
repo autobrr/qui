@@ -8,11 +8,6 @@ export const RELEASE_MAP_DAYS = 364
 const DAY_SECONDS = 86_400
 const RELEASE_TAG = /^v\d+\.\d+\.\d+$/
 
-/**
- * Returns one day index for each release in the 52 weeks that end on the day of `now`.
- * Index 0 is the oldest day, and index 363 is the day of `now`. Two releases on one day
- * give the same index twice. `tags` has one "name unix-seconds" line for each git tag.
- */
 export function releaseDays(tags: string, now: number): number[] {
   const today = Math.floor(now / DAY_SECONDS)
   return tags

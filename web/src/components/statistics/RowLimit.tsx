@@ -11,15 +11,11 @@ import { useTranslation } from "react-i18next"
 interface RowLimitProps {
   shown: number
   total: number
-  // Adds rows. Undefined when the line has no Show more.
   onMore?: () => void
-  // Shows each row. Undefined when the line has no Show all.
   onAll?: () => void
-  // Returns to the first rows. Undefined while only the first rows show.
   onFewer?: () => void
 }
 
-/** The line below a table that shows some of its rows: the count, and Show more, Show all, or Show fewer. Show fewer keeps the line in view. */
 export function RowLimit({ shown, total, onMore, onAll, onFewer }: RowLimitProps) {
   const { t, i18n } = useTranslation("statistics")
   const line = useRef<HTMLDivElement>(null)
@@ -35,7 +31,6 @@ export function RowLimit({ shown, total, onMore, onAll, onFewer }: RowLimitProps
             size="sm"
             onClick={() => {
               flushSync(onFewer)
-              // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
               line.current?.scrollIntoView({ block: "nearest" })
             }}
           >

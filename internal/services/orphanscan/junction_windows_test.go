@@ -99,9 +99,6 @@ func TestOrphanScan_WindowsJunctionProtectsSeededDescendant(t *testing.T) {
 	})
 }
 
-// os.Stat follows a junction, so an empty folder a torrent's save path reaches
-// through one is kept by the scan and the delete.
-// regression: #3652
 func TestOrphanScan_WindowsJunctionKeepsEmptyFolderATorrentReaches(t *testing.T) {
 	root := t.TempDir()
 	scanRoot := filepath.Join(root, "scan root")

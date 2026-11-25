@@ -19,8 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// newFreeSpaceRouter wires the real handler to a synthetic qBittorrent that answers
-// app/getFreeSpaceAtPath with body, and records the path it received.
 func newFreeSpaceRouter(t *testing.T, name, apiVersion, body string, status int) (*chi.Mux, int, <-chan string) {
 	t.Helper()
 

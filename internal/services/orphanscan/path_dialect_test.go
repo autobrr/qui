@@ -25,8 +25,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// winRootTestDialect carries Windows drive and UNC roots through ignore matching on
-// every GOOS. Clean and Separator match a Windows host; other methods delegate.
 type winRootTestDialect struct{ fsops.PathDialect }
 
 func (w winRootTestDialect) Separator() string { return `\` }
@@ -37,8 +35,6 @@ func (w winRootTestDialect) Clean(p string) string {
 	case p == `C:`:
 		return `C:\`
 	case strings.HasPrefix(p, `\\`):
-		// Windows Clean keeps a trailing separator on a UNC share root and
-		// drops it on every longer path.
 		trimmed := strings.TrimSuffix(p, `\`)
 		rest := strings.TrimPrefix(trimmed, `\\`)
 		server, share, found := strings.Cut(rest, `\`)
@@ -59,8 +55,6 @@ func (w winRootTestDialect) IsAbs(p string) bool {
 	return strings.HasPrefix(p, `\\`)
 }
 
-// uncHostRootTestDialect keeps a share-less \\host\ as a trailing-separator
-// root whose Dir never walks above the share volume, matching Windows UNC.
 type uncHostRootTestDialect struct{ fsops.PathDialect }
 
 func (uncHostRootTestDialect) Separator() string { return `\` }
@@ -101,9 +95,6 @@ func (b *dialectLstatBackend) Lstat(context.Context, string) (*fsops.LstatInfo, 
 	return &fsops.LstatInfo{IsDir: true}, nil
 }
 
-// slashBackend is a remote as orphan scan sees it on any host: the slash dialect
-// over an in-memory tree. On a Windows host a host filepath call shows up as a
-// backslashed path or as a file the tree does not hold.
 type slashBackend struct {
 	fsops.Backend
 	files map[string]int64
@@ -145,7 +136,6 @@ func (b *slashBackend) children(dir string) []fsops.DirEntry {
 }
 
 func (b *slashBackend) Lstat(_ context.Context, p string) (*fsops.LstatInfo, error) {
-	// Each file and folder is its own inode, as the identity checks need.
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(p))
 	if _, ok := b.dirs[p]; ok {
@@ -220,8 +210,6 @@ func (b *slashBackend) Remove(_ context.Context, p string, opts fsops.RemoveOpti
 	return nil
 }
 
-// On a Windows host a remote save path is not host-absolute, and host Clean
-// backslashes it or reads a leading // as a UNC volume.
 func TestPathDialect_RootBuilders(t *testing.T) {
 	t.Parallel()
 
@@ -241,7 +229,6 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 	require.Error(t, err)
 }
 
-// A backslash in a remote name is a byte of that name, never a separator.
 func TestPathDialect_FileMapKeys(t *testing.T) {
 	t.Parallel()
 
@@ -285,7 +272,6 @@ func TestPathDialect_DiscAndPlainUnits(t *testing.T) {
 	require.False(t, isDisc)
 	require.Equal(t, "/data/d/f.mkv", unit)
 
-	// A disc parent holding owned files is not a disc root, so the unit stays at BDMV.
 	unit, isDisc = discOrphanUnitWithContext(t.Context(), "/data", "/data/Owned/BDMV/STREAM/00000.m2ts", protected, cache, nil, b)
 	require.True(t, isDisc)
 	require.Equal(t, "/data/Owned/BDMV", unit)
@@ -318,7 +304,6 @@ func TestPathDialect_ScanRootLookup(t *testing.T) {
 
 	roots := []string{"/data", "/data/a"}
 	require.Equal(t, "/data/a", findScanRoot(fsops.SlashPaths, "/data/a/x.mkv", roots))
-	// "a\b" is a sibling of "a", not a directory inside it.
 	require.Equal(t, "/data", findScanRoot(fsops.SlashPaths, "/data/a\\b/x.mkv", roots))
 
 	require.NoError(t, withinScanRoot(fsops.SlashPaths, "/data/a", "/data/a/x.mkv"))
@@ -333,7 +318,6 @@ func TestPathDialect_RootIgnorePathMatching(t *testing.T) {
 	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/", "/"))
 	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/a\\b", "/data/a"))
 
-	// A parent that does not end in the separator keeps the boundary rule.
 	require.False(t, isPathUnderNormalized(fsops.SlashPaths, "/data/foobar", "/data/foo"))
 	require.True(t, isPathUnderNormalized(fsops.SlashPaths, "/data/foo/bar", "/data/foo"))
 
@@ -363,8 +347,6 @@ func TestPathDialect_FilesystemRootDeletesRefused(t *testing.T) {
 	require.Empty(t, findScanRoot(win, `C:\data\x.mkv`, []string{driveRoot}))
 	require.ErrorContains(t, withinScanRoot(win, driveRoot, `C:\data\x.mkv`), "escapes scan root")
 
-	// Windows Clean leaves \\server\share without a separator and keeps one on
-	// \\server\share\. Both are the share root, so neither is a delete boundary.
 	require.Equal(t, `\\server\share`, win.Clean(`\\server\share`))
 	require.Equal(t, `\\server\share\`, win.Clean(`\\server\share\`))
 	for _, root := range []string{`\\server\share`, `\\server\share\`} {
@@ -375,8 +357,6 @@ func TestPathDialect_FilesystemRootDeletesRefused(t *testing.T) {
 	require.NoError(t, withinScanRoot(win, `\\server\share\library`, `\\server\share\library\orphan.mkv`))
 }
 
-// winShareTestDialect adds Windows Dir to winRootTestDialect: Dir of a path
-// below a UNC share root is the root with its separator.
 type winShareTestDialect struct{ winRootTestDialect }
 
 func (w winShareTestDialect) Dir(p string) string {
@@ -395,8 +375,6 @@ func (w winShareTestDialect) Dir(p string) string {
 	return vol + `\` + below[:i]
 }
 
-// Windows Clean leaves \\host\share without a separator, while Dir of a path
-// below it returns \\host\share\, so the share root must still cover it.
 func TestPruneNestedScanRoots_ShareRoot(t *testing.T) {
 	t.Parallel()
 
@@ -417,7 +395,6 @@ func TestPruneNestedScanRoots_ShareRoot(t *testing.T) {
 		require.Equal(t, tc.want, pruneNestedScanRoots(t.Context(), tc.roots, b), "%v", tc.roots)
 	}
 
-	// The share root is checked like any other folder on the way up.
 	gone := &missingLstatBackend{dialectLstatBackend: b, missing: `\\host\share\`}
 	roots := []string{`\\host\share`, `\\host\share\movies`}
 	require.Equal(t, roots, pruneNestedScanRoots(t.Context(), roots, gone))
@@ -454,8 +431,6 @@ func TestPruneNestedScanRoots_SharelessHostRootDoesNotLoop(t *testing.T) {
 	}
 }
 
-// A remote scan stores the paths the remote walk produced, byte for byte, on
-// any host.
 func TestExecuteScan_RemoteStoresSlashPaths(t *testing.T) {
 	t.Parallel()
 
@@ -509,8 +484,6 @@ func TestExecuteScan_RemoteStoresSlashPaths(t *testing.T) {
 	}, got)
 }
 
-// Deletion rechecks a slash preview at confirm time. A backslash is a byte of a name:
-// a\b is a sibling of root a, skip\y is outside ignore path skip, and c is not the parent of category c\x.
 func TestPathDialect_DeletionRechecks(t *testing.T) {
 	t.Parallel()
 
@@ -524,10 +497,8 @@ func TestPathDialect_DeletionRechecks(t *testing.T) {
 		"/srv/data/a/n.mkv":                      7,
 		"/srv/data/a\\b.mkv":                     8,
 	}, "/srv/data/empty", "/srv/data/cat", "/srv/data/c", "/srv/data/skip\\d", "/srv/data/a\\d")
-	// Only a local instance may delete; the dialect comes from the backend all the same.
 	f := newModeFixture(t, "orphanscan-slash-delete", models.FilesystemModeLocal, nil)
 	f.svc.backendPool = fsops.NewPool(f.instance, b)
-	// late and disc are added between the preview and the confirm.
 	torrents := []qbt.Torrent{
 		{Hash: "owned", SavePath: "/srv/data", State: qbt.TorrentStatePausedUp},
 		{Hash: "nested", SavePath: "/srv/data/a", State: qbt.TorrentStatePausedUp},

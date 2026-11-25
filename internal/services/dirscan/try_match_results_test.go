@@ -33,7 +33,6 @@ func TestTryMatchResultsPerIndexer_SkipsAfterMatchPerIndexer(t *testing.T) {
 		0,
 		0,
 		func(result *jackett.SearchResult) bool {
-			// Simulate "already exists" skipping for indexer 3.
 			return result.IndexerID == 3
 		},
 		func(result *jackett.SearchResult) candidateReport {
@@ -44,7 +43,6 @@ func TestTryMatchResultsPerIndexer_SkipsAfterMatchPerIndexer(t *testing.T) {
 			case 1:
 				return testAddedCandidate()
 			case 2:
-				// First result from indexer 2 fails, second matches.
 				if callCounts[result.IndexerID] == 1 {
 					return candidateReport{event: candidateRejected}
 				}

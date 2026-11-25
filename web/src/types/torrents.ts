@@ -106,8 +106,6 @@ export interface Torrent {
   hash: string
   infohash_v1: string
   infohash_v2: string
-  // The server leaves out popularity and private before qBittorrent 5.0, which
-  // does not send them in the torrent list, and private for a torrent without metadata.
   popularity?: number
   private?: boolean
   last_activity: number
@@ -119,14 +117,12 @@ export interface Torrent {
   num_incomplete: number
   num_leechs: number
   num_seeds: number
-  // qBittorrent 5.2 and later. Before 5.2 the server sends 0.
   pieces_have?: number
   pieces_num?: number
   priority: number
   progress: number
   ratio: number
   ratio_limit: number
-  // The server leaves it out before qBittorrent 5.0, which does not send it in the torrent list.
   reannounce?: number
   save_path: string
   seeding_time: number
@@ -146,19 +142,16 @@ export interface Torrent {
   trackers_count: number
   trackers?: TorrentTracker[]
   tracker_health?: "unregistered" | "tracker_down" | "tracker_error"
-  /** Set only on a torrent that qui added for a Transfer or a Share: the owner kind from the helper registry. */
   qui_helper?: "transfer" | "share"
   up_limit: number
   uploaded: number
   uploaded_session: number
   upspeed: number
-  /** Only on a row of a Copy group with two or more matching torrents, when the request asked for groups. */
   copy_group?: CopyGroupRow
 }
 
 export interface CopyGroupRow {
   id: string
-  /** Only on the Group representative: the torrent whose place the group takes in the sort. */
   first_sorted?: { instance_id: number; hash: string }
 }
 
@@ -183,8 +176,6 @@ export interface TorrentStats {
   totalSize?: number
   totalRemainingSize?: number
   totalSeedingSize?: number
-  // Set when the request asks for the Unique size and a Copy groups build that
-  // read the instance has ended.
   uniqueSize?: number
   uniqueSeedingSize?: number
 }
@@ -196,12 +187,6 @@ export interface CacheMetadata {
   nextRefresh?: string
 }
 
-/**
- * Sidebar count groups returned with a torrent list response.
- *
- * Tracker keys are normalized tracker domains. qBittorrent pseudo tracker
- * labels such as DHT, PeX, and LSD are omitted rather than folded into Unknown.
- */
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
@@ -212,10 +197,6 @@ export interface TorrentCounts {
   total: number
 }
 
-/**
- * Manual torrent filters accepted by list endpoints and stream subscriptions.
- * Tracker filters use the same normalized domain keys as TorrentCounts.trackers.
- */
 export interface TorrentFilters {
   hashes?: string[]
   status: string[]
@@ -231,11 +212,6 @@ export interface TorrentFilters {
   expr?: string
 }
 
-/**
- * A named snapshot of TorrentFilters, saved server-side and shared across
- * instances. The backend stores filters as an opaque blob, so treat them as
- * partial and normalize with toViewFilters before use.
- */
 export interface FilterView {
   id: number
   name: string
@@ -253,14 +229,13 @@ export interface InstanceMeta {
   connected: boolean
   hasDecryptionError: boolean
   recentErrors?: InstanceError[]
-  /** Normalized qBittorrent connection status, or "disabled" for inactive instances. */
   connectionStatus?: string
 }
 
 export interface TorrentResponse {
   torrents: Torrent[]
   crossInstanceTorrents?: CrossInstanceTorrent[]
-  cross_instance_torrents?: CrossInstanceTorrent[]  // Backend uses snake_case
+  cross_instance_torrents?: CrossInstanceTorrent[]
   total: number
   activeTaskCount?: number
   stats?: TorrentStats
@@ -272,16 +247,12 @@ export interface TorrentResponse {
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
-  // Some instances in the Unified view did not answer.
   partialResults?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
   instanceMeta?: InstanceMeta
-  /** Web API version of each instance in the response, keyed by instance ID; "" while unknown. */
   webAPIVersions?: Record<number, string>
-  /** Frontend-assembled only: number of pages combined into this loaded-window response. */
   windowPageCount?: number
-  /** Only when the request asked for groups. False while the server has no Copy groups yet; the rows are then flat. */
   copyGroupsReady?: boolean
 }
 
@@ -313,9 +284,6 @@ export interface TorrentStreamMeta {
   rid?: number
   fullUpdate?: boolean
   timestamp: string
-  // lastSuccessfulSync is when the instance's data last actually updated (RFC3339).
-  // Present on stream-error frames so the UI can show how stale the retained rows are
-  // without that age resetting on every failed attempt. Omitted when unknown.
   lastSuccessfulSync?: string
   retryInSeconds?: number
   streamKey?: string
@@ -326,12 +294,6 @@ export interface TorrentStreamVersion {
   minor: number
 }
 
-// TorrentStreamDelta reconciles a delta frame's page-0 window against the previous
-// frame. The added/changed rows ride in the frame's `data.torrents` (or
-// `cross_instance_torrents`); `order` is the full page key sequence, present only
-// when membership or ordering changed (otherwise changed rows apply in place). Keys
-// are the torrent hash for single-instance streams and "<instanceId>:<hash>" for
-// cross-instance streams.
 export interface TorrentStreamDelta {
   order?: string[]
   baseVersion: TorrentStreamVersion
@@ -387,7 +349,6 @@ export interface ServerState {
   last_external_address_v6?: string
 }
 
-/** The disk of the default save path of an instance. Both fields are null when qui cannot read the disk. */
 export interface InstanceDisk {
   freeBytes: number | null
   totalBytes: number | null
@@ -444,8 +405,6 @@ export interface WebSeed {
 
 export type DiscScanStatus = "pending" | "scanning" | "completed" | "failed" | "canceled"
 
-// DiscScanRun mirrors models.DiscScanRun: one queued or running BDInfo job on
-// one Disc, and after completion its cached Disc report.
 export interface DiscScanRun {
   id: number
   instanceId: number

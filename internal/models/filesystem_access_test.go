@@ -71,10 +71,7 @@ func TestFilesystemCapabilitiesOf(t *testing.T) {
 		{"local", &Instance{HasLocalFilesystemAccess: true}, all},
 		{"local with SSH credentials", &localWithSSH, all},
 		{"local with an exec tier", &localWithExecTier, all},
-		// Content stays local: downloads, MediaInfo, and disc scans expect the
-		// files on qui's own disk.
 		{"remote sftp tier", remote, FilesystemCapabilities{Read: true, Write: true, ReadBytes: true, WriteBytes: true}},
-		// Peer identity serves matching and dedup, never a local-only trust.
 		{"remote exec tier", &remoteExec, FilesystemCapabilities{Read: true, Identity: true, Write: true, ReadBytes: true, WriteBytes: true}},
 		{"none", &Instance{}, FilesystemCapabilities{}},
 	}

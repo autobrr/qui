@@ -11,7 +11,6 @@ export const TORRENT_SORT_OPTIONS = [
   { value: "added_on", labelKey: "sort.options.addedOn" },
   { value: "name", labelKey: "tableColumns.name" },
   { value: "size", labelKey: "tableColumns.size" },
-  // { value: "total_size", labelKey: "tableColumns.totalSize" },
   { value: "progress", labelKey: "tableColumns.progress" },
   { value: "state", labelKey: "tableColumns.status" },
   { value: "priority", labelKey: "tableColumns.priority" },

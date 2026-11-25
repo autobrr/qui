@@ -37,7 +37,6 @@ describe("getOIDCConfig", () => {
     await expect(api.getOIDCConfig()).resolves.toMatchObject({ enabled: false, providerUnavailable: false })
   })
 
-  // regression: #3404
   it("throws on a throttled request instead of reporting OIDC as off", async () => {
     server.use(
       http.get("*/api/auth/oidc/config", () => new HttpResponse("Server capacity exceeded.", {

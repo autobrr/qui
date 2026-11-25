@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -133,7 +134,7 @@ func (q *alternateTitleQueue) retry(title *heldTitle, at time.Time) {
 }
 
 func (q *alternateTitleQueue) count(answer AlternateTitles, err error) {
-	if err == nil {
+	if err == nil || errors.Is(err, ErrTitleUnanswered) {
 		if answer.Requested {
 			q.failures, q.pause, q.answered = 0, 0, true
 		}

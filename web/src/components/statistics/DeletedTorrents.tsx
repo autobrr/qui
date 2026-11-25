@@ -26,7 +26,6 @@ import { useTranslation } from "react-i18next"
 
 export const DELETES_PAGE = 50
 
-// The number of rows that a phone shows at first, and adds for each Show more.
 const PHONE_ROWS = 5
 const PHONE_MORE = 10
 
@@ -51,12 +50,10 @@ interface InstanceDelete extends TransferHistoryDeleteEvent {
 }
 
 interface DeletesPages {
-  // The newest deletes of all instances, of each page that each instance loaded. Undefined until the first page loaded.
   deletes?: InstanceDelete[]
   counts?: TransferHistoryDeletesAnswer["counts"]
   error?: Error
   loadingMore: boolean
-  // Loads each page again that failed.
   retry: () => void
 }
 
@@ -67,10 +64,6 @@ function deletesQuery(instanceId: number, period: { from?: Date; to: Date }, cau
   }
 }
 
-/**
- * Reads the first pages of deletes of each instance. The newest pages * DELETES_PAGE deletes of all instances are among
- * the first pages of each instance, so the merge of those pages holds them in full.
- */
 function useDeletesPages(instances: TransferHistoryInstance[], period: { from?: Date; to: Date }, cause: TransferHistoryCauseFilter, pages: number): DeletesPages {
   const combine = useCallback((results: UseQueryResult<TransferHistoryDeletesAnswer>[]): DeletesPages => {
     const answer = (instance: number, page: number) => results[instance * pages + page]?.data
@@ -78,7 +71,6 @@ function useDeletesPages(instances: TransferHistoryInstance[], period: { from?: 
     while (loaded < pages && instances.every((_, index) => answer(index, loaded))) {
       loaded++
     }
-    // A delete that lands between two page loads moves the offsets, so a row can come back on the next page.
     const unique = new Map(instances.flatMap((instance, index) => Array.from({ length: loaded }, (_, page) => answer(index, page)!.deletes.map(event => [
       `${instance.instanceId}:${event.hash}:${event.time}`,
       { ...event, instanceId: instance.instanceId, timeMs: Date.parse(event.time) },
@@ -102,17 +94,12 @@ function useDeletesPages(instances: TransferHistoryInstance[], period: { from?: 
 }
 
 interface DeletedTorrentsProps {
-  // A new scope, another period choice or instance selection, starts again at the first page.
   scope: string
   instances: TransferHistoryInstance[]
   period: { from?: Date; to: Date }
   displayGroup: (group: string) => string
 }
 
-/**
- * The deleted torrents of the period with the newest first, with who deleted each one and the numbers it ended with.
- * A desktop shows the rows in pages. A phone shows the first rows, and Show more adds rows.
- */
 export function DeletedTorrents({ scope, instances, period, displayGroup }: DeletedTorrentsProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -121,9 +108,7 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   const groupIcon = useTrackerGroupIcon()
   const narrow = useIsPhone()
   const [cause, setCause] = useState<TransferHistoryCauseFilter>("")
-  // The phone rows that the user opened with a tap, to read the whole name and cause, as a touch screen cannot show a title.
   const [fullNames, setFullNames] = useState<ReadonlySet<string>>(new Set())
-  // The phone rows whose name or cause the row cuts. Only such a row has more to show when it opens.
   const [cutRows, setCutRows] = useState<ReadonlySet<string>>(new Set())
   const [paging, setPaging] = useState({ scope, cause, pages: 1 })
   const pages = paging.scope === scope && paging.cause === cause ? paging.pages : 1
@@ -132,8 +117,6 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   if (loaded.deletes && (kept?.pages !== loaded || kept.cause !== cause || kept.scope !== scope)) {
     setKept({ scope, cause, pages: loaded })
   }
-  // A preset period moves forward each 5 minutes, and another filter can still load. The rows of the same scope stay
-  // until the new rows load, dimmed when they are of another filter.
   const keep = !loaded.deletes && !loaded.error && kept?.scope === scope
   const shownCause = keep ? kept.cause : cause
   const shownView = `${scope}:${shownCause}`
@@ -153,19 +136,15 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     setPaged({ view: shownView, page: 0 })
   }
   const wantedPage = paged.view === shownView ? paged.page : 0
-  // A desktop stays on its page until the rows of the next page load.
   const page = Math.min(wantedPage, Math.max(0, Math.ceil((deletes?.length ?? 0) / PAGE_ROWS) - 1))
   const rows = narrow
     ? deletes?.slice(0, phoneRows.view === shownView ? phoneRows.count : PHONE_ROWS)
     : deletes?.slice(page * PAGE_ROWS, (page + 1) * PAGE_ROWS)
   const footer = useRef<HTMLDivElement>(null)
   const next = (rows?.length ?? 0) + PHONE_MORE
-  // A background reload keeps the loaded rows, so only a step that needs a new page of the server waits for it.
   const waiting = loadingMore && (narrow ? next > (deletes?.length ?? 0) : wantedPage > page)
-  // Loads the rows up to the count when the server holds more than the loaded rows.
   const loadTo = (count: number) => {
     const loaded = deletes?.length ?? 0
-    // The rows that are loaded show first, also when a later page failed.
     if (count <= loaded) {
       return
     }
@@ -180,7 +159,6 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     loadTo(next)
   }
 
-  // The first page of the other filters loads after the first filter, so that a switch shows its rows at once.
   const queryClient = useQueryClient()
   const preloaded = useRef<string>(undefined)
   const firstLoaded = loaded.deletes !== undefined
@@ -196,16 +174,12 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
     }
   }, [firstLoaded, scope, cause, instances, period, queryClient])
 
-  // Deleted torrents ends the page. A shorter list after a filter switch or a page switch keeps the height of the last
-  // list, so that the page does not end higher and move the tabs away from the pointer. The space goes when it is below the screen, or when
-  // the rows of the new filter show and fill it.
   const body = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLDivElement>(null)
   const [held, setHeld] = useState<{ scope: string; height: number }>()
   const minHeight = held?.scope === scope ? held.height : undefined
   const holdHeight = () => setHeld(body.current ? { scope, height: body.current.offsetHeight } : undefined)
   useEffect(() => {
-    // The rows of the last filter or of the last page still show, and they fill the space by themselves.
     if (minHeight === undefined || stale || waiting) {
       return
     }
@@ -309,7 +283,6 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                       return next
                     })
                     const line = narrow ? "pl-5.5" : undefined
-                    // An open row stays open until a tap closes it. A closed row opens only when it cuts its name or cause.
                     const opens = narrow && (full || cutRows.has(key))
                     return (
                       <TableRow key={key} data-delete={key} className={cn(opens && "cursor-pointer", full && "bg-muted hover:bg-muted")} onClick={opens ? toggle : undefined}>
@@ -322,7 +295,6 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                             </button>
                           ) : narrow ? (
                             <div className="flex w-full min-w-0 items-start gap-2">
-                              {/* The space of the arrow keeps the name in line with the names of the rows that open. */}
                               <span className="mt-1 size-3.5 shrink-0" aria-hidden />
                               <TorrentName name={name} className="min-w-0 line-clamp-2" />
                             </div>
@@ -355,7 +327,6 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
                         size="sm"
                         onClick={() => {
                           flushSync(() => setPhoneRows({ view: shownView, count: PHONE_ROWS }))
-                          // Safari keeps the scroll offset when the list above gets shorter, so the button moves out of view.
                           footer.current?.scrollIntoView({ block: "nearest" })
                         }}
                       >
@@ -392,7 +363,6 @@ export function DeletedTorrents({ scope, instances, period, displayGroup }: Dele
   )
 }
 
-// An open phone row wraps the cause, as a tap on a cut name opens the row and not its tooltip.
 function Cause({ kind, name, wrap = false, openOnTap }: { kind: TransferHistoryCauseKind; name?: string; wrap?: boolean; openOnTap: boolean }) {
   const { t } = useTranslation("statistics")
   const { icon: Icon, labelKey } = CAUSES[kind]

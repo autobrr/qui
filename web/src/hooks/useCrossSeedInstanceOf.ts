@@ -6,10 +6,6 @@
 import { useCrossSeedRoutes } from "@/hooks/useCrossSeedRoutes"
 import { useInstances } from "@/hooks/useInstances"
 
-/**
- * The Cross-seed instance that receives the cross-seeds found on instanceId,
- * or undefined when instanceId has no route (ADR 0035).
- */
 export function useCrossSeedInstanceOf(instanceId: number, enabled = true): { id: number; name: string } | undefined {
   const { data: routes } = useCrossSeedRoutes(enabled)
   const { instances } = useInstances()

@@ -15,7 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// statfsBackend answers Statfs with a fixed result, as the SSH host would.
 type statfsBackend struct {
 	fsops.Backend
 	available int64

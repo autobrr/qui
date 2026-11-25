@@ -8,12 +8,6 @@ import type { CacheMetadata, InstanceMeta, InstanceResponse, TorrentCounts, Torr
 export const DASHBOARD_STATS_FALLBACK_SORT = "added_on"
 export const DASHBOARD_STATS_FALLBACK_ORDER = "desc"
 
-/**
- * Query key for dashboard's lightweight stats snapshot cache.
- *
- * Stream payloads and fallback REST probes share this key so dashboard remounts
- * can paint the last cached stats immediately while the live stream reconnects.
- */
 export function createDashboardStatsFallbackQueryKey(instanceId: number) {
   return [
     "dashboard-stats-fallback",
@@ -23,11 +17,6 @@ export function createDashboardStatsFallbackQueryKey(instanceId: number) {
   ] as const
 }
 
-/**
- * Dashboard streams intentionally omit torrent counts on lightweight ticks. Treat
- * an omitted primary counts field as "no update" so hydrated tracker metadata
- * from REST/cache does not disappear as soon as the connected stream takes over.
- */
 export function resolveDashboardTorrentCounts(
   primaryCounts: TorrentCounts | undefined,
   fallbackCounts: TorrentCounts | undefined
@@ -94,10 +83,6 @@ export function resolveDashboardDataStatusKind({
   return null
 }
 
-/**
- * Once the REST fallback has returned data, dashboard status should describe
- * the active fallback path instead of a stale stream failure.
- */
 export function resolveDashboardStreamError(
   streamError: string | null,
   fallbackActive: boolean,
@@ -106,11 +91,6 @@ export function resolveDashboardStreamError(
   return fallbackActive && fallbackData ? null : streamError
 }
 
-/**
- * Applies live SSE instance metadata to the REST instance snapshot used by the
- * dashboard. Metadata is ignored after stream disconnect so stale stream auth or
- * connection state cannot overwrite the latest REST/fallback instance row.
- */
 export function mergeDashboardInstanceMeta(
   instance: InstanceResponse,
   streamConnected: boolean,
@@ -129,13 +109,6 @@ export function mergeDashboardInstanceMeta(
   }
 }
 
-/**
- * Merges a lightweight dashboard snapshot into the previous cached snapshot.
- *
- * SSE ticks can arrive before tracker health has finished hydrating and omit
- * counts. Preserve the cached counts in that case so handoff/remount paths do
- * not regress to SSE-only data while waiting for the next hydrated tick.
- */
 export function mergeDashboardStatsSnapshot(
   incoming: TorrentResponse,
   cached: TorrentResponse | undefined
@@ -156,11 +129,6 @@ export function mergeDashboardStatsSnapshot(
   }
 }
 
-/**
- * Adds the sizes that the Dashboard shows for a set of instances. An instance
- * gives its Unique size once its first Copy groups build ends. Until then it
- * gives the size that counts a linked cross-seed in full, and sets calculating.
- */
 export function resolveDashboardSizes(statsList: ReadonlyArray<TorrentStats | null | undefined>) {
   let totalSize = 0
   let seedingSize = 0

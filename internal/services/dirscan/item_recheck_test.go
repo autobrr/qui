@@ -39,14 +39,12 @@ func TestProcessRootSearchee_SkipsItemAnotherRunFinished(t *testing.T) {
 	svc := &Service{store: store, parser: parser, searcher: NewSearcher(searcher, parser)}
 	l := zerolog.New(io.Discard)
 
-	// The run takes its snapshot while both items are pending.
 	trackedFiles, err := svc.refreshTrackedFilesFromScan(ctx, dir.ID, localScanTarget().instance, scanResult, &seedingIndex{}, &l)
 	require.NoError(t, err)
 	enabled := map[int]struct{}{1: {}}
 	work := selectEligibleRootWork(fsops.HostPaths, scanResult, trackedFiles, parser, 0, time.Now(), enabled, false, &l)
 	require.Len(t, work.roots, 2)
 
-	// Another run then finishes one of them.
 	require.NoError(t, svc.upsertDirScanFileStatus(ctx, dir.ID, finished.Files[0], nil, dirScanFileUpdate{
 		status:             models.DirScanFileStatusMatched,
 		matchedTorrentHash: "0123456789abcdef0123456789abcdef01234567",

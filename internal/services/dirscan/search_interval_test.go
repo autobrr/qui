@@ -19,9 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// timedSearcher answers each search after a fixed delay and records when each
-// search started and completed. A zero delay stands for a cached answer. The
-// mutex keeps the record whole when two runs search at once without the lock.
 type timedSearcher struct {
 	noIDSearchCaps
 	mu        sync.Mutex
@@ -52,8 +49,6 @@ func (s *timedSearcher) SearchWithScope(_ context.Context, req *jackett.TorznabS
 	return nil
 }
 
-// intervalTestService takes a parser built outside the synctest bubble: the
-// parser's cache starts a goroutine that never exits.
 func intervalTestService(parser *Parser, searcher *timedSearcher) *Service {
 	return &Service{parser: parser, searcher: NewSearcher(searcher, parser)}
 }
@@ -213,7 +208,7 @@ func TestProcessSearchee_SearchInterval(t *testing.T) {
 			require.Equal(t, 10*time.Second, time.Since(before))
 			require.Equal(t, itemSearchCanceled, report.search)
 			require.Len(t, searcher.starts, 1, "only the other run searched")
-			time.Sleep(searcher.delay) // let the abandoned search answer before the bubble ends
+			time.Sleep(searcher.delay)
 		})
 	})
 
@@ -245,8 +240,6 @@ func TestProcessSearchee_SearchInterval(t *testing.T) {
 
 			runIntervalSearchee(t.Context(), svc, "First.Item.1080p.WEB-DL", enabled)
 
-			// Both items become free to search at the same instant, so each round is
-			// a tie. Without the priority rule a round goes either way.
 			for round := range 8 {
 				lastEnd := time.Now()
 				full := func() { runIntervalSearchee(t.Context(), svc, "Full.Item.1080p.WEB-DL", enabled) }

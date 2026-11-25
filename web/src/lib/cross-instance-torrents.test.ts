@@ -26,7 +26,7 @@ describe("applyStreamDelta", () => {
     const { data, changed } = applyStreamDelta(base, payload, false)
     expect(changed).toBe(true)
     expect(data.torrents!.map(t => t.hash)).toEqual(["a", "b", "c"])
-    expect(data.torrents![0]).toBe(a) // unchanged row keeps reference
+    expect(data.torrents![0]).toBe(a)
     expect(data.torrents![1].name).toBe("b-new.iso")
   })
 
@@ -69,7 +69,6 @@ describe("applyStreamDelta", () => {
     expect(changed).toBe(true)
     const rows = data.crossInstanceTorrents!
     expect(rows.map(r => `${r.instanceId}:${r.hash}`)).toEqual(["1:a", "2:a"])
-    // The changed instance-2 row is normalized to camelCase instance metadata.
     expect(rows[1].instanceId).toBe(2)
     expect(rows[1].instanceName).toBe("beta")
   })

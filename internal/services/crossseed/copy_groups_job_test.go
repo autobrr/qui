@@ -21,8 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/syncsnap"
 )
 
-// cgSync fakes the sync manager for the Copy groups job. files is what
-// SQLite and qBittorrent give together: a hash without an entry is unreadable.
 type cgSync struct {
 	mu        sync.Mutex
 	torrents  map[int][]qbittorrent.CrossInstanceTorrentView
@@ -44,7 +42,6 @@ func (f *cgSync) ReadInstanceTorrents(_ context.Context, instanceID int) ([]qbit
 	hang := f.listHang[instanceID]
 	f.mu.Unlock()
 	if hang != nil {
-		// As a login with no client does, the read ignores the context.
 		<-hang
 	}
 	f.mu.Lock()
@@ -140,9 +137,6 @@ type cgHarness struct {
 	settingsErr error
 }
 
-// cgTest runs body in synctest.Test with a job over synced instances that
-// hold no torrents. The service and the source of sync updates are built
-// outside the bubble, because each starts goroutines that never end.
 func cgTest(t *testing.T, instanceIDs []int, body func(t *testing.T, h *cgHarness)) {
 	t.Helper()
 	svc := newTestService()
@@ -182,7 +176,6 @@ func newCGHarness(t *testing.T, svc *Service, updates *syncsnap.Source, instance
 	return h
 }
 
-// add puts a copy of the pack on an instance, added at addedOn.
 func (h *cgHarness) add(instanceID int, hash, folder string, addedOn time.Time, files qbt.TorrentFiles) {
 	h.addNamed(instanceID, hash, cgPack, folder, addedOn, files)
 }
@@ -205,7 +198,6 @@ func (h *cgHarness) addNamed(instanceID int, hash, name, folder string, addedOn 
 	}
 }
 
-// addUnreadable puts a copy whose file list does not read yet.
 func (h *cgHarness) addUnreadable(instanceID int, hash, folder string, addedOn time.Time) {
 	h.add(instanceID, hash, folder, addedOn, qbt.TorrentFiles{})
 }
@@ -216,14 +208,11 @@ func (h *cgHarness) setFiles(instanceID int, hash string, files qbt.TorrentFiles
 	h.sync.files[instanceID][hash] = files
 }
 
-// startAndWait starts the job, as qui does at its start, and lets it settle.
 func (h *cgHarness) startAndWait() {
 	h.svc.StartCopyGroups(h.t.Context())
 	synctest.Wait()
 }
 
-// synced gives the job the sync update of an instance that changed hashes.
-// With no hashes, the update is a full one.
 func (h *cgHarness) synced(instanceID int, hashes ...string) {
 	update := h.update(instanceID)
 	if len(hashes) > 0 {
@@ -233,9 +222,6 @@ func (h *cgHarness) synced(instanceID int, hashes ...string) {
 	synctest.Wait()
 }
 
-// update returns a full sync update that holds the torrents of an instance and
-// names each of them as changed. It names no removed torrent: the instances
-// share one source, so the removals of the source mix the instances.
 func (h *cgHarness) update(instanceID int) qbt.SyncUpdate {
 	h.sync.mu.Lock()
 	torrents := make([]qbt.Torrent, 0, len(h.sync.torrents[instanceID]))
@@ -248,7 +234,6 @@ func (h *cgHarness) update(instanceID int) qbt.SyncUpdate {
 	return update
 }
 
-// wait moves the fake clock and lets the job settle.
 func (h *cgHarness) wait(d time.Duration) {
 	time.Sleep(d)
 	synctest.Wait()
@@ -285,7 +270,6 @@ func (h *cgHarness) lists(instanceID int) int {
 	return h.sync.lists[instanceID]
 }
 
-// requested reports whether a file batch of the instance asked for hash.
 func (h *cgHarness) requested(instanceID int, hash string) int {
 	n := 0
 	for _, batch := range h.batches(instanceID) {
@@ -296,8 +280,6 @@ func (h *cgHarness) requested(instanceID int, hash string) int {
 	return n
 }
 
-// want builds the map the job must publish. The first member of each group is
-// its Group representative.
 func (h *cgHarness) want(read []int, groups ...[]qbittorrent.CopyGroupMember) *qbittorrent.CopyGroups {
 	return qbittorrent.NewCopyGroups(h.ids(groups...), nil, read)
 }
@@ -325,15 +307,12 @@ var (
 	cgOld              = time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC)
 )
 
-// firstMap demands groups on a harness with copies a and b on instance 1 and
-// waits for the map: the first read ends, and a rebuild follows at once.
 func (h *cgHarness) firstMap() {
 	h.t.Helper()
 	h.startAndWait()
 	require.Equal(h.t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB)}), h.last())
 }
 
-// pairTest is cgTest with copies a and b on instance 1.
 func pairTest(t *testing.T, instanceIDs []int, body func(t *testing.T, h *cgHarness)) {
 	t.Helper()
 	cgTest(t, instanceIDs, func(t *testing.T, h *cgHarness) {
@@ -352,7 +331,6 @@ func TestCopyGroupsJob_NoWorkBeforeTheStart(t *testing.T) {
 	})
 }
 
-// regression: #3977
 func TestCopyGroupsJob_PublishesAfterADemand(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.startAndWait()
@@ -362,7 +340,6 @@ func TestCopyGroupsJob_PublishesAfterADemand(t *testing.T) {
 	})
 }
 
-// regression: #3977
 func TestCopyGroupsJob_EachInstanceGroupsWhenItsFirstReadEnds(t *testing.T) {
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		h.add(2, cgC, "/data/c", cgOld.Add(2*time.Hour), cgPackFiles())
@@ -405,9 +382,6 @@ func TestCopyGroupsJob_NoRebuildWithoutAMove(t *testing.T) {
 	})
 }
 
-// A client without TotalSize reports the wanted size only, and the matcher
-// compares that size, so a change of the wanted files must rebuild.
-// regression: #3913
 func TestCopyGroupsJob_RebuildsAfterASizeChange(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.firstMap()
@@ -420,9 +394,6 @@ func TestCopyGroupsJob_RebuildsAfterASizeChange(t *testing.T) {
 	})
 }
 
-// The matcher links torrents that share a content path, so a move of the
-// content alone, as at the end of a download in a temp folder, must rebuild.
-// regression: #3913
 func TestCopyGroupsJob_RebuildsAfterAContentPathChange(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.firstMap()
@@ -460,9 +431,6 @@ func TestCopyGroupsJob_RetriesUnreadableTorrents(t *testing.T) {
 	})
 }
 
-// A retry that reads a torrent rebuilds in the same run, and the rebuild must
-// not fetch the retried torrents again.
-// regression: #3930
 func TestCopyGroupsJob_ARetryRunReadsEachTorrentOnce(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
@@ -485,7 +453,6 @@ func TestCopyGroupsJob_ARetryRunReadsEachTorrentOnce(t *testing.T) {
 	})
 }
 
-// regression: #3930
 func TestCopyGroupsJob_ARetryBatchErrorReadsNoTorrentTwice(t *testing.T) {
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
@@ -509,7 +476,6 @@ func TestCopyGroupsJob_ARetryBatchErrorReadsNoTorrentTwice(t *testing.T) {
 	})
 }
 
-// regression: #4024
 func TestCopyGroupsJob_ABatchErrorReadsNoTorrentOfAnotherInstanceTwice(t *testing.T) {
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		h.addUnreadable(1, cgC, "/data/c", time.Now())
@@ -526,7 +492,6 @@ func TestCopyGroupsJob_ABatchErrorReadsNoTorrentOfAnotherInstanceTwice(t *testin
 	})
 }
 
-// regression: #4024
 func TestCopyGroupsJob_AnUnreadableTorrentWithoutACopyKeepsItsRetryTime(t *testing.T) {
 	cgTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.add(1, cgA, "/data/a", cgOld, cgPackFiles())
@@ -619,7 +584,6 @@ func TestCopyGroupsJob_FirstReadAtTheLimit(t *testing.T) {
 		h.sync.batchHang[2] = 1
 		h.firstMap()
 
-		// A cross-seed on the fast instance joins its group on the next tick.
 		h.add(1, cgD, "/data/d", time.Now(), cgPackFiles())
 		h.wait(copyGroupsTick)
 		require.Equal(t, h.want([]int{1}, []qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(1, cgB), cgMember(1, cgD)}), h.last())
@@ -643,7 +607,6 @@ func TestCopyGroupsJob_PublishesTheRecordOfItsTick(t *testing.T) {
 		h.svc.forgetLocalReads()
 		h.wait(copyGroupsTick)
 
-		// Instance 2 ends its first read while the rebuild over instance 1 runs.
 		h.setSynced(2, true)
 		h.wait(copyGroupsTick)
 		require.Len(t, h.batches(2), 1)
@@ -795,7 +758,6 @@ func TestCopyGroupsJob_ASyncThatChangesATorrentStartsATick(t *testing.T) {
 	})
 }
 
-// regression: #4026
 func TestCopyGroupsJob_AChangeDuringARebuildStartsATickWhenTheRebuildEnds(t *testing.T) {
 	pairTest(t, []int{1}, func(t *testing.T, h *cgHarness) {
 		h.firstMap()
@@ -849,8 +811,6 @@ func (h *cgHarness) setSynced(instanceID int, synced bool) {
 	h.sync.synced[instanceID] = synced
 }
 
-// tripleTest is pairTest over instances 1 and 2 with a third copy c on
-// instance 2, after the job published the map of the group a, b, c.
 func tripleTest(t *testing.T, body func(t *testing.T, h *cgHarness)) {
 	t.Helper()
 	pairTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
@@ -896,7 +856,6 @@ func TestCopyGroupsJob_KeepsTheEntriesOfAnOfflineInstance(t *testing.T) {
 
 func TestCopyGroupsJob_AGroupKeepsItsIdDuringAnOutage(t *testing.T) {
 	cgTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
-		// Only the untagged name links the two tags, and it is the oldest copy.
 		h.addNamed(2, cgB, "Harbor.Watch.S01.1080p.WEB.h264", "/data/b", cgOld, cgPackFiles())
 		h.add(1, cgA, "/data/a", cgOld.Add(time.Hour), cgPackFiles())
 		h.addNamed(1, cgC, "Harbor.Watch.S01.1080p.WEB.h264-OTHER", "/data/c", cgOld.Add(2*time.Hour), cgPackFiles())
@@ -918,7 +877,6 @@ func TestCopyGroupsJob_AnOfflineInstanceKeepsItsSharedParts(t *testing.T) {
 	cgTest(t, []int{1, 2}, func(t *testing.T, h *cgHarness) {
 		episode3 := qbt.TorrentFile{Name: cgPack + "/Harbor.Watch.S01E03.1080p.WEB.h264-GRP.mkv", Size: 500}
 		h.add(1, cgA, "/data/a", cgOld, wanted(cgPackFiles(episode3)))
-		// b and c hold two of the three episodes of a.
 		h.add(1, cgB, "/data/b", cgOld.Add(time.Hour), wanted(cgPackFiles()))
 		h.add(2, cgC, "/data/c", cgOld.Add(2*time.Hour), wanted(cgPackFiles()))
 		h.startAndWait()
@@ -951,7 +909,6 @@ func TestCopyGroupsJob_TwoOldIdsJoinUnderTheLowerId(t *testing.T) {
 			[]qbittorrent.CopyGroupMember{cgMember(1, cgA), cgMember(2, cgB)},
 			[]qbittorrent.CopyGroupMember{cgMember(1, cgC), cgMember(2, cgD)}), h.last())
 
-		// During the outage, an untagged copy links the two tags.
 		h.setListErr(2, errors.New("connection refused"))
 		e := cgHash('e')
 		h.addNamed(1, e, "Harbor.Watch.S01.1080p.WEB.h264", "/data/e", time.Now(), cgPackFiles())
@@ -999,7 +956,6 @@ func TestCopyGroupsJob_AnOutageStartsOneRebuildWhenTheInstanceReturns(t *testing
 
 func TestCopyGroupsJob_AnEditedInstanceKeepsItsEntriesUntilItSyncs(t *testing.T) {
 	tripleTest(t, func(t *testing.T, h *cgHarness) {
-		// An edit replaces the client, and the new client has no successful sync.
 		h.setSynced(2, false)
 		h.add(1, cgD, "/data/d", time.Now(), cgPackFiles())
 		h.wait(copyGroupsTick)
@@ -1068,7 +1024,6 @@ func TestCopyGroupsJob_AnEmptyMapWhenNoInstanceCanSync(t *testing.T) {
 }
 
 func TestCopyGroupsJob_SlicesReadASharedPathGroupOnce(t *testing.T) {
-	// A multi-file torrent without a subfolder makes its save path one shared-path group.
 	const movies = 6
 	fixtures := make([]copyGroupFixture, 0, movies+1)
 	fixtures = append(fixtures, copyGroupFixture{

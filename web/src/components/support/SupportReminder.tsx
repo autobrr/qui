@@ -9,7 +9,6 @@ import { useTranslation } from "react-i18next"
 import { openSupport } from "./open"
 import { notNow, useSupportReminder } from "./reminder"
 
-/** The yearly reminder in the header, from 1280 px: the heart grows into a pill. */
 export function ReminderPill({ days }: { days: number }) {
   const { t } = useTranslation("common")
 
@@ -37,7 +36,6 @@ export function ReminderPill({ days }: { days: number }) {
   )
 }
 
-/** The yearly reminder under 1280 px and on a phone: a row above the page. The header has no room for the pill there. */
 export function ReminderBar() {
   const { t } = useTranslation("common")
   const { due, days } = useSupportReminder()

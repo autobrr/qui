@@ -26,8 +26,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// gettableIndexerStore also serves Get by ID so specific-indexer selection
-// (resolveIndexerSelection) sees the configured indexers.
 type gettableIndexerStore struct {
 	failingEnabledIndexerStore
 }
@@ -43,17 +41,12 @@ func (s *gettableIndexerStore) Get(_ context.Context, id int) (*models.TorznabIn
 
 const torznabGazelleSourceHash = "223759985c562a644428312c8cd3585d04686847"
 
-// torznabGazelleScope asks the Torznab indexer and OPS, the target of the RED source.
 var torznabGazelleScope = searchScope{torznabIndexerIDs: []int{1}, gazelle: gazelleAsks("orpheus.network")}
 
-// gazelleAsks returns the Search scope decisions that ask exactly hosts.
 func gazelleAsks(hosts ...string) []GazelleLookup {
 	return decideGazelleSites(searchScopeFacts{gazelleKeys: hosts, musicCheckPassed: true})
 }
 
-// newTorznabGazelleFixture builds a Service with one music-capable Torznab
-// indexer pointing at trackerURL and a RED-sourced music torrent whose Gazelle
-// lookup is stubbed to return one match.
 func newTorznabGazelleFixture(t *testing.T, dbName, trackerURL string) (*Service, int, *gazelleClientSet) {
 	t.Helper()
 	ctx := context.Background()
@@ -129,11 +122,6 @@ func newTorznabGazelleFixture(t *testing.T, dbName, trackerURL string) (*Service
 	return svc, instance.ID, clients
 }
 
-// Regression: when the Torznab leg of a cross-seed search fails entirely (for
-// example the only filtered indexer is a downed tracker), matches already
-// found via Gazelle (RED/OPS) must be returned as a partial response instead
-// of being discarded by a whole-search error.
-// regression: #4181
 func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 	downedTracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -156,12 +144,6 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 	require.Contains(t, resp.Results[0].DownloadURL, "4242", "download URL should reference the gazelle torrent")
 }
 
-// Regression (PR #2156 review): a caller-imposed deadline is a form of
-// cancellation and must propagate as an error, not be degraded into a
-// Gazelle-only partial success. The expired caller deadline surfaces through
-// torznabFailed's "search timed out" call site with Gazelle matches already
-// in hand, so this pins the closure's ctx.Err() guard, which distinguishes
-// the caller's context from the internal wait timeout.
 func TestSearchTorrentMatches_CallerDeadlineIsNotPartialSuccess(t *testing.T) {
 	blockingTracker := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
@@ -180,9 +162,6 @@ func TestSearchTorrentMatches_CallerDeadlineIsNotPartialSuccess(t *testing.T) {
 	require.Empty(t, resp.Results)
 }
 
-// Regression (PR #2427 review): the Search breakdown explains the Torznab
-// funnel only. A Gazelle match reaches the response without passing through
-// that funnel, so it must not raise the reported match count.
 func TestSearchTorrentMatches_TraceExcludesGazelleFromFinalMatches(t *testing.T) {
 	emptyFeed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
@@ -201,15 +180,9 @@ func TestSearchTorrentMatches_TraceExcludesGazelleFromFinalMatches(t *testing.T)
 	require.Equal(t, 0, resp.DecisionTrace.FinalMatches, "no torznab candidate was accepted")
 }
 
-// slowGazelleClients returns OPS clients whose fake answers no request, and
-// shortens the RED/OPS limit of each search. started closes at the first
-// RED/OPS request; active counts the requests that still wait.
 func slowGazelleClients(t *testing.T) (clients *gazelleClientSet, started <-chan struct{}, active *atomic.Int32) {
 	t.Helper()
-	// Not parallel: the test replaces package-level vars.
 	prevTimeout := gazelleSearchTimeout
-	// Torznab must reach its fake before this ends, also on a runner that
-	// stalls a local request for a second.
 	gazelleSearchTimeout = 3 * time.Second
 	t.Cleanup(func() { gazelleSearchTimeout = prevTimeout })
 	prevFindMatch := findGazelleMatch
@@ -232,9 +205,6 @@ func slowGazelleClients(t *testing.T) (clients *gazelleClientSet, started <-chan
 	return &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"orpheus.network": client}}, startedCh, active
 }
 
-// RED/OPS and Torznab run at the same time. When RED/OPS does not answer in
-// time, the search returns the Torznab results with a timed out lookup, which
-// starts no RED/OPS cooldown.
 func TestSearchTorrentMatches_SlowGazelleKeepsTorznabResults(t *testing.T) {
 	var torznabSawGazelleWaiting atomic.Bool
 	var gazelleStarted <-chan struct{}
@@ -264,8 +234,6 @@ func TestSearchTorrentMatches_SlowGazelleKeepsTorznabResults(t *testing.T) {
 	require.False(t, gazelleCooldownDue(resp.GazelleLookups, false), "a RED/OPS timeout must start no cooldown")
 }
 
-// A RED/OPS-only dialog search that runs out of time returns an empty result
-// with a timed out lookup, not an error.
 func TestSearchTorrentMatches_SlowGazelleOnlyReturnsEmptyResultWithNote(t *testing.T) {
 	svc, instanceID, _ := newTorznabGazelleFixture(t, "crossseed-slow-gazelle-only", "http://127.0.0.1:1")
 	clients, _, _ := slowGazelleClients(t)
@@ -278,8 +246,6 @@ func TestSearchTorrentMatches_SlowGazelleOnlyReturnsEmptyResultWithNote(t *testi
 	require.False(t, gazelleCooldownDue(resp.GazelleLookups, false))
 }
 
-// A caller that cancels while RED/OPS still waits gets the cancellation, not a
-// completed search, also after Torznab answered.
 func TestSearchTorrentMatches_CallerCancelDuringGazelleWaitIsAnError(t *testing.T) {
 	const emptyFeed = `<rss version="2.0"><channel><title>Generic</title></channel></rss>`
 	const matchFeed = `<rss version="2.0"><channel><title>Generic</title><item><title>During - LMK (2024 WF)</title><guid>torznab-guid</guid><size>123</size><enclosure url="https://example.invalid/candidate.torrent" length="123" type="application/x-bittorrent" /></item></channel></rss>`
@@ -305,7 +271,6 @@ func TestSearchTorrentMatches_CallerCancelDuringGazelleWaitIsAnError(t *testing.
 
 			svc, instanceID, _ := newTorznabGazelleFixture(t, "crossseed-cancel-gazelle-wait", tracker.URL)
 			clients, started, _ := slowGazelleClients(t)
-			// Only the cancel can end the RED/OPS wait.
 			gazelleSearchTimeout = time.Minute
 			scope := torznabGazelleScope
 			if tt.gazelleOnly {

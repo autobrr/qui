@@ -10,7 +10,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   settings: {
-    // Flags that disagree: custom wins, and the patch sends exactly one true flag.
     useCustomCategory: true,
     useCategoryFromIndexer: true,
     useCrossCategoryAffix: true,

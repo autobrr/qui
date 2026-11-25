@@ -20,7 +20,6 @@ const missingName = `/* @description: no name here */
 .dark { --primary: darkred; --background: #111; }
 `
 
-// Missing the required .dark block - parseThemeCSS returns null.
 const invalidCss = `/* @name: Broken */
 :root { --primary: red; }
 `
@@ -42,7 +41,6 @@ describe("parseCustomThemes", () => {
     expect(theme.rawCss).toBe(validCss)
     expect(theme.cssVars.light["--primary"]).toBe("oklch(0.5 0.1 250)")
     expect(theme.cssVars.dark["--background"]).toBe("#000000")
-    // Custom themes never carry variations.
     expect(theme.variations).toBeUndefined()
   })
 
@@ -137,15 +135,13 @@ describe("decideCustomThemeAction", () => {
     ).toBe("register-and-reapply")
   })
 
-  // Regression for the Codex finding: editing the active theme's CSS and hitting
-  // Refresh must re-apply the new CSS even though the theme id is unchanged.
   it("re-applies when the active custom theme's CSS changed on refresh", () => {
     expect(
       decideCustomThemeAction({
         ...base,
         storedThemeId: "custom:ocean",
         themes: [{ ...ocean, rawCss: ":root{--primary:teal}" }],
-        appliedCustomCss: ":root{--primary:blue}", // old, stale CSS still injected
+        appliedCustomCss: ":root{--primary:blue}",
       })
     ).toBe("register-and-reapply")
   })

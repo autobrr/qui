@@ -20,7 +20,7 @@ export const useSearchHistory = (options: UseSearchHistoryOptions = {}) => {
     queryFn: () => api.getSearchHistory(limit),
     enabled,
     refetchInterval,
-    staleTime: 5 * 1000, // 5 seconds
+    staleTime: 5 * 1000,
     refetchOnWindowFocus: false,
   })
 }

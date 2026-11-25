@@ -20,9 +20,6 @@ func checkExecutable(path string) error {
 	return nil
 }
 
-// execBinary keeps the process ID, argv, and the process name: provider
-// watchdogs match the command line with pgrep -f, and stop scripts run pkill qui.
-// Exec of /proc/self/exe would rename the process to "exe".
 func execBinary(path string) error {
 	//nolint:gosec // G204: path is qui's own binary, resolved at startup, and argv is qui's own
 	return syscall.Exec(path, os.Args, os.Environ())

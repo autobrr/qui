@@ -192,7 +192,6 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
         result.other.push(run)
       }
     }
-    // Limit each group to 5 most recent runs for cleaner display
     return {
       scheduled: result.scheduled.slice(0, 5),
       manual: result.manual.slice(0, 5),

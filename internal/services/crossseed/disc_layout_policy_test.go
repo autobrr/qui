@@ -26,13 +26,11 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// discPolicySyncManager is a mock sync manager for disc layout policy tests.
-// It records AddTorrent options and BulkAction calls to verify policy enforcement.
 type discPolicySyncManager struct {
 	files           map[string]qbt.TorrentFiles
 	props           map[string]*qbt.TorrentProperties
 	addedOptions    map[string]string
-	bulkActions     []string // records "action:hash" for each BulkAction call
+	bulkActions     []string
 	matchedTorrent  *qbt.Torrent
 	renameFolderErr error
 }
@@ -235,8 +233,6 @@ func (m *discPolicyInstanceStore) List(_ context.Context) ([]*models.Instance, e
 	return result, nil
 }
 
-// TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse verifies that disc layout torrents
-// are always added paused, even when StartPaused is false.
 func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	t.Parallel()
 
@@ -246,12 +242,10 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	newHash := "newhash"
 	matchedName := "Movie.2024.BluRay.1080p"
 
-	// Candidate files (existing on disk) - a Blu-ray disc structure
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "Movie.2024.BluRay.1080p/BDMV/index.bdmv", Size: 100},
 		{Name: "Movie.2024.BluRay.1080p/BDMV/STREAM/00000.m2ts", Size: 30_000_000_000},
 	}
-	// Source files (incoming torrent) - same structure
 	sourceFiles := qbt.TorrentFiles{
 		{Name: "Movie.2024.BluRay.1080p/BDMV/index.bdmv", Size: 100},
 		{Name: "Movie.2024.BluRay.1080p/BDMV/STREAM/00000.m2ts", Size: 30_000_000_000},
@@ -300,10 +294,9 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
-	// Request with StartPaused = false - normally would auto-resume
 	startPausedFalse := false
 	req := &CrossSeedRequest{
-		StartPaused: &startPausedFalse, // Explicitly set to false
+		StartPaused: &startPausedFalse,
 	}
 
 	synctest.Test(t, func(t *testing.T) {
@@ -311,23 +304,18 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 		withAdder(service)
 		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
-		// Verify the torrent was added successfully
 		require.True(t, result.Success, "Expected success, got: %s", result.Message)
 		require.Equal(t, "added", result.Status)
 
-		// Verify the status message mentions disc layout
 		assert.Contains(t, result.Message, "disc layout", "Result message should mention disc layout")
 		assert.Contains(t, result.Message, "BDMV", "Result message should mention the marker")
 
-		// Disc-layout torrents should be queued for resume only after a full (100%) recheck
 		actions, polled := script.wait()
 		assert.Equal(t, []string{"recheck:" + newHash}, actions, "a disc-layout torrent 1 MiB short of complete stays paused")
 		assert.Equal(t, 2, polled, "the disc-layout torrent is watched until its recheck ends")
 	})
 }
 
-// TestDiscLayoutPolicy_NoAutoResumeForPerfectMatch verifies that disc layout torrents
-// never get auto-resumed, even for a perfect match scenario that would normally resume.
 func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	t.Parallel()
 
@@ -337,7 +325,6 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	newHash := "newhash"
 	matchedName := "Movie.2024.DVD-GROUP"
 
-	// DVD disc structure
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "Movie.2024.DVD-GROUP/VIDEO_TS/VIDEO_TS.VOB", Size: 5_000_000_000},
 		{Name: "Movie.2024.DVD-GROUP/VIDEO_TS/VTS_01_0.VOB", Size: 1_000_000_000},
@@ -391,11 +378,10 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
-	// Request with StartPaused = true and no SkipAutoResume - normally would auto-resume
 	startPausedTrue := true
 	req := &CrossSeedRequest{
 		StartPaused:    &startPausedTrue,
-		SkipAutoResume: false, // Would normally allow auto-resume
+		SkipAutoResume: false,
 	}
 
 	synctest.Test(t, func(t *testing.T) {
@@ -403,15 +389,12 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		withAdder(service)
 		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
-		// Verify the torrent was added successfully
 		require.True(t, result.Success, "Expected success, got: %s", result.Message)
 
-		// We should not resume immediately; it must wait for a full recheck.
 		for _, action := range mockSync.bulkActions {
 			assert.NotContains(t, action, "resume", "No resume action should be called for disc layout torrents")
 		}
 
-		// Verify the status message mentions disc layout
 		assert.Contains(t, result.Message, "disc layout", "Result message should mention disc layout")
 		assert.Contains(t, result.Message, "VIDEO_TS", "Result message should mention the marker")
 
@@ -421,8 +404,6 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	})
 }
 
-// TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume verifies that non-disc torrents
-// still get auto-resumed as expected (regression test).
 func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	t.Parallel()
 
@@ -432,7 +413,6 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	newHash := "newhash"
 	matchedName := "Movie.2024.1080p.BluRay.x264-GROUP"
 
-	// Regular movie file (not disc structure)
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "Movie.2024.1080p.BluRay.x264-GROUP.mkv", Size: 8_000_000_000},
 	}
@@ -484,7 +464,6 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 		Torrents:     []*qbt.Torrent{&matchedTorrent},
 	}
 
-	// Request with StartPaused = true and no SkipAutoResume - should auto-resume
 	startPausedTrue := true
 	req := &CrossSeedRequest{
 		StartPaused:    &startPausedTrue,
@@ -494,10 +473,8 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	withAdder(service)
 	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
-	// Verify the torrent was added successfully
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)
 
-	// Non-disc torrent should get resumed
 	resumeCalled := false
 	for _, action := range mockSync.bulkActions {
 		if strings.HasPrefix(action, "resume:") {
@@ -507,7 +484,6 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	}
 	assert.True(t, resumeCalled, "Resume should be called for non-disc perfect match torrents")
 
-	// Status message should NOT mention disc layout
 	assert.NotContains(t, result.Message, "disc layout", "Non-disc torrent message should not mention disc layout")
 }
 
@@ -695,7 +671,6 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	require.False(t, result.Success)
 	require.Equal(t, "alignment_failed", result.Status)
 	require.Contains(t, result.Message, "alignment failed")
-	// The fallback adds the torrent paused, so the failed alignment needs no pause.
 	require.Empty(t, mockSync.bulkActions)
 }
 

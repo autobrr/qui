@@ -10,7 +10,6 @@ import { setDisplayProfileSameColumns } from "@/lib/client-settings"
 import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
 import { usePersistedStretchMode } from "./usePersistedStretchMode"
 
-// A store with no Column setup starts with Same columns on every instance; these cases cover one setup per instance.
 beforeEach(() => setDisplayProfileSameColumns(DEFAULT_DISPLAY_PROFILE_ID, false))
 
 afterEach(() => {

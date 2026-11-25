@@ -51,7 +51,6 @@ describe("TorrentFileSortBar", () => {
 })
 
 describe("TorrentFileTree", () => {
-  // regression: #4358
   it("shows the label of a disabled rename button on a tap in incognito mode, and the folder stays open", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null

@@ -17,9 +17,7 @@ import { formatRelativeTime, formatTimeHMS } from "@/lib/dateTimeUtils"
 import { cn } from "@/lib/utils"
 import type { SearchHistoryEntry } from "@/types"
 
-// Torznab standard category mappings, from Prowlarr's NewznabStandardCategory.
 const CATEGORY_MAP: Record<string, string> = {
-  // Parent categories
   "1000": "Console",
   "2000": "Movies",
   "3000": "Audio",
@@ -28,7 +26,6 @@ const CATEGORY_MAP: Record<string, string> = {
   "6000": "XXX",
   "7000": "Books",
   "8000": "Other",
-  // Movies subcategories
   "2010": "Movies Foreign",
   "2020": "Movies Other",
   "2030": "Movies SD",
@@ -39,14 +36,12 @@ const CATEGORY_MAP: Record<string, string> = {
   "2070": "Movies DVD",
   "2080": "Movies Web",
   "2090": "Movies x265",
-  // Audio subcategories
   "3010": "Audio MP3",
   "3020": "Audio Video",
   "3030": "Audio Audiobook",
   "3040": "Audio Lossless",
   "3050": "Audio Other",
   "3060": "Audio Foreign",
-  // PC subcategories
   "4010": "PC 0day",
   "4020": "PC ISO",
   "4030": "PC Mac",
@@ -54,7 +49,6 @@ const CATEGORY_MAP: Record<string, string> = {
   "4050": "PC Games",
   "4060": "PC Mobile iOS",
   "4070": "PC Mobile Android",
-  // TV subcategories
   "5010": "TV Web",
   "5020": "TV Foreign",
   "5030": "TV SD",
@@ -65,7 +59,6 @@ const CATEGORY_MAP: Record<string, string> = {
   "5070": "TV Anime",
   "5080": "TV Documentary",
   "5090": "TV x265",
-  // XXX subcategories
   "6010": "XXX DVD",
   "6020": "XXX WMV",
   "6030": "XXX XviD",
@@ -76,14 +69,12 @@ const CATEGORY_MAP: Record<string, string> = {
   "6070": "XXX Other",
   "6080": "XXX SD",
   "6090": "XXX Web",
-  // Books subcategories
   "7010": "Books Mags",
   "7020": "Books EBook",
   "7030": "Books Comics",
   "7040": "Books Technical",
   "7050": "Books Other",
   "7060": "Books Foreign",
-  // Other subcategories
   "8010": "Other Misc",
   "8020": "Other Hashed",
 }
@@ -93,12 +84,10 @@ interface ParamBadge {
   value?: string
 }
 
-// Transform raw torznab params into semantic badges
 function transformParams(params: Record<string, string>, t: (key: string) => string): ParamBadge[] {
   const badges: ParamBadge[] = []
   const consumed = new Set<string>()
 
-  // Season and episode as separate badges
   if (params.season) {
     badges.push({ label: t("indexers.searchHistory.detail.season"), value: params.season })
     consumed.add("season")
@@ -108,7 +97,6 @@ function transformParams(params: Record<string, string>, t: (key: string) => str
     consumed.add("ep")
   }
 
-  // Map each category ID to a name with number in parentheses
   if (params.cat) {
     const cats = params.cat.split(",").map((c) => c.trim()).filter(Boolean)
     for (const cat of cats) {
@@ -122,13 +110,11 @@ function transformParams(params: Record<string, string>, t: (key: string) => str
     consumed.add("cat")
   }
 
-  // Year as standalone badge
   if (params.year) {
     badges.push({ label: params.year })
     consumed.add("year")
   }
 
-  // External IDs with labels
   const idMappings: [string, string][] = [
     ["imdbid", "IMDB"],
     ["tmdbid", "TMDB"],
@@ -143,11 +129,9 @@ function transformParams(params: Record<string, string>, t: (key: string) => str
     }
   }
 
-  // Skip redundant params (already shown elsewhere)
-  consumed.add("t") // Shown as Mode in footer
-  consumed.add("q") // Already filtered out
+  consumed.add("t")
+  consumed.add("q")
 
-  // Remaining params with key: value format
   for (const [key, value] of Object.entries(params)) {
     if (!consumed.has(key)) {
       badges.push({ label: key, value })
@@ -157,7 +141,6 @@ function transformParams(params: Record<string, string>, t: (key: string) => str
   return badges
 }
 
-// The list shows the latest searches first, and the rest on request.
 const SHOWN = 10
 
 const STATUS_ICON: Record<SearchHistoryEntry["status"], { icon: LucideIcon; className: string }> = {
@@ -179,16 +162,12 @@ const formatDuration = (ms: number, digits: number) => ms < 1000 ? `${ms}ms` : `
 interface EntryLabels {
   status: string
   priority: string
-  /** An RSS search has no content type, and "unknown" says nothing. */
   contentType?: string
-  /** The torrents that the search added for cross-seed. */
   added: number
 }
 
-/** The latest searches that qui sent to the indexers. A row opens to show the details of its search. */
 export function SearchHistoryPanel() {
   const { t } = useTranslation("settings")
-  // The stream sends the activity events that refresh the history, so it needs no polling.
   useActivityStream(true)
   const query = useSearchHistory({ limit: 50, enabled: true, refetchInterval: false })
   const [showAll, setShowAll] = useState(false)
@@ -257,7 +236,6 @@ export function SearchHistoryPanel() {
   )
 }
 
-/** Every fact of one search, with the parameters that qui sent. */
 function HistoryDetail({ entry, labels }: { entry: SearchHistoryEntry; labels: EntryLabels }) {
   const { t } = useTranslation("settings")
   const params = entry.params ? transformParams(entry.params, t) : []

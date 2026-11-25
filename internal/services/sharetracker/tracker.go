@@ -1,9 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package sharetracker is the Share tracker: qui's own private tracker, which
-// lets the client of a Share's recipient find the user's client. It answers
-// only for active Shares, written from BEP 3, BEP 23, and BEP 7.
 package sharetracker
 
 import (
@@ -29,11 +26,6 @@ const lookupTimeout = 5 * time.Second
 
 var ErrPortBusy = errors.New("the Share tracker port is in use")
 
-// Share is an active Share as the tracker sees it. The user's own client
-// announces with OwnerSecret, and the recipient's copy of the .torrent
-// carries RecipientSecret. Holder is the stored address that holds the lock
-// of a Share with FirstDownloaderOnly. A swarm that the tracker starts takes
-// it, so the lock outlives a restart of qui.
 type Share struct {
 	ID                  int64
 	InfoHash            [20]byte
@@ -43,8 +35,6 @@ type Share struct {
 	Holder              netip.Addr
 }
 
-// Table is the active Shares at one moment. It never changes after NewTable
-// returns it, so announces can read it at the same time.
 type Table struct {
 	clients       map[string]announcer
 	shares        map[int64]Share
@@ -87,12 +77,7 @@ func (t *Table) empty() bool {
 }
 
 type Shares interface {
-	// ActiveShares returns the table as it is now. The tracker calls it while
-	// it holds its own lock, so it must not call the tracker.
 	ActiveShares() *Table
-	// PublicPeerAddress returns the address at which other clients reach the
-	// user's own client of the Share. The tracker calls it at each announce
-	// whose answer holds that address.
 	PublicPeerAddress(ctx context.Context, shareID int64) (netip.AddrPort, error)
 }
 
@@ -105,12 +90,6 @@ const (
 	EventStopped   Event = "stopped"
 )
 
-// Report is one announce that the tracker answered. Peer is the address of
-// the connection, or the forwarded address from a trusted proxy, with the
-// port that the client announced. Locked is true when this announce took the
-// lock of a Share with FirstDownloaderOnly for the address of Peer. Blocked is
-// true when that lock keeps the recipient client at Peer from the user's
-// client.
 type Report struct {
 	ShareID    int64
 	Owner      bool
@@ -123,9 +102,6 @@ type Report struct {
 	Blocked    bool
 }
 
-// Reports receives a Report for each announce. Announced runs before the
-// tracker answers, so it must return quickly, and what it stores is stored
-// before the client gets the answer.
 type Reports interface {
 	Announced(ctx context.Context, r Report)
 }
@@ -171,12 +147,6 @@ func New(cfg Config) *Tracker {
 	}
 }
 
-// Start makes the tracker listen on the port of settings while the table
-// holds an active Share. Without a port or an active Share, it stops the
-// tracker. A tracker that listens takes the new trusted proxies; on a new
-// port, it keeps the old one until the new one listens. When another program
-// listens on the port, it returns ErrPortBusy. ctx bounds the wait for the
-// announces that run on a port that closes.
 func (t *Tracker) Start(ctx context.Context, settings Settings) error {
 	proxies, err := settings.trustedProxies()
 	if err != nil {
@@ -223,8 +193,6 @@ func (t *Tracker) Start(ctx context.Context, settings Settings) error {
 	return nil
 }
 
-// CheckPort returns ErrPortBusy when another program listens on port. The
-// port that the tracker listens on is free for it, and port 0 is never busy.
 func (t *Tracker) CheckPort(ctx context.Context, port int) error {
 	if port == 0 {
 		return nil
@@ -279,9 +247,6 @@ func notFound(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNotFound)
 }
 
-// serve answers one request. http.ServeMux answers an unclean path with a
-// redirect and a wrong method with 405, and the tracker answers both with a
-// bare 404.
 func (t *Tracker) serve(w http.ResponseWriter, r *http.Request) {
 	secret, ok := strings.CutPrefix(r.URL.Path, "/announce/")
 	if r.Method != http.MethodGet || !ok || strings.Contains(secret, "/") {

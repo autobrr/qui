@@ -94,12 +94,10 @@ export function Login() {
     },
   })
 
-  // A failed first load leaves no config. A failed refetch keeps the last config.
   const oidcUnavailable = oidcConfig?.providerUnavailable === true || (oidcConfig === undefined && oidcConfigFailed)
 
   const handleOIDCLogin = async () => {
     let config = oidcConfig
-    // The refetch asks the server to retry provider discovery.
     if (oidcUnavailable) {
       config = (await refetchOIDCConfig()).data
     }

@@ -24,13 +24,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// These tests cover the hardlink index reads that run after the caller
-// admitted the instance on a snapshot of its local access flag. If local
-// access was turned off in between, the pool routes to the SSH host, and none
-// of those reads may reach it.
-
-// switchableRow answers every Get with the current row, so a test can turn
-// local access off between the gate and the read.
 type switchableRow struct {
 	mu  sync.Mutex
 	row *models.Instance
@@ -50,14 +43,11 @@ func (r *switchableRow) set(row *models.Instance) {
 	r.mu.Unlock()
 }
 
-// remoteRow is on the exec tier, so it has Identity. The reads need
-// TrustedIdentity, which a remote host never has.
 var (
 	localRow  = &models.Instance{HasLocalFilesystemAccess: true, IsActive: true}
 	remoteRow = &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec, IsActive: true}
 )
 
-// remoteSpy stands in for the SSH host and counts the reads that reached it.
 type remoteSpy struct {
 	fsops.Backend
 	lstats atomic.Int32
@@ -128,8 +118,6 @@ func TestHardlinkIndexUpdateRefusesAnInstanceThatLeftLocalMode(t *testing.T) {
 	require.NotEmpty(t, service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(torrents)).ScopeByHash)
 
 	rows.set(remoteRow)
-	// One new torrent keeps the change inside the incremental budget, so the
-	// update reads only that torrent rather than falling back to a full build.
 	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "h13", SavePath: dir})
 	service.GetHardlinkIndex(t.Context(), instanceID, torrentRefs(grown))
 
@@ -152,8 +140,6 @@ func TestVerifyDeleteCandidatesHoldsAnInstanceThatLeftLocalMode(t *testing.T) {
 	require.Zero(t, spy.lstats.Load(), "the re-read must not reach the SSH host")
 }
 
-// crossFilesReader holds one torrent on the other instance, so the scan has
-// something to read there.
 type crossFilesReader struct {
 	savePath string
 	files    qbt.TorrentFiles
@@ -205,7 +191,6 @@ func TestCrossScopeKeysRemoteIDsByTheirInstance(t *testing.T) {
 		crossFilesReader{savePath: dir, files: qbt.TorrentFiles{{Name: "movie.mkv"}}})
 	service.instanceStore = store
 
-	// The peer scan cannot resolve a remote deficit, so it stays outside.
 	box := &models.Instance{ID: instanceID, SSHHost: "box.example.invalid", SSHPort: 22}
 	id := hardlink.RemoteFileID([]byte{1, 2, 3})
 	index := &HardlinkIndex{buildState: &hardlinkBuildState{
@@ -222,9 +207,6 @@ func TestCrossScopeKeysRemoteIDsByTheirInstance(t *testing.T) {
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.CrossScopeByHash["hash"])
 }
 
-// The cross-instance scope reads only instances with trusted identity. A
-// remote identity never matches a local file key, so reading an exec-tier
-// remote costs one remote stat per file and resolves nothing.
 func TestCrossScopeInstancesAreTrustedOnly(t *testing.T) {
 	t.Parallel()
 

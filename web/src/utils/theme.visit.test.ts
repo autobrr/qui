@@ -5,7 +5,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// The visit starts from the address at page load, so it is set before the modules load.
 vi.hoisted(() => window.history.replaceState(null, "", "/?theme=default"))
 
 import { registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
@@ -48,7 +47,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-// The tests share one visit, which the last test ends.
 describe("default theme visit", () => {
   it("paints the default theme on a system change and writes nothing", async () => {
     const before = bootCaches()
@@ -61,7 +59,6 @@ describe("default theme visit", () => {
     expect(isDefaultThemeVisit()).toBe(true)
   })
 
-  // regression: #4124
   it("keeps the default theme on a mode change, and keeps the mode out of storage", async () => {
     const before = bootCaches()
 

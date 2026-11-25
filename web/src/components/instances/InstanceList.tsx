@@ -24,19 +24,16 @@ import type { InstanceResponse } from "@/types"
 
 interface InstanceListProps {
   instances: readonly InstanceResponse[]
-  /** Opens the settings of the instance. */
   onEdit: (instance: InstanceResponse) => void
   onChangeIcon: (instance: InstanceResponse) => void
   onAdd: () => void
 }
 
-// The errors that InstanceErrorDisplay shows.
 const hasInstanceErrors = (instance: InstanceResponse) =>
   instance.hasDecryptionError || (!instance.connected && (instance.recentErrors?.length ?? 0) > 0)
 
 const errorText = (error: unknown, fallback: string) => error instanceof Error ? formatErrorMessage(error.message) : fallback
 
-/** The qBittorrent instances in their order, each with its state, its on/off switch, a test, a move, and a delete. */
 export function InstanceList({ instances, onEdit, onChangeIcon, onAdd }: InstanceListProps) {
   const { t } = useTranslation("instances")
   const { testConnection, setInstanceStatus, reorderInstances, isReordering } = useInstances()
@@ -44,7 +41,6 @@ export function InstanceList({ instances, onEdit, onChangeIcon, onAdd }: Instanc
   const [incognito] = useIncognitoMode()
   const marksSettled = useClientSettingsSettled()
   const [testing, setTesting] = useState<ReadonlySet<number>>(() => new Set())
-  // The instance stays in the state while the dialog fades out. A new session gives the dialog fresh state.
   const [removal, setRemoval] = useState<{ instance: InstanceResponse; open: boolean; session: number } | null>(null)
 
   const test = async (instance: InstanceResponse) => {
@@ -115,7 +111,6 @@ export function InstanceList({ instances, onEdit, onChangeIcon, onAdd }: Instanc
         disabled: toggling.has(instance.id),
       },
       onOpen: () => onEdit(instance),
-      // A wide screen shows Edit, Test, and Delete as buttons, and Change icon and the moves in the menu.
       actions: [
         {
           label: t("card.actions.testConnection"),
@@ -170,7 +165,6 @@ function DeleteInstanceDialog({ instance, open, onOpenChange }: DeleteInstanceDi
   const [deleteHistory, setDeleteHistory] = useState(false)
   const check = useCrossSeedDeleteCheck(instance.id, open)
 
-  // A rejected promise keeps the dialog open when the delete fails, so the user can try again.
   const confirm = () => new Promise<void>((resolve, reject) => {
     deleteInstance({ id: instance.id, name: instance.name, deleteHistory }, {
       onSuccess: () => {

@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label"
 import { useId } from "react"
 import { useTranslation } from "react-i18next"
 
-/** The tick box of an instance removal that also deletes the transfer history of the instance. */
 export function DeleteHistoryCheckbox({ checked, onCheckedChange, disabled }: { checked: boolean; onCheckedChange: (checked: boolean) => void; disabled?: boolean }) {
   const { t } = useTranslation("instances")
   const id = useId()

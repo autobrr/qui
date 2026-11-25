@@ -91,10 +91,6 @@ func TestAnalyzeTorrentForSearchAsync_UsesLargestFileWhenTitlesAlign(t *testing.
 }
 
 func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Miniseries(t *testing.T) {
-	// Torka.aldrig.tarar.utan.handskar is a Swedish miniseries
-	// Torrent name has year but no episode markers → parsed as movie
-	// File name has E01 → parsed as TV episode
-	// Should trust the file since titles match and file has explicit episode marker
 	t.Parallel()
 
 	ctx := context.Background()
@@ -137,10 +133,6 @@ func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Miniseries(t *test
 }
 
 func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Anime(t *testing.T) {
-	// Anime often uses " - 01 " style episode numbering without S/E prefixes
-	// Torrent name has no episode markers → parsed as movie
-	// File name has " - 01 " → parsed as TV episode
-	// Should trust the file since titles match and file has explicit episode marker
 	t.Parallel()
 
 	ctx := context.Background()

@@ -15,14 +15,8 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// sqliteTimestampLayout is the shape CURRENT_TIMESTAMP writes on SQLite. Production
-// fills these columns with that function, and SQLite compares timestamps as text, so
-// a fixture binding a Go time.Time would store the 30-character time.Time.String()
-// form and never exercise the comparison production actually performs.
 const sqliteTimestampLayout = "2006-01-02 15:04:05"
 
-// storedTimestamp renders a time the way the running engine stores it: text on
-// SQLite, a real timestamp on PostgreSQL.
 func storedTimestamp(db *database.DB, at time.Time) any {
 	if db.Dialect() == string(database.DialectSQLite) {
 		return at.Format(sqliteTimestampLayout)
@@ -73,15 +67,11 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		require.NoError(t, err)
 	}
 
-	// A full-directory run leaves scan_root NULL, as CreateRunIfNoActive does for a
-	// scheduled scan.
 	insertRun := func(t *testing.T, directoryID int, status models.DirScanRunStatus, startedAt time.Time) {
 		t.Helper()
 		insertRunWithRoot(t, directoryID, status, startedAt, nil)
 	}
 
-	// trackFile records a file and forces its last_processed_at, standing in for the
-	// scan that would have refreshed it.
 	trackFile := func(t *testing.T, directoryID int, path string, processedAt time.Time, status models.DirScanFileStatus) {
 		t.Helper()
 		require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
@@ -132,7 +122,6 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 
 	t.Run("keeps rows until the grace window passes", func(t *testing.T) {
 		dirID := newDirectory(t, "/data/tooyoung")
-		// Only two successful scans, so nothing has yet been missed by three.
 		for _, d := range []int{2, 1} {
 			insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d))
 		}
@@ -146,8 +135,6 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		require.Len(t, trackedPaths(t, dirID), 2)
 	})
 
-	// A filesystem outage produces failed runs. Those must not advance the grace
-	// window, or an unreachable mount would orphan every row at once.
 	t.Run("failed runs do not advance the grace window", func(t *testing.T) {
 		dirID := newDirectory(t, "/data/outage")
 		for _, d := range []int{5, 4, 3} {
@@ -157,7 +144,6 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 			insertRun(t, dirID, models.DirScanRunStatusFailed, daysAgo(d))
 		}
 
-		// Every file was last seen by the most recent successful scan.
 		trackSeedingFile(t, dirID, "/data/outage/one.mkv", daysAgo(3))
 		trackSeedingFile(t, dirID, "/data/outage/two.mkv", daysAgo(3))
 
@@ -167,9 +153,6 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		require.Len(t, trackedPaths(t, dirID), 2)
 	})
 
-	// A webhook or manual run can carry a scan_root that narrows the walk to one
-	// subfolder, refreshing only that subfolder's rows. Such a run must not define the
-	// prune window, or three of them in a row would delete every live row outside it.
 	t.Run("subroot runs do not justify a directory-wide prune", func(t *testing.T) {
 		dirID := newDirectory(t, "/data/webhook")
 		insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(10))
@@ -177,8 +160,6 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 			insertRunWithRoot(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d), "/data/webhook/show")
 		}
 
-		// The subfolder refreshes on every webhook run; the rest of the directory was
-		// last seen by the full scan and is still very much alive on disk.
 		trackSeedingFile(t, dirID, "/data/webhook/show/ep.mkv", daysAgo(1))
 		trackSeedingFile(t, dirID, "/data/webhook/other/a.mkv", daysAgo(10))
 		trackSeedingFile(t, dirID, "/data/webhook/other/b.mkv", daysAgo(10))
@@ -189,16 +170,12 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		require.Len(t, trackedPaths(t, dirID), 3)
 	})
 
-	// A requeue can land between a run's started_at and its prune. It never visits the
-	// filesystem, so it must not make untouched rows look freshly seen and talk the
-	// coverage guard into a delete the scan itself did not justify.
 	t.Run("a concurrent requeue does not inflate scan coverage", func(t *testing.T) {
 		dirID := newDirectory(t, "/data/requeue")
 		for _, d := range []int{3, 2, 1} {
 			insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d))
 		}
 
-		// Ten no_match rows sit inside the grace window; the latest scan saw one file.
 		for i := range 10 {
 			trackFile(t, dirID, fmt.Sprintf("/data/requeue/in-grace-%d.mkv", i), daysAgo(2), models.DirScanFileStatusNoMatch)
 		}
@@ -215,10 +192,6 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		require.Len(t, trackedPaths(t, dirID), 12)
 	})
 
-	// When nothing at all was refreshed, a directory whose files were all deleted and
-	// a directory whose filesystem is mounted but empty look identical in the stored
-	// state. Keeping the rows is the deliberate choice: guessing wrong would wipe a
-	// live directory during an outage, and Reset Scan Progress clears a real one.
 	t.Run("keeps rows when no file was refreshed at all", func(t *testing.T) {
 		dirID := newDirectory(t, "/data/allstale")
 		for _, d := range []int{3, 2, 1} {
@@ -234,15 +207,12 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		require.Len(t, trackedPaths(t, dirID), 2)
 	})
 
-	// A mount that is present but empty walks cleanly and completes, so run status
-	// alone is not evidence that the scan saw real data.
 	t.Run("skips when the latest scan refreshed too few rows", func(t *testing.T) {
 		dirID := newDirectory(t, "/data/emptymount")
 		for _, d := range []int{3, 2, 1} {
 			insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d))
 		}
 
-		// Ten rows sit inside the grace window but the latest scan refreshed one.
 		for i := range 10 {
 			trackSeedingFile(t, dirID, fmt.Sprintf("/data/emptymount/in-grace-%d.mkv", i), daysAgo(2))
 		}

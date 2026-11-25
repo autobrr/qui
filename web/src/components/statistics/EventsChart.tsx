@@ -22,7 +22,6 @@ interface EventsChartProps {
   days: EventDay[]
 }
 
-/** The adds and completions of each day above the zero line, and the deletes below it. */
 export function EventsChart({ days }: EventsChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -74,7 +73,6 @@ export function EventsChart({ days }: EventsChartProps) {
           <Bar
             key={kind}
             dataKey={kind}
-            // A delete stacks below the add of its day, and a completion stands beside them.
             stackId={kind === "completed" ? "completed" : "library"}
             fill={`var(--color-${kind})`}
             radius={kind === "deleted" ? [0, 0, 2, 2] : [2, 2, 0, 0]}

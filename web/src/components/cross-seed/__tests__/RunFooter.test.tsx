@@ -53,14 +53,12 @@ describe("RunFooter", () => {
     expect(screen.getByRole("button", { name: "automation.stopping" }).hasAttribute("disabled")).toBe(true)
   })
 
-  // regression: #4263
   it("shows why the run is blocked on a tap of the disabled run button", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
     try {
       render(<TooltipProvider>{footer({ kind: "blocked", reason: "Add an indexer first" }, () => {})}</TooltipProvider>)
 
-      // A disabled Button has pointer-events: none, so the tap lands on the wrapper around it.
       const wrapper = screen.getByRole("button", { name: "Run now" }).parentElement!
       fireEvent.pointerDown(wrapper, { pointerType: "touch" })
       fireEvent.click(wrapper)

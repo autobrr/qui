@@ -15,15 +15,10 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// canonicalResolution normalizes a resolution string to its canonical lowercase
-// form (e.g. "1080P" -> "1080p") for comparison against routing rules.
 func canonicalResolution(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
-// sourceClass classifies a release into one of the canonical source buckets used
-// by season pack category routing rules: REMUX, WEB, BLURAY, or HDTV. Returns ""
-// when the release is nil or its source does not map to a known bucket.
 func sourceClass(release *rls.Release) string {
 	if release == nil {
 		return ""
@@ -35,8 +30,6 @@ func sourceClass(release *rls.Release) string {
 		}
 	}
 
-	// normalizeSource yields values like "WEBDL", "BLURAY", "HDTV". It drops the
-	// UHD prefix, so a UHD.WEB pack routes as WEB and a UHD.BluRay pack as BluRay.
 	source := normalizeSource(release.Source)
 	switch {
 	case isWebSource(source):
@@ -50,11 +43,6 @@ func sourceClass(release *rls.Release) string {
 	}
 }
 
-// matchSeasonPackCategoryRule finds the category for a season pack add given its
-// resolution and source class. Rules are first filtered to the matching
-// resolution. A rule with an explicit source matching srcClass wins over an
-// "Any" (empty source) rule; within each pass the first rule in slice order wins.
-// Returns ("", false) when no rule matches.
 func matchSeasonPackCategoryRule(rules []models.SeasonPackCategoryRule, resolution, srcClass string) (category string, matched bool) {
 	wantResolution := canonicalResolution(resolution)
 
@@ -81,10 +69,6 @@ func matchSeasonPackCategoryRule(rules []models.SeasonPackCategoryRule, resoluti
 	return "", false
 }
 
-// matchCategoryMappingRule finds the content type forced for a torrent's
-// qBittorrent category. The comparison is exact because qBittorrent categories
-// are case-sensitive. The first rule in slice order wins. Returns ("", false)
-// when no rule matches or the torrent has no category.
 func matchCategoryMappingRule(rules []models.CategoryMappingRule, category string) (contentType string, matched bool) {
 	if category == "" {
 		return "", false
@@ -97,10 +81,6 @@ func matchCategoryMappingRule(rules []models.CategoryMappingRule, category strin
 	return "", false
 }
 
-// contentTypeFromCategoryRule returns the forced content classification when a
-// category mapping rule matches the torrent's qBittorrent category (discussion
-// #1734). A matching rule wins over both the name parse and the file-extension
-// signal. Returns false when settings fail to load or no rule matches.
 func (s *Service) contentTypeFromCategoryRule(ctx context.Context, category string) (ContentTypeInfo, bool) {
 	settings, err := s.savedAutomationSettings(ctx)
 	if err != nil {
@@ -109,8 +89,6 @@ func (s *Service) contentTypeFromCategoryRule(ctx context.Context, category stri
 	return categoryRuleContentType(settings.CategoryMappingRules, category)
 }
 
-// categoryRuleContentType returns the content classification of the rule that
-// matches category. Returns false when no rule matches.
 func categoryRuleContentType(rules []models.CategoryMappingRule, category string) (ContentTypeInfo, bool) {
 	contentType, matched := matchCategoryMappingRule(rules, category)
 	if !matched {
@@ -119,8 +97,6 @@ func categoryRuleContentType(rules []models.CategoryMappingRule, category string
 	return RuleContentTypeInfo(contentType)
 }
 
-// applyCategoryMappingRule replaces the detected content classification when a
-// category mapping rule matches the torrent's qBittorrent category.
 func (s *Service) applyCategoryMappingRule(ctx context.Context, torrent *qbt.Torrent, contentInfo ContentTypeInfo) ContentTypeInfo {
 	ruleInfo, matched := s.contentTypeFromCategoryRule(ctx, torrent.Category)
 	if !matched {
@@ -134,9 +110,6 @@ func (s *Service) applyCategoryMappingRule(ctx context.Context, torrent *qbt.Tor
 	return ruleInfo
 }
 
-// resolveSeasonPackCategory determines the qBittorrent category for a season pack
-// add. Routing rules take priority, then the configured fallback category, then
-// the general cross-seed category derivation based on a matched episode.
 func (s *Service) resolveSeasonPackCategory(
 	ctx context.Context,
 	prep *seasonPackPrep,

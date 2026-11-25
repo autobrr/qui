@@ -31,17 +31,14 @@ describe("api instances group — contract", () => {
 
       const result = await api.getInstances()
 
-      // Request serialization
       expect(captured).toBeDefined()
       expect(captured!.method).toBe("GET")
       const url = new URL(captured!.url)
       expect(url.pathname).toBe("/api/instances")
       expect(url.search).toBe("")
       expect(captured!.headers.get("content-type")).toBe("application/json")
-      // GET requests carry no body.
       expect(captured!.body).toBeNull()
 
-      // Response is returned with no field mapping/transformation.
       expect(result).toEqual(payload)
     })
 
@@ -102,7 +99,6 @@ describe("api instances group — contract", () => {
       expect(error).toBeInstanceOf(APIError)
       expect((error as APIError).message).toBe("HTTP error! status: 418")
       expect((error as APIError).status).toBe(418)
-      // Parsed body is still attached as data.
       expect((error as APIError).data).toEqual(body)
     })
   })

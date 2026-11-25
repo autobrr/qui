@@ -48,7 +48,6 @@ func TestSizeOfCountsEachLineEndAsOneByte(t *testing.T) {
 	assert.Equal(t, 3, sizeOf([]byte("a\rb")))
 }
 
-// regression: #4399
 func TestParseBlobSizes(t *testing.T) {
 	out := "0a1b blob 6\na\r\nb\r\n\n" +
 		"origin/develop:gone file.go missing\n" +

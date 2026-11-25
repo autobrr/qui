@@ -35,6 +35,8 @@ updates:
       npm:
         patterns:
           - "*"
+        exclude-patterns:
+          - "@shadcn/lint"
     cooldown:
       default-days: 7
       semver-patch-days: 3

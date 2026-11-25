@@ -24,7 +24,6 @@ function isolated(points: LibraryPoint[], key: "totalSize" | "uniqueSize", index
   return points[index]?.[key] !== null && (points[index - 1]?.[key] ?? null) === null && (points[index + 1]?.[key] ?? null) === null
 }
 
-/** The total size and the Unique size for each day. A day with no value shows as a gap in its line. */
 export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -85,7 +84,6 @@ export function LibraryGrowthChart({ points }: { points: LibraryPoint[] }) {
             fill={`var(--color-${key})`}
             fillOpacity={0.1}
             dot={({ index, cx, cy }: { index: number; cx?: number; cy?: number }) => (
-              // A day between two gaps has no line, so it gets a dot.
               <circle key={index} cx={cx} cy={cy} r={isolated(points, key, index) && cy !== undefined ? 3 : 0} fill={`var(--color-${key})`} />
             )}
             isAnimationActive={false}

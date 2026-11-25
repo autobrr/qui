@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// ExternalIDs represents the external IDs resolved from ARR instances
 type ExternalIDs struct {
 	IMDbID   string `json:"imdb_id,omitempty"`
 	TMDbID   int    `json:"tmdb_id,omitempty"`
@@ -22,21 +21,16 @@ type ExternalIDs struct {
 	TVMazeID int    `json:"tvmaze_id,omitempty"`
 }
 
-// IsEmpty returns true if no IDs are set
 func (e *ExternalIDs) IsEmpty() bool {
 	return e.IMDbID == "" && e.TMDbID == 0 && e.TVDbID == 0 && e.TVMazeID == 0
 }
 
-// EpisodeMap is the Sonarr-sourced (season, episode, absolute) triple for the one
-// episode a release name resolves to. It lets a seasoned and an absolute-numbered
-// release count as the same episode.
 type EpisodeMap struct {
 	Season   int `json:"season"`
 	Episode  int `json:"episode"`
 	Absolute int `json:"absolute"`
 }
 
-// ArrIDCacheEntry represents a cached ID lookup result
 type ArrIDCacheEntry struct {
 	ID            int64       `json:"id"`
 	TitleHash     string      `json:"title_hash"`
@@ -46,36 +40,26 @@ type ArrIDCacheEntry struct {
 	Titles        []string    `json:"titles,omitempty"`
 	HasTitles     bool        `json:"has_titles"`
 	EpisodeMap    *EpisodeMap `json:"episode_map,omitempty"`
-	// HasEpisodeMap reports that the row was written by a lookup that read the
-	// episode map. A positive row without it predates the map and refetches once.
-	HasEpisodeMap bool      `json:"has_episode_map"`
-	IsNegative    bool      `json:"is_negative"`
-	CachedAt      time.Time `json:"cached_at"`
-	ExpiresAt     time.Time `json:"expires_at"`
+	HasEpisodeMap bool        `json:"has_episode_map"`
+	IsNegative    bool        `json:"is_negative"`
+	CachedAt      time.Time   `json:"cached_at"`
+	ExpiresAt     time.Time   `json:"expires_at"`
 }
 
-// ArrIDCacheStore manages the ARR ID cache in the database
 type ArrIDCacheStore struct {
 	db dbinterface.Querier
 }
 
-// NewArrIDCacheStore creates a new ArrIDCacheStore
 func NewArrIDCacheStore(db dbinterface.Querier) *ArrIDCacheStore {
 	return &ArrIDCacheStore{db: db}
 }
 
-// ComputeTitleHash computes a SHA256 hash of the normalized title for cache lookup
 func ComputeTitleHash(title string) string {
 	normalized := normalizeLowerTrim(title)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])
 }
 
-// Get retrieves a cached ID entry if it exists and hasn't expired.
-//
-// Expiry is compared against a bound time rather than CURRENT_TIMESTAMP: SQLite
-// compares the text, and CURRENT_TIMESTAMP has a different text form than a
-// bound time.Time (#1961).
 func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string) (*ArrIDCacheEntry, error) {
 	query := `
 		SELECT id, title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json,
@@ -108,10 +92,9 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 		&entry.ExpiresAt,
 	)
 	if err != nil {
-		return nil, err // Returns sql.ErrNoRows if not found
+		return nil, err
 	}
 
-	// Map nullable fields to ExternalIDs
 	if imdbID != nil {
 		entry.ExternalIDs.IMDbID = *imdbID
 	}
@@ -139,24 +122,14 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 	return &entry, nil
 }
 
-// Set creates or updates a cache entry (upsert) without titles or an episode map,
-// recording neither as known. The service uses it for negative rows.
 func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, isNegative bool, ttl time.Duration) error {
 	return s.SetWithTitles(ctx, titleHash, contentType, arrInstanceID, ids, nil, nil, false, isNegative, ttl)
 }
 
-// SetWithTitles creates or updates a cache entry from a full lookup result with the
-// ARR title aliases recorded as known. episodeMapKnown records that the lookup read
-// the episode map (nil when it found none); a parse that never answered leaves it
-// false so the row refetches.
-// A negative write never replaces a live positive row: concurrent lookups of the
-// same title can race, and a slower no-ID result must not hide freshly resolved
-// IDs for the negative TTL (#2300). Positive writes always win.
 func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, episodeMap *EpisodeMap, episodeMapKnown, isNegative bool, ttl time.Duration) error {
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl)
 
-	// Prepare nullable values
 	var imdbID, titlesJSON *string
 	var tmdbID, tvdbID, tvmazeID, mapSeason, mapEpisode, mapAbsolute *int
 
@@ -218,9 +191,7 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 	return nil
 }
 
-// CleanupExpired removes all expired cache entries
 func (s *ArrIDCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
-	// Compare against a bound time rather than CURRENT_TIMESTAMP; see Get (#1961).
 	query := `DELETE FROM arr_id_cache WHERE expires_at <= ?`
 
 	result, err := s.db.ExecContext(ctx, query, time.Now().UTC())

@@ -9,19 +9,17 @@ type LabelCount struct {
 }
 
 type CrossSeedEventData struct {
-	RunID      int64  `json:"run_id,omitempty"`
-	Mode       string `json:"mode,omitempty"`
-	Status     string `json:"status,omitempty"`
-	FeedItems  int    `json:"feed_items,omitempty"`
-	Candidates int    `json:"candidates,omitempty"`
-	Processed  int    `json:"processed,omitempty"`
-	Total      int    `json:"total,omitempty"`
-	Matches    int    `json:"matches,omitempty"`
-	Complete   int    `json:"complete,omitempty"`
-	Pending    int    `json:"pending,omitempty"`
-	Added      int    `json:"added,omitempty"`
-	// TorrentsWithCrossSeeds is set for seeded search runs only: the number of
-	// search candidates that produced at least one cross-seed.
+	RunID                  int64    `json:"run_id,omitempty"`
+	Mode                   string   `json:"mode,omitempty"`
+	Status                 string   `json:"status,omitempty"`
+	FeedItems              int      `json:"feed_items,omitempty"`
+	Candidates             int      `json:"candidates,omitempty"`
+	Processed              int      `json:"processed,omitempty"`
+	Total                  int      `json:"total,omitempty"`
+	Matches                int      `json:"matches,omitempty"`
+	Complete               int      `json:"complete,omitempty"`
+	Pending                int      `json:"pending,omitempty"`
+	Added                  int      `json:"added,omitempty"`
 	TorrentsWithCrossSeeds int      `json:"torrents_with_cross_seeds,omitzero"`
 	Failed                 int      `json:"failed,omitempty"`
 	Skipped                int      `json:"skipped,omitempty"`

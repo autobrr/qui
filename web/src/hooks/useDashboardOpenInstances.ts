@@ -12,7 +12,6 @@ function parse(raw: string): number[] {
 
 const SETTING = { defaultValue: [] as number[], parse }
 
-/** The ids of the instances whose rows are open on the Dashboard, a Display setting. */
 export function useDashboardOpenInstances(): [number[], (value: number[] | ((prev: number[]) => number[])) => void] {
   return useClientSetting<number[]>("qui-dashboard-open-instances", SETTING)
 }

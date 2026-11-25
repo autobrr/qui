@@ -11,10 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// regression: #4242
-// A copy that stalls right after several writes in one second shows its
-// speed while those bytes are in the speed window, and no speed once nothing
-// moved over the whole window.
 func TestTheSpeedOfACopyThatStallsAfterQuickWritesDropsToZero(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		m := &meter{now: time.Now}

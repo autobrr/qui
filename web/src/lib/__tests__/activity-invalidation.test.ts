@@ -13,10 +13,6 @@ import {
   invalidateForActivity
 } from "@/lib/activity-invalidation"
 
-// Every activity kind the backend can emit. The `satisfies` check is compiler-
-// enforced exhaustiveness: adding a kind to the ActivityEvent union without listing
-// it here fails to compile, so the drift-guard test below can never silently miss a
-// kind (and thus a feed family left out of ACTIVITY_FEATURE_PREFIXES).
 const ALL_KINDS_MAP = {
   "backup.run": true,
   "dirscan.run": true,
@@ -60,7 +56,6 @@ describe("activityQueryKeys", () => {
 
   it("keys dir-scan by directory id carried in resourceId", () => {
     expect(activityQueryKeys(ev({ kind: "dirscan.run", resourceId: "42" }))).toEqual([["dir-scan", "directory", 42]])
-    // No resourceId -> whole feature prefix.
     expect(activityQueryKeys(ev({ kind: "dirscan.run" }))).toEqual([["dir-scan"]])
   })
 
@@ -120,9 +115,6 @@ describe("invalidateAllActivity", () => {
     expect(calledKeys).toEqual(ACTIVITY_FEATURE_PREFIXES)
   })
 
-  // Drift guard: reconnect reconciliation must cover every kind. If a new kind maps
-  // to a key family not represented in ACTIVITY_FEATURE_PREFIXES, a missed event on
-  // that feed would never reconcile on reconnect.
   it("covers the key family of every activity kind", () => {
     for (const kind of ALL_KINDS) {
       const keys = activityQueryKeys(ev({ kind }))

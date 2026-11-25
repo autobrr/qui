@@ -17,9 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 )
 
-// findCrossSeedsForFiles runs FindCrossSeeds over one source and one candidate
-// torrent that share the given file list, with local filesystem access on both.
-// Only the onDisk files are written to either save path.
 func findCrossSeedsForFiles(t *testing.T, files, onDisk qbt.TorrentFiles) (*LocalMatchesResponse, error) {
 	t.Helper()
 	return localMatchesServiceForFiles(t, files, onDisk).FindCrossSeeds(t.Context(), 1, hlSourceHash)
@@ -43,9 +40,6 @@ func localMatchesServiceForFiles(t *testing.T, files, onDisk qbt.TorrentFiles) *
 	}, source, candidate)
 }
 
-// A backslash is a legal filename byte on Unix, so such a name cannot be mapped to a
-// local path. That is missing evidence, not evidence of absence: the tab must fail
-// instead of reporting "no cross-seeds found" and inviting a delete.
 func TestFindCrossSeeds_UnresolvableFileName_FailsClosed(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: `AC\DC - Back In Black.mkv`, Size: 4}}
 
@@ -57,12 +51,6 @@ func TestFindCrossSeeds_UnresolvableFileName_FailsClosed(t *testing.T) {
 	require.Contains(t, err.Error(), strconv.Quote(files[0].Name))
 }
 
-// The candidate's names can be the unresolvable ones while the source's are fine.
-// The candidate torrent's list holds only a backslash name: without the recording in
-// localLinkedMatchType the check would read "not linked" and strict mode would fail
-// open on exactly the torrent that might be the cross-seed. The reflink row has no
-// source FileIDs, and its pairing pass ignores refusals, so it holds that the FileID
-// pass still runs over the candidate first.
 func TestFindCrossSeeds_UnresolvableCandidateName_FailsClosed(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -100,8 +88,6 @@ func TestFindCrossSeeds_UnresolvableCandidateName_FailsClosed(t *testing.T) {
 	}
 }
 
-// A resolved name whose file is not on disk is normal for an incomplete torrent and
-// must stay a skip, or every partial download would fail the tab.
 func TestFindCrossSeeds_MissingLocalFile_IsSkipped(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: "not-downloaded-yet.mkv", Size: 4}}
 
@@ -120,9 +106,6 @@ func (b lstatErrorBackend) Lstat(_ context.Context, path string) (*fsops.LstatIn
 	return nil, &fs.PathError{Op: "lstat", Path: path, Err: b.err}
 }
 
-// A permission error (a PUID mismatch, say) hides link evidence just like an
-// unresolvable name, so the tab must fail. ENOTDIR means a parent of the path is
-// a file: the file is missing, which stays a skip.
 func TestFindCrossSeeds_LstatError(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: "Movie.2023.1080p.WEB.mkv", Size: 4}}
 	for _, tc := range []struct {

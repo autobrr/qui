@@ -22,10 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
-// regression: #4242
-// A Preview runs the checks of Start and tells the way and the size of the
-// Transfer: each file of the group once. It records, claims, and writes
-// nothing, and refuses a torrent that a Transfer holds, as Start does.
 func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -62,12 +58,6 @@ func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	require.ErrorIs(t, whileHeld, transfer.ErrClaimed)
 }
 
-// regression: #4242
-// A rule matches each cross-seed of a set that reads one copy of the files
-// through hardlinks, and a Transfer torrent passes these files for each
-// Transfer that starts. So a rule starts no Transfer of a torrent while a
-// Transfer holds a cross-seed of the set, and while the target has one. An
-// .nfo of its own keeps a cross-seed in the set. The user can still start it.
 func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	r := newRigOn(t, onDisk, noAccess)
 	r.connect()
@@ -112,10 +102,6 @@ func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	require.Equal(t, 1, preview.Stay)
 }
 
-// regression: #4242
-// A longer pack reads the files of a pack through hardlinks and has one more
-// episode. The two do not have the same files, so a rule starts the Transfer
-// of the longer pack while the target has the other one.
 func TestARuleMovesACrossSeedThatHasOtherFiles(t *testing.T) {
 	r := newRigOn(t, onDisk, noAccess)
 	r.connect()
@@ -146,9 +132,6 @@ func TestARuleMovesACrossSeedThatHasOtherFiles(t *testing.T) {
 	require.Empty(t, preview.Versions)
 }
 
-// regression: #4242
-// After a Transfer fails for good, a rule starts no new Transfer of the
-// torrent: the failure waits for the user. The user can still start one.
 func TestARuleWaitsForTheUserAfterAPermanentFailure(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -172,7 +155,6 @@ func TestARuleWaitsForTheUserAfterAPermanentFailure(t *testing.T) {
 	require.Equal(t, transfer.StateDone, r.run(r.request(s)).State)
 }
 
-// A Transfer sends its end as an event: finished, or failed with the reason.
 func TestTransferSendsItsEndAsAnEvent(t *testing.T) {
 	r := newRig(t)
 	sent := &events{}
@@ -199,10 +181,6 @@ func TestTransferSendsItsEndAsAnEvent(t *testing.T) {
 	require.True(t, strings.HasPrefix(failed.Message, "Torrent: "+showName+"\nTarget: homelab\nError: Not enough free space on homelab"), failed.Message)
 }
 
-// regression: #4242
-// A Transfer sends the event of its end after qui records the end. When that
-// record fails, the next start of qui ends the Transfer again and sends the
-// one event.
 func TestATransferSendsOneEventAfterTheRecordOfItsEnd(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -238,9 +216,6 @@ func TestATransferSendsOneEventAfterTheRecordOfItsEnd(t *testing.T) {
 	}
 }
 
-// regression: #4242
-// A Transfer that resumes after one of its instances was deleted fails for
-// good, and its event shows a deleted target by its ID.
 func TestATransferSendsItsEndAfterAnInstanceIsDeleted(t *testing.T) {
 	for _, side := range []string{"source", "target"} {
 		r := newRig(t)

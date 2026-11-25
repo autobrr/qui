@@ -13,11 +13,9 @@ import { useNamedDisplayProfiles } from "./display-profile-names"
 
 interface ColumnsMenuHeaderProps {
   instanceId: number
-  /** The name of the instance on screen. The Unified view needs none. */
   instanceName?: string
 }
 
-/** The top of the Toggle columns menu: where a column change goes, and the Same columns on every instance switch. */
 export function ColumnsMenuHeader({ instanceId, instanceName }: ColumnsMenuHeaderProps) {
   const { t } = useTranslation("torrents")
   const { active, settled, setSameColumns } = useNamedDisplayProfiles()

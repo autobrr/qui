@@ -27,10 +27,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// fakePreferencesQbit is a qBittorrent WebUI that serves a captured
-// app/preferences response and records each setPreferences body and test email.
-// It also lists the network interfaces and the addresses of each interface value,
-// where the value "" holds the addresses of all interfaces.
 type fakePreferencesQbit struct {
 	mu          sync.Mutex
 	webAPI      string
@@ -84,14 +80,12 @@ func (f *fakePreferencesQbit) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	case "app/networkInterfaceList":
 		_ = json.NewEncoder(w).Encode(f.interfaces)
 	case "app/networkInterfaceAddressList":
-		// qBittorrent lists no address for an interface that does not exist.
 		addresses := f.addresses[r.FormValue("iface")]
 		if addresses == nil {
 			addresses = []string{}
 		}
 		_ = json.NewEncoder(w).Encode(addresses)
 	case "sync/maindata":
-		// qBittorrent always answers a sync for rid 0 with a full update.
 		_, _ = io.WriteString(w, `{"rid":1,"full_update":true}`)
 	default:
 		_, _ = io.WriteString(w, "{}")
@@ -203,21 +197,17 @@ func TestPreferencesViewQBittorrent5Linux(t *testing.T) {
 	assert.Equal(t, "KiB/s", dl.DisplayUnit)
 	assert.False(t, dl.ReadOnly)
 
-	// Present only when qBittorrent sent the key.
 	assert.Contains(t, view, "add_stopped_enabled")
 	assert.NotContains(t, view, "start_paused_enabled")
 	assert.NotContains(t, view, "use_subcategories")
 
-	// libtorrent 2 hides the libtorrent 1 disk cache and shows hashing threads.
 	assert.NotContains(t, view, "disk_cache")
 	assert.NotContains(t, view, "enable_coalesce_read_write")
 	assert.Contains(t, view, "hashing_threads")
 	assert.Contains(t, view["disk_io_write_mode"].Options, float64(2))
 
-	// The Linux platform hides the memory working set limit.
 	assert.NotContains(t, view, "memory_working_set_limit")
 
-	// A key that the dialog does not show yet is not in the view.
 	assert.NotContains(t, view, "locale")
 
 	interfaceName := view["current_interface_name"]
@@ -227,7 +217,6 @@ func TestPreferencesViewQBittorrent5Linux(t *testing.T) {
 }
 
 func TestPreferencesViewUnknownPlatformShowsPlatformFields(t *testing.T) {
-	// qBittorrent before 5.0 does not report its platform.
 	fake := newFakePreferencesQbit(t, "4.6.7", "2.9.3", map[string]any{"libtorrent": "2.0.9.0"})
 	rig := newPreferencesRig(t, fake)
 
@@ -254,7 +243,6 @@ func TestPreferencesViewLibtorrent1(t *testing.T) {
 
 func TestPreferencesViewBehaviorShowsTheLogFile(t *testing.T) {
 	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
-	// qBittorrent 5.3 adds the search keys to the Behavior tab.
 	fake.prefs["store_search_jobs"] = true
 	fake.prefs["store_search_job_results"] = false
 	rig := newPreferencesRig(t, fake)
@@ -290,7 +278,6 @@ func TestPreferencesViewBehaviorShowsTheLogFile(t *testing.T) {
 
 func TestPreferencesViewBitTorrentSeedingLimitsAndTrackers(t *testing.T) {
 	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
-	// qBittorrent 5.3 adds share_limits_mode.
 	fake.prefs["share_limits_mode"] = "MatchAny"
 	fake.prefs["add_trackers_url_list"] = "udp://tracker.example.invalid:1337/announce"
 	rig := newPreferencesRig(t, fake)
@@ -402,7 +389,6 @@ func TestPreferencesViewDownloadsOnQBittorrent4(t *testing.T) {
 	for _, key := range []string{"auto_delete_mode", "preallocate_all", "incomplete_files_ext"} {
 		assert.Contains(t, view, key)
 	}
-	// Before qBittorrent 5.3, an empty folder turns the copy off.
 	for _, key := range []string{"export_dir", "export_dir_fin"} {
 		assert.Equal(t, "torrentFileBackup", view[key].Section, key)
 		assert.Equal(t, "path", view[key].Control, key)
@@ -414,8 +400,8 @@ func TestPreferencesViewEmailNotification(t *testing.T) {
 	tests := []struct {
 		capture       string
 		webAPI        string
-		encryptionKey string // the key that sets the encryption on this version
-		missingKey    string // the encryption key of the other versions, which qBittorrent does not send
+		encryptionKey string
+		missingKey    string
 	}{
 		{capture: "5.2.4", webAPI: "2.15.1", encryptionKey: "mail_notification_ssl_enabled", missingKey: "mail_notification_encryption_type"},
 		{capture: "5.3.0rc1", webAPI: "2.16.2", encryptionKey: "mail_notification_encryption_type", missingKey: "mail_notification_ssl_enabled"},
@@ -500,7 +486,6 @@ func TestPreferencesViewConnectionProxyAndI2P(t *testing.T) {
 	assert.JSONEq(t, `"127.0.0.1"`, string(view["proxy_ip"].Value))
 }
 
-// regression: #4472
 func TestPreferencesViewSendsPasswordsEmpty(t *testing.T) {
 	fake := newFakePreferencesQbit(t, "5.2.4", "2.15.1", map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
 	fake.prefs["proxy_password"] = "made-up-proxy-password"
@@ -523,13 +508,11 @@ func TestPreferencesUpdateKeepsAnEmptyPassword(t *testing.T) {
 		patch string
 		want  map[string]any
 	}{
-		// regression: #4472
 		{
 			name:  "empty keeps the saved passwords",
 			patch: `{"proxy_username": "user", "proxy_password": "", "mail_notification_password": ""}`,
 			want:  map[string]any{"proxy_username": "user"},
 		},
-		// regression: #4472
 		{
 			name:  "a new password replaces the saved one",
 			patch: `{"proxy_password": "made-up-new-proxy-password", "mail_notification_password": "made-up-new-mail-password"}`,
@@ -560,7 +543,6 @@ func TestPreferencesViewI2PNeedsLibtorrent2(t *testing.T) {
 	}{
 		{libtorrent: "1.2.19.0"},
 		{libtorrent: "2.0.11.0", wantI2P: true},
-		// qBittorrent shows I2P peer exchange only on libtorrent 2.1 or later.
 		{libtorrent: "2.1.0.0", wantI2P: true, wantPeX: true},
 	}
 	for _, tt := range tests {
@@ -596,8 +578,6 @@ func TestPreferencesViewProxyTrafficByVersion(t *testing.T) {
 		for _, key := range []string{"proxy_bittorrent", "proxy_rss", "proxy_misc"} {
 			assert.NotContains(t, view, key)
 		}
-		// Before 4.6, the proxy type is a number that also says whether the proxy uses
-		// authentication, and qBittorrent ignores a write of proxy_auth_enabled.
 		assert.Equal(t, []any{float64(0), float64(5), float64(2), float64(4), float64(1), float64(3)}, view["proxy_type"].Options)
 		assert.NotContains(t, view, "proxy_auth_enabled")
 		assert.Contains(t, view, "proxy_username")
@@ -651,7 +631,6 @@ func TestPreferencesViewWebUI(t *testing.T) {
 		"web_ui_domain_list":           "security",
 		"web_ui_reverse_proxy_enabled": "reverseProxy", "web_ui_reverse_proxies_list": "reverseProxy",
 	}, sections)
-	// qui connects to qBittorrent with these settings, so a user cannot change them in qui.
 	for _, key := range []string{
 		"web_ui_address", "web_ui_port", "use_https", "web_ui_https_cert_path", "web_ui_https_key_path",
 		"web_ui_username", "bypass_local_auth", "bypass_auth_subnet_whitelist_enabled", "bypass_auth_subnet_whitelist",
@@ -748,9 +727,9 @@ func TestPreferencesViewAdvancedLibtorrentGates(t *testing.T) {
 		want           []string
 		hidden         []string
 		writeModes     []any
-		wantVariance   bool // libtorrent 2.0.12 or later
-		wantSamePeerID bool // libtorrent 2.0.13 or later
-		wantSTUN       bool // libtorrent 2.1 or later
+		wantVariance   bool
+		wantSamePeerID bool
+		wantSTUN       bool
 	}{
 		{libtorrent: "1.2.19.0", want: libtorrent1, hidden: libtorrent2, writeModes: []any{float64(0), float64(1)}},
 		{libtorrent: "2.0.5.0", want: libtorrent2, hidden: libtorrent1, writeModes: []any{float64(0), float64(1)}},
@@ -761,7 +740,6 @@ func TestPreferencesViewAdvancedLibtorrentGates(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.libtorrent, func(t *testing.T) {
-			// The 5.3 capture lacks the libtorrent 1 keys, and the Windows platform passes the memory working set limit.
 			fake := newFakePreferencesQbit(t, "5.3.0rc1", "2.16.2", map[string]any{"libtorrent": tt.libtorrent, "platform": "windows"})
 			fake.prefs["disk_cache"] = -1
 			fake.prefs["disk_cache_ttl"] = 60
@@ -799,9 +777,7 @@ func TestPreferencesViewAdvancedPlatformGates(t *testing.T) {
 		{platform: "windows", wantWorkingSet: true, wantMarkOfTheWeb: true},
 		{platform: "macos", wantMarkOfTheWeb: true},
 		{platform: "linux"},
-		// qBittorrent reports "unknown" on a platform that is not Linux, macOS, or Windows.
 		{platform: "unknown", wantWorkingSet: true},
-		// qBittorrent before 5.0 does not report its platform, so the platform gates pass.
 		{platform: "", wantWorkingSet: true, wantMarkOfTheWeb: true},
 	}
 	for _, tt := range tests {
@@ -931,7 +907,6 @@ func TestRSSReprocessWritesThroughTheCatalogAndClearsTheCache(t *testing.T) {
 	view, _ := rig.view(t)
 	assert.JSONEq(t, "false", string(view["rss_auto_downloading_enabled"].Value))
 
-	// Another tool turns auto downloading on. The cached view does not see it yet.
 	fake.mu.Lock()
 	fake.prefs["rss_auto_downloading_enabled"] = true
 	fake.mu.Unlock()
@@ -948,7 +923,6 @@ func TestRSSReprocessWritesThroughTheCatalogAndClearsTheCache(t *testing.T) {
 	assert.JSONEq(t, "true", string(view["rss_auto_downloading_enabled"].Value))
 }
 
-// The network binding of a host with a LAN interface and a VPN interface.
 func newNetworkBindingFake(t *testing.T, capture, webAPI string) *fakePreferencesQbit {
 	t.Helper()
 	fake := newFakePreferencesQbit(t, capture, webAPI, map[string]any{"libtorrent": "2.0.11.0", "platform": "linux"})
@@ -1007,7 +981,6 @@ func TestNetworkBinding(t *testing.T) {
 			}},
 		},
 		{
-			// qBittorrent before 4.6 does not send current_interface_name.
 			name:    "missing saved interface before 4.6",
 			capture: "4.5.5",
 			saved:   map[string]any{"current_network_interface": "tun0", "current_interface_address": ""},
@@ -1034,7 +1007,6 @@ func TestNetworkBinding(t *testing.T) {
 			}, ethernet, wireGuard},
 		},
 		{
-			// "All IPv4 addresses" and "All IPv6 addresses" are not addresses of an interface.
 			name:    "all IPv6 addresses",
 			capture: "5.2.4",
 			saved:   map[string]any{"current_network_interface": "eth0", "current_interface_address": "::", "current_interface_name": "Ethernet"},

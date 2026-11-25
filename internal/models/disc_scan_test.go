@@ -38,7 +38,6 @@ func runDiscScanStoreTests(t *testing.T, db *database.DB) {
 	second, err := store.Create(ctx, instance.ID, "hash-a", "Box/Disc 2", "/data/Box/Disc 2")
 	require.NoError(t, err)
 
-	// Latest by cache key sees the newest row for that resolved path only.
 	latest, err := store.Latest(ctx, instance.ID, "/data/Box/Disc 2")
 	require.NoError(t, err)
 	require.Equal(t, second, latest.ID)
@@ -48,7 +47,6 @@ func runDiscScanStoreTests(t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 	require.Nil(t, missing)
 
-	// FIFO pick.
 	next, err := store.NextPending(ctx)
 	require.NoError(t, err)
 	require.Equal(t, first, next.ID)
@@ -75,12 +73,10 @@ func runDiscScanStoreTests(t *testing.T, db *database.DB) {
 	require.NotNil(t, run.StartedAt)
 	require.NotNil(t, run.CompletedAt)
 
-	// A completed row cannot be canceled or overwritten.
 	canceled, err := store.MarkCanceled(ctx, first)
 	require.NoError(t, err)
 	require.False(t, canceled)
 
-	// Newest per disc path for the torrent: a rescan of Disc 1 hides the old row.
 	third, err := store.Create(ctx, instance.ID, "hash-a", "Box/Disc 1", "/data/Box/Disc 1")
 	require.NoError(t, err)
 	runs, err := store.ListNewestForTorrent(ctx, instance.ID, "hash-a")
@@ -89,7 +85,6 @@ func runDiscScanStoreTests(t *testing.T, db *database.DB) {
 	require.Equal(t, third, runs[0].ID)
 	require.Equal(t, second, runs[1].ID)
 
-	// A canceled scan never gets a report, even when the scanner finishes late.
 	started, err = store.MarkScanning(ctx, third)
 	require.NoError(t, err)
 	require.True(t, started)
@@ -104,7 +99,6 @@ func runDiscScanStoreTests(t *testing.T, db *database.DB) {
 	require.Equal(t, models.DiscScanStatusCanceled, run.Status)
 	require.Empty(t, run.Report)
 
-	// Restart recovery fails scanning rows and leaves pending rows queued.
 	started, err = store.MarkScanning(ctx, second)
 	require.NoError(t, err)
 	require.True(t, started)

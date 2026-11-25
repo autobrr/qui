@@ -24,29 +24,17 @@ func TestResolveLocalTorrentFile(t *testing.T) {
 	}{
 		{name: "nested relative name", input: "Movie.2024/Movie.2024.mkv", want: filepath.Join(base, "Movie.2024", "Movie.2024.mkv"), ok: true},
 		{name: "dot segments inside base", input: "sub/../Movie.mkv", want: filepath.Join(base, "Movie.mkv"), ok: true},
-		// Backslash is a legal filename byte on Linux, so a name carrying one is
-		// rejected rather than rewritten into a nested path: inventing a directory
-		// here makes a file that exists read as missing, and on Windows the same
-		// name is a separator. Both shapes stay rejected on every OS.
 		{name: "backslash in a legal Linux file name", input: `AC\DC - Back In Black.mkv`},
-		// qBittorrent's WebAPI is slash-delimited on every platform (its Path type
-		// runs QDir::cleanPath, which converts native separators to "/"), so a
-		// Windows-looking nested path can only be a literal file name and is
-		// refused like any other backslash carrier. This row records that call.
 		{name: "windows-style nested path", input: `Season 01\Episode 01.mkv`},
 		{name: "backslash inside a nested legal Linux name", input: `dir/AC\DC.mkv`},
 		{name: "windows traversal", input: `..\etc\passwd`},
 		{name: "windows rooted path", input: `\evil\path`},
 		{name: "windows UNC path", input: `\\server\share\file`},
-		// Forward slashes only, so the backslash clause does not cover it: this is
-		// the drive-prefix guard's own case.
 		{name: "windows drive prefix with forward slashes", input: `C:/evil.mkv`},
 		{name: "windows drive prefix with backslashes", input: `c:\evil.mkv`},
 		{name: "posix traversal escaping the base", input: "a/../../etc/passwd"},
 		{name: "posix parent traversal", input: "../evil.mkv"},
 		{name: "posix absolute path", input: "/absolute.mkv"},
-		// path.Clean turns both "" and "." into ".", which would otherwise resolve
-		// to the save path itself: the empty-name row rides the same clause.
 		{name: "current dir", input: "."},
 		{name: "bare parent dir", input: ".."},
 		{name: "empty name", input: ""},

@@ -24,8 +24,6 @@ const (
 	cacheModeHashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
-// filesCacheRig is a real SyncManager with the real files cache over a stub
-// qBittorrent.
 type filesCacheRig struct {
 	stub       *qbtstub.Server
 	clients    *qbittorrent.ClientPool
@@ -61,8 +59,6 @@ func newFilesCacheRig(t *testing.T, torrents ...qbtstub.Torrent) *filesCacheRig 
 	return &filesCacheRig{stub: stub, clients: clients, sm: sm, db: db, instanceID: instance.ID}
 }
 
-// rename renames the torrent's root in qBittorrent's own WebUI, which moves
-// its print, and syncs.
 func (r *filesCacheRig) rename(t *testing.T, torrent qbtstub.Torrent, name string) {
 	t.Helper()
 	r.stub.DeleteElsewhere(torrent.Hash)
@@ -74,8 +70,6 @@ func (r *filesCacheRig) rename(t *testing.T, torrent qbtstub.Torrent, name strin
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 }
 
-// age moves the write of the hash's cached list back by d. withoutPrint
-// leaves the row as an image that knows no print writes it.
 func (r *filesCacheRig) age(t *testing.T, hash string, d time.Duration, withoutPrint bool) {
 	t.Helper()
 	at := time.Now().UTC().Add(-d)
@@ -87,8 +81,6 @@ func (r *filesCacheRig) age(t *testing.T, hash string, d time.Duration, withoutP
 	require.NoError(t, err)
 }
 
-// fileRequests reads the lists of hashes under ctx and returns the number of
-// requests qBittorrent received for them.
 func (r *filesCacheRig) fileRequests(ctx context.Context, t *testing.T, hashes ...string) int {
 	t.Helper()
 	before := r.stub.Calls("torrents/files")
@@ -135,7 +127,6 @@ func TestLocalReadsKeepTheirFilesAge(t *testing.T) {
 	rig := newFilesCacheRig(t, folder)
 	require.Equal(t, 1, rig.fileRequests(t.Context(), t, cacheModeHashA))
 
-	// A print that moved does not count for a local read: only the age does.
 	rig.rename(t, folder, "Season 02")
 	rig.age(t, cacheModeHashA, 20*time.Hour, false)
 

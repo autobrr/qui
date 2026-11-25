@@ -5,12 +5,6 @@
 
 import { TokenType, tokenize, type CSSToken } from "@csstools/css-tokenizer"
 
-/**
- * Where css can make the browser load a file from another host, or where the
- * check cannot decide. The same rule as CheckNoOutsideFiles in
- * internal/themes/outside_files.go, which refuses the save; the editor uses it
- * so that a preview never loads such a file.
- */
 export interface OutsideFile {
   line: number
   kind: "outside-file" | "unreadable"
@@ -23,7 +17,6 @@ function isLocalTarget(target: string): boolean {
   return t.startsWith("data:") || t.startsWith("#")
 }
 
-// Escapes stay unresolved, as on the server, so an escape in the data: prefix is refused.
 function rawStringValue(token: CSSToken): string {
   const raw = token[1]
   return raw.length > 1 && raw.endsWith(raw[0]) ? raw.slice(1, -1) : raw.slice(1)

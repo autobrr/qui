@@ -3,22 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/**
- * Mounts the real cards of the mobile layout with the list hook, the network,
- * the router, and the virtualizer mocked, as the table smoke test does.
- * jsdom does no layout, so the size of the tap zone and the position of the
- * pill are left to the live proof.
- *
- * IMPORTANT: every mocked hook returns a STABLE singleton reference.
- */
-
 import { TorrentCardsMobile } from "@/components/torrents/TorrentCardsMobile"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
 import type { BulkActionPick } from "@/components/torrents/bulk-actions/bulk-action-state"
 import { BulkActionsContext } from "@/components/torrents/bulk-actions/bulk-actions-context"
 import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
-// The size and speed formatters read their unit labels from the i18n resources.
 import "@/i18n"
 import { makeFilters } from "@/test/mockFilters"
 import { makeTorrent } from "@/test/mockTorrent"
@@ -39,22 +29,18 @@ import { useMemo, useRef, type ComponentProps, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 
-// Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
 const scenario = vi.hoisted(() => ({
   rows: [] as Torrent[],
   totalCount: 0,
   hasLoadedAll: true,
   copyGroupsReady: undefined as boolean | undefined,
-  // The options that the cards last gave the list hook.
   listOptions: undefined as { groupCopies?: boolean } | undefined,
   isDemo: false,
 }))
-// The real list controller, so a test can read its load-more window.
 const controller = vi.hoisted(() => ({ current: undefined as undefined | { loadedRows: number; reportNearEnd: () => void } }))
 
 vi.mock("react-i18next", async (importOriginal) => {
   const translation = {
-    // Copy group, status bar, and added time keys echo their values, so a test can assert a count or a time.
     t: (key: string | string[], options?: Record<string, unknown>) =>
       typeof key === "string" && /^(copyGroups\.|statusBar\.|mobileCards\.added$)/.test(key) && options ? `${key} ${JSON.stringify(options)}` : key,
     i18n: { resolvedLanguage: "en", language: "en" },
@@ -86,7 +72,6 @@ vi.mock("@/contexts/SyncStreamContext", async (importOriginal) => {
   }
 })
 
-// Renders all `count` cards, because jsdom has no layout.
 vi.mock("@tanstack/react-virtual", () => {
   let count = 0
   let items: { index: number; key: number; start: number; size: number }[] = []
@@ -166,7 +151,6 @@ vi.mock("@/hooks/useTorrentsList", () => {
   }
 })
 
-// The bulk action module, as a spy: each pick with the Action target that the cards published.
 const picks: Array<{ pick: BulkActionPick; target?: ActionTarget }> = []
 
 function BulkActionSpy({ children }: { children: ReactNode }) {
@@ -193,8 +177,6 @@ const SORT_KEY = "qui:torrent-mobile-sort:1"
 const DATE_TIME_KEY = "qui-datetime-preferences"
 const CARD_SIZES = ["normal", "compact", "ultra-compact"] as const
 
-// The rows of one page in the order that the server sends them: the Group
-// representative, then the other members in sort order, then a plain row.
 function copyGroupRows(overrides: { top?: Partial<Torrent>; sorted?: Partial<Torrent>; third?: Partial<Torrent> } = {}) {
   return [
     makeTorrent({ hash: "hash-top", name: "Delta Release", copy_group: { id: "g1", first_sorted: { instance_id: 1, hash: "hash-sorted" } }, ...overrides.top }),
@@ -229,7 +211,6 @@ function renderCards(rows: Torrent[], props: CardsProps = {}) {
   const view = render(<TorrentCardsMobile instanceId={1} {...props} filters={filters} />, { wrapper })
   return {
     ...view,
-    // New props render the cards again with the new rows.
     showRows(next: Torrent[]) {
       scenario.rows = next
       view.rerender(<TorrentCardsMobile instanceId={1} {...props} filters={filters} onFilteredDataUpdate={vi.fn()} />)
@@ -364,7 +345,6 @@ describe("TorrentCardsMobile Copy groups", () => {
     const view = renderGroups(rows)
     expect(warnings(view.container).length).toBe(0)
 
-    // The top row keeps its object: only the hidden copy changes.
     view.showRows([rows[0], rows[1], { ...rows[2], state: "missingFiles" }, rows[3]])
 
     expect(warnings(view.container).length).toBe(1)
@@ -439,7 +419,6 @@ describe("TorrentCardsMobile Copy groups", () => {
 
 describe("TorrentCardsMobile swipe actions", () => {
   beforeEach(() => {
-    // jsdom has no pointer capture.
     Element.prototype.setPointerCapture = vi.fn()
   })
 
@@ -510,7 +489,6 @@ describe("TorrentCardsMobile swipe actions", () => {
 })
 
 describe("TorrentCardsMobile Compact card", () => {
-  // 2026-01-01 12:30 UTC and 2026-01-02 08:15 UTC. Now is 2026-01-02 10:15 UTC.
   const ADDED_ON = 1767270600
   const LATER_ADDED_ON = 1767341700
   const NOW = 1767348900
@@ -518,7 +496,6 @@ describe("TorrentCardsMobile Compact card", () => {
 
   beforeEach(() => {
     localStorage.setItem(VIEW_MODE_KEY, "compact")
-    // The card shows a relative time with every date setting.
     localStorage.setItem(DATE_TIME_KEY, JSON.stringify({ timezone: "UTC", timeFormat: "24h", dateFormat: "iso" }))
     vi.useFakeTimers({ toFake: ["Date"] })
     vi.setSystemTime(NOW * 1000)
@@ -660,7 +637,6 @@ describe("TorrentCardsMobile Display profile", () => {
     fireEvent.click(within(view.getByRole("dialog", { name: "displayProfiles.menuLabel" })).getByRole("button", { name: "displayProfiles.newProfile" }))
 
     const dialog = await view.findByRole("dialog", { name: "displayProfiles.newDialog.title" })
-    // The open dialog hides the rest of the page from the a11y tree, so a sheet left open under it counts only with hidden.
     expect(view.queryAllByRole("dialog", { hidden: true })).toEqual([dialog])
     await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("textbox", { name: "displayProfiles.newDialog.name" })))
   })
@@ -672,7 +648,6 @@ describe("TorrentCardsMobile Transfer and Share", () => {
     return within(view.getByRole("dialog"))
   }
 
-  // regression: #4242
   it("offers Transfer and Share for one selected torrent, and the pick reaches only that torrent", () => {
     const view = renderCards(flatRows(3))
     longPress(cardOf(view.container, "Release 1"))

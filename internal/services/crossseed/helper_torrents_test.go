@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// fakeHelpers is the helper registry: the helper torrents of instance 1.
 type fakeHelpers map[string]bool
 
 func (f fakeHelpers) IsHelper(instanceID int, hash string) bool { return instanceID == 1 && f[hash] }
@@ -25,8 +24,16 @@ func (f fakeHelpers) HelperCheck(instanceID int) func(hash string) bool {
 	return func(hash string) bool { return f[hash] }
 }
 
-// Cross-seed matches no helper torrent. A torrent of the user with the helper
-// tag and no registry row is a normal cross-seed.
+func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
+	kinds := map[string]string{}
+	for hash := range f {
+		if f.IsHelper(instanceID, hash) {
+			kinds[hash] = "transfer"
+		}
+	}
+	return kinds
+}
+
 func TestCrossSeedSkipsHelperTorrents(t *testing.T) {
 	t.Parallel()
 
@@ -46,9 +53,6 @@ func TestCrossSeedSkipsHelperTorrents(t *testing.T) {
 	require.Equal(t, map[string]string{"dddd": matchTypeContentPath}, matchedTiers(matches))
 }
 
-// The cross-seed views leave out what the badge of the row builder names. The
-// row builder sets it from the same registry.
-// regression: #4231
 func TestCrossSeedViewsLeaveOutTheBadgedTorrents(t *testing.T) {
 	t.Parallel()
 
@@ -97,4 +101,59 @@ func TestCompletionOfAHelperTorrentStartsNoSearch(t *testing.T) {
 	svc.HandleTorrentCompletion(context.Background(), 1, torrent(own))
 
 	require.Equal(t, []string{own}, searched)
+}
+
+func TestHeldTitlesLeaveOutHelperTorrents(t *testing.T) {
+	const announce = "Harbor.Watch.S01E01.1080p.WEB-DL.DDP5.1.H.264-GRP1"
+	const size = int64(1_500_000_000)
+	named := func(hash string) qbt.Torrent {
+		return qbt.Torrent{Hash: hash, Name: announce, Size: size, TotalSize: size, Progress: 1, AddedOn: 1}
+	}
+	helper, own := named(heldHash('a', 1)), named(heldHash('b', 1))
+	waiting := seasonFolderTorrent(heldHash('c', 1))
+
+	for _, tt := range []struct {
+		name     string
+		torrents []qbt.Torrent
+		announce string
+		size     uint64
+		helper   string
+		want     []string
+	}{
+		{name: "the only torrent of the name", torrents: []qbt.Torrent{helper}, announce: announce, size: uint64(size), helper: helper.Hash},
+		{name: "the only torrent that waits on its files", torrents: []qbt.Torrent{waiting}, announce: localReadsPack, helper: waiting.Hash},
+		{name: "beside a normal torrent of the name", torrents: []qbt.Torrent{helper, own}, announce: announce, size: uint64(size), helper: helper.Hash, want: []string{own.Hash}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			library := serveHeldLibrary(t, tt.torrents, map[string]qbt.TorrentFiles{
+				helper.Hash:  {{Name: announce + ".mkv", Size: size}},
+				own.Hash:     {{Name: announce + ".mkv", Size: size}},
+				waiting.Hash: seasonFolderFiles(),
+			})
+			rig := newHeldRig(t, library)
+			rig.startNoBackgroundSyncs()
+			held, _ := rig.heldTitles(t.Context())
+			rig.waitReady(held)
+			full, _ := rig.fullScan()
+			helpers := fakeHelpers{tt.helper: true}
+			rig.syncs.SetHelperTorrents(helpers)
+			held.SetHelperTorrents(helpers)
+			full.SetHelperTorrents(helpers)
+
+			got := checkAnnounce(t, held, tt.announce, tt.size)
+			require.ElementsMatch(t, tt.want, matchedHashes(got))
+			require.NotContains(t, library.takeFileReads(), tt.helper)
+			if len(tt.want) == 0 {
+				requireNotHeld(t, held, tt.announce, int64(tt.size))
+			}
+			require.Equal(t, checkAnnounce(t, full, tt.announce, tt.size), got)
+
+			syncs := library.syncs()
+			delete(helpers, tt.helper)
+			got = checkAnnounce(t, held, tt.announce, tt.size)
+			require.Contains(t, matchedHashes(got), tt.helper, "a torrent that stops being a Helper torrent is a candidate again")
+			require.Equal(t, syncs, library.syncs())
+			require.Equal(t, checkAnnounce(t, full, tt.announce, tt.size), got)
+		})
+	}
 }

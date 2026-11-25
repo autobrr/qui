@@ -83,7 +83,6 @@ func TestDownloadPreservesRateLimitResponse(t *testing.T) {
 	assert.Equal(t, "52", responseErr.RetryAfterHeader())
 }
 
-// testTorrentPayload is a minimal single-file torrent that parses as metainfo.
 const testTorrentPayload = "d4:infod6:lengthi1e4:name8:test.bin12:piece lengthi16384e6:pieces20:aaaaaaaaaaaaaaaaaaaaee"
 
 func TestDownloadRejectsNonTorrentPayloads(t *testing.T) {
@@ -111,7 +110,6 @@ func TestDownloadRejectsNonTorrentPayloads(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				// An empty header disables net/http content sniffing.
 				w.Header()["Content-Type"] = []string{tt.contentType}
 				_, _ = w.Write([]byte(tt.body))
 			}))
@@ -169,34 +167,23 @@ func TestFetchCapsWithRetryDoesNotRetryRateLimit(t *testing.T) {
 	assert.Equal(t, int32(1), calls.Load())
 }
 
-// TestDiscoverJackettIndexers_RedactsAPIKey is a regression test for issue #839.
-// It verifies that API keys in error messages are redacted when discovery fails.
 func TestDiscoverJackettIndexers_RedactsAPIKey(t *testing.T) {
 	const secretAPIKey = "SUPERSECRETAPIKEY12345"
 
-	// Create a test server that will be immediately closed to guarantee connection failure
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Should never reach here since we close the server
 		t.Error("Request should not reach handler")
 	}))
-	// Close immediately to guarantee connection failure
 	server.Close()
 
-	// Try to discover indexers against the closed server
 	_, err := DiscoverJackettIndexers(context.Background(), server.URL, secretAPIKey, nil, nil)
 
-	// We expect an error since the server is closed
 	require.Error(t, err, "Expected an error when connecting to closed server")
 
 	errStr := err.Error()
 
-	// The error message must NOT contain the secret API key
 	assert.NotContains(t, errStr, secretAPIKey,
 		"Error message should not contain the secret API key. Got: %s", errStr)
 
-	// The error message SHOULD contain REDACTED if it includes the URL with apikey param
-	// Note: depending on where the error occurs, it may or may not include URL params.
-	// If it does include URL params, they should be redacted.
 	if strings.Contains(errStr, "apikey=") {
 		assert.Contains(t, errStr, "apikey=REDACTED",
 			"Error message with apikey param should have value redacted. Got: %s", errStr)
@@ -212,11 +199,9 @@ func TestMagnetDownloadError_RedactsTrackerPasskeys(t *testing.T) {
 	assert.Contains(t, msg, "tracker.example.com")
 	assert.Contains(t, msg, "c12fe1c06bba254a9dc9f519b335aa7c1367a88a")
 
-	// The field itself must stay raw: the manual-add handler consumes it.
 	assert.Equal(t, rawMagnet, err.MagnetURL)
 }
 
-// regression: #4473
 func TestDownloadHidesTheKeysOfALinkThatDoesNotParse(t *testing.T) {
 	client := NewClient("https://indexer.example.invalid", "test-api-secret", nil, nil, "jackett", 5)
 
@@ -224,11 +209,8 @@ func TestDownloadHidesTheKeysOfALinkThatDoesNotParse(t *testing.T) {
 		name string
 		link string
 	}{
-		// regression: #4473
 		{name: "keys in the query", link: "https://indexer.example.invalid/download?apikey=test-api-secret&passkey=test-pass-secret\x7f"},
-		// regression: #4473
 		{name: "key in the path", link: "https://indexer.example.invalid/test-pass-secret/download\x7f"},
-		// regression: #4473
 		{name: "key in the place of the port", link: "https://indexer.example.invalid:test-pass-secret/download"},
 	}
 	for _, tt := range tests {

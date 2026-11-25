@@ -8,10 +8,6 @@ import { useSpreadsheetClassic } from "@/lib/spreadsheet-disguise"
 import { cn } from "@/lib/utils"
 import { Link, useLocation } from "@tanstack/react-router"
 
-// Disguise vocabulary, not UI copy: deliberately English and not translated,
-// like the incognito ISO names. Each tab is a real navigation target. The
-// classic variant renders the same strip as a 2003-era menu bar, where the
-// entry marked `instance` points at the first active instance (the "sheet").
 const RIBBON_ARIA = "Ribbon"
 const FILE_TAB = "File"
 

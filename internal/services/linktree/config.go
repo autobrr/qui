@@ -32,9 +32,8 @@ const (
 
 type Config struct {
 	BaseDirs []string
-	// Preset is the Directory preset. An unknown value acts as PresetFlat.
-	Preset string
-	Kind   LinkKind
+	Preset   string
+	Kind     LinkKind
 }
 
 func ConfigOf(instance *models.Instance) (Config, bool) {

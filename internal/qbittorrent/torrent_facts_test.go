@@ -12,9 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The first sync after a start of qui comes before the tracker mapping, so the
-// facts must not depend on the mapping.
-// regression: #4100
 func TestTorrentFactsOfGivesEachDomainOfTheSyncBeforeTheMapping(t *testing.T) {
 	t.Parallel()
 

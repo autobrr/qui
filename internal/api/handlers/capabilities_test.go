@@ -18,7 +18,6 @@ import (
 func TestInstanceCapabilitiesResponseByWebAPIVersion(t *testing.T) {
 	t.Parallel()
 
-	// One row for each qBittorrent release line: 4.6, 5.1, 5.2 and 5.3.
 	tests := map[string]string{
 		"2.9.3":  `{"subcategoriesAlwaysEnabled":false,"supportsFilePriority":true,"supportsPathAutocomplete":false,"supportsRenameFile":true,"supportsRenameFolder":true,"supportsRenameTorrent":true,"supportsSetComment":false,"supportsSetRSSFeedURL":true,"supportsSetTags":false,"supportsShareLimitsAction":false,"supportsShareLimitsMode":false,"supportsSubcategories":true,"supportsTestEmail":false,"supportsTorrentCreation":false,"supportsTorrentExport":true,"supportsTorrentTmpPath":true,"supportsTrackerEditing":true,"supportsTrackerHealth":false,"supportsLiveReannounce":false,"supportsListFieldsV5":false,"supportsListCreatedBy":false,"supportsFreeSpaceAtPath":false,"webAPIVersion":"2.9.3"}`,
 		"2.11.4": `{"subcategoriesAlwaysEnabled":false,"supportsFilePriority":true,"supportsPathAutocomplete":true,"supportsRenameFile":true,"supportsRenameFolder":true,"supportsRenameTorrent":true,"supportsSetComment":false,"supportsSetRSSFeedURL":true,"supportsSetTags":true,"supportsShareLimitsAction":false,"supportsShareLimitsMode":false,"supportsSubcategories":true,"supportsTestEmail":true,"supportsTorrentCreation":true,"supportsTorrentExport":true,"supportsTorrentTmpPath":true,"supportsTrackerEditing":true,"supportsTrackerHealth":true,"supportsLiveReannounce":true,"supportsListFieldsV5":true,"supportsListCreatedBy":false,"supportsFreeSpaceAtPath":false,"webAPIVersion":"2.11.4"}`,
@@ -37,7 +36,7 @@ func TestInstanceCapabilitiesResponseByWebAPIVersion(t *testing.T) {
 			require.NoError(t, err)
 			var got map[string]any
 			require.NoError(t, json.Unmarshal(body, &got))
-			delete(got, "supportsFreeSpacePathSource") // follows the host OS, not the version
+			delete(got, "supportsFreeSpacePathSource")
 			out, err := json.Marshal(got)
 			require.NoError(t, err)
 			require.JSONEq(t, want, string(out))
@@ -45,8 +44,6 @@ func TestInstanceCapabilitiesResponseByWebAPIVersion(t *testing.T) {
 	}
 }
 
-// The rule builder reads the capability of a field by its Key, so each Key
-// must answer the same as the version table entry that the field names.
 func TestFieldRequirementKeysMatchCapabilities(t *testing.T) {
 	t.Parallel()
 

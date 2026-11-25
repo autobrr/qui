@@ -175,10 +175,6 @@ export function InstanceBackups() {
   const instanceCapabilitiesPending = (instances?.length ?? 0) > 0
     && instanceCapabilitiesQueries.some(query => query.isPending)
 
-  // An errored capabilities query is as unresolved as a pending one: deciding
-  // on it would drop its instance from supportedInstances and clear a saved
-  // selection over a transient failure. Only the selection effect cares; the
-  // UI keeps treating an error as "not checking".
   const instanceCapabilitiesUnresolved = instanceCapabilitiesPending
     || instanceCapabilitiesQueries.some(query => query.isError)
 
@@ -530,7 +526,6 @@ export function InstanceBackups() {
 
   const requiresCadenceSelection = Boolean(formState?.enabled && !hasActiveCadence)
 
-  // formState keeps the previous instance's values until the new instance's settings load.
   const saveDisabled = !settings || !formState || updateSettings.isPending || requiresCadenceSelection
 
   const handleToggle = (key: SettingsToggleKey) => (checked: boolean) => {
@@ -1001,7 +996,7 @@ export function InstanceBackups() {
           closeRestoreDialog()
         }
       }}>
-        <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
+        <DialogContent className="w-[95vw] max-w-6xl sm:max-w-6xl !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{t("backups.restore.title")}</DialogTitle>
             <DialogDescription>
@@ -1862,7 +1857,7 @@ export function InstanceBackups() {
           setManifestRunId(undefined)
         }
       }}>
-        <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[95vw] max-w-7xl sm:max-w-7xl !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("backups.manifest.title")}</DialogTitle>
             <DialogDescription>

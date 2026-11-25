@@ -1,5 +1,7 @@
-// Copyright (c) 2025-2026, s0up and the autobrr contributors.
-// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
@@ -7,10 +9,6 @@ import type { ReactElement } from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { CrossSeedRun } from "@/types"
 
-// RSSRunItem only calls useTranslation; override it with an interpolating
-// identity translator so we can assert on the rendered error text and its
-// tooltip, while keeping the module's other exports (initReactI18next, used
-// by the i18n bootstrap pulled in through the page's import graph).
 vi.mock("react-i18next", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-i18next")>()
   return {
@@ -71,7 +69,6 @@ describe("RSSRunItem", () => {
     expect(screen.getByRole("tooltip").textContent).toContain(`automation.runError:${message}`)
   })
 
-  // regression: #4358
   it("shows the full cut-off run error on a tap on a phone, also when the run has no results to open", () => {
     touchWindow.ontouchstart = null
     const message = "all indexers unreachable"

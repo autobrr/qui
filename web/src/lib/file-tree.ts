@@ -27,7 +27,6 @@ export interface FileSort {
   direction: "asc" | "desc"
 }
 
-// Name ascending is the order the tree had before headers became clickable.
 export const DEFAULT_FILE_SORT: FileSort = { column: "name", direction: "asc" }
 
 export function toggleFileSort(current: FileSort, column: FileSortColumn): FileSort {
@@ -52,8 +51,6 @@ function sortKey(node: FileTreeNode, column: FileSortColumn): number {
   }
 }
 
-// Folders always sort above files. Inside each group the active column applies,
-// then name ascending breaks ties.
 function compareNodes(a: FileTreeNode, b: FileTreeNode, sort: FileSort): number {
   if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1
   const sign = sort.direction === "asc" ? 1 : -1
@@ -61,15 +58,12 @@ function compareNodes(a: FileTreeNode, b: FileTreeNode, sort: FileSort): number 
   return primary !== 0 ? sign * primary : compareName(a, b)
 }
 
-// Returns a new tree with every level reordered; the input nodes are not mutated.
 export function sortFileTree(nodes: FileTreeNode[], sort: FileSort): FileTreeNode[] {
   return nodes
     .map(node => (node.children ? { ...node, children: sortFileTree(node.children, sort) } : node))
     .sort((a, b) => compareNodes(a, b, sort))
 }
 
-// Builds the folder tree for the Content tab with subtree aggregates on every
-// folder node. Nodes come back in file order; callers run sortFileTree.
 export function buildFileTree(
   files: TorrentFile[],
   incognitoMode: boolean,
@@ -136,12 +130,6 @@ export function buildFileTree(
   return { nodes: roots, folderIds }
 }
 
-// discPathOf returns the torrent-relative path a BDInfo scan takes for a Disc
-// node, or null when the node is not a Disc. A Disc is a folder with a direct
-// BDMV child, or an .iso file; VIDEO_TS is not one. A BDMV folder at the top
-// level means the torrent is one bare Disc, which the backend addresses as ".".
-// Detection reads node ids (real paths), so incognito display names do not
-// affect it.
 export function discPathOf(node: FileTreeNode): string | null {
   if (node.kind === "file") return /\.iso$/i.test(node.id) ? node.id : null
   if (node.children?.some(child => child.kind === "folder" && child.id === `${node.id}/BDMV`)) return node.id

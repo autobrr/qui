@@ -26,7 +26,6 @@ type cachedTorrentSearchResults struct {
 	titleRescueAttempts *atomic.Int32
 }
 
-// ApplyTorrentSearchResults downloads and adds torrents selected from search results for cross-seeding.
 func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, hash string, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
 	ctx = withRouteRun(ctx)
 	if req == nil || len(req.Selections) == 0 {
@@ -59,7 +58,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		tagName = "cross-seed"
 	}
 
-	// Process all selections in parallel - don't wait for one to finish before starting the next
 	type selectionResult struct {
 		index  int
 		result TorrentSearchAddResult
@@ -130,9 +128,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 			if cachedResult.SearchDecision.Class == searchCandidateClassTitleRescue {
-				// Skip recheck blocks cached rescue results before a slot is
-				// reserved or the .torrent is downloaded; the guaranteed
-				// skipped_recheck verdict must not cost either.
 				if defaults.skipRecheck {
 					resultChan <- selectionResult{idx, TorrentSearchAddResult{
 						Title:   title,
@@ -210,13 +205,11 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		}(i, selection)
 	}
 
-	// Wait for all goroutines to finish
 	go func() {
 		wg.Wait()
 		close(resultChan)
 	}()
 
-	// Collect results in order
 	results := make([]TorrentSearchAddResult, len(req.Selections))
 	var applyErr error
 	for res := range resultChan {

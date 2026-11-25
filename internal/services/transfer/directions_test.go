@@ -21,9 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// A push copies from qui's own disk to a target over SFTP. A target with
-// fsync@openssh.com confirms each flush, and qui's own check proves the
-// copy.
 func TestTransferPushesToATargetOverSFTP(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -54,8 +51,6 @@ func TestTransferPushesToATargetOverSFTP(t *testing.T) {
 	}
 }
 
-// A relay copies between two instances over SFTP, through qui, when the
-// Transfer forces a copy through qui.
 func TestTransferRelaysBetweenTwoSFTPSides(t *testing.T) {
 	r := newRigOn(t, overSFTP, overSFTP)
 	r.dstSSH.SetFsync(true)
@@ -76,16 +71,12 @@ func TestTransferRelaysBetweenTwoSFTPSides(t *testing.T) {
 	require.Empty(t, tree(t, r.srcDir))
 }
 
-// Two instances on qui's own disk get a local copy when they are on two
-// filesystems, and hardlinks when they are on one. The removal from the
-// source then removes the source paths, and the links keep the files.
 func TestTransferOnQuisOwnDisk(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
 		otherFilesystem bool
-		// restart stops qui at the check on the target, and starts it again.
-		restart bool
-		log     string
+		restart         bool
+		log             string
 	}{
 		{name: "a local copy", otherFilesystem: true, log: "Copying 70 B on qui's own disk from seedbox to homelab."},
 		{name: "hardlinks after a restart", restart: true, log: "Linking 2 files (70 B) on qui's own disk from seedbox to homelab."},
@@ -97,9 +88,6 @@ func TestTransferOnQuisOwnDisk(t *testing.T) {
 			r.seed(s)
 			before := map[string]os.FileInfo{}
 			for name := range s.files {
-				// os.Stat on Windows reads the identity of a file by its path
-				// only in os.SameFile, and the removal from the source removes
-				// the path. The stat of an open file reads it at once.
 				f, err := os.Open(filepath.Join(r.srcDir, showName, name))
 				require.NoError(t, err)
 				info, err := f.Stat()
@@ -139,8 +127,6 @@ func TestTransferOnQuisOwnDisk(t *testing.T) {
 	}
 }
 
-// When both instances see the same files, no byte moves: the target adds the
-// torrent on the files of the source, and the source keeps them.
 func TestTransferWithNoCopy(t *testing.T) {
 	r := newRigOn(t, onDisk, onDisk)
 	s := newShow(t, showName)
@@ -164,11 +150,6 @@ func TestTransferWithNoCopy(t *testing.T) {
 	require.False(t, r.src.Has(s.hash))
 }
 
-// With no copy, the target reads the files of the source. A target that
-// manages the torrent moves them when the folder of its category changes, and
-// a source that keeps seeding would lose them. So the torrent stays on manual
-// management on the target while the source seeds it.
-// regression: #4242
 func TestTransferWithNoCopyLeavesTheFilesToASourceThatKeepsSeeding(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -203,11 +184,6 @@ func TestTransferWithNoCopyLeavesTheFilesToASourceThatKeepsSeeding(t *testing.T)
 	}
 }
 
-// A target that cannot confirm a flush has no Proven pieces. After a stop, a
-// check on the target finds the pieces that the partial files hold, and qui
-// copies only the pieces that failed that check. With qBittorrent's setting
-// "Append .!qB extension to incomplete files" on, the check renames the
-// partial files, and qui writes the missing pieces into those names.
 func TestTransferResumesOnATargetWithoutFsync(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -230,8 +206,6 @@ func TestTransferResumesOnATargetWithoutFsync(t *testing.T) {
 			id, err := r.svc.Start(t.Context(), r.request(s))
 			require.NoError(t, err)
 			r.svc.Wait()
-			// The target lost bytes of piece 3, as a host can when it stops
-			// before a flush.
 			first := filepath.Join(r.dstDir, showName, "Show.S01E01.mkv.qui-transfer-"+strconv.FormatInt(id, 10))
 			lose(t, first, 3*bigPiece+50, 100)
 			failed := failedPieces(t, s, r.dstDir, id)
@@ -267,7 +241,6 @@ func TestTransferResumesOnATargetWithoutFsync(t *testing.T) {
 	}
 }
 
-// lose overwrites n bytes at offset of a file with zeros.
 func lose(t *testing.T, name string, offset, n int64) {
 	t.Helper()
 	f, err := os.OpenFile(name, os.O_WRONLY, 0)
@@ -277,8 +250,6 @@ func lose(t *testing.T, name string, offset, n int64) {
 	require.NoError(t, f.Close())
 }
 
-// failedPieces returns the pieces of s that the temporary files of the
-// Transfer on the target do not hold whole and right.
 func failedPieces(t *testing.T, s show, dir string, id int64) []int64 {
 	t.Helper()
 	names := []string{"Show.S01E01.mkv", "Show.S01E02.mkv"}
@@ -306,10 +277,6 @@ func failedPieces(t *testing.T, s show, dir string, id int64) []int64 {
 	return failed
 }
 
-// On a relay to a target that cannot confirm a flush, a dropped connection
-// to the source also leads to a check of the partial files, and qui copies
-// each piece one time. A drop after qui flushed pieces does not count
-// against Config.Reconnects.
 func TestTransferRelayGoesOnAfterDropsWithoutFsync(t *testing.T) {
 	r := newRigOn(t, overSFTP, overSFTP, func(c *transfer.Config) {
 		c.FlushBytes = 64 << 10
@@ -347,9 +314,6 @@ func TestTransferRelayGoesOnAfterDropsWithoutFsync(t *testing.T) {
 	}
 }
 
-// A dropped connection to an SFTP target resumes the copy at once, as a drop
-// on the source does: qui writes on into the temporary files that it made.
-// regression: #4231
 func TestTransferPushGoesOnAfterTheTargetDrops(t *testing.T) {
 	r := newRigOn(t, onDisk, overSFTP, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
 	r.dstSSH.SetFsync(true)

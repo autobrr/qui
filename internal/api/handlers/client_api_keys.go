@@ -47,7 +47,6 @@ type ClientAPIKeyWithInstance struct {
 	Instance *models.Instance `json:"instance"`
 }
 
-// CreateClientAPIKey handles POST /api/client-api-keys
 func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req CreateClientAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -56,7 +55,6 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Validate required fields
 	if req.ClientName == "" {
 		http.Error(w, "Client name is required", http.StatusBadRequest)
 		return
@@ -67,7 +65,6 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Verify instance exists
 	ctx := r.Context()
 	instance, err := h.instanceStore.Get(ctx, req.InstanceID)
 	if err != nil {
@@ -80,7 +77,6 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Create the client API key
 	rawKey, clientAPIKey, err := h.clientAPIKeyStore.Create(ctx, req.ClientName, req.InstanceID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create client API key")
@@ -88,7 +84,6 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Generate proxy URL (base-aware)
 	proxyURL := httphelpers.JoinBasePath(h.basePath, "/proxy/"+rawKey)
 
 	response := CreateClientAPIKeyResponse{
@@ -101,11 +96,9 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// ListClientAPIKeys handles GET /api/client-api-keys
 func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get all client API keys
 	clientAPIKeys, err := h.clientAPIKeyStore.GetAll(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get client API keys")
@@ -113,17 +106,15 @@ func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Enrich with instance information
 	var enrichedKeys []*ClientAPIKeyWithInstance
 	for _, key := range clientAPIKeys {
 		instance, err := h.instanceStore.Get(ctx, key.InstanceID)
 		if err != nil {
-			// Log error but continue - instance might have been deleted
 			log.Warn().Err(err).Int("instanceId", key.InstanceID).Int("keyId", key.ID).
 				Msg("Failed to get instance for client API key")
 			enrichedKeys = append(enrichedKeys, &ClientAPIKeyWithInstance{
 				ClientAPIKey: key,
-				Instance:     nil, // Will be null in JSON
+				Instance:     nil,
 			})
 			continue
 		}
@@ -137,7 +128,6 @@ func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.
 	RespondJSON(w, http.StatusOK, enrichedKeys)
 }
 
-// DeleteClientAPIKey handles DELETE /api/client-api-keys/{id}
 func (h *ClientAPIKeysHandler) DeleteClientAPIKey(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {

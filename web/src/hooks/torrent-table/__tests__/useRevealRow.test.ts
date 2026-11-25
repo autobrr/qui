@@ -21,7 +21,6 @@ function setup(initial: ListState) {
   const loadMore = vi.fn()
   const onDone = vi.fn()
   const hook = renderHook((list: ListState) => {
-    // As on the Torrents page, onDone drops the target.
     const [target, setTarget] = useState<Torrent | null>(() => torrent("picked"))
     const done = useCallback(() => {
       onDone()
@@ -35,7 +34,6 @@ function setup(initial: ListState) {
 afterEach(cleanup)
 
 describe("useRevealRow", () => {
-  // regression: #4260
   it("waits while the new search loads, then scrolls to the row", () => {
     const { rerender, virtualizer, onDone } = setup({ rows: toRows(["old"]), totalCount: 1, safeLoadedRows: 1, isLoading: true })
     expect(onDone).not.toHaveBeenCalled()
@@ -46,7 +44,6 @@ describe("useRevealRow", () => {
     expect(onDone).toHaveBeenCalledOnce()
   })
 
-  // regression: #4260
   it("waits for the rows of a loaded response, then scrolls to the row", () => {
     const { rerender, virtualizer, onDone } = setup({ rows: [], totalCount: 3, safeLoadedRows: 0, isLoading: false })
     expect(onDone).not.toHaveBeenCalled()
@@ -56,7 +53,6 @@ describe("useRevealRow", () => {
     expect(virtualizer.scrollToIndex).toHaveBeenCalledExactlyOnceWith(2, { align: "center" })
   })
 
-  // regression: #4260
   it("gives up when the list loads empty, so a later update does not scroll", () => {
     const { rerender, virtualizer, onDone } = setup({ rows: [], totalCount: 0, safeLoadedRows: 0, isLoading: false })
     expect(onDone).toHaveBeenCalledOnce()
@@ -66,7 +62,6 @@ describe("useRevealRow", () => {
     expect(virtualizer.scrollToIndex).not.toHaveBeenCalled()
   })
 
-  // regression: #4260
   it("renders more rows when the row is loaded past the rendered rows, then scrolls to it", () => {
     const rows = toRows(["a", "b", "picked"])
     const { rerender, virtualizer, loadMore } = setup({ rows, totalCount: 3, safeLoadedRows: 2, isLoading: false })
@@ -78,7 +73,6 @@ describe("useRevealRow", () => {
     expect(virtualizer.scrollToIndex).toHaveBeenCalledExactlyOnceWith(2, { align: "center" })
   })
 
-  // regression: #4260
   it("gives up without a scroll when the loaded list does not hold the row", () => {
     const { virtualizer, onDone } = setup({ rows: toRows(["a", "b"]), totalCount: 2, safeLoadedRows: 2, isLoading: false })
 

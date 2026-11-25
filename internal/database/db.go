@@ -32,8 +32,6 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// SQLiteMigrations returns the embedded SQLite migration files. testdb keys
-// its shared migrated template on them.
 func SQLiteMigrations() fs.FS {
 	return migrationsFS
 }
@@ -45,13 +43,8 @@ type DB struct {
 	readerStmts *ttlcache.Cache[string, *sql.Stmt]
 	stmtMu      sync.RWMutex
 	dialect     Dialect
-	sqlitePath  string // empty on Postgres
+	sqlitePath  string
 
-	// Write transaction serialization
-	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
-	// and fails immediately with "cannot start a transaction within a transaction"
-	// This lock ensures write transactions are properly serialized. It is a channel
-	// so a waiter can give up when its context ends. Nil when writes are not serialized.
 	writerSem chan struct{}
 
 	cleanupDeleted atomic.Uint64
@@ -72,10 +65,6 @@ type migrationFilenameRename struct {
 }
 
 var sharedMigrationFilenameRenames = []migrationFilenameRename{
-	// Keep historical migration filename rewrites here whenever an embedded
-	// migration filename changes. Migration tracking keys off the filename, so
-	// old names must be normalized before pending migrations are computed.
-	// Use direct old -> current mappings for each backend rather than chains.
 	{
 		from: "061_add_notifications.sql",
 		to:   "062_add_notifications.sql",
@@ -339,7 +328,6 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 		return row
 	}
 
-	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	t.db.deleteStmt(query, t.isWriteTx)
 
 	stmt, err = t.db.getStmt(ctx, query, t)
@@ -353,9 +341,6 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 	return stmt.QueryRowContext(ctx, args...)
 }
 
-// Commit commits the transaction and releases the write lock if this is a write transaction.
-// Also promotes any transaction-prepared statements to the DB cache for future use.
-// On failure, the transaction remains active - caller must call Rollback() to release the write lock.
 func (t *Tx) Commit() error {
 	err := t.tx.Commit()
 	if err == nil {
@@ -367,10 +352,6 @@ func (t *Tx) Commit() error {
 	return err
 }
 
-// Rollback rolls back the transaction and releases the write lock if this is a write transaction.
-// Always releases the write lock since the transaction is done (either rolled back successfully,
-// or already closed from a prior failed commit returning ErrTxDone).
-// Does NOT promote statements to cache since the transaction failed.
 func (t *Tx) Rollback() error {
 	err := t.tx.Rollback()
 	if t.unlockFn != nil {
@@ -389,8 +370,6 @@ func (t *Tx) promoteStatementsToCache() {
 		return
 	}
 
-	// Prepare statements on the appropriate connection and add to cache
-	// Use a background context since transaction is already committed
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -425,10 +404,9 @@ func (t *Tx) promoteStatementsToCache() {
 		stmt, err := conn.PrepareContext(ctx, boundQuery)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
-			continue // silently skip - caching is best-effort
+			continue
 		}
 
-		// Lost the race to another preparer: close ours, keep the cached one.
 		if _, loaded := stmts.GetOrSet(boundQuery, stmt, ttlcache.DefaultTTL); loaded {
 			_ = stmt.Close()
 		}
@@ -444,17 +422,10 @@ const (
 	startupCheckpointWarnAfter = 3 * time.Second
 )
 
-// sqliteTimeParams makes the driver convert each time to UTC when it binds it
-// and when it reads it back, and write each bound time in the one text form
-// that SQL time functions read (ADR 0044, ADR 0045).
 const sqliteTimeParams = "_timezone=UTC&_time_format=sqlite"
 
 type pragmaExecFn func(ctx context.Context, stmt string) error
 
-// init registers the pragma hook while this package is still initializing, so
-// it is in place before anything can open a connection. modernc.org/sqlite
-// appends to an unsynchronized hook slice that every Open reads, so
-// registering it lazily races with connections that are already in flight.
 func init() {
 	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
@@ -490,10 +461,10 @@ type pragmaDirective struct {
 
 var connectionPragmas = []pragmaDirective{
 	{stmt: "PRAGMA journal_mode = WAL", allowReadOnly: false},
-	{stmt: "PRAGMA synchronous = NORMAL", allowReadOnly: false}, // NORMAL is safe with WAL and much faster than FULL
-	{stmt: "PRAGMA mmap_size = 268435456", allowReadOnly: true}, // 256MB memory-mapped I/O for better performance
+	{stmt: "PRAGMA synchronous = NORMAL", allowReadOnly: false},
+	{stmt: "PRAGMA mmap_size = 268435456", allowReadOnly: true},
 	{stmt: "PRAGMA page_size = 4096", allowReadOnly: false},
-	{stmt: "PRAGMA cache_size = -2000", allowReadOnly: true}, // 2MB per connection; the OS page cache already holds the file
+	{stmt: "PRAGMA cache_size = -2000", allowReadOnly: true},
 	{stmt: "PRAGMA foreign_keys = ON", allowReadOnly: true},
 	{stmt: fmt.Sprintf("PRAGMA busy_timeout = %d", defaultBusyTimeoutMillis), allowReadOnly: true},
 	{stmt: "PRAGMA analysis_limit = 400", allowReadOnly: true},
@@ -511,13 +482,6 @@ func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn, readOnly boo
 	return nil
 }
 
-// secureDatabaseFiles makes the SQLite database and its WAL/SHM sidecars
-// owner-only (0o600) so a content-sharing process umask (see discussion #1704)
-// cannot expose the encrypted credentials and API keys they hold. The main file
-// is created 0o600 before SQLite opens it; SQLite then propagates that mode to
-// the -wal/-shm files it creates. Pre-existing files (e.g. from an older install
-// or a prior crash) are tightened too. On Windows os.Chmod only toggles the
-// read-only bit, but privacy there is governed by ACLs rather than umask.
 func secureDatabaseFiles(databasePath string) error {
 	f, err := os.OpenFile(databasePath, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -537,11 +501,6 @@ func secureDatabaseFiles(databasePath string) error {
 	return nil
 }
 
-// sqliteReaderPoolSize caps the SQLite read pool. Without a cap, a burst of
-// reads opens one connection each, and each new connection must load the schema
-// within connectionSetupTimeout. GOMAXPROCS follows a container CPU limit. The
-// floor of 8 keeps small machines from queueing reads; the ceiling of 16 matches
-// the qBittorrent file fetch limit and the largest cap that was load tested.
 func sqliteReaderPoolSize() int {
 	return min(max(runtime.GOMAXPROCS(0), 8), 16)
 }
@@ -566,9 +525,6 @@ func openSQLiteReader(databasePath string) (*sql.DB, error) {
 func New(databasePath string) (*DB, error) {
 	log.Info().Msgf("Initializing database at: %s", databasePath)
 
-	// Ensure the directory exists. Use 0o750 (not other-traversable) like the
-	// config and log dirs: the database holds encrypted credentials and API
-	// keys, so a content-sharing UMASK must not expose it to other users.
 	dir := filepath.Dir(databasePath)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create database directory %s: %w", dir, err)
@@ -715,8 +671,6 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 		}
 		return s, nil
 	} else if tx != nil {
-		// The transaction holds a connection. Preparing on the pool would need a
-		// second one, so run the query on the transaction and cache it after commit.
 		return nil, errors.New("statement not cached")
 	}
 
@@ -725,8 +679,6 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 		return nil, err
 	}
 
-	// Concurrent misses race to cache the same query; the loser closes its
-	// own never-used statement so the driver does not leak it.
 	if existing, loaded := stmts.GetOrSet(query, s, ttlcache.DefaultTTL); loaded {
 		_ = s.Close()
 		s = existing
@@ -837,10 +789,6 @@ func tableNameFromDrop(query string) (string, bool) {
 	return name, true
 }
 
-// queryReferencesTempTable uses lightweight token matching over internal SQL.
-// It intentionally does not parse string literals or comments, so a literal like
-// 'current_hashes' could produce a false positive. That's acceptable here
-// because this helper only guards our fixed-format temp-table maintenance SQL.
 func queryReferencesTempTable(query string, tempTables map[string]struct{}) bool {
 	if len(tempTables) == 0 {
 		return false
@@ -953,7 +901,6 @@ func execWithRetry[T any, E stmtExecutor[T]](ctx context.Context, db *DB, query 
 		return result, execErr
 	}
 
-	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	if isWriteQuery(query) {
 		db.deleteStmt(query, true)
 	} else {
@@ -973,9 +920,6 @@ func execWithRetry[T any, E stmtExecutor[T]](ctx context.Context, db *DB, query 
 	return result, execErr
 }
 
-// ExecContext routes write queries to the single writer connection and
-// read queries to the reader pool. Uses prepared statements when possible.
-// Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	if !isWriteQuery(query) {
 		return execWithRetry(ctx, db, query, args, execResult{})
@@ -1005,8 +949,6 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	if isWriteQuery(query) {
 		if db.lockWriter(ctx) != nil {
-			// sql.DB checks ctx before it takes a connection, so this row
-			// carries ctx.Err() and the query does not run.
 			return db.writerConn.QueryRowContext(ctx, db.bindQuery(query), args...)
 		}
 		row := db.queryRowUnlocked(ctx, query, args...)
@@ -1049,7 +991,6 @@ func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *
 		return row
 	}
 
-	// Statement was evicted and closed between prepare and exec; drop from cache and retry
 	if isWriteQuery(query) {
 		db.deleteStmt(query, true)
 	} else {
@@ -1117,56 +1058,6 @@ func (db *DB) stringPoolCleanupLoop(ctx context.Context) {
 	}
 }
 
-// BeginTx starts a transaction. Returns a wrapped transaction that uses statement caching.
-//
-// CONCURRENCY MODEL:
-// - Read-only transactions use the reader pool (concurrent)
-// - Write transactions use the single writer connection (serialized via the write lock + SQLite)
-// - WAL mode allows concurrent readers during write transactions
-//
-// STATEMENT CACHING STRATEGY:
-// Uses separate prepared statement caches for writer and reader connections:
-// - writerStmts: Cache for statements prepared on writerConn (single connection)
-// - readerStmts: Cache for statements prepared on readerPool (concurrent connections)
-//
-// Transaction methods check the appropriate connection-specific cache first.
-// If a statement exists in the cache and was prepared on the same connection type
-// as the transaction, it can be reused safely via tx.StmtContext().
-//
-// If not cached, statements are prepared directly on the transaction and tracked
-// for promotion to the appropriate cache after successful commit.
-//
-// This ensures connection safety while providing caching benefits for repeated queries.
-//
-// ISOLATION LEVEL:
-// - SQLite defaults to SERIALIZABLE isolation (strongest guarantee)
-// - Pass nil for opts to use SERIALIZABLE (recommended for most cases)
-// - For read-only transactions, use: &sql.TxOptions{ReadOnly: true}
-// - Read-only transactions allow full concurrency with writers in WAL mode
-//
-// WHEN TO USE EACH:
-// - Use ExecContext for simple, single-statement writes (INSERT, UPDATE, DELETE)
-// - Use BeginTx for multi-statement operations that need atomicity
-// - Use BeginTx when you need to read and write in a consistent snapshot
-//
-// GUARANTEES:
-// - ExecContext: Sequential execution through single writer connection, no partial writes visible
-// - BeginTx (write): ACID properties, full transaction isolation, serialized via the write lock + single writer connection
-// - BeginTx (read-only): ACID properties, concurrent with writes
-// - All write operations: Serialized through the write lock + single writer connection (no "transaction within transaction" errors)
-//
-// LIMITATIONS:
-// - Write transactions are serialized (one at a time) due to the write lock + single writer connection
-// - Long-running write transactions will block other write transactions
-// - Use read-only transactions when possible to avoid blocking writes
-//
-// NOTE ON SERIALIZATION:
-// SQLite with SetMaxOpenConns=1 does NOT properly queue BeginTx calls - it fails immediately
-// with "cannot start a transaction within a transaction" instead of waiting. The writerSem
-// lock serializes write transactions for their ENTIRE lifetime (BeginTx through Commit/Rollback)
-// to prevent this error. The lock is released only when the transaction completes (Commit or Rollback).
-// This means write transactions are fully serialized, but that's acceptable since SQLite can only
-// handle one write transaction at a time anyway.
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
 	isReadOnly := opts != nil && opts.ReadOnly
 
@@ -1178,8 +1069,6 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 		return &Tx{tx: tx, db: db, ctx: ctx, isWriteTx: false, unlockFn: nil}, nil
 	}
 
-	// Write transactions: Lock for the ENTIRE transaction lifetime.
-	// The lock will be released by Commit() or Rollback().
 	if err := db.lockWriter(ctx); err != nil {
 		return nil, err
 	}
@@ -1188,8 +1077,6 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 	if err != nil {
 		db.unlockWriter()
 		if isSQLiteNestedTxErr(err) {
-			// This indicates a bug: a previous transaction failed to rollback properly,
-			// leaving the connection wedged. Log with stack trace to help diagnose.
 			recordWedgedTransaction()
 			log.Error().
 				Err(err).
@@ -1408,10 +1295,7 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 	return nil
 }
 
-// applyMigrationWithForeignKeysOff runs one migration in its own transaction
-// while foreign keys are disabled. No other transaction may be open on writerConn.
 func (db *DB) applyMigrationWithForeignKeysOff(ctx context.Context, filename string) error {
-	// Disable foreign keys (must be done outside transaction)
 	if _, err := db.writerConn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
 		return fmt.Errorf("failed to disable foreign keys for %s: %w", filename, err)
 	}
@@ -1556,9 +1440,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 
-	// Temp tables are connection-local on Postgres, so create and use them on the same tx.
-	// BIGINT, not INTEGER: string_pool ids can exceed the int4 range on Postgres
-	// installs whose sequence burned past it (see migration 079).
 	_, err = tx.ExecContext(ctx, `
 		CREATE TEMP TABLE temp_referenced_strings (
 			string_id BIGINT PRIMARY KEY

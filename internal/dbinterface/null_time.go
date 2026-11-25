@@ -8,15 +8,8 @@ import (
 	"time"
 )
 
-// sqliteTimeLayout is the form in which the database module makes the SQLite
-// driver write a bound time (ADR 0045).
 const sqliteTimeLayout = "2006-01-02 15:04:05.999999999-07:00"
 
-// NullTime scans a nullable time from a computed column, such as MIN or MAX of
-// a time column. Postgres returns such a column as a time. SQLite returns the
-// stored text, which sql.NullTime rejects. Time is in UTC when the source is
-// text. Scan returns an error for text in any other form than the two that the
-// database module stores.
 type NullTime struct {
 	Time  time.Time
 	Valid bool

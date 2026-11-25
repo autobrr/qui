@@ -22,7 +22,6 @@ func setupFilesManagerDB(t *testing.T) (*database.DB, context.Context) {
 	ctx := context.Background()
 	db := testdb.NewMigratedSQLite(t, "filesmanager-service")
 
-	// Seed instance row to satisfy foreign key constraints for cache writes
 	var (
 		instanceNameID int64
 		hostID         int64

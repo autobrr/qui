@@ -15,7 +15,6 @@ import { useTranslation } from "react-i18next"
 
 interface SourceTagsFieldProps {
   id: string
-  /** Suggested tags beside the shared "cross-seed" default; the user can still type any tag. */
   suggestions: Array<{ label: string; value: string }>
   selected: string[]
   onChange: (tags: string[]) => void
@@ -24,7 +23,6 @@ interface SourceTagsFieldProps {
   className?: string
 }
 
-/** The "Cross-seed tags" picker every source card carries. */
 export function SourceTagsField({ id, suggestions, selected, onChange, placeholder, help, className }: SourceTagsFieldProps) {
   const { t } = useTranslation("crossseed")
   return (
@@ -51,11 +49,9 @@ interface AutoResumeSwitchProps {
   id: string
   skip: boolean
   onSkipChange: (skip: boolean) => void
-  /** Source-specific note appended to the shared help text. */
   help?: string
 }
 
-/** The "Auto-resume after injection" switch; the stored field is the inverse (skip). */
 export function AutoResumeSwitch({ id, skip, onSkipChange, help }: AutoResumeSwitchProps) {
   const { t } = useTranslation("crossseed")
   return (
@@ -80,11 +76,9 @@ interface SourceFilterFieldsProps {
   filters: SourceFilters
   onChange: (filters: SourceFilters) => void
   metadata?: { categories: Record<string, Category>; tags: string[] }
-  /** Greys the pickers out until the source has instances to load categories and tags from. */
   disabled?: boolean
 }
 
-/** The include/exclude category and tag pickers a source card filters its torrents with. */
 export function SourceFilterFields({ filters, onChange, metadata, disabled = false }: SourceFilterFieldsProps) {
   const { t } = useTranslation("crossseed")
 

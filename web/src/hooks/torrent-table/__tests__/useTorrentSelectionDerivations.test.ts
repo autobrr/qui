@@ -13,10 +13,6 @@ import { renderHook } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import "@/i18n"
 
-// The Action target rules live in the table test of buildActionTarget. These
-// tests cover what the desktop table adds: its row model, the remembered ticks,
-// and the sizes.
-
 const TORRENTS = [
   makeTorrent({ hash: "h0", name: "t0", size: 100 }),
   makeTorrent({ hash: "h1", name: "t1", size: 200 }),
@@ -60,7 +56,6 @@ const previewHashes = (result: { current: ReturnType<typeof useTorrentSelectionD
   result.current.actionTarget.previewTorrents.map(t => t.hash)
 
 describe("useTorrentSelectionDerivations — the rows of the Action target", () => {
-  // A sort keeps the ticks, so a ticked torrent can move past the loaded rows.
   it("keeps a ticked torrent that left the visible rows", () => {
     const { result, rerender, params } = render({ selection: ticked("h0", "h2") })
     rerender({ ...params, getVisibleRows: () => makeRows([TORRENTS[1]]), sortedTorrents: [TORRENTS[1]] })
@@ -68,9 +63,6 @@ describe("useTorrentSelectionDerivations — the rows of the Action target", () 
     expect(result.current.actionTarget.count).toBe(2)
   })
 
-  // #1925 on the client side: in cross-seed mode the column filter hides rows
-  // client-side, so select-all must resolve to the rows the user sees, not to
-  // every loaded row. Copy-all reads this list when everything is loaded.
   it("resolves the visible rows in select-all mode when the column filter applies client-side", () => {
     const { result, rerender, params } = render({
       selection: allSelected(),
@@ -80,12 +72,9 @@ describe("useTorrentSelectionDerivations — the rows of the Action target", () 
       totalCount: 3,
     })
     expect(previewHashes(result)).toEqual(["h1"])
-    // The count follows the visible rows, not the backend total (the menu
-    // label "Pause (6)" must not promise 6 when the action reaches 2).
     expect(result.current.actionTarget.count).toBe(1)
     expect(result.current.selectedTotalSize).toBe(TORRENTS[1].size)
 
-    // Clearing the column filter widens the visible set again.
     rerender({ ...params, columnFiltersExpr: null, getVisibleRows: () => makeRows(TORRENTS) })
     expect(previewHashes(result)).toEqual(["h0", "h1", "h2"])
   })
@@ -109,9 +98,6 @@ describe("useTorrentSelectionDerivations — selectedTotalSize", () => {
 })
 
 describe("useTorrentSelectionDerivations — no-selection identity across stream ticks", () => {
-  // Each stream tick hands the hook a fresh sortedTorrents array. With nothing
-  // selected the Action target must keep its identity, or every memo
-  // downstream (row menus, the selection context) re-runs once per tick.
   it("returns the same Action target when sortedTorrents is replaced", () => {
     const { result, rerender, params } = render({ sortedTorrents: [...TORRENTS] })
     const first = result.current

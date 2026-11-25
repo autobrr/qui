@@ -64,8 +64,6 @@ var eventDefinitions = []EventDefinition{
 	{Type: EventSystemNotice, Label: "System notice", Description: "A fault in qui needs an action from you, for example when qui cannot record the Transfer history."},
 }
 
-// optIn reports whether a target must pick the event type. Targets from
-// before a new event type existed then do not get it at the upgrade.
 func optIn(eventType EventType) bool {
 	return eventType == EventSystemNotice
 }

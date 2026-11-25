@@ -24,8 +24,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// blocklistWithPack returns a blocklist store that blocks the torrent's infohash
-// on instance 1.
 func blocklistWithPack(t *testing.T, torrentData string) *models.CrossSeedBlocklistStore {
 	t.Helper()
 
@@ -58,8 +56,6 @@ type blockedPackFixture struct {
 	treeCalls   int
 }
 
-// newBlockedPackFixture builds a season pack that applies in full on instance 1,
-// with its infohash on the blocklist when blocked is true.
 func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
 	t.Helper()
 
@@ -173,8 +169,6 @@ func TestCrossSeed_SeasonPackDiversionHonorsBlocklist(t *testing.T) {
 	}
 }
 
-// addUnblockedInstanceB adds instance 2 with the same episodes as instance 1
-// and no blocklist entry.
 func addUnblockedInstanceB(t *testing.T, f *blockedPackFixture) {
 	t.Helper()
 	instB := &models.Instance{

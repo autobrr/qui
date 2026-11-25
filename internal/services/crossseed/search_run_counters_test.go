@@ -15,9 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// Every completed candidate lands in exactly one bucket, so the three buckets
-// reconcile with processed. Cross-seeds added is a separate count and may
-// exceed the candidate count.
 func TestFinishSearchCandidate_BucketsReconcileWithProcessed(t *testing.T) {
 	t.Parallel()
 	service, state, _ := newEnsembleSearchState(t, "crossseed-counters-reconcile", nil, false)
@@ -26,8 +23,8 @@ func TestFinishSearchCandidate_BucketsReconcileWithProcessed(t *testing.T) {
 		crossSeedsAdded int
 		failed          bool
 	}{
-		{crossSeedsAdded: 3, failed: false}, // three cross-seeds from one candidate
-		{crossSeedsAdded: 1, failed: true},  // one add and one apply failure counts as added
+		{crossSeedsAdded: 3, failed: false},
+		{crossSeedsAdded: 1, failed: true},
 		{crossSeedsAdded: 0, failed: true},
 		{crossSeedsAdded: 0, failed: false},
 	}
@@ -45,9 +42,6 @@ func TestFinishSearchCandidate_BucketsReconcileWithProcessed(t *testing.T) {
 	require.Equal(t, run.Processed, run.TorrentsWithCrossSeeds+run.TorrentsFailed+run.TorrentsSkipped)
 }
 
-// A candidate whose first apply fails and second apply succeeds counts once in
-// torrentsWithCrossSeeds and not at all in torrentsFailed; the failed attempt
-// stays visible as a result row.
 func TestApplyEnsembleSearchResults_AddAfterFailureCountsAsAdded(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

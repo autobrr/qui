@@ -11,21 +11,15 @@ import { toast } from "sonner"
 
 const QUERY_KEY = ["tracker-customizations"]
 
-/**
- * Hook for fetching all tracker customizations (nicknames and merged domains)
- */
 export function useTrackerCustomizations() {
   return useQuery<TrackerCustomization[]>({
     queryKey: QUERY_KEY,
     queryFn: () => api.listTrackerCustomizations(),
-    staleTime: 30000, // 30 seconds
-    gcTime: 300000, // Keep in cache for 5 minutes
+    staleTime: 30000,
+    gcTime: 300000,
   })
 }
 
-/**
- * Hook for creating a new tracker customization
- */
 export function useCreateTrackerCustomization() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
@@ -42,9 +36,6 @@ export function useCreateTrackerCustomization() {
   })
 }
 
-/**
- * Hook for updating an existing tracker customization
- */
 export function useUpdateTrackerCustomization() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
@@ -53,7 +44,6 @@ export function useUpdateTrackerCustomization() {
     mutationFn: ({ id, data }: { id: number; data: TrackerCustomizationInput }) =>
       api.updateTrackerCustomization(id, data),
     onSuccess: (updated) => {
-      // A merge that follows reads the new domains before the refetch lands.
       queryClient.setQueryData<TrackerCustomization[]>(QUERY_KEY, old => old?.map(c => c.id === updated.id ? updated : c))
       queryClient.invalidateQueries({ queryKey: QUERY_KEY })
     },
@@ -64,9 +54,6 @@ export function useUpdateTrackerCustomization() {
   })
 }
 
-/**
- * Hook for deleting a tracker customization
- */
 export function useDeleteTrackerCustomization() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
@@ -85,22 +72,15 @@ export function useDeleteTrackerCustomization() {
 
 export interface TrackerCustomizationEntry {
   displayName: string
-  /** Normalized lowercase domains, primary is index 0 */
   domains: string[]
   id: number
 }
 
 export interface TrackerCustomizationMaps {
-  /** Maps lowercase domain to its customization entry */
   domainToCustomization: Map<string, TrackerCustomizationEntry>
-  /** Set of lowercase secondary domains (not the primary/first domain) */
   secondaryDomains: Set<string>
 }
 
-/**
- * Builds lookup maps from tracker customizations for merging and nicknames.
- * This pure function can be used inside useMemo to derive maps from customization data.
- */
 export function buildTrackerCustomizationMaps(customizations?: TrackerCustomization[] | null): TrackerCustomizationMaps {
   const domainToCustomization = new Map<string, TrackerCustomizationEntry>()
   const secondaryDomains = new Set<string>()
@@ -133,12 +113,6 @@ export function buildTrackerCustomizationMaps(customizations?: TrackerCustomizat
   return { domainToCustomization, secondaryDomains }
 }
 
-/**
- * Returns the key that groups a tracker domain in tracker lists. Domains under one
- * customization share its id, so a merged tracker lists once. Two customizations
- * stay separate even when their display names match, and an uncustomized domain
- * groups case-insensitively.
- */
 export function trackerGroupKey(tracker: string, domainToCustomization: Map<string, TrackerCustomizationEntry>): string {
   const lowerTracker = tracker.toLowerCase()
   const customization = domainToCustomization.get(lowerTracker)

@@ -73,7 +73,6 @@ func TestRunPendingShrink(t *testing.T) {
 		db := reopen(t, path)
 		vacuumErr := errors.New("disk I/O error")
 		original := runVacuum
-		// Like a VACUUM that fails late, the fake leaves pages in the WAL.
 		runVacuum = func(ctx context.Context, conn *sql.DB) error {
 			if _, err := conn.ExecContext(ctx, "CREATE TABLE wal_filler (data BLOB)"); err != nil {
 				return err

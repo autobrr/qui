@@ -48,7 +48,6 @@ func (e catalogFileEvidence) valid() bool {
 		hash, err := hex.DecodeString(e.TargetHash)
 		return err == nil && len(hash) == 20 && strings.EqualFold(e.QueriedHash, e.TargetHash)
 	case gazellemusic.MatchSize:
-		// The torrent ID of the download URL names the target.
 		return e.TargetHash == ""
 	}
 	return false
@@ -96,7 +95,6 @@ func fullFileSnapshot(files qbt.TorrentFiles) ([32]byte, int64, error) {
 	return sha256.Sum256(snapshot), total, nil
 }
 
-// catalogFileFamily reads a file table that fullFileSnapshot accepted.
 func catalogFileFamily(files qbt.TorrentFiles) rls.Type {
 	var total, audio, books int64
 	for _, file := range files {
@@ -125,8 +123,6 @@ func catalogFileFamily(files qbt.TorrentFiles) rls.Type {
 	return rls.Unknown
 }
 
-// gazelleDecision returns no decision for content other than music and books,
-// so Add matches that result by name, like a result from before file evidence.
 func (s *Service) gazelleDecision(instanceID int, source *qbt.Torrent, files qbt.TorrentFiles, match *gazellemusic.Match) (searchDecisionProvenance, error) {
 	snapshot, _, err := fullFileSnapshot(files)
 	if err != nil {

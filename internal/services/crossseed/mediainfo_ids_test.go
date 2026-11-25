@@ -161,8 +161,6 @@ func TestLargestMKVPath(t *testing.T) {
 	writeFile("Show/episode1.mkv", 10)
 	writeFile("Show/episode2.mkv", 30)
 	writeFile("Show/sample.mp4", 100)
-	// A deselected file can exist on disk as a stub at the declared size;
-	// its Progress < 1 must exclude it even though it is the largest mkv.
 	writeFile("Show/stub.mkv", 500)
 
 	files := qbt.TorrentFiles{
@@ -204,8 +202,6 @@ func (f *fakeMediaIDCache) Set(_ context.Context, entry *models.MediaIDCacheEntr
 	return nil
 }
 
-// mediaIDTestFixture builds a service whose analyzer returns the given report
-// (or error) and a complete single-MKV torrent rooted in a temp dir.
 func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error) (*Service, *fakeMediaIDCache, *models.Instance, *qbt.Torrent, qbt.TorrentFiles, *int) {
 	t.Helper()
 	dir := t.TempDir()
@@ -221,7 +217,6 @@ func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error)
 		},
 	}
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
-	// The MKV path is resolved through the instance's filesystem backend.
 	svc.SetBackendPool(fsops.NewPool(
 		&discPolicyInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		local.NewBackend(),

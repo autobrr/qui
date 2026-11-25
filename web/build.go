@@ -1,7 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package web web/build.go
 package web
 
 import (
@@ -31,12 +30,6 @@ func (fs defaultFS) Open(name string) (fs.File, error) {
 	return fs.fs.Open(name)
 }
 
-// MustSubFS creates sub FS from current filesystem or panic on failure.
-// Panic happens when `fsRoot` contains invalid path according to `fs.ValidPath` rules.
-//
-// MustSubFS is helpful when dealing with `embed.FS` because for example `//go:embed assets/images` embeds files with
-// paths including `assets/images` as their prefix. In that case use `fs := MustSubFS(fs, "rootDirectory") to
-// create sub fs which uses necessary prefix for directory path.
 func MustSubFS(currentFs fs.FS, fsRoot string) fs.FS {
 	subFs, err := subFS(currentFs, fsRoot)
 	if err != nil {
@@ -46,10 +39,8 @@ func MustSubFS(currentFs fs.FS, fsRoot string) fs.FS {
 }
 
 func subFS(currentFs fs.FS, root string) (fs.FS, error) {
-	root = filepath.ToSlash(filepath.Clean(root)) // note: fs.FS operates only with slashes. `ToSlash` is necessary for Windows
+	root = filepath.ToSlash(filepath.Clean(root))
 	if dFS, ok := currentFs.(*defaultFS); ok {
-		// we need to make exception for `defaultFS` instances as it interprets root prefix differently from fs.FS.
-		// fs.Fs.Open does not like relative paths ("./", "../") and absolute paths.
 		if !filepath.IsAbs(root) {
 			root = filepath.Join(dFS.prefix, root)
 		}

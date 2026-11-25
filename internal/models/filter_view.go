@@ -13,11 +13,8 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// ErrDuplicateFilterViewName is returned when a user already has a view with the same name.
 var ErrDuplicateFilterViewName = errors.New("duplicate filter view name")
 
-// FilterView is a named snapshot of the frontend's TorrentFilters object.
-// Filters is opaque to the backend: it is stored and returned verbatim.
 type FilterView struct {
 	ID        int             `json:"id"`
 	Name      string          `json:"name"`
@@ -80,7 +77,6 @@ func (s *FilterViewStore) Create(ctx context.Context, userID int, name string, f
 }
 
 func (s *FilterViewStore) Update(ctx context.Context, userID, id int, name string, filters json.RawMessage) (*FilterView, error) {
-	// RETURNING keeps the write and read atomic; a missing row surfaces as sql.ErrNoRows.
 	var v FilterView
 	var stored string
 	err := s.db.QueryRowContext(ctx, `

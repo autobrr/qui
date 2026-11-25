@@ -13,7 +13,6 @@ interface TorrentListEmptyStateProps {
   onClearFilters?: () => void
 }
 
-/** Tells the user why the torrent list is empty, and offers to clear the filters when they hide every torrent. */
 export function TorrentListEmptyState({ hasFilters, hasSearch, onClearFilters }: TorrentListEmptyStateProps) {
   const { t } = useTranslation("torrents")
   const message = useTorrentListEmptyMessage(hasFilters, hasSearch)

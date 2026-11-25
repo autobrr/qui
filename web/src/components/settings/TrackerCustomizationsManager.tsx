@@ -60,18 +60,15 @@ export function TrackerCustomizationsManager() {
   )
 
   const [selectedDomainState, setSelectedDomains] = useState<Set<string>>(new Set())
-  // A selected domain counts only while it has its own row. A save, an import, or another tab can give it a customization.
   const selectedDomains = useMemo(() => {
     const standalone = new Set(rows.filter(row => row.customizationId === undefined).map(row => row.domain))
     return new Set([...selectedDomainState].filter(domain => standalone.has(domain)))
   }, [selectedDomainState, rows])
-  // Drop the domains for good, so a later delete of their customization does not select them again.
   if (selectedDomains.size !== selectedDomainState.size) setSelectedDomains(selectedDomains)
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [customizeOpen, setCustomizeOpen] = useState(false)
   const [editingCustomization, setEditingCustomization] = useState<{ id: number; displayName: string; domains: string[] } | null>(null)
   const [importOpen, setImportOpen] = useState(false)
-  // A new key on each open gives the import form fresh state, and the form keeps its text while it fades out.
   const [importSession, setImportSession] = useState(0)
 
   const toggleSelection = (domain: string) => {
@@ -111,7 +108,6 @@ export function TrackerCustomizationsManager() {
     })
   }
 
-  // The confirm dialog waits for the promise, and stays open when the delete fails.
   const handleDelete = (customizationId: number) =>
     deleteCustomization.mutateAsync(customizationId).then(() => setSelectedGroupId(prev => prev === customizationId ? null : prev))
 
@@ -132,7 +128,6 @@ export function TrackerCustomizationsManager() {
       return
     }
 
-    // A new name that equals an existing one merges into that customization.
     const existing = customizations?.find(c => c.displayName.toLowerCase() === displayName.toLowerCase())
     const onSuccess = () => {
       closeCustomizeDialog()
@@ -148,7 +143,6 @@ export function TrackerCustomizationsManager() {
     }
   }
 
-  // Put the domains that have an icon first, so the first domain gives the row its icon.
   const reorderDomainsForIcons = (domains: string[]): string[] => {
     if (!trackerIcons || domains.length <= 1) return domains
     const hasIcon = (d: string) => Boolean(trackerIcons[d.toLowerCase()] || trackerIcons[d])
@@ -160,7 +154,6 @@ export function TrackerCustomizationsManager() {
     setCustomizeOpen(true)
   }
 
-  // With other domains selected, this adds the domain to the merge.
   const openRenameDialog = (domain: string) => {
     setEditingCustomization(null)
     if (selectedDomains.size >= 2 || (selectedDomains.size === 1 && !selectedDomains.has(domain))) {
@@ -223,7 +216,6 @@ export function TrackerCustomizationsManager() {
         : customizationId !== undefined && displayName !== domain ? [t("trackerCustomizations.original", { domain: shownDomains[0] })] : undefined,
       select: customizationId === undefined
         ? { checked: selectedDomains.has(domain), onCheckedChange: () => toggleSelection(domain) }
-        // One customization at a time takes the merge, so the others hide their box while one is selected.
         : selectedGroupId !== null && selectedGroupId !== customizationId
           ? undefined
           : { checked: selectedGroupId === customizationId, onCheckedChange: () => toggleGroupSelection(customizationId) },
@@ -355,12 +347,10 @@ interface CustomizeEditorProps {
   onClose: () => void
 }
 
-// Mounted only while open: the domains come from the selection, which a save clears, so a fade-out would show them change.
 function CustomizeEditor({ mode, initialName, domains, incognitoMode, saving, onRemoveDomain, onSave, onClose }: CustomizeEditorProps) {
   const { t } = useTranslation("settings")
   const domainsLabelId = useId()
   const [displayName, setDisplayName] = useState(initialName)
-  // The mutations are shared with the import, so only a save from this form shows its spinner.
   const [submitted, setSubmitted] = useState(false)
   const title = { edit: t("trackerCustomizations.customizeDialog.editTitle"), rename: t("trackerCustomizations.customizeDialog.renameTitle"), merge: t("trackerCustomizations.customizeDialog.mergeTitle") }[mode]
   const description = { edit: t("trackerCustomizations.customizeDialog.editDescription"), rename: t("trackerCustomizations.customizeDialog.renameDescription"), merge: t("trackerCustomizations.customizeDialog.mergeDescription") }[mode]
@@ -424,7 +414,6 @@ interface ImportEditorProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   customizations: TrackerCustomization[]
-  // The mutations live in the parent, so a reopened form still sees a running import.
   createCustomization: ReturnType<typeof useCreateTrackerCustomization>
   updateCustomization: ReturnType<typeof useUpdateTrackerCustomization>
 }
@@ -447,7 +436,6 @@ function ImportEditor({ open, onOpenChange, customizations, createCustomization,
   const newCount = entries.filter(e => !e.conflict).length
   const unchangedCount = entries.filter(e => e.isIdentical).length
   const allConflictsResolved = parse.valid && conflicts.every(e => conflictChoices.has(e.index))
-  // The import keeps running when the user closes the form, so Cancel stays open to them.
   const importing = createCustomization.isPending || updateCustomization.isPending
 
   const handleImport = async () => {

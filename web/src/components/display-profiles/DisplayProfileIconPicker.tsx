@@ -22,11 +22,9 @@ interface DisplayProfileIconPickerProps {
   color: DisplayProfileColor | null
   onIconChange: (icon: string) => void
   onColorChange: (color: DisplayProfileColor | null) => void
-  /** The trigger, a button around the icon tile. */
   children: ReactNode
 }
 
-/** A popover with the icons and the colors of a profile. A pick calls back at once, and the popover stays open. */
 export function DisplayProfileIconPicker({ icon, color, onIconChange, onColorChange, children }: DisplayProfileIconPickerProps) {
   const { t } = useTranslation("torrents")
   const colorLabelId = useId()

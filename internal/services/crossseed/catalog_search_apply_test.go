@@ -258,7 +258,6 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	t.Logf("catalog_receipt=%s", report)
 }
 
-// regression: #4181
 func TestCatalogSearchApply(t *testing.T) {
 	t.Run("artwork larger than audio", func(t *testing.T) {
 		piece := sha1.Sum([]byte(strings.Repeat("a", 30) + strings.Repeat("b", 70)))
@@ -282,7 +281,6 @@ func TestCatalogSearchApply(t *testing.T) {
 	}
 }
 
-// regression: #4181
 func TestCatalogPrivateFixtures(t *testing.T) {
 	manifest := os.Getenv("QUI_GAZELLE_FIXTURES")
 	if manifest == "" {

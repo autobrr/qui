@@ -45,12 +45,10 @@ const fixture = vi.hoisted(() => {
   const otherTheme = makeTheme("other", "Other theme", {
     variations: ["amber"],
   })
-  // Unlicensed install: the server ships premium themes as locked stubs.
   const premiumTheme = makeTheme("nord", "Premium theme", {
     isPremium: true,
     locked: true,
   })
-  // A community theme that is new to the build starts hidden.
   const communityTheme = makeTheme("gruvbox", "Community theme", {
     isPremium: true,
     locked: true,
@@ -179,7 +177,6 @@ describe("ThemeToggle", () => {
     expect(items.indexOf(premiumItem)).toBeLessThan(items.indexOf(customItem))
     expect(premiumItem.hasAttribute("data-disabled")).toBe(true)
 
-    // Menu items of their own, so the arrow keys reach them.
     expect(screen.getByRole("menuitemradio", { name: "blue" }).getAttribute("aria-checked")).toBe("true")
     expect(screen.getByRole("menuitemradio", { name: "green" }).getAttribute("aria-checked")).toBe("false")
     expect(screen.queryByRole("menuitemradio", { name: "amber" })).toBeNull()

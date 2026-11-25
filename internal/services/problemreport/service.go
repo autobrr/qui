@@ -1,10 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package problemreport owns the outbound path of Problem reports: it builds
-// the facts that qui's server adds, removes keys and secrets, keeps the
-// Install key and the sign-in, sends each report to brrbin, and stores Sent
-// reports. See ADR 0058.
 package problemreport
 
 import (
@@ -108,16 +104,14 @@ type SecretReader interface {
 }
 
 type Sources struct {
-	// Qui returns the facts about qui, except the newer release.
 	Qui       func() QuiFacts
 	Instances InstanceLister
 	Pool      InstanceFactsReader
 	Notices   NoticeLister
 	Logs      LogReader
 	Releases  ReleaseReader
-	// Search is nil when cross-seed is not set up.
-	Search  SearchFactsReader
-	Secrets SecretReader
+	Search    SearchFactsReader
+	Secrets   SecretReader
 }
 
 type Service struct {
@@ -135,9 +129,6 @@ func NewService(baseURL string, client *http.Client, store *models.ProblemReport
 	return &Service{store: store, baseURL: baseURL, client: client, sources: sources, now: time.Now}
 }
 
-// Facts returns the facts for a starting point, with every text part
-// cleaned. It sends nothing to brrbin. For a search it reads the torrent from
-// qBittorrent, as the manual search does.
 func (s *Service) Facts(ctx context.Context, req FactsRequest) (*Facts, error) {
 	switch req.StartedFrom {
 	case StartedFromMenu, StartedFromNotice:
@@ -194,8 +185,6 @@ func (s *Service) Facts(ctx context.Context, req FactsRequest) (*Facts, error) {
 	return facts, nil
 }
 
-// logFacts cleans each line of the log buffer once. The warning lines are a
-// part of the buffer, so they reuse the cleaned lines.
 func (s *Service) logFacts(c cleaner) LogFacts {
 	all := s.sources.Logs.HistoryFrom(zerolog.TraceLevel, 0)
 	cleaned := make(map[string]string, len(all))
@@ -209,7 +198,7 @@ func (s *Service) logFacts(c cleaner) LogFacts {
 	for i, line := range warnings {
 		clean, ok := cleaned[line]
 		if !ok {
-			clean = c.clean(line) // written after the first read
+			clean = c.clean(line)
 		}
 		logs.Warnings[i] = clean
 	}

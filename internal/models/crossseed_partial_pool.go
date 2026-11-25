@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// These constants define persisted partial pool modes, states, and coordination markers.
 const (
 	CrossSeedPartialPoolStatusActive  = "active"
 	CrossSeedPartialPoolStatusDormant = "dormant"
@@ -44,7 +43,6 @@ const (
 	CrossSeedPartialPoolRecheckRequested = "partial pool recheck requested"
 )
 
-// CrossSeedPartialPool groups partial link-mode torrents by their original source.
 type CrossSeedPartialPool struct {
 	ID               int64
 	SourceInstanceID int
@@ -55,9 +53,6 @@ type CrossSeedPartialPool struct {
 	Members          []*CrossSeedPartialPoolMember
 }
 
-// CrossSeedPartialPoolMember is one qBittorrent torrent managed by a partial
-// pool. Review and retry fields persist coordinator sub-state separately from
-// LastError diagnostics.
 type CrossSeedPartialPoolMember struct {
 	ID                  int64
 	PoolID              int64
@@ -82,7 +77,6 @@ type CrossSeedPartialPoolMember struct {
 	Files               []*CrossSeedPartialPoolMemberFile
 }
 
-// CrossSeedPartialPoolMemberFile is durable per-file completion state.
 type CrossSeedPartialPoolMemberFile struct {
 	ID                int64
 	MemberID          int64
@@ -92,17 +86,14 @@ type CrossSeedPartialPoolMemberFile struct {
 	PiecesRoot        string
 	WantedAtAdmission bool
 	MaterializedAtAdd bool
-	// ReplaceableAtAdd records that no target path existed immediately before the qBittorrent add.
-	ReplaceableAtAdd bool
-	Status           string
-	SourceFileID     *int64
-	LastError        string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ReplaceableAtAdd  bool
+	Status            string
+	SourceFileID      *int64
+	LastError         string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
-// CrossSeedPartialPoolRegistration contains the source-resolution evidence and
-// the member/files inserted in one transaction.
 type CrossSeedPartialPoolRegistration struct {
 	SourceInstanceID int
 	SourceTorrentKey string
@@ -116,19 +107,16 @@ type CrossSeedPartialPoolRegistration struct {
 	Files  []CrossSeedPartialPoolMemberFile
 }
 
-// NullableInt64Update distinguishes no update from setting a value or NULL.
 type NullableInt64Update struct {
 	Set   bool
 	Value *int64
 }
 
-// NullableTimeUpdate distinguishes no update from setting a value or NULL.
 type NullableTimeUpdate struct {
 	Set   bool
 	Value *time.Time
 }
 
-// PartialPoolMemberMutation contains fields changed with a member status claim.
 type PartialPoolMemberMutation struct {
 	MissingBytes        *int64
 	StartedByPool       *bool
@@ -141,7 +129,6 @@ type PartialPoolMemberMutation struct {
 	LastError           *string
 }
 
-// PartialPoolFileMutation contains fields changed with a file status claim.
 type PartialPoolFileMutation struct {
 	SourceFileID NullableInt64Update
 	LastError    *string
@@ -172,9 +159,6 @@ func normalizedPartialPoolAliases(values ...[]string) []string {
 
 var errPartialPoolRegistrationChanged = errors.New("partial pool changed during registration")
 
-// RegisterPartialPoolMember atomically resolves or creates the source pool and
-// persists one member plus every file. An alias-equivalent re-admission keeps
-// the member identity but replaces its stale admission and file state.
 func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registration CrossSeedPartialPoolRegistration) (*CrossSeedPartialPool, *CrossSeedPartialPoolMember, error) {
 	member := registration.Member
 	member.TorrentKey = normalizePartialPoolKey(member.TorrentKey)
@@ -239,9 +223,6 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 	}
 }
 
-// Keep coarse-clock admissions distinct at PostgreSQL's microsecond precision.
-// Bound the advance to one second: CreatedAt also controls wall-clock admission
-// deadlines, so a substantial clock rollback must reset it to the current time.
 func nextPartialPoolAdmissionTime(now, previous time.Time) time.Time {
 	if !now.After(previous) && previous.Sub(now) < time.Second {
 		return previous.Add(time.Microsecond).Truncate(time.Microsecond)
@@ -267,168 +248,30 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 		reAdmission = true
 	}
 
-	if poolID == 0 && registration.SourceInstanceID > 0 {
-		sourceAliases := normalizedPartialPoolAliases([]string{registration.SourceTorrentKey}, registration.SourceAliases)
-		_, inheritedPoolID, found, findErr := findPartialPoolMemberByAliases(ctx, tx, registration.SourceInstanceID, sourceAliases)
-		if findErr != nil {
-			return nil, nil, findErr
-		}
-		if found {
-			poolID = inheritedPoolID
-		} else {
-			sourceKey := normalizePartialPoolKey(registration.SourceTorrentKey)
-			if sourceKey == "" && len(sourceAliases) > 0 {
-				sourceKey = sourceAliases[0]
-			}
-			if sourceKey == "" {
-				return nil, nil, errors.New("partial pool source torrent key is required")
-			}
-			poolID, err = getOrCreatePartialPool(ctx, tx, registration.SourceInstanceID, sourceKey)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-	}
-
 	if poolID == 0 {
-		matchedAliases := normalizedPartialPoolAliases([]string{registration.MatchedTorrentKey}, registration.MatchedAliases)
-		if registration.MatchedInstanceID > 0 {
-			_, inheritedPoolID, found, findErr := findPartialPoolMemberByAliases(ctx, tx, registration.MatchedInstanceID, matchedAliases)
-			if findErr != nil {
-				return nil, nil, findErr
-			}
-			if found {
-				poolID = inheritedPoolID
-			}
-		}
-		if poolID == 0 {
-			matchedKey := normalizePartialPoolKey(registration.MatchedTorrentKey)
-			if matchedKey == "" && len(matchedAliases) > 0 {
-				matchedKey = matchedAliases[0]
-			}
-			if registration.MatchedInstanceID <= 0 || matchedKey == "" {
-				return nil, nil, errors.New("partial pool matched source identity is required")
-			}
-			poolID, err = getOrCreatePartialPool(ctx, tx, registration.MatchedInstanceID, matchedKey)
-			if err != nil {
-				return nil, nil, err
-			}
+		poolID, err = resolvePartialPoolForRegistration(ctx, tx, registration)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
-	// Every admission and downloader claim takes the pool row first. Keeping
-	// that lock order prevents a claim from overlooking an uncommitted member
-	// on PostgreSQL and serializes competing claims before they inspect members.
-	result, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = status WHERE id = ?`, poolID)
+	admittedAt, err := lockPartialPoolForAdmission(ctx, tx, poolID, memberID, reAdmission)
 	if err != nil {
-		return nil, nil, fmt.Errorf("lock partial pool for registration: %w", err)
-	}
-	locked, err := result.RowsAffected()
-	if err != nil {
-		return nil, nil, fmt.Errorf("inspect partial pool registration lock: %w", err)
-	}
-	if locked != 1 {
-		return nil, nil, errPartialPoolRegistrationChanged
-	}
-	admittedAt := time.Now().UTC().Truncate(time.Microsecond)
-	if reAdmission {
-		var previous time.Time
-		if err := tx.QueryRowContext(ctx, `SELECT created_at FROM cross_seed_partial_pool_members WHERE id = ?`, memberID).Scan(&previous); err != nil {
-			return nil, nil, fmt.Errorf("load previous partial pool admission: %w", err)
-		}
-		admittedAt = nextPartialPoolAdmissionTime(admittedAt, previous)
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = ? WHERE id = ?`, CrossSeedPartialPoolStatusActive, admittedAt, poolID); err != nil {
-		return nil, nil, fmt.Errorf("activate partial pool registration: %w", err)
+		return nil, nil, err
 	}
 
 	member.PoolID = poolID
-	type existingFileState struct {
-		id           int64
-		relativePath string
-		sizeBytes    int64
-		piecesRoot   string
-		sourceFileID *int64
-	}
-	existingFiles := make(map[int]existingFileState)
+	existingFiles := make(map[int]existingPartialPoolFile)
 	if reAdmission {
-		rows, loadErr := tx.QueryContext(ctx, `
-			SELECT id, file_index, relative_path, size_bytes, pieces_root, source_file_id
-			FROM cross_seed_partial_pool_member_files
-			WHERE member_id = ?
-		`, memberID)
-		if loadErr != nil {
-			return nil, nil, fmt.Errorf("load existing partial pool files: %w", loadErr)
+		existingFiles, err = loadExistingPartialPoolFiles(ctx, tx, memberID)
+		if err != nil {
+			return nil, nil, err
 		}
-		for rows.Next() {
-			var state existingFileState
-			var fileIndex int
-			var piecesRoot sql.NullString
-			var sourceFileID sql.NullInt64
-			if scanErr := rows.Scan(&state.id, &fileIndex, &state.relativePath, &state.sizeBytes, &piecesRoot, &sourceFileID); scanErr != nil {
-				rows.Close()
-				return nil, nil, fmt.Errorf("scan existing partial pool file: %w", scanErr)
-			}
-			if piecesRoot.Valid {
-				state.piecesRoot = piecesRoot.String
-			}
-			if sourceFileID.Valid {
-				value := sourceFileID.Int64
-				state.sourceFileID = &value
-			}
-			existingFiles[fileIndex] = state
-		}
-		if closeErr := rows.Close(); closeErr != nil {
-			return nil, nil, closeErr
-		}
-		if rowsErr := rows.Err(); rowsErr != nil {
-			return nil, nil, rowsErr
-		}
-	}
-	if reAdmission {
-		result, updateErr := tx.ExecContext(ctx, `
-			UPDATE cross_seed_partial_pool_members
-			SET torrent_key = ?, infohash_v1 = ?, infohash_v2 = ?, mode = ?,
-			    root_path = ?, status = ?, missing_bytes = ?,
-			    started_by_pool = ?, last_downloaded_bytes = NULL,
-			    last_progress_at = NULL, retry_after = NULL,
-			    review_pause_pending = ?, resume_attempts = NULL,
-			    recovery_attempts = NULL, last_error = ?,
-			    created_at = ?, updated_at = ?
-			WHERE id = ? AND pool_id = ?
-		`,
-			member.TorrentKey, member.InfoHashV1, member.InfoHashV2, member.Mode,
-			member.RootPath, member.Status, member.MissingBytes,
-			BoolToSQLite(false), BoolToSQLite(false), member.LastError, admittedAt, admittedAt,
-			memberID, poolID,
-		)
-		if updateErr != nil {
-			return nil, nil, fmt.Errorf("reset partial pool member admission: %w", updateErr)
-		}
-		updated, updateErr := result.RowsAffected()
-		if updateErr != nil {
-			return nil, nil, fmt.Errorf("inspect partial pool member admission reset: %w", updateErr)
-		}
-		if updated != 1 {
-			return nil, nil, errors.New("partial pool member disappeared during re-admission")
+		if err := resetPartialPoolMemberAdmission(ctx, tx, member, memberID, admittedAt); err != nil {
+			return nil, nil, err
 		}
 	} else {
-		err = tx.QueryRowContext(ctx, `
-			INSERT INTO cross_seed_partial_pool_members (
-				pool_id, instance_id, torrent_key, infohash_v1, infohash_v2,
-				mode, root_path, status, missing_bytes,
-				started_by_pool, last_downloaded_bytes, last_progress_at, retry_after,
-				review_pause_pending, resume_attempts, recovery_attempts, last_error,
-				created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			RETURNING id
-		`,
-			poolID, member.InstanceID, member.TorrentKey, member.InfoHashV1, member.InfoHashV2,
-			member.Mode, member.RootPath, member.Status, member.MissingBytes,
-			BoolToSQLite(member.StartedByPool), member.LastDownloadedBytes, member.LastProgressAt, member.RetryAfter,
-			BoolToSQLite(member.ReviewPausePending), member.ResumeAttempts, member.RecoveryAttempts, member.LastError,
-			admittedAt, admittedAt,
-		).Scan(&memberID)
+		memberID, err = insertPartialPoolMember(ctx, tx, member, admittedAt)
 		if err != nil {
 			if isUniqueConstraintError(err) {
 				_ = tx.Rollback()
@@ -441,156 +284,13 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 		}
 	}
 
-	incomingIndexes := make(map[int]struct{}, len(files))
-	var replacedSourceIDs []int64
-	for i := range files {
-		file := &files[i]
-		incomingIndexes[file.FileIndex] = struct{}{}
-		if existing, ok := existingFiles[file.FileIndex]; ok {
-			sameFile := existing.relativePath == file.RelativePath &&
-				existing.sizeBytes == file.SizeBytes &&
-				strings.EqualFold(existing.piecesRoot, file.PiecesRoot)
-			if !sameFile {
-				replacedSourceIDs = append(replacedSourceIDs, existing.id)
-			} else if member.Mode == CrossSeedPartialPoolModeHardlink && existing.sourceFileID != nil {
-				value := *existing.sourceFileID
-				file.SourceFileID = &value
-			}
-		}
-		var piecesRoot any
-		if file.PiecesRoot != "" {
-			piecesRoot = strings.ToLower(file.PiecesRoot)
-		}
-		query := `
-			INSERT INTO cross_seed_partial_pool_member_files (
-				member_id, file_index, relative_path, size_bytes, pieces_root,
-				wanted_at_admission, materialized_at_add, replaceable_at_add,
-				status, source_file_id, last_error, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`
-		if reAdmission {
-			query += `
-				ON CONFLICT(member_id, file_index) DO UPDATE SET
-					relative_path = excluded.relative_path,
-					size_bytes = excluded.size_bytes,
-					pieces_root = excluded.pieces_root,
-					wanted_at_admission = excluded.wanted_at_admission,
-					materialized_at_add = excluded.materialized_at_add,
-					replaceable_at_add = excluded.replaceable_at_add,
-					status = excluded.status,
-					source_file_id = excluded.source_file_id,
-					last_error = excluded.last_error,
-					created_at = excluded.created_at,
-					updated_at = excluded.updated_at
-			`
-		}
-		_, err = tx.ExecContext(ctx, query,
-			memberID, file.FileIndex, file.RelativePath, file.SizeBytes, piecesRoot,
-			BoolToSQLite(file.WantedAtAdmission), BoolToSQLite(file.MaterializedAtAdd),
-			BoolToSQLite(file.ReplaceableAtAdd), file.Status, file.SourceFileID, file.LastError,
-			admittedAt, admittedAt,
-		)
-		if err != nil {
-			return nil, nil, fmt.Errorf("insert partial pool file %d: %w", file.FileIndex, err)
-		}
+	replacedSourceIDs, err := upsertPartialPoolMemberFiles(ctx, tx, memberID, member.Mode, files, existingFiles, reAdmission, admittedAt)
+	if err != nil {
+		return nil, nil, err
 	}
 	if reAdmission {
-		for fileIndex, existing := range existingFiles {
-			if _, retained := incomingIndexes[fileIndex]; !retained {
-				replacedSourceIDs = append(replacedSourceIDs, existing.id)
-			}
-		}
-		if len(replacedSourceIDs) > 0 {
-			placeholders := strings.TrimSuffix(strings.Repeat("?,", len(replacedSourceIDs)), ",")
-			reason := "propagation source was replaced during re-admission"
-			hardlinkDependencies := fmt.Sprintf(`
-				WITH RECURSIVE hardlink_dependencies(id, member_id) AS (
-					SELECT child.id, child.member_id
-					FROM cross_seed_partial_pool_member_files child
-					JOIN cross_seed_partial_pool_members member ON member.id = child.member_id
-					WHERE member.mode = ? AND child.source_file_id IN (%s)
-					UNION
-					SELECT child.id, child.member_id
-					FROM cross_seed_partial_pool_member_files child
-					JOIN cross_seed_partial_pool_members member ON member.id = child.member_id
-					JOIN hardlink_dependencies parent ON child.source_file_id = parent.id
-					WHERE member.mode = ?
-				)
-			`, placeholders)
-			dependencyArgs := []any{CrossSeedPartialPoolModeHardlink}
-			for _, id := range replacedSourceIDs {
-				dependencyArgs = append(dependencyArgs, id)
-			}
-			dependencyArgs = append(dependencyArgs, CrossSeedPartialPoolModeHardlink)
-
-			memberArgs := append([]any{}, dependencyArgs...)
-			memberArgs = append(memberArgs,
-				CrossSeedPartialPoolMemberStatusManual,
-				BoolToSQLite(true),
-				reason,
-				CrossSeedPartialPoolMemberStatusRemoved,
-			)
-			if _, err := tx.ExecContext(ctx, hardlinkDependencies+`
-				UPDATE cross_seed_partial_pool_members
-				SET status = ?, review_pause_pending = ?, resume_attempts = NULL,
-				    recovery_attempts = NULL, last_error = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE status <> ? AND id IN (
-					SELECT member_id FROM hardlink_dependencies
-				)
-			`, memberArgs...); err != nil {
-				return nil, nil, fmt.Errorf("quarantine replaced hardlink members: %w", err)
-			}
-
-			reflinkArgs := append([]any{}, dependencyArgs...)
-			reflinkArgs = append(reflinkArgs,
-				CrossSeedPartialPoolFileStatusMissing,
-				CrossSeedPartialPoolFileStatusPropagating,
-				CrossSeedPartialPoolFileStatusVerifying,
-				CrossSeedPartialPoolModeReflink,
-			)
-			for _, id := range replacedSourceIDs {
-				reflinkArgs = append(reflinkArgs, id)
-			}
-			releaseReflinkDependencies := fmt.Sprintf(`
-				UPDATE cross_seed_partial_pool_member_files
-				SET status = ?, source_file_id = NULL, last_error = '', updated_at = CURRENT_TIMESTAMP
-				WHERE status IN (?, ?)
-				  AND member_id IN (
-					SELECT id FROM cross_seed_partial_pool_members WHERE mode = ?
-				  )
-				  AND (
-					source_file_id IN (%s)
-					OR source_file_id IN (SELECT id FROM hardlink_dependencies)
-				  )
-			`, placeholders)
-			if _, err := tx.ExecContext(ctx, hardlinkDependencies+releaseReflinkDependencies, reflinkArgs...); err != nil {
-				return nil, nil, fmt.Errorf("release replaced reflink dependencies: %w", err)
-			}
-
-			fileArgs := append([]any{}, dependencyArgs...)
-			fileArgs = append(fileArgs,
-				CrossSeedPartialPoolFileStatusManual,
-				reason,
-			)
-			if _, err := tx.ExecContext(ctx, hardlinkDependencies+`
-				UPDATE cross_seed_partial_pool_member_files
-				SET status = ?, source_file_id = NULL, last_error = ?, updated_at = CURRENT_TIMESTAMP
-				WHERE id IN (SELECT id FROM hardlink_dependencies)
-			`, fileArgs...); err != nil {
-				return nil, nil, fmt.Errorf("quarantine replaced hardlink dependencies: %w", err)
-			}
-		}
-
-		indexPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(files)), ",")
-		args := []any{memberID}
-		for _, file := range files {
-			args = append(args, file.FileIndex)
-		}
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
-			DELETE FROM cross_seed_partial_pool_member_files
-			WHERE member_id = ? AND file_index NOT IN (%s)
-		`, indexPlaceholders), args...); err != nil {
-			return nil, nil, fmt.Errorf("remove stale partial pool member files: %w", err)
+		if err := pruneReAdmittedPartialPoolFiles(ctx, tx, memberID, files, existingFiles, replacedSourceIDs); err != nil {
+			return nil, nil, err
 		}
 	}
 
@@ -603,6 +303,351 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 		return nil, nil, err
 	}
 	return pool, partialPoolMemberByID(pool, memberID), nil
+}
+
+func resolvePartialPoolForRegistration(ctx context.Context, tx dbinterface.TxQuerier, registration CrossSeedPartialPoolRegistration) (int64, error) {
+	if registration.SourceInstanceID > 0 {
+		poolID, err := partialPoolFromSource(ctx, tx, registration)
+		if err != nil || poolID != 0 {
+			return poolID, err
+		}
+	}
+	return partialPoolFromMatched(ctx, tx, registration)
+}
+
+func partialPoolFromSource(ctx context.Context, tx dbinterface.TxQuerier, registration CrossSeedPartialPoolRegistration) (int64, error) {
+	sourceAliases := normalizedPartialPoolAliases([]string{registration.SourceTorrentKey}, registration.SourceAliases)
+	_, inheritedPoolID, found, findErr := findPartialPoolMemberByAliases(ctx, tx, registration.SourceInstanceID, sourceAliases)
+	if findErr != nil {
+		return 0, findErr
+	}
+	if found {
+		return inheritedPoolID, nil
+	}
+	sourceKey := normalizePartialPoolKey(registration.SourceTorrentKey)
+	if sourceKey == "" && len(sourceAliases) > 0 {
+		sourceKey = sourceAliases[0]
+	}
+	if sourceKey == "" {
+		return 0, errors.New("partial pool source torrent key is required")
+	}
+	return getOrCreatePartialPool(ctx, tx, registration.SourceInstanceID, sourceKey)
+}
+
+func partialPoolFromMatched(ctx context.Context, tx dbinterface.TxQuerier, registration CrossSeedPartialPoolRegistration) (int64, error) {
+	matchedAliases := normalizedPartialPoolAliases([]string{registration.MatchedTorrentKey}, registration.MatchedAliases)
+	if registration.MatchedInstanceID > 0 {
+		_, inheritedPoolID, found, findErr := findPartialPoolMemberByAliases(ctx, tx, registration.MatchedInstanceID, matchedAliases)
+		if findErr != nil {
+			return 0, findErr
+		}
+		if found && inheritedPoolID != 0 {
+			return inheritedPoolID, nil
+		}
+	}
+	matchedKey := normalizePartialPoolKey(registration.MatchedTorrentKey)
+	if matchedKey == "" && len(matchedAliases) > 0 {
+		matchedKey = matchedAliases[0]
+	}
+	if registration.MatchedInstanceID <= 0 || matchedKey == "" {
+		return 0, errors.New("partial pool matched source identity is required")
+	}
+	return getOrCreatePartialPool(ctx, tx, registration.MatchedInstanceID, matchedKey)
+}
+
+func lockPartialPoolForAdmission(ctx context.Context, tx dbinterface.TxQuerier, poolID, memberID int64, reAdmission bool) (time.Time, error) {
+	result, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = status WHERE id = ?`, poolID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("lock partial pool for registration: %w", err)
+	}
+	locked, err := result.RowsAffected()
+	if err != nil {
+		return time.Time{}, fmt.Errorf("inspect partial pool registration lock: %w", err)
+	}
+	if locked != 1 {
+		return time.Time{}, errPartialPoolRegistrationChanged
+	}
+	admittedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if reAdmission {
+		var previous time.Time
+		if err := tx.QueryRowContext(ctx, `SELECT created_at FROM cross_seed_partial_pool_members WHERE id = ?`, memberID).Scan(&previous); err != nil {
+			return time.Time{}, fmt.Errorf("load previous partial pool admission: %w", err)
+		}
+		admittedAt = nextPartialPoolAdmissionTime(admittedAt, previous)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = ? WHERE id = ?`, CrossSeedPartialPoolStatusActive, admittedAt, poolID); err != nil {
+		return time.Time{}, fmt.Errorf("activate partial pool registration: %w", err)
+	}
+	return admittedAt, nil
+}
+
+type existingPartialPoolFile struct {
+	id           int64
+	relativePath string
+	sizeBytes    int64
+	piecesRoot   string
+	sourceFileID *int64
+}
+
+func loadExistingPartialPoolFiles(ctx context.Context, tx dbinterface.TxQuerier, memberID int64) (map[int]existingPartialPoolFile, error) {
+	rows, loadErr := tx.QueryContext(ctx, `
+		SELECT id, file_index, relative_path, size_bytes, pieces_root, source_file_id
+		FROM cross_seed_partial_pool_member_files
+		WHERE member_id = ?
+	`, memberID)
+	if loadErr != nil {
+		return nil, fmt.Errorf("load existing partial pool files: %w", loadErr)
+	}
+	existingFiles := make(map[int]existingPartialPoolFile)
+	for rows.Next() {
+		var state existingPartialPoolFile
+		var fileIndex int
+		var piecesRoot sql.NullString
+		var sourceFileID sql.NullInt64
+		if scanErr := rows.Scan(&state.id, &fileIndex, &state.relativePath, &state.sizeBytes, &piecesRoot, &sourceFileID); scanErr != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan existing partial pool file: %w", scanErr)
+		}
+		if piecesRoot.Valid {
+			state.piecesRoot = piecesRoot.String
+		}
+		if sourceFileID.Valid {
+			value := sourceFileID.Int64
+			state.sourceFileID = &value
+		}
+		existingFiles[fileIndex] = state
+	}
+	if closeErr := rows.Close(); closeErr != nil {
+		return nil, closeErr
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
+	}
+	return existingFiles, nil
+}
+
+func resetPartialPoolMemberAdmission(ctx context.Context, tx dbinterface.TxQuerier, member CrossSeedPartialPoolMember, memberID int64, admittedAt time.Time) error {
+	result, updateErr := tx.ExecContext(ctx, `
+		UPDATE cross_seed_partial_pool_members
+		SET torrent_key = ?, infohash_v1 = ?, infohash_v2 = ?, mode = ?,
+		    root_path = ?, status = ?, missing_bytes = ?,
+		    started_by_pool = ?, last_downloaded_bytes = NULL,
+		    last_progress_at = NULL, retry_after = NULL,
+		    review_pause_pending = ?, resume_attempts = NULL,
+		    recovery_attempts = NULL, last_error = ?,
+		    created_at = ?, updated_at = ?
+		WHERE id = ? AND pool_id = ?
+	`,
+		member.TorrentKey, member.InfoHashV1, member.InfoHashV2, member.Mode,
+		member.RootPath, member.Status, member.MissingBytes,
+		BoolToSQLite(false), BoolToSQLite(false), member.LastError, admittedAt, admittedAt,
+		memberID, member.PoolID,
+	)
+	if updateErr != nil {
+		return fmt.Errorf("reset partial pool member admission: %w", updateErr)
+	}
+	updated, updateErr := result.RowsAffected()
+	if updateErr != nil {
+		return fmt.Errorf("inspect partial pool member admission reset: %w", updateErr)
+	}
+	if updated != 1 {
+		return errors.New("partial pool member disappeared during re-admission")
+	}
+	return nil
+}
+
+func insertPartialPoolMember(ctx context.Context, tx dbinterface.TxQuerier, member CrossSeedPartialPoolMember, admittedAt time.Time) (int64, error) {
+	var memberID int64
+	err := tx.QueryRowContext(ctx, `
+		INSERT INTO cross_seed_partial_pool_members (
+			pool_id, instance_id, torrent_key, infohash_v1, infohash_v2,
+			mode, root_path, status, missing_bytes,
+			started_by_pool, last_downloaded_bytes, last_progress_at, retry_after,
+			review_pause_pending, resume_attempts, recovery_attempts, last_error,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
+	`,
+		member.PoolID, member.InstanceID, member.TorrentKey, member.InfoHashV1, member.InfoHashV2,
+		member.Mode, member.RootPath, member.Status, member.MissingBytes,
+		BoolToSQLite(member.StartedByPool), member.LastDownloadedBytes, member.LastProgressAt, member.RetryAfter,
+		BoolToSQLite(member.ReviewPausePending), member.ResumeAttempts, member.RecoveryAttempts, member.LastError,
+		admittedAt, admittedAt,
+	).Scan(&memberID)
+	return memberID, err
+}
+
+func partialPoolMemberFileUpsertQuery(reAdmission bool) string {
+	query := `
+		INSERT INTO cross_seed_partial_pool_member_files (
+			member_id, file_index, relative_path, size_bytes, pieces_root,
+			wanted_at_admission, materialized_at_add, replaceable_at_add,
+			status, source_file_id, last_error, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	if reAdmission {
+		query += `
+			ON CONFLICT(member_id, file_index) DO UPDATE SET
+				relative_path = excluded.relative_path,
+				size_bytes = excluded.size_bytes,
+				pieces_root = excluded.pieces_root,
+				wanted_at_admission = excluded.wanted_at_admission,
+				materialized_at_add = excluded.materialized_at_add,
+				replaceable_at_add = excluded.replaceable_at_add,
+				status = excluded.status,
+				source_file_id = excluded.source_file_id,
+				last_error = excluded.last_error,
+				created_at = excluded.created_at,
+				updated_at = excluded.updated_at
+		`
+	}
+	return query
+}
+
+func upsertPartialPoolMemberFiles(ctx context.Context, tx dbinterface.TxQuerier, memberID int64, mode string, files []CrossSeedPartialPoolMemberFile, existingFiles map[int]existingPartialPoolFile, reAdmission bool, admittedAt time.Time) ([]int64, error) {
+	var replacedSourceIDs []int64
+	query := partialPoolMemberFileUpsertQuery(reAdmission)
+	for i := range files {
+		file := &files[i]
+		if existing, ok := existingFiles[file.FileIndex]; ok {
+			sameFile := existing.relativePath == file.RelativePath &&
+				existing.sizeBytes == file.SizeBytes &&
+				strings.EqualFold(existing.piecesRoot, file.PiecesRoot)
+			if !sameFile {
+				replacedSourceIDs = append(replacedSourceIDs, existing.id)
+			} else if mode == CrossSeedPartialPoolModeHardlink && existing.sourceFileID != nil {
+				value := *existing.sourceFileID
+				file.SourceFileID = &value
+			}
+		}
+		var piecesRoot any
+		if file.PiecesRoot != "" {
+			piecesRoot = strings.ToLower(file.PiecesRoot)
+		}
+		_, err := tx.ExecContext(ctx, query,
+			memberID, file.FileIndex, file.RelativePath, file.SizeBytes, piecesRoot,
+			BoolToSQLite(file.WantedAtAdmission), BoolToSQLite(file.MaterializedAtAdd),
+			BoolToSQLite(file.ReplaceableAtAdd), file.Status, file.SourceFileID, file.LastError,
+			admittedAt, admittedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("insert partial pool file %d: %w", file.FileIndex, err)
+		}
+	}
+	return replacedSourceIDs, nil
+}
+
+func pruneReAdmittedPartialPoolFiles(ctx context.Context, tx dbinterface.TxQuerier, memberID int64, files []CrossSeedPartialPoolMemberFile, existingFiles map[int]existingPartialPoolFile, replacedSourceIDs []int64) error {
+	incomingIndexes := make(map[int]struct{}, len(files))
+	for _, file := range files {
+		incomingIndexes[file.FileIndex] = struct{}{}
+	}
+	for fileIndex, existing := range existingFiles {
+		if _, retained := incomingIndexes[fileIndex]; !retained {
+			replacedSourceIDs = append(replacedSourceIDs, existing.id)
+		}
+	}
+	if len(replacedSourceIDs) > 0 {
+		if err := quarantineReplacedPartialPoolSources(ctx, tx, replacedSourceIDs); err != nil {
+			return err
+		}
+	}
+
+	indexPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(files)), ",")
+	args := []any{memberID}
+	for _, file := range files {
+		args = append(args, file.FileIndex)
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
+		DELETE FROM cross_seed_partial_pool_member_files
+		WHERE member_id = ? AND file_index NOT IN (%s)
+	`, indexPlaceholders), args...); err != nil {
+		return fmt.Errorf("remove stale partial pool member files: %w", err)
+	}
+	return nil
+}
+
+func quarantineReplacedPartialPoolSources(ctx context.Context, tx dbinterface.TxQuerier, replacedSourceIDs []int64) error {
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(replacedSourceIDs)), ",")
+	reason := "propagation source was replaced during re-admission"
+	hardlinkDependencies := fmt.Sprintf(`
+		WITH RECURSIVE hardlink_dependencies(id, member_id) AS (
+			SELECT child.id, child.member_id
+			FROM cross_seed_partial_pool_member_files child
+			JOIN cross_seed_partial_pool_members member ON member.id = child.member_id
+			WHERE member.mode = ? AND child.source_file_id IN (%s)
+			UNION
+			SELECT child.id, child.member_id
+			FROM cross_seed_partial_pool_member_files child
+			JOIN cross_seed_partial_pool_members member ON member.id = child.member_id
+			JOIN hardlink_dependencies parent ON child.source_file_id = parent.id
+			WHERE member.mode = ?
+		)
+	`, placeholders)
+	dependencyArgs := make([]any, 0, len(replacedSourceIDs)+2)
+	dependencyArgs = append(dependencyArgs, CrossSeedPartialPoolModeHardlink)
+	for _, id := range replacedSourceIDs {
+		dependencyArgs = append(dependencyArgs, id)
+	}
+	dependencyArgs = append(dependencyArgs, CrossSeedPartialPoolModeHardlink)
+
+	memberArgs := append([]any{}, dependencyArgs...)
+	memberArgs = append(memberArgs,
+		CrossSeedPartialPoolMemberStatusManual,
+		BoolToSQLite(true),
+		reason,
+		CrossSeedPartialPoolMemberStatusRemoved,
+	)
+	if _, err := tx.ExecContext(ctx, hardlinkDependencies+`
+		UPDATE cross_seed_partial_pool_members
+		SET status = ?, review_pause_pending = ?, resume_attempts = NULL,
+		    recovery_attempts = NULL, last_error = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE status <> ? AND id IN (
+			SELECT member_id FROM hardlink_dependencies
+		)
+	`, memberArgs...); err != nil {
+		return fmt.Errorf("quarantine replaced hardlink members: %w", err)
+	}
+
+	reflinkArgs := append([]any{}, dependencyArgs...)
+	reflinkArgs = append(reflinkArgs,
+		CrossSeedPartialPoolFileStatusMissing,
+		CrossSeedPartialPoolFileStatusPropagating,
+		CrossSeedPartialPoolFileStatusVerifying,
+		CrossSeedPartialPoolModeReflink,
+	)
+	for _, id := range replacedSourceIDs {
+		reflinkArgs = append(reflinkArgs, id)
+	}
+	releaseReflinkDependencies := fmt.Sprintf(`
+		UPDATE cross_seed_partial_pool_member_files
+		SET status = ?, source_file_id = NULL, last_error = '', updated_at = CURRENT_TIMESTAMP
+		WHERE status IN (?, ?)
+		  AND member_id IN (
+			SELECT id FROM cross_seed_partial_pool_members WHERE mode = ?
+		  )
+		  AND (
+			source_file_id IN (%s)
+			OR source_file_id IN (SELECT id FROM hardlink_dependencies)
+		  )
+	`, placeholders)
+	if _, err := tx.ExecContext(ctx, hardlinkDependencies+releaseReflinkDependencies, reflinkArgs...); err != nil {
+		return fmt.Errorf("release replaced reflink dependencies: %w", err)
+	}
+
+	fileArgs := append([]any{}, dependencyArgs...)
+	fileArgs = append(fileArgs,
+		CrossSeedPartialPoolFileStatusManual,
+		reason,
+	)
+	if _, err := tx.ExecContext(ctx, hardlinkDependencies+`
+		UPDATE cross_seed_partial_pool_member_files
+		SET status = ?, source_file_id = NULL, last_error = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id IN (SELECT id FROM hardlink_dependencies)
+	`, fileArgs...); err != nil {
+		return fmt.Errorf("quarantine replaced hardlink dependencies: %w", err)
+	}
+	return nil
 }
 
 func getOrCreatePartialPool(ctx context.Context, tx dbinterface.TxQuerier, sourceInstanceID int, sourceTorrentKey string) (int64, error) {
@@ -668,7 +713,6 @@ func partialPoolMemberByID(pool *CrossSeedPartialPool, id int64) *CrossSeedParti
 	return nil
 }
 
-// GetPartialPool loads a pool and all of its members/files.
 func (s *CrossSeedStore) GetPartialPool(ctx context.Context, poolID int64) (*CrossSeedPartialPool, error) {
 	pool := &CrossSeedPartialPool{}
 	err := s.db.QueryRowContext(ctx, `
@@ -810,20 +854,14 @@ func scanPartialPoolFile(scanner rowScanner) (*CrossSeedPartialPoolMemberFile, e
 	return file, nil
 }
 
-// ListPartialPoolsForReconciliation loads every pool with a non-removed
-// member. Manual and complete members remain observable for completion/removal.
 func (s *CrossSeedStore) ListPartialPoolsForReconciliation(ctx context.Context) ([]*CrossSeedPartialPool, error) {
 	return s.listPartialPoolsForReconciliation(ctx, "")
 }
 
-// ListActivePartialPoolsForReconciliation loads scheduled pools with a
-// non-removed member.
 func (s *CrossSeedStore) ListActivePartialPoolsForReconciliation(ctx context.Context) ([]*CrossSeedPartialPool, error) {
 	return s.listPartialPoolsForReconciliation(ctx, CrossSeedPartialPoolStatusActive)
 }
 
-// ListPartialPoolMembersAwaitingRecheckObservation loads only members whose
-// requested piece check has not yet been observed.
 func (s *CrossSeedStore) ListPartialPoolMembersAwaitingRecheckObservation(ctx context.Context) ([]*CrossSeedPartialPoolMember, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, pool_id, instance_id, torrent_key, infohash_v1, infohash_v2,
@@ -900,7 +938,6 @@ func (s *CrossSeedStore) listPartialPoolsForReconciliation(ctx context.Context, 
 	return pools, nil
 }
 
-// ResolvePartialPoolMember finds a member by any hash alias and reactivates its pool.
 func (s *CrossSeedStore) ResolvePartialPoolMember(ctx context.Context, instanceID int, aliases ...string) (*CrossSeedPartialPool, *CrossSeedPartialPoolMember, error) {
 	normalized := normalizedPartialPoolAliases(aliases)
 	memberID, poolID, found, err := findPartialPoolMemberByAliases(ctx, s.db, instanceID, normalized)
@@ -917,7 +954,6 @@ func (s *CrossSeedStore) ResolvePartialPoolMember(ctx context.Context, instanceI
 	return pool, partialPoolMemberByID(pool, memberID), nil
 }
 
-// SetPartialPoolStatus changes pool scheduling state.
 func (s *CrossSeedStore) SetPartialPoolStatus(ctx context.Context, poolID int64, status string) error {
 	if status != CrossSeedPartialPoolStatusActive && status != CrossSeedPartialPoolStatusDormant {
 		return fmt.Errorf("invalid partial pool status %q", status)
@@ -929,8 +965,6 @@ func (s *CrossSeedStore) SetPartialPoolStatus(ctx context.Context, poolID int64,
 	return nil
 }
 
-// SetPartialPoolStatusIfUnchanged changes scheduling state only when the pool
-// has not been updated since it was loaded.
 func (s *CrossSeedStore) SetPartialPoolStatusIfUnchanged(ctx context.Context, poolID int64, updatedAt time.Time, status string) (bool, error) {
 	if status != CrossSeedPartialPoolStatusActive && status != CrossSeedPartialPoolStatusDormant {
 		return false, fmt.Errorf("invalid partial pool status %q", status)
@@ -947,7 +981,6 @@ func (s *CrossSeedStore) SetPartialPoolStatusIfUnchanged(ctx context.Context, po
 	return changed == 1, err
 }
 
-// TransitionPartialPoolMember applies an expected-state and admission compare-and-set.
 func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, memberID int64, admittedAt time.Time, expected []string, status string, mutation PartialPoolMemberMutation) (bool, error) {
 	if len(expected) == 0 || !validPartialPoolMemberStatus(status) {
 		return false, errors.New("partial pool member transition requires valid states")
@@ -1016,9 +1049,6 @@ func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, member
 	return changed == 1, err
 }
 
-// ClaimPartialPoolDownloader locks the pool row before inspecting current pool
-// membership, then claims at most one eligible downloader whose admission
-// generation matches admittedAt.
 func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberID, downloadedBytes int64, admittedAt, now, admissionCutoff time.Time) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1112,7 +1142,6 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 	return true, nil
 }
 
-// TransitionPartialPoolFile applies an expected-state and admission compare-and-set.
 func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID int64, admittedAt time.Time, expected []string, status string, mutation PartialPoolFileMutation) (bool, error) {
 	if len(expected) == 0 || !validPartialPoolFileStatus(status) {
 		return false, errors.New("partial pool file transition requires valid states")
@@ -1147,10 +1176,6 @@ func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID i
 	return changed == 1, err
 }
 
-// TransitionPartialPoolHardlinkRollback atomically marks a verifying file
-// missing, clears its source, and records the member's pending follow-up check.
-// It returns false without committing when either compare-and-set no longer
-// matches, and returns an error for invalid input or database failures.
 func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Context, memberID, fileID int64, memberAdmittedAt, fileAdmittedAt time.Time, memberStatus string) (bool, error) {
 	if memberID == 0 || fileID == 0 || (memberStatus != CrossSeedPartialPoolMemberStatusVerifying && memberStatus != CrossSeedPartialPoolMemberStatusRechecking) {
 		return false, errors.New("partial pool hardlink rollback requires valid member and file state")
@@ -1198,8 +1223,6 @@ func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Conte
 	return true, nil
 }
 
-// MarkPartialPoolMemberRemoved records qBittorrent removal only while the
-// member's pool and admission timestamp still match, then deletes an empty pool.
 func (s *CrossSeedStore) MarkPartialPoolMemberRemoved(ctx context.Context, poolID, memberID int64, admittedAt time.Time, reason string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1246,7 +1269,6 @@ func (s *CrossSeedStore) MarkPartialPoolMemberRemoved(ctx context.Context, poolI
 	return tx.Commit()
 }
 
-// PruneEmptyPartialPools removes source anchors left after instance cascades.
 func (s *CrossSeedStore) PruneEmptyPartialPools(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		DELETE FROM cross_seed_partial_pools

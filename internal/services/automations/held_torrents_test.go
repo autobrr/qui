@@ -12,7 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// fakeHeld is the Transfer store: the reason that qui holds each torrent.
 type fakeHeld map[string]error
 
 func (f fakeHeld) HoldCheck(int) func(hash string) bool {
@@ -22,9 +21,6 @@ func (f fakeHeld) HoldCheck(int) func(hash string) bool {
 	return func(hash string) bool { return f[hash] != nil }
 }
 
-// No rule deletes or moves a torrent that a Transfer holds or a helper
-// torrent. A torrent of the user with the helper tag and no registry row is a
-// normal torrent.
 func TestRulesLeaveOutTorrentsThatQuiHolds(t *testing.T) {
 	const (
 		claimed = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

@@ -30,7 +30,6 @@ const (
 	reasonGone       = "The Share torrent is gone from the client."
 )
 
-// reasonCodes gives each reason a code that stays when its text changes.
 var reasonCodes = map[string]string{
 	reasonDownloaded: "downloaded",
 	reasonExpired:    "expired",
@@ -49,10 +48,6 @@ func (sh *Share) EndReasonCode() string {
 	return code
 }
 
-// end ends an active Share: the tracker forgets it, and qui removes the
-// Share torrent from the client, never its files. The Share stays ending
-// while the client is offline. by names what ended it, for the log. Call it
-// under opMu.
 func (s *Service) end(ctx context.Context, sh *Share, reason, by string) error {
 	sh.State, sh.EndReason = StateEnding, reason
 	if err := s.deps.Store.SetState(ctx, sh.ID, StateEnding, reason, sh.EndedAt); err != nil {
@@ -65,8 +60,6 @@ func (s *Service) end(ctx context.Context, sh *Share, reason, by string) error {
 	return s.removeTorrent(ctx, sh)
 }
 
-// removeTorrent removes the Share torrent of an ending Share, and ends the
-// Share when the torrent is gone from the client. Call it under opMu.
 func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 	gone, err := s.gone(ctx, sh)
 	if err == nil && !gone {
@@ -184,12 +177,6 @@ func (s *Service) endReason(ctx context.Context, sh *Share, view *clientView) st
 	return ""
 }
 
-// readPeers keeps the connected peers and the uploaded bytes of the Share
-// torrent of a Share on an outside tracker, as best effort, and reports
-// whether a peer has every piece. qBittorrent drops a peer from its list
-// when that peer has every piece, so the list shows no complete peer: a
-// download counts as complete when the client sent as many bytes as the
-// torrent has and no peer in the list still downloads.
 func (s *Service) readPeers(ctx context.Context, sh *Share, helper *qbt.Torrent) bool {
 	peers, err := s.deps.Sync.GetTorrentPeers(ctx, sh.InstanceID, sh.HelperHash)
 	s.mu.Lock()
@@ -279,10 +266,6 @@ var changeReasons = map[qbittorrent.TorrentChange]string{
 	qbittorrent.TorrentChangeRename: reasonRenamed,
 }
 
-// BeforeTorrentChange ends the active Shares of the torrents before qui
-// deletes, moves, or renames them, so that the Share torrent leaves the
-// client first. It looks up the Shares before it takes opMu: the delete of a
-// Share torrent comes back here with a hash that no Share has.
 func (s *Service) BeforeTorrentChange(ctx context.Context, instanceID int, hashes []string, change qbittorrent.TorrentChange) {
 	ids := make([]int64, 0, len(hashes))
 	s.mu.Lock()

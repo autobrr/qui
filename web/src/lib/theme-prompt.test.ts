@@ -38,7 +38,6 @@ describe("buildThemePrompt", () => {
     }
   })
 
-  // ADR 0053: the names are a public contract, so the docs list each one.
   it("uses the theme areas that the docs list", () => {
     const docsAreas = docsTableRows("| Name | Area |").map(row => row.match(/^\| `([a-z-]+)` \|/)?.[1])
     expect(docsAreas).toEqual(THEME_AREAS.map(area => area.name))

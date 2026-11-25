@@ -51,7 +51,6 @@ import { useTranslation } from "react-i18next"
 
 const CHART_ID = "statistics-table"
 
-// The number of rows that the table shows at first, and that Show more adds on a desktop.
 const FIRST_ROWS = 10
 
 type Live = NonNullable<GroupTotals["live"]>
@@ -65,10 +64,8 @@ interface Sort {
 
 const FIRST_SORT: Sort = { column: "uploaded", descending: true }
 
-// Only the table by Tracker group has these columns.
 const LIVE_COLUMNS: SortColumn[] = ["torrents", "size", "seeded"]
 
-/** The number that a column sorts a row by. A row that shows no value in the column has none, and sorts last. */
 function sortNumber(row: GroupTotals, column: Exclude<SortColumn, "group">): number | undefined {
   switch (column) {
     case "uploaded":
@@ -92,32 +89,20 @@ function sortNumber(row: GroupTotals, column: Exclude<SortColumn, "group">): num
 interface GroupTableProps {
   grouping: TableGrouping
   onGroupingChange: (grouping: TableGrouping) => void
-  // Undefined while the rows load.
   rows?: GroupTotals[]
   error?: Error
-  // Set when the live numbers of each instance loaded.
   liveLoaded: boolean
   liveError?: Error
   period: StatisticsPeriod
   since?: Date
-  // The period choice and the instance selection, so that the detail band keeps its chart only for the same series.
   series: string
-  // The period choice with the days of a custom range, and the instance selection. A new one shows ten rows again.
   listScope: string
   instances: TransferHistoryInstance[]
-  // The Tracker groups that have a series color in the chart, in series order.
   seriesGroups: string[]
   displayName: (group: string, grouping: TransferHistoryGrouping) => string
-  // Loads the rows of a grouping, or of each other grouping, when the user is about to pick one.
   onPrefetch?: (grouping?: TableGrouping) => void
 }
 
-/**
- * The table of the period by Tracker group, category, or release attribute. A click on a row opens its detail band below
- * it. A narrow table shows each row as a line with the upload, and the other numbers below the name. The table shows
- * ten rows at first. Show more adds ten rows on a desktop, and Show all shows each row on a phone. On a desktop, a click
- * on a column header sorts all rows by that column, and a second click turns the order. A phone has no sort.
- */
 export function GroupTable({ listScope, grouping, onGroupingChange, rows, error, liveLoaded, liveError, period, since, series, instances, seriesGroups, displayName, onPrefetch }: GroupTableProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -127,7 +112,6 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
   const [pickedSort, setPickedSort] = useState(FIRST_SORT)
   const withBaseline = !period.from
 
-  // Only a switch of the grouping keeps the old rows, so that the table never shows the numbers of another period or selection.
   const scope = `${period.from?.getTime()}:${period.to.getTime()}:${instances.map(instance => instance.instanceId).join(",")}`
   const limitKey = `${listScope}:${grouping}`
   const [kept, setKept] = useState<{ scope: string; grouping: TableGrouping; limitKey: string; rows: GroupTotals[] }>()
@@ -138,7 +122,6 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
   const shownRows = rows ?? last?.rows
   const shownGrouping = rows ? grouping : last?.grouping ?? grouping
   const shownLimitKey = rows ? limitKey : last?.limitKey ?? limitKey
-  // More rows end with the rows that they opened, so a return to an earlier choice shows ten rows again.
   if (more !== undefined && more.key !== shownLimitKey) {
     setMore(undefined)
   }
@@ -168,7 +151,6 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
       values && values.size > 0 ? t("table.seededValue", { value: formatSeeded.format(values.uploaded / values.size) }) : "–",
     ]
   }
-  // A table under 28rem has no room for the three numbers on one line, so a row shows its Buffer in its detail band.
   const periodFacts = (bytes: TransferHistoryBytes, bufferClassName?: string): FactItem[] => [
     [t("table.columns.downloaded"), formatBytes(bytes.downloaded)],
     [t("table.columns.ratio"), formatRatio(bytes) ?? "–"],
@@ -210,7 +192,6 @@ export function GroupTable({ listScope, grouping, onGroupingChange, rows, error,
       return x < y ? -turn : turn
     })
   }, [shownRows, sort, locale, displayName, shownGrouping])
-  // A number column shows its highest value first, and the name column starts at A.
   const sortBy = (column: SortColumn) => setPickedSort({ column, descending: sort.column === column ? !sort.descending : column !== "group" })
   const head = (column: SortColumn, label: string, className?: string) => narrow
     ? <TableHead className={className}>{label}</TableHead>
@@ -381,7 +362,6 @@ interface SortHeadProps {
   children: ReactNode
 }
 
-/** A column header that sorts the table by its column. The arrow shows on the column of the sort, and on the header under the pointer. */
 function SortHead({ column, sort, onSort, className, children }: SortHeadProps) {
   const sorted = sort.column === column ? (sort.descending ? "desc" : "asc") : false
   return (
@@ -415,10 +395,8 @@ interface GroupDetailProps {
   since?: Date
   series: string
   instances: TransferHistoryInstance[]
-  // The index of the series color of the group, or -1.
   seriesIndex: number
   name: string
-  // The live numbers of a Tracker group, which a narrow table shows only here.
   liveFacts?: FactItem[]
 }
 
@@ -428,14 +406,12 @@ interface ShownRows {
   period: StatisticsPeriod
 }
 
-/** The band below an open row: the share of the upload, the upload from cross-seeds, the best and the average bucket, and the chart of the group. */
 function GroupDetail({ group, grouping, row, total, period, since, series, instances, seriesIndex, name, liveFacts }: GroupDetailProps) {
   const colors = useSeriesColors()
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { preferences } = usePersistedDateTimePreferences()
   const hour12 = preferences.timeFormat === "12h"
-  // qui stores the category totals and the bytes of each torrent for each UTC day, so only a Tracker group has hours.
   const unit: ChartUnit = grouping === "tracker" ? period.unit : "day"
   const transfer = useTransferHistoryRows(instances, {
     from: period.from,
@@ -446,7 +422,6 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
     timeZone: grouping === "tracker" && unit === "day" ? BROWSER_TIME_ZONE : undefined,
   })
 
-  // After the period moves, the band keeps its chart until the rows of the new period load.
   const key = `${series}:${grouping}:${group}`
   const [last, setLast] = useState<ShownRows>()
   if (transfer.rows && last?.rows !== transfer.rows) {
@@ -461,14 +436,12 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
       return { bars: buildCategoryBars(shown.rows, shown.period, since), to: shown.period.to }
     }
     if (grouping !== "tracker") {
-      // A release attribute reads the torrent rows, which hold a year row for each year that qui folded.
       return { bars: buildTorrentBars(shown.rows.flat(), shown.period, since), to: shown.period.to }
     }
     const range = chartRange(shown.period, since)
     return { bars: range && buildBars(shown.rows, range, unit), to: shown.period.to }
   }, [transfer.rows, period, last, key, since, unit, grouping])
   const bars = shownBars?.bars
-  // Daily bars of a long period are too thin to read, so its chart shows weeks.
   const weekly = showsYearView(period, since)
   const chartBars = useMemo(() => bars && weekly ? weekBars(bars) : bars, [bars, weekly])
   const best = bars && bestBar(bars, unit)
@@ -523,13 +496,11 @@ function GroupDetail({ group, grouping, row, total, period, since, series, insta
 
 const GROUP_LIMIT = 5
 
-/** The torrents of a group with the most upload in the period. */
 function GroupTorrents({ group, grouping, name, period, series, instances }: { group: string; grouping: TransferHistoryGrouping; name: string; period: StatisticsPeriod; series: string; instances: TransferHistoryInstance[] }) {
   const { t } = useTranslation("statistics")
   const torrentName = useTorrentName()
   const { torrents: loaded, error } = useTopTorrents(instances, period, GROUP_LIMIT, { grouping, name: group })
 
-  // After the period moves, the list keeps its torrents until the torrents of the new period load, as the chart does.
   const key = `${series}:${grouping}:${group}`
   const [last, setLast] = useState<{ key: string; torrents: TopTorrent[] }>()
   if (loaded && last?.torrents !== loaded) {

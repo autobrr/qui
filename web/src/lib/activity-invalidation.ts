@@ -6,16 +6,6 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
 import type { ActivityEvent } from "@/types"
 
-/**
- * activityQueryKeys returns the react-query key prefixes to invalidate for a
- * qui-owned server activity event.
- *
- * invalidateQueries matches by prefix, so a returned key like
- * ["dir-scan", "directory", 5] also invalidates
- * ["dir-scan", "directory", 5, "runs", 10] etc. Events that carry an instanceId
- * scope invalidation to that instance; without one we fall back to the whole
- * feature prefix.
- */
 export function activityQueryKeys(event: ActivityEvent): QueryKey[] {
   const id = event.instanceId
 
@@ -53,23 +43,12 @@ export function activityQueryKeys(event: ActivityEvent): QueryKey[] {
   }
 }
 
-/** invalidateForActivity invalidates every query key matching the event. */
 export function invalidateForActivity(queryClient: QueryClient, event: ActivityEvent): void {
   for (const queryKey of activityQueryKeys(event)) {
     queryClient.invalidateQueries({ queryKey })
   }
 }
 
-/**
- * ACTIVITY_FEATURE_PREFIXES is the union of every activity-backed query family,
- * at feature-prefix granularity (no instance/resource scoping). It must cover the
- * root of every key activityQueryKeys can emit; the drift-guard test enforces that.
- *
- * It is used on stream reconnect to reconcile feeds that dropped their idle
- * refetch interval: activity events emitted while the EventSource was down are not
- * replayed to the fresh per-session topic, so without this a missed event would
- * leave a feed stale until the next event.
- */
 export const ACTIVITY_FEATURE_PREFIXES: QueryKey[] = [
   ["instance-backups"],
   ["dir-scan"],
@@ -88,12 +67,6 @@ export const ACTIVITY_FEATURE_PREFIXES: QueryKey[] = [
   ["client-settings"],
 ]
 
-/**
- * invalidateAllActivity invalidates every activity-backed query family. Prefix
- * matching means only mounted (active) queries refetch; inactive ones are just
- * marked stale. Call this when the activity stream reconnects so idle feeds
- * reconcile after a gap, without reintroducing timer-based polling.
- */
 export function invalidateAllActivity(queryClient: QueryClient): void {
   for (const queryKey of ACTIVITY_FEATURE_PREFIXES) {
     queryClient.invalidateQueries({ queryKey })

@@ -21,146 +21,73 @@ import (
 
 const maxConditionDepth = 20
 
-// minContainsNameLength is the minimum name length for CONTAINS_IN matching
-// to avoid surprising matches on short names.
 const minContainsNameLength = 10
 
-// CategoryEntry stores torrent info for category-based lookups.
 type CategoryEntry struct {
-	Hash           string // torrent hash for self-exclusion
-	Name           string // lowercased name (for EXISTS_IN exact match)
-	NormalizedName string // normalizeName(Name) result, used for CONTAINS_IN matching
+	Hash           string
+	Name           string
+	NormalizedName string
 }
 
-// EvalContext provides additional context for condition evaluation.
 type EvalContext struct {
-	// The deletion projection uses the same snapshot and hardlink index as execution.
 	torrentsByHash map[string]*qbt.Torrent
 	hardlinkIndex  *HardlinkIndex
-	// crossSeeds holds the groups of the run session, when the rules need one.
-	crossSeeds *crossSeedGroups
-	// moveChecks holds what askActionGroups found during one processTorrents call.
-	moveChecks map[moveCheckKey]checkedMove
+	crossSeeds     *crossSeedGroups
+	moveChecks     map[moveCheckKey]checkedMove
 
-	// trackers holds the tracker list of each torrent, when the rules read trackers.
-	trackers qbittorrent.TrackerLookup
-	// TrackerHealth is the tracker health snapshot of the instance. It is nil
-	// when the instance has no tracker health yet.
-	TrackerHealth *qbittorrent.TrackerHealthSnapshot
-	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent, both)
-	HardlinkScopeByHash map[string]string
-	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
-	// Same values as HardlinkScopeByHash but considers files from all instances.
-	HardlinkCrossScopeByHash map[string]string
-	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
-	HasMissingFilesByHash map[string]bool
-	// HasSkippedFilesByHash maps torrent hash to whether any file has priority 0 (Do not download)
-	HasSkippedFilesByHash map[string]bool
-	// InstanceCanRead gates the missing-files field.
-	InstanceCanRead bool
-	// InstanceHasTrustedIdentity gates the hardlink fields, hardlink grouping
-	// and includeHardlinks. Each of them can add torrents to a delete, so a
-	// remote instance, whose identity only its host asserts, never reads them
-	// as known.
+	trackers                   qbittorrent.TrackerLookup
+	TrackerHealth              *qbittorrent.TrackerHealthSnapshot
+	HardlinkScopeByHash        map[string]string
+	HardlinkCrossScopeByHash   map[string]string
+	HasMissingFilesByHash      map[string]bool
+	HasSkippedFilesByHash      map[string]bool
+	InstanceCanRead            bool
 	InstanceHasTrustedIdentity bool
-	// freeSpaceLedgers holds the free space ledger of each rule that reads FREE_SPACE, by rule ID.
-	freeSpaceLedgers map[int]*freeSpaceLedger
-	// activeFreeSpace is the ledger of the rule that enterRule entered, or nil.
-	activeFreeSpace *freeSpaceLedger
-	// CrossSeedFilesByHash contains cycle-local file lists used to verify cross-seed groups.
-	CrossSeedFilesByHash map[string]qbt.TorrentFiles
-	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
-	// Used for hardlink_signature grouping and grouped-condition evaluation.
-	HardlinkSignatureByHash map[string]string
+	freeSpaceLedgers           map[int]*freeSpaceLedger
+	activeFreeSpace            *freeSpaceLedger
+	CrossSeedFilesByHash       map[string]qbt.TorrentFiles
+	HardlinkSignatureByHash    map[string]string
 
-	// CategoryIndex maps lowercased category → lowercased name → set of hashes.
-	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
 	CategoryIndex map[string]map[string]map[string]struct{}
 
-	// CategoryNames maps lowercased category → slice of CategoryEntry.
-	// Used for CONTAINS_IN iteration (stores pre-normalized names).
 	CategoryNames map[string][]CategoryEntry
 
-	// NowUnix is the current Unix timestamp, used for age field evaluation.
-	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
 	NowUnix int64
 
-	// CrossInstanceHashSet contains hashes of torrents that exist on at least one other instance.
-	// Built from SyncManager cached data when rules use EXISTS_ON_OTHER_INSTANCE.
-	CrossInstanceHashSet map[string]struct{}
-	// CrossInstanceSeedingHashSet contains hashes of torrents that are actively seeding on at least one other instance.
-	// Built from SyncManager cached data when rules use SEEDING_ON_OTHER_INSTANCE.
+	CrossInstanceHashSet        map[string]struct{}
 	CrossInstanceSeedingHashSet map[string]struct{}
 
-	// SameInstanceCrossSeedHashSet contains hashes of torrents that have a cross-seed
-	// (same data, decided per file) on the same instance.
-	SameInstanceCrossSeedHashSet map[string]struct{}
-	// SameInstanceCrossSeedSeedingHashSet contains hashes of torrents that have a cross-seed
-	// seeding (Progress >= 1.0) on the same instance.
+	SameInstanceCrossSeedHashSet        map[string]struct{}
 	SameInstanceCrossSeedSeedingHashSet map[string]struct{}
-	// SameInstanceCrossSeedTagsByHash maps a torrent hash to the raw Tags strings of
-	// its same-instance cross-seeds (self excluded). Built when rules use CROSS_SEED_TAGS.
-	SameInstanceCrossSeedTagsByHash map[string][]string
-	// SameInstanceContentByHash maps a torrent hash to the torrents on the same
-	// instance that share at least one file on disk with it (self excluded).
-	// Only tests fill it, for a context without a run session; buildCrossSeedGroups reads it.
-	SameInstanceContentByHash map[string][]string
-	// SameInstanceCrossSeedUnknown and CrossInstanceUnknown hold the torrents
-	// whose cross-seed checks on that side are incomplete for this run.
-	// Only confirmed positive existence or seeding values remain known, so a
-	// rule that tests for "no cross-seed" cannot act on a read error.
-	SameInstanceCrossSeedUnknown map[string]struct{}
-	CrossInstanceUnknown         map[string]struct{}
-	// CrossInstanceSharedHashSet holds the torrents that share a file with a
-	// torrent on another instance, and CrossInstanceSharedUnknown the torrents
-	// that qui could not check. OfflineLocalInstances names the offline
-	// instances with local file access. Built for the delete modes that
-	// preserve or include cross-seeds; otherInstanceKeepsFiles reads them.
-	CrossInstanceSharedHashSet map[string]struct{}
-	CrossInstanceSharedUnknown map[string]struct{}
-	OfflineLocalInstances      []string
+	SameInstanceCrossSeedTagsByHash     map[string][]string
+	SameInstanceContentByHash           map[string][]string
+	SameInstanceCrossSeedUnknown        map[string]struct{}
+	CrossInstanceUnknown                map[string]struct{}
+	CrossInstanceSharedHashSet          map[string]struct{}
+	CrossInstanceSharedUnknown          map[string]struct{}
+	OfflineLocalInstances               []string
 
-	// SeasonPackSet holds one seasonPackKey per single-season pack on this
-	// instance. Built when rules use SEASON_PACK_STATUS. Nil means not built:
-	// the status is unknown and never matches.
-	SeasonPackSet map[string]struct{}
-	// SeasonPackSetAnyInstance is the same over every active instance, for
-	// SEASON_PACK_STATUS_ANY_INSTANCE.
+	SeasonPackSet            map[string]struct{}
 	SeasonPackSetAnyInstance map[string]struct{}
 
-	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
-	// Read by the TRACKER and TRACKERS conditions, and by UseTrackerAsTag with the
-	// UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
 
-	// CategorySavePaths maps category name to its resolved save path ("" is the
-	// default save path). Built only when a move or export path uses
-	// .CategorySavePath or .DefaultSavePath.
 	CategorySavePaths map[string]string
 
-	// ReleaseParser caches parsed release metadata for RLS-derived fields.
 	ReleaseParser *releases.Parser
 
-	// ActiveRuleID is used for rule-scoped evaluation helpers (grouping, free space sources, etc).
-	// It is set by the automations processor before evaluating a rule.
 	ActiveRuleID int
 
-	// activeGroupIndex is the currently active (rule-scoped) grouping index.
 	activeGroupIndex *groupIndex
 
-	// groupIndexCache caches group indices per rule ID + group ID to avoid rebuilding.
-	groupIndexCache map[int]map[string]*groupIndex
-	// groupConditionUsageByRule caches which grouping IDs are referenced by grouped condition fields.
+	groupIndexCache           map[int]map[string]*groupIndex
 	groupConditionUsageByRule map[int]groupingConditionUsage
 }
 
-// separatorReplacer replaces common torrent name separators with spaces.
 var separatorReplacer = strings.NewReplacer(".", " ", "_", " ", "-", " ")
 
-// whitespaceCollapser collapses multiple spaces into one.
 var whitespaceCollapser = regexp.MustCompile(`\s+`)
 
-// Lowercase before Unicode folding for ẞ, and after for letters produced by decomposition.
 func normalizeName(s string) string {
 	s = stringutils.NormalizeUnicode(normalizeLower(s))
 	s = normalizeLower(s)
@@ -169,18 +96,14 @@ func normalizeName(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// BuildCategoryIndex builds the category lookup structures from a list of torrents.
-// Returns both the CategoryIndex (for O(1) EXISTS_IN) and CategoryNames (for CONTAINS_IN iteration).
 func BuildCategoryIndex(torrents []*qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]CategoryEntry) {
 	categoryIndex := make(map[string]map[string]map[string]struct{})
 	categoryNames := make(map[string][]CategoryEntry)
 
 	for _, t := range torrents {
-		// Use lowercased + trimmed category as key (empty string is valid for uncategorized)
 		catKey := normalizeLowerTrim(t.Category)
 		nameLower := normalizeLower(t.Name)
 
-		// Build CategoryIndex for O(1) EXISTS_IN lookup
 		if categoryIndex[catKey] == nil {
 			categoryIndex[catKey] = make(map[string]map[string]struct{})
 		}
@@ -189,7 +112,6 @@ func BuildCategoryIndex(torrents []*qbt.Torrent) (map[string]map[string]map[stri
 		}
 		categoryIndex[catKey][nameLower][t.Hash] = struct{}{}
 
-		// Build CategoryNames for CONTAINS_IN iteration
 		categoryNames[catKey] = append(categoryNames[catKey], CategoryEntry{
 			Hash:           t.Hash,
 			Name:           nameLower,
@@ -200,33 +122,27 @@ func BuildCategoryIndex(torrents []*qbt.Torrent) (map[string]map[string]map[stri
 	return categoryIndex, categoryNames
 }
 
-// existsInCategory checks if a different torrent with the exact same name exists in the target category.
 func existsInCategory(torrentHash, torrentName, targetCategory string, ctx *EvalContext) bool {
 	if ctx == nil || ctx.CategoryIndex == nil {
 		return false
 	}
 
-	// Normalize inputs
 	catKey := normalizeLowerTrim(targetCategory)
-	// Treat all-whitespace as "no match" (but empty string is valid for uncategorized)
 	if targetCategory != "" && catKey == "" {
 		return false
 	}
 	nameLower := normalizeLower(torrentName)
 
-	// Lookup category
 	nameMap, ok := ctx.CategoryIndex[catKey]
 	if !ok {
 		return false
 	}
 
-	// Lookup name
 	hashSet, ok := nameMap[nameLower]
 	if !ok {
 		return false
 	}
 
-	// Check if any hash in the set is different from the current torrent
 	for hash := range hashSet {
 		if hash != torrentHash {
 			return true
@@ -235,43 +151,33 @@ func existsInCategory(torrentHash, torrentName, targetCategory string, ctx *Eval
 	return false
 }
 
-// containsInCategory checks if a different torrent with a similar name exists in the target category.
-// Uses bidirectional contains matching with normalization.
 func containsInCategory(torrentHash, torrentName, targetCategory string, ctx *EvalContext) bool {
 	if ctx == nil || ctx.CategoryNames == nil {
 		return false
 	}
 
-	// Normalize inputs
 	catKey := normalizeLowerTrim(targetCategory)
-	// Treat all-whitespace as "no match" (but empty string is valid for uncategorized)
 	if targetCategory != "" && catKey == "" {
 		return false
 	}
 
-	// Skip if current torrent name is too short
 	normalizedCurrent := normalizeName(torrentName)
 	if len(normalizedCurrent) < minContainsNameLength {
 		return false
 	}
 
-	// Lookup category entries
 	entries, ok := ctx.CategoryNames[catKey]
 	if !ok {
 		return false
 	}
 
-	// Check each entry for bidirectional contains match
 	for _, entry := range entries {
-		// Skip self
 		if entry.Hash == torrentHash {
 			continue
 		}
-		// Skip entries with short normalized names
 		if len(entry.NormalizedName) < minContainsNameLength {
 			continue
 		}
-		// Bidirectional contains: either contains the other
 		if strings.Contains(normalizedCurrent, entry.NormalizedName) ||
 			strings.Contains(entry.NormalizedName, normalizedCurrent) {
 			return true
@@ -280,7 +186,6 @@ func containsInCategory(torrentHash, torrentName, targetCategory string, ctx *Ev
 	return false
 }
 
-// ConditionUsesField checks if a condition tree references a specific field.
 func ConditionUsesField(cond *RuleCondition, field ConditionField) bool {
 	if cond == nil {
 		return false
@@ -296,7 +201,6 @@ func ConditionUsesField(cond *RuleCondition, field ConditionField) bool {
 	return false
 }
 
-// evaluateTime returns the current time, using ctx.NowUnix if provided.
 func evaluateTime(ctx *EvalContext) time.Time {
 	if ctx != nil && ctx.NowUnix > 0 {
 		return time.Unix(ctx.NowUnix, 0)
@@ -304,22 +208,16 @@ func evaluateTime(ctx *EvalContext) time.Time {
 	return time.Now()
 }
 
-// EvaluateConditionWithContext recursively evaluates a condition against a torrent with optional context.
-// Returns true if the torrent matches the condition.
 func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext, depth int) bool {
 	matched, known := evaluateCondition(cond, torrent, ctx, depth)
 	return known && matched
 }
 
-// evaluateCondition keeps unknown filesystem data separate from a known non-match.
-// Negation cannot turn unknown data into a match, including inside nested groups.
 func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext, depth int) (matched, known bool) {
 	if cond == nil || depth > maxConditionDepth {
 		return false, true
 	}
 
-	// Compile regex if needed, but skip for EXISTS_IN/CONTAINS_IN operators
-	// (cond.Value is a category name, not a pattern)
 	if cond.Operator != OperatorExistsIn && cond.Operator != OperatorContainsIn {
 		if cond.Regex || cond.Operator == OperatorMatches {
 			if err := cond.CompileRegex(); err != nil {
@@ -336,11 +234,9 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 	var result bool
 	known = true
 
-	// Handle logical operators (AND/OR) with child conditions
 	if cond.IsGroup() {
 		switch cond.Operator {
 		case OperatorOr:
-			// OR: at least one child must match
 			result = false
 			for _, child := range cond.Conditions {
 				childMatch, childKnown := evaluateCondition(child, torrent, ctx, depth+1)
@@ -355,7 +251,6 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 				}
 			}
 		case OperatorAnd:
-			// AND: all children must match
 			result = true
 			for _, child := range cond.Conditions {
 				childMatch, childKnown := evaluateCondition(child, torrent, ctx, depth+1)
@@ -363,11 +258,9 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 				result = result && childMatch
 			}
 		default:
-			// A group carrying a leaf operator has no children to combine.
 			result = false
 		}
 	} else {
-		// Leaf condition: evaluate against the torrent
 		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) || fieldHasNoValue(cond.Field, &torrent) {
 			return false, false
 		}
@@ -378,7 +271,6 @@ func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContex
 		return false, false
 	}
 
-	// Apply negation if specified
 	if cond.Negate {
 		result = !result
 	}
@@ -392,12 +284,9 @@ func (ctx *EvalContext) setFilesystemAccess(instance *models.Instance) {
 	ctx.InstanceHasTrustedIdentity = capabilities.TrustedIdentity
 }
 
-// evaluateLeaf evaluates a leaf condition (not a group) against a torrent.
 func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bool {
 	switch cond.Field {
-	// String fields
 	case FieldName:
-		// EXISTS_IN/CONTAINS_IN are special operators for cross-category lookups
 		if cond.Operator == OperatorExistsIn {
 			return existsInCategory(torrent.Hash, torrent.Name, cond.Value, ctx)
 		}
@@ -444,7 +333,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldRlsGroup:
 		return compareString(torrentRlsGroup(torrent, ctx), cond)
 	case FieldRlsYear:
-		// Numeric RLS-derived field. A parsed year of 0 means "unknown" and never matches.
 		return compareRlsYearIfSet(torrentRlsYear(torrent, ctx), cond)
 	case FieldState:
 		return compareState(torrent, cond, ctx)
@@ -457,7 +345,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
-	// Bytes fields (int64)
 	case FieldSize:
 		return compareInt64(torrent.Size, cond)
 	case FieldTotalSize:
@@ -480,9 +367,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		}
 		return compareInt64(ctx.activeFreeSpace.projectedFreeSpace(), cond)
 
-	// Time fields from qBittorrent:
-	// - Unix timestamps are evaluated as age durations (seconds since event).
-	// - Native seconds fields are evaluated directly.
 	case FieldAddedOn:
 		return compareAgeIfSet(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOn:
@@ -508,7 +392,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldInactiveSeedingTimeLimit:
 		return compareInt64(torrent.InactiveSeedingTimeLimit, cond)
 
-	// Age fields (time since timestamp). Kept as compatibility aliases.
 	case FieldAddedOnAge:
 		return compareAgeIfSet(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOnAge:
@@ -516,7 +399,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldLastActivityAge:
 		return compareAgeIfSet(torrent.LastActivity, cond, ctx)
 
-	// Float64 fields
 	case FieldRatio:
 		return compareFloat64(torrent.Ratio, cond)
 	case FieldRatioLimit:
@@ -524,10 +406,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldMaxRatio:
 		return compareFloat64(torrent.MaxRatio, cond)
 	case FieldUploadedOverSize:
-		// Cross-seed-safe alternative to FieldRatio: qBittorrent's Ratio is
-		// uploaded/downloaded, which explodes for cross-seeded torrents
-		// whose downloaded is near zero. Comparing against total_size
-		// sidesteps the broken denominator.
 		if torrent.TotalSize == 0 {
 			return false
 		}
@@ -539,7 +417,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldPopularity:
 		return compareFloat64(torrent.Popularity, cond)
 
-	// Speed fields (int64)
 	case FieldDlSpeed:
 		return compareInt64(torrent.DlSpeed, cond)
 	case FieldUpSpeed:
@@ -549,7 +426,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldUpLimit:
 		return compareInt64(torrent.UpLimit, cond)
 
-	// Count fields (int64)
 	case FieldNumSeeds:
 		return compareInt64(torrent.NumSeeds, cond)
 	case FieldNumLeechs:
@@ -569,7 +445,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		}
 		return compareInt64(size, cond)
 
-	// System time fields
 	case models.FieldSystemHour:
 		return compareInt64(int64(evaluateTime(ctx).Hour()), cond)
 	case models.FieldSystemMinute:
@@ -583,7 +458,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case models.FieldSystemYear:
 		return compareInt64(int64(evaluateTime(ctx).Year()), cond)
 
-	// Boolean fields
 	case FieldPrivate:
 		return compareBool(torrent.Private, cond)
 	case FieldAutoManaged:
@@ -614,7 +488,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		}
 		hasSkipped, ok := ctx.HasSkippedFilesByHash[torrent.Hash]
 		if !ok {
-			return false // Files not fetched - don't match
+			return false
 		}
 		return compareBool(hasSkipped, cond)
 
@@ -654,9 +528,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareBool(seeding, cond)
 
 	case FieldCrossSeedTags:
-		// Tags across this torrent and its same-instance cross-seeds: positive
-		// operators match when ANY copy carries a matching tag, NOT_* when none
-		// does. Without member data this degrades to the torrent's own tags.
 		parts := make([]string, 0, 2)
 		if torrent.Tags != "" {
 			parts = append(parts, torrent.Tags)
@@ -686,12 +557,10 @@ func compareState(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bo
 	case OperatorNotEqual:
 		return !matches
 	default:
-		// Preserve legacy behavior for non-state operators (even though the UI only offers EQUAL/NOT_EQUAL).
 		return compareString(string(torrent.State), cond)
 	}
 }
 
-// matchesStateValue reads "completed" as 100% progress, but sidebar Completed reads the state (#3870).
 func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool {
 	normalized := strings.TrimSpace(value)
 	if normalized == "" {
@@ -773,13 +642,10 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 		return ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealth(strings.ToLower(normalized))
 	}
 
-	// Fallback to raw torrent state (qBittorrent Web API value, e.g. "stalledUP").
 	return strings.EqualFold(string(torrent.State), normalized)
 }
 
-// compareString compares a string value against the condition.
 func compareString(value string, cond *RuleCondition) bool {
-	// Regex matching
 	if cond.Regex || cond.Operator == OperatorMatches {
 		if cond.Compiled == nil {
 			return false
@@ -809,10 +675,6 @@ func compareString(value string, cond *RuleCondition) bool {
 	}
 }
 
-// compareTrackers matches TRACKER and TRACKERS against every tracker the torrent
-// announces to. The qBittorrent tracker field holds the last tracker that answered,
-// so it can name a tracker that is down now. When no tracker answered yet, the field
-// is empty before qBittorrent 5.1 and holds the first tracker in the list from 5.1.
 func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
 	trackers := ctx.trackersOf(torrent.Hash)
 	candidates := make([]string, 0, len(trackers)*3+3)
@@ -825,8 +687,6 @@ func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext)
 
 func compareTrackerStatuses(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
 	for _, tracker := range ctx.trackersOf(torrent.Hash) {
-		// Skip DHT/PeX/LSD pseudo-trackers: they are always reported as Disabled with
-		// no message and would otherwise spuriously satisfy "disabled"/NOT_EQUAL queries.
 		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
 			continue
 		}
@@ -883,8 +743,6 @@ func matchesTrackerStatusValue(status int, value string) bool {
 
 func compareTrackerMessages(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
 	for _, tracker := range ctx.trackersOf(torrent.Hash) {
-		// Skip DHT/PeX/LSD pseudo-trackers: they carry no message and would otherwise
-		// make "message is nil" match nearly every torrent.
 		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
 			continue
 		}
@@ -915,11 +773,7 @@ func compareTrackerMessage(message string, cond *RuleCondition) bool {
 }
 
 func trackerCandidates(trackerURL string, ctx *EvalContext) []string {
-	// Candidates: raw URL, extracted domain, optional customization display name.
 	raw := strings.TrimSpace(trackerURL)
-	// DHT/PeX/LSD are peer-discovery mechanisms, not trackers. qBittorrent reports
-	// them both as entries and as the primary tracker, and they would otherwise match
-	// a "contains dht" query on nearly every public torrent.
 	if qbittorrent.IsPseudoTrackerLabel(raw) {
 		return nil
 	}
@@ -949,12 +803,10 @@ func trackerCandidates(trackerURL string, ctx *EvalContext) []string {
 }
 
 func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
-	// Preserve existing empty-string behavior (e.g., equals "").
 	if len(candidates) == 0 {
 		return compareString("", cond)
 	}
 
-	// De-duplicate case-insensitively while preserving order.
 	seen := make(map[string]struct{}, len(candidates))
 	uniq := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -974,15 +826,11 @@ func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
 			return cond.Compiled.MatchString(c)
 		})
 		if cond.Operator == OperatorNotContains || cond.Operator == OperatorNotEqual {
-			// Negative operators apply to the combined candidate set: fail if any candidate matches.
 			return !anyMatch
 		}
-		// Regex-enabled string operators: succeed if any candidate matches.
 		return anyMatch
 	}
 
-	// Important: negative operators must apply to the combined candidate set.
-	// Example: NOT_EQUAL "BHD" must be false if any candidate equals "BHD".
 	if cond.Operator == OperatorNotEqual {
 		return !slices.ContainsFunc(uniq, func(c string) bool {
 			return strings.EqualFold(c, cond.Value)
@@ -999,11 +847,7 @@ func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
 	})
 }
 
-// compareTags compares tags against the condition, treating tags as a set.
-// For string operators, checks individual tags rather than the full comma-separated string.
-// Regex matching still operates on the full string for flexibility.
 func compareTags(tagsRaw string, cond *RuleCondition) bool {
-	// Regex matching operates on full string for flexibility
 	if cond.Regex || cond.Operator == OperatorMatches {
 		if cond.Compiled == nil {
 			return false
@@ -1036,7 +880,6 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 	}
 }
 
-// anyTagMatches returns true if any tag in the slice satisfies the match function.
 func anyTagMatches(tags []string, condValue string, match func(string, string) bool) bool {
 	for _, tag := range tags {
 		if match(tag, condValue) {
@@ -1047,9 +890,6 @@ func anyTagMatches(tags []string, condValue string, match func(string, string) b
 }
 
 func compareInt64(value int64, cond *RuleCondition) bool {
-	// Parse the condition value as int64. Trim first so a whitespace-padded value
-	// (e.g. from an imported config) compares the same way save-time validation
-	// accepts it, instead of parsing-failing and silently never matching.
 	condValue, err := strconv.ParseInt(strings.TrimSpace(cond.Value), 10, 64)
 	if err != nil && cond.Value != "" {
 		return false
@@ -1075,9 +915,6 @@ func compareInt64(value int64, cond *RuleCondition) bool {
 	}
 }
 
-// matchesBetween reports whether value falls inside the condition's BETWEEN range.
-// A reversed range wraps on a clock field and stops before the maximum, so hour 20
-// to 6 is 20:00 to 05:59; on any other field a reversed range stays empty.
 func matchesBetween(value float64, cond *RuleCondition) bool {
 	if cond.MinValue == nil || cond.MaxValue == nil {
 		return false
@@ -1088,10 +925,7 @@ func matchesBetween(value float64, cond *RuleCondition) bool {
 	return value >= *cond.MinValue && value <= *cond.MaxValue
 }
 
-// compareFloat64 compares a float64 value against the condition.
 func compareFloat64(value float64, cond *RuleCondition) bool {
-	// Parse the condition value as float64. Trim first so whitespace-padded values
-	// stay consistent with save-time validation instead of silently never matching.
 	condValue, err := strconv.ParseFloat(strings.TrimSpace(cond.Value), 64)
 	if err != nil && cond.Value != "" {
 		return false
@@ -1145,7 +979,6 @@ func normalizeProgressCondition(cond *RuleCondition) *RuleCondition {
 }
 
 func normalizeProgressValue(v float64) float64 {
-	// Older workflows stored progress conditions as 0-100 percentages; normalize to 0-1.
 	if v > 1 {
 		v /= 100
 	}
@@ -1159,7 +992,6 @@ func normalizeProgressValue(v float64) float64 {
 	return v
 }
 
-// compareBool compares a boolean value against the condition.
 func compareBool(value bool, cond *RuleCondition) bool {
 	condValue := strings.ToLower(cond.Value) == "true" || cond.Value == "1"
 
@@ -1173,7 +1005,6 @@ func compareBool(value bool, cond *RuleCondition) bool {
 	}
 }
 
-// compareHardlinkScope compares a stored hardlink scope value against the condition.
 func compareHardlinkScope(value string, cond *RuleCondition) bool {
 	switch cond.Operator {
 	case OperatorEqual:
@@ -1196,22 +1027,17 @@ func hardlinkScopeMatches(value, condValue string) bool {
 	}
 }
 
-// compareAge computes the age (time since timestamp) and compares it against the condition.
-// Age is calculated as: nowUnix - timestamp, clamped to 0 to avoid clock-skew weirdness.
 func compareAge(timestamp int64, cond *RuleCondition, ctx *EvalContext) bool {
-	// Get current time from context (for testability) or use time.Now()
 	nowUnix := time.Now().Unix()
 	if ctx != nil && ctx.NowUnix > 0 {
 		nowUnix = ctx.NowUnix
 	}
 
-	// Compute age in seconds, clamped to 0 to avoid negative ages from clock skew
 	ageSeconds := max(nowUnix-timestamp, 0)
 
 	return compareInt64(ageSeconds, cond)
 }
 
-// compareAgeIfSet compares age for Unix timestamp fields and treats unset values (<= 0) as unknown/no-match.
 func compareAgeIfSet(timestamp int64, cond *RuleCondition, ctx *EvalContext) bool {
 	if timestamp <= 0 {
 		return false
@@ -1219,8 +1045,6 @@ func compareAgeIfSet(timestamp int64, cond *RuleCondition, ctx *EvalContext) boo
 	return compareAge(timestamp, cond, ctx)
 }
 
-// compareRlsYearIfSet compares a parsed release year and treats an unparsed year (<= 0)
-// as unknown/no-match, mirroring compareAgeIfSet for timestamp-backed fields.
 func compareRlsYearIfSet(year int64, cond *RuleCondition) bool {
 	if year <= 0 {
 		return false
@@ -1228,8 +1052,6 @@ func compareRlsYearIfSet(year int64, cond *RuleCondition) bool {
 	return compareInt64(year, cond)
 }
 
-// splitTags splits a comma-separated tag string into individual tags.
-// Returns nil for empty input.
 func splitTags(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return nil

@@ -16,12 +16,8 @@ import (
 
 const defaultRequestGap = 60 * time.Second
 
-// rateLimitRecordTimeout bounds the database write that records a 429. The
-// write runs apart from the request, so a busy database delays no caller.
 const rateLimitRecordTimeout = 10 * time.Second
 
-// requestKind decides which Rate-limit cooldown a request obeys and whether it
-// waits for the Request slot. ADR 0046 gives the reasons.
 type requestKind int
 
 const (
@@ -38,8 +34,6 @@ func (k requestKind) scope() string {
 	return rateLimitScopeQuery
 }
 
-// holdsSlot reports whether a request of this kind waits for the Request slot
-// of the indexer, holds it while open, and starts the Request gap at the answer.
 func (k requestKind) holdsSlot(indexer *models.TorznabIndexer) bool {
 	return indexer.Backend == models.TorznabBackendNative && (k == requestSearch || k == requestDirScanDownload)
 }
@@ -48,8 +42,6 @@ type rateLimitRecorder interface {
 	RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error
 }
 
-// requestSlots owns the Request slot of each indexer: the Rate-limit
-// cooldowns, the Request gap, and the record of a 429.
 type requestSlots struct {
 	mu       sync.Mutex
 	gap      time.Duration
@@ -78,8 +70,6 @@ func newRequestSlots(gap time.Duration, recorder rateLimitRecorder, publish func
 	}
 }
 
-// slotTicket is the right to send one request. The caller reports the answer
-// of the indexer with done.
 type slotTicket struct {
 	slots   *requestSlots
 	indexer *models.TorznabIndexer
@@ -88,9 +78,6 @@ type slotTicket struct {
 	freed   bool
 }
 
-// acquire returns a ticket for one request to indexer. A paced kind waits
-// until the Request slot is free. It returns a *RateLimitError at once during
-// a Rate-limit cooldown, and the context error when ctx ends first.
 func (r *requestSlots) acquire(ctx context.Context, indexer *models.TorznabIndexer, kind requestKind) (*slotTicket, error) {
 	for {
 		r.mu.Lock()
@@ -122,8 +109,6 @@ func (r *requestSlots) setOnFree(onFree func()) {
 	r.onFree = onFree
 }
 
-// tryAcquire is acquire without the wait. When the slot is not free it returns
-// no ticket and the shortest time until the slot can be free.
 func (r *requestSlots) tryAcquire(indexer *models.TorznabIndexer, kind requestKind) (*slotTicket, time.Duration, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -131,8 +116,6 @@ func (r *requestSlots) tryAcquire(indexer *models.TorznabIndexer, kind requestKi
 	return ticket, wait, err
 }
 
-// refusal returns the *RateLimitError that an ask of kind gets now, or nil.
-// It takes no slot.
 func (r *requestSlots) refusal(indexer *models.TorznabIndexer, kind requestKind) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -177,11 +160,6 @@ func (r *requestSlots) stateLocked(indexerID int) *slotState {
 	return state
 }
 
-// done gives the ticket the answer of the indexer, or the error that ended
-// the request. The first call frees the slot and starts the Request gap. A 429
-// at any call starts the Rate-limit cooldown of the kind, starts the record of
-// the error on the indexer, and returns a *RateLimitError. Any other err comes
-// back as is.
 func (t *slotTicket) done(ctx context.Context, err error) error {
 	r := t.slots
 	retryAfter, rateLimited := detectRateLimit(err)
@@ -221,7 +199,6 @@ func (r *requestSlots) recordRateLimit(ctx context.Context, indexer *models.Torz
 	localRetryAt := retryAt.In(time.Local)
 	if r.recorder != nil {
 		message := fmt.Sprintf("Rate limit triggered for %s %s requests until %s", indexer.Name, scope, localRetryAt.Format(time.RFC3339))
-		// A late 429 comes after the caller's context ended, and it is still recorded.
 		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rateLimitRecordTimeout)
 		go func() {
 			defer cancel()
@@ -247,8 +224,6 @@ func (r *requestSlots) recordRateLimit(ctx context.Context, indexer *models.Torz
 	return &RateLimitError{IndexerID: indexer.ID, IndexerName: indexer.Name, Scope: scope, RetryAt: retryAt}
 }
 
-// cooldownIndexers returns the end of each Rate-limit cooldown of scope that
-// has not ended, by indexer ID.
 func (r *requestSlots) cooldownIndexers(scope string) map[int]time.Time {
 	r.mu.Lock()
 	defer r.mu.Unlock()

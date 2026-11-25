@@ -25,12 +25,8 @@ import type { TorrentRow, TorrentTableColumnDef } from "../tanstackTableFeatures
 import { CompactRow } from "./CompactRow"
 import { CopyGroupPill, type CopyGroupPillSize } from "./CopyGroupPill"
 
-// Everything the per-row context menu needs except the row-specific fields.
-// The parent memoizes ONE bundle for all rows, so the row comparator checks a
-// single reference instead of ~30 individual menu props.
 export type TorrentRowMenuProps = Omit<TorrentContextMenuProps, "children" | "torrent" | "isSelected">
 
-// Display/config props shared by every compact row, memoized by the parent.
 export interface CompactRowSharedProps {
   showCheckbox: boolean
   incognitoMode: boolean
@@ -51,11 +47,7 @@ export interface TorrentTableRowProps {
   isRowSelected: boolean
   desktopViewMode: TableViewMode
   minTableWidth: number
-  // Spreadsheet theme only: render the row number in a left gutter cell.
   showRowGutter?: boolean
-  // Comparison tokens: cells read column config lazily through `row`, so these
-  // exist only to invalidate the memo when table-level display state changes
-  // (column set, resize, visibility, order).
   columns: TorrentTableColumnDef[]
   columnSizing: ColumnSizingState
   columnVisibility: ColumnVisibilityState
@@ -64,31 +56,17 @@ export interface TorrentTableRowProps {
   compact: CompactRowSharedProps
   onRowClick: (event: React.MouseEvent, row: TorrentRow, isSelected: boolean, isRowSelected: boolean) => void
   onRowContextMenu: (row: TorrentRow, isRowSelected: boolean) => void
-  // Copy groups. Primitives and stable objects only, so the row memo sees a
-  // change in a hidden copy, which does not change the object of the top row.
-  /** Only on the top row of a Copy group with two or more loaded members. */
   copyGroupId?: string
   copyGroupOpen?: boolean
-  /** The members other than the top row. */
   copies?: number
-  /** Only on a collapsed group: a hidden copy has a problem. */
   hiddenCopyProblem?: CopyProblem
-  /** Only on a collapsed group outside Select all mode: the ticked copies that it hides. */
   hiddenCopyTicks?: number
-  /** Only on a collapsed group whose first-sorted member is not the top row. */
   sortedTorrent?: Torrent
   sortedColumnId?: string
-  /** A member under the top row of an open group. */
   nestedCopy?: boolean
   onToggleCopyGroup: (id: string) => void
 }
 
-// TanStack Table rebuilds the Row wrapper whenever the data array changes, so
-// comparing `row` by reference would defeat the memo on every stream tick. The
-// render-relevant identity of a row is the underlying torrent object — stable
-// for unchanged rows thanks to structural sharing in useTorrentsList — plus the
-// row id. Every other prop, handlers included (the parent keeps them stable),
-// is compared generically so a newly added prop is never silently ignored.
 // eslint-disable-next-line react-refresh/only-export-components
 export function torrentTableRowPropsAreEqual(
   prev: Readonly<TorrentTableRowProps>,
@@ -135,8 +113,6 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   onToggleCopyGroup,
 }: TorrentTableRowProps) {
   const torrent = row.original
-  // The pill names the torrent whose name the row shows, so a screen reader
-  // hears the same name, also in incognito mode, where the hash picks the name.
   const pill = (size: CopyGroupPillSize, shownTorrent: Torrent) => copyGroupId !== undefined && (
     <CopyGroupPill
       id={copyGroupId}
@@ -152,7 +128,6 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   const groupAccent = (copyGroupOpen || nestedCopy) && getCopyGroupAccentClass(copyGroupOpen)
 
   if (desktopViewMode === "compact") {
-    // A Stacked row has no cells: it shows the sorted field of the first-sorted member.
     const displayTorrent = withSortedField(torrent, sortedTorrent, sortedColumnId && getBackendSortField(sortedColumnId))
     return (
       <TorrentContextMenu {...menu} torrent={torrent} isSelected={isRowSelected}>
@@ -189,9 +164,6 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   }
 
   const cells = row.getVisibleCells()
-  // The pill sits at the end of the Name cell. With Name hidden it sits in the
-  // first cell that is not an icon column, which are too narrow for it. That is
-  // the select cell, which the table widens for it, unless select is hidden too.
   const pillCellId = copyGroupId === undefined ? undefined : (cells.find(cell => cell.column.id === "name")
     ?? cells.find(cell => cell.column.id !== "status_icon" && cell.column.id !== "tracker_icon"))?.id
 
@@ -227,7 +199,6 @@ export const TorrentTableRow = memo(function TorrentTableRow({
               }}
               className={cn(
                 "flex items-center overflow-hidden min-w-0",
-                // Select and compact columns are centered to match header
                 (isCompactColumn || (isSelectColumn && centersSelectCheckbox(cell.column.getSize()))) && "justify-center",
                 desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2"
               )}
@@ -245,8 +216,6 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   )
 }, torrentTableRowPropsAreEqual)
 
-// The cells read row.original; only this cell reads the first-sorted member.
-// Rows are prototype objects, so the copy keeps their methods.
 function sortedCellContext<C extends { row: TorrentRow }>(context: C, sortedTorrent: Torrent): C {
   return { ...context, row: Object.create(context.row, { original: { value: sortedTorrent } }) as TorrentRow }
 }

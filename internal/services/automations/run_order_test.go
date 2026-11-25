@@ -23,8 +23,6 @@ const (
 	missingTargetInstanceID = 999
 )
 
-// writeActionKeys maps each write request path to its actionRunOrder key. Where go-qbittorrent
-// picks the endpoint by Web API version, every spelling is listed.
 var writeActionKeys = map[string]string{
 	"torrents/setUploadLimit":    "speedLimits",
 	"torrents/setDownloadLimit":  "speedLimits",
@@ -64,12 +62,10 @@ var activityActionKeys = map[string]string{
 	models.ActivityActionTransferredToInstance:     "transferToInstance",
 }
 
-// collapse drops consecutive repeats, so several requests or rows from one step count once.
 func collapse(keys []string) []string {
 	return slices.Compact(slices.Clone(keys))
 }
 
-// everyActionTorrents holds a running torrent (it pauses), a stopped one (it resumes) and one to delete.
 func everyActionTorrents() string {
 	torrent := func(name, state string) string {
 		return `{"name":"` + name + `","state":"` + state + `","progress":1,"size":10,"ratio":1,"up_limit":0,"dl_limit":0,"ratio_limit":-2,"seeding_time_limit":-2,"auto_tmm":false,"tags":"","category":"","save_path":"/data","content_path":"/data/` + name + `"}`
@@ -83,10 +79,6 @@ func nameIs(name string) *models.RuleCondition {
 	return &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorEqual, Value: name}
 }
 
-// everyActionRules gives one run every action. Delete sits in its own rule because validation keeps it
-// standalone. A Transfer waits for a torrent that the run moves, so only the running torrent moves. The export
-// targets a missing instance and no external program service is set, so both record their rows
-// synchronously when dispatched.
 func everyActionRules() []*models.Automation {
 	upload := int64(100)
 	download := int64(200)
@@ -125,7 +117,6 @@ func everyActionRules() []*models.Automation {
 	}
 }
 
-// activityKeysByID returns the run's activity rows in insertion order, as actionRunOrder keys.
 func activityKeysByID(t *testing.T, db *database.DB, instanceID int) []string {
 	t.Helper()
 	rows, err := db.QueryContext(t.Context(), `SELECT action FROM automation_activity WHERE instance_id = ? ORDER BY id`, instanceID)
@@ -144,8 +135,6 @@ func activityKeysByID(t *testing.T, db *database.DB, instanceID int) []string {
 	return keys
 }
 
-// A live run sends its actions in actionRunOrder: the synchronous steps by request arrival,
-// and the steps it dispatches to the background by the rows they record at dispatch.
 func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
 	svc, db, instanceIDs := newStubService(t, nil, stub)
@@ -171,7 +160,6 @@ func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 	require.Equal(t, actionRunOrder, collapse(activityKeysByID(t, db, instanceIDs[0])), "activity rows out of run order")
 }
 
-// A dry run reports its actions in actionRunOrder.
 func TestApplyRulesDryRun_ReportsActionsInRunOrder(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
 	svc, _, instanceIDs := newStubService(t, nil, stub)
@@ -193,7 +181,6 @@ func TestApplyRulesDryRun_ReportsActionsInRunOrder(t *testing.T) {
 	require.Equal(t, actionRunOrder, collapse(keys))
 }
 
-// A torrent a rule chooses for delete loses the actions earlier rules chose for it.
 func TestApplyRules_DeleteDropsTheTorrentsOwnActions(t *testing.T) {
 	stub := newStubQbt(t, everyActionTorrents())
 	svc, _, instanceIDs := newStubService(t, nil, stub)
@@ -228,11 +215,8 @@ func TestApplyRules_DeleteDropsTheTorrentsOwnActions(t *testing.T) {
 	require.False(t, tagged[doomedHash], "the deleted torrent must not be tagged")
 }
 
-// snapshotTorrent sits in category "old" before the run.
 const snapshotTorrent = `{"` + runningHash + `":{"name":"running","state":"stalledUP","progress":1,"size":10,"category":"old","tags":"","save_path":"/data","content_path":"/data/running"}}`
 
-// Every rule in a run sees the torrent as it was when the run started, even after an earlier
-// rule changed it.
 func TestApplyRulesDryRun_RulesSeeStartOfRunTorrent(t *testing.T) {
 	stub := newStubQbt(t, snapshotTorrent)
 	svc, _, instanceIDs := newStubService(t, nil, stub)
@@ -271,7 +255,6 @@ func TestApplyRulesDryRun_RulesSeeStartOfRunTorrent(t *testing.T) {
 	require.JSONEq(t, `{"/data/old":1}`, string(details[models.ActivityActionMoved]["paths"]), "the move path uses the old category")
 }
 
-// An export in the same run as a category change resolves its save path with the old category.
 func TestApplyRules_ExportSeesStartOfRunTorrent(t *testing.T) {
 	source := newStubQbt(t, snapshotTorrent)
 	target := newStubQbt(t, `{}`)

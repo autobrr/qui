@@ -10,10 +10,6 @@ import { useCallback } from "react"
 
 const QUERY_KEY = ["log-exclusions"]
 
-/**
- * Hook for managing muted log message patterns.
- * Returns [exclusions, setExclusions] similar to useState.
- */
 export function usePersistedLogExclusions() {
   const queryClient = useQueryClient()
 
@@ -30,7 +26,6 @@ export function usePersistedLogExclusions() {
       await queryClient.cancelQueries({ queryKey: QUERY_KEY })
       const previous = queryClient.getQueryData<LogExclusions>(QUERY_KEY)
 
-      // Optimistic update
       if (previous) {
         queryClient.setQueryData<LogExclusions>(QUERY_KEY, {
           ...previous,
@@ -41,7 +36,6 @@ export function usePersistedLogExclusions() {
       return { previous }
     },
     onError: (_err, _newPatterns, context) => {
-      // Rollback on error
       if (context?.previous) {
         queryClient.setQueryData(QUERY_KEY, context.previous)
       }

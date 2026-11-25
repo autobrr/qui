@@ -12,8 +12,6 @@ import (
 	"strings"
 )
 
-// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999, but can be higher).
-// Use a conservative value so batch queries also stay portable in tests and tooling.
 const maxParams = 900
 
 func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64, error) {
@@ -142,15 +140,7 @@ func InternStringNullable(ctx context.Context, tx TxQuerier, values ...*string) 
 	return results, nil
 }
 
-// InternEmptyString ensures the empty string exists in string_pool and returns its ID.
-// This is needed for special cases like localhost bypass auth where an empty username
-// is a valid, intentional value (not NULL). The empty string is created if it doesn't exist.
-//
-// Unlike InternStrings which rejects empty strings (treating them as invalid input),
-// this function specifically handles the case where empty string is a meaningful value.
 func InternEmptyString(ctx context.Context, tx TxQuerier) (int64, error) {
-	// SELECT first: a conflicting INSERT would still burn a Postgres sequence
-	// value (see InternStrings).
 	var id int64
 	err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&id)
 	if err == nil {

@@ -16,10 +16,9 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
-// localMatchSyncManager is a minimal fake for testing file overlap logic.
 type localMatchSyncManager struct {
 	files        map[string]qbt.TorrentFiles
-	errorOnFetch error // If set, GetTorrentFilesBatch returns this error
+	errorOnFetch error
 }
 
 func (m *localMatchSyncManager) GetTorrentRefs(_ context.Context, _ int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
@@ -103,13 +102,11 @@ func (m *localMatchSyncManager) CreateCategory(_ context.Context, _ int, _, _ st
 }
 
 func TestGetSourceFiles_EmptyFileListReturnsError(t *testing.T) {
-	// When qBittorrent returns an empty file list for a valid torrent,
-	// getSourceFiles should return an error to avoid silent false-negatives.
 	sourceHash := "7777777777777777777777777777777777777777"
 
 	mockSync := &localMatchSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(sourceHash): {}, // Empty file list
+			normalizeHash(sourceHash): {},
 		},
 	}
 

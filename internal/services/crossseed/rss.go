@@ -37,7 +37,6 @@ type automationContext struct {
 	candidateCache map[string]*FindCandidatesResponse
 }
 
-// AutomationRunOptions configures a manual automation run.
 type AutomationRunOptions struct {
 	RequestedBy string
 	Mode        models.CrossSeedRunMode
@@ -58,7 +57,6 @@ func (s *Service) ensureIndexersConfigured(ctx context.Context) error {
 	return nil
 }
 
-// AutomationStatus summarises scheduler state for the API.
 type AutomationStatus struct {
 	Settings  *models.CrossSeedAutomationSettings `json:"settings"`
 	LastRun   *models.CrossSeedRun                `json:"lastRun,omitempty"`
@@ -66,7 +64,6 @@ type AutomationStatus struct {
 	Running   bool                                `json:"running"`
 }
 
-// StartAutomation launches the background scheduler loop.
 func (s *Service) StartAutomation(ctx context.Context) {
 	s.automationMu.Lock()
 	defer s.automationMu.Unlock()
@@ -83,7 +80,6 @@ func (s *Service) StartAutomation(ctx context.Context) {
 	loopCtx, cancel := context.WithCancel(ctx)
 	s.automationCancel = cancel
 
-	// The Library Scan schedule can run on RED/OPS alone.
 	go s.libraryScheduleLoop(loopCtx)
 
 	if s.jackettService == nil {
@@ -93,7 +89,6 @@ func (s *Service) StartAutomation(ctx context.Context) {
 	go s.automationLoop(loopCtx)
 }
 
-// StopAutomation stops the background scheduler loop if it is running.
 func (s *Service) StopAutomation() {
 	s.automationMu.Lock()
 	cancel := s.automationCancel
@@ -105,8 +100,6 @@ func (s *Service) StopAutomation() {
 	}
 }
 
-// CancelAutomationRun cancels the currently running automation run, if any.
-// Returns true if a run was canceled, false if no run was active.
 func (s *Service) CancelAutomationRun() bool {
 	if !s.runActive.Load() {
 		return false
@@ -123,7 +116,6 @@ func (s *Service) CancelAutomationRun() bool {
 	return false
 }
 
-// RunAutomation executes a cross-seed automation cycle immediately.
 func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) (*models.CrossSeedRun, error) {
 	if s.automationStore == nil || s.jackettService == nil {
 		return nil, errors.New("cross-seed automation not configured")
@@ -133,14 +125,11 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 		return nil, ErrAutomationRunning
 	}
 
-	// Create cancellable context for this run
 	runCtx, cancel := context.WithCancel(ctx)
 	s.automationMu.Lock()
 	s.runCancel = cancel
 	s.automationMu.Unlock()
 
-	// Signal connected clients that an automation run started so they switch to the
-	// while-running refresh cadence instead of polling. Published after releasing the lock.
 	if s.activityPublisher != nil {
 		s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedStatus})
 	}
@@ -152,7 +141,6 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 		cancel()
 		s.runActive.Store(false)
 
-		// Signal the run finished so clients refetch and drop the while-running cadence.
 		if s.activityPublisher != nil {
 			s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedStatus})
 		}
@@ -174,7 +162,6 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 		return nil, ErrNoTargetInstancesConfigured
 	}
 
-	// Default requested by / mode values
 	if opts.Mode == "" {
 		opts.Mode = models.CrossSeedRunModeManual
 	}
@@ -212,7 +199,6 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 		}
 	}
 
-	// Guard against auto runs when disabled
 	if opts.Mode == models.CrossSeedRunModeAuto && !settings.Enabled {
 		return nil, errors.New("cross-seed automation disabled")
 	}
@@ -237,14 +223,12 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 	return finalRun, nil
 }
 
-// updateAutomationRunWithRetry attempts to update the automation run in the database with retries
 func (s *Service) updateAutomationRunWithRetry(ctx context.Context, run *models.CrossSeedRun) (*models.CrossSeedRun, error) {
 	const maxRetries = 3
 	var lastErr error
 
 	for attempt := range maxRetries {
 		if attempt > 0 {
-			// Wait before retry
 			select {
 			case <-ctx.Done():
 				return run, ctx.Err()
@@ -265,7 +249,6 @@ func (s *Service) updateAutomationRunWithRetry(ctx context.Context, run *models.
 	return run, lastErr
 }
 
-// GetAutomationStatus returns scheduler information for the API.
 func (s *Service) GetAutomationStatus(ctx context.Context) (*AutomationStatus, error) {
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
@@ -283,11 +266,7 @@ func (s *Service) GetAutomationStatus(ctx context.Context) (*AutomationStatus, e
 			return nil, fmt.Errorf("load latest automation run: %w", err)
 		}
 
-		// Check if the last run is stuck in running status (e.g., due to crash)
-		// Only mark as stuck if no run is currently active in memory - this prevents
-		// marking legitimate long-running automations as failed while they're still executing
 		if lastRun != nil && lastRun.Status == models.CrossSeedRunStatusRunning && !s.runActive.Load() {
-			// If it's been running for more than 5 minutes, mark it as failed
 			if time.Since(lastRun.StartedAt) > 5*time.Minute {
 				lastRun.Status = models.CrossSeedRunStatusFailed
 				msg := "automation run timed out (stuck for >5 minutes)"
@@ -317,7 +296,6 @@ func (s *Service) GetAutomationStatus(ctx context.Context) (*AutomationStatus, e
 	return status, nil
 }
 
-// ListAutomationRuns returns stored automation run history.
 func (s *Service) ListAutomationRuns(ctx context.Context, limit, offset int) ([]*models.CrossSeedRun, error) {
 	if s.automationStore == nil {
 		return []*models.CrossSeedRun{}, nil
@@ -357,12 +335,10 @@ func (s *Service) automationLoop(ctx context.Context) {
 				Mode:        models.CrossSeedRunModeAuto,
 			}); err != nil {
 				if errors.Is(err, ErrAutomationRunning) {
-					// Add a short delay to prevent tight loop when automation is already running
 					select {
 					case <-ctx.Done():
 						return
 					case <-time.After(150 * time.Millisecond):
-						// Continue after delay
 					}
 				} else if errors.Is(err, ErrNoIndexersConfigured) {
 					log.Info().Msg("Skipping cross-seed automation run: no Torznab indexers configured")
@@ -374,7 +350,6 @@ func (s *Service) automationLoop(ctx context.Context) {
 					log.Debug().Msg("Cross-seed automation run canceled (context canceled)")
 				} else {
 					log.Warn().Err(err).Msg("Cross-seed automation run failed")
-					// Prevent tight loop on unexpected errors
 					s.waitTimer(ctx, timer, time.Minute)
 				}
 			}
@@ -389,7 +364,6 @@ func (s *Service) waitTimer(ctx context.Context, timer *time.Timer, delay time.D
 	if delay <= 0 {
 		delay = time.Second
 	}
-	// Cap delay to 24h to avoid overflow
 	if delay > 24*time.Hour {
 		delay = 24 * time.Hour
 	}
@@ -410,12 +384,7 @@ func (s *Service) waitTimer(ctx context.Context, timer *time.Timer, delay time.D
 	}
 }
 
-// computeNextRunDelay calculates the delay until the next RSS automation run.
-// Returns (delay, shouldRunNow) where shouldRunNow=true means run immediately.
-// This is for RSS Automation only, not Seeded Torrent Search.
 func (s *Service) computeNextRunDelay(ctx context.Context, settings *models.CrossSeedAutomationSettings) (time.Duration, bool) {
-	// When RSS automation is disabled, return 5 minutes for internal polling loop
-	// (this value is NOT shown to users - it's just for checking if automation got re-enabled)
 	if settings == nil || !settings.Enabled {
 		return 5 * time.Minute, false
 	}
@@ -424,7 +393,6 @@ func (s *Service) computeNextRunDelay(ctx context.Context, settings *models.Cros
 		return time.Hour, false
 	}
 
-	// RSS Automation: enforce minimum 30 minutes between runs
 	intervalMinutes := settings.RunIntervalMinutes
 	if intervalMinutes <= 0 {
 		intervalMinutes = 120
@@ -478,7 +446,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
 
-	// RSS reads the Torznab feeds, so it keeps the RED/OPS Torznab indexers.
 	resolvedIndexerIDs, resolveErr := s.resolveTorznabIndexerIDs(ctx, settings.TargetIndexerIDs) //nolint:forbidigo // RSS automation expands an empty list without the Search scope
 	if resolveErr != nil {
 		msg := resolveErr.Error()
@@ -525,7 +492,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 
 	select {
 	case searchResp = <-respCh:
-		// continue
 	case err := <-errCh:
 		msg := err.Error()
 		run.ErrorMessage = &msg
@@ -537,7 +503,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		}
 		runErr = err
 		return run, err
-	case <-time.After(10 * time.Minute): // generous timeout for RSS automation
+	case <-time.After(10 * time.Minute):
 		msg := "Recent search timed out"
 		run.ErrorMessage = &msg
 		run.Status = models.CrossSeedRunStatusFailed
@@ -562,21 +528,16 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		return run, ctx.Err()
 	}
 
-	// One page misses announces that scrolled past the feed head between
-	// runs, so walk deeper pages per indexer until a page is fully known.
-	// The very first run has no handled boundary to walk back to, so it
-	// stays on one page instead of paging blindly into history.
 	feedPageCap := rssFeedMaxPages
 	if runs, listErr := s.automationStore.ListRuns(ctx, 2, 0); listErr != nil || len(runs) <= 1 {
 		feedPageCap = 1
 	}
 	s.pageAutomationFeed(searchCtx, searchResp, feedPageCap)
 
-	// Pre-fetch all indexer info (names and domains) for performance
 	indexerInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to fetch indexer info, will use fallback lookups")
-		indexerInfo = make(map[int]jackett.EnabledIndexerInfo) // Empty map as fallback
+		indexerInfo = make(map[int]jackett.EnabledIndexerInfo)
 	}
 
 	autoCtx := &automationContext{
@@ -600,9 +561,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 			continue
 		}
 
-		// Only processed items are skipped. A skipped or size-rejected item is evaluated
-		// again each run until it leaves the feed, on purpose: the local candidate changes
-		// over time (a copy finishes, another instance gets it, reflinks are turned on).
 		alreadyHandled, lastStatus, err := s.automationStore.HasProcessedFeedItem(ctx, result.GUID, result.IndexerID)
 		if err != nil {
 			log.Warn().Err(err).Str("guid", redact.URLString(result.GUID)).Msg("Failed to check feed item cache")
@@ -642,7 +600,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	summary := fmt.Sprintf("processed=%d candidates=%d added=%d skipped=%d failed=%d", processed, run.CandidatesFound, run.CrossSeedsAdded, run.CandidatesSkipped, run.CandidatesFailed)
 	run.Message = &summary
 
-	// Use context.WithoutCancel to ensure DB update succeeds even on cancellation
 	updateCtx := ctx
 	if ctx.Err() != nil {
 		run.Status = models.CrossSeedRunStatusFailed
@@ -657,7 +614,6 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		log.Warn().Err(updateErr).Msg("Failed to persist automation run update")
 	}
 
-	// Opportunistic cleanup of stale feed items (older than 30 days)
 	if s.automationStore != nil {
 		cutoff := time.Now().UTC().Truncate(24 * time.Hour).Add(-30 * 24 * time.Hour)
 		if _, pruneErr := s.automationStore.PruneFeedItems(ctx, cutoff); pruneErr != nil {
@@ -691,14 +647,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	candidateCount := len(candidatesResp.Candidates)
 	var boundMatches []boundAnnouncementMatch
-	// Season packs with same-title episodes in the library have no direct
-	// candidates but can still be assembled by the diversion inside CrossSeed,
-	// so they must proceed to download instead of skipping.
 	seasonPackDivertible := candidatesResp.seasonPackEpisodeCandidates && settings.SeasonPackAutomationEnabled
-	// When diversion is the only reason to download, a recent diversion failure
-	// for the same release name makes the download a guaranteed waste until the
-	// cooldown lapses. Feed items marked skipped are re-evaluated every run, so
-	// the item retries once the cooldown expires.
 	if candidateCount == 0 && seasonPackDivertible && s.seasonPackFailCooldownActive(ctx, result.Title, minSearchCooldownMinutes*time.Minute) {
 		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
@@ -774,10 +723,6 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		precheckCandidates = boundRSSPrecheckCandidates(boundMatches)
 	}
 
-	// Optimization: If RSS feed provides infohash, check if torrent already exists
-	// on ALL candidate instances before downloading. This avoids unnecessary downloads
-	// when the exact torrent (by hash) is already present - commonly happens when
-	// autobrr grabs via IRC before RSS automation processes the same release.
 	if result.InfoHashV1 != "" {
 		allExist := true
 		var existingResults []models.CrossSeedRunResult
@@ -785,7 +730,6 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		for _, candidate := range precheckCandidates {
 			existing, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{result.InfoHashV1})
 			if hashErr != nil {
-				// Context cancellation should propagate, not trigger fallback
 				if errors.Is(hashErr, context.Canceled) || errors.Is(hashErr, context.DeadlineExceeded) {
 					run.CandidatesFailed++
 					return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("hash check canceled: %w", hashErr)
@@ -832,15 +776,11 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 	}
 
-	// Fallback for UNIT3D and similar trackers: check if torrent URL exists in comments.
-	// UNIT3D torrents include the source URL in the comment field (e.g., "https://seedpool.org/torrents/607803").
-	// The GUID from RSS is typically this same URL, so we can match without needing infohash.
 	if commentURL := extractTorrentURLForCommentMatch(result.GUID, result.InfoURL); commentURL != "" {
 		allExist := true
 		var existingResults []models.CrossSeedRunResult
 
 		for _, candidate := range precheckCandidates {
-			// Check for context cancellation before processing each candidate
 			if ctx.Err() != nil {
 				run.CandidatesFailed++
 				return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("comment URL pre-check canceled: %w", ctx.Err())
@@ -975,9 +915,6 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 	}
 
-	// One feed item is one candidate: it lands in one bucket no matter how
-	// many instances it was applied to. A candidate with one add and one
-	// failed instance counts as added; the failure stays in run.Results.
 	switch {
 	case itemHasSuccess:
 		itemStatus = models.CrossSeedFeedItemStatusProcessed
@@ -995,10 +932,6 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	return itemStatus, infoHash, invokeErr
 }
 
-// markFeedItem records a feed item's status. previous is the stored status,
-// or pending when the item has no row. Skipped and failed items are retried
-// on every poll, so an unchanged outcome only refreshes last_seen_at: the
-// full upsert would rewrite and lock every feed row on every poll.
 func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult, previous, status models.CrossSeedFeedItemStatus, infoHash *string) {
 	if s.automationStore == nil {
 		return
@@ -1051,7 +984,6 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 		}
 	}
 
-	// Check if RSS source filters are configured
 	var rssFilter sourceFilter
 	if settings != nil {
 		rssFilter = defaultsFor(triggerRSS, settings).sourceFilter
@@ -1090,7 +1022,6 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 			continue
 		}
 
-		// Filter torrents inline without creating intermediate copies
 		if hasRSSSourceFilters {
 			var counts sourceFilterCounts
 			originalCount := len(torrents)
@@ -1104,7 +1035,6 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 			}
 			torrents = filtered
 
-			// Log filter results
 			if !counts.empty() {
 				log.Debug().
 					Int("instanceID", instanceID).
@@ -1133,8 +1063,6 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 	}
 
 	candidate := namedRelease{release: s.releaseCache.Parse(result.Title), rawName: result.Title}
-	// Resolve ARR aliases only when a torrent survives the exact-size gate
-	// below, so feed items with no byte-size collision never touch ARR.
 	aliasLookup := sync.OnceValues(func() ([]string, *models.EpisodeMap) {
 		return s.announceAliasTitles(ctx, result.Title, DetermineContentType(candidate.release).ContentType)
 	})
@@ -1270,20 +1198,11 @@ func (s *Service) findCandidatesWithAutomationContext(ctx context.Context, req *
 	return resp, nil
 }
 
-// extractTorrentURLForCommentMatch extracts a torrent URL suitable for matching against
-// torrent comments. UNIT3D and similar trackers embed the source URL in the torrent's
-// comment field. Returns empty string if no suitable URL pattern is found.
-//
-// Matches any HTTPS URL containing these path patterns:
-//   - /torrents/ (UNIT3D style: seedpool.org, aither.cc, blutopia.cc, etc.)
-//   - /details/ (BHD style: beyond-hd.me)
 func extractTorrentURLForCommentMatch(guid, infoURL string) string {
-	// Try GUID first (typically the details URL for UNIT3D)
 	if url := parseTorrentDetailsURL(guid); url != "" {
 		return url
 	}
 
-	// Fall back to InfoURL
 	if url := parseTorrentDetailsURL(infoURL); url != "" {
 		return url
 	}
@@ -1291,21 +1210,15 @@ func extractTorrentURLForCommentMatch(guid, infoURL string) string {
 	return ""
 }
 
-// parseTorrentDetailsURL checks if the URL looks like a tracker torrent details page
-// and returns it normalized for comment matching.
 func parseTorrentDetailsURL(rawURL string) string {
 	if rawURL == "" {
 		return ""
 	}
 
-	// Must be HTTPS URL
 	if !strings.HasPrefix(rawURL, "https://") {
 		return ""
 	}
 
-	// Check for common torrent details URL patterns:
-	// - /torrents/ID (UNIT3D style)
-	// - /details/ID (BHD style)
 	if strings.Contains(rawURL, "/torrents/") || strings.Contains(rawURL, "/details/") {
 		return rawURL
 	}

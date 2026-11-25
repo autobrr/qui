@@ -10,7 +10,6 @@ import type { TorrentFilters } from "@/types"
 import { cleanup, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// Router search is the only external dependency that needs a provider; stub it.
 const hoisted = vi.hoisted(() => ({ routeSearch: {} as { q?: string } }))
 vi.mock("@tanstack/react-router", () => ({
   useSearch: () => hoisted.routeSearch,
@@ -18,7 +17,6 @@ vi.mock("@tanstack/react-router", () => ({
 
 type Props = { filters?: TorrentFilters; columnFilters: ColumnFilter[] }
 
-// A deterministic single column filter (-> "AddedOn > 1704067200").
 const ADDED_ON_FILTER: ColumnFilter = { columnId: "added_on", operation: "gt", value: "2024-01-01" }
 
 function render(initialProps: Props) {

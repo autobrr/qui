@@ -76,7 +76,7 @@ func TestApplyPathMappings_PrefixBoundary(t *testing.T) {
 			mappings: []models.PathMapping{
 				{From: "/data", To: "/mnt/data"},
 			},
-			want: "/data-backup/file.txt", // unchanged
+			want: "/data-backup/file.txt",
 		},
 		{
 			name: "unix: should match exact prefix with subpath",
@@ -100,7 +100,7 @@ func TestApplyPathMappings_PrefixBoundary(t *testing.T) {
 			mappings: []models.PathMapping{
 				{From: `C:\data`, To: `D:\data`},
 			},
-			want: `C:\data-backup\file.txt`, // unchanged
+			want: `C:\data-backup\file.txt`,
 		},
 		{
 			name: "windows: should match exact prefix with subpath",
@@ -110,7 +110,6 @@ func TestApplyPathMappings_PrefixBoundary(t *testing.T) {
 			},
 			want: `D:\data\backup\file.txt`,
 		},
-		// Trailing separator cases
 		{
 			name: "unix: From with trailing slash should match",
 			path: "/data/torrents/file.txt",
@@ -125,7 +124,7 @@ func TestApplyPathMappings_PrefixBoundary(t *testing.T) {
 			mappings: []models.PathMapping{
 				{From: "/data/", To: "/mnt/data/"},
 			},
-			want: "/data-backup/file.txt", // unchanged - doesn't start with "/data/"
+			want: "/data-backup/file.txt",
 		},
 		{
 			name: "unix: root mapping should work",
@@ -149,7 +148,7 @@ func TestApplyPathMappings_PrefixBoundary(t *testing.T) {
 			mappings: []models.PathMapping{
 				{From: `C:\data\`, To: `D:\data\`},
 			},
-			want: `C:\data-backup\file.txt`, // unchanged
+			want: `C:\data-backup\file.txt`,
 		},
 	}
 

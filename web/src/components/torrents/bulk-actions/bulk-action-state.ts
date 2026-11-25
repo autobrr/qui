@@ -16,15 +16,11 @@ import type { Category } from "@/types"
 type QueueAction = "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority"
 type ValueDialogAction = "setTags" | "setShareLimit" | "setSpeedLimits" | "setComment" | "renameTorrent" | "transfer" | "share"
 
-// A pick that runs its request at once.
 export type RequestPick =
   | { action: "pause" | "resume" | "recheck" | "reannounce" | QueueAction }
   | { action: "forceStart" | "toggleSequentialDownload" | "toggleAutoTMM"; enable: boolean }
   | { action: "setCategory"; category: string }
 
-// The Bulk action that the user picked on an Action surface, with its option.
-// It holds no Action target and no request: the module reads the published target.
-// Set category with a category comes from the category submenu, and runs at once.
 export type BulkActionPick =
   | RequestPick
   | { action: "delete" | "setLocation" | "export" | ValueDialogAction }
@@ -73,7 +69,6 @@ export function bulkDialogReducer(state: BulkDialog, event: BulkDialogEvent): Bu
 
 export type PickOutcome = { kind: "run"; pick: RequestPick } | { kind: "open"; dialog: OpenBulkDialog } | { kind: "export" }
 
-// count is the count of the Action target. One torrent needs no confirmation.
 export function resolvePick(pick: BulkActionPick, count: number): PickOutcome {
   switch (pick.action) {
     case "recheck":
@@ -102,25 +97,16 @@ export function resolvePick(pick: BulkActionPick, count: number): PickOutcome {
   }
 }
 
-// The pick that the confirm button of an open confirmation runs.
 export function dialogPick(dialog: ConfirmationDialog): RequestPick {
   return dialog.name === "toggleAutoTMM" ? { action: dialog.name, enable: dialog.enable } : { action: dialog.name }
 }
 
-// The instance scope of a bulk request: the instance of the page, or the
-// all-instances scope in the Unified view, where the target names each
-// instance. A request for targets on another instance goes to the
-// all-instances scope. #3784 and #3737 change this function.
 export function requestInstanceId(published: TorrentSelectionSummary, targets: TorrentActionTarget[] = []): number {
   return targets.some(target => target.instanceId !== published.instanceId) ? ALL_INSTANCES_ID : published.instanceId
 }
 
-// The values of a request that a dialog sends, without the Action target.
 export type BulkRequestValues = Omit<Parameters<typeof api.bulkAction>[1], "action" | "hashes" | "targets" | "selectAll" | "filters" | "search" | "excludeHashes" | "excludeTargets" | "instanceIds"> & { action: TorrentAction }
 
-// The request of a pick or a dialog value on the published Action target
-// (ADR 0034), with the count for the toast. A Select all target carries its own
-// instance subset.
 export function bulkRequest(values: BulkRequestValues, published: TorrentSelectionSummary) {
   const { actionTarget, instanceIds } = published
   return {
@@ -137,11 +123,6 @@ export interface DeleteRequest {
   body: Parameters<typeof api.bulkAction>[1]
 }
 
-// The requests of a delete of the published Action target with the chosen
-// cross-seeds, in order, with the hashes and the count for the optimistic
-// removal and the toast. A Select all request cannot list hashes, and a
-// request on one instance leaves out targets on other instances, so these
-// cross-seeds go in a second request.
 export function deleteRequests(published: TorrentSelectionSummary, crossSeedTargets: TorrentActionTarget[], deleteFiles: boolean): DeleteRequest[] {
   const { actionTarget, instanceIds } = published
   const crossSeedScope = requestInstanceId(published, crossSeedTargets)
@@ -162,8 +143,6 @@ export function deleteRequests(published: TorrentSelectionSummary, crossSeedTarg
       targets: request.targets && [...request.targets, ...merged],
     },
   }]
-  // The cross-seed warning leaves out every selected torrent, so the second
-  // delete never repeats a torrent of the Select all delete (#3341).
   if (merged.length === 0 && crossSeedTargets.length > 0) {
     requests.push({
       scope: crossSeedScope,
@@ -175,8 +154,6 @@ export function deleteRequests(published: TorrentSelectionSummary, crossSeedTarg
   return requests
 }
 
-// The size that the delete dialog shows. With no total size for the filter,
-// it is the size of the loaded torrents of the Action target.
 export function deleteSize({ actionTarget, totalSize, excludedSize }: TorrentSelectionSummary): number {
   const size = actionTarget.kind === "selectAll" ? Math.max(totalSize - excludedSize, 0) : getTotalSize(actionTarget.previewTorrents)
   return size > 0 ? size : getTotalSize(actionTarget.previewTorrents)
@@ -189,10 +166,6 @@ export interface DialogLists {
   isLoadingCategories: boolean
 }
 
-// The tags and the categories that the tag editor, Set category, and the
-// category submenu list. A cross-instance list shows those of its response,
-// with the metadata of the instance as the fallback. A single instance shows
-// its metadata.
 export function dialogLists(facts: ListFacts | undefined, metadata: InstanceMetadata | undefined, isMetadataLoading: boolean): DialogLists {
   const metadataTags = metadata?.tags ?? []
   const metadataCategories = metadata?.categories ?? {}

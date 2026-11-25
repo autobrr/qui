@@ -173,7 +173,6 @@ describe("SharesTab", () => {
     await waitFor(() => expect(writes).toEqual(["DELETE /api/shares/41"]))
   })
 
-  // regression: #4242
   it("shows the end reason in the language of the user, by its code", async () => {
     shares = [{ ...active, state: "ended", endReason: "A text that the code replaces", endReasonCode: "expired", endedAt: "2026-11-18T09:00:00Z" }]
     renderTab()
@@ -183,7 +182,6 @@ describe("SharesTab", () => {
     expect(row.textContent).not.toContain("A text that the code replaces")
   })
 
-  // regression: #4242
   it.each(["other", "a_code_of_a_newer_server"])("shows the text of the server for the end reason code %s", async (code) => {
     shares = [{ ...active, state: "ended", endReason: "qBittorrent did not seed the Share torrent.", endReasonCode: code, endedAt: "2026-11-18T09:00:00Z" }]
     renderTab()
@@ -192,7 +190,6 @@ describe("SharesTab", () => {
     expect(row.textContent).toContain("qBittorrent did not seed the Share torrent.")
   })
 
-  // regression: #4242
   it("hides an end reason of the server in incognito mode, and shows a translated one", async () => {
     incognito.on = true
     shares = [
@@ -207,7 +204,6 @@ describe("SharesTab", () => {
     expect((await findRow(getLinuxIsoName("bbbb2222"))).textContent).toContain("The Share expired.")
   })
 
-  // regression: #4242
   it("shows a made-up name and hides the addresses in incognito mode", async () => {
     incognito.on = true
     shares = [active]

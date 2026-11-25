@@ -10,15 +10,8 @@ import (
 	"slices"
 )
 
-// ErrNotRetryable refuses a Retry of a Transfer that did not fail and was
-// not cancelled.
 var ErrNotRetryable = errors.New("only a failed or cancelled Transfer runs again")
 
-// Retry runs a failed or cancelled Transfer or Export run again, and returns
-// the id of the run. A Transfer that waits for its retry runs at once as the
-// same Transfer, with the data that it kept. Any other starts again as a new
-// Transfer or Export run with the same target and choices, with the checks
-// of Start, and the old row stays.
 func (s *Service) Retry(ctx context.Context, id int64) (int64, error) {
 	if s.ctx.Err() != nil {
 		return 0, errShutdown
@@ -69,8 +62,6 @@ func (s *Service) Retry(ctx context.Context, id int64) (int64, error) {
 	})
 }
 
-// clearRetry lets Transfer id, which waits for its retry, run now. It
-// changes nothing once the Transfer runs again or ended.
 func (s *Store) clearRetry(ctx context.Context, id int64) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE torrent_transfers SET retry_at = NULL WHERE id = ? AND state = ? AND finished_at IS NULL`,
 		id, string(StateFailed)); err != nil {
@@ -79,9 +70,6 @@ func (s *Store) clearRetry(ctx context.Context, id int64) error {
 	return nil
 }
 
-// groupPlacement returns the placement that the request of record named: the
-// target folder of the top folder of the group, with the category and tags
-// of the torrents on the target itself.
 func (s *Service) groupPlacement(ctx context.Context, record *Record) (Placement, error) {
 	target, err := s.instance(ctx, record.TargetInstanceID)
 	if err != nil {
@@ -95,14 +83,10 @@ func (s *Service) groupPlacement(ctx context.Context, record *Record) (Placement
 	for i, m := range record.Members {
 		saves[i] = m.Placement.SavePath
 	}
-	// A torrent on the Cross-seed instance of the target has no category
-	// and no tags.
 	onTarget := record.Members[max(0, slices.IndexFunc(record.Members, func(m Member) bool {
 		return m.TargetInstanceID == record.TargetInstanceID
 	}))].Placement
 	placement := Placement{Category: onTarget.Category, Tags: onTarget.Tags}
-	// A request that named no save path names none again, so the new
-	// Transfer goes to the folder that the target has for the category by then.
 	if !record.Members[0].Placement.SavePathOfTarget {
 		placement.SavePath = topFolder(pathsOf(target, targetFiles, saves[0]), saves)
 	}

@@ -115,9 +115,6 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   )
   const tree = useMemo(() => sortFileTree(nodes, sort), [nodes, sort])
 
-  // Expand all folders by default when tree is first built for a new torrent,
-  // then keep the expanded set keyed to current paths (renames change node ids);
-  // render-time adjustment so the reconciled tree commits in one pass
   const [knownExpansion, setKnownExpansion] = useState<{ hash: string; ids: Set<string> } | null>(null)
   if (tree.length > 0 && (knownExpansion?.hash !== torrentHash || knownExpansion.ids !== folderIds)) {
     setKnownExpansion({ hash: torrentHash, ids: folderIds })
@@ -131,7 +128,6 @@ export const TorrentFileTable = memo(function TorrentFileTable({
     [tree, expandedFolders]
   )
 
-  // Filter rows based on search query
   const filteredRows = useMemo(() => {
     const visibleRows = flatRows.filter((row) => row.isVisible)
     if (!searchQuery.trim()) return visibleRows
@@ -139,11 +135,9 @@ export const TorrentFileTable = memo(function TorrentFileTable({
     const query = searchQuery.toLowerCase()
     const matchingIds = new Set<string>()
 
-    // Find all matching nodes and their parent paths
     for (const row of flatRows) {
       if (row.node.name.toLowerCase().includes(query)) {
         matchingIds.add(row.node.id)
-        // Add all parent folders
         const parts = row.node.id.split("/")
         let parentPath = ""
         for (let i = 0; i < parts.length - 1; i++) {
@@ -156,7 +150,6 @@ export const TorrentFileTable = memo(function TorrentFileTable({
     return visibleRows.filter((row) => matchingIds.has(row.node.id))
   }, [flatRows, searchQuery])
 
-  // Row height: 28px for file rows (with some padding)
   const ROW_HEIGHT = 28
 
   const virtualizer = useVirtualizer({
@@ -170,7 +163,6 @@ export const TorrentFileTable = memo(function TorrentFileTable({
     }, [filteredRows]),
   })
 
-  // Force virtualizer to recalculate when rows change
   useEffect(() => {
     virtualizer.measure()
   }, [filteredRows.length, virtualizer])
@@ -238,7 +230,6 @@ export const TorrentFileTable = memo(function TorrentFileTable({
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b text-xs">
         <button
           className="text-muted-foreground hover:text-foreground"
@@ -281,7 +272,6 @@ export const TorrentFileTable = memo(function TorrentFileTable({
         className="flex-1 min-h-0 overflow-auto scrollbar-thin"
       >
         <div className={cn("min-w-[500px]", supportsFilePriority && "min-w-[640px]")}>
-          {/* Header - sticky */}
           <div className="sticky top-0 z-10 bg-background border-b flex text-xs">
             {supportsFilePriority && (
               <div className="w-8 px-2 py-1.5 text-left shrink-0"></div>
@@ -291,7 +281,6 @@ export const TorrentFileTable = memo(function TorrentFileTable({
             {sortHeader("size", t("fileTable.headers.size"), "w-24 shrink-0 justify-end")}
             {supportsFilePriority && sortHeader("priority", t("filePriority.header"), "w-36 shrink-0")}
           </div>
-          {/* Virtualized body */}
           <div
             style={{
               height: `${virtualizer.getTotalSize()}px`,
@@ -416,7 +405,6 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                 </div>
               )
 
-              // Wrap with context menu if any file action handlers are provided
               if (onRenameFile || onRenameFolder || onDownloadFile || onShowMediaInfo) {
                 return (
                   <ContextMenu key={node.id}>

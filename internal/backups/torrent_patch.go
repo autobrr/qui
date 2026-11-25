@@ -20,20 +20,11 @@ type backupTrackerSource interface {
 	GetTorrentTrackers(ctx context.Context, instanceID int, hash string) ([]qbt.TorrentTracker, error)
 }
 
-// patchTorrentTrackers ensures the exported .torrent includes tracker metadata.
-// Some qBittorrent 4.6.x builds omit tracker information when exporting a
-// torrent. When detected, we inject the trackers retrieved from the API into
-// both the announce field and the announce-list. The function returns the
-// (possibly mutated) payload along with a flag indicating whether changes were
-// applied.
 func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) {
 	if len(trackers) == 0 {
 		return data, false, nil
 	}
 
-	// Keep top-level values as raw bencode so re-encoding cannot rewrite the
-	// info dict of a non-canonical torrent, which would change its infohash.
-	// Only the announce fields we replace are ever re-encoded.
 	var root map[string]bencode.Bytes
 	if err := bencode.Unmarshal(data, &root); err != nil {
 		return data, false, fmt.Errorf("decode torrent: %w", err)
@@ -80,11 +71,6 @@ func decodeRawValue(raw bencode.Bytes) any {
 	return v
 }
 
-// announceDomain returns the lowest host by name in the first announce tier
-// that names one, then the announce host, or "" when the payload names no
-// tracker. On qBittorrent 4.6.x the payload was patched from the client's
-// tracker list first, so a tier with several URLs can still change between
-// runs there.
 func announceDomain(data []byte) string {
 	var meta struct {
 		Announce     string                `bencode:"announce"`
@@ -95,8 +81,6 @@ func announceDomain(data []byte) string {
 	}
 
 	for _, tier := range meta.AnnounceList {
-		// BEP 12 clients reorder trackers inside a tier as announces succeed
-		// or fail, so pick by name rather than position.
 		domain := ""
 		for _, raw := range tier {
 			if host := hostFromURL(raw); host != "" && (domain == "" || host < domain) {

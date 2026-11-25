@@ -32,11 +32,6 @@ beforeAll(async () => {
   })
 })
 
-/**
- * The implementation as it stood before units were localized. The parity tests below hold
- * new output to this, which is what makes "English is unchanged" a checkable claim rather
- * than a sentence in a PR body.
- */
 function legacyFormatBytes(bytes: number): string {
   if (bytes === 0) return "0 B"
   const k = 1024
@@ -60,9 +55,6 @@ describe("English output is unchanged", () => {
 
   it("keeps rounding halfway values the way toFixed did, not the way Intl would", async () => {
     await i18next.changeLanguage("en")
-    // Intl rounds the shortest decimal representation, toFixed rounds the binary double,
-    // so these disagree: 1.45 is stored as 1.4499... and toFixed gives "1.4" while Intl
-    // alone gives "1.5". Delete the pre-round in formatValueWithUnit and this fails.
     const halfway: [number, number, string][] = [
       [1.45, 1, "1.4 MiB"],
       [0.15, 1, "0.1 MiB"],
@@ -77,8 +69,6 @@ describe("English output is unchanged", () => {
 
   it("composes the English bit rate from one mechanism", async () => {
     await i18next.changeLanguage("en")
-    // "Mbps" does not split into a unit and a rate, so English composes "Mb/s" from the same
-    // perSecond rule as the byte ladder.
     expect(formatSpeedWithUnit(1572864, "bits")).toBe("12.6 Mb/s")
     expect(unitLabel("Mb", true)).toBe("Mb/s")
     expect(unitLabel("Mb")).toBe("Mb")
@@ -86,8 +76,6 @@ describe("English output is unchanged", () => {
 
   it("leaves grouping off, so four-digit values keep no separator", async () => {
     await i18next.changeLanguage("en")
-    // 1000..1023.99 of a unit stays in that unit, so four digits are ordinary, not an edge
-    // case: grouping here would change 8.5% of displayed values.
     expect(formatBytes(1052193331)).toBe("1003.45 MiB")
     await i18next.changeLanguage("de")
     expect(formatBytes(1052193331)).toBe("1003,45 MiB")
@@ -140,8 +128,6 @@ describe("derived labels", () => {
   })
 
   it("keeps the filter multipliers in step with the ladder", async () => {
-    // convertSizeToBytes reads BYTES_PER_UNIT, so a wrong magnitude there would silently
-    // change what a saved filter matches rather than fail to resolve.
     expect(BYTES_PER_UNIT.B).toBe(1)
     expect(BYTES_PER_UNIT.KiB).toBe(1024)
     expect(BYTES_PER_UNIT.PiB).toBe(1024 ** 5)
@@ -166,9 +152,6 @@ describe("the English locale", () => {
 
 describe("the cached join template", () => {
   it("carries both placeholders in every locale, so filling it with a plain replace is safe", async () => {
-    // formatValueWithUnit fills this template itself instead of paying i18next interpolation
-    // per call. That is only safe while every locale writes both placeholders; a translator who
-    // dropped one would silently lose the number or the unit.
     const locales = import.meta.glob<{ dataUnits: { valueWithUnit: string } }>(
       "../../i18n/locales/*/common.json",
       { eager: true, import: "default" }
@@ -199,9 +182,6 @@ describe("filter units keep their stored value", () => {
   })
 
   it("converts every offered value, so a filter stored in one language still works in another", async () => {
-    // A persisted ColumnFilter carries these strings verbatim. If a localized label ever
-    // reached the value, convertSizeToBytes would miss FILTER_UNIT_BYTES and the filter
-    // expression would read "Size > NaN".
     await i18next.changeLanguage("fr")
     for (const { value } of getSizeUnitOptions()) {
       expect(Number.isFinite(convertSizeToBytes(1, value))).toBe(true)

@@ -13,7 +13,6 @@ declare global {
 
   interface ImportMetaEnv {
     readonly VITE_DEMO?: string
-    /** One day index for each release of the last 52 weeks. See src/lib/release-days.ts. */
     readonly VITE_RELEASE_DAYS?: number[]
   }
 }

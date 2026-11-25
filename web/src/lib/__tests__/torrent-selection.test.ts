@@ -271,7 +271,6 @@ describe("rememberTickedTorrents", () => {
   })
 })
 
-// regression: #3764
 describe("actionTargetInstanceIds", () => {
   const filters = {} as TorrentFilters
   const ticks = (targets: Array<{ instanceId: number; hash: string }>): ActionTarget => ({ kind: "ticks", hashes: [], targets, count: targets.length, previewTorrents: [] })

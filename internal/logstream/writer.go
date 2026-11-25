@@ -69,8 +69,6 @@ func (sw *SwitchableWriter) captureLine(p []byte) {
 	}
 }
 
-// Swap atomically replaces the underlying writer and returns the old closer (if any).
-// The caller is responsible for closing the returned closer after the swap.
 func (sw *SwitchableWriter) Swap(newWriter io.Writer, newCloser io.Closer) io.Closer {
 	old := sw.target.Swap(&writerWithCloser{w: newWriter, closer: newCloser})
 	if old != nil {

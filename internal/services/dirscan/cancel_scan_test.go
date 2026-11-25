@@ -126,7 +126,6 @@ func TestService_CreateScheduledRun_SkipsDirectoryThatPauseMadeNotDue(t *testing
 	svc, store, dir := newDirScanTestService(t)
 	require.True(t, svc.isDueForScan(dir), "the scheduler listed the directory as due")
 
-	// Pause runs after the scheduler listed the directory.
 	require.NoError(t, store.UpdateDirectoryLastScan(ctx, dir.ID))
 
 	runID, err := svc.createScheduledRun(ctx, dir.ID)

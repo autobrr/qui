@@ -23,6 +23,6 @@ export const setStoredVariation = (themeId: string, variationId: string): void =
     parsed[themeId] = variationId;
     localStorage.setItem(VARIATIONS_THEME_KEY, JSON.stringify(parsed));
   } catch {
-    // Ignore
+    return;
   }
 };

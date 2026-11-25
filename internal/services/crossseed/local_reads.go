@@ -17,42 +17,18 @@ import (
 )
 
 const (
-	// localReadTTL is how long a remembered read is used before a background
-	// refresh reads the files again. Callers keep the old read meanwhile.
-	localReadTTL = time.Hour
-	// localReadFailureTTL is how long a failed file fetch is remembered.
-	localReadFailureTTL = time.Minute
-	// localReadFreshAdd is the age under which a torrent is read on every call:
-	// qBittorrent can return no files for a few seconds after an add.
-	localReadFreshAdd = 10 * time.Minute
-	// localReadFillTimeout bounds a fill, which outlives the caller that started it.
+	localReadTTL         = time.Hour
+	localReadFailureTTL  = time.Minute
+	localReadFreshAdd    = 10 * time.Minute
 	localReadFillTimeout = 2 * time.Minute
-	// localReadWait is how long a caller waits for a fill before it answers
-	// with name reads. It stays under the 120 s that autobrr waits for a check.
-	localReadWait = 60 * time.Second
-	// localReadFilesMaxAge is the age of the SQLite file lists that a fill
-	// accepts for a torrent without a remembered read: file names change only on
-	// a rename, and a rename through qui deletes the row.
+	localReadWait        = 60 * time.Second
 	localReadFilesMaxAge = 24 * time.Hour
-	// localReadFetchSlots is how many of the file-fetch slots of an instance a
-	// fill holds, so cross-seed adds still get one.
-	localReadFetchSlots = 4
+	localReadFetchSlots  = 4
 )
 
-// localReadMemo remembers the Read releases that local torrents give from
-// their files (nameNeedsFiles). Every Match path that reads local torrents
-// reads through it, so a webhook check reads no file list once the reads are
-// filled. The zero value is ready to use.
-//
-// ponytail: an entry of a torrent deleted outside qui stays until a settings
-// save or a restart; prune entries that no caller asked for in a day if the
-// memo grows.
 type localReadMemo struct {
 	mu      sync.Mutex
 	entries map[localReadKey]localReadEntry
-	// filling holds the done channel of the fill that reads a torrent now. A
-	// fill stores a read only while it still holds the torrent here: a settings
-	// save or a rename through qui takes it away.
 	filling map[localReadKey]chan struct{}
 }
 
@@ -62,16 +38,12 @@ type localReadKey struct {
 }
 
 type localReadEntry struct {
-	// name and category are part of the key: a change misses the entry.
 	name, category string
 	read           namedRelease
-	// fromFiles is false for a remembered failure, which has no read.
-	fromFiles bool
-	expires   time.Time
+	fromFiles      bool
+	expires        time.Time
 }
 
-// localTorrent is what a fill needs of a torrent. It holds no pointer into the
-// torrent list of the caller, so that list can be freed while the fill runs.
 type localTorrent struct {
 	hash, name, category string
 	addedOn              int64
@@ -81,25 +53,16 @@ func (e localReadEntry) matches(t localTorrent) bool {
 	return e.name == t.name && e.category == t.category
 }
 
-// pendingLocalReads is a request for the reads of one instance. The reads
-// that are remembered are in reads at once; wait takes them all again from the
-// memo, with the ones that fills read.
 type pendingLocalReads struct {
 	memo       *localReadMemo
 	instanceID int
 	reads      localReads
-	// torrents are the torrents with a remembered read or a fill.
-	torrents []localTorrent
-	fills    map[chan struct{}]struct{}
+	torrents   []localTorrent
+	fills      map[chan struct{}]struct{}
 }
 
-// localReads holds the Read releases that a local read took from files,
-// keyed by cacheKeyForTorrentFiles.
 type localReads map[string]localReadEntry
 
-// read returns the Read release of a local torrent: from its files when the
-// local read had them for the same name and category, else from its name. A
-// caller can take a new torrent list after the local read.
 func (r localReads) read(m matcher, instanceID int, torrent *qbt.Torrent) namedRelease {
 	if entry, ok := r.entry(instanceID, torrent); ok {
 		return entry.read
@@ -115,16 +78,10 @@ func (r localReads) entry(instanceID int, torrent *qbt.Torrent) (localReadEntry,
 	return entry, ok && entry.name == torrent.Name && entry.category == torrent.Category
 }
 
-// readLocalTorrents reads the torrents of one instance whose names need their
-// files (nameNeedsFiles), as search reads them. A torrent whose files do not
-// load in time keeps its name read.
 func (s *Service) readLocalTorrents(ctx context.Context, instanceID int, torrents iter.Seq[*qbt.Torrent]) localReads {
 	return s.requestLocalReads(ctx, instanceID, torrents).wait(ctx)
 }
 
-// requestLocalReads returns the remembered reads of the torrents whose names
-// need their files, and starts fills for the ones that are missing. It reads
-// torrents only during the call.
 func (s *Service) requestLocalReads(ctx context.Context, instanceID int, torrents iter.Seq[*qbt.Torrent]) *pendingLocalReads {
 	m := s.matcher()
 	var needed []localTorrent
@@ -167,7 +124,6 @@ func (s *Service) requestLocalReads(ctx context.Context, instanceID int, torrent
 				stale = append(stale, torrent)
 			}
 		case ok && now.Before(entry.expires):
-			// A remembered failure: the name read stands.
 		case filling != nil:
 			pending.addFill(torrent, filling)
 		default:
@@ -198,14 +154,10 @@ func (p *pendingLocalReads) addFill(torrent localTorrent, fill chan struct{}) {
 	p.torrents = append(p.torrents, torrent)
 }
 
-// hasFills reports whether wait has fills to wait for.
 func (p *pendingLocalReads) hasFills() bool {
 	return len(p.fills) > 0
 }
 
-// wait waits for the fills of the request, at most localReadWait or until ctx
-// ends, and returns the reads. A torrent that is still missing then keeps its
-// name read, and so does a torrent whose read qui forgot during the wait.
 func (p *pendingLocalReads) wait(ctx context.Context) localReads {
 	if len(p.torrents) == 0 {
 		return p.reads
@@ -223,8 +175,6 @@ wait:
 		}
 	}
 
-	// A caller can wait on other instances first, so the remembered reads are
-	// taken again also without fills.
 	p.memo.mu.Lock()
 	defer p.memo.mu.Unlock()
 	for _, torrent := range p.torrents {
@@ -238,11 +188,6 @@ wait:
 	return p.reads
 }
 
-// fillLocalReads reads the files of torrents and remembers the reads. It runs
-// under its own context, so a caller that gives up does not stop it, and it
-// stores what it read when it stops. A first fill reads SQLite file lists up to
-// localReadFilesMaxAge old; a refresh reads them under
-// [qbittorrent.WithFilesUntilChangedOrStale].
 func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents []localTorrent, done chan struct{}, firstFill bool) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), localReadFillTimeout)
 	defer cancel()
@@ -273,8 +218,6 @@ func (s *Service) fillLocalReads(ctx context.Context, instanceID int, torrents [
 			}
 		}
 	} else {
-		// Without the category mapping rules, a read could differ from the
-		// next one, so the fill stores nothing.
 		log.Debug().Err(err).Int("instanceID", instanceID).
 			Msg("crossseed: local torrents keep their name read, because the settings could not be loaded")
 	}
@@ -302,8 +245,6 @@ func (memo *localReadMemo) store(instanceID int, torrents []localTorrent, reads 
 			stored = append(stored, torrent.hash)
 			continue
 		}
-		// A fill that stopped early did not try every torrent, and a new torrent
-		// can have no files yet: neither counts as a failure.
 		if fetchErr != nil || now.Sub(time.Unix(torrent.addedOn, 0)) < localReadFreshAdd {
 			continue
 		}
@@ -311,7 +252,6 @@ func (memo *localReadMemo) store(instanceID int, torrents []localTorrent, reads 
 		if !entry.matches(torrent) {
 			entry = localReadEntry{name: torrent.name, category: torrent.category}
 		}
-		// A failed refresh keeps the old read and tries again after a minute.
 		entry.expires = now.Add(localReadFailureTTL)
 		memo.entries[key] = entry
 	}
@@ -340,9 +280,6 @@ func (s *Service) readLocalFiles(rules []models.CategoryMappingRule, name, categ
 	return read
 }
 
-// forgetLocalRead drops the remembered read of one torrent, after qui renamed,
-// moved, or deleted it, and marks the Copy groups for a rebuild. A fill that
-// reads the torrent now does not store it.
 func (s *Service) forgetLocalRead(instanceID int, hash string) {
 	s.copyGroups.forget(instanceID, hash)
 	memo := &s.localReadMemo
@@ -354,9 +291,6 @@ func (s *Service) forgetLocalRead(instanceID int, hash string) {
 	s.heldTitles.filesReadChanged(instanceID, []string{hash})
 }
 
-// forgetLocalReads drops every remembered read and marks the Copy groups for a
-// rebuild, because the category mapping rules change the reads. A fill that
-// runs now stores nothing, and the next caller starts a new one.
 func (s *Service) forgetLocalReads() {
 	s.copyGroups.forgetAll()
 	memo := &s.localReadMemo

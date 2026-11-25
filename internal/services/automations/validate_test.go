@@ -244,15 +244,12 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 	}
 }
 
-// TestValidateRule_WindowsRejectsPathAlways tests that on Windows,
-// path-based free space is rejected even when conditions don't use FREE_SPACE.
 func TestValidateRule_WindowsRejectsPathAlways(t *testing.T) {
 	isWindows := runtime.GOOS == "windows"
 	if !isWindows {
 		t.Skip("Test only applicable on Windows")
 	}
 
-	// Conditions that don't use FREE_SPACE
 	rule := &models.Automation{
 		Name:            "Windows path source",
 		TrackerPattern:  "*",
@@ -261,7 +258,6 @@ func TestValidateRule_WindowsRejectsPathAlways(t *testing.T) {
 		FreeSpaceSource: &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"},
 	}
 
-	// On Windows, should reject path source even when FREE_SPACE not used
 	ruleErr, ok := errors.AsType[*RuleError](ValidateRule(rule, &models.Instance{HasLocalFilesystemAccess: true}))
 	if !ok {
 		t.Fatalf("ValidateRule() on Windows: expected a RuleError")
@@ -561,7 +557,7 @@ func TestDeleteUsesKeepFilesWithFreeSpace(t *testing.T) {
 		conditions := &models.ActionConditions{
 			Delete: &models.DeleteAction{
 				Enabled: true,
-				Mode:    "", // Empty defaults to keep-files
+				Mode:    "",
 				Condition: &models.RuleCondition{
 					Field:    models.FieldFreeSpace,
 					Operator: models.OperatorLessThan,
@@ -764,7 +760,7 @@ func TestGroupIDsError(t *testing.T) {
 		name       string
 		conditions *models.ActionConditions
 		sorting    *models.SortingConfig
-		wantMsg    string // empty means valid
+		wantMsg    string
 	}{
 		{name: "built-in group id in a condition", conditions: &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: grouped(GroupCrossSeedContentSavePath)}}},
 		{name: "custom group id in a condition", conditions: &models.ActionConditions{Grouping: customGroup, Pause: &models.PauseAction{Enabled: true, Condition: grouped("my_group")}}},
@@ -818,8 +814,6 @@ func TestValidateRule(t *testing.T) {
 	local := &models.Instance{HasLocalFilesystemAccess: true}
 	freeSpaceBelow := &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "100000000000"}
 	remote := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
-	// A remote instance on the exec tier has Identity, but its identity is
-	// what the host asserts, so nothing that can widen a delete opens for it.
 	remoteExec := &models.Instance{SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec}
 	freeSpacePath := func(r *models.Automation) {
 		r.Conditions = &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: freeSpaceBelow}}
@@ -834,7 +828,7 @@ func TestValidateRule(t *testing.T) {
 		name     string
 		edit     func(*models.Automation)
 		instance *models.Instance
-		wantMsg  string // empty means valid
+		wantMsg  string
 	}{
 		{name: "valid", edit: func(*models.Automation) {}},
 		{name: "name required", edit: func(r *models.Automation) { r.Name = "" }, wantMsg: "Name is required"},
@@ -912,7 +906,6 @@ func TestValidateRule(t *testing.T) {
 		{name: "free space path source without instance", edit: freeSpacePath, wantMsg: errMsgPathSourceAccessRequired},
 		{name: "free space path source with local access", edit: freeSpacePath, instance: local, wantMsg: localFreeSpacePathMsg},
 		{name: "free space path source with SSH access", edit: freeSpacePath, instance: remote},
-		// regression: #4092
 		{name: "free space only in the sorting still checks the path source", instance: &models.Instance{}, wantMsg: errMsgPathSourceAccessRequired,
 			edit: func(r *models.Automation) {
 				r.SortingConfig = &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeSimple, Field: FieldFreeSpace, Direction: models.SortDirectionASC}
@@ -951,7 +944,7 @@ func TestValidateRule_MovePath(t *testing.T) {
 	tests := []struct {
 		path    string
 		enabled bool
-		wantMsg string // a substring; empty means valid
+		wantMsg string
 	}{
 		{path: "/data/archive", enabled: true},
 		{path: `D:\Archive`, enabled: true},
@@ -1004,7 +997,6 @@ func TestValidateRule_MovePath(t *testing.T) {
 }
 
 func TestValidateRule_MovePathSkippedWhenRuleDisabled(t *testing.T) {
-	// A rule saved before the move path check existed must stay editable, so it can be toggled off.
 	rule := &models.Automation{InstanceID: 1, Name: "Legacy rule", TrackerPattern: "*", Enabled: false, Conditions: &models.ActionConditions{
 		Move: &models.MoveAction{Enabled: true, Path: "archive/done"},
 	}}
