@@ -115,6 +115,21 @@ func TestReadsOfNamedHashesFindHelperTorrents(t *testing.T) {
 	refs, err = sm.GetTorrentRefsWithin(ctx, 1, named, time.Hour)
 	require.NoError(t, err)
 	require.Equal(t, []string{hashA}, refHashes(refs))
+
+	lists := map[string]FilterOptions{
+		"two named hashes":                 {Hashes: []string{hashA, hashB}},
+		"a named hash with another filter": {Hashes: []string{hashA}, Tags: []string{"qui-transfer"}},
+	}
+	for name, filters := range lists {
+		resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: 1, Filters: filters, SidebarCounts: true})
+		require.NoError(t, err, name)
+		rows := make([]string, 0, len(resp.Torrents))
+		for _, row := range resp.Torrents {
+			rows = append(rows, row.Hash)
+		}
+		require.Contains(t, rows, hashA, "%s finds the Helper torrent", name)
+		require.Equal(t, 1, resp.Counts.Tags["qui-transfer"], "%s keeps the Helper torrent out of the Sidebar counts", name)
+	}
 }
 
 func TestReadersThatAskForHelperTorrentsGetThem(t *testing.T) {
@@ -161,6 +176,10 @@ func TestHelperTorrentsGetNoFinishOrAddEvent(t *testing.T) {
 
 		now := time.Now().Unix()
 		downloading := qbt.Torrent{CompletionOn: -1, AmountLeft: 10, AddedOn: now, State: qbt.TorrentStateDownloading}
+		client.handleAddedUpdates(syncOf(t, src, map[string]qbt.Torrent{hashA: downloading}))
+		synctest.Wait()
+		require.Empty(t, added, "a sync that adds only a Helper torrent calls no added handler")
+
 		update := syncOf(t, src, map[string]qbt.Torrent{hashA: downloading, hashB: downloading})
 		client.handleCompletionUpdates(update)
 		client.handleAddedUpdates(update)

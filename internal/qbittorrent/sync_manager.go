@@ -1385,9 +1385,12 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	mainData := resolveMainData(syncManager, mainDataModeForRequest(skipFreshData, syncManager.LastSyncTime()))
 
 	syncSnapshot := listSnapshot(syncManager, skipFreshData)
-	var hidden snapshotHelpers
+	var hidden, hiddenRows snapshotHelpers
 	if !view.WithHelperTorrents {
 		hidden = helpersOf(syncSnapshot, sm.helpers(), instanceID)
+	}
+	if len(filters.Hashes) == 0 {
+		hiddenRows = hidden
 	}
 
 	var hashLookupHit bool
@@ -1418,7 +1421,7 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	case rule.none:
 		filteredTorrents = nil
 	case rule.narrows():
-		filteredTorrents = hidden.drop(snapshotMatching(syncSnapshot, rule.match))
+		filteredTorrents = hiddenRows.drop(snapshotMatching(syncSnapshot, rule.match))
 	default:
 		filteredTorrents = hidden.drop(snapshotTorrents(syncSnapshot))
 		allTorrentsForCounts = filteredTorrents

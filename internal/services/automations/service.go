@@ -678,7 +678,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
 		deleter:                   syncManager,
-		routedTorrents:            syncManager,
+		routedTorrents:            routedFileOwners{syncManager},
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
