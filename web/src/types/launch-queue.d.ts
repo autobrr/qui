@@ -3,13 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/**
- * TypeScript declarations for the File Handling API's LaunchQueue
- * @see https://developer.chrome.com/docs/capabilities/web-apis/file-handling
- */
-
 interface LaunchParams {
-  /** The target URL that was launched (may contain query params for protocol handlers) */
   targetURL?: string
   files?: FileSystemFileHandle[]
 }
@@ -20,7 +14,6 @@ interface LaunchQueue {
 
 declare global {
   interface Window {
-    /** LaunchQueue API for PWA file/protocol handling (Chrome 102+) */
     launchQueue?: LaunchQueue
   }
 }

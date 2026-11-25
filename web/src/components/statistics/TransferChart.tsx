@@ -6,6 +6,8 @@
 import { ChartContainer, ChartLegend, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { byteTicks, foldOther, formatGapLength, labelledGaps, type BarWidth, type ChartUnit, type Metric, type StatisticsBar } from "@/lib/statistics"
+import { DayBands } from "@/components/statistics/DayBands"
+import { useHourAxis } from "@/components/statistics/useHourAxis"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { useTapTooltip } from "@/components/statistics/useTapTooltip"
 import { useIsPhone } from "@/hooks/useMediaQuery"
@@ -34,11 +36,10 @@ interface TransferChartProps {
   displayName: (group: string) => string
 }
 
-/** Stacked bars of the metric, one series for each of the top Tracker groups, and Other for the rest. */
 export function TransferChart({ bars, groups, metric, unit, displayName }: TransferChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const { formatStart, formatTick } = useBucketFormat(unit)
+  const { formatStart, formatTick, formatHour } = useBucketFormat()
   const colors = useSeriesColors()
   const tooltip = useTapTooltip()
   const narrow = useIsPhone()
@@ -69,6 +70,7 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
 
   const widths = useMemo(() => new Map(rows.map(row => [row.start, row.width])), [rows])
   const gapLabels = useMemo(() => labelledGaps(rows.flatMap((row, index) => row.gapSeconds > 0 ? [index] : []), rows.length), [rows])
+  const hourAxis = useHourAxis(rows, unit)
   const ticks = useMemo(() => byteTicks(Math.max(0, ...rows.map(row => row.total))), [rows])
   const otherGroups = useMemo(() => {
     const totals = new Map<string, number>()
@@ -91,7 +93,12 @@ export function TransferChart({ bars, groups, metric, unit, displayName }: Trans
     <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[260px] w-full sm:h-[300px] sideways:h-[220px]">
       <BarChart data={rows} margin={{ top: 16, right: narrow ? 4 : 24, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value), widths.get(Number(value)))} />
+        {hourAxis ? (
+          <XAxis dataKey="start" tickLine={false} axisLine={false} ticks={hourAxis.ticks} interval={0} tickFormatter={value => formatHour(Number(value))} />
+        ) : (
+          <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value), widths.get(Number(value)))} />
+        )}
+        {hourAxis && <DayBands axis={hourAxis} />}
         <YAxis tickLine={false} axisLine={false} width={narrow ? "auto" : 72} ticks={ticks} domain={[0, ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Number(value))} />
         {rows.map((row, index) => row.gapSeconds > 0 && (
           <ReferenceLine

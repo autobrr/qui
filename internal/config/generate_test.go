@@ -14,8 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// A commented log key falls back to the built-in default, so a changed default
-// reaches installs that never edited the line.
 func TestWriteDefaultConfigCommentsOutLogKeys(t *testing.T) {
 	c := &AppConfig{viper: viper.New()}
 	c.defaults()

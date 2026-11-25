@@ -27,19 +27,14 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
-// fakeSyncProvider is a configurable implementation of the consumer-side
-// syncProvider interface. It returns canned responses and records how many times
-// each method is invoked so delivery and coalescing behavior can be asserted
-// without a live qBittorrent connection.
 type fakeSyncProvider struct {
 	mu sync.Mutex
 
-	torrentsResponse *qbittorrent.TorrentResponse
-	torrentsErr      error
-	torrentsCalls    int
-	torrentsGate     chan struct{}
-	builds           chan struct{}
-	// torrentsView and crossView are the last view that the stream asked for.
+	torrentsResponse      *qbittorrent.TorrentResponse
+	torrentsErr           error
+	torrentsCalls         int
+	torrentsGate          chan struct{}
+	builds                chan struct{}
 	torrentsView          qbittorrent.TorrentListView
 	groupedResponse       *qbittorrent.TorrentResponse
 	crossInstanceResponse *qbittorrent.TorrentResponse
@@ -48,8 +43,7 @@ type fakeSyncProvider struct {
 	crossView             qbittorrent.TorrentListView
 	connectionStatus      string
 	taskCountDeadline     bool
-	// webAPIVersions is the version of each instance in the client pool.
-	webAPIVersions map[int]string
+	webAPIVersions        map[int]string
 }
 
 func (f *fakeSyncProvider) ListTorrents(_ context.Context, view qbittorrent.TorrentListView) (*qbittorrent.TorrentResponse, error) {
@@ -85,9 +79,6 @@ func (f *fakeSyncProvider) ListTorrents(_ context.Context, view qbittorrent.Torr
 		builds <- struct{}{}
 	}
 
-	// When a gate is armed, park here (without holding the lock, so torrentsCallCount
-	// stays observable) until the test releases it. This lets a test hold the first
-	// build open while it enqueues a burst, exercising coalescing deterministically.
 	if gate != nil {
 		<-gate
 	}
@@ -96,8 +87,6 @@ func (f *fakeSyncProvider) ListTorrents(_ context.Context, view qbittorrent.Torr
 }
 
 func (f *fakeSyncProvider) GetSyncOwner(_ context.Context, _ int) (*syncowner.Owner, error) {
-	// These tests drive delivery through HandleSyncUpdate rather than the real sync
-	// loop, so the loop's attempt to fetch a sync manager always fails fast.
 	return nil, errors.New("sync manager unavailable in test")
 }
 
@@ -172,11 +161,6 @@ func TestMaterializeGroupResponsePassesSummary(t *testing.T) {
 	provider.mu.Unlock()
 }
 
-// gateTorrentBuilds makes every subsequent torrents build park until the returned
-// release func is called. A test uses this to hold the first coalesced build open
-// while it enqueues a burst, so coalescing is exercised deterministically rather
-// than depending on the producer goroutine out-pacing the build worker. release is
-// safe to call exactly once.
 func (f *fakeSyncProvider) gateTorrentBuilds() (release func()) {
 	gate := make(chan struct{})
 
@@ -192,8 +176,6 @@ func (f *fakeSyncProvider) gateTorrentBuilds() (release func()) {
 	}
 }
 
-// signalBuilds makes every later torrents build, single or cross-instance, send
-// on the returned channel when it starts, before it parks on a gate.
 func (f *fakeSyncProvider) signalBuilds() <-chan struct{} {
 	builds := make(chan struct{}, 64)
 
@@ -204,7 +186,6 @@ func (f *fakeSyncProvider) signalBuilds() <-chan struct{} {
 	return builds
 }
 
-// receive waits for one signal on ch, or fails the test after 5 s.
 func receive(t *testing.T, ch <-chan struct{}, what string) {
 	t.Helper()
 	select {
@@ -214,10 +195,6 @@ func receive(t *testing.T, ch <-chan struct{}, what string) {
 	}
 }
 
-// TestInitBuildUsesBaselinePublishedWhileMaterializing pins the initialization
-// race: if a tick advances the group while an init candidate is being built, the
-// joiner must receive the tick's exact retained snapshot and version rather than
-// the stale candidate it materialized independently.
 func TestInitBuildUsesBaselinePublishedWhileMaterializing(t *testing.T) {
 	before := singleResp(qbittorrent.TorrentView{Torrent: &qbt.Torrent{
 		Hash:     "a",
@@ -260,8 +237,6 @@ func TestInitBuildUsesBaselinePublishedWhileMaterializing(t *testing.T) {
 	require.Equal(t, qbt.TorrentStateUploading, init.Data.Torrents[0].State)
 }
 
-// cloneTorrentResponse returns a shallow copy so the build path cannot mutate the
-// canned response shared across calls (buildGroupPayload sets InstanceMeta).
 func cloneTorrentResponse(resp *qbittorrent.TorrentResponse) *qbittorrent.TorrentResponse {
 	if resp == nil {
 		return nil
@@ -270,7 +245,6 @@ func cloneTorrentResponse(resp *qbittorrent.TorrentResponse) *qbittorrent.Torren
 	return &clone
 }
 
-// startStreamServer wires the manager's Serve handler behind an httptest server.
 func startStreamServer(t *testing.T, manager *StreamManager) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(manager.Serve))
@@ -278,9 +252,6 @@ func startStreamServer(t *testing.T, manager *StreamManager) *httptest.Server {
 	return srv
 }
 
-// subscribeSignal wraps the replayer of the go-sse provider. Joe calls Replay on
-// its loop when it adds a session, and it handles a publish only after that, so a
-// publish after the signal reaches the session.
 type subscribeSignal struct {
 	sse.Replayer
 	subscribed chan<- struct{}
@@ -292,10 +263,6 @@ func (s subscribeSignal) Replay(sub sse.Subscription) error {
 	return err
 }
 
-// watchSubscriptions sends on the returned channel each time the manager
-// subscribes a session. A new session gets its init before go-sse subscribes it,
-// so an update published between the two reaches no one. Call it before the
-// manager serves or publishes.
 func watchSubscriptions(manager *StreamManager) <-chan struct{} {
 	subscribed := make(chan struct{}, 8)
 	joe := manager.server.Provider.(*sse.Joe)
@@ -310,15 +277,11 @@ func streamsQuery(t *testing.T, payload []map[string]any) string {
 	return url.QueryEscape(string(raw))
 }
 
-// sseEvent is a parsed Server-Sent Event.
 type sseEvent struct {
 	event string
 	data  string
 }
 
-// sseReader consumes an SSE response body line-by-line, emitting fully formed
-// events onto a channel. go-sse formats events as one or more "event: <type>"
-// and "data: <json>" lines terminated by a blank line.
 type sseReader struct {
 	events chan sseEvent
 	errc   chan error
@@ -358,7 +321,6 @@ func newSSEReader(body io.Reader) *sseReader {
 			case strings.HasPrefix(line, "data:"):
 				dataParts = append(dataParts, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 			default:
-				// Ignore id:, retry:, comments, etc.
 			}
 		}
 
@@ -372,8 +334,6 @@ func newSSEReader(body io.Reader) *sseReader {
 	return r
 }
 
-// waitForEvent blocks until an event of the requested type arrives or the
-// deadline elapses. Heartbeat and other interleaved events are skipped.
 func (r *sseReader) waitForEvent(t *testing.T, eventType string, timeout time.Duration) sseEvent {
 	t.Helper()
 	deadline := time.After(timeout)
@@ -391,16 +351,10 @@ func (r *sseReader) waitForEvent(t *testing.T, eventType string, timeout time.Du
 	}
 }
 
-// isTickEvent reports whether an event is a per-tick torrent frame. Steady-state
-// ticks are incremental "delta" frames; a full "update" frame is only sent for the
-// seed tick and the periodic keyframe. Delivery/coalescing/isolation tests assert a
-// tick frame was delivered regardless of which encoding it took.
 func isTickEvent(event string) bool {
 	return event == streamEventUpdate || event == streamEventDelta
 }
 
-// waitForTick blocks until any per-tick frame (update or delta) arrives. A
-// connection gets one init only, so an init before the tick fails the test.
 func (r *sseReader) waitForTick(t *testing.T, timeout time.Duration) sseEvent {
 	t.Helper()
 	deadline := time.After(timeout)
@@ -421,9 +375,6 @@ func (r *sseReader) waitForTick(t *testing.T, timeout time.Duration) sseEvent {
 	}
 }
 
-// waitForError blocks until a stream-error event with wantMsg arrives. It matches
-// on the message, so the unrelated "sync manager unavailable" stream-error of the
-// per-instance sync loop (tests wire a nil pool) is ignored.
 func (r *sseReader) waitForError(t *testing.T, wantMsg string, timeout time.Duration) *StreamPayload {
 	t.Helper()
 	deadline := time.After(timeout)
@@ -444,8 +395,6 @@ func (r *sseReader) waitForError(t *testing.T, wantMsg string, timeout time.Dura
 	}
 }
 
-// connectStream opens an SSE connection for the given stream payload and returns
-// a reader plus a cancel func that closes the client (ending Serve).
 func connectStream(t *testing.T, srv *httptest.Server, payload []map[string]any) (*sseReader, context.CancelFunc) {
 	t.Helper()
 
@@ -453,10 +402,6 @@ func connectStream(t *testing.T, srv *httptest.Server, payload []map[string]any)
 	return newSSEReader(resp.Body), cleanup
 }
 
-// dialStream opens an SSE connection and returns the live response plus a cancel
-// func that closes the client (ending Serve). A non-empty acceptEncoding is sent
-// verbatim, which also stops the transport from adding its own and decoding the
-// body, so the caller sees the wire bytes.
 func dialStream(t *testing.T, srv *httptest.Server, payload []map[string]any, acceptEncoding string) (*http.Response, context.CancelFunc) {
 	t.Helper()
 
@@ -514,7 +459,6 @@ func streamPayload(instanceID int, key string) []map[string]any {
 	}
 }
 
-// seedActiveInstance creates an instance in the store and returns its ID.
 func seedActiveInstance(t *testing.T, manager *StreamManager) int {
 	t.Helper()
 	instance, err := manager.instanceDB.(*models.InstanceStore).Create(
@@ -529,8 +473,6 @@ func seedActiveInstance(t *testing.T, manager *StreamManager) int {
 	return instance.ID
 }
 
-// TestServeEndToEndDeliversInitAndUpdate covers the happy path: an init snapshot
-// on connect, followed by an update event when HandleSyncUpdate fires.
 func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -545,7 +487,6 @@ func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 	srv := startStreamServer(t, manager)
 	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-init"))
 
-	// 1. The freshly connected subscriber receives an init snapshot.
 	initEvent := reader.waitForEvent(t, streamEventInit, 5*time.Second)
 	initPayload := decodeStreamPayloadData(t, initEvent.data)
 	require.Equal(t, streamEventInit, initPayload.Type)
@@ -555,9 +496,6 @@ func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 	require.Equal(t, canned.SessionID, initPayload.Data.SessionID)
 	require.Equal(t, canned.HasMore, initPayload.Data.HasMore)
 
-	// 2. An external main-data update is fanned out as a tick frame. Since init seeded
-	// the baseline with the same canned page, this tick is a delta carrying no row
-	// changes but the full aggregate metadata (total, sessionID).
 	receive(t, subscribed, "the session to subscribe")
 	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 	updateEvent := reader.waitForTick(t, 5*time.Second)
@@ -635,10 +573,6 @@ func TestServeServerStateOnlyTickSkipsRebuild(t *testing.T) {
 	require.Equal(t, builds, provider.torrentsCallCount(), "a server-state tick must not rebuild the view")
 }
 
-// A health check can read the version again after a failed read, with no full
-// update. The next server-state tick then rebuilds the view, so the page gets
-// the new version and stops asking for capabilities on each frame.
-// regression: #3760
 func TestServerStateTickRebuildsWhenAVersionChanged(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -689,8 +623,6 @@ func TestServerStateTickKeepsQueuedRebuild(t *testing.T) {
 	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true})
 	receive(t, builds, "the first rebuild")
 
-	// Both ticks queue behind the parked build. The second one must not turn
-	// the queued rebuild into a server-state frame.
 	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true})
 	manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true, serverState: &qbt.ServerState{}})
 	release()
@@ -742,7 +674,6 @@ func TestCombinedViewRebuildsOnServerStateTick(t *testing.T) {
 	builds := provider.crossInstanceCalls
 	provider.mu.Unlock()
 
-	// A member's subcategory mode changes its category counts in the combined view.
 	receive(t, subscribed, "the session to subscribe")
 	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{
 		ServerState: qbt.ServerState{UseSubcategories: true},
@@ -755,9 +686,6 @@ func TestCombinedViewRebuildsOnServerStateTick(t *testing.T) {
 	require.Greater(t, provider.crossInstanceCalls, builds, "a combined view must rebuild on a server-state tick")
 }
 
-// TestServeCoalescesBurstOfUpdates verifies that a rapid burst of sync updates
-// collapses into far fewer torrent builds than events while still delivering at
-// least one update to the connected subscriber.
 func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -771,37 +699,22 @@ func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 	srv := startStreamServer(t, manager)
 	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-coalesce"))
 
-	// Drain the initial snapshot first so it does not count toward update builds.
 	reader.waitForEvent(t, streamEventInit, 5*time.Second)
 	receive(t, subscribed, "the session to subscribe")
 	callsAfterInit := provider.torrentsCallCount()
 
-	// Hold the first update build open so the entire burst provably arrives while a
-	// build is in flight. This makes coalescing deterministic instead of relying on
-	// the producer loop out-pacing the build worker, which only holds on an idle
-	// machine and flakes under CI scheduling pressure.
 	builds := provider.signalBuilds()
 	release := provider.gateTorrentBuilds()
 
-	// HandleSyncUpdate queues each update from its own goroutine, so on a busy
-	// runner a late update starts a new build after the release. Queue the burst
-	// here instead, so all of it is in the queue before the test releases the
-	// first build.
 	const burst = 50
 	for i := range burst {
 		manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, RID: int64(i), IncludeCounts: true})
 	}
 
-	// Wait for the first coalesced build to start (it is now parked on the gate).
-	// Every burst event is already enqueued, so they collapse onto the single
-	// pending slot behind it instead of each spawning its own build.
 	receive(t, builds, "the first update build")
 
-	// Release the gate: the in-flight build finishes and at most one further build
-	// runs for the coalesced pending update.
 	release()
 
-	// At least one coalesced tick frame must reach the subscriber.
 	reader.waitForTick(t, 5*time.Second)
 
 	updateBuilds := provider.torrentsCallCount() - callsAfterInit
@@ -810,10 +723,7 @@ func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 		"coalescing should collapse %d events into far fewer builds, got %d", burst, updateBuilds)
 }
 
-// TestParseStreamRequestsRejectsTooManyEntries verifies the maxStreamRequests cap
-// both at the parser level and through the Serve HTTP path (HTTP 400).
 func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
-	// Build 65 entries (one over maxStreamRequests of 64).
 	payload := make([]map[string]any, maxStreamRequests+1)
 	for i := range payload {
 		payload[i] = map[string]any{
@@ -829,12 +739,10 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 
-	// Parser-level: surfaces errTooManyStreamRequests.
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 	_, err = parseStreamRequests(req)
 	require.ErrorIs(t, err, errTooManyStreamRequests)
 
-	// Serve-level: responds 400 Bad Request.
 	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
@@ -843,7 +751,6 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 	manager.Serve(recorder, serveReq)
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 
-	// A valid small batch (exactly maxStreamRequests entries) parses successfully.
 	smallPayload := make([]map[string]any, maxStreamRequests)
 	for i := range smallPayload {
 		smallPayload[i] = map[string]any{
@@ -862,11 +769,6 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 	require.Len(t, requests, maxStreamRequests)
 }
 
-// TestServeDeliversExactlyOneInitPerConnection asserts that each fresh connection
-// receives exactly one init snapshot, written directly to its session before
-// go-sse subscribes it. A second connection joining the same group must not push a
-// spurious init to the first (init is per-connection, not a group fan-out), while
-// a subsequent update still fans out to both.
 func TestServeDeliversExactlyOneInitPerConnection(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -879,14 +781,11 @@ func TestServeDeliversExactlyOneInitPerConnection(t *testing.T) {
 	subscribed := watchSubscriptions(manager)
 	srv := startStreamServer(t, manager)
 
-	// First connection on the group.
 	readerA, _ := connectStream(t, srv, streamPayload(instanceID, "client-A"))
 	initA := readerA.waitForEvent(t, streamEventInit, 5*time.Second)
 	require.Equal(t, streamEventInit, decodeStreamPayloadData(t, initA.data).Type)
 	receive(t, subscribed, "subscriber A to subscribe")
 
-	// Second connection on an identical view (same group). It must get its own
-	// init, and A must not receive a second init purely because B joined.
 	readerB, _ := connectStream(t, srv, streamPayload(instanceID, "client-B"))
 	initB := readerB.waitForEvent(t, streamEventInit, 5*time.Second)
 	bPayload := decodeStreamPayloadData(t, initB.data)
@@ -895,32 +794,23 @@ func TestServeDeliversExactlyOneInitPerConnection(t *testing.T) {
 	require.Equal(t, "canned-session", bPayload.Data.SessionID)
 	receive(t, subscribed, "subscriber B to subscribe")
 
-	// A subsequent update fans out to both connections in the group. Each stream
-	// is ordered, so a second init that B's join pushed to A arrives before this
-	// tick, and waitForTick fails on it.
 	manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 	readerA.waitForTick(t, 5*time.Second)
 	readerB.waitForTick(t, 5*time.Second)
 }
 
-// setTorrentsErr arms the single-instance build to fail with err on the next call.
 func (f *fakeSyncProvider) setTorrentsErr(err error) {
 	f.mu.Lock()
 	f.torrentsErr = err
 	f.mu.Unlock()
 }
 
-// setCrossInstanceErr arms the cross-instance build to fail with err on the next call.
 func (f *fakeSyncProvider) setCrossInstanceErr(err error) {
 	f.mu.Lock()
 	f.crossInstanceErr = err
 	f.mu.Unlock()
 }
 
-// TestServeDeliversStreamErrorOnBuildFailure covers buildGroupPayload's error path:
-// when the torrent build fails after a subscriber connects, the failure is surfaced
-// as a stream-error event carrying a recovery message and a positive retry hint
-// (the countdown the frontend depends on), for both single- and cross-instance views.
 func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -979,12 +869,9 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 			srv := startStreamServer(t, manager)
 			reader, _ := connectStream(t, srv, payload)
 
-			// Drain the successful init snapshot, then arm the failure for the update build.
 			reader.waitForEvent(t, streamEventInit, 5*time.Second)
 			tt.armErr(provider)
 
-			// An external update triggers a rebuild, which now fails and must surface a
-			// stream-error event rather than silently dropping.
 			receive(t, subscribed, "the session to subscribe")
 			manager.HandleSyncUpdate(instanceID, qbt.SyncUpdate{})
 			errPayload := reader.waitForError(t, tt.wantMsg, 5*time.Second)
@@ -995,12 +882,6 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 	}
 }
 
-// TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure covers the
-// materializeGroupResponse error path's staleness stamp (issue #2052): when a
-// one-member aggregate build fails, the stream-error frame can carry
-// LastSuccessfulSync for that concrete instance. The HandleSyncError stamp path is
-// covered separately in manager_test.go; this exercises the second, group-refresh
-// callsite.
 func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
 	store := newTestInstanceStore(t)
 
@@ -1013,9 +894,6 @@ func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
 
 	instanceID := seedActiveInstance(t, manager)
 
-	// Source the last good sync from a fixed point in the past, keyed on the only
-	// instance in the group. Returning the zero time for any other id proves the
-	// stamp is keyed on that concrete instance, not stamped blindly.
 	lastGood := time.Now().Add(-90 * time.Second)
 	manager.lastSuccessfulSyncFn = func(_ context.Context, id int) time.Time {
 		if id == instanceID {
@@ -1024,7 +902,6 @@ func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
 		return time.Time{}
 	}
 
-	// One-member aggregate group so retryInstanceID falls back to InstanceIDs[0].
 	payload := streamPayload(instanceID, "stream-err")
 	payload[0]["instanceId"] = 0
 	payload[0]["instanceIds"] = []int{instanceID}
@@ -1045,7 +922,6 @@ func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
 	require.WithinDuration(t, lastGood, *errPayload.Meta.LastSuccessfulSync, time.Second)
 }
 
-// decodeStreamPayloadData unmarshals the JSON data segment of an SSE event.
 func decodeStreamPayloadData(t *testing.T, data string) *StreamPayload {
 	t.Helper()
 	var payload StreamPayload
@@ -1067,7 +943,6 @@ func TestServerStateTickRefreshesActiveTaskCount(t *testing.T) {
 	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-task-count"))
 	reader.waitForEvent(t, streamEventInit, 5*time.Second)
 
-	// A torrent-creation task ends while only the server state changes.
 	provider.mu.Lock()
 	provider.torrentsResponse.ActiveTaskCount = 0
 	provider.mu.Unlock()
@@ -1078,7 +953,6 @@ func TestServerStateTickRefreshesActiveTaskCount(t *testing.T) {
 	require.Equal(t, streamEventDelta, updatePayload.Type)
 	require.Equal(t, 0, updatePayload.Data.ActiveTaskCount)
 
-	// A stalled qBittorrent must not hold back the next server-state frames.
 	provider.mu.Lock()
 	defer provider.mu.Unlock()
 	require.True(t, provider.taskCountDeadline, "the task count request has no deadline")
@@ -1108,7 +982,6 @@ func TestInitRequestsCounts(t *testing.T) {
 func TestServerStateTickRefreshesCacheMetadata(t *testing.T) {
 	store := newTestInstanceStore(t)
 
-	// A tracker-health rebuild more than 2 s after the last sync reports cached data.
 	canned := cannedResponse()
 	canned.CacheMetadata = &qbittorrent.CacheMetadata{Source: "cache", Age: 5, IsStale: true}
 	provider := &fakeSyncProvider{torrentsResponse: canned}

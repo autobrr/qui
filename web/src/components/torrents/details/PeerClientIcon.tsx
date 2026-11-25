@@ -11,7 +11,6 @@ import { matchPeerClient, peerClientTitle } from "@/lib/peer-client-icons"
 
 export function PeerClientIcon({ client, peerIdClient }: { client?: string; peerIdClient?: string }) {
   const { icon, letter } = matchPeerClient(client, peerIdClient)
-  // The demo has no server, so each peer shows its letter.
   const src = icon && !isDemo ? withBasePath(`/api/peer-client-icons/${icon}`) : null
   const title = peerClientTitle(client, peerIdClient)
   return (

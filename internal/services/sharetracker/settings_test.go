@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// engines runs a test on SQLite and on Postgres. The CI Postgres job runs
-// only tests whose names contain PostgresIntegration, so each caller has it.
 func engines(t *testing.T, run func(t *testing.T, store *sharetracker.SettingsStore)) {
 	t.Run("sqlite", func(t *testing.T) {
 		t.Parallel()
@@ -80,9 +78,7 @@ func TestTheSettingsRefuseValuesThatTheTrackerCannotUse(t *testing.T) {
 		"public address with a query":   {Port: 6969, PublicAddress: "https://share.example.com/?passkey=x"},
 		"trusted proxy that is a name":  {Port: 6969, TrustedProxies: []string{"proxy.example.com"}},
 		"trusted proxy with a bad mask": {Port: 6969, TrustedProxies: []string{"10.0.0.0/33"}},
-		// regression: #4231
 		"public address that ends in ?": {Port: 6969, PublicAddress: "https://share.example.com/?"},
-		// regression: #4231
 		"public address that ends in #": {Port: 6969, PublicAddress: "https://share.example.com/#"},
 	} {
 		t.Run(name, func(t *testing.T) {

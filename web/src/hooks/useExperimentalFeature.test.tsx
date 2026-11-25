@@ -64,7 +64,6 @@ describe("useExperimentalFeature", () => {
     expect(result.current).toBe(false)
   })
 
-  // regression: #4287
   it("answers off when a refetch fails after the application info named the feature", async () => {
     getApplicationInfo.mockRejectedValue(new Error("Application info unavailable"))
 

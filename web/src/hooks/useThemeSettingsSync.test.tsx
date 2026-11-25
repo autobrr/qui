@@ -25,18 +25,12 @@ const { mockApi } = vi.hoisted(() => {
 
 vi.mock("@/lib/api", () => ({ api: mockApi }))
 
-// The real setTheme needs a full theme registry; the pull tests assert the
-// applied selection through this mock.
 const mockSetTheme = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 vi.mock("@/utils/theme", () => ({ setTheme: mockSetTheme }))
 
-// The real hook needs a SyncStreamProvider; the registration itself is the
-// provider's concern, so it is mocked and only the enabled flag is asserted.
 const mockUseActivityStream = vi.hoisted(() => vi.fn())
 vi.mock("@/contexts/SyncStreamContext", () => ({ useActivityStream: mockUseActivityStream }))
 
-// jsdom has no matchMedia. The stub answers the mobile query from viewportWidth
-// and lets a test fire a breakpoint crossing.
 let viewportWidth = 1024
 const mediaListeners = new Set<() => void>()
 window.matchMedia = (query: string) => ({
@@ -73,11 +67,9 @@ afterEach(() => {
   viewportWidth = 1024
   vi.clearAllMocks()
   localStorage.clear()
-  // Reset the module-level registry to just the bundled fallback.
   themes.splice(1, themes.length - 1)
 })
 
-// A wrapper that exposes its QueryClient so a test can spy on invalidation.
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const invalidateSpy = vi.spyOn(client, "invalidateQueries")
@@ -138,8 +130,6 @@ describe("useThemeSettingsSync", () => {
   })
 
   it("pushes the stored selection and variation, not the applied fallback theme", () => {
-    // Mode toggle during the locked-premium fallback: sync the new mode
-    // without replacing the stored selection or variation on the server.
     localStorage.setItem("color-theme", "locked-premium")
     setStoredVariation("locked-premium", "purple")
     renderHook(() => useThemeSettingsSync(), { wrapper })
@@ -154,9 +144,6 @@ describe("useThemeSettingsSync", () => {
   })
 
   it("mirrors a pulled unresolvable selection so a mode change keeps it", async () => {
-    // Fresh browser, server selection is a premium theme this client cannot
-    // resolve: the pull must persist the id locally, or the next mode toggle
-    // would push the applied fallback id over the server selection.
     mockApi.getThemeSettings.mockResolvedValue({ default: { themeId: "locked-premium", mode: "light" } })
     renderHook(() => useThemeSettingsSync(), { wrapper })
 
@@ -173,9 +160,6 @@ describe("useThemeSettingsSync", () => {
   })
 
   it("refetches the catalog when the server selection resolves to a locked stub", async () => {
-    // The stale catalog only stubs the new selection, but the server serves
-    // the selected theme's CSS even pre-auth: the pull must force a refetch
-    // instead of sitting on the default until the hourly refresh.
     themes.push({ id: "locked-premium", name: "Locked", locked: true, cssVars: { light: {}, dark: {} } })
     mockApi.getThemeSettings.mockResolvedValue({ default: { themeId: "locked-premium", mode: "auto" } })
     const { spiedWrapper, invalidateSpy } = makeWrapper()
@@ -284,7 +268,6 @@ describe("useThemeSettingsSync", () => {
       await waitFor(() => {
         expect(mockSetTheme).toHaveBeenLastCalledWith("phone-theme", "dark", undefined, true)
       })
-      // The applied pull fires a system themechange, which must not push.
       dispatchThemeChange({ theme: { id: "phone-theme" }, mode: "dark", isSystemChange: true })
 
       resizeTo(1024)

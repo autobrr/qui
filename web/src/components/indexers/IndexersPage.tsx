@@ -25,7 +25,6 @@ import { TruncatedText } from "@/components/ui/truncated-text"
 import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
 
-// Shared with the cross-seed pages, so a change here also reaches them.
 const INDEXERS_KEY = ["torznab", "indexers"]
 const TOGGLE_KEY = ["torznab-indexers", "toggle"]
 const TEST_KEY = ["torznab-indexers", "test"]
@@ -33,7 +32,6 @@ const SYNC_KEY = ["torznab-indexers", "sync"]
 
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error && error.message ? error.message : fallback
 
-/** The Indexers tab: the Torznab indexers, the scheduler activity, and the search history. */
 export function IndexersPage() {
   const indexersQuery = useQuery({
     queryKey: INDEXERS_KEY,
@@ -58,7 +56,6 @@ function IndexersSection({ query }: { query: UseQueryResult<TorznabIndexer[]> })
   const [sort, setSort] = useState(DEFAULT_SORT)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<TorznabIndexer | null>(null)
-  // A new key on each open gives the form fresh state.
   const [editorSession, setEditorSession] = useState(0)
   const [discoverOpen, setDiscoverOpen] = useState(false)
   const [deleteAllOpen, setDeleteAllOpen] = useState(false)
@@ -82,7 +79,6 @@ function IndexersSection({ query }: { query: UseQueryResult<TorznabIndexer[]> })
     },
   })
 
-  // The switch of an indexer takes no input while its save runs, so two saves of one indexer never overlap.
   const toggleMutation = useMutation({
     mutationKey: TOGGLE_KEY,
     mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) => api.updateTorznabIndexer(id, { enabled }),
@@ -140,7 +136,6 @@ function IndexersSection({ query }: { query: UseQueryResult<TorznabIndexer[]> })
     mutationKey: SYNC_KEY,
     mutationFn: (id: number) => api.syncTorznabCaps(id),
     onSuccess: ({ id, capabilities, categories }) => {
-      // The answer carries the whole row, and a switch save can land after the server read it.
       patchInCache(id, (indexer) => ({ ...indexer, capabilities, categories }))
       toast.success(t("indexers.toast.capsSynced"))
     },
@@ -275,7 +270,6 @@ function IndexersSection({ query }: { query: UseQueryResult<TorznabIndexer[]> })
             : { title: t("indexers.list.emptyTitle"), description: t("indexers.list.emptyDescription"), onAdd: () => setDiscoverOpen(true) }}
         />
       </Section>
-      {/* Outside the section, so a failed refetch of the list never takes an open form away. */}
       <IndexerDialog
         key={editorSession}
         open={editorOpen}

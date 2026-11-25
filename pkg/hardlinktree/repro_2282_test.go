@@ -6,14 +6,9 @@ import (
 	"testing"
 )
 
-// Regression test for discussion #2282: two concurrent same-release plans share
-// target paths (common-root multi-file torrent, by-tracker preset); the second
-// attempt's add fails and its rollback must not delete the first attempt's links.
 func TestCreate_SharedDestRollbackKeepsSiblingFiles(t *testing.T) {
 	tmp := t.TempDir()
 
-	// Source library files (same inodes for both attempts, as when dirscan
-	// matches two local copies backed by the same content files).
 	srcDir := filepath.Join(tmp, "library", "Pack.S01")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -31,8 +26,6 @@ func TestCreate_SharedDestRollbackKeepsSiblingFiles(t *testing.T) {
 		})
 	}
 
-	// Both attempts compute the identical plan (common root folder, so no
-	// per-hash isolation folder on by-tracker preset).
 	plan1 := &TreePlan{RootDir: destRoot, Files: files}
 	plan2 := &TreePlan{RootDir: destRoot, Files: files}
 
@@ -44,8 +37,6 @@ func TestCreate_SharedDestRollbackKeepsSiblingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("attempt 2 Create: %v", err)
 	}
-	// ...then qBittorrent rejects the duplicate add, and the service rolls
-	// back attempt 2's handle.
 	if err := created2.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}

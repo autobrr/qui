@@ -9,15 +9,6 @@ import { describe, expect, it } from "vitest"
 import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
 
-// Contract tests for the lib/api.ts "crossseed" method group (issue #1931).
-// These call the REAL api client and intercept HTTP via MSW, asserting BOTH
-// directions: request serialization (verb/path/query/body) and response
-// parsing/normalization into the typed return value. Default handlers in
-// handlers.ts match the verb+path but several use mismatched response shapes,
-// so every response assertion layers a correct snake_case server.use override.
-
-// Captures the most recent intercepted request so a test can assert the
-// outgoing verb, pathname, query params, and JSON body the client serialized.
 type Captured = {
   request: Request
   body: string
@@ -53,7 +44,6 @@ describe("api.crossseed contract", () => {
       expect(new URL(req.url).pathname).toBe("/api/torznab/indexers")
       expect(captured.value!.body).toBe("")
       expect(req.headers.get("content-type")).toBe("application/json")
-      // No remap/normalization: response.json() returned directly.
       expect(result).toEqual(indexers)
     })
   })
@@ -126,7 +116,6 @@ describe("api.crossseed contract", () => {
         discMarker: "BDMV",
         availableIndexers: [1, 2, 3],
         filteredIndexers: [1, 2],
-        // normalizeExcludedIndexerMap: string keys -> numeric, non-numeric dropped.
         excludedIndexers: { 3: "no caps" },
         contentMatches: ["file.mkv"],
       })
@@ -146,7 +135,6 @@ describe("api.crossseed contract", () => {
       const req = captured.value!.request
       expect(req.method).toBe("POST")
       expect(new URL(req.url).pathname).toBe("/api/cross-seed/torrents/1/h/search")
-      // Object.keys(body).length === 0 => body undefined => empty request body.
       expect(captured.value!.body).toBe("")
     })
 
@@ -167,7 +155,7 @@ describe("api.crossseed contract", () => {
 
       const sent = JSON.parse(captured.value!.body)
       expect(sent).toEqual({
-        query: "Big Buck Bunny", // trimmed
+        query: "Big Buck Bunny",
         limit: 50,
         indexer_ids: [4, 5],
         find_individual_episodes: false,
@@ -187,8 +175,6 @@ describe("api.crossseed contract", () => {
         indexerIds: [],
       })
 
-      // Whitespace-only query trims to "" (falsy) and empty indexerIds skipped,
-      // so no keys are added and no body is sent.
       expect(captured.value!.body).toBe("")
     })
 
@@ -289,7 +275,6 @@ describe("api.crossseed contract", () => {
                 download_volume_factor: 1,
                 upload_volume_factor: 1,
                 guid: "guid-2",
-                // match_score omitted -> ?? 0
               },
             ],
           })
@@ -300,11 +285,9 @@ describe("api.crossseed contract", () => {
         query: "  My Show S01  ",
       })
 
-      // name absent on source_torrent (null) -> trimmedQuery fallback.
       expect(result.sourceTorrent.name).toBe("My Show S01")
       expect(result.results[0].matchScore).toBe(0)
       expect(result.results[0].infoUrl).toBeUndefined()
-      // partial absent -> undefined
       expect(result.partial).toBeUndefined()
       expect(result.queryDegraded).toBeUndefined()
     })
@@ -378,7 +361,6 @@ describe("api.crossseed contract", () => {
             indexer: "IndexerB",
             downloadUrl: "http://dl/b",
             title: "Sel B",
-            // guid omitted -> not serialized
           },
         ],
         useTag: true,
@@ -428,7 +410,6 @@ describe("api.crossseed contract", () => {
       })
 
       const sent = JSON.parse(captured.value!.body)
-      // tag_name / start_paused / find_individual_episodes all omitted.
       expect(sent).toEqual({ selections: [], use_tag: false })
     })
 
@@ -463,7 +444,6 @@ describe("api.crossseed contract", () => {
                     instance_name: "Box4",
                     success: false,
                     status: "failed",
-                    // matched_torrent absent -> matchedTorrent undefined
                   },
                 ],
                 error: "partial",

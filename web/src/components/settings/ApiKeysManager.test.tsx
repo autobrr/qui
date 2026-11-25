@@ -39,16 +39,6 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
-// Radix Checkbox sizes its hidden form input through ResizeObserver, which jsdom lacks.
-function stubResizeObserver() {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-}
-stubResizeObserver()
-
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { ApiKeysManager } from "./ApiKeysManager"
 
@@ -89,11 +79,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  stubResizeObserver()
 })
 
 describe("ApiKeysManager create dialog", () => {
-  // regression: #3858
   it("shows a picked instance that another session deleted, so the user can untick it", async () => {
     const user = userEvent.setup()
     const queryClient = renderManager()
@@ -329,7 +317,6 @@ describe("ApiKeysManager key list", () => {
     expect(row.textContent).not.toContain("No instances")
   })
 
-  // regression: #3858
   it("names the delete button after the key", async () => {
     stubs.keys = [key]
     renderManager()
@@ -339,7 +326,6 @@ describe("ApiKeysManager key list", () => {
 })
 
 describe("ApiKeysManager edit dialog", () => {
-  // regression: #3858
   it("keeps the dialog of another key open when an earlier save finishes", async () => {
     stubs.keys = [
       { ...key, permissions: [{ area: "logs", level: "read" }] },

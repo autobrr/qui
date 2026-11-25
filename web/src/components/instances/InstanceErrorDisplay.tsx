@@ -12,7 +12,6 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import type { InstanceResponse } from "@/types"
 
-/** The errors of one instance, under its row: a saved password that qui cannot read, and the last connection errors. */
 export function InstanceErrorDisplay({ instance, onEdit }: { instance: InstanceResponse; onEdit: () => void }) {
   const { t } = useTranslation("instances")
   const { formatTimestamp } = useDateTimeFormatters()

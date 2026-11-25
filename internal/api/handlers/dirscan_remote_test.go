@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -30,7 +29,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// dirScanRemoteFixture has one instance of each filesystem mode behind a real handler and store.
 type dirScanRemoteFixture struct {
 	router                *chi.Mux
 	db                    *database.DB
@@ -197,8 +195,6 @@ func TestDirScanRemotePathMustBeAbsolute(t *testing.T) {
 	}
 }
 
-// webhookHost is an instance's own backend: slash paths, and files by path. Any other read is an empty walk's
-// business, since the run a webhook starts is not what these tests look at.
 type webhookHost struct {
 	fsops.Backend
 	files  map[string]bool
@@ -226,19 +222,16 @@ func (h *webhookHost) WalkDir(_ context.Context, root string, _ fsops.WalkOption
 	return ch, nil
 }
 
-// webhookDir is a directory on the remote instance, or with local set, on a local one.
 type webhookDir struct {
 	path  string
 	local bool
 }
 
-// webhookRun posts a webhook payload at a remote directory and waits for the scan it starts.
 func webhookRun(t *testing.T, host *webhookHost, dirPath string, payload any) (*httptest.ResponseRecorder, *dirScanTriggerResponse) {
 	t.Helper()
 	return webhookRunIn(t, host, []webhookDir{{path: dirPath}}, payload)
 }
 
-// webhookRunIn is webhookRun with the directories created in the given order.
 func webhookRunIn(t *testing.T, host *webhookHost, dirs []webhookDir, payload any) (*httptest.ResponseRecorder, *dirScanTriggerResponse) {
 	t.Helper()
 	ctx := t.Context()
@@ -252,11 +245,8 @@ func webhookRunIn(t *testing.T, host *webhookHost, dirs []webhookDir, payload an
 	localInstance, err := instances.Create(ctx, "local", "http://localhost:8080", "", "", nil, nil, false, new(true))
 	require.NoError(t, err)
 
-	store := models.NewDirScanStore(db)
 	pool := fsops.NewPoolWithRemote(instances, localbackend.NewBackend(), func(*models.Instance) fsops.Backend { return host })
-	service := dirscan.NewService(dirscan.DefaultConfig(), store, nil, nil, nil, nil, nil, nil, pool, nil)
-	hub, events := newActivityHub(t)
-	service.SetActivityPublisher(hub)
+	service, scan := newSingleDirScanRun(db, pool)
 	handler := NewDirScanHandler(service, instances)
 	for _, dir := range dirs {
 		target := instance.ID
@@ -272,9 +262,7 @@ func webhookRunIn(t *testing.T, host *webhookHost, dirs []webhookDir, payload an
 	if rec.Code != http.StatusAccepted {
 		return rec, nil
 	}
-	var resp dirScanTriggerResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	waitDirScanIdle(t, service, events, resp.DirectoryID)
+	resp := scan.response(t, rec)
 	return rec, &resp
 }
 
@@ -303,11 +291,9 @@ func TestWebhookTriggerScan_RemoteFilePathScansParent(t *testing.T) {
 	}
 }
 
-// A path on the qui host says nothing about the instance's host, whichever way the two disagree.
 func TestWebhookTriggerScan_RemotePathIgnoresQuiHost(t *testing.T) {
 	onQuiHost := filepath.ToSlash(filepath.Join(t.TempDir(), "same-name.mkv"))
 	require.NoError(t, os.WriteFile(filepath.FromSlash(onQuiHost), []byte("x"), 0o600))
-	// Only a slash directory reaches the slash grammar, and a Windows temp dir does not start with one.
 	if !strings.HasPrefix(onQuiHost, "/") {
 		t.Skip("the qui host's temp dir has no slash path on this host")
 	}
@@ -344,8 +330,6 @@ func TestWebhookRoutingKeepsSlashPaths(t *testing.T) {
 	}
 }
 
-// A shorter local match on a Windows qui host cleans the path to backslashes, and the scan root must stay
-// the one the remote directory read. Linux reads both grammars the same, so only Windows can tell.
 func TestWebhookRoutingTakesThePathFromTheBestMatch(t *testing.T) {
 	local, remote := webhookDir{path: "/lib", local: true}, webhookDir{path: "/lib/sub"}
 	for _, tt := range []struct {

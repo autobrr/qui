@@ -19,11 +19,7 @@ import { Button } from "@/components/ui/button"
 import type { SelfUpdate } from "@/hooks/useSelfUpdate"
 
 interface InstallUpdateButtonProps {
-  // The parent owns the hook and renders its RestartOverlay outside the
-  // ["latest-version"] condition: that query turns null while qui is down.
   selfUpdate: SelfUpdate
-  // The request installs this tag, so the notes the user reads match what
-  // qui installs.
   release: { tag_name: string; html_url: string }
   className?: string
 }

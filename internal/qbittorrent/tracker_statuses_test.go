@@ -16,7 +16,6 @@ func TestTrackerMessageMatchesDown(t *testing.T) {
 		message string
 		want    bool
 	}{
-		// Actual tracker down messages should match
 		{
 			name:    "tracker is down",
 			message: "tracker is down",
@@ -43,7 +42,6 @@ func TestTrackerMessageMatchesDown(t *testing.T) {
 			want:    true,
 		},
 
-		// URLs containing down-pattern words should NOT match
 		{
 			name:    "forbidden in URL path",
 			message: "Trumped: Better Source: https://tracker.example.com/torrents/forbidden-planet-1956-1080p-x264.12345",
@@ -60,7 +58,6 @@ func TestTrackerMessageMatchesDown(t *testing.T) {
 			want:    false,
 		},
 
-		// Mix of actual error and URL should match (error is outside URL)
 		{
 			name:    "actual forbidden error with URL",
 			message: "forbidden https://site.com/some-path",
@@ -72,7 +69,6 @@ func TestTrackerMessageMatchesDown(t *testing.T) {
 			want:    true,
 		},
 
-		// Edge cases
 		{
 			name:    "empty message",
 			message: "",
@@ -115,7 +111,6 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 		message string
 		want    bool
 	}{
-		// Unregistered patterns should match
 		{
 			name:    "trumped with URL",
 			message: "Trumped: Better Source: https://tracker.example.com/torrents/forbidden-planet-1956.12345",
@@ -146,7 +141,6 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Other: Repack available, or grab internal:",
 			want:    true,
 		},
-		// regression: #3725
 		{
 			name:    "other removal reason",
 			message: "Other: No b-frame comps provided to coexist with current releases",
@@ -162,15 +156,12 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Unknown torrent",
 			want:    true,
 		},
-		// regression: #3987
 		{
 			name:    "removal reason with a passkey only in a URL",
 			message: "Trumped: download the new torrent from https://tracker.example.invalid/download?id=1&passkey=abc",
 			want:    true,
 		},
 
-		// Non-matching messages
-		// regression: #3987
 		{
 			name:    "UNIT3D old passkey",
 			message: "Passkey does not exist! Please Re-download the .torrent",
@@ -235,14 +226,12 @@ func TestTrackerHealthOf(t *testing.T) {
 		{name: "only DHT and PeX entries", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusDisabled, "")}},
 		{name: "one working tracker", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusOK, "")}},
 
-		// Unregistered and the grace hour.
 		{name: "unregistered after the grace hour", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusTrackerError, "Torrent not registered on tracker")}, want: TrackerHealthUnregistered},
 		{name: "unregistered added 5 minutes ago", addedOn: addedAgo(5 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusTrackerError, "Torrent not registered on tracker")}},
 		{name: "unregistered added 59 minutes ago", addedOn: addedAgo(59 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}},
 		{name: "unregistered added 61 minutes ago", addedOn: addedAgo(61 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
 		{name: "unregistered added exactly one hour ago", addedOn: addedAgo(time.Hour), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
 		{name: "unregistered with no added time", trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent")}, want: TrackerHealthUnregistered},
-		// regression: #3616
 		{name: "unregistered tracker error added 10 minutes ago", addedOn: addedAgo(10 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusTrackerError, "Unregistered torrent")}},
 		{name: "unregistered not working", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Torrent not registered on tracker")}, want: TrackerHealthUnregistered},
 		{name: "unregistered while updating", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusUpdating, "Torrent not registered on tracker")}, want: TrackerHealthUnregistered},
@@ -251,19 +240,16 @@ func TestTrackerHealthOf(t *testing.T) {
 		{name: "unregistered inside the grace hour beside an unreachable tracker", addedOn: addedAgo(10 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent"), tracker(qbt.TrackerStatusUnreachable, "")}, want: TrackerHealthDown},
 		{name: "unregistered and down in one message inside the grace hour", addedOn: addedAgo(10 * time.Minute), trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Unregistered torrent, tracker is down")}, want: TrackerHealthDown},
 
-		// Tracker down.
 		{name: "unreachable", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusUnreachable, "Connection timed out")}, want: TrackerHealthDown},
 		{name: "down message", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Tracker is down for maintenance")}, want: TrackerHealthDown},
 		{name: "HTTP status without a reason phrase", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "429 (unknown HTTP error)")}, want: TrackerHealthDown},
 		{name: "down message while updating", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusUpdating, "Tracker is down for maintenance")}},
 		{name: "down beside a working tracker", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Tracker is down for maintenance"), tracker(qbt.TrackerStatusOK, "")}},
 
-		// Tracker error.
 		{name: "every tracker errored", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Invalid tracker response payload"), tracker(qbt.TrackerStatusTrackerError, "Tracker reply failed checksum validation")}, want: TrackerHealthError},
 		{name: "error beside a working tracker", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Invalid tracker response payload"), tracker(qbt.TrackerStatusOK, "")}},
 		{name: "error beside an updating tracker", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotWorking, "Invalid tracker response payload"), tracker(qbt.TrackerStatusUpdating, "")}},
 
-		// Odd verdicts of today, kept on purpose. A fix changes these rows.
 		{name: "not contacted beside a timed out tracker", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotContacted, ""), tracker(qbt.TrackerStatusNotWorking, "timed out")}, want: TrackerHealthDown},
 		{name: "not contacted beside an errored tracker", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusNotContacted, ""), tracker(qbt.TrackerStatusNotWorking, "ratio too low")}},
 		{name: "updating with an unregistered message", addedOn: old, trackers: []qbt.TorrentTracker{tracker(qbt.TrackerStatusUpdating, "Unregistered torrent")}, want: TrackerHealthUnregistered},

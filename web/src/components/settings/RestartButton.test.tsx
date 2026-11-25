@@ -114,7 +114,6 @@ describe("RestartButton", () => {
     fireEvent.keyDown(document.body, { key: "Escape" })
     expect(screen.getByText("application.restart.confirmTitle")).toBeTruthy()
 
-    // qui can close its listener before the 202 arrives.
     qui = "down"
     await expect(api.getApplicationInfo()).rejects.toThrow(TypeError)
     expect(location.assign).not.toHaveBeenCalled()
@@ -122,7 +121,6 @@ describe("RestartButton", () => {
 
     accept()
     await screen.findByText("application.restart.overlay.restartingTitle")
-    // The old process still answers, so the overlay must not reload yet.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_000)
     })
@@ -136,7 +134,6 @@ describe("RestartButton", () => {
     await confirmRestart()
     await screen.findByText("application.restart.overlay.restartingTitle")
 
-    // fireEvent reaches the button under the overlay; a real click does not.
     fireEvent.click(screen.getByText("application.restart.button"))
     fireEvent.keyDown(document.body, { key: "Escape" })
 
@@ -153,11 +150,9 @@ describe("RestartButton", () => {
     await confirmRestart()
     await screen.findByText("application.restart.overlay.restartingTitle")
 
-    // The closed confirm dialog returns focus to the Restart button on a timer.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50))
     })
-    // A Settings tab switch under the overlay would unmount the poll.
     expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true)
     expect(screen.queryByRole("button", { name: "application.restart.button" })).toBeNull()
   })
@@ -169,15 +164,12 @@ describe("RestartButton", () => {
     await confirmRestart()
     await screen.findByText("application.restart.overlay.restartingTitle")
 
-    // The old process still answers while its graceful shutdown waits.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_000)
     })
     expect(location.reload).not.toHaveBeenCalled()
 
     qui = "down"
-    // Any API request fails with "Failed to fetch" while qui is down. Without
-    // the pause, the SSO recovery sends the tab to "/" and the overlay is gone.
     await expect(api.getApplicationInfo()).rejects.toThrow(TypeError)
     expect(location.assign).not.toHaveBeenCalled()
 
@@ -199,7 +191,6 @@ describe("RestartButton", () => {
     expect(infoCalls).toBeGreaterThan(callsAtSlow)
     expect(location.reload).not.toHaveBeenCalled()
 
-    // After a base URL change, the old path answers 404 and the slow text stays.
     qui = "moved"
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_000)
@@ -212,7 +203,6 @@ describe("RestartButton", () => {
     })
     expect(location.reload).toHaveBeenCalledTimes(1)
     expect(location.assign).not.toHaveBeenCalled()
-    // Only a Self-update changes the frontend.
     expect(serviceWorker.getRegistrations).not.toHaveBeenCalled()
     expect(cacheStorage.keys).not.toHaveBeenCalled()
   })

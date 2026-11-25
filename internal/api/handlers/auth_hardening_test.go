@@ -4,11 +4,14 @@
 package handlers
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/alexedwards/scs/v2/memstore"
@@ -16,12 +19,51 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/auth"
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-func newPasswordAuthHandler(t *testing.T) *AuthHandler {
+type passwordAuthRig struct {
+	*AuthHandler
+	warmed chan error
+}
+
+type emptyWarmupStore struct {
+	dbinterface.Querier
+	warmed chan error
+}
+
+func (s emptyWarmupStore) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	rows, err := s.Querier.QueryContext(ctx, query, args...)
+	if err == nil {
+		if rows.Next() {
+			err = errors.New("password auth fixture has an instance to warm")
+		} else {
+			err = rows.Err()
+		}
+		err = errors.Join(err, rows.Close())
+	}
+	s.warmed <- err
+	return rows, err
+}
+
+func (h *passwordAuthRig) postLogin(t *testing.T, contentType, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := post(t, h.sessionManager.LoadAndSave(http.HandlerFunc(h.Login)), "/api/auth/login", contentType, body, cookies...)
+	if rec.Code == http.StatusOK {
+		select {
+		case err := <-h.warmed:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("login did not finish reading instances for session warmup")
+		}
+	}
+	return rec
+}
+
+func newPasswordAuthHandler(t *testing.T) *passwordAuthRig {
 	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, "auth-hardening")
@@ -29,17 +71,17 @@ func newPasswordAuthHandler(t *testing.T) *AuthHandler {
 	_, err := authService.SetupUser(t.Context(), "alice", "password1234")
 	require.NoError(t, err)
 
-	// Login warms instances in the background; an empty store keeps that a no-op.
-	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
+	warmed := make(chan error, 1)
+	instanceStore, err := models.NewInstanceStore(emptyWarmupStore{Querier: db, warmed: warmed}, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 
-	return &AuthHandler{
+	return &passwordAuthRig{warmed: warmed, AuthHandler: &AuthHandler{
 		authService:    authService,
 		sessionManager: scs.New(),
 		config:         &domain.Config{},
 		instanceStore:  instanceStore,
 		loginLimiter:   newLoginLimiter(),
-	}
+	}}
 }
 
 func post(t *testing.T, h http.Handler, path, contentType, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
@@ -57,7 +99,7 @@ func post(t *testing.T, h http.Handler, path, contentType, body string, cookies 
 	return rec
 }
 
-func sessionCookie(t *testing.T, h *AuthHandler, rec *httptest.ResponseRecorder) *http.Cookie {
+func sessionCookie(t *testing.T, h *passwordAuthRig, rec *httptest.ResponseRecorder) *http.Cookie {
 	t.Helper()
 
 	for _, c := range rec.Result().Cookies() {
@@ -69,7 +111,7 @@ func sessionCookie(t *testing.T, h *AuthHandler, rec *httptest.ResponseRecorder)
 	return nil
 }
 
-func sessionAuthenticated(t *testing.T, h *AuthHandler, cookie *http.Cookie) bool {
+func sessionAuthenticated(t *testing.T, h *passwordAuthRig, cookie *http.Cookie) bool {
 	t.Helper()
 
 	ctx, err := h.sessionManager.Load(t.Context(), cookie.Value)
@@ -79,31 +121,28 @@ func sessionAuthenticated(t *testing.T, h *AuthHandler, cookie *http.Cookie) boo
 
 func TestLoginAndSetupRequireJSONContentType(t *testing.T) {
 	h := newPasswordAuthHandler(t)
-	login := h.sessionManager.LoadAndSave(http.HandlerFunc(h.Login))
 	setup := h.sessionManager.LoadAndSave(http.HandlerFunc(h.Setup))
 	body := `{"username":"alice","password":"password1234"}`
 
-	assert.Equal(t, http.StatusUnsupportedMediaType, post(t, login, "/api/auth/login", "text/plain", body).Code)
-	assert.Equal(t, http.StatusUnsupportedMediaType, post(t, login, "/api/auth/login", "", body).Code)
-	assert.Equal(t, http.StatusOK, post(t, login, "/api/auth/login", "application/json; charset=utf-8", body).Code)
+	assert.Equal(t, http.StatusUnsupportedMediaType, h.postLogin(t, "text/plain", body).Code)
+	assert.Equal(t, http.StatusUnsupportedMediaType, h.postLogin(t, "", body).Code)
+	assert.Equal(t, http.StatusOK, h.postLogin(t, "application/json; charset=utf-8", body).Code)
 
-	// Setup is already complete, so a JSON request gets 400 and a non-JSON one 415.
 	assert.Equal(t, http.StatusUnsupportedMediaType, post(t, setup, "/api/auth/setup", "application/x-www-form-urlencoded", body).Code)
 	assert.Equal(t, http.StatusBadRequest, post(t, setup, "/api/auth/setup", "application/json", body).Code)
 }
 
 func TestLoginLimitsFailedPasswordAttempts(t *testing.T) {
 	h := newPasswordAuthHandler(t)
-	login := h.sessionManager.LoadAndSave(http.HandlerFunc(h.Login))
 	wrong := `{"username":"alice","password":"wrong-password"}`
 	right := `{"username":"alice","password":"password1234"}`
 
 	for i := range 5 {
-		assert.Equal(t, http.StatusUnauthorized, post(t, login, "/api/auth/login", "application/json", wrong).Code, "attempt %d", i+1)
+		assert.Equal(t, http.StatusUnauthorized, h.postLogin(t, "application/json", wrong).Code, "attempt %d", i+1)
 	}
 
-	assert.Equal(t, http.StatusTooManyRequests, post(t, login, "/api/auth/login", "application/json", wrong).Code)
-	assert.Equal(t, http.StatusTooManyRequests, post(t, login, "/api/auth/login", "application/json", right).Code)
+	assert.Equal(t, http.StatusTooManyRequests, h.postLogin(t, "application/json", wrong).Code)
+	assert.Equal(t, http.StatusTooManyRequests, h.postLogin(t, "application/json", right).Code)
 }
 
 func TestLoginLimitHoldsUnderParallelAttempts(t *testing.T) {
@@ -124,12 +163,11 @@ func TestLoginLimitHoldsUnderParallelAttempts(t *testing.T) {
 
 func TestChangePasswordEndsEverySession(t *testing.T) {
 	h := newPasswordAuthHandler(t)
-	login := h.sessionManager.LoadAndSave(http.HandlerFunc(h.Login))
 	change := h.sessionManager.LoadAndSave(http.HandlerFunc(h.ChangePassword))
 	creds := `{"username":"alice","password":"password1234"}`
 
-	first := sessionCookie(t, h, post(t, login, "/api/auth/login", "application/json", creds))
-	second := sessionCookie(t, h, post(t, login, "/api/auth/login", "application/json", creds))
+	first := sessionCookie(t, h, h.postLogin(t, "application/json", creds))
+	second := sessionCookie(t, h, h.postLogin(t, "application/json", creds))
 	require.True(t, sessionAuthenticated(t, h, first))
 	require.True(t, sessionAuthenticated(t, h, second))
 
@@ -140,17 +178,14 @@ func TestChangePasswordEndsEverySession(t *testing.T) {
 	assert.False(t, sessionAuthenticated(t, h, first))
 	assert.False(t, sessionAuthenticated(t, h, second))
 
-	// The browser that changed the password gets its cookie cleared.
 	cleared := sessionCookie(t, h, rec)
 	assert.Empty(t, cleared.Value)
 	assert.Negative(t, cleared.MaxAge)
 
-	assert.Equal(t, http.StatusOK, post(t, login, "/api/auth/login", "application/json",
+	assert.Equal(t, http.StatusOK, h.postLogin(t, "application/json",
 		`{"username":"alice","password":"password5678"}`).Code)
 }
 
-// failingDeleteStore makes RenewToken fail for a request that already carries
-// a session: scs deletes the old token before it issues the new one.
 type failingDeleteStore struct{ *memstore.MemStore }
 
 func (failingDeleteStore) Delete(string) error { return errors.New("store down") }
@@ -159,12 +194,11 @@ func TestLoginFailsWhenTokenRenewalFails(t *testing.T) {
 	h := newPasswordAuthHandler(t)
 	store := memstore.New()
 	h.sessionManager.Store = failingDeleteStore{store}
-	login := h.sessionManager.LoadAndSave(http.HandlerFunc(h.Login))
 	creds := `{"username":"alice","password":"password1234"}`
 
-	existing := sessionCookie(t, h, post(t, login, "/api/auth/login", "application/json", creds))
+	existing := sessionCookie(t, h, h.postLogin(t, "application/json", creds))
 
-	rec := post(t, login, "/api/auth/login", "application/json", creds, existing)
+	rec := h.postLogin(t, "application/json", creds, existing)
 
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 	assert.False(t, sessionAuthenticated(t, h, existing), "the old session must not remain authenticated")
@@ -180,9 +214,8 @@ func TestLoginFailsWhenTokenRenewalFails(t *testing.T) {
 	h.sessionManager.LoadAndSave(http.HandlerFunc(h.Validate)).ServeHTTP(validateRec, validateReq)
 	assert.Equal(t, http.StatusUnauthorized, validateRec.Code)
 
-	// Login works again after the store recovers, with a new session token.
 	h.sessionManager.Store = store
-	retry := post(t, login, "/api/auth/login", "application/json", creds, existing)
+	retry := h.postLogin(t, "application/json", creds, existing)
 	require.Equal(t, http.StatusOK, retry.Code)
 	renewed := sessionCookie(t, h, retry)
 	assert.NotEqual(t, existing.Value, renewed.Value)

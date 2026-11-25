@@ -17,7 +17,6 @@ import (
 const appInfoCacheTTL = 5 * time.Minute
 const appInfoRequestTimeout = 10 * time.Second
 
-// AppBuildInfo represents the qBittorrent build information reported by the API.
 type AppBuildInfo struct {
 	Qt         string `json:"qt"`
 	Libtorrent string `json:"libtorrent"`
@@ -28,12 +27,10 @@ type AppBuildInfo struct {
 	Platform   string `json:"platform,omitempty"`
 }
 
-// AppProcessInfo represents qBittorrent process information (e.g. launch time).
 type AppProcessInfo struct {
 	LaunchTime int64 `json:"launchTime"`
 }
 
-// AppInfo captures the qBittorrent application metadata exposed via the API.
 type AppInfo struct {
 	Version       string          `json:"version"`
 	WebAPIVersion string          `json:"webAPIVersion,omitempty"`
@@ -58,8 +55,6 @@ func cloneAppInfo(info *AppInfo) *AppInfo {
 	return &clone
 }
 
-// buildProcessInfo fetches process info when the instance supports it,
-// returning nil when unsupported or when the lookup fails (best-effort metadata).
 func buildProcessInfo(supported bool, fetch func() (qbt.ProcessInfo, error)) *AppProcessInfo {
 	if !supported {
 		return nil
@@ -74,7 +69,6 @@ func buildProcessInfo(supported bool, fetch func() (qbt.ProcessInfo, error)) *Ap
 	return &AppProcessInfo{LaunchTime: processInfo.LaunchTime}
 }
 
-// GetAppInfo returns cached qBittorrent app information, refreshing it when stale.
 func (c *Client) GetAppInfo(ctx context.Context) (*AppInfo, error) {
 	if c == nil || c.Client == nil {
 		return nil, errors.New("qbittorrent client unavailable")
@@ -89,9 +83,6 @@ func (c *Client) GetAppInfo(ctx context.Context) (*AppInfo, error) {
 		return cloneAppInfo(cached), nil
 	}
 
-	// Concurrent stream groups all see the cache expire at once; share one
-	// refresh. Joiners share the leader's result, so the refresh must not die
-	// with the leader's context; appInfoRequestTimeout still bounds it.
 	result, err, _ := c.appInfoGroup.Do("refresh", func() (any, error) {
 		if info, fresh := c.cachedAppInfo(); fresh {
 			return info, nil
@@ -99,9 +90,6 @@ func (c *Client) GetAppInfo(ctx context.Context) (*AppInfo, error) {
 		return c.refreshAppInfo(context.WithoutCancel(ctx))
 	})
 	if err != nil {
-		// A saturated qBittorrent WebUI times out even trivial calls. Serve the
-		// last known app info rather than failing the whole torrent stream tick;
-		// only surface the error when there is nothing cached to fall back on.
 		if cached != nil {
 			log.Debug().
 				Err(err).
@@ -116,16 +104,12 @@ func (c *Client) GetAppInfo(ctx context.Context) (*AppInfo, error) {
 	return cloneAppInfo(cached), nil
 }
 
-// cachedAppInfo returns the cached app info and whether it is still within the TTL.
 func (c *Client) cachedAppInfo() (*AppInfo, bool) {
 	c.appInfoMu.RLock()
 	defer c.appInfoMu.RUnlock()
 	return c.appInfoCache, c.appInfoCache != nil && time.Since(c.appInfoFetchedAt) < appInfoCacheTTL
 }
 
-// refreshAppInfo fetches app info and stores it in the cache. Callers must not
-// mutate the returned value: it is the cached instance, shared by every caller
-// that joined the same singleflight refresh.
 func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
 	requestCtx, cancel := context.WithTimeout(ctx, appInfoRequestTimeout)
 	defer cancel()

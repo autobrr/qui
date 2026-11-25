@@ -33,15 +33,10 @@ interface QueryBuilderProps {
   condition: RuleCondition | null;
   onChange: (condition: RuleCondition | null) => void;
   className?: string;
-  /** Allow a truly empty condition (null) state instead of auto-inserting a placeholder rule. */
   allowEmpty?: boolean;
-  /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
-  /** Optional list of fields to disable with reasons */
   disabledFields?: DisabledField[];
-  /** Optional list of "state" option values to disable with reasons */
   disabledStateValues?: DisabledStateValue[];
-  /** Available grouping IDs for GROUP_SIZE / IS_GROUPED leaf conditions */
   groupOptions?: GroupOption[];
 }
 
@@ -67,7 +62,6 @@ export function QueryBuilder({
     })
   );
 
-  // Initialize with a default AND group if empty
   const effectiveCondition = useMemo<RuleCondition | null>(() => {
     if (!condition) {
       if (allowEmpty) {
@@ -86,7 +80,6 @@ export function QueryBuilder({
         ],
       });
     }
-    // Wrap non-group conditions in a group
     if (condition.operator !== "AND" && condition.operator !== "OR") {
       return ensureClientIdsDeep({
         clientId: generateClientId(),
@@ -99,7 +92,6 @@ export function QueryBuilder({
 
   const handleChange = useCallback(
     (updated: RuleCondition) => {
-      // If the root condition has no children, set to null
       if (
         (updated.operator === "AND" || updated.operator === "OR") &&
         (!updated.conditions || updated.conditions.length === 0)
@@ -154,7 +146,6 @@ export function QueryBuilder({
       const overPath = findPathByClientId(effectiveCondition, overIdStr);
       if (!overPath) return;
 
-      // Prevent moving a group into one of its own descendants.
       if (isAncestorPath(activePath, overPath)) return;
 
       const overNode = getNodeAtPath(effectiveCondition, overPath);
@@ -188,7 +179,6 @@ export function QueryBuilder({
       const activeIndex = activePath[activePath.length - 1];
       const overIndex = overPath[overPath.length - 1];
 
-      // Get the parent group and reorder its children
       const newCondition = reorderAtPath(
         effectiveCondition,
         parentPath,
@@ -296,7 +286,6 @@ function ensureClientIdsDeep(condition: RuleCondition): RuleCondition {
   };
 }
 
-// Helper: Find a node by clientId and return its index path.
 function findPathByClientId(root: RuleCondition, clientId: string): number[] | null {
   if (!root.conditions) return null;
 
@@ -314,7 +303,6 @@ function findPathByClientId(root: RuleCondition, clientId: string): number[] | n
   return null;
 }
 
-// Helper: Check if two paths have the same parent
 function pathsHaveSameParent(path1: number[], path2: number[]): boolean {
   if (path1.length !== path2.length) return false;
   const parent1 = path1.slice(0, -1);
@@ -322,7 +310,6 @@ function pathsHaveSameParent(path1: number[], path2: number[]): boolean {
   return parent1.length === parent2.length && parent1.every((v, i) => v === parent2[i]);
 }
 
-// Helper: Reorder children at a given path
 function reorderAtPath(
   root: RuleCondition,
   parentPath: number[],
@@ -331,7 +318,6 @@ function reorderAtPath(
 ): RuleCondition | null {
   if (!root.conditions) return null;
 
-  // Reorder at root level
   if (parentPath.length === 0) {
     return { ...root, conditions: arrayMove(root.conditions, fromIndex, toIndex) };
   }
@@ -455,14 +441,12 @@ function adjustPathAfterRemoval(path: number[], removedPath: number[]): number[]
   const removedParentPath = removedPath.slice(0, -1);
   const removedIndex = removedPath[removedPath.length - 1];
 
-  // If parent path diverges before the removal parent, no adjustment is needed.
   for (let i = 0; i < removedParentPath.length; i++) {
     if (i >= path.length || path[i] !== removedParentPath[i]) {
       return path;
     }
   }
 
-  // Same parent path (or root move) => parent container remains valid.
   if (path.length === removedParentPath.length) {
     return path;
   }
@@ -470,7 +454,6 @@ function adjustPathAfterRemoval(path: number[], removedPath: number[]): number[]
   const divergingSegment = removedParentPath.length;
   const currentIndex = path[divergingSegment];
 
-  // Target path points into removed node subtree; treat as invalid.
   if (currentIndex === removedIndex) {
     return null;
   }

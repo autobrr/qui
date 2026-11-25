@@ -1,6 +1,6 @@
 # The lint ratchet: checks that existing code does not pass yet.
 # `go run ./scripts/ratchet` runs them and compares the count of problems in
-# each file with allowlist.json. A file may only go down. See
+# each file with allowlist.json. The total of a linter may only go down. See
 # "Ratchet" in docs/linting.md.
 version: "2"
 

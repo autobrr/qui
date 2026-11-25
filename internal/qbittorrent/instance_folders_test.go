@@ -24,11 +24,8 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
-// foldersRig sends each instance's requests to its stub in process, so a
-// synctest bubble can advance its clock.
 type foldersRig struct {
-	sm *SyncManager
-	// versionRequests counts app/webapiVersion requests.
+	sm              *SyncManager
 	versionRequests atomic.Int32
 }
 
@@ -70,17 +67,6 @@ func newFoldersStub(t *testing.T, categories map[string]stubCategory) *qbtstub.S
 	return stub
 }
 
-// The download path rows are what qBittorrent 4.6.7, 5.1.4, 5.2.4 and
-// 5.4.0alpha1 reported as an automatically managed torrent's download_path
-// for the same categories, with the download path /dl/temp. qBittorrent never
-// produces a parent missing from the map or a relative download path itself,
-// so those rows follow its source.
-//
-// The version rows were observed live with Automatic Torrent Management on and
-// categories tv=/media/tv, tv/anime="". 5.0.0beta1 is the only release with
-// WebAPI 2.10.x; it was not run live, but upstream "Follow the parent category
-// options" (a1c78a045) is in it. Each gate has a row for the highest version
-// below it and the lowest version at it.
 func TestInstanceFolders(t *testing.T) {
 	t.Parallel()
 
@@ -133,14 +119,11 @@ func TestInstanceFolders(t *testing.T) {
 
 		{name: "own save paths", setup: downloadOff, categories: map[string]stubCategory{
 			"movies": {save: "//media/movies/"}, "music": {save: "music"}, "spaced": {save: " archive "},
-			// A child inherits an explicit dot, and walks the whole parent chain.
 			"dot": {save: "."}, "dot/hd": {}, "a": {save: "/archive"}, "a/b": {}, "a/b/c": {},
 		}, want: InstanceFolders{CategorySaveFolders: []string{
 			"/archive", "/archive/b", "/archive/b/c", "/data", "/data/ archive ", "/data/hd", "/data/music", "/media/movies",
 		}}},
 		{name: "folder names before 5.3", setup: downloadOff, categories: map[string]stubCategory{
-			// toValidPath replaces a run with one space and leaves a backslash
-			// alone, and nesting converts only the last segment.
 			`films:?"x`: {}, `a\b`: {}, "movies": {save: "/archive"}, "movies/h:d": {},
 		}, want: InstanceFolders{CategorySaveFolders: []string{"/archive", "/archive/h d", `/data/a\b`, "/data/films x"}}},
 
@@ -248,8 +231,6 @@ func TestInstanceFolders(t *testing.T) {
 			categories: map[string]stubCategory{"tv": {download: on("")}},
 			wantErr:    `download path of category "tv" rests on the qBittorrent download path "dl", which is not absolute`},
 	}
-	// The rows are written in slash paths. The host run writes each path in
-	// the form of the host, so the Windows CI job checks its path rules.
 	dialects := []struct {
 		name string
 		d    fsops.PathDialect
@@ -298,8 +279,6 @@ func TestInstanceFolders(t *testing.T) {
 
 				got, err := newFoldersRig(map[int]*qbtstub.Server{1: stub}).sm.InstanceFolders(t.Context(), dialect.d, 1)
 				if tt.wantErr != "" {
-					// The text quotes a path as qBittorrent sent it, in
-					// slash form only in the slash run.
 					if dialect.d == fsops.SlashPaths {
 						require.EqualError(t, err, tt.wantErr)
 					} else {
@@ -328,8 +307,6 @@ func TestInstanceFolders(t *testing.T) {
 	}
 }
 
-// hostPath writes a slash fixture path in the form of the host. On Windows an
-// absolute path also gets a drive, because \data is not absolute there.
 func hostPath(p string) string {
 	if strings.HasPrefix(p, "/") {
 		p = filepath.VolumeName(os.TempDir()) + p
@@ -337,8 +314,6 @@ func hostPath(p string) string {
 	return filepath.FromSlash(p)
 }
 
-// The preferences and the categories are read on every call, so a change in
-// qBittorrent's WebUI reaches the next call while the version is still kept.
 func TestInstanceFoldersSeesAChangeWhileTheVersionIsKept(t *testing.T) {
 	stub := newFoldersStub(t, map[string]stubCategory{
 		"tv":       {save: "/media/tv"},
@@ -372,8 +347,6 @@ func TestInstanceFoldersSeesAChangeWhileTheVersionIsKept(t *testing.T) {
 	})
 }
 
-// Reading the version refreshes qBittorrent's capabilities with a request, so
-// the answer is kept for a minute.
 func TestInstanceFoldersKeepsTheVersionForAMinute(t *testing.T) {
 	stubs := map[int]*qbtstub.Server{1: newFoldersStub(t, nil), 2: newFoldersStub(t, nil)}
 	synctest.Test(t, func(t *testing.T) {
@@ -392,8 +365,6 @@ func TestInstanceFoldersKeepsTheVersionForAMinute(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, 2, r.versionRequests.Load(), "a call after the minute asks again")
 
-		// Another instance's call after the minute drops this one's expired
-		// entry.
 		time.Sleep(categoryVersionTTL)
 		_, err = r.folders(t, 2)
 		require.NoError(t, err)
@@ -416,8 +387,6 @@ func TestInstanceFoldersDoesNotKeepAVersionError(t *testing.T) {
 	require.EqualValues(t, 2, r.versionRequests.Load(), "the next call asks again")
 }
 
-// A client that keeps syncing skips health checks, so its capabilities can
-// still be those of 4.6 after an in-place upgrade.
 func TestInstanceFoldersRefreshesStaleCapabilities(t *testing.T) {
 	t.Parallel()
 	stub := newFoldersStub(t, map[string]stubCategory{"tv": {save: "/media/tv"}, "tv/anime": {}})
@@ -429,8 +398,6 @@ func TestInstanceFoldersRefreshesStaleCapabilities(t *testing.T) {
 	require.Equal(t, []string{"/media/tv", "/media/tv/anime"}, got.CategorySaveFolders)
 }
 
-// Without the categories no category folder is kept, so a failed read fails
-// the call.
 func TestInstanceFoldersFailWhenTheCategoriesCannotBeRead(t *testing.T) {
 	t.Parallel()
 	stub := newFoldersStub(t, map[string]stubCategory{"archive": {save: "/media/archive"}})
@@ -439,9 +406,6 @@ func TestInstanceFoldersFailWhenTheCategoriesCannotBeRead(t *testing.T) {
 	require.Error(t, err)
 }
 
-// The app info refresh inside the folder check reads the version again. When
-// that second read fails, the folder rules still come from the first one.
-// regression: #3765
 func TestInstanceFoldersKeepTheRulesOfTheVersionRead(t *testing.T) {
 	t.Parallel()
 	stub := newFoldersStub(t, map[string]stubCategory{"tv": {save: "/media/tv"}, "tv/anime": {}})

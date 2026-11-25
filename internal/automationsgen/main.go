@@ -1,10 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Command automationsgen writes the automation rule JSON reference for the docs,
-// the condition field table for the query builder, and the API key area and
-// template tables for Settings.
-// Run it from the repository root with make generate.
 package main
 
 import (
@@ -48,7 +44,6 @@ func main() {
 	}
 }
 
-// keyValues lists the allowed values of each string key that has a fixed set, by struct name and JSON key.
 var keyValues = map[string][]string{
 	"RuleCondition.groupId":                automations.BuiltinGroupIDs,
 	"GroupingConfig.defaultGroupId":        automations.BuiltinGroupIDs,
@@ -74,7 +69,6 @@ var keyValues = map[string][]string{
 	"ScoreRule.type":                       {string(models.ScoreRuleTypeFieldMultiplier), string(models.ScoreRuleTypeConditional)},
 }
 
-// operatorDocs lists every operator in the order the reference shows them.
 var operatorDocs = []struct {
 	op  models.ConditionOperator
 	doc string
@@ -112,18 +106,15 @@ const (
 
 var (
 	conditionType = reflect.TypeFor[models.RuleCondition]()
-	// namedTypes are the Go types that the reference names in place of their JSON type, with the section that describes them.
-	namedTypes = map[reflect.Type]struct{ name, section string }{
+	namedTypes    = map[reflect.Type]struct{ name, section string }{
 		conditionType:                               {"condition", conditionTitle},
 		reflect.TypeFor[models.ConditionField]():    {"condition field", fieldsTitle},
 		reflect.TypeFor[models.ConditionOperator](): {"operator", operatorsTitle},
 	}
-	quoted = regexp.MustCompile(`'([^'\s][^']*)'`)
-	// markdownChars change the output in MDX or in a Markdown table. Doc text and labels cannot contain them outside quotes.
+	quoted        = regexp.MustCompile(`'([^'\s][^']*)'`)
 	markdownChars = "`|<>{}[]*_#\\'"
 )
 
-// conditionFieldNames returns the sorted names of the current condition fields for which keep returns true.
 func conditionFieldNames(keep func(automations.FieldSpec) bool) []string {
 	var names []string
 	for field, spec := range automations.ConditionFields {
@@ -174,15 +165,13 @@ func generate(root string) ([]byte, error) {
 type generator struct {
 	buf  bytes.Buffer
 	used map[string]bool
-	err  error // the first text that markdown or plain rejected
+	err  error
 }
 
 func (g *generator) line(s string) { g.buf.WriteString(s + "\n") }
 
-// text writes doc text as a paragraph.
 func (g *generator) text(s string) { g.line(g.markdown(s)) }
 
-// markdown returns doc text as Markdown. Text in single quotes becomes inline code.
 func (g *generator) markdown(s string) string {
 	var b strings.Builder
 	last := 0
@@ -195,7 +184,6 @@ func (g *generator) markdown(s string) string {
 	return b.String()
 }
 
-// plain returns s unchanged. It records an error when s has a character that changes the Markdown.
 func (g *generator) plain(s string) string {
 	if strings.ContainsAny(s, markdownChars) && g.err == nil {
 		g.err = fmt.Errorf("%q: use single quotes only around code, and none of %s outside them", s, markdownChars)
@@ -213,8 +201,6 @@ func codeList(values []string) string {
 	return strings.Join(out, ", ")
 }
 
-// structSection writes a table of the JSON keys of t, then a section for each nested object.
-// path is the JSON path of t, empty for the rule itself.
 func (g *generator) structSection(t reflect.Type, path, title, intro string) error {
 	type nested struct {
 		t    reflect.Type
@@ -354,8 +340,6 @@ func (g *generator) conditionSections(labels map[string]string) error {
 	return nil
 }
 
-// generateFields writes the condition field table as TypeScript for the query builder.
-// It keeps the legacy fields, because the rule builder still shows them in stored rules.
 func generateFields() []byte {
 	var b bytes.Buffer
 	b.WriteString(`/*
@@ -443,7 +427,6 @@ export const API_KEY_PERMISSION_AREAS = [
 	return b.Bytes()
 }
 
-// tsString returns s as a TypeScript string literal. A JSON string is one.
 func tsString(s string) string {
 	out, err := json.Marshal(s)
 	if err != nil {

@@ -3,7 +3,8 @@
 ## React Effects
 
 - ESLint reports an effect in a component as `qui/no-direct-effect`, and its message names what to write instead. ADR 0073 has the reason.
-- A hook in `effectHooks` of `web/eslint.config.js` hides one effect behind one named job. Its effect cleans up, and a fetch in it drops a stale response.
+- ESLint reports a second effect, or an effect that returns no cleanup, in a hook of `effectHooks` in `web/eslint.config.js` as `qui/effect-hook-shape`. ADR 0083 has the reason.
+- A fetch in a hook of `effectHooks` drops a stale response.
 - Reference: https://react.dev/learn/you-might-not-need-an-effect
 
 ## React state

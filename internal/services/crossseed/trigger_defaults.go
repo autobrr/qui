@@ -10,7 +10,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
-// trigger is how a cross-seed was found.
 type trigger int
 
 const (
@@ -21,8 +20,6 @@ const (
 	triggerInteractiveApply
 )
 
-// triggerDefaults holds the cross-seed settings for one trigger. Callers put
-// their own overrides on top.
 type triggerDefaults struct {
 	addTags                      []string
 	skipAutoResume               bool
@@ -33,10 +30,6 @@ type triggerDefaults struct {
 	findIndividualEpisodes       bool
 }
 
-// defaultsFor returns the settings for one trigger. Tags, auto-resume, and
-// source filters are per trigger; the rest are shared. Seeded search and
-// completion fill sourceFilter from their own filters, and interactive apply
-// has none because the user picked the torrent.
 func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) triggerDefaults {
 	d := triggerDefaults{
 		inheritSourceTags:            settings.InheritSourceTags,
@@ -72,7 +65,6 @@ func defaultsFor(t trigger, settings *models.CrossSeedAutomationSettings) trigge
 	return d
 }
 
-// request builds the CrossSeedRequest these defaults describe.
 func (d triggerDefaults) request(torrentData, indexer string) *CrossSeedRequest {
 	return &CrossSeedRequest{
 		TorrentData:                  torrentData,
@@ -88,9 +80,6 @@ func (d triggerDefaults) request(torrentData, indexer string) *CrossSeedRequest 
 	}
 }
 
-// placementIndexerName returns the indexer name that sets the category and the
-// link folder of a cross-seed. A match from a RED/OPS site keeps the
-// PlacementName of the site.
 func placementIndexerName(indexer string) string {
 	for _, site := range gazellemusic.Sites() {
 		if site.DisplayName == indexer {

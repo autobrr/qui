@@ -42,8 +42,6 @@ func NewAutomationHandler(store *models.AutomationStore, activityStore *models.A
 	}
 }
 
-// SetCrossSeedRoutes lets the Instance limit check of a Transfer rule read
-// the Cross-seed instance of its target.
 func (h *AutomationHandler) SetCrossSeedRoutes(routes *crossseedroute.Service) {
 	if routes != nil {
 		h.routes = routes.CrossSeedRouteStore
@@ -64,7 +62,7 @@ type AutomationPayload struct {
 	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty" doc:"The order in which the rule processes torrents. Default: oldest first."`
 	PreviewLimit    *int                     `json:"previewLimit" doc:"-"`
 	PreviewOffset   *int                     `json:"previewOffset" doc:"-"`
-	PreviewView     string                   `json:"previewView,omitempty" doc:"-"` // "needed" (default) or "eligible"
+	PreviewView     string                   `json:"previewView,omitempty" doc:"-"`
 }
 
 type AutomationDryRunResult struct {
@@ -73,8 +71,6 @@ type AutomationDryRunResult struct {
 	Activities  []*models.AutomationActivity `json:"activities,omitempty"`
 }
 
-// toModel converts the payload to an Automation model.
-// TrackerDomains is input only: older clients and hand-written JSON send it, and it is read only when TrackerPattern is empty.
 func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 	trackerPattern := p.TrackerPattern
 	if strings.TrimSpace(trackerPattern) == "" {
@@ -253,7 +249,6 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
 		return
 	}
-	// The run skips a disabled rule.
 	rules = slices.DeleteFunc(rules, func(rule *models.Automation) bool { return !rule.Enabled })
 	if !h.canReachExportTargets(w, r, rules...) {
 		return
@@ -278,7 +273,6 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
 }
 
-// ApplyRuleNow runs one saved rule immediately and applies its actions. A rule with DryRun set stays a simulation.
 func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -367,8 +361,6 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// canReachExportTargets refuses the request when a rule exports or transfers to
-// an instance outside the Instance limit of the API key.
 func (h *AutomationHandler) canReachExportTargets(w http.ResponseWriter, r *http.Request, rules ...*models.Automation) bool {
 	for _, rule := range rules {
 		if status, message := h.reachTargets(r, rule.Conditions); status != 0 {
@@ -379,10 +371,6 @@ func (h *AutomationHandler) canReachExportTargets(w http.ResponseWriter, r *http
 	return true
 }
 
-// reachTargets checks each instance that the running Export and Transfer
-// actions of a rule add torrents to against the Instance limit of the API key:
-// each target, and the Cross-seed instance of a Transfer target. It returns
-// the status and the message of the refusal, or 0.
 func (h *AutomationHandler) reachTargets(r *http.Request, conditions *models.ActionConditions) (int, string) {
 	targets := targetInstances(conditions)
 	if transfer := conditions.TransferToInstance; transfer != nil && transfer.Enabled && h.routes != nil {
@@ -403,8 +391,6 @@ func (h *AutomationHandler) reachTargets(r *http.Request, conditions *models.Act
 	return 0, ""
 }
 
-// targetInstances returns the instances that the running Export and Transfer
-// actions of a rule add torrents to.
 func targetInstances(conditions *models.ActionConditions) []int {
 	var targets []int
 	if export := conditions.ExportToInstance; export != nil && export.Enabled {
@@ -437,8 +423,6 @@ func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
 	return instanceID, nil
 }
 
-// decodeAndCheckPayload decodes and checks the rule in the request body, and checks that the instances and the external program it names exist.
-// saves tells whether the request stores the rule. On failure it returns a nil payload with the HTTP status code and message.
 func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int, stored *models.Automation, saves bool) (*AutomationPayload, int, string) {
 	ctx := r.Context()
 	var instance *models.Instance
@@ -475,7 +459,6 @@ func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID in
 		}
 	}
 
-	// Verify the referenced external program exists
 	if program := payload.Conditions.ExternalProgram; program != nil && program.Enabled && program.ProgramID > 0 {
 		if h.externalProgramStore == nil {
 			log.Warn().Msg("automations: external program store is nil, skipping program existence check")
@@ -604,7 +587,6 @@ func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Reques
 	RespondJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
 }
 
-// previewActionType represents which preview action to perform.
 type previewActionType int
 
 const (
@@ -612,12 +594,9 @@ const (
 	previewActionDelete
 	previewActionCategory
 	previewActionTag
-	previewActionBoth // error case
+	previewActionBoth
 )
 
-// detectPreviewAction determines which preview action is enabled in the payload.
-// Tag preview is detected only when neither delete nor category is enabled, so
-// combined rules keep their existing dispatch behavior.
 func detectPreviewAction(conditions *models.ActionConditions) previewActionType {
 	hasDelete := conditions != nil && conditions.Delete != nil && conditions.Delete.Enabled
 	hasCategory := conditions != nil && conditions.Category != nil && conditions.Category.Enabled
@@ -670,7 +649,6 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 		RespondError(w, http.StatusBadRequest, "Preview requires a delete, category, or tag action to be enabled")
 		return
 	case previewActionDelete, previewActionCategory, previewActionTag:
-		// Valid actions - continue processing
 	}
 
 	automation := payload.toModel(instanceID, 0)
@@ -689,7 +667,6 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 	h.handleDeletePreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset, payload.PreviewView)
 }
 
-// previewPagination extracts limit and offset from payload with defaults.
 func (p *AutomationPayload) previewPagination() (limit, offset int) {
 	if p.PreviewLimit != nil {
 		limit = *p.PreviewLimit
@@ -733,7 +710,6 @@ func (h *AutomationHandler) handleDeletePreview(ctx context.Context, w http.Resp
 	RespondJSON(w, http.StatusOK, result)
 }
 
-// ValidateRegex validates all regex patterns in the automation conditions.
 func (h *AutomationHandler) ValidateRegex(w http.ResponseWriter, r *http.Request) {
 	var payload AutomationPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {

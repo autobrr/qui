@@ -26,13 +26,11 @@ const MANUAL_SHRINK_DOCS_URL = "https://getqui.com/docs/features/statistics#shri
 
 type Range = "everything" | "before"
 
-/** The start of a date from a date input, in the time zone of the browser. */
 function startOfDate(value: string): Date {
   const [year, month, day] = value.split("-").map(Number)
   return new Date(year, month - 1, day)
 }
 
-/** The date of a date input as text, with no shift to another time zone. */
 function formatDate(value: string, locale: string): string {
   return startOfDate(value).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
 }
@@ -64,7 +62,6 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
       before: range === "before" ? startOfDate(date) : undefined,
     }),
     onSuccess: () => {
-      // A delete of everything takes the instance out of the list.
       setTarget(ALL)
       toast.success(t("statistics.deleteHistory.deleted"))
       if (shrink) {
@@ -77,7 +74,6 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
     },
     onSettled: () => {
       setConfirming(false)
-      // A delete that fails can still have deleted a part of the history.
       void queryClient.invalidateQueries({ queryKey: ["transfer-history"] })
     },
   })
@@ -143,7 +139,6 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
           ? t("statistics.deleteHistory.confirmBefore", { name, date: formatDate(date, i18n.resolvedLanguage ?? i18n.language) })
           : t("statistics.deleteHistory.confirmEverything", { name })}
         confirmLabel={t("statistics.deleteHistory.confirm")}
-        // The mutation closes the dialog when it settles, also when the delete fails.
         onConfirm={() => mutation.mutateAsync()}
       >
         {engine === "sqlite" && !shrink && <p className="text-sm text-muted-foreground">{t("statistics.deleteHistory.sqliteSpace")}</p>}

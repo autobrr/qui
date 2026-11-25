@@ -5,8 +5,6 @@ package database
 
 import "testing"
 
-// The Postgres half of TestInstanceSSHStatementsSQLite. The PostgresIntegration
-// suffix is what the Postgres CI job's -run filter selects on.
 func TestInstanceSSHStatementsPostgresIntegration(t *testing.T) {
 	t.Parallel()
 

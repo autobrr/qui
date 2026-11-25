@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 const defaultSearchSettings = vi.hoisted(() => ({
   instanceId: 1,
@@ -99,15 +99,6 @@ import type { CrossSeedAutomationSettings } from "@/types"
 import { toast } from "sonner"
 import { LibraryTab } from "../LibraryTab"
 
-beforeEach(() => {
-  // Clicking Start opens its tooltip, and Radix measures the tooltip through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
-
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -155,7 +146,6 @@ describe("LibraryTab save", () => {
       seededSearchTags: ["cross-seed"],
       skipAutoResumeSeededSearch: true,
     })
-    // A scheduled run that the search settings start reads the saved auto-resume.
     expect(mocks.patchSettings.mock.invocationCallOrder[0]).toBeLessThan(mocks.patchSearch.mock.invocationCallOrder[0])
   })
 
@@ -191,7 +181,6 @@ describe("LibraryTab save", () => {
   })
 
   it("does not start a Gazelle-only run from a stale OPS/RED-only pick", async () => {
-    // Saved before both Gazelle keys existed; the picker hides OPS/RED now, so nothing is left to show or store.
     Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
     mocks.indexers = [
       { id: 1, indexer_id: "orpheus", name: "OPS", base_url: "https://orpheus.example.invalid", enabled: true },
@@ -413,7 +402,6 @@ describe("LibraryTab schedule controls", () => {
     expect(screen.getByRole("button", { name: "automation.cancel" })).toBeTruthy()
   })
 
-  // regression: #4246
   it.each([
     { name: "a manual run", run: { kind: "manual" }, shown: true },
     { name: "a capped scheduled run", run: { kind: "scheduled", searchLimit: 400 }, shown: false },

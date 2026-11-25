@@ -65,7 +65,6 @@ export function buildCategoryTree(
   const nodeMap = new Map<string, CategoryNode>()
   const roots: CategoryNode[] = []
 
-  // First pass: create all nodes
   Object.entries(categories).forEach(([name, category]) => {
     const segments = name.split("/")
     const displayName = segments[segments.length - 1]
@@ -82,15 +81,12 @@ export function buildCategoryTree(
     nodeMap.set(name, node)
   })
 
-  // Second pass: build parent-child relationships
   nodeMap.forEach((node, name) => {
     const segments = name.split("/")
 
     if (segments.length === 1) {
-      // Root category
       roots.push(node)
     } else {
-      // Find parent
       const parentPath = segments.slice(0, -1).join("/")
       const parentNode = nodeMap.get(parentPath)
 
@@ -98,13 +94,11 @@ export function buildCategoryTree(
         parentNode.children.push(node)
         node.parent = parentNode
       } else {
-        // Parent doesn't exist in categories, treat as root
         roots.push(node)
       }
     }
   })
 
-  // Sort categories and their children
   const sortNodes = (nodes: CategoryNode[]) => {
     nodes.sort((a, b) => a.displayName.localeCompare(b.displayName))
     nodes.forEach(node => sortNodes(node.children))
@@ -359,7 +353,6 @@ export const CategoryTree = memo(({
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
   const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
   const uncategorizedColumns = "grid-cols-[auto_minmax(0,1fr)_auto]"
-  // Filter categories based on search term
   const filteredCategories = useMemo(() => {
     if (!searchTerm) return categories
 
@@ -371,7 +364,6 @@ export const CategoryTree = memo(({
     )
   }, [categories, searchTerm])
 
-  // Build flat list for non-subcategory mode
   const flatCategories = Object.entries(filteredCategories).map(([name, category]) => ({
     name,
     displayName: name,
@@ -381,7 +373,6 @@ export const CategoryTree = memo(({
     count: counts[`category:${name}`] || 0,
   })).sort((a, b) => a.name.localeCompare(b.name))
 
-  // Build tree for subcategory mode
   const categoryTree = useSubcategories? buildCategoryTree(filteredCategories, counts): flatCategories
   const uncategorizedState = getCategoryState("")
   const uncategorizedCheckboxState = getCheckboxState(uncategorizedState)
@@ -390,8 +381,6 @@ export const CategoryTree = memo(({
 
   return (
     <div className="flex flex-col gap-0">
-      {/* All/Uncategorized special items */}
-
       <li
         className={cn("grid items-center hover:bg-muted rounded-md cursor-pointer w-full min-w-0", uncategorizedColumns, itemGap, itemPadding)}
         onClick={() => onCategoryCheckboxChange("")}
@@ -421,7 +410,6 @@ export const CategoryTree = memo(({
 
       <div className={viewMode === "dense" ? "border-t my-1" : "border-t my-2"} />
 
-      {/* Category tree/list */}
       {categoryTree.map((node) => (
         <CategoryTreeNode
           key={node.name}

@@ -7,5 +7,8 @@ import { createFileRoute } from "@tanstack/react-router"
 import { Setup } from "@/pages/Setup"
 
 export const Route = createFileRoute("/setup")({
+  staticData: {
+    title: { titleKey: "setup.pageTitle", titleNs: "auth" },
+  },
   component: Setup,
 })

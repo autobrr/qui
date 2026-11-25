@@ -78,7 +78,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
         apiKey: "",
       }
       if (submitData.password === "") {
-        // Omit empty password to preserve existing credentials
         const { password, ...rest } = submitData
         submitData = rest
       }
@@ -90,7 +89,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
       }
 
       if (submitData.apiKey === "<redacted>") {
-        // Omit redacted placeholder to preserve existing API key
         const { apiKey, ...rest } = submitData
         submitData = rest
       }
@@ -128,7 +126,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
     },
   })
 
-  // Reset form when instance changes
   const prevInstanceId = useRef(instance?.id)
   useEffect(() => {
     if (prevInstanceId.current !== instance?.id) {
@@ -173,7 +170,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
       )}
     >
       <div className="space-y-6">
-        {/* Connection Settings */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field
             name="name"
@@ -242,7 +238,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
           </form.Field>
         </div>
 
-        {/* Security Options */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field name="tlsSkipVerify">
             {(field) => (
@@ -283,7 +278,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
           </form.Field>
         </div>
 
-        {/* Authentication */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <div className="rounded-lg border bg-muted/40 p-4 flex flex-col">
             <div className="space-y-2">
@@ -371,7 +365,6 @@ export function InstanceSettingsPanel({ instance }: InstanceSettingsPanelProps) 
             )}
           </div>
 
-          {/* HTTP Basic Auth */}
           <div className="rounded-lg border bg-muted/40 p-4 flex flex-col">
             <label htmlFor="basic-auth-toggle" className="flex items-center justify-between cursor-pointer">
               <span className="flex items-center gap-2 text-sm font-medium">

@@ -36,8 +36,6 @@ export function usePersistedColumnSizing(
   const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
   const storageKey = hasInstanceKey ? `${BASE_STORAGE_KEY}:${instanceKey}` : BASE_STORAGE_KEY
 
-  // Migrate the pre-instance-scoping shared key into the instance key once,
-  // then drop it.
   useEffect(() => {
     if (!hasInstanceKey) return
     migrateLegacyLocalValue(BASE_STORAGE_KEY, storageKey, isValidSizing)

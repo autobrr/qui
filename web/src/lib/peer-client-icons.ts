@@ -3,10 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Matches the client text first, then the peer ID prefix. Order matters:
-// Deluge, FrostWire and Porla texts contain "libtorrent/", so they come before
-// the libtorrent rule. Capital "libTorrent " is rakshasa libTorrent (rTorrent).
-// The icon names are the list in internal/services/peerclienticons/icons.go.
 const RULES: { name: string; client: RegExp; peerId: string; icon?: string }[] = [
   { name: "qBittorrent", client: /^qBittorrent/, peerId: "-qB", icon: "qbittorrent" },
   { name: "Transmission", client: /^Transmission/, peerId: "-TR", icon: "transmission" },
@@ -27,7 +23,6 @@ const RULES: { name: string; client: RegExp; peerId: string; icon?: string }[] =
   { name: "aria2", client: /^aria2/, peerId: "A2-" },
 ]
 
-// A peer in a public swarm chooses the text, so no pattern ever sees more than this.
 const MAX_CLIENT_LENGTH = 128
 
 export interface PeerClientMatch {
@@ -43,15 +38,12 @@ export function matchPeerClient(client: string | undefined, peerIdClient: string
   const rule = (text ? RULES.find((r) => r.client.test(text)) : undefined) ??
     (peerIdClient ? RULES.find((r) => peerIdClient.startsWith(r.peerId)) : undefined)
 
-  // "Deluge/2.1.1 libtorrent/2.0.10" gives "Deluge" and "2.1.1": the reported name and its version.
-  // Only a peer that sends no text gets the name of its peer ID rule.
   const nameAndVersion = text.match(/^([^\s/]+)[\s/]+(\d[\w.-]*)/)
   const name = nameAndVersion ? nameAndVersion[1] : text || (rule?.name ?? "")
 
   return { icon: rule?.icon ?? null, name, version: nameAndVersion?.[2] ?? "", letter: Array.from(name)[0] ?? "?" }
 }
 
-/** The full claim of the peer, for a tooltip: `Deluge/2.1.1 libtorrent/2.0.10 · -DE211s-`. */
 export function peerClientTitle(client?: string, peerIdClient?: string): string {
   return [client, peerIdClient].filter(Boolean).join(" · ")
 }

@@ -7,7 +7,6 @@ import { useInstances } from "@/hooks/useInstances"
 import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 
-/** The name of an instance, or "Instance 3" for one that is gone. */
 export function useInstanceName(): (id: number) => string {
   const { t } = useTranslation("transfers")
   const { instances } = useInstances()

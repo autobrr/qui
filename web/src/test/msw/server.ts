@@ -7,7 +7,4 @@ import { setupServer } from "msw/node"
 
 import { handlers } from "@/test/msw/handlers"
 
-// Shared MSW node server for the vitest suite. Lifecycle (listen / reset /
-// close) is wired in src/test/setup.ts; individual tests extend it via
-// server.use(...) for per-case payload or error overrides.
 export const server = setupServer(...handlers)

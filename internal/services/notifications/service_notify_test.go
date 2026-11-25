@@ -62,8 +62,6 @@ func TestOnlyATargetThatPicksSystemNoticeGetsIt(t *testing.T) {
 	store := models.NewNotificationTargetStore(testdb.NewMigratedSQLite(t, "notify-system-notice"))
 	oldTypes := AllEventTypeStrings()
 	oldTypes = slices.DeleteFunc(oldTypes, func(eventType string) bool { return eventType == string(EventSystemNotice) })
-	// The targets from before the upgrade: one with each event type of that
-	// time, and one with an empty list, which means all events.
 	for _, eventTypes := range [][]string{oldTypes, nil} {
 		_, err := store.Create(ctx, &models.NotificationTargetCreate{
 			Name: "before the upgrade", URL: "generic://127.0.0.1/hook", Enabled: true, EventTypes: eventTypes,

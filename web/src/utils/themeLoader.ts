@@ -5,12 +5,6 @@
 
 import type { Theme } from "@/config/themes";
 
-/**
- * The single bundled fallback theme, painted until the registry arrives from
- * GET /api/themes (see useBuiltinThemes). Shares the "minimal" id so the
- * registry entry replaces it seamlessly and fallback writes to localStorage
- * never store an id that stops resolving.
- */
 export const FALLBACK_THEME: Theme = getFallbackTheme();
 
 function getFallbackTheme(): Theme {

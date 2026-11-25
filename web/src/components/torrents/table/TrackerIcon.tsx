@@ -23,9 +23,6 @@ export interface TrackerIconProps {
 }
 
 export const TrackerIcon = memo(({ title, fallback, src, size = "md", className }: TrackerIconProps) => {
-  // Track the specific src that failed to load. Keying error state to the src
-  // value (rather than resetting a boolean in an effect) means a new src renders
-  // its image immediately, with no one-frame fallback flash.
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
 
   return (

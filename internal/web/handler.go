@@ -64,9 +64,6 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/swizzin.png", h.serveAssets)
 	r.Get("/napster.png", h.serveAssets)
 
-	// Redirect /index.html to the SPA root so SSO proxies that preserve
-	// the original request path (Pangolin, Cloudflare Access, etc.) don't
-	// land on a client-side 404.
 	spaRoot := h.baseURL
 	if spaRoot == "" {
 		spaRoot = "/"
@@ -154,9 +151,6 @@ func (h *Handler) serveAssets(w http.ResponseWriter, r *http.Request) {
 		modifiedContent := string(content)
 		basePrefix := strings.TrimSuffix(h.baseURL, "/")
 
-		// Modify service worker files to use correct base URL. sw.js needs no
-		// rewrite: Workbox resolves relative precache URLs against the script URL,
-		// so under /qui/sw.js the cache keys are already /qui/...
 		switch path {
 		case "registerSW.js":
 			modifiedContent = strings.ReplaceAll(modifiedContent, `'/sw.js'`, `'`+basePrefix+`/sw.js'`)
@@ -191,8 +185,6 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Inject base URL as a global variable before other scripts
-	// This allows the frontend to access it without needing a rebuild
 	baseURL := h.baseURL
 	if baseURL == "" {
 		baseURL = "/"

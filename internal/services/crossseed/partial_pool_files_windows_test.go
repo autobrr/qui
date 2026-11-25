@@ -44,7 +44,6 @@ func TestValidatePartialPoolPathInsideRootWindowsJunctions(t *testing.T) {
 	out, err := exec.CommandContext(t.Context(), "cmd.exe", "/d", "/c", "mklink", "/j", link, outside).CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	t.Cleanup(func() { require.NoError(t, os.Remove(link)) })
-	// A root may itself be an alias; a descendant must not escape through one.
 	require.NoError(t, validatePartialPoolPathInsideRoot(link, filepath.Join(link, "missing.mkv")))
 	require.Error(t, validatePartialPoolPathInsideRoot(root, filepath.Join(link, "missing.mkv")))
 	require.NoError(t, os.Remove(outside))

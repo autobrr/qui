@@ -19,9 +19,6 @@ const (
 	lookupHashOneTracker  = "aaaa000000000000000000000000000000000002"
 )
 
-// newTrackerStub serves two torrents. The first announces to alpha and beta,
-// and its tracker field names only alpha, so a rule sees beta only through the
-// tracker lookup.
 func newTrackerStub(t *testing.T, webAPI string) *stubQbt {
 	t.Helper()
 
@@ -50,9 +47,6 @@ func tagRuleWhen(pattern string, cond *models.RuleCondition) *models.Automation 
 	}
 }
 
-// The torrents of the Sync snapshot carry no trackers. The rules that test
-// trackers read them from the lookup by hash, and must match the torrents
-// that they matched when qui wrote the trackers into the torrents.
 func TestTrackerRulesMatchTheSameTorrentsFromTheLookup(t *testing.T) {
 	trackersHaveBeta := &models.RuleCondition{Field: FieldTrackers, Operator: models.OperatorContains, Value: "beta.example.invalid"}
 	rules := []struct {
@@ -67,9 +61,8 @@ func TestTrackerRulesMatchTheSameTorrentsFromTheLookup(t *testing.T) {
 		{name: "tracker message", rule: tagRuleWhen("*", &models.RuleCondition{Field: FieldTrackerMessage, Operator: models.OperatorContains, Value: "timed out"}), want: []string{lookupHashTwoTrackers}},
 	}
 	versions := []struct {
-		name   string
-		webAPI string
-		// noTrackers: below qBittorrent 5.1, qui loads no tracker list.
+		name       string
+		webAPI     string
 		noTrackers bool
 	}{
 		{name: "below qBittorrent 5.1", webAPI: "2.10.0", noTrackers: true},
@@ -109,8 +102,6 @@ func TestTrackerRulesMatchTheSameTorrentsFromTheLookup(t *testing.T) {
 	}
 }
 
-// A pass that runs after a pause through qui, and before the next sync shows
-// the pause, sees the torrent as paused.
 func TestPassSeesAPauseBeforeTheNextSync(t *testing.T) {
 	svc, instanceID := newDryRunParityService(t, defaultParityFixture())
 	require.NoError(t, svc.syncManager.BulkAction(t.Context(), instanceID, []string{parityHash}, "pause"))
@@ -122,8 +113,6 @@ func TestPassSeesAPauseBeforeTheNextSync(t *testing.T) {
 	syncSealed(t, svc, instanceID)
 }
 
-// syncSealed runs one more sync. The seal of the Sync snapshot panics in it
-// when the pass wrote to a shared torrent.
 func syncSealed(t *testing.T, svc *Service, instanceID int) {
 	t.Helper()
 	client, err := svc.syncManager.GetClient(t.Context(), instanceID)
@@ -131,8 +120,6 @@ func syncSealed(t *testing.T, svc *Service, instanceID int) {
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 }
 
-// torrentRefMap gives each torrent of a test fixture as a reference, as the
-// torrents of a Sync snapshot are.
 func torrentRefMap(torrents map[string]qbt.Torrent) map[string]*qbt.Torrent {
 	refs := make(map[string]*qbt.Torrent, len(torrents))
 	for hash, torrent := range torrents {
@@ -141,8 +128,6 @@ func torrentRefMap(torrents map[string]qbt.Torrent) map[string]*qbt.Torrent {
 	return refs
 }
 
-// trackerLookupOf gives the tracker lists of the fixture torrents as a tracker
-// lookup, the form in which a run reads them.
 func trackerLookupOf(torrents ...qbt.Torrent) qbittorrent.TrackerLookup {
 	lookup := qbittorrent.TrackerLookup{}
 	for _, torrent := range torrents {
@@ -153,9 +138,6 @@ func trackerLookupOf(torrents ...qbt.Torrent) qbittorrent.TrackerLookup {
 	return lookup
 }
 
-// withTrackerLookup returns a copy of ctx that holds the tracker list of the
-// fixture torrent in its tracker lookup. It returns ctx when the torrent has
-// no tracker list.
 func withTrackerLookup(ctx *EvalContext, torrent qbt.Torrent) *EvalContext {
 	if len(torrent.Trackers) == 0 {
 		return ctx

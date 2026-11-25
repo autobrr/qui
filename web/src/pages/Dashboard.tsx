@@ -23,6 +23,7 @@ import { useIsPhone } from "@/hooks/useMediaQuery"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import type { DashboardInstanceStats } from "@/lib/dashboard-overview"
@@ -239,10 +240,6 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
       )
 
       return {
-        // Independent lightweight (limit:1) probe used only to keep dashboard stats
-        // alive while an instance's stream is down. It does NOT share the torrent
-        // list's cache entry (that key now also encodes filters/scope), so keep this
-        // request minimal rather than relying on reuse.
         queryKey: createDashboardStatsFallbackQueryKey(instance.id),
         queryFn: () => api.getTorrents(instance.id, {
           page: 0,
@@ -378,8 +375,6 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
   useEffect(() => {
     const activeInstanceIds = new Set<number>()
 
-    // Query handoff: when the dashboard is hidden we tear down the heavy stream
-    // connections and let the title-bar transfer-info polling take over.
     if (streamEnabled) {
       instances.forEach(instance => {
         const params = {
@@ -587,7 +582,6 @@ export function useAllInstanceStats(instances: InstanceResponse[], options: { en
       isLoading,
       error,
       streamConnected: state.streamConnected,
-      // A stopped poll refreshes nothing, so its fallback data must not hide the error
       streamError: resolveDashboardStreamError(state.streamError, isFallbackActive && state.fallbackPollInterval !== false, fallbackData),
       hasLiveDashboardStatsPayload: state.hasLiveDashboardStatsPayload,
       isDashboardStatsFallbackActive: isFallbackActive,
@@ -665,8 +659,6 @@ export function Dashboard() {
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
 
-  // While the page is visible, the stream sends the statistics. After the delayed hide,
-  // the stream stops, and only the title bar speeds read the transfer info.
   const statsData = useAllInstanceStats(activeInstances, { enabled: !isHiddenDelayed })
   const transferInfoQueries = useQueries({
     queries: activeInstances.map(instance => ({
@@ -693,8 +685,7 @@ export function Dashboard() {
     { dl: 0, up: 0, hasData: false }
   )
   const backgroundSpeeds = backgroundSpeedsState.hasData ? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up } : undefined
-  useTitleBarSpeeds({
-    mode: "dashboard",
+  const titleBarSpeeds = useTitleBarSpeeds({
     enabled: titleBarSpeedsEnabled && hasActiveInstances,
     foregroundSpeeds: hasActiveInstances ? {
       dl: statsData.reduce((sum, { stats }) => sum + (stats?.totalDownloadSpeed ?? 0), 0),
@@ -702,6 +693,7 @@ export function Dashboard() {
     } : undefined,
     backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
   })
+  usePageTitle({ speeds: titleBarSpeeds })
 
   const incognitoToggle = (
     <Button
@@ -748,7 +740,6 @@ export function Dashboard() {
     >
       <PasswordIssuesBanner instances={instances || []} />
 
-      {/* The banner to register qui as the magnet handler, for Firefox */}
       <MagnetHandlerBanner />
 
       {hasInstances ? (

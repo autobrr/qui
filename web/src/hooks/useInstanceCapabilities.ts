@@ -12,8 +12,6 @@ type UseInstanceCapabilitiesOptions = {
   enabled?: boolean
 }
 
-// The capabilities query of one instance. Every reader shares this key, so
-// mounting another reader sends no new request.
 export function instanceCapabilitiesQuery(instanceId: number) {
   return {
     queryKey: ["instance-capabilities", instanceId],
@@ -45,10 +43,6 @@ export type CapabilityFlag = {
   [K in keyof InstanceCapabilities]-?: InstanceCapabilities[K] extends boolean | undefined ? K : never
 }[keyof InstanceCapabilities]
 
-// useInstancesSupport answers no until each instance has answered. Undefined
-// instanceIds means every active instance. A torrent row mounts it, so it sends
-// a request only for an instance with no capabilities loaded, and it never
-// loads the instance list.
 export function useInstancesSupport(
   instanceIds: readonly number[] | undefined,
   capability: CapabilityFlag
@@ -67,9 +61,6 @@ export function useInstancesSupport(
   })
 }
 
-// refreshChangedCapabilities asks an instance for its capabilities again when
-// the torrent list reports a Web API version other than the loaded one, as
-// after a qBittorrent upgrade or downgrade.
 export function refreshChangedCapabilities(
   queryClient: QueryClient,
   source: Pick<TorrentResponse, "webAPIVersions">
@@ -78,7 +69,6 @@ export function refreshChangedCapabilities(
     const queryKey = ["instance-capabilities", Number(instanceId)]
     const loaded = queryClient.getQueryData<InstanceCapabilities>(queryKey)
     if (loaded && (loaded.webAPIVersion ?? "") !== version) {
-      // Each stream frame carries the version: keep a running request.
       void queryClient.invalidateQueries({ queryKey, exact: true }, { cancelRefetch: false })
     }
   }

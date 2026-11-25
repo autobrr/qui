@@ -46,7 +46,6 @@ describe("useDateTimeFormatters", () => {
   it("updates a memoized date when the language changes", async () => {
     const { result } = renderHook(() => {
       const { formatTimestamp } = useDateTimeFormatters()
-      // Table columns also use the formatter callback as a memo dependency.
       return useMemo(() => formatTimestamp(1718461845), [formatTimestamp])
     })
     expect(result.current).toBe("1 hour ago")

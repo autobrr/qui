@@ -36,14 +36,8 @@ var hdrTagMatchers = []struct {
 
 var trailingTokenRegexCache sync.Map
 
-// releaseBuilder builds a release from its tags as rls.ParseString does.
 var releaseBuilder = rls.NewTagBuilder().Init(taginfo.All())
 
-// Parser caches rls parsing results so we do not repeatedly parse the same release names.
-//
-// github.com/autobrr/rls is the autobrr fork: fix a parse bug there and bump go.mod.
-// enrichReleaseHDR still covers the HDR10+ forms that rls misreads, and
-// enrichEpisodeRange applies the qui rule that a multi-episode range is a pack.
 type Parser struct {
 	cache         *ttlcache.Cache[string, *rls.Release]
 	keyNormalizer *stringutils.Normalizer[string, string]
@@ -62,12 +56,8 @@ func NewDefaultParser() *Parser {
 	return NewParser(defaultParserTTL)
 }
 
-// DefaultParser is a statically allocated default parser; constructing one per call
-// leaks a ttlcache goroutine.
 var DefaultParser = NewDefaultParser()
 
-// Parse returns the parsed release metadata for name. A KG listing reads as
-// the release in its bracketed download name.
 func (p *Parser) Parse(name string) *rls.Release {
 	if p == nil {
 		return &rls.Release{}
@@ -76,10 +66,6 @@ func (p *Parser) Parse(name string) *rls.Release {
 	if p.keyNormalizer != nil {
 		key = p.keyNormalizer.Normalize(name)
 	}
-	// Sanitize here: raw non-UTF-8 bytes (e.g. "á" as Latin-1 0xe1) otherwise reach
-	// regexp.Compile in enrichReleaseHDR and panic via MustCompile. Names read from
-	// torrent files and qBt file lists are already sanitized at their ingestion
-	// boundaries.
 	key = stringutils.SanitizeUTF8(key)
 	if key == "" {
 		return &rls.Release{}
@@ -93,7 +79,6 @@ func (p *Parser) Parse(name string) *rls.Release {
 		return release
 	}
 
-	// The cache keeps each release, so its tag list gets the exact size.
 	tags, end := rls.ParseTagsString(key)
 	release := releaseBuilder.Build(slices.Clone(tags), end)
 	enrichReleaseHDR(key, &release)
@@ -103,9 +88,6 @@ func (p *Parser) Parse(name string) *rls.Release {
 	return &release
 }
 
-// enrichUHDWebSource reads the web source of a name such as
-// "UHD.AMZN.WEB-DL". rls gives "UHD.BluRay" for a UHD tag that another tag
-// separates from its web source.
 func enrichUHDWebSource(release *rls.Release) {
 	if release.Source != "UHD.BluRay" {
 		return
@@ -126,10 +108,6 @@ func enrichUHDWebSource(release *rls.Release) {
 	}
 }
 
-// enrichEpisodeRange turns a multi-episode release such as "S00E02-E05" into a
-// pack. rls reports it as its first episode, so the pack looks like a single
-// episode, but it keeps the whole list in SeriesEpisodes. Done at parse time so
-// the result lands in the cache.
 func enrichEpisodeRange(release *rls.Release) {
 	if release == nil || release.Episode == 0 {
 		return
@@ -137,26 +115,14 @@ func enrichEpisodeRange(release *rls.Release) {
 	if !IsEpisodeRange(release) {
 		return
 	}
-	// A season 0 pack carries no season number, so Series alone cannot mark it as
-	// a pack. Set the type as well and let the episode number go.
 	release.Episode = 0
 	release.Type = rls.Series
 }
 
-// IsEpisodeRange reports whether the release names two or more distinct
-// episodes, such as "S01E05E06". Parse turns such a release into a pack
-// (Episode 0), and this predicate is what still tells it apart from a full
-// season pack: a range keeps its episode list in SeriesEpisodes, a full pack
-// has none.
 func IsEpisodeRange(release *rls.Release) bool {
 	if release == nil {
 		return false
 	}
-	// Once a tag in the SxxEyy scheme is present, only those tags count:
-	// "S23E19.Episode.1174" names one episode under two schemes, and rls lists
-	// both numbers as series tags. An absolute-only name such as
-	// "Show - 01 - 12" keeps all its tags. The %o verb is the tag's original
-	// capture (see rls.Tag.Format).
 	var tags, scheme []rls.Tag
 	for _, tag := range release.Tags() {
 		if !tag.Is(rls.TagTypeSeries) {
@@ -170,8 +136,6 @@ func IsEpisodeRange(release *rls.Release) bool {
 	if len(scheme) > 0 {
 		tags = scheme
 	}
-	// Count distinct episodes, not entries: a file path names the same episode
-	// twice ("Show.S11E11-GRP/Show.S11E11-GRP.mkv") and that is still one episode.
 	first := [2]int{-1, -1}
 	for _, tag := range tags {
 		series, _ := tag.Series()
@@ -187,8 +151,6 @@ func IsEpisodeRange(release *rls.Release) bool {
 	return false
 }
 
-// seasonEpisodeScheme matches the original capture of a series tag written as
-// S01E05, S01E05E06, 1x05, or a bare E06 continuation, and not as "Episode 6".
 var seasonEpisodeScheme = regexp.MustCompile(`(?i)^(?:[se]|\d+x)\d`)
 
 func enrichReleaseHDR(rawName string, release *rls.Release) {
@@ -406,17 +368,8 @@ func (p *Parser) Clear(name string) {
 	p.cache.Delete(key)
 }
 
-// listingYear matches what a KG listing puts before its bracket: the site
-// title, the year, and the country, which can be empty.
 var listingYear = regexp.MustCompile(`\S (\d{4}) [^\d\[\]]*$`)
 
-// listingRelease reads a Prowlarr or Jackett KG listing,
-// "<site title> <year> <country> [<download name>]", as the release in the
-// dotted download name, because rls keeps the year and the country in the
-// title. Each word of the download name's title must be in the site title. A
-// download name without a year takes the year of the listing. It returns nil
-// for other names, such as a "[Multi-Subs]", "[ABCD1234]", or "2019 [H.264]"
-// tag.
 func (p *Parser) listingRelease(name string) *rls.Release {
 	rest, ok := strings.CutSuffix(name, "]")
 	if !ok {

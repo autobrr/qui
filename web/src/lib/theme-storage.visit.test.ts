@@ -5,7 +5,6 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-// The visit starts from the address at page load, so it is set before the modules load.
 vi.hoisted(() => window.history.replaceState(null, "", "/?theme=default"))
 
 import type { Theme } from "@/config/themes"
@@ -43,7 +42,6 @@ afterEach(() => {
   localStorage.clear()
 })
 
-// The tests share one visit, which the last test ends.
 describe("theme storage during a default theme visit", () => {
   it("reads the stored mode until a mode is set", () => {
     seedStoredTheme()

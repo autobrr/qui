@@ -13,7 +13,6 @@ import { toast } from "sonner"
 
 // i18n-namespace: torrents
 
-// Const object for better developer experience and refactoring safety
 export const TORRENT_ACTIONS = {
   PAUSE: "pause",
   RESUME: "resume",
@@ -38,7 +37,6 @@ export const TORRENT_ACTIONS = {
   TOGGLE_SEQUENTIAL_DOWNLOAD: "toggleSequentialDownload",
 } as const
 
-// Derive the type from the const object - single source of truth
 export type TorrentAction = typeof TORRENT_ACTIONS[keyof typeof TORRENT_ACTIONS]
 
 type TagBulkActionResult = {
@@ -47,22 +45,9 @@ type TagBulkActionResult = {
   error?: Error
 }
 
-// Pending post-action refetch timers; a burst of mutations collapses into a
-// single trailing refetch pair instead of one pair per action (each refetch
-// re-delivers the whole loaded window).
 let pendingListRefetches: ReturnType<typeof setTimeout>[] = []
 let pendingFinalRefetchAt = 0
 
-// Rows outside the SSE live window are only updated by these delayed
-// refetches. The first one can read the backend before its post-action
-// sync has landed, so schedule a second pass to self-correct a read that
-// came back too early. Every mutation that changes list-visible data must
-// refetch through this — including the details panel's delete handlers,
-// which call api.bulkAction directly.
-// The whole ["torrents-list"] family, not a per-instance key: in the
-// all-instances view the active list query is keyed under instance id 0,
-// which a row's real instance id can never prefix-match. type: "active"
-// keeps it to the visible view.
 export function scheduleTorrentListRefetches(queryClient: QueryClient, firstDelay: number) {
   const refetchLists = () => {
     queryClient.refetchQueries({
@@ -71,11 +56,6 @@ export function scheduleTorrentListRefetches(queryClient: QueryClient, firstDela
       type: "active",
     })
   }
-  // Collapsing a burst must not shorten a slower action's pending verification
-  // window: a pause right after a delete-with-files would otherwise replace the
-  // 5s/8s pair with 1s/4s and leave the last read racing the file deletion.
-  // Keep the furthest final deadline; a stale past deadline goes negative and
-  // loses the max.
   const finalDelay = Math.max(firstDelay + 3000, pendingFinalRefetchAt - Date.now())
   pendingFinalRefetchAt = Date.now() + finalDelay
   pendingListRefetches.forEach(clearTimeout)
@@ -85,16 +65,12 @@ export function scheduleTorrentListRefetches(queryClient: QueryClient, firstDela
   ]
 }
 
-// Test-only: the debounce state above is module-level and outlives a test's
-// fake-timer clock, so a deadline left mid-window would stretch the next
-// test's timers.
 export function resetPendingListRefetchesForTests() {
   pendingListRefetches.forEach(clearTimeout)
   pendingListRefetches = []
   pendingFinalRefetchAt = 0
 }
 
-// Removes the deleted rows from the cached lists of the instance at once, before the refetch.
 export function removeDeletedTorrents(queryClient: QueryClient, instanceId: number, variables: {
   hashes: string[]
   targets?: TorrentActionTarget[]
@@ -112,10 +88,8 @@ export function removeDeletedTorrents(queryClient: QueryClient, instanceId: numb
   if (variables.clientHashes && variables.clientHashes.length > 0) {
     hashesToRemove = variables.clientHashes
   }
-  // A target on another instance is not in the list of this instance.
   const otherInstanceCount = instanceId === ALL_INSTANCES_ID ? 0 : variables.targets?.filter(t => t.instanceId !== instanceId).length ?? 0
   const optimisticRemoveCount = (variables.clientCount ?? hashesToRemove.length) - otherInstanceCount
-  // Cross-seeded copies share a hash, so a targeted delete removes only the addressed rows.
   const targetKey = (t: { instanceId: number; hash: string }) => `${t.instanceId}:${t.hash}`
   const targetKeys = variables.targets?.length ? new Set(variables.targets.map(targetKey)) : undefined
   const excludedKeys = new Set(variables.excludeTargets?.map(targetKey))
@@ -160,8 +134,6 @@ class TagBulkActionError extends Error {
 
 type TagRequest = Omit<Parameters<typeof api.bulkAction>[1], "action" | "tags">
 
-// The tag update of a tag editor plan: the removal first, then the addition.
-// A failure of either step throws a TagBulkActionError that names both steps.
 export async function updateTags(scope: number, plan: TagUpdatePlan, request: TagRequest) {
   const results: TagBulkActionResult[] = []
 
@@ -195,7 +167,6 @@ export async function updateTags(scope: number, plan: TagUpdatePlan, request: Ta
   }
 }
 
-// The failure toast of a tag update. It names the step that failed and the step that succeeded.
 export function showTagUpdateError(t: Translate, error: Error, count: number) {
   if (error instanceof TagBulkActionError) {
     const succeeded = error.results.filter(result => result.status === "success").map(result => result.action)
@@ -231,12 +202,10 @@ export async function invalidateInstanceCaches(queryClient: QueryClient, instanc
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
-// The delay of the first list refetch after a successful action, other than a delete.
 export function actionRefetchDelay(action: TorrentAction) {
   return action === "resume" || action === "forceStart" ? 2000 : 1000
 }
 
-// The count that a failure toast names.
 export function failedActionCount(request: { hashes: string[]; targets?: TorrentActionTarget[] }) {
   return request.hashes.length || request.targets?.length || 1
 }
@@ -286,7 +255,6 @@ export function getActionErrorMessage(t: Translate, action: TorrentAction, count
   }
 }
 
-// Helper function for success toasts
 export function showSuccessToast(t: Translate, action: TorrentAction, count: number, deleteFiles?: boolean, enable?: boolean) {
   switch (action) {
     case "resume":

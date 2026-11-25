@@ -30,8 +30,6 @@ func TestIsDirNotEmpty(t *testing.T) {
 	}{
 		{"remove of a folder that holds a file", removeErr, true},
 		{"wrapped errno", fmt.Errorf("cleanup: %w", &fs.PathError{Op: "remove", Path: "/data/x", Err: syscall.ENOTEMPTY}), true},
-		// Only codes count. Every caller passes a backend Remove error, and
-		// both backends report the code.
 		{"text without a code", &fs.PathError{Op: "remove", Path: `D:\data\x`, Err: errors.New("The directory is not empty.")}, false}, //nolint:revive // Windows's own text
 		{"remote server text without a code", fmt.Errorf("remove /data/x: %w", errors.New("directory not empty")), false},
 		{"permission error on a folder named Not Empty", &fs.PathError{Op: "remove", Path: "/data/Not Empty", Err: fs.ErrPermission}, false},

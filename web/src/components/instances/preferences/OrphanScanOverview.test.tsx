@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Instance, OrphanScanRun, OrphanScanSettings } from "@/types"
@@ -22,12 +22,10 @@ vi.mock("@/components/instances/preferences/OrphanScanPreviewDialog", () => ({
   OrphanScanPreviewDialog: () => null,
 }))
 
-// SettingsSummary.test.tsx covers the pair layout, so this file checks only the pairs the card passes in.
 vi.mock("@/components/instances/preferences/SettingsSummary", () => ({
   SettingsSummary: ({ parts }: { parts: string[] }) => <span data-testid="settings-summary">{JSON.stringify(parts)}</span>,
 }))
 
-// Stable singletons: a fresh object per render would rerun effects forever.
 const { instancesQuery, settingsQuery, runsQuery, mutation } = vi.hoisted(() => {
   const instance = {
     id: 1,
@@ -86,15 +84,6 @@ vi.mock("@/hooks/useOrphanScan", () => ({
 }))
 
 import { OrphanScanOverview } from "@/components/instances/preferences/OrphanScanOverview"
-
-beforeEach(() => {
-  // Radix switch and tooltip measure through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

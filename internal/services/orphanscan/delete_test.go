@@ -228,7 +228,6 @@ func TestSafeDeleteTarget_DeletingMarkerDirDoesNotDeleteSiblingFiles(t *testing.
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	// Disc content.
 	fileA := filepath.Join(movieDir, "BDMV", "index.bdmv")
 	fileB := filepath.Join(bdmvDir, "00000.m2ts")
 	if err := os.WriteFile(fileA, []byte("a"), 0o600); err != nil {
@@ -238,7 +237,6 @@ func TestSafeDeleteTarget_DeletingMarkerDirDoesNotDeleteSiblingFiles(t *testing.
 		t.Fatalf("write file: %v", err)
 	}
 
-	// Sibling content in the parent folder.
 	sibling := filepath.Join(movieDir, "readme.txt")
 	if err := os.WriteFile(sibling, []byte("hello"), 0o600); err != nil {
 		t.Fatalf("write file: %v", err)
@@ -270,21 +268,18 @@ func TestSafeDeleteTarget_DirectorySkipsWhenContainsInUseSymlinkFile(t *testing.
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	// Create a symlink file inside the directory.
 	targetFile := filepath.Join(root, "real.txt")
 	if err := os.WriteFile(targetFile, []byte("x"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	linkPath := filepath.Join(dir, "linked.txt")
 	if err := os.Symlink(targetFile, linkPath); err != nil {
-		// Windows can require admin or Developer Mode for symlinks.
 		if errors.Is(err, os.ErrPermission) || strings.Contains(strings.ToLower(err.Error()), "required privilege") {
 			t.Skipf("symlink not permitted on this system: %v", err)
 		}
 		t.Fatalf("symlink: %v", err)
 	}
 
-	// Mark the symlink path as in-use by a torrent.
 	tfm := NewTorrentFileMap(fsops.HostPaths)
 	tfm.Add(fsops.NormalizePath(fsops.HostPaths, linkPath))
 
@@ -342,7 +337,6 @@ func TestSafeDeleteTarget_SkipsWhenContainsIgnoredFile(t *testing.T) {
 	if disp != deleteDispositionSkippedIgnored {
 		t.Fatalf("expected skipped-ignored disposition, got %v", disp)
 	}
-	// Verify directory still exists.
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("expected directory to remain, stat err=%v", err)
 	}
@@ -367,7 +361,6 @@ func TestSafeDeleteTarget_SkipsWhenTargetIsIgnored(t *testing.T) {
 	if disp != deleteDispositionSkippedIgnored {
 		t.Fatalf("expected skipped-ignored disposition, got %v", disp)
 	}
-	// Verify file still exists.
 	if _, err := os.Stat(file); err != nil {
 		t.Fatalf("expected file to remain, stat err=%v", err)
 	}
@@ -427,8 +420,6 @@ func TestSafeDeleteTarget_FailsClosedWhenChildStatFails(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	// Readable but not searchable: the walk enumerates the child's name, but
-	// its metadata lookup fails.
 	if err := os.Chmod(locked, 0o600); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
@@ -461,7 +452,6 @@ func TestSafeDeleteTarget_FailsClosedWhenChildStatFails(t *testing.T) {
 	})
 }
 
-// regression: #4146
 func TestOrphanScan_RecoverStuckRuns_FailsEveryInterruptedRun(t *testing.T) {
 	t.Parallel()
 
@@ -542,9 +532,6 @@ func TestOrphanScan_RecoverStuckRuns_FailsEveryInterruptedRun(t *testing.T) {
 	}
 }
 
-// A case-insensitive filesystem can hand the deletion flow a target spelled
-// differently from the file map entry and from the scan root it was found under.
-// Neither may lead to deleting an owned file. See issue #2314.
 func TestSafeDeleteTarget_CaseDifferentOwnedFileIsSkipped(t *testing.T) {
 	t.Parallel()
 
@@ -558,7 +545,6 @@ func TestSafeDeleteTarget_CaseDifferentOwnedFileIsSkipped(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	// Owned under the other casing of the same directory.
 	tfm := NewTorrentFileMap(fsops.HostPaths)
 	tfm.Add(filepath.Join(root, "TrackerName", "Show.S01E01.mkv"))
 
@@ -573,7 +559,6 @@ func TestSafeDeleteTarget_CaseDifferentOwnedFileIsSkipped(t *testing.T) {
 		t.Fatalf("expected owned file to remain, stat err=%v", err)
 	}
 
-	// Same guard when the target is the directory (recursive delete path).
 	disp, err = safeDeleteTarget(context.Background(), root, trackerDir, newTestProtected(t, fsops.HostPaths, nil, tfm), local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget dir: %v", err)
@@ -607,8 +592,6 @@ func TestWithinScanRoot_CaseDifferentScanRootDoesNotEscape(t *testing.T) {
 	}
 }
 
-// safeDeleteTarget routes symlinks to safeDeleteSymlink, whose in-use re-check
-// folds case like every other one.
 func TestSafeDeleteSymlink_CaseDifferentOwnedLinkIsSkipped(t *testing.T) {
 	t.Parallel()
 
@@ -636,7 +619,6 @@ func TestSafeDeleteSymlink_CaseDifferentOwnedLinkIsSkipped(t *testing.T) {
 		t.Fatalf("expected symlink to remain, lstat err=%v", err)
 	}
 
-	// Not owned: the link goes, under its real (unfolded) name.
 	disp, err = safeDeleteTarget(context.Background(), root, link, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget symlink: %v", err)

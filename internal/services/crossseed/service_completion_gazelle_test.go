@@ -26,7 +26,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// testQuerier wraps sql.DB to implement dbinterface.Querier for store tests.
 type testQuerier struct {
 	*sql.DB
 }
@@ -142,7 +141,6 @@ func (m *completionGazelleSyncMock) ExtractDomainFromURL(urlStr string) string {
 	if err == nil && u != nil && u.Host != "" {
 		return u.Hostname()
 	}
-	// best-effort: raw host fallback
 	urlStr = strings.TrimSpace(urlStr)
 	urlStr = strings.TrimPrefix(urlStr, "http://")
 	urlStr = strings.TrimPrefix(urlStr, "https://")
@@ -181,7 +179,6 @@ func (m *completionGazelleSyncMock) CreateCategory(context.Context, int, string,
 }
 
 func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
-	// Not parallel: the test stubs the package-level findGazelleMatch.
 	stubGazelleMatchLookup(t)
 
 	db, err := sql.Open("sqlite", "file:completion_gazelle_guard?mode=memory&cache=shared")
@@ -233,9 +230,8 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	syncMock := &completionGazelleSyncMock{torrent: src}
 
 	svc := &Service{
-		instanceStore: &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
-		syncManager:   syncMock,
-		// jackettService intentionally nil
+		instanceStore:   &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
+		syncManager:     syncMock,
 		completionStore: completionStore,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
@@ -254,10 +250,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	}
 }
 
-// With only a RED key, a completion search for an OPS torrent asks RED one
-// time, through the API, and asks the other Torznab indexers.
 func TestExecuteCompletionSearch_OPSSourceAsksREDThroughTheAPIAndTorznab(t *testing.T) {
-	// Not parallel: the test replaces the package-level newGazelleClient.
 	const (
 		instanceID = 1
 		sourceHash = "0123456789abcdef0123456789abcdef01234567"

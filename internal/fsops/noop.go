@@ -59,8 +59,6 @@ func (noopBackend) RemoveTree(ctx context.Context, created *TreeCreateResult) er
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	// The interface promises a nil handle is safe: there is nothing to
-	// remove, so a defensive RemoveTree(nil) must not error.
 	if created == nil {
 		return nil
 	}

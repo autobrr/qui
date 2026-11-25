@@ -18,10 +18,8 @@ var ErrInvalidSettings = errors.New("invalid Share settings")
 type Options struct {
 	MaxActive     int
 	PeersPerShare int
-	// TrackerURL is the outside tracker. qui uses it when its own Share
-	// tracker has no port or no public address.
-	TrackerURL string
-	Defaults   Defaults
+	TrackerURL    string
+	Defaults      Defaults
 }
 
 type Defaults struct {

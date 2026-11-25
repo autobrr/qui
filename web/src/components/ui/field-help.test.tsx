@@ -4,10 +4,8 @@
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
-// Passthrough translator with the English value for the one key this component
-// reads, so the accessible-name assertion checks real copy.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => (key === "fieldHelp.trigger" ? "More information" : key),
@@ -18,18 +16,7 @@ import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-// The tooltip wrapper reads "ontouchstart" in window to decide whether taps open
-// the tooltip. jsdom has no touch support, so tests opt in per case.
 const touchWindow = window as Window & { ontouchstart?: unknown }
-
-beforeEach(() => {
-  // The open tooltip measures its arrow through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   vi.unstubAllGlobals()

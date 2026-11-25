@@ -21,7 +21,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// What each reader makes of one result.
 const (
 	rssAdded    = "added"
 	rssExisting = "existing"
@@ -33,7 +32,6 @@ const (
 	hookNone   = ""
 )
 
-// TestReadersSortEachStatus sends each status through the real readers.
 func TestReadersSortEachStatus(t *testing.T) {
 	t.Parallel()
 
@@ -76,7 +74,6 @@ func TestReadersSortEachStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.status, func(t *testing.T) {
 			t.Parallel()
-			// Only an add sets Success, and its response then succeeds too.
 			success := tt.rss == rssAdded
 			respond := func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: success, Results: []InstanceCrossSeedResult{
@@ -94,7 +91,6 @@ func TestReadersSortEachStatus(t *testing.T) {
 
 type crossSeedResponder func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error)
 
-// readSourceLoop reports whether the source loop stops after the first source.
 func readSourceLoop(t *testing.T, respond crossSeedResponder) bool {
 	t.Helper()
 	calls := 0
@@ -184,8 +180,6 @@ func readWebhook(t *testing.T, respond crossSeedResponder) string {
 	return ""
 }
 
-// TestTroubleshootingPageMatchesClasses reads the status table on the
-// troubleshooting page.
 func TestTroubleshootingPageMatchesClasses(t *testing.T) {
 	t.Parallel()
 
@@ -218,8 +212,6 @@ func TestTroubleshootingPageMatchesClasses(t *testing.T) {
 	require.NotZero(t, read)
 }
 
-// TestWebhookNotificationCountsOnlyFailures sends a stranded result beside
-// harmless results in one response.
 func TestWebhookNotificationCountsOnlyFailures(t *testing.T) {
 	t.Parallel()
 
@@ -259,7 +251,6 @@ func TestWebhookNotificationCountsOnlyFailures(t *testing.T) {
 	}
 }
 
-// regression: #3826
 func TestApplyReplyEncodesClassBesideUnchangedStatus(t *testing.T) {
 	t.Parallel()
 

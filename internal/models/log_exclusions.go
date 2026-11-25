@@ -36,7 +36,6 @@ func NewLogExclusionsStore(db dbinterface.Querier) *LogExclusionsStore {
 	return &LogExclusionsStore{db: db}
 }
 
-// Get returns log exclusions, creating defaults if none exist
 func (s *LogExclusionsStore) Get(ctx context.Context) (*LogExclusions, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, patterns, created_at, updated_at
@@ -62,31 +61,26 @@ func (s *LogExclusionsStore) Get(ctx context.Context) (*LogExclusions, error) {
 	return &le, nil
 }
 
-// Update replaces patterns
 func (s *LogExclusionsStore) Update(ctx context.Context, input *LogExclusionsInput) (*LogExclusions, error) {
 	if input == nil {
 		return nil, errors.New("input is nil")
 	}
 
-	// Ensure we have a record (creates if none)
 	existing, err := s.Get(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Handle nil patterns as empty array
 	patterns := input.Patterns
 	if patterns == nil {
 		patterns = []string{}
 	}
 
-	// Serialize JSON
 	patternsJSON, err := json.Marshal(patterns)
 	if err != nil {
 		return nil, err
 	}
 
-	// Update in database
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE log_exclusions
 		SET patterns = ?
@@ -99,7 +93,6 @@ func (s *LogExclusionsStore) Update(ctx context.Context, input *LogExclusionsInp
 	return s.Get(ctx)
 }
 
-// createDefault creates empty log exclusions
 func (s *LogExclusionsStore) createDefault(ctx context.Context) (*LogExclusions, error) {
 	switch dbinterface.DialectOf(s.db) {
 	case "postgres":

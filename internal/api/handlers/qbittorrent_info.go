@@ -25,7 +25,6 @@ func NewQBittorrentInfoHandler(clientPool *internalqbittorrent.ClientPool) *QBit
 	}
 }
 
-// GetQBittorrentAppInfo returns qBittorrent application version and build information
 func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	instanceIDStr := chi.URLParam(r, "instanceID")
@@ -45,7 +44,6 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 		return
 	}
 
-	// Get qBittorrent version and build info
 	appInfo, err := h.getQBittorrentAppInfo(ctx, client)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get qBittorrent application info")
@@ -60,7 +58,6 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 	}
 }
 
-// getQBittorrentAppInfo fetches application info from qBittorrent API
 func (h *QBittorrentInfoHandler) getQBittorrentAppInfo(ctx context.Context, client *internalqbittorrent.Client) (*internalqbittorrent.AppInfo, error) {
 	appInfo, err := client.GetAppInfo(ctx)
 	if err != nil {

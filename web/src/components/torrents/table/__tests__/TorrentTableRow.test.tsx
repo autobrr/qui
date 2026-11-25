@@ -40,8 +40,6 @@ function makeProps(overrides: Partial<TorrentTableRowProps> = {}): TorrentTableR
 describe("torrentTableRowPropsAreEqual", () => {
   it("treats a rebuilt Row wrapper around the same torrent object as equal", () => {
     const prev = makeProps()
-    // TanStack rebuilds the Row wrapper on every data-array change; only the
-    // underlying torrent identity may decide whether the row re-renders.
     const next = { ...prev, row: makeRow(prev.row.original, prev.row.id) }
     expect(torrentTableRowPropsAreEqual(prev, next)).toBe(true)
   })

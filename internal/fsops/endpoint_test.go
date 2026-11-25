@@ -25,8 +25,6 @@ func seedbox() *models.Instance {
 	}
 }
 
-// Dir Scan stores this tag after each remote file identity. A new value costs
-// every remote row its rename detection, so the bytes must never change.
 func TestWalkedEndpointTagStaysTheSame(t *testing.T) {
 	t.Parallel()
 

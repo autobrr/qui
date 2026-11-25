@@ -53,14 +53,12 @@ function run(...argv) {
 
 const paths = (r) => r.stdout.split("\n").filter(Boolean).map((l) => l.split(":")[1]);
 
-// regression: #4224
 test("search code matches either term of an OR group, and drops excluded files", () => {
   assert.deepEqual(paths(run("search", "code", "alpha OR beta")), ["alpha.go", "beta.go", "both.go"]);
   assert.deepEqual(paths(run("search", "code", "alpha OR beta -beta")), ["alpha.go"]);
   assert.deepEqual(paths(run("search", "code", "alpha beta")), ["both.go"]);
 });
 
-// regression: #4224
 test("a read of a qBittorrent issue, discussion or label fails, not returns qui data", () => {
   for (const argv of [
     ["issue", "view", "1"],
@@ -75,7 +73,6 @@ test("a read of a qBittorrent issue, discussion or label fails, not returns qui 
   }
 });
 
-// regression: #4224
 test("discussion list --answered keeps the answered discussions", () => {
   const r = run("discussion", "list", "--answered", "--json", "number,answered");
   assert.equal(r.status, 0, r.stderr);

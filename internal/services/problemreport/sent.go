@@ -22,16 +22,13 @@ import (
 
 const (
 	statusWindow = 90 * 24 * time.Hour
-	// callTimeout bounds a status read or a Delete. The report dialog waits
-	// on the status read, so it is short.
-	callTimeout = 5 * time.Second
+	callTimeout  = 5 * time.Second
 )
 
 var ErrNotFound = errors.New("no sent report has this id")
 
 type Issue struct {
-	Number int `json:"number"`
-	// URL is empty when brrbin sent no https URL.
+	Number int    `json:"number"`
 	URL    string `json:"url"`
 	Closed bool   `json:"closed"`
 }
@@ -46,11 +43,6 @@ type ListedReport struct {
 	StatusChangedAt time.Time `json:"statusChangedAt"`
 }
 
-// SentReports returns Sent reports, the newest first. When a row exists, it
-// first asks brrbin once for the Report statuses of the reports sent in the
-// last 90 days, and stores each status that changed with the time of the
-// change. A report that brrbin no longer has, and every report when brrbin
-// fails, keeps its stored status.
 func (s *Service) SentReports(ctx context.Context) ([]ListedReport, error) {
 	rows, err := s.store.SentReports(ctx)
 	if err != nil {
@@ -118,7 +110,6 @@ func (a brrbinStatus) apply(row *models.SentProblemReport) bool {
 			return false
 		}
 		next.IssueNumber = new(a.Issue.Number)
-		// The browser renders the URL as a link.
 		if isHTTPSURL(a.Issue.URL) {
 			next.IssueURL = new(a.Issue.URL)
 		}
@@ -194,10 +185,6 @@ func (s *Service) fetchStatuses(ctx context.Context, installKey string, ids []st
 	return byID, nil
 }
 
-// Delete deletes the report from brrbin, then removes its Sent reports row.
-// A report that brrbin no longer has loses only its row. It answers
-// ErrNotFound when no row has the id, and a *RefusalError when brrbin fails;
-// the row then stays.
 func (s *Service) Delete(ctx context.Context, id string) error {
 	found, err := s.store.HasSentReport(ctx, id)
 	if err != nil {
@@ -210,8 +197,6 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	// From here brrbin can delete the report, so a closed tab must not keep
-	// its row. callBrrbin has its own timeout.
 	ctx = context.WithoutCancel(ctx)
 	status, _, err := s.callBrrbin(ctx, installKey, http.MethodDelete, "/api/reports/"+url.PathEscape(id), "", nil)
 	switch {

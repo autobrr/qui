@@ -17,24 +17,18 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
-// alignmentPlan describes the renames needed to make an injected torrent's internal
-// folder/file names match the files that already exist on disk. In regular (reuse) mode
-// qBittorrent stores the torrent using its own info.name and file paths; when those differ
-// from the on-disk directory the reporter matched against, qBittorrent reports "Missing Files".
 type alignmentPlan struct {
-	sourceRoot   string                 // the torrent's top-level folder (empty for rootless torrents)
-	targetRoot   string                 // the on-disk directory name we matched against
-	fileRenames  []crossseed.FileRename // per-file renames, applied while still under sourceRoot (root-stripped paths for stripRoot plans)
-	renameFolder bool                   // rename sourceRoot -> targetRoot after the file renames
-	stripRoot    bool                   // add with contentLayout=NoSubfolder so qBittorrent drops sourceRoot from every stored path
+	sourceRoot   string
+	targetRoot   string
+	fileRenames  []crossseed.FileRename
+	renameFolder bool
+	stripRoot    bool
 }
 
 func (p alignmentPlan) needed() bool {
 	return p.renameFolder || len(p.fileRenames) > 0
 }
 
-// detectTorrentRoot returns the common top-level folder shared by every torrent file,
-// or "" when the files have no shared root (rootless torrent).
 func detectTorrentRoot(files []TorrentFile) string {
 	root := ""
 	for _, f := range files {
@@ -53,10 +47,6 @@ func detectTorrentRoot(files []TorrentFile) string {
 	return root
 }
 
-// buildAlignmentPlan derives the renames required to point a matched torrent at the existing
-// on-disk files. It uses the exact torrent->disk file mapping from MatchResult, so no size
-// heuristics are needed. searcheeIsDir reports whether the on-disk searchee is a directory (vs a
-// single loose file), which decides the qBittorrent save-path layout the torrent must line up with.
 func buildAlignmentPlan(d fsops.PathDialect, req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	var plan alignmentPlan
 	if req == nil || req.ParsedTorrent == nil || req.Searchee == nil || req.MatchResult == nil {
@@ -66,10 +56,6 @@ func buildAlignmentPlan(d fsops.PathDialect, req *InjectRequest, searcheeIsDir b
 	sourceRoot := detectTorrentRoot(req.ParsedTorrent.Files)
 	rooted := sourceRoot != ""
 
-	// A foldered torrent matched to a single loose file has no on-disk folder to rename the
-	// torrent root to. Instead the torrent is added with contentLayout=NoSubfolder, which makes
-	// qBittorrent strip the root from every stored path, and the files are aligned rootless-style
-	// against the stripped names.
 	if rooted && !searcheeIsDir {
 		plan.stripRoot = true
 		plan.sourceRoot = sourceRoot
@@ -98,9 +84,6 @@ func buildAlignmentPlan(d fsops.PathDialect, req *InjectRequest, searcheeIsDir b
 		if oldPath == "" || desiredRel == "" {
 			continue
 		}
-		// Rooted: rename within the current source root; the folder rename fixes the root itself.
-		// Rootless: the torrent is dropped straight into the save path, so the file must land at the
-		// exact on-disk relative path.
 		newPath := desiredRel
 		if rooted {
 			newPath = sourceRoot + "/" + desiredRel
@@ -113,9 +96,6 @@ func buildAlignmentPlan(d fsops.PathDialect, req *InjectRequest, searcheeIsDir b
 	return plan
 }
 
-// searcheeIsDir reports whether the searchee path is a directory. A missing path is not one. Any
-// other failure is returned: on a remote instance SSH can fail while qBittorrent still answers,
-// and a guessed layout adds the torrent where its files are not.
 func searcheeIsDir(ctx context.Context, backend fsops.Backend, path string) (bool, error) {
 	info, err := backend.Stat(ctx, path)
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
@@ -127,10 +107,6 @@ func searcheeIsDir(ctx context.Context, backend fsops.Backend, path string) (boo
 	return info.IsDir, nil
 }
 
-// align renames the just-added torrent to match the on-disk files. It returns the hash that
-// qBittorrent lists the torrent under and whether alignment succeeded. The torrent was added
-// paused, so if alignment fails it stays paused for inspection. After a success, Settle
-// rechecks it and resumes it only at 100%, so bad data is never seeded.
 func (i *Injector) align(ctx context.Context, req *InjectRequest, plan alignmentPlan) (string, bool) {
 	hash, _, ok := i.aligner.WaitForFiles(ctx, req.InstanceID, []string{req.ParsedTorrent.InfoHash, req.ParsedTorrent.InfoHashV2})
 	if !ok {
@@ -141,8 +117,6 @@ func (i *Injector) align(ctx context.Context, req *InjectRequest, plan alignment
 		return "", false
 	}
 
-	// stripRoot plans have no folder rename: the root was already dropped at add time
-	// (contentLayout=NoSubfolder), so only the root-stripped file renames apply.
 	alignPlan := crossseed.AlignmentPlan{Files: plan.fileRenames}
 	if plan.renameFolder {
 		alignPlan.FolderFrom, alignPlan.FolderTo = plan.sourceRoot, plan.targetRoot

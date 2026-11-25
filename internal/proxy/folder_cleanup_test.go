@@ -27,14 +27,8 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// rigTick is the worker tick in the rig, in place of the 3 s production tick.
-// It stays above the 200 ms debounced sync after a write: a hint on every tick
-// closer than that would keep postponing the sync the worker waits on.
 const rigTick = 250 * time.Millisecond
 
-// rigKeptWait outlasts two full ticks plus the debounced sync, so a folder
-// removed by mistake is gone by the time requireKept looks, even when the
-// worker first waits a tick for the sync to drop the torrent's row.
 const rigKeptWait = 2*rigTick + 500*time.Millisecond
 
 const proxyHashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -61,8 +55,6 @@ func newProxyRig(t *testing.T) *proxyRig {
 	return newProxyRigWorker(t, true)
 }
 
-// newProxyRigWorker leaves folder cleanup's worker stopped when start is
-// false, so the queue still takes work but nothing else asks for a sync.
 func newProxyRigWorker(t *testing.T, start bool) *proxyRig {
 	root := t.TempDir()
 	r := &proxyRig{t: t, root: root, stub: qbtstub.New(t, filepath.Join(root, "torrents"))}
@@ -128,9 +120,6 @@ func (r *proxyRig) postAs(handle http.HandlerFunc, endpoint, contentType, body s
 	return rec
 }
 
-// requireGone polls, so a passing test returns as soon as rel goes. The wait
-// leaves room past the two ticks a removal can take, for a loaded run under
-// -race.
 func (r *proxyRig) requireGone(rel string) {
 	r.t.Helper()
 	require.Eventually(r.t, func() bool {
@@ -155,8 +144,6 @@ func TestProxyFolderCleanupDelete(t *testing.T) {
 	r := newProxyRig(t)
 	r.add(r.perRelease(proxyHashA, "tv"))
 
-	// The stub writes no status, as qBittorrent does for "Ok.": the proxy
-	// still relays an explicit 200.
 	body := "hashes=" + proxyHashA + "&deleteFiles=true"
 	rec := r.post(r.handler.handleDeleteTorrents, "torrents/delete", body)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -176,8 +163,6 @@ func TestProxyFolderCleanupDeleteAll(t *testing.T) {
 	r.requireGone("torrents/tv/Show.S01E02-GRP")
 }
 
-// hungMount is the local filesystem with every Stat under hang blocked until
-// release closes, whatever its context, as os.Stat does on a hung NFS mount.
 type hungMount struct {
 	fsops.Backend
 	hang    string
@@ -204,10 +189,6 @@ func (h hungMountPool) Require(ctx context.Context, instanceID int, capability m
 	return h.mount, instance, nil
 }
 
-// A client gives up on its own timeout, so the delete goes out once the
-// proxy's 5 s prepare budget runs out, not the 30 s qui's own operations get.
-// The torrent checked by then is cleaned up, and the one on the hung mount
-// keeps its folder for orphan scan.
 func TestProxyFolderCleanupHungMountDoesNotHoldTheRequest(t *testing.T) {
 	t.Parallel()
 	r := newProxyRig(t)
@@ -231,9 +212,6 @@ func TestProxyFolderCleanupHungMountDoesNotHoldTheRequest(t *testing.T) {
 	require.NoFileExists(t, r.p("torrents/movies/Film-GRP/Film.mkv"))
 }
 
-// qBittorrent answers 200 to a delete naming a hash it does not accept, and
-// deletes nothing. The torrent stays, so its folders, here holding nothing but
-// junk files, must too.
 func TestProxyFolderCleanupDeleteQBittorrentIgnores(t *testing.T) {
 	t.Parallel()
 	v2 := proxyHashA + strings.Repeat("c", 24)
@@ -255,10 +233,6 @@ func TestProxyFolderCleanupDeleteQBittorrentIgnores(t *testing.T) {
 	}
 }
 
-// qBittorrent 5 reads only a POST's body, urlencoded or multipart, and keeps
-// the last value of a repeated key. The proxy must snapshot a delete with files
-// only when qBittorrent reads it that way, or a delete that keeps the files
-// loses the torrent's junk files and folders.
 func TestProxyFolderCleanupReadsParamsLikeQBittorrent(t *testing.T) {
 	t.Parallel()
 	multipartBody := func(fields ...string) (string, string) {
@@ -294,7 +268,6 @@ func TestProxyFolderCleanupReadsParamsLikeQBittorrent(t *testing.T) {
 			require.Equal(t, http.StatusOK, r.postAs(r.handler.handleDeleteTorrents, tc.endpoint, tc.contentType, tc.body).Code)
 			require.Equal(t, 1, r.stub.Writes("torrents/delete"))
 			if tc.filesDeleted {
-				// qBittorrent removes Rel-GRP; only folder cleanup removes Show.
 				r.requireGone("torrents/tv/Show")
 				return
 			}
@@ -304,9 +277,6 @@ func TestProxyFolderCleanupReadsParamsLikeQBittorrent(t *testing.T) {
 	}
 }
 
-// qBittorrent reads a body as urlencoded when the lowercased Content-Type
-// starts with the urlencoded type, so a malformed parameter after it does not
-// matter. Any other body gets no snapshot.
 func TestProxyFolderCleanupContentTypeLikeQBittorrent(t *testing.T) {
 	t.Parallel()
 	body := "hashes=" + proxyHashA + "&category=movies"
@@ -336,8 +306,6 @@ func TestProxyFolderCleanupContentTypeLikeQBittorrent(t *testing.T) {
 				r.requireGone("torrents/tv/Show")
 				return
 			}
-			// Empty the folder whether or not the stub moved the files: had the
-			// request been snapshotted, it would now be removed.
 			_ = os.Remove(r.p("torrents/tv/Show/Show.S01E01.mkv"))
 			r.requireKept("torrents/tv/Show")
 		})
@@ -350,17 +318,12 @@ func TestProxyFolderCleanupDeleteKeepingFiles(t *testing.T) {
 	r.add(r.perRelease(proxyHashA, "tv"))
 
 	require.Equal(t, http.StatusOK, r.post(r.handler.handleDeleteTorrents, "torrents/delete", "hashes="+proxyHashA+"&deleteFiles=false").Code)
-	// Had the delete queued work, an emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
 
-// rigHintWait outlasts the debounce on a refresh hint, 200 ms.
 const rigHintWait = time.Second
 
-// The cleanup reads the sync cache, so a write that queues cleanup asks for a
-// sync. One that queues nothing does not, since arr clients send many deletes
-// that keep the files. The worker is stopped, so only the proxy can ask.
 func TestProxyFolderCleanupHintsARefreshOnlyWhenItQueues(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -378,7 +341,6 @@ func TestProxyFolderCleanupHintsARefreshOnlyWhenItQueues(t *testing.T) {
 			func(h *Handler) http.HandlerFunc { return h.handleSetAutoManagement }, true},
 		{"turn ATM off", "torrents/setAutoManagement", "hashes=" + proxyHashA + "&enable=false",
 			func(h *Handler) http.HandlerFunc { return h.handleSetAutoManagement }, false},
-		// Content already missing is left alone, so nothing is queued.
 		{"delete of missing content", "torrents/delete", "hashes=" + proxyHashB + "&deleteFiles=true",
 			func(h *Handler) http.HandlerFunc { return h.handleDeleteTorrents }, false},
 	} {
@@ -437,11 +399,6 @@ func TestProxyFolderCleanupSetAutoManagement(t *testing.T) {
 	require.FileExists(t, r.p("torrents/movies/Show.S01E01.mkv"))
 }
 
-// Turning ATM off never moves a torrent, so it queues nothing. The snapshot
-// already skips a torrent in ATM for the ATM kind, so only a torrent with ATM
-// off, as in a mixed selection, could show a wrongly queued item. Another
-// client then deletes it with its files: had the request queued it, its
-// emptied folder would be removed, though qui deleted nothing.
 func TestProxyFolderCleanupDisableAutoManagementIsNotATrigger(t *testing.T) {
 	t.Parallel()
 	r := newProxyRig(t)
@@ -491,9 +448,6 @@ func TestProxyFolderCleanupSetDownloadPath(t *testing.T) {
 	require.FileExists(t, r.p("torrents/incomplete/tv/Show.S01E01.mkv"))
 }
 
-// Without a download path, qBittorrent moves an incomplete torrent from its
-// save path into the new download path. The save path stays, since the
-// torrent still names it; the subfolder its files sat in goes.
 func TestProxyFolderCleanupSetDownloadPathFromSavePath(t *testing.T) {
 	t.Parallel()
 	r := newProxyRig(t)
@@ -507,8 +461,6 @@ func TestProxyFolderCleanupSetDownloadPathFromSavePath(t *testing.T) {
 	require.FileExists(t, r.p("torrents/incomplete/tv/Show/Show.S01E01.mkv"))
 }
 
-// A rejected delete: a rejected move would also be held by its unmoved row,
-// so only a delete shows that nothing was queued.
 func TestProxyFolderCleanupRejectedRequest(t *testing.T) {
 	t.Parallel()
 	r := newProxyRig(t)
@@ -516,12 +468,10 @@ func TestProxyFolderCleanupRejectedRequest(t *testing.T) {
 	r.stub.Reject = http.StatusConflict
 
 	require.Equal(t, http.StatusConflict, r.post(r.handler.handleDeleteTorrents, "torrents/delete", "hashes="+proxyHashA+"&deleteFiles=true").Code)
-	// Had the request queued work, the emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
 
-// A transport error is answered by the proxy's error handler, not qBittorrent.
 func TestProxyFolderCleanupUnreachableUpstream(t *testing.T) {
 	t.Parallel()
 	r := newProxyRig(t)
@@ -532,7 +482,6 @@ func TestProxyFolderCleanupUnreachableUpstream(t *testing.T) {
 
 	rec := r.post(r.handler.handleDeleteTorrents, "torrents/delete", "hashes="+proxyHashA+"&deleteFiles=true")
 	require.Equal(t, http.StatusBadGateway, rec.Code)
-	// Had the request queued work, the emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }
@@ -547,7 +496,6 @@ func TestProxyFolderCleanupResponseWithoutStatus(t *testing.T) {
 	r.handler.proxy.ErrorHandler = func(http.ResponseWriter, *http.Request, error) {}
 
 	r.post(r.handler.handleDeleteTorrents, "torrents/delete", "hashes="+proxyHashA+"&deleteFiles=true")
-	// Had the delete queued work, the emptied folder would now be removed.
 	require.NoError(t, os.Remove(r.p("torrents/tv/Show.S01E01-GRP/Show.S01E01.mkv")))
 	r.requireKept("torrents/tv/Show.S01E01-GRP")
 }

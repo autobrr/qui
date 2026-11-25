@@ -9,8 +9,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// PathWithinDirectory reports whether target is at or under dirPath, reading both
-// in d, the grammar of the directory's backend, and returns them cleaned.
 func PathWithinDirectory(d fsops.PathDialect, dirPath, target string) (cleanDir, cleanTarget string, ok bool) {
 	cleanDir, cleanTarget = d.Clean(dirPath), d.Clean(target)
 	return cleanDir, cleanTarget, isPathWithin(d, cleanDir, cleanTarget)
@@ -28,8 +26,6 @@ func mergeWebhookScanRoots(d fsops.PathDialect, directoryPath, existing, next st
 		return dir
 	}
 
-	// A queued root can sit outside dir after dir's path was edited, and
-	// d.Dir stops moving at a root, which on Windows is not one fixed spelling.
 	for candidate := current; ; {
 		if isPathWithin(d, candidate, dir) {
 			return dir

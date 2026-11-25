@@ -28,8 +28,6 @@ function toHashSource(source?: HashSource | null): HashSource | undefined {
   return { hash, infohash_v1, infohash_v2 }
 }
 
-// qBittorrent maps the v1 info-hash into `hash` for legacy torrents; reuse it unless it
-// matches the v2 digest (pure v2 torrent).
 function deriveLegacyInfohashV1(source?: HashSource | null): string | undefined {
   if (!source) return undefined
 
@@ -75,7 +73,6 @@ export function getTorrentDisplayHash(primary?: HashSource | null, fallback?: Ha
   return resolveTorrentHashes(primary, fallback).canonicalHash
 }
 
-// content_path is the root folder or single file, which can differ from save_path + name.
 export function getTorrentFullPaths(torrents: Torrent[], incognitoMode: boolean): string[] {
   return torrents
     .map(t => incognitoMode ? `${getLinuxSavePath(t.hash)}/${getLinuxIsoName(t.hash)}` : t.content_path.trim())
@@ -103,62 +100,42 @@ export function getTorrentHashesWithTag(torrents: Torrent[], tag: string): strin
   return torrents.filter(torrent => torrentHasTag(torrent, tag)).map(torrent => torrent.hash)
 }
 
-/**
- * Get common category from selected torrents (if all have the same category)
- */
 export function getCommonCategory(torrents: Torrent[]): string {
-  // Early returns for common cases
   if (torrents.length === 0) return ""
   if (torrents.length === 1) return torrents[0].category || ""
 
   const firstCategory = torrents[0].category || ""
 
-  // Use direct loop instead of every() for early return optimization
   for (let i = 1; i < torrents.length; i++) {
     if ((torrents[i].category || "") !== firstCategory) {
-      return "" // Different category found, no need to check the rest
+      return ""
     }
   }
 
   return firstCategory
 }
 
-/**
- * Get common save path from selected torrents (if all have the same path)
- */
 export function getCommonSavePath(torrents: Torrent[]): string {
-  // Early returns for common cases
   if (torrents.length === 0) return ""
   if (torrents.length === 1) return torrents[0].save_path || ""
 
   const firstPath = torrents[0].save_path || ""
 
-  // Use direct loop instead of every() for early return optimization
   for (let i = 1; i < torrents.length; i++) {
     if ((torrents[i].save_path || "") !== firstPath) {
-      return "" // Different path found, no need to check the rest
+      return ""
     }
   }
 
   return firstPath
 }
 
-/**
- * Calculate the total size of selected torrents
- */
 export function getTotalSize(torrents: Torrent[]): number {
   if (torrents.length === 0) return 0
 
-  // Use reduce to sum up all torrent sizes
   return torrents.reduce((total, torrent) => total + (torrent.size || 0), 0)
 }
 
-/**
- * Resolve how a boolean toggle (force start, sequential download, auto TMM)
- * should be presented for the current selection. `stateUnknown` is true when
- * rows in the selection are still unloaded, so the sampled values say nothing
- * about the rest.
- */
 export function getToggleSelectionState(values: boolean[], stateUnknown: boolean): { allEnabled: boolean; mixed: boolean } {
   return {
     allEnabled: values.length > 0 && values.every(Boolean),
@@ -166,13 +143,6 @@ export function getToggleSelectionState(values: boolean[], stateUnknown: boolean
   }
 }
 
-/**
- * Pick the details panel's live row from one stream frame. The stream is
- * filtered to one hash with limit 1, so the row is whatever the server picked,
- * not a row whose `hash` equals the requested one: a hybrid torrent looked up by
- * its v2 infohash comes back keyed by v1. A delta whose row did not change
- * carries no rows and the previous total, so only total 0 drops the row.
- */
 export function resolveStreamRow(previous: Torrent | null, data: Pick<TorrentResponse, "torrents" | "total">): Torrent | null {
   const next = data.torrents?.[0]
   if (next) {

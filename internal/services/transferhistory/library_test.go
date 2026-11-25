@@ -17,15 +17,11 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// withUnique returns a reading whose Copy groups build gives the Unique size,
-// or no completed build when unique is nil.
 func withUnique(s step, unique *int64) step {
 	s.reading.UniqueSize = unique
 	return s
 }
 
-// withServer returns a reading with the free disk space and the highest
-// speeds that qBittorrent reported.
 func withServer(s step, freeDisk, maxUp, maxDown int64) step {
 	s.reading.FreeDisk, s.reading.MaxUploadSpeed, s.reading.MaxDownloadSpeed = freeDisk, maxUp, maxDown
 	return s
@@ -80,10 +76,8 @@ func TestLibraryPostgresIntegration(t *testing.T) {
 			name: "the last reading of a day decides, and a reading without a Unique size keeps the size of the day",
 			steps: []step{
 				withUnique(reading(at(0), torrent("a", 0, 0)), new(int64(1000))),
-				// A write of the day without a Unique size.
 				reading(at(5*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(4*time.Minute))),
 				expectLibrary(transferhistory.LibraryRow{Day: day10, Torrents: new(int64(2)), TotalSize: new(int64(2000)), UniqueSize: new(int64(1000)), Added: 1}),
-				// A reading between two writes, then a write without a Unique size.
 				withUnique(reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(4*time.Minute))), new(int64(1500))),
 				reading(at(11*time.Minute), torrent("a", 0, 0)),
 				expectLibrary(transferhistory.LibraryRow{Day: day10, Torrents: new(int64(1)), TotalSize: new(int64(1000)), UniqueSize: new(int64(1500)), Added: 1, Deleted: 1}),
@@ -106,8 +100,6 @@ type instanceHour struct {
 	states                   map[string]int64
 }
 
-// No query of the module returns the instance state, so this test reads the
-// tables.
 func storedInstanceHours(t *testing.T, db *database.DB, instanceID int) []instanceHour {
 	t.Helper()
 	rows, err := db.QueryContext(t.Context(), `
@@ -146,7 +138,6 @@ func TestEachHourHoldsTheInstanceStatePostgresIntegration(t *testing.T) {
 		runSteps(t, db, []step{
 			withServer(reading(at(0), inState(torrent("a", 0, 0), "stalledUP"), inState(torrent("b", 0, 0), "downloading")), 900, 100, 50),
 			withServer(reading(at(5*time.Minute), inState(torrent("a", 0, 0), "stalledUP"), inState(torrent("b", 0, 0), "stalledUP")), 800, 300, 20),
-			// A reading between two writes.
 			withServer(reading(at(7*time.Minute), inState(torrent("a", 0, 0), "stalledUP"), inState(torrent("b", 0, 0), "stalledUP")), 750, 400, 1),
 			withServer(reading(at(10*time.Minute), inState(torrent("a", 0, 0), "stalledUP"), inState(torrent("b", 0, 0), "stalledUP")), 700, 200, 10),
 			withServer(reading(at(time.Hour), inState(torrent("a", 0, 0), "uploading"), inState(torrent("b", 0, 0), "stalledUP")), 600, 5, 5),
@@ -164,8 +155,6 @@ func TestTheHourlyStateFollowsTheDetailRetentionPostgresIntegration(t *testing.T
 	t.Parallel()
 	engines(t, func(t *testing.T, newDB func(t *testing.T) *database.DB) {
 		db := newDB(t)
-		// A reading on day 101 starts a new UTC day. A retention of 90 days
-		// then deletes the hours of day 10, and keeps those of day 11.
 		day101 := day10.Add(91*24*time.Hour + 10*time.Hour)
 		runSteps(t, db, []step{
 			settings(true, 90),
@@ -187,7 +176,6 @@ func TestTheHourlyStateFollowsTheDetailRetentionPostgresIntegration(t *testing.T
 	})
 }
 
-// regression: #4096
 func TestADroppedReadingKeepsItsPeakSpeeds(t *testing.T) {
 	t.Parallel()
 	db := testdb.NewMigratedSQLite(t, "transfer-history")
@@ -197,8 +185,6 @@ func TestADroppedReadingKeepsItsPeakSpeeds(t *testing.T) {
 
 	module.Record(*reading(at(0), torrent("a", 0, 0)).reading)
 	<-blocked.writing
-	// Five readings wait while the worker writes, so the oldest one, which
-	// holds the peak, drops out of the queue.
 	module.Record(*withServer(reading(at(30*time.Minute), torrent("a", 0, 0)), 0, 900, 90).reading)
 	for i := range 4 {
 		module.Record(*withServer(reading(at(time.Duration(31+i)*time.Minute), torrent("a", 0, 0)), 0, 1, 1).reading)
@@ -212,7 +198,6 @@ func TestADroppedReadingKeepsItsPeakSpeeds(t *testing.T) {
 	require.Equal(t, [2]int64{900, 90}, [2]int64{hours[0].maxUp, hours[0].maxDown})
 }
 
-// regression: #4096
 func TestAFoldWritesTheHourlyStateInMemoryFirstPostgresIntegration(t *testing.T) {
 	t.Parallel()
 	const offline = 2
@@ -225,12 +210,9 @@ func TestAFoldWritesTheHourlyStateInMemoryFirstPostgresIntegration(t *testing.T)
 		runSteps(t, db, []step{
 			settings(true, 90),
 			onInstance(reading(at(0), torrent("b", 0, 0)), offline),
-			// A reading with no transfer that waits for the next write.
 			onInstance(reading(at(time.Minute), inState(torrent("b", 0, 0), "uploading")), offline),
-			// A reading of the other instance on day 101 deletes the hours of day 10.
 			reading(day10.Add(91*24*time.Hour+10*time.Hour), torrent("a", 0, 0)),
 			{foldsDone: true},
-			// The shutdown writes the changes that are still in memory.
 			restart,
 		})
 		require.Empty(t, storedInstanceHours(t, db, offline))
@@ -244,7 +226,6 @@ func TestDeleteHistoryDeletesTheHourlyStatePostgresIntegration(t *testing.T) {
 		runSteps(t, db, []step{
 			withServer(reading(at(0), inState(torrent("a", 0, 0), "stalledUP")), 900, 1, 1),
 			withServer(reading(at(25*time.Hour), inState(torrent("a", 0, 0), "uploading")), 800, 2, 2),
-			// The UTC day of Before is day 11.
 			deleteHistory(instanceID, at(24*time.Hour)),
 		})
 		require.Equal(t, []instanceHour{

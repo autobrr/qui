@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"flag"
@@ -27,21 +28,17 @@ type counts map[string]map[string]int
 
 func main() {
 	base := flag.String("base", "origin/develop", "git ref whose allowlist this one may not exceed")
-	updateComments := flag.Bool("update-comments", false, "write the comment count of each Go file to the allowlist, then stop")
+	lower := flag.Bool("lower", false, "lower each allowlist entry above the count of its file before the check, and delete an entry at 0")
 	flag.Parse()
-
-	if *updateComments {
-		if err := writeCommentCounts(); err != nil {
-			fail(err)
-		}
-		return
-	}
 
 	got, err := lint()
 	if err != nil {
 		fail(err)
 	}
-	if got[commentsLinter], err = goComments(); err != nil {
+	if got[mapAnyLinter], err = mapAnyCounts(); err != nil {
+		fail(err)
+	}
+	if got[testSleepLinter], err = testSleepCounts(); err != nil {
 		fail(err)
 	}
 	offLines, err := offLogLines()
@@ -60,7 +57,11 @@ func main() {
 	if err != nil {
 		fail(fmt.Errorf("%s: %w", allowlistPath, err))
 	}
-	// A wrong ref must fail, not skip the growth check.
+	if *lower {
+		if err := lowerAllowlist(got, allow); err != nil {
+			fail(err)
+		}
+	}
 	//nolint:gosec // the developer or CI picks -base
 	if err := exec.CommandContext(context.Background(), "git", "rev-parse", "--verify", "--quiet", *base+"^{commit}").Run(); err != nil {
 		fail(fmt.Errorf("-base %s is not a commit: %w", *base, err))
@@ -91,6 +92,16 @@ func main() {
 		fail(err)
 	}
 	problems = append(problems, grown...)
+	oversized, err := fileSizeProblems(*base)
+	if err != nil {
+		fail(err)
+	}
+	problems = append(problems, oversized...)
+	comments, err := commentProblems()
+	if err != nil {
+		fail(err)
+	}
+	problems = append(problems, comments...)
 
 	for _, linter := range slices.Sorted(maps.Keys(got)) {
 		fmt.Printf("ratchet: %s has %d problems in %d files\n", linter, sum(got[linter]), len(got[linter]))
@@ -144,7 +155,6 @@ func parseLint(raw []byte) (counts, error) {
 		if got[issue.FromLinter] == nil {
 			got[issue.FromLinter] = map[string]int{}
 		}
-		// The allowlist uses slash paths, including on Windows.
 		filename := strings.ReplaceAll(issue.Pos.Filename, `\`, "/")
 		got[issue.FromLinter][filename]++
 	}
@@ -164,7 +174,7 @@ func compare(got, allow, base counts) []string {
 			_, listed := allow[linter][file]
 			switch {
 			case n > want:
-				problems = append(problems, fmt.Sprintf("%s: %s reports %d problems, the allowlist allows %d. Fix the new ones.", file, linter, n, want))
+				problems = append(problems, fmt.Sprintf("%s: %s reports %d problems, the allowlist allows %d. Fix the new ones.%s", file, linter, n, want, linterFixes[linter]))
 			case n == 0 && listed:
 				problems = append(problems, fmt.Sprintf("%s: %s reports no problems. Delete its entry from %s.", file, linter, allowlistPath))
 			case n < want:
@@ -178,25 +188,67 @@ func compare(got, allow, base counts) []string {
 	return append(problems, growth(allow, base)...)
 }
 
+func lowerEntries(got, allow counts) []string {
+	var lowered []string
+	for _, linter := range slices.Sorted(maps.Keys(allow)) {
+		for _, file := range slices.Sorted(maps.Keys(allow[linter])) {
+			n, want := got[linter][file], allow[linter][file]
+			switch {
+			case n == 0:
+				delete(allow[linter], file)
+				lowered = append(lowered, fmt.Sprintf("%s: %s from %d to 0, entry deleted", file, linter, want))
+			case n < want:
+				allow[linter][file] = n
+				lowered = append(lowered, fmt.Sprintf("%s: %s from %d to %d", file, linter, want, n))
+			}
+		}
+	}
+	return lowered
+}
+
+func lowerAllowlist(got, allow counts) error {
+	if broken := got["typecheck"]; len(broken) > 0 {
+		return fmt.Errorf("golangci-lint cannot type-check %s, so the other counts are not complete and the allowlist stays as it is. Make the code compile, then run the ratchet again", strings.Join(slices.Sorted(maps.Keys(broken)), ", "))
+	}
+	lowered := lowerEntries(got, allow)
+	if len(lowered) == 0 {
+		return nil
+	}
+	if err := writeAllowlist(allow); err != nil {
+		return err
+	}
+	for _, l := range lowered {
+		fmt.Println("ratchet: lowered", l)
+	}
+	return nil
+}
+
+func writeAllowlist(allow counts) error {
+	out, err := json.Marshal(allow, json.Deterministic(true), jsontext.WithIndent("  "))
+	if err != nil {
+		return err
+	}
+	//nolint:gosec // the allowlist is a tracked file that others read
+	return os.WriteFile(allowlistPath, append(out, '\n'), 0o644)
+}
+
 func growth(allow, base counts) []string {
 	var problems []string
 	for _, linter := range slices.Sorted(maps.Keys(allow)) {
-		// A linter that the base does not list is a new rule, which starts
-		// with the count of each file.
 		if _, ok := base[linter]; !ok {
 			continue
 		}
-		if linter == commentsLinter {
-			if now, was := sum(allow[linter]), sum(base[linter]); now > was {
-				problems = append(problems, fmt.Sprintf("%s: the total grew from %d to %d. The total only shrinks: a moved comment keeps it level, a new comment does not.", linter, was, now))
-			}
+		now, was := sum(allow[linter]), sum(base[linter])
+		if now <= was {
 			continue
 		}
+		var grown []string
 		for _, file := range slices.Sorted(maps.Keys(allow[linter])) {
-			if want, was := allow[linter][file], base[linter][file]; want > was {
-				problems = append(problems, fmt.Sprintf("%s: the %s entry grew from %d to %d. The allowlist only shrinks.", file, linter, was, want))
+			if want, before := allow[linter][file], base[linter][file]; want > before {
+				grown = append(grown, fmt.Sprintf("%s from %d to %d", file, before, want))
 			}
 		}
+		problems = append(problems, fmt.Sprintf("%s: the total grew from %d to %d. The total only shrinks: code that moves to another file keeps it level, a new report does not. Fix the new report. These entries grew: %s.", linter, was, now, strings.Join(grown, ", ")))
 	}
 	return problems
 }
@@ -243,7 +295,6 @@ func enabledLinters() (map[string]bool, error) {
 func nolintProblems(enabled map[string]bool) ([]string, error) {
 	out, err := exec.CommandContext(context.Background(), "git", "grep", "-lz", "nolint", "--", "*.go").Output()
 	if err != nil {
-		// git grep exits 1 when nothing matches.
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 {
 			return nil, nil
 		}
@@ -285,10 +336,6 @@ func hidesGocognit(comment string) bool {
 	return slices.Contains(names, "gocognit") || slices.Contains(names, "all")
 }
 
-// nolintNames returns the linters that a nolint directive names, or "all". It
-// follows extractInlineRangeFromComment in golangci-lint v2.14.0
-// pkg/result/processors/nolint_filter.go, where a bare "nolint", "nolint "
-// and any "nolint:all" prefix hide every linter.
 func nolintNames(comment string) []string {
 	text := strings.TrimLeft(comment, "/ ")
 	list, ok := strings.CutPrefix(text, "nolint:")

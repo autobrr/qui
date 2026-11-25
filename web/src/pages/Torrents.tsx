@@ -24,6 +24,7 @@ import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSideba
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useSwipeToClose } from "@/hooks/useSwipeToClose"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { useTorrentListEscape } from "@/hooks/useTorrentListEscape"
 import { api } from "@/lib/api"
@@ -81,36 +82,21 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const isMobile = useIsMobile()
   const [columnFilters] = usePersistedColumnFilters(instanceId)
 
-  // A change of instance, instance subset, filters, column filters, search, or
-  // layout clears the selection, and so does leaving the page. The page renders
-  // a separate list for each layout, so neither list can own this.
   const selectionScopeKey = selectionScope(instanceId, unifiedScopeInstanceIds, filters, (routeSearch?.q ?? "").trim(), columnFilters, isMobile)
   useEffect(() => {
     dispatchSelection({ type: "scope", scope: selectionScopeKey })
   }, [dispatchSelection, selectionScopeKey])
   useEffect(() => () => dispatchSelection({ type: "clear" }), [dispatchSelection])
-  const instance = useMemo(() => {
-    if (isAllInstances) {
-      return undefined
-    }
-    return instances?.find(i => i.id === instanceId)
-  }, [instances, instanceId, isAllInstances])
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
-  useTitleBarSpeeds({
-    mode: "instance",
+  const titleBarSpeeds = useTitleBarSpeeds({
     enabled: titleBarSpeedsEnabled && !isAllInstances,
     instanceId,
-    instanceName: instance?.name ?? instanceName,
-    // Foreground speeds come from the SSE stream inside useTitleBarSpeeds itself,
-    // so no page-level serverState plumbing is needed here.
   })
+  usePageTitle({ detail: isAllInstances ? undefined : instanceName, speeds: titleBarSpeeds })
 
-  // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
   const sidebarWidth = viewMode === "dense" ? "260px" : "320px"
   const [selectedTorrent, setSelectedTorrent] = useState<Torrent | null>(null)
-  // A selection belongs to its instance. Clear it in the render that changes the instance, not in an effect:
-  // the deep-link effect would see the torrent of the old instance as selected on the new one and drop the link.
   const [selectionInstanceId, setSelectionInstanceId] = useState(instanceId)
   if (selectionInstanceId !== instanceId) {
     setSelectionInstanceId(instanceId)
@@ -148,9 +134,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     onClosed: hideMobileDetails,
   })
 
-  // Push a history entry for the sheet so mobile Back closes it instead of
-  // leaving the page. The unified view also records the owning instance, since
-  // the same hash can exist on several instances.
   const pushMobileDetailsEntry = useCallback((torrent: Torrent, initialTab?: string) => {
     openMobileDetails(torrent.hash, (prev) => ({
       ...prev,
@@ -163,8 +146,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   useEffect(() => {
     if (!search.torrent) return
     const clearDeepLinkParams = () => onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
-    // Already selected; nothing to fetch. Mobile keeps the hash in the URL. On the desktop, a link
-    // left in the URL would select the torrent again after the user closes its details.
     if (
       selectedTorrent?.hash === search.torrent &&
       (!search.instance || getTorrentInstanceId(selectedTorrent) === search.instance)
@@ -194,7 +175,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         excludeTrackers: [],
       },
       limit: 1,
-      // Deep links should resolve even when the saved unified scope excludes the owning instance.
       instanceIds: search.instance? [search.instance]: activeInstanceIds.length > 0 ? activeInstanceIds : undefined,
     }).then((response) => response.crossInstanceTorrents?.[0] ?? response.cross_instance_torrents?.[0] ?? null): api.getTorrents(instanceId, {
       filters: {
@@ -222,7 +202,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
           setInitialDetailsTab(tab)
         }
       }
-      // Mobile keeps the params: Back closes the sheet and refresh restores it
       if (torrent && isMobile) return
       clearDeepLinkParams()
     }).catch(() => {
@@ -339,7 +318,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
 
     return left.hash === right.hash && getTorrentInstanceId(left) === getTorrentInstanceId(right)
   }, [getTorrentInstanceId])
-  // A pick of another torrent, or a close of the details, before the row loads drops the scroll.
   if (revealTorrent && !isSameTorrent(revealTorrent, selectedTorrent)) setRevealTorrent(null)
 
   const handleTorrentSelect = useCallback((torrent: Torrent | null) => {
@@ -390,7 +368,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       }
     }
 
-    // Store categories and tags only when new data arrives; preserve previous values during pagination fetches
     if (categoriesData !== undefined) {
       setCategories(categoriesData)
     }
@@ -521,8 +498,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       </Sheet>
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Desktop: Resizable vertical layout with bottom details panel */}
-        {/* Use React conditional rendering to avoid duplicate dialogs */}
         {!isMobile && (
           <div className="flex flex-col h-full">
             {spreadsheetDisguise && <SpreadsheetFormulaBar />}
@@ -577,7 +552,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                       }
                     }}
                   >
-                    {/* Marker so the table's arrow-key navigation leaves focus inside the panel alone. */}
                     <div className="h-full border-t bg-background" data-torrent-details-panel>
                       <TorrentDetailsPanel
                         instanceId={selectedTorrentInstanceId}
@@ -626,7 +600,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         >
           <SheetContent
             side="right"
-            // The content takes focus on open, before its controls load: no ring on it
             className="w-full p-0 gap-0 outline-none ease-out data-[state=open]:duration-200 data-[state=closed]:duration-150"
             hideClose
             {...swipeToClose}

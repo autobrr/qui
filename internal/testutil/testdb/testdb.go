@@ -1,7 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package testdb provides isolated migrated database fixtures for tests.
 package testdb
 
 import (
@@ -27,17 +26,8 @@ import (
 	"github.com/autobrr/qui/internal/database"
 )
 
-// cacheDirEnv overrides the directory that holds the shared migrated template.
 const cacheDirEnv = "QUI_TESTDB_CACHE_DIR"
 
-// NewMigratedSQLite returns an isolated SQLite database with all migrations
-// already applied, cloned from a migrated template.
-//
-// The first call in a process finds the template in the user cache directory
-// (or QUI_TESTDB_CACHE_DIR) and builds it when no template matches the current
-// migrations. A build runs every migration: about 0.2 s without -race and
-// about 7 s with -race. Every later clone, in any package process, is a file
-// copy.
 func NewMigratedSQLite(t testing.TB, name string) *database.DB {
 	t.Helper()
 
@@ -55,8 +45,6 @@ func NewMigratedSQLite(t testing.TB, name string) *database.DB {
 	return db
 }
 
-// RunSQLiteMigration runs one SQLite migration file on db again. A test uses
-// it to migrate rows that it wrote in the form of an older qui.
 func RunSQLiteMigration(t testing.TB, db *database.DB, filename string) {
 	t.Helper()
 
@@ -69,8 +57,6 @@ func RunSQLiteMigration(t testing.TB, db *database.DB, filename string) {
 	}
 }
 
-// NewMigratedPostgres returns an isolated migrated PostgreSQL schema when
-// QUI_TEST_POSTGRES_DSN is configured, otherwise it skips the calling test.
 func NewMigratedPostgres(t testing.TB, name string) *database.DB {
 	t.Helper()
 
@@ -140,9 +126,6 @@ func postgresDSNWithSearchPath(dsn, schema string) (string, error) {
 	return parsed.String(), nil
 }
 
-// testSchemaSeq keeps parallel tests from claiming the same schema name: the
-// clock is coarse enough that two tests starting together read the same
-// UnixNano, and CREATE SCHEMA then fails for the second one.
 var testSchemaSeq atomic.Int64
 
 func testSchemaName(name string, now time.Time) string {
@@ -157,9 +140,6 @@ func quotePostgresIdentifier(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
-// CloneMigratedSQLite copies the migrated template database into t.TempDir and
-// returns the cloned database path. The first call costs what NewMigratedSQLite
-// describes.
 func CloneMigratedSQLite(t testing.TB, name string) string {
 	t.Helper()
 
@@ -183,11 +163,6 @@ var migratedTemplatePath = sync.OnceValues(func() (string, error) {
 	return cachedTemplate(dir, database.SQLiteMigrations(), buildMigratedTemplate)
 })
 
-// templateCacheDir returns QUI_TESTDB_CACHE_DIR when it is set. Otherwise it
-// returns qui/testdb in the user cache directory, or a private per-user
-// directory under the temp directory when the user cache directory cannot be
-// found or created (a sandbox with a read-only or missing HOME, such as the
-// Nix builder).
 func templateCacheDir() (string, error) {
 	if dir := os.Getenv(cacheDirEnv); dir != "" {
 		return dir, nil
@@ -238,10 +213,6 @@ func sanitizeFallbackUser(name string) string {
 	return s
 }
 
-// ensurePrivateDir creates dir at 0700, or accepts an existing directory that
-// is private to the current user. Lstat, not Stat: a symlink to a directory
-// the current user owns would otherwise pass while still pointing at another
-// user's tree.
 func ensurePrivateDir(dir string) error {
 	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
 		return fmt.Errorf("create testdb cache fallback %s: %w", dir, err)
@@ -263,10 +234,6 @@ func checkPrivateDir(path string, info os.FileInfo) error {
 	return checkPrivateDirPlatform(path, info)
 }
 
-// cachedTemplate returns the template in dir that matches migrations, and
-// builds it first when it is missing. Package processes that start together
-// can all build; each renames a complete file into place, so a reader never
-// sees a partial template.
 func cachedTemplate(dir string, migrations fs.FS, build func(dbPath string) error) (string, error) {
 	key, err := migrationsKey(migrations)
 	if err != nil {
@@ -297,7 +264,6 @@ func cachedTemplate(dir string, migrations fs.FS, build func(dbPath string) erro
 		return "", err
 	}
 	if err := publishTemplate(tmpPath, final); err != nil {
-		// Another builder's completed template is just as good.
 		if _, statErr := os.Stat(final); statErr == nil {
 			return final, nil
 		}

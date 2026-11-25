@@ -36,7 +36,6 @@ func TestFilesPrintCachePostgresIntegration(t *testing.T) {
 	runFilesPrintCacheTests(t, testdb.NewMigratedPostgres)
 }
 
-// regression: #3945
 func TestFilesPrintStaysValidAfterTimeFormMigration(t *testing.T) {
 	t.Parallel()
 
@@ -44,7 +43,6 @@ func TestFilesPrintStaysValidAfterTimeFormMigration(t *testing.T) {
 		svc := NewService(db)
 		require.NoError(t, svc.CacheFilesBatch(ctx, 1, pairWrite(printA)))
 
-		// An older qui on a host one hour east of UTC stored both sync times in this form.
 		const goForm = "2026-11-09 12:41:31.947225 +0100 CET"
 		_, err := db.ExecContext(ctx, `UPDATE torrent_files_sync SET last_synced_at = ?, print_synced_at = ?`, goForm, goForm)
 		require.NoError(t, err)
@@ -84,8 +82,6 @@ func runFilesPrintCacheTests(t *testing.T, open testDBOpener) {
 
 const pairHash = "pair-hash"
 
-// Each print belongs to one list. printA has the high bit set, as half of all
-// FNV-64a prints do once cast to int64.
 const (
 	printA int64 = -0x5a5a5a5a5a5a5a5b
 	printB int64 = 0x1234
@@ -293,10 +289,6 @@ func testReaderSeesOnePair(t *testing.T, open testDBOpener) {
 	})
 }
 
-// cacheRetryingBusy writes again when SQLite fails the write with
-// SQLITE_BUSY. On the Windows CI runner, some writes in testReaderSeesOnePair
-// failed so at once, while readers ran. qui logs such a failed write and
-// fetches the list again, so the test checks only what readers see.
 func cacheRetryingBusy(ctx context.Context, svc *Service, writes map[string]qbittorrent.CachedFilesWrite) error {
 	var err error
 	for range 20 {
@@ -309,8 +301,6 @@ func cacheRetryingBusy(ctx context.Context, svc *Service, writes map[string]qbit
 	return err
 }
 
-// previousReleaseSyncUpsert is the sync row write of the release before the
-// print columns.
 const previousReleaseSyncUpsert = `
 	INSERT INTO torrent_files_sync
 	(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
@@ -386,8 +376,6 @@ func testPreviousReleaseRewriteReadsAsNoPrint(t *testing.T, open testDBOpener) {
 	})
 }
 
-// The lock order of the cache writers, on Postgres, where row locks can
-// deadlock (SQLSTATE 40P01). SQLite has one writer.
 func TestFilesCacheLockOrderPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -439,11 +427,8 @@ func TestFilesCacheLockOrderPostgresIntegration(t *testing.T) {
 
 			withTestDB(t, testdb.NewMigratedPostgres, func(ctx context.Context, t *testing.T, db *database.DB) {
 				svc := NewService(db)
-				// Intern lock-hash-1 before lock-hash-2, so it has the lower id.
 				require.NoError(t, svc.CacheFilesBatch(ctx, 1, twoHashes(0)))
 				for round := range 5 {
-					// Write the sync rows against hash order, so a delete that
-					// scans the table meets them in the reverse of the writers' order.
 					_, err := svc.CleanupRemovedTorrentsCache(ctx, 1, []string{"other-hash"})
 					require.NoError(t, err)
 					for _, hash := range []string{"lock-hash-2", "lock-hash-1"} {
@@ -457,7 +442,6 @@ func TestFilesCacheLockOrderPostgresIntegration(t *testing.T) {
 							require.NotContainsf(t, err.Error(), "40P01", "round %d", round)
 						}
 					}
-					// Writes after the delete fail on the missing instance.
 					if tt.deletesTarget {
 						return
 					}

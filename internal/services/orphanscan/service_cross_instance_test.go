@@ -73,12 +73,9 @@ func TestGetOverlapCandidateInstances(t *testing.T) {
 		scanned *models.Instance
 		want    []int
 	}{
-		// Same host and port protects whatever the instance's key, pin or local flag.
 		{"remote scan pairs by stored endpoint", listed[0], []int{2, 3, 4, 5}},
 		{"local scan ignores remote instances", listed[7], []int{5}},
-		// A local scan through a mount of the seedbox pairs with the instances reaching it over SSH.
 		{"local scan with an SSH host pairs by stored endpoint", mounted, []int{1, 2, 3, 4, 8}},
-		// The endpoint is the scanned row's, not the one the list holds for it now.
 		{"remote scan pairs by the scanned row, not the list", remoteInstance(1, "other.example", 22), []int{6}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,7 +94,6 @@ func TestGetOverlapCandidateInstances(t *testing.T) {
 	}
 }
 
-// An instance with credentials but no SSH host never pairs with a remote scan.
 func TestGetOverlapCandidateInstances_EmptyHostIsIgnored(t *testing.T) {
 	t.Parallel()
 
@@ -118,7 +114,6 @@ func TestGetOverlapCandidateInstances_EmptyHostIsIgnored(t *testing.T) {
 	}
 }
 
-// The error names the reason the unavailable peer was a candidate, not the scanned instance's mode.
 func TestBuildFileMap_FailsWhenOverlapPeerUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -715,9 +710,6 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	}
 }
 
-// Two instances on one seedbox under different names (#3236): a scan on one
-// must keep the files the other seeds. The pinned host key names the server,
-// and it only ever adds a peer, so host and port still pair without one.
 func TestBuildFileMap_SameHostKeyUnderAnotherNameProtects(t *testing.T) {
 	t.Parallel()
 

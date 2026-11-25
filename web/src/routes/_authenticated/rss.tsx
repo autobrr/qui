@@ -14,6 +14,9 @@ const rssSearchSchema = z.object({
 })
 
 export const Route = createFileRoute("/_authenticated/rss")({
+  staticData: {
+    title: { titleKey: "nav.rss", titleNs: "common" },
+  },
   validateSearch: rssSearchSchema,
   component: RSSRoute,
 })

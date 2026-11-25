@@ -103,7 +103,6 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 		return rtorrentFailed
 	}
 
-	// an unresolved magnet download's session file has no info dict
 	if len(file.InfoBytes) == 0 {
 		log.Debug().Msgf("(%d/%d) skipping magnet/meta download session file: %s", positionNum, totalJobs, match)
 		return rtorrentSkipped
@@ -115,7 +114,6 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 		return rtorrentFailed
 	}
 
-	// qBittorrent requires BT_backup files named by lowercase infohash
 	torrentID := file.HashInfoBytes().HexString()
 
 	torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
@@ -137,8 +135,6 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 		return rtorrentFailed
 	}
 
-	// complete means every piece of every wanted (non-off) file is
-	// present; files with priority 0 may legitimately be missing
 	pieces, complete := rtorrentPieces(resumeFile, &metaInfo)
 	if !complete {
 		log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.Name, match)
@@ -147,8 +143,6 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 
 	dir := rtorrentSaveDir(rtFile.Directory, i.opts.PathReplaces)
 
-	// also catches POSIX session paths on a Windows host that no
-	// --replace-path rule maps
 	if !filepath.IsAbs(dir) {
 		log.Warn().Msgf("(%d/%d) %s download directory %q is not an absolute path on this OS, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.Name, rtFile.Directory)
 		return rtorrentSkipped
@@ -161,7 +155,6 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 
 	newFastResume := newRTorrentFastresume(match, dir, file, &metaInfo, resumeFile, rtFile)
 
-	// pieces overlapping only priority-off files stay unset
 	newFastResume.Pieces = pieces
 
 	fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
@@ -181,7 +174,6 @@ func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int)
 }
 
 func rtorrentSaveDir(directory string, rules []PathReplace) string {
-	// directory is stored before shell expansion and can be ~-prefixed
 	dir := directory
 	if strings.HasPrefix(dir, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -191,11 +183,7 @@ func rtorrentSaveDir(directory string, rules []PathReplace) string {
 	return filepath.Clean(replacePath(dir, rules))
 }
 
-// newRTorrentFastresume builds the fastresume of a complete torrent saved in
-// dir; the caller sets Pieces
 func newRTorrentFastresume(match, dir string, file *metainfo.MetaInfo, metaInfo *metainfo.Info, resumeFile *RTorrentLibTorrentResumeFile, rtFile *RTorrentTorrentFile) Fastresume {
-	// added time: ruTorrent's custom.addtime when present, else rtorrent's
-	// first-resume timestamp, else the session file mtime
 	addedTime := firstNonZero(
 		strToIntClean(rtFile.Custom.AddTime),
 		rtFile.TimestampStarted,
@@ -203,25 +191,16 @@ func newRTorrentFastresume(match, dir string, file *metainfo.MetaInfo, metaInfo 
 		time.Now().Unix(),
 	)
 
-	// timestamp.finished stays 0 on 0.9.6 for torrents completed via
-	// hash-check; the torrent is complete here, so fall back to added time
 	finishedTime := firstNonZero(rtFile.TimestampFinished, addedTime)
 
-	// derive every seeding duration from one epoch so qBittorrent's Time
-	// Active and Seeding Time columns agree: ruTorrent's custom.seedingtime
-	// (start of seeding) when present, else the finished timestamp
 	seedingSince := firstNonZero(strToIntClean(rtFile.Custom.SeedingTime), finishedTime)
 	seedingDuration := max(time.Now().Unix()-seedingSince, 0)
 
-	// 0.9.6 predates the total_downloaded key
 	totalDownloaded := rtFile.TotalDownloaded
 	if totalDownloaded == 0 {
 		totalDownloaded = metaInfo.TotalLength()
 	}
 
-	// auto-managed keeps qBittorrent's queueing and share limits in
-	// charge; a stopped torrent must stay out of auto-management or
-	// qBittorrent would resume it
 	paused := int64(1)
 	if rtFile.State == 1 {
 		paused = 0
@@ -293,8 +272,6 @@ func setRTorrentLayout(fr *Fastresume, metaInfo *metainfo.Info, dir string) {
 	}
 
 	if filepath.Base(dir) == metaInfo.Name {
-		// normal d.directory.set layout: directory includes the
-		// torrent's top folder, qBittorrent expects the parent
 		savePath := filepath.Dir(dir)
 		fr.SavePath = savePath
 		fr.QbtSavePath = savePath
@@ -302,10 +279,6 @@ func setRTorrentLayout(fr *Fastresume, metaInfo *metainfo.Info, dir string) {
 		return
 	}
 
-	// d.directory_base.set layout: files live directly in the
-	// directory without the torrent-name folder. qBt-contentLayout
-	// only applies to newly added torrents, so a restored torrent
-	// needs mapped_files to strip the name folder from each path
 	fr.QbtContentLayout = "NoSubfolder"
 	fr.QbtHasRootFolder = 0
 
@@ -317,10 +290,6 @@ func setRTorrentLayout(fr *Fastresume, metaInfo *metainfo.Info, dir string) {
 	fr.MappedFiles = mapped
 }
 
-// rtorrentPieces expands the libtorrent_resume bitfield into a qBittorrent
-// piece bitfield and reports whether every piece of every wanted file is
-// present. The bitfield is the piece count when complete, 0 when empty, and a
-// raw MSB-first bitfield string when partial
 func rtorrentPieces(resume *RTorrentLibTorrentResumeFile, info *metainfo.Info) (string, bool) {
 	numPieces := info.NumPieces()
 	if numPieces == 0 || info.PieceLength <= 0 {
@@ -377,8 +346,6 @@ func rtorrentPieces(resume *RTorrentLibTorrentResumeFile, info *metainfo.Info) (
 	return string(pieces), complete
 }
 
-// rtorrentFilePriorities maps rtorrent per-file priorities (0 off, 1 normal,
-// 2 high) to qBittorrent values (0 skip, 1 normal, 6 high)
 func rtorrentFilePriorities(entries []RTorrentResumeFileEntry, fileCount int) []int {
 	prios := make([]int, 0, fileCount)
 
@@ -403,8 +370,6 @@ func rtorrentFilePriorities(entries []RTorrentResumeFileEntry, fileCount int) []
 	return prios
 }
 
-// rtorrentLabel decodes a ruTorrent label from custom1, which ruTorrent
-// stores rawurlencoded; PathUnescape keeps a literal + a plus
 func rtorrentLabel(custom1 string) string {
 	label, err := url.PathUnescape(custom1)
 	if err != nil {
@@ -413,10 +378,6 @@ func rtorrentLabel(custom1 string) string {
 	return label
 }
 
-// rtorrentTrackers rebuilds the tracker tiers from the torrent's own
-// announce-list, dropping trackers the resume data marks disabled, and
-// appends enabled trackers that were added at runtime. An empty result stays
-// nil so the encoded fastresume does not override the .torrent's trackers
 func rtorrentTrackers(file *metainfo.MetaInfo, resume *RTorrentLibTorrentResumeFile) [][]string {
 	enabled := func(trackerURL string) bool {
 		status, ok := resume.Trackers[trackerURL]
@@ -442,7 +403,6 @@ func rtorrentTrackers(file *metainfo.MetaInfo, resume *RTorrentLibTorrentResumeF
 		}
 	}
 
-	// trackers added at runtime only exist in the resume data
 	var extras []string
 	for trackerURL, status := range resume.Trackers {
 		if trackerURL == "dht://" {

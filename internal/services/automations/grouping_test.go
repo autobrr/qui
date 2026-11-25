@@ -12,7 +12,6 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// The JSON reference lists GroupKeys as the allowed keys, so each one must build a group key.
 func TestBuildGroupKey_AcceptsEachGroupKey(t *testing.T) {
 	t.Parallel()
 

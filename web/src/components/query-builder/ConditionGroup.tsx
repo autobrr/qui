@@ -27,13 +27,9 @@ interface ConditionGroupProps {
   onRemove?: () => void;
   depth?: number;
   isRoot?: boolean;
-  /** Optional category options for EXISTS_IN/CONTAINS_IN operators */
   categoryOptions?: Array<{ label: string; value: string }>;
-  /** Optional list of fields to disable with reasons */
   disabledFields?: DisabledField[];
-  /** Optional list of "state" option values to disable with reasons */
   disabledStateValues?: DisabledStateValue[];
-  /** Available grouping IDs for GROUP_SIZE / IS_GROUPED leaf conditions */
   groupOptions?: GroupOption[];
 }
 
@@ -136,11 +132,9 @@ export function ConditionGroup({
     (index: number) => {
       const newChildren = children.filter((_, i) => i !== index);
       if (newChildren.length === 0) {
-        // Remove empty group (or clear root when allowEmpty)
         if (onRemove) {
           onRemove();
         } else {
-          // Root without onRemove: update with empty children (handleChange normalizes to null)
           onChange({ ...condition, conditions: newChildren });
         }
       } else {
@@ -153,7 +147,6 @@ export function ConditionGroup({
     [condition, children, isRoot, onChange, onRemove]
   );
 
-  // For leaf conditions, render LeafCondition
   if (!isGroup) {
     return (
       <LeafCondition
@@ -169,7 +162,6 @@ export function ConditionGroup({
     );
   }
 
-  // Generate unique IDs for children
   const childIds = children.map((child, index) => child.clientId ?? `${id}-${index}`);
   const nestedColorClasses = depth % 2 === 1? "border-cyan-500/40 bg-cyan-500/10": "border-amber-500/45 bg-amber-500/10";
 
@@ -197,7 +189,6 @@ export function ConditionGroup({
             <GripVertical className="size-4" />
           </button>
         )}
-        {/* Operator toggle */}
         <Button
           type="button"
           variant="outline"
@@ -214,7 +205,6 @@ export function ConditionGroup({
           {condition.operator === "AND" ? t("queryBuilder.allConditionsMustMatch") : t("queryBuilder.anyConditionMustMatch")}
         </span>
 
-        {/* Remove group button (not for root) */}
         {!isRoot && onRemove && (
           <Button
             type="button"
@@ -228,7 +218,6 @@ export function ConditionGroup({
         )}
       </div>
 
-      {/* Children */}
       <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
         <div className="space-y-1.5">
           {children.map((child, index) => {
@@ -270,7 +259,6 @@ export function ConditionGroup({
         </div>
       </SortableContext>
 
-      {/* Add buttons */}
       <div className="mt-2 flex gap-2">
         <Button
           type="button"

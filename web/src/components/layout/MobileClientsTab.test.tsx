@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import "@/i18n"
 import type { InstanceResponse } from "@/types"
@@ -48,21 +48,12 @@ function renderTab(instances: InstanceResponse[]) {
   )
 }
 
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
-
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
 })
 
 describe("MobileClientsTab", () => {
-  // regression: #4359
   it("opens the only enabled instance directly, with no menu", async () => {
     const { container } = renderTab([instance(1, "main", true), instance(2, "spare", false)])
 

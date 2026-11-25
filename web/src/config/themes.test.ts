@@ -26,7 +26,6 @@ describe("parseCachedTheme", () => {
     expect(parseCachedTheme("{not json")).toBeNull()
     expect(parseCachedTheme(JSON.stringify({ id: "x" }))).toBeNull()
     expect(parseCachedTheme(JSON.stringify({ id: "x", cssVars: { light: {} } }))).toBeNull()
-    // The bundled fallback never comes from the cache.
     expect(parseCachedTheme(JSON.stringify({
       id: "minimal",
       cssVars: { light: {}, dark: {} },

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 )
@@ -350,8 +351,6 @@ func TestCreate_ExistingTargetIsErrTargetExists(t *testing.T) {
 	}
 }
 
-// targetSatisfiesPlan decides both the pre-Link check and the EEXIST branch, so
-// the racing-collision classification turns on these three answers.
 func TestTargetSatisfiesPlan(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.mkv")
@@ -368,34 +367,40 @@ func TestTargetSatisfiesPlan(t *testing.T) {
 	}
 
 	symlinkAtTarget := filepath.Join(dir, "planted.mkv")
-	if err := os.Symlink(src, symlinkAtTarget); err != nil {
-		t.Fatal(err)
-	}
-	// A symlinked source: the link an earlier run made follows it on macOS
-	// and not on Linux, and both forms must read as already done.
 	viaSymlink := filepath.Join(dir, "src.via-symlink.mkv")
-	if err := os.Symlink(src, viaSymlink); err != nil {
-		t.Fatal(err)
-	}
 	linkOfSymlinked := filepath.Join(dir, "link-of-symlinked.mkv")
-	if err := os.Link(viaSymlink, linkOfSymlinked); err != nil {
-		t.Fatal(err)
+	symlinkErr := os.Symlink(src, symlinkAtTarget)
+	if symlinkErr == nil {
+		symlinkErr = os.Symlink(src, viaSymlink)
+	}
+	symlinkUnavailable := runtime.GOOS == "windows" && errors.Is(symlinkErr, syscall.Errno(1314))
+	if symlinkErr != nil && !symlinkUnavailable {
+		t.Fatal(symlinkErr)
+	}
+	if !symlinkUnavailable {
+		if err := os.Link(viaSymlink, linkOfSymlinked); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	for _, tt := range []struct {
-		name          string
-		source        string
-		target        string
-		wantSatisfied bool
-		wantErr       error
+		name            string
+		source          string
+		target          string
+		requiresSymlink bool
+		wantSatisfied   bool
+		wantErr         error
 	}{
 		{name: "link to the source is already done", source: src, target: link, wantSatisfied: true},
 		{name: "missing target is ours to create", source: src, target: filepath.Join(dir, "absent.mkv")},
 		{name: "another file is the collision", source: src, target: stranger, wantErr: ErrTargetExists},
-		{name: "a symlink planted at the target is the collision", source: src, target: symlinkAtTarget, wantErr: ErrTargetExists},
-		{name: "the link an earlier run made from a symlinked source is already done", source: viaSymlink, target: linkOfSymlinked, wantSatisfied: true},
+		{name: "a symlink planted at the target is the collision", source: src, target: symlinkAtTarget, requiresSymlink: true, wantErr: ErrTargetExists},
+		{name: "the link an earlier run made from a symlinked source is already done", source: viaSymlink, target: linkOfSymlinked, requiresSymlink: true, wantSatisfied: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.requiresSymlink && symlinkUnavailable {
+				t.Skip("creating a symlink requires Developer Mode or SeCreateSymbolicLinkPrivilege")
+			}
 			satisfied, err := targetSatisfiesPlan(FilePlan{SourcePath: tt.source, TargetPath: tt.target})
 			if satisfied != tt.wantSatisfied {
 				t.Errorf("satisfied = %v, want %v", satisfied, tt.wantSatisfied)

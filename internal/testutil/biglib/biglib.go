@@ -1,8 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package biglib serves a large synthetic library from a fake qBittorrent, for
-// the memory budget tests of the torrent readers.
 package biglib
 
 import (
@@ -20,15 +18,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Size is the number of torrents of the budget tests.
 const Size = 20_000
 
 const MB = 1 << 20
 
 var words = strings.Fields("Silent Harbor Crimson Ledger Northern Vale Paper Lantern Hollow Crown Iron Orchard Glass Tide Amber Signal")
 
-// Torrents returns n torrents on 40 trackers under .test. Each content is
-// seeded one to four times, as in a library that cross-seeds.
 func Torrents(n int) []qbt.Torrent {
 	rnd := rand.New(rand.NewPCG(7, 7)) //nolint:gosec // a fixed seed gives the same library in each run
 	categories := []string{"tv", "movies", "music", "books", "games", "tv-4k", "movies-4k", "cross-seed", "anime", "misc"}
@@ -62,9 +57,6 @@ func Torrents(n int) []qbt.Torrent {
 	return torrents
 }
 
-// Serve starts a fake qBittorrent that serves torrents and returns its URL.
-// The first sync gets a full update, and a later sync gets no change, as a
-// quiet qBittorrent answers. Each torrent has one working tracker.
 func Serve(t testing.TB, torrents []qbt.Torrent) string {
 	t.Helper()
 
@@ -106,9 +98,6 @@ func Serve(t testing.TB, torrents []qbt.Torrent) string {
 	return srv.URL
 }
 
-// AllocatedBytes returns the lowest number of bytes that one call of f
-// allocated over runs calls. The lowest run leaves out a sync or a cache fill
-// that ran at the same time.
 func AllocatedBytes(runs int, f func()) uint64 {
 	var lowest uint64
 	var before, after runtime.MemStats
@@ -118,6 +107,26 @@ func AllocatedBytes(runs int, f func()) uint64 {
 		f()
 		runtime.ReadMemStats(&after)
 		if n := after.TotalAlloc - before.TotalAlloc; i == 0 || n < lowest {
+			lowest = n
+		}
+	}
+	return lowest
+}
+
+func KeptBytes(runs int, f func() any) uint64 {
+	var lowest uint64
+	var before, after runtime.MemStats
+	for i := range runs {
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		kept := f()
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+		runtime.KeepAlive(kept)
+		n := max(after.HeapAlloc, before.HeapAlloc) - before.HeapAlloc
+		if i == 0 || n < lowest {
 			lowest = n
 		}
 	}

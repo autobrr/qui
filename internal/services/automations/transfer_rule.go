@@ -19,25 +19,18 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// transferRunner starts the Transfers of Transfer to Instance.
 type transferRunner interface {
 	Start(ctx context.Context, req transfer.Request) (int64, error)
 	Preview(ctx context.Context, req transfer.Request) (*transfer.Preview, error)
 }
 
-// transferHold is how long a rule waits before it asks again for a Transfer
-// that the Transfer module refused.
 const transferHold = time.Hour
 
-// SetTransferRunner lets Transfer to Instance start Transfers. Call it once
-// at start-up.
 func (s *Service) SetTransferRunner(runner transferRunner) {
 	s.transferRunner = runner
 	s.transferHolds = make(map[string]time.Time)
 }
 
-// pendingTransfer is one Transfer to Instance in the Run plan. failureReason
-// is set when the save path does not render.
 type pendingTransfer struct {
 	hash          string
 	torrent       qbt.Torrent
@@ -46,9 +39,7 @@ type pendingTransfer struct {
 	savePath      string
 	rule          ruleRef
 	failureReason string
-	// exportsToDo holds, by hash, the target instance of each Export of the
-	// run that still has to bring its torrent there.
-	exportsToDo map[string]int
+	exportsToDo   map[string]int
 }
 
 func (s *Service) now() time.Time {
@@ -62,10 +53,6 @@ func transferHoldKey(instanceID int, hash string) string {
 	return fmt.Sprintf("%d:%s", instanceID, hash)
 }
 
-// planTransfer renders the save path of a Transfer. It leaves out a torrent
-// that the target has, and a torrent whose Transfer the module refused less
-// than an hour ago. It adds a target whose check fails to failedTargets, and
-// does not check that target again in the run.
 func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, failedTargets map[int]bool) (pendingTransfer, bool) {
 	action := state.transferToInstance
 	s.mu.RLock()
@@ -75,7 +62,6 @@ func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string,
 		return pendingTransfer{}, false
 	}
 	if !failedTargets[action.TargetInstanceID] {
-		// A bounded timeout keeps a slow or unreachable target from stalling the whole run.
 		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, []string{hash})
 		cancel()
@@ -97,8 +83,6 @@ func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string,
 	return pending, true
 }
 
-// transfersAfterMoves holds back the Transfers of torrents that move in this
-// run or that qBittorrent moves now. A later run starts them.
 func transfersAfterMoves(transfers []pendingTransfer, moved map[string]ruleRef) []pendingTransfer {
 	ready := transfers[:0]
 	for _, pending := range transfers {
@@ -110,9 +94,6 @@ func transfersAfterMoves(transfers []pendingTransfer, moved map[string]ruleRef) 
 	return ready
 }
 
-// transfersAfterExports holds back the Transfer of a torrent while an Export
-// still has to bring that torrent to another instance. The Transfer can remove
-// the torrent from the source before the Export reads it. A later run starts it.
 func transfersAfterExports(transfers []pendingTransfer, exports []pendingExportToInstance) []pendingTransfer {
 	toDo := make(map[string]int, len(exports))
 	for _, export := range exports {
@@ -130,8 +111,6 @@ func transfersAfterExports(transfers []pendingTransfer, exports []pendingExportT
 	return ready
 }
 
-// takesExport reports whether one of the members is a torrent that an Export
-// still has to bring to an instance other than the target of the Transfer.
 func (p pendingTransfer) takesExport(members []transfer.Member) bool {
 	return slices.ContainsFunc(members, func(member transfer.Member) bool {
 		target, waits := p.exportsToDo[strings.ToLower(member.Hash)]
@@ -139,10 +118,6 @@ func (p pendingTransfer) takesExport(members []transfer.Member) bool {
 	})
 }
 
-// start starts the Transfer. It waits when the Transfer takes a cross-seed
-// along that an Export still has to bring to another instance. Only the
-// module knows which torrents a Transfer takes along, so the run asks it
-// first, and a refusal of that question is the refusal of the start.
 func (s *Service) start(ctx context.Context, instanceID int, pending pendingTransfer) (waits bool, err error) {
 	if len(pending.exportsToDo) > 0 {
 		preview, err := s.transferRunner.Preview(ctx, pending.request(instanceID))
@@ -170,20 +145,11 @@ func (p pendingTransfer) request(instanceID int) transfer.Request {
 	}
 }
 
-// quiet reports whether the module turned the Transfer down for a reason
-// that needs no activity: another Transfer holds the torrent, the last one
-// failed for good and waits for the user, a cross-seed with the same files on
-// hardlinks passes or passed them, or qBittorrent moves a torrent of the group, which
-// the next run asks about again.
 func quiet(err error) bool {
 	return errors.Is(err, transfer.ErrClaimed) || errors.Is(err, transfer.ErrWaitsForUser) ||
 		errors.Is(err, transfer.ErrStays) || errors.Is(err, transfer.ErrMoving)
 }
 
-// startTransfers starts the planned Transfers and records each start and each
-// refusal. After a refusal, the rule asks again no sooner than an hour later.
-// When the run ends first, the Transfers that did not start wait for the next
-// run.
 func (s *Service) startTransfers(ctx context.Context, instanceID int, transfers []pendingTransfer, summary *automationSummary) {
 	for i, pending := range transfers {
 		reason := pending.failureReason
@@ -231,8 +197,6 @@ func (s *Service) startTransfers(ctx context.Context, instanceID int, transfers 
 	}
 }
 
-// transferDetails are the details of a Transfer to Instance activity. Way is
-// empty in a live run, and Refused marks a dry run that the module refused.
 type transferDetails struct {
 	TargetInstanceID int          `json:"targetInstanceId"`
 	Way              transfer.Way `json:"way,omitempty"`
@@ -240,11 +204,6 @@ type transferDetails struct {
 	Refused          bool         `json:"refused,omitzero"`
 }
 
-// recordDryRunTransfers asks the module for each planned Transfer, as Start
-// would, and records the Transfers that a live run starts, by target and way,
-// each torrent with the size of its Transfer. A torrent that an earlier
-// Transfer takes along shows once, and a cross-seed with the same files on
-// hardlinks that an earlier Transfer leaves on the source does not show.
 func (s *Service) recordDryRunTransfers(ctx context.Context, r *stepRun, transfers []pendingTransfer) {
 	type group struct {
 		target int

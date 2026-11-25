@@ -46,8 +46,6 @@ type tvmazeEpisode struct {
 func (p *tvmazeProvider) EpisodesInSeason(ctx context.Context, title string, seasonNumber int) (int, error) {
 	showID, err := p.searchShow(ctx, title)
 	if err != nil {
-		// Only retry with normalized title when the show wasn't found.
-		// For transient errors (rate limits, timeouts, 5xx) return immediately.
 		if !errors.Is(err, ErrShowNotFound) {
 			return 0, fmt.Errorf("tvmaze search failed for %q: %w", title, err)
 		}
@@ -85,8 +83,6 @@ func (p *tvmazeProvider) searchShow(ctx context.Context, title string) (int, err
 }
 
 func (p *tvmazeProvider) countEpisodes(ctx context.Context, showID, seasonNumber int) (int, error) {
-	// /shows/:id/episodes excludes specials by default (unlike /seasons/:id/episodes).
-	// Stream-decode to avoid buffering the full response for shows with many seasons.
 	u := fmt.Sprintf("%s/shows/%d/episodes", tvmazeBaseURL, showID)
 
 	resp, err := p.doGetResponse(ctx, u)
@@ -95,7 +91,6 @@ func (p *tvmazeProvider) countEpisodes(ctx context.Context, showID, seasonNumber
 	}
 	defer resp.Body.Close()
 
-	// Cap reads at 2 MiB to match readBody's limit and fail fast on pathological responses.
 	const maxBody = 2 << 20
 	bounded := io.LimitReader(resp.Body, maxBody)
 
@@ -156,12 +151,6 @@ func (p *tvmazeProvider) doGet(ctx context.Context, rawURL string) ([]byte, erro
 	return body, nil
 }
 
-// normalizeTitle strips year suffixes, quality tags, and other noise from torrent titles.
-// titleCleanupPatterns strips parenthesized years, quality tags, and source
-// noise from torrent titles. Bare trailing years (e.g. "Show 2024") are NOT
-// stripped because they are ambiguous -- could be part of the title (e.g.
-// "1923", "Yellowstone 1923"). Parenthesized years like "(2024)" are a clear
-// torrent convention and safe to remove.
 var titleCleanupPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\s*\(\d{4}\)\s*$`),
 	regexp.MustCompile(`(?i)\s+(720|1080|2160)p.*$`),
@@ -208,7 +197,6 @@ func streamCountSeasonEpisodes(r io.Reader, seasonNumber int) (int, error) {
 		}
 	}
 
-	// Require valid closing bracket to reject truncated responses.
 	t, err = dec.Token()
 	if err != nil {
 		return 0, fmt.Errorf("expected array end: %w", err)

@@ -11,16 +11,6 @@ interface SelectAllHotkeyProps {
   isMac?: boolean
 }
 
-/**
- * Registers a global keyboard listener that invokes `onSelectAll` when the user presses Ctrl/Cmd + A outside editable fields and certain widgets.
- *
- * The listener is active only when `enabled` is true. Platform detection for the Command key can be forced via `isMac`; otherwise it is inferred from the user agent when available.
- *
- * @param onSelectAll - Callback invoked when the select-all hotkey is triggered.
- * @param enabled - Whether the hotkey listener is active. Defaults to `true`.
- * @param isMac - Optional override to treat the platform as macOS (affects whether `metaKey` is considered the modifier).
- * @returns `null` (this component renders nothing)
- */
 export function SelectAllHotkey({
   onSelectAll,
   enabled = true,
@@ -40,7 +30,6 @@ export function SelectAllHotkey({
         return
       }
 
-      // Shift/Alt combos are browser shortcuts (e.g. Cmd+Shift+A tab search), not select-all
       if (event.shiftKey || event.altKey) {
         return
       }

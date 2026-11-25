@@ -17,11 +17,6 @@ interface TrackerContextMenuProps {
   supportsTrackerEditing?: boolean
 }
 
-/**
- * Wrapper component that adds a context menu with "Edit Tracker URL" option
- * to tracker elements. Only shows context menu for valid tracker URLs
- * (excludes DHT, PeX, LSD entries).
- */
 export const TrackerContextMenu = memo(function TrackerContextMenu({
   children,
   tracker,
@@ -29,7 +24,6 @@ export const TrackerContextMenu = memo(function TrackerContextMenu({
   supportsTrackerEditing = false,
 }: TrackerContextMenuProps) {
   const { t } = useTranslation("torrents")
-  // Only show context menu for valid URLs and when edit handler is provided
   if (!onEditTracker || !isValidTrackerUrl(tracker.url)) {
     return <>{children}</>
   }

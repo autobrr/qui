@@ -32,17 +32,10 @@ vi.mock("@/contexts/SyncStreamContext", () => ({
   },
 }))
 vi.mock("@/hooks/useDelayedVisibility", () => ({ useDelayedVisibility: () => mocks.visibility }))
-vi.mock("@/hooks/useRouteTitle", () => ({ useRouteTitle: () => "Torrents" }))
 vi.mock("@/lib/api", () => ({ api: { getTransferInfo: mocks.getTransferInfo } }))
 vi.mock("@/lib/speedUnits", () => ({
   useSpeedUnits: () => ["bytes", vi.fn()],
   formatSpeedWithUnit: (speed: number) => `${speed} B/s`,
-}))
-vi.mock(import("@/lib/spreadsheet-disguise"), async (importOriginal) => ({
-  ...await importOriginal(),
-  isSpreadsheetDisguiseActive: () => false,
-  spreadsheetDocumentTitle: () => "Spreadsheet",
-  useSpreadsheetDisguise: () => false,
 }))
 
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
@@ -70,18 +63,16 @@ it("keeps visible foreground speeds in the title while stalled REST polling star
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )
-  const { rerender, unmount } = renderHook(() => useTitleBarSpeeds({
-    mode: "instance",
+  const { result, rerender, unmount } = renderHook(() => useTitleBarSpeeds({
     instanceId: 1,
-    instanceName: "Example",
     foregroundSpeeds: { dl: 5, up: 6 },
   }), { wrapper })
 
-  expect(document.title).toBe("D: 5 B/s U: 6 B/s | Example")
+  expect(result.current).toBe("D: 5 B/s U: 6 B/s")
   mocks.streamState.dataStalled = true
   rerender()
 
-  expect(document.title).toBe("D: 5 B/s U: 6 B/s | Example")
+  expect(result.current).toBe("D: 5 B/s U: 6 B/s")
   await waitFor(() => expect(mocks.getTransferInfo).toHaveBeenCalledWith(1))
   unmount()
   client.clear()
@@ -96,22 +87,41 @@ it("keeps newer foreground speeds until a post-stall REST response arrives", asy
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )
-  const { rerender, unmount } = renderHook(() => useTitleBarSpeeds({
-    mode: "instance",
+  const { result, rerender, unmount } = renderHook(() => useTitleBarSpeeds({
     instanceId: 1,
-    instanceName: "Example",
     foregroundSpeeds: { dl: 5, up: 6 },
   }), { wrapper })
 
-  expect(document.title).toBe("D: 5 B/s U: 6 B/s | Example")
+  expect(result.current).toBe("D: 5 B/s U: 6 B/s")
   mocks.streamState.dataStalled = true
   rerender()
 
-  expect(document.title).toBe("D: 5 B/s U: 6 B/s | Example")
+  expect(result.current).toBe("D: 5 B/s U: 6 B/s")
   await waitFor(() => expect(mocks.getTransferInfo).toHaveBeenCalledWith(1))
 
   resolveFetch({ dl_info_speed: 7, up_info_speed: 8 })
-  await waitFor(() => expect(document.title).toBe("D: 7 B/s U: 8 B/s | Example"))
+  await waitFor(() => expect(result.current).toBe("D: 7 B/s U: 8 B/s"))
+  unmount()
+  client.clear()
+})
+
+it("keeps the last speeds while the tab is hidden for less than the delay", () => {
+  mocks.getTransferInfo.mockImplementation(() => new Promise(() => undefined))
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  )
+  const { result, rerender, unmount } = renderHook(({ foregroundSpeeds }) => useTitleBarSpeeds({
+    instanceId: 1,
+    foregroundSpeeds,
+  }), { wrapper, initialProps: { foregroundSpeeds: { dl: 5, up: 6 } } })
+
+  expect(result.current).toBe("D: 5 B/s U: 6 B/s")
+  mocks.visibility.isHidden = true
+  mocks.visibility.isVisible = false
+  rerender({ foregroundSpeeds: { dl: 9, up: 9 } })
+
+  expect(result.current).toBe("D: 5 B/s U: 6 B/s")
   unmount()
   client.clear()
 })
@@ -123,24 +133,22 @@ it("clears cached speeds during a stall without foreground or fresh REST data", 
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )
-  const { rerender, unmount } = renderHook(() => useTitleBarSpeeds({
-    mode: "instance",
+  const { result, rerender, unmount } = renderHook(() => useTitleBarSpeeds({
     instanceId: 1,
-    instanceName: "Example",
   }), { wrapper })
 
-  expect(document.title).toBe("D: 1 B/s U: 2 B/s | Example")
+  expect(result.current).toBe("D: 1 B/s U: 2 B/s")
   mocks.streamState.dataStalled = true
   rerender()
 
-  expect(document.title).toBe("Torrents")
+  expect(result.current).toBeUndefined()
   unmount()
   client.clear()
 })
 
 it.each([
-  { source: "foreground speeds", foregroundSpeeds: { dl: 5, up: 6 }, initialTitle: "D: 5 B/s U: 6 B/s | Example" },
-  { source: "cached speeds", foregroundSpeeds: undefined, initialTitle: "D: 1 B/s U: 2 B/s | Example" },
+  { source: "foreground speeds", foregroundSpeeds: { dl: 5, up: 6 }, initialTitle: "D: 5 B/s U: 6 B/s" },
+  { source: "cached speeds", foregroundSpeeds: undefined, initialTitle: "D: 1 B/s U: 2 B/s" },
 ])("uses fresh REST speeds after a visible disconnect with $source", async ({ foregroundSpeeds, initialTitle }) => {
   let resolveFetch: (value: { dl_info_speed: number; up_info_speed: number }) => void = () => {}
   mocks.getTransferInfo.mockImplementation(() => new Promise(resolve => { resolveFetch = resolve }))
@@ -150,20 +158,18 @@ it.each([
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )
-  const { rerender, unmount } = renderHook(() => useTitleBarSpeeds({
-    mode: "instance",
+  const { result, rerender, unmount } = renderHook(() => useTitleBarSpeeds({
     instanceId: 1,
-    instanceName: "Example",
     foregroundSpeeds,
   }), { wrapper })
 
-  expect(document.title).toBe(initialTitle)
+  expect(result.current).toBe(initialTitle)
   mocks.streamState.connected = false
   rerender()
 
   await waitFor(() => expect(mocks.getTransferInfo).toHaveBeenCalledWith(1))
   resolveFetch({ dl_info_speed: 7, up_info_speed: 8 })
-  await waitFor(() => expect(document.title).toBe("D: 7 B/s U: 8 B/s | Example"))
+  await waitFor(() => expect(result.current).toBe("D: 7 B/s U: 8 B/s"))
 
   unmount()
   client.clear()
@@ -181,19 +187,17 @@ it.each([
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )
-  const { rerender, unmount } = renderHook(() => useTitleBarSpeeds({
-    mode: "instance",
+  const { result, rerender, unmount } = renderHook(() => useTitleBarSpeeds({
     instanceId: 1,
-    instanceName: "Example",
   }), { wrapper })
 
-  expect(document.title).toBe("D: 1 B/s U: 2 B/s | Example")
+  expect(result.current).toBe("D: 1 B/s U: 2 B/s")
   mocks.streamState.dataStalled = true
   rerender()
   await waitFor(() => expect(mocks.getTransferInfo).toHaveBeenCalledWith(1))
 
   resolveFetch({ dl_info_speed: 3, up_info_speed: 4 })
-  await waitFor(() => expect(document.title).toBe("D: 3 B/s U: 4 B/s | Example"))
+  await waitFor(() => expect(result.current).toBe("D: 3 B/s U: 4 B/s"))
 
   if (returnFromHidden) {
     mocks.visibility.isHidden = true
@@ -212,7 +216,7 @@ it.each([
     mocks.onStreamMessage?.({ data: { serverState: { dl_info_speed: 7, up_info_speed: 8 } } } as TorrentStreamPayload)
     rerender()
   })
-  await waitFor(() => expect(document.title).toBe("D: 7 B/s U: 8 B/s | Example"))
+  await waitFor(() => expect(result.current).toBe("D: 7 B/s U: 8 B/s"))
 
   unmount()
   client.clear()
@@ -231,7 +235,7 @@ it.each([
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     )
-    const { unmount } = renderHook(() => useTitleBarSpeeds({ mode: "instance", instanceId: 1, instanceName: "Example" }), { wrapper })
+    const { unmount } = renderHook(() => useTitleBarSpeeds({ instanceId: 1 }), { wrapper })
 
     await act(async () => { await vi.advanceTimersByTimeAsync(9000) })
     expect(mocks.getTransferInfo).toHaveBeenCalledTimes(callsAt9s)

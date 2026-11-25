@@ -19,8 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
-// A banned client must stop calling the tracker after the first rejection,
-// leave every torrent unstamped, and tell the user on the run record (#2807).
 func TestSearchRunLoop_GazelleAccessDeniedStopsQueryingTracker(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -41,7 +39,6 @@ func TestSearchRunLoop_GazelleAccessDeniedStopsQueryingTracker(t *testing.T) {
 			Tracker:  "https://flacsfor.me",
 		}
 		torrents = append(torrents, torrent)
-		// Two files, so a lookup that ignored the rejection would search twice.
 		filesByHash[torrent.Hash] = qbt.TorrentFiles{
 			{Name: name + "/01 - Track One.flac", Size: 123},
 			{Name: name + "/02 - Track Two.flac", Size: 123},
@@ -51,7 +48,7 @@ func TestSearchRunLoop_GazelleAccessDeniedStopsQueryingTracker(t *testing.T) {
 	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-gazelle-denied", &hashFilteringSyncManager{
 		torrents: torrents, filesByHash: filesByHash,
 	})
-	findGazelleMatch = gazellemusic.FindMatch // undo the fixture's stub; the cleanup restores it
+	findGazelleMatch = gazellemusic.FindMatch
 	client, err := gazellemusic.NewClient("orpheus.network", server.URL, "ops-key")
 	require.NoError(t, err)
 	state.gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"orpheus.network": client}}
@@ -71,7 +68,6 @@ func TestSearchRunLoop_GazelleAccessDeniedStopsQueryingTracker(t *testing.T) {
 	}
 }
 
-// A run with another source left still completes, and reports the rejection.
 func TestFinalizeSearchRun_GazelleAccessDeniedWithTorznabSucceeds(t *testing.T) {
 	svc, state := newSearchRunLoopFixture(t, "crossseed-finalize-gazelle-denied", &hashFilteringSyncManager{})
 	state.opts.DisableTorznab = false
@@ -89,8 +85,6 @@ func TestFinalizeSearchRun_GazelleAccessDeniedWithTorznabSucceeds(t *testing.T) 
 	require.Equal(t, "OPS rejected the API key or this IP: status 401: bad credentials", *state.run.ErrorMessage)
 }
 
-// Sources from OPS only target RED, so a denied RED leaves nothing to search
-// even while the OPS key is configured.
 func TestFinalizeSearchRun_GazelleOnlyQueriedTrackerDeniedFails(t *testing.T) {
 	svc, state := newSearchRunLoopFixture(t, "crossseed-finalize-gazelle-target-denied", &hashFilteringSyncManager{})
 	red, err := gazellemusic.NewClient("redacted.sh", "http://127.0.0.1:9", "red-key")
@@ -108,8 +102,6 @@ func TestFinalizeSearchRun_GazelleOnlyQueriedTrackerDeniedFails(t *testing.T) {
 	require.Equal(t, "RED rejected the API key or this IP: status 401: bad credentials", *state.run.ErrorMessage)
 }
 
-// The filter or cooldown can skip Torznab for every candidate. Resolved
-// indexers then leave Gazelle as the only source the run searched.
 func TestFinalizeSearchRun_GazelleDeniedWithUnsearchedTorznabFails(t *testing.T) {
 	svc, state := newSearchRunLoopFixture(t, "crossseed-finalize-gazelle-denied-torznab-skipped", &hashFilteringSyncManager{})
 	state.opts.DisableTorznab = false
@@ -124,9 +116,6 @@ func TestFinalizeSearchRun_GazelleDeniedWithUnsearchedTorznabFails(t *testing.T)
 	require.Equal(t, models.CrossSeedSearchRunStatusFailed, state.run.Status)
 }
 
-// searchTorrentMatches can return before the Torznab search, as when no
-// Torznab backend is set up. Only an indexer that answered counts as a
-// search, so a run whose Gazelle tracker is denied then fails.
 func TestSearchRunLoop_GazelleDeniedTorznabSearchDecidesStatus(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -156,7 +145,6 @@ func TestSearchRunLoop_GazelleDeniedTorznabSearchDecidesStatus(t *testing.T) {
 			state.gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"orpheus.network": client}}
 			state.opts.DisableTorznab = false
 			state.resolvedTorznabIndexerIDs = []int{1}
-			// The cached filter state lets indexer 1 through the candidate pre-filter.
 			svc.asyncFilteringCache = ttlcache.New[string, *AsyncIndexerFilteringState]()
 			svc.asyncFilteringCache.Set(asyncFilteringCacheKey(state.opts.InstanceID, torrent.Hash), &AsyncIndexerFilteringState{
 				CapabilitiesCompleted: true,

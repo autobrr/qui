@@ -3,17 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Spreadsheet disguise: everything that makes the Spreadsheet theme read as a
-// spreadsheet app instead of a torrent client. Activation is purely the
-// data-theme attribute that applyTheme() stamps on <html>.
-
 import { useSyncExternalStore } from "react"
 
 export const SPREADSHEET_THEME_ID = "spreadsheet"
 export const SPREADSHEET_CLASSIC_THEME_ID = "spreadsheet-classic"
 export const SPREADSHEET_THEME_IDS: ReadonlySet<string> = new Set([SPREADSHEET_THEME_ID, SPREADSHEET_CLASSIC_THEME_ID])
 const SPREADSHEET_DOCUMENT_TITLE = "Book1.xlsx"
-// The classic variant predates the x.
 const SPREADSHEET_CLASSIC_DOCUMENT_TITLE = "Book1.xls"
 
 export function isSpreadsheetDisguiseActive(): boolean {
@@ -30,10 +25,6 @@ export function spreadsheetDocumentTitle(): string {
   return isSpreadsheetClassicActive() ? SPREADSHEET_CLASSIC_DOCUMENT_TITLE : SPREADSHEET_DOCUMENT_TITLE
 }
 
-export function isSpreadsheetDocumentTitle(title: string): boolean {
-  return title === SPREADSHEET_DOCUMENT_TITLE || title === SPREADSHEET_CLASSIC_DOCUMENT_TITLE
-}
-
 function subscribe(callback: () => void): () => void {
   window.addEventListener("themechange", callback)
   return () => window.removeEventListener("themechange", callback)
@@ -47,10 +38,14 @@ export function useSpreadsheetClassic(): boolean {
   return useSyncExternalStore(subscribe, isSpreadsheetClassicActive)
 }
 
-// Passerby-visible strings only (nav, table headers, filter pane, status bar,
-// page titles). Dialogs, settings, and toasts keep their real names: renaming
-// mid-interaction text makes the app confusing without helping the disguise.
-// Values are English on purpose regardless of UI locale.
+function readSpreadsheetDocumentTitle(): string | null {
+  return isSpreadsheetDisguiseActive() ? spreadsheetDocumentTitle() : null
+}
+
+export function useSpreadsheetDocumentTitle(): string | null {
+  return useSyncExternalStore(subscribe, readSpreadsheetDocumentTitle)
+}
+
 const STRING_OVERRIDES: Record<string, string> = {
   "common:nav.dashboard": "Overview",
   "common:nav.search": "Lookup",

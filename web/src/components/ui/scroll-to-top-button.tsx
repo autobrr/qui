@@ -17,12 +17,9 @@ const threshold = 300
 
 interface ScrollToTopButtonProps {
   scrollContainerRef: React.RefObject<HTMLElement | null>
-  /** Height in rem of the card list's own fixed bars at the bottom, above or in place of the bottom navigation. */
   extraBottomBarsRem?: number
 }
 
-// Shows past the scroll threshold at every width, and never covers the bottom
-// navigation or the caller's bars.
 export function ScrollToTopButton({
   scrollContainerRef,
   extraBottomBarsRem = 0,
@@ -31,7 +28,6 @@ export function ScrollToTopButton({
   const isMobile = useIsMobile()
   const { isFooterVisible } = useMobileScroll()
   const { selection } = useTorrentSelectionContext()
-  // MobileFooterNav renders nothing in selection mode
   const barsRem = (isFooterVisible && !hasSelection(selection) ? 4 : 0) + extraBottomBarsRem
   const gapRem = barsRem > 0 ? 1 : 1.5
   const [isVisible, setIsVisible] = useState(false)

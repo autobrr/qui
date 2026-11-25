@@ -12,8 +12,6 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// requireNothingStarted fails when the rig holds a Transfer, a claim, or a
-// torrent that qui added.
 func (r *rig) requireNothingStarted(hash string) {
 	r.t.Helper()
 	list, err := r.store.List(r.t.Context(), transfer.FilterAll, 10, 0)
@@ -24,9 +22,6 @@ func (r *rig) requireNothingStarted(hash string) {
 	require.Zero(r.t, r.src.Writes("torrents/add"))
 }
 
-// The summary of the Transfer dialog shows the torrents of the group, their
-// size, the way, and the free space at the target folder, which may not
-// exist yet. It starts nothing.
 func TestSummaryShowsTheTransferThatStartWouldStart(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -48,14 +43,12 @@ func TestSummaryShowsTheTransferThatStartWouldStart(t *testing.T) {
 	r.requireNothingStarted(s.hash)
 }
 
-// A target without file access gets a warning, its free space comes from
-// qBittorrent, and a client on "TCP and μTP" gets the hint of the log.
 func TestSummaryOfATransferTorrent(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()
 	r.dst.WebAPIVersion = "2.15.2"
 	r.dst.FreeSpace = 1234
-	r.src.BittorrentProtocol = 1 // TCP only
+	r.src.BittorrentProtocol = 1
 	s := newShow(t, showName)
 	r.seed(s)
 	req := r.request(s)

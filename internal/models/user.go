@@ -49,7 +49,6 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 	)
 
 	if err != nil {
-		// UNIQUE constraint on username or CHECK constraint on id = 1
 		if isUniqueConstraintError(err) || isCheckConstraintError(err) {
 			return nil, ErrUserAlreadyExists
 		}

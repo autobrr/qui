@@ -106,7 +106,6 @@ func TestWorkItemIsStale_KeepsFreshSeasonPack(t *testing.T) {
 	}
 
 	items := buildSearcheeWorkItems(fsops.HostPaths, root, NewParser(nil))
-	// root + 2 episode work items
 	require.Len(t, items, 3)
 
 	var seasonItem *searcheeWorkItem

@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit prepush deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n check-feature-map lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit prepush deps docs-dev docs-build mutation mutation-go mutation-web
 
 # Default target
 all: build
@@ -122,6 +122,7 @@ test-openapi:
 # A report, not a gate: some surviving mutants change no behaviour.
 MUTATION_BASE ?= origin/develop
 MUTATION_DIR ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/qui-mutation
+MUTATION_REPORT ?=
 
 mutation: mutation-go mutation-web
 
@@ -146,7 +147,8 @@ mutation-go:
 		cd "$$run/wt" && GOFLAGS=-count=1 TMPDIR="$$run/tmp" \
 			GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.context GIT_CONFIG_VALUE_0=0 \
 			go run github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0 unleash \
-			--diff $(MUTATION_BASE) --timeout-coefficient 3 --output-statuses lctk .
+			--diff $(MUTATION_BASE) --timeout-coefficient 3 --output-statuses lctk \
+			$(if $(MUTATION_REPORT),--output "$(abspath $(MUTATION_REPORT))") .
 
 # Stryker changes the files in place, because a test imports a Go file from
 # outside web/. The worktree keeps those changes out of the main checkout.
@@ -251,7 +253,7 @@ generate:
 	go run ./internal/automationsgen
 
 # Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, lint, the frontend type and i18n checks, then the frontend tests when the branch changes web/ or internal/
-precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend check-i18n test-frontend-changed
+precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend check-i18n check-feature-map test-frontend-changed
 	@echo "Pre-commit checks passed."
 
 # The checks before a push, picked from the files that the branch changes: precommit and the tests of the changed Go packages, or only the script and workflow checks when nothing else changed
@@ -292,9 +294,13 @@ check-i18n:
 	@echo "Checking i18n..."
 	cd $(WEB_DIR) && pnpm check:i18n
 
+check-feature-map:
+	@echo "Checking the feature map..."
+	cd $(WEB_DIR) && pnpm check:feature-map --base "$$(git merge-base origin/develop HEAD || echo origin/develop)"
+
 # Hold the linters in scripts/ratchet/golangci.yml to their shrink-only allowlist
 lint-ratchet: lint-version
-	go run ./scripts/ratchet -base "$$(git merge-base origin/develop HEAD || echo origin/develop)"
+	go run ./scripts/ratchet -lower -base "$$(git merge-base origin/develop HEAD || echo origin/develop)"
 
 # Lint with JSON output (for AI agent consumption)
 lint-json:
@@ -357,7 +363,7 @@ help:
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
 	@echo "  make lint-full      - Lint entire codebase"
-	@echo "  make lint-ratchet   - Check that the lint ratchet allowlist only shrinks"
+	@echo "  make lint-ratchet   - Lower the lint ratchet allowlist, and check that it only shrinks"
 	@echo "  make lint-json      - Generate JSON lint report for AI agents"
 	@echo "  make lint-fix       - Auto-fix linting issues where possible"
 	@echo ""

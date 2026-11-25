@@ -22,8 +22,6 @@ const (
 	target = 2
 )
 
-// engines runs a test on SQLite and on Postgres. The CI Postgres job runs
-// only tests whose names contain PostgresIntegration, so each caller has it.
 func engines(t *testing.T, run func(t *testing.T, db *database.DB)) {
 	t.Run("sqlite", func(t *testing.T) {
 		t.Parallel()
@@ -41,8 +39,6 @@ func open(t *testing.T, db *database.DB) *transfer.Store {
 	return store
 }
 
-// group is a Transfer of the torrents with hashes from source to target. Each
-// torrent's folder is its hash under /src on the source and /dst on the target.
 func group(hashes ...string) *transfer.Record {
 	record := &transfer.Record{
 		Kind:             transfer.KindTransfer,
@@ -241,9 +237,6 @@ func TestHoldNamesWhyQuiKeepsATorrent(t *testing.T) {
 	require.ErrorIs(t, store.Hold(source, "AAAA"), transfer.ErrClaimed, "a hash in upper case names the same torrent")
 }
 
-// A pass over the torrents of an instance reads the registry one time. Its
-// check is nil when the instance has nothing that the check names, so the
-// pass can skip it.
 func TestTheChecksOfAnInstanceNameWhatQuiKeepsThere(t *testing.T) {
 	t.Parallel()
 
@@ -270,8 +263,6 @@ func TestTheChecksOfAnInstanceNameWhatQuiKeepsThere(t *testing.T) {
 	require.False(t, isHeld("aaaa"), "the claim holds the torrent on the source only")
 }
 
-// The Transfer saves its progress while it runs: the state, the steps and the
-// log, the failure, and the Proven pieces of each member.
 func TestSaveKeepsTheProgressPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -313,11 +304,6 @@ func normalizeSteps(steps []transfer.Step) []transfer.Step {
 	return steps
 }
 
-// regression: #4242
-// The cleanup of old rows keeps a permanent failure that still holds a rule
-// off. Without the row, the rule would start the Transfer again after 30
-// days, with no action of the user. The row goes once a later Transfer of
-// each of its torrents exists.
 func TestTheCleanupKeepsAPermanentFailureThatWaitsForTheUserPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -360,8 +346,6 @@ func TestTheCleanupKeepsAPermanentFailureThatWaitsForTheUserPostgresIntegration(
 	})
 }
 
-// Only the last Transfer of a torrent counts: a permanent failure waits for
-// the user until a later Transfer of the torrent ends.
 func TestTheLastPermanentFailureWaitsForTheUserPostgresIntegration(t *testing.T) {
 	t.Parallel()
 

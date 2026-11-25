@@ -25,11 +25,6 @@ function query(state: Partial<Query> = {}): Query {
   return { isLoading: false, isLoadingError: false, error: null, refetch: vi.fn(), ...state }
 }
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 describe("Section", () => {
   it("holds the content and Save back while a query loads for the first time", () => {
@@ -60,7 +55,6 @@ describe("Section", () => {
     expect(failed.refetch).toHaveBeenCalledOnce()
   })
 
-  // regression: #4233
   it("saves on its submit button and not on a copy button in its facts", () => {
     const onSubmit = vi.fn()
     render(

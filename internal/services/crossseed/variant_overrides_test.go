@@ -111,28 +111,25 @@ func TestReleasesMatch_IMAXVsHybridMismatch(t *testing.T) {
 func TestReleasesMatch_REPACKAllowedForSeasonPacks(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
-	// Season pack without REPACK
 	seasonPack := rls.Release{
 		Title:      "The Show",
 		Series:     1,
-		Episode:    0, // Season pack
+		Episode:    0,
 		Source:     "BLURAY",
 		Resolution: "1080P",
 		Group:      "GROUP",
 	}
 
-	// Season pack with REPACK (might have REPACK of just one episode)
 	seasonPackRepack := rls.Release{
 		Title:      "The Show",
 		Series:     1,
-		Episode:    0, // Season pack
+		Episode:    0,
 		Source:     "BLURAY",
 		Resolution: "1080P",
 		Group:      "GROUP",
 		Other:      []string{"REPACK"},
 	}
 
-	// Season packs should be allowed to cross-seed even with REPACK mismatch
 	require.True(t, s.strictCompare(&seasonPack, &seasonPackRepack, false).matched(),
 		"season pack should match REPACK season pack")
 	require.True(t, s.strictCompare(&seasonPackRepack, &seasonPack, false).matched(),
@@ -142,7 +139,6 @@ func TestReleasesMatch_REPACKAllowedForSeasonPacks(t *testing.T) {
 func TestReleasesMatch_REPACKBlockedForEpisodes(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
-	// Individual episode without REPACK
 	episode := rls.Release{
 		Title:      "The Show",
 		Series:     1,
@@ -152,7 +148,6 @@ func TestReleasesMatch_REPACKBlockedForEpisodes(t *testing.T) {
 		Group:      "GROUP",
 	}
 
-	// Individual episode with REPACK
 	episodeRepack := rls.Release{
 		Title:      "The Show",
 		Series:     1,
@@ -163,13 +158,11 @@ func TestReleasesMatch_REPACKBlockedForEpisodes(t *testing.T) {
 		Other:      []string{"REPACK"},
 	}
 
-	// Episodes must match REPACK status exactly
 	require.False(t, s.strictCompare(&episode, &episodeRepack, false).matched(),
 		"vanilla episode should NOT match REPACK episode")
 	require.False(t, s.strictCompare(&episodeRepack, &episode, false).matched(),
 		"REPACK episode should NOT match vanilla episode")
 
-	// Same REPACK status should match
 	require.True(t, s.strictCompare(&episodeRepack, &episodeRepack, false).matched(),
 		"REPACK episodes should match each other")
 }
@@ -194,7 +187,6 @@ func TestReleasesMatch_PROPERBlockedForMovies(t *testing.T) {
 		Other:      []string{"PROPER"},
 	}
 
-	// Movies must match PROPER status exactly
 	require.False(t, s.strictCompare(&movie, &movieProper, false).matched(),
 		"vanilla movie should NOT match PROPER movie")
 	require.False(t, s.strictCompare(&movieProper, &movie, false).matched(),
@@ -213,7 +205,6 @@ func TestVariantMismatchReasonIsDeterministic(t *testing.T) {
 func TestReleasesMatch_IMAXBlockedEvenForSeasonPacks(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
-	// Season pack without IMAX
 	seasonPack := rls.Release{
 		Title:      "The Show",
 		Series:     1,
@@ -223,7 +214,6 @@ func TestReleasesMatch_IMAXBlockedEvenForSeasonPacks(t *testing.T) {
 		Group:      "GROUP",
 	}
 
-	// Season pack with IMAX
 	seasonPackIMAX := rls.Release{
 		Title:      "The Show",
 		Series:     1,
@@ -234,7 +224,6 @@ func TestReleasesMatch_IMAXBlockedEvenForSeasonPacks(t *testing.T) {
 		Collection: "IMAX",
 	}
 
-	// IMAX must ALWAYS match, even for season packs (different video master)
 	require.False(t, s.strictCompare(&seasonPack, &seasonPackIMAX, false).matched(),
 		"vanilla season pack should NOT match IMAX season pack")
 	require.False(t, s.strictCompare(&seasonPackIMAX, &seasonPack, false).matched(),

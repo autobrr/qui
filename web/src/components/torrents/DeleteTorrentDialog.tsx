@@ -27,7 +27,6 @@ import { AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 
-// From this many torrents, the dialog names a few of them and the button shows the count.
 const LARGE_DELETE = 10
 
 interface DeleteTorrentDialogProps {
@@ -46,11 +45,9 @@ interface DeleteTorrentDialogProps {
   blockCrossSeeds: boolean
   onBlockCrossSeedsChange: (checked: boolean) => void
   crossSeedWarning?: CrossSeedWarningResult | null
-  // The confirm button closes the dialog, unless the handler calls preventDefault on the event.
   onConfirm: (event: MouseEvent<HTMLButtonElement>) => void
   isPending?: boolean
   isAllSelected?: boolean
-  // Loaded torrents that the delete reaches. In select all mode, the others are not loaded in the table.
   previewTorrents?: Torrent[]
 }
 
@@ -77,7 +74,6 @@ export function DeleteTorrentDialog({
 }: DeleteTorrentDialogProps) {
   const { t } = useTranslation("torrents")
   const [incognitoMode] = useIncognitoMode()
-  // Include cross-seeds in the displayed count when selected
   const crossSeedCount = deleteCrossSeeds ? (crossSeedWarning?.affectedTorrents.length ?? 0) : 0
   const displayCount = count + crossSeedCount
   const isLarge = isAllSelected || displayCount >= LARGE_DELETE
@@ -99,7 +95,6 @@ export function DeleteTorrentDialog({
     </>
   )
   const confirmLabel = isLarge ? t("deleteDialog.deleteCount", { count: displayCount }) : t("deleteDialog.delete")
-  // A delete that started cannot stop, so the dialog stays open until it ends.
   const changeOpen = (next: boolean) => isPending || onOpenChange(next)
   const body = (
     <>

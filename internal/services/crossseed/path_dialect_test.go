@@ -22,19 +22,15 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// slashBackend is a remote as cross-seed sees it on any host: the slash
-// dialect over an in-memory tree. On a Windows host a host filepath call shows
-// up as a backslashed path or as a path the tree does not hold. The nil
-// embedded Backend makes any call the test does not fake panic.
 type slashBackend struct {
 	fsops.Backend
 	files   map[string]hardlink.FileID
 	dirs    map[string]struct{}
-	devices []string // SameFilesystem is true for two paths under one of these
+	devices []string
 	stats   []string
 	plans   []hardlinktree.TreePlan
-	removed int   // RemoveTree calls
-	size    int64 // file size Lstat reports, 5 when unset
+	removed int
+	size    int64
 }
 
 func newSlashBackend(devices []string, files ...string) *slashBackend {
@@ -51,7 +47,6 @@ func newSlashBackend(devices []string, files ...string) *slashBackend {
 	return b
 }
 
-// testFileID builds a distinct nonzero FileID for file n.
 func testFileID(n uint64) hardlink.FileID {
 	return hardlink.UnixFileID(1, n)
 }
@@ -129,14 +124,10 @@ func (b *slashBackend) Mkdir(_ context.Context, p string, _ fs.FileMode) error {
 
 func slashBackendService(instance *models.Instance, backend fsops.Backend) *Service {
 	s := &Service{instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}}}
-	// The pool hands a local-mode instance its local backend, so Require(Write)
-	// passes and the fake stands in for the remote.
 	s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 	return s
 }
 
-// On a Windows host link mode built every target with host filepath, so a
-// remote's path.Dir of it was "." and the link failed.
 func TestPathDialect_LinkModePlan(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -144,9 +135,9 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 		baseDir      string
 		savePath     string
 		file         string
-		existing     string // a folder another torrent already holds
+		existing     string
 		wantRoot     string
-		wantCategory string // "" skips it: pathcmp keys rewrite "\" on every host
+		wantCategory string
 	}{
 		{
 			name: "by-tracker", preset: "by-tracker", baseDir: "/data/hl", savePath: "/data/torrents",
@@ -169,13 +160,10 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 			file: "Movie/movie.mkv", wantRoot: "/data/hl/Tracker", wantCategory: "/data/hl/tracker",
 		},
 		{
-			// The category path is the preset folder, without the isolation folder.
 			name: "by-tracker isolation folder", preset: "by-tracker", baseDir: "/data/hl", savePath: "/data/torrents",
 			file: "movie.mkv", wantRoot: "/data/hl/Tracker/TorrentName", wantCategory: "/data/hl/tracker",
 		},
 		{
-			// Host Clean on Windows splits a remote "a\b" name into two segments,
-			// which ranks the wrong base dir first.
 			name: "base dirs ranked by slash segments", preset: "flat", baseDir: `/data/a/b/links,/data/a\b/links`, savePath: `/data/a\b/x`,
 			file: "file.mkv", wantRoot: `/data/a\b/links/TorrentName`,
 		},
@@ -225,8 +213,6 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 	}
 }
 
-// Host IsAbs on Windows rejects "/data/tv", which read as "not linked" with no
-// error.
 func TestPathDialect_ForEachLocalFileIDOnSlashSavePath(t *testing.T) {
 	t.Parallel()
 
@@ -246,8 +232,6 @@ func TestPathDialect_ForEachLocalFileIDOnSlashSavePath(t *testing.T) {
 	require.ErrorContains(t, err, "cannot be resolved under the save path")
 }
 
-// batchSlashBackend is a slashBackend that also lstats in batches, the way
-// the remote backend does on the exec tier.
 type batchSlashBackend struct {
 	*slashBackend
 	batches [][]string
@@ -263,8 +247,6 @@ func (b *batchSlashBackend) LstatBatch(ctx context.Context, paths []string) ([]*
 	return infos, errs
 }
 
-// StatBatch makes this a fsops.BatchStater. Cross-seed never stats with
-// links followed, so a call fails the test.
 func (b *batchSlashBackend) StatBatch(context.Context, []string) ([]*fsops.LstatInfo, []error) {
 	panic("cross-seed does not use StatBatch")
 }
@@ -305,8 +287,6 @@ func TestPathDialect_ManualMatchPreview(t *testing.T) {
 	require.Equal(t, "/links/tracker.example", got)
 }
 
-// A routed Manual match shows where the Cross-seed instance sees the tree,
-// and the by-instance folder names the Cross-seed instance.
 func TestPathDialect_ManualMatchPreviewMapsTheRoute(t *testing.T) {
 	t.Parallel()
 
@@ -329,8 +309,6 @@ func TestPathDialect_ManualMatchPreviewMapsTheRoute(t *testing.T) {
 	require.Equal(t, "/seeds-data/seeds", got)
 }
 
-// Host Dir on Windows walks `\data\hl`, `\data`, `\` and never finds the
-// remote's "/data/hl".
 func TestPathDialect_SelectSeasonPackBaseDirWalksSlashParents(t *testing.T) {
 	t.Parallel()
 
@@ -345,8 +323,6 @@ func TestPathDialect_SelectSeasonPackBaseDirWalksSlashParents(t *testing.T) {
 	require.Contains(t, backend.stats, "/data/hl")
 }
 
-// Season pack base dirs follow rankBaseDirs like single cross-seeds (#3156): a
-// missing dir listed first no longer wins over one nearer the sources.
 func TestSelectSeasonPackBaseDir_RanksBySharedPrefix(t *testing.T) {
 	t.Parallel()
 
@@ -362,16 +338,14 @@ func TestSelectSeasonPackBaseDir_RanksBySharedPrefix(t *testing.T) {
 	require.Equal(t, []string{"/data/hl/new", "/mnt/hl"}, rest)
 }
 
-// A cross-device error in one base dir rolls back and retries in the next ranked
-// one on the sources' filesystem; any other link error fails at once (#3156).
 func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testing.T) {
 	tests := []struct {
 		name        string
 		firstErr    error
 		manual      bool
-		oldPackDir  bool // the first pack dir already holds files
-		allFail     bool // every base dir fails with firstErr
-		fails       int  // base dirs that fail with firstErr before one succeeds; 0 means 1
+		oldPackDir  bool
+		allFail     bool
+		fails       int
 		baseDirs    string
 		wantApplied bool
 		wantRoots   []string
@@ -403,7 +377,6 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 				sources = append(sources, source)
 				torrents = append(torrents, qbt.Torrent{Hash: hashes[i], Name: strings.TrimSuffix(fileName, path.Ext(fileName)), ContentPath: source, Progress: 1.0})
 			}
-			// /data/usb is another disk, so the retry skips it.
 			backend := newSlashBackend([]string{"/data/usb", "/data"}, sources...)
 			backend.dirs["/data/tv/hl"] = struct{}{}
 			backend.dirs["/data/usb/hl"] = struct{}{}
@@ -425,7 +398,6 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 					if len(roots) <= max(tt.fails, 1) || tt.allFail {
 						failed++
 						if tt.oldPackDir {
-							// Files from before this run keep the pack dir after the rollback.
 							for dir := path.Dir(plan.Files[0].TargetPath); dir != plan.RootDir; dir = path.Dir(dir) {
 								backend.dirs[dir] = struct{}{}
 							}
@@ -440,7 +412,6 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
 
 			if tt.manual {
-				// Manual assembly stats each source, so report the torrent's size.
 				backend.size = baseSM.files["e01"][0].Size
 				resp, err := s.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{
 					InstanceID: inst.ID, TorrentData: fix.torrentData, TargetHashes: hashes,
@@ -471,19 +442,15 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 	}
 }
 
-// On a Windows host the season pack resolved remote sources as `\data\tv\...`,
-// which the remote does not hold, so the apply failed as layout_mismatch.
 func TestPathDialect_SeasonPackPlan(t *testing.T) {
 	tests := []struct {
 		name     string
 		preset   string
 		baseDir  string
-		wantRoot string // also the add's savepath; "" skips both
-		wantDir  string // where the pack folder lands
+		wantRoot string
+		wantDir  string
 	}{
 		{name: "by-tracker", preset: "by-tracker", baseDir: "/data/hl", wantRoot: "/data/hl/tracker.example.com", wantDir: "/data/hl/tracker.example.com"},
-		// A flat RootDir passes the configured base dir through as given, so
-		// the row pins only the targets.
 		{name: "flat double slash", preset: "flat", baseDir: "//data/hl", wantDir: "/data/hl"},
 	}
 	for _, tt := range tests {

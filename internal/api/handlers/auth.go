@@ -35,19 +35,13 @@ type AuthHandler struct {
 	clientPool     *qbittorrent.ClientPool
 	syncManager    *qbittorrent.SyncManager
 	loginLimiter   *rate.Limiter
-	// loginMu serialises password checks so parallel guesses cannot all pass the
-	// limiter before any of them consumes a token.
-	loginMu sync.Mutex
+	loginMu        sync.Mutex
 }
 
-// newLoginLimiter allows five failed password logins per minute, process-wide:
-// qui has one user, so a per-IP limiter would only let an attacker rotate addresses.
 func newLoginLimiter() *rate.Limiter {
 	return rate.NewLimiter(rate.Every(time.Minute/5), 5)
 }
 
-// requireJSON rejects credential posts that do not declare a JSON body. A
-// browser form can post text/plain cross-site without a preflight; JSON cannot.
 func requireJSON(w http.ResponseWriter, r *http.Request) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -59,8 +53,6 @@ func requireJSON(w http.ResponseWriter, r *http.Request) bool {
 
 func renewSessionToken(ctx context.Context, sessionManager *scs.SessionManager) error {
 	if err := sessionManager.RenewToken(ctx); err != nil {
-		// Clear marks the old session for saving without authentication, even
-		// when the store cannot delete it. LoadAndSave handles save errors.
 		return errors.Join(err, sessionManager.Clear(ctx))
 	}
 	return nil
@@ -83,7 +75,6 @@ func NewAuthHandler(
 		loginLimiter:   newLoginLimiter(),
 	}
 
-	// Initialize OIDC handler if enabled
 	if config.OIDCEnabled {
 		oidcHandler, err := NewOIDCHandler(config, sessionManager)
 		if err != nil {
@@ -95,13 +86,10 @@ func NewAuthHandler(
 	return h, nil
 }
 
-// GetOIDCHandler returns the OIDC handler if configured
 func (h *AuthHandler) GetOIDCHandler() *OIDCHandler {
 	return h.oidcHandler
 }
 
-// rejectIfAuthDisabled returns true (and writes a 403 response) when
-// authentication is disabled, signalling the caller to return early.
 func (h *AuthHandler) rejectIfAuthDisabled(w http.ResponseWriter) bool {
 	if h.config != nil && h.config.Live().IsAuthDisabled() {
 		RespondError(w, http.StatusForbidden, "Endpoint disabled when authentication is disabled")
@@ -110,26 +98,58 @@ func (h *AuthHandler) rejectIfAuthDisabled(w http.ResponseWriter) bool {
 	return false
 }
 
-// SetupRequest represents the initial setup request
 type SetupRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// LoginRequest represents a login request
 type LoginRequest struct {
 	Username   string `json:"username"`
 	Password   string `json:"password"`
 	RememberMe bool   `json:"remember_me"`
 }
 
-// ChangePasswordRequest represents a password change request
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword"`
 	NewPassword     string `json:"newPassword"`
 }
 
-// Setup handles initial user setup
+type sessionUser struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+}
+
+type sessionStartedReply struct {
+	Message string      `json:"message"`
+	User    sessionUser `json:"user"`
+}
+
+type currentUserReply struct {
+	ID         int    `json:"id,omitzero"`
+	Username   string `json:"username"`
+	AuthMethod string `json:"auth_method,omitempty"`
+}
+
+type validateReply struct {
+	Username       string `json:"username"`
+	AuthMethod     string `json:"auth_method"`
+	ProfilePicture string `json:"profile_picture"`
+}
+
+type setupRequiredReply struct {
+	SetupRequired bool `json:"setupRequired"`
+}
+
+type createdAPIKeyReply struct {
+	ID          int                 `json:"id"`
+	Name        string              `json:"name"`
+	Key         string              `json:"key"`
+	CreatedAt   time.Time           `json:"createdAt"`
+	Permissions []models.Permission `json:"permissions"`
+	InstanceIDs []int               `json:"instanceIds"`
+	Message     string              `json:"message"`
+}
+
 func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
 		return
@@ -144,7 +164,6 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if setup is already complete
 	complete, err := h.authService.IsSetupComplete(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check setup status")
@@ -163,13 +182,11 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate input
 	if req.Username == "" || req.Password == "" {
 		RespondError(w, http.StatusBadRequest, "Username and password are required")
 		return
 	}
 
-	// Create user
 	user, err := h.authService.SetupUser(r.Context(), req.Username, req.Password)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create user")
@@ -177,8 +194,6 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session using SCS
-	// Renew token to prevent session fixation attacks
 	if err := renewSessionToken(r.Context(), h.sessionManager); err != nil {
 		log.Error().Err(err).Msg("Failed to renew session token")
 		RespondError(w, http.StatusInternalServerError, "Failed to create session")
@@ -189,16 +204,12 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Put(r.Context(), "user_id", user.ID)
 	h.sessionManager.Put(r.Context(), "username", user.Username)
 
-	RespondJSON(w, http.StatusCreated, map[string]any{
-		"message": "Setup completed successfully",
-		"user": map[string]any{
-			"id":       user.ID,
-			"username": user.Username,
-		},
+	RespondJSON(w, http.StatusCreated, sessionStartedReply{
+		Message: "Setup completed successfully",
+		User:    sessionUser{ID: user.ID, Username: user.Username},
 	})
 }
 
-// warmSession prefetches data to improve perceived performance after login
 func (h *AuthHandler) warmSession(ctx context.Context) {
 	instances, err := h.instanceStore.List(ctx)
 	if err != nil {
@@ -223,11 +234,9 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 		return
 	}
 
-	// Warm instance connections concurrently
 	for _, instance := range activeInstances {
 		inst := instance
 		go func(inst *models.Instance) {
-			// Derive context from parent to respect cancellation
 			warmCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			defer cancel()
 
@@ -248,7 +257,6 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 		}(inst)
 	}
 
-	// Prefetch torrent data for the first active instance
 	targetInstance := activeInstances[0]
 
 	go func() {
@@ -278,8 +286,6 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 
 var errTooManyLogins = errors.New("too many failed login attempts")
 
-// checkPassword runs one password check at a time. Only a failed check
-// consumes a limiter token.
 func (h *AuthHandler) checkPassword(ctx context.Context, username, password string) (*models.User, error) {
 	h.loginMu.Lock()
 	defer h.loginMu.Unlock()
@@ -294,7 +300,6 @@ func (h *AuthHandler) checkPassword(ctx context.Context, username, password stri
 	return user, err
 }
 
-// Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
 		return
@@ -329,8 +334,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session using SCS
-	// Renew token to prevent session fixation attacks
 	if err := renewSessionToken(r.Context(), h.sessionManager); err != nil {
 		log.Error().Err(err).Msg("Failed to renew session token")
 		RespondError(w, http.StatusInternalServerError, "Failed to create session")
@@ -342,29 +345,21 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Put(r.Context(), "username", user.Username)
 	h.sessionManager.Put(r.Context(), "auth_method", "password")
 
-	// Handle remember_me functionality
 	h.sessionManager.RememberMe(r.Context(), req.RememberMe)
 
-	// Warm the session by prefetching data in the background
-	// Use a detached context since this should continue even after the HTTP request completes
 	go h.warmSession(context.Background()) //nolint:gosec // G118: session warm-up must outlive the login request
 
-	RespondJSON(w, http.StatusOK, map[string]any{
-		"message": "Login successful",
-		"user": map[string]any{
-			"id":       user.ID,
-			"username": user.Username,
-		},
+	RespondJSON(w, http.StatusOK, sessionStartedReply{
+		Message: "Login successful",
+		User:    sessionUser{ID: user.ID, Username: user.Username},
 	})
 }
 
-// Logout handles user logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
 		return
 	}
 
-	// Destroy the session
 	if err := h.sessionManager.Destroy(r.Context()); err != nil {
 		log.Error().Err(err).Msg("Failed to destroy session")
 		RespondError(w, http.StatusInternalServerError, "Failed to logout")
@@ -376,22 +371,16 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func syntheticAdminResponse() map[string]any {
-	return map[string]any{
-		"username":    "admin",
-		"auth_method": "none",
-	}
+func syntheticAdminResponse() currentUserReply {
+	return currentUserReply{Username: "admin", AuthMethod: "none"}
 }
 
-// GetCurrentUser returns the current user information
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	// When auth is disabled, return a synthetic user
 	if h.config != nil && h.config.Live().IsAuthDisabled() {
 		RespondJSON(w, http.StatusOK, syntheticAdminResponse())
 		return
 	}
 
-	// Check if the session is authenticated (works for both regular and OIDC auth)
 	authenticated := h.sessionManager.GetBool(r.Context(), "authenticated")
 	if !authenticated {
 		RespondError(w, http.StatusUnauthorized, "Not authenticated")
@@ -404,28 +393,16 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For OIDC users, we might not have a user_id
 	userID := h.sessionManager.GetInt(r.Context(), "user_id")
 	authMethod := h.sessionManager.GetString(r.Context(), "auth_method")
 
-	response := map[string]any{
-		"username": username,
-	}
-
-	// Only include ID if it exists (for built-in auth users)
-	if userID != 0 {
-		response["id"] = userID
-	}
-
-	// Include auth method if available
-	if authMethod != "" {
-		response["auth_method"] = authMethod
-	}
-
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, http.StatusOK, currentUserReply{
+		ID:         userID,
+		Username:   username,
+		AuthMethod: authMethod,
+	})
 }
 
-// Validate checks if the user has a valid session (used for OIDC callback)
 func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	if h.config != nil && h.config.Live().IsAuthDisabled() {
 		RespondJSON(w, http.StatusOK, syntheticAdminResponse())
@@ -442,19 +419,16 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	authMethod := h.sessionManager.GetString(r.Context(), "auth_method")
 	profilePicture := h.sessionManager.GetString(r.Context(), "profile_picture")
 
-	RespondJSON(w, http.StatusOK, map[string]any{
-		"username":        username,
-		"auth_method":     authMethod,
-		"profile_picture": profilePicture,
+	RespondJSON(w, http.StatusOK, validateReply{
+		Username:       username,
+		AuthMethod:     authMethod,
+		ProfilePicture: profilePicture,
 	})
 }
 
-// CheckSetupRequired checks if initial setup is required
 func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request) {
 	if h.config != nil && (h.config.Live().IsAuthDisabled() || h.config.Live().OIDCEnabled) {
-		RespondJSON(w, http.StatusOK, map[string]any{
-			"setupRequired": false,
-		})
+		RespondJSON(w, http.StatusOK, setupRequiredReply{SetupRequired: false})
 		return
 	}
 
@@ -465,12 +439,9 @@ func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]any{
-		"setupRequired": !complete,
-	})
+	RespondJSON(w, http.StatusOK, setupRequiredReply{SetupRequired: !complete})
 }
 
-// ChangePassword handles password change requests
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
 		return
@@ -482,7 +453,6 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Change password
 	if err := h.authService.ChangePassword(r.Context(), req.CurrentPassword, req.NewPassword); err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			RespondError(w, http.StatusUnauthorized, "Invalid current password")
@@ -493,8 +463,6 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A stolen or forgotten session must not outlive the password it was
-	// created with. Every stored session goes, then the caller's own cookie.
 	err := h.sessionManager.Iterate(r.Context(), func(ctx context.Context) error {
 		return h.sessionManager.Destroy(ctx)
 	})
@@ -512,9 +480,6 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// API Key Management
-
-// APIKeyRequest is the body of the create and update API key routes.
 type APIKeyRequest struct {
 	Name        string              `json:"name"`
 	Permissions []models.Permission `json:"permissions"`
@@ -534,9 +499,6 @@ func (req *APIKeyRequest) validate() string {
 	return ""
 }
 
-// refuseUnknownLimitInstance refuses an Instance limit that names an id that
-// is not an instance, so a new instance cannot join a limit. An edit keeps the
-// ids that the key holds, so a deleted instance stays in the limit.
 func (h *AuthHandler) refuseUnknownLimitInstance(w http.ResponseWriter, r *http.Request, keyID int, limit []int) bool {
 	if len(limit) == 0 {
 		return false
@@ -567,7 +529,6 @@ func (h *AuthHandler) refuseUnknownLimitInstance(w http.ResponseWriter, r *http.
 	return false
 }
 
-// CreateAPIKey creates a new API key
 func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
 		return
@@ -594,14 +555,14 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]any{
-		"id":          apiKey.ID,
-		"name":        apiKey.Name,
-		"key":         rawKey, // Only shown once
-		"createdAt":   apiKey.CreatedAt,
-		"permissions": apiKey.Permissions,
-		"instanceIds": apiKey.InstanceIDs,
-		"message":     "Save this key securely - it will not be shown again",
+	RespondJSON(w, http.StatusCreated, createdAPIKeyReply{
+		ID:          apiKey.ID,
+		Name:        apiKey.Name,
+		Key:         rawKey,
+		CreatedAt:   apiKey.CreatedAt,
+		Permissions: apiKey.Permissions,
+		InstanceIDs: apiKey.InstanceIDs,
+		Message:     "Save this key securely - it will not be shown again",
 	})
 }
 
@@ -643,7 +604,6 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, apiKey)
 }
 
-// ListAPIKeys returns all API keys
 func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
 		return
@@ -659,13 +619,11 @@ func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, keys)
 }
 
-// DeleteAPIKey deletes an API key
 func (h *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
 		return
 	}
 
-	// Get API key ID from URL parameter
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
 		RespondError(w, http.StatusBadRequest, "API key ID is required")

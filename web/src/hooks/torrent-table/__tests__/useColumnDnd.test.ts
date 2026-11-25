@@ -51,13 +51,11 @@ describe("useColumnDnd", () => {
     })
     const onDragEnd = result.current.onDragEnd
 
-    // A new column "c" becomes visible in the table on a later render.
     rerender(params({ instanceId: 4, defaultColumnOrder: ["a", "b"], getLeafColumnIds: () => ["a", "b", "c"] }))
-    expect(result.current.onDragEnd).toBe(onDragEnd) // handler identity stays stable
+    expect(result.current.onDragEnd).toBe(onDragEnd)
 
     act(() => result.current.onDragEnd(dragEvent("c", "a")))
 
-    // "c" is known only via the latest leaf ids; it is normalized in and moved to a's slot.
     expect(result.current.columnOrder).toEqual(["c", "a", "b"])
   })
 })

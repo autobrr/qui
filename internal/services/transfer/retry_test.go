@@ -22,8 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
-// holdFirstRetryWrite holds the first write of retry_at, before it reaches
-// the database, until release closes.
 type holdFirstRetryWrite struct {
 	dbinterface.Querier
 	first   *atomic.Bool
@@ -39,10 +37,6 @@ func (h holdFirstRetryWrite) ExecContext(ctx context.Context, query string, args
 	return h.Querier.ExecContext(ctx, query, args...)
 }
 
-// regression: #4242
-// Retry runs a Transfer that waits for its retry at once, as the same
-// Transfer. When two Retries come at once, the one that writes last keeps the
-// steps that the running Transfer saved.
 func TestRetryRunsATemporaryFailureNow(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -80,8 +74,6 @@ func TestRetryRunsATemporaryFailureNow(t *testing.T) {
 	require.False(t, r.src.Has(s.hash))
 }
 
-// Retry starts a failed Export run again as a new Export run of the same
-// rule.
 func TestRetryStartsAFailedExportAgain(t *testing.T) {
 	r := newRig(t, exportPolls)
 	s := newShow(t, showName)
@@ -90,7 +82,6 @@ func TestRetryStartsAFailedExportAgain(t *testing.T) {
 	failed, res := r.export(r.exportRequest(s))
 	require.NotEmpty(t, res.Failure)
 	write(t, filepath.Join(r.dstDir, showName), s.files)
-	// The Retry reads the target fresh, as the sync of qui does by then.
 	require.False(t, r.seeding(r.target.ID, s.hash))
 
 	id, err := r.svc.Retry(t.Context(), failed.ID)
@@ -105,8 +96,6 @@ func TestRetryStartsAFailedExportAgain(t *testing.T) {
 	require.True(t, r.seeding(r.target.ID, s.hash))
 }
 
-// Cancel ends an Export run before its add. The rule gets the cancel as the
-// result.
 func TestCancelEndsAnExportRun(t *testing.T) {
 	r := newRig(t, exportPolls)
 	hold := newHoldAt(r.db, "add")
@@ -133,8 +122,6 @@ func TestCancelEndsAnExportRun(t *testing.T) {
 	require.True(t, r.src.Has(s.hash))
 }
 
-// stopWrites refuses each write once stopped is set, as a qui that stopped
-// writes nothing more.
 type stopWrites struct {
 	dbinterface.Querier
 	stopped *atomic.Bool
@@ -154,11 +141,6 @@ func (s stopWrites) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterfa
 	return s.Querier.BeginTx(ctx, opts)
 }
 
-// regression: #4242
-// Cancel ends an Export run while it waits for the target to list the torrent
-// that it added: the torrent comes off the target, and its files stay there.
-// The rule gets the cancel as the result. When qui stops right after the
-// removal, the run ends as cancelled after the restart and adds nothing.
 func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.ExportPolls, c.ExportPollInterval = 2, time.Hour })
 	var stopped atomic.Bool
@@ -167,8 +149,6 @@ func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
 	r.seed(s)
 	write(t, filepath.Join(r.dstDir, showName), s.files)
 	r.dst.ListAfterSyncs = 1
-	// Both hooks run under the lock of the stub, so polled closes at the
-	// first sync after the add.
 	added, polled := false, make(chan struct{})
 	r.dst.OnAdd = func(string) { added = true }
 	r.dst.OnSync = func() {
@@ -204,8 +184,6 @@ func TestCancelTakesTheTorrentOfAnExportRunOffTheTarget(t *testing.T) {
 	require.True(t, r.src.Has(s.hash))
 }
 
-// pauseRead holds the next read of the torrents of a Transfer, once armed,
-// until release closes.
 type pauseRead struct {
 	dbinterface.Querier
 	armed   *atomic.Bool
@@ -221,9 +199,6 @@ func (p pauseRead) QueryContext(ctx context.Context, query string, args ...any) 
 	return p.Querier.QueryContext(ctx, query, args...)
 }
 
-// regression: #4242
-// A cancel that read an Export run just before the run ended leaves the done
-// run as it is, with its torrent on the target.
 func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
 	r := newRig(t, exportPolls)
 	hold := newHoldAt(r.db, "added")
@@ -252,9 +227,6 @@ func TestCancelLeavesAnExportRunThatEndedMeanwhile(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
 }
 
-// regression: #4242
-// A cancel that read a Transfer just before the Transfer ended leaves the
-// done Transfer as it is, with its torrent on the target.
 func TestCancelLeavesATransferThatEndedMeanwhile(t *testing.T) {
 	r := newRig(t)
 	hold := newHoldAt(r.db, "added")
@@ -281,8 +253,6 @@ func TestCancelLeavesATransferThatEndedMeanwhile(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done Transfer stays on the target")
 }
 
-// holdCreate holds the first write of a Transfer after its commit, once
-// armed, until release closes.
 type holdCreate struct {
 	dbinterface.Querier
 	armed   *atomic.Bool
@@ -311,8 +281,6 @@ func (c heldCommit) Commit() error {
 	return err
 }
 
-// failTx refuses each transaction while failing is set: the record of the
-// end of a Transfer fails, and a save of its steps goes through.
 type failTx struct {
 	dbinterface.Querier
 	failing *atomic.Bool
@@ -325,10 +293,6 @@ func (f failTx) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.T
 	return f.Querier.BeginTx(ctx, opts)
 }
 
-// regression: #4242
-// A cancel that ends an Export run between its record and its start keeps
-// it cancelled: the run adds nothing to the target. When the cancel saved
-// its cleanup but could not record the end, the run finishes the cancel.
 func TestCancelBeforeAnExportRunStartsKeepsItCancelled(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -379,9 +343,6 @@ func TestCancelBeforeAnExportRunStartsKeepsItCancelled(t *testing.T) {
 	}
 }
 
-// regression: #4242
-// A cancel that comes while an Export run records its end leaves the run as
-// it ends, with its torrent on the target, and answers that the run ended.
 func TestCancelLeavesAnExportRunThatRecordsItsEnd(t *testing.T) {
 	r := newRig(t, exportPolls)
 	hold := newHoldAt(r.db, "done")
@@ -403,10 +364,6 @@ func TestCancelLeavesAnExportRunThatRecordsItsEnd(t *testing.T) {
 	require.True(t, r.dst.Has(s.hash), "the torrent of the done run stays on the target")
 }
 
-// Retry keeps the category, the tags, and the management mode of the torrent
-// on the target, also when the torrent of the request went to the Cross-seed
-// instance. A cancelled Transfer starts again as a new Transfer by the user,
-// with the same choices, and the old row stays.
 func TestRetryKeepsTheCategoryOfTheTarget(t *testing.T) {
 	r := newRig(t)
 	r.dst.AutoManagement = true
@@ -445,10 +402,6 @@ func TestRetryKeepsTheCategoryOfTheTarget(t *testing.T) {
 	require.Equal(t, transfer.StateCancelled, r.get(failed.ID).State, "the cancelled row stays")
 }
 
-// A Retry of a Transfer whose request named no save path names none either.
-// The new Transfer goes to the folder that the target has for the category by
-// then, also for a group that stays on manual management.
-// regression: #4242
 func TestRetryUsesTheFolderOfTheCategoryAgain(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

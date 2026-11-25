@@ -18,7 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
 
-// crossSeedRouteTimeout bounds the reads of the Cross-seed instance in one request.
 const crossSeedRouteTimeout = 15 * time.Second
 
 type crossSeedRouteRequest struct {
@@ -28,19 +27,15 @@ type crossSeedRouteRequest struct {
 
 type crossSeedRouteResponse struct {
 	*models.CrossSeedRoute
-	Rows []crossSeedRouteRowResponse `json:"rows"`
-	// BrokenRule is the route rule that the saved route breaks, empty when it passes.
-	BrokenRule string `json:"brokenRule,omitempty"`
+	Rows       []crossSeedRouteRowResponse `json:"rows"`
+	BrokenRule string                      `json:"brokenRule,omitempty"`
 }
 
 type crossSeedRouteRowResponse struct {
 	models.CrossSeedRouteRow
-	// RoutedTorrents is the number of the Cross-seed instance's torrents under
-	// the row, null when the Cross-seed instance is unavailable.
 	RoutedTorrents *int `json:"routedTorrents"`
 }
 
-// ListCrossSeedRoutes returns every route, so a client sees which instances route to which.
 func (h *CrossSeedHandler) ListCrossSeedRoutes(w http.ResponseWriter, r *http.Request) {
 	routes, err := h.routes.List(r.Context())
 	if err != nil {
@@ -51,7 +46,6 @@ func (h *CrossSeedHandler) ListCrossSeedRoutes(w http.ResponseWriter, r *http.Re
 	RespondJSON(w, http.StatusOK, routes)
 }
 
-// GetCrossSeedRoute returns the route of a Source instance with its rule status, or null.
 func (h *CrossSeedHandler) GetCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
 	instanceID, ok := h.routeInstance(w, r)
 	if !ok {
@@ -98,7 +92,6 @@ func (h *CrossSeedHandler) GetCrossSeedRoute(w http.ResponseWriter, r *http.Requ
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// SaveCrossSeedRoute saves the route of a Source instance after the route rules pass.
 func (h *CrossSeedHandler) SaveCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
 	instanceID, ok := h.routeInstance(w, r)
 	if !ok {
@@ -133,9 +126,6 @@ func (h *CrossSeedHandler) SaveCrossSeedRoute(w http.ResponseWriter, r *http.Req
 	RespondJSON(w, http.StatusOK, saved)
 }
 
-// TestCrossSeedRoute tests the rows of a route that is not saved yet: for each
-// base folder, it reports whether the Cross-seed instance sees a marker that
-// qui writes there.
 func (h *CrossSeedHandler) TestCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
 	instanceID, ok := h.routeInstance(w, r)
 	if !ok {
@@ -170,7 +160,6 @@ func (h *CrossSeedHandler) TestCrossSeedRoute(w http.ResponseWriter, r *http.Req
 	RespondJSON(w, http.StatusOK, result)
 }
 
-// ClearCrossSeedRoute removes the route of a Source instance.
 func (h *CrossSeedHandler) ClearCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
 	instanceID, ok := h.routeInstance(w, r)
 	if !ok {
@@ -184,7 +173,6 @@ func (h *CrossSeedHandler) ClearCrossSeedRoute(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// routeInstance reads the Source instance ID from the URL and answers 404 for an unknown instance.
 func (h *CrossSeedHandler) routeInstance(w http.ResponseWriter, r *http.Request) (int, bool) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil || instanceID <= 0 {

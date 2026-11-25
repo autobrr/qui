@@ -1,8 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package dirscan provides directory scanning functionality to find media files
-// and match them against Torznab indexers for cross-seeding.
 package dirscan
 
 import (
@@ -35,20 +33,14 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
-// Config holds configuration for the directory scanner service.
 type Config struct {
-	// SchedulerInterval is how often to check for scheduled scans.
 	SchedulerInterval time.Duration
 
-	// MaxJitter is the maximum random delay before starting a scheduled scan.
 	MaxJitter time.Duration
 
-	// MaxConcurrentRuns limits how many scans can run across all directories.
-	// This helps avoid stampeding indexers if multiple directories are due at once.
 	MaxConcurrentRuns int
 }
 
-// DefaultConfig returns the default configuration.
 func DefaultConfig() Config {
 	return Config{
 		SchedulerInterval: 1 * time.Minute,
@@ -57,7 +49,6 @@ func DefaultConfig() Config {
 	}
 }
 
-// triggeredByWebhook marks a webhook scan. Every other run is a full scan.
 const triggeredByWebhook = "webhook"
 
 type directoryMuKey struct {
@@ -65,61 +56,46 @@ type directoryMuKey struct {
 	webhook     bool
 }
 
-// Service handles directory scanning and torrent matching.
 type Service struct {
-	cfg            Config
-	store          *models.DirScanStore
-	crossSeedStore *models.CrossSeedStore
-	torrentFiles   torrentFilesReader
-	jackettService *jackett.Service
-	arrService     *arr.Service // ARR service for external ID lookup (optional)
-	// Optional store for tracker display-name resolution (shared with cross-seed).
+	cfg                       Config
+	store                     *models.DirScanStore
+	crossSeedStore            *models.CrossSeedStore
+	torrentFiles              torrentFilesReader
+	jackettService            *jackett.Service
+	arrService                *arr.Service
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	notifier                  notifications.Notifier
 	backendPool               *fsops.Pool
 	adder                     *crossseed.Adder
-	// transfers is nil until start-up sets it.
-	transfers transfers
+	transfers                 transfers
 
-	// Components for search/match/inject
 	parser   *Parser
 	searcher *Searcher
 	injector *Injector
 
-	// Per-directory mutexes: two full scans or two webhook scans of a directory
-	// do not overlap, but a webhook scan does not wait for a full scan.
 	directoryMu map[directoryMuKey]*sync.Mutex
-	mu          sync.Mutex // protects directoryMu map
+	mu          sync.Mutex
 
-	// In-memory cancel handles keyed by runID.
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
 
-	// Serializes run creation and CancelScan, so no run starts between the list and the
-	// cancel of Pause, and webhook merges create no duplicate follow-up runs.
 	runMu sync.Mutex
 
-	// In-memory progress snapshot keyed by runID (for live UI updates).
 	runProgress map[int64]*runProgress
 	progressMu  sync.Mutex
 
-	// Scheduler control
 	schedulerCtx    context.Context
 	schedulerCancel context.CancelFunc
 	schedulerWg     sync.WaitGroup
 
-	// Global run semaphore to cap concurrent full scans. Webhook scans do not
-	// take it, so an import is not stuck behind a long full scan.
 	runSem chan struct{}
 
-	// searchGate lets one item search at a time across runs.
 	searchGate searchGate
 
 	activityPublisher activity.Publisher
 	crossSeedRoutes   *crossseedroute.Service
 }
 
-// syncManagerTorrentChecker adapts SyncManager to the TorrentChecker interface.
 type syncManagerTorrentChecker struct{ sm *qbittorrent.SyncManager }
 
 func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
@@ -133,12 +109,8 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 	return torrent, exists, nil
 }
 
-// syncManagerTorrentFiles adds the first-sync check of the seeding index to
-// SyncManager.
 type syncManagerTorrentFiles struct{ *qbittorrent.SyncManager }
 
-// SeedingReady asks for a sync when the instance has none yet, because a
-// failed first sync is not retried until something else asks for one.
 func (f syncManagerTorrentFiles) SeedingReady(ctx context.Context, instanceID int) error {
 	client, err := f.GetClient(ctx, instanceID)
 	if err != nil {
@@ -151,15 +123,14 @@ func (f syncManagerTorrentFiles) SeedingReady(ctx context.Context, instanceID in
 	return nil
 }
 
-// NewService creates a new directory scanner service.
 func NewService(
 	cfg Config,
 	store *models.DirScanStore,
 	crossSeedStore *models.CrossSeedStore,
 	syncManager *qbittorrent.SyncManager,
 	jackettService *jackett.Service,
-	arrService *arr.Service, // optional, for external ID lookup
-	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
+	arrService *arr.Service,
+	trackerCustomizationStore *models.TrackerCustomizationStore,
 	notifier notifications.Notifier,
 	backendPool *fsops.Pool,
 	adder *crossseed.Adder,
@@ -174,8 +145,7 @@ func NewService(
 		cfg.MaxConcurrentRuns = DefaultConfig().MaxConcurrentRuns
 	}
 
-	// Initialize components
-	parser := NewParser(nil) // nil uses default normalizer
+	parser := NewParser(nil)
 	searcher := NewSearcher(jackettService, parser)
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
 	injector := NewInjector(jackettService, crossseed.NewAligner(syncManager), adder, torrentChecker, trackerCustomizationStore, backendPool)
@@ -202,9 +172,6 @@ func NewService(
 	}
 }
 
-// SetActivityPublisher wires the qui server-event hub so directory-scan run
-// transitions are pushed to connected clients instead of polled. Safe to call
-// once at startup.
 func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 	if s == nil || publisher == nil {
 		return
@@ -212,15 +179,10 @@ func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
 	s.activityPublisher = publisher
 }
 
-// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035). Safe to call once at startup.
 func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
 	s.crossSeedRoutes = routes
 }
 
-// emitRunActivity signals connected clients that a directory's scan-run state
-// changed so they refetch. The frontend keys these queries by directory id, so
-// ResourceID is always the directory id. Must be called after any state
-// transition completes and after releasing locks.
 func (s *Service) emitRunActivity(directoryID, instanceID int) {
 	if s == nil || s.activityPublisher == nil || directoryID <= 0 {
 		return
@@ -232,9 +194,6 @@ func (s *Service) emitRunActivity(directoryID, instanceID int) {
 	})
 }
 
-// emitRunActivityForRun resolves the owning directory for a run and emits a
-// scan-run activity event. Used by terminal-state helpers where only the run id
-// is in scope.
 func (s *Service) emitRunActivityForRun(ctx context.Context, runID int64, instanceID int) {
 	if s == nil || s.activityPublisher == nil || s.store == nil || runID <= 0 {
 		return
@@ -249,7 +208,6 @@ func (s *Service) emitRunActivityForRun(ctx context.Context, runID int64, instan
 	s.emitRunActivity(run.DirectoryID, instanceID)
 }
 
-// Start starts the scheduler loop.
 func (s *Service) Start(ctx context.Context) error {
 	if err := s.recoverStuckRuns(); err != nil {
 		log.Error().Err(err).Msg("dirscan: failed to recover stuck runs")
@@ -265,7 +223,6 @@ func (s *Service) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops the scheduler and waits for completion.
 func (s *Service) Stop() {
 	if s.schedulerCancel != nil {
 		s.schedulerCancel()
@@ -274,7 +231,6 @@ func (s *Service) Stop() {
 	log.Info().Msg("dirscan: scheduler stopped")
 }
 
-// runScheduler periodically checks for directories due for scanning.
 func (s *Service) runScheduler() {
 	defer s.schedulerWg.Done()
 
@@ -291,7 +247,6 @@ func (s *Service) runScheduler() {
 	}
 }
 
-// checkScheduledScans checks all enabled directories and triggers scans if due.
 func (s *Service) checkScheduledScans() {
 	ctx := s.schedulerCtx
 
@@ -317,7 +272,6 @@ func (s *Service) checkScheduledScans() {
 	}
 }
 
-// isDueForScan checks if a directory is due for scheduled scanning.
 func (s *Service) isDueForScan(dir *models.DirScanDirectory) bool {
 	if dir.LastScanAt == nil {
 		return true
@@ -327,13 +281,11 @@ func (s *Service) isDueForScan(dir *models.DirScanDirectory) bool {
 	return time.Now().After(nextScan)
 }
 
-// triggerScheduledScan triggers a scan for a directory if no active scan exists.
 func (s *Service) triggerScheduledScan(directoryID int) {
 	ctx := s.schedulerCtx
 
 	runID, err := s.createScheduledRun(ctx, directoryID)
 	if err != nil {
-		// ErrDirScanRunAlreadyActive is expected if a scan is in progress
 		if !errors.Is(err, models.ErrDirScanRunAlreadyActive) {
 			log.Error().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to create scheduled run")
 		}
@@ -345,7 +297,6 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 
 	l := log.With().Int("directoryID", directoryID).Int64("runID", runID).Logger()
 
-	// Run queued for this directory.
 	s.emitRunActivity(directoryID, 0)
 
 	if s.cfg.MaxJitter > 0 {
@@ -363,7 +314,6 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 		}
 	}
 
-	// Check if run was canceled in DB while waiting for jitter
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to get run before start")
@@ -376,8 +326,6 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 	s.startRun(ctx, directoryID, runID)
 }
 
-// createScheduledRun returns 0 when a Pause made the directory no longer due
-// after the scheduler listed it.
 func (s *Service) createScheduledRun(ctx context.Context, directoryID int) (int64, error) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
@@ -428,7 +376,6 @@ func (s *Service) startRun(parent context.Context, directoryID int, runID int64)
 	}()
 }
 
-// StartManualScan starts a manual scan for a directory.
 func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
@@ -438,17 +385,13 @@ func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, 
 		return 0, fmt.Errorf("create run: %w", err)
 	}
 
-	// Run queued for this directory.
 	s.emitRunActivity(directoryID, 0)
 
-	// Use Background() as parent so the scan survives after the HTTP request completes.
 	s.startRun(context.Background(), directoryID, runID)
 
 	return runID, nil
 }
 
-// DirectoryPaths is the grammar of dir's paths. An instance with no backend reads
-// as the host's, and a run started while it has none reports what is wrong with it.
 func (s *Service) DirectoryPaths(ctx context.Context, dir *models.DirScanDirectory) fsops.PathDialect {
 	if s.backendPool == nil {
 		return fsops.HostPaths
@@ -460,10 +403,6 @@ func (s *Service) DirectoryPaths(ctx context.Context, dir *models.DirScanDirecto
 	return backend.Paths()
 }
 
-// WebhookScanRoot is where a webhook for cleanPath in dir scans: the path, or
-// the folder of a file. A path the directory's backend can't read scans as
-// given, and the run reports what is wrong with it. A dead host can hold the
-// webhook for one dial.
 func (s *Service) WebhookScanRoot(ctx context.Context, dir *models.DirScanDirectory, cleanPath string) string {
 	if s.backendPool == nil {
 		return cleanPath
@@ -479,7 +418,6 @@ func (s *Service) WebhookScanRoot(ctx context.Context, dir *models.DirScanDirect
 	return backend.Paths().Dir(cleanPath)
 }
 
-// StartWebhookScan starts a webhook-triggered subtree scan for a directory.
 func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoot string) (int64, error) {
 	if s == nil || s.store == nil {
 		return 0, errors.New("dirscan service is not initialized")
@@ -497,8 +435,6 @@ func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoo
 	if err != nil {
 		return 0, fmt.Errorf("list active runs: %w", err)
 	}
-	// A webhook merges only into a queued webhook scan, so a directory has at
-	// most one webhook scan running and one queued behind it.
 	for _, run := range active {
 		if run.TriggeredBy != triggeredByWebhook || run.Status != models.DirScanRunStatusQueued {
 			continue
@@ -516,14 +452,12 @@ func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoo
 		return 0, fmt.Errorf("create webhook run: %w", err)
 	}
 
-	// Run queued for this directory.
 	s.emitRunActivity(directoryID, 0)
 
 	s.startRun(context.Background(), directoryID, runID)
 	return runID, nil
 }
 
-// CancelScan cancels every queued and running scan of a directory.
 func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
@@ -550,19 +484,14 @@ func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 		}
 	}
 
-	// Pause updates last_scan_at, so the scheduler does not start a new scan right after it.
-	// A queued run did not set last_scan_at yet. A full scan that runs longer than the scan
-	// interval makes the directory due again.
 	if err := s.store.UpdateDirectoryLastScan(context.Background(), directoryID); err != nil {
 		log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to bump last scan after cancel")
 	}
 
-	// Run canceled for this directory.
 	s.emitRunActivity(directoryID, 0)
 	return nil
 }
 
-// GetActiveRun returns the currently active run for a directory, if any.
 func (s *Service) GetActiveRun(ctx context.Context, directoryID int) (*models.DirScanRun, error) {
 	run, err := s.store.GetActiveRun(ctx, directoryID)
 	if err != nil {
@@ -571,8 +500,6 @@ func (s *Service) GetActiveRun(ctx context.Context, directoryID int) (*models.Di
 	return run, nil
 }
 
-// GetStatus returns the queued and running runs of a directory. When none
-// is active, it returns the most recent run, or nothing for a new directory.
 func (s *Service) GetStatus(ctx context.Context, directoryID int) ([]*models.DirScanRun, error) {
 	runs, err := s.store.ListActiveRuns(ctx, directoryID)
 	if err != nil {
@@ -595,7 +522,6 @@ func (s *Service) GetStatus(ctx context.Context, directoryID int) ([]*models.Dir
 	return runs, nil
 }
 
-// executeScan performs the actual directory scan.
 func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64) {
 	defer s.clearRunProgress(runID)
 
@@ -604,7 +530,6 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		Int64("runID", runID).
 		Logger()
 
-	// Check if run was canceled in DB before execution
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to get run")
@@ -629,7 +554,6 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	dirMu.Lock()
 	defer dirMu.Unlock()
 
-	// Only the still-queued run that won the lock may advance to scanning.
 	advanced, err := s.store.UpdateRunStatusIfCurrent(ctx, runID, models.DirScanRunStatusQueued, models.DirScanRunStatusScanning)
 	if err != nil {
 		l.Debug().Err(err).Msg("dirscan: failed to update run status to scanning")
@@ -639,7 +563,6 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	// Run advanced from queued to scanning.
 	s.emitRunActivity(directoryID, 0)
 
 	run, err = s.store.GetRun(ctx, runID)
@@ -710,7 +633,6 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		l.Error().Err(err).Msg("dirscan: failed to update run stats")
 	}
 
-	// Run advanced from scanning to searching.
 	s.emitRunActivity(directoryID, dir.TargetInstanceID)
 
 	l.Info().
@@ -729,17 +651,11 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 
 	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, target, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, enabledIndexerIDs, &l)
 	completed := s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l)
-	// Only a run that walked the whole directory can judge what is missing from it.
-	// A webhook or manual run narrowed to a subfolder refreshes just that subfolder's
-	// rows, so pruning on it would delete every live row outside the subroot.
 	if completed && scanRoot == dir.Path {
 		s.pruneMissingFilesBestEffort(dir.ID, &l)
 	}
 }
 
-// enabledIndexerIDSet returns the IDs of all enabled indexers as a set.
-// It returns nil when the lookup fails; callers then keep the old behavior
-// (no_match rows are not reopened and new stamps carry no search set).
 func (s *Service) enabledIndexerIDSet(ctx context.Context, l *zerolog.Logger) map[int]struct{} {
 	if s == nil || s.jackettService == nil {
 		return nil
@@ -778,7 +694,6 @@ func (s *Service) markRunCanceled(ctx context.Context, runID int64, l *zerolog.L
 		return
 	}
 
-	// Run canceled.
 	s.emitRunActivityForRun(context.Background(), runID, 0)
 }
 
@@ -809,7 +724,6 @@ func matchModeFromSettings(settings *models.DirScanSettings) MatchMode {
 	return MatchModeStrict
 }
 
-// finalizeRun reports whether the run reached the success state.
 func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, filesSkipped, matchesFound, torrentsAdded int, instanceID int, l *zerolog.Logger) bool {
 	if s == nil || s.store == nil || runID <= 0 {
 		return false
@@ -834,7 +748,6 @@ func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, file
 		return false
 	}
 
-	// Run completed successfully.
 	s.emitRunActivityForRun(ctx, runID, instanceID)
 
 	startedAt, completedAt := s.getRunTimes(ctx, runID)
@@ -858,9 +771,6 @@ func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, file
 	return true
 }
 
-// pruneMissingFilesBestEffort drops tracked rows for files that successive scans no
-// longer find. It runs only after a successful scan, so a failed walk over an
-// unavailable filesystem never removes rows.
 func (s *Service) pruneMissingFilesBestEffort(directoryID int, l *zerolog.Logger) {
 	if s == nil || s.store == nil || directoryID <= 0 {
 		return
@@ -905,31 +815,24 @@ func (s *Service) releaseRunSlot() {
 	}
 }
 
-// handleCancellation checks for context cancellation and updates the run status.
-// Returns true if the scan was canceled and should stop.
 func (s *Service) handleCancellation(ctx context.Context, runID int64, l *zerolog.Logger, phase string) bool {
 	if ctx.Err() == nil {
 		return false
 	}
 	l.Info().Msgf("dirscan: scan canceled %s", phase)
-	// Use background context since the run context is canceled
 	if err := s.store.UpdateRunCanceled(context.Background(), runID); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to mark run as canceled")
 	}
 
-	// Run canceled mid-scan.
 	s.emitRunActivityForRun(context.Background(), runID, 0)
 	return true
 }
 
-// scanTarget is a run's backend and the row it was chosen from, both from one read.
 type scanTarget struct {
 	backend  fsops.Backend
 	instance *models.Instance
 }
 
-// validateDirectory validates the directory configuration and target instance.
-// Returns the directory, its scan target and true if valid, or false if invalid.
 func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID int64, l *zerolog.Logger) (*models.DirScanDirectory, *scanTarget, bool) {
 	dir, err := s.store.GetDirectory(ctx, directoryID)
 	if err != nil {
@@ -961,16 +864,9 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 	return dir, &scanTarget{backend: backend, instance: instance}, true
 }
 
-// runScanPhase executes the directory scanning phase.
-// Returns the raw scan result and true if successful, or nil and false on failure.
 func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, target *scanTarget, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, *seedingIndex, bool) {
 	scanner := NewScanner(target.backend)
 
-	// Build FileID index from qBittorrent torrents for already-seeding detection.
-	// This is best-effort; if it fails, scanning continues without seeding skips,
-	// and files marked already seeding by an earlier run keep that status. Without
-	// identity no file could enter the index, so its stats would only cost time.
-	// A lost connection fails the run, since the walk would hit it next.
 	fileIDIndex := &seedingIndex{}
 	hasIdentity := models.FilesystemCapabilitiesOf(target.instance).Identity
 	if hasIdentity {
@@ -1018,8 +914,6 @@ func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory
 	return scanResult, fileIDIndex, true
 }
 
-// checkWalkedEndpoint fails a remote walk whose row changed under it. A dial
-// reads the row, not the held one, so part of the walk may have read a new server.
 func (s *Service) checkWalkedEndpoint(ctx context.Context, walked *models.Instance) error {
 	endpoint := fsops.WalkedEndpoint(walked)
 	if endpoint == "" {
@@ -1062,7 +956,6 @@ func effectiveMaxSearcheeAgeDays(settings *models.DirScanSettings, triggeredBy s
 	return maxSearcheeAgeDaysFromSettings(settings)
 }
 
-// runSearchAndInjectPhase searches indexers for each searchee and injects matches.
 func (s *Service) runSearchAndInjectPhase(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
@@ -1170,8 +1063,6 @@ func (s *Service) processRootSearchee(
 		return matchesFoundOut, torrentsAddedOut
 	}
 
-	// A root searchee that seeds already skips the search. Its non-video extras
-	// become final too, so they do not keep it eligible.
 	if isAlreadySeedingByFileID(searchee, fileIDIndex) {
 		reports := []workItemReport{{files: searcheeFilePaths(searchee), search: itemSeedsAlready}}
 		if err := s.persistSearcheeOutcome(ctx, dir.ID, searchee, trackedFiles, enabledIndexerIDs, false, reports, l); err != nil && l != nil {
@@ -1222,7 +1113,6 @@ func (s *Service) processRootSearchee(
 			continue
 		}
 
-		// A season pack covers the other episodes of its group. A single episode does not.
 		if anyInjected && !item.isEpisode {
 			markTVGroupInjected(injectedTVGroups, item.tvGroup)
 		}
@@ -1254,10 +1144,6 @@ func searcheeFilePaths(searchee *Searchee) []string {
 	return paths
 }
 
-// itemFinishedByAnotherRun rereads the item's files into the run's snapshot and
-// reports whether another run of the directory finished them since the snapshot.
-// A webhook scan and a full scan can run on the same directory at once. The
-// reread also stops the final status update from overwriting the other run's result.
 func (s *Service) itemFinishedByAnotherRun(
 	ctx context.Context,
 	directoryID int,
@@ -1389,9 +1275,6 @@ type runProgress struct {
 	injectingEmitted bool
 }
 
-// markInjectingEmitted records that the injecting transition has been emitted
-// for a run and returns true only on the first call, so the event fires once
-// per run rather than on every per-item injection.
 func (s *Service) markInjectingEmitted(runID int64) bool {
 	if s == nil || runID <= 0 {
 		return false
@@ -1486,8 +1369,6 @@ func (s *Service) recoverStuckRuns() error {
 	if affected > 0 {
 		log.Info().Int64("runs", affected).Msg("dirscan: marked interrupted runs as failed")
 
-		// The recovery query only returns a count, so signal every directory once
-		// at startup. This fires only when runs were actually interrupted.
 		if directoryIDs, listErr := s.store.ListDirectoryIDs(recoveryCtx); listErr != nil {
 			log.Debug().Err(listErr).Msg("dirscan: failed to list directories for crash-recovery activity")
 		} else {
@@ -1560,8 +1441,6 @@ func tryMatchResultsPerIndexer(
 		stats.attemptedMatches++
 		candidate := attempt(result)
 		candidates = append(candidates, candidate)
-		// Only an add or a torrent in qBittorrent satisfies the indexer. After a
-		// failed add, keep trying the other results of the same indexer.
 		if result.IndexerID > 0 && (candidate.added() || candidate.inQBittorrent()) {
 			satisfiedIndexers[result.IndexerID] = struct{}{}
 		}
@@ -1570,7 +1449,6 @@ func tryMatchResultsPerIndexer(
 	return candidates, stats
 }
 
-// processSearchee searches for one Work item and tries its candidates.
 func (s *Service) processSearchee(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
@@ -1657,7 +1535,6 @@ func (s *Service) processSearchee(
 	return report
 }
 
-// sortedIndexerIDs returns the set as a sorted slice, or nil for an empty set.
 func sortedIndexerIDs(ids map[int]struct{}) []int {
 	if len(ids) == 0 {
 		return nil
@@ -1674,7 +1551,6 @@ func (s *Service) buildSearcheeMetadata(d fsops.PathDialect, searchee *Searchee)
 	parsedMeta := s.parser.Parse(searchee.Name)
 	arrLookupName = searchee.Name
 
-	// Prefer the largest video file name for content detection (mirrors cross-seed's "largest file" heuristic).
 	contentFile := selectLargestVideoFile(searchee.Files)
 	if contentFile == nil {
 		return parsedMeta, arrLookupName
@@ -1781,8 +1657,6 @@ func (s *Service) searchSearchee(
 	if err := s.searchGate.acquire(ctx, isWebhookRun(ctx)); err != nil {
 		return nil, nil, err
 	}
-	// Check after the wait: another run of the directory can finish this item
-	// while it waits, for example a webhook item that went first.
 	if stillPending != nil && !stillPending() {
 		s.searchGate.releaseUnused()
 		return nil, nil, nil
@@ -1811,24 +1685,13 @@ func (s *Service) searchSearchee(
 	return response, covered, nil
 }
 
-// searchGate lets one item search at a time across runs, and starts the next
-// item's search only when the Library Scan minimum interval has passed since
-// the previous item's search ended. The search queue does not pace indexers
-// behind Prowlarr or Jackett, so this wait is the only pacing they get.
-//
-// A waiting item does not hold the gate, so a webhook item that arrives during
-// the wait still searches next: a full-scan item takes the gate only when no
-// webhook item waits.
 type searchGate struct {
 	mu             sync.Mutex
 	busy           bool
 	lastSearchAt   time.Time
 	webhookWaiting int
-	// interval overrides the minimum wait between searches. Zero uses
-	// crossseed.MinTorznabSearchInterval. Tests set it to skip the wait.
-	interval time.Duration
-	// changed is closed when the gate frees or the last webhook item stops waiting.
-	changed chan struct{}
+	interval       time.Duration
+	changed        chan struct{}
 }
 
 func (g *searchGate) acquire(ctx context.Context, webhook bool) error {
@@ -1883,8 +1746,6 @@ func (g *searchGate) release() {
 	g.broadcast()
 }
 
-// releaseUnused frees the gate after an item that sent no search, so the
-// interval keeps counting from the previous search.
 func (g *searchGate) releaseUnused() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -1902,8 +1763,6 @@ func (g *searchGate) broadcast() {
 
 type webhookRunKey struct{}
 
-// withWebhookRun marks the context of a webhook scan, so its searches go
-// before the searches of full scans.
 func withWebhookRun(ctx context.Context) context.Context {
 	return context.WithValue(ctx, webhookRunKey{}, true)
 }
@@ -1913,8 +1772,6 @@ func isWebhookRun(ctx context.Context) bool {
 	return webhook
 }
 
-// inSizeBand reports whether a result could match the searchee at all.
-// It mirrors the band that tryMatchResultsPerIndexer applies before downloading.
 func inSizeBand(minSize, maxSize int64) func(jackett.SearchResult) bool {
 	return func(result jackett.SearchResult) bool {
 		return (minSize <= 0 || result.Size >= minSize) && (maxSize <= 0 || result.Size <= maxSize)
@@ -2010,7 +1867,6 @@ func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int,
 	return found, true
 }
 
-// tryMatchAndInject downloads a torrent, matches files, and injects if successful.
 func (s *Service) tryMatchAndInject(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
@@ -2044,7 +1900,6 @@ func (s *Service) tryMatchAndInject(
 		case crossseed.ClassExists:
 			l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: already in qBittorrent")
 		case crossseed.ClassFailed:
-			// Fails closed like the cross-seed path: an unreadable blocklist or torrent list skips the match.
 			l.Warn().Err(refusal.Err).Str("hash", parsed.InfoHash).Str("reason", refusal.Message).Msg("dirscan: pre-add check failed, skipping match")
 			candidate.routeUnavailable = errors.Is(refusal.Err, crossseedroute.ErrUnavailable)
 		default:
@@ -2080,13 +1935,10 @@ func (s *Service) tryMatchAndInject(
 
 	trackerDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)
 
-	// Once we are about to inject, reflect that in run status so the UI can distinguish
-	// pure searching from active injection attempts.
 	if updateErr := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusInjecting); updateErr != nil {
 		l.Debug().Err(updateErr).Msg("dirscan: failed to update run status to injecting")
 	}
 
-	// Emit the searching->injecting transition once per run, not per item.
 	if s.markInjectingEmitted(runID) {
 		s.emitRunActivity(dir.ID, dir.TargetInstanceID)
 	}
@@ -2208,7 +2060,6 @@ func (s *Service) recordRunInjection(
 		}
 	}
 
-	// Fallback: use the matched search result indexer name for display-name resolution.
 	indexerName := result.Indexer
 	trackerDisplayName := s.resolveTrackerDisplayName(ctx, trackerDomain, indexerName)
 
@@ -2299,8 +2150,6 @@ func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, setting
 		return decision
 	}
 
-	// If the torrent has extra files (not on disk), qBittorrent may need to download them.
-	// Optionally validate piece-boundary safety to avoid corrupting existing files.
 	if len(match.UnmatchedTorrentFiles) > 0 && !settings.SkipPieceBoundarySafetyCheck {
 		unsafe, res := hasUnsafeUnmatchedTorrentFiles(parsed, match)
 		if unsafe {
@@ -2332,8 +2181,6 @@ func refineDirScanMatchDecision(
 		return decision
 	}
 
-	// Size-only single-file matches are the riskiest false positives when scanning
-	// renamed movie libraries. Require corroborating title or ID evidence before inject.
 	if len(searchee.Files) != 1 || len(parsed.Files) != 1 {
 		return decision
 	}
@@ -2808,7 +2655,6 @@ func hasUnsafeUnmatchedTorrentFiles(parsed *ParsedTorrent, match *MatchResult) (
 		return true, crossseed.PieceBoundarySafetyResult{Safe: false, Reason: "invalid piece length"}
 	}
 
-	// If we have no unmatched torrent files, nothing can be downloaded, so it's safe.
 	if len(match.UnmatchedTorrentFiles) == 0 {
 		return false, crossseed.PieceBoundarySafetyResult{Safe: true, Reason: "no unmatched torrent files"}
 	}
@@ -2832,7 +2678,6 @@ func hasUnsafeUnmatchedTorrentFiles(parsed *ParsedTorrent, match *MatchResult) (
 	return !res.Safe, res
 }
 
-// downloadAndParseTorrent downloads and parses a torrent file.
 func (s *Service) downloadAndParseTorrent(ctx context.Context, result *jackett.SearchResult, l *zerolog.Logger) ([]byte, *ParsedTorrent) {
 	downloadCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
 	torrentData, err := s.jackettService.DownloadTorrent(downloadCtx, jackett.TorrentDownloadRequest{
@@ -2854,15 +2699,12 @@ func (s *Service) downloadAndParseTorrent(ctx context.Context, result *jackett.S
 	return torrentData, parsed
 }
 
-// markRunFailed marks a run as failed with the given error message.
-// Uses background context to ensure the status update completes even if the run context is canceled.
 func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, instanceID int, l *zerolog.Logger) {
 	if err := s.store.UpdateRunFailed(context.Background(), runID, errMsg); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to mark run as failed")
 		return
 	}
 
-	// Run failed.
 	s.emitRunActivityForRun(context.Background(), runID, instanceID)
 
 	startedAt, completedAt := s.getRunTimes(context.Background(), runID)
@@ -2902,8 +2744,6 @@ func (s *Service) getRunTimes(ctx context.Context, runID int64) (*time.Time, *ti
 	return startedAt, run.CompletedAt
 }
 
-// getDirectoryMutex returns the mutex for one kind of run in a directory,
-// creating one if needed.
 func (s *Service) getDirectoryMutex(directoryID int, webhook bool) *sync.Mutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -2917,7 +2757,6 @@ func (s *Service) getDirectoryMutex(directoryID int, webhook bool) *sync.Mutex {
 	return mu
 }
 
-// GetSettings returns the global directory scanner settings.
 func (s *Service) GetSettings(ctx context.Context) (*models.DirScanSettings, error) {
 	settings, err := s.store.GetSettings(ctx)
 	if err != nil {
@@ -2926,7 +2765,6 @@ func (s *Service) GetSettings(ctx context.Context) (*models.DirScanSettings, err
 	return settings, nil
 }
 
-// UpdateSettings updates the global directory scanner settings.
 func (s *Service) UpdateSettings(ctx context.Context, settings *models.DirScanSettings) (*models.DirScanSettings, error) {
 	updated, err := s.store.UpdateSettings(ctx, settings)
 	if err != nil {
@@ -2935,7 +2773,6 @@ func (s *Service) UpdateSettings(ctx context.Context, settings *models.DirScanSe
 	return updated, nil
 }
 
-// ListDirectories returns all configured scan directories.
 func (s *Service) ListDirectories(ctx context.Context) ([]*models.DirScanDirectory, error) {
 	dirs, err := s.store.ListDirectories(ctx)
 	if err != nil {
@@ -2944,7 +2781,6 @@ func (s *Service) ListDirectories(ctx context.Context) ([]*models.DirScanDirecto
 	return dirs, nil
 }
 
-// CreateDirectory creates a new scan directory.
 func (s *Service) CreateDirectory(ctx context.Context, dir *models.DirScanDirectory) (*models.DirScanDirectory, error) {
 	created, err := s.store.CreateDirectory(ctx, dir)
 	if err != nil {
@@ -2953,7 +2789,6 @@ func (s *Service) CreateDirectory(ctx context.Context, dir *models.DirScanDirect
 	return created, nil
 }
 
-// GetDirectory returns a scan directory by ID.
 func (s *Service) GetDirectory(ctx context.Context, id int) (*models.DirScanDirectory, error) {
 	dir, err := s.store.GetDirectory(ctx, id)
 	if err != nil {
@@ -2962,7 +2797,6 @@ func (s *Service) GetDirectory(ctx context.Context, id int) (*models.DirScanDire
 	return dir, nil
 }
 
-// UpdateDirectory updates a scan directory.
 func (s *Service) UpdateDirectory(ctx context.Context, id int, params *models.DirScanDirectoryUpdateParams) (*models.DirScanDirectory, error) {
 	updated, err := s.store.UpdateDirectory(ctx, id, params)
 	if err != nil {
@@ -2971,7 +2805,6 @@ func (s *Service) UpdateDirectory(ctx context.Context, id int, params *models.Di
 	return updated, nil
 }
 
-// DeleteDirectory deletes a scan directory.
 func (s *Service) DeleteDirectory(ctx context.Context, id int) error {
 	if err := s.store.DeleteDirectory(ctx, id); err != nil {
 		return fmt.Errorf("delete directory: %w", err)
@@ -2979,14 +2812,12 @@ func (s *Service) DeleteDirectory(ctx context.Context, id int) error {
 	return nil
 }
 
-// ListRuns returns recent scan runs for a directory.
 func (s *Service) ListRuns(ctx context.Context, directoryID, limit int) ([]*models.DirScanRun, error) {
 	runs, err := s.store.ListRuns(ctx, directoryID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list runs: %w", err)
 	}
 
-	// Overlay live progress for the currently active run (if any) without requiring DB writes.
 	for i, run := range runs {
 		if run == nil {
 			continue
@@ -3008,7 +2839,6 @@ func (s *Service) ListRuns(ctx context.Context, directoryID, limit int) ([]*mode
 	return runs, nil
 }
 
-// ListRunInjections returns injection attempts (added/failed) for a run.
 func (s *Service) ListRunInjections(ctx context.Context, directoryID int, runID int64, limit, offset int) ([]*models.DirScanRunInjection, error) {
 	injections, err := s.store.ListRunInjections(ctx, directoryID, runID, limit, offset)
 	if err != nil {
@@ -3017,7 +2847,6 @@ func (s *Service) ListRunInjections(ctx context.Context, directoryID int, runID 
 	return injections, nil
 }
 
-// ListFiles returns scanned files for a directory.
 func (s *Service) ListFiles(ctx context.Context, directoryID int, status *models.DirScanFileStatus, limit, offset int) ([]*models.DirScanFile, error) {
 	files, err := s.store.ListFiles(ctx, directoryID, status, limit, offset)
 	if err != nil {
@@ -3026,7 +2855,6 @@ func (s *Service) ListFiles(ctx context.Context, directoryID int, status *models
 	return files, nil
 }
 
-// ResetFilesForDirectory deletes all tracked scan progress files for a directory.
 func (s *Service) ResetFilesForDirectory(ctx context.Context, directoryID int) error {
 	if err := s.store.DeleteFilesForDirectory(ctx, directoryID); err != nil {
 		return fmt.Errorf("reset tracked files: %w", err)
@@ -3034,8 +2862,6 @@ func (s *Service) ResetFilesForDirectory(ctx context.Context, directoryID int) e
 	return nil
 }
 
-// RequeueNoMatchFiles resets no_match files for a directory to pending so the
-// next scan searches them again.
 func (s *Service) RequeueNoMatchFiles(ctx context.Context, directoryID int) (int64, error) {
 	affected, err := s.store.RequeueNoMatchFiles(ctx, directoryID)
 	if err != nil {
@@ -3044,7 +2870,6 @@ func (s *Service) RequeueNoMatchFiles(ctx context.Context, directoryID int) (int
 	return affected, nil
 }
 
-// mapContentTypeToARR maps dirscan content type to ARR content type for ID lookup.
 func mapContentTypeToARR(contentType string) arr.ContentType {
 	switch contentType {
 	case "movie":
@@ -3052,14 +2877,10 @@ func mapContentTypeToARR(contentType string) arr.ContentType {
 	case "tv":
 		return arr.ContentTypeTV
 	default:
-		// No ARR lookup for music, books, games, adult, unknown, etc.
 		return ""
 	}
 }
 
-// lookupExternalIDs fills in external database IDs from the arr services and
-// returns the alternate titles they know for this content, which the search
-// retry uses when the primary title finds nothing.
 func (s *Service) lookupExternalIDs(
 	ctx context.Context,
 	meta *SearcheeMetadata,
@@ -3086,9 +2907,6 @@ func (s *Service) lookupExternalIDs(
 		return nil
 	}
 
-	// An arr can know the content by name without holding a usable ID. Keep its
-	// titles either way: they are what the alternate-title retry searches with,
-	// and that retry only runs when no ID was found.
 	if ids := result.IDs; ids != nil && !ids.IsEmpty() {
 		meta.SetExternalIDs(ids.IMDbID, ids.TMDbID, ids.TVDbID)
 		l.Debug().

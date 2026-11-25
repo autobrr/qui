@@ -30,7 +30,6 @@ interface RunWorkflowNowDialogProps {
   onClose: () => void
 }
 
-// Confirms a real run of one saved workflow, then runs it and reports the result in a toast.
 export function RunWorkflowNowDialog({ target, onClose }: RunWorkflowNowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
@@ -47,7 +46,6 @@ export function RunWorkflowNowDialog({ target, onClose }: RunWorkflowNowDialogPr
       } else if (result.activities?.some(activity => activity.outcome === "failed")) {
         toast.error(t("preferences.runWorkflowNow.toast.completedWithErrors", name), { id: toastId })
       } else if (!result.activities?.length && !rule.conditions?.externalProgram?.enabled && !rule.conditions?.exportToInstance?.enabled && !rule.conditions?.transferToInstance?.enabled) {
-        // External programs and exports can write their activity rows after the reply, so an empty list says nothing about them.
         toast.success(t("preferences.runWorkflowNow.toast.noChanges", name), { id: toastId })
       } else {
         toast.success(t("preferences.runWorkflowNow.toast.completed", name), { id: toastId })

@@ -15,25 +15,24 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		composed string
-		// decomposed must be canonically equivalent to composed but not byte-identical.
+		name       string
+		composed   string
 		decomposed string
 	}{
 		{
 			name:       "a-ring",
 			composed:   "Låpsley",
-			decomposed: "La\u030apsley", // a + combining ring above
+			decomposed: "La\u030apsley",
 		},
 		{
 			name:       "u-umlaut",
 			composed:   "München",
-			decomposed: "Mu\u0308nchen", // u + combining diaeresis
+			decomposed: "Mu\u0308nchen",
 		},
 		{
 			name:       "e-acute",
 			composed:   "Café",
-			decomposed: "Cafe\u0301", // e + combining acute accent
+			decomposed: "Cafe\u0301",
 		},
 	}
 
@@ -59,8 +58,6 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 func TestCleanPath_InvalidUTF8Preserved(t *testing.T) {
 	t.Parallel()
 
-	// On Unix, filenames are arbitrary bytes. fsops.CleanPath is the form that is
-	// stored in settings and shown to the user, so it must keep them verbatim.
 	bad := string([]byte{0xff, 0xfe})
 	if utf8.ValidString(bad) {
 		t.Fatalf("expected test string to be invalid UTF-8")
@@ -74,9 +71,6 @@ func TestCleanPath_InvalidUTF8Preserved(t *testing.T) {
 	}
 }
 
-// Case-insensitive filesystems (APFS, NTFS, exFAT, SMB, and Docker bind mounts
-// of them) let qBittorrent report two spellings of one directory. Comparison
-// must fold on every OS, not only on Windows.
 func TestNormalizePath_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 

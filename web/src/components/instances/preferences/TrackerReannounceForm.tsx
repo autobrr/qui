@@ -40,9 +40,7 @@ interface TrackerReannounceFormProps {
   instanceId: number
   onInstanceChange?: (instanceId: number) => void
   onSuccess?: () => void
-  /** Render variant: "card" wraps in Card component, "embedded" renders without card wrapper */
   variant?: "card" | "embedded"
-  /** Form ID for external submit button. When provided, the internal submit button is hidden. */
   formId?: string
 }
 
@@ -86,12 +84,10 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const [pendingEnableSettings, setPendingEnableSettings] = useState<InstanceReannounceSettings | null>(null)
   const [showEnableDialog, setShowEnableDialog] = useState(false)
 
-  // Sync form values with persisted settings for the active instance.
   useEffect(() => {
     setSettings(cloneSettings(instance?.reannounceSettings))
   }, [instance?.reannounceSettings])
 
-  // Reset ephemeral dialog state only when switching instances.
   useEffect(() => {
     setPendingEnableSettings(null)
     setShowEnableDialog(false)
@@ -120,7 +116,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     [trackerCustomizations]
   )
 
-  // Process trackers to apply customizations (nicknames and merged domains)
   const trackerOptions: Option[] = useMemo(() => {
     if (!trackersQuery.data) return []
 
@@ -176,7 +171,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const categoryOptions: Option[] = useMemo(() => {
     if (!categoriesQuery.data) return []
 
-    // Build tree and flatten with level info for indentation
     const tree = buildCategoryTree(categoriesQuery.data, {})
     const flattened: Option[] = []
 
@@ -310,11 +304,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     }
   }
 
-  // Reannounce activity is pushed via SSE (reannounce.activity events invalidate
-  // this key), so there is no polling interval.
   useActivityStream(variant !== "embedded" && Boolean(instance && settings.enabled))
 
-  // Only fetch activity in card mode (embedded mode shows activity in overview)
   const activityQuery = useQuery({
     queryKey: ["instance-reannounce-activity", instanceId],
     queryFn: () => api.getInstanceReannounceActivity(instanceId, 100),
@@ -325,7 +316,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     return <p className="text-sm text-muted-foreground">{t("preferences.dialog.instanceNotAvailable")}</p>
   }
 
-  // Filter and limit to 50 events for display
   const allActivityEvents: InstanceReannounceActivity[] = (activityQuery.data ?? []).slice(-50).reverse()
   const activityEvents = hideSkipped? (activityQuery.data ?? []).filter((event) => event.outcome !== "skipped").slice(-50).reverse(): allActivityEvents
   const activityEnabled = Boolean(instance && settings.enabled)
@@ -505,7 +495,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
               onCheckedChange={(v) => {
                 setSettings((prev) => {
                   const next = { ...prev, monitorAll: v }
-                  // Automatically switch to exclude mode if monitoring all
                   if (v) {
                     next.excludeCategories = true
                     next.excludeTags = true
@@ -519,7 +508,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
 
           <div className="grid gap-6 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
-            {/* Categories */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label htmlFor="scope-categories">{t("preferences.reannounceOverview.form.categories")}</Label>
@@ -550,7 +538,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
               />
             </div>
 
-            {/* Tags */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label htmlFor="scope-tags">{t("preferences.reannounceOverview.form.tags")}</Label>
@@ -581,7 +568,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
               />
             </div>
 
-            {/* Trackers */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label htmlFor="scope-trackers">{t("preferences.reannounceOverview.form.trackerDomains")}</Label>
@@ -765,7 +751,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   )
 
   if (variant === "embedded") {
-    // Embedded mode: only show settings, no tabs (activity is shown in overview)
     return (
       <>
         <form id={formId} onSubmit={handleSubmit} className="space-y-6">
@@ -777,7 +762,6 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     )
   }
 
-  // Card mode: show tabs with settings and activity
   return (
     <>
       <form id={formId} onSubmit={handleSubmit}>

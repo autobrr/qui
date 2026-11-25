@@ -95,11 +95,8 @@ export function ReannounceOverview({
     [instances]
   )
 
-  // Reannounce activity is pushed via SSE (reannounce.activity events invalidate
-  // ["instance-reannounce-activity", id]), so there is no polling interval.
   useActivityStream()
 
-  // Fetch activity for all instances with enabled reannounce
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["instance-reannounce-activity", instance.id],
@@ -227,7 +224,6 @@ export function ReannounceOverview({
               const isEnabled = settings?.enabled ?? false
               const hideSkipped = hideSkippedMap[instance.id] ?? true
               const searchTerm = (searchMap[instance.id] ?? "").toLowerCase().trim()
-              // Filter by outcome and search term, limit to 50 events for display
               const filteredEvents = events
                 .filter((e) => {
                   if (hideSkipped && e.outcome === "skipped") return false
@@ -305,9 +301,7 @@ export function ReannounceOverview({
 
                   <AccordionContent className="px-6 pb-4">
                     <div className="space-y-4">
-                      {/* Settings summary */}
                       <div className="flex flex-wrap items-center justify-between gap-y-3 p-3 rounded-lg bg-muted/40 border">
-                        {/* A zero basis without min-w-0 moves the button down only once the widest summary pair stops fitting beside it. */}
                         <div className="space-y-0.5 flex-1">
                           <p className="text-sm text-muted-foreground">
                             {settings ? <SettingsSummary parts={getSettingsSummaryParts(settings)} /> : t("preferences.reannounceOverview.notConfigured")}
@@ -333,7 +327,6 @@ export function ReannounceOverview({
                         )}
                       </div>
 
-                      {/* Activity log */}
                       {isEnabled && (
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
@@ -382,7 +375,6 @@ export function ReannounceOverview({
                             </div>
                           </div>
 
-                          {/* Search filter */}
                           <div className="relative">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input

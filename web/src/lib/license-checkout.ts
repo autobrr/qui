@@ -6,7 +6,6 @@
 import { withBasePath } from "@/lib/base-url"
 import { DODO_CHECKOUT_URL } from "@/lib/dodo-constants"
 
-/** The checkout of the theme license. After the payment, it returns to Settings, under Themes. */
 export function themeLicenseCheckoutUrl(): string {
   const returnPath = withBasePath("settings?tab=themes&checkout=success")
   const returnUrl = new URL(returnPath, window.location.origin).toString()

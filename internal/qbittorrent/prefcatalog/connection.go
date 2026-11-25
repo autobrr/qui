@@ -10,7 +10,6 @@ var connectionEntries = slices.Concat(
 		{Key: "bittorrent_protocol", Tab: TabConnection, Section: "protocol", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions(0, 1, 2)},
 		{Key: "listen_port", Tab: TabConnection, Section: "listeningPort", Control: ControlNumber},
 		{Key: "upnp", Tab: TabConnection, Section: "listeningPort", Control: ControlSwitch},
-		// qBittorrent 5.2 added SSL torrents with no control in its WebUI. The keys change what qBittorrent does, so qui shows them.
 		{Key: "ssl_enabled", Tab: TabConnection, Section: "listeningPort", Control: ControlSwitch},
 		{Key: "ssl_listen_port", Tab: TabConnection, Section: "listeningPort", Control: ControlNumber, DependsOn: "ssl_enabled"},
 		{Key: "max_connec", Tab: TabConnection, Section: "connectionLimits", Control: ControlNumber},
@@ -22,7 +21,6 @@ var connectionEntries = slices.Concat(
 		{Key: "i2p_port", Tab: TabConnection, Section: "i2p", Control: ControlNumber, Gate: libtorrent2Only, DependsOn: "i2p_enabled"},
 		{Key: "i2p_mixed_mode", Tab: TabConnection, Section: "i2p", Control: ControlSwitch, Gate: libtorrent2Only, DependsOn: "i2p_enabled"},
 		{Key: "i2p_pex_enabled", Tab: TabConnection, Section: "i2p", Control: ControlSwitch, Gate: Gate{MinLibtorrent: "2.1"}, DependsOn: "i2p_enabled"},
-		// The strings are for qBittorrent 4.6 and later, and the numbers for earlier versions.
 		{Key: "proxy_type", Tab: TabConnection, Section: "proxy", Control: ControlSelect, OptionSource: SourceFixed, Options: fixedOptions(
 			"None", "SOCKS4", "SOCKS5", "HTTP",
 			0, 5, 2, 4, 1, 3,
@@ -43,7 +41,5 @@ var connectionEntries = slices.Concat(
 		{Key: "ip_filter_trackers", Tab: TabConnection, Section: "ipFiltering", Control: ControlSwitch, DependsOn: "ip_filter_enabled"},
 		{Key: "banned_IPs", Tab: TabConnection, Section: "ipFiltering", Control: ControlList},
 	},
-	// qBittorrent 4.4.0 deprecates random_port. There, true sets the listening port to 0, the same as a
-	// listen_port of 0. On 4.3.x it is a separate setting (a new port on each startup), which qui does not show.
 	notShown(TabConnection, "deprecated by qBittorrent", "random_port"),
 )

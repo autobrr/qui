@@ -21,27 +21,17 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
 
-// crossSeedUnavailableStatus is the result status of a routed add whose
-// Cross-seed instance is unavailable or whose route breaks a route rule.
 const crossSeedUnavailableStatus = "crossseed_instance_unavailable"
 
 const crossSeedUnavailablePrefix = "Cross-seed instance unavailable: "
 
-// crossSeedCannotSeeStatus is the result status of a routed add whose
-// Cross-seed instance does not list the linked files.
 const crossSeedCannotSeeStatus = "crossseed_instance_cannot_see_data"
 
-// ponytail: the visibility check lists 3 more times over about 15 seconds. NFS
-// can cache a folder listing for up to 60 seconds, so a slow mount can still
-// fail a good add. Lower the NFS cache time, or wait longer here if users hit it.
 const (
 	visibleRetries    = 3
 	visibleRetryDelay = 5 * time.Second
 )
 
-// failedRouteDirsKey holds, in a context, a *sync.Map of each failedRouteDir
-// whose visibility check failed in one Trigger run. A later add under such a
-// base folder lists once.
 type failedRouteDirsKey struct{}
 
 type failedRouteDir struct {
@@ -49,8 +39,6 @@ type failedRouteDir struct {
 	baseDir  string
 }
 
-// withRouteRun starts the memory of failed base folders for one Trigger run.
-// A ctx that already holds one keeps it.
 func withRouteRun(ctx context.Context) context.Context {
 	if _, ok := ctx.Value(failedRouteDirsKey{}).(*sync.Map); ok {
 		return ctx
@@ -58,18 +46,13 @@ func withRouteRun(ctx context.Context) context.Context {
 	return context.WithValue(ctx, failedRouteDirsKey{}, &sync.Map{})
 }
 
-// candidateRoute is the route of a routed add (ADR 0035). The add goes to
-// crossSeed in link mode, with the tree on the Source instance's disk.
 type candidateRoute struct {
 	rows      []models.CrossSeedRouteRow
 	crossSeed *models.Instance
-	// source and backend come from one capability read, after the Pre-add check.
-	source  *models.Instance
-	backend fsops.Backend
+	source    *models.Instance
+	backend   fsops.Backend
 }
 
-// receiverOf returns the instance that gets the add of a match on
-// instanceID: the Cross-seed instance of r, or instanceID without a route.
 func (r *candidateRoute) receiverOf(instanceID int) int {
 	if r == nil {
 		return instanceID
@@ -77,7 +60,6 @@ func (r *candidateRoute) receiverOf(instanceID int) int {
 	return r.crossSeed.ID
 }
 
-// receiver returns the instance that gets the add of c.
 func (c CrossSeedCandidate) receiver() (int, string) {
 	if c.route != nil {
 		return c.route.crossSeed.ID, c.route.crossSeed.Name
@@ -93,20 +75,14 @@ func (c CrossSeedCandidate) newResult(status, message string) InstanceCrossSeedR
 	return result
 }
 
-// routeOf reads the route of instanceID, or nil when it has none. With a
-// route, a non-nil error means that the route breaks a route rule or that the
-// Cross-seed instance is unavailable.
 func (s *Service) routeOf(ctx context.Context, instanceID int) (*candidateRoute, error) {
 	route, saved, err := s.savedRouteOf(ctx, instanceID)
 	if err != nil || route == nil {
 		return nil, err
 	}
-	// The rule check also makes sure that the Cross-seed instance is available.
 	return route, s.crossSeedRoutes.Check(ctx, saved)
 }
 
-// savedRouteOf reads the saved route of instanceID without the rule check, or
-// nil when it has none.
 func (s *Service) savedRouteOf(ctx context.Context, instanceID int) (*candidateRoute, *models.CrossSeedRoute, error) {
 	if s.crossSeedRoutes == nil {
 		return nil, nil, nil
@@ -122,16 +98,12 @@ func (s *Service) savedRouteOf(ctx context.Context, instanceID int) (*candidateR
 	return &candidateRoute{rows: saved.Rows, crossSeed: crossSeed}, saved, nil
 }
 
-// sortSourceInstancesFirst puts the candidates of Source instances first, in a stable
-// sort. A routed add then builds its own link tree on the Cross-seed instance
-// before a match on that instance adds the same torrent there in its own mode.
 func (s *Service) sortSourceInstancesFirst(ctx context.Context, candidates []CrossSeedCandidate) {
 	if s.crossSeedRoutes == nil || len(candidates) < 2 {
 		return
 	}
 	routes, err := s.crossSeedRoutes.List(ctx)
 	if err != nil {
-		// Each candidate reads its route again, and that read reports the failure.
 		log.Debug().Err(err).Msg("[CROSSSEED] Failed to read cross-seed routes; candidates keep their order")
 		return
 	}
@@ -148,23 +120,17 @@ func (s *Service) sortSourceInstancesFirst(ctx context.Context, candidates []Cro
 	slices.SortStableFunc(candidates, func(a, b CrossSeedCandidate) int { return cmp.Compare(rank(a), rank(b)) })
 }
 
-// routeFailure returns the status and message of a failed route read or rule check.
 func routeFailure(err error) (string, string) {
 	ruleErr, ok := errors.AsType[*crossseedroute.RuleError](err)
 	if !ok {
 		return "error", "Failed to read the cross-seed route: " + err.Error()
 	}
 	if errors.Is(err, crossseedroute.ErrUnavailable) {
-		// crossseedroute.CrossSeedUnavailable already names the cause.
 		return crossSeedUnavailableStatus, ruleErr.Message
 	}
 	return crossSeedUnavailableStatus, crossSeedUnavailablePrefix + ruleErr.Message
 }
 
-// loadSource reads the row and backend of sourceID, the Source instance of
-// route, from one capability read. It returns the status and message of a
-// failure when the row no longer allows a routed add, or empty strings. A
-// routed add never falls back to a regular add.
 func (s *Service) loadSource(ctx context.Context, route *candidateRoute, sourceID int) (string, string) {
 	backend, source, err := s.getBackendPool().Require(ctx, sourceID, models.CapabilityWrite)
 	if err != nil {
@@ -180,10 +146,6 @@ func (s *Service) loadSource(ctx context.Context, route *candidateRoute, sourceI
 	return "", ""
 }
 
-// checkVisible makes sure that the Cross-seed instance of route lists target,
-// a linked file of the plan under baseDir on the Source instance. It returns
-// the status and message of a failure when the Cross-seed instance cannot see
-// the file or is unavailable, or empty strings.
 func (s *Service) checkVisible(ctx context.Context, route *candidateRoute, d fsops.PathDialect, baseDir, target string) (string, string) {
 	dir, _ := crossseedroute.ToCrossSeed(d, route.rows, baseDir, d.Dir(target))
 	name := d.Base(target)

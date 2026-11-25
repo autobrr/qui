@@ -16,8 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// filterCapture is a file in testdata/filters of go-qbittorrent, which its
-// capture command writes from a real qBittorrent release.
 type filterCapture struct {
 	Version              string                       `json:"version"`
 	WebAPIVersion        string                       `json:"webapi_version"`
@@ -48,28 +46,19 @@ func (c *filterCapture) unknownToRelease(filter string) bool {
 	return slices.Contains(c.ReturnedEveryTorrent, filter)
 }
 
-// A statusCase is one recorded verdict that the status rule does not give.
 type statusCase struct {
 	capture       *filterCapture
 	status, state string
-	// verdict is the verdict of qBittorrent: yes, no, or mixed.
-	verdict string
+	verdict       string
 }
 
-// A statusDifference is a deliberate difference between the status rule and
-// qBittorrent, with its reason.
 type statusDifference struct {
 	name, reason string
 	applies      func(statusCase) bool
 }
 
-// sometimesShown are the differences that one capture run shows and the next
-// can miss.
 var sometimesShown = []string{"pausedUP and stoppedUP stay out of Running"}
 
-// statusDifferences are the deliberate differences of ADR 0043. A difference
-// that is not listed fails the test, and so does a listed one that no
-// recorded result shows.
 var statusDifferences = []statusDifference{
 	{
 		"an unknown status gives no rows",
@@ -171,8 +160,6 @@ func loadFilterCaptures(t *testing.T) map[string]*filterCapture {
 	return captures
 }
 
-// TestStatusRuleMatchesQBittorrent compares the status rule with the recorded
-// results of real qBittorrent releases.
 func TestStatusRuleMatchesQBittorrent(t *testing.T) {
 	t.Parallel()
 
@@ -203,18 +190,14 @@ func TestStatusRuleMatchesQBittorrent(t *testing.T) {
 	}
 }
 
-// A filterCase is one recorded category or tag result that the rule does not give.
 type filterCase struct {
-	capture *filterCapture
-	webAPI  *semver.Version
-	// kind is "category" or "tag".
+	capture       *filterCapture
+	webAPI        *semver.Version
 	kind          string
 	subcategories bool
-	// returned is what qBittorrent did with the probe torrent.
-	returned bool
+	returned      bool
 }
 
-// filterDifferences are the deliberate category and tag differences of ADR 0043.
 var filterDifferences = []struct {
 	name, reason string
 	applies      func(filterCase) bool
@@ -233,9 +216,6 @@ var filterDifferences = []struct {
 	},
 }
 
-// TestCategoryAndTagRulesMatchQBittorrent compares the category and tag rules
-// with the recorded results. A difference that filterDifferences does not
-// list fails the test, and so does a listed one that no recorded result shows.
 func TestCategoryAndTagRulesMatchQBittorrent(t *testing.T) {
 	t.Parallel()
 

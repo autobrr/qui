@@ -11,9 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Postgres rejects a multi-row ON CONFLICT DO UPDATE that hits the same
-// conflict target twice, so the upsert must deduplicate the indexer IDs.
-// SQLite tolerates duplicates, so this asserts on the built statement instead.
 func TestUpsertIndexerSearchHistoryDeduplicatesIDs(t *testing.T) {
 	db := openSQLiteDB(t)
 	mustExec(t, db, `

@@ -48,12 +48,6 @@ type helperFile struct {
 	Attr   string   `bencode:"attr,omitempty"`
 }
 
-// Build makes a helper torrent from the exported .torrent of a real torrent.
-// The helper is private, has the same pieces, keeps no tracker, comment, web
-// seed, or source tag, and gets an infohash that the salt fixes. fileNames are
-// the file paths that qBittorrent reports, in torrent order. Added at the same
-// save path with ContentLayout, the helper finds each file at its path.
-// A v2 or hybrid torrent gives ErrV2Unsupported.
 func Build(torrent []byte, fileNames []string, salt string) (Helper, error) {
 	if salt == "" {
 		return Helper{}, errors.New("helper torrent needs a salt")
@@ -148,17 +142,13 @@ func renameFiles(files []metainfo.FileInfo, names [][]string) []helperFile {
 	return renamed
 }
 
-// IsPadding reports whether a file of a .torrent is a padding file, which
-// qBittorrent does not list. It follows libtorrent, which also counts the
-// padding files of BitComet, so that the files left match the file list of
-// qBittorrent.
 func IsPadding(file metainfo.FileInfo) bool {
 	return strings.Contains(file.Attr, "p") || strings.Contains(strings.Join(file.Path, "/"), "_____padding_file_")
 }
 
 func splitRelativePath(name string) ([]string, error) {
 	parts := strings.Split(name, "/")
-	if path.Clean(name) != name || path.IsAbs(name) || strings.ContainsRune(name, '\\') ||
+	if name == "." || path.Clean(name) != name || path.IsAbs(name) || strings.ContainsRune(name, '\\') ||
 		hasDriveLetter(name) || slices.Contains(parts, "..") {
 		return nil, fmt.Errorf("file name %q is not a relative path", name)
 	}

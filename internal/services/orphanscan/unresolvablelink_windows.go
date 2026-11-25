@@ -11,7 +11,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Windows reports this code for a symlink loop and for other links it cannot resolve.
 func isUnresolvableLinkError(err error) bool {
 	return errors.Is(err, windows.ERROR_CANT_RESOLVE_FILENAME)
 }

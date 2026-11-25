@@ -76,7 +76,6 @@ function formatEta(seconds: number): string {
   return `${secs}s`
 }
 
-// Calculate minimum column width based on header text
 function calculateMinWidth(text: string, padding: number = 48): number {
   const charWidth = 7.5
   const extraPadding = 20
@@ -196,12 +195,10 @@ const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: 
 }
 
 const getStatusIcon = (state: string, trackerHealth?: TrackerHealth | null, supportsTrackerHealth: boolean = true) => {
-  // Check tracker health first if supported
   if (supportsTrackerHealth && trackerHealth) {
     return TRACKER_HEALTH_DISPLAY[trackerHealth].icon
   }
 
-  // Map states to icons matching FilterSidebar.tsx
   switch (state) {
     case "downloading":
     case "metaDL":
@@ -241,7 +238,6 @@ const getStatusIcon = (state: string, trackerHealth?: TrackerHealth | null, supp
     case "stalled":
       return AlertCircle
     default:
-      // For completed state or any other state
       if (state.includes("complet")) {
         return CheckCircle2
       }
@@ -284,7 +280,6 @@ export type TableViewMode = "normal" | "dense" | "compact"
 
 interface CreateColumnsParams {
   incognitoMode: boolean
-  // The selection column shows only when this is set.
   selection?: {
     onSelectAll: () => void
     isAllChecked: boolean
@@ -315,9 +310,7 @@ export const createColumns = ({
   viewMode = "normal",
   trackerCustomizationLookup,
 }: CreateColumnsParams, t: TFunction): TorrentTableColumnDef[] => {
-  // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
-  // 16px icon plus the row padding of the view mode: px-2 (dense) or px-3 (normal).
   const iconColumnWidth = 16 + 2 * (viewMode === "dense" ? 8 : 12)
   const instanceLabel = t("tableColumns.instance")
   const selectionLabel = t("tableColumns.selection")
@@ -615,12 +608,10 @@ export const createColumns = ({
         const ratioA = incognitoMode ? getLinuxRatio(rowA.original.hash) : rowA.original.ratio
         const ratioB = incognitoMode ? getLinuxRatio(rowB.original.hash) : rowB.original.ratio
 
-        // Handle infinity values: -1 should be treated as the highest value
         if (ratioA === -1 && ratioB === -1) return 0
-        if (ratioA === -1) return 1  // ratioA is infinity, so it's greater
-        if (ratioB === -1) return -1 // ratioB is infinity, so it's greater
+        if (ratioA === -1) return 1
+        if (ratioB === -1) return -1
 
-        // Normal numeric comparison
         return ratioA - ratioB
       },
       size: 90,
@@ -718,7 +709,6 @@ export const createColumns = ({
       cell: ({ row }) => {
         const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
         const { host, fallback, title } = getTrackerDisplayMeta(tracker)
-        // Use primary domain from customization for icon lookup (if customized)
         const trackerDisplayInfo = trackerCustomizationLookup ? resolveTrackerDisplay(host, trackerCustomizationLookup) : null
         const iconDomain = trackerDisplayInfo?.primaryDomain || host
         const iconSrc = resolveTrackerIconSrc(trackerIcons, iconDomain, host)
@@ -740,8 +730,6 @@ export const createColumns = ({
     {
       accessorKey: "tracker",
       header: t("tableColumns.trackerUrl"),
-      // For client-side sorting in cross-seed mode, use the resolved display name.
-      // Return undefined for empty/unknown so sortUndefined: "last" keeps them at the end.
       accessorFn: trackerCustomizationLookup ? (torrent) => {
         const tracker = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
         const host = extractTrackerHost(tracker)
@@ -751,15 +739,12 @@ export const createColumns = ({
         const displayInfo = resolveTrackerDisplay(host, trackerCustomizationLookup)
         return displayInfo.displayName || undefined
       } : undefined,
-      // Keep empty/unknown trackers at the end regardless of sort direction
       sortUndefined: "last",
       cell: ({ row }) => {
         const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
         const host = extractTrackerHost(tracker)
-        // Resolve display name from customizations
         const displayInfo = trackerCustomizationLookup ? resolveTrackerDisplay(host, trackerCustomizationLookup) : { displayName: host, primaryDomain: host, isCustomized: false }
 
-        // Build tooltip content: custom name (if any), hostname, and full URL
         const tooltipParts: string[] = []
         if (displayInfo.isCustomized) {
           tooltipParts.push(`Name: ${displayInfo.displayName}`)
@@ -966,7 +951,6 @@ export const createColumns = ({
       },
       size: calculateMinWidth("Availability"),
     },
-    // incomplete save path is not exposed by the API?
     {
       accessorKey: "infohash_v1",
       header: t("tableColumns.infohashV1"),

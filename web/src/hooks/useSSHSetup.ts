@@ -7,11 +7,6 @@ import { api, APIError } from "@/lib/api"
 import type { SSHCredentials, SSHTestResponse } from "@/types"
 import { useCallback, useReducer } from "react"
 
-// The SSH setup flow of one instance: save or clear credentials, test the
-// connection, and pin or replace the host key the test presented. One state at
-// a time: a request in flight has no error beside it. A result survives a
-// failed pin, save or clear so the user still sees what the host presented; a
-// failed test drops it, since the error now answers for the connection.
 export type SSHSetupState =
   | { kind: "idle"; result: SSHTestResponse | null; error: string | null }
   | { kind: "saving"; result: SSHTestResponse | null }
@@ -34,7 +29,6 @@ export function sshSetupReducer(state: SSHSetupState, action: SSHSetupAction): S
     case "save":
       return { kind: "saving", result: state.result }
     case "saved":
-      // The credentials changed, so the last test answers for another setup.
       return { kind: "idle", result: null, error: null }
     case "test":
       return { kind: "testing", result: state.result }
@@ -49,7 +43,6 @@ export function sshSetupReducer(state: SSHSetupState, action: SSHSetupAction): S
   }
 }
 
-// The pin routes' 409 texts for a key or endpoint that moved under the request.
 function isHostKeyConflict(message: string): boolean {
   return /host key|endpoint changed|different key/i.test(message)
 }
@@ -60,15 +53,12 @@ function errorText(error: unknown): string {
 
 interface UseSSHSetupOptions {
   instanceId: number
-  // Called after every write, so the caller refreshes the instance row.
   onChanged: () => Promise<unknown> | void
 }
 
 export function useSSHSetup({ instanceId, onChanged }: UseSSHSetupOptions) {
   const [state, dispatch] = useReducer(sshSetupReducer, initialSSHSetupState)
 
-  // The test route writes the tier it probed, so the row is refreshed before
-  // the result shows: the probe table reads the tier from the instance.
   const test = useCallback(async () => {
     dispatch({ type: "test" })
     try {
@@ -106,12 +96,6 @@ export function useSSHSetup({ instanceId, onChanged }: UseSSHSetupOptions) {
     }
   }, [instanceId, onChanged])
 
-  // Confirm pins the key the test presented; replace swaps a pin for it. The
-  // server re-dials and compares, so a 409 about the key or the endpoint
-  // (already pinned, not pinned, endpoint changed, or the host presented yet
-  // another key) is answered by testing again: the next result shows the
-  // state the row is in now. Any other refusal, such as a running orphan-scan
-  // delete, is shown as it is.
   const pin = useCallback(async (replace: boolean) => {
     const hostKey = state.result?.hostKey
     if (!hostKey) {

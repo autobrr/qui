@@ -99,7 +99,6 @@ func TestNotifyTorrentsAddedAfterRefreshesSnapshot(t *testing.T) {
 
 		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, fakeHelpers{}, 7, []*qbt.Torrent{&initial}, 5*time.Millisecond)
 
-		// notifyTorrentsAddedAfter returns after it sends.
 		require.Len(t, notifier.events, 1)
 		event := <-notifier.events
 		require.Equal(t, notifications.EventTorrentAdded, event.Type)
@@ -140,7 +139,6 @@ func TestNotifyTorrentsAddedAfterFallsBackToInitialSnapshot(t *testing.T) {
 
 		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, fakeHelpers{}, 2, []*qbt.Torrent{&initial}, 5*time.Millisecond)
 
-		// notifyTorrentsAddedAfter returns after it sends.
 		require.Len(t, notifier.events, 1)
 		event := <-notifier.events
 		require.Equal(t, notifications.EventTorrentAdded, event.Type)

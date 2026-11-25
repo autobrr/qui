@@ -18,10 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// TestExecuteScan_LimitTakesRemovableLeavesFirst covers a limit smaller than the
-// number of abandoned directories. Sorting parents first would keep a directory
-// that cannot be removed while its child is still there, and every later scan
-// would re-select the same parent, so the tree could never drain.
 func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "torrents")
@@ -60,7 +56,6 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 
-	// MaxFilesPerRun = 1 is the reported trigger.
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID: 1, GracePeriodMinutes: 0, IgnorePaths: []string{},
 		ScanIntervalHours: 24, PreviewSort: "size_desc", MaxFilesPerRun: 1,
@@ -68,8 +63,6 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// The deepest directory has to be taken first, then its parent on the next
-	// run, exactly as the documentation promises.
 	runLeaf := runCycle(t, svc, store)
 	require.Equal(t, []string{b}, runLeaf, "the first run must take the leaf, not the parent that cannot be removed")
 	require.NoDirExists(t, b)
@@ -81,7 +74,6 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	require.DirExists(t, claimed, "a claimed directory must not occupy the preview cap or be removed")
 }
 
-// runCycle scans, returns what the run previewed, and confirms the deletion.
 func runCycle(t *testing.T, svc *Service, store *models.OrphanScanStore) []string {
 	t.Helper()
 
@@ -100,14 +92,10 @@ func runCycle(t *testing.T, svc *Service, store *models.OrphanScanStore) []strin
 	return previewed
 }
 
-// TestExecuteScan_MissingNestedRootStillWarns covers a save path that is nested
-// under another scan root and absent from disk, such as an unmounted volume.
-// Pruning stops it being walked, so without an explicit check its absence would
-// read as a clean scan (discussion #2483).
 func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 	base := t.TempDir()
 	parent := filepath.Join(base, "data")
-	nested := filepath.Join(parent, "movies") // never created: the volume is not mounted
+	nested := filepath.Join(parent, "movies")
 
 	require.NoError(t, os.MkdirAll(parent, 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(parent, "owned.mkv"), []byte("x"), 0o600))
@@ -126,7 +114,6 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 	stubSync(svc).listInstances = func(context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
-	// Two torrents: one in the parent, one on the volume that is not mounted.
 	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
 			{Hash: "here", SavePath: parent, State: qbt.TorrentStatePausedUp},
@@ -160,12 +147,6 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 		"a nested save path that is not on disk must still be reported, not hidden by pruning")
 }
 
-// TestTruncationLess_OrdersFilesThenDeepestDirectories pins the order the cap
-// truncates against. A file whose name falls between a directory and its child
-// ("d-f" sorts after "d" and before "d/x", since '-' < '/' and '-' < '\\') used
-// to make the comparator cyclic, and sort.Slice on a cyclic comparator returns
-// an order that depends on how the entries arrived — which is map order, from
-// dedupeOrphans. Every permutation must give the same answer.
 func TestTruncationLess_OrdersFilesThenDeepestDirectories(t *testing.T) {
 	t.Parallel()
 
@@ -173,8 +154,6 @@ func TestTruncationLess_OrdersFilesThenDeepestDirectories(t *testing.T) {
 	child := OrphanFile{Path: filepath.Join("d", "x"), IsAbandonedDir: true}
 	file := OrphanFile{Path: "d-f"}
 
-	// Files come first, then directories deepest first, so the child is always
-	// listed before the parent whose removal it blocks.
 	want := []string{file.Path, child.Path, parent.Path}
 
 	entries := []OrphanFile{parent, child, file}

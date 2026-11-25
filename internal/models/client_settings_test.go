@@ -39,7 +39,6 @@ func TestClientSettingsStore_SetManyAndOverwrite(t *testing.T) {
 		"qui-torrent-view-mode": "compact",
 	}, settings)
 
-	// Partial update overwrites one key and leaves the others untouched.
 	require.NoError(t, store.SetMany(ctx, map[string]string{
 		"qui-speed-units": `"bytes"`,
 	}))

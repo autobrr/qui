@@ -22,16 +22,13 @@ import type { Instance, InstanceFormData } from "@/types"
 
 type InstanceAuthType = "none" | "usernamePassword" | "apiKey"
 
-// The text fields in the order of the form. A failed submit focuses the first one with an error.
 const TEXT_FIELDS = ["name", "host", "username", "password", "apiKey", "basicUsername", "basicPassword"] as const
 type TextField = typeof TEXT_FIELDS[number]
 
 interface InstanceFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** The instance to edit. Without it, the form adds a new instance. */
   instance?: Instance
-  /** Runs when the save succeeds. The form does not close itself. */
   onSuccess: () => void
 }
 
@@ -55,17 +52,14 @@ function getInstanceFormDefaults(instance?: Instance): InstanceFormData {
   }
 }
 
-/** The request body for the form values: credentials that the auth type does not use are cleared, and kept secrets are left out. */
 function toSubmitData(data: InstanceFormData, authType: InstanceAuthType, showBasicAuth: boolean): InstanceFormData {
   let submitData: InstanceFormData
 
   if (showBasicAuth) {
     if (data.basicPassword === "<redacted>") {
-      // Without basicPassword, the server keeps the saved one.
       const { basicPassword, ...dataWithoutPassword } = data
       submitData = dataWithoutPassword
     } else {
-      // Send the actual password (could be empty to clear, or new password)
       submitData = data
     }
   } else {
@@ -95,7 +89,6 @@ function toSubmitData(data: InstanceFormData, authType: InstanceAuthType, showBa
   return submitData
 }
 
-/** The editor that adds a qBittorrent instance, or edits the connection of one. */
 export function InstanceForm({ open, onOpenChange, instance, onSuccess }: InstanceFormProps) {
   const { t } = useTranslation("instances")
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
@@ -244,7 +237,6 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
 
           <form.Field
             name="password"
-            // An instance that already has a username keeps its saved password when the field stays empty.
             validators={{ onChange: ({ value }) => !value?.trim() && !instance?.username ? t("form.validation.passwordRequired") : undefined }}
           >
             {(field) => (
@@ -338,7 +330,6 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onFocus={() => {
-                      // Clear the redacted placeholder when user focuses to edit
                       if (field.state.value === "<redacted>") {
                         field.handleChange("")
                       }

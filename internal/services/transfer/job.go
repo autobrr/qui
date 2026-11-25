@@ -21,8 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
-// failure ends a Transfer with a reason for the user. Its format may wrap
-// an error with %w.
 type failure struct {
 	class FailureClass
 	err   error
@@ -44,56 +42,33 @@ func sourceChanged(what string) error {
 	return temporary("The torrent changed on the source during the copy: %s.", what)
 }
 
-// sourceGone is a change of the source after which no retry finds the files
-// where the Transfer reads them.
 func sourceGone(what string) error {
 	return permanent("The torrent changed on the source during the copy: %s.", what)
 }
 
-// job is one run of a Transfer of a torrent and its Shared-file group.
 type job struct {
 	svc            *Service
 	rec            *Record
 	source, target *models.Instance
-	// crossSeed is the Cross-seed instance of the target when a member
-	// lands there.
-	crossSeed *models.Instance
-	// parts holds the members in the order of the record, the torrent of the
-	// request first.
-	parts []*part
-	// files holds each file of the group once, and byRel finds one by its
-	// path below the root.
-	files []*groupFile
-	byRel map[string]*groupFile
-	// srcFiles is nil on a source, and blind is set on a target, of a
-	// Transfer torrent whose files qui cannot reach.
-	srcFiles fsops.Backend
-	blind    bool
-	dstFiles fsops.Backend
-	root     fsops.Root
-	// rootDir is the folder on the target that holds every member, in the
-	// path dialect rootPaths.
-	rootDir   string
-	rootPaths fsops.PathDialect
-	reserved  int64
-	// helper is the infohash of a helper torrent on the target that qui has
-	// not removed yet.
+	crossSeed      *models.Instance
+	parts          []*part
+	files          []*groupFile
+	byRel          map[string]*groupFile
+	srcFiles       fsops.Backend
+	blind          bool
+	dstFiles       fsops.Backend
+	root           fsops.Root
+	rootDir        string
+	rootPaths      fsops.PathDialect
+	reserved       int64
 	helper         string
 	stoppedSource  bool
 	changedNothing bool
-	// made holds the temporary files on the target, with their size when the
-	// run found them.
-	made map[*groupFile]int64
-	// unanswered holds the names on the target where a create or a link of
-	// this run lost its answer, so the target may have made them.
-	unanswered map[string]bool
-	// away holds the instances that were deleted or changed their endpoint.
-	away map[int]bool
-	// flushedPieces counts the pieces that qui wrote and flushed in this run,
-	// also on a target that does not confirm a flush.
-	flushedPieces int
-	// meter counts the bytes that reached the target.
-	meter *meter
+	made           map[*groupFile]int64
+	unanswered     map[string]bool
+	away           map[int]bool
+	flushedPieces  int
+	meter          *meter
 }
 
 func (j *job) hashes() []string {
@@ -122,8 +97,6 @@ func (j *job) tempName(name string) string {
 	return fmt.Sprintf("%s.qui-transfer-%d", name, j.rec.ID)
 }
 
-// run takes the steps that the Transfer did not finish. Once qui placed
-// the files, the copy and its proof are done.
 func (j *job) run(ctx context.Context) error {
 	if j.reached(stepRemoveFromSource) {
 		return j.finishRemoval(ctx)
@@ -140,7 +113,6 @@ func (j *job) run(ctx context.Context) error {
 				return err
 			}
 		}
-		// A Transfer torrent that fell back leaves the rest to the copy.
 		if j.rec.Way != WayBitTorrent {
 			if err := j.copyAll(ctx); err != nil {
 				return err
@@ -156,7 +128,6 @@ func (j *job) run(ctx context.Context) error {
 	return j.after(ctx)
 }
 
-// step records a step and the state before qui takes the step.
 func (j *job) step(ctx context.Context, state State, name string) error {
 	return j.stepWith(ctx, state, name, "")
 }
@@ -174,8 +145,6 @@ func (j *job) logf(format string, args ...any) {
 	j.rec.Log = append(j.rec.Log, LogLine{At: j.svc.deps.Now(), Message: fmt.Sprintf(format, args...)})
 }
 
-// prepare reads both sides again, checks the free space, and opens the root
-// on the target with no file at any path that the copy writes.
 func (j *job) prepare(ctx context.Context) error {
 	resumed := j.reached(stepPrepare)
 	j.rec.RetryAt, j.rec.FailureClass, j.rec.FailureReason = time.Time{}, "", ""
@@ -220,7 +189,6 @@ func (j *job) prepare(ctx context.Context) error {
 	}
 	var known bool
 	if j.blind {
-		// pass reserves what each Transfer torrent still needs after its check.
 		var read space
 		read, err = j.freeSpace(ctx)
 		known = read.known
@@ -276,15 +244,11 @@ func (j *job) openRoot(ctx context.Context, resumed bool) error {
 	return nil
 }
 
-// space is a read of the free space on the target. freed is what the runs
-// gave back on the target before the read.
 type space struct {
 	free, freed int64
 	known       bool
 }
 
-// freeSpace is not known on a blind target before qBittorrent 5.3, which
-// reports it only at its default save path.
 func (j *job) freeSpace(ctx context.Context) (space, error) {
 	read := space{freed: j.svc.freedOn(j.target.ID), known: true}
 	if !j.blind {
@@ -303,9 +267,6 @@ func (j *job) freeSpace(ctx context.Context) (space, error) {
 	return read, nil
 }
 
-// clientFreeSpace reads the free space at dir on target as its qBittorrent
-// reports it. Before 5.3 qBittorrent reports it only at its default save
-// path, so elsewhere it is not known.
 func (s *Service) clientFreeSpace(ctx context.Context, target *models.Instance, d fsops.PathDialect, dir string) (free int64, known bool, err error) {
 	free, err = s.deps.Sync.GetFreeSpaceAtPath(ctx, target.ID, dir)
 	if !errors.Is(err, qbittorrent.ErrFreeSpaceAtPathUnsupported) {
@@ -371,7 +332,6 @@ func (j *job) hint(ctx context.Context) {
 	}
 }
 
-// onTCPAndUTP returns the instances whose qBittorrent uses "TCP and μTP".
 func (s *Service) onTCPAndUTP(ctx context.Context, instances ...*models.Instance) []*models.Instance {
 	var out []*models.Instance
 	for _, inst := range instances {
@@ -383,12 +343,8 @@ func (s *Service) onTCPAndUTP(ctx context.Context, instances ...*models.Instance
 	return out
 }
 
-// bittorrentTCPAndUTP is "TCP and μTP" in qBittorrent's "Peer connection
-// protocol".
 const bittorrentTCPAndUTP = 0
 
-// need is how many bytes the copy writes on the target: each file that the
-// target lacks, once.
 func (j *job) need() int64 {
 	var need int64
 	for _, f := range j.files {
@@ -404,8 +360,6 @@ func (j *job) need() int64 {
 	return need
 }
 
-// reserve reserves bytes of the free space on the target for the run. It
-// reserves nothing, and reports false, when the free space is not known.
 func (j *job) reserve(ctx context.Context, bytes int64) (bool, error) {
 	read, err := j.freeSpace(ctx)
 	if err != nil || !read.known {
@@ -414,10 +368,6 @@ func (j *job) reserve(ctx context.Context, bytes int64) (bool, error) {
 	return true, j.claim(bytes, read)
 }
 
-// claim reserves bytes of the free space that qui read on the target. A disk
-// without the bytes fails the Transfer. When only the other Transfers to the
-// target stand in the way, with what they reserved or wrote since the read,
-// the Transfer fails for a retry, because the shortage ends with them.
 func (j *job) claim(bytes int64, read space) error {
 	left := read.free - j.reserved
 	if left < bytes {
@@ -432,16 +382,11 @@ func (j *job) claim(bytes int64, read space) error {
 	return nil
 }
 
-// unclaim gives back bytes that the run reserved and wrote: the free space
-// on the target shows them now.
 func (j *job) unclaim(bytes int64) {
 	j.svc.unreserve(j.target.ID, bytes)
 	j.reserved -= bytes
 }
 
-// readParts reads each member on the source again, and places it below the
-// root of the Transfer on the target. It sets the parts only with the files
-// of the whole group, so that a cleanup after a failure reads them again.
 func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	var (
 		err   error
@@ -505,9 +450,6 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	return nil
 }
 
-// checkSource fails when a torrent of the Transfer moves or moved on the
-// source, was renamed, is rechecked, or has other files than at the start of
-// the copy.
 func (j *job) checkSource(ctx context.Context) error {
 	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
 	if err != nil {
@@ -546,37 +488,26 @@ func isChecking(state qbt.TorrentState) bool {
 	return slices.Contains([]qbt.TorrentState{qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData}, state)
 }
 
-// retryAfter is the least time between a temporary failure and its retry.
 const retryAfter = time.Hour
 
-// cleanupContext outlives the run, so that a stop does not cut a cleanup
-// short. A shutdown waits for it only until its own limit; the cleanup step
-// is recorded first, so the next start finishes a cleanup that the exit cut.
 func cleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 }
 
-// rollBack ends a cancelled Transfer: it takes back what the Transfer did.
 func (j *job) rollBack(ctx context.Context) {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
 	defer j.release()
-	// A Transfer records the prepare step before it changes anything. One
-	// that never got there has nothing to take back, so its end asks the
-	// instances nothing.
 	if j.rec.Kind == KindTransfer && (!j.reached(stepPrepare) || j.changedNothing) {
 		j.logf("Cancelled.")
 		_ = j.finish(ctx, StateCancelled)
 		return
 	}
-	// The check marks the instances that the cleanup must not touch.
 	_ = j.checkInstances(ctx)
 	j.logf("Cancelled.")
 	_ = j.cleanUp(ctx, StateCancelled)
 }
 
-// cleanUpAgain finishes a cleanup that a stop interrupted, and sends the
-// failure that the stop held back.
 func (j *job) cleanUpAgain(ctx context.Context) {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
@@ -588,9 +519,6 @@ func (j *job) cleanUpAgain(ctx context.Context) {
 	}
 }
 
-// end records how the run ended. A temporary failure keeps the partial data
-// and the claims until its retry. A permanent failure takes back what the
-// Transfer did, and waits for the user.
 func (j *job) end(ctx context.Context, runErr error) {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
@@ -640,7 +568,6 @@ func (j *job) end(ctx context.Context, runErr error) {
 	j.notify(ctx, notifications.EventTransferFailed)
 }
 
-// notify sends the end of the Transfer as an event of the source instance.
 func (j *job) notify(ctx context.Context, eventType notifications.EventType) {
 	if j.svc.deps.Notifier == nil {
 		return
@@ -681,8 +608,6 @@ func (j *job) save(ctx context.Context) {
 	}
 }
 
-// cleanUp records the step clean up, takes back what the Transfer did, and
-// finishes it in state. It returns the error of finish.
 func (j *job) cleanUp(ctx context.Context, state State) error {
 	j.rec.State = state
 	j.rec.Steps = append(j.rec.Steps, Step{Name: stepCleanUp, At: j.svc.deps.Now()})
@@ -691,9 +616,6 @@ func (j *job) cleanUp(ctx context.Context, state State) error {
 	return j.finish(ctx, state)
 }
 
-// finish records the end of the Transfer and releases its torrents. On an
-// error the Transfer stays unfinished, and the next start of qui ends it
-// again, so the caller sends the event of the end only on success.
 func (j *job) finish(ctx context.Context, state State) error {
 	j.rec.State = state
 	j.rec.Steps = append(j.rec.Steps, Step{Name: string(state), At: j.svc.deps.Now()})
@@ -705,7 +627,6 @@ func (j *job) finish(ctx context.Context, state State) error {
 	return nil
 }
 
-// release frees what the run holds, and keeps the files.
 func (j *job) release() {
 	if j.root != nil {
 		_ = j.root.Close()
@@ -725,7 +646,6 @@ func (j *job) startSource(ctx context.Context) {
 	j.stoppedSource = false
 }
 
-// remove removes the files that exist.
 func (j *job) remove(ctx context.Context, names ...string) {
 	for _, name := range names {
 		if err := j.root.Remove(ctx, name); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -734,7 +654,6 @@ func (j *job) remove(ctx context.Context, names ...string) {
 	}
 }
 
-// targetPath is the path on the target of a slash name below the root.
 func (j *job) targetPath(name string) string {
 	return j.rootPaths.Join(j.rootDir, j.rootPaths.FromSlash(name))
 }

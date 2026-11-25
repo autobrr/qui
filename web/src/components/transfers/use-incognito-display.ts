@@ -8,12 +8,6 @@ import { INCOGNITO_PEER_ADDRESS } from "@/lib/torrent-peer-address"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
-/**
- * What the Transfer and Share screens show of torrent data. In incognito mode a
- * name, a save path, a tracker, or a peer address shows the made-up value of the torrent list,
- * and text from the server shows "Hidden in incognito mode", because it can hold
- * names and paths. A download or a copied message keeps the real data.
- */
 export function useIncognitoDisplay() {
   const { t } = useTranslation("transfers")
   const [incognito] = useIncognitoMode()

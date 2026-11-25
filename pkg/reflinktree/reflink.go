@@ -1,13 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package reflinktree provides utilities for creating reflink (copy-on-write)
-// trees that mirror torrent file layouts for cross-seeding.
-//
-// Reflinks create copy-on-write clones of files, allowing safe modification of
-// the cloned files without affecting the originals. This is ideal for cross-seeding
-// scenarios where qBittorrent may need to download/repair bytes that would otherwise
-// risk corrupting the original seeded files.
 package reflinktree
 
 import (
@@ -48,8 +41,6 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 		return nil, rollbackOnError(fmt.Errorf("create root directory %s: %w", plan.RootDir, err))
 	}
 
-	// Check reflink support after tracking the root directory. SupportsReflink
-	// creates the directory, which would otherwise hide it from rollback.
 	supported, reason := SupportsReflink(plan.RootDir)
 	if !supported {
 		return nil, rollbackOnError(fmt.Errorf("%w: %s", ErrReflinkUnsupported, reason))
@@ -64,8 +55,6 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 		}
 
 		if _, err := os.Lstat(fp.TargetPath); err == nil {
-			// File exists at target - this is an error for reflinks
-			// (unlike hardlinks, we can't easily check if it's the same content)
 			return nil, rollbackOnError(fmt.Errorf("target already exists: %s", fp.TargetPath))
 		} else if !os.IsNotExist(err) {
 			return nil, rollbackOnError(fmt.Errorf("check target %s: %w", fp.TargetPath, err))

@@ -6,6 +6,7 @@
 import { Button } from "@/components/ui/button"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { useInstances } from "@/hooks/useInstances"
+import { usePageTitle } from "@/hooks/usePageTitle"
 import { Torrents } from "@/pages/Torrents"
 import { createFileRoute, Navigate } from "@tanstack/react-router"
 import { Power } from "lucide-react"
@@ -23,8 +24,7 @@ export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
   validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
   staticData: {
-    titleKey: "page.routeTitle",
-    titleNs: "torrents",
+    title: { titleKey: "page.routeTitle", titleNs: "torrents" },
   },
 })
 
@@ -113,6 +113,7 @@ interface InstanceDisabledNoticeProps {
 
 function InstanceDisabledNotice({ instanceName, onManageInstances }: InstanceDisabledNoticeProps) {
   const { t } = useTranslation(["common", "torrents"])
+  usePageTitle({ detail: instanceName })
 
   return (
     <div className="flex h-full items-center justify-center px-4 py-12">

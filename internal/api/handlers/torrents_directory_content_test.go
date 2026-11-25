@@ -43,7 +43,6 @@ func TestGetDirectoryContentRejectsUnknownMode(t *testing.T) {
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/getDirectoryContent?dirPath=/data&mode=bogus", http.NoBody)
 	rec := httptest.NewRecorder()
 
-	// syncManager is nil: validation must reject the mode before any client call.
 	(&TorrentsHandler{}).GetDirectoryContent(rec, req)
 
 	if rec.Code != http.StatusBadRequest {

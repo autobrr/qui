@@ -55,23 +55,16 @@ const SORT_FIELDS = [
 ] as const satisfies readonly { value: IndexerSort["field"]; labelKey: string }[]
 
 interface IndexerToolbarProps {
-  /** A line about the list, for example how many indexers are on. */
   summary: string
   filters: IndexerFilters
   onFiltersChange: (filters: IndexerFilters) => void
   sort: IndexerSort
   onSortChange: (sort: IndexerSort) => void
-  /** Tests the indexers that the filters show. */
   onTestAll: () => void
-  /** A test runs: Test all shows a spinner and takes no second press. */
   testing: boolean
   onDeleteAll: () => void
 }
 
-/**
- * The line above the indexer list: a summary, the sort order and the filters in one panel, and the steps for all indexers.
- * The panel is a popover on a wide screen and a sheet from the bottom on a phone.
- */
 export function IndexerToolbar({ summary, filters, onFiltersChange, sort, onSortChange, onTestAll, testing, onDeleteAll }: IndexerToolbarProps) {
   const { t } = useTranslation("settings")
   const phone = useIsPhone()
@@ -151,7 +144,6 @@ interface SortAndFiltersProps {
   onSortChange: (sort: IndexerSort) => void
 }
 
-/** The sort field with its direction, then one choice per filter. Each pick applies at once. */
 function SortAndFilters({ filters, onFiltersChange, sort, onSortChange }: SortAndFiltersProps) {
   const { t } = useTranslation("settings")
   const ascending = sort.direction === "asc"
@@ -197,11 +189,9 @@ interface SegmentedProps<V extends string> {
   value: V
   options: readonly { value: V; label: string }[]
   onChange: (value: V) => void
-  /** A control at the end of the label line. */
   aside?: ReactNode
 }
 
-/** One choice of a few, as a segmented control in the look of the period picker of Statistics. The segments are radio buttons, so the arrow keys move between them. */
 function Segmented<V extends string>({ label, value, options, onChange, aside }: SegmentedProps<V>) {
   const name = useId()
   const labelId = useId()

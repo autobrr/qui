@@ -31,7 +31,6 @@ function groupOf(type: string): NotificationEventGroupId {
   return "other"
 }
 
-/** The events in their groups, in the order of the form. A group without events is left out. */
 export function groupNotificationEvents(definitions: readonly NotificationEventDefinition[]): NotificationEventGroup[] {
   const groups = new Map<NotificationEventGroupId, NotificationEventDefinition[]>()
   for (const event of definitions) {
@@ -46,7 +45,6 @@ export function groupNotificationEvents(definitions: readonly NotificationEventD
 
 const REDACTED = "••••"
 
-/** The URL without its secrets: the scheme and the host stay, the credentials and the path become dots. */
 export function maskNotificationUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim()
   if (!trimmed) return ""
@@ -91,7 +89,6 @@ function convertDiscordWebhookUrl(rawUrl: string): string | null {
   return `discord://${token}@${webhookId}${suffix}`
 }
 
-/** A Discord webhook URL becomes the Shoutrrr discord:// URL. Each other URL stays as it is. */
 export function normalizeNotificationUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim()
   if (!trimmed || trimmed.startsWith("discord://")) return rawUrl

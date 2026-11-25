@@ -65,10 +65,8 @@ export interface TorrentContextMenuProps {
   readOnly?: boolean
   torrent: Torrent
   isSelected: boolean
-  // The Action target of the selection. Every action item acts on it.
   actionTarget: ActionTarget
   onTorrentSelect?: (torrent: Torrent | null) => void
-  // Sends a Bulk action to the bulk action module, which acts on the Action target.
   onPick: (pick: BulkActionPick) => void
   isPending?: boolean
   isExporting?: boolean
@@ -84,9 +82,6 @@ export interface TorrentContextMenuProps {
   ) => Promise<string[]>
 }
 
-// WhenSupported renders its children when every instance supports the
-// capability. It mounts only with the open menu, so a closed row menu holds no
-// capability observers.
 function WhenSupported({ instanceIds, capability, children }: { instanceIds: number[] | undefined; capability: CapabilityFlag; children: ReactNode }) {
   return useInstancesSupport(instanceIds, capability) ? children : null
 }
@@ -115,8 +110,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 
   const isAllSelected = actionTarget.kind === "selectAll"
   const effectiveSelectionCount = actionTarget.count
-  // A right-click selects the row first (#3368). A read-only table never selects,
-  // so its menu shows and copies the row that the user right-clicked.
   const useSelection = isSelected || isAllSelected
 
   const torrents = useMemo(() =>
@@ -134,7 +127,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   const count = useSelection ? effectiveSelectionCount : 1
   const mixedLabel = count > 1 ? `${t("contextMenu.mixed")} (${count})` : t("contextMenu.mixed")
 
-  // State for cross-seed search
   const { isFilteringCrossSeeds, filterCrossSeeds } = useCrossSeedFilter({
     instanceId: _instanceId,
     onFilterChange,
@@ -161,11 +153,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   }, [t])
 
   const handleCopyNames = useCallback(async () => {
-    // Select all fetch from backend
     if (isAllSelected && onFetchTorrentField && torrents.length < effectiveSelectionCount) {
       try {
         if (incognitoMode) {
-          // In incognito mode, fetch hashes and transform client-side
           const hashes = await onFetchTorrentField("hash")
           const values = hashes.map(h => getLinuxIsoName(h)).filter(Boolean)
           if (values.length === 0) { toast.error(t("contextMenu.toast.nameNotAvailable")); return }
@@ -224,7 +214,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     if (isAllSelected && onFetchTorrentField && torrents.length < effectiveSelectionCount) {
       try {
         if (incognitoMode) {
-          // In incognito mode, fetch hashes and construct fake paths
           const hashes = await onFetchTorrentField("hash")
           const values = hashes
             .map(h => `${getLinuxSavePath(h)}/${getLinuxIsoName(h)}`)
@@ -254,8 +243,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchTorrentField, t])
 
   const handleCopyMagnetLinks = useCallback(async () => {
-    // List rows no longer carry magnet_uri (issue #2328); every copy fetches on
-    // demand. Select-all resolves by filter scope, otherwise by explicit selection.
     if (!onFetchTorrentField) {
       toast.error(t("contextMenu.toast.magnetNotAvailable"))
       return
@@ -279,7 +266,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   }, [copyToClipboard, torrents, hashes, actionTargets, isAllSelected, effectiveSelectionCount, onFetchTorrentField, t])
 
 
-  // select-all: unloaded rows have unknown state, so offer both directions.
   const stateUnknownForSelection = isAllSelected && torrents.length < effectiveSelectionCount
 
   const { allEnabled: allForceStarted, mixed: forceStartMixed } = getToggleSelectionState(torrents.map(t => t.force_start), stateUnknownForSelection)
@@ -609,7 +595,6 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   )
 })
 
-// The category submenu mounts only with the open menu, so a closed row menu does not read the category list.
 function BulkCategorySubmenu({ hashCount, onPick, isPending, currentCategory }: {
   hashCount: number
   onPick: (pick: BulkActionPick) => void
@@ -642,10 +627,9 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
     queryKey: ["externalPrograms", "enabled"],
     queryFn: () => api.listExternalPrograms(),
     select: (data) => data.filter(p => p.enabled),
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 60 * 1000,
   })
 
-  // Types derived from API for strong typing
   type ExecResp = Awaited<ReturnType<typeof api.executeExternalProgram>>
   type ExecVars = { program: ExternalProgram; instanceId: number; hashes: string[] }
 
@@ -668,7 +652,6 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
         toast.warning(t("contextMenu.toast.externalProgramPartial", { success: successCount, failure: failureCount }))
       }
 
-      // Log detailed errors in development only to avoid leaking PII/paths in production
       if (import.meta.env.DEV) {
         response.results.forEach(r => {
           if (!r.success && r.error) console.error(`External program failed for ${r.hash}:`, r.error)
@@ -693,9 +676,8 @@ function ExternalProgramsSubmenu({ instanceId, hashes }: ExternalProgramsSubmenu
     )
   }
 
-  // programs is already filtered to enabled by select
   if (!programs || programs.length === 0) {
-    return null // Don't show the submenu if no programs are enabled
+    return null
   }
 
   return (

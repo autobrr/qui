@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
 import type { ReactNode } from "react"
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { SystemNoticeList } from "@/components/ui/SystemNoticeList"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -22,7 +22,6 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }))
 
-// The test adds a fix page for a kind that qui does not have, to test the link of a kind with no texts.
 vi.mock("@/lib/system-notice", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/system-notice")>()
   return {
@@ -57,15 +56,6 @@ function renderList(notices: SystemNotice[]) {
   return queryClient
 }
 
-beforeAll(() => {
-  // jsdom has no ResizeObserver, and the Radix popper measures its anchor with one.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
-
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -81,7 +71,6 @@ describe("SystemNoticeList", () => {
     expect(list.textContent).toContain("Needs attention2")
   })
 
-  // regression: #4110
   it("opens the detail of a notice with its effect, fix, and cause", async () => {
     renderList([recordingStopped])
 
@@ -95,7 +84,6 @@ describe("SystemNoticeList", () => {
     expect(within(detail).queryByRole("link")).toBeNull()
   })
 
-  // regression: #4110
   it("counts a notice that opened under a minute ago as one minute old", async () => {
     renderList([notice("recording_stopped", "database or disk is full", 0)])
 

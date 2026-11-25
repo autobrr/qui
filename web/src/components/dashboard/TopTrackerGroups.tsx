@@ -17,12 +17,10 @@ import { useTranslation } from "react-i18next"
 
 const OTHER_COLOR = "color-mix(in oklab, var(--muted-foreground) 45%, transparent)"
 
-// The series color of the theme: the inline style holds both sets, and the class picks one.
 const SERIES_CLASS = "[--series:var(--series-light)] dark:[--series:var(--series-dark)]"
 
 const TITLE_ID = "dashboard-top-tracker-groups"
 
-/** The largest Tracker groups of the last 24 hours, in the series colors of the Statistics page. The rows add up to the upload. */
 export function TopTrackerGroups({ shares, className }: { shares: TrackerGroupShares; className?: string }) {
   const { t, i18n } = useTranslation("dashboard")
   const locale = i18n.resolvedLanguage ?? i18n.language

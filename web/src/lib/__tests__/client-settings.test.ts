@@ -145,9 +145,6 @@ describe("push queue", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  // REGRESSION: only visibilitychange flushed the queue, and a same-tab
-  // reload does not fire it, so a write inside the debounce window was lost
-  // and the stale server snapshot reverted it at next boot.
   it("flushes pending writes on pagehide without waiting for the debounce", () => {
     seedAndMarkReady({})
     writeRaw("qui-test-bool", "true")
@@ -159,8 +156,6 @@ describe("push queue", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-test-bool": "true" })
   })
 
-  // REGRESSION: pending was cleared before the PUT resolved, so a server
-  // apply during the in-flight window clobbered the newer value.
   it("keeps in-flight keys guarded against a concurrent server apply", async () => {
     let resolvePut: (value: unknown) => void = () => {}
     fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolvePut = resolve }))
@@ -169,7 +164,6 @@ describe("push queue", () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    // PUT is in flight; a stale snapshot must not overwrite the newer value.
     const changed = applyServerSettings({ "qui-test-bool": "false" })
     expect(changed).toEqual([])
     expect(localStorage.getItem("qui-test-bool")).toBe("true")
@@ -187,7 +181,6 @@ describe("push queue", () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    // Newer write lands mid-flight; it must survive the first PUT's cleanup.
     writeRaw("qui-test-bool", "false")
     resolvePut({ ok: true, status: 200 })
     await vi.runAllTimersAsync()
@@ -204,7 +197,6 @@ describe("push queue", () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-test-bool": "true" })
 
-    // Another tab writes the shared cache while this tab's older PUT is slow.
     localStorage.setItem("qui-test-bool", "false")
     resolvePut({ ok: true, status: 200 })
     await vi.runAllTimersAsync()
@@ -223,7 +215,6 @@ describe("push queue", () => {
     writeRaw("qui-test-bool", "true")
     await vi.advanceTimersByTimeAsync(1_000)
 
-    // Tab B edits mid-flight; its edit clears the mark of the server copy.
     tabB.writeRaw("qui-test-bool", "false")
     resolvePut({ ok: true, status: 200 })
     await vi.runAllTimersAsync()
@@ -232,9 +223,6 @@ describe("push queue", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
   })
 
-  // REGRESSION (#3424): another tab wrote a one-write-old server snapshot to
-  // the shared localStorage, and this tab's next flush pushed it back as an
-  // edit. Each PUT then caused the next, and the value flipped forever.
   it.each([1, 3])("does not push a server copy back after two quick writes, with %i other tabs", async (otherTabCount) => {
     const otherTabs: (typeof import("@/lib/client-settings"))[] = []
     for (let i = 0; i < otherTabCount; i++) {
@@ -246,8 +234,6 @@ describe("push queue", () => {
     fetchMock.mockImplementation((_url: string, init: RequestInit) => {
       Object.assign(server, JSON.parse(String(init.body)))
       const snapshot = { ...server }
-      // The activity event and the GET reach each tab after the PUT returns,
-      // a little later in each other tab.
       setTimeout(() => applyServerSettings(snapshot), 50)
       otherTabs.forEach((tab, i) => setTimeout(() => tab.applyServerSettings(snapshot), 50 + 20 * i))
       return new Promise((resolve) => setTimeout(() => resolve({ ok: true, status: 200 }), 10))
@@ -265,7 +251,6 @@ describe("push queue", () => {
     expect(server).toEqual({ [key]: "false" })
     expect(localStorage.getItem(key)).toBe("false")
 
-    // A fresh boot of another tab seeds nothing new: the mark is never synced.
     otherTabs[0]._resetClientSettingsForTests()
     otherTabs[0].seedAndMarkReady(server)
     await vi.runAllTimersAsync()
@@ -274,9 +259,6 @@ describe("push queue", () => {
     }
   })
 
-  // REGRESSION: a flush whose timer fired during an in-flight PUT was
-  // swallowed; if that PUT then failed, the newer write stalled until the
-  // next write or tab-hide.
   it("replays a flush swallowed during a failed in-flight PUT", async () => {
     let rejectPut: (reason: unknown) => void = () => {}
     fetchMock.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectPut = reject }))
@@ -285,7 +267,6 @@ describe("push queue", () => {
     await vi.advanceTimersByTimeAsync(1_000)
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    // New write mid-flight; its timer fires while the PUT is still pending.
     writeRaw("qui-test-other", "1")
     await vi.advanceTimersByTimeAsync(1_000)
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -307,7 +288,6 @@ describe("push queue", () => {
     await vi.runAllTimersAsync()
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    // The next write flushes the failed key again alongside the new one.
     writeRaw("qui-test-other", "1")
     await vi.runAllTimersAsync()
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -318,11 +298,9 @@ describe("push queue", () => {
   })
 })
 
-// regression: #4194
 describe("large batches", () => {
   const MAX_BODY_BYTES = 64 * 1024
 
-  // About 100 KiB of synced keys that the server does not have yet.
   function storeLargeLocalSetup(): Record<string, string> {
     const values: Record<string, string> = {}
     for (let i = 0; i < 50; i++) {
@@ -374,7 +352,6 @@ describe("large batches", () => {
     await vi.runAllTimersAsync()
     expect(server).not.toEqual(edited)
 
-    // The page closes before another save; the next load gets the stale snapshot.
     _resetClientSettingsForTests()
     applyServerSettings({ ...server })
     seedAndMarkReady({ ...server })
@@ -413,7 +390,6 @@ describe("large batches", () => {
     expect(server).toEqual({ ...values, "qui-test-bool": "true" })
   })
 
-  // regression: #4206
   it("sends the newer value again when the page-hide PUT lands after a newer save", async () => {
     const server: Record<string, string> = {}
     const inFlight: (() => void)[] = []
@@ -444,7 +420,6 @@ describe("large batches", () => {
     expect(server["qui-test-bool"]).toBe("2")
   })
 
-  // regression: #4206
   it("keeps the newer value when the page-hide PUT lands before an older PUT and a snapshot of it", async () => {
     const server: Record<string, string> = {}
     const inFlight: (() => void)[] = []
@@ -475,7 +450,6 @@ describe("large batches", () => {
     expect(server["qui-test-bool"]).toBe("2")
   })
 
-  // regression: #4206
   it("sends the newer value again when the page-hide PUT commits after a newer PUT but answers first", async () => {
     const server: Record<string, string> = {}
     const puts: { commit: () => void; answer: () => void }[] = []
@@ -537,13 +511,9 @@ describe("large batches", () => {
 
 describe("outbox persistence", () => {
   it("replays a write whose unload flush never reached the server", async () => {
-    // A pagehide keepalive PUT can die in flight (Chrome drops keepalive
-    // fetches from service-worker-controlled pages on unload), so an instant
-    // reload after a write must recover from the persisted outbox.
     seedAndMarkReady({})
     writeRaw("qui-test-bool", "true")
 
-    // Page dies before the debounced flush is acked; next boot, stale server.
     _resetClientSettingsForTests()
     fetchMock.mockClear()
 
@@ -626,7 +596,7 @@ describe("seedAndMarkReady", () => {
     localStorage.setItem("qui-speed-units", "bits")
     localStorage.setItem("qui-incognito-mode", "true")
     localStorage.setItem("qui-torrent-mobile-view-mode", "ultra-compact")
-    localStorage.setItem("theme-cache", "{}") // not a synced key
+    localStorage.setItem("theme-cache", "{}")
 
     seedAndMarkReady({ "qui-incognito-mode": "true" })
     await vi.runAllTimersAsync()
@@ -771,7 +741,6 @@ describe("display profiles", () => {
     const laptop = createDisplayProfile("Laptop")
     await vi.runAllTimersAsync()
 
-    // Browser B has its own localStorage and has not seen Laptop yet.
     const browserA = { ...localStorage }
     localStorage.clear()
     _resetClientSettingsForTests()
@@ -975,7 +944,6 @@ describe("display profiles", () => {
       return await import("@/lib/client-settings")
     }
 
-    // The storage events that the first tab's writes send to the second tab.
     function sendStorageEvents(keys: string[]) {
       for (const key of keys) window.dispatchEvent(new StorageEvent("storage", { key }))
     }
@@ -1025,7 +993,6 @@ describe("display profiles", () => {
     deleteDisplayProfile(laptop)
     await vi.runAllTimersAsync()
 
-    // Browser A missed the delete: it renamed Laptop and wrote a new value, and the page died before the push.
     localStorage.clear()
     for (const [key, raw] of Object.entries(browserA)) localStorage.setItem(key, raw)
     renameDisplayProfile(laptop, "Old laptop")
@@ -1054,7 +1021,6 @@ describe("display profiles", () => {
     await vi.runAllTimersAsync()
     const deletion = JSON.parse(fetchMock.mock.calls[0][1].body) as Record<string, string>
 
-    // Browser B saw Laptop and then the delete. A browser that missed the delete renames Laptop after that.
     localStorage.clear()
     _resetClientSettingsForTests()
     applyServerSettings({ [`qui-display-profile-entry:${laptop}`]: laptopEntry })

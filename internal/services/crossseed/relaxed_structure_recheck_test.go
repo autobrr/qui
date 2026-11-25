@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Regular, hardlink and reflink mode all read this one predicate, so it is the
-// single place the verify-before-seed policy can be got wrong.
 func TestCandidateRequiresVerification(t *testing.T) {
 	t.Parallel()
 
@@ -55,11 +53,6 @@ func TestCandidateRequiresVerification(t *testing.T) {
 	}
 }
 
-// A season, episode or group relaxed by the exact-size fallback rests on equal
-// reported total sizes, which cannot prove which episode the files hold or which group
-// packed them. The add must be hashed before it seeds, and must be dropped when
-// the user disabled rechecks. The layout here is perfect (identical names and
-// sizes), so nothing except the relaxation can demand a recheck.
 func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 	t.Parallel()
 
@@ -134,8 +127,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		require.Empty(t, sync.addTorrentOpts, "the torrent must never be added")
 	})
 
-	// A HYBRID copy passes the same size checks as any other encode difference,
-	// so an exact layout keeps the fast path, also with Skip recheck on.
 	t.Run("HYBRID tolerance keeps the unverified fast path", func(t *testing.T) {
 		for _, skipRecheck := range []bool{false, true} {
 			req := newRequest()

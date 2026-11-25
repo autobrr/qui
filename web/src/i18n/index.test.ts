@@ -5,8 +5,6 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-// i18n/index.ts resolves the initial language at import time, so the detected
-// language is observable as i18n.language on a freshly imported module.
 async function detectedLanguage(languages: string[]): Promise<string | undefined> {
   vi.resetModules()
   localStorage.clear()

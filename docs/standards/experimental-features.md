@@ -3,7 +3,7 @@
 An Experimental feature is a feature that is merged before it is finished. It stays off unless the user puts its name in `experimentalFeatures`. `internal/experimental` holds the list of known names. ADR 0057 records why qui uses one.
 
 - Use an Experimental feature when a feature merges in more than one pull request and users must not reach it before the last one. Do not use one for a bug fix, a refactor, or a setting that users keep, because a setting that users keep gets its own config key.
-- The first ticket of the feature adds the name with the number of the ticket that deletes it, and that ticket exists before the name merges. When the maintainer keeps the decision to open the feature, the comment says so in place of a number, and no ticket deletes the name.
+- The first ticket of the feature adds the name with the number of the ticket that deletes it, as `// goes away in #N`, and that ticket exists before the name merges. When the maintainer keeps the decision to open the feature, the comment is `// goes away when the maintainer decides`, and no ticket deletes the name.
 - Off means out of reach: each route answers 404 through the middleware, no entry point renders, no background job runs, and qui sends no request for the feature.
 - A database migration runs in both states, so it merges in its final shape.
 - Test both states. With the Experimental feature off, a test fails if an entry point renders.

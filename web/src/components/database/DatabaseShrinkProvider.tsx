@@ -15,8 +15,6 @@ import { systemNoticesQueryKey } from "@/hooks/useSystemNotices"
 import { api } from "@/lib/api"
 import { formatBytes } from "@/lib/utils"
 
-// The provider sits in the app layout, so the restart overlay stays mounted
-// when the request comes from a menu that closes.
 export function DatabaseShrinkProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation("common")
   const queryClient = useQueryClient()
@@ -29,7 +27,6 @@ export function DatabaseShrinkProvider({ children }: { children: ReactNode }) {
     onSettled: () => queryClient.invalidateQueries({ queryKey: databaseShrinkQueryKey }),
   })
   const { mutate: dismiss } = dismissResult
-  // The last result that a toast showed, so that a second render does not show it again.
   const shownResult = useRef<typeof result>(undefined)
   useEffect(() => {
     if (!result) {
@@ -52,7 +49,6 @@ export function DatabaseShrinkProvider({ children }: { children: ReactNode }) {
         if (!restarting) {
           toast.success(t("databaseShrink.nextStart"))
         }
-        // "Try again" stored a new mark, so the old failure is gone.
         await queryClient.invalidateQueries({ queryKey: systemNoticesQueryKey })
         await queryClient.invalidateQueries({ queryKey: databaseShrinkQueryKey })
       } catch (error) {

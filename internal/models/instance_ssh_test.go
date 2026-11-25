@@ -55,8 +55,6 @@ func newSSHTestInstance(t *testing.T, store *InstanceStore, name string) *Instan
 	return instance
 }
 
-// configureSSH sets credentials and pins a host key, the state every instance
-// reaches before the remote backend will talk to it.
 func configureSSH(t *testing.T, store *InstanceStore, instanceID int) {
 	t.Helper()
 
@@ -101,7 +99,6 @@ func TestGetHostKeyPinUnpinned(t *testing.T) {
 	_, err = store.GetHostKeyPin(stored)
 	require.ErrorIs(t, err, ErrSSHHostKeyNotPinned)
 
-	// Credentials without a confirmed pin are not a usable remote.
 	assert.Equal(t, FilesystemModeNone, FilesystemAccessMode(stored))
 }
 
@@ -125,10 +122,6 @@ func TestTamperedCiphertextFailsClosed(t *testing.T) {
 	require.Error(t, err)
 }
 
-// The pin's AAD carries the endpoint, so rewriting ssh_host or ssh_port
-// directly in the database — the one edit that would otherwise redirect a
-// trusted instance while keeping its pin — reads as a decryption failure and
-// never as "unpinned", which would re-TOFU the attacker's host.
 func TestHostKeyPinIsBoundToTheStoredEndpoint(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -145,7 +138,6 @@ func TestHostKeyPinIsBoundToTheStoredEndpoint(t *testing.T) {
 			instance := newSSHTestInstance(t, store, "remote")
 			configureSSH(t, store, instance.ID)
 
-			// A database writer, not the store: the pin column is left intact.
 			_, err := store.db.ExecContext(ctx, tt.query, tt.arg, instance.ID)
 			require.NoError(t, err)
 
@@ -159,8 +151,6 @@ func TestHostKeyPinIsBoundToTheStoredEndpoint(t *testing.T) {
 	}
 }
 
-// A credential blob is only valid for the row it was written for: the AAD
-// carries the instance id, so copying ciphertext between instances fails.
 func TestCredentialsDoNotTransplantBetweenInstances(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	source := newSSHTestInstance(t, store, "source")
@@ -183,8 +173,6 @@ func TestCredentialsDoNotTransplantBetweenInstances(t *testing.T) {
 	require.Error(t, err, "a pin from another instance must not decrypt")
 }
 
-// The pin is confirmed for one endpoint. Rewriting the host underneath it must
-// not leave a pin that still decrypts for the new destination.
 func TestRedirectedInstanceDropsPin(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -221,8 +209,6 @@ func TestRedirectedInstanceDropsPin(t *testing.T) {
 	})
 }
 
-// Host comparison is case-insensitive in DNS, so re-saving the same box with
-// different capitalisation must not read as a redirect and drop a good pin.
 func TestHostIsNormalizedToLowercase(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -239,8 +225,6 @@ func TestHostIsNormalizedToLowercase(t *testing.T) {
 	assert.Equal(t, testHostKey, pin)
 }
 
-// Deleting credentials is not a reason to forget the host: the pin belongs to
-// the host, so reconfiguring the same box must not silently re-TOFU.
 func TestClearSSHCredentialsKeepsPin(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -307,8 +291,6 @@ func TestSetSSHCredentialsValidation(t *testing.T) {
 	}
 }
 
-// IP literals are stored bare: the hostname check must not mistake the colons
-// of an IPv6 address for a port, or an IPv6-only box can never be configured.
 func TestSetSSHCredentialsAcceptsIPLiterals(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 
@@ -324,9 +306,6 @@ func TestSetSSHCredentialsAcceptsIPLiterals(t *testing.T) {
 	}
 }
 
-// A key confirmed for one endpoint must not be pinned to another: between the
-// confirmation and the write the instance may have been pointed elsewhere, and
-// the row's current endpoint is not the one the user looked at.
 func TestSetHostKeyPinRefusesAnUnconfirmedEndpoint(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -342,9 +321,6 @@ func TestSetHostKeyPinRefusesAnUnconfirmedEndpoint(t *testing.T) {
 	require.ErrorIs(t, err, ErrSSHHostKeyNotPinned, "the moved endpoint must stay unpinned")
 }
 
-// IP literals are stored in netip's canonical text so a re-typed address is not
-// an endpoint change, while an IPv6 zone keeps its case: interface names match
-// exactly.
 func TestIPLiteralHostsAreCanonical(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 
@@ -387,18 +363,12 @@ func TestSetHostKeyPinRequiresHost(t *testing.T) {
 	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, testHostKey), "cannot pin a host that is not configured")
 }
 
-// A pin is written for the endpoint it was confirmed against. If a credential
-// update moves the instance between the read and the write, the pin must be
-// refused rather than stored bound to an endpoint the row no longer has — that
-// pin could never decrypt again.
 func TestSetHostKeyPinRefusesAMovedEndpoint(t *testing.T) {
 	t.Run("unpinned row", func(t *testing.T) {
 		store, ctx := newSSHTestStore(t)
 		instance := newSSHTestInstance(t, store, "remote")
 		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
 
-		// Nothing but the endpoint terms can refuse this write, so the CAS is
-		// what is under test rather than the already-pinned guard.
 		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.invalid", testSSHKeyPort, testHostKey, false)
 		require.ErrorIs(t, err, ErrSSHEndpointChanged)
 
@@ -424,9 +394,6 @@ func TestSetHostKeyPinRefusesAMovedEndpoint(t *testing.T) {
 	})
 }
 
-// Re-pinning a live endpoint is the silent re-pin the mismatch flow exists to
-// prevent: a bug in a future host-key handler must not be able to overwrite a
-// confirmed pin just by calling the ordinary pin method again.
 func TestSetHostKeyPinRefusesAnAlreadyPinnedInstance(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -442,15 +409,11 @@ func TestSetHostKeyPinRefusesAnAlreadyPinnedInstance(t *testing.T) {
 	assert.Equal(t, testHostKey, pin, "the confirmed pin must be the one still on the row")
 }
 
-// The compare-and-set also refuses an already-pinned row, so the loser of a
-// race against another pin must be told the row is already pinned rather than
-// handed an endpoint change that never happened.
 func TestSetHostKeyPinForReportsAlreadyPinned(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
 	configureSSH(t, store, instance.ID)
 
-	// The endpoint still matches, so only the pin column can refuse this.
 	err := store.setHostKeyPinFor(ctx, instance.ID, testSSHHost, testSSHKeyPort, sshtest.HostKey(), false)
 	require.ErrorIs(t, err, ErrSSHHostKeyAlreadyPinned)
 }
@@ -471,9 +434,6 @@ func TestReplaceHostKeyPin(t *testing.T) {
 	assert.NotEqual(t, testHostKey, pin)
 }
 
-// A replacement the user never compared against an existing pin is trust on
-// first use wearing the mismatch flow's clothes, so an unpinned instance is
-// refused rather than pinned.
 func TestReplaceHostKeyPinRequiresAPin(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -487,11 +447,6 @@ func TestReplaceHostKeyPinRequiresAPin(t *testing.T) {
 	require.ErrorIs(t, err, ErrSSHHostKeyNotPinned, "a refused replace must not pin anything")
 }
 
-// The replacement is bound to the endpoint the user confirmed it against, so a
-// replace naming an endpoint the row no longer has is refused with the pin
-// intact. A stale host is passed directly because moving the row with
-// SetSSHCredentials clears the pin, which would reach the unpinned check
-// instead of the endpoint one under test.
 func TestReplaceHostKeyPinRefusesAnUnconfirmedEndpoint(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -507,8 +462,6 @@ func TestReplaceHostKeyPinRefusesAnUnconfirmedEndpoint(t *testing.T) {
 	assert.Equal(t, testHostKey, pin, "the confirmed pin must survive a refused replace")
 }
 
-// A pin is worthless if the column can hold anything but SSH wire format: host
-// key verification parses the algorithm back out of this value.
 func TestSetHostKeyPinRequiresWireFormat(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -524,8 +477,6 @@ func TestSetHostKeyPinRequiresWireFormat(t *testing.T) {
 	assert.Empty(t, stored.SSHHostKeyEncrypted, "a rejected pin must not be written")
 }
 
-// flipLastByte corrupts the sealed payload behind the qui2: prefix so the
-// failure is the authentication tag, not the format marker.
 func flipLastByte(t *testing.T, stored string) string {
 	t.Helper()
 
@@ -539,9 +490,6 @@ func flipLastByte(t *testing.T, stored string) string {
 	return credentialCipherPrefix + base64.StdEncoding.EncodeToString(raw)
 }
 
-// A new host or key, or no key at all, is a host whose tier is unknown: the
-// tier goes back to sftp with the credentials so the capabilities stay
-// honest until a connect probes again.
 func TestSSHCredentialChangesResetTheTier(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
@@ -568,15 +516,12 @@ func TestSSHCredentialChangesResetTheTier(t *testing.T) {
 		assert.Equal(t, SSHTierSFTP, got.SSHTier, name)
 		assert.Nil(t, got.SSHHardlink, "%s: the hardlink flag is unknown again", name)
 
-		// A probe that dialed with the old settings answers for them, not for
-		// the row as it is now.
 		require.NoError(t, store.SetSSHProbe(ctx, probed, SSHTierExec, true), name)
 		got, err = store.Get(ctx, instance.ID)
 		require.NoError(t, err)
 		assert.Equal(t, SSHTierSFTP, got.SSHTier, "%s: a stale probe must not restore the tier", name)
 		assert.Nil(t, got.SSHHardlink, "%s: a stale probe must not restore the flag", name)
 
-		// A probe whose exec half got no answer writes the flag only.
 		require.NoError(t, store.SetSSHProbe(ctx, got, "", false), name)
 		got, err = store.Get(ctx, instance.ID)
 		require.NoError(t, err)

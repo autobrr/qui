@@ -91,12 +91,9 @@ import {
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
-// Custom hook for theme change detection
 const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme())
-  // A system switch in auto mode keeps the mode and the theme, so the resolved
-  // light or dark is state of its own, to render again on that switch.
   const [dark, setDark] = useState(() => isDarkMode(getCurrentThemeMode()))
 
   const checkTheme = useCallback(() => {
@@ -116,8 +113,6 @@ const useThemeChange = (customThemes: readonly Theme[]) => {
     }
   }, [checkTheme])
 
-  // Custom theme registration sends no themechange. Call this hook after
-  // useCustomThemes, so that a stored custom theme resolves here.
   useEffect(checkTheme, [checkTheme, customThemes])
 
   return { currentMode, currentTheme, dark }
@@ -137,7 +132,6 @@ export function MobileFooterNav() {
   const { customThemes } = useCustomThemes()
   const { currentMode, currentTheme, dark } = useThemeChange(customThemes)
   const [themeVisibility] = useThemeVisibility()
-  // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
   const themeCatalog = buildThemeCatalog(themes, customThemes, { visibility: themeVisibility, currentThemeId: currentTheme.id })
   const [showThemeDialog, setShowThemeDialog] = useState(false)
@@ -174,8 +168,6 @@ export function MobileFooterNav() {
   }, [t])
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
-    // The server is the authority: a premium theme without a license arrives
-    // as a locked stub with no CSS, so the locked flag is the gate.
     if (getThemeById(themeId)?.locked) {
       toast.error(t("themeToggle.premiumThemeError"))
       return
@@ -215,7 +207,6 @@ export function MobileFooterNav() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="flex items-center justify-around h-16">
-        {/* Dashboard */}
         {!isDemo && <Link
           to="/dashboard"
           className={cn(
@@ -241,7 +232,6 @@ export function MobileFooterNav() {
           <span className="max-w-full truncate">{t("mobileNav.statistics")}</span>
         </Link>}
 
-        {/* Command palette. A phone shows no search field for the torrent list, so the palette opens with the search of the list. */}
         <button
           type="button"
           onClick={() => openCommandPalette(isOnInstancePage ? String(routeSearch?.q ?? "") : "")}
@@ -253,7 +243,6 @@ export function MobileFooterNav() {
 
         <MobileClientsTab />
 
-        {/* Settings dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -287,7 +276,6 @@ export function MobileFooterNav() {
             {updateInfo && (
               <>
                 <DropdownMenuItem asChild>
-                  {/* Settings holds the Install update button. */}
                   <Link to="/settings" search={{ tab: "application", modal: "install-update" }} className={updateItemClass}>{updateItemLabel}</Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -464,17 +452,13 @@ export function MobileFooterNav() {
         </DropdownMenu>
       </div>
 
-      {/* Theme selection dialog */}
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
-        {/* Only the theme list scrolls: the mode rows above it and the link below it stay in view.
-            A screen under 35rem tall has no room for that, so there the whole dialog scrolls. */}
         <DialogContent className="flex max-h-[85dvh] max-w-md flex-col gap-4 overflow-hidden [@media(max-height:35rem)]:overflow-y-auto">
           <DialogHeader className="shrink-0">
             <DialogTitle>{t("themeToggle.appearance")}</DialogTitle>
           </DialogHeader>
 
           <div className="shrink-0 space-y-4">
-            {/* Mode Selection */}
             <div>
               <div className="text-sm font-medium mb-2">{t("themeToggle.mode")}</div>
               <div role="group" aria-label={t("themeToggle.mode")} className="grid grid-cols-3 gap-1">
@@ -503,7 +487,6 @@ export function MobileFooterNav() {
               </div>
             </div>
 
-            {/* Torrent list view mode */}
             <div>
               <div className="text-sm font-medium mb-2">{tTorrents("filterSidebar.viewMode")}</div>
               <div className="grid grid-cols-3 gap-1">
@@ -528,7 +511,6 @@ export function MobileFooterNav() {
             <div className="text-sm font-medium">{t("themeToggle.theme")}</div>
           </div>
 
-          {/* Theme Selection */}
           <div className="-mx-6 -mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 [@media(max-height:35rem)]:flex-none [@media(max-height:35rem)]:overflow-visible">
             <div className="space-y-1">
               {themeCatalog.map((theme) => {

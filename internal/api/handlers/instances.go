@@ -39,21 +39,11 @@ type InstancesHandler struct {
 	syncManager     *internalqbittorrent.SyncManager
 	reannounceSvc   *reannounce.Service
 	sshDialer       *sshpool.Dialer
-	// sshPool is told when what a connection depends on changes; sshDialer
-	// stays separate so ssh-test never consults the pool's memo.
-	sshPool *sshpool.Pool
-	// orphanScan keeps orphan scan runs bound to the SSH server they walked.
-	// Nil in tests that do not need it.
-	orphanScan orphanScanGuard
-	// routes refuses instance changes that break a cross-seed route. Nil in
-	// tests that do not need it.
-	routes *crossseedroute.Service
-	// peers works out the public peer address. Nil without a sync manager.
-	peers *peeraddress.Resolver
-	// filesystem reads the disk of an instance. Nil in tests that do not need it.
-	filesystem *fsops.Pool
-	// connectionTests tracks the connection tests that outlive their request.
-	// A test waits for them before it closes the database.
+	sshPool         *sshpool.Pool
+	orphanScan      orphanScanGuard
+	routes          *crossseedroute.Service
+	peers           *peeraddress.Resolver
+	filesystem      *fsops.Pool
 	connectionTests sync.WaitGroup
 }
 
@@ -61,21 +51,16 @@ type orphanScanGuard interface {
 	ChangeSSH(ctx context.Context, instanceID int, change func() error) error
 }
 
-// SetOrphanScan wires the orphan scan service in. A server built without one
-// leaves the guard off.
 func (h *InstancesHandler) SetOrphanScan(s *orphanscan.Service) {
 	if s != nil {
 		h.orphanScan = s
 	}
 }
 
-// SetCrossSeedRoutes wires the cross-seed routes in.
 func (h *InstancesHandler) SetCrossSeedRoutes(routes *crossseedroute.Service) {
 	h.routes = routes
 }
 
-// refuseRouteBreak answers the request and returns true when storing after in
-// place of before breaks a cross-seed route.
 func (h *InstancesHandler) refuseRouteBreak(w http.ResponseWriter, r *http.Request, before, after *models.Instance) bool {
 	if h.routes == nil {
 		return false
@@ -93,15 +78,8 @@ func (h *InstancesHandler) refuseRouteBreak(w http.ResponseWriter, r *http.Reque
 	return true
 }
 
-// sshChangeDuringDeletionMessage is the 409 body for an SSH change refused
-// with orphanscan.ErrDeletionInProgress.
 const sshChangeDuringDeletionMessage = "An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings."
 
-// changeSSH runs change, which stores new SSH settings and invalidates the
-// pooled connection, through the orphan scan service: it refuses the change
-// while a deletion runs, since the deletion redials with the stored settings,
-// and fails the instance's remote previews after it. The invalidation belongs
-// inside change, since a scan reads the instance under the same lock.
 func (h *InstancesHandler) changeSSH(ctx context.Context, instanceID int, change func() error) error {
 	if h.orphanScan == nil {
 		return change()
@@ -126,7 +104,6 @@ func NewInstancesHandler(instanceStore *models.InstanceStore, reannounceStore *m
 	return h
 }
 
-// GetInstanceCapabilities returns lightweight capability metadata for an instance.
 func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -168,7 +145,6 @@ func instanceCapabilitiesClientErrorMessage(err error) string {
 	return "Failed to load instance capabilities"
 }
 
-// GetReannounceActivity returns recent reannounce events for an instance.
 func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -198,9 +174,6 @@ func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.
 	RespondJSON(w, http.StatusOK, normalized)
 }
 
-// GetReannounceCandidates returns torrents that currently fall within the
-// reannounce monitoring scope and either have tracker problems or are still
-// waiting for their initial tracker contact.
 func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -229,18 +202,12 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 	RespondJSON(w, http.StatusOK, normalized)
 }
 
-// transferInfoResponse adds qBittorrent's all-time totals, which only
-// /sync/maindata carries, to the /transfer/info statistics. The totals are
-// pointers so the fallback path omits them instead of reporting zero.
 type transferInfoResponse struct {
 	qbt.TransferInfo
 	AlltimeDl *int64 `json:"alltime_dl,omitempty"`
 	AlltimeUl *int64 `json:"alltime_ul,omitempty"`
 }
 
-// newTransferInfoResponse exposes only the transfer fields and the totals: the
-// rest of the server state belongs to the dashboard payload, not to a stats
-// endpoint clients poll every few seconds.
 func newTransferInfoResponse(state *qbt.ServerState) transferInfoResponse {
 	return transferInfoResponse{
 		ConnectionStatus: qbt.ConnectionStatus(state.ConnectionStatus),
@@ -256,7 +223,6 @@ func newTransferInfoResponse(state *qbt.ServerState) transferInfoResponse {
 	}
 }
 
-// GetTransferInfo returns lightweight transfer stats for an instance.
 func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -277,13 +243,6 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Prefer the synced server state: one maindata sync answers this endpoint and
-	// the all-time totals, sparing clients a full torrent-list request for the
-	// totals alone. The cache only advances on a completed sync, so instances
-	// nobody is streaming need this explicit one to report live speeds. Sync with
-	// the request context rather than the library's checked accessor, which syncs
-	// on context.Background() and would outlive this handler's deadline against a
-	// saturated WebUI. A failed sync still leaves the last good state to serve.
 	if syncManager := client.SyncOwner(); syncManager != nil {
 		if err := syncManager.Sync(ctx); err != nil {
 			log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to sync before reading server state; serving cached state")
@@ -305,14 +264,11 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 	RespondJSON(w, http.StatusOK, transferInfoResponse{TransferInfo: *info})
 }
 
-// InstanceFreeSpaceResponse reports free space at a path on the qBittorrent host.
-// Bytes is null when qBittorrent could not determine the free space.
 type InstanceFreeSpaceResponse struct {
 	Path  string `json:"path"`
 	Bytes *int64 `json:"bytes"`
 }
 
-// GetFreeSpaceAtPath returns the free space qBittorrent reports for a path on its own host.
 func (h *InstancesHandler) GetFreeSpaceAtPath(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -320,7 +276,6 @@ func (h *InstancesHandler) GetFreeSpaceAtPath(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Remote path: keep the qBittorrent host's separators, only drop surrounding whitespace.
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
 	if path == "" {
 		RespondError(w, http.StatusBadRequest, "Path is required")
@@ -339,7 +294,6 @@ func (h *InstancesHandler) GetFreeSpaceAtPath(w http.ResponseWriter, r *http.Req
 		if respondIfInstanceDisabled(w, err, instanceID, "instances:getFreeSpaceAtPath") {
 			return
 		}
-		// The display treats an unmeasurable path and a failed read the same way.
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to get free space at path")
 		RespondJSON(w, http.StatusOK, InstanceFreeSpaceResponse{Path: path})
 		return
@@ -372,7 +326,6 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 		case res := <-resultCh:
 			responses[res.index] = res.response
 		case <-ctx.Done():
-			// Handle context cancellation gracefully
 			responses[i] = InstanceResponse{
 				ID:                       instances[i].ID,
 				Name:                     instances[i].Name,
@@ -412,9 +365,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 	return responses
 }
 
-// buildInstanceResponse creates a consistent response for an instance
 func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *models.Instance) InstanceResponse {
-	// Use cached connection status only, do not test connection synchronously
 	client, _ := h.clientPool.GetClientOffline(ctx, instance.ID)
 	healthy := client != nil && client.IsHealthy() && instance.IsActive
 
@@ -462,7 +413,6 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 
 		ReannounceSettings: h.getReannounceSettingsPayload(ctx, instance.ID)}
 
-	// Fetch recent errors for disconnected instances
 	if instance.IsActive && !healthy {
 		errorStore := h.clientPool.GetErrorStore()
 		recentErrors, err := errorStore.GetRecentErrors(ctx, instance.ID, 5)
@@ -476,7 +426,6 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	return response
 }
 
-// buildQuickInstanceResponse creates a response without testing connection
 func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance) InstanceResponse {
 	connectionStatus := ""
 	if !instance.IsActive {
@@ -496,7 +445,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
 		UseReflinks:              instance.UseReflinks,
 		FallbackToRegularMode:    instance.FallbackToRegularMode,
-		Connected:                false, // Will be updated asynchronously
+		Connected:                false,
 		HasDecryptionError:       false,
 		SortOrder:                instance.SortOrder,
 		IsActive:                 instance.IsActive,
@@ -513,14 +462,8 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 	}
 }
 
-// resolvePeerAddressTimeout bounds the wait for qBittorrent while the list
-// works out a public peer address.
 const resolvePeerAddressTimeout = 3 * time.Second
 
-// resolvedPublicPeerAddress is the public peer address that qui works out for
-// the instance from its last sync, or "" when it has none. It sends qBittorrent
-// no sync, and it asks only a connected qBittorrent, so that an instance that
-// is down does not hold up the list.
 func (h *InstancesHandler) resolvedPublicPeerAddress(ctx context.Context, instance *models.Instance, connected bool) string {
 	if instance.PublicPeerAddress != "" {
 		return instance.PublicPeerAddress
@@ -537,8 +480,6 @@ func (h *InstancesHandler) resolvedPublicPeerAddress(ctx context.Context, instan
 	return address
 }
 
-// validPublicPeerAddress reports whether address is a host and a port from 1
-// to 65535, or "" to clear the address.
 func validPublicPeerAddress(address string) bool {
 	if address == "" {
 		return true
@@ -551,7 +492,6 @@ func validPublicPeerAddress(address string) bool {
 	return err == nil && n >= 1 && n <= 65535
 }
 
-// testConnectionAsync tests connection in background and updates cache
 func (h *InstancesHandler) testConnectionAsync(instanceID int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -612,7 +552,6 @@ func (h *InstancesHandler) persistReannounceSettings(ctx context.Context, instan
 	return saved, nil
 }
 
-// CreateInstanceRequest represents a request to create a new instance
 type CreateInstanceRequest struct {
 	Name                     string                             `json:"name"`
 	Host                     string                             `json:"host"`
@@ -626,12 +565,11 @@ type CreateInstanceRequest struct {
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
-// UpdateInstanceRequest represents a request to update an instance
 type UpdateInstanceRequest struct {
 	Name                     string                             `json:"name"`
 	Host                     string                             `json:"host"`
 	Username                 string                             `json:"username"`
-	Password                 string                             `json:"password,omitempty"` // Optional for updates
+	Password                 string                             `json:"password,omitempty"`
 	APIKey                   *string                            `json:"apiKey,omitempty"`
 	BasicUsername            *string                            `json:"basicUsername,omitempty"`
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
@@ -643,55 +581,46 @@ type UpdateInstanceRequest struct {
 	UseReflinks              *bool                              `json:"useReflinks,omitempty"`
 	FallbackToRegularMode    *bool                              `json:"fallbackToRegularMode,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
-	// PublicPeerAddress is the host:port that the user sets. Without it, the
-	// stored value stays; "" clears it.
-	PublicPeerAddress *string `json:"publicPeerAddress,omitempty"`
+	PublicPeerAddress        *string                            `json:"publicPeerAddress,omitempty"`
 }
 
 type UpdateInstanceStatusRequest struct {
 	IsActive bool `json:"isActive"`
 }
 
-// InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
-	ID                       int                               `json:"id"`
-	Name                     string                            `json:"name"`
-	Host                     string                            `json:"host"`
-	Username                 string                            `json:"username"`
-	HasAPIKey                bool                              `json:"hasApiKey"`
-	BasicUsername            *string                           `json:"basicUsername,omitempty"`
-	TLSSkipVerify            bool                              `json:"tlsSkipVerify"`
-	HasLocalFilesystemAccess bool                              `json:"hasLocalFilesystemAccess"`
-	UseHardlinks             bool                              `json:"useHardlinks"`
-	HardlinkBaseDir          string                            `json:"hardlinkBaseDir"`
-	HardlinkDirPreset        string                            `json:"hardlinkDirPreset"`
-	UseReflinks              bool                              `json:"useReflinks"`
-	FallbackToRegularMode    bool                              `json:"fallbackToRegularMode"`
-	Connected                bool                              `json:"connected"`
-	HasDecryptionError       bool                              `json:"hasDecryptionError"`
-	RecentErrors             []models.InstanceError            `json:"recentErrors,omitempty"`
-	ConnectionStatus         string                            `json:"connectionStatus,omitempty"`
-	SortOrder                int                               `json:"sortOrder"`
-	IsActive                 bool                              `json:"isActive"`
-	SSHHost                  string                            `json:"sshHost,omitempty"`
-	SSHPort                  int                               `json:"sshPort,omitempty"`
-	SSHUsername              string                            `json:"sshUsername,omitempty"`
-	SSHHostKeyPinned         bool                              `json:"sshHostKeyPinned"`
-	SSHTier                  string                            `json:"sshTier,omitempty"`
-	SSHHardlink              *bool                             `json:"sshHardlink,omitempty"`
-	FilesystemMode           string                            `json:"filesystemMode"`
-	Capabilities             models.FilesystemCapabilities     `json:"capabilities"`
-	ReannounceSettings       InstanceReannounceSettingsPayload `json:"reannounceSettings"`
-	// PublicPeerAddress is the host:port that the user set, or "".
-	PublicPeerAddress string `json:"publicPeerAddress"`
-	// ResolvedPublicPeerAddress is the address that qui works out: the
-	// user's value, or else the address that qBittorrent reports. It is ""
-	// when qui has none, and in the answer of a create or an update.
-	ResolvedPublicPeerAddress string `json:"resolvedPublicPeerAddress"`
+	ID                        int                               `json:"id"`
+	Name                      string                            `json:"name"`
+	Host                      string                            `json:"host"`
+	Username                  string                            `json:"username"`
+	HasAPIKey                 bool                              `json:"hasApiKey"`
+	BasicUsername             *string                           `json:"basicUsername,omitempty"`
+	TLSSkipVerify             bool                              `json:"tlsSkipVerify"`
+	HasLocalFilesystemAccess  bool                              `json:"hasLocalFilesystemAccess"`
+	UseHardlinks              bool                              `json:"useHardlinks"`
+	HardlinkBaseDir           string                            `json:"hardlinkBaseDir"`
+	HardlinkDirPreset         string                            `json:"hardlinkDirPreset"`
+	UseReflinks               bool                              `json:"useReflinks"`
+	FallbackToRegularMode     bool                              `json:"fallbackToRegularMode"`
+	Connected                 bool                              `json:"connected"`
+	HasDecryptionError        bool                              `json:"hasDecryptionError"`
+	RecentErrors              []models.InstanceError            `json:"recentErrors,omitempty"`
+	ConnectionStatus          string                            `json:"connectionStatus,omitempty"`
+	SortOrder                 int                               `json:"sortOrder"`
+	IsActive                  bool                              `json:"isActive"`
+	SSHHost                   string                            `json:"sshHost,omitempty"`
+	SSHPort                   int                               `json:"sshPort,omitempty"`
+	SSHUsername               string                            `json:"sshUsername,omitempty"`
+	SSHHostKeyPinned          bool                              `json:"sshHostKeyPinned"`
+	SSHTier                   string                            `json:"sshTier,omitempty"`
+	SSHHardlink               *bool                             `json:"sshHardlink,omitempty"`
+	FilesystemMode            string                            `json:"filesystemMode"`
+	Capabilities              models.FilesystemCapabilities     `json:"capabilities"`
+	ReannounceSettings        InstanceReannounceSettingsPayload `json:"reannounceSettings"`
+	PublicPeerAddress         string                            `json:"publicPeerAddress"`
+	ResolvedPublicPeerAddress string                            `json:"resolvedPublicPeerAddress"`
 }
 
-// sshTierField is the probed tier on the wire: only an instance with SSH
-// credentials has one.
 func sshTierField(instance *models.Instance) string {
 	if instance.SSHKeyEncrypted == "" {
 		return ""
@@ -699,7 +628,6 @@ func sshTierField(instance *models.Instance) string {
 	return string(instance.SSHTier)
 }
 
-// InstanceReannounceSettingsPayload carries tracker monitoring config.
 type InstanceReannounceSettingsPayload struct {
 	Enabled                   bool     `json:"enabled"`
 	InitialWaitSeconds        int      `json:"initialWaitSeconds"`
@@ -716,7 +644,6 @@ type InstanceReannounceSettingsPayload struct {
 	Trackers                  []string `json:"trackers"`
 }
 
-// TestConnectionResponse represents connection test results
 type TestConnectionResponse struct {
 	Connected bool   `json:"connected"`
 	Message   string `json:"message,omitempty"`
@@ -773,12 +700,10 @@ func payloadFromModel(settings *models.InstanceReannounceSettings) InstanceReann
 	}
 }
 
-// DeleteInstanceResponse represents delete operation result
 type DeleteInstanceResponse struct {
 	Message string `json:"message"`
 }
 
-// ListInstances returns all instances
 func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
 	instances, err := h.instanceStore.List(r.Context())
 	if err != nil {
@@ -793,7 +718,6 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// UpdateInstanceOrder updates the display order for all instances
 func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		InstanceIDs []int `json:"instanceIds"`
@@ -856,7 +780,6 @@ func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Re
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// CreateInstance creates a new instance
 func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	var req CreateInstanceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -864,13 +787,11 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate input
 	if req.Name == "" || req.Host == "" {
 		RespondError(w, http.StatusBadRequest, "Name and host are required")
 		return
 	}
 
-	// Create instance
 	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess, req.APIKey)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
@@ -884,19 +805,15 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Return quickly without testing connection
 	response := h.buildQuickInstanceResponse(instance)
 	response.ReannounceSettings = payloadFromModel(settings)
 
-	// Test connection asynchronously
 	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) })
 
 	RespondJSON(w, http.StatusCreated, response)
 }
 
-// UpdateInstance updates an existing instance
 func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -909,7 +826,6 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate input
 	if req.Name == "" || req.Host == "" {
 		RespondError(w, http.StatusBadRequest, "Name and host are required")
 		return
@@ -920,7 +836,6 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Fetch existing instance to handle redacted values
 	existingInstance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
@@ -934,18 +849,13 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 	req.restoreRedactedSecrets(existingInstance)
 
-	// Validate hardlink/reflink settings on the row as it is after the change
 	effective := req.applyLinkSettings(existingInstance)
 
-	// Mutual exclusivity: cannot enable both hardlink and reflink modes
 	if effective.UseHardlinks && effective.UseReflinks {
 		RespondError(w, http.StatusBadRequest, "Cannot enable both hardlink and reflink modes - they are mutually exclusive")
 		return
 	}
 
-	// Before the link mode checks, so that a Source instance hears about its
-	// route, and before the store update, which drops the qBittorrent client
-	// and resets its failure tracking.
 	if h.refuseRouteBreak(w, r, existingInstance, &effective) {
 		return
 	}
@@ -955,7 +865,6 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Update instance
 	updateParams := &models.InstanceUpdateParams{
 		TLSSkipVerify:            req.TLSSkipVerify,
 		HasLocalFilesystemAccess: req.HasLocalFilesystemAccess,
@@ -977,18 +886,12 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Drop the old client, backoff, and errors so the new settings are tried at once
 	h.clientPool.RemoveClient(instanceID)
 	h.clientPool.ResetFailureTracking(instanceID) //nolint:contextcheck // the error clear has its own timeout and must outlive a cancelled request
-	// The local access flag decides whether the instance is in remote mode,
-	// and the ssh pool only rereads the row when it dials. Any other edit
-	// leaves the session alone, since Invalidate cuts reads in flight.
 	if models.FilesystemAccessMode(existingInstance) != models.FilesystemAccessMode(instance) {
 		h.sshPool.Invalidate(instanceID)
 	}
 	if h.routes != nil {
-		// The instance is saved, so a failed drop leaves an unused row that
-		// the next update drops.
 		if err := h.routes.DropRemovedBaseDirs(r.Context(), instanceID); err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to drop the cross-seed route rows of removed base folders")
 		}
@@ -1006,37 +909,28 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		settings = h.loadReannounceSettings(r.Context(), instanceID)
 	}
 
-	// Return quickly without testing connection
 	response := h.buildQuickInstanceResponse(instance)
 	response.ReannounceSettings = payloadFromModel(settings)
 
-	// Test connection asynchronously
 	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) })
 
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// restoreRedactedSecrets swaps redacted secrets in the request for the stored
-// values, or drops them so the stored value stays.
 func (req *UpdateInstanceRequest) restoreRedactedSecrets(existing *models.Instance) {
-	// Handle redacted password - if redacted, use existing password
 	if req.Password != "" && domain.IsRedactedString(req.Password) {
 		req.Password = existing.PasswordEncrypted
 	}
 
-	// Handle redacted basic password - if redacted, use existing basic password
 	if req.BasicPassword != nil && *req.BasicPassword != "" && domain.IsRedactedString(*req.BasicPassword) {
 		req.BasicPassword = existing.BasicPasswordEncrypted
 	}
 
-	// Handle redacted API key - if redacted, preserve the existing API key
 	if req.APIKey != nil && domain.IsRedactedString(*req.APIKey) {
 		req.APIKey = nil
 	}
 }
 
-// applyLinkSettings returns a copy of the existing row with the request's
-// filesystem and link settings applied.
 func (req *UpdateInstanceRequest) applyLinkSettings(existing *models.Instance) models.Instance {
 	effective := *existing
 	if req.HasLocalFilesystemAccess != nil {
@@ -1054,12 +948,8 @@ func (req *UpdateInstanceRequest) applyLinkSettings(existing *models.Instance) m
 	return effective
 }
 
-// linkModeError returns the reason the row's hardlink or reflink mode cannot
-// be enabled, or "" when it can.
 func linkModeError(effective *models.Instance) string {
 	canWrite := models.FilesystemCapabilitiesOf(effective).Write
-	// No backend reflinks over sftp, so reflink mode stays a local-only choice
-	// even though a remote instance has Write (#2942).
 	canReflink := canWrite && models.FilesystemAccessMode(effective) == models.FilesystemModeLocal
 
 	if effective.UseHardlinks {
@@ -1082,16 +972,13 @@ func linkModeError(effective *models.Instance) string {
 	return ""
 }
 
-// DeleteInstance deletes an instance
 func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Delete instance
 	if err := h.instanceStore.Delete(r.Context(), instanceID); err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
@@ -1102,7 +989,6 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove client from pool
 	h.clientPool.RemoveClient(instanceID)
 	h.sshPool.Remove(instanceID)
 
@@ -1112,7 +998,6 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// UpdateInstanceStatus toggles whether an instance should be actively polled
 func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -1140,7 +1025,6 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	if !req.IsActive {
 		h.clientPool.RemoveClient(instanceID)
 	} else {
-		// Clear backoff state and errors when re-enabling instance
 		h.clientPool.ResetFailureTracking(instanceID)
 		h.connectionTests.Go(func() { h.testConnectionAsync(instanceID) })
 	}
@@ -1150,16 +1034,13 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// TestConnection tests the connection to an instance
 func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Try to get client (this will create connection if needed)
 	client, err := h.clientPool.GetClient(r.Context(), instanceID)
 	if err != nil {
 		if errors.Is(err, internalqbittorrent.ErrInstanceDisabled) {
@@ -1179,7 +1060,6 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Perform health check
 	if err := client.HealthCheck(r.Context()); err != nil {
 		response := TestConnectionResponse{
 			Connected: false,

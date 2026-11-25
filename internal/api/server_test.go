@@ -128,11 +128,9 @@ func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
 			Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
 		})
 
-		// http.Server.Shutdown starts the registered callbacks on every call.
 		require.NoError(t, server.Shutdown(t.Context()))
 		require.NoError(t, server.Shutdown(t.Context()))
 
-		// Each callback runs in its own goroutine; wait for both so a double close panics here.
 		synctest.Wait()
 		select {
 		case <-server.shuttingDown:
@@ -162,6 +160,26 @@ func TestAllEndpointsDocumented(t *testing.T) {
 
 	t.Logf("checked %d API routes registered in chi", len(actualRoutes))
 	t.Logf("OpenAPI spec documents %d API routes", len(documentedRoutes))
+}
+
+func newServerCheckingHandlerPanics(t *testing.T, deps *Dependencies) *Server {
+	t.Helper()
+	server := NewServer(deps)
+	server.logger = server.logger.Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, message string) {
+		if message == "log system error" {
+			t.Error("API handler panicked; see recovery log")
+		}
+	}))
+	return server
+}
+
+func newUsedAPIKey(t *testing.T, db *database.DB, name string, permissions []models.Permission, instanceIDs []int) string {
+	t.Helper()
+	store := models.NewAPIKeyStore(db)
+	raw, key, err := store.Create(t.Context(), name, permissions, instanceIDs)
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateLastUsed(t.Context(), key.ID))
+	return raw
 }
 
 func newTestDependencies(t *testing.T) *Dependencies {
@@ -210,7 +228,6 @@ func newTestDependenciesWithDB(t *testing.T) (*Dependencies, *database.DB) {
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	t.Cleanup(func() { require.NoError(t, transferHistory.Shutdown(context.Background())) })
 	jackettService := jackett.NewService(torznabIndexerStore)
-	// No Transfer and no helper torrent: the API behaves as it did before Transfers.
 	transfers, err := transfer.NewStore(t.Context(), db)
 	require.NoError(t, err)
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
@@ -226,7 +243,6 @@ func newTestDependenciesWithDB(t *testing.T) (*Dependencies, *database.DB) {
 		Config:    transfer.DefaultConfig(),
 	})
 	t.Cleanup(func() { require.NoError(t, transferService.Close(context.Background())) })
-	// No Share and every Share setting at its default.
 	shareService := share.NewService(share.Deps{
 		Store:           share.NewStore(db),
 		Settings:        share.NewSettingsStore(db),

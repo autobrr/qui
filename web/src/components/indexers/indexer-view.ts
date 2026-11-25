@@ -34,7 +34,6 @@ const COMPARE: Record<IndexerSort["field"], (a: TorznabIndexer, b: TorznabIndexe
   status: (a, b) => Number(a.enabled) - Number(b.enabled),
 }
 
-/** The indexers that pass the filters, in the sort order. */
 export function viewIndexers(indexers: readonly TorznabIndexer[], filters: IndexerFilters, sort: IndexerSort): TorznabIndexer[] {
   const sign = sort.direction === "asc" ? 1 : -1
   return indexers

@@ -34,7 +34,6 @@ type stubInstaller struct {
 	result update.Result
 	err    error
 	tags   []string
-	// during runs inside Install, while the update holds the lock.
 	during func()
 }
 
@@ -102,7 +101,6 @@ func TestSystemHandler_Restart(t *testing.T) {
 
 		requireErrorBody(t, postRestart(t, h), http.StatusInternalServerError, "/opt/qui/qui is not executable")
 
-		// The refusal releases the lock, so a fixed binary can restart.
 		restarter.err = nil
 		require.Equal(t, http.StatusAccepted, postRestart(t, h).Code)
 	})
@@ -165,7 +163,6 @@ func TestSystemHandler_Update(t *testing.T) {
 			requireErrorBody(t, postUpdate(t, h, body), tt.status, tt.err.Error())
 			require.Zero(t, restarter.requests)
 
-			// The failure releases the lock.
 			installer.err = nil
 			require.Equal(t, http.StatusOK, postUpdate(t, h, body).Code)
 		})
@@ -178,7 +175,6 @@ func TestSystemHandler_Update(t *testing.T) {
 
 		requireErrorBody(t, postUpdate(t, h, body), http.StatusInternalServerError, "installed 1.31.0, but the restart was refused: /opt/qui/qui is not executable")
 
-		// The refusal releases the lock, so a fixed binary can restart.
 		restarter.err = nil
 		require.Equal(t, http.StatusAccepted, postRestart(t, h).Code)
 	})
@@ -201,7 +197,6 @@ func TestSystemHandler_Update(t *testing.T) {
 		restarter := &stubRestarter{}
 		installer := &stubInstaller{}
 		installer.during = func() {
-			// The Tray takes the same lock before it calls Request.
 			require.False(t, restarter.TryLock())
 		}
 

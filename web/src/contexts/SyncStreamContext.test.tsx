@@ -21,8 +21,6 @@ import { act, cleanup, render } from "@testing-library/react"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// SyncStreamProvider now reads a QueryClient (to invalidate queries on activity
-// events), so every render must be wrapped in one.
 function TestProviders({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -33,15 +31,6 @@ function TestProviders({ children }: { children: ReactNode }) {
     </QueryClientProvider>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Controllable EventSource mock
-//
-// jsdom ships no EventSource, so the provider's `typeof EventSource` guard would
-// otherwise short-circuit before ever opening a connection. We install a fully
-// controllable fake on globalThis (and window) that records every constructed
-// instance and lets each test drive open / error / event emission by hand.
-// ---------------------------------------------------------------------------
 
 type SourceEventName = "connection" | "init" | "update" | "delta" | "stream-error" | "heartbeat" | "activity"
 
@@ -89,15 +78,11 @@ class MockEventSource {
   }
 
   emitError() {
-    // Match the browser behaviour: a fatal error transitions the source to
-    // CLOSED before onerror fires.
     this.readyState = MockEventSource.CLOSED
     this.onerror?.(new Event("error"))
   }
 
   emitTransientError() {
-    // Browser behaviour on a transient drop: it keeps the source in CONNECTING
-    // and auto-retries; onerror still fires but readyState stays CONNECTING.
     this.readyState = MockEventSource.CONNECTING
     this.onerror?.(new Event("error"))
   }
@@ -125,9 +110,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  // Unmount any rendered tree so each provider's document-level listeners
-  // (visibilitychange / beforeunload) are detached. Without this, providers from
-  // earlier tests linger and respond to a dispatched visibilitychange.
   act(() => {
     cleanup()
   })
@@ -140,9 +122,6 @@ afterEach(() => {
   }
   vi.clearAllTimers()
   vi.useRealTimers()
-  // jsdom's document.visibilityState is read-only and defaults to "visible";
-  // tests override it via defineProperty, so restore the default here to avoid
-  // leaking a "hidden" getter into later tests.
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
     get: () => "visible",
@@ -208,10 +187,6 @@ const DEFAULT: StreamState = {
   nextRetryAt: undefined,
 }
 
-// Renders a single useSyncStream subscriber whose params can be swapped while the
-// provider stays mounted. Changing sort/search/filters mints a new stream key,
-// which is exactly the view-parameter swap that drives openConnection's handoff
-// path. Exposes the latest state plus a `swap` to drive new params imperatively.
 function renderSwappableSubscriber(initialParams: StreamParams) {
   const controls: HarnessControls = {
     getState: () => DEFAULT,
@@ -250,10 +225,6 @@ function renderSwappableSubscriber(initialParams: StreamParams) {
   }
 }
 
-// Renders a subscriber whose mount state can be toggled while the surrounding
-// SyncStreamProvider stays mounted. This is required to observe the debounced
-// (ENTRY_TEARDOWN_DELAY_MS) teardown path: unmounting the whole tree would also
-// unmount the provider, whose own cleanup closes the connection immediately.
 function renderToggleableSubscriber(params: StreamParams) {
   let setMounted: (mounted: boolean) => void = () => {}
 
@@ -277,7 +248,6 @@ function renderToggleableSubscriber(params: StreamParams) {
   }
 }
 
-// Flush the 0ms queueConnectionUpdate debounce so openConnection actually runs.
 function flushConnectionQueue() {
   act(() => {
     vi.advanceTimersByTime(0)
@@ -315,16 +285,11 @@ describe("SyncStreamContext", () => {
       expect(source.hasListener("stream-error")).toBe(true)
       expect(source.hasListener("heartbeat")).toBe(true)
 
-      // Unmounting the subscriber removes the listener, but entry teardown is
-      // debounced by ENTRY_TEARDOWN_DELAY_MS (200ms) so the source stays open.
       unmountSubscriber()
       expect(source.closed).toBe(false)
 
-      // The teardown timer fires at the 200ms boundary and itself queues a 0ms
-      // connection update; advancing just past the boundary lets that nested
-      // timer run so ensureConnection sees zero entries and closes the source.
       act(() => {
-        vi.advanceTimersByTime(201) // ENTRY_TEARDOWN_DELAY_MS + queued update
+        vi.advanceTimersByTime(201)
       })
 
       expect(source.closed).toBe(true)
@@ -437,8 +402,6 @@ describe("SyncStreamContext", () => {
           meta: { instanceId: 1, timestamp: "now", streamKey: key },
           data: { torrents: [], total: 0 },
         })
-        // Frame 5 was missed. The next aggregate-only frame proves the gap even
-        // though it carries no changed rows.
         source.emit("delta", {
           type: "delta",
           version: { major: 3, minor: 6 },
@@ -690,8 +653,6 @@ describe("SyncStreamContext", () => {
         act(() => {
           vi.advanceTimersByTime(expectedDelays[i])
         })
-        // ensureConnection reopens via the same synchronous path here (no
-        // queueConnectionUpdate), so a fresh source already exists.
       }
 
       nowSpy.mockRestore()
@@ -719,8 +680,6 @@ describe("SyncStreamContext", () => {
       }
 
       expect(controls.getState().retryAttempt).toBe(6)
-      // The error is a stable machine code (not English prose) so the UI can map it
-      // to localized streamStatus.* copy instead of leaking English to non-en locales.
       expect(controls.getState().error).toBe(STREAM_ERROR_RETRY_EXHAUSTED)
       expect(isClientConnectionErrorCode(controls.getState().error)).toBe(true)
     })
@@ -734,8 +693,6 @@ describe("SyncStreamContext", () => {
       const source = MockEventSource.instances[0]
       act(() => {
         source.emitOpen()
-        // The first event switches the watchdog from the init grace to the 15s
-        // steady-state budget this test exercises.
         source.emit("heartbeat")
       })
       expect(MockEventSource.instances).toHaveLength(1)
@@ -754,9 +711,6 @@ describe("SyncStreamContext", () => {
     })
 
     it("does NOT kill a slow init whose first event lands after 15s but within the grace", () => {
-      // The init is a single large SSE event that can take longer than the 15s
-      // steady-state budget to drain on a big instance; the pre-first-event grace
-      // must keep the connection alive so it is not torn down into a reconnect storm.
       renderSubscriber(BASE_PARAMS)
       flushConnectionQueue()
 
@@ -1056,7 +1010,6 @@ describe("SyncStreamContext", () => {
       const source = MockEventSource.instances[0]
       act(() => {
         source.emitOpen()
-        // First event -> steady-state 15s watchdog (this test asserts that budget).
         source.emit("heartbeat")
       })
 
@@ -1099,9 +1052,6 @@ describe("SyncStreamContext", () => {
         setVisibility("hidden")
       })
 
-      // Background heartbeats keep arriving. They must NOT resurrect the watchdog
-      // while hidden: a re-armed timer under background throttling false-fires and
-      // flips the stream to REST polling. Emit one, then blow well past the window.
       act(() => {
         source.emit("heartbeat", { type: "heartbeat", meta: { timestamp: "now" } })
         vi.advanceTimersByTime(STALE * 3)
@@ -1223,18 +1173,12 @@ describe("SyncStreamContext", () => {
       flushConnectionQueue()
       const source = MockEventSource.instances[0]
 
-      // Server unreachable from mount: the browser keeps retrying (CONNECTING) and
-      // never fires onopen, so handleSourceError defers to the native retry...
       act(() => {
         source.emitTransientError()
       })
       expect(source.closed).toBe(false)
       expect(controls.getState().retrying).toBe(false)
 
-      // ...but a connection that never opens must still escalate via the stale
-      // watchdog armed at connection creation (not only in onopen), so qui's own
-      // backoff and offline state engage instead of waiting silently forever. No
-      // event ever arrives, so the longer pre-first-event grace governs the timing.
       act(() => {
         vi.advanceTimersByTime(INITIAL_GRACE)
       })
@@ -1312,9 +1256,6 @@ describe("SyncStreamContext", () => {
       expect(controls.getState().connected).toBe(true)
       expect(controls.getState().error).toBeNull()
 
-      // The slow init finally arrives on the live source and resolves the handoff
-      // cleanly. (Tearing down the prior view's entry may have reopened a fresh
-      // source meanwhile, so deliver init on whichever source is current.)
       const live = MockEventSource.instances[MockEventSource.instances.length - 1]
       emitInitFor(live, nextParams)
       expect(controls.getState().connected).toBe(true)
@@ -1500,12 +1441,10 @@ describe("SyncStreamContext", () => {
   })
 })
 
-const STALE = 15000 // STREAM_STALE_TIMEOUT_MS (applies once the first event has arrived)
-const INITIAL_GRACE = 60000 // STREAM_INITIAL_TIMEOUT_MS (applies until the first event)
-const GRACE = 1200 // HANDOFF_GRACE_PERIOD_MS
+const STALE = 15000
+const INITIAL_GRACE = 60000
+const GRACE = 1200
 
-// jsdom defaults document.visibilityState to "visible" and makes it read-only,
-// so override it via a getter and fire the real visibilitychange event.
 function setVisibility(state: "visible" | "hidden") {
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
@@ -1623,15 +1562,11 @@ describe("SyncStreamContext activity channel", () => {
     flushConnectionQueue()
 
     const first = MockEventSource.instances[0]
-    // First open arms reconnect reconciliation but must NOT invalidate: the
-    // activity-backed queries just mounted and fetched.
     act(() => {
       first.emitOpen()
     })
     expect(invalidateSpy).not.toHaveBeenCalled()
 
-    // Drop the connection and let the backoff timer reopen it. The new per-session
-    // activity topic cannot replay anything published while we were down.
     act(() => {
       first.emitError()
     })
@@ -1682,8 +1617,6 @@ describe("SyncStreamContext activity channel", () => {
     })
     expect(invalidateSpy).not.toHaveBeenCalled()
 
-    // Backoff reopens. This is the first *successful* open, but because it followed
-    // a failure it must still reconcile rather than trust mount-time data.
     act(() => {
       vi.advanceTimersByTime(4000)
     })
@@ -1709,7 +1642,6 @@ describe("isClientConnectionErrorCode", () => {
   })
 
   it("treats backend payload error text and empty values as non-client errors", () => {
-    // Dynamic backend text must still be displayed verbatim, so it is not a client code.
     expect(isClientConnectionErrorCode("instance unreachable: connection refused")).toBe(false)
     expect(isClientConnectionErrorCode(null)).toBe(false)
     expect(isClientConnectionErrorCode(undefined)).toBe(false)
@@ -1973,7 +1905,6 @@ describe("subscription changes on an open stream", () => {
     await settle()
     change.mockClear()
 
-    // The browser retried the same URL, which lists only the main view.
     act(() => source.emit("connection", { type: "connection", connectionId: "qui-conn-8" }))
     await settle()
     expect(change).toHaveBeenCalledTimes(1)
@@ -2013,12 +1944,10 @@ describe("subscription changes on an open stream", () => {
     }
     expect(source.closed).toBe(true)
     expect(streamKeysOf(MockEventSource.instances[1].url)).toEqual([createStreamKey(MAIN), createStreamKey(details("aaa"))].sort())
-    // A timeout, not a cancel, so the failed-request list of a Problem report keeps it.
     expect((change.mock.calls[0][3]?.reason as Error | undefined)?.name).toBe("TimeoutError")
   })
 
   it("keeps the stream while the server holds a change until the first inits are sent", async () => {
-    // The server answers a change only after it sent the inits of the connection.
     const change = vi.spyOn(api, "changeStreamSubscriptions").mockImplementation((_id, _add, _remove, signal) =>
       new Promise((resolve, reject) => {
         window.setTimeout(resolve, STALE + 5000)
@@ -2042,7 +1971,6 @@ describe("subscription changes on an open stream", () => {
     const { source, select } = renderTableWithDetails()
     select("aaa")
     await settle()
-    // A large init that downloads slowly holds back every other frame.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(STALE + 5000)
     })

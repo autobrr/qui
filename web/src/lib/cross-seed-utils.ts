@@ -9,42 +9,26 @@ import type { TFunction } from "i18next"
 import { useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
-// Cross-seed matching utilities
 export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/]+/g, "/").replace(/\/$/, "") || ""
 
-/**
- * Parse a number-input value to a whole number of 0 or more.
- * Empty and non-numeric input becomes 0.
- */
 export const parseNonNegativeInt = (value: string): number => Math.max(0, Math.floor(Number(value) || 0))
 
-// Labels for the two statuses of a routed add (ADR 0035). Other statuses keep their current display.
 export const crossSeedRouteStatusKeys: Partial<Record<string, string>> = {
   crossseed_instance_unavailable: "crossseed:routeStatus.unavailable",
   crossseed_instance_cannot_see_data: "crossseed:routeStatus.cannotSeeData",
 }
 
-// Names the instance that held the match and the Cross-seed instance of a routed result (ADR 0035).
 export const crossSeedRouteText = (t: TFunction, source: string, crossSeed: string, added: boolean): string =>
   t(added ? "crossseed:route.foundOnAddedTo" : "crossseed:route.foundOnRoutedTo", { source, crossSeed })
 
-// Omit an untouched secret: the backend shows an undecryptable key as "", and sending that "" back deletes it.
 export const changedSecret = (value: string, saved: string | undefined): string | undefined =>
   value === (saved ?? "") ? undefined : value
 
-/**
- * Check if a path is inside a base directory.
- * Returns true if base is non-empty and path equals base or starts with base + "/".
- */
 export const isInsideBase = (path: string, base: string): boolean => {
   if (!base) return false
   return path === base || path.startsWith(base + "/")
 }
 
-/**
- * Check if a torrent is hardlink-managed based on instance config and paths.
- * Only returns true if the instance has hardlink mode enabled AND qui can write its files.
- */
 export const isHardlinkManaged = (
   match: { save_path?: string; content_path?: string },
   instance: { useHardlinks?: boolean; capabilities?: Pick<FilesystemCapabilities, "write">; hardlinkBaseDir?: string } | undefined
@@ -57,7 +41,6 @@ export const isHardlinkManaged = (
   return isInsideBase(savePath, base) || isInsideBase(contentPath, base)
 }
 
-// Extended torrent type with cross-seed metadata
 export interface CrossSeedTorrent extends Torrent {
   instanceId: number
   instanceName: string
@@ -131,16 +114,11 @@ export function hasBreakableLocalMatches(
   return matches.some(match => getLocalMatchTypeInfo(match.matchType).breaksWhenSourceDeleted)
 }
 
-/**
- * Hook to find cross-seed matches using the backend API.
- * Uses proper release metadata parsing (rls library) instead of frontend fuzzy matching.
- */
 export const useLocalCrossSeedMatches = (
   instanceId: number,
   torrent: Torrent | null,
   enabled: boolean = true
 ) => {
-  // Fetch all instances for the instance lookup map
   const { data: allInstances, isLoading: isLoadingInstances } = useQuery({
     queryKey: ["instances"],
     queryFn: api.getInstances,
@@ -148,7 +126,6 @@ export const useLocalCrossSeedMatches = (
     staleTime: 60000,
   })
 
-  // Call the backend API to get local matches
   const { data: matches, isLoading: isLoadingMatches, error: matchesError } = useQuery({
     queryKey: ["cross-seed-local-matches", instanceId, torrent?.hash],
     queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash),
@@ -159,7 +136,6 @@ export const useLocalCrossSeedMatches = (
     refetchOnWindowFocus: false,
   })
 
-  // Convert LocalCrossSeedMatch to CrossSeedTorrent format for compatibility
   const matchingTorrents = useMemo((): CrossSeedTorrent[] => {
     if (!matches) return []
     return matches.map((m): CrossSeedTorrent => toCompatibleMatch(m))
@@ -167,8 +143,6 @@ export const useLocalCrossSeedMatches = (
 
   return {
     matchingTorrents,
-    // A lookup that could not read a file list or a link check rejects; the
-    // tab shows that rather than an empty list that reads as "no matches".
     matchesError: matchesError ?? null,
     isLoadingMatches: isLoadingInstances || isLoadingMatches,
     isLoadingInstances,
@@ -177,9 +151,6 @@ export const useLocalCrossSeedMatches = (
   }
 }
 
-/**
- * Convert LocalCrossSeedMatch to CrossSeedTorrent for backward compatibility.
- */
 export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
   return {
     hash: m.hash,
@@ -196,7 +167,6 @@ export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
     instanceId: m.instanceId,
     instanceName: m.instanceName,
     matchType: m.matchType,
-    // Default values for required Torrent fields
     added_on: 0,
     completion_on: 0,
     dlspeed: 0,

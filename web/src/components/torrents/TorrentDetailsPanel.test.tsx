@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { FilesystemCapabilities } from "@/types"
 import { makeTorrent } from "@/test/mockTorrent"
 
-// Every mock returns a stable object: a fresh one per render loops the panel's effects.
 const mocks = vi.hoisted(() => {
   const empty = { data: undefined, isLoading: false }
   return {
@@ -74,16 +73,11 @@ const torrent = makeTorrent({ hash: "abc", name: "Show.S01", state: "uploading",
 const cases = [
   { name: "a local instance", hasLocalFilesystemAccess: true, capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true }, canReadContent: true },
   { name: "a remote instance", hasLocalFilesystemAccess: false, capabilities: { ...noCapabilities, read: true }, canReadContent: false },
-  // The setting is off here, so only the capability can offer the actions.
   { name: "a remote instance with the content capability", hasLocalFilesystemAccess: false, capabilities: { ...noCapabilities, read: true, content: true }, canReadContent: true },
 ]
 
 describe("TorrentDetailsPanel content actions", () => {
   it.each(cases)("offer download, MediaInfo, and Disc reports from the content capability for $name", async ({ hasLocalFilesystemAccess, capabilities, canReadContent }) => {
-    vi.stubGlobal("ResizeObserver", class {
-      observe() {}
-      disconnect() {}
-    })
     mocks.queries.instances = { ...mocks.empty, data: [{ id: 1, hasLocalFilesystemAccess, capabilities }] }
     render(
       <QueryClientProvider client={new QueryClient()}>

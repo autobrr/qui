@@ -14,9 +14,6 @@ const instances = [
 
 describe("resolveInstanceSelection", () => {
   it("keeps the saved selection while instances are still loading", () => {
-    // The instances query resolving later must not clear a saved id; clearing
-    // here persisted the "" sentinel and the fallback then overwrote the
-    // saved selection on every reload.
     expect(resolveInstanceSelection(undefined, 101)).toBe(101)
     expect(resolveInstanceSelection(undefined, undefined)).toBeUndefined()
   })

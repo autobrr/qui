@@ -5,21 +5,12 @@
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { Download, Send, Trash2 } from "lucide-react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 
 import { ResourceList, type ResourceRow } from "./ResourceList"
-
-// A tooltip measures its trigger, and jsdom has no ResizeObserver.
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()
@@ -58,7 +49,6 @@ describe("ResourceList", () => {
 
     expect(onCheckedChange).toHaveBeenCalledWith(true)
     expect(screen.queryByRole("checkbox", { name: "beta" })).toBeNull()
-    // The row without a box keeps an empty column, so that the two rows stay in line.
     const beta = screen.getByRole("listitem", { name: "beta" })
     expect(beta.firstElementChild?.childElementCount).toBe(0)
   })
@@ -97,7 +87,6 @@ describe("ResourceList", () => {
     renderList([{ id: 1, name: "qui.log" }], (item) => ({ title: item.name, actions: [{ label: "Download", icon: Download, onSelect }] }))
     const row = screen.getByRole("listitem", { name: "qui.log" })
 
-    // A wide screen shows the step as a button too, so the row has two Download buttons.
     const buttons = within(row).getAllByRole("button", { name: "Download" })
     fireEvent.click(buttons[buttons.length - 1])
 
@@ -111,7 +100,6 @@ describe("ResourceList", () => {
     const row = screen.getByRole("listitem", { name: "search" })
 
     fireEvent.click(within(row).getByRole("button", { name: "search" }))
-    // A wide screen shows Edit as a button, and a phone as an arrow with the same name.
     for (const button of within(row).getAllByRole("button", { name: "Edit" })) fireEvent.click(button)
 
     expect(onOpen).toHaveBeenCalledTimes(3)

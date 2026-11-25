@@ -97,7 +97,6 @@ test("a body given for the moment replaces the edited body", () => {
   assert.equal(world.discussions[0].body, "qui shows moving");
 });
 
-// regression: #4224
 test("each body shows its text at the moment, not a later edit", () => {
   const edits = (...pairs) => pairs.map(([editedAt, body]) => ({ editedAt, body }));
   const [d, d20] = corpus.discussions;
@@ -165,12 +164,10 @@ test("search matches stems, applies qualifiers, and sees only the cut world", ()
   assert.deepEqual(hits("moving is:merged", ["pr"]), []);
 });
 
-// regression: #4224
 test("type:pull-request finds pull requests", () => {
   assert.deepEqual(search(world, "type:pull-request moving", { kinds: ["pr"] }).map((h) => h.item.number), [7]);
 });
 
-// regression: #4224
 test("an answer and an edit count only from their moment", () => {
   const [d, d20] = corpus.discussions;
   const [ask] = d.comments.nodes;

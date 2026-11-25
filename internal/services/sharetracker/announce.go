@@ -14,12 +14,8 @@ import (
 	"github.com/autobrr/go-torrent/bencode"
 )
 
-// defaultNumwant is the number of peers that a client gets when it sends no
-// numwant (BEP 3).
 const defaultNumwant = 50
 
-// announceRequest is a parsed announce (BEP 3). The tracker ignores the ip
-// parameter: a client could name any address with it.
 type announceRequest struct {
 	infoHash   [20]byte
 	port       uint16
@@ -91,7 +87,6 @@ type failureResponse struct {
 	Reason string `bencode:"failure reason"`
 }
 
-// reply sends peers as the compact lists of BEP 23 (IPv4) and BEP 7 (IPv6).
 func reply(w http.ResponseWriter, peers []netip.AddrPort) {
 	resp := successResponse{Interval: int(Interval.Seconds()), Peers: []byte{}}
 	for _, p := range peers {

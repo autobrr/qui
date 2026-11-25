@@ -10,84 +10,42 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// TorznabSearchRequest represents a general Torznab search request
 type TorznabSearchRequest struct {
-	// Query is the search term
-	Query string `json:"query"`
-	// ReleaseName is the original full release name (for debugging/logging)
-	ReleaseName string `json:"release_name,omitempty"`
-	// Categories to search
-	Categories []int `json:"categories,omitempty"`
-	// IMDbID for movies/shows (optional)
-	IMDbID string `json:"imdb_id,omitempty"`
-	// TVDbID for TV shows (optional)
-	TVDbID string `json:"tvdb_id,omitempty"`
-	// TMDbID for movies (optional, from ARR lookup)
-	TMDbID int `json:"tmdb_id,omitempty"`
-	// TVMazeID for TV shows (optional, from ARR lookup)
-	TVMazeID int `json:"tvmaze_id,omitempty"`
-	// Year for movies/shows/music (optional)
-	Year int `json:"year,omitempty"`
-	// Season for TV shows (optional)
-	Season *int `json:"season,omitempty"`
-	// Episode for TV shows (optional)
-	Episode *int `json:"episode,omitempty"`
-	// EpisodeMap carries the Sonarr season and episode for an absolute-numbered
-	// source. It reaches only the indexers that keep an ID parameter; text
-	// indexers keep the seasonless query, because a Cardigann text search folds
-	// SxxExx into keywords and hides absolute-numbered listings.
-	EpisodeMap *models.EpisodeMap `json:"-"`
-	// Artist for music searches (optional)
-	Artist string `json:"artist,omitempty"`
-	// Album for music searches (optional)
-	Album string `json:"album,omitempty"`
-	// Limit the number of results
-	Limit int `json:"limit,omitempty"`
-	// Offset for pagination
-	Offset int `json:"offset,omitempty"`
-	// IndexerIDs to search (empty = all enabled indexers)
-	IndexerIDs []int `json:"indexer_ids,omitempty"`
-	// CacheMode controls cache behaviour (""=default, "bypass" = skip cache)
-	CacheMode string `json:"cache_mode,omitempty"`
-	// OmitQueryForIDs when true, omits q from a movie or TV search that carries IDs, and
-	// omits cat from every indexer that keeps a usable ID (for cross-seed ID-driven
-	// searches). An indexer that falls back to the title query keeps its category.
-	OmitQueryForIDs bool `json:"-"`
-	// SkipHistory prevents recording this search in the history buffer. It does NOT
-	// gate cache persistence; that concern is governed separately by SkipCachePersist.
-	SkipHistory bool `json:"-"`
-	// SkipCachePersist prevents persisting this search's results into the Torznab
-	// result cache (cache reads remain governed by CacheMode, not this flag).
-	// Independent of SkipHistory: internal continuation passes (e.g. the cross-seed
-	// alternate connector-spelling pass) skip history but still persist results, so
-	// repeated passes reuse the cache instead of re-hitting indexers.
-	SkipCachePersist bool `json:"-"`
-	// ReturnAllResults skips response pagination for internal callers that need the complete result set.
-	ReturnAllResults bool `json:"-"`
-	// MinimumExecutionTimeout raises the adaptive per-indexer execution budget for internal callers.
-	MinimumExecutionTimeout time.Duration `json:"-"`
-	// OnComplete is called when a search job for an indexer completes
-	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
-	// OnAllComplete is called when all search jobs complete with the final results
-	OnAllComplete func(*SearchResponse, error) `json:"-"`
+	Query                   string                                       `json:"query"`
+	ReleaseName             string                                       `json:"release_name,omitempty"`
+	Categories              []int                                        `json:"categories,omitempty"`
+	IMDbID                  string                                       `json:"imdb_id,omitempty"`
+	TVDbID                  string                                       `json:"tvdb_id,omitempty"`
+	TMDbID                  int                                          `json:"tmdb_id,omitempty"`
+	TVMazeID                int                                          `json:"tvmaze_id,omitempty"`
+	Year                    int                                          `json:"year,omitempty"`
+	Season                  *int                                         `json:"season,omitempty"`
+	Episode                 *int                                         `json:"episode,omitempty"`
+	EpisodeMap              *models.EpisodeMap                           `json:"-"`
+	Artist                  string                                       `json:"artist,omitempty"`
+	Album                   string                                       `json:"album,omitempty"`
+	Limit                   int                                          `json:"limit,omitempty"`
+	Offset                  int                                          `json:"offset,omitempty"`
+	IndexerIDs              []int                                        `json:"indexer_ids,omitempty"`
+	CacheMode               string                                       `json:"cache_mode,omitempty"`
+	OmitQueryForIDs         bool                                         `json:"-"`
+	SkipHistory             bool                                         `json:"-"`
+	SkipCachePersist        bool                                         `json:"-"`
+	ReturnAllResults        bool                                         `json:"-"`
+	MinimumExecutionTimeout time.Duration                                `json:"-"`
+	OnComplete              func(jobID uint64, indexerID int, err error) `json:"-"`
+	OnAllComplete           func(*SearchResponse, error)                 `json:"-"`
 }
 type SearchResponse struct {
-	Results []SearchResult       `json:"results"`
-	Total   int                  `json:"total"`
-	Cache   *SearchCacheMetadata `json:"cache,omitempty"`
-	Partial bool                 `json:"partial,omitempty"`
-	// JobID identifies this search for outcome tracking (cross-seed)
-	JobID uint64 `json:"jobId,omitempty"`
-	// RequestedIndexerIDs is the resolved indexer set for this search.
-	RequestedIndexerIDs []int `json:"-"`
-	// CoveredIndexerIDs lists the indexers that answered this search, or that the
-	// executor excluded on purpose. Failed, timed-out, and rate-limited indexers
-	// are not in this list. Callers can compare it against RequestedIndexerIDs to
-	// see whether the search covered the full requested set.
-	CoveredIndexerIDs []int `json:"-"`
+	Results             []SearchResult       `json:"results"`
+	Total               int                  `json:"total"`
+	Cache               *SearchCacheMetadata `json:"cache,omitempty"`
+	Partial             bool                 `json:"partial,omitempty"`
+	JobID               uint64               `json:"jobId,omitempty"`
+	RequestedIndexerIDs []int                `json:"-"`
+	CoveredIndexerIDs   []int                `json:"-"`
 }
 
-// FullyCovered reports whether every requested indexer is in the covered set.
 func (r *SearchResponse) FullyCovered() bool {
 	if r == nil {
 		return false
@@ -100,7 +58,6 @@ func (r *SearchResponse) FullyCovered() bool {
 	return true
 }
 
-// SearchCacheMetadata describes how the response was sourced.
 type SearchCacheMetadata struct {
 	Hit       bool       `json:"hit"`
 	Scope     string     `json:"scope"`
@@ -110,97 +67,59 @@ type SearchCacheMetadata struct {
 	LastUsed  *time.Time `json:"lastUsed,omitempty"`
 }
 
-// SearchResult represents a single search result from Jackett
 type SearchResult struct {
-	// Indexer name
-	Indexer string `json:"indexer"`
-	// Indexer identifier
-	IndexerID int `json:"indexer_id"`
-	// Title of the release
-	Title string `json:"title"`
-	// Download URL for the torrent
-	DownloadURL string `json:"download_url"`
-	// Info URL (details page)
-	InfoURL string `json:"info_url,omitempty"`
-	// Size in bytes
-	Size int64 `json:"size"`
-	// Seeders count
-	Seeders int `json:"seeders"`
-	// Leechers count
-	Leechers int `json:"leechers"`
-	// Category ID
-	CategoryID int `json:"category_id"`
-	// Category name
-	CategoryName string `json:"category_name"`
-	// Published date
-	PublishDate time.Time `json:"publish_date"`
-	// Download volume factor (0.0 = free, 1.0 = normal)
-	DownloadVolumeFactor float64 `json:"download_volume_factor"`
-	// Upload volume factor
-	UploadVolumeFactor float64 `json:"upload_volume_factor"`
-	// GUID (unique identifier)
-	GUID string `json:"guid"`
-	// InfoHashV1 if available
-	InfoHashV1 string `json:"infohash_v1,omitempty"`
-	// InfoHashV2 if available
-	InfoHashV2 string `json:"infohash_v2,omitempty"`
-	// IMDb ID if available
-	IMDbID string `json:"imdb_id,omitempty"`
-	// TVDb ID if available
-	TVDbID string `json:"tvdb_id,omitempty"`
-	// TMDb ID if available
-	TMDbID string `json:"tmdb_id,omitempty"`
-	// SearchIMDbID is the IMDb ID actually used in the per-indexer search request, if any.
-	SearchIMDbID string `json:"search_imdb_id,omitempty"`
-	// SearchTVDbID is the TVDb ID actually used in the per-indexer search request, if any.
-	SearchTVDbID string `json:"search_tvdb_id,omitempty"`
-	// SearchTMDbID is the TMDb ID actually used in the per-indexer search request, if any.
-	SearchTMDbID int `json:"search_tmdb_id,omitempty"`
-	// Source parsed from release name (e.g., "WEB-DL", "BluRay", "HDTV")
-	Source string `json:"source,omitempty"`
-	// Collection/streaming service parsed from release name (e.g., "AMZN", "NF", "HULU", "MAX")
-	Collection string `json:"collection,omitempty"`
-	// Release group parsed from release name
-	Group string `json:"group,omitempty"`
+	Indexer              string    `json:"indexer"`
+	IndexerID            int       `json:"indexer_id"`
+	Title                string    `json:"title"`
+	DownloadURL          string    `json:"download_url"`
+	InfoURL              string    `json:"info_url,omitempty"`
+	Size                 int64     `json:"size"`
+	Seeders              int       `json:"seeders"`
+	Leechers             int       `json:"leechers"`
+	CategoryID           int       `json:"category_id"`
+	CategoryName         string    `json:"category_name"`
+	PublishDate          time.Time `json:"publish_date"`
+	DownloadVolumeFactor float64   `json:"download_volume_factor"`
+	UploadVolumeFactor   float64   `json:"upload_volume_factor"`
+	GUID                 string    `json:"guid"`
+	InfoHashV1           string    `json:"infohash_v1,omitempty"`
+	InfoHashV2           string    `json:"infohash_v2,omitempty"`
+	IMDbID               string    `json:"imdb_id,omitempty"`
+	TVDbID               string    `json:"tvdb_id,omitempty"`
+	TMDbID               string    `json:"tmdb_id,omitempty"`
+	SearchIMDbID         string    `json:"search_imdb_id,omitempty"`
+	SearchTVDbID         string    `json:"search_tvdb_id,omitempty"`
+	SearchTMDbID         int       `json:"search_tmdb_id,omitempty"`
+	Source               string    `json:"source,omitempty"`
+	Collection           string    `json:"collection,omitempty"`
+	Group                string    `json:"group,omitempty"`
 }
 
-// IndexersResponse represents the list of available indexers
 type IndexersResponse struct {
 	Indexers []IndexerInfo `json:"indexers"`
 }
 
-// IndexerInfo represents information about a Jackett indexer
 type IndexerInfo struct {
-	// ID of the indexer
-	ID string `json:"id"`
-	// Name of the indexer
-	Name string `json:"name"`
-	// Description
-	Description string `json:"description,omitempty"`
-	// Type (public, semi-private, private)
-	Type string `json:"type"`
-	// Configured (whether the indexer is configured)
-	Configured bool `json:"configured"`
-	// Supported categories
-	Categories []CategoryInfo `json:"categories,omitempty"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Type        string         `json:"type"`
+	Configured  bool           `json:"configured"`
+	Categories  []CategoryInfo `json:"categories,omitempty"`
 }
 
-// CategoryInfo represents a Torznab category
 type CategoryInfo struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
 
-// Torznab category constants
 const (
-	// Movies
 	CategoryMovies   = 2000
 	CategoryMoviesSD = 2030
 	CategoryMoviesHD = 2040
 	CategoryMovies4K = 2045
 	CategoryMovies3D = 2050
 
-	// TV
 	CategoryTV            = 5000
 	CategoryTVSD          = 5030
 	CategoryTVHD          = 5040
@@ -209,7 +128,6 @@ const (
 	CategoryTVAnime       = 5070
 	CategoryTVDocumentary = 5080
 
-	// XXX
 	CategoryXXX         = 6000
 	CategoryXXXDVD      = 6010
 	CategoryXXXWMV      = 6020
@@ -219,13 +137,10 @@ const (
 	CategoryXXXImageSet = 6060
 	CategoryXXXOther    = 6070
 
-	// Audio
 	CategoryAudio = 3000
 
-	// PC
 	CategoryPC = 4000
 
-	// Books
 	CategoryBooks       = 7000
 	CategoryBooksEbook  = 7020
 	CategoryBooksComics = 7030

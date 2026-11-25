@@ -18,7 +18,7 @@ If you are not a collaborator:
 - To suggest a feature, post in [Feature Requests, Ideas](https://github.com/autobrr/qui/discussions/new?category=feature-requests-ideas).
 - To propose a code change, describe it in a Discussion. We do not accept code from people outside the team at this time.
 
-We do not accept code that Gemini models wrote, because of their hallucination rate. Gemini models must not open pull requests, but they can write copy (text for people, such as pull request descriptions, documentation, or UI text).
+We do not accept code that Gemini models wrote, because of their hallucination rate. Gemini 4 Neon is the exception: it can write code and open pull requests. Other Gemini models must not open pull requests, but they can write copy (text for people, such as pull request descriptions, documentation, or UI text).
 
 If you are a collaborator and use an AI agent, add this line to your personal agent instructions, for example `~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`.
 The agent then skips the collaborator check in [`docs/agents/collaborator-check.md`](../docs/agents/collaborator-check.md).
@@ -44,7 +44,6 @@ Make sure you have the following dependencies installed before setting up your d
 - [Go](https://golang.org/dl/) 1.27 or later (see [go.mod](../go.mod#L3) for exact version)
 - [Node.js](https://nodejs.org) (we usually use the latest Node LTS version - for further information see `@types/node` major version in [package.json](../web/package.json))
 - [pnpm](https://pnpm.io/installation)
-- [prek](https://github.com/prefix-dev/prek) (optional, for pre-commit hooks)
 
 ## How to contribute
 
@@ -182,4 +181,4 @@ make test-frontend
 
 AI help is welcome. Fill in the AI disclosure section of the PR template honestly.
 
-We do not accept code that Gemini models wrote. Their hallucination rate in past contributions was too high. Gemini models must not open pull requests, but they can write copy (text for people, such as pull request descriptions, documentation, or UI text).
+We do not accept code that Gemini models wrote. Their hallucination rate in past contributions was too high. Gemini 4 Neon is the exception: it can write code and open pull requests. Other Gemini models must not open pull requests, but they can write copy (text for people, such as pull request descriptions, documentation, or UI text).

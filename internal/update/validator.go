@@ -41,9 +41,6 @@ func (u *Updater) newSelfUpdater(backup string) (*selfupdate.Updater, *archiveSo
 	return updater, archive, nil
 }
 
-// archiveSource keeps the release archive that UpdateTo downloads. After
-// UpdateTo validated it, the sibling binary comes from the same bytes, so the
-// release is downloaded and verified once.
 type archiveSource struct {
 	selfupdate.Source
 	archive []byte

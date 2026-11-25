@@ -106,13 +106,7 @@ func TestOpenAPISecuritySchemes(t *testing.T) {
 	}
 }
 
-// TestAddTorrentFormFieldsDocumented verifies every multipart form field the
-// add-torrent handler reads is documented in the OpenAPI spec, and vice versa.
-// This catches mismatches like savePath vs savepath or torrentFile vs torrent
-// that cause silent API failures.
 func TestAddTorrentFormFieldsDocumented(t *testing.T) {
-	// go test runs in the package directory. runtime.Caller is not used
-	// because -trimpath turns its result into a module path.
 	handlerPath := filepath.Join("..", "..", "api", "handlers", "torrents.go")
 
 	fset := token.NewFileSet()

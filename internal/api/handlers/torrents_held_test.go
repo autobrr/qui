@@ -26,10 +26,6 @@ const (
 	ownHash     = "bbbb"
 )
 
-// newHeldHandler builds a handler for instance 1, where a Transfer holds
-// claimedHash and helperHash is a helper torrent. ownHash is a torrent of the
-// user. The handler has no sync manager, so an action that it lets through to
-// anything but the deleter panics.
 func newHeldHandler(t *testing.T) (*TorrentsHandler, *recordingDeleter) {
 	t.Helper()
 	store, err := transfer.NewStore(t.Context(), testdb.NewMigratedSQLite(t, "torrents-held"))
@@ -55,15 +51,12 @@ func TestBulkAction_RefusesDeleteAndMoveOfHeldTorrents(t *testing.T) {
 		"delete":          {"action": "delete"},
 		"deleteWithFiles": {"action": "deleteWithFiles"},
 		"setLocation":     {"action": "setLocation", "location": "/data/elsewhere"},
-		// A category or Auto TMM moves a torrent that qBittorrent manages.
-		"setCategory":   {"action": "setCategory", "category": "tv"},
-		"toggleAutoTMM": {"action": "toggleAutoTMM", "enable": true},
+		"setCategory":     {"action": "setCategory", "category": "tv"},
+		"toggleAutoTMM":   {"action": "toggleAutoTMM", "enable": true},
 	}
 	held := map[string]string{
-		claimedHash: "a Transfer holds this torrent",
-		helperHash:  "qui added this torrent for a Transfer or a Share",
-		// qBittorrent reads "|" in a hash as a list separator.
-		// regression: #4231
+		claimedHash:           "a Transfer holds this torrent",
+		helperHash:            "qui added this torrent for a Transfer or a Share",
 		"cccc|" + claimedHash: "a Transfer holds this torrent",
 	}
 	for name, payload := range actions {
@@ -110,7 +103,6 @@ func TestRenameRefusesHeldTorrents(t *testing.T) {
 	}
 }
 
-// A torrent of the user with the helper tag and no registry row is no helper.
 func TestBulkAction_DeletesATorrentThatNoTransferHolds(t *testing.T) {
 	t.Parallel()
 	handler, deleter := newHeldHandler(t)

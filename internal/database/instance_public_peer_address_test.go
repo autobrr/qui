@@ -27,7 +27,6 @@ func TestInstancePublicPeerAddressMigrationSQLite(t *testing.T) {
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	// 010 rebuilds referenced tables and only runs with foreign keys off.
 	_, err = conn.ExecContext(t.Context(), "PRAGMA foreign_keys = OFF")
 	require.NoError(t, err)
 	checkInstancePublicPeerAddressMigration(t.Context(), t, conn, migrationsFS, "migrations")
@@ -86,8 +85,6 @@ func TestInstancePublicPeerAddressStatementsPostgresIntegration(t *testing.T) {
 	runInstancePublicPeerAddressRoundTrip(ctx, t, db)
 }
 
-// The address that the user set stays until an update names it again, so a
-// save of another instance setting leaves it alone.
 func runInstancePublicPeerAddressRoundTrip(ctx context.Context, t *testing.T, db dbinterface.Querier) {
 	t.Helper()
 

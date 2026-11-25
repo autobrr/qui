@@ -15,10 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Synthetic fixture per repo rule: yearless one-word title with a group tag
-// ending in digits, so ARR's parse extracts a bogus year from the group and
-// resolves nothing (issue #2272). The service test asserts the lookup term is
-// exactly "Solitude", which fails loudly if rls stops parsing it that way.
 const yearlessDigitGroupRelease = "Solitude.1080p.AMZN.WEB-DL.DDP5.1.H.264-QX2006.mkv"
 
 func TestClient_LookupByTerm_Radarr(t *testing.T) {
@@ -267,8 +263,6 @@ func TestService_LookupExternalIDsFallsBackToTitleLookup(t *testing.T) {
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/parse":
-			// The issue #2272 mis-parse: year lifted from the digit-suffixed
-			// group tag, no movie resolved, no IDs.
 			_, _ = w.Write([]byte(`{"movie": null, "parsedMovieInfo": {"movieTitle": "Solitude  AMZN WEB-DL DDP5 1 -QX", "year": 2006}}`))
 		case "/api/v3/movie/lookup":
 			lookupCalled = true
@@ -317,9 +311,6 @@ func TestService_LookupExternalIDsFallsBackWhenParseFails(t *testing.T) {
 }
 
 func TestService_LookupExternalIDsSkipsNegativeCacheWhenBothLegsFail(t *testing.T) {
-	// A transient ARR outage (parse AND lookup erroring) must surface as an
-	// error — not a look-alike "no IDs" result — and must not write a negative
-	// cache entry that suppresses ID lookups after the instance recovers.
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
@@ -335,9 +326,6 @@ func TestService_LookupExternalIDsSkipsNegativeCacheWhenBothLegsFail(t *testing.
 }
 
 func TestService_LookupExternalIDsNoNegativeCacheWhenLookupErrors(t *testing.T) {
-	// Parse answering empty is exactly the state the title-lookup fallback
-	// distrusts, so an erroring fallback leaves the cycle inconclusive: no
-	// negative cache, and the failure is surfaced as an error.
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/parse":

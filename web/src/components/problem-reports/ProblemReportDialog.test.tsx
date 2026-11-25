@@ -80,17 +80,32 @@ function serveSignIn(states: ProblemReportSignInState[], start: () => Response =
   return calls
 }
 
+function fakePopup() {
+  return { opener: window as Window | null, location: { href: "" }, close: vi.fn() }
+}
+
 function stubPopup() {
-  const popup = { opener: window as Window | null, location: { href: "" }, close: vi.fn() }
+  const popup = fakePopup()
   const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window)
   return { popup, open }
+}
+
+function holdSignInStart(urls: string[]) {
+  let releaseFirst = () => {}
+  const heldFirst = new Promise<void>((resolve) => { releaseFirst = resolve })
+  let starts = 0
+  server.use(http.post("*/api/problem-reports/sign-in", async () => {
+    const start = starts++
+    if (start === 0) await heldFirst
+    return HttpResponse.json({ url: urls[start] })
+  }))
+  return { releaseFirst, starts: () => starts }
 }
 
 function openSenderMenu(sender: string) {
   fireEvent.keyDown(screen.getByRole("button", { name: sender }), { key: "Enter" })
 }
 
-/** Answers the list route with reports, and counts its calls. */
 function serveSentReports(reports: ListedProblemReport[]) {
   const calls = { count: 0 }
   server.use(http.get("*/api/problem-reports", () => {
@@ -104,7 +119,6 @@ function withQui(qui: Partial<ProblemReportFacts["qui"]>): ProblemReportFacts {
   return { ...baseFacts, qui: { ...baseFacts.qui, ...qui } }
 }
 
-/** Records each report and its sender that reach the send route, and answers with the next answer, or 201. */
 function serveSend(answers: Response[] = []) {
   const reports: ProblemReportPayload[] = []
   const senders: ProblemReportSender[] = []
@@ -159,13 +173,6 @@ function pickLogScope(name: string) {
 }
 
 beforeAll(() => {
-  // jsdom has no ResizeObserver, and the Radix popper of the tooltip measures its anchor with one.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-  // The Radix select scrolls its picked option into view and captures the pointer, which jsdom lacks.
   Element.prototype.scrollIntoView = () => {}
   Element.prototype.hasPointerCapture = () => false
   Element.prototype.releasePointerCapture = () => {}
@@ -263,7 +270,6 @@ describe("ProblemReportDialog", () => {
 
     const { textField, sendButton } = await openDialog()
     fireEvent.click(screen.getByRole("button", { name: "Details" }))
-    // regression: #4288
     expect(screen.getByText(new RegExp(`Browser: ${escapeRegExp(navigator.userAgent)}`))).not.toBeNull()
     fireEvent.change(textField, { target: { value: "Torrents vanish" } })
     fireEvent.click(sendButton())
@@ -279,7 +285,6 @@ describe("ProblemReportDialog", () => {
     expect(report.logs).toEqual({ scope: "all", lines: ["DBG sync done", "INF started", "WRN disk almost full"] })
     expect(report.qui).toEqual(baseFacts.qui)
     expect(report.instances).toEqual(baseFacts.instances)
-    // regression: #4288
     expect(report.browser.userAgent).toBe(navigator.userAgent)
     expect(report.browser).toEqual({
       route: window.location.pathname,
@@ -392,7 +397,6 @@ describe("ProblemReportDialog", () => {
     expect(toastSuccess).not.toHaveBeenCalled()
   })
 
-  // regression: #4288
   it("retries a refused report with the same submission id", async () => {
     serve()
     const { reports } = serveSend([
@@ -412,7 +416,6 @@ describe("ProblemReportDialog", () => {
     expect(reports[1].submissionId).toBe(reports[0].submissionId)
   })
 
-  // regression: #4288
   it("keeps a newer report open when an earlier Send succeeds after its dialog closed", async () => {
     serve()
     let answer: (response: Response) => void = () => {}
@@ -625,7 +628,6 @@ describe("Draft", () => {
     expect(reports[1].submissionId).not.toBe(reports[0].submissionId)
   })
 
-  // regression: #4381
   it("shows the draft that another tab stored while the dialog was closed", async () => {
     serve()
     mount()
@@ -641,7 +643,6 @@ describe("Draft", () => {
     expect(second.textField.value).toBe("Uploads stall")
   })
 
-  // regression: #4381
   it("keeps a draft that another tab changed when a Send from a closed dialog succeeds", async () => {
     serve()
     let answer: (response: Response) => void = () => {}
@@ -759,7 +760,6 @@ describe("Sender", () => {
     expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
   })
 
-  // regression: #4360
   it("keeps watching a pending sign-in when the browser blocks the popup of another one", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     serve()
@@ -817,7 +817,60 @@ describe("Sender", () => {
     expect(signIn.signOuts).toBe(1)
   })
 
-  // regression: #4360
+  it("closes the popup and stays Anonymous when the sign-in starts after the user picked Anonymous", async () => {
+    serve()
+    const signIn = serveSignIn([{ state: "pending" }])
+    const start = holdSignInStart([signInURL])
+    const { popup } = stubPopup()
+    const queryClient = mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(start.starts()).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Anonymous" }))
+    await screen.findByRole("button", { name: "Anonymous" })
+    await waitFor(() => expect(signIn.signOuts).toBe(1))
+
+    start.releaseFirst()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+
+    expect(popup.location.href).toBe("")
+    expect(popup.close).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(signIn.reads).toBe(0)
+  })
+
+  it("closes the popup of a sign-in that a newer sign-in replaced, and waits for the newer one", async () => {
+    serve()
+    serveSignIn([{ state: "pending" }])
+    const discordURL = "https://bin.getqui.com/report-sign-in/p2"
+    const start = holdSignInStart([signInURL, discordURL])
+    const first = fakePopup()
+    const second = fakePopup()
+    vi.spyOn(window, "open").mockReturnValueOnce(first as unknown as Window).mockReturnValueOnce(second as unknown as Window)
+    const queryClient = mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(start.starts()).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+    await waitFor(() => expect(second.location.href).toBe(discordURL))
+
+    start.releaseFirst()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+
+    expect(first.location.href).toBe("")
+    expect(first.close).toHaveBeenCalledTimes(1)
+    expect(second.close).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Waiting for Discord" })).not.toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
   it("signs out and sends as Anonymous again", async () => {
     serve()
     serveSender(octocat)
@@ -838,7 +891,6 @@ describe("Sender", () => {
     await waitFor(() => expect(senders).toEqual([{ anonymous: true }]))
   })
 
-  // regression: #4360
   it("stays Anonymous after a sign-out when a sender read from before it answers later", async () => {
     serve()
     let releaseRead = () => {}
@@ -869,7 +921,6 @@ describe("Sender", () => {
     expect(screen.getByText(/^Anonymous: no name, no account\./)).not.toBeNull()
   })
 
-  // regression: #4360
   it("sends as Anonymous while qui has not answered which sender it holds", async () => {
     serve()
     server.use(http.get("*/api/problem-reports/sender", async () => {
@@ -991,7 +1042,6 @@ describe("Sent reports", () => {
     }
   })
 
-  // regression: #4302
   it("keeps a newer seen time that another browser stored when Sent reports shows older statuses", async () => {
     serve()
     serveSentReports([listed({ id: "r1", title: "Uploads stall", status: "issue", issue: { number: 4321, url: issueURL, closed: false }, statusChangedAt: "2026-11-19T10:00:00Z" })])
@@ -1073,7 +1123,6 @@ describe("Sent reports", () => {
     expect(screen.getByText("Torrents vanish")).not.toBeNull()
   })
 
-  // regression: #4302
   it("keeps a deleted row gone when a list that Sent reports asked for during the Delete answers later", async () => {
     serve()
     const rows = [listed({ id: "r2", title: "Uploads stall" }), listed({ id: "r1", title: "Torrents vanish" })]
@@ -1081,7 +1130,6 @@ describe("Sent reports", () => {
     const heldList = new Promise<void>((resolve) => { releaseList = resolve })
     let lists = 0
     server.use(http.get("*/api/problem-reports", async () => {
-      // The third list, from the second open of Sent reports, read its rows before the Delete ended.
       if (++lists === 3) await heldList
       return HttpResponse.json(rows)
     }))

@@ -21,7 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// captureSkips holds the table entries that no capture checks, with the reason.
 var captureSkips = map[Capability]string{
 	CapExportOmitsTrackers: "the 4.6.0 and 4.6.7 probes keep the tracker on export, but they test only " +
 		"linuxserver builds with libtorrent 2.0 and a torrent with one tracker",
@@ -29,7 +28,6 @@ var captureSkips = map[Capability]string{
 		"list it for 5.3.0 (Web API 2.16.2) and not for 5.2.4 (2.15.1)",
 }
 
-// endpointEntries maps each endpoint of a feature probe to the entry that it shows.
 var endpointEntries = map[string]Capability{
 	"app/getDirectoryContent": CapPathAutocomplete,
 	"app/processInfo":         CapProcessInfo,
@@ -46,8 +44,6 @@ var endpointEntries = map[string]Capability{
 	"torrents/setTags":        CapSetTags,
 }
 
-// captureCheck is what a capture shows for entries: observed must equal
-// tableSays.
 type captureCheck struct {
 	entries   []Capability
 	observed  bool
@@ -67,8 +63,6 @@ type capture struct {
 	checks                []captureCheck
 }
 
-// TestCapabilityTableMatchesCaptures checks capabilityVersions against the
-// captures of real qBittorrent releases in go-qbittorrent's testdata.
 func TestCapabilityTableMatchesCaptures(t *testing.T) {
 	t.Parallel()
 
@@ -109,8 +103,6 @@ func TestCapabilityTableMatchesCaptures(t *testing.T) {
 	}
 }
 
-// goQbittorrentDir returns the go-qbittorrent module directory in the module
-// cache. GOPROXY=off keeps the go command off the network.
 func goQbittorrentDir(t *testing.T) string {
 	t.Helper()
 	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", "github.com/autobrr/go-qbittorrent")
@@ -122,8 +114,6 @@ func goQbittorrentDir(t *testing.T) string {
 	return dir
 }
 
-// capabilityNames reads the names of the Capability constants from
-// capabilities.go, where they count up from 0 with iota.
 func capabilityNames(t *testing.T) map[Capability]string {
 	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), "capabilities.go", nil, 0)
@@ -150,8 +140,6 @@ func readCaptureJSON(t *testing.T, file string, v any) {
 	require.NoError(t, json.Unmarshal(data, v), file)
 }
 
-// captureFiles maps the release of each file in dir that ends in suffix to
-// the file path.
 func captureFiles(t *testing.T, dir, suffix string) map[string]string {
 	t.Helper()
 	files, err := filepath.Glob(filepath.Join(dir, "*"+suffix))
@@ -190,19 +178,15 @@ func featureCaptures(t *testing.T, testdata string) []capture {
 		var checks []captureCheck
 		for endpoint, status := range probe.Endpoints {
 			if capability, ok := endpointEntries[endpoint]; ok {
-				// An action that does not exist answers 404.
 				checks = append(checks, showsEntry(capability, status != 404))
 			}
 		}
 		checks = append(checks,
-			// A release that knows the parameter rejects a call without it.
 			showsEntry(CapShareLimitsAction, probe.SetShareLimits.WithoutShareLimitAction == 400),
 			showsEntry(CapShareLimitsMode, probe.SetShareLimits.WithoutShareLimitsMode == 400),
-			// Category p has save path /p. Subcategory p/x:y has none.
 			showsEntry(CapCategorySavePathNesting, strings.HasPrefix(probe.SubcategorySavePath, "/p/")),
 			showsEntry(CapCategoryFileNames, path.Base(probe.SubcategorySavePath) == "x:y"),
 		)
-		// The edit sends only a new save path. 4.3.9 has no download path to keep.
 		if before, after := probe.SavePathEdit.Before.DownloadPath, probe.SavePathEdit.After.DownloadPath; before != nil {
 			checks = append(checks, showsEntry(CapPartialCategoryEdit, after != nil && *after == *before))
 		}
@@ -255,8 +239,6 @@ func torrentCaptures(t *testing.T, testdata string) []capture {
 	return captures
 }
 
-// preferenceCaptures takes the Web API version of each release from webAPI,
-// because a preferences capture does not record it.
 func preferenceCaptures(t *testing.T, testdata string, webAPI map[string]string) []capture {
 	t.Helper()
 	files := captureFiles(t, filepath.Join(testdata, "preferences"), ".json")
@@ -265,7 +247,6 @@ func preferenceCaptures(t *testing.T, testdata string, webAPI map[string]string)
 		var preferences map[string]any
 		readCaptureJSON(t, file, &preferences)
 		_, toggle := preferences["use_subcategories"]
-		// The setting exists only while subcategories are optional.
 		captures = append(captures, capture{kind: "preferences", release: release, webAPI: webAPI[release], checks: []captureCheck{{
 			entries:  []Capability{CapSubcategories, CapSubcategoriesAlwaysEnabled},
 			observed: toggle,

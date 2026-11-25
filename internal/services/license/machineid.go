@@ -70,9 +70,6 @@ func persistFingerprint(fingerprint, userID string, configDir string) (string, e
 	return fingerprint, nil
 }
 
-// restrictFingerprintMode narrows an existing fingerprint file to 0600. Files
-// written by older versions are 0644, and WriteFile only applies its mode when
-// it creates the file, so neither path tightens one on its own.
 func restrictFingerprintMode(path string) {
 	if err := os.Chmod(path, 0o600); err != nil {
 		log.Warn().Err(err).Str("path", path).Msg("failed to restrict fingerprint permissions")

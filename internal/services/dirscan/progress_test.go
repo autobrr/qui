@@ -26,7 +26,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// regression: #3736
 func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {
 	t.Parallel()
 
@@ -70,20 +69,15 @@ func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {
 	}
 }
 
-// regression: #3736
 func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansSQLite(t *testing.T) {
 	t.Parallel()
 	runTrackedFileRescanTest(t, testdb.NewMigratedSQLite(t, "dirscan-rescan"))
 }
 
-// regression: #3736
 func TestRefreshTrackedFilesKeepsFinalStatusAcrossScansPostgresIntegration(t *testing.T) {
 	runTrackedFileRescanTest(t, testdb.NewMigratedPostgres(t, "dirscan-rescan"))
 }
 
-// runTrackedFileRescanTest stores an mtime through the real store and scans it
-// again. Postgres reads it back in microseconds. The nanos sit at the top of the
-// second so a driver that rounded instead of truncating would fail here too.
 func runTrackedFileRescanTest(t *testing.T, db *database.DB) {
 	t.Helper()
 	ctx := t.Context()
@@ -102,7 +96,6 @@ func runTrackedFileRescanTest(t *testing.T, db *database.DB) {
 	}{
 		{name: "utc", zone: time.UTC, fileID: hardlink.UnixFileID(7, 42)},
 		{name: "west-of-utc", zone: time.FixedZone("PST", -8*3600), fileID: hardlink.UnixFileID(7, 42)},
-		// Without a file ID only the INSERT writes the row.
 		{name: "west-of-utc-no-file-id", zone: time.FixedZone("PST", -8*3600)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -157,7 +150,6 @@ func runTrackedFileRescanTest(t *testing.T, db *database.DB) {
 	}
 }
 
-// A tracked row keeps the tagged bytes; a rescan finds it by identity after a rename.
 func TestLookupTrackedFile_MatchesStoredTaggedFileID(t *testing.T) {
 	t.Parallel()
 
@@ -179,9 +171,6 @@ func TestLookupTrackedFile_MatchesStoredTaggedFileID(t *testing.T) {
 	require.False(t, ok, "a pre-tag width decodes to no identity and is never indexed")
 }
 
-// stubTorrentFiles is a qBittorrent that seeds one other completed torrent,
-// or none when empty is set. It answers the torrent list with err, and the
-// file lists with files. unsynced is an instance before its first sync.
 type stubTorrentFiles struct {
 	err      error
 	files    map[string]qbt.TorrentFiles
@@ -208,8 +197,6 @@ func (f stubTorrentFiles) GetTorrentFilesBatch(context.Context, int, []string) (
 	return f.files, nil
 }
 
-// statBackend answers every Stat with info or err, for the files of the
-// seeding index.
 type statBackend struct {
 	fsops.Backend
 	info *fsops.LstatInfo
@@ -220,12 +207,6 @@ func (b statBackend) Stat(context.Context, string) (*fsops.LstatInfo, error) {
 	return b.info, b.err
 }
 
-// A torrent file the index could not read, or read without an identity,
-// leaves the index incomplete. So does a missing file that the torrent wants,
-// since a completed torrent has it on disk. A missing skipped file does not,
-// since qBittorrent may not have written it.
-//
-// regression: #3613
 func TestBuildFileIDIndexCompleteness(t *testing.T) {
 	notExist := &fs.PathError{Op: "stat", Err: fs.ErrNotExist}
 	onDisk := &fsops.LstatInfo{Size: 1, FileID: hardlink.UnixFileID(7, 42)}
@@ -247,7 +228,6 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false, reason: "torrent bbbb file other.mkv"},
 		{name: "no file list", noList: true, want: false, reason: "no file list for torrent bbbb"},
-		// regression: #3613
 		{name: "empty file list", emptyList: true, want: false, reason: "empty file list for torrent bbbb"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -270,9 +250,6 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 	}
 }
 
-// A Full scan clears already_seeding only when the seeding index built in full.
-//
-// regression: #3605
 func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -294,7 +271,6 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 			qbt:  stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv"}}}},
 			want: models.DirScanFileStatusPending,
 		},
-		// regression: #3613
 		{
 			name: "first sync not done",
 			qbt:  stubTorrentFiles{empty: true, unsynced: true},
@@ -340,11 +316,6 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 	}
 }
 
-// A file already seeding keeps that status until a complete index, checked
-// against the file's identity, shows the torrent is gone. That holds when the
-// file changed on disk too.
-//
-// regression: #3605
 func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutProof(t *testing.T) {
 	id := hardlink.UnixFileID(7, 42)
 	key, ok := fsops.FileKeyOf(id, nil)
@@ -359,9 +330,7 @@ func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutProof(t *testing.T) {
 		want    models.DirScanFileStatus
 	}{
 		{name: "identity not read", size: 100, seeding: &seedingIndex{complete: true}, want: models.DirScanFileStatusAlreadySeeding},
-		// regression: #3613
 		{name: "changed, index incomplete", id: id, size: 200, seeding: &seedingIndex{}, want: models.DirScanFileStatusAlreadySeeding},
-		// regression: #3613
 		{name: "changed, still seeding", id: id, size: 200, seeding: seeding, want: models.DirScanFileStatusAlreadySeeding},
 		{name: "changed, torrent removed", id: id, size: 200, seeding: &seedingIndex{byKey: map[fsops.FileKey]string{}, complete: true}, want: models.DirScanFileStatusPending},
 	} {

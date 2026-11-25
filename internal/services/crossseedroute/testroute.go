@@ -34,8 +34,6 @@ func (s *Service) Lists(ctx context.Context, instanceID int, dir, name string, m
 
 func ListingHas(content any, err error, dir, name string) (bool, error) {
 	switch {
-	// go-qbittorrent puts the status code only in the text, so a 404 and a
-	// 400 look the same here.
 	case errors.Is(err, qbt.ErrUnexpectedStatus):
 		return false, fmt.Errorf("%w %s: %w", ErrCannotSeeFolder, dir, err)
 	case err != nil:
@@ -69,8 +67,6 @@ type TestRow struct {
 }
 
 type TestResult struct {
-	// Unavailable is set, and Rows is empty, when the Cross-seed instance is
-	// unavailable.
 	Unavailable string    `json:"crossSeedUnavailable,omitempty"`
 	Rows        []TestRow `json:"rows"`
 }
@@ -82,7 +78,6 @@ func (s *Service) Test(ctx context.Context, route *models.CrossSeedRoute) (*Test
 		return nil, broken("The Source instance needs Local Filesystem Access to route its cross-seeds")
 	case err != nil:
 		return nil, err
-	// Only local and remote mode grant Write.
 	case models.FilesystemAccessMode(source) == models.FilesystemModeRemote:
 		return nil, broken("%s is a remote instance and cannot route its cross-seeds", source.Name)
 	}
@@ -120,7 +115,6 @@ func (s *Service) Test(ctx context.Context, route *models.CrossSeedRoute) (*Test
 			unavailable.Unavailable = "Cross-seed instance unavailable: " + crossSeed.Name + ": " + strings.TrimPrefix(err.Error(), ErrUnavailable.Error()+": ")
 			return unavailable, nil
 		}
-		// A request that ended is not a write failure of this folder.
 		if err != nil && ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -133,8 +127,6 @@ func (s *Service) Test(ctx context.Context, route *models.CrossSeedRoute) (*Test
 }
 
 func (s *Service) testRow(ctx context.Context, backend fsops.Backend, baseDir, listed string, crossSeedID int) (TestOutcome, error) {
-	// Cross-seed link mode creates a missing base folder with the same mode,
-	// so the umask decides who else can read it.
 	if err := backend.MkdirAll(ctx, baseDir, fsutil.ContentDirMode); err != nil {
 		return TestCannotWrite, err
 	}

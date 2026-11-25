@@ -17,36 +17,24 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// scopeAnswer says if a torrent is in the Rule scope of a rule, and if not, why.
 type scopeAnswer uint8
 
 const (
 	scopeIn scopeAnswer = iota
-	// scopeOtherTracker: the tracker pattern of the rule does not match the torrent.
 	scopeOtherTracker
-	// scopeSkipWindow: a live run selected the torrent for a delete a short time ago. No rule evaluates it.
 	scopeSkipWindow
-	// scopeNoValue: the torrent has no value for a field that the rule reads (ADR 0039).
 	scopeNoValue
 )
 
-// ruleScope answers which torrents each rule evaluates in one run, dry run, or preview. Every
-// pass over the torrents of a rule asks it. It also gives the tracker domains of a torrent, which
-// it collects one time.
 type ruleScope struct {
-	skipped  map[string]struct{}
-	trackers qbittorrent.TrackerLookup
-	// noValue holds, for each rule ID, the field table tests of the fields that the rule reads.
+	skipped   map[string]struct{}
+	trackers  qbittorrent.TrackerLookup
 	noValue   map[int][]func(qbt.Torrent) bool
-	keyByHash map[string]string          // torrent hash -> domain set key
-	domains   map[string][]string        // domain set key -> sorted domains
-	matches   map[string]map[string]bool // tracker pattern -> domain set key -> match
+	keyByHash map[string]string
+	domains   map[string][]string
+	matches   map[string]map[string]bool
 }
 
-// newRuleScope opens the Rule scope for the rules as saved. trackers holds the tracker lists of
-// the torrents that the run loaded. skipped holds the torrents in the Skip window. A dry run and a
-// preview pass nil for skipped. A preview that plans one Action of a rule passes the whole rule, so
-// that a field in another Action still counts.
 func newRuleScope(rules []*models.Automation, skipped map[string]struct{}, trackers qbittorrent.TrackerLookup) *ruleScope {
 	r := &ruleScope{
 		skipped:   skipped,
@@ -66,8 +54,6 @@ func newRuleScope(rules []*models.Automation, skipped map[string]struct{}, track
 	return r
 }
 
-// answer says if the torrent is in the Rule scope of the rule. When more than one test fails, the
-// order is the Skip window, the tracker pattern, and the value.
 func (r *ruleScope) answer(rule *models.Automation, torrent *qbt.Torrent) scopeAnswer {
 	if _, skipped := r.skipped[torrent.Hash]; skipped {
 		return scopeSkipWindow
@@ -83,9 +69,6 @@ func (r *ruleScope) answer(rule *models.Automation, torrent *qbt.Torrent) scopeA
 	return scopeIn
 }
 
-// groupDropsMember reports whether a member of the group drops out of the rule, so that a grouped
-// Action skips the group. A member drops out only when it has no value for a field that the rule
-// reads. A member on another tracker or in the Skip window stays a member.
 func (r *ruleScope) groupDropsMember(rule *models.Automation, members []string, torrentByHash map[string]*qbt.Torrent) bool {
 	tests := r.noValue[rule.ID]
 	if len(tests) == 0 {
@@ -97,13 +80,10 @@ func (r *ruleScope) groupDropsMember(rule *models.Automation, members []string, 
 	})
 }
 
-// trackerDomains returns the sorted tracker domains of the torrent: the tracker in use, and the
-// full tracker list when the run loaded it. The caller must not change the result.
 func (r *ruleScope) trackerDomains(torrent *qbt.Torrent) []string {
 	return r.domains[r.domainKey(torrent)]
 }
 
-// tracker returns the tracker domain that a preview row or an activity row shows.
 func (r *ruleScope) tracker(torrent *qbt.Torrent) string {
 	if domains := r.trackerDomains(torrent); len(domains) > 0 {
 		return domains[0]
@@ -122,7 +102,6 @@ func (r *ruleScope) domainKey(torrent *qbt.Torrent) string {
 	return key
 }
 
-// Most torrents share their trackers, so each pattern is matched one time for each set of domains.
 func (r *ruleScope) matchesPattern(pattern string, torrent *qbt.Torrent) bool {
 	if pattern == "*" {
 		return true
@@ -159,7 +138,6 @@ func matchesTracker(pattern string, domains []string) bool {
 	return slices.ContainsFunc(include, matches)
 }
 
-// trackerPatternTokens splits a tracker pattern into its tokens, lowercase. A token with "!" excludes.
 func trackerPatternTokens(pattern string) (include, exclude []string) {
 	for token := range strings.FieldsFuncSeq(pattern, func(r rune) bool { return r == ',' || r == ';' || r == '|' }) {
 		normalized := normalizeLowerTrim(token)
@@ -178,7 +156,6 @@ func trackerPatternTokens(pattern string) (include, exclude []string) {
 	return include, exclude
 }
 
-// A token is a domain, a domain suffix that starts with ".", or a glob.
 func tokenMatchesDomain(token string, domains []string) bool {
 	isGlob := strings.ContainsAny(token, "*?")
 	for _, domain := range domains {
@@ -233,8 +210,6 @@ func collectTrackerDomains(t *qbt.Torrent, trackers []qbt.TorrentTracker) []stri
 	return domains
 }
 
-// skipWindow returns the torrents of the instance in the Skip window at now: a live run selected
-// them for a delete less than SkipWithin ago.
 func (s *Service) skipWindow(instanceID int, now time.Time) map[string]struct{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -247,7 +222,6 @@ func (s *Service) skipWindow(instanceID int, now time.Time) map[string]struct{} 
 	return skipped
 }
 
-// startSkipWindow stamps the torrents that a live run selected for a delete at now.
 func (s *Service) startSkipWindow(instanceID int, hashes []string, now time.Time) {
 	if len(hashes) == 0 {
 		return
@@ -267,7 +241,6 @@ func (s *Service) startSkipWindow(instanceID int, hashes []string, now time.Time
 	}
 }
 
-// dropOldSkipStamps removes the stamps from before cutoff. The caller holds s.mu.
 func (s *Service) dropOldSkipStamps(cutoff time.Time) {
 	for _, stamps := range s.lastApplied {
 		maps.DeleteFunc(stamps, func(_ string, stamp time.Time) bool { return stamp.Before(cutoff) })

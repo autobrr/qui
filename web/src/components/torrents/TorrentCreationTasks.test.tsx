@@ -4,7 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, render } from "@testing-library/react"
+import { act, cleanup, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -12,11 +12,6 @@ import { api } from "@/lib/api"
 import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
 import { TorrentCreationTasks } from "./TorrentCreationTasks"
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 vi.mock("@/lib/api", () => ({ api: { getTorrentCreationTasks: vi.fn() } }))
 vi.mock("@/hooks/useDateTimeFormatters", () => {
@@ -67,5 +62,32 @@ it.each<[TorrentCreationStatus | undefined, number]>([
   await act(() => vi.advanceTimersByTimeAsync(1))
   expect(api.getTorrentCreationTasks).toHaveBeenCalledTimes(2)
   cleanup()
+  client.clear()
+})
+
+it.each<[TorrentCreationStatus, string]>([
+  ["Running", "creationTasks.statusLabels.Running"],
+  ["FutureStatus" as TorrentCreationStatus, "common:status.unknown"],
+])("renders translated label key for %s without falling back to the raw status", async (status, expectedKey) => {
+  vi.mocked(api.getTorrentCreationTasks).mockResolvedValue([{
+    taskID: "synthetic-task",
+    sourcePath: "/synthetic/sample.iso",
+    pieceSize: 16384,
+    private: false,
+    status,
+    timeAdded: "2024-06-15T14:30:45Z",
+  }])
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  render(
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <TorrentCreationTasks instanceId={1} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+
+  expect(await screen.findAllByText(expectedKey)).toHaveLength(2)
+  expect(screen.queryByText(status)).toBeNull()
   client.clear()
 })

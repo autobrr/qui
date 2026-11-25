@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -27,7 +26,6 @@ type cachedTorrentSearchResults struct {
 	titleRescueAttempts *atomic.Int32
 }
 
-// ApplyTorrentSearchResults downloads and adds torrents selected from search results for cross-seeding.
 func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, hash string, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
 	ctx = withRouteRun(ctx)
 	if req == nil || len(req.Selections) == 0 {
@@ -60,7 +58,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		tagName = "cross-seed"
 	}
 
-	// Process all selections in parallel - don't wait for one to finish before starting the next
 	type selectionResult struct {
 		index  int
 		result TorrentSearchAddResult
@@ -77,19 +74,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 
 			downloadURL := strings.TrimSpace(sel.DownloadURL)
 			guid := strings.TrimSpace(sel.GUID)
-			isGazelle := gazellemusic.IsDownloadURL(downloadURL)
-
-			if isGazelle {
-				if sel.IndexerID == 0 || downloadURL == "" {
-					resultChan <- selectionResult{idx, TorrentSearchAddResult{
-						Title:   sel.Title,
-						Indexer: sel.Indexer,
-						Success: false,
-						Error:   "invalid selection",
-					}, nil}
-					return
-				}
-			} else if sel.IndexerID <= 0 || (downloadURL == "" && guid == "") {
+			if sel.IndexerID == 0 || (downloadURL == "" && guid == "") {
 				resultChan <- selectionResult{idx, TorrentSearchAddResult{
 					Title:   sel.Title,
 					Indexer: sel.Indexer,
@@ -143,9 +128,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 			if cachedResult.SearchDecision.Class == searchCandidateClassTitleRescue {
-				// Skip recheck blocks cached rescue results before a slot is
-				// reserved or the .torrent is downloaded; the guaranteed
-				// skipped_recheck verdict must not cost either.
 				if defaults.skipRecheck {
 					resultChan <- selectionResult{idx, TorrentSearchAddResult{
 						Title:   title,
@@ -223,13 +205,11 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		}(i, selection)
 	}
 
-	// Wait for all goroutines to finish
 	go func() {
 		wg.Wait()
 		close(resultChan)
 	}()
 
-	// Collect results in order
 	results := make([]TorrentSearchAddResult, len(req.Selections))
 	var applyErr error
 	for res := range resultChan {
@@ -461,6 +441,10 @@ func (s *Service) resolveSelectionFromCache(cached []TorrentSearchResult, select
 		}
 
 		if downloadURL != "" && downloadURL == result.DownloadURL {
+			return result, nil
+		}
+
+		if guid != "" && guid == jackett.HiddenGUID(result.IndexerID, result.GUID, result.DownloadURL) {
 			return result, nil
 		}
 	}

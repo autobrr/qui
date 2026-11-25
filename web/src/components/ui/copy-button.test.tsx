@@ -23,11 +23,6 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 
 import { CopyButton } from "./copy-button"
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 beforeEach(() => {
   vi.useFakeTimers()

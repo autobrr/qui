@@ -73,7 +73,6 @@ const MOBILE_SECTIONS = [
   { value: "crossseed", icon: Link2, labelKey: "detailsPanel.tabs.crossSeed" },
 ] as const
 
-// A mobile section fills the space between the tags row and the section bar
 const MOBILE_SECTION = "m-0 flex min-h-0 flex-1 flex-col"
 
 
@@ -82,19 +81,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const { t } = useTranslation("torrents")
   const [storedTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
   const isMobile = layout === "mobile"
-  // The mobile layout has no HTTP Sources tab: the web seeds show under Trackers
   const activeTab = isMobile && storedTab === "webseeds" ? "trackers" : storedTab
 
-  // Apply initialTab override when provided
   useEffect(() => {
     if (initialTab && isTabValue(initialTab)) {
       setActiveTab(initialTab)
       onInitialTabConsumed?.()
     }
   }, [initialTab, onInitialTabConsumed, setActiveTab])
-
-  // Note: Escape key handling is now unified in Torrents.tsx
-  // to close panel and clear selection atomically
 
   const [showAddPeersDialog, setShowAddPeersDialog] = useState(false)
   const { formatTimestamp } = useDateTimeFormatters()
@@ -122,15 +116,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
   const [trackerToEdit, setTrackerToEdit] = useState<TorrentTracker | null>(null)
   const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
-  // Wait for component animation before enabling queries when torrent changes
   useEffect(() => {
     setIsReady(false)
-    // Small delay to ensure parent component animations complete
     const timer = setTimeout(() => setIsReady(true), 150)
     return () => clearTimeout(timer)
   }, [torrent?.hash])
 
-  // Clear cross-seed selection when torrent changes
   useEffect(() => {
     setSelectedCrossSeedTorrents(new Set())
   }, [torrent?.hash])
@@ -151,40 +142,32 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
 
-  // Use the cross-seed hook to find matching torrents (uses backend API with rls library)
   const { matchingTorrents, matchesError, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
 
-  // Build instance lookup map for CrossSeedTable
   const instanceById = useMemo(
     () => new Map(allInstances.map(i => [i.id, i])),
     [allInstances]
   )
 
-  // Create a stable key string for detecting changes in matching torrents
   const matchingTorrentsKeys = useMemo(() => {
     return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(",")
   }, [matchingTorrents])
 
-  // Prune stale selections when matching torrents change
   useEffect(() => {
     const validKeysArray = matchingTorrentsKeys.split(",").filter(k => k)
 
     setSelectedCrossSeedTorrents(prev => {
       if (validKeysArray.length === 0 && prev.size === 0) {
-        // Already empty, no change needed
         return prev
       }
 
       if (validKeysArray.length === 0) {
-        // No matches, clear all selections
         return new Set()
       }
 
-      // Remove selections for torrents that no longer exist in matches
       const validKeys = new Set(validKeysArray)
       const updated = new Set(Array.from(prev).filter(key => validKeys.has(key)))
 
-      // Only update if something changed to avoid infinite loops
       return updated.size !== prev.size ? updated : prev
     })
   }, [matchingTorrentsKeys])
@@ -197,7 +180,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (!liveTorrent) return torrent
     return { ...torrent, ...liveTorrent }
   }, [torrent, liveTorrent])
-  // The row has no reannounce before qBittorrent 5.0, and the General tab then shows no Reannounce row.
   const reannounceIn = displayTorrent?.reannounce !== undefined
     ? formatReannounceIn(displayTorrent.state, displayTorrent.reannounce, t)
     : undefined
@@ -274,10 +256,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       return
     }
 
-    // Only touch files that actually need changing, mirroring handleSelectAllFiles
-    // and handleToggleFolderDownload. This preserves High/Maximum priority on
-    // already-selected files (a blanket priority:1 would downgrade them to Normal)
-    // and skips no-op churn for files already in the desired state.
     const rangeSet = new Set(indices)
     const targetIndices = files
       .filter(file => rangeSet.has(file.index))
@@ -323,7 +301,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       return
     }
 
-    // Find all files under this folder
     const folderPrefix = folderPath + "/"
     const indices = files
       .filter(f => f.name.startsWith(folderPrefix))
@@ -354,7 +331,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       return
     }
 
-    // Apply to every descendant file that isn't already at the target priority.
     const folderPrefix = folderPath + "/"
     const indices = files
       .filter(f => f.name.startsWith(folderPrefix))
@@ -368,30 +344,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setFilePriorityMutation.mutate({ indices, priority, hash: torrent.hash })
   }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
 
-  // Fetch torrent peers with optimized refetch
   const isPeersTabActive = activeTab === "peers"
 
-  // flag-icons inlines 400 flags as data URIs, 73% of the boot stylesheet; load it with the tab.
-  // Not emoji flags: Windows has no flag glyphs and shows the letters, such as "US".
   useEffect(() => {
-    // offline PWA: the CSS is not precached, flags just render unstyled
     if (isPeersTabActive) void import("flag-icons/css/flag-icons.min.css").catch(() => {})
   }, [isPeersTabActive])
 
   const { data: peersData, isLoading: loadingPeers } = useTorrentDetailTab(instanceId, isPeersTabActive ? readyHash : null, "peers")
-  // Always loaded: the HTTP Sources tab shows only when the torrent has web seeds.
   const { data: webseedsData, isLoading: loadingWebseeds } = useTorrentDetailTab(instanceId, readyHash, "webseeds")
   const hasWebseeds = (webseedsData?.length ?? 0) > 0
 
-  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds).
-  // Before isReady the query is disabled and has no data, so wait for it.
   useEffect(() => {
     if (isReady && activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
       setActiveTab("general")
     }
   }, [isReady, activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
 
-  // Add peers mutation
   const addPeersMutation = useMutation({
     mutationFn: async (peers: string[]) => {
       if (!torrent) throw new Error("No torrent selected")
@@ -408,7 +376,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     },
   })
 
-  // Ban peer mutation
   const banPeerMutation = useMutation({
     mutationFn: async (peer: string) => {
       await api.banPeers(instanceId, [peer])
@@ -424,7 +391,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     },
   })
 
-  // Edit tracker mutation - for single torrent tracker URL editing
   const editTrackerMutation = useMutation({
     mutationFn: async ({ oldURL, newURL }: { oldURL: string; newURL: string }) => {
       if (!torrent) throw new Error("No torrent selected")
@@ -448,13 +414,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     },
   })
 
-  // Handle edit tracker click
   const handleEditTrackerClick = useCallback((tracker: TorrentTracker) => {
     setTrackerToEdit(tracker)
     setShowEditTrackerDialog(true)
   }, [])
 
-  // Get tracker domain from URL for display
   const getTrackerDomain = useCallback((url: string): string => {
     try {
       return new URL(url).hostname
@@ -463,11 +427,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [])
 
-  // Rename file state
   const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
   const [renameFilePath, setRenameFilePath] = useState<string | null>(null)
 
-  // Rename file mutation
   const renameFileMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
     mutationFn: async ({ hash, oldPath, newPath }) => {
       await api.renameTorrentFile(instanceId, hash, oldPath, newPath)
@@ -476,9 +438,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       toast.success(t("detailsPanel.toast.fileRenamed"))
       setShowRenameFileDialog(false)
       setRenameFilePath(null)
-      // Small delay to let qBittorrent process the rename internally
       await new Promise(resolve => setTimeout(resolve, 500))
-      // Invalidate to trigger refetch with fresh data
       await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
@@ -487,11 +447,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     },
   })
 
-  // Rename folder state
   const [showRenameFolderDialog, setShowRenameFolderDialog] = useState(false)
   const [renameFolderPath, setRenameFolderPath] = useState<string | null>(null)
 
-  // Rename folder mutation
   const renameFolderMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
     mutationFn: async ({ hash, oldPath, newPath }) => {
       await api.renameTorrentFolder(instanceId, hash, oldPath, newPath)
@@ -500,9 +458,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       toast.success(t("detailsPanel.toast.folderRenamed"))
       setShowRenameFolderDialog(false)
       setRenameFolderPath(null)
-      // Small delay to let qBittorrent process the rename internally
       await new Promise(resolve => setTimeout(resolve, 500))
-      // Invalidate to trigger refetch with fresh data
       await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
@@ -516,7 +472,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, torrent.hash] })
   }, [instanceId, queryClient, torrent])
 
-  // Handle copy peer address
   const handleCopyPeer = useCallback(async (peer: SortedPeer) => {
     if (incognitoMode) return
     try {
@@ -528,20 +483,17 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [incognitoMode, t])
 
-  // Handle ban peer click
   const handleBanPeerClick = useCallback((peer: SortedPeer) => {
     setPeerToBan(peer)
     setShowBanPeerDialog(true)
   }, [])
 
-  // Handle ban peer confirmation
   const handleBanPeerConfirm = useCallback(() => {
     if (peerToBan && canBanPeer(peerToBan)) {
       banPeerMutation.mutate(peerToBan.key)
     }
   }, [peerToBan, banPeerMutation])
 
-  // Handle add peers submit
   const handleAddPeersSubmit = useCallback(() => {
     const peers = peersToAdd.split(/[\n,]/).map(p => p.trim()).filter(p => p)
     if (peers.length > 0) {
@@ -549,7 +501,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
   }, [peersToAdd, addPeersMutation])
 
-  // Handle cross-seed torrent selection
   const handleToggleCrossSeedSelection = useCallback((key: string) => {
     setSelectedCrossSeedTorrents(prev => {
       const next = new Set(prev)
@@ -571,7 +522,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setSelectedCrossSeedTorrents(new Set())
   }, [])
 
-  // Handle cross-seed deletion
   const handleDeleteCrossSeed = useCallback(async () => {
     const torrentsToDelete = matchingTorrents.filter(m =>
       selectedCrossSeedTorrents.has(`${m.instanceId}-${m.hash}`)
@@ -580,7 +530,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (torrentsToDelete.length === 0) return
 
     try {
-      // Group by instance for efficient bulk deletion
       const byInstance = new Map<number, string[]>()
       for (const t of torrentsToDelete) {
         const hashes = byInstance.get(t.instanceId) || []
@@ -588,7 +537,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         byInstance.set(t.instanceId, hashes)
       }
 
-      // Delete from each instance
       await Promise.all(
         Array.from(byInstance.entries()).map(([instId, hashes]) =>
           api.bulkAction(instId, {
@@ -603,8 +551,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         count: torrentsToDelete.length,
       }))
 
-      // An immediate refetch can race the backend's debounced post-delete sync
-      // and resurrect the deleted rows; go through the delayed backstop instead.
       scheduleTorrentListRefetches(queryClient, deleteCrossSeedFiles ? 5000 : 2000)
 
       setSelectedCrossSeedTorrents(new Set())
@@ -627,13 +573,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       })
 
       toast.success(t("detailsPanel.toast.deletedTorrent", { name: torrent.name }))
-      // An immediate refetch can race the backend's debounced post-delete sync
-      // and resurrect the deleted row; go through the delayed backstop instead.
       scheduleTorrentListRefetches(queryClient, deleteCurrentFiles ? 5000 : 2000)
       setShowDeleteCurrentDialog(false)
-
-      // Close the details panel by clearing selection (parent component should handle this)
-      // The user will be returned to the torrent list
     } catch (error) {
       toast.error(t("detailsPanel.toast.deleteFailed", {
         error: error instanceof Error ? error.message : t("detailsPanel.unknownError"),
@@ -654,13 +595,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setShowRenameFileDialog(true)
   }, [refreshTorrentFiles])
 
-  // Handle rename file
   const handleRenameFileConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
     if (!torrent) return
     renameFileMutation.mutate({ hash: torrent.hash, oldPath, newPath })
   }, [renameFileMutation, torrent])
 
-  // Handle download content file
   const handleDownloadFile = useCallback((file: TorrentFile) => {
     if (!torrent || incognitoMode) return
     api.downloadContentFile(instanceId, torrent.hash, file.index)
@@ -689,15 +628,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [discReportPath, setDiscReportPath] = useState<string | null>(null)
   const { runsByPath: discRuns, start: { mutate: startDiscScan, reset: resetDiscScan } } = discScans
   const handleShowDiscReport = useCallback((discPath: string) => {
-    // A Disc with no run, or with a canceled one, starts its scan on the click.
-    // A finished or failed run opens as it is, and the dialog offers Rescan.
     resetDiscScan()
     const status = discRuns.get(discPath)?.status
     if (status === undefined || status === "canceled") startDiscScan({ discPath, force: false })
     setDiscReportPath(discPath)
   }, [discRuns, startDiscScan, resetDiscScan])
 
-  // Handle rename folder
   const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
     if (!torrent) return
     renameFolderMutation.mutate({ hash: torrent.hash, oldPath, newPath })
@@ -709,7 +645,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setShowRenameFolderDialog(true)
   }, [refreshTorrentFiles])
 
-  // Extract all unique folder paths (including subfolders) from file paths
   const folders = useMemo(() => {
     const folderSet = new Set<string>()
     if (files) {
@@ -717,7 +652,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         const parts = file.name.split("/").filter(Boolean)
         if (parts.length <= 1) return
 
-        // Build all folder paths progressively
         let current = ""
         for (let i = 0; i < parts.length - 1; i++) {
           current = current ? `${current}/${parts[i]}` : parts[i]
@@ -750,7 +684,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const downloadLimitLabel = formatLimitLabel(properties?.dl_limit ?? torrent.dl_limit)
   const uploadLimitLabel = formatLimitLabel(properties?.up_limit ?? torrent.up_limit)
 
-  // Show minimal loading state while waiting for initial data
   const isInitialLoad = !isReady || (loadingProperties && !properties)
   if (isInitialLoad) {
     return (
@@ -762,7 +695,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const dialogs = (
     <>
-      {/* Add Peers Dialog */}
       <Dialog open={showAddPeersDialog} onOpenChange={setShowAddPeersDialog}>
         <DialogContent>
           <DialogHeader>
@@ -798,7 +730,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         </DialogContent>
       </Dialog>
 
-      {/* Ban Peer Confirmation Dialog */}
       <Dialog open={showBanPeerDialog} onOpenChange={setShowBanPeerDialog}>
         <DialogContent>
           <DialogHeader>
@@ -849,7 +780,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         </DialogContent>
       </Dialog>
 
-      {/* Delete Cross-Seed Torrents Dialog */}
       <Dialog open={showDeleteCrossSeedDialog} onOpenChange={setShowDeleteCrossSeedDialog}>
         <DialogContent>
           <DialogHeader>
@@ -898,7 +828,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         </DialogContent>
       </Dialog>
 
-      {/* Delete Current Torrent Dialog */}
       <Dialog open={showDeleteCurrentDialog} onOpenChange={setShowDeleteCurrentDialog}>
         <DialogContent>
           <DialogHeader>
@@ -947,7 +876,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         </DialogContent>
       </Dialog>
 
-      {/* Rename File Dialog */}
       <RenameTorrentFileDialog
         open={showRenameFileDialog}
         onOpenChange={handleRenameFileDialogOpenChange}
@@ -958,7 +886,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         initialPath={renameFilePath ?? undefined}
       />
 
-      {/* Rename Folder Dialog */}
       <RenameTorrentFolderDialog
         open={showRenameFolderDialog}
         onOpenChange={setShowRenameFolderDialog}
@@ -969,7 +896,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         initialPath={renameFolderPath ?? undefined}
       />
 
-      {/* Edit Tracker Dialog */}
       <EditTrackerDialog
         open={showEditTrackerDialog}
         onOpenChange={setShowEditTrackerDialog}
@@ -1153,7 +1079,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   <div className="divide-y rounded-lg border bg-card/50">
                     {peerList.map((peer) => {
                       const progressValue = peer.progress || 0
-                      // Match qBittorrent's own WebUI: one decimal, and 99.9% until the peer has every piece
                       let progressPercent = Math.round(progressValue * 1000) / 10
                       if (progressPercent === 100 && progressValue !== 1) {
                         progressPercent = 99.9
@@ -1201,7 +1126,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             </MobilePane>
           </TabsContent>
 
-          {/* No MobilePane: the virtual file tree needs its own scroll area with a fixed height */}
           <TabsContent value="content" className={MOBILE_SECTION}>
             {loadingFiles && !files ? spinner : files && files.length > 0 ? (
               <>
@@ -1272,7 +1196,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 </div>
               )}
             >
-              {/* A refetch that fails keeps the last data: the error wins, so the stale matches and their delete actions go away */}
               {matchesError ? (
                 <div className="flex h-32 items-center justify-center text-sm text-destructive">{t("crossSeedTable.loadFailed")}</div>
               ) : matchingTorrents.length > 0 ? (
@@ -1284,18 +1207,17 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       const torrentKey = `${match.instanceId}-${match.hash}`
                       const isSelected = selectedCrossSeedTorrents.has(torrentKey)
                       const status = getStatusBadgeProps(match, true, t)
-                      let trackerHostname = match.tracker
+                      let trackerHostname: string
                       try {
                         trackerHostname = new URL(match.tracker).hostname
                       } catch {
-                        // Keep the value when it is not a URL
+                        trackerHostname = match.tracker
                       }
                       return (
                         <div
                           key={torrentKey}
                           className={cn("flex cursor-pointer select-none items-center gap-3 py-2.5 pl-3 pr-1", isSelected && "bg-primary/5")}
                           onClick={(e) => {
-                            // The check box toggles itself
                             if ((e.target as HTMLElement).closest("[role=\"checkbox\"]")) return
                             handleToggleCrossSeedSelection(torrentKey)
                           }}

@@ -22,8 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/trackergroup"
 )
 
-// listRows returns the rows that a list request with filters gives from
-// torrents, with the tracker inputs that the sync manager gathers.
 func listRows(sm *SyncManager, client *Client, torrents []qbt.Torrent, filters FilterOptions, mainData *qbt.MainData, useSubcategories bool, health *TrackerHealthSnapshot) []qbt.Torrent {
 	rule := sm.torrentListRuleFor(client, filters, mainData, health, useSubcategories)
 	var refs []*qbt.Torrent
@@ -38,9 +36,6 @@ func listRows(sm *SyncManager, client *Client, torrents []qbt.Torrent, filters F
 	return torrentValues(refs)
 }
 
-// sidebarLibrary holds each qBittorrent state, a parent category with a
-// subcategory and a look-alike, tags, blank tags, tracker health, and each way
-// that a torrent gets its Trackers.
 func sidebarLibrary() ([]qbt.Torrent, map[string]map[string]struct{}, trackerSources, *TrackerHealthSnapshot) {
 	categories := []string{"", "movies", "movies/extra", "movies-extra", "tv"}
 	tags := []string{"", "keep", "keep, other", " , ", "other"}
@@ -57,19 +52,19 @@ func sidebarLibrary() ([]qbt.Torrent, map[string]map[string]struct{}, trackerSou
 			Size:     int64(i + 1),
 		}
 		switch i % 6 {
-		case 0: // in the mapping
+		case 0:
 			t.Tracker, t.TrackersCount = "https://a.example.invalid/announce", 1
 			mapping[t.Hash] = map[string]struct{}{"a.example.invalid": {}}
-		case 1: // in the mapping with two domains
+		case 1:
 			t.Tracker, t.TrackersCount = "https://b.example.invalid/announce", 2
 			mapping[t.Hash] = map[string]struct{}{"b.example.invalid": {}, "c.example.invalid": {}}
-		case 2: // added after the last tracker health pass
+		case 2:
 			t.Tracker, t.TrackersCount = "https://a.example.invalid/announce", 1
-		case 3: // no successful announce yet, so qBittorrent reports a blank primary tracker
+		case 3:
 			t.TrackersCount = 1
 			mainData.Trackers["https://d.example.invalid/announce"] = append(mainData.Trackers["https://d.example.invalid/announce"], t.Hash)
-		case 4: // no tracker
-		case 5: // only a pseudo tracker
+		case 4:
+		case 5:
 			t.Tracker = "** [DHT] **"
 		}
 		torrents = append(torrents, t)
@@ -79,7 +74,6 @@ func sidebarLibrary() ([]qbt.Torrent, map[string]map[string]struct{}, trackerSou
 		torrents[1].Hash: TrackerHealthUnregistered,
 		torrents[2].Hash: TrackerHealthError,
 	})
-	// A tracker edit moved torrent 6 away from a.example.invalid.
 	exclusions := map[string]map[string]struct{}{"a.example.invalid": {torrents[6].Hash: {}}}
 	return torrents, mapping, trackerSources{exclusions: exclusions, mainData: mainData, extractDomain: ExtractDomainFromURL}, health
 }
@@ -97,9 +91,6 @@ func byDomain(mapping map[string]map[string]struct{}) map[string]map[string]stru
 	return out
 }
 
-// TestSidebarCountsEqualRows holds the Sidebar count: for each sidebar entry,
-// the count equals the rows of that filter, and a second filter that excludes
-// nothing changes neither.
 func TestSidebarCountsEqualRows(t *testing.T) {
 	t.Parallel()
 
@@ -164,14 +155,12 @@ func TestSidebarCountsEqualRows(t *testing.T) {
 				require.Equal(t, want, rows(second), "the rows of %s with a second filter that excludes nothing", name)
 			}
 
-			// The tracker that is down keeps the torrent under its tracker.
 			require.Positive(t, counts.Status["tracker_down"])
 			require.Equal(t, 1, rows(FilterOptions{Status: []string{"tracker_down"}, Trackers: []string{"a.example.invalid"}}))
 		})
 	}
 }
 
-// newRuleTestClient starts a fake qBittorrent 5.1 whose sync data is mainData.
 func newRuleTestClient(t *testing.T, instanceID int, mainData map[string]any) *Client {
 	t.Helper()
 	mainData["rid"], mainData["full_update"] = 1, true
@@ -232,10 +221,6 @@ func rowHashes(resp *TorrentResponse) []string {
 	return hashes
 }
 
-// regression: #3868
-// TestListTorrentsFollowsOneRule sends each filter alone and with a
-// second filter that excludes nothing. Both give the same rows, the rows equal
-// the sidebar count, and each Unified view instance follows the same rule.
 func TestListTorrentsFollowsOneRule(t *testing.T) {
 	t.Parallel()
 
@@ -301,7 +286,6 @@ func TestListTorrentsFollowsOneRule(t *testing.T) {
 	}
 }
 
-// A parent gets each subcategory size once, in any map order.
 func TestAddSubcategoriesToParentsCountsEachSizeOnce(t *testing.T) {
 	t.Parallel()
 
@@ -316,9 +300,6 @@ func TestAddSubcategoriesToParentsCountsEachSizeOnce(t *testing.T) {
 	}
 }
 
-// TestTrackerGroupsCountEachTorrentOnce holds the Tracker group totals: a
-// torrent counts toward one group, so the groups add up to the library, and a
-// content path that two torrents of one group share counts once.
 func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 	t.Parallel()
 
@@ -343,7 +324,6 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 		torrent("h4", "https://d.example.invalid/announce", nil, 400, 40, "/data/four"),
 		torrent("h5", "", &private, 500, 50, "/data/five"),
 	}
-	// h1 announces to two domains of one tracker.
 	mapping := map[string]map[string]struct{}{
 		"a.example.invalid": {"h1": {}, "h2": {}},
 		"b.example.invalid": {"h1": {}},
@@ -355,7 +335,6 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 	}
 	counts := countTorrents(in).counts
 
-	// The sidebar counts still count h1 under each of its domains.
 	require.Equal(t, 2, counts.Trackers["a.example.invalid"])
 	require.Equal(t, 1, counts.Trackers["b.example.invalid"])
 
@@ -401,14 +380,11 @@ func TestTrackerGroupsCountEachTorrentOnce(t *testing.T) {
 		mapper := trackergroup.New([]*models.TrackerCustomization{
 			{DisplayName: "Example", Domains: []string{"a.example.invalid", "b.example.invalid"}},
 		})
-		// h1 has the sets {a, b} and h2 has {a}. Both are in Example and share a path.
 		stats := groupTrackers(in, mapper)[groupOf("Example", trackergroup.Customization)]
 		require.Equal(t, TrackerTransferStats{Count: 2, Uploaded: 30, Downloaded: 2, TotalSize: 100}, stats)
 	})
 }
 
-// An empty content path is an unknown identity, not proof of shared data, so
-// two torrents of one group with no content path count their sizes apart.
 func TestTrackerGroupsDoNotDeduplicateEmptyContentPath(t *testing.T) {
 	t.Parallel()
 
@@ -429,7 +405,6 @@ func TestTrackerGroupsDoNotDeduplicateEmptyContentPath(t *testing.T) {
 	}, groups)
 }
 
-// regression: #4100
 func TestTrackerFilterFindsATorrentThatTheMappingDoesNotHoldUnderEachDomain(t *testing.T) {
 	t.Parallel()
 

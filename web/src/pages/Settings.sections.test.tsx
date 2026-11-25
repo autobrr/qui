@@ -48,7 +48,6 @@ vi.mock("@/components/themes/LicenseManager.tsx", () => ({ LicenseManager: () =>
 import { SETTINGS_TABS, type SettingsTab } from "@/components/settings/tabs"
 import { Settings } from "./Settings"
 
-// A section that Settings.tsx renders inline shows a translation key that only it renders.
 const INLINE_MARKERS: Partial<Record<SettingsTab, string>> = {
   api: "apiKeys.cardTitle",
 }

@@ -9,7 +9,6 @@ import { Dashboard } from "@/pages/Dashboard"
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
   staticData: {
-    titleKey: "nav.dashboard",
-    titleNs: "common",
+    title: { titleKey: "nav.dashboard", titleNs: "common" },
   },
 })

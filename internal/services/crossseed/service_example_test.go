@@ -9,7 +9,6 @@ import (
 	"github.com/autobrr/rls"
 )
 
-// TestMakeReleaseKey tests the release key extraction logic using rls parser
 func TestMakeReleaseKey(t *testing.T) {
 	cache := NewReleaseCache()
 
@@ -53,7 +52,7 @@ func TestMakeReleaseKey(t *testing.T) {
 			name:  "multi-episode",
 			input: "Show.S01E05E06.mkv",
 			expected: releaseKey{
-				series: 1, // A range reads as a pack, so it carries no episode
+				series: 1,
 			},
 		},
 		{
@@ -101,7 +100,6 @@ func TestMakeReleaseKey(t *testing.T) {
 	}
 }
 
-// TestEnrichReleaseFromTorrent tests metadata enrichment from torrent name
 func TestEnrichReleaseFromTorrent(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -169,7 +167,6 @@ func TestEnrichReleaseFromTorrent(t *testing.T) {
 	}
 }
 
-// TestCheckPartialMatch tests the partial matching logic
 func TestCheckPartialMatch(t *testing.T) {
 	s := matcher{}
 
@@ -229,7 +226,7 @@ func TestCheckPartialMatch(t *testing.T) {
 				{series: 1, episode: 5}: 1000000000,
 			},
 			superset: map[releaseKey]int64{
-				{series: 1, episode: 5}: 2000000000, // different size
+				{series: 1, episode: 5}: 2000000000,
 			},
 			expected: false,
 		},
@@ -247,7 +244,6 @@ func TestCheckPartialMatch(t *testing.T) {
 				{series: 1, episode: 2}: 1000000000,
 				{series: 1, episode: 3}: 1000000000,
 				{series: 1, episode: 4}: 1000000000,
-				// episode 5 missing, but 4/5 = 80% matches threshold
 			},
 			expected: true,
 		},

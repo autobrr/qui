@@ -72,9 +72,14 @@ const features = [
 
 export default function Home(): ReactNode {
   const { siteConfig } = useDocusaurusContext();
+  const homeTitle = "qui: Fast qBittorrent Web UI for Multiple Instances";
+  const homeDescription =
+    "qui is a fast qBittorrent Web UI and WebUI for one or many instances. One login, plus built-in cross-seed, automations, and backups. Run one binary or Docker.";
   return (
-    <Layout title="Fast web UI for qBittorrent" description={siteConfig.tagline}>
+    <Layout description={homeDescription}>
       <Head>
+        <title>{homeTitle}</title>
+        <meta property="og:title" content={homeTitle} />
         <script type="application/ld+json">
           {JSON.stringify({
             "@context": "https://schema.org",

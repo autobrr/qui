@@ -22,8 +22,6 @@ import (
 func newFilterViewRouter(t *testing.T) chi.Router {
 	t.Helper()
 
-	// No user row is seeded on purpose: OIDC-only and auth-disabled installs
-	// never populate the user table, so filter_views must not depend on it.
 	db := testdb.NewMigratedSQLite(t, "filter-views-handler")
 	h := NewFilterViewHandler(models.NewFilterViewStore(db))
 
@@ -92,7 +90,6 @@ func TestFilterViewHandlerCreateValidation(t *testing.T) {
 		{name: "missing filters", body: `{"name":"x"}`, wantCode: http.StatusBadRequest},
 		{name: "filters not an object", body: `{"name":"y","filters":[1,2]}`, wantCode: http.StatusBadRequest},
 		{name: "filters null", body: `{"name":"z","filters":null}`, wantCode: http.StatusBadRequest},
-		// json.Decoder strips surrounding whitespace, so the object sniff needs no trim.
 		{name: "filters padded", body: "{\"name\":\"pad\",\"filters\":  \n{\"tags\":[\"a\"]}  }", wantCode: http.StatusCreated},
 	}
 

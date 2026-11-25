@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
-// fakeHelpers is the helper registry: the kind of each helper torrent of
-// instance 1.
 type fakeHelpers map[string]string
 
 func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
@@ -25,8 +23,6 @@ func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
 	return f
 }
 
-// newHelperRig has a helper torrent (hashA) and a torrent of the user with
-// the same tag and no registry row (hashB) on instance 1.
 func newHelperRig(t *testing.T) (*SyncManager, *qbtstub.Server, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -58,7 +54,6 @@ func TestDeleteWithFilesRefusesAHelperTorrent(t *testing.T) {
 	require.FileExists(t, filepath.Join(root, hashA, "Show.S01E01.mkv"))
 }
 
-// Only the registry makes a helper torrent: the tag of a torrent proves nothing.
 func TestATaggedTorrentWithoutARegistryRowIsNoHelper(t *testing.T) {
 	t.Parallel()
 	sm, _, root := newHelperRig(t)

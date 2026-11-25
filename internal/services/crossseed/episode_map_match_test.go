@@ -24,11 +24,6 @@ const (
 
 var episodeMapS04E15 = &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}
 
-// TestClassifyWebhookAnnouncementSourceEpisodeMap: the webhook check sees a
-// rounded announce size, so only a strict match can report ready. The Sonarr
-// episode map makes a mixed-scheme pair strict in both directions; without a
-// map, or when the tracker numbers the episode differently from Sonarr, the
-// exact-size tier still decides.
 func TestClassifyWebhookAnnouncementSourceEpisodeMap(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -87,10 +82,6 @@ func TestClassifyWebhookAnnouncementSourceEpisodeMap(t *testing.T) {
 	}
 }
 
-// TestClassifySearchCandidateEpisodeMap: a search result named S04E15 matches
-// the local absolute-numbered file strictly through the map, without a
-// byte-equal size. Without a map the pair is an episode mismatch, and a tracker
-// that disagrees with Sonarr passes only through the exact-size tier.
 func TestClassifySearchCandidateEpisodeMap(t *testing.T) {
 	service := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
@@ -109,8 +100,6 @@ func TestClassifySearchCandidateEpisodeMap(t *testing.T) {
 		{name: "no map is an episode mismatch", sourceName: episodeMapAbsoluteName, candidateName: episodeMapSeasonedName, candidateSize: episodeMapSize + 500, wantReason: episodeMismatchReason},
 		{name: "tracker disagreement is an episode mismatch", sourceName: episodeMapAbsoluteName, candidateName: episodeMapOffByOneName, candidateSize: episodeMapSize + 500, episodeMap: episodeMapS04E15, wantReason: episodeMismatchReason},
 		{name: "tracker disagreement passes the exact-size tier", sourceName: episodeMapAbsoluteName, candidateName: episodeMapOffByOneName, candidateSize: episodeMapSize, episodeMap: episodeMapS04E15, wantAccepted: true, wantClass: searchCandidateClassExactSizeFallback},
-		// A special maps to season 0; without the guard the seasonless "- 15" would
-		// pose as the seasoned side and "- 81" would be rewritten onto it.
 		{name: "season-zero map never equates two seasonless episodes", sourceName: episodeMapAbsoluteName, candidateName: "[KiraSubs] Azure Compass - 15 (1080p).mkv", candidateSize: episodeMapSize + 500, episodeMap: &models.EpisodeMap{Season: 0, Episode: 15, Absolute: 81}, wantReason: episodeMismatchReason},
 	}
 
@@ -144,10 +133,6 @@ func TestClassifySearchCandidateEpisodeMap(t *testing.T) {
 	}
 }
 
-// TestFindCandidatesEpisodeMapReachesFileValidation: apply re-parses both
-// names, and the local file still carries the other numbering scheme, so the
-// name-derived episode keys never line up. A mapped search decision must let
-// the pair through to file-level size matching, in both directions.
 func TestFindCandidatesEpisodeMapReachesFileValidation(t *testing.T) {
 	tests := []struct {
 		name         string

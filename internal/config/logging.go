@@ -41,9 +41,6 @@ func (lm *LogManager) Initialize() {
 	if lm.initialized.Swap(true) {
 		return
 	}
-	// Set the logger output once at startup, and keep the logger level at the
-	// lowest level so the global level can be changed at runtime without
-	// mutating log.Logger (avoids data races with concurrent logging).
 	log.Logger = log.Logger.Output(lm.switchable).Level(zerolog.TraceLevel)
 }
 
@@ -101,9 +98,6 @@ func (lm *LogManager) buildWriter(baseWriter io.Writer, logPath string, maxSize,
 	return io.MultiWriter(baseWriter, rotator), rotator, nil
 }
 
-// ignoreWriteErrors wraps the stderr writer. A process without a console, such
-// as the qui-tray.exe supervisor, has no valid stderr handle: its error would
-// stop io.MultiWriter before the log file, and SwitchableWriter before the log hub.
 type ignoreWriteErrors struct{ io.Writer }
 
 func (w ignoreWriteErrors) Write(p []byte) (int, error) {

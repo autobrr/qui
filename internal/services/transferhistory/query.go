@@ -12,33 +12,25 @@ import (
 	"slices"
 	"time"
 
-	// Embeds the zone database, which Windows and minimal container images lack.
-	_ "time/tzdata"
-
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/trackergroup"
 )
 
-// Bucket is the width of the rows of a transfer query.
 type Bucket string
 
 const (
 	BucketHour  Bucket = "hour"
 	BucketDay   Bucket = "day"
 	BucketTotal Bucket = "total"
-	// BucketYear is the width of a row of a torrent in a year that qui
-	// folded. A query cannot ask for it.
-	BucketYear Bucket = "year"
+	BucketYear  Bucket = "year"
 )
 
-// Grouping is what the rows of a transfer query group by.
 type Grouping string
 
 const (
-	GroupByTracker  Grouping = "tracker"
-	GroupByCategory Grouping = "category"
-	GroupByTorrent  Grouping = "torrent"
-	// The release attributes come from the torrent names.
+	GroupByTracker      Grouping = "tracker"
+	GroupByCategory     Grouping = "category"
+	GroupByTorrent      Grouping = "torrent"
 	GroupByReleaseGroup Grouping = "releaseGroup"
 	GroupByResolution   Grouping = "resolution"
 	GroupBySource       Grouping = "source"
@@ -47,8 +39,6 @@ const (
 
 var groupings = []Grouping{GroupByTracker, GroupByCategory, GroupByTorrent, GroupByReleaseGroup, GroupByResolution, GroupBySource, GroupByContentType}
 
-// readsTorrentRows reports whether a grouping reads the daily bytes of each
-// torrent.
 func (g Grouping) readsTorrentRows() bool {
 	return g == GroupByTorrent || g.releaseAttribute()
 }
@@ -62,25 +52,6 @@ func (g Grouping) releaseAttribute() bool {
 	}
 }
 
-// TransferQuery asks for the transfer of one instance in the period
-// [From, To). A zero From is a period with no start. Times are UTC.
-// Location sets the midnights of the day buckets of Tracker groups, and nil
-// is UTC. An hour counts toward the day of its start. Category totals stay on
-// UTC days, because qui stores them for each UTC day. A non-nil Group limits
-// the answer to the torrents of that group of the grouping GroupOf, which is
-// GroupBy when empty; "" is the group of torrents with no category. GroupOf
-// can differ from GroupBy only when GroupBy is the torrent. A Limit above 0
-// keeps the groups with the most upload, the Baseline included, and orders
-// the rows by that upload.
-//
-// The groupings by torrent and by a release attribute read the daily bytes of
-// each torrent, which are on UTC days. A row of a torrent has the hash as its
-// group, and a torrent counts toward its Tracker group, category, and release
-// attributes of now. A torrent whose name holds no value of a release
-// attribute is in the group "". A torrent counts all its upload as upload
-// from Statistics cross-seeds when it has that flag now. The module keeps the
-// answers by a release attribute until the stored history of the instance
-// changes.
 type TransferQuery struct {
 	InstanceID int
 	From       time.Time
@@ -93,37 +64,22 @@ type TransferQuery struct {
 	Location   *time.Location
 }
 
-// Bytes is an amount of transfer. StatisticsCrossSeedUploaded is the part of Uploaded
-// that came from Statistics cross-seeds.
 type Bytes struct {
 	Uploaded                    int64 `json:"uploaded"`
 	Downloaded                  int64 `json:"downloaded"`
 	StatisticsCrossSeedUploaded int64 `json:"statisticsCrossSeedUploaded"`
 }
 
-// TransferRow is the transfer of one group in one bucket. A row can be
-// coarser than the query asks: Width tells its bucket. Start is the start of
-// the bucket. A total covers each whole stored bucket that overlaps the
-// period, hours for Tracker groups, UTC days for categories, torrents, and
-// release attributes, and the folded years of a torrent, and starts at the
-// first of them. GapSeconds
-// is the length of the
-// Recording gaps that ended in the bucket. Baseline is set on the total rows
-// of a period with no start.
 type TransferRow struct {
 	Group      string    `json:"group"`
 	Start      time.Time `json:"start,omitzero"`
 	Width      Bucket    `json:"width"`
 	GapSeconds int64     `json:"gapSeconds"`
 	Bytes
-	Baseline *Bytes `json:"baseline,omitempty"`
-	// Torrent is set on the rows of the grouping by torrent.
-	Torrent *TorrentFacts `json:"torrent,omitempty"`
+	Baseline *Bytes        `json:"baseline,omitempty"`
+	Torrent  *TorrentFacts `json:"torrent,omitempty"`
 }
 
-// TorrentFacts is what a row of a torrent tells about the torrent.
-// UploadFirst24h is nil when qui first saw the torrent after its first 24
-// hours.
 type TorrentFacts struct {
 	Name                string `json:"name"`
 	TrackerGroup        string `json:"trackerGroup"`
@@ -133,23 +89,18 @@ type TorrentFacts struct {
 	UploadFirst24h      *int64 `json:"uploadFirst24h"`
 }
 
-// Status is the instances that have history, by instance id, the bytes that
-// the history takes in the database, and the settings.
 type Status struct {
 	Instances    []InstanceStatus `json:"instances"`
 	HistoryBytes int64            `json:"historyBytes"`
 	Settings     Settings         `json:"settings"`
 }
 
-// InstanceStatus is an instance that has history.
 type InstanceStatus struct {
 	InstanceID      int       `json:"instanceId"`
 	Name            string    `json:"name"`
 	FirstRecordedAt time.Time `json:"firstRecordedAt"`
 }
 
-// Transfer answers a transfer query. It includes each reading that the module
-// got before the call, up to the last write that those readings made due.
 func (m *Module) Transfer(ctx context.Context, q TransferQuery) ([]TransferRow, error) {
 	if err := q.validate(); err != nil {
 		return nil, err
@@ -193,7 +144,6 @@ func (m *Module) read(ctx context.Context, q TransferQuery) ([]TransferRow, erro
 		return nil, err
 	}
 	rows := a.sorted()
-	// The torrent rows hold only the torrents of the group.
 	if q.Group != nil && !q.GroupBy.readsTorrentRows() {
 		rows = slices.DeleteFunc(rows, func(r TransferRow) bool { return r.Group != *q.Group })
 	}
@@ -204,8 +154,6 @@ func (m *Module) read(ctx context.Context, q TransferQuery) ([]TransferRow, erro
 	return rows, nil
 }
 
-// top keeps the rows of the limit groups with the most upload, the Baseline
-// included, in the order of that upload.
 func top(rows []TransferRow, limit int) []TransferRow {
 	uploaded := make(map[string]int64)
 	for _, r := range rows {
@@ -227,7 +175,6 @@ func top(rows []TransferRow, limit int) []TransferRow {
 	return rows
 }
 
-// ErrInvalidQuery is the error of a query that the module cannot answer.
 var ErrInvalidQuery = errors.New("invalid query")
 
 func validatePeriod(from, to time.Time) error {
@@ -261,8 +208,6 @@ func (q TransferQuery) validate() error {
 	return nil
 }
 
-// Status answers the status query. It includes each reading that the module
-// got before the call, up to the last write that those readings made due.
 func (m *Module) Status(ctx context.Context) (Status, error) {
 	if err := m.settle(ctx); err != nil {
 		return Status{}, err
@@ -288,26 +233,19 @@ type rowKey struct {
 	group  string
 	width  Bucket
 	bucket int64
-	// utcDay keeps the row of a folded UTC day apart from the local day with
-	// the same number.
 	utcDay bool
 }
 
 type answer struct {
-	query  TransferQuery
-	mapper *trackergroup.Mapper
-	rows   map[rowKey]*TransferRow
-	// foldedFrom is set when the answer holds day rows of folded hours, so
-	// that the period starts at a whole day.
+	query      TransferQuery
+	mapper     *trackergroup.Mapper
+	rows       map[rowKey]*TransferRow
 	foldedFrom bool
-	// torrents holds the record of each torrent of the grouping by torrent, by
-	// hash.
-	torrents map[string]*models.TransferHistoryTorrentFacts
+	torrents   map[string]*models.TransferHistoryTorrentFacts
 }
 
 func ceilDiv(a, b int64) int64 { return -floorDiv(-a, b) }
 
-// hours returns the stored hours that overlap the period.
 func (a *answer) hours() (from, to int64) {
 	if !a.query.From.IsZero() {
 		from = hourOf(a.query.From)
@@ -315,7 +253,6 @@ func (a *answer) hours() (from, to int64) {
 	return from, ceilDiv(ceilSecond(a.query.To), 3600)
 }
 
-// daysOf returns the stored UTC days that overlap the period [from, to).
 func daysOf(from, to time.Time) (fromDay, toDay int64) {
 	if !from.IsZero() {
 		fromDay = dayOf(from)
@@ -323,7 +260,6 @@ func daysOf(from, to time.Time) (fromDay, toDay int64) {
 	return fromDay, ceilDiv(ceilSecond(to), 86400)
 }
 
-// ceilSecond returns t in whole seconds since 1970, rounded up.
 func ceilSecond(t time.Time) int64 {
 	second := t.Unix()
 	if t.Nanosecond() > 0 {
@@ -365,7 +301,6 @@ func addBytes(b *Bytes, uploaded, downloaded int64, crossSeed bool) {
 	}
 }
 
-// startOf returns the start time of a bucket of an answer row.
 func (a *answer) startOf(width Bucket, bucket int64) time.Time {
 	switch {
 	case width == BucketHour:
@@ -375,15 +310,12 @@ func (a *answer) startOf(width Bucket, bucket int64) time.Time {
 	case a.query.From.IsZero():
 		return time.Time{}
 	case a.query.GroupBy == GroupByCategory || a.foldedFrom:
-		// Category totals and folded days are UTC days.
 		return time.Unix(dayOf(a.query.From)*86400, 0).UTC()
 	default:
 		return a.startOf(BucketHour, hourOf(a.query.From))
 	}
 }
 
-// dayLocation returns the time zone of the day buckets of the answer. The
-// days of categories are always UTC days, because qui stores them so.
 func (a *answer) dayLocation() *time.Location {
 	if a.query.Location == nil || a.query.GroupBy == GroupByCategory {
 		return time.UTC
@@ -391,14 +323,10 @@ func (a *answer) dayLocation() *time.Location {
 	return a.query.Location
 }
 
-// trackerBuckets returns how the store groups the hours [from, to) of a query
-// by Tracker group: by local day of the query zone for a day bucket.
 func (a *answer) trackerBuckets(ctx context.Context, store *models.TransferHistoryStore, from, to int64) (models.TransferHistoryBuckets, error) {
 	if a.query.Bucket != BucketDay {
 		return models.TransferHistoryBuckets{Width: map[Bucket]int64{BucketHour: 1, BucketTotal: 0}[a.query.Bucket]}, nil
 	}
-	// Only the recorded hours hold rows, so the offsets cover only them. An hour
-	// before or after them gets the nearest offset.
 	instances, err := store.Instances(ctx)
 	if err != nil {
 		return models.TransferHistoryBuckets{}, err
@@ -412,8 +340,6 @@ func (a *answer) trackerBuckets(ctx context.Context, store *models.TransferHisto
 	return models.TransferHistoryBuckets{Offsets: zoneOffsets(a.dayLocation(), max(from, first), min(to, last))}, nil
 }
 
-// zoneOffsets returns the offsets from UTC of loc in the hours [fromHour,
-// toHour), with the first hour of each.
 func zoneOffsets(loc *time.Location, fromHour, toHour int64) []models.TransferHistoryOffset {
 	var offsets []models.TransferHistoryOffset
 	for start := time.Unix(fromHour*3600, 0); ; {
@@ -426,8 +352,6 @@ func zoneOffsets(loc *time.Location, fromHour, toHour int64) []models.TransferHi
 		if end.IsZero() || end.Unix() >= toHour*3600 {
 			return offsets
 		}
-		// Past the zone data, Go can return a zone period that ends where it
-		// starts, for example on 2040-12-31 in America/New_York.
 		if !end.After(start) {
 			end = start.Add(time.Hour)
 		}
@@ -435,9 +359,6 @@ func zoneOffsets(loc *time.Location, fromHour, toHour int64) []models.TransferHi
 	}
 }
 
-// startOfLocalDay returns the first instant in loc of the date of day. Where
-// summer time starts at midnight, the day starts at the change, not at a
-// midnight that does not exist.
 func startOfLocalDay(day time.Time, loc *time.Location) time.Time {
 	year, month, date := day.Date()
 	start := time.Date(year, month, date, 0, 0, 0, 0, loc)
@@ -447,9 +368,6 @@ func startOfLocalDay(day time.Time, loc *time.Location) time.Time {
 	return start.UTC()
 }
 
-// byTracker reads the hourly totals, and the daily totals for the days whose
-// hours qui folded. The folded days stay UTC days, because qui stores the
-// daily totals for each UTC day.
 func (a *answer) byTracker(ctx context.Context, store *models.TransferHistoryStore) error {
 	from, to := a.hours()
 	detailDay, hasHours, err := store.HourlyDetailStart(ctx, a.query.InstanceID)
@@ -507,8 +425,6 @@ func (a *answer) trackerHours(ctx context.Context, store *models.TransferHistory
 	return nil
 }
 
-// trackerDays reads the daily totals of days [fromDay, toDay) by tracker,
-// and reports whether it found any. They answer a query for hours with day rows.
 func (a *answer) trackerDays(ctx context.Context, store *models.TransferHistoryStore, fromDay, toDay int64) (bool, error) {
 	width := BucketDay
 	if a.query.Bucket == BucketTotal {
@@ -518,7 +434,6 @@ func (a *answer) trackerDays(ctx context.Context, store *models.TransferHistoryS
 	if err != nil {
 		return false, err
 	}
-	// A total row of the days must start at the first day.
 	a.foldedFrom = len(totals) > 0
 	for _, t := range totals {
 		key := rowKey{group: groupOf(a.mapper, t.TrackerDomain, t.Public), width: width, bucket: t.Bucket, utcDay: width == BucketDay}
@@ -531,8 +446,6 @@ func (a *answer) trackerDays(ctx context.Context, store *models.TransferHistoryS
 	return len(totals) > 0, nil
 }
 
-// byCategory reads the daily totals, because qui stores the category totals
-// for each day.
 func (a *answer) byCategory(ctx context.Context, store *models.TransferHistoryStore) error {
 	width, buckets := BucketDay, models.TransferHistoryBuckets{Width: 24}
 	if a.query.Bucket == BucketTotal {
@@ -553,8 +466,6 @@ func (a *answer) byCategory(ctx context.Context, store *models.TransferHistorySt
 	return a.addGaps(ctx, store, from*24, to*24, buckets, width, false)
 }
 
-// addGaps adds the Recording gaps of hours [fromHour, toHour), in buckets, to
-// the rows of width. utcDay picks the rows of folded days.
 func (a *answer) addGaps(ctx context.Context, store *models.TransferHistoryStore, fromHour, toHour int64, buckets models.TransferHistoryBuckets, width Bucket, utcDay bool) error {
 	if fromHour >= toHour {
 		return nil

@@ -32,7 +32,6 @@ function renderSync() {
 }
 
 describe("useClientSettingsSync", () => {
-  // regression: #4192
   it("settles the settings without opening the push gate when the first read fails", async () => {
     mocks.getClientSettings.mockRejectedValue(new Error("qui is restarting"))
     const { result } = renderSync()

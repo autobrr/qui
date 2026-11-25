@@ -127,8 +127,7 @@ type Server struct {
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
 	activityHub                      *activity.Hub
-	// shuttingDown ends the log and RSS streams: http.Server.Shutdown does not cancel request contexts.
-	shuttingDown <-chan struct{}
+	shuttingDown                     <-chan struct{}
 }
 
 type Dependencies struct {
@@ -182,20 +181,16 @@ type Dependencies struct {
 	SystemNotices                    *systemnotice.Module
 	DatabaseShrink                   *dbshrink.Service
 	ProblemReports                   *problemreport.Service
-	// StartedAt is when qui started. Zero means when NewServer runs.
-	StartedAt        time.Time
-	BackendPool      *fsops.Pool
-	SSHPool          *sshpool.Pool
-	DirScanService   *dirscan.Service
-	ArrInstanceStore *models.ArrInstanceStore
-	ArrService       *arr.Service
-	ActivityHub      *activity.Hub
-	// Transfers holds the Transfer records and the helper registry.
-	Transfers *transfer.Store
-	// TransferService runs Transfers.
-	TransferService *transfer.Service
-	// ShareService runs Shares.
-	ShareService *share.Service
+	StartedAt                        time.Time
+	BackendPool                      *fsops.Pool
+	SSHPool                          *sshpool.Pool
+	DirScanService                   *dirscan.Service
+	ArrInstanceStore                 *models.ArrInstanceStore
+	ArrService                       *arr.Service
+	ActivityHub                      *activity.Hub
+	Transfers                        *transfer.Store
+	TransferService                  *transfer.Service
+	ShareService                     *share.Service
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -210,17 +205,10 @@ func NewServer(deps *Dependencies) *Server {
 	streamsCtx, stopStreams := context.WithCancel(context.Background())
 	s := Server{
 		server: &http.Server{
-			ReadHeaderTimeout: time.Second * 15,
-			ReadTimeout:       60 * time.Second,
-			// No WriteTimeout: it is an absolute deadline on the whole response,
-			// so it aborts large file downloads (DownloadTorrentContentFile) and
-			// long-lived SSE streams once they run past a fixed bound, regardless
-			// of any reverse proxy. ReadHeaderTimeout/ReadTimeout/IdleTimeout still
-			// bound slow-header and idle connections; on a single-user self-hosted
-			// instance the response-side slow-client protection is not worth the cost.
-			WriteTimeout: 0,
-			IdleTimeout:  180 * time.Second,
-			// Route OPTIONS * through the Host guard when filtering is enabled.
+			ReadHeaderTimeout:            time.Second * 15,
+			ReadTimeout:                  60 * time.Second,
+			WriteTimeout:                 0,
+			IdleTimeout:                  180 * time.Second,
 			DisableGeneralOptionsHandler: len(deps.Config.Config.AllowedHosts) > 0,
 		},
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
@@ -286,20 +274,16 @@ func NewServer(deps *Dependencies) *Server {
 		shareService:                     deps.ShareService,
 		shuttingDown:                     streamsCtx.Done(),
 	}
-	// Shutdown runs this callback on every call; a CancelFunc tolerates repeats where close would panic.
 	s.server.RegisterOnShutdown(stopStreams)
 
 	return &s
 }
 
-// transferRoutes adds the Transfer and Share routes.
 func (s *Server) transferRoutes(r chi.Router) {
 	r.Route("/transfers", handlers.NewTransfersHandler(s.transferService, s.transfers, s.automationStore).Routes)
 	r.Route("/shares", handlers.NewSharesHandler(s.shareService).Routes)
 }
 
-// newTorrentsHandler builds the handler of the torrent routes. It refuses to
-// change a torrent that a Transfer holds, and a helper torrent.
 func (s *Server) newTorrentsHandler() *handlers.TorrentsHandler {
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
 	if s.transfers != nil {
@@ -308,7 +292,6 @@ func (s *Server) newTorrentsHandler() *handlers.TorrentsHandler {
 	return torrentsHandler
 }
 
-// ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
 func (s *Server) ListenAndServeReady(ready chan<- struct{}) error {
 	return s.open(ready)
 }
@@ -323,7 +306,6 @@ func (s *Server) open(ready chan<- struct{}) error {
 			return nil
 		}
 
-		// With "localhost", tcp6 would bind [::1] next to the qui that holds 127.0.0.1.
 		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, errAddrInUse) {
 			return err
 		}
@@ -343,7 +325,6 @@ func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error 
 	}
 
 	host := listener.Addr().String()
-	// Replace 0.0.0.0 or :: with localhost for clickable links
 	if strings.HasPrefix(host, "0.0.0.0:") || strings.HasPrefix(host, "[::]:") {
 		host = strings.Replace(host, "0.0.0.0:", "localhost:", 1)
 		host = strings.Replace(host, "[::]:", "localhost:", 1)
@@ -386,14 +367,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func newCompressionMiddleware() (func(http.Handler) http.Handler, error) {
-	// The default 8 MB zstd window allocates a 16 MB history buffer per pooled encoder.
 	zstdCompressor, err := httpzstd.New(zstd.WithWindowSize(1<<20), zstd.WithLowerEncoderMem(true))
 	if err != nil {
 		return nil, err
 	}
 	return httpcompression.DefaultAdapter(
 		httpcompression.MinSize(1024),
-		httpcompression.GzipCompressionLevel(2), // Use gzip level 2 (fast) instead of 6 (default)
+		httpcompression.GzipCompressionLevel(2),
 		httpcompression.ZstandardCompressor(zstdCompressor),
 		httpcompression.Prefer(httpcompression.PreferServer),
 	)
@@ -407,13 +387,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		return nil, err
 	}
 
-	// Global middleware
-	r.Use(middleware.RequestID) // Must be before logger to capture request ID
-	// r.Use(middleware.Logger(s.logger))
+	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 	r.Use(allowedHosts)
-	// Enforce auth-disabled IP allowlist against the direct TCP peer.
-	// This runs before RealIP so forwarded headers cannot bypass restrictions.
 	r.Use(middleware.RequireAuthDisabledIPAllowlist(s.config.Config))
 	r.Use(middleware.RealIP)
 
@@ -425,7 +401,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		compression = chi.Middlewares{compressor}
 	}
 
-	// CORS is disabled by default. Enable only for explicit trusted origins.
 	if len(s.config.Config.CORSAllowedOrigins) > 0 {
 		corsMiddleware := cors.New(cors.Options{
 			AllowCredentials: true,
@@ -438,10 +413,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Use(corsMiddleware.Handler)
 	}
 
-	// Session middleware - must be added before any session-dependent middleware
 	r.Use(s.sessionManager.LoadAndSave)
 
-	// Create handlers
 	healthHandler := handlers.NewHealthHandler()
 	authHandler, err := handlers.NewAuthHandler(s.authService, s.sessionManager, s.config.Config, s.instanceStore, s.clientPool, s.syncManager)
 	if err != nil {
@@ -466,7 +439,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
-		// Auth-disabled installs never carry a session flag; every caller is the trusted admin.
 		return s.config.Config.Live().IsAuthDisabled() || s.sessionManager.GetBool(ctx, "authenticated")
 	}, s.activityHub)
 	crossSeedHandler := handlers.NewCrossSeedHandler(
@@ -500,27 +472,22 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	logsHandler := handlers.NewLogsHandler(s.config, s.shuttingDown)
 	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
 
-	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
 	if s.jackettService != nil && s.torznabIndexerStore != nil {
 		jackettHandler = handlers.NewJackettHandler(s.jackettService, s.torznabIndexerStore)
 	}
 
-	// API routes
 	apiRouter := chi.NewRouter()
 
 	apiRouter.Group(func(r chi.Router) {
 		r.Use(middleware.Logger(s.logger))
 
-		// Apply setup check middleware
 		r.Use(middleware.RequireSetup(s.authService, s.config.Config))
 
 		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 		browserOnly := middleware.BrowserOnly
 		requireInstance := middleware.RequireInstance
 		allInstances := middleware.AllInstances
-		// A route with no Permission check and no browserOnly is open to every key.
-		// TestRoutesRefuseKeyWithoutPermission lists those routes.
 		instances := middleware.Permissions(models.AreaInstances)
 		torrents := middleware.Permissions(models.AreaTorrents)
 		dirScan := middleware.Permissions(models.AreaDirScan)
@@ -535,23 +502,16 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		logs := middleware.Permissions(models.AreaLogs)
 		system := middleware.Permissions(models.AreaSystem)
 		r.With(authMiddleware).Group(func(r chi.Router) {
-			// ServeContent needs the original Range header and writer to preserve byte ranges and Content-Length.
 			r.With(requireInstance, torrents.Read).Get("/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
 
-			// These streams bypass the buffering compressor so events flush promptly and socket write deadlines remain reachable.
-			// /stream handles its own gzip through gzipSessionWriter in internal/api/sse.
-			// /stream checks "Torrents: read" for each torrent stream that it opens.
 			r.Get("/stream", s.streamManager.Serve)
 			r.With(logs.Read).Get("/logs/stream", logsHandler.StreamLogs)
 			r.With(requireInstance, rss.Read).Get("/instances/{instanceID}/rss/events", rssSSEHandler.HandleSSE)
 		})
 
-		// Every route below compresses; the group above must keep the raw writer.
 		r = r.With(compression...)
 
-		// Public routes (no auth required)
 		r.Route("/auth", func(r chi.Router) {
-			// Apply rate limiting to auth endpoints
 			r.Use(middleware.ThrottleBacklog(1, 1, time.Second))
 
 			r.Post("/setup", authHandler.Setup)
@@ -559,24 +519,18 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/check-setup", authHandler.CheckSetupRequired)
 			r.Get("/validate", authHandler.Validate)
 
-			// OIDC routes (if enabled)
 			if s.config.Config.OIDCEnabled && authHandler.GetOIDCHandler() != nil {
 				r.Route("/oidc", authHandler.GetOIDCHandler().Routes)
 			}
 		})
 
-		// Built-in theme catalog and stored selection: public so the login
-		// page can paint the selected theme before auth. Premium CSS is
-		// license-gated inside; writes stay authenticated.
 		r.Get("/themes", themesHandler.ListThemes)
 		r.Get("/themes/settings", themesHandler.GetThemeSettings)
 
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
 
-		// Cross-seed routes (query param auth for select endpoints). Cross-seed spans instances.
 		crossSeedHandler.Routes(r, chi.Chain(authMiddleware, allInstances).Handler, apiKeyQueryMiddleware)
 
-		// Dir scan webhook (query param auth for external triggers like *arr custom scripts)
 		if dirScanHandler != nil {
 			r.Route("/dir-scan/webhook", func(r chi.Router) {
 				r.With(apiKeyQueryMiddleware, authMiddleware, allInstances, dirScan.Run).Post("/scan", dirScanHandler.WebhookTriggerScan)
@@ -588,36 +542,29 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
 			r.Get("/peer-client-icons/{name}", peerClientIconHandler.GetPeerClientIcon)
-			// Checks "Torrents: read" for each torrent stream that it adds, and that the caller opened the connection.
 			r.Post("/stream/subscriptions", s.streamManager.ChangeSubscriptions)
 
-			// Auth routes
 			r.With(browserOnly).Post("/auth/logout", authHandler.Logout)
 			r.Get("/auth/me", authHandler.GetCurrentUser)
 			r.With(browserOnly).Put("/auth/change-password", authHandler.ChangePassword)
 
 			r.With(browserOnly).Route("/license", licenseHandler.Routes)
 
-			// Custom themes (premium-gated inside the handler)
 			r.Get("/themes/custom", themesHandler.ListCustomThemes)
 			r.With(settings.Write).Post("/themes/custom", themesHandler.CreateCustomTheme)
 			r.With(settings.Write).Put("/themes/custom/{id}", themesHandler.ReplaceCustomTheme)
 			r.With(settings.Write).Delete("/themes/custom/{id}", themesHandler.DeleteCustomTheme)
 
-			// Persisted theme selection (reads are public above)
 			r.With(settings.Write).Put("/themes/settings", themesHandler.UpdateThemeSettings)
 			r.With(settings.Write).Delete("/themes/settings", themesHandler.DeleteThemeSettings)
 
-			// Persisted frontend user settings (opaque key-value map)
 			r.With(settings.Read).Get("/client-settings", clientSettingsHandler.GetClientSettings)
 			r.With(settings.Write).Put("/client-settings", clientSettingsHandler.UpdateClientSettings)
 
-			// Jackett routes (if configured)
 			if jackettHandler != nil {
 				jackettHandler.Routes(r)
 			}
 
-			// API key management
 			r.Route("/api-keys", func(r chi.Router) {
 				r.Use(browserOnly)
 				r.Get("/", authHandler.ListAPIKeys)
@@ -626,7 +573,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Delete("/{id}", authHandler.DeleteAPIKey)
 			})
 
-			// Client API key management
 			r.Route("/client-api-keys", func(r chi.Router) {
 				r.Use(browserOnly)
 				r.Get("/", clientAPIKeysHandler.ListClientAPIKeys)
@@ -634,7 +580,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Delete("/{id}", clientAPIKeysHandler.DeleteClientAPIKey)
 			})
 
-			// External programs management
 			r.Route("/external-programs", func(r chi.Router) {
 				r.With(externalPrograms.Read).Get("/", externalProgramsHandler.ListExternalPrograms)
 				r.With(browserOnly).Post("/", externalProgramsHandler.CreateExternalProgram)
@@ -643,7 +588,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.With(externalPrograms.Run).Post("/execute", externalProgramsHandler.ExecuteExternalProgram)
 			})
 
-			// Notification targets and events
 			r.Route("/notifications", func(r chi.Router) {
 				r.With(notifications.Read).Get("/events", notificationsHandler.ListEvents)
 				r.With(notifications.Read).Get("/targets", notificationsHandler.ListTargets)
@@ -653,7 +597,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.With(notifications.Write).Post("/targets/{id}/test", notificationsHandler.TestTarget)
 			})
 
-			// ARR (Sonarr/Radarr) instance management
 			r.Route("/arr", func(r chi.Router) {
 				r.With(arr.Read).Get("/instances", arrHandler.ListInstances)
 				r.With(arr.Write).Post("/instances", arrHandler.CreateInstance)
@@ -665,7 +608,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.With(arr.Read).Post("/resolve", arrHandler.Resolve)
 			})
 
-			// Tracker customizations (nicknames and merged domains)
 			r.Route("/tracker-customizations", func(r chi.Router) {
 				r.With(settings.Read).Get("/", trackerCustomizationHandler.List)
 				r.With(settings.Write).Post("/", trackerCustomizationHandler.Create)
@@ -673,11 +615,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.With(settings.Write).Delete("/{id}", trackerCustomizationHandler.Delete)
 			})
 
-			// Dashboard settings (per-user layout preferences)
 			r.With(settings.Read).Get("/dashboard-settings", dashboardSettingsHandler.Get)
 			r.With(settings.Write).Put("/dashboard-settings", dashboardSettingsHandler.Update)
 
-			// Saved filter views (named TorrentFilters snapshots)
 			r.Route("/filter-views", func(r chi.Router) {
 				r.With(settings.Read).Get("/", filterViewHandler.List)
 				r.With(settings.Write).Post("/", filterViewHandler.Create)
@@ -685,14 +625,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.With(settings.Write).Delete("/{id}", filterViewHandler.Delete)
 			})
 
-			// Log exclusions (muted log message patterns)
 			r.With(logs.Read).Get("/log-exclusions", logExclusionsHandler.Get)
 			r.With(logs.Write).Put("/log-exclusions", logExclusionsHandler.Update)
 
-			// Log settings and streaming
 			logsHandler.Routes(r)
 
-			// Version endpoints (current running version + update checks)
 			r.Get("/version", versionHandler.GetVersion)
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.With(system.Read).Get("/system-notices", systemNoticeHandler.List)
@@ -701,7 +638,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.With(browserOnly).Post("/system/restart", systemHandler.Restart)
 			r.With(browserOnly).Post("/system/update", systemHandler.Update)
 
-			// Instance management
 			r.Route("/instances", func(r chi.Router) {
 				r.With(instances.Read).Get("/", instancesHandler.ListInstances)
 				r.With(instances.Write).Post("/", instancesHandler.CreateInstance)
@@ -715,14 +651,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(instances.Write).Post("/test", instancesHandler.TestConnection)
 					r.With(torrents.Read).Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
 
-					// SSH credentials and host-key pinning for remote filesystem access
 					r.With(browserOnly).Put("/ssh-credentials", instancesHandler.UpdateSSHCredentials)
 					r.With(browserOnly).Delete("/ssh-credentials", instancesHandler.DeleteSSHCredentials)
 					r.With(browserOnly).Post("/ssh-test", instancesHandler.TestSSHConnection)
 					r.With(browserOnly).Post("/ssh-host-key", instancesHandler.ConfirmSSHHostKey)
 					r.With(browserOnly).Post("/ssh-host-key/replace", instancesHandler.ReplaceSSHHostKey)
 
-					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
 						r.With(torrents.Read).Get("/", torrentsHandler.ListTorrents)
 						r.With(torrents.Write).Post("/", torrentsHandler.AddTorrent)
@@ -734,8 +668,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.With(torrents.Read).Post("/field", torrentsHandler.GetTorrentField)
 
 						r.Route("/{hash}", func(r chi.Router) {
-							// Torrent details
-							// A .torrent file holds the tracker passkey.
 							r.With(torrents.Write).Get("/export", torrentsHandler.ExportTorrent)
 							r.With(torrents.Read).Get("/properties", torrentsHandler.GetTorrentProperties)
 							r.With(torrents.Read).Get("/trackers", torrentsHandler.GetTorrentTrackers)
@@ -768,7 +700,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(instances.Read).Get("/reannounce/activity", instancesHandler.GetReannounceActivity)
 					r.With(instances.Read).Get("/reannounce/candidates", instancesHandler.GetReannounceCandidates)
 
-					// Torrent creator
 					r.Route("/torrent-creator", func(r chi.Router) {
 						r.With(torrents.Write).Post("/", torrentsHandler.CreateTorrent)
 						r.With(torrents.Read).Get("/status", torrentsHandler.GetTorrentCreationStatus)
@@ -777,7 +708,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.With(torrents.Write).Delete("/{taskID}", torrentsHandler.DeleteTorrentCreationTask)
 					})
 
-					// Categories and tags
 					r.With(torrents.Read).Get("/categories", torrentsHandler.GetCategories)
 					r.With(torrents.Write).Post("/categories", torrentsHandler.CreateCategory)
 					r.With(torrents.Write).Put("/categories", torrentsHandler.EditCategory)
@@ -787,7 +717,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(torrents.Write).Post("/tags", torrentsHandler.CreateTags)
 					r.With(torrents.Write).Delete("/tags", torrentsHandler.DeleteTags)
 
-					// Trackers
 					r.With(torrents.Read).Get("/trackers", torrentsHandler.GetActiveTrackers)
 
 					r.With(torrents.Read).Get("/transfer-history", transferHistoryHandler.Transfer)
@@ -795,7 +724,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.With(torrents.Read).Get("/transfer-history/deletes", transferHistoryHandler.Deletes)
 					r.With(torrents.Read).Get("/tracker-groups", trackerGroupsHandler.List)
 
-					// Automations
 					r.Route("/automations", func(r chi.Router) {
 						r.With(automations.Read).Get("/", automationsHandler.List)
 						r.With(automations.Write).Post("/", automationsHandler.Create)
@@ -815,28 +743,22 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						})
 					})
 
-					// RSS management
 					r.Route("/rss", func(r chi.Router) {
 						rssHandler.Routes(r)
 					})
 
-					// Preferences
 					r.With(instances.Read).Get("/preferences", preferencesHandler.GetPreferences)
 					r.With(instances.Write).Patch("/preferences", preferencesHandler.UpdatePreferences)
 					r.With(instances.Write).Post("/preferences/test-email", preferencesHandler.SendTestEmail)
 					r.With(instances.Read).Get("/network-binding", preferencesHandler.GetNetworkBinding)
 
-					// Alternative speed limits
 					r.With(instances.Read).Get("/alternative-speed-limits", preferencesHandler.GetAlternativeSpeedLimitsMode)
 					r.With(instances.Write).Post("/alternative-speed-limits/toggle", preferencesHandler.ToggleAlternativeSpeedLimits)
 
-					// qBittorrent application info
 					r.With(instances.Read).Get("/app-info", qbittorrentInfoHandler.GetQBittorrentAppInfo)
 
-					// Path autocomplete
 					r.With(instances.Read).Get("/getDirectoryContent", torrentsHandler.GetDirectoryContent)
 
-					// A backup holds .torrent files, and each one holds the tracker passkey.
 					r.Route("/backups", func(r chi.Router) {
 						r.With(backups.Read).Get("/settings", backupsHandler.GetSettings)
 						r.With(backups.Write).Put("/settings", backupsHandler.UpdateSettings)
@@ -852,7 +774,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.With(backups.Write).Delete("/runs/{runID}", backupsHandler.DeleteRun)
 					})
 
-					// Orphan file scanning
 					r.Route("/orphan-scan", func(r chi.Router) {
 						r.With(orphanScan.Read).Get("/settings", orphanScanHandler.GetSettings)
 						r.With(orphanScan.Write).Put("/settings", orphanScanHandler.UpdateSettings)
@@ -867,7 +788,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				})
 			})
 
-			// Directory scanner (global, not per-instance)
 			if dirScanHandler != nil {
 				r.Route("/dir-scan", func(r chi.Router) {
 					r.Use(allInstances)
@@ -893,7 +813,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				})
 			}
 
-			// Global torrent operations (cross-instance)
 			r.Route("/torrents", func(r chi.Router) {
 				r.With(allInstances, torrents.Read).Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
 				r.With(allInstances, torrents.Write).Post("/export", torrentsHandler.ExportTorrentArchive)
@@ -925,9 +844,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		})
 	})
 
-	// Proxy routes (outside of /api and not requiring authentication).
-	// Wrapped so proxy traffic gets the same status and latency record as /api.
-	// Top-level routes register on compressed, not r, or they silently skip gzip.
 	compressed := r.With(compression...)
 	proxyHandler.Routes(compressed.With(middleware.Logger(s.logger)))
 
@@ -943,7 +859,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		baseURL = "/"
 	}
 
-	// Mount API routes BEFORE web handler to prevent catch-all from intercepting API requests
 	compressed.Get("/health", healthHandler.HandleHealth)
 	compressed.Get("/healthz/readiness", healthHandler.HandleReady)
 	compressed.Get("/healthz/liveness", healthHandler.HandleLiveness)
@@ -954,8 +869,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 	r.Mount(apiMount, apiRouter)
 
-	// Initialize web handler (for embedded frontend)
-	// This MUST be registered AFTER API routes to avoid catch-all intercepting /api/* paths
 	webHandler := web.NewHandler(s.version, s.config.Config.BaseURL, webfs.DistDirFS)
 
 	if baseURL != "/" {
@@ -976,10 +889,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte("Must use baseUrl: " + baseURL + " instead of /"))
 		})
-		//	// Redirect root to base URL
-		//	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		//		http.Redirect(w, r, s.config.Config.BaseURL, http.StatusMovedPermanently)
-		//	})
 	}
 
 	return r, nil

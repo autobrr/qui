@@ -89,9 +89,6 @@ func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
 }
 
 func TestRollbackSeasonPackTree_RunsUnderCancelledContext(t *testing.T) {
-	// A cancelled run must still roll back its partial tree — the fsops
-	// methods early-return on ctx.Err(), so this pins the WithoutCancel
-	// wrapping inside rollbackSeasonPackTree.
 	rootDir := filepath.Join(t.TempDir(), "pack")
 	plannedFile := filepath.Join(rootDir, "Show.S01E01.1080p.WEB.x264-GRP.mkv")
 	require.NoError(t, os.MkdirAll(rootDir, 0o755))
@@ -110,9 +107,6 @@ func TestRollbackSeasonPackTree_RunsUnderCancelledContext(t *testing.T) {
 }
 
 func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
-	// POSIX and Windows forms are rejected on every host, and so are the two
-	// shapes link mode already refuses: a backslash inside a name and a
-	// non-canonical path. The plan goes through hardlinktree's validator.
 	for _, name := range []string{
 		"../Show.S01E01.1080p.WEB.x264-GRP.mkv",
 		"/Show.S01E01.1080p.WEB.x264-GRP.mkv",
@@ -144,13 +138,6 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 	}
 }
 
-// TestSeasonPack_PunctuationOnlySequelTitles documents the deliberate tradeoff from
-// stripping !/? in title normalization: sequels distinguished only by punctuation
-// (K-On! vs K-On!!) now title-match, because scene naming drops the punctuation
-// anyway. The file check still requires exact per-episode byte sizes before
-// linking - the same size-identity trust cross-seeding rests on everywhere - so a
-// wrong link needs two different encodes with byte-identical sizes. A mismatched
-// file is demoted to pending (downloaded, never linked).
 func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
@@ -160,7 +147,6 @@ func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	)
 	packRelease := rls.ParseString(packName)
 	local := rls.ParseString(localName)
-	// matchEpisodeCandidatesDetailed stamps the pack season onto seasonless locals.
 	local.Series = packRelease.Series
 
 	ok, reason := seasonPackEpisodeMatches(matcher, &packRelease, &local, nil, nil)
@@ -182,8 +168,6 @@ func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	require.Equal(t, "size_mismatch", rejected["kon"])
 }
 
-// The plan links only the pack files that a local file verified against. Every
-// other pack file is left pending (downloaded via recheck).
 func TestBuildSeasonPackPlan_LinksOnlyVerifiedFiles(t *testing.T) {
 	const packDir = "Show.S01.1080p.WEB.x264-GRP/"
 	localFiles := map[episodeIdentity]seasonPackLocalFile{
@@ -215,8 +199,6 @@ func TestBuildSeasonPackPlan_LinksOnlyVerifiedFiles(t *testing.T) {
 	require.Contains(t, build.plan.Files[0].TargetPath, "S01E01")
 	require.True(t, build.hasPendingFiles())
 	require.Len(t, build.materializedPaths, 1)
-	// Pending files count toward totalBytes but not linkedBytes — the resume
-	// gate derives from this split.
 	require.Equal(t, int64(10), build.linkedBytes)
 	require.Equal(t, int64(30), build.totalBytes)
 }
@@ -532,10 +514,6 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
-// cancelOnAddAdderFake cancels the run's context from inside
-// AddTorrent and then fails the add, so the rollback that follows runs under a
-// cancelled context. It records how many entries the base dir held at that
-// moment, which keeps the "pack dir is gone" assertion non-vacuous.
 type cancelOnAddAdderFake struct {
 	*adderFake
 	cancel       context.CancelFunc
@@ -552,12 +530,6 @@ func (s *cancelOnAddAdderFake) AddTorrent(ctx context.Context, instanceID int, d
 	return s.adderFake.AddTorrent(ctx, instanceID, data, options)
 }
 
-// offlineAfterAddInstanceStore serves instance lookups until the run's add
-// fails, then fails every later one. That outage is what makes the threaded
-// planBuild.backend observable: with it, rollback runs on the backend that
-// built the tree; without it, the fallback resolve in the add-failure branch
-// hits the outage and the partial tree survives. The apply path resolves
-// backends sequentially in one goroutine, so the flag needs no mutex.
 type offlineAfterAddInstanceStore struct {
 	instances map[int]*models.Instance
 	offline   bool
@@ -575,13 +547,6 @@ func (s *offlineAfterAddInstanceStore) Get(_ context.Context, id int) (*models.I
 }
 
 func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledContext(t *testing.T) {
-	// TestRollbackSeasonPackTree_RunsUnderCancelledContext already pins the
-	// context.WithoutCancel inside rollbackSeasonPackTree. What this adds is the
-	// call site: a real ApplySeasonPackWebhook run whose add fails reaches that
-	// rollback under a cancelled ctx, on the backend threaded through
-	// planBuild.backend. The instance store goes offline when the add fails, so
-	// the fallback resolve in that branch cannot stand in for the threaded
-	// backend: drop the threading and the rollback is skipped, leaving the tree.
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
 	sourceDir := t.TempDir()
@@ -648,19 +613,12 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 	require.Equal(t, "add_failed", resp.Reason)
 	require.Len(t, store.runs, 1)
 	require.Equal(t, "add failed", store.runs[0].Message)
-	// One entry: the pack tree root the apply path created under the base dir.
 	require.Equal(t, 1, adds.entriesAtAdd, "the link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
 
 	_, statErr := os.Stat(filepath.Join(baseDir, fix.packName))
 	require.ErrorIs(t, statErr, os.ErrNotExist, "a cancelled run must still roll back its partial pack tree")
 }
 
-// A seeded two-episode torrent holds the same file as the pack. Both sides read
-// the range file as its first episode, so qui links it instead of downloading it.
-// Plain rls already read the pack file as E01. The cached parser reads it as a
-// pack, so this test fails if the pack side stops taking the first episode.
-// A range that starts at episode 0 is read as its next episode on both sides.
-// regression: #4068
 func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 	const packName = "Show.S01.1080p.WEB.x264-GRP"
 	for _, episodes := range []string{"S01E01E02", "S01E00E01"} {
@@ -702,8 +660,6 @@ func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 	}
 }
 
-// oneReadInstanceStore serves the first instance read and fails every later
-// one, so an apply that resolves its backend twice fails on the second read.
 type oneReadInstanceStore struct {
 	instances map[int]*models.Instance
 	reads     int
@@ -721,8 +677,6 @@ func (s *oneReadInstanceStore) Get(_ context.Context, id int) (*models.Instance,
 	return instance, nil
 }
 
-// Planning and creation share one backend read. A second read could see a
-// different backend, or none, between the plan and the tree it describes.
 func TestApplySeasonPackWebhook_PlansAndCreatesWithOneBackendRead(t *testing.T) {
 	t.Run("webhook", func(t *testing.T) {
 		fix := newSeasonPackFixture(t)

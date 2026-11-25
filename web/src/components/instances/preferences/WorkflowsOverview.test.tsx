@@ -5,7 +5,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
@@ -13,7 +13,6 @@ import type { Automation, AutomationActivity } from "@/types"
 
 import { WorkflowsOverview } from "./WorkflowsOverview"
 
-// Stable singletons: a fresh object per render would rerun effects forever.
 const mocks = vi.hoisted(() => ({
   instances: { instances: [{ id: 1, name: "seedbox", isActive: true }] },
   trackerData: { data: undefined },
@@ -32,14 +31,6 @@ vi.mock("@/lib/api", () => ({
     getAutomationActivity: () => Promise.resolve(mocks.activity),
   },
 }))
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()
@@ -76,7 +67,6 @@ async function renderOverview() {
 }
 
 describe("WorkflowsOverview", () => {
-  // regression: #4242
   it("shows whether each torrent of a live Transfer started", async () => {
     mocks.activity = [
       transferActivity({ id: 1, hash: "aaaa1111", torrentName: "Show.S01.1080p-GRP" }),
@@ -89,7 +79,6 @@ describe("WorkflowsOverview", () => {
     expect(badges).toEqual([expect.stringContaining("Started"), expect.stringContaining("failed")])
   })
 
-  // regression: #4242
   it("shows no All torrents badge for a Transfer rule with a condition", async () => {
     mocks.rules = [transferRule({
       conditions: {

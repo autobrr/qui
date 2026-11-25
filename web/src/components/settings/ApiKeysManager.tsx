@@ -261,7 +261,6 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
     template: null,
   })
   const toSave = permissionsToSave(permissions, instanceIds)
-  // A deleted instance stays in the list: dropping it can empty the limit, and an empty limit means all instances.
   const deletedIds = instances
     ? [...new Set([...(initial?.instanceIds ?? []), ...instanceIds])].filter(id => !instances.some(instance => instance.id === id))
     : []

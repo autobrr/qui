@@ -5,43 +5,30 @@ on:
     # schedules queued at :00.
     - cron: '41 4 * * *'
   workflow_dispatch:
-    inputs:
-      lane:
-        description: go fixes a file of scripts/ratchet/allowlist.json, web fixes a file of web/eslint-suppressions.json
-        type: choice
-        options: [go, web]
-        default: go
 
-env:
-  NODE_VERSION: "24.15.0"
-
-# One dispatched run of a lane at a time, from the pick until the pull request
-# exists. A lock on the fix job alone lets the next run pick the same file
-# before the open job makes the pull request.
+# One dispatched run at a time, from the pick until the pull request exists.
+# A lock on the fix job alone lets the next run pick the same file before
+# the open job makes the pull request.
 concurrency:
-  group: ratchet-${{ github.event_name }}-${{ inputs.lane }}
+  group: ratchet-${{ github.event_name }}
 
 jobs:
   # The Console federation rule accepts only workflow_dispatch, so the
-  # schedule dispatches the fix job, one time for each lane. See
-  # docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md and
-  # docs/adr/0075-the-lint-ratchet-bot-runs-a-second-lane-for-the-frontend.md.
+  # schedule dispatches the fix job. See docs/adr/0017-discussion-triage-runs-on-a-capped-console-workspace.md.
   dispatch:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
     permissions:
       actions: write
     steps:
-      - name: Dispatch the fix job of each lane
+      - name: Dispatch the fix job
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for lane in go web; do
-            gh workflow run ratchet.yml --repo ${{ github.repository }} --ref ${{ github.event.repository.default_branch }} -f lane="$lane"
-          done
+        run: gh workflow run ratchet.yml --repo ${{ github.repository }} --ref ${{ github.event.repository.default_branch }}
 
-  # Takes the next file off the list of its lane and fixes a few of its
-  # problems. The open job makes the pull request as the qui-rabbit app. See
+  # Takes the next file off scripts/ratchet/allowlist.json and fixes up to 5
+  # of its problems. The open job makes the pull request as the qui-rabbit
+  # app. See
   # docs/adr/0020-the-lint-ratchet-bot-opens-pull-requests-as-a-github-app.md.
   fix:
     runs-on: ubuntu-latest
@@ -60,10 +47,6 @@ jobs:
       linter: ${{ steps.pick.outputs.linter }}
       file: ${{ steps.pick.outputs.file }}
       count: ${{ steps.pick.outputs.count }}
-      label: ${{ steps.pick.outputs.label }}
-      branch: ${{ steps.pick.outputs.branch }}
-      title: ${{ steps.pick.outputs.title }}
-      allowed: ${{ steps.pick.outputs.allowed }}
 
     steps:
       - name: Checkout repository
@@ -72,70 +55,40 @@ jobs:
           # The agent can read .git/config, so leave no token in it.
           persist-credentials: false
 
-      # One pull request of a lane at a time. Linters go in order, and the
-      # file with the fewest problems comes first. A ratchet pull request that
-      # is closed without a merge skips its linter and file for good, unless it
-      # was a draft: a closed draft means try again later. Its branch is
-      # ratchet/<linter>/<file>/<run id> in the go lane, and
-      # ratchet/web/<rule>/<file>/<run id> in the web lane.
+      # One pull request at a time. Linters go in order, and the file with the
+      # fewest problems comes first. A ratchet pull request that is closed
+      # without a merge skips its linter and file for good, unless it was a
+      # draft: a closed draft means try again later. Its branch is
+      # ratchet/<linter>/<file>/<run id>.
       - name: Pick the next file
         id: pick
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LANE: ${{ inputs.lane }}
         run: |
-          label=ratchet
-          [[ "$LANE" == web ]] && label=ratchet-web
-          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --label "$label" --state open --json url --jq '.[].url')
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --label ratchet --state open --json url --jq '.[].url')
           if [[ -n "$open" ]]; then
-            echo "A $label pull request is open: $open"
+            echo "A ratchet pull request is open: $open"
             exit 0
           fi
-          skip=$(gh pr list --repo "$GITHUB_REPOSITORY" --label "$label" --state closed --limit 1000 \
+          skip=$(gh pr list --repo "$GITHUB_REPOSITORY" --label ratchet --state closed --limit 1000 \
             --json headRefName,mergedAt,isDraft --jq '[.[] | select(.mergedAt == null and (.isDraft | not)) | .headRefName]')
-          if [[ "$LANE" == web ]]; then
-            pick=$(jq -r --argjson skip "$skip" '
-              . as $held
-              | [("qui/no-direct-effect") as $l
-                 | $held | to_entries | map({l: $l, f: "web/\(.key)", n: (.value[$l].count // 0)} | select(.n > 0)) | sort_by(.n, .f)[]
-                 | select("ratchet/web/\(.l)/\(.f)/" as $p | $skip | any(startswith($p)) | not)]
-              | first // empty | "\(.l) \(.f) \(.n)"' web/eslint-suppressions.json)
-          else
-            pick=$(jq -r --argjson skip "$skip" '
-              . as $allow
-              | [("nilerr", "errchkjson", "gocognit", "contextcheck") as $l
-                 | ($allow[$l] // {}) | to_entries | sort_by(.value, .key)[]
-                 | {l: $l, f: .key, n: .value}
-                 | select("ratchet/\(.l)/\(.f)/" as $p | $skip | any(startswith($p)) | not)]
-              | first // empty | "\(.l) \(.f) \(.n)"' scripts/ratchet/allowlist.json)
-          fi
+          pick=$(jq -r --argjson skip "$skip" '
+            . as $allow
+            | [("nilerr", "errchkjson", "gocognit", "contextcheck") as $l
+               | ($allow[$l] // {}) | to_entries | sort_by(.value, .key)[]
+               | {l: $l, f: .key, n: .value}
+               | select("ratchet/\(.l)/\(.f)/" as $p | $skip | any(startswith($p)) | not)]
+            | first // empty | "\(.l) \(.f) \(.n)"' scripts/ratchet/allowlist.json)
           if [[ -z "$pick" ]]; then
             echo "No file is left to fix."
             exit 0
           fi
           read -r linter file count <<<"$pick"
           echo "Picked $linter in $file ($count problems)."
-          if [[ "$LANE" == web ]]; then
-            stem=${file%.*}
-            tests="$(dirname "$file")/__tests__/$(basename "$stem")"
-            branch="ratchet/web/$linter/$file"
-            title="refactor(web): drop effects in $(basename "$file")"
-            allowed=("$file" "$stem.test.ts" "$stem.test.tsx" "$tests.test.ts" "$tests.test.tsx" web/eslint-suppressions.json)
-          else
-            branch="ratchet/$linter/$file"
-            title="refactor(lint): fix $linter in $(basename "$file")"
-            allowed=("$file" "${file%.go}_test.go" scripts/ratchet/allowlist.json)
-          fi
           {
             echo "linter=$linter"
             echo "file=$file"
             echo "count=$count"
-            echo "label=$label"
-            echo "branch=$branch"
-            echo "title=$title"
-            echo "allowed<<END_OF_ALLOWED"
-            printf '%s\n' "${allowed[@]}"
-            echo "END_OF_ALLOWED"
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
@@ -153,23 +106,6 @@ jobs:
         with:
           version: v2.14.0
           install-only: true
-
-      - name: Set up Node
-        if: steps.pick.outputs.file && inputs.lane == 'web'
-        uses: actions/setup-node@v7.1.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Set up pnpm
-        if: steps.pick.outputs.file && inputs.lane == 'web'
-        uses: pnpm/action-setup@v6.1.1
-        with:
-          package_json_file: web/package.json
-
-      - name: Install frontend dependencies
-        if: steps.pick.outputs.file && inputs.lane == 'web'
-        working-directory: web
-        run: pnpm install --frozen-lockfile --ignore-scripts
 
       # Claude Code scrubs credentials from the commands it starts only with
       # bubblewrap, and Ubuntu 24.04 blocks the user namespaces that
@@ -191,11 +127,11 @@ jobs:
       # pick the same file again each day without a human seeing it.
       - name: Fix the problems
         id: agent
-        if: steps.pick.outputs.file && inputs.lane != 'web'
+        if: steps.pick.outputs.file
         continue-on-error: true
         env:
           AGENT_PROFILE: ratchet
-          RATCHET_FILES: ${{ steps.pick.outputs.allowed }}
+          RATCHET_FILE: ${{ steps.pick.outputs.file }}
           REPORT_FILE: ${{ runner.temp }}/report.md
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
           ANTHROPIC_FEDERATION_RULE_ID: fdrl_01L8QqdNNYxgrowGMDCkwF2C
@@ -220,54 +156,19 @@ jobs:
             In Description, summarize each change, why it keeps the behaviour, and each nolint comment and its reason. Fill in Breaking change and Behaviour change explicitly. In Performance, assess the actual diff: give measurements if needed, or explain why there is no performance risk. If a required measurement cannot be made in this run, state that it is incomplete and leave its checklist item unchecked. Tick only checklist items you have completed. Keep CI check results out of How has this been tested?; that section is only for manual or live verification CI cannot do. In AI disclosure, state that the lint fix was AI-written with the Claude Agent SDK and name the model configured in .github/scripts/triage/run.mjs.
         run: node .github/scripts/triage/run.mjs
 
-      - name: Remove the effects
-        id: agent_web
-        if: steps.pick.outputs.file && inputs.lane == 'web'
-        continue-on-error: true
-        env:
-          AGENT_PROFILE: ratchet-web
-          RATCHET_FILES: ${{ steps.pick.outputs.allowed }}
-          REPORT_FILE: ${{ runner.temp }}/report.md
-          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
-          ANTHROPIC_FEDERATION_RULE_ID: fdrl_01L8QqdNNYxgrowGMDCkwF2C
-          ANTHROPIC_ORGANIZATION_ID: 7e6f6244-271b-4543-8e58-21e1ad204aae
-          ANTHROPIC_SERVICE_ACCOUNT_ID: svac_013uKKXN8FTGVnEZVPHQoW69
-          ANTHROPIC_WORKSPACE_ID: wrkspc_01TSR9QMRQGxTyymwXyR53KG
-          RATCHET_PROMPT: |
-            You remove direct React effects from the frontend of qui, a React and TypeScript app in web/. This run is not interactive. The workflow commits your change and opens the pull request, so do not run git. The AGENTS.md rules about commits, opening pull requests, field tests, and the final report do not apply to this run. Follow the PR body instructions below.
-
-            Target: up to 3 of the calls that `${{ steps.pick.outputs.linter }}` reports in `${{ steps.pick.outputs.file }}`. Its entry in web/eslint-suppressions.json is ${{ steps.pick.outputs.count }}.
-
-            1. Read "Suppressed ESLint Rules" in docs/linting.md, docs/adr/0073-a-react-effect-lives-in-a-listed-hook-and-a-ratchet-holds-the-old-ones.md, and the message of the rule in web/scripts/no-direct-effect-rule.mjs. The message names what to write in place of an effect.
-            2. Find the calls of `useEffect`, `useLayoutEffect`, and `useInsertionEffect` in the file. ESLint does not print them while the file has its entry.
-            3. Replace up to 3 of them as the message says. Keep the behaviour the same. Start with the calls that have the clearest replacement. Leave a call that needs a new hook file or a change in another file, and say so in your report.
-            4. Lower the entry of the file with `pnpm --dir web exec eslint --prune-suppressions <path of the file below web/>`.
-            5. Run `pnpm --dir web exec eslint <path of the file below web/>`, `pnpm --dir web exec tsc -b`, `pnpm --dir web exec vitest run`, and `go run ./scripts/ratchet -base HEAD`. All four must pass.
-
-            You can edit only these files:
-            ${{ steps.pick.outputs.allowed }}
-            If a fix needs another file, leave that call and say so in your report.
-
-            End with only the complete pull request body, using .github/pull_request_template.md. Read that template and docs/agents/performance-checks.md before writing it. Keep the required headings and checklist, remove HTML comments and unused placeholders, and omit optional sections only as the template permits. Do not wrap the body in a code fence or add a Report heading.
-
-            In Description, summarize what replaced each effect and why the behaviour stays the same, and name each call that you left. Fill in Breaking change and Behaviour change explicitly. In Performance, assess the actual diff: a replaced effect can change how often a component renders, so give measurements if needed, or explain why there is no performance risk. If a required measurement cannot be made in this run, state that it is incomplete and leave its checklist item unchecked. Tick only checklist items you have completed. Keep CI check results out of How has this been tested?; that section is only for manual or live verification CI cannot do. In AI disclosure, state that the change was AI-written with the Claude Agent SDK and name the model configured in .github/scripts/triage/run.mjs.
-        run: node .github/scripts/triage/run.mjs
-
-      # The permission rules keep the agent to the files that the pick step
-      # allows. This step makes sure of it, saves the change as a patch, and
-      # then runs the checks. The checks run code that the agent wrote, so this
-      # runner never gets the app token.
+      # The permission rules keep the agent to three files. This step makes
+      # sure of it, saves the change as a patch, and then runs the checks.
+      # The checks run code that the agent wrote, so this runner never gets
+      # the app token.
       - name: Check the change
         if: steps.pick.outputs.file
         env:
           FILE: ${{ steps.pick.outputs.file }}
-          ALLOWED: ${{ steps.pick.outputs.allowed }}
-          LANE: ${{ inputs.lane }}
-          AGENT_OUTCOME: ${{ steps.agent.outcome == 'success' || steps.agent_web.outcome == 'success' }}
+          AGENT_OUTCOME: ${{ steps.agent.outcome }}
         run: |
           problems=()
-          [[ "$AGENT_OUTCOME" == true ]] || problems+=("The agent run failed. The workflow log has its output.")
-          others=$(git status --porcelain --untracked-files=all | cut -c4- | grep -vxF -f <(printf '%s\n' "$ALLOWED") || true)
+          [[ "$AGENT_OUTCOME" == success ]] || problems+=("The agent run failed. The workflow log has its output.")
+          others=$(git status --porcelain | cut -c4- | grep -vxF -e "$FILE" -e "${FILE%.go}_test.go" -e scripts/ratchet/allowlist.json || true)
           if [[ -n "$others" ]]; then
             problems+=("The agent changed other files, so this pull request drops its change: ${others//$'\n'/, }")
             git checkout -- .
@@ -280,14 +181,8 @@ jobs:
           else
             # HEAD is the develop commit that the agent started from.
             go run ./scripts/ratchet -base HEAD || problems+=("\`go run ./scripts/ratchet\` failed.")
-            if [[ "$LANE" == web ]]; then
-              pnpm --dir web lint || problems+=("\`pnpm lint\` failed.")
-              pnpm --dir web exec tsc -b || problems+=("\`tsc -b\` failed.")
-              pnpm --dir web test || problems+=("\`pnpm test\` failed.")
-            else
-              go build ./... || problems+=("\`go build ./...\` failed.")
-              go test -count=1 "./$(dirname "$FILE")/" || problems+=("\`go test\` failed in $(dirname "$FILE").")
-            fi
+            go build ./... || problems+=("\`go build ./...\` failed.")
+            go test -count=1 "./$(dirname "$FILE")/" || problems+=("\`go test\` failed in $(dirname "$FILE").")
           fi
           for p in "${problems[@]}"; do echo "- $p"; done > "$RUNNER_TEMP/problems.md"
 
@@ -305,8 +200,7 @@ jobs:
   # Commits the change and opens the pull request on a new runner, which runs
   # no code from the change. The fix job could have left anything on its
   # runner, so this job takes only the patch, problems.md and report.md, and
-  # checks the paths in the patch again. The allowed paths, the branch, the
-  # title, and the label come from the pick step, which ran before the agent.
+  # checks the paths in the patch again.
   open:
     needs: fix
     if: needs.fix.outputs.file
@@ -330,12 +224,12 @@ jobs:
 
       - name: Apply the change
         env:
-          ALLOWED: ${{ needs.fix.outputs.allowed }}
+          FILE: ${{ needs.fix.outputs.file }}
         run: |
           if [[ -s "$RUNNER_TEMP/ratchet/change.patch" ]]; then
             git apply --index "$RUNNER_TEMP/ratchet/change.patch"
           fi
-          others=$(git diff --cached --name-only | grep -vxF -f <(printf '%s\n' "$ALLOWED") || true)
+          others=$(git diff --cached --name-only | grep -vxF -e "$FILE" -e "${FILE%.go}_test.go" -e scripts/ratchet/allowlist.json || true)
           if [[ -n "$others" ]]; then
             echo "::error::The patch changes other files: ${others//$'\n'/, }"
             exit 1
@@ -357,19 +251,16 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           LINTER: ${{ needs.fix.outputs.linter }}
           FILE: ${{ needs.fix.outputs.file }}
-          LABEL: ${{ needs.fix.outputs.label }}
-          BRANCH: ${{ needs.fix.outputs.branch }}
-          TITLE: ${{ needs.fix.outputs.title }}
           OUT: ${{ runner.temp }}/ratchet
         run: |
-          branch="$BRANCH/$GITHUB_RUN_ID"
+          branch="ratchet/$LINTER/$FILE/$GITHUB_RUN_ID"
           draft=()
           [[ -s "$OUT/problems.md" ]] && draft=(--draft)
           gh auth setup-git
           git config user.name 'qui-rabbit[bot]'
           git config user.email '346308562+qui-rabbit[bot]@users.noreply.github.com'
           git switch -c "$branch"
-          git commit -q --allow-empty -m "$TITLE"
+          git commit -q --allow-empty -m "refactor(lint): fix $LINTER in $(basename "$FILE")"
           git push -q origin "$branch"
           {
             cat "$OUT/report.md" 2>/dev/null || echo "The agent wrote no report."
@@ -386,5 +277,5 @@ jobs:
             echo "Close this pull request without merging it, and the bot skips \`$LINTER\` in this file for good. Close it as a draft, and the bot tries the file again later. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           } > "$RUNNER_TEMP/body.md"
           gh pr create --repo "$GITHUB_REPOSITORY" --base develop --head "$branch" "${draft[@]}" \
-            --title "$TITLE" \
-            --body-file "$RUNNER_TEMP/body.md" --label "$LABEL"
+            --title "refactor(lint): fix $LINTER in $(basename "$FILE")" \
+            --body-file "$RUNNER_TEMP/body.md" --label ratchet

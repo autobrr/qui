@@ -43,12 +43,6 @@ const PROGRAM: ExternalProgram = {
 }
 
 function renderManager() {
-  // Radix measures the switch through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>
@@ -58,7 +52,6 @@ function renderManager() {
   )
 }
 
-/** Opens the editor of the program, changes its name, and saves. */
 async function renameProgram(name: string) {
   fireEvent.click(await screen.findByRole("button", { name: "kit.edit" }))
   const dialog = await screen.findByRole("dialog")
@@ -75,7 +68,6 @@ afterEach(() => {
 })
 
 describe("ExternalProgramsManager", () => {
-  // regression: #4233
   it("keeps a saved edit when the switch is pressed before the list refetch answers", async () => {
     mocks.listExternalPrograms.mockResolvedValueOnce([PROGRAM]).mockReturnValue(new Promise(() => {}))
     mocks.updateExternalProgram.mockImplementation((id: number, payload: ExternalProgramPayload) => Promise.resolve({ ...PROGRAM, ...payload, id }))
@@ -89,7 +81,6 @@ describe("ExternalProgramsManager", () => {
     expect(sentPayloads()[1]).toMatchObject({ name: "New name", enabled: false })
   })
 
-  // regression: #4233
   it("sends an edit only after the switch save of the same program ends", async () => {
     mocks.listExternalPrograms.mockResolvedValue([PROGRAM])
     let finishSwitch: (program: ExternalProgram) => void = () => {}
