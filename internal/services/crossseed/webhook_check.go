@@ -173,7 +173,7 @@ func (s *Service) webhookMatchHeldTitles(ctx context.Context, input webhookCheck
 		return episodeMap
 	})
 	answer, err := s.webhookMatchFound(ctx, readsCtx, input, lookup)
-	if err != nil || len(answer.matches) > 0 || !lookup.wait.await(ctx) {
+	if err != nil || len(answer.matches) > 0 || !lookup.awaitDueSyncs(ctx) {
 		return answer, err
 	}
 	return s.webhookMatchFound(ctx, readsCtx, input, lookup)

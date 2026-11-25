@@ -1355,7 +1355,7 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	settings.SeasonPackEnabled = true
 	views := buildCrossInstanceViews(corpusInstance, []qbt.Torrent{row.sourceTorrent()})
 	if row.candidateFiles != nil {
-		matched := svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)
+		matched := svc.matchEpisodeCandidatesDetailed(listedTorrents(views, nil), row.candidate, pack, packEpisodes, settings, row.titles)
 		if len(matched) == 0 {
 			return corpusNoMatch
 		}
@@ -1364,7 +1364,7 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 		require.NoError(t, err)
 		return corpusVerdictOf(len(selected) > 0)
 	}
-	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(views, row.candidate, pack, packEpisodes, settings, row.titles)) > 0)
+	return corpusVerdictOf(len(svc.matchEpisodeCandidatesDetailed(listedTorrents(views, nil), row.candidate, pack, packEpisodes, settings, row.titles)) > 0)
 }
 
 func crossSeedTabCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
