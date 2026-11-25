@@ -996,7 +996,7 @@ export function InstanceBackups() {
           closeRestoreDialog()
         }
       }}>
-        <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
+        <DialogContent className="w-[95vw] max-w-6xl sm:max-w-6xl !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{t("backups.restore.title")}</DialogTitle>
             <DialogDescription>
@@ -1857,7 +1857,7 @@ export function InstanceBackups() {
           setManifestRunId(undefined)
         }
       }}>
-        <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[95vw] max-w-7xl sm:max-w-7xl !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("backups.manifest.title")}</DialogTitle>
             <DialogDescription>

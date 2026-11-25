@@ -418,7 +418,7 @@ export default tseslint.config([
   },
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', 'src/components/ui/**', 'src/components/kit/**'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**'],
     plugins: { shadcn },
     settings: {
       shadcn: {
@@ -426,7 +426,14 @@ export default tseslint.config([
       },
     },
     rules: {
+      'shadcn/no-unknown-classes': ['error', { allow: ['ss-*', 'fi', 'animated-logo-element', 'toaster'] }],
       'shadcn/require-static-classes': 'error',
+    },
+  },
+  {
+    files: ['src/components/{ui,kit}/**/*.{ts,tsx}'],
+    rules: {
+      'shadcn/require-static-classes': 'off',
     },
   },
 ])
