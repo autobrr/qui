@@ -177,10 +177,7 @@
       "count": 1
     },
     "qui/no-comments": {
-      "count": 16
-    },
-    "qui/no-direct-effect": {
-      "count": 1
+      "count": 15
     }
   },
   "src/components/cross-seed/LibraryTab.tsx": {

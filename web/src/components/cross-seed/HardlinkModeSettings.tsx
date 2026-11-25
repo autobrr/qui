@@ -21,7 +21,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import type { Instance } from "@/types"
 import { ChevronDown, Loader2 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -67,13 +67,9 @@ export function HardlinkModeSettings({
     [instances]
   )
 
-  // Auto-expand when 3 or fewer instances (only on first load)
-  useEffect(() => {
-    if (isOpen === undefined && instances !== undefined) {
-      const activeCount = (instances ?? []).filter((inst) => inst.isActive).length
-      setIsOpen(activeCount <= 3)
-    }
-  }, [instances, isOpen])
+  if (isOpen === undefined && instances !== undefined) {
+    setIsOpen(activeInstances.length <= 3)
+  }
 
   const getForm = useCallback((instance: Instance) => {
     return formMap[instance.id] ?? {
