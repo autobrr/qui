@@ -14,15 +14,19 @@ import (
 )
 
 const (
-	sumCode = "package sum\n\nconst Step = 1\n\nfunc Setup() int { return 8 }\n\nfunc Add(n int) int {\n\tn++\n\tif n < 0 {\n\t\tn = -n\n\t}\n\treturn n + Step\n}\n\nfunc Other(n int) int { return n }\n"
-	sumTest = "package sum\n\nimport \"testing\"\n\nfunc BenchmarkAdd(b *testing.B) {\n\tn := Setup()\n\tfor b.Loop() {\n\t\tAdd(n)\n\t}\n}\n\nfunc BenchmarkOther(b *testing.B) {\n\tfor b.Loop() {\n\t\tOther(1)\n\t}\n}\n"
-	useTest = "package use\n\nimport (\n\t\"testing\"\n\n\t\"example.test/app/sum\"\n)\n\nfunc BenchmarkUse(b *testing.B) {\n\tfor b.Loop() {\n\t\tsum.Add(1)\n\t}\n}\n"
-	numCode = "package num\n\nfunc One() int { return 1 }\n"
-	numUser = "package sum\n\nimport \"example.test/app/num\"\n\nfunc Pick() int { return num.One() }\n"
-	kind    = "package sum\n\ntype Kind int\n\nfunc (Kind) String() string { return \"kind\" }\n\nfunc Gone() {}\n"
-	embCode = "package emb\n\nimport \"embed\"\n\n//go:embed data/*.txt\nvar data embed.FS\n\nfunc Count() int {\n\tfound, _ := data.ReadDir(\"data\")\n\treturn len(found)\n}\n"
-	embTest = "package emb\n\nimport \"testing\"\n\nfunc BenchmarkCount(b *testing.B) {\n\tfor b.Loop() {\n\t\tCount()\n\t}\n}\n"
-	farTest = "package far\n\nimport \"testing\"\n\nfunc BenchmarkFar(b *testing.B) {\n\tfor b.Loop() {\n\t}\n}\n"
+	sumCode   = "package sum\n\nconst Step = 1\n\nfunc Setup() int { return 8 }\n\nfunc Add(n int) int {\n\tn++\n\tif n < 0 {\n\t\tn = -n\n\t}\n\treturn n + Step\n}\n\nfunc Other(n int) int { return n }\n"
+	sumTest   = "package sum\n\nimport \"testing\"\n\nfunc BenchmarkAdd(b *testing.B) {\n\tn := Setup()\n\tfor b.Loop() {\n\t\tAdd(n)\n\t}\n}\n\nfunc BenchmarkOther(b *testing.B) {\n\tfor b.Loop() {\n\t\tOther(1)\n\t}\n}\n"
+	useTest   = "package use\n\nimport (\n\t\"testing\"\n\n\t\"example.test/app/sum\"\n)\n\nfunc BenchmarkUse(b *testing.B) {\n\tfor b.Loop() {\n\t\tsum.Add(1)\n\t}\n}\n"
+	numCode   = "package num\n\nfunc One() int { return 1 }\n"
+	numUser   = "package sum\n\nimport \"example.test/app/num\"\n\nfunc Pick() int { return num.One() }\n"
+	kind      = "package sum\n\ntype Kind int\n\nfunc (Kind) String() string { return \"kind\" }\n\nfunc Gone() {}\n"
+	embCode   = "package emb\n\nimport \"embed\"\n\n//go:embed data/*.txt\nvar data embed.FS\n\nfunc Count() int {\n\tfound, _ := data.ReadDir(\"data\")\n\treturn len(found)\n}\n"
+	embTest   = "package emb\n\nimport \"testing\"\n\nfunc BenchmarkCount(b *testing.B) {\n\tfor b.Loop() {\n\t\tCount()\n\t}\n}\n"
+	sizeCode  = "package size\n\nconst N = 8\n"
+	sizeTest  = "package alloc\n\nimport (\n\t\"testing\"\n\n\t\"example.test/app/size\"\n)\n\nfunc BenchmarkAlloc(b *testing.B) {\n\tfor b.Loop() {\n\t\t_ = make([]byte, size.N)\n\t}\n}\n"
+	countCode = "package count\n\nfunc Prep() int { return 1 }\n\nfunc Step(n int) int { return n + 1 }\n"
+	countTest = "package count\n\nimport \"testing\"\n\nfunc BenchmarkCount(b *testing.B) {\n\tn := Prep()\n\tfor i := 0; i < b.N; i++ {\n\t\tn = Step(n)\n\t}\n}\n"
+	farTest   = "package far\n\nimport \"testing\"\n\nfunc BenchmarkFar(b *testing.B) {\n\tfor b.Loop() {\n\t}\n}\n"
 )
 
 func TestSelectionFollowsTheChangedCode(t *testing.T) {
@@ -43,6 +47,10 @@ func TestSelectionFollowsTheChangedCode(t *testing.T) {
 			r.write("sum/sum.go", strings.NewReplacer("\tn++\n", "", "n = -n", "n = -n * 2").Replace(sumCode))
 		}, []string{"sum.BenchmarkAdd", "use.BenchmarkUse"}, []string{"sum/sum.go: Add (9)"}},
 		{"a deleted embedded file", func(r testRepo) { r.do("rm", "-q", "emb/data/b.txt") }, []string{"emb.BenchmarkCount"}, nil},
+		{"a constant in a package without functions", func(r testRepo) { r.write("size/size.go", "package size\n\nconst N = 9\n") }, []string{"alloc.BenchmarkAlloc"}, nil},
+		{"setup of a benchmark that counts to b.N", func(r testRepo) {
+			r.write("count/count.go", strings.Replace(countCode, "return 1", "return 2", 1))
+		}, nil, []string{"count/count.go: Prep (3)"}},
 		{"a constant", replace("Step = 1", "Step = 2"), []string{"sum.BenchmarkAdd", "sum.BenchmarkOther", "use.BenchmarkUse"}, nil},
 		{"a comment", replace("func Add", "// Add adds.\nfunc Add"), nil, nil},
 		{"a comment on its own line in a function", replace("\treturn n + Step", "\n\t// Step up.\n\treturn n + Step"), nil, nil},
@@ -68,7 +76,7 @@ func TestSelectionFollowsTheChangedCode(t *testing.T) {
 		{"the version of Go", func(r testRepo) {
 			r.write("go.mod", "module example.test/app\n\ngo 1.25\n")
 			r.write("lone/lone.go", "package lone\n\nfunc Lone() int { return 1 }\n")
-		}, []string{"emb.BenchmarkCount", "far.BenchmarkFar", "sum.BenchmarkAdd", "sum.BenchmarkOther", "use.BenchmarkUse"}, []string{"lone/lone.go: Lone (3)"}},
+		}, []string{"alloc.BenchmarkAlloc", "count.BenchmarkCount", "emb.BenchmarkCount", "far.BenchmarkFar", "sum.BenchmarkAdd", "sum.BenchmarkOther", "use.BenchmarkUse"}, []string{"lone/lone.go: Lone (3)"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,6 +91,10 @@ func TestSelectionFollowsTheChangedCode(t *testing.T) {
 			r.write("sum/pick.go", numUser)
 			r.write("sum/kind.go", kind)
 			r.write("lone/old.go", "package lone\n")
+			r.write("size/size.go", sizeCode)
+			r.write("alloc/alloc_test.go", sizeTest)
+			r.write("count/count.go", countCode)
+			r.write("count/count_test.go", countTest)
 			r.write("emb/emb.go", embCode)
 			r.write("emb/emb_test.go", embTest)
 			r.write("emb/data/a.txt", "a\n")

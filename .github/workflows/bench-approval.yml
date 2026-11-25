@@ -2,7 +2,7 @@ name: Benchmark approval
 
 on:
   pull_request_target:
-    types: [opened, reopened, synchronize, labeled, unlabeled]
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
 
 permissions: {}
 

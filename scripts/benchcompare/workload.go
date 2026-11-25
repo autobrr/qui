@@ -76,7 +76,7 @@ func (w *workloads) fingerprint(ctx context.Context, b bench) (string, error) {
 	if len(own[b.name]) == 0 {
 		return "", nil
 	}
-	todo := []symbol{{b.dir, b.name}}
+	todo := []symbol{{b.dir, b.name}, {b.dir, "init"}, {b.dir, "_"}}
 	texts := map[string]bool{}
 	files := map[string][]string{}
 	seen := map[symbol]bool{}

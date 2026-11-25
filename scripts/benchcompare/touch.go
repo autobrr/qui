@@ -105,7 +105,7 @@ func (s *selection) probeAll(ctx context.Context, b *builder, commit string, cod
 	}
 	slices.SortStableFunc(probes, func(a, b probe) int { return cmp.Compare(a.took, b.took) })
 	for _, p := range probes {
-		if s.changed[p.bench] == "" && (p.blind || slices.ContainsFunc(code.units, p.touches)) {
+		if s.changed[p.bench] == "" && (p.blind || slices.ContainsFunc(code.units, func(u unit) bool { return code.touchedBy(p, u) })) {
 			s.touched = append(s.touched, p.bench)
 		}
 	}
@@ -121,6 +121,9 @@ func (c changes) uncovered(probes []probe) []string {
 	}
 	gaps := map[string][]string{}
 	for _, u := range c.units {
+		if u.file == "" && c.coveredBy(probes, u) {
+			continue
+		}
 		if gap := u.gap(all); gap != "" {
 			place := cmp.Or(u.file, c.folder(u.pkg))
 			gaps[place] = append(gaps[place], gap)
@@ -143,15 +146,15 @@ func (b *builder) probe(ctx context.Context, commit string, one bench, pkgs []st
 		return p
 	}
 	started = time.Now()
-	once, failedOnce, err := b.profile(ctx, binary, commit, one, 1)
+	twice, failedTwice, err := b.profile(ctx, binary, commit, one, 2)
 	thrice, failedThrice, errThrice := b.profile(ctx, binary, commit, one, 3)
 	if err != nil || errThrice != nil {
 		p.blind = true
 		return p
 	}
-	p.blocks = grown(once, thrice)
+	p.blocks = grown(twice, thrice)
 	p.reached = p.blocks
-	if failedOnce || failedThrice {
+	if failedTwice || failedThrice {
 		p.reached = grown(nil, thrice)
 	}
 	return p
@@ -181,15 +184,26 @@ func (b *builder) profile(ctx context.Context, binary, commit string, one bench,
 	return found, runErr != nil, nil
 }
 
-func grown(once, more counts) map[block]bool {
+func grown(fewer, more counts) map[block]bool {
 	blocks := map[block]bool{}
 	for file, places := range more {
 		for place, count := range places {
 			b := block{file, span{place.StartLine, place.EndLine}}
-			blocks[b] = blocks[b] || count > once[file][place]
+			blocks[b] = blocks[b] || count > fewer[file][place]
 		}
 	}
 	return blocks
+}
+
+func (c changes) touchedBy(p probe, u unit) bool {
+	if u.file == "" {
+		return c.deps[p.bench.dir][u.pkg]
+	}
+	return p.touches(u)
+}
+
+func (c changes) coveredBy(probes []probe, u unit) bool {
+	return slices.ContainsFunc(probes, func(p probe) bool { return c.touchedBy(p, u) })
 }
 
 func (p probe) touches(u unit) bool {
@@ -204,10 +218,7 @@ func (p probe) touches(u unit) bool {
 func (u unit) within(blocks map[block]bool) []block {
 	var whole, changed []block
 	for b := range blocks {
-		if u.file == "" && path.Dir(b.file) == u.pkg {
-			whole = append(whole, b)
-		}
-		if u.file == "" || b.file != path.Join(u.pkg, path.Base(u.file)) || !b.overlaps(u.span) {
+		if b.file != path.Join(u.pkg, path.Base(u.file)) || !b.overlaps(u.span) {
 			continue
 		}
 		whole = append(whole, b)
@@ -222,13 +233,10 @@ func (u unit) within(blocks map[block]bool) []block {
 }
 
 func (u unit) gap(blocks map[block]bool) string {
-	within := u.within(blocks)
 	if u.file == "" {
-		if slices.ContainsFunc(within, func(b block) bool { return blocks[b] }) {
-			return ""
-		}
 		return u.name
 	}
+	within := u.within(blocks)
 	run, missing := map[int]bool{}, map[int]bool{}
 	for _, b := range within {
 		for line := max(b.from, u.from); line <= min(b.to, u.to); line++ {
