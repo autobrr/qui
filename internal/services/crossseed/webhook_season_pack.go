@@ -24,6 +24,9 @@ func (s *Service) webhookSeasonPackPrep(input webhookCheckInput) *seasonPackPrep
 }
 
 func (s *Service) webhookSeasonPackLookup(ctx context.Context, prep *seasonPackPrep, direct *heldLookup) *heldLookup {
+	prep.eligible = slices.DeleteFunc(prep.eligible, func(instance *models.Instance) bool {
+		return !slices.Contains(direct.synced, instance.ID)
+	})
 	lookup := s.seasonPackLookup(ctx, prep, prep.eligible)
 	if lookup == nil || len(lookup.candidates()) == 0 {
 		return nil

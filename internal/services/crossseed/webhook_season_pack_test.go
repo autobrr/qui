@@ -111,6 +111,28 @@ func TestWebhookCheckWritesNoDebugLineForAnEpisodeThatDoesNotMatchThePack(t *tes
 	require.Zero(t, lines[logbudget.Line{Level: "debug", Message: "[CROSSSEED-MATCH] Release filtered"}])
 }
 
+func TestWebhookAssemblesAPackWhileAnotherInstanceDoesNotAnswer(t *testing.T) {
+	torrent := packOf(t, packShow, packShowEpisode, 1, 2, 3, 4)
+	root := t.TempDir()
+	rig := newPackRig(t, root,
+		packLibraryOnDisk(t, root, packTorrents('1', packShowEpisode, 1, 2, 3, 4)),
+		serveHeldLibrary(t, packTorrents('2', packShowEpisode, 1, 2, 3, 4), nil),
+	)
+	held := rig.applying(rig.held())
+	held.syncManager = unreachableInstance{qbittorrentSync: held.syncManager, id: 2}
+	require.NoError(t, os.MkdirAll(rig.links, 0o755))
+
+	checked := held.webhookCheck(t, packShow)
+	require.NotNil(t, checked.SeasonPack)
+	require.Equal(t, 1, checked.SeasonPack.InstanceID)
+
+	resp, err := held.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentName: packShow, TorrentData: torrent})
+	require.NoError(t, err)
+	require.True(t, resp.Success, "%+v", resp.Results)
+	require.Len(t, resp.Results, 1)
+	require.Equal(t, 1, resp.Results[0].InstanceID)
+}
+
 func TestWebhookSaysNothingOfSeasonPacksWhileHeldTitlesIsOff(t *testing.T) {
 	rig := newPackRig(t, t.TempDir(), serveHeldLibrary(t, packTorrents('1', packShowEpisode, 1, 2, 3, 4), nil))
 	full := rig.full()
