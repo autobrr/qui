@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n check-feature-map lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit prepush deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n check-feature-map lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit prepush deps docs-dev docs-build mutation mutation-go mutation-web bench-compare
 
 # Default target
 all: build
@@ -159,6 +159,11 @@ mutation-web:
 		$(MUTATION_WORKTREE) || exit 1; \
 		cd "$$run/wt/$(WEB_DIR)" && pnpm install --frozen-lockfile --prefer-offline --silent && \
 			pnpm exec stryker run --mutate "$$files"
+
+BENCH_BASE ?= origin/develop
+
+bench-compare:
+	@go run ./scripts/benchcompare compare -base $(BENCH_BASE)
 
 # Format changed code only (fast, for iteration)
 fmt:
@@ -359,6 +364,7 @@ help:
 	@echo "  make test-frontend-changed - Run frontend vitest suite when the branch changes web/ or a file that web/src reads"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo "  make mutation       - Mutation test changed Go lines and TypeScript files (MUTATION_BASE=origin/develop)"
+	@echo "  make bench-compare  - Compare the Go benchmarks that the branch touches with the merge base (BENCH_BASE=origin/develop)"
 	@echo ""
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"

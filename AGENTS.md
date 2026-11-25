@@ -40,6 +40,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | No response gives a stored credential, and only a backup download, which needs `Backups: write`, gives a tracker passkey to an API key without `Torrents: write` (ADR 0040) | `TestReadKeyGetsNoPlantedSecret` reads each route that a key with only read Permissions reaches (ADR 0087). A secret that its rig does not plant: judgment |
 | The feature map lists each route and dialog with steps | `make check-feature-map` |
 | The match corpus only grows | the Match corpus workflow |
+| A maintainer approves a moved starting commit, a looser benchmark limit, a changed workload, or a removed benchmark (ADR 0093) | the Benchmark approval workflow |
 | Stay in scope, no private tracker links or release names in public text, a live run before you report done, new UI copies an existing page | judgment: the rules above and `web/AGENTS.md` |
 
 ## Read When
