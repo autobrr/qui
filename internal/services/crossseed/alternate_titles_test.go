@@ -22,16 +22,17 @@ import (
 var alternateTitlesMatcher = (&Service{releaseCache: NewReleaseCache()}).matcher()
 
 type fakeAlternateTitles struct {
-	mu      sync.Mutex
-	titles  map[string][]string
-	cached  bool
-	down    bool
-	partial bool
-	hangs   bool
-	takes   time.Duration
-	failsOn func(title string) bool
-	asked   []HeldRelease
-	askedAt []time.Time
+	mu          sync.Mutex
+	titles      map[string][]string
+	cached      bool
+	down        bool
+	partial     bool
+	hangs       bool
+	takes       time.Duration
+	failsOn     func(title string) bool
+	searchFails bool
+	asked       []HeldRelease
+	askedAt     []time.Time
 }
 
 func (f *fakeAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
@@ -49,6 +50,9 @@ func (f *fakeAlternateTitles) AlternateTitles(ctx context.Context, held HeldRele
 	f.askedAt = append(f.askedAt, time.Now())
 	if f.down || f.failsOn != nil && f.failsOn(held.Title) {
 		return AlternateTitles{Requested: true}, errors.New("source down")
+	}
+	if f.searchFails {
+		return AlternateTitles{Requested: true}, ErrTitleUnanswered
 	}
 	return AlternateTitles{Titles: f.titles[held.Title], Requested: !f.cached, Incomplete: f.partial}, nil
 }
@@ -217,6 +221,39 @@ func TestAlternateTitlesAskEachFailedTitleAfterItsOwnWait(t *testing.T) {
 		require.Equal(t, "Copper Fjord", asked[5].Title)
 		require.GreaterOrEqual(t, askedAt[5].Sub(started), 2*alternateTitleRetry-time.Minute)
 	})
+}
+
+func TestAlternateTitlesCatchUpWhenASearchFailsTwice(t *testing.T) {
+	for name, down := range map[string]bool{"new title": false, "after an outage": true} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				source := &fakeAlternateTitles{searchFails: true, down: down}
+				a := runAlternateTitles(t, source)
+				holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
+				synctest.Wait()
+				if down {
+					source.set(func(f *fakeAlternateTitles) { f.down = false })
+					time.Sleep(alternateTitleRetry)
+					synctest.Wait()
+				}
+				require.False(t, a.caughtUp())
+
+				time.Sleep(alternateTitleRetry)
+				synctest.Wait()
+				require.True(t, a.caughtUp())
+
+				holdName(a, "Copper.Fjord.S01E01.1080p.WEB-DL.H.264-GRP", 1)
+				time.Sleep(time.Minute)
+				synctest.Wait()
+				require.False(t, a.caughtUp(), "the first failed search of another title")
+
+				source.set(func(f *fakeAlternateTitles) { f.down = true })
+				time.Sleep(alternateTitleRetry)
+				synctest.Wait()
+				require.False(t, a.caughtUp(), "an outage after a failed search")
+			})
+		})
+	}
 }
 
 func TestAlternateTitlesAskAgainAfterAnIncompleteAnswer(t *testing.T) {
