@@ -284,10 +284,12 @@ func TestFullSyncUpdateWithATimedOutVersionReadLeavesTheVersionUnknown(t *testin
 	client, stub := newStubClient(t, "2.15.1")
 
 	// go-qbittorrent calls this hook before a full update enters the cache.
+	before := stub.VersionReads()
 	stub.HangWebAPIVersion = true
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	require.NoError(t, client.refreshCapabilitiesBeforeFullUpdate(ctx, nil))
+	require.Greater(t, stub.VersionReads(), before, "the version request must reach qBittorrent")
 	require.Empty(t, client.GetWebAPIVersion())
 	require.False(t, client.Supports(CapLiveReannounce))
 }

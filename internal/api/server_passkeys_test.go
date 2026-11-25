@@ -104,7 +104,7 @@ type passkeyRig struct {
 
 func newPasskeyRig(t *testing.T) *passkeyRig {
 	t.Helper()
-	deps := newTestDependencies(t)
+	deps, authDB := newTestDependenciesWithDB(t)
 	db := testdb.NewMigratedSQLite(t, "api-passkeys")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -136,7 +136,7 @@ func newPasskeyRig(t *testing.T) *passkeyRig {
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
-	rig := &passkeyRig{permissionRig: &permissionRig{deps: deps, url: srv.URL}, instanceID: instance.ID, runID: run.ID}
+	rig := &passkeyRig{permissionRig: &permissionRig{deps: deps, authDB: authDB, url: srv.URL}, instanceID: instance.ID, runID: run.ID}
 	rig.cookie = rig.sessionCookie(t)
 	return rig
 }

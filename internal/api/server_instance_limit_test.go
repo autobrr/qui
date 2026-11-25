@@ -53,9 +53,7 @@ func (rig *instanceLimitRig) addInstance(t *testing.T, name string) int {
 
 func (rig *instanceLimitRig) limitedKey(t *testing.T, instanceIDs ...int) string {
 	t.Helper()
-	raw, _, err := rig.deps.AuthService.CreateAPIKey(t.Context(), "limited", models.AllPermissions(), instanceIDs)
-	require.NoError(t, err)
-	return raw
+	return newUsedAPIKey(t, rig.authDB, "limited", models.AllPermissions(), instanceIDs)
 }
 
 func (rig *instanceLimitRig) listedInstances(t *testing.T, key string) []int {

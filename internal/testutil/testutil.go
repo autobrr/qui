@@ -5,13 +5,30 @@
 package testutil
 
 import (
+	"errors"
 	"net/http"
+	"os"
 	"reflect"
+	"runtime"
+	"syscall"
 	"testing"
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
 )
+
+func IsWindowsSymlinkPrivilegeError(err error) bool {
+	return runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314))
+}
+
+func SymlinkOrSkip(t testing.TB, target, link string) {
+	t.Helper()
+	err := os.Symlink(target, link)
+	if IsWindowsSymlinkPrivilegeError(err) {
+		t.Skip("creating a symlink requires Developer Mode or SeCreateSymbolicLinkPrivilege")
+	}
+	require.NoError(t, err)
+}
 
 // RoundTripFunc is an http.RoundTripper that answers with the function.
 type RoundTripFunc func(*http.Request) (*http.Response, error)

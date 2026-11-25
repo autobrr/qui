@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -29,6 +28,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 )
 
 // fakeRequirer hands out one backend and instance row, whatever the row's
@@ -192,7 +192,7 @@ func (l localTree) symlink(p string) {
 	target := filepath.Join(l.t.TempDir(), "target")
 	require.NoError(l.t, os.MkdirAll(target, 0o755))
 	l.mkdir(filepath.Dir(p))
-	require.NoError(l.t, os.Symlink(target, p))
+	testutil.SymlinkOrSkip(l.t, target, p)
 }
 
 func (l localTree) remove(p string) { require.NoError(l.t, os.RemoveAll(p)) }
@@ -534,16 +534,15 @@ func (e *cleanupEnv) start() {
 func eachBackend(t *testing.T, body func(t *testing.T, e *cleanupEnv)) {
 	for _, kind := range []backendKind{localBackend, slashBackend, remoteBackend} {
 		t.Run(string(kind), func(t *testing.T) {
+			var skipped bool
 			synctest.Test(t, func(t *testing.T) {
+				defer func() { skipped = t.Skipped() }()
 				body(t, newCleanupEnv(t, kind))
 			})
+			if skipped {
+				t.Skip("fixture unavailable inside synctest")
+			}
 		})
-	}
-}
-
-func skipSymlinksOnWindows(t *testing.T, e *cleanupEnv) {
-	if runtime.GOOS == "windows" && e.d == fsops.HostPaths {
-		t.Skip("creating a symlink needs a privilege on Windows")
 	}
 }
 

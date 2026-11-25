@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -252,11 +251,8 @@ func webhookRunIn(t *testing.T, host *webhookHost, dirs []webhookDir, payload an
 	localInstance, err := instances.Create(ctx, "local", "http://localhost:8080", "", "", nil, nil, false, new(true))
 	require.NoError(t, err)
 
-	store := models.NewDirScanStore(db)
 	pool := fsops.NewPoolWithRemote(instances, localbackend.NewBackend(), func(*models.Instance) fsops.Backend { return host })
-	service := dirscan.NewService(dirscan.DefaultConfig(), store, nil, nil, nil, nil, nil, nil, pool, nil)
-	hub, events := newActivityHub(t)
-	service.SetActivityPublisher(hub)
+	service, scan := newSingleDirScanRun(db, pool)
 	handler := NewDirScanHandler(service, instances)
 	for _, dir := range dirs {
 		target := instance.ID
@@ -272,9 +268,7 @@ func webhookRunIn(t *testing.T, host *webhookHost, dirs []webhookDir, payload an
 	if rec.Code != http.StatusAccepted {
 		return rec, nil
 	}
-	var resp dirScanTriggerResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	waitDirScanIdle(t, service, events, resp.DirectoryID)
+	resp := scan.response(t, rec)
 	return rec, &resp
 }
 

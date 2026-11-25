@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 )
 
@@ -768,7 +769,7 @@ func TestHolds_KeepsAliasOfATorrentFileHardlinkedWhileThePathsAreRead(t *testing
 	require.NoError(t, os.MkdirAll(filepath.Dir(second), 0o755))
 	require.NoError(t, os.WriteFile(first, []byte("x"), 0o600))
 	alias := filepath.Join(root, "alias")
-	require.NoError(t, os.Symlink(filepath.Dir(first), alias))
+	testutil.SymlinkOrSkip(t, filepath.Dir(first), alias)
 
 	backend := linkAfterStat{Backend: local.NewBackend(), t: t, from: first, to: second}
 	ids, err := collectInUseIDs(t.Context(), backend, nil, []string{first, second}, false)

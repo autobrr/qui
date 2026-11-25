@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -443,18 +444,25 @@ func TestCrossSeedRouteAvailabilityChecksVersionOnlyForListing(t *testing.T) {
 func TestCrossSeedRouteAvailabilityStopsALoginAtTheDeadline(t *testing.T) {
 	f := newRouteFixture(t)
 	// The server sees the client go away only after it reads the login body.
-	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	var arrived atomic.Bool
+	stalled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/auth/login" {
+			http.NotFound(w, r)
+			return
+		}
 		_, _ = io.Copy(io.Discard, r.Body)
+		arrived.Store(true)
 		<-r.Context().Done()
 	}))
 	t.Cleanup(stalled.Close)
 	instance := f.instance("seeds", stalled.URL, models.FilesystemModeNone)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	start := time.Now()
 	require.ErrorIs(t, f.routes.CheckAvailable(ctx, instance.ID, false), crossseedroute.ErrUnavailable)
 	assert.Less(t, time.Since(start), 30*time.Second, "the login must stop at the deadline of ctx, not after the 60-second pool default")
+	require.True(t, arrived.Load(), "the login did not reach qBittorrent")
 }
 
 // fakeRouteTorrents answers the torrent reads of the route loader per instance.
