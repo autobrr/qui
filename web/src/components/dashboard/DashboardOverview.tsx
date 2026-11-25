@@ -215,13 +215,13 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {range === "day" && dayData?.partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-[10px] text-yellow-600 dark:text-yellow-500">{t("statistics:partial")}</Badge>}
+              {range === "day" && dayData?.partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-10 text-yellow-600 dark:text-yellow-500">{t("statistics:partial")}</Badge>}
               {controls}
             </div>
           </div>
           {chart}
           {axis && (
-            <div className="flex justify-between px-4 pb-3 pt-1 text-[10px] text-muted-foreground tabular-nums lg:px-6">
+            <div className="flex justify-between px-4 pb-3 pt-1 text-10 text-muted-foreground tabular-nums lg:px-6">
               {axis.map((label, index) => <span key={index}>{label}</span>)}
             </div>
           )}

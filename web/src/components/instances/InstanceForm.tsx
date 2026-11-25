@@ -193,7 +193,7 @@ export function InstanceForm({ open, onOpenChange, instance, onSuccess }: Instan
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
-              className="font-mono text-[13px]"
+              className="font-mono text-13"
             />
           </Field>
         )}

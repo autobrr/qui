@@ -1232,13 +1232,14 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		Msg("Handling torrents/info request via qui sync manager")
 
 	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
-		InstanceID:        instanceID,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Filters:           filters,
-		FullPasskeyAccess: true,
+		InstanceID:         instanceID,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Filters:            filters,
+		FullPasskeyAccess:  true,
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		log.Error().
@@ -1347,15 +1348,16 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		Msg("Handling torrents/qui request with qui sync manager")
 
 	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
-		InstanceID:        instanceID,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		SidebarCounts:     true,
-		FullPasskeyAccess: true,
+		InstanceID:         instanceID,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		SidebarCounts:      true,
+		FullPasskeyAccess:  true,
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		log.Error().

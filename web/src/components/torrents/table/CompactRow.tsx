@@ -135,7 +135,7 @@ export function CompactRow({
           {displayName}
         </h3>
         {groupPill}
-        <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
+        <Badge variant={statusBadgeVariant} className={cn("flex-shrink-0", statusBadgeClass)}>
           {statusBadgeLabel}
         </Badge>
       </div>

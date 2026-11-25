@@ -341,6 +341,10 @@ func (planFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbitto
 	return nil, nil
 }
 
+func (planFilesReader) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return nil, nil
+}
+
 func TestRunPlan_MoveGroupInSharedSavePathChecksFiles(t *testing.T) {
 	triggerFiles := qbt.TorrentFiles{{Name: "show.mkv", Size: 100}}
 	for _, tc := range []struct {

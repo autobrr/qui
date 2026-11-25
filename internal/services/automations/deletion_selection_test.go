@@ -172,6 +172,10 @@ func (filesByHashReader) GetCachedInstanceTorrents(context.Context, int) ([]qbit
 	return nil, nil
 }
 
+func (filesByHashReader) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return nil, nil
+}
+
 func TestDeletionSelection_SharedSavePathChecksFileOverlap(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", Tags: "old", AddedOn: 1, SavePath: "/data", ContentPath: "/data"},

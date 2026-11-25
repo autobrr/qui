@@ -1015,7 +1015,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       <MobileInfoRow label={t("detailsPanel.labels.priority")}>
                         {displayTorrent?.priority && displayTorrent.priority > 0 ? displayTorrent.priority : t("detailsPanel.values.normal")}
                         {(displayTorrent?.state === "queuedDL" || displayTorrent?.state === "queuedUP") && (
-                          <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
+                          <Badge variant="secondary" className="ml-2 h-5 px-1.5">
                             {t("detailsPanel.values.queued", { state: displayTorrent.state === "queuedDL" ? "DL" : "UP" })}
                           </Badge>
                         )}
@@ -1230,7 +1230,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex items-start gap-2">
                               <p className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium leading-snug">{breakableName(matchName)}</p>
-                              <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5 text-xs", status.className)}>{status.label}</Badge>
+                              <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5", status.className)}>{status.label}</Badge>
                             </div>
                             <p className="truncate text-xs text-muted-foreground">
                               {[match.instanceName, getMatchTypeLabel(match.matchType, t).label, incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname].filter(Boolean).join(" · ")}

@@ -226,7 +226,7 @@ export function IndexerDialog({ open, onOpenChange, indexer, pending, error, onS
         )}
       </div>
       <Field label={t("indexers.dialog.labels.baseUrl")} error={errors.baseUrl}>
-        <Input {...text("baseUrl")} inputMode="url" autoCapitalize="off" spellCheck={false} placeholder={baseUrlPlaceholder} className="font-mono text-[13px]" />
+        <Input {...text("baseUrl")} inputMode="url" autoCapitalize="off" spellCheck={false} placeholder={baseUrlPlaceholder} className="font-mono text-13" />
       </Field>
       <Field label={t("indexers.dialog.labels.apiKey")} error={errors.apiKey}>
         <Input

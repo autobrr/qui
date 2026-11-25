@@ -65,7 +65,7 @@ import {
 import { useCallback, useMemo, type MouseEvent, type ReactElement, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
-const rowClassName = "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm font-medium short:py-1 short:text-[13px]/5"
+const rowClassName = "relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm font-medium short:py-1 short:text-13/5"
 const iconOnlyRowClassName = "overflow-hidden whitespace-nowrap"
 const rowStateClassName = (isActive: boolean) => isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:transition-colors hover:duration-200 hover:ease-out"
 const footerButtonClassName = "h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
@@ -445,7 +445,7 @@ export function Sidebar({ iconOnly, onToggleIconOnly, onHide, flyout = false, on
         <Separator className="mb-1.5" />
 
         <div className={cn("relative flex items-center justify-between pl-3", iconOnly && "w-58")}>
-          <div className={cn("flex min-w-0 flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none whitespace-nowrap", swapClassName(!iconOnly))}>
+          <div className={cn("flex min-w-0 flex-col gap-1 text-10 text-sidebar-foreground/40 select-none whitespace-nowrap", swapClassName(!iconOnly))}>
             <TruncatedText className="font-medium text-sidebar-foreground/50">{t("sidebar.version", { version: appVersion })}</TruncatedText>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />

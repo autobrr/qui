@@ -689,7 +689,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             <p className="font-semibold">{event.torrentName || "N/A"}</p>
                           </TooltipContent>
                         </Tooltip>
-                        <Badge variant="outline" className={cn("capitalize text-[10px] px-1.5 py-0 h-5", outcomeClasses[event.outcome])}>
+                        <Badge variant="outline" className={cn("capitalize text-10 px-1.5 py-0 h-5", outcomeClasses[event.outcome])}>
                           {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
                         </Badge>
                       </div>

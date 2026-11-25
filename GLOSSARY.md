@@ -83,6 +83,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Theme preview**: A custom theme that one browser shows before the user saves it. It reaches no theme slot and no other browser, and a page reload ends it.
 - **Default theme visit**: A page visit that opens with `?theme=default` in the address. qui shows the default theme until the next page load without the parameter, and it reads and writes no theme slot and no theme cache in the browser. A theme selection in a picker ends it. _Avoid_: safe mode.
 - **Hidden theme**: A theme that the quick theme pickers do not show. A community theme starts hidden, unless qui showed it before it became a community theme. The user shows or hides a theme in Settings → Themes. _Avoid_: disabled theme.
+- **Status color**: One of the theme colors for success, warning, and info. Each built-in theme sets its own, and a custom theme without them gets the standard ones. _Avoid_: semantic color, state color.
 
 ## Client settings
 
@@ -280,6 +281,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Sectioned page**: A page with a section nav, for example Settings or Cross-Seed. _Avoid_: tabbed page.
 - **Single page**: A page that stacks its cards and has no section nav, for example Search or Backups.
 
+## UI primitives
+
+- **UI primitive**: A component in the primitives folder of the frontend, such as Button, Badge, or Label. It owns its look, and a page picks a look by an option. _Avoid_: shared part (a Shared part is files that torrents share), base component.
+- **Option** (of a UI primitive): A named look of a UI primitive that a page selects with a prop, a variant or a size. A new option needs the word of a maintainer. _Avoid_: style, preset.
+
 ## Transfer and Share
 
 - **Transfer**: The move of a torrent, together with each torrent that shares its files, and of those files, from one instance to another. It copies the missing files, adds the torrents on the target, proves the copy, and then removes or keeps the torrents on the source. _Avoid_: Move (that changes the save path inside one instance), migration, export, transfer history (that is the bytes on the Statistics page).
@@ -289,4 +295,5 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Transfer torrent**: A temporary private copy of a torrent, with a new infohash and the same pieces, that two instances use to pass the files of a Transfer. No tracker of the real torrent sees it. _Avoid_: shadow torrent, clone.
 - **Share**: Giving the files of one torrent to someone whose client qui does not manage. Only a click starts a Share. It ends when the recipient has the files, when it expires, or when the user stops it. _Avoid_: Transfer (that moves between two instances qui manages), send, share limit (that is qBittorrent's ratio and seeding-time limit).
 - **Share torrent**: A private copy of a torrent, with a new infohash and the same pieces, that the user's client seeds for a Share. Only the Share tracker knows it. _Avoid_: Transfer torrent.
+- **Helper torrent**: A torrent that qui adds to qBittorrent for a Transfer or a Share. Its files belong to another torrent. Transfer torrents and Share torrents are Helper torrents. _Avoid_: shadow torrent, temp torrent.
 - **Share tracker**: The tracker that lets the client of a Share's recipient find the user's client. It is qui's own tracker or a URL from Settings, and it answers only for active Shares. _Avoid_: privtracker, embedded tracker (that is qBittorrent's open tracker).

@@ -85,7 +85,7 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
     <div className="p-3 flex items-center gap-3">
       <div className="flex flex-1 min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <div className="flex items-center gap-3">
-          <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
+          <Badge {...statusBadge} className={statusBadge.className}>
             {statusBadge.label}
           </Badge>
           {hasWarning && (
@@ -246,7 +246,7 @@ function InstanceOrphanScanItem({
         <div className="px-6 py-4 flex items-center justify-between opacity-60">
           <div className="flex items-center gap-3">
             <span className="font-medium">{instance.name}</span>
-            <Badge variant="outline" className="text-xs">{t("preferences.orphanScanOverview.noFilesystemAccess")}</Badge>
+            <Badge variant="outline">{t("preferences.orphanScanOverview.noFilesystemAccess")}</Badge>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -269,12 +269,12 @@ function InstanceOrphanScanItem({
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
               <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
               {latestRunBadge && (
-                <Badge {...latestRunBadge} className={cn("text-xs", latestRunBadge.className)}>
+                <Badge {...latestRunBadge} className={latestRunBadge.className}>
                   {latestRunBadge.label}
                 </Badge>
               )}
               {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline">
                   {t("preferences.orphanScanOverview.itemsSummary", {
                     count: latestRun.filesFound,
                     size: formatBytes(latestRun.bytesReclaimed || 0),
