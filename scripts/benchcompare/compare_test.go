@@ -47,7 +47,7 @@ func TestCompareWithoutTimeIsNotOK(t *testing.T) {
 func TestCompareNamesTheFailureOfABenchmark(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("sum/sum.go", sumCode)
-	r.write("sum/sum_test.go", strings.Replace(sumTest, "Add(n)\n", "if Add(n) > 9 {\n\t\t\tb.Fatal(\"too many\")\n\t\t}\n", 1))
+	r.write("sum/sum_test.go", strings.Replace(sumTest, "Add(n)\n", "if Add(n) > 10 {\n\t\t\tb.Fatal(\"too many\")\n\t\t}\n", 1))
 	r.write(configPath, driftLimits)
 	r.commit("start")
 	r.do("switch", "-q", "-c", "change")

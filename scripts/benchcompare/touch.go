@@ -133,8 +133,8 @@ func (c changes) uncovered(probes []probe) []string {
 	return lines
 }
 
-func (b *builder) probe(ctx context.Context, commit string, one bench, pkgs []string) probe {
-	p := probe{bench: one}
+func (b *builder) probe(ctx context.Context, commit string, one bench, pkgs []string) (p probe) {
+	p = probe{bench: one}
 	started := time.Now()
 	defer func() { p.took = time.Since(started) }()
 	binary, err := b.binary(ctx, commit, one.dir, "-cover", "-covermode=atomic", "-coverpkg="+strings.Join(pkgs, ","))

@@ -42,7 +42,7 @@ func (m meter) measure(ctx context.Context, order []bench) []*result {
 		results = append(results, r)
 		for r.rounds < m.want && r.problem == "" && ctx.Err() == nil {
 			fmt.Fprintf(m.progress, "[%d/%d] %s, run %d of %d\n", i+1, len(order), b, r.rounds+1, m.want)
-			r.round(ctx, m.run, exactly(b.name))
+			r.round(ctx, m.run, exactly(b.name), true)
 		}
 	}
 	for ctx.Err() == nil {
@@ -63,15 +63,15 @@ func (m meter) extraRounds(ctx context.Context, r *result) int {
 		if row.state == noisy && !rerun[row.name] {
 			rerun[row.name] = true
 			fmt.Fprintf(m.progress, "%s.%s needs more runs: %s\n", r.bench.dir, row.name, row.reason)
-			r.round(ctx, m.run, exactly(row.name))
+			r.round(ctx, m.run, exactly(row.name), false)
 		}
 	}
 	return len(rerun)
 }
 
-func (r *result) round(ctx context.Context, run runFunc, pattern string) {
+func (r *result) round(ctx context.Context, run runFunc, pattern string, whole bool) {
 	order := [2]side{base, head}
-	if r.rounds%2 == 1 {
+	if (r.rounds+r.extra)%2 == 1 {
 		order = [2]side{head, base}
 	}
 	var got [2]samples
@@ -80,8 +80,10 @@ func (r *result) round(ctx context.Context, run runFunc, pattern string) {
 		if ctx.Err() != nil {
 			return
 		}
-		if err != nil {
+		if err != nil && whole {
 			r.failed[s]++
+		}
+		if err != nil {
 			failure := fmt.Sprintf("it fails on %s: %v", s, err)
 			if len(out.names) == 0 {
 				r.problem = failure
@@ -93,7 +95,11 @@ func (r *result) round(ctx context.Context, run runFunc, pattern string) {
 	}
 	r.before.merge(got[base])
 	r.after.merge(got[head])
-	r.rounds++
+	if whole {
+		r.rounds++
+	} else {
+		r.extra++
+	}
 }
 
 func exactly(name string) string {

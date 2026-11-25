@@ -128,6 +128,9 @@ func TestCheckNeedsApproval(t *testing.T) {
 			r.write("list/list_test.go", replace(listBench, "app/testutil/lib", "app/testutil/other/lib"))
 			r.write(configPath, replace(benchConfig(strings.Repeat("0", 40), ""), fmt.Sprintf(`"list.BenchmarkList": "%040d"`, 0), ""))
 		}, "list.BenchmarkList: its workload changes"},
+		{"a build constraint on a benchmark file", func(r testRepo, _, _ string) {
+			r.write("other/other_test.go", "//go:build windows\n\n"+otherBench)
+		}, "other.BenchmarkOther: its workload changes"},
 		{"a benchmark that goes away", func(r testRepo, _, _ string) { r.do("rm", "-q", "other/other_test.go") }, "other.BenchmarkOther: the benchmark is gone"},
 		{"a shared folder that no longer counts", func(r testRepo, start, _ string) {
 			r.write(configPath, replace(benchConfig(start, ""), `["testutil"]`, `[]`))

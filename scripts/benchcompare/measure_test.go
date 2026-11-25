@@ -192,3 +192,33 @@ func TestLaterProblemIsTheReason(t *testing.T) {
 		assert.Contains(t, rows[0].reason, "one run takes too long")
 	})
 }
+
+func TestRerunsOfANoisyPartKeepTheFailuresOfTheWholeRuns(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		mixed := bench{"a", "BenchmarkMixed"}
+		m := fakeRunner{}.meter()
+		calls := 0
+		m.run = func(ctx context.Context, s side, _ bench, pattern string) (samples, error) {
+			calls++
+			select {
+			case <-ctx.Done():
+				return samples{}, ctx.Err()
+			case <-time.After(time.Second):
+			}
+			noisy := fmt.Sprintf("BenchmarkMixed/noisy 1 %d ns/op\n", time.Duration(1+calls%2)*time.Second)
+			if pattern != exactly(mixed.name) {
+				return readSamples([]byte(noisy), 1)
+			}
+			got, _ := readSamples([]byte(noisy), 1)
+			if s == head {
+				return got, errors.New("BenchmarkMixed/new fails")
+			}
+			return got, nil
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
+		defer cancel()
+		r := m.measure(ctx, []bench{mixed})[0]
+		assert.Greater(t, calls, 4*m.want)
+		assert.True(t, r.broken())
+	})
+}

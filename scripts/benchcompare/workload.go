@@ -78,6 +78,7 @@ func (w *workloads) fingerprint(ctx context.Context, b bench) (string, error) {
 	}
 	todo := []symbol{{b.dir, b.name}}
 	texts := map[string]bool{}
+	files := map[string][]string{}
 	seen := map[symbol]bool{}
 	for len(todo) > 0 {
 		next := todo[len(todo)-1]
@@ -97,6 +98,13 @@ func (w *workloads) fingerprint(ctx context.Context, b bench) (string, error) {
 		for _, d := range index[next.name] {
 			texts[next.dir+"\x00"+d.text] = true
 			todo = append(todo, w.references(next.dir, b.dir, d)...)
+			files[next.dir+"\x00"+d.file] = index.fileWide(d.file)
+		}
+	}
+	for place, lines := range files {
+		dir, _, _ := strings.Cut(place, "\x00")
+		for _, line := range lines {
+			texts[dir+"\x00"+line] = true
 		}
 	}
 	sum := sha256.New()

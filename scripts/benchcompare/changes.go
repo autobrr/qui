@@ -73,15 +73,24 @@ func changedCode(ctx context.Context, b *builder, baseCommit, headCommit string,
 	}
 	c.deps = head.testDeps(c.module)
 	c.units = append(c.units, head.changedAssets(files)...)
-	if !slices.Contains(files, "go.mod") && !slices.Contains(files, "go.sum") {
+	out, err = b.repo.git(ctx, "", "diff", "--no-ext-diff", "--no-renames", "--name-only", "-z", "--diff-filter=D", baseCommit, headCommit)
+	if err != nil {
+		return c, err
+	}
+	gone := slices.DeleteFunc(split(out, "\x00"), func(file string) bool { return strings.HasSuffix(file, ".go") })
+	modules := slices.Contains(files, "go.mod") || slices.Contains(files, "go.sum")
+	if len(gone) == 0 && !modules {
 		return c, nil
 	}
 	was, err := b.list(ctx, baseCommit, now.benches)
 	if err != nil {
 		return c, err
 	}
-	c.otherGo = was.goVersion != head.goVersion
-	c.units = append(c.units, changedModules(was, head)...)
+	c.units = append(c.units, was.changedAssets(gone)...)
+	if modules {
+		c.otherGo = was.goVersion != head.goVersion
+		c.units = append(c.units, changedModules(was, head)...)
+	}
 	return c, nil
 }
 
@@ -178,7 +187,11 @@ func (r repo) changedLines(ctx context.Context, baseCommit, headCommit string, u
 				return nil, err
 			}
 		}
-		if added := (span{from, from + count - 1}); count > 0 && added.overlaps(u.span) {
+		added := span{from, from + count - 1}
+		if count == 0 {
+			added = span{from, from + 1}
+		}
+		if added.overlaps(u.span) {
 			parts = append(parts, added)
 		}
 	}

@@ -14,12 +14,14 @@ import (
 )
 
 const (
-	sumCode = "package sum\n\nconst Step = 1\n\nfunc Setup() int { return 8 }\n\nfunc Add(n int) int {\n\tif n < 0 {\n\t\tn = -n\n\t}\n\treturn n + Step\n}\n\nfunc Other(n int) int { return n }\n"
+	sumCode = "package sum\n\nconst Step = 1\n\nfunc Setup() int { return 8 }\n\nfunc Add(n int) int {\n\tn++\n\tif n < 0 {\n\t\tn = -n\n\t}\n\treturn n + Step\n}\n\nfunc Other(n int) int { return n }\n"
 	sumTest = "package sum\n\nimport \"testing\"\n\nfunc BenchmarkAdd(b *testing.B) {\n\tn := Setup()\n\tfor b.Loop() {\n\t\tAdd(n)\n\t}\n}\n\nfunc BenchmarkOther(b *testing.B) {\n\tfor b.Loop() {\n\t\tOther(1)\n\t}\n}\n"
 	useTest = "package use\n\nimport (\n\t\"testing\"\n\n\t\"example.test/app/sum\"\n)\n\nfunc BenchmarkUse(b *testing.B) {\n\tfor b.Loop() {\n\t\tsum.Add(1)\n\t}\n}\n"
 	numCode = "package num\n\nfunc One() int { return 1 }\n"
 	numUser = "package sum\n\nimport \"example.test/app/num\"\n\nfunc Pick() int { return num.One() }\n"
 	kind    = "package sum\n\ntype Kind int\n\nfunc (Kind) String() string { return \"kind\" }\n\nfunc Gone() {}\n"
+	embCode = "package emb\n\nimport \"embed\"\n\n//go:embed data/*.txt\nvar data embed.FS\n\nfunc Count() int {\n\tfound, _ := data.ReadDir(\"data\")\n\treturn len(found)\n}\n"
+	embTest = "package emb\n\nimport \"testing\"\n\nfunc BenchmarkCount(b *testing.B) {\n\tfor b.Loop() {\n\t\tCount()\n\t}\n}\n"
 	farTest = "package far\n\nimport \"testing\"\n\nfunc BenchmarkFar(b *testing.B) {\n\tfor b.Loop() {\n\t}\n}\n"
 )
 
@@ -34,9 +36,13 @@ func TestSelectionFollowsTheChangedCode(t *testing.T) {
 		uncovered []string
 	}{
 		{"a function that two packages run", replace("return n + Step", "return n + Step + 1"), []string{"sum.BenchmarkAdd", "use.BenchmarkUse"}, nil},
-		{"a branch that no benchmark takes", replace("n = -n", "n = -n * 2"), nil, []string{"sum/sum.go: Add (9)"}},
+		{"a branch that no benchmark takes", replace("n = -n", "n = -n * 2"), nil, []string{"sum/sum.go: Add (10)"}},
 		{"code that runs only before the loop", replace("return 8", "return 9"), nil, []string{"sum/sum.go: Setup (5)"}},
 		{"a deleted line", replace("\tif n < 0 {\n\t\tn = -n\n\t}\n", ""), []string{"sum.BenchmarkAdd", "use.BenchmarkUse"}, nil},
+		{"a deleted line beside a changed branch", func(r testRepo) {
+			r.write("sum/sum.go", strings.NewReplacer("\tn++\n", "", "n = -n", "n = -n * 2").Replace(sumCode))
+		}, []string{"sum.BenchmarkAdd", "use.BenchmarkUse"}, []string{"sum/sum.go: Add (9)"}},
+		{"a deleted embedded file", func(r testRepo) { r.do("rm", "-q", "emb/data/b.txt") }, []string{"emb.BenchmarkCount"}, nil},
 		{"a constant", replace("Step = 1", "Step = 2"), []string{"sum.BenchmarkAdd", "sum.BenchmarkOther", "use.BenchmarkUse"}, nil},
 		{"a comment", replace("func Add", "// Add adds.\nfunc Add"), nil, nil},
 		{"a comment on its own line in a function", replace("\treturn n + Step", "\n\t// Step up.\n\treturn n + Step"), nil, nil},
@@ -62,7 +68,7 @@ func TestSelectionFollowsTheChangedCode(t *testing.T) {
 		{"the version of Go", func(r testRepo) {
 			r.write("go.mod", "module example.test/app\n\ngo 1.25\n")
 			r.write("lone/lone.go", "package lone\n\nfunc Lone() int { return 1 }\n")
-		}, []string{"far.BenchmarkFar", "sum.BenchmarkAdd", "sum.BenchmarkOther", "use.BenchmarkUse"}, []string{"lone/lone.go: Lone (3)"}},
+		}, []string{"emb.BenchmarkCount", "far.BenchmarkFar", "sum.BenchmarkAdd", "sum.BenchmarkOther", "use.BenchmarkUse"}, []string{"lone/lone.go: Lone (3)"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -77,6 +83,10 @@ func TestSelectionFollowsTheChangedCode(t *testing.T) {
 			r.write("sum/pick.go", numUser)
 			r.write("sum/kind.go", kind)
 			r.write("lone/old.go", "package lone\n")
+			r.write("emb/emb.go", embCode)
+			r.write("emb/emb_test.go", embTest)
+			r.write("emb/data/a.txt", "a\n")
+			r.write("emb/data/b.txt", "b\n")
 			r.write(configPath, "{"+defaultLimits+"}")
 			before := r.commit("start")
 			tt.change(r)

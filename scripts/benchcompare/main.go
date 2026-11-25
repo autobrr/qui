@@ -150,10 +150,7 @@ func (d driftReport) write(dir string) error {
 	for _, one := range d.skipped {
 		late.WriteString(one.String() + "\n")
 	}
-	files := map[string]string{"summary.md": d.summary, "skipped.txt": late.String()}
-	if d.issue != "" {
-		files["issue.md"] = d.issue
-	}
+	files := map[string]string{"summary.md": d.summary, "skipped.txt": late.String(), "issue.md": d.issue}
 	for _, name := range sortedKeys(files) {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(files[name]), 0o600); err != nil {
 			return err

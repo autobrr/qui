@@ -44,6 +44,7 @@ type result struct {
 	bench         bench
 	want          int
 	rounds        int
+	extra         int
 	before, after samples
 	problem       string
 	failure       string

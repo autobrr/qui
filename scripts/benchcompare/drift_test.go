@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -201,4 +202,13 @@ func TestDriftFailsWhenABenchmarkFailsOnlyNow(t *testing.T) {
 			assert.Equal(t, tt.broken, report.write(t.TempDir()) != nil)
 		})
 	}
+}
+
+func TestDriftWritesAnEmptyIssueWhenNothingIsLeftToReport(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, driftReport{issue: "a loss"}.write(dir))
+	require.NoError(t, driftReport{}.write(dir))
+	issue, err := os.ReadFile(filepath.Join(dir, "issue.md"))
+	require.NoError(t, err)
+	assert.Empty(t, issue)
 }

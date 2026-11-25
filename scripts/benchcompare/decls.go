@@ -70,6 +70,16 @@ func (index decls) addFileWide(name string, source []byte, file *ast.File, impor
 	}
 }
 
+func (index decls) fileWide(file string) []string {
+	var lines []string
+	for key, found := range index {
+		if slices.ContainsFunc(found, func(d decl) bool { _, wide := d.node.(*ast.Ident); return wide && d.file == file }) {
+			lines = append(lines, key)
+		}
+	}
+	return lines
+}
+
 func usedNames(node ast.Node) map[string]bool {
 	used := map[string]bool{}
 	ast.Inspect(node, func(node ast.Node) bool {
