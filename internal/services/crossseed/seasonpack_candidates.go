@@ -44,7 +44,11 @@ func (s *Service) seasonPackTorrents(ctx context.Context, prep *seasonPackPrep, 
 	}
 	found := lookup.candidates()
 	return func(instanceID int) (iter.Seq2[*qbt.Torrent, []string], error) {
-		return found[instanceID].withAlternateTitles(), nil
+		candidates := found[instanceID]
+		if prep.sonarrAnswers {
+			candidates.alternateTitles = nil
+		}
+		return candidates.withAlternateTitles(), nil
 	}
 }
 

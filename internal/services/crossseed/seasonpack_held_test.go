@@ -40,6 +40,8 @@ func packLibraries(t *testing.T) (first, second *heldLibrary, helper string) {
 			{Hash: heldHash('7', 2), Name: "Copper.Fjord.S01E03-E04.1080p.WEB.x264-GRP9", Size: packLocalFileSize, TotalSize: packLocalFileSize, Progress: 1, AddedOn: 1},
 		},
 		packTorrents('8', "[GRP9] Paper Lantern - %02d (1080p) [WEB][x264]", 1, 2),
+		packTorrents('9', "Ivory.Cove.II.S01E%02d.1080p.WEB.x264-GRP9", 1, 2, 3, 4),
+		packTorrents('a', "Golden.Reef.II.-.%02d.1080p.WEB.x264-GRP9", 15, 16),
 	), files)
 	second = serveHeldLibrary(t, slices.Concat(biglib.Torrents(50), packTorrents('1', packShowEpisode, 1, 2)), nil)
 	return first, second, helpers[0].Hash
@@ -89,6 +91,13 @@ func packParityCases(t *testing.T) []packParityCase {
 		{name: "alternate title with a torrent", pack: packAliased, torrent: packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4), sonarr: aliased, matched: packMatched{1: 4}, ready: true},
 		{name: "alternate title without a torrent", pack: packAliased, sonarr: aliased, matched: packMatched{1: 4}, ready: true},
 		{name: "alternate title without a total", pack: packAliased, sonarr: total(0, "Vinterhagen", "Winter Orchard"), matched: packMatched{1: 4}, ready: true},
+		{name: "alternate title of another season in Sonarr", pack: packAliased, torrent: packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4), sonarr: total(4)},
+		{name: "alternate title that Sonarr does not name", pack: packAliased, torrent: packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4), sonarr: total(4, "Vinterhagen")},
+		{name: "alternate title that Sonarr does not name and no total", pack: packAliased, sonarr: total(0, "Vinterhagen")},
+		{name: "show title of episodes of another season", pack: "Ivory.Cove.S01.1080p.WEB.x264-GRP9", sonarr: total(4, "Ivory Cove")},
+		{name: "show title of episodes of another season with a torrent", pack: "Ivory.Cove.S01.1080p.WEB.x264-GRP9", torrent: packOf(t, "Ivory.Cove.S01.1080p.WEB.x264-GRP9", "Ivory.Cove.S01E%02d.1080p.WEB.x264-GRP9", 1, 2, 3, 4), sonarr: total(4, "Ivory Cove")},
+		{name: "show title of seasonless episodes of another season", pack: "Golden.Reef.S03.1080p.WEB.x264-GRP9", sonarr: total(2, "Golden Reef")},
+		{name: "show title of seasonless episodes of another season with a torrent", pack: "Golden.Reef.S03.1080p.WEB.x264-GRP9", torrent: packOf(t, "Golden.Reef.S03.1080p.WEB.x264-GRP9", "Golden.Reef.-.%02d.1080p.WEB.x264-GRP9", 15, 16), sonarr: total(2, "Golden Reef")},
 		{name: "other season", pack: "Amber.Quay.S02.1080p.WEB.x264-GRP9", sonarr: total(4)},
 		{name: "other season with a torrent", pack: "Amber.Quay.S02.1080p.WEB.x264-GRP9", torrent: packOf(t, "Amber.Quay.S02.1080p.WEB.x264-GRP9", "Amber.Quay.S02E%02d.1080p.WEB.x264-GRP9", 1, 2)},
 		{name: "other group", pack: "Amber.Quay.S01.1080p.WEB.x264-OTHER", sonarr: total(4)},
@@ -102,7 +111,7 @@ func packParityCases(t *testing.T) []packParityCase {
 		{name: "nothing held with a total", pack: packNotHeld, sonarr: total(2), notHeld: true},
 		{name: "allowed difference: nothing held without a total", pack: packNotHeld, notHeld: true, fullScan: skipped},
 		{name: "allowed difference: known alternate title and Sonarr down", pack: packAliased, torrent: packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4), down: true, matched: packMatched{1: 4}, ready: true, fullScan: noMatch},
-		{name: "allowed difference: known alternate title that Sonarr does not name", pack: packAliased, torrent: packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4), sonarr: total(4, "Vinterhagen"), matched: packMatched{1: 4}, ready: true, fullScan: noMatch},
+		{name: "allowed difference: known alternate title of a show that Sonarr does not know", pack: packAliased, torrent: packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4), matched: packMatched{1: 4}, ready: true, fullScan: noMatch},
 	}
 }
 

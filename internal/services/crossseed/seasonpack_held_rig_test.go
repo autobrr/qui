@@ -115,7 +115,11 @@ func packOf(t *testing.T, name, filePattern string, episodes ...int) string {
 }
 
 func packAliasSource() *fakeAlternateTitles {
-	return &fakeAlternateTitles{titles: map[string][]string{"Winter Orchard": {"Vinterhagen"}}, cached: true}
+	return &fakeAlternateTitles{titles: map[string][]string{
+		"Winter Orchard": {"Vinterhagen"},
+		"Ivory Cove II":  {"Ivory Cove"},
+		"Golden Reef II": {"Golden Reef"},
+	}, cached: true}
 }
 
 func undecodableTorrent() string {
