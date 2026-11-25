@@ -65,8 +65,8 @@ func (l *heldLookup) answers(ctx context.Context) bool {
 	return l.titles.ready(ctx, l.targets)
 }
 
-func (l *heldLookup) holdsNothing(ctx context.Context) bool {
-	caughtUp := l.titles.alternates.caughtUp(string(releases.DetermineContentType(l.query.announced.release).ContentType))
+func (l *heldLookup) holdsNothing(ctx context.Context, contentType releases.ContentType) bool {
+	caughtUp := l.titles.alternates.caughtUp(string(contentType))
 	return caughtUp && l.answers(ctx) && len(l.candidates()) == 0
 }
 
