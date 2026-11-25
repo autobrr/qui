@@ -644,7 +644,7 @@ func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 
 			settings := models.DefaultCrossSeedAutomationSettings()
 			settings.SeasonPackEnabled = true
-			matched := svc.matchEpisodeCandidatesDetailed(listedTorrents(buildCrossInstanceViews(inst, []qbt.Torrent{seeded}), nil),
+			matched := svc.matchEpisodeCandidatesDetailed(buildCrossInstanceViews(inst, []qbt.Torrent{seeded}),
 				packName, &packRelease, packEpisodes, settings, nil)
 			require.Contains(t, matched, id)
 
