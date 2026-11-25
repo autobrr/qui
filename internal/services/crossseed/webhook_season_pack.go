@@ -52,7 +52,6 @@ func (s *Service) webhookSeasonPackApply(ctx context.Context, name string, reque
 	if len(instanceIDs) == 0 {
 		return response, nil
 	}
-	ctx = context.WithoutCancel(ctx)
 	result, err := s.applySeasonPack(ctx, seasonPackRequest{
 		name:        name,
 		torrentData: request.TorrentData,
