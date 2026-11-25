@@ -9,8 +9,6 @@ import (
 	"time"
 )
 
-// Kind identifies the category of a server activity event. The frontend maps
-// each kind to the react-query keys it should invalidate.
 type Kind string
 
 const (
@@ -37,8 +35,6 @@ type Event struct {
 	Timestamp  time.Time `json:"timestamp"`
 }
 
-// Publisher is the write side that background services depend on. Implementations
-// must return quickly and never block the caller.
 type Publisher interface {
 	Publish(ev Event)
 }
@@ -49,8 +45,6 @@ func (NopPublisher) Publish(Event) {}
 
 const subscriberBuffer = 64
 
-// Hub fans out published events to all current subscribers. The zero value is
-// not usable; construct with NewHub.
 type Hub struct {
 	mu          sync.Mutex
 	subscribers map[int]chan Event

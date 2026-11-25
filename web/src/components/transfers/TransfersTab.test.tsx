@@ -136,7 +136,6 @@ const buttonNames = (tr: HTMLElement) => within(tr).queryAllByRole("button").map
 async function openDetails(name: string): Promise<HTMLElement> {
   const tr = await rowOf(name)
   if (screenSize.phone) {
-    // A phone puts the row actions in a menu.
     fireEvent.pointerDown(within(tr).getByRole("button", { name: "More actions" }), { button: 0, ctrlKey: false })
     fireEvent.click(await screen.findByRole("menuitem", { name: "Details" }))
   } else {
@@ -147,13 +146,11 @@ async function openDetails(name: string): Promise<HTMLElement> {
   return dialog
 }
 
-/** Radix selects a tab on the press of the main button. */
 const openTab = (dialog: HTMLElement, name: RegExp) => fireEvent.mouseDown(within(dialog).getByRole("tab", { name }), { button: 0 })
 const selectedTab = (dialog: HTMLElement) => within(dialog).getByRole("tab", { selected: true }).textContent
 const selectionBar = () => screen.queryByRole("region", { name: "Selected rows" })
 const tick = async (name: string, shiftKey = false) => fireEvent.click(within(await rowOf(name)).getByRole("checkbox"), { shiftKey })
 
-/** Answers each bulk step with result, and records its body. */
 function answerBulk(result: { done: number; skipped: number; failed: number; reasons: string[] }) {
   server.use(http.post("*/api/transfers/bulk", async ({ request }) => {
     requests.push(`POST /api/transfers/bulk ${JSON.stringify(await request.json())}`)
@@ -172,16 +169,13 @@ describe("the Transfers tab", () => {
     expect(text).toContain("+2 cross-seeds")
     expect(text).toContain("seedbox → homelab")
     expect(text).toContain("Copy over SFTP")
-    // 512 MiB left at 1 MiB/s.
     expect(text).toContain("50% · 1 MiB/s · 8m left")
     expect(text).toContain("Copying")
     expect(text).toContain("By you")
     expect(buttonNames(tr)).toEqual(["Details", "Cancel"])
-    // The size has its own column, and the route names it too for a narrow table.
     expect(within(tr).getAllByText("1 GiB")).toHaveLength(2)
 
     const failedRow = await rowOf("Film.2019.2160p-ABC")
-    // A row with no recorded size names none.
     expect(within(failedRow).queryAllByText(/iB$/)).toEqual([])
     expect(failedRow.textContent).toContain("A file on the target does not match.")
     expect(failedRow.textContent).toContain("By rule Move old seeds")
@@ -191,7 +185,6 @@ describe("the Transfers tab", () => {
     const exportRow = await rowOf("Album.2020.FLAC-XYZ")
     expect(exportRow.textContent).toContain("Export")
     expect(exportRow.textContent).toContain("By a rule that is gone")
-    // An Export copies nothing, so the API sends an empty way and the row names none.
     expect(exportRow.textContent).not.toContain("Unknown way")
     expect(buttonNames(exportRow)).toEqual(["Details", "Remove"])
 
@@ -199,7 +192,6 @@ describe("the Transfers tab", () => {
     expect(retryRow.textContent).toMatch(/Retry in \d+ years?/)
     expect(buttonNames(retryRow)).toEqual(["Details", "Retry", "Cancel"])
 
-    // Each filter shows its label and its count; All counts every row.
     const filters = within(screen.getByRole("tablist", { name: "Show" })).getAllByRole("tab")
       .map(filter => Array.from(filter.childNodes, node => node.textContent))
     expect(filters).toEqual([["All", "4"], ["Active", "1"], ["Waiting", "0"], ["Finished", "1"], ["Failed", "2"]])
@@ -222,7 +214,6 @@ describe("the Transfers tab", () => {
         row({ id: 1000 - offset - i, hash: `h${offset + i}`, name: `Built.Show.E${offset + i + 1}.1080p-GRP` }))
       return HttpResponse.json({ rows, counts: long })
     }))
-    // jsdom has no layout, so it has no scrollIntoView.
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
     try {
@@ -245,7 +236,6 @@ describe("the Transfers tab", () => {
       expect(within(pages).getByText("11–12 of 12")).toBeTruthy()
       expect(next.hasAttribute("disabled")).toBe(true)
 
-      // Another filter starts on its first page.
       fireEvent.mouseDown(screen.getByRole("tab", { name: /^Waiting/ }), { button: 0 })
       await waitFor(() => expect(requests).toContain("GET /api/transfers?limit=5&offset=0&filter=waiting"))
       expect(await within(pages).findByText("1–5 of 12")).toBeTruthy()
@@ -306,7 +296,6 @@ describe("the Transfers tab", () => {
       http.post("*/api/transfers/:id/cancel", async ({ params }) => {
         requests.push(`POST /api/transfers/${params.id}/cancel`)
         await answered
-        // As qui's server sends it: no body, and a length of 0.
         return new HttpResponse(null, { status: 202, headers: { "Content-Length": "0" } })
       }),
       http.delete("*/api/transfers/:id", async ({ params }) => {
@@ -355,7 +344,6 @@ describe("the Transfers tab", () => {
     await tick("Film.2019.2160p-ABC")
     const bar = selectionBar()!
     expect(within(bar).getByText("2 selected")).toBeTruthy()
-    // The copying row can be cancelled, and the failed row can run again or go.
     expect(within(bar).getAllByRole("button").map(button => button.textContent)).toEqual(["Retry", "Cancel", "Remove", "Clear selection"])
     expect((await rowOf("Show.S01.1080p-GRP")).getAttribute("data-state")).toBe("selected")
 
@@ -367,7 +355,6 @@ describe("the Transfers tab", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("qui cancels 1 row.", { description: "1 row stays as it was: the action does not apply to it." }))
     await waitFor(() => expect(selectionBar()).toBeNull())
 
-    // The export run ended, so it can only go.
     await tick("Album.2020.FLAC-XYZ")
     expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Remove", "Clear selection"])
     fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Remove" }))
@@ -471,12 +458,10 @@ describe("the Transfers tab", () => {
       return HttpResponse.json({ rows, counts: long })
     }))
     answerBulk({ done: 10, skipped: 1, failed: 1, reasons: [] })
-    // jsdom has no layout, so it has no scrollIntoView.
     Element.prototype.scrollIntoView = vi.fn()
     try {
       renderTab(5)
       await tick("Built.Show.E2.1080p-GRP")
-      // A new page starts with no pick.
       fireEvent.click(within(screen.getByRole("navigation", { name: "Pages of the list" })).getByRole("button", { name: "Next" }))
       await screen.findByText("Built.Show.E6.1080p-GRP")
       expect(selectionBar()).toBeNull()
@@ -488,15 +473,12 @@ describe("the Transfers tab", () => {
       expect(within(selectionBar()!).getByText("All 12 selected")).toBeTruthy()
       expect(pageBox.getAttribute("data-state")).toBe("checked")
 
-      // A tick off one row keeps the other rows of this page.
       await tick("Built.Show.E7.1080p-GRP")
       expect(within(selectionBar()!).getByText("4 selected")).toBeTruthy()
       expect(pageBox.getAttribute("data-state")).toBe("indeterminate")
       fireEvent.click(pageBox)
       fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Select all 12" }))
 
-      // The All chip offers Cancel and Remove, because the page does not know the rows of the other pages. The server
-      // skips each row that a step does not fit. A retry plans each Transfer again, so it takes picked rows only.
       expect(within(selectionBar()!).getAllByRole("button").map(button => button.textContent)).toEqual(["Cancel", "Remove", "Clear selection"])
       fireEvent.click(within(selectionBar()!).getByRole("button", { name: "Cancel" }))
       const ask = await screen.findByRole("alertdialog")
@@ -562,7 +544,6 @@ describe("the Transfers tab", () => {
     }))
     renderTab()
     await tick("Film.2019.2160p-ABC")
-    // A Retry refreshes the list, and a new row comes in at the top.
     newest = true
     fireEvent.click(within(await rowOf("Doc.2018.720p-QRS")).getByRole("button", { name: "Retry" }))
     await rowOf("New.2021.1080p-NEW")
@@ -646,7 +627,6 @@ describe("the Transfers tab", () => {
     const dialog = await openDetails("Film.2019.2160p-ABC")
     expect(within(dialog).getByRole("tabpanel").textContent).toContain("Size4 GiB")
     openTab(dialog, /^Steps/)
-    // The time of day follows the time zone of the machine, and the day is the same in each zone of the test.
     const clocks = Array.from(within(dialog).getByRole("tabpanel").querySelectorAll("time"), time => time.textContent)
     expect(clocks).toEqual([expect.stringMatching(/^2026-11-15 · \d\d:\d\d:00$/), expect.stringMatching(/^2026-11-17 · \d\d:\d\d:07$/)])
     openTab(dialog, /^Log/)
@@ -661,7 +641,6 @@ describe("the Transfers tab", () => {
     expect(within(dialog).queryByRole("status")).toBeNull()
     server.use(http.get("*/api/transfers/:id", () => HttpResponse.json({ error: "qui does not answer." }, { status: 503 })))
     try {
-      // A return to the window refreshes the details.
       act(() => {
         focusManager.setFocused(false)
         focusManager.setFocused(true)
@@ -728,7 +707,6 @@ describe("the Transfers tab", () => {
     await within(dialog).findByText(getLinuxIsoName("aaaa"))
     let text = within(dialog).getByRole("tabpanel").textContent ?? ""
     expect(text).toContain("Hidden in incognito mode")
-    // The dialog renders the open tab only, so each tab gets its own look for the real values.
     const real = ["Film.2019.2160p-ABC", "/srv/movies", "A file on the target does not match.", "Passing 70 B", "movies-private", "tracker-tag"]
     const expectNoRealValue = () => {
       const all = dialog.textContent ?? ""

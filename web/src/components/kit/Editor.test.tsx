@@ -32,7 +32,6 @@ describe("Editor", () => {
 
     expect(screen.getAllByRole("form", { hidden: true }).map((form) => form.getAttribute("aria-label"))).toEqual(["inner"])
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull()
-    // The footer button, not the X in the corner.
     fireEvent.click(screen.getAllByRole("button", { name: "Close" }).find((button) => button.dataset.slot !== "dialog-close")!)
 
     expect(onOpenChange).toHaveBeenCalledWith(false)

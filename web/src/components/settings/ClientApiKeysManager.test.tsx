@@ -14,7 +14,6 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
 import { server } from "@/test/msw/server"
 
-// jsdom cannot open the Radix select, so the test drives a native select.
 vi.mock("@/components/ui/select", () => ({
   Select: ({ value, onValueChange, children }: { value: string; onValueChange: (value: string) => void; children: ReactNode }) => (
     <select aria-label="instance" value={value} onChange={(e: ChangeEvent<HTMLSelectElement>) => onValueChange(e.target.value)}>
@@ -44,7 +43,6 @@ function renderManager() {
 describe("ClientApiKeysManager", () => {
   // regression: #4233
   it("lets the user create the first key when the server sends no list", async () => {
-    // The server sends null, not an empty list, when no key exists.
     server.use(
       http.get("*/api/client-api-keys", () => HttpResponse.json(null)),
       http.get("*/api/instances", () => HttpResponse.json([]))

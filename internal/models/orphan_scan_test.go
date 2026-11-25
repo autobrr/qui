@@ -109,7 +109,6 @@ func runFilesystemModeRoundTrip(t *testing.T, newDB func(testing.TB, string) *da
 			r, err := store.GetMostRecentActiveRun(ctx, instance.ID)
 			return []*models.OrphanScanRun{r}, err
 		},
-		// ListRuns reads both the recent and the active query.
 		"ListRuns": func() ([]*models.OrphanScanRun, error) { return store.ListRuns(ctx, instance.ID, 10) },
 	}
 	for name, read := range reads {
@@ -134,7 +133,6 @@ func TestOrphanScanStore_LegacyRunsBackfillAsLocalPostgresIntegration(t *testing
 	runLegacyRunBackfill(t, testdb.NewMigratedPostgres)
 }
 
-// runLegacyRunBackfill writes a run the way code from before the column did.
 func runLegacyRunBackfill(t *testing.T, newDB func(testing.TB, string) *database.DB) {
 	t.Helper()
 	ctx := t.Context()
@@ -239,7 +237,6 @@ func runRemotePreviewReplacement(t *testing.T, newDB func(testing.TB, string) *d
 		require.Equal(t, "pending", status(runID))
 	})
 
-	// A remote preview that read every identity can be confirmed, so it blocks like a local one.
 	t.Run("remote preview with complete identity blocks", func(t *testing.T) {
 		instanceID := newInstance()
 		old := previewWithIdentity(instanceID, models.FilesystemModeRemote, true)
@@ -361,7 +358,6 @@ func runLastFinishedScan(t *testing.T, newDB func(testing.TB, string) *database.
 	insert("scanning", "2026-01-05 00:00:00", nil)
 	require.Equal(t, preview, lastID(), "unfinished, failed and canceled runs do not pace the schedule")
 
-	// A deletion that finished after a later preview started is the newer result.
 	late := insert("completed", "2026-01-01 12:00:00", "2026-01-02 06:00:00")
 	require.Equal(t, late, lastID())
 }
@@ -375,7 +371,6 @@ func TestOrphanScanStore_RemotePreviewRunIDsPostgresIntegration(t *testing.T) {
 	runRemotePreviewRunIDs(t, testdb.NewMigratedPostgres)
 }
 
-// Only the instance's remote runs that are still a preview are listed.
 func runRemotePreviewRunIDs(t *testing.T, newDB func(testing.TB, string) *database.DB) {
 	t.Helper()
 	ctx := t.Context()
@@ -388,7 +383,6 @@ func runRemotePreviewRunIDs(t *testing.T, newDB func(testing.TB, string) *databa
 	require.NoError(t, err)
 	store := models.NewOrphanScanStore(db)
 
-	// files_found stays 0, so none of these blocks the next one.
 	insert := func(instanceID int, mode models.FilesystemMode, status string) int64 {
 		t.Helper()
 		id, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
@@ -399,7 +393,6 @@ func runRemotePreviewRunIDs(t *testing.T, newDB func(testing.TB, string) *databa
 	}
 	want := insert(instance.ID, models.FilesystemModeRemote, "preview_ready")
 	insert(instance.ID, models.FilesystemModeLocal, "preview_ready")
-	// Last, since a deletion blocks the instance's next run.
 	insert(instance.ID, models.FilesystemModeRemote, "deleting")
 	insert(other.ID, models.FilesystemModeRemote, "preview_ready")
 

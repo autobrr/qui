@@ -124,8 +124,6 @@ export const TagEditorDialog = memo(function TagEditorDialog({
     excludeHashes: selectionRequest?.excludeHashes ?? [],
     excludeTargets: selectionRequest?.excludeTargets ?? [],
   }), [selectionRequest])
-  // Keyed on the contents: the torrent list rebuilds the request arrays on each
-  // stream update, and a new reference must not restart the tag read.
   const selectionRequestSnapshot = useMemo(() => ({
     instanceId: selectionRequest?.instanceId ?? -1,
     instanceIds: selectionRequest?.instanceIds,
@@ -139,8 +137,6 @@ export const TagEditorDialog = memo(function TagEditorDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [selectionRequestKey])
   const requiresRemoteBaseline = hashCount > selectedTorrents.length
-  // The remote read gives the tags when the selection goes past the loaded rows,
-  // so a live sort or tag change on those rows must not restart it.
   const selectedTorrentTagsKey = useMemo(
     () => JSON.stringify(requiresRemoteBaseline ? [] : selectedTorrents.map(torrent => torrent.tags)),
     [requiresRemoteBaseline, selectedTorrents]
@@ -542,14 +538,12 @@ export const SetLocationDialog = memo(function SetLocationDialog({
   const inputRef = useRef<HTMLInputElement>(null)
   const effectiveInputRef = supportsPathAutocomplete ? autocompleteInputRef : inputRef
 
-  // Initialize location only when dialog transitions from closed to open
   useEffect(() => {
     if (open && !wasOpen.current) {
       setLocation(initialLocation)
       if (supportsPathAutocomplete) {
         handleAutocompleteChange(initialLocation)
       }
-      // Focus the input when dialog opens
       setTimeout(() => effectiveInputRef.current?.focus(), 0)
     }
     wasOpen.current = open
@@ -876,7 +870,6 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
   const [newName, setNewName] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Parse the initial path into folder and filename
   const { folderPath, fileName } = useMemo(() => {
     if (!initialPath) return { folderPath: "", fileName: "" }
     const lastSlash = initialPath.lastIndexOf("/")
@@ -887,24 +880,18 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
     }
   }, [initialPath])
 
-  // Check if file exists in the list
   const fileExists = useMemo(() => {
     return initialPath ? files.some(f => f.name === initialPath) : false
   }, [files, initialPath])
 
-  // Initialize newName when dialog opens or path changes
   useEffect(() => {
     if (open && fileName) {
       setNewName(fileName)
-      // Focus and select the filename (without extension) after a brief delay
       setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus()
           const dotIndex = fileName.lastIndexOf(".")
           if (dotIndex > 0) {
-            // "backward" puts the caret at the start: engines that scroll the
-            // caret into view show the start of the name instead of stopping
-            // just before the extension, which read as select-all (#2107)
             inputRef.current.setSelectionRange(0, dotIndex, "backward")
           } else {
             inputRef.current.select()
@@ -956,7 +943,6 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
             </div>
           ) : (
             <>
-              {/* Current path display */}
               {folderPath && (
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">{t("dialogs.renameFile.location")}</Label>
@@ -966,7 +952,6 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
                 </div>
               )}
 
-              {/* New name input */}
               <div className="space-y-1.5">
                 <Label htmlFor="fileName">{t("dialogs.renameFile.fileName")}</Label>
                 <Input
@@ -1034,7 +1019,6 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     return folders.slice().sort((a, b) => a.name.localeCompare(b.name))
   }, [folders])
 
-  // Parse the selected path into parent and folder name
   const { parentPath, folderName } = useMemo(() => {
     const path = selectedPath || initialPath || ""
     if (!path) return { parentPath: "", folderName: "" }
@@ -1046,13 +1030,11 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     }
   }, [selectedPath, initialPath])
 
-  // Check if folder exists
   const folderExists = useMemo(() => {
     const path = selectedPath || initialPath
     return path ? folders.some(f => f.name === path) : false
   }, [folders, selectedPath, initialPath])
 
-  // Initialize when dialog opens
   useEffect(() => {
     if (open) {
       const path = initialPath || sortedFolders[0]?.name || ""
@@ -1103,7 +1085,6 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     onOpenChange(nextOpen)
   }, [onOpenChange])
 
-  // If we have an initialPath, show simplified UI. Otherwise show folder selector.
   const showFolderSelector = !initialPath && sortedFolders.length > 1
 
   return (
@@ -1124,7 +1105,6 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
             </div>
           ) : (
             <>
-              {/* Folder selector - only if no initialPath and multiple folders */}
               {showFolderSelector && (
                 <div className="space-y-1.5">
                   <Label htmlFor="folderSelect">{t("dialogs.renameFolder.selectFolder")}</Label>
@@ -1143,7 +1123,6 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
                 </div>
               )}
 
-              {/* Parent path display */}
               {parentPath && (
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">{t("dialogs.renameFolder.location")}</Label>
@@ -1153,7 +1132,6 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
                 </div>
               )}
 
-              {/* New name input */}
               <div className="space-y-1.5">
                 <Label htmlFor="folderName">{t("dialogs.renameFolder.folderName")}</Label>
                 <Input
@@ -1218,9 +1196,6 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   const availableCategoryCount = Object.keys(availableCategories || {}).length
   const dialogCategoryCount = Object.keys(dialogCategories).length
 
-  // Freeze the category list while the dialog is open so background table refreshes
-  // do not reshuffle the scroll container. If the dialog opened before categories
-  // finished loading, hydrate exactly once when the first non-empty list arrives.
   useEffect(() => {
     if (open && !wasOpen.current) {
       setChoice({ source: "list", category: initialCategory })
@@ -1249,7 +1224,6 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
     onOpenChange(false)
   }, [onOpenChange])
 
-  // Filter categories based on search, with subcategory support
   const categoryList = useMemo(() => Object.keys(dialogCategories).sort(), [dialogCategories])
 
   const filteredCategories = useMemo(() => {
@@ -1324,7 +1298,6 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
-          {/* Search bar for categories */}
           <div className={showSearch ? "space-y-2" : "hidden"} aria-hidden={!showSearch}>
             {showSearch && (
               <>
@@ -1339,7 +1312,6 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
             )}
           </div>
 
-          {/* Category list with optional virtualization */}
           <div className="space-y-2">
             <Label>{t("dialogs.setCategory.selectCategory")}</Label>
             <div
@@ -1355,7 +1327,6 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                 </div>
               ) : (
                 <>
-                  {/* No category option */}
                   <button
                     type="button"
                     onClick={() => setChoice({ source: "list", category: "" })}
@@ -1400,7 +1371,6 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
             </div>
           </div>
 
-          {/* Option to enter new category */}
           <div className="space-y-2">
             <Label htmlFor="newCategory">{t("dialogs.setCategory.createNew")}</Label>
             <Input
@@ -1449,7 +1419,6 @@ export const CreateAndAssignCategoryDialog = memo(function CreateAndAssignCatego
   const [categoryName, setCategoryName] = useState("")
   const wasOpen = useRef(false)
 
-  // Reset when dialog opens
   useEffect(() => {
     if (open && !wasOpen.current) {
       setCategoryName("")
@@ -1508,6 +1477,21 @@ export const CreateAndAssignCategoryDialog = memo(function CreateAndAssignCatego
 })
 
 
+function isHttpsVersionOf(candidateURL: string, url: string): boolean {
+  if (!candidateURL.startsWith("https://")) return false
+  try {
+    const candidate = new URL(candidateURL)
+    const parsed = new URL(url)
+    return (
+      candidate.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+      candidate.pathname === parsed.pathname &&
+      candidate.search === parsed.search
+    )
+  } catch {
+    return false
+  }
+}
+
 interface EditTrackerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1540,10 +1524,8 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   const [newURL, setNewURL] = useState("")
   const wasOpen = useRef(false)
 
-  // Initialize URLs when dialog opens
   useEffect(() => {
     if (open && !wasOpen.current) {
-      // Set the first tracker URL if available, otherwise clear
       if (trackerURLs && trackerURLs.length > 0) {
         setOldURL(trackerURLs[0])
       } else {
@@ -1554,39 +1536,16 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
     wasOpen.current = open
   }, [open, tracker, trackerURLs])
 
-  // Update oldURL selection when trackerURLs refresh (e.g., after HTTP→HTTPS conversion)
-  // If the selected URL was converted, try to select its https equivalent or first available
   useEffect(() => {
     if (!open || !oldURL) return
-    // If current selection still exists, keep it
     if (trackerURLs.includes(oldURL)) return
-    // If it was an http:// URL, try to find its https:// equivalent by matching hostname/pathname
     if (oldURL.startsWith("http://")) {
-      try {
-        const parsed = new URL(oldURL)
-        // Find an HTTPS URL with matching hostname and pathname (port may differ)
-        const httpsMatch = trackerURLs.find((url) => {
-          if (!url.startsWith("https://")) return false
-          try {
-            const candidate = new URL(url)
-            return (
-              candidate.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
-              candidate.pathname === parsed.pathname &&
-              candidate.search === parsed.search
-            )
-          } catch {
-            return false
-          }
-        })
-        if (httpsMatch) {
-          setOldURL(httpsMatch)
-          return
-        }
-      } catch {
-        // Parsing failed, fall through to fallback
+      const httpsMatch = trackerURLs.find((url) => isHttpsVersionOf(url, oldURL))
+      if (httpsMatch) {
+        setOldURL(httpsMatch)
+        return
       }
     }
-    // Fall back to first available URL
     if (trackerURLs.length > 0) {
       setOldURL(trackerURLs[0])
     }
@@ -1607,9 +1566,8 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   }, [onOpenChange])
 
   const hashCount = selectedHashes.length
-  const isFilteredMode = hashCount === 0 // When no hashes provided, we're updating all torrents with this tracker
+  const isFilteredMode = hashCount === 0
 
-  // Check if there are any HTTP URLs that could be converted to HTTPS
   const hasHttpUrls = useMemo(
     () => trackerURLs.some((url) => url.startsWith("http://")),
     [trackerURLs]
@@ -1748,7 +1706,6 @@ interface LimitSheetProps {
   children: ReactNode
 }
 
-// Phone layout of the limit dialogs: a bottom sheet whose body scrolls under a fixed Cancel and Apply row.
 function LimitSheet({ open, onOpenChange, title, description, headerAction, unresolvedMessage, cancelLabel, confirmLabel, confirmDisabled, onConfirm, children }: LimitSheetProps) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -1780,7 +1737,6 @@ interface ShareLimitDialogProps {
   torrents?: TorrentLimitSnapshot[]
   onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
   isPending?: boolean
-  // The instances that the action reaches, from actionTargetInstanceIds. Undefined means every active instance.
   instanceIds: number[] | undefined
 }
 
@@ -1794,7 +1750,6 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   instanceIds,
 }: ShareLimitDialogProps) {
   const { t } = useTranslation("torrents")
-  // The selection bar mounts this closed dialog on each select-all: read capabilities only while it is open.
   const capabilityInstanceIds = open ? instanceIds : []
   const supportsShareLimitsAction = useInstancesSupport(capabilityInstanceIds, "supportsShareLimitsAction")
   const supportsShareLimitsMode = useInstancesSupport(capabilityInstanceIds, "supportsShareLimitsMode")
@@ -1955,14 +1910,12 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="py-2 space-y-4">
-          {/* Quick action: Set all to global */}
           <div className="flex justify-end">
             <Button variant="outline" size="sm" onClick={setAllGlobal}>
               {t("dialogs.shareLimit.setAllGlobal")}
             </Button>
           </div>
 
-          {/* Ratio limit */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">{t("dialogs.shareLimit.ratioLimit")}</Label>
@@ -2002,7 +1955,6 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
             )}
           </div>
 
-          {/* Seeding time limit */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">{t("dialogs.shareLimit.seedingTimeLimit")}</Label>
@@ -2041,7 +1993,6 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
             )}
           </div>
 
-          {/* Inactive seeding time limit */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">{t("dialogs.shareLimit.inactiveSeedingLimit")}</Label>

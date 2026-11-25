@@ -8,17 +8,10 @@ import type { TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { combineFilterExpr } from "@/lib/torrent-filters"
 import type { CrossInstanceTorrent, Torrent, TorrentFilters } from "@/types"
 
-// The torrent list selection, shared by the desktop table and the mobile cards.
-// Keys come from getSelectionIdentity. ADR 0026 records why the reducer never
-// prunes a key that is no longer visible.
-
 export interface TorrentSelectionState {
   isAllSelected: boolean
-  // Ticked keys outside Select all mode.
   selected: ReadonlySet<string>
-  // Exclusions: keys the user unticked in Select all mode.
   excluded: ReadonlySet<string>
-  // The instance, instance subset, filters, search, and layout that the selection belongs to.
   scope: string
 }
 
@@ -66,10 +59,6 @@ export function selectionReducer(state: TorrentSelectionState, event: TorrentSel
   }
 }
 
-// The sort is not part of the scope: a sort change keeps the selection.
-// instanceIds is the instance subset of the Unified view. The layout is part of
-// the scope because the mobile cards ignore column filters and keep their own
-// search, so a select-all request from the other layout would reach other torrents.
 export function selectionScope(
   instanceId: number,
   instanceIds: number[] | undefined,
@@ -89,13 +78,10 @@ export function isKeySelected(state: TorrentSelectionState, key: string): boolea
   return state.isAllSelected ? !state.excluded.has(key) : state.selected.has(key)
 }
 
-// Stale keys count too, so the number can be off by them. It is display only.
 export function selectionCount(state: TorrentSelectionState, totalCount: number): number {
   return state.isAllSelected ? Math.max(0, totalCount - state.excluded.size) : state.selected.size
 }
 
-// rowKeys are the keys of the loaded rows. A tick can belong to a row that is
-// not loaded, so the ticks count alone cannot tell whether every row is ticked.
 export function selectAllCheckboxFlags(state: TorrentSelectionState, rowKeys: string[]) {
   if (state.isAllSelected) {
     return { checked: state.excluded.size === 0, indeterminate: state.excluded.size > 0 }
@@ -104,18 +90,14 @@ export function selectAllCheckboxFlags(state: TorrentSelectionState, rowKeys: st
   return { checked, indeterminate: state.selected.size > 0 && !checked }
 }
 
-// Desktop header checkbox: if anything is selected, clear. Otherwise, select all.
 export function headerCheckboxEvent(state: TorrentSelectionState): TorrentSelectionEvent {
   return hasSelection(state) ? { type: "clear" } : { type: "selectAll" }
 }
 
-// Mobile "Select all" button: if everything is selected, clear. Otherwise, select all.
-// The button shows only when something is selected, so the header rule would make it a clear button.
 export function selectAllButtonEvent(state: TorrentSelectionState, totalCount: number): TorrentSelectionEvent {
   return selectionCount(state, totalCount) === totalCount ? { type: "clear" } : { type: "selectAll" }
 }
 
-// The hash, or `instanceId:hash` when the view spans instances.
 export function getSelectionIdentity(torrent: Torrent, isCrossInstance: boolean, instanceId: number): string {
   if (!isCrossInstance) {
     return torrent.hash
@@ -126,10 +108,6 @@ export function getSelectionIdentity(torrent: Torrent, isCrossInstance: boolean,
   return `${resolvedInstanceId}:${torrent.hash}`
 }
 
-// Keeps the last row seen for each tick in cache and returns the ticked rows.
-// A sort, or a live value such as speed in the sort key, can move a ticked
-// torrent past the loaded rows. An action that needs the row, such as an
-// export, must still reach it.
 export function rememberTickedTorrents(
   cache: Map<string, Torrent>,
   selectedKeys: ReadonlySet<string>,
@@ -150,7 +128,6 @@ export function rememberTickedTorrents(
   return [...cache.values()]
 }
 
-// The request targets for selection keys, so a key reaches its torrent when the row is not loaded.
 function selectionKeyTargets(keys: Iterable<string>, isCrossInstance: boolean, instanceId: number): TorrentActionTarget[] {
   const targets: TorrentActionTarget[] = []
   for (const key of keys) {
@@ -168,22 +145,15 @@ function selectionKeyTargets(keys: Iterable<string>, isCrossInstance: boolean, i
   return targets
 }
 
-// What a selection reaches beyond the bulk action itself.
 export interface ActionTargetScope {
   instanceId: number
-  // The instance subset of the Unified view.
   instanceIds?: number[]
-  // The Sidebar filters.
   filters: TorrentFilters
-  // Null on the mobile cards, which have no Column filters. inBrowser is set in
-  // cross-seed filter mode, where the table and not the backend applies them.
   columnFilters: { expr: string | null; inBrowser: boolean } | null
   search: string
-  // True when the request goes to the cross-instance endpoint: the Unified view and cross-seed filter mode.
   isCrossInstance: boolean
 }
 
-// The select-all part of an Action target: one form of Exclusions for each scope.
 export interface SelectAllTarget {
   filters: TorrentFilters
   search: string
@@ -192,18 +162,13 @@ export interface SelectAllTarget {
   excludeTargets?: TorrentActionTarget[]
 }
 
-// What one bulk action reaches (ADR 0034). count is the number that the user
-// sees. previewTorrents are the loaded torrents in the selection, for the
-// delete dialog and the cross-seed warning.
 export type ActionTarget = { count: number; previewTorrents: Torrent[] } & (
-  // Plain hashes on one instance. On the cross-instance endpoint, instance-and-hash pairs and never a bare hash.
   | { kind: "ticks"; hashes: string[]; targets?: TorrentActionTarget[] }
   | { kind: "selectAll"; selectAll: SelectAllTarget }
 )
 
 export const EMPTY_ACTION_TARGET: ActionTarget = { kind: "ticks", hashes: [], count: 0, previewTorrents: [] }
 
-// rows.loaded are the rows that the layout shows, rows.ticked the rows it remembers for each tick.
 export function buildActionTarget(
   selection: TorrentSelectionState,
   scope: ActionTargetScope,
@@ -225,24 +190,15 @@ export function buildActionTarget(
   return {
     kind: "selectAll",
     selectAll: {
-      // The Column filters AND the filter expression (ADR 0010).
       filters: columnFilters ? { ...scope.filters, expr: combineFilterExpr(columnFilters.expr, scope.filters.expr) ?? "" } : scope.filters,
       search: scope.search,
       ...(isCrossInstance ? { instanceIds: scope.instanceIds, excludeTargets: excluded } : { excludeHashes: excluded.map(target => target.hash) }),
     },
-    // The backend total does not know a Column filter that applies in the browser.
-    // ponytail: counts loaded rows only, so a cross-seed set past one page
-    // (300) under-reports; a cross-seed expression is one torrent's siblings.
     count: columnFilters?.inBrowser ? previewTorrents.length : Math.max(0, rows.totalCount - selection.excluded.size),
     previewTorrents,
   }
 }
 
-// The instances that an action on the target reaches. Ticked rows with targets
-// reach their own instances: the cross-seed filter lists other instances also
-// on a single-instance page, and Export follows each row. Any other target on a
-// single instance reaches that instance. In the Unified view a select-all
-// reaches the instance subset, and undefined means every active instance.
 export function actionTargetInstanceIds(target: ActionTarget, instanceId: number): number[] | undefined {
   if (target.kind === "ticks" && target.targets?.length) {
     return [...new Set(target.targets.map(t => t.instanceId))]
@@ -256,7 +212,6 @@ export function actionTargetInstanceIds(target: ActionTarget, instanceId: number
   return []
 }
 
-// The request fields of an Action target, for a bulk action and the tag editor baseline.
 export function actionTargetRequest(target: ActionTarget) {
   if (target.kind === "selectAll") {
     return { hashes: [], selectAll: true, ...target.selectAll }

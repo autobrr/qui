@@ -22,9 +22,6 @@ func TestTheFirstReadingAfterARestartKeepsTheTrackerGroup(t *testing.T) {
 	customizations := models.NewTrackerCustomizationStore(db)
 	start := time.Date(2026, 11, 10, 10, 0, 30, 0, time.UTC)
 
-	// A private torrent on three domains of one tracker, with the primary
-	// tracker on the last domain in sort order. Before the restart, the tracker
-	// mapping holds the torrent.
 	const hash = "aaaa000000000000000000000000000000000002"
 	module := New(db, customizations, systemnotice.New(nil))
 	before := Torrent{

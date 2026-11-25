@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// writeStubActions maps the write endpoints these tests read to the action they belong to.
 var writeStubActions = map[string]string{
 	"torrents/setLocation": "move",
 	"torrents/setCategory": "category",
@@ -27,7 +26,6 @@ var writeStubActions = map[string]string{
 	"torrents/delete":      "delete",
 }
 
-// writtenHashes returns the hashes of every write to a writeStubActions endpoint, by action.
 func (s *stubQbt) writtenHashes() map[string][]string {
 	out := make(map[string][]string)
 	for _, write := range s.recordedWrites() {
@@ -41,7 +39,6 @@ func (s *stubQbt) writtenHashes() map[string][]string {
 	return out
 }
 
-// filesDeleted returns the hashes of each delete that also removed the files.
 func (s *stubQbt) filesDeleted() []string {
 	var out []string
 	for _, write := range s.recordedWrites() {
@@ -56,8 +53,6 @@ type stubTorrent struct {
 	hash, name, tags, tracker string
 }
 
-// newWriteStubService serves the torrents from one save path, each with its own single file.
-// Torrents that share a name share a content path and a file list, so they are cross-seeds.
 func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *stubQbt) {
 	t.Helper()
 	stub, sharing := newWriteStub(t, torrents)
@@ -65,7 +60,6 @@ func newWriteStubService(t *testing.T, torrents []stubTorrent) (*Service, int, *
 	return svc, instanceIDs[0], stub
 }
 
-// newWriteStub returns the stub of newWriteStubService and the torrents that share files.
 func newWriteStub(t *testing.T, torrents []stubTorrent) (*stubQbt, map[string][]string) {
 	t.Helper()
 
@@ -81,7 +75,6 @@ func newWriteStub(t *testing.T, torrents []stubTorrent) (*stubQbt, map[string][]
 	stub.files = files
 	stub.mu.Unlock()
 
-	// Cross-seed expansion pairs torrents through the cross matcher; here a shared name means shared files.
 	sharing := make(map[string][]string)
 	for _, a := range torrents {
 		for _, b := range torrents {
@@ -93,8 +86,6 @@ func newWriteStub(t *testing.T, torrents []stubTorrent) (*stubQbt, map[string][]
 	return stub, sharing
 }
 
-// sharedFilesMatcher reports which stub torrents share files, as the cross-seed service does.
-// otherShared, otherUnknown, and offline are the result of the check on other instances.
 type sharedFilesMatcher struct {
 	sharing                   map[string][]string
 	otherShared, otherUnknown map[string]struct{}
@@ -114,7 +105,6 @@ func (m sharedFilesMatcher) OpenCrossMatchSession(ctx context.Context, instanceI
 	return cannedSession{m.BuildCrossMatchSets(ctx, instanceID, needs)}, nil
 }
 
-// dryRunActivityHashes returns the torrents each dry-run activity row lists, keyed like writeStubActions.
 func dryRunActivityHashes(t *testing.T, svc *Service, instanceID int, activities []*models.AutomationActivity) map[string][]string {
 	t.Helper()
 
@@ -167,7 +157,6 @@ func categoryRule(includeCrossSeeds bool, groupID string) *models.Automation {
 	}
 }
 
-// A torrent the run deletes gets no other action in that run, whichever rule or expansion chose it.
 func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 	const (
 		x = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -176,7 +165,6 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 		w = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 		v = "cccccccccccccccccccccccccccccccccccccccc"
 	)
-	// Same name, different hash: X and Y are cross-seeds. Z and W are one release in two resolutions.
 	crossSeeds := func(xTags string) []stubTorrent {
 		return []stubTorrent{{x, "Example.Show.S01E01.1080p.WEB-DL-GRP", xTags, ""}, {y, "Example.Show.S01E01.1080p.WEB-DL-GRP", "mv", ""}}
 	}
@@ -186,7 +174,6 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 	moveTagAndCategory := moveRule("")
 	moveTagAndCategory.Conditions.Tags = []*models.TagAction{{Enabled: true, Tags: []string{"moved"}, Mode: "add", Condition: tagsContain("mv")}}
 	moveTagAndCategory.Conditions.Category = &models.CategoryAction{Enabled: true, Category: "newcat", Condition: tagsContain("mv")}
-	// The tag decides the delete; the hardlink scope term makes it a rule the hardlink re-check reads.
 	tagOrUnlinked := &models.RuleCondition{Operator: models.OperatorOr, Conditions: []*models.RuleCondition{
 		tagsContain("del"),
 		{Field: models.FieldHardlinkScope, Operator: models.OperatorEqual, Value: HardlinkScopeNone},
@@ -194,7 +181,6 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 	groupDeleteOnTrackerA := deleteRule(DeleteModeKeepFiles, tagsContain("del"))
 	groupDeleteOnTrackerA.TrackerPattern = "a.example"
 	groupDeleteOnTrackerA.Conditions.Delete.GroupID = GroupCrossSeedContentSavePath
-	// A rule ahead of the delete rule gives the delete trigger an action of its own.
 	tagBeforeDelete := &models.Automation{
 		ID: 3, Name: "tag", TrackerPattern: "*", Enabled: true,
 		Conditions: &models.ActionConditions{Tags: []*models.TagAction{{Enabled: true, Tags: []string{"seen"}, Mode: "add", Condition: tagsContain("del")}}},
@@ -210,7 +196,7 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 		torrents []stubTorrent
 		rules    []*models.Automation
 		want     map[string][]string
-		liveOnly bool // the dry run skips the hardlink re-check
+		liveOnly bool
 	}{
 		{
 			name:     "legacy cross-seed move skips the deleted cross-seed",
@@ -255,7 +241,6 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 			want:     map[string][]string{"move": {v}, "category": {v}, "tag": {v}, "delete": {x, y}},
 		},
 		{
-			// Group strictness checks the delete condition, not the rule's tracker pattern, so Y joins X's delete.
 			name: "a member pulled into a keep-files group delete gets none of its own actions",
 			torrents: []stubTorrent{
 				{x, "Example.Show.S01E01.1080p.WEB-DL-GRP", "del", "https://a.example/announce"},
@@ -298,7 +283,6 @@ func TestApplyRules_TorrentTheRunDeletesGetsNoOtherAction(t *testing.T) {
 	}
 }
 
-// deadlineReader records whether each file read carries a deadline.
 type deadlineReader struct {
 	filesReader
 
@@ -317,14 +301,12 @@ func (r *deadlineReader) GetTorrentFilesBatch(ctx context.Context, instanceID in
 	return r.filesReader.GetTorrentFilesBatch(ctx, instanceID, hashes)
 }
 
-// The file reads of the overlap check in a live run stop at the apply timeout.
 func TestApplyRules_OverlapCheckReadsStopAtTheApplyTimeout(t *testing.T) {
 	const name = "Example.Show.S01E01.1080p.WEB-DL-GRP"
 	svc, instanceID, stub := newWriteStubService(t, []stubTorrent{
 		{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", name, "mv", ""},
 		{"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", name, "mv", ""},
 	})
-	// A content path that is the save path makes the group ambiguous, so the plan reads file lists.
 	stub.torrents = strings.ReplaceAll(stub.torrents, `"content_path":"/data/old/`+name+`.mkv"`, `"content_path":"/data/old"`)
 	reader := &deadlineReader{filesReader: svc.filesReader}
 	svc.filesReader = reader

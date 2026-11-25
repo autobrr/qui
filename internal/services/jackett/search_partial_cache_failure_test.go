@@ -11,13 +11,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// Regression: a search across multiple indexers must not report total failure
-// when the only live-searched indexer fails while the remaining indexers are
-// covered by cached (zero-result) coverage. Discord report: "qui fails a
-// cross-seed search across multiple indexers if one tracker fails to return
-// results" — the failing tracker is the only one re-searched because the
-// healthy indexers' empty results are cache-covered, and the empty cached
-// portion used to be discarded by the len(cachedResults) > 0 fallback guard.
 func TestSearchReturnsPartialWhenOnlyLiveIndexerFailsWithEmptyCachedCoverage(t *testing.T) {
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{

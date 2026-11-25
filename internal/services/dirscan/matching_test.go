@@ -29,8 +29,6 @@ func buildTorrentBytes(t *testing.T, info *metainfo.Info) []byte {
 	return buf.Bytes()
 }
 
-// Discussion #2262: announce-list encoded as a bencode string must not fail
-// the parse. Pins the leniency contract across go-torrent bumps.
 func TestParseTorrentBytes_MalformedAnnounceList(t *testing.T) {
 	info := "d6:lengthi1e4:name8:Test.Rel12:piece lengthi16384e6:pieces20:" + strings.Repeat("a", 20) + "e"
 	data := []byte("d13:announce-list0:4:info" + info + "e")
@@ -75,8 +73,6 @@ func TestParseTorrentBytes_MultiFilePreservesMatchingChildFolder(t *testing.T) {
 }
 
 func TestParseTorrentBytes_SanitizesInvalidUTF8(t *testing.T) {
-	// "á" encoded as Latin-1 (0xe1) rather than UTF-8 is malformed. Torrent fields must
-	// be UTF-8 per spec, so the bad byte is replaced with U+FFFD rather than passed downstream.
 	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 		Name:        "Movie.\xe1.2024.1080p-GROUP",
 		PieceLength: 262144,
@@ -175,10 +171,6 @@ func TestParseTorrentBytes_MultiFileNormalizesEmptyPathComponents(t *testing.T) 
 }
 
 func TestParseTorrentBytes_MultiFileKeepsDuplicatePadFiles(t *testing.T) {
-	// libtorrent 2.0 names canonical pad files after their size, so equally sized payload
-	// files produce two identical ".pad/<size>" entries. libtorrent allows that collision
-	// (torrent_info.cpp: "pad files are allowed to collide with each-other, as long as they
-	// have the same size"), so parsing must not reject the torrent either.
 	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 		Name:        "Pack",
 		PieceLength: 262144,

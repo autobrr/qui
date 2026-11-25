@@ -34,10 +34,8 @@ function checkFieldConsistency(
   return { isMixed: !allSame, commonValue: allSame ? firstValue : undefined }
 }
 
-// A dialog field whose value can differ across the selected torrents.
 interface MixedField {
   isMixed: boolean
-  // The user changed the field after the dialog opened.
   touched: boolean
 }
 
@@ -88,7 +86,6 @@ function shareLimitField(
   return { ...field, mode: "custom", customValue: commonValue }
 }
 
-/** Qt share-limit enum; when torrents disagree, value is "default" placeholder and isMixed is true. */
 function shareLimitChoiceField(
   torrents: TorrentLimitSnapshot[] | undefined,
   pick: (t: TorrentLimitSnapshot) => string | undefined
@@ -113,9 +110,6 @@ export function buildShareLimitFormState(torrents?: TorrentLimitSnapshot[]): Sha
   }
 }
 
-// qBittorrent writes all three limits to every selected torrent in one request,
-// so the dialog cannot keep the own value of each torrent. Confirm stays
-// disabled until the user picks a value for each mixed field.
 export function shareLimitsUnresolved(
   form: ShareLimitFormState,
   supportsShareLimitsAction: boolean,
@@ -159,7 +153,6 @@ export function shareLimitValues(
 
 export interface SpeedLimitField extends MixedField {
   enabled: boolean
-  // KiB/s
   limit: number
 }
 
@@ -189,12 +182,10 @@ export function buildSpeedLimitFormState(torrents?: TorrentLimitSnapshot[]): Spe
   }
 }
 
-// Same rule as shareLimitsUnresolved: the limit goes to every selected torrent.
 export function speedLimitsUnresolved(form: SpeedLimitFormState): boolean {
   return isUnresolvedMixed(form.upload) || isUnresolvedMixed(form.download)
 }
 
-// 0 removes the limit of the torrent.
 export function speedLimitValues(form: SpeedLimitFormState): { uploadLimit: number; downloadLimit: number } {
   return {
     uploadLimit: form.upload.enabled ? form.upload.limit : 0,

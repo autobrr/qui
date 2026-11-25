@@ -16,32 +16,19 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 )
 
-// The match types of the delete dialog that put a torrent in the group: it
-// reads a file at the same path, or a hardlink to a file. The dialog finds a
-// hardlink only on qui's own disk, so over SSH a cross-seed on links stays
-// on the source, and its links keep the data.
 const (
 	matchSharedPath = "content_path"
 	matchHardlink   = "hardlink"
 )
 
-// CrossSeeder adds a torrent through the existing routed cross-seed add:
-// on the Cross-seed instance of the instance that holds the matched torrent.
 type CrossSeeder interface {
 	CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequest) (*crossseed.CrossSeedResponse, error)
 }
 
-// RouteReader reads the route of a Source instance to its Cross-seed
-// instance, nil when it has none.
 type RouteReader interface {
 	Get(ctx context.Context, sourceInstanceID int) (*models.CrossSeedRoute, error)
 }
 
-// groupOf returns the Shared-file group of first on its instance, first
-// first, each member read fresh and checked like first. A Transfer torrent
-// makes no hardlinks on the target: with that way, a torrent that reads the
-// files through hardlinks stays out of the group, and stay holds the hashes
-// of these torrents.
 func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, way Way) (group []*source, stay []string, err error) {
 	group = []*source{first}
 	seen := map[string]bool{strings.ToLower(first.torrent.Hash): true}
@@ -78,8 +65,6 @@ func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, wa
 	return group, stay, nil
 }
 
-// stayLine says why the cross-seeds on hardlinks stay on the source, and how
-// the user moves them too.
 func stayLine(stay int, from, target *models.Instance) string {
 	who, read, them := strconv.Itoa(stay)+" cross-seeds stay", "They read", "them"
 	if stay == 1 {
@@ -94,10 +79,6 @@ func stayLine(stay int, from, target *models.Instance) string {
 		`To move %s too, select the way "Auto" or "Copy through qui".`, who, from.Name, read, them)
 }
 
-// members places each torrent of the group on the target. The group keeps
-// its folders: placement.SavePath is the target folder of the top folder of
-// the group. At a target with a Cross-seed instance, a group whose torrents
-// hold the same files sends all but the Group representative there.
 func (s *Service) members(ctx context.Context, from, target *models.Instance, group []*source, placement Placement) ([]Member, error) {
 	backend, err := s.deps.Files.GetBackend(ctx, from.ID)
 	if err != nil {
@@ -154,10 +135,6 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 		}
 		members = append(members, m)
 	}
-	// The target manages a torrent only at the folder of its category, and it
-	// moves the torrent when that folder changes. A member in a folder below
-	// would then lose the files that it shares, so the target manages each
-	// of its members or none.
 	if slices.ContainsFunc(members, func(m Member) bool {
 		return m.TargetInstanceID == target.ID && m.Placement.SavePath != placement.SavePath
 	}) {
@@ -168,8 +145,6 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 	return members, nil
 }
 
-// crossSeedInstance returns the Cross-seed instance of the target, nil when
-// it has none.
 func (s *Service) crossSeedInstance(ctx context.Context, targetID int) (*models.Instance, error) {
 	if s.deps.Routes == nil || s.deps.CrossSeeds == nil {
 		return nil, nil
@@ -203,7 +178,6 @@ func sameFiles(d fsops.PathDialect, group []*source) bool {
 	return true
 }
 
-// topFolder is the deepest folder that holds each of dirs.
 func topFolder(d fsops.PathDialect, dirs []string) string {
 	top := d.Clean(dirs[0])
 	for _, dir := range dirs[1:] {
@@ -219,7 +193,6 @@ func topFolder(d fsops.PathDialect, dirs []string) string {
 	return top
 }
 
-// within reports whether p is dir or below it.
 func within(d fsops.PathDialect, dir, p string) bool {
 	rel, err := d.Rel(dir, p)
 	if err != nil {

@@ -35,9 +35,6 @@ function parseLibtorrentMajor(version: string | undefined): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed
 }
 
-/**
- * Hook to fetch qBittorrent application version and build information
- */
 export function useQBittorrentAppInfo(
   instanceId: number | undefined,
   options: UseQBittorrentAppInfoOptions = {}
@@ -62,7 +59,7 @@ export function useQBittorrentAppInfo(
     enabled: shouldFetch,
     initialData: hasInitialData ? (initialData as QBittorrentAppInfo) : undefined,
     initialDataUpdatedAt: hasInitialData ? Date.now() : undefined,
-    staleTime: 5 * 60 * 1000, // 5 minutes - app info doesn't change often
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
 

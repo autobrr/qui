@@ -11,7 +11,6 @@ import { ScrollToTopButton } from "./scroll-to-top-button"
 const noSelection = { isAllSelected: false, selected: new Set<string>(), excluded: new Set<string>() }
 const oneSelected = { isAllSelected: false, selected: new Set(["a"]), excluded: new Set<string>() }
 
-// Each mock returns the same object until a test swaps it.
 const state = vi.hoisted(() => ({
   isMobile: true,
   mobileScroll: { isFooterVisible: true },

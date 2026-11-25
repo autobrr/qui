@@ -7,7 +7,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-// The visit starts from the address at page load, so it is set before the modules load.
 vi.hoisted(() => window.history.replaceState(null, "", "/?theme=default"))
 
 import { TooltipProvider } from "@/components/ui/tooltip"

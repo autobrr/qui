@@ -51,7 +51,6 @@ function View({ onClose }: { onClose: () => void }) {
 
 const finger = (clientX: number, clientY = 0) => ({ clientX, clientY })
 
-// A view that follows a finger 100 px to the right
 function startSwipe() {
   const onClose = vi.fn()
   render(<View onClose={onClose} />)

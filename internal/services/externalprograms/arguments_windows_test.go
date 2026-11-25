@@ -37,7 +37,6 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 		Parent  int
 		Console bool
 	}
-	// The detached child reports its actual argv; cmd.Args alone cannot prove it.
 	if os.Getenv("QUI_TEST_WINDOWS_ARGV_CHILD") == "1" {
 		conn, err := net.DialTimeout("tcp", os.Getenv("QUI_TEST_WINDOWS_ARGV_ADDRESS"), 5*time.Second)
 		require.NoError(t, err)
@@ -102,18 +101,15 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 			"classification must preserve the caller's COM apartment")
 	})
 
-	// Batch and terminal launches pass the arguments through cmd.exe before the recorder reads them.
 	launcher := filepath.Join(t.TempDir(), "recorder launcher.bat")
 	require.NoError(t, os.WriteFile(launcher, []byte("@echo off\r\n\""+programPath+"\" %*\r\nexit\r\n"), 0o600))
 
 	t.Setenv("QUI_TEST_WINDOWS_ARGV_CHILD", "1")
 	t.Setenv("QUI_TEST_WINDOWS_ARGV_SENTINEL", "EXPANDED")
 	for _, tc := range []struct {
-		name string
-		args []string
-		gui  bool
-		// viaCmd is what the recorder reads after cmd.exe doubles each quote. Go reads a doubled
-		// quote as a quote that ends the quoted part, so the value splits, but no command runs.
+		name   string
+		args   []string
+		gui    bool
 		viaCmd []string
 	}{
 		{name: "plain control", args: []string{"literal", "hash123"}},
@@ -170,7 +166,6 @@ func TestBuildCommand_WindowsArgumentRoundTrip(t *testing.T) {
 				require.NoError(t, err)
 				var received recording
 				require.NoError(t, json.Unmarshal(data, &received))
-				// Open the live child's handle before acknowledging it, so cleanup cannot target a reused PID.
 				child, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_TERMINATE, false, uint32(received.PID))
 				require.NoError(t, err)
 				defer func() {

@@ -17,8 +17,6 @@ func TestProtectedPaths(t *testing.T) {
 
 	win := winRootTestDialect{fsops.HostPaths}
 
-	// The walker reads a name that is not valid UTF-8 as raw bytes. qBittorrent
-	// reports the same name through JSON, which turns each bad byte into U+FFFD.
 	onDisk := "/data/Keep/mo\xffvie.mkv"
 	encoded, err := json.Marshal(onDisk)
 	require.NoError(t, err)
@@ -37,12 +35,11 @@ func TestProtectedPaths(t *testing.T) {
 		name   string
 		d      fsops.PathDialect
 		ignore []string
-		files  []string // nil builds the module without a torrent file map
+		files  []string
 		ask    question
 		path   string
 		want   bool
 	}{
-		// A torrent owns the file.
 		{name: "owned file", d: fsops.SlashPaths, files: []string{"/data/Show/E01.mkv"}, ask: torrentFile, path: "/data/Show/E01.mkv", want: true},
 		{name: "owned file in other case", d: fsops.SlashPaths, files: []string{"/data/Show/E01.mkv"}, ask: torrentFile, path: "/data/show/e01.mkv", want: true},
 		{name: "owned file in NFD", d: fsops.SlashPaths, files: []string{"/data/Café/f.mkv"}, ask: torrentFile, path: "/data/Cafe\u0301/f.mkv", want: true},
@@ -53,14 +50,12 @@ func TestProtectedPaths(t *testing.T) {
 		{name: "owned file on a drive", d: win, files: []string{`C:\Data\E01.mkv`}, ask: torrentFile, path: `c:\data\e01.mkv`, want: true},
 		{name: "owned file on a share", d: win, files: []string{`\\server\share\Show\E01.mkv`}, ask: torrentFile, path: `\\SERVER\share\show\e01.mkv`, want: true},
 
-		// A torrent owns a file at or under the folder.
 		{name: "parent of owned file", d: fsops.SlashPaths, files: []string{"/data/Show/E01.mkv"}, ask: torrentFileIn, path: "/data/show", want: true},
 		{name: "ancestor of owned file", d: fsops.SlashPaths, files: []string{"/data/Show/E01.mkv"}, ask: torrentFileIn, path: "/data", want: true},
 		{name: "filesystem root is never a torrent folder", d: fsops.SlashPaths, files: []string{"/data/Show/E01.mkv"}, ask: torrentFileIn, path: "/"},
 		{name: "folder with a shared name prefix", d: fsops.SlashPaths, files: []string{"/data/Show/E01.mkv"}, ask: torrentFileIn, path: "/data/Sh"},
 		{name: "no file map owns no folder", d: fsops.SlashPaths, ask: torrentFileIn, path: "/data"},
 
-		// An ignore path covers the path.
 		{name: "ignore path itself", d: fsops.SlashPaths, ignore: []string{"/data/foo"}, ask: ignored, path: "/data/foo", want: true},
 		{name: "file below ignore path", d: fsops.SlashPaths, ignore: []string{"/data/foo"}, ask: ignored, path: "/data/foo/x.mkv", want: true},
 		{name: "file below ignore path in other case", d: fsops.SlashPaths, ignore: []string{"/data/Foo"}, ask: ignored, path: "/data/fOO/x.mkv", want: true},
@@ -79,7 +74,6 @@ func TestProtectedPaths(t *testing.T) {
 		{name: "share root ignore path", d: win, ignore: []string{`\\server\share`}, ask: ignored, path: `\\server\share\orphan.mkv`, want: true},
 		{name: "share root ignore path leaves other shares", d: win, ignore: []string{`\\server\share`}, ask: ignored, path: `\\server\shared\orphan.mkv`},
 
-		// An ignore path covers the path, or the folder holds an ignore path.
 		{name: "folder that holds an ignore path", d: fsops.SlashPaths, ignore: []string{"/data/foo"}, ask: ignoredOrHoldsIgnored, path: "/data", want: true},
 		{name: "path that an ignore path covers", d: fsops.SlashPaths, ignore: []string{"/data/foo"}, ask: ignoredOrHoldsIgnored, path: "/data/foo/x", want: true},
 		{name: "sibling of an ignore path", d: fsops.SlashPaths, ignore: []string{"/data/foo"}, ask: ignoredOrHoldsIgnored, path: "/data/bar"},

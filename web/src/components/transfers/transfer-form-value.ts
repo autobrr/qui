@@ -5,12 +5,10 @@
 
 import type { TransferAfter, TransferRequest, TransferWayChoice } from "@/lib/transfers-api"
 
-/** The fields of a Transfer, as the Transfer dialog and the Transfer action of a rule edit them. */
 export interface TransferFormValue {
   targetInstanceId: number | null
   savePath: string
   category: string
-  /** Comma-separated, as the user types them. */
   tags: string
   after: TransferAfter
   leaveStopped: boolean
@@ -27,7 +25,6 @@ export const emptyTransferForm: TransferFormValue = {
   way: "auto",
 }
 
-/** The request of a form that names its target, or null while it names none. */
 export function transferRequestOf(value: TransferFormValue, sourceInstanceId: number, hash: string): TransferRequest | null {
   if (value.targetInstanceId === null) return null
   return {

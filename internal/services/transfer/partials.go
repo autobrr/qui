@@ -10,10 +10,6 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// recordFlush records whether the target confirmed a flush, as soon as qui
-// knows it. One flush that the target did not confirm marks the target for
-// good: a resume then checks the partial files instead of trusting Proven
-// pieces.
 func (j *job) recordFlush(ctx context.Context, confirmed bool) error {
 	state := FlushConfirmed
 	if !confirmed {
@@ -26,12 +22,6 @@ func (j *job) recordFlush(ctx context.Context, confirmed bool) error {
 	return j.svc.deps.Store.Save(ctx, j.rec)
 }
 
-// checkPartials checks the temporary files that qui wrote without a
-// confirmed flush, with a check-only helper for each member that writes one.
-// The copy then skips each piece that passed. Such a piece is no Proven
-// piece, so the proof checks it again. With qBittorrent's setting "Append
-// .!qB extension to incomplete files" on, the check renames the partial
-// files, and qui writes into the new names.
 func (j *job) checkPartials(ctx context.Context) error {
 	for _, p := range j.parts {
 		p.checked = nil
@@ -64,8 +54,6 @@ func (j *job) checkPartials(ctx context.Context) error {
 	return j.step(ctx, StateCopying, "copy the pieces that failed the check")
 }
 
-// partial reports whether qui wrote some of the file into its temporary file
-// on the target.
 func (j *job) partial(f *groupFile) bool {
 	_, made := j.made[f]
 	return made && !f.linked && !f.linksCopy

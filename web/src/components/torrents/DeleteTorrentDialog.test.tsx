@@ -57,7 +57,6 @@ function renderDialog(props: Partial<ComponentProps<typeof DeleteTorrentDialog>>
   )
 }
 
-// Issue #3364: a large delete names its scope, so a select all delete is not a surprise.
 describe("DeleteTorrentDialog", () => {
   it("keeps the short dialog for a small delete", () => {
     renderDialog({ count: 2, previewTorrents: torrents.slice(0, 2) })

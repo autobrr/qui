@@ -13,7 +13,6 @@ const W = 600
 const H = 200
 const DOWN_H = 80
 
-/** The index ranges [start, end) of the runs of slots that hold a value. */
 function filledRuns(values: (number | null)[]): [number, number][] {
   const runs: [number, number][] = []
   values.forEach((value, index) => {
@@ -25,15 +24,10 @@ function filledRuns(values: (number | null)[]): [number, number][] {
   return runs
 }
 
-/** The highest total of one half, and the height in the viewBox that it gets. */
 function halfScale(layers: ChartLayer[], half: "up" | "down", zero: number): { peak: number; reach: number } {
   return { peak: Math.max(1, ...slotTotals(layers, half)), reach: (half === "up" ? zero : H - zero) - 6 }
 }
 
-/**
- * Paths of the stacked layers of one half. dir is -1 for upload, which grows up from the zero line, and 1 for download.
- * An area chart of fewer values than slots ends at the right edge. A hole in a layer draws nothing in that slot.
- */
 function stackPaths(layers: ChartLayer[], half: "up" | "down", bars: boolean, slots: number, zero: number): string[] {
   const dir = half === "up" ? -1 : 1
   const length = layers[0]?.[half].length ?? 0
@@ -60,24 +54,15 @@ function stackPaths(layers: ChartLayer[], half: "up" | "down", bars: boolean, sl
 
 export interface StreamChartProps {
   layers: ChartLayer[]
-  // Bars draws one bar for each value. Areas draws the values as one area for each layer.
   kind: "bars" | "areas"
-  // The Recording gap of each bar, in seconds.
   gaps?: number[]
-  // The number of values that fill the width of an area chart.
   slots?: number
   label: string
   className?: string
-  // The layer to mark. The other layers fade.
   pointed?: number
-  // Gets the layer under the pointer, and undefined when the pointer is on no layer or leaves the chart.
   onPoint?: (layer: number | undefined) => void
 }
 
-/**
- * Stacked layers with upload above the zero line and download below it. Each half has its own scale.
- * A chart with no download gives its whole height to upload.
- */
 export function StreamChart({ layers, kind, gaps, slots = 0, label, className, pointed, onPoint }: StreamChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -90,7 +75,6 @@ export function StreamChart({ layers, kind, gaps, slots = 0, label, className, p
   const labelled = labelledGaps(gapBars, length)
   const center = (index: number) => ((index + 0.5) / Math.max(length, 1)) * 100
 
-  // The inverse of the x and the y of stackPaths.
   const layerUnder = (event: MouseEvent<SVGSVGElement>) => {
     const box = event.currentTarget.getBoundingClientRect()
     const across = (event.clientX - box.left) / box.width

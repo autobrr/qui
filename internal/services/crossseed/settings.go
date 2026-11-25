@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// SearchSettingsPatch captures optional updates to seeded search defaults.
 type SearchSettingsPatch struct {
 	InstanceIDSet          bool
 	InstanceID             *int
@@ -33,7 +32,6 @@ type SearchSettingsPatch struct {
 	ScheduleMaxAgeDays     *int
 }
 
-// GetAutomationSettings returns the persisted automation configuration.
 func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -119,13 +117,11 @@ func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, info
 	return nil
 }
 
-// UpdateAutomationSettings persists automation configuration and wakes the scheduler.
 func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models.CrossSeedAutomationSettings) (*models.CrossSeedAutomationSettings, error) {
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")
 	}
 
-	// Validate and normalize settings before checking store
 	s.validateAndNormalizeSettings(settings)
 
 	if s.automationStore == nil {
@@ -141,7 +137,6 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 		return nil, fmt.Errorf("persist automation settings: %w", err)
 	}
 	s.automationSettings.Store(updated)
-	// Of all settings, only the category mapping rules change a read.
 	if previousErr != nil || !slices.EqualFunc(previous.CategoryMappingRules, updated.CategoryMappingRules, func(a, b models.CategoryMappingRule) bool {
 		return a.ContentType == b.ContentType && slices.Equal(a.Categories, b.Categories)
 	}) {
@@ -154,16 +149,12 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	return updated, nil
 }
 
-// validateAndNormalizeSettings validates and normalizes automation settings.
-// These settings apply to RSS Automation only, not Seeded Torrent Search.
 func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomationSettings) {
-	// RSS Automation: minimum 30 minutes between RSS feed polls, default 120 minutes
 	if settings.RunIntervalMinutes <= 0 {
 		settings.RunIntervalMinutes = 120
 	} else if settings.RunIntervalMinutes < 30 {
 		settings.RunIntervalMinutes = 30
 	}
-	// RSS Automation: maximum number of RSS results to process per run
 	if settings.MaxResultsPerRun <= 0 {
 		settings.MaxResultsPerRun = 50
 	}
@@ -185,7 +176,6 @@ func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettin
 	settings.ScheduleMaxAgeDays = min(max(settings.ScheduleMaxAgeDays, 1), maxScheduleMaxAgeDays)
 }
 
-// GetSearchSettings returns stored defaults for seeded torrent searches.
 func (s *Service) GetSearchSettings(ctx context.Context) (*models.CrossSeedSearchSettings, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -229,7 +219,6 @@ func (s *Service) GetSearchSettings(ctx context.Context) (*models.CrossSeedSearc
 	return settings, nil
 }
 
-// PatchSearchSettings merges updates into stored seeded search defaults.
 func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsPatch) (*models.CrossSeedSearchSettings, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -272,9 +261,6 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 		}
 	}
 
-	// The first scheduled run starts as soon as the user turns the schedule
-	// on. The clear comes first: while the saved schedule is still off, no
-	// run starts that the clear could forget.
 	if turnedOn {
 		if err := s.forgetLastScheduledStart(ctx); err != nil {
 			return nil, err
@@ -288,7 +274,6 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 	return saved, nil
 }
 
-// apply copies each field that the patch sets into settings.
 func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings) {
 	if patch.InstanceIDSet {
 		settings.InstanceID = patch.InstanceID

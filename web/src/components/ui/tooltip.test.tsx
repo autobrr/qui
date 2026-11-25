@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-// The tooltip wrapper reads "ontouchstart" in window to decide whether taps open the tooltip.
 const touchWindow = window as Window & { ontouchstart?: unknown }
 
 beforeEach(() => {
@@ -33,7 +32,6 @@ function renderTooltip(trigger: ReactNode) {
   )
 }
 
-// iOS Safari sends the click of a tap with the mouse pointer type.
 function tap(element: Element) {
   fireEvent.pointerDown(element, { pointerType: "touch" })
   fireEvent.pointerUp(element, { pointerType: "touch" })
@@ -54,7 +52,6 @@ describe("Tooltip with disabled", () => {
     )
     const { rerender } = render(tree(true))
 
-    // On a touch device, a mouse click opens a tooltip, as on a trackpad.
     fireEvent.click(screen.getByText("Statistics"))
     expect(tooltipShown()).toBe(false)
 
@@ -100,7 +97,6 @@ describe("Tooltip with disabled", () => {
     rerender(tree(true))
     rerender(tree(false))
 
-    // A sheet that focuses the trigger must not open the tooltip on a touch device.
     fireEvent.focus(screen.getByText("12 GiB"))
     expect(tooltipShown()).toBe(false)
   })

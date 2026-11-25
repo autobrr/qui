@@ -26,9 +26,6 @@ func TestTorrentEffectiveName_TVKeys(t *testing.T) {
 
 	require.Equal(t, "show name|s01", pack)
 	require.Equal(t, "show name|s01e05", episode)
-	// A range parses with Episode 0 like a pack, but it is its own item: a
-	// keep-newest rule grouped by effective name must never see the two-parter
-	// and the season pack as one group.
 	require.Equal(t, "show name|s01e05e06", twoParter)
 	require.NotEqual(t, pack, twoParter)
 	require.NotEqual(t, episode, twoParter)

@@ -47,8 +47,6 @@ func TestPatchTorrentTrackers(t *testing.T) {
 }
 
 func TestPatchTorrentTrackersPreservesNonCanonicalInfo(t *testing.T) {
-	// Unsorted keys and a leading-zero integer: hashing tools keep these
-	// bytes verbatim, so the patch must not normalize them.
 	infoRaw := "d6:pieces0:4:name1:n12:piece lengthi016ee"
 	data := []byte("d8:announce12:http://a/ann4:info" + infoRaw + "e")
 

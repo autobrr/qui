@@ -49,16 +49,16 @@ func TestSizeOfCountsEachLineEndAsOneByte(t *testing.T) {
 }
 
 // regression: #4399
-func TestParseBlobs(t *testing.T) {
+func TestParseBlobSizes(t *testing.T) {
 	out := "0a1b blob 6\na\r\nb\r\n\n" +
 		"origin/develop:gone file.go missing\n" +
 		"0a1c tree 3\nabc\n" +
 		"0a1d blob 0\n\n"
-	blobs, err := parseBlobs([]string{"crlf.ts", "gone file.go", "dir", "empty.go"}, []byte(out))
+	sizes, err := parseBlobSizes([]string{"crlf.ts", "gone file.go", "dir", "empty.go"}, []byte(out))
 	require.NoError(t, err)
-	assert.Equal(t, map[string]int{"crlf.ts": 4, "empty.go": 0}, blobSizes(blobs), "a CRLF line end on the base branch counts as one byte, as it does in the working tree")
+	assert.Equal(t, map[string]int{"crlf.ts": 4, "empty.go": 0}, sizes, "a CRLF line end on the base branch counts as one byte, as it does in the working tree")
 
-	_, err = parseBlobs([]string{"cut.go"}, []byte("0a1b blob 6\na\r\n"))
+	_, err = parseBlobSizes([]string{"cut.go"}, []byte("0a1b blob 6\na\r\n"))
 	require.Error(t, err)
 }
 

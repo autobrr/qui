@@ -31,7 +31,6 @@ interface CrossSeedPageProps {
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { t } = useTranslation("crossseed")
 
-  // Keep the shared SSE stream open so qui activity events drive cache invalidation.
   useActivityStream()
 
   const { data: settings } = useCrossSeedSettings()

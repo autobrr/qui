@@ -52,7 +52,6 @@ function renderManager() {
   )
 }
 
-/** Opens the editor of the target, changes its name, and saves. */
 async function renameTarget(name: string) {
   fireEvent.click(await screen.findByRole("button", { name: "kit.edit" }))
   const dialog = await screen.findByRole("dialog")

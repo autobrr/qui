@@ -85,7 +85,6 @@ interface TransferRequest {
 let statuses: TransferHistoryInstance[]
 let configuredIds: number[]
 let answer: (request: TransferRequest) => TransferHistoryRow[]
-// The answer of a query by torrent. The mock limits the rows to the group of a query for one torrent.
 let torrentAnswer: (request: TransferRequest) => TransferHistoryRow[]
 let requests: TransferRequest[]
 let liveGroups: (instanceId: number) => LiveTrackerGroup[]
@@ -155,7 +154,6 @@ function expandedRows(table: HTMLElement): string[] {
   return [...table.querySelectorAll("button[aria-expanded=true]")].map(wideText)
 }
 
-// A full date shows in the date format of the settings, which is ISO when nothing is saved.
 function isoDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 }
@@ -227,7 +225,6 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
-  // A test that opens a Select or uses Show fewer stubs it, as jsdom has no layout.
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
   localStorage.clear()
   _resetClientSettingsForTests()
@@ -243,7 +240,6 @@ function renderRoute() {
   )
 }
 
-// The two calls that useClientSettingsSync makes for the first server snapshot.
 function loadServerSnapshot(settings: Record<string, string> = {}) {
   act(() => {
     applyServerSettings(settings)
@@ -483,7 +479,6 @@ describe("Statistics", () => {
       fireEvent.pointerDown(await screen.findByText("instances.all"), { button: 0, pointerType: "mouse" })
       fireEvent.click(await screen.findByText("Seedbox"))
       await expectTile("tiles.uploaded", "1 KiB | ")
-      // The period moves at the tick of minute 5, and next at the tick of minute 10.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(9 * 60_000 + 30_000)
       })
@@ -505,7 +500,6 @@ describe("Statistics", () => {
   it("keeps the totals and the change of one period until each query of the moved period loads", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setInterval", "clearInterval", "Date"] })
     try {
-      // The comparison ends at a whole hour, so only a move into the next hour gives it new queries.
       const nearTheHour = new Date()
       nearTheHour.setMinutes(57, 0, 0)
       vi.setSystemTime(nearTheHour)
@@ -602,7 +596,6 @@ describe("Statistics", () => {
       if (bucket === "day") {
         return [row("a.test", 4096, 1024, { width: "day" })]
       }
-      // The period ends at the start of the hour that still runs. The period before ends 30 days back.
       return to === runningHour ? [row("a.test", 3072, 1024, { width: "total" })] : [row("a.test", 2048, 2048, { width: "total" })]
     }
     renderPage()
@@ -1005,7 +998,6 @@ describe("Statistics", () => {
 
     await vi.waitFor(() => expect(screen.getByTestId("group-chart")).toBeTruthy())
     expect(requests.filter(request => request.groupBy === "torrent" && request.bucket === "day").map(request => [request.instanceId, request.group])).toEqual([[2, "h3"]])
-    // The 30 days of the period start at a local midnight, so they touch 30 or 31 UTC days.
     expect(Number(screen.getByTestId("group-chart").getAttribute("data-bars"))).toBeGreaterThanOrEqual(30)
     expect(screen.getByText("topTorrents.utcNote")).toBeTruthy()
   })
@@ -1550,14 +1542,12 @@ describe("Statistics", () => {
     fireEvent.pointerEnter(category)
     fireEvent.pointerEnter(screen.getByText("table.groupings.source"))
 
-    // A preload starts its request at once, so no running query means that each request reached the server.
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
     expect(preloads().map(request => request.groupBy).sort()).toEqual(["category", "category", "source", "source"])
 
     fireEvent.mouseDown(category, { button: 0 })
 
     expect(cells(screen.getByRole("table"), "tv")[1]).toBe("2 KiB")
-    // The table reads its cached rows again in the background. A request that lands after the test would count in the next one.
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0))
   })
 
@@ -1575,7 +1565,6 @@ describe("Statistics", () => {
     fireEvent.keyDown(picker, { key: "Enter" })
 
     await vi.waitFor(() => expect(preloads()).toEqual(new Set(["category", "releaseGroup", "resolution", "source", "contentType"])))
-    // Ten preloads and the queries of the page take more than the 1 s default of waitFor.
     await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0), { timeout: 5000 })
 
     fireEvent.click(await screen.findByRole("option", { name: "table.groupings.resolution" }))
@@ -1765,7 +1754,6 @@ describe("Statistics year view", () => {
     fireEvent.click(await within(await screen.findByRole("table")).findByText("a.test"))
 
     expect(await screen.findByText("detail.chartWeek group=a.test")).toBeTruthy()
-    // 365 days touch 53 or 54 weeks from Monday on.
     await vi.waitFor(() => expect([53, 54]).toContain(Number(screen.getByTestId("group-chart").getAttribute("data-bars"))))
   })
 })

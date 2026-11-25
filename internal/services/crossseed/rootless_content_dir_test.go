@@ -17,29 +17,23 @@ func TestIsWindowsDriveAbs(t *testing.T) {
 		path     string
 		expected bool
 	}{
-		// Valid Windows absolute paths
 		{"C:/", true},
 		{"C:/Downloads", true},
 		{"D:/foo/bar.mkv", true},
 		{"z:/lower", true},
 
-		// Invalid: drive-relative (no leading slash after colon)
 		{"C:folder", false},
 		{"C:", false},
 
-		// Invalid: URLs should not match
 		{"http://example.com", false},
 		{"https://foo", false},
 
-		// Invalid: too short
 		{"C", false},
 		{"", false},
 
-		// Invalid: POSIX paths
 		{"/downloads", false},
 		{"/", false},
 
-		// Invalid: relative paths
 		{"foo/bar", false},
 		{".", false},
 	}
@@ -60,26 +54,22 @@ func TestNormalizePath(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// Empty/edge cases
 		{"empty", "", ""},
 
-		// POSIX paths
 		{"posix root", "/", "/"},
 		{"posix simple", "/downloads/show", "/downloads/show"},
 		{"posix trailing slash", "/downloads/show/", "/downloads/show"},
 		{"posix dot segments", "/downloads/./show/../movies", "/downloads/movies"},
 
-		// Windows paths - drive root preservation
 		{"windows drive root", "C:/", "C:/"},
 		{"windows drive root backslash", "C:\\", "C:/"},
-		{"windows drive relative bare", "C:", "C:"}, // drive-relative, not absolute
+		{"windows drive relative bare", "C:", "C:"},
 		{"windows path", "C:/Downloads/Movie.mkv", "C:/Downloads/Movie.mkv"},
 		{"windows path backslashes", "C:\\Downloads\\Movie.mkv", "C:/Downloads/Movie.mkv"},
 		{"windows path trailing slash", "C:/Downloads/", "C:/Downloads"},
 		{"windows path dot segments", "C:/Downloads/./foo/../bar", "C:/Downloads/bar"},
 		{"windows lowercase drive", "c:/Downloads", "c:/Downloads"},
 
-		// Mixed slashes
 		{"mixed slashes", "/downloads\\tv/show", "/downloads/tv/show"},
 	}
 
@@ -154,7 +144,6 @@ func TestResolveRootlessContentDir(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{{Name: "f1.mkv"}, {Name: "f2.mkv"}},
 			expected:       "/downloads/show",
 		},
-		// Windows path tests
 		{
 			name:           "windows single file extracts dir",
 			torrent:        &qbt.Torrent{ContentPath: "C:/Downloads/Movie.mkv"},
@@ -197,7 +186,6 @@ func TestResolveRootlessContentDir(t *testing.T) {
 			candidateFiles: qbt.TorrentFiles{{Name: "e01.mkv"}, {Name: "e02.mkv"}},
 			expected:       "//server/share/Library",
 		},
-		// URL rejection (should not be treated as Windows absolute)
 		{
 			name:           "http url rejected",
 			torrent:        &qbt.Torrent{ContentPath: "http://example.com/file.mkv"},

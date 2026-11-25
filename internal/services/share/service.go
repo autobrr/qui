@@ -37,8 +37,6 @@ func DefaultConfig() Config {
 	return Config{Polls: 30, PollInterval: time.Second, Tick: 30 * time.Second}
 }
 
-// PeerAddresses gives the public peer address of an instance as host:port,
-// or an error that wraps peeraddress.ErrNoAddress.
 type PeerAddresses interface {
 	PublicPeerAddress(ctx context.Context, instanceID int) (string, error)
 }
@@ -47,31 +45,22 @@ type Deps struct {
 	Store           *Store
 	Settings        *SettingsStore
 	TrackerSettings *sharetracker.SettingsStore
-	// Helpers is the helper registry. A Share torrent has its row before qui
-	// adds it.
-	Helpers   *transfer.Store
-	Instances *models.InstanceStore
-	Sync      *qbittorrent.SyncManager
-	Peers     PeerAddresses
-	// TrackerHost is the address that qui's own tracker listens on; empty
-	// listens on every address.
-	TrackerHost string
-	Now         func() time.Time
-	Config      Config
+	Helpers         *transfer.Store
+	Instances       *models.InstanceStore
+	Sync            *qbittorrent.SyncManager
+	Peers           PeerAddresses
+	TrackerHost     string
+	Now             func() time.Time
+	Config          Config
 }
 
-// Service runs the Shares and owns qui's own Share tracker. It listens only
-// while a Share on qui's own tracker is active.
 type Service struct {
 	deps    Deps
 	adder   *torrentadd.Adder
 	tracker *sharetracker.Tracker
 	wake    chan struct{}
 
-	// opMu runs one change of the Shares at a time, so that the limits hold
-	// and one Share ends once.
-	opMu sync.Mutex
-	// holderMu orders each save of the holder of a lock with Unlock.
+	opMu     sync.Mutex
 	holderMu sync.Mutex
 
 	table atomic.Pointer[sharetracker.Table]
@@ -101,8 +90,6 @@ func (l *live) activity() Activity {
 	return Activity{Peers: sortedPeers(maps.Values(l.peers)), Downloaded: l.downloaded, Uploaded: l.uploaded}
 }
 
-// NewService returns a Share service. It does nothing until Resume or Run,
-// and nothing at all while the switch for Transfers and Shares is off.
 func NewService(deps Deps) *Service {
 	if deps.Now == nil {
 		deps.Now = time.Now
@@ -150,8 +137,6 @@ func (s *Service) Close() {
 	}
 }
 
-// refresh reads the unfinished Shares into memory, and makes qui's own
-// tracker listen while one of them is active on it. Call it under opMu.
 func (s *Service) refresh(ctx context.Context) error {
 	list, err := s.deps.Store.Unfinished(ctx)
 	if err != nil {
@@ -228,8 +213,6 @@ func (s *Service) PublicPeerAddress(ctx context.Context, shareID int64) (netip.A
 	return resolve(ctx, address)
 }
 
-// resolve turns host:port into an address. A host name resolves to its
-// first address.
 func resolve(ctx context.Context, hostPort string) (netip.AddrPort, error) {
 	if addr, err := netip.ParseAddrPort(hostPort); err == nil {
 		return addr, nil
@@ -249,12 +232,6 @@ func resolve(ctx context.Context, hostPort string) (netip.AddrPort, error) {
 	return netip.AddrPortFrom(addrs[0].Unmap(), uint16(port)), nil
 }
 
-// Announced keeps what one announce to qui's own tracker reported: the bytes
-// that the user's client sent, and the address and the progress of a
-// recipient. It stores the address of a recipient that takes the lock before
-// the tracker answers, so that the lock outlives a restart of qui. A recipient
-// that completed wakes Run. The progress of a recipient that the lock keeps
-// out does not count.
 func (s *Service) Announced(ctx context.Context, r sharetracker.Report) {
 	if r.Locked {
 		if err := s.saveHolder(context.WithoutCancel(ctx), r.ShareID, r.Peer.Addr()); err != nil {
@@ -292,8 +269,6 @@ func (s *Service) Announced(ctx context.Context, r sharetracker.Report) {
 	}
 }
 
-// saveHolder stores the address that took the lock of a Share, unless an
-// Unlock gave the lock to another downloader since the announce took it.
 func (s *Service) saveHolder(ctx context.Context, shareID int64, holder netip.Addr) error {
 	s.holderMu.Lock()
 	defer s.holderMu.Unlock()

@@ -15,125 +15,124 @@ import { changeLanguage, languageNames, supportedLanguages, type AppLanguage } f
 import { useClientSettingsSettled } from "@/lib/client-settings"
 import { formatTimestamp } from "@/lib/dateTimeUtils"
 
-// Comprehensive worldwide timezone list organized by region
 const TIMEZONES_BY_REGION = {
   "UTC": ["UTC"],
   "Americas": [
-    "America/New_York",      // Eastern Time
-    "America/Chicago",       // Central Time
-    "America/Denver",        // Mountain Time
-    "America/Los_Angeles",   // Pacific Time
-    "America/Anchorage",     // Alaska Time
-    "America/Honolulu",      // Hawaii Time
-    "America/Toronto",       // Eastern Canada
-    "America/Vancouver",     // Pacific Canada
-    "America/Montreal",      // Eastern Canada
-    "America/Sao_Paulo",     // Brazil
-    "America/Argentina/Buenos_Aires", // Argentina
-    "America/Mexico_City",   // Mexico
-    "America/Lima",          // Peru
-    "America/Bogota",        // Colombia
-    "America/Caracas",       // Venezuela
-    "America/Santiago",      // Chile
-    "America/Havana",        // Cuba
-    "America/Jamaica",       // Jamaica
-    "America/Panama",        // Panama
-    "America/Guatemala",     // Guatemala
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "America/Anchorage",
+    "America/Honolulu",
+    "America/Toronto",
+    "America/Vancouver",
+    "America/Montreal",
+    "America/Sao_Paulo",
+    "America/Argentina/Buenos_Aires",
+    "America/Mexico_City",
+    "America/Lima",
+    "America/Bogota",
+    "America/Caracas",
+    "America/Santiago",
+    "America/Havana",
+    "America/Jamaica",
+    "America/Panama",
+    "America/Guatemala",
   ],
   "Europe": [
-    "Europe/London",         // GMT/BST
-    "Europe/Dublin",         // Ireland
-    "Europe/Paris",          // Central European Time
-    "Europe/Berlin",         // Germany
-    "Europe/Rome",           // Italy
-    "Europe/Madrid",         // Spain
-    "Europe/Amsterdam",      // Netherlands
-    "Europe/Brussels",       // Belgium
-    "Europe/Vienna",         // Austria
-    "Europe/Zurich",         // Switzerland
-    "Europe/Stockholm",      // Sweden
-    "Europe/Copenhagen",     // Denmark
-    "Europe/Oslo",           // Norway
-    "Europe/Helsinki",       // Finland
-    "Europe/Warsaw",         // Poland
-    "Europe/Prague",         // Czech Republic
-    "Europe/Budapest",       // Hungary
-    "Europe/Bucharest",      // Romania
-    "Europe/Sofia",          // Bulgaria
-    "Europe/Athens",         // Greece
-    "Europe/Moscow",         // Russia (MSK)
-    "Europe/Kiev",           // Ukraine
-    "Europe/Istanbul",       // Turkey
-    "Europe/Lisbon",         // Portugal
+    "Europe/London",
+    "Europe/Dublin",
+    "Europe/Paris",
+    "Europe/Berlin",
+    "Europe/Rome",
+    "Europe/Madrid",
+    "Europe/Amsterdam",
+    "Europe/Brussels",
+    "Europe/Vienna",
+    "Europe/Zurich",
+    "Europe/Stockholm",
+    "Europe/Copenhagen",
+    "Europe/Oslo",
+    "Europe/Helsinki",
+    "Europe/Warsaw",
+    "Europe/Prague",
+    "Europe/Budapest",
+    "Europe/Bucharest",
+    "Europe/Sofia",
+    "Europe/Athens",
+    "Europe/Moscow",
+    "Europe/Kiev",
+    "Europe/Istanbul",
+    "Europe/Lisbon",
   ],
   "Asia": [
-    "Asia/Tokyo",            // Japan
-    "Asia/Shanghai",         // China
-    "Asia/Hong_Kong",        // Hong Kong
-    "Asia/Singapore",        // Singapore
-    "Asia/Seoul",            // South Korea
-    "Asia/Taipei",           // Taiwan
-    "Asia/Bangkok",          // Thailand
-    "Asia/Jakarta",          // Indonesia
-    "Asia/Manila",           // Philippines
-    "Asia/Kuala_Lumpur",     // Malaysia
-    "Asia/Ho_Chi_Minh",      // Vietnam
-    "Asia/Kolkata",          // India
-    "Asia/Karachi",          // Pakistan
-    "Asia/Dhaka",            // Bangladesh
-    "Asia/Colombo",          // Sri Lanka
-    "Asia/Kathmandu",        // Nepal
-    "Asia/Dubai",            // UAE
-    "Asia/Qatar",            // Qatar
-    "Asia/Kuwait",           // Kuwait
-    "Asia/Riyadh",           // Saudi Arabia
-    "Asia/Tehran",           // Iran
-    "Asia/Baku",             // Azerbaijan
-    "Asia/Tashkent",         // Uzbekistan
-    "Asia/Almaty",           // Kazakhstan
-    "Asia/Novosibirsk",      // Russia (NOVT)
-    "Asia/Vladivostok",      // Russia (VLAT)
-    "Asia/Yekaterinburg",    // Russia (YEKT)
-    "Asia/Jerusalem",        // Israel
-    "Asia/Beirut",           // Lebanon
+    "Asia/Tokyo",
+    "Asia/Shanghai",
+    "Asia/Hong_Kong",
+    "Asia/Singapore",
+    "Asia/Seoul",
+    "Asia/Taipei",
+    "Asia/Bangkok",
+    "Asia/Jakarta",
+    "Asia/Manila",
+    "Asia/Kuala_Lumpur",
+    "Asia/Ho_Chi_Minh",
+    "Asia/Kolkata",
+    "Asia/Karachi",
+    "Asia/Dhaka",
+    "Asia/Colombo",
+    "Asia/Kathmandu",
+    "Asia/Dubai",
+    "Asia/Qatar",
+    "Asia/Kuwait",
+    "Asia/Riyadh",
+    "Asia/Tehran",
+    "Asia/Baku",
+    "Asia/Tashkent",
+    "Asia/Almaty",
+    "Asia/Novosibirsk",
+    "Asia/Vladivostok",
+    "Asia/Yekaterinburg",
+    "Asia/Jerusalem",
+    "Asia/Beirut",
   ],
   "Africa": [
-    "Africa/Cairo",          // Egypt
-    "Africa/Lagos",          // Nigeria
-    "Africa/Johannesburg",   // South Africa
-    "Africa/Nairobi",        // Kenya
-    "Africa/Casablanca",     // Morocco
-    "Africa/Algiers",        // Algeria
-    "Africa/Tunis",          // Tunisia
-    "Africa/Tripoli",        // Libya
-    "Africa/Khartoum",       // Sudan
-    "Africa/Addis_Ababa",    // Ethiopia
-    "Africa/Dar_es_Salaam",  // Tanzania
-    "Africa/Kampala",        // Uganda
-    "Africa/Kinshasa",       // DR Congo
-    "Africa/Luanda",         // Angola
-    "Africa/Maputo",         // Mozambique
-    "Africa/Harare",         // Zimbabwe
-    "Africa/Lusaka",         // Zambia
-    "Africa/Accra",          // Ghana
-    "Africa/Abidjan",        // Ivory Coast
-    "Africa/Dakar",          // Senegal
+    "Africa/Cairo",
+    "Africa/Lagos",
+    "Africa/Johannesburg",
+    "Africa/Nairobi",
+    "Africa/Casablanca",
+    "Africa/Algiers",
+    "Africa/Tunis",
+    "Africa/Tripoli",
+    "Africa/Khartoum",
+    "Africa/Addis_Ababa",
+    "Africa/Dar_es_Salaam",
+    "Africa/Kampala",
+    "Africa/Kinshasa",
+    "Africa/Luanda",
+    "Africa/Maputo",
+    "Africa/Harare",
+    "Africa/Lusaka",
+    "Africa/Accra",
+    "Africa/Abidjan",
+    "Africa/Dakar",
   ],
   "Oceania": [
-    "Australia/Sydney",      // Eastern Australia
-    "Australia/Melbourne",   // Eastern Australia
-    "Australia/Brisbane",    // Eastern Australia (no DST)
-    "Australia/Perth",       // Western Australia
-    "Australia/Adelaide",    // Central Australia
-    "Australia/Darwin",      // Northern Territory
-    "Australia/Hobart",      // Tasmania
-    "Pacific/Auckland",      // New Zealand
-    "Pacific/Wellington",    // New Zealand
-    "Pacific/Fiji",          // Fiji
-    "Pacific/Tahiti",        // Tahiti
-    "Pacific/Honolulu",      // Hawaii (also in Americas)
-    "Pacific/Guam",          // Guam
-    "Pacific/Port_Moresby",  // Papua New Guinea
+    "Australia/Sydney",
+    "Australia/Melbourne",
+    "Australia/Brisbane",
+    "Australia/Perth",
+    "Australia/Adelaide",
+    "Australia/Darwin",
+    "Australia/Hobart",
+    "Pacific/Auckland",
+    "Pacific/Wellington",
+    "Pacific/Fiji",
+    "Pacific/Tahiti",
+    "Pacific/Honolulu",
+    "Pacific/Guam",
+    "Pacific/Port_Moresby",
   ],
 }
 
@@ -148,7 +147,6 @@ const DATE_FORMATS = [
   { value: "relative", labelKey: "dateTime.relativeFormat" },
 ] as const satisfies readonly { value: DateTimePreferences["dateFormat"]; labelKey: string }[]
 
-/** The Time & Language tab: the display language, and how qui shows dates and times. */
 export function TimeLanguageSettings() {
   return (
     <>
@@ -184,7 +182,6 @@ function LanguageSection() {
 function DateTimeSection() {
   const { t } = useTranslation("settings")
   const { preferences, setPreferences } = usePersistedDateTimePreferences()
-  // Until the server answers, the controls show the defaults, and a change would be lost.
   const settled = useClientSettingsSettled()
 
   return (

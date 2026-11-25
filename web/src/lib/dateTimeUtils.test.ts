@@ -23,7 +23,6 @@ describe("formatCalendarDay", () => {
   })
 
   it("keeps the day of the browser when the time zone of the preferences is on another day", () => {
-    // Half an hour after local midnight is the day before in Pago Pago, and half an hour before it is the day after in Kiritimati.
     expect(formatCalendarDay(new Date(2026, 1, 3, 0, 30), preferences("iso", "Pacific/Pago_Pago"))).toBe("2026-02-03")
     expect(formatCalendarDay(new Date(2026, 1, 3, 23, 30), preferences("iso", "Pacific/Kiritimati"))).toBe("2026-02-03")
   })

@@ -40,7 +40,6 @@ export const advancedLabels: TabLabels = {
     },
     current_network_interface: { labelKey: "preferences.connectionSettings.networkInterface" },
     current_interface_address: { labelKey: "preferences.fields.interfaceAddress" },
-    // The network binding widget draws this key. Its read-only text names the saved interface.
     current_interface_name: { labelKey: "preferences.connectionSettings.networkInterface" },
     save_resume_data_interval: { labelKey: "preferences.fields.saveResumeDataInterval" },
     save_statistics_interval: { labelKey: "preferences.fields.saveStatisticsInterval" },

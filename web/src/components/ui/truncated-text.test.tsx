@@ -11,7 +11,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { TruncatedText } from "@/components/ui/truncated-text"
 
-// The tooltip wrapper reads "ontouchstart" in window to decide whether taps open the tooltip.
 const touchWindow = window as Window & { ontouchstart?: unknown }
 
 beforeEach(() => {

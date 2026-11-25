@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// perPath answers Stat and Lstat for the paths it holds, and records each
-// call. The nil embedded Backend makes any other call panic.
 type perPath struct {
 	Backend
 	files map[string]bool

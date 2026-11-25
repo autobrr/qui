@@ -47,8 +47,6 @@ export function usePersistedFilters(instanceId: number) {
   const setFilters = useCallback(
     (next: SetStateAction<TorrentFilters>) => {
       const resolved = typeof next === "function" ? next(filtersRef.current) : next
-      // Keep every instance-scoped field, including the derived
-      // expandedCategories the sidebar computes for subcategory requests.
       const { status, excludeStatus, ...instance } = resolved
       setGlobalFilters({ status, excludeStatus })
       setInstanceFilters(instance)

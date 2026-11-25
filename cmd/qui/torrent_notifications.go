@@ -31,8 +31,6 @@ type torrentNotificationSync interface {
 	ExtractDomainFromURL(rawURL string) string
 }
 
-// helperTorrents is the helper registry: it names the torrents that qui added
-// for a Transfer or a Share. A tag proves nothing.
 type helperTorrents interface {
 	IsHelper(instanceID int, hash string) bool
 }

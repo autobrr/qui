@@ -21,8 +21,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// newPartialPoolMaindataOwner returns a sync owner over a qBittorrent stub
-// whose maindata holds the given torrents JSON object.
 func newPartialPoolMaindataOwner(t *testing.T, torrents string) *syncowner.Owner {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

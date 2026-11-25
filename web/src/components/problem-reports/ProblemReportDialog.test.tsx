@@ -106,7 +106,6 @@ function openSenderMenu(sender: string) {
   fireEvent.keyDown(screen.getByRole("button", { name: sender }), { key: "Enter" })
 }
 
-/** Answers the list route with reports, and counts its calls. */
 function serveSentReports(reports: ListedProblemReport[]) {
   const calls = { count: 0 }
   server.use(http.get("*/api/problem-reports", () => {
@@ -120,7 +119,6 @@ function withQui(qui: Partial<ProblemReportFacts["qui"]>): ProblemReportFacts {
   return { ...baseFacts, qui: { ...baseFacts.qui, ...qui } }
 }
 
-/** Records each report and its sender that reach the send route, and answers with the next answer, or 201. */
 function serveSend(answers: Response[] = []) {
   const reports: ProblemReportPayload[] = []
   const senders: ProblemReportSender[] = []
@@ -175,7 +173,6 @@ function pickLogScope(name: string) {
 }
 
 beforeAll(() => {
-  // The Radix select scrolls its picked option into view and captures the pointer, which jsdom lacks.
   Element.prototype.scrollIntoView = () => {}
   Element.prototype.hasPointerCapture = () => false
   Element.prototype.releasePointerCapture = () => {}
@@ -1147,7 +1144,6 @@ describe("Sent reports", () => {
     const heldList = new Promise<void>((resolve) => { releaseList = resolve })
     let lists = 0
     server.use(http.get("*/api/problem-reports", async () => {
-      // The third list, from the second open of Sent reports, read its rows before the Delete ended.
       if (++lists === 3) await heldList
       return HttpResponse.json(rows)
     }))

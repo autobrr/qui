@@ -18,45 +18,27 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 )
 
-// exportsAtATime is how many Export runs go at a time, next to the
-// Transfers.
 const exportsAtATime = 5
 
-// ExportRequest is one Export to Instance of a rule: qui adds the torrent of
-// the source on the target, where its files already are, and keeps it on the
-// source.
 type ExportRequest struct {
 	SourceInstanceID int
 	TargetInstanceID int
 	Hash             string
 	Name             string
-	// Size is the size of the torrent, for the list of the Transfers page.
-	Size int64
-	// Placement is where the target keeps the torrent. Without a save path,
-	// a category lets the category choose it (Auto TMM), and without either,
-	// the default save path of the target holds it.
-	Placement    Placement
-	Paused       bool
-	SkipChecking bool
-	RuleID       int
-	// RuleName names the rule in the delete of a failed add from the target.
-	RuleName string
+	Size             int64
+	Placement        Placement
+	Paused           bool
+	SkipChecking     bool
+	RuleID           int
+	RuleName         string
 }
 
-// ExportResult is how an Export run ended. Failure is empty on success.
 type ExportResult struct {
-	Failure string
-	// AlreadyOnTarget: the target had the torrent when the run started, so
-	// the run did nothing.
+	Failure         string
 	AlreadyOnTarget bool
-	// TrackerDomain is the tracker of the .torrent that the source exported.
-	TrackerDomain string
+	TrackerDomain   string
 }
 
-// Export records an Export run and starts it. Up to five Export runs go at
-// a time, outside the queues of the Transfers. done gets the result once the
-// run ends, and closes without one when qui stops first: the run resumes at
-// the next start of qui. An Export holds no claim on the torrent.
 func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan ExportResult, error) {
 	if s.ctx.Err() != nil {
 		return 0, nil, errShutdown
@@ -72,12 +54,9 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 		RuleID:           new(req.RuleID),
 		SourceInstanceID: req.SourceInstanceID,
 		TargetInstanceID: req.TargetInstanceID,
-		// The cleanup removes nothing from a target with a new address.
-		TargetEndpoint: fsops.EndpointOf(target),
-		Options:        Options{After: AfterKeepSeeding, Paused: req.Paused, SkipChecking: new(req.SkipChecking)},
-		// The start holds the name of the rule, for the delete of a resumed
-		// run.
-		Steps: []Step{{Name: "start", At: s.deps.Now(), Detail: req.RuleName}},
+		TargetEndpoint:   fsops.EndpointOf(target),
+		Options:          Options{After: AfterKeepSeeding, Paused: req.Paused, SkipChecking: new(req.SkipChecking)},
+		Steps:            []Step{{Name: "start", At: s.deps.Now(), Detail: req.RuleName}},
 		Members: []Member{{Hash: req.Hash, Name: req.Name, TargetInstanceID: req.TargetInstanceID,
 			Placement: req.Placement}},
 		Size: req.Size,
@@ -90,7 +69,6 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 	return record.ID, done, nil
 }
 
-// export runs an Export run once one of the five places is free.
 func (s *Service) export(record *Record, done chan<- ExportResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -98,9 +76,6 @@ func (s *Service) export(record *Record, done chan<- ExportResult) {
 		close(done)
 		return
 	}
-	// A cancel may have ended the run since the caller read it, or saved its
-	// cleanup and failed to record the end, and a cancel leaves s.runs once
-	// its cleanup ends.
 	if current, err := s.deps.Store.Get(s.ctx, record.ID); err == nil {
 		if !current.FinishedAt.IsZero() {
 			close(done)
@@ -138,7 +113,6 @@ func (s *Service) export(record *Record, done chan<- ExportResult) {
 	})
 }
 
-// exportJob is one Export run.
 type exportJob struct {
 	*job
 	ruleName string
@@ -149,8 +123,6 @@ func (e *exportJob) member() *Member {
 	return &e.rec.Members[0]
 }
 
-// run takes the steps that the Export run did not take. ended is false when
-// qui stopped first.
 func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 	switch {
 	case e.reached(stepCleanUp) && e.rec.State == StateCancelled:
@@ -180,8 +152,6 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 			unchecked := torrent.Progress == 0 &&
 				slices.Contains([]qbt.TorrentState{qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl}, torrent.State)
 			if req.Settings.Recheck && unchecked {
-				// qui stopped before the recheck of the paused add, and
-				// qBittorrent does not check a stopped torrent by itself.
 				err := e.svc.deps.Sync.BulkAction(ctx, m.TargetInstanceID, []string{m.Hash}, "recheck")
 				switch {
 				case ctx.Err() != nil:
@@ -223,8 +193,6 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 	}
 	added := e.svc.adder.Add(ctx, e.addRequest(data))
 	if added.Failure != torrentadd.AddRefused {
-		// The target answered the add, so a cancel or a restart during the
-		// wait for the torrent still knows that qui added it.
 		e.rec.Steps = append(e.rec.Steps, Step{Name: stepAdded, At: e.svc.deps.Now()})
 		e.save(context.WithoutCancel(ctx))
 	}
@@ -240,9 +208,6 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 	return e.end(ctx, e.verify(ctx, added), true), true
 }
 
-// endResumed ends a resumed run that found the torrent on the target. When
-// the add did not answer, the torrent may be the user's, and qui keeps it
-// after a failed check.
 func (e *exportJob) endResumed(ctx context.Context, reason string) ExportResult {
 	if reason == "" || e.reached(stepAdded) {
 		return e.end(ctx, reason, true)
@@ -257,8 +222,6 @@ func (e *exportJob) addRequest(data []byte) torrentadd.Request {
 		Settings: exportSettings(m.Placement, e.rec.Options), Polls: cfg.ExportPolls, PollInterval: cfg.ExportPollInterval}
 }
 
-// verify is why the torrent on the target failed, or empty when it is
-// healthy. A torrent that turned healthy after the polls counts.
 func (e *exportJob) verify(ctx context.Context, added torrentadd.Result) string {
 	m, cfg := e.member(), e.svc.deps.Config
 	reason := exportFailure(added, cfg, *e.rec.Options.SkipChecking)
@@ -274,16 +237,12 @@ func (e *exportJob) verify(ctx context.Context, added torrentadd.Result) string 
 	return reason
 }
 
-// mark records a step and the state before qui takes the step.
 func (e *exportJob) mark(ctx context.Context, state State, name string) error {
 	e.rec.State = state
 	e.rec.Steps = append(e.rec.Steps, Step{Name: name, At: e.svc.deps.Now()})
 	return e.svc.deps.Store.Save(ctx, e.rec)
 }
 
-// end records how the run ended. A failure with remove takes the torrent
-// off the target and keeps its files there, so that the next run of the
-// rule tries again.
 func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportResult {
 	if !e.svc.commit(e.rec.ID) {
 		return e.cancel(ctx)
@@ -317,9 +276,6 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 	return e.result
 }
 
-// cancel ends a run that the user cancelled. A torrent that the run added
-// comes off the target, with its files kept there. One whose add did not
-// answer stays, because qui cannot tell who added it.
 func (e *exportJob) cancel(ctx context.Context) ExportResult {
 	ctx, cancel := cleanupContext(ctx)
 	defer cancel()
@@ -356,14 +312,10 @@ func (e *exportJob) removeFromTarget(ctx context.Context) {
 	e.logf("Removed the torrent from the target, and kept its files.")
 }
 
-// targetMoved reports whether the target got a new address since the rule
-// started the run. The torrent there is not the one that qui added. The add
-// and the delete go through qBittorrent, so only its address counts.
 func (e *exportJob) targetMoved(target *models.Instance) bool {
 	return fsops.EndpointOf(target).URL != e.rec.TargetEndpoint.URL
 }
 
-// exportSettings are the settings of the add on the target.
 func exportSettings(p Placement, o Options) torrentadd.Settings {
 	skip := *o.SkipChecking
 	settings := torrentadd.Settings{
@@ -371,9 +323,7 @@ func exportSettings(p Placement, o Options) torrentadd.Settings {
 		Tags:          p.Tags,
 		ContentLayout: qbt.ContentLayout(p.ContentLayout),
 		SeedMode:      skip,
-		// qBittorrent does not check a torrent that was added stopped. The
-		// recheck runs it only for the check, and stops it again.
-		Recheck: o.Paused && !skip,
+		Recheck:       o.Paused && !skip,
 	}
 	switch {
 	case p.SavePath != "":
@@ -387,9 +337,6 @@ func exportSettings(p Placement, o Options) torrentadd.Settings {
 	return settings
 }
 
-// exportFailure is why the torrent failed its polls on the target, or empty
-// when it passed. Without "Skip checking", a check that still runs after
-// the polls counts as a pass.
 func exportFailure(added torrentadd.Result, cfg Config, skipChecking bool) string {
 	switch added.Failure {
 	case torrentadd.MissingFiles:

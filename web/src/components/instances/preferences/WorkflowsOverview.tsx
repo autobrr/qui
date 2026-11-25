@@ -96,9 +96,6 @@ import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
 import { RunWorkflowNowDialog, type RunWorkflowNowTarget } from "./RunWorkflowNowDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 
-/**
- * Recursively checks if a condition tree uses a specific field.
- */
 function conditionUsesField(condition: RuleCondition | null | undefined, field: string): boolean {
   if (!condition) return false
   if (condition.field === field) return true
@@ -141,7 +138,6 @@ function computeActivityStats(events: AutomationActivity[]): ActivityStats {
   return { deletionsToday, failedToday, lastActivity }
 }
 
-/** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
 function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
   if (value === undefined) return null
   if (value === -2) return i18n.t("preferences.workflowsOverview.shareLimit.global", { ns: "instances" })
@@ -149,7 +145,6 @@ function formatShareLimit(value: number | undefined, isRatio: boolean): string |
   return isRatio ? value.toFixed(2) : String(value)
 }
 
-/** Format speed limit for compact badge display: 0 = "∞", > 0 = number */
 function formatSpeedLimitCompact(kiB: number): string {
   if (kiB === 0) return "∞"
   return String(kiB)
@@ -323,11 +318,8 @@ export function WorkflowsOverview() {
   const { instances } = useInstances()
   const queryClient = useQueryClient()
 
-  // Keep the shared SSE stream open so automation-activity events invalidate
-  // the matching react-query keys; this replaces the idle activity polling.
   useActivityStream()
 
-  // Warm the JSON editor chunk so the Import and Edit dialogs rarely show the textarea fallback.
   useEffect(() => {
     void preloadJsonEditor()
   }, [])
@@ -400,13 +392,11 @@ export function WorkflowsOverview() {
 
   const [jsonEdit, setJsonEdit] = useState<Automation | null>(null)
 
-  // Import dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importInstanceId, setImportInstanceId] = useState<number | null>(null)
   const [importJSON, setImportJSON] = useState("")
   const [importError, setImportError] = useState<string | null>(null)
 
-  // Activity-related state
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [activityFilterMap, setActivityFilterMap] = useState<Record<number, "all" | "success" | "errors">>({})
   const [activitySearchMap, setActivitySearchMap] = useState<Record<number, string>>({})
@@ -414,7 +404,6 @@ export function WorkflowsOverview() {
   const [displayLimitMap, setDisplayLimitMap] = useState<Record<number, number>>({})
   const [activityRunDialog, setActivityRunDialog] = useState<{ instanceId: number; activity: AutomationActivity } | null>(null)
 
-  // Tracker customizations for display names and icons
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
 
@@ -516,12 +505,10 @@ export function WorkflowsOverview() {
         throw error
       }
     },
-    // A cancelled dialog does not cancel the request, so only apply a result to the rule it was started for.
     onSuccess: (preview, { instanceId, rule }) => {
       setEnableConfirm(prev => prev?.instanceId === instanceId && prev.rule.id === rule.id ? { ...prev, preview, isInitialLoading: false } : prev)
     },
     onError: (error, { instanceId, rule }) => {
-      // Keep the dialog open: the user can still enable the rule without a preview.
       const message = error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.previewFailed")
       setEnableConfirm(prev => prev?.instanceId === instanceId && prev.rule.id === rule.id ? { ...prev, isInitialLoading: false, error: message } : prev)
     },
@@ -568,7 +555,6 @@ export function WorkflowsOverview() {
     }
   }, [queryClient, t])
 
-  // Export workflow to clipboard
   const handleExport = useCallback(async (rule: Automation) => {
     const exportData = toExportFormat(rule)
     const json = toExportJSON(exportData)
@@ -580,7 +566,6 @@ export function WorkflowsOverview() {
     }
   }, [t])
 
-  // Duplicate workflow in the same instance
   const handleDuplicate = useCallback(async (instanceId: number, rule: Automation) => {
     const existingNames = await getExistingNames(instanceId)
     if (!existingNames) return
@@ -595,7 +580,6 @@ export function WorkflowsOverview() {
     )
   }, [getExistingNames, createWorkflow, t])
 
-  // Copy workflow to another instance
   const handleCopyToInstance = useCallback(async (sourceRule: Automation, targetInstanceId: number) => {
     const existingNames = await getExistingNames(targetInstanceId)
     if (!existingNames) return
@@ -614,7 +598,6 @@ export function WorkflowsOverview() {
     )
   }, [getExistingNames, createWorkflow, instances, t])
 
-  // Open import dialog
   const openImportDialog = (instanceId: number) => {
     setImportInstanceId(instanceId)
     setImportJSON("")
@@ -622,7 +605,6 @@ export function WorkflowsOverview() {
     setImportDialogOpen(true)
   }
 
-  // Handle import
   const handleImport = useCallback(async () => {
     if (!importInstanceId) return
 
@@ -652,7 +634,6 @@ export function WorkflowsOverview() {
     )
   }, [importInstanceId, importJSON, getExistingNames, createWorkflow, t])
 
-  // Check if a rule is a delete or category rule (both need previews)
   const isDeleteRule = (rule: Automation): boolean => {
     return rule.conditions?.delete?.enabled === true
   }
@@ -661,41 +642,33 @@ export function WorkflowsOverview() {
     return rule.conditions?.category?.enabled === true
   }
 
-  // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
   const isTagRule = (rule: Automation): boolean => {
     if (isDeleteRule(rule) || isCategoryRule(rule)) return false
     return getRuleTagActions(rule).some(action => action?.enabled)
   }
 
-  // The condition of the action that the preview runs, for its columns
   const previewCondition = (rule: Automation) => {
     if (isDeleteRule(rule)) return rule.conditions?.delete?.condition
     if (isCategoryRule(rule)) return rule.conditions?.category?.condition
     return getRuleTagActions(rule).find(action => action?.enabled && action?.condition)?.condition
   }
 
-  // Handle toggle - show preview when enabling delete, category, or tag rules
   const handleToggle = (instanceId: number, rule: Automation) => {
     if (!rule.enabled && (isDeleteRule(rule) || isCategoryRule(rule) || isTagRule(rule))) {
-      // Enabling a delete, category, or tag rule - show preview first
-      // Reset preview view to "needed" when starting a new preview
       setPreviewView("needed")
       setIsLoadingPreviewView(false)
       setEnableConfirm({ instanceId, rule, preview: null, isInitialLoading: true })
       previewRule.mutate({ instanceId, rule, view: "needed" })
     } else {
-      // Disabling or non-destructive rule - just toggle
       toggleEnabled.mutate({ instanceId, rule })
     }
   }
 
-  // Check if a delete rule uses FREE_SPACE field
   const ruleUsesFreeSpace = (rule: Automation): boolean => {
     if (!isDeleteRule(rule)) return false
     return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE")
   }
 
-  // Handler for switching preview view - refetches with new view and resets pagination
   const handlePreviewViewChange = async (newView: PreviewView) => {
     if (!enableConfirm) return
     setPreviewView(newView)
@@ -716,7 +689,6 @@ export function WorkflowsOverview() {
     }
   }
 
-  // CSV columns for automation preview export
   const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
     { header: t("preferences.workflowDialog.csv.name"), accessor: item => item.name },
     { header: t("preferences.workflowDialog.csv.hash"), accessor: item => item.hash },
@@ -788,7 +760,6 @@ export function WorkflowsOverview() {
     [instances]
   )
 
-  // Fetch rules for all active instances
   const rulesQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["automations", instance.id],
@@ -797,7 +768,6 @@ export function WorkflowsOverview() {
     })),
   })
 
-  // Fetch activity for all active instances
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["automation-activity", instance.id],
@@ -907,7 +877,6 @@ export function WorkflowsOverview() {
             const sortedRules = [...rules].sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
             const enabledRulesCount = rules.filter(r => r.enabled).length
 
-            // Activity data for this instance
             const activityQuery = activityQueries[index]
             const events = activityQuery?.data ?? []
             const activityStats = computeActivityStats(events)
@@ -915,7 +884,6 @@ export function WorkflowsOverview() {
             const activitySearchTerm = (activitySearchMap[instance.id] ?? "").toLowerCase().trim()
             const displayLimit = displayLimitMap[instance.id] ?? 50
 
-            // Filter events
             const allFilteredEvents = events.filter((e) => {
               if (activityFilter === "success" && e.outcome !== "success" && e.outcome !== "dry-run") return false
               if (activityFilter === "errors" && e.outcome !== "failed") return false
@@ -968,7 +936,6 @@ export function WorkflowsOverview() {
 
                 <AccordionContent className="px-6 pb-4">
                   <div className="space-y-4">
-                    {/* Rules list */}
                     {rulesQuery?.isError ? (
                       <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
                         <p className="text-sm text-destructive">{t("preferences.workflowsOverview.failedToLoadRules")}</p>
@@ -1070,9 +1037,7 @@ export function WorkflowsOverview() {
                       </div>
                     )}
 
-                    {/* Activity Section */}
                     <div className="space-y-3">
-                      {/* Activity filters */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
@@ -1167,7 +1132,6 @@ export function WorkflowsOverview() {
                         </div>
                       </div>
 
-                      {/* Search filter */}
                       <div className="relative">
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -1182,7 +1146,6 @@ export function WorkflowsOverview() {
                         />
                       </div>
 
-                      {/* Activity list */}
                       {activityQuery?.isError ? (
                         <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
                           <p className="text-sm text-destructive">{t("preferences.workflowsOverview.failedToLoadActivity")}</p>
@@ -1462,7 +1425,6 @@ export function WorkflowsOverview() {
                                               {limits.map(([key, count]) => {
                                                 const [type, limitKiB] = key.split(":")
                                                 const numKiB = Number(limitKiB)
-                                                // 0 = Unlimited in qBittorrent per-torrent speed limits
                                                 const label = numKiB === 0
                                                   ? t("preferences.workflowsOverview.unlimited")
                                                   : formatSpeedWithUnit(numKiB * 1024, "bytes")

@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// tv builds a single-instance row with a hash and a name; the name drives the
-// change fingerprint so tests can flip a row "changed" by changing its name.
 func tv(hash, name string) qbittorrent.TorrentView {
 	return qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: hash, Name: name}}
 }
@@ -47,21 +45,18 @@ func TestBuildUpdatePayloadSeedsFullThenStreamsDeltas(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
 
-	// First tick on an unseeded group is a full snapshot that seeds the baseline.
 	full := g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B"), tv("c", "C")), &StreamMeta{})
 	require.Equal(t, streamEventUpdate, full.Type)
 	require.Nil(t, full.Delta)
 	require.Len(t, full.Data.Torrents, 3)
 	require.NotNil(t, g.baselineSnapshot)
 
-	// No change: an aggregate-only delta with no changed rows and no order.
 	steady := g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B"), tv("c", "C")), &StreamMeta{})
 	require.Equal(t, streamEventDelta, steady.Type)
 	require.Empty(t, steady.Data.Torrents)
 	require.Nil(t, steady.Delta.Order)
 	require.Equal(t, 3, steady.Data.Total, "aggregate total still reflects the full page")
 
-	// One row's content changes: it rides in the delta, order stays implicit.
 	changed := g.buildUpdatePayload(opts, singleResp(tv("a", "A"), tv("b", "B2"), tv("c", "C")), &StreamMeta{})
 	require.Equal(t, streamEventDelta, changed.Type)
 	require.Equal(t, []string{"b"}, changedHashes(changed))
@@ -107,10 +102,6 @@ func TestBuildUpdatePayloadReorderSendsOrderOnly(t *testing.T) {
 	require.Empty(t, changedHashes(reordered), "a pure reorder carries no row payloads")
 }
 
-// TestBuildUpdatePayloadEmptiedPageSendsPresentEmptyOrder guards the N->0 clear:
-// when the page drains to zero rows, the delta must carry a present-but-empty order
-// that survives JSON marshaling, otherwise the client cannot distinguish a full
-// clear from an aggregate-only tick and leaves the deleted rows on screen.
 func TestBuildUpdatePayloadEmptiedPageSendsPresentEmptyOrder(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
@@ -123,16 +114,11 @@ func TestBuildUpdatePayloadEmptiedPageSendsPresentEmptyOrder(t *testing.T) {
 	require.Empty(t, *cleared.Delta.Order)
 	require.Empty(t, changedHashes(cleared))
 
-	// The present-but-empty order must serialize on the wire (not be dropped by
-	// omitempty), so the client sees `"order":[]` and clears.
 	encoded, err := json.Marshal(cleared)
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), `"order":[]`)
 }
 
-// TestBuildUpdatePayloadHasNoPeriodicKeyframe verifies that after the seed there is
-// no periodic full re-send. A recurring full page would head-of-line-block every
-// other request on a shared HTTP/2 connection each time it fired.
 func TestBuildUpdatePayloadHasNoPeriodicKeyframe(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
@@ -146,10 +132,6 @@ func TestBuildUpdatePayloadHasNoPeriodicKeyframe(t *testing.T) {
 	}
 }
 
-// TestVolatileFieldsDoNotTriggerResend is the core of the streaming fix: a torrent
-// whose only change is a per-second counter (reannounce/time_active/...) or peer
-// jitter must NOT be re-sent, otherwise a mostly-idle page re-sends nearly every row
-// every tick and the "delta" is almost a full snapshot.
 func TestVolatileFieldsDoNotTriggerResend(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1}}
@@ -157,7 +139,6 @@ func TestVolatileFieldsDoNotTriggerResend(t *testing.T) {
 	base := &qbt.Torrent{Hash: "a", Name: "A", Reannounce: 1800, TimeActive: 100, SeedingTime: 100, NumSeeds: 3}
 	g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: base}), &StreamMeta{})
 
-	// Only volatile fields move (counters tick, peer count jitters): no resend.
 	ticked := *base
 	ticked.Reannounce = 1798
 	ticked.TimeActive = 102
@@ -169,15 +150,12 @@ func TestVolatileFieldsDoNotTriggerResend(t *testing.T) {
 	require.Equal(t, streamEventDelta, idle.Type)
 	require.Empty(t, changedHashes(idle), "a torrent that only ticked its counters must not be re-sent")
 
-	// A real change (download speed) does trigger a resend.
 	active := ticked
 	active.DlSpeed = 1024
 	sent := g.buildUpdatePayload(opts, singleResp(qbittorrent.TorrentView{Torrent: &active}), &StreamMeta{})
 	require.Equal(t, []string{"a"}, changedHashes(sent), "a real change (speed) must re-send the row")
 }
 
-// A one-row view (the details row) resends its row when a counter that the
-// General tab shows changes. The main list keeps the volatile-field rule.
 func TestOneRowViewResendsLiveCounters(t *testing.T) {
 	counters := map[string]func(*qbt.Torrent){
 		"TimeActive":       func(tr *qbt.Torrent) { tr.TimeActive++ },
@@ -222,12 +200,10 @@ func TestBuildUpdatePayloadCrossInstance(t *testing.T) {
 	g := &subscriptionGroup{}
 	opts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2}}}
 
-	// Seed: same hash on two instances are distinct rows keyed by instanceId:hash.
 	full := g.buildUpdatePayload(opts, crossResp(ci(1, "a", "A"), ci(2, "a", "A")), &StreamMeta{})
 	require.Equal(t, streamEventUpdate, full.Type)
 	require.Len(t, full.Data.CrossInstanceTorrents, 2)
 
-	// Change only instance 2's copy: just that row rides in the delta.
 	changed := g.buildUpdatePayload(opts, crossResp(ci(1, "a", "A"), ci(2, "a", "A2")), &StreamMeta{})
 	require.Equal(t, streamEventDelta, changed.Type)
 	require.Nil(t, changed.Data.Torrents, "single-instance slice stays empty on a cross-instance delta")
@@ -236,9 +212,6 @@ func TestBuildUpdatePayloadCrossInstance(t *testing.T) {
 	require.Nil(t, changed.Delta.Order, "value-only change keeps order implicit")
 }
 
-// TestCrossInstanceMetadataChangeIsFlaggedAsChanged confirms a table-visible
-// cross-instance field (instance name) is part of the change fingerprint, so a
-// metadata change re-sends the row rather than hiding behind an aggregate-only tick.
 func TestCrossInstanceMetadataChangeIsFlaggedAsChanged(t *testing.T) {
 	rowA := qbittorrent.CrossInstanceTorrentView{
 		TorrentView:  &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "a", Name: "A"}},
@@ -261,9 +234,6 @@ func TestCrossInstanceMetadataChangeIsFlaggedAsChanged(t *testing.T) {
 	require.Equal(t, "alpha-renamed", delta.Data.CrossInstanceTorrents[0].InstanceName)
 }
 
-// TestDeltaOmitsUnchangedCounts pins the sidebar-counts dedup: counts are several
-// KB per tick and only move when the library does, so an unchanged tick must drop
-// the field and a changed one must carry it.
 func TestDeltaOmitsUnchangedCounts(t *testing.T) {
 	counts := func(seeding int) *qbittorrent.TorrentCounts {
 		return &qbittorrent.TorrentCounts{
@@ -288,21 +258,16 @@ func TestDeltaOmitsUnchangedCounts(t *testing.T) {
 	require.Equal(t, streamEventUpdate, full.Type)
 	require.NotNil(t, full.Data.Counts, "the seeding snapshot always carries counts")
 
-	// Same counts, and a row changed so this is a real delta frame.
 	unchanged := g.buildUpdatePayload(opts, respWith(counts(2), tv("a", "A-renamed")), &StreamMeta{})
 	require.Equal(t, streamEventDelta, unchanged.Type)
 	require.Nil(t, unchanged.Data.Counts, "counts identical to the last frame must be omitted")
 
-	// A counts change must put the field back on the wire.
 	changed := g.buildUpdatePayload(opts, respWith(counts(3), tv("a", "A-renamed")), &StreamMeta{})
 	require.Equal(t, streamEventDelta, changed.Type)
 	require.NotNil(t, changed.Data.Counts, "changed counts must be sent")
 	require.Equal(t, 3, changed.Data.Counts.Status["seeding"])
 }
 
-// TestInitUsesExactVersionedBaseline pins continuity for late joiners. Once a
-// group has a baseline, an independently materialized candidate cannot replace or
-// diverge from it; every init identifies the exact retained frame version.
 func TestInitUsesExactVersionedBaseline(t *testing.T) {
 	counts := &qbittorrent.TorrentCounts{Status: map[string]int{"all": 1}, Total: 1}
 	opts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1}}}
@@ -314,15 +279,12 @@ func TestInitUsesExactVersionedBaseline(t *testing.T) {
 	require.Equal(t, seeded, first.Data)
 	require.Equal(t, &StreamVersion{Major: 7, Minor: 1}, first.Version)
 
-	// This candidate was built later but does not represent the group's baseline.
 	joinerCandidate := singleResp(tv("a", "not-the-baseline"))
 	joinerCandidate.Counts = &qbittorrent.TorrentCounts{Total: 9}
 	joiner := g.buildInitPayload(opts, joinerCandidate, &StreamMeta{})
 	require.Same(t, first.Data, joiner.Data)
 	require.Equal(t, first.Version, joiner.Version)
 
-	// Even an aggregate-only frame advances Minor. Its retained full snapshot keeps
-	// edge-triggered fields that were omitted from the delta on the wire.
 	delta := g.buildUpdatePayload(opts, singleResp(tv("a", "A")), &StreamMeta{})
 	require.Equal(t, StreamVersion{Major: 7, Minor: 1}, delta.Delta.BaseVersion)
 	require.Equal(t, &StreamVersion{Major: 7, Minor: 2}, delta.Version)

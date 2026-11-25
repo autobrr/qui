@@ -14,7 +14,6 @@ import "@/i18n"
 import type { ShareSettings } from "@/lib/shares-api"
 import { server } from "@/test/msw/server"
 
-// The settings of a qui that never saved Settings → Shares.
 const defaults: ShareSettings = {
   port: 0,
   publicAddress: "",

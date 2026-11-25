@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it } from "vitest"
 import { DropdownMenuItem } from "./dropdown-menu"
 import { TapMenu } from "./tap-menu"
 
-// A row component that takes only its own props, as the mobile peer row does
 function Row({ label }: { label: string }) {
   return <div>{label}</div>
 }

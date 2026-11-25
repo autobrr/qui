@@ -20,8 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// The server hands the orphan scan service to the SSH routes, so an SSH change
-// waits for a running orphan deletion.
 func TestServerSSHRoutesWaitForAnOrphanDeletion(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "api-orphan-deletion-guard")
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))

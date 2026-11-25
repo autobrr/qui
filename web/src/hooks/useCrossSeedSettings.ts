@@ -41,7 +41,6 @@ export function useCrossSeedSearchSettings() {
   })
 }
 
-/** Saves one card's fields. The PATCH keeps every field the payload leaves out. */
 export function usePatchCrossSeedSettings() {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
@@ -66,7 +65,6 @@ export function useCrossSeedSearchStatus() {
   return useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
-    // Poll only while a search is actively running for smooth live progress; events drive idle transitions.
     refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
   })
 }
@@ -94,7 +92,6 @@ export function useEnabledIndexers() {
 
 type AggregatedInstanceMetadata = { categories: Record<string, Category>; tags: string[] }
 
-/** Categories and tags merged across the given instances, for source filter pickers. */
 export function useAggregatedInstanceMetadata(instanceIds: number[]) {
   return useQuery({
     queryKey: ["cross-seed", "instance-metadata", instanceIds],

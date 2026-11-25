@@ -25,11 +25,6 @@ import (
 	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
-// Note: qbtLayoutToHardlinkLayout is no longer used in hardlink mode.
-// Hardlink mode always forces contentLayout=Original to match the incoming
-// torrent's structure exactly and avoid double-folder nesting.
-
-// mockTrackerCustomizationStore implements trackerCustomizationProvider for tests.
 type mockTrackerCustomizationStore struct {
 	customizations []*models.TrackerCustomization
 }
@@ -159,8 +154,6 @@ func crossDeviceLinkError(target string) error {
 	return fmt.Errorf("hardlink src -> %s: %w", target, &os.LinkError{Op: "link", Old: "src", New: target, Err: syscall.EXDEV})
 }
 
-// crossDeviceBackend fails HardlinkTree with EXDEV under the listed base dirs,
-// the way link() fails on a host whose disks share one device ID.
 type crossDeviceBackend struct {
 	*local.Backend
 	crossDevice []string
@@ -215,8 +208,6 @@ func TestProcessHardlinkMode_CrossDeviceTriesNextBaseDir(t *testing.T) {
 
 	require.True(t, result.Success, "result: %+v", result)
 	assert.False(t, result.FallbackToRegular)
-	// The torrent's root folder goes into the base dir. The folder that
-	// the cross-device dir reserved is free again.
 	require.Len(t, adds.added, 1)
 	assert.Equal(t, dirB, adds.added[0]["savepath"])
 	assert.NoDirExists(t, filepath.Join(dirA, "Movie"))
@@ -225,8 +216,6 @@ func TestProcessHardlinkMode_CrossDeviceTriesNextBaseDir(t *testing.T) {
 	assert.Equal(t, normalizePathForComparison(dirB), categorySavePath)
 }
 
-// The By Tracker folder takes the display name of the Tracker Customization
-// for the announce domain of the incoming torrent, before the indexer name.
 func TestProcessHardlinkMode_ByTrackerUsesTrackerCustomization(t *testing.T) {
 	tempDir := t.TempDir()
 	downloadsDir, linksDir := filepath.Join(tempDir, "downloads"), filepath.Join(tempDir, "links")
@@ -339,7 +328,7 @@ func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 				ID:                       1,
 				Name:                     "qbt1",
 				HasLocalFilesystemAccess: true,
-				UseHardlinks:             false, // Disabled
+				UseHardlinks:             false,
 				HardlinkBaseDir:          "/hardlinks",
 			},
 		},
@@ -378,7 +367,7 @@ func TestProcessHardlinkMode_FailsWhenBaseDirEmpty(t *testing.T) {
 				Name:                     "qbt1",
 				HasLocalFilesystemAccess: true,
 				UseHardlinks:             true,
-				HardlinkBaseDir:          "", // Empty
+				HardlinkBaseDir:          "",
 			},
 		},
 	}
@@ -405,14 +394,12 @@ func TestProcessHardlinkMode_FailsWhenBaseDirEmpty(t *testing.T) {
 		"category.cross",
 	)
 
-	// When hardlink mode is enabled but fails, it should return Used=true with error
 	require.True(t, result.Used, "hardlink mode should be attempted when enabled")
 	assert.False(t, result.Success, "hardlink mode should fail when base dir is empty")
 	assert.Equal(t, "hardlink_error", result.Result.Status)
 	assert.Contains(t, result.Result.Message, "base directory")
 }
 
-// mockInstanceStore implements instanceProvider for tests.
 type mockInstanceStore struct {
 	instances map[int]*models.Instance
 }
@@ -593,7 +580,6 @@ func TestProcessHardlinkMode_FailedRecheckIsQueued(t *testing.T) {
 
 				require.True(t, result.Success, result.Result.Message)
 				require.NotContains(t, result.Result.Message, "manual intervention required")
-				// qBittorrent still fails the recheck, so each poll sends it again.
 				actions, _ := script.wait()
 				require.Equal(t, []string{"recheck:hash123", "recheck:hash123", "recheck:hash123"}, actions)
 			})
@@ -601,9 +587,6 @@ func TestProcessHardlinkMode_FailedRecheckIsQueued(t *testing.T) {
 	}
 }
 
-// A season, episode or group relaxed by the exact-size fallback rests on equal
-// reported sizes, so the link modes owe it the same full hash check a title rescue
-// gets.
 func TestProcessHardlinkMode_RelaxedMatchWaitsForFullRecheck(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
@@ -745,7 +728,6 @@ func TestProcessReflinkMode_RelaxedGroupSkipRecheck(t *testing.T) {
 		},
 	}
 
-	// Identical layouts, so only the relaxed group can demand the recheck.
 	files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 1000}}
 	withLinkAdder(s)
 	result := s.processReflinkMode(
@@ -900,7 +882,7 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 			1: {
 				ID:                       1,
 				Name:                     "qbt1",
-				HasLocalFilesystemAccess: false, // No local access
+				HasLocalFilesystemAccess: false,
 				UseHardlinks:             true,
 				HardlinkBaseDir:          "/hardlinks",
 			},
@@ -929,7 +911,6 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 		"category.cross",
 	)
 
-	// When hardlink mode is enabled but fails, it should return Used=true with error
 	require.True(t, result.Used, "hardlink mode should be attempted when enabled")
 	assert.False(t, result.Success, "hardlink mode should fail when instance lacks local access")
 	assert.Equal(t, "hardlink_error", result.Result.Status)
@@ -937,10 +918,6 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 }
 
 func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
-	// This test verifies that when infrastructure checks fail (directory creation
-	// or filesystem validation), we get an error result.
-	// We use a non-writable path to trigger the directory creation failure.
-
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
 			1: {
@@ -975,20 +952,15 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		"category.cross",
 	)
 
-	// Should be Used=true because we attempted hardlink mode, but failed
 	require.True(t, result.Used, "hardlink mode should be attempted")
 	assert.False(t, result.Success, "hardlink mode should fail")
 	assert.Equal(t, "hardlink_error", result.Result.Status)
-	// Error could be about directory creation or filesystem - both are valid infrastructure errors
 	assert.True(t, strings.Contains(result.Result.Message, "directory") ||
 		strings.Contains(result.Result.Message, "filesystem"),
 		"error message should mention directory or filesystem issue, got: %s", result.Result.Message)
 }
 
 func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
-	// This test verifies that when incoming torrent has extra files (files not in candidate)
-	// and SkipRecheck is enabled, hardlink mode returns skipped_recheck before any plan building.
-
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
 			1: {
@@ -1005,13 +977,11 @@ func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) 
 		instanceStore: mockInstances,
 	}
 
-	// Source files have an extra file (sample.mkv) not in candidate
 	sourceFiles := qbt.TorrentFiles{
 		{Name: "Movie/movie.mkv", Size: 1000},
-		{Name: "Movie/sample.mkv", Size: 100}, // Extra file
+		{Name: "Movie/sample.mkv", Size: 100},
 	}
 
-	// Candidate files only have the main movie
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "Movie/movie.mkv", Size: 1000},
 	}
@@ -1024,7 +994,7 @@ func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) 
 		[]byte("torrent"),
 		"hash123",
 		"TorrentName",
-		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
+		&CrossSeedRequest{SkipRecheck: true},
 		&qbt.Torrent{ContentPath: "/downloads/Movie"},
 		"exact",
 		sourceFiles,
@@ -1034,7 +1004,6 @@ func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) 
 		"category.cross",
 	)
 
-	// Should be Used=true because hardlink mode is enabled, but skipped due to recheck requirement
 	require.True(t, result.Used, "hardlink mode should be attempted")
 	assert.False(t, result.Success, "should not succeed - skipped")
 	assert.Equal(t, "skipped_recheck", result.Result.Status)
@@ -1043,16 +1012,13 @@ func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) 
 }
 
 func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
-	// This test verifies that when incoming torrent has extra files (files not in candidate)
-	// and SkipRecheck is enabled, reflink mode returns skipped_recheck before any plan building.
-
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
 			1: {
 				ID:                       1,
 				Name:                     "qbt1",
 				HasLocalFilesystemAccess: true,
-				UseReflinks:              true, // Reflink mode enabled
+				UseReflinks:              true,
 				HardlinkBaseDir:          "/reflinks",
 			},
 		},
@@ -1062,13 +1028,11 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 		instanceStore: mockInstances,
 	}
 
-	// Source files have an extra file (sample.mkv) not in candidate
 	sourceFiles := qbt.TorrentFiles{
 		{Name: "Movie/movie.mkv", Size: 1000},
-		{Name: "Movie/sample.mkv", Size: 100}, // Extra file
+		{Name: "Movie/sample.mkv", Size: 100},
 	}
 
-	// Candidate files only have the main movie
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "Movie/movie.mkv", Size: 1000},
 	}
@@ -1081,7 +1045,7 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 		[]byte("torrent"),
 		"hash123",
 		"TorrentName",
-		&CrossSeedRequest{SkipRecheck: true}, // SkipRecheck enabled
+		&CrossSeedRequest{SkipRecheck: true},
 		&qbt.Torrent{ContentPath: "/downloads/Movie"},
 		"exact",
 		sourceFiles,
@@ -1091,7 +1055,6 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 		"category.cross",
 	)
 
-	// Should be Used=true because reflink mode is enabled, but skipped due to recheck requirement
 	require.True(t, result.Used, "reflink mode should be attempted")
 	assert.False(t, result.Success, "should not succeed - skipped")
 	assert.Equal(t, "skipped_recheck", result.Result.Status)
@@ -1325,8 +1288,6 @@ func TestSelectExistingSourceFilesDoesNotMatchContentToSidecarBySizeOnly(t *test
 }
 
 func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
-	// When FallbackToRegularMode is enabled, hardlink failures should return
-	// Used=false so that regular cross-seed mode can proceed.
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
 			1: {
@@ -1334,8 +1295,8 @@ func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 				Name:                     "qbt1",
 				HasLocalFilesystemAccess: true,
 				UseHardlinks:             true,
-				FallbackToRegularMode:    true, // Fallback enabled
-				HardlinkBaseDir:          "",   // Empty to force early failure
+				FallbackToRegularMode:    true,
+				HardlinkBaseDir:          "",
 			},
 		},
 	}
@@ -1362,13 +1323,10 @@ func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 		"category.cross",
 	)
 
-	// With fallback enabled, failure should return Used=false to allow regular mode
 	assert.False(t, result.Used, "hardlink mode should return Used=false when fallback is enabled and it fails")
 }
 
 func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
-	// When FallbackToRegularMode is disabled, hardlink failures should return
-	// Used=true with hardlink_error status.
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
 			1: {
@@ -1376,8 +1334,8 @@ func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
 				Name:                     "qbt1",
 				HasLocalFilesystemAccess: true,
 				UseHardlinks:             true,
-				FallbackToRegularMode:    false, // Fallback disabled
-				HardlinkBaseDir:          "",    // Empty to force early failure
+				FallbackToRegularMode:    false,
+				HardlinkBaseDir:          "",
 			},
 		},
 	}
@@ -1404,7 +1362,6 @@ func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
 		"category.cross",
 	)
 
-	// With fallback disabled, failure should return Used=true with error status
 	require.True(t, result.Used, "hardlink mode should return Used=true when fallback is disabled")
 	assert.False(t, result.Success, "result should indicate failure")
 	assert.Equal(t, "hardlink_error", result.Result.Status)
@@ -1412,8 +1369,6 @@ func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
 }
 
 func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
-	// When FallbackToRegularMode is enabled, reflink failures should return
-	// Used=false so that regular cross-seed mode can proceed.
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
 			1: {
@@ -1421,8 +1376,8 @@ func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
 				Name:                     "qbt1",
 				HasLocalFilesystemAccess: true,
 				UseReflinks:              true,
-				FallbackToRegularMode:    true, // Fallback enabled
-				HardlinkBaseDir:          "",   // Empty to force early failure (reflink reuses this field)
+				FallbackToRegularMode:    true,
+				HardlinkBaseDir:          "",
 			},
 		},
 	}
@@ -1449,13 +1404,10 @@ func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
 		"category.cross",
 	)
 
-	// With fallback enabled, failure should return Used=false to allow regular mode
 	assert.False(t, result.Used, "reflink mode should return Used=false when fallback is enabled and it fails")
 }
 
 func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
-	// When FallbackToRegularMode is disabled, reflink failures should return
-	// Used=true with reflink_error status.
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
 			1: {
@@ -1463,8 +1415,8 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 				Name:                     "qbt1",
 				HasLocalFilesystemAccess: true,
 				UseReflinks:              true,
-				FallbackToRegularMode:    false, // Fallback disabled
-				HardlinkBaseDir:          "",    // Empty to force early failure
+				FallbackToRegularMode:    false,
+				HardlinkBaseDir:          "",
 			},
 		},
 	}
@@ -1491,17 +1443,12 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 		"category.cross",
 	)
 
-	// With fallback disabled, failure should return Used=true with error status
 	require.True(t, result.Used, "reflink mode should return Used=true when fallback is disabled")
 	assert.False(t, result.Success, "result should indicate failure")
 	assert.Equal(t, "reflink_error", result.Result.Status)
 	assert.Contains(t, result.Result.Message, "base directory")
 }
 
-// cancelOnAddSync cancels the run's context from inside AddTorrent and
-// then fails the add, so the rollback that follows runs under a cancelled
-// context. It records how many entries the link base held at that moment, which
-// keeps the "base dir is empty afterwards" assertion non-vacuous.
 type cancelOnAddSync struct {
 	*adderFake
 	cancel       context.CancelFunc
@@ -1517,10 +1464,6 @@ func (m *cancelOnAddSync) AddTorrent(_ context.Context, _ int, _ []byte, _ map[s
 	return nil, m.err
 }
 
-// reflinkCapableBackend reports reflink support and materializes the tree with
-// hardlinks, so the reflink path is exercised even though CI runners are not
-// expected to have reflink support. Every other method — RemoveTree included,
-// which is what the rollback assertion turns on — is the real local backend.
 type reflinkCapableBackend struct {
 	*local.Backend
 }
@@ -1606,7 +1549,6 @@ func TestProcessLinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T)
 
 			require.True(t, used)
 			require.False(t, success)
-			// One entry: the tree root the link mode created under the base dir.
 			require.Equal(t, 1, sync.entriesAtAdd, "link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
 
 			entries, err := os.ReadDir(linkBase)

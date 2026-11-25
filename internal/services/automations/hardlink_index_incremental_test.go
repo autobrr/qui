@@ -17,7 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// scanOne reads one torrent's files the way the index does, from real files on disk.
 func scanOne(t *testing.T, savePath string, names ...string) *torrentFileInfo {
 	t.Helper()
 	files := make(qbt.TorrentFiles, 0, len(names))
@@ -27,8 +26,6 @@ func scanOne(t *testing.T, savePath string, names ...string) *torrentFileInfo {
 	return scanTorrentFiles(context.Background(), localbackend.NewBackend(), qbt.Torrent{SavePath: savePath}, files)
 }
 
-// linkPair creates one file under a/ and hardlinks it into b/, returning both paths.
-// Two paths to one inode is the shape every scope answer turns on.
 func linkPair(t *testing.T, dir string) (string, string) {
 	t.Helper()
 	pathA := filepath.Join(dir, "a", "movie.mkv")
@@ -39,8 +36,6 @@ func linkPair(t *testing.T, dir string) (string, string) {
 	return pathA, pathB
 }
 
-// indexFrom derives the link counts and every derived map from a set of scans, exactly
-// as a full build or an incremental update does.
 func indexFrom(scans map[string]*torrentFileInfo) *HardlinkIndex {
 	index := &HardlinkIndex{}
 	index.applyLinkState(deriveLinkCounts(nil, scans, nil))
@@ -94,10 +89,6 @@ func TestScanTorrentFiles_PresentSkippedFileStillAffectsScope(t *testing.T) {
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash["hash"])
 }
 
-// Two torrents holding the same physical file are hardlinked to each other and to
-// nothing else. Dropping one of them, files and all, leaves the survivor with a single
-// link, and the survivor's scope has to follow even though nothing happened to it
-// directly. This is what an incremental update has to get right.
 func TestIncrementalUpdate_RemovedTorrentChangesSurvivorScope(t *testing.T) {
 	t.Parallel()
 
@@ -112,7 +103,6 @@ func TestIncrementalUpdate_RemovedTorrentChangesSurvivorScope(t *testing.T) {
 	require.Equal(t, HardlinkScopeTorrentsOnly, before.ScopeByHash["hashA"])
 	require.Equal(t, HardlinkScopeTorrentsOnly, before.ScopeByHash["hashB"])
 
-	// hashB leaves and takes its link with it.
 	require.NoError(t, os.Remove(pathB))
 	delete(scans, "hashB")
 	scans["hashA"] = scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
@@ -123,9 +113,6 @@ func TestIncrementalUpdate_RemovedTorrentChangesSurvivorScope(t *testing.T) {
 	require.NotContains(t, after.ScopeByHash, "hashB", "the departed torrent is gone from the index")
 }
 
-// A torrent removed from qBittorrent while its files stay on disk leaves a link that
-// nothing in the client explains any more. The survivor has to read as linked outside
-// the client, which is what keeps it out of the delete-safe groups.
 func TestIncrementalUpdate_RemovedTorrentKeepingFilesMovesLinkOutside(t *testing.T) {
 	t.Parallel()
 
@@ -138,7 +125,6 @@ func TestIncrementalUpdate_RemovedTorrentKeepingFilesMovesLinkOutside(t *testing
 	}
 	require.Equal(t, HardlinkScopeTorrentsOnly, indexFrom(scans).ScopeByHash["hashA"])
 
-	// hashB is removed from the client, the file it linked stays where it is.
 	delete(scans, "hashB")
 
 	after := indexFrom(scans)
@@ -172,7 +158,6 @@ func TestPlanTorrentRescan(t *testing.T) {
 	require.NotEmpty(t, staleFileIDs, "the moved torrent's old files lose their explanation")
 }
 
-// The plan must not schedule work twice, and must not schedule torrents that left.
 func TestPlanSharingRescanSkipsAlreadyPlannedAndDepartedTorrents(t *testing.T) {
 	t.Parallel()
 
@@ -200,8 +185,6 @@ func TestPlanSharingRescanSkipsAlreadyPlannedAndDepartedTorrents(t *testing.T) {
 	require.Equal(t, map[string]struct{}{"sharer": {}}, sharing)
 }
 
-// A rule decides on the index, then the disk changes before the delete runs. The
-// verification has to see the new link count, not the one the index recorded.
 func TestScopeAfterRescanSeesLinksAddedSinceTheIndexWasBuilt(t *testing.T) {
 	t.Parallel()
 
@@ -213,7 +196,6 @@ func TestScopeAfterRescanSeesLinksAddedSinceTheIndexWasBuilt(t *testing.T) {
 	index := indexFrom(scans)
 	require.Equal(t, HardlinkScopeNone, index.ScopeByHash["hashA"])
 
-	// Something outside qBittorrent hardlinks the file after the index was built.
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "library"), 0o700))
 	require.NoError(t, os.Link(pathA, filepath.Join(dir, "library", "movie.mkv")))
 
@@ -239,9 +221,6 @@ func TestScopeAfterRescanReportsUnknownForUnreadableFiles(t *testing.T) {
 		"a torrent whose files vanished has no scope, and must not read as unlinked")
 }
 
-// A delete is only re-verified when the rule consulted the index to choose its
-// candidates. Every route into the hardlink index has to count, or a rule that
-// sorts or groups by hardlink data deletes on an index nobody re-read.
 func TestDeleteUsesHardlinkData(t *testing.T) {
 	t.Parallel()
 
@@ -302,8 +281,6 @@ func TestDeleteUsesHardlinkData(t *testing.T) {
 	}
 }
 
-// Scans taken at different moments can disagree about a file. The higher link count has
-// to win, because it is the one that reports a link outside the torrent set.
 func TestDeriveLinkCountsPrefersTheHigherLinkCount(t *testing.T) {
 	t.Parallel()
 
@@ -323,8 +300,6 @@ func TestDeriveLinkCountsPrefersTheHigherLinkCount(t *testing.T) {
 	require.Equal(t, 2, tracker.uniquePathCount, "two distinct paths point at the file")
 }
 
-// bothScopeFixture builds two torrents sharing one file (inside link) that is also
-// hardlinked into a library path (outside link): nlink=3, two set paths -> "both".
 func bothScopeFixture(t *testing.T) map[string]*torrentFileInfo {
 	t.Helper()
 	dir := t.TempDir()
@@ -337,8 +312,6 @@ func bothScopeFixture(t *testing.T) map[string]*torrentFileInfo {
 	}
 }
 
-// A "both" torrent still has links outside the client, so it must never enter the
-// delete-safe groups, or a delete rule would remove data a library still points at.
 func TestApplyLinkState_BothScopeIsNotDeleteSafe(t *testing.T) {
 	t.Parallel()
 
@@ -350,9 +323,6 @@ func TestApplyLinkState_BothScopeIsNotDeleteSafe(t *testing.T) {
 	require.Empty(t, index.DeleteSafeGroupBySignature, "outside-linked torrents must not be delete-safe")
 }
 
-// The delete verifier compares a fresh rescan against the indexed scope and vetoes on
-// mismatch. The rescan must be able to answer "both", or every both-scoped torrent
-// would fail verification forever.
 func TestScopeAfterRescanReportsBoth(t *testing.T) {
 	t.Parallel()
 

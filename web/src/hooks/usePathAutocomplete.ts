@@ -10,12 +10,9 @@ import { endsWithSeparator, lastSeparatorIndex, pathSeparator } from "@/lib/path
 import { useDirectoryContent } from "./useDirectoryContent";
 
 const MAX_SUGGESTIONS = 100;
-// Stable fallback for a query without data. An inline `= []` is a new array each
-// render, which resets the highlight after every arrow key.
 const NO_ENTRIES: string[] = [];
 
 type UsePathAutocompleteOptions = {
-  /** Also list files; a selected file closes the dropdown instead of descending into it. */
   includeFiles?: boolean;
 };
 
@@ -57,14 +54,11 @@ export function usePathAutocomplete(
 
   const enabled = Boolean(deferredInput?.trim());
   const { data: directoryEntries = NO_ENTRIES } = useDirectoryContent(instanceId, parentPath, { enabled });
-  // Second query instead of mode=all with metadata: it works on qBittorrent 5.0
-  // and returns full paths, while withMetadata needs 5.2 and returns basenames.
   const { data: fileEntries = NO_ENTRIES } = useDirectoryContent(instanceId, parentPath, {
     enabled: includeFiles && enabled,
     mode: "files",
   });
 
-  // Capped: a flat directory with thousands of files would render one button per entry.
   const suggestions = useMemo(() => {
     const entries = includeFiles ? [...directoryEntries, ...fileEntries] : directoryEntries;
     const matches = filterTerm
@@ -73,8 +67,6 @@ export function usePathAutocomplete(
     return matches.slice(0, MAX_SUGGESTIONS);
   }, [directoryEntries, fileEntries, includeFiles, filterTerm]);
 
-  // Reset the highlight when the input or the suggestions change. The input is a
-  // dependency because a case-only edit leaves the suggestions unchanged.
   useEffect(() => {
     if (dismissed) {
       setHighlightedIndex(-1);
@@ -87,7 +79,6 @@ export function usePathAutocomplete(
     setHighlightedIndex(suggestions.length > 0 ? 0 : -1);
   }, [suggestions, dismissed, deferredInput]);
 
-  /** Selects an entry. A directory gets a trailing separator and keeps the dropdown open for the next level; a file closes it. */
   const selectSuggestion = useCallback(
     (entry: string) => {
       const isFile = fileEntries.includes(entry);
@@ -134,12 +125,10 @@ export function usePathAutocomplete(
           }
           break;
         case "Tab":
-          // Only intercept Tab if there's a highlighted suggestion to select
           if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
             e.preventDefault();
             selectSuggestion(suggestions[highlightedIndex]);
           }
-          // Otherwise let Tab proceed for normal form navigation
           break;
         default:
           return;
@@ -160,28 +149,17 @@ export function usePathAutocomplete(
     [selectSuggestion]
   );
 
-  /** Dismisses the suggestion dropdown when the input loses focus. */
   const handleBlur = useCallback(() => {
     setDismissed(true);
     setHighlightedIndex(-1);
   }, []);
 
-  // Don't show suggestions if:
-  // 1. No suggestions available
-  // 2. Input ends with "/" and is an exact match to a suggestion (folder fully selected)
-  // 3. Input exactly matches the only suggestion
   const showSuggestions =
     !dismissed &&
     suggestions.length > 0 &&
     !(suggestions.length === 1 && suggestions[0] === inputValue) &&
     !(endsWithSeparator(inputValue) && suggestions.some((s) => s === inputValue));
 
-  // Dismiss on any pointer interaction outside the input and the list. Blur
-  // cannot do this because the suggestion buttons prevent it. A pointerdown on
-  // the list itself (for example its scrollbar) keeps it open.
-  // Escape closes only the list. A Radix dialog listens for Escape on the
-  // document in the capture phase, before the input sees the key, so the
-  // listener sits on the window, which the event reaches first.
   useEffect(() => {
     if (!showSuggestions) return;
     const onPointerDown = (e: Event) => {

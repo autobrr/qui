@@ -103,12 +103,6 @@ func (fr *Fastresume) Encode(path string) error {
 func (fr *Fastresume) ConvertFilePriority(numFiles int) {
 	newPrioList := make([]int, 0, numFiles)
 
-	/*
-		File priority:
-		0 Do not download
-		1 Normal
-		6 High
-	*/
 	for range numFiles {
 		newPrioList = append(newPrioList, 1)
 	}

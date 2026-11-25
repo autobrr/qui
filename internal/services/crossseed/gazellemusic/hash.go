@@ -14,8 +14,6 @@ import (
 	"crypto/sha1" //nolint:gosec // BitTorrent v1 infohash requires SHA1.
 )
 
-// CalculateHashesWithSources returns v1 info hashes calculated with different "source" flags.
-// This matches gzlx behavior and is used for hash-based matching against Gazelle trackers.
 func CalculateHashesWithSources(torrentData []byte, sources []string) (map[string]string, error) {
 	decoded, err := decodeBencode(torrentData)
 	if err != nil {
@@ -39,7 +37,6 @@ func CalculateHashesWithSources(torrentData []byte, sources []string) (map[strin
 
 	result := make(map[string]string)
 
-	// Base hash (no source).
 	delete(info, "source")
 	encoded, err := encodeBencode(info)
 	if err != nil {
@@ -85,7 +82,7 @@ func decodeBencodeValue(data []byte, pos int) (any, int, error) {
 }
 
 func decodeBencodeInt(data []byte, pos int) (int64, int, error) {
-	pos++ // skip 'i'
+	pos++
 	end := bytes.IndexByte(data[pos:], 'e')
 	if end == -1 {
 		return 0, pos, errors.New("unterminated integer")
@@ -117,7 +114,7 @@ func decodeBencodeString(data []byte, pos int) (string, int, error) {
 }
 
 func decodeBencodeList(data []byte, pos int) ([]any, int, error) {
-	pos++ // skip 'l'
+	pos++
 	var result []any
 	for pos < len(data) && data[pos] != 'e' {
 		val, newPos, err := decodeBencodeValue(data, pos)
@@ -134,7 +131,7 @@ func decodeBencodeList(data []byte, pos int) ([]any, int, error) {
 }
 
 func decodeBencodeDict(data []byte, pos int) (map[string]any, int, error) {
-	pos++ // skip 'd'
+	pos++
 	result := make(map[string]any)
 	for pos < len(data) && data[pos] != 'e' {
 		key, newPos, err := decodeBencodeString(data, pos)

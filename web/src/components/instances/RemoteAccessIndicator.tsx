@@ -12,14 +12,10 @@ import { useTranslation } from "react-i18next"
 
 interface RemoteAccessIndicatorProps {
   instance: Pick<Instance, "filesystemMode" | "sshTier" | "sshHardlink">
-  // fact: an icon and a few words, for the row of the instance in Settings, with the limits in a tooltip on hover. It
-  // takes no focus, because the row is a button. inline: the list of limits, for the SSH tab.
   variant: "fact" | "inline"
   className?: string
 }
 
-// How qui reaches the instance's files, and on a remote instance what that
-// leaves off: the degraded mode the design doc wants visible, not silent.
 export function RemoteAccessIndicator({ instance, variant, className }: RemoteAccessIndicatorProps) {
   const { t } = useTranslation("instances")
   const limits = remoteAccessLimits(instance)
@@ -47,7 +43,6 @@ export function RemoteAccessIndicator({ instance, variant, className }: RemoteAc
   }
   return (
     <Tooltip>
-      {/* A tap opens the tooltip, not the row: the row opens the editor, which would cover the tooltip. A mouse click still opens the row. */}
       <TooltipTrigger asChild openOnTap="only">
         {fact}
       </TooltipTrigger>

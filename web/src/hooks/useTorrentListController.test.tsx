@@ -28,8 +28,6 @@ vi.mock("@/hooks/useInstanceCapabilities", () => ({
   refreshChangedCapabilities: vi.fn(),
 }))
 
-// The same stream stand-in as the list hook tests: the REST path runs, and the
-// captured options show whether the list stream is open.
 let streamState: StreamState
 let lastStreamOptions: { enabled?: boolean } | undefined
 let hidden = false
@@ -80,8 +78,6 @@ async function flush(times = 8) {
   }
 }
 
-// The browser hides the tab: document.hidden changes, and React Query's focus
-// manager follows the visibility of the window.
 function setHidden(next: boolean) {
   hidden = next
   act(() => {
@@ -106,7 +102,6 @@ interface LayoutProps {
   groupCopies?: boolean
 }
 
-// Acts like a Layout: load the list.
 function useLayout({ filters = FILTERS, columnFiltersExpr, search = "", sort = "added_on", groupCopies }: LayoutProps) {
   const list = useTorrentListController({
     instanceId: 1,
@@ -199,7 +194,6 @@ describe("useTorrentListController — list", () => {
 describe("useTorrentListController — load more", () => {
   const rows = (count: number, from = 0) => Array.from({ length: count }, (_, i) => makeTorrent({ hash: `h${from + i}` }))
 
-  // The server holds 350 rows: a first page of 300 and a second page of 50.
   beforeEach(() => {
     mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => params.page === 0
       ? makeResponse({ torrents: rows(300), total: 350, hasMore: true })
@@ -288,7 +282,6 @@ describe("useTorrentListController — load more", () => {
     expect(result.current.list.loadedRows).toBe(100)
   })
 
-  // React Query answers from its cache, so the list never goes empty between the two filters.
   it("starts again at the first rows when the user goes back to a filter with a cached response", async () => {
     const downloading = { ...FILTERS, status: ["downloading"] }
     const { result, rerender } = renderLayout()
@@ -342,8 +335,6 @@ describe("useTorrentListController — load more", () => {
 })
 
 describe("useTorrentListController — Copy groups", () => {
-  // The server sends a group as adjacent rows: the Group representative with
-  // first_sorted, then the other members with the id only.
   const representative = (hash: string, id: string) =>
     makeTorrent({ hash, copy_group: { id, first_sorted: { instance_id: 1, hash } } })
   const member = (hash: string, id: string) => makeTorrent({ hash, copy_group: { id } })
@@ -438,7 +429,6 @@ describe("useTorrentListController — Copy groups", () => {
   })
 
   it("counts the visible rows in the load-more window", async () => {
-    // 150 groups of two torrents: 300 rows in memory, 150 visible.
     const groups = Array.from({ length: 150 }, (_, i) => [representative(`r${i}`, `g${i}`), member(`m${i}`, `g${i}`)]).flat()
     mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => params.page === 0
       ? makeResponse({ torrents: groups, total: 400, hasMore: true, copyGroupsReady: true })

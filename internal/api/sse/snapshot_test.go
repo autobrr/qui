@@ -17,8 +17,6 @@ func pointOptional(tv *qbittorrent.TorrentView, v *optionalValues) {
 	tv.Reannounce, tv.Popularity, tv.Private = &v.reannounce, &v.popularity, &v.private
 }
 
-// requireOwnsOptional fails when a retained row shares an optional value with
-// the source row.
 func requireOwnsOptional(t *testing.T, source, retained *qbittorrent.TorrentView) {
 	t.Helper()
 	require.NotSame(t, source.Reannounce, retained.Reannounce)
@@ -26,7 +24,6 @@ func requireOwnsOptional(t *testing.T, source, retained *qbittorrent.TorrentView
 	require.NotSame(t, source.Private, retained.Private)
 }
 
-// Each page row points into the full filtered library returned by qBittorrent.
 func snapshotPage(librarySize, pageSize int, cross bool) *qbittorrent.TorrentResponse {
 	library := make([]qbt.Torrent, librarySize)
 	values := make([]optionalValues, librarySize)

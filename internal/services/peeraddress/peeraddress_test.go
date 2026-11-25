@@ -23,8 +23,6 @@ type rig struct {
 	resolver   *peeraddress.Resolver
 }
 
-// newRig starts a stub qBittorrent that listens on port 51413 and reports no
-// external address yet, and an instance with no public peer address set.
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	stub := qbtstub.New(t, t.TempDir())

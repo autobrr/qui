@@ -22,7 +22,6 @@ func named(t transferhistory.Torrent, name string) transferhistory.Torrent {
 	return t
 }
 
-// torrents asks for the torrents of day 10 as totals, at most limit of them.
 func torrents(limit int) transferhistory.TransferQuery {
 	q := period(day10, day11, transferhistory.BucketTotal, transferhistory.GroupByTorrent)
 	q.Limit = limit
@@ -39,7 +38,6 @@ func within(q transferhistory.TransferQuery, groupOf transferhistory.Grouping, g
 	return withGroup(q, group)
 }
 
-// facts are the facts of a torrent row of a private torrent on tracker.example.
 func facts(name string, first24h *int64) *transferhistory.TorrentFacts {
 	return &transferhistory.TorrentFacts{Name: name, TrackerGroup: "tracker.example", Size: 1000, UploadFirst24h: first24h}
 }

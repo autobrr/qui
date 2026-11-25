@@ -36,7 +36,6 @@ let starts: TransferRequest[]
 let commits: number
 
 beforeAll(() => {
-  // Radix Select asks for pointer capture and scrolls its options into view; jsdom has neither.
   Element.prototype.hasPointerCapture = () => false
   Element.prototype.scrollIntoView = () => {}
 })
@@ -76,7 +75,6 @@ afterEach(() => {
 
 const newQueryClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-/** The list clears its selection on this call. */
 const onStarted = vi.fn()
 
 function renderDialog(queryClient = newQueryClient()) {
@@ -102,7 +100,6 @@ async function pickTarget(name: string) {
 const summaryPanel = () => document.querySelector<HTMLElement>("section[aria-labelledby='transfer-summary-title']")!
 const summaryText = () => summaryPanel().textContent ?? ""
 const figureLabels = () => Array.from(summaryPanel().querySelectorAll("dt"), label => label.textContent)
-/** The value under one label of the figures at the top of the summary. */
 const figure = (label: string) =>
   Array.from(summaryPanel().querySelectorAll("dt")).find(term => term.textContent === label)?.nextElementSibling?.textContent ?? null
 const memberRow = (name: string) => Array.from(summaryPanel().querySelectorAll("li")).find(row => row.firstElementChild?.textContent === name)?.textContent ?? null
@@ -171,7 +168,6 @@ describe("the Transfer dialog", () => {
       "The target has less free space than the Transfer needs.",
       "qui cannot see the files on homelab, so a file with other content at the same path can be replaced.",
     ])
-    // The user reads each warning after the summary and before Start.
     for (const alert of alerts) {
       expect(summaryPanel().compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(alert.compareDocumentPosition(startButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -318,7 +314,6 @@ describe("the Transfer dialog", () => {
     await waitFor(() => expect(figure("Torrents")).toBe("2"))
     expect(summaryPanel().getAttribute("aria-busy")).toBe("false")
 
-    // The next summary loads behind the last one, and Start waits for it.
     fireEvent.change(screen.getByLabelText("Tags"), { target: { value: "kept" } })
     await waitFor(() => expect(summaries).toHaveLength(2))
     expect(figureLabels()).toEqual(labels)
@@ -340,7 +335,6 @@ describe("the Transfer dialog", () => {
     onlineManager.setOnline(false)
     try {
       fireEvent.change(screen.getByLabelText("Tags"), { target: { value: "kept" } })
-      // The summary of the new form waits for the network, and the last summary stays in place.
       await waitFor(() => expect(queryClient.getQueryCache().findAll({ queryKey: ["transfers", "summary"] })
         .some(query => query.state.fetchStatus === "paused")).toBe(true))
       expect(figure("Torrents")).toBe("2")
@@ -388,7 +382,6 @@ describe("the Transfer dialog", () => {
 
   // regression: #4242
   it("renders nothing more while the form stays as it is", async () => {
-    // The categories and tags of the target are in the cache, so no load of them ends during the wait.
     const queryClient = newQueryClient()
     queryClient.setQueryData(["instance-metadata", 2], { categories: { tv: { name: "tv", savePath: "" } }, tags: [] })
     renderDialog(queryClient)
@@ -414,7 +407,6 @@ describe("the Transfer dialog", () => {
     fireEvent.click(startButton())
     await waitFor(() => expect(starts).toHaveLength(1))
 
-    // The torrent list unmounts the dialog when the user closes it.
     cleanup()
     answer()
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("The Transfer of Show.S01.1080p-GRP waits for its turn."))

@@ -8,7 +8,6 @@ import { useSyncExternalStore } from "react"
 let open = false
 const listeners = new Set<() => void>()
 
-/** Opens or closes the one support dialog of the app, from any place in it. */
 export function setSupportOpen(next: boolean) {
   open = next
   for (const listener of listeners) listener()

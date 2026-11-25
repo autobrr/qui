@@ -64,7 +64,6 @@ export function UnifiedScopeDropdownSection({
   )
 
   const dropdownHeaderItemClassName = "cursor-pointer p-0"
-  // The sidebar mounts this row when it expands from icons, so its text fades in as the other labels of the sidebar do.
   const sidebarTextEnterClassName = "animate-in fade-in-0 duration-200 motion-reduce:animate-none"
 
   const contentClassName = cn(

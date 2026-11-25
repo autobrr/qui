@@ -13,9 +13,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestHDRCollectionMatchingIntegration tests the full parsing and matching flow
-// with real release name strings to ensure the parser correctly extracts HDR/Collection
-// fields and the matching logic properly rejects mismatches.
 func TestHDRCollectionMatchingIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -34,7 +31,6 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 		wantReason     string
 		description    string
 	}{
-		// HDR vs SDR tests
 		{
 			name:          "HDR-tagged name matches an untagged name of the same encode",
 			sourceName:    "Some.Movie.2024.2160p.UHD.BluRay.x265.DV.HDR10-GROUP",
@@ -202,7 +198,6 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			wantMatch:   true,
 			description: "a generic HDR tag beside HDR10+ reads as HDR10+",
 		},
-		// Collection/streaming service tests
 		{
 			name:          "service-tagged name matches an untagged name of the same release",
 			sourceName:    "Some.Movie.2024.1080p.MA.WEB-DL.DD5.1.H.264-FLUX",
@@ -255,7 +250,6 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			wantMatch:   true,
 			description: "identical MA.WEB-DL releases should cross-seed",
 		},
-		// Combined HDR + Collection tests
 		{
 			name:          "same service with the HDR tag dropped from one name still matches",
 			sourceName:    "Show.S01E01.2160p.NF.WEB-DL.DV.HDR.DDP5.1.H.265-GROUP",
@@ -278,15 +272,12 @@ func TestHDRCollectionMatchingIntegration(t *testing.T) {
 			sourceRelease := svc.releaseCache.Parse(tt.sourceName)
 			candidateRelease := svc.releaseCache.Parse(tt.candidateName)
 
-			// First run the strict compare (metadata comparison)
 			comparison := svc.strictCompare(sourceRelease, candidateRelease, false)
 			metadataMatch, reason := comparison.matched(), comparison.reason()
 
 			if tt.wantMatch {
 				require.True(t, metadataMatch, "%s: metadata should match", tt.description)
 
-				// If metadata matches, also verify file matching works.
-				// The source is the local torrent, and the candidate is the new torrent.
 				matchType := svc.getMatchTypeWithReason(sourceRelease, candidateRelease, tt.sourceFiles, tt.candidateFiles, 0).MatchType
 				require.NotEmpty(t, matchType, "%s: should produce a match type", tt.description)
 			} else {

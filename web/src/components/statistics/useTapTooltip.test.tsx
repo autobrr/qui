@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { useTapTooltip } from "@/components/statistics/useTapTooltip"
 
-// The plot of the test chart, in client coordinates. Below it are the axis and the legend.
 const PLOT = { left: 40, top: 0, right: 300, bottom: 200 }
 const ON_PLOT = { clientX: 150, clientY: 100 }
 const BELOW_PLOT = { clientX: 150, clientY: 230 }
@@ -18,7 +17,6 @@ function Chart() {
   return (
     <>
       <div {...tooltip.wrapper} data-testid="chart" data-active={String(tooltip.tooltip.active)}>
-        {/* recharts draws the grid over the plot, and puts its tooltip in a box with this class inside the chart. */}
         <svg><g className="recharts-cartesian-grid" data-testid="grid" /></svg>
         <span>axis</span>
         <div className="recharts-tooltip-wrapper"><span>tooltip</span></div>
@@ -30,7 +28,6 @@ function Chart() {
 
 function renderChart(hover: boolean): HTMLElement {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: !hover && query === "(hover: none)", addEventListener: () => {}, removeEventListener: () => {} }))
-  // jsdom has no layout, so it has no scrollIntoView.
   Element.prototype.scrollIntoView = vi.fn()
   render(<Chart />)
   screen.getByTestId("grid").getBoundingClientRect = () => ({ ...PLOT, x: PLOT.left, y: PLOT.top, width: PLOT.right - PLOT.left, height: PLOT.bottom - PLOT.top, toJSON: () => PLOT })
@@ -141,7 +138,6 @@ describe("useTapTooltip", () => {
     vi.useFakeTimers({ toFake: ["Date"] })
     const chart = renderChart(false)
     tap(chart)
-    // A scroll after the scroll of the tap is one of the user.
     vi.setSystemTime(Date.now() + 1000)
 
     fireEvent.scroll(window)

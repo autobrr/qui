@@ -16,7 +16,6 @@ import (
 )
 
 func TestSanitizeTorrentExportFilename_UTF8Boundary(t *testing.T) {
-	// 214 ASCII characters + one two-byte rune pushes the sanitized name past the byte limit.
 	name := strings.Repeat("a", 214) + "ä"
 
 	filename := torrentname.SanitizeExportFilename(name, "", "tracker.example.com", "0123456789abcdef")
@@ -106,9 +105,6 @@ func TestValidateTorrentFilePath(t *testing.T) {
 	}
 }
 
-// TestSortedPeersResponseOmitsFullUpdate pins the shadow field on the peers
-// response: MergePeers never copies FullUpdate into the cached struct, so the
-// endpoint has only ever sent false and must now send nothing.
 func TestSortedPeersResponseOmitsFullUpdate(t *testing.T) {
 	t.Parallel()
 

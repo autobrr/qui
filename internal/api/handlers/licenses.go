@@ -17,24 +17,20 @@ import (
 	"github.com/autobrr/qui/internal/services/license"
 )
 
-// LicenseHandler handles license related HTTP requests
 type LicenseHandler struct {
 	licenseService *license.Service
 }
 
-// NewLicenseHandler creates a new license handler
 func NewLicenseHandler(licenseService *license.Service) *LicenseHandler {
 	return &LicenseHandler{
 		licenseService: licenseService,
 	}
 }
 
-// ActivateLicenseRequest represents the request body for license activation
 type ActivateLicenseRequest struct {
 	LicenseKey string `json:"licenseKey"`
 }
 
-// ActivateLicenseResponse represents the response for license activation
 type ActivateLicenseResponse struct {
 	Valid       bool       `json:"valid"`
 	ProductName string     `json:"productName,omitempty"`
@@ -43,12 +39,10 @@ type ActivateLicenseResponse struct {
 	Error       string     `json:"error,omitempty"`
 }
 
-// ValidateLicenseRequest represents the request body for license validation
 type ValidateLicenseRequest struct {
 	LicenseKey string `json:"licenseKey"`
 }
 
-// ValidateLicenseResponse represents the response for license validation
 type ValidateLicenseResponse struct {
 	Valid       bool       `json:"valid"`
 	ProductName string     `json:"productName,omitempty"`
@@ -57,14 +51,12 @@ type ValidateLicenseResponse struct {
 	Error       string     `json:"error,omitempty"`
 }
 
-// PremiumAccessResponse represents the response for premium access status
 type PremiumAccessResponse struct {
 	HasPremiumAccess bool       `json:"hasPremiumAccess"`
 	IsSupporter      bool       `json:"isSupporter"`
 	SetupAt          *time.Time `json:"setupAt,omitempty"`
 }
 
-// LicenseInfo represents basic license information for UI display
 type LicenseInfo struct {
 	LicenseKey  string    `json:"licenseKey"`
 	ProductName string    `json:"productName"`
@@ -81,7 +73,6 @@ func (h *LicenseHandler) Routes(r chi.Router) {
 	r.Delete("/{licenseKey}", h.DeleteLicense)
 }
 
-// ActivateLicense activates a license
 func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request) {
 	var req ActivateLicenseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -110,7 +101,6 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Activate and store license
 	licenseResp, err := h.licenseService.ActivateAndStoreLicense(r.Context(), req.LicenseKey, username)
 	if err != nil {
 		log.Error().
@@ -138,7 +128,6 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// ValidateLicense validates a license
 func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request) {
 	var req ValidateLicenseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -167,7 +156,6 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate and store license
 	licenseResp, err := h.licenseService.ValidateAndStoreLicense(r.Context(), req.LicenseKey, username)
 	if err != nil {
 		log.Error().
@@ -203,7 +191,6 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// GetLicensedThemes returns premium access status
 func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Request) {
 	hasPremium, err := h.licenseService.HasPremiumAccess(r.Context())
 	if err != nil {
@@ -224,7 +211,6 @@ func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Reques
 	}
 
 	response := PremiumAccessResponse{HasPremiumAccess: hasPremium, IsSupporter: isSupporter}
-	// Only the yearly support reminder reads the setup time, so the license check does not fail without it.
 	if setupAt, err := h.licenseService.ServerSetupTime(r.Context()); err != nil {
 		log.Warn().Err(err).Msg("Failed to read the server setup time")
 	} else {
@@ -235,7 +221,6 @@ func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Reques
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// GetAllLicenses returns all licenses for the current user
 func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) {
 	licenses, err := h.licenseService.GetAllLicenses(r.Context())
 	if err != nil {
@@ -246,7 +231,6 @@ func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Convert to API response format
 	licenseInfos := make([]LicenseInfo, 0)
 	for _, lic := range licenses {
 		licenseInfos = append(licenseInfos, LicenseInfo{
@@ -260,7 +244,6 @@ func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusOK, licenseInfos)
 }
 
-// DeleteLicense removes a license from the system
 func (h *LicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
 	licenseKey := chi.URLParam(r, "licenseKey")
 	if licenseKey == "" {
@@ -291,7 +274,6 @@ func (h *LicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// RefreshLicenses manually triggers a refresh of all licenses
 func (h *LicenseHandler) RefreshLicenses(w http.ResponseWriter, r *http.Request) {
 	err := h.licenseService.RefreshAllLicenses(r.Context())
 	if err != nil {
@@ -309,7 +291,6 @@ func (h *LicenseHandler) RefreshLicenses(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// Helper function to mask license keys in logs
 func maskLicenseKey(key string) string {
 	if len(key) <= 8 {
 		return "***"

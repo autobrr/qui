@@ -58,7 +58,6 @@ describe("InstanceList", () => {
   it("lists the limits of a remote instance in a tooltip on its file access", async () => {
     renderList({ id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true, filesystemMode: "remote", sshTier: "sftp" } as InstanceResponse)
 
-    // jsdom has ontouchstart, so the tooltip opens as on a touch screen: on a tap.
     fireEvent.click(screen.getByText("Files over SSH"))
     expect((await screen.findByRole("tooltip")).textContent).toContain("No reflinks on a remote instance.")
   })
@@ -79,7 +78,6 @@ describe("InstanceList", () => {
       </QueryClientProvider>
     )
 
-    // iOS Safari sends a tap as a touch pointer down and then a click with the mouse pointer type.
     const fact = screen.getByText("Files over SSH")
     fireEvent.pointerDown(fact, { pointerType: "touch" })
     fireEvent(fact, new PointerEvent("click", { bubbles: true, pointerType: "mouse" }))

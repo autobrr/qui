@@ -240,7 +240,6 @@ func TestCrossSeedPartialPoolReadmissionAfterClockMovesBack(t *testing.T) {
 	_, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
 	require.NoError(t, err)
 
-	// A persisted admission can be ahead of the wall clock after a clock adjustment.
 	previous := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
 	_, err = db.ExecContext(t.Context(), `UPDATE cross_seed_partial_pool_members SET created_at = ? WHERE id = ?`, previous, member.ID)
 	require.NoError(t, err)
@@ -256,7 +255,6 @@ func TestCrossSeedPartialPoolReadmissionAfterClockMovesBack(t *testing.T) {
 		changed, err = store.TransitionPartialPoolMember(t.Context(), member.ID, current.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
 		require.NoError(t, err)
 		require.True(t, changed)
-		// A normal admission window must permit downloading, not retain the old hour-long delay.
 		now := time.Now().UTC()
 		claimed, err := store.ClaimPartialPoolDownloader(t.Context(), member.ID, 0, current.CreatedAt, now.Add(3*time.Second), now.Add(time.Second))
 		require.NoError(t, err)
@@ -799,7 +797,6 @@ func TestCrossSeedPartialPoolMemberAdmittedBeforeTimeFormMigrationStillMatches(t
 	pool, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "member", "member-v1", "member-v2", "source"))
 	require.NoError(t, err)
 
-	// An older qui on a host one hour east of UTC stored the admission stamp in this form.
 	goForm := member.CreatedAt.In(time.FixedZone("CET", 3600)).String()
 	for _, table := range []string{"cross_seed_partial_pools", "cross_seed_partial_pool_members", "cross_seed_partial_pool_member_files"} {
 		_, err = db.ExecContext(ctx, `UPDATE `+table+` SET created_at = ?, updated_at = ?`, goForm, goForm)
@@ -850,8 +847,6 @@ func TestCrossSeedPartialPoolClaimHoldsInEachProcessZonePostgresIntegration(t *t
 	})
 }
 
-// checkPartialPoolClaimHoldsInEachProcessZone replaces time.Local, so its
-// callers must not call t.Parallel.
 func checkPartialPoolClaimHoldsInEachProcessZone(t *testing.T, openDB func(*testing.T) *database.DB) {
 	t.Helper()
 	const admissionHold = 2 * time.Second

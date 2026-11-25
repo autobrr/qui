@@ -70,8 +70,7 @@ type completionPollingSyncMock struct {
 	mu        sync.Mutex
 	sequences map[string][]qbt.Torrent
 	hits      map[string]int
-	// lookups, when set, receives the hash of each lookup.
-	lookups chan string
+	lookups   chan string
 }
 
 func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completionPollingSyncMock {
@@ -185,7 +184,6 @@ func (*completionPollingSyncMock) CreateCategory(context.Context, int, string, s
 	return nil
 }
 
-// awaitLookup waits until the fake looks up hash.
 func awaitLookup(t *testing.T, lookups <-chan string, hash string) {
 	t.Helper()
 	for {
@@ -290,7 +288,6 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 		})
 	}()
 
-	// The second torrent is ready, so the second search goes on to the lock.
 	awaitLookup(t, syncMock.lookups, secondHash)
 	select {
 	case <-secondStarted:
@@ -397,8 +394,6 @@ func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *test
 		})
 	}()
 
-	// The second wait polls while the first search holds the lock: the first
-	// poll sees checking, the second sees it ready.
 	awaitLookup(t, syncMock.lookups, secondHash)
 	awaitLookup(t, syncMock.lookups, secondHash)
 	select {
@@ -702,8 +697,6 @@ func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T
 	require.False(t, invoked, "completion search should be skipped after refreshed torrent gains cross-seed tag")
 }
 
-// completionLookupsPerAttempt counts the lookups of a torrent that stays
-// checking for one attempt: one at the start and one at each poll.
 const completionLookupsPerAttempt = int(defaultCompletionCheckingTimeout/defaultCompletionCheckingPollInterval) + 1
 
 func TestWaitForCompletionTorrentReady_ReturnsNotCompleteAfterChecking(t *testing.T) {
@@ -873,8 +866,6 @@ func TestWaitForCompletionTorrentReady_DeduplicatesConcurrentWaitersDuringRetryB
 		ready := checking
 		ready.Progress = 1.0
 		ready.State = qbt.TorrentStateUploading
-		// The first attempt times out, and the torrent is ready at the first
-		// lookup after the retry delay.
 		syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
 			hash: append(slices.Repeat([]qbt.Torrent{checking}, completionLookupsPerAttempt), ready),
 		})

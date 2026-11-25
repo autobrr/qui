@@ -41,7 +41,6 @@ import { InstanceSSHPanel } from "./InstanceSSHPanel"
 import { preferenceTabLabels } from "./labels"
 import { preferenceTabsOf, usePreferenceView } from "./preferenceView"
 
-// Loaded on demand: the widgets and their UI share a chunk that the first page load does not need.
 const PreferencesForm = lazy(() => import("./PreferencesForm").then(m => ({ default: m.PreferencesForm })))
 
 const TAB_ICONS: Record<PreferenceField["tab"], LucideIcon> = {
@@ -64,7 +63,6 @@ interface InstancePreferencesDialogProps {
   defaultTab?: string
 }
 
-// Mounts with the dialog content, so that the view is fetched each time the dialog opens.
 function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: number; instance?: Instance; defaultTab?: string }) {
   const { t } = useTranslation("instances")
   const view = usePreferenceView(instanceId)
@@ -173,7 +171,6 @@ export function InstancePreferencesDialog({
   const [deleteHistory, setDeleteHistory] = useState(false)
   const deleteCheck = useCrossSeedDeleteCheck(instanceId, showDeleteDialog)
   const handleDeleted = () => {
-    // Close dialog when instance is deleted
     onOpenChange(false)
   }
 

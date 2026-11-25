@@ -148,7 +148,6 @@ func TestFindCrossSeeds_MetadataLessIsNotACrossSeed(t *testing.T) {
 				return true, nil
 			}
 
-			// A torrent without metadata holds no data, so it is not a cross-seed.
 			response, err := service.FindCrossSeeds(t.Context(), 1, hlSourceHash)
 			require.NoError(t, err)
 			require.Empty(t, response.Matches)
@@ -404,9 +403,6 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 	})
 }
 
-// The allocation check is a host syscall, so a source qui reaches through a
-// remote backend must never feed it paths. Identity is local-only today, so
-// FindCrossSeeds cannot build a non-local source yet; the context is built by hand.
 func TestLocalLinkedMatchType_SkipsAllocationCheckOffLocal(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: "shared.mkv", Size: 4}}
 	sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
@@ -447,7 +443,6 @@ func TestLocalLinkedMatchType_SkipsAllocationCheckOffLocal(t *testing.T) {
 	}
 }
 
-// pairSyncManager serves one source and one candidate torrent on instance 1.
 type pairSyncManager struct {
 	localMatchSyncManager
 	source    qbt.Torrent
@@ -462,7 +457,6 @@ func (m *pairSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]qbi
 	}, nil
 }
 
-// pairService serves the source and the candidate on one local instance.
 func pairService(files map[string]qbt.TorrentFiles, source qbt.Torrent, candidate qbittorrent.CrossInstanceTorrentView) *Service {
 	service := &Service{
 		instanceStore: newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true}),

@@ -24,7 +24,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 
 | Rule | Check |
 |---|---|
-| No code comments, and a change deletes the old comments on the code that it touches | `make lint-ratchet` (`comments`, and rule 8 for touched Go code), ESLint `qui/no-comments`. Touched code in `web/`: judgment |
+| No code comments | `make lint-ratchet`, ESLint `qui/no-comments` |
 | No real `time.Sleep` in a Go test | `make lint-ratchet` (`testsleep`) |
 | A struct, not `map[string]any` | `make lint-ratchet` (`mapany`) |
 | No DEBUG or INFO line about an off feature | `make lint-ratchet` (`offlog`) |
@@ -65,10 +65,10 @@ Codex and other AI PR reviewers read this section. The other rules in this file 
 
 - Report a defect only when the change makes qui crash or hang, lose or corrupt data, leak a secret, or show the user a wrong result, or when a rule below names the defect. Name the trigger and the result for the user. If you cannot name both, omit the finding.
 - Check the merge base, and leave out a problem that `develop` already has.
-- When the PR body, a linked issue, an ADR in `docs/adr/`, or a code comment calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
+- When the PR body, a linked issue, or an ADR in `docs/adr/` calls a behavior deliberate, respond to that reason. Report a design flaw only when you can say why the stated reason does not hold.
 - Report a change that departs from an accepted ADR in `docs/adr/`, and name the ADR. Suggest only fixes that keep to the accepted ADRs.
 - A claim about Windows runtime behavior (cmd.exe parsing, PATHEXT, junctions, short paths, GUI detachment) needs a native run. Cross-compilation, command-construction assertions, and skipped capability tests do not show runtime behavior. If you can run Windows, run a minimal repro and record the environment, the exact command, and the result. If you cannot, ask the PR author a question with repro steps. The maintainer does not run Windows, and Windows contributors know its behavior better.
-- Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstring coverage. Do not ask for a code comment, except a marker that a standard in this repo requires. Report a stale comment.
+- Do not report what gofmt, golangci-lint, ESLint, tsc, or `pnpm check:i18n` already report. Do not ask for docstring coverage. Do not ask for a code comment, except a marker that a standard in this repo requires.
 - Read earlier review threads. Do not repeat a finding that was resolved or refuted, unless you have new evidence.
 - When a PR adds, changes, or removes a test, apply `docs/standards/tests.md`, and ask for a new test only when it allows one. A real `time.Sleep` in a Go test outside `synctest.Test` is a defect: on a slow CI runner the test fails at random. Name the test and the wait that a channel or `synctest.Test` can replace.
 - The match corpus (`internal/services/crossseed/match_corpus_test.go`) grows freely. A PR that deletes or edits a row, adds an allowed difference, or adds a skip must say in its body which user-visible verdict changes and why. Report the edit when the body gives no such reason, even when the `corpus-change` label is set.

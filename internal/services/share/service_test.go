@@ -205,9 +205,6 @@ func (r *rig) announce(announceURL, infoHash string, port, left int, event strin
 	return peers
 }
 
-// sendAnnounce sends one announce and returns the peers and the failure
-// reason of the answer. A from address goes in X-Forwarded-For, for a
-// tracker that trusts 127.0.0.1 as a proxy.
 func (r *rig) sendAnnounce(from, announceURL, infoHash string, port, left int, event string) ([]netip.AddrPort, string) {
 	r.t.Helper()
 	resp, err := http.DefaultClient.Do(r.announceRequest(from, announceURL, infoHash, port, left, event))
@@ -335,8 +332,6 @@ func TestQuisTrackerAnswersTheFirstAnnounceOfAShareTorrent(t *testing.T) {
 			if otherShare {
 				r.start(share.Request{Hash: r.seed("Other.Show.S01.1080p-GRP")})
 			}
-			// qBittorrent announces a torrent that starts at once, so the
-			// announce goes out while the add runs.
 			var status int
 			var announceErr error
 			r.stub.OnAdd = func(hash string) {
@@ -923,8 +918,6 @@ func TestAnAnnounceFromBeforeUnlockLeavesTheLockWithTheNextDownloader(t *testing
 	const first, next = "198.51.100.7", "198.51.100.8"
 	r.sendAnnounce(ownerAddress.Addr().String(), ownerURL, sh.HelperHash, 51413, 0, "started")
 
-	// The announce of the first downloader takes the lock, and waits in the
-	// lookup of the public peer address until the next downloader holds it.
 	looking, release := make(chan struct{}), make(chan struct{})
 	hold := func() {
 		close(looking)
@@ -1022,8 +1015,6 @@ func TestUnlockIsRefused(t *testing.T) {
 	require.EqualError(t, err, "Unlock needs qui's own tracker. With an outside tracker, every downloader gets the address.")
 }
 
-// qBittorrent drops a peer from its list when that peer has every piece, so
-// the list never shows a complete peer.
 // regression: #4242
 func TestAShareOnAnOutsideTrackerEndsWhenTheClientSentEveryByte(t *testing.T) {
 	for _, tc := range []struct {

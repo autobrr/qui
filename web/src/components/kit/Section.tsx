@@ -16,11 +16,8 @@ import { FieldHelp } from "@/components/ui/field-help"
 type SectionQuery = Pick<UseQueryResult, "isLoading" | "isLoadingError" | "error" | "refetch">
 
 export interface SectionSubmit {
-  /** The label of the button, for example "Save" or "Change password". */
   label: string
-  /** Runs on the button and on Enter in a text field of the section. */
   onSubmit: () => void
-  /** A save runs: the button shows a spinner and takes no second submit. */
   pending?: boolean
   disabled?: boolean
 }
@@ -28,34 +25,18 @@ export interface SectionSubmit {
 interface SectionProps {
   title: ReactNode
   description?: ReactNode
-  /** Field help for the whole section, in a tooltip after the description. */
   help?: ReactNode
-  /**
-   * Controls for the whole section, for example an Add button. Beside the title on a wide screen, a full-width row
-   * under the description on a phone. A section with actions and no content is a one-row setting.
-   */
   actions?: ReactNode
-  /** Makes the section a form, with its submit button at the end of the footer. */
   submit?: SectionSubmit
-  /** A note at the bottom of the section, for example a link to a related setting. It sits before the submit button. */
   footer?: ReactNode
-  /**
-   * The queries that the content needs. While one of them loads for the first time, the section shows a placeholder.
-   * When a first load fails, it shows the error and a retry button. A failed refetch keeps the content that loaded.
-   * A query that is turned off does not hold the content back, so the children must handle its missing data.
-   */
   queries?: readonly SectionQuery[]
-  /** The anchor for a link with a hash. */
   id?: string
   children?: ReactNode
 }
 
-// A phone gets 16 px of padding in place of 24 px, so a row in the card keeps room for its text.
 const PAD = "px-6 max-sm:px-4"
 
-/** One card of a page: the title, the description, the actions, and the content of one topic. */
 export function Section({ title, description, help, actions, submit, footer, queries = [], id, children }: SectionProps) {
-  // On a phone, the page title can already name this section. The title then stays for screen readers only.
   const repeatsPageTitle = title === useShownSectionTitle()
   const failed = queries.filter((query) => query.isLoadingError)
   const loading = failed.length === 0 && queries.some((query) => query.isLoading)
@@ -100,7 +81,6 @@ export function Section({ title, description, help, actions, submit, footer, que
         )}
       </CardHeader>
       {submit ? (
-        // display: contents keeps the gap of the card between the content and the footer.
         <form onSubmit={handleSubmit} className="contents" noValidate>
           {content}
           {bottom}

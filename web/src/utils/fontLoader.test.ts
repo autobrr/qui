@@ -8,9 +8,6 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { FONT_MAP, extractFontName } from "./fontLoader"
 
-// Bundled theme CSS lives in the backend assets tree. The premium subdirectory
-// only exists after `make build` fetches it, so locally this covers premium
-// themes too while CI covers the free set.
 const THEMES_DIR = resolve(import.meta.dirname, "../../../internal/themes/assets")
 
 const GENERIC = /^(?:serif|sans-serif|cursive|fantasy|monospace|system-ui|math|emoji|fangsong|ui-(?:serif|sans-serif|monospace|rounded))$/
@@ -34,10 +31,6 @@ describe("FONT_MAP", () => {
       }
     }
 
-    // A failure here means a theme names a font the loader cannot load, so the
-    // browser silently falls back. Add the family to FONT_MAP in fontLoader.ts:
-    // a Google Fonts spec like "Name:wght@300;400;500;600;700", or "" for a
-    // system font.
     expect([...missing]).toEqual([])
   })
 })

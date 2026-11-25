@@ -22,7 +22,6 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }))
 
-// The test adds a fix page for a kind that qui does not have, to test the link of a kind with no texts.
 vi.mock("@/lib/system-notice", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/system-notice")>()
   return {

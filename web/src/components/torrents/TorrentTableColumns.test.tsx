@@ -19,7 +19,6 @@ function iconColumnSizes(viewMode: TableViewMode) {
 }
 
 describe("icon columns", () => {
-  // 16px icon plus the row padding of the view mode: px-3 (12px) normal, px-2 (8px) dense.
   it.each([
     ["normal", 40],
     ["dense", 32],
@@ -104,7 +103,6 @@ describe("name column", () => {
     expect(nameCell({ qui_helper: "share" })).toBe("Share helperExample.Show.S01E01-GRP")
   })
 
-  // The server sets qui_helper only from the helper registry, never from a tag.
   it("shows no badge on a torrent that is no helper", () => {
     expect(nameCell({ tags: "qui-transfer" })).toBe("Example.Show.S01E01-GRP")
   })

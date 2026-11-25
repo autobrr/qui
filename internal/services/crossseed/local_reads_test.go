@@ -23,7 +23,6 @@ const localReadsPack = "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC
 
 var localReadsInstance = &models.Instance{ID: 1, Name: "main", IsActive: true}
 
-// seasonFolderFiles are the files of a "Season 2" folder of localReadsPack.
 func seasonFolderFiles() qbt.TorrentFiles {
 	return corpusPackFiles("Season 2", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
 }
@@ -33,8 +32,6 @@ func seasonFolderTorrent(hash string) qbt.Torrent {
 	return qbt.Torrent{Hash: hash, Name: "Season 2", Size: size, TotalSize: size, Progress: 1}
 }
 
-// localReadsService serves torrents and their files and records each hash
-// whose file list a caller asks for.
 func localReadsService(torrents []qbt.Torrent, files map[string]qbt.TorrentFiles) (*Service, *fileRequestRecorder) {
 	recorder := &fileRequestRecorder{fakeSyncManager: newFakeSyncManager(localReadsInstance, torrents, files)}
 	svc := &Service{
@@ -49,8 +46,6 @@ func localReadsService(torrents []qbt.Torrent, files map[string]qbt.TorrentFiles
 	return svc, recorder
 }
 
-// checkPack sends a webhook check for localReadsPack. Its size differs from
-// the local folder, so only the remembered read can match it.
 func checkPack(t *testing.T, svc *Service) *WebhookCheckResponse {
 	t.Helper()
 	size := int64(len(seasonFolderFiles())) * corpusEpisodeSize
@@ -76,7 +71,6 @@ func TestCheckWebhookRemembersFileReads(t *testing.T) {
 
 // regression: #3739
 func TestCheckWebhookReadsNewSeasonFolderOnceFilesArrive(t *testing.T) {
-	// The release cache starts goroutines that outlive a synctest bubble.
 	torrents := []qbt.Torrent{seasonFolderTorrent("folder")}
 	folder := &torrents[0]
 	svc, recorder := localReadsService(torrents, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
@@ -86,7 +80,6 @@ func TestCheckWebhookReadsNewSeasonFolderOnceFilesArrive(t *testing.T) {
 		recorder.serve = func(context.Context, []string) (map[string]qbt.TorrentFiles, error) {
 			calls++
 			if calls == 1 {
-				// qBittorrent lists no files for a few seconds after an add.
 				return map[string]qbt.TorrentFiles{folder.Hash: {}}, nil
 			}
 			return map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()}, nil
@@ -175,7 +168,6 @@ func TestCheckWebhookReadsFilesAgainAfterChange(t *testing.T) {
 		change func(svc *Service, folder *qbt.Torrent)
 	}{
 		{"category change", func(_ *Service, folder *qbt.Torrent) { folder.Category = "tv" }},
-		// The sync manager calls forgetLocalRead after a rename through qui.
 		{"rename through qui", func(svc *Service, folder *qbt.Torrent) {
 			svc.forgetLocalRead(localReadsInstance.ID, strings.ToUpper(folder.Hash))
 		}},
@@ -222,7 +214,6 @@ func TestBatchMatcherReadsTorrentsOutsideWebhookFilter(t *testing.T) {
 func TestCheckWebhookAnswersWithNameReadsWhenFillHangs(t *testing.T) {
 	folder := seasonFolderTorrent("folder")
 	named := qbt.Torrent{Hash: "named", Name: localReadsPack, Size: folder.Size, TotalSize: folder.Size, Progress: 1}
-	// The release cache starts goroutines that outlive a synctest bubble.
 	svc, recorder := localReadsService([]qbt.Torrent{folder, named}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
 	synctest.Test(t, func(t *testing.T) {
 		recorder.serve = func(ctx context.Context, _ []string) (map[string]qbt.TorrentFiles, error) {
@@ -236,7 +227,6 @@ func TestCheckWebhookAnswersWithNameReadsWhenFillHangs(t *testing.T) {
 		require.LessOrEqual(t, time.Since(start), localReadWait)
 		require.Len(t, resp.Matches, 1, "the folder keeps its name read")
 		require.Equal(t, "named", resp.Matches[0].TorrentHash)
-		// The bubble ends only after the fill stops at its own deadline.
 		time.Sleep(localReadFillTimeout)
 	})
 }
@@ -247,7 +237,6 @@ func TestCheckWebhookDropsReadOfTorrentRenamedDuringWait(t *testing.T) {
 	renamed := folder
 	renamed.Name = "Season 3"
 	recorder.serve = func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
-		// The user renames the torrent while its files load.
 		recorder.cached[localReadsInstance.ID] = buildCrossInstanceViews(localReadsInstance, []qbt.Torrent{renamed})
 		return recorder.fakeSyncManager.GetTorrentFilesBatch(ctx, localReadsInstance.ID, hashes)
 	}
@@ -277,7 +266,6 @@ func TestCheckWebhookWaitsOnceForFillsOfAllInstances(t *testing.T) {
 
 		require.NoError(t, err)
 		require.LessOrEqual(t, time.Since(start), localReadWait, "the check answers inside the 120 s that autobrr waits")
-		// The bubble ends only after the fills stop at their own deadline.
 		time.Sleep(localReadFillTimeout)
 	})
 }
@@ -292,8 +280,6 @@ func TestCheckWebhookDropsRememberedReadForgottenDuringWait(t *testing.T) {
 
 	recorder.cached[localReadsInstance.ID] = buildCrossInstanceViews(localReadsInstance, []qbt.Torrent{folder, other})
 	recorder.serve = func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
-		// The user renames a file of the folder through qui while the other
-		// torrent loads its files.
 		svc.forgetLocalRead(localReadsInstance.ID, folder.Hash)
 		return recorder.fakeSyncManager.GetTorrentFilesBatch(ctx, localReadsInstance.ID, hashes)
 	}
@@ -309,7 +295,6 @@ func TestCheckWebhookDropsRememberedReadForgottenDuringWait(t *testing.T) {
 // regression: #3739
 func TestCheckWebhookRefreshesRememberedReadAfterAnHour(t *testing.T) {
 	folder := seasonFolderTorrent("folder")
-	// The release cache starts goroutines that outlive a synctest bubble.
 	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
 	synctest.Test(t, func(t *testing.T) {
 		files := seasonFolderFiles()
@@ -318,7 +303,6 @@ func TestCheckWebhookRefreshesRememberedReadAfterAnHour(t *testing.T) {
 		}
 		require.True(t, checkPack(t, svc).CanCrossSeed)
 
-		// The user renames the files in qBittorrent, outside qui.
 		files = corpusPackFiles("Season 3", "Kaiju Squad (2020) - S03E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
 		time.Sleep(localReadTTL - time.Minute)
 		require.True(t, checkPack(t, svc).CanCrossSeed, "inside the hour the check uses the remembered read")
@@ -334,7 +318,6 @@ func TestCheckWebhookRefreshesRememberedReadAfterAnHour(t *testing.T) {
 // regression: #3739
 func TestCheckWebhookRemembersFailedReadForAMinute(t *testing.T) {
 	folder := seasonFolderTorrent("folder")
-	// The release cache starts goroutines that outlive a synctest bubble.
 	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
 	synctest.Test(t, func(t *testing.T) {
 		var files qbt.TorrentFiles
@@ -374,7 +357,6 @@ func TestCheckWebhookStartsFillsOfAllInstancesBeforeWaiting(t *testing.T) {
 
 		require.NoError(t, err)
 		require.True(t, resp.CanCrossSeed, "a hanging first instance does not use up the wait of the second")
-		// The bubble ends only after the fills stop at their own deadline.
 		time.Sleep(localReadFillTimeout)
 	})
 }
@@ -388,8 +370,6 @@ func TestCheckWebhookDropsRememberedReadForgottenWhileOtherInstanceFills(t *test
 	synctest.Test(t, func(t *testing.T) {
 		recorder.serve = func(_ context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
 			if slices.Contains(hashes, "slow") {
-				// The user renames a file of folder2 through qui while the
-				// files of the first instance load.
 				time.Sleep(time.Second)
 				svc.forgetLocalRead(second.ID, "folder2")
 				return nil, nil

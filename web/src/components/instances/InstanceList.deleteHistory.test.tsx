@@ -103,7 +103,6 @@ describe("the instance removal dialog", () => {
     await removeInstance(true)
     await waitFor(() => expect(requests).toEqual(["DELETE /api/instances/1", "DELETE /api/transfer-history?instanceId=1"]))
 
-    // A refetch of the instance list removes the row and the dialog of the removed instance.
     cleanup()
     answer()
 

@@ -76,7 +76,6 @@ test("reports a color that sRGB cannot show", () => {
   assert.deepEqual(result.outsideSrgb, ["light --primary: oklch(0.82 0.18 100)", "dark --primary: oklch(0.82 0.18 100)"])
 })
 
-// These colors were outside sRGB before the check came. Do not add a line. Move the color into sRGB.
 const KNOWN_OUTSIDE_SRGB = {
   "dragon.css": ["light --variation-pink: oklch(0.6931 0.1971 22.11)"],
   "minimal.css": [

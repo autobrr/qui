@@ -128,8 +128,6 @@ func TestDeclaredScanRoots_FailsWhenTheInstanceFoldersAreUnreachable(t *testing.
 	}
 }
 
-// newDefaultSavePathService wires a single local instance whose only torrent
-// lives in a subdirectory of the qBittorrent default save path.
 func newDefaultSavePathService(defaultSavePath, torrentSavePath string) *Service {
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
@@ -176,7 +174,6 @@ func TestBuildFileMap_DefaultSavePathRootIsOptIn(t *testing.T) {
 		t.Fatalf("torrent-derived root %q must survive for deletion boundaries: %v", torrentSavePath, on.scanRoots)
 	}
 
-	// The nested torrent root is already covered, so only one tree is walked.
 	walkRoots := pruneNestedScanRoots(t.Context(), on.scanRoots, newTestBackend())
 	if !slices.Equal(walkRoots, []string{defaultSavePath}) {
 		t.Fatalf("walk roots = %v, want only %q", walkRoots, defaultSavePath)
@@ -191,8 +188,6 @@ func TestBuildFileMap_DefaultSavePathFailureFailsTheScan(t *testing.T) {
 		return qbittorrent.InstanceFolders{}, errors.New("qBittorrent reported an empty default save path")
 	}
 
-	// An unresolvable default save path must not degrade into a narrower scan
-	// that reports clean; discussion #2365.
 	if _, err := svc.buildFileMap(context.Background(), localInstance(1), newTestBackend(), scanScope{DefaultSavePath: true}); err == nil {
 		t.Fatal("expected buildFileMap to fail when the default save path cannot be resolved")
 	}
@@ -202,9 +197,6 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 	t.Parallel()
 
 	defaultSavePath := t.TempDir()
-	// Instance 1 has no torrents anywhere near the second instance's tree, so
-	// without the declared root the two never overlap and instance 2's files
-	// would be reported as orphans.
 	ownSavePath := t.TempDir()
 	otherSavePath := filepath.Join(defaultSavePath, "second-instance")
 

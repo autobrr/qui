@@ -130,9 +130,6 @@ type rig struct {
 	base    string
 }
 
-// newRig starts a tracker on 127.0.0.1 with share() active, the owner's
-// public peer address set, and 127.0.0.1 as a trusted proxy, so that a test
-// can give each client its own address with X-Forwarded-For.
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	r := &rig{
@@ -410,7 +407,6 @@ func TestAnAnnounceWithAnOlderTableKeepsTheLockOfANewShare(t *testing.T) {
 
 	h := &hold{read: make(chan struct{}), release: make(chan struct{})}
 	release := sync.OnceFunc(func() { close(h.release) })
-	// Runs before the rig stops the tracker, also when the test fails first.
 	t.Cleanup(release)
 	r.shares.hold.Store(h)
 	older := make(chan struct{})
@@ -659,8 +655,6 @@ func TestTheTrackerRefusesALargeRequest(t *testing.T) {
 	require.Empty(t, r.reports.all())
 }
 
-// Run with -race: Shares end and come back, the lock opens, and time passes
-// while announces run.
 func TestEndingSharesWhileAnnouncesRun(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)

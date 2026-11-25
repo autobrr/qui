@@ -15,12 +15,10 @@ const THEME_SET = { light: THEME_COLORS, dark: THEME_COLORS }
 
 const SETTING = { defaultValue: "distinct" as SeriesColorSet, parse: (raw: string): SeriesColorSet => JSON.parse(raw) === "theme" ? "theme" : "distinct" }
 
-/** The series color set of the Statistics page, a Client setting. */
 export function useSeriesColorSet(): [SeriesColorSet, (value: SeriesColorSet) => void] {
   return useClientSetting<SeriesColorSet>("qui-statistics-series-colors", SETTING)
 }
 
-/** The colors of the series of the Statistics charts, in series order, for the light and the dark theme. */
 export function useSeriesColors(): { light: string[]; dark: string[] } {
   const [set] = useSeriesColorSet()
   return set === "theme" ? THEME_SET : SERIES_COLORS

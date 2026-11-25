@@ -22,7 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/services/activity"
 )
 
-// recordingPublisher captures published activity events for assertions.
 type recordingPublisher struct {
 	mu     sync.Mutex
 	events []activity.Event
@@ -44,7 +43,6 @@ func (p *recordingPublisher) counts() map[activity.Kind]int {
 	return counts
 }
 
-// recordingHistoryRecorder captures recorded search-history entries.
 type recordingHistoryRecorder struct {
 	mu      sync.Mutex
 	entries []SearchHistoryEntry
@@ -66,7 +64,6 @@ func (r *recordingHistoryRecorder) statuses() []string {
 	return out
 }
 
-// taskOutcome carries what a scheduler callback saw back to the test goroutine.
 type taskOutcome struct {
 	results []Result
 	err     error
@@ -87,9 +84,6 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 
 		indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer", Backend: models.TorznabBackendNative}
 
-		// Callbacks run on a scheduler worker, so they hand their outcome to the
-		// test goroutine: a failed require there would Goexit the worker instead of
-		// failing the test, and OnJobDone signals from a different goroutine again.
 		completions := make(chan taskOutcome, 1)
 
 		_, err := s.Submit(context.Background(), SubmitRequest{
@@ -118,7 +112,7 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rl := newRequestSlots(1*time.Millisecond, nil, nil)
-		s := newSearchScheduler(rl, 1) // Single worker to force sequential execution
+		s := newSearchScheduler(rl, 1)
 		defer s.Stop()
 
 		var executedTasks []RateLimitPriority
@@ -135,7 +129,6 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 			return []Result{{Title: "test"}}, []int{1}, nil
 		}
 
-		// Use different indexers
 		indexer1 := &models.TorznabIndexer{ID: 1, Name: "indexer1"}
 		indexer2 := &models.TorznabIndexer{ID: 2, Name: "indexer2"}
 
@@ -145,7 +138,6 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 			}
 		}
 
-		// Submit background priority first
 		_, err1 := s.Submit(context.Background(), SubmitRequest{
 			Indexers: []*models.TorznabIndexer{indexer1},
 			Meta:     &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityBackground}},
@@ -155,7 +147,6 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 			},
 		})
 
-		// Submit interactive priority second
 		_, err2 := s.Submit(context.Background(), SubmitRequest{
 			Indexers: []*models.TorznabIndexer{indexer2},
 			Meta:     &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityInteractive}},
@@ -173,7 +164,6 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 		execMu.Lock()
 		defer execMu.Unlock()
 
-		// Interactive should execute before background due to higher priority (lower number)
 		require.Len(t, executedTasks, 2)
 		assert.Equal(t, RateLimitPriorityInteractive, executedTasks[0])
 		assert.Equal(t, RateLimitPriorityBackground, executedTasks[1])
@@ -183,7 +173,7 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 func TestSearchScheduler_WorkerPoolLimit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rl := newRequestSlots(1*time.Millisecond, nil, nil)
-		s := newSearchScheduler(rl, 2) // Only 2 workers
+		s := newSearchScheduler(rl, 2)
 		defer s.Stop()
 
 		var maxConcurrent atomic.Int32
@@ -207,7 +197,6 @@ func TestSearchScheduler_WorkerPoolLimit(t *testing.T) {
 			return []Result{{Title: "test"}}, []int{1}, nil
 		}
 
-		// Submit 5 tasks with different indexers
 		for i := range 5 {
 			indexer := &models.TorznabIndexer{ID: i, Name: "indexer"}
 			_, err := s.Submit(context.Background(), SubmitRequest{
@@ -226,7 +215,6 @@ func TestSearchScheduler_WorkerPoolLimit(t *testing.T) {
 
 		<-done
 
-		// Max concurrent should be limited to 2 (worker pool size)
 		assert.LessOrEqual(t, maxConcurrent.Load(), int32(2))
 	})
 }
@@ -278,12 +266,9 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		var completed atomic.Int32
 		done := make(chan struct{})
 
-		// Both callbacks run on scheduler workers; they report over a channel and
-		// leave every assertion to the test goroutine.
 		panicked := make(chan taskOutcome, 1)
 		recovered := make(chan taskOutcome, 1)
 
-		// Exec that panics for indexer 1, succeeds for indexer 2
 		exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
 			if len(indexers) > 0 && indexers[0].ID == 1 {
 				panic("test panic")
@@ -294,7 +279,6 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		indexer1 := &models.TorznabIndexer{ID: 1, Name: "test-indexer-1"}
 		indexer2 := &models.TorznabIndexer{ID: 2, Name: "test-indexer-2"}
 
-		// First submission should panic
 		_, err1 := s.Submit(context.Background(), SubmitRequest{
 			Indexers: []*models.TorznabIndexer{indexer1},
 			ExecFn:   exec,
@@ -309,7 +293,6 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		})
 		require.NoError(t, err1)
 
-		// Second submission should succeed (scheduler should recover)
 		_, err2 := s.Submit(context.Background(), SubmitRequest{
 			Indexers: []*models.TorznabIndexer{indexer2},
 			ExecFn:   exec,
@@ -433,8 +416,6 @@ func TestSearchScheduler_ExecutionTimeoutStartsAfterNativePacing(t *testing.T) {
 	})
 }
 
-// A search during a Rate-limit cooldown fails at dispatch. It does not wait for
-// the Request gap and takes no slot.
 func TestSearchScheduler_QueryCooldownSkipsBeforeNativePacing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newSearchScheduler(newRequestSlots(200*time.Millisecond, nil, nil), 1)
@@ -459,7 +440,7 @@ func TestSearchScheduler_QueryCooldownSkipsBeforeNativePacing(t *testing.T) {
 			require.NoError(t, err)
 			err = recvWithin(t, complete)
 			took := time.Since(start)
-			synctest.Wait() // drain the wake-ups of this task before the next Submit
+			synctest.Wait()
 			return took, err
 		}
 
@@ -479,8 +460,6 @@ func TestSearchScheduler_QueryCooldownSkipsBeforeNativePacing(t *testing.T) {
 	})
 }
 
-// A search to an indexer in a Rate-limit cooldown fails at once, also while
-// another search to that indexer is open.
 func TestSearchScheduler_CooldownRefusalDoesNotWaitForOpenSearch(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		slots := newRequestSlots(time.Millisecond, nil, nil)
@@ -600,7 +579,7 @@ func TestSearchScheduler_DoesNotRunQueuedTaskAfterDeadline(t *testing.T) {
 func TestSearchScheduler_RSSDeduplicationInvokesOnComplete(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		rl := newRequestSlots(1*time.Millisecond, nil, nil)
-		s := newSearchScheduler(rl, 1) // Single worker
+		s := newSearchScheduler(rl, 1)
 		defer s.Stop()
 
 		var executions atomic.Int32
@@ -618,7 +597,6 @@ func TestSearchScheduler_RSSDeduplicationInvokesOnComplete(t *testing.T) {
 		indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
 		rssMeta := &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityRSS}}
 
-		// First RSS search occupies pendingRSS[1] until released.
 		firstDone := make(chan struct{})
 		_, err1 := s.Submit(context.Background(), SubmitRequest{
 			Indexers:  []*models.TorznabIndexer{indexer},
@@ -629,8 +607,6 @@ func TestSearchScheduler_RSSDeduplicationInvokesOnComplete(t *testing.T) {
 		require.NoError(t, err1)
 		<-firstExecStarted
 
-		// Second RSS search to the same indexer is fully deduplicated. The deduped
-		// indexer must still report an OnComplete so WaitGroup-based callers finish.
 		type completion struct {
 			jobID     uint64
 			indexerID int
@@ -669,11 +645,9 @@ func TestSearchScheduler_RSSDeduplicationInvokesOnComplete(t *testing.T) {
 		}
 		<-secondJobDone
 
-		// Release the first search and let it finish.
 		close(releaseFirst)
 		<-firstDone
 
-		// Only the first search should have executed.
 		assert.Equal(t, int32(1), executions.Load())
 	})
 }
@@ -699,7 +673,7 @@ func TestSearchScheduler_EmptySubmission(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		<-done // Should complete immediately
+		<-done
 	})
 }
 
@@ -724,7 +698,7 @@ func TestSearchScheduler_NilIndexerHandling(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		<-done // Should complete immediately since nil indexer is filtered
+		<-done
 	})
 }
 
@@ -798,8 +772,6 @@ func TestSearchScheduler_MultipleIndexersPerSubmission(t *testing.T) {
 			{ID: 3, Name: "indexer3"},
 		}
 
-		// Use WaitGroup to wait for all OnComplete callbacks
-		// since OnComplete and OnJobDone both run as goroutines and may race
 		var wg sync.WaitGroup
 		wg.Add(len(indexers))
 
@@ -845,7 +817,6 @@ func TestSearchScheduler_RateLimitPriorityMapping(t *testing.T) {
 		})
 	}
 
-	// Test nil cases
 	assert.Equal(t, searchJobPriorityBackground, jobPriority(nil))
 	assert.Equal(t, searchJobPriorityBackground, jobPriority(&searchContext{}))
 	assert.Equal(t, searchJobPriorityBackground, jobPriority(&searchContext{rateLimit: &RateLimitOptions{}}))
@@ -891,8 +862,6 @@ func TestSearchScheduler_RateLimitIntervalStartsAfterCompletion(t *testing.T) {
 	})
 }
 
-// A short search starts one Request gap at its answer, not one at the ask and
-// one at the answer.
 func TestSearchScheduler_ShortSearchUsesOneGap(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newSearchScheduler(newRequestSlots(80*time.Millisecond, nil, nil), 10)
@@ -922,22 +891,6 @@ func TestSearchScheduler_ShortSearchUsesOneGap(t *testing.T) {
 	})
 }
 
-// Activity emission tests
-//
-// Both consuming panels (SearchHistoryPanel, IndexerActivityPanel) disabled
-// polling and rely on the scheduler emitting KindIndexerActivity and
-// KindSearchHistory whenever a task completes. These tests lock in emission for
-// completion paths that previously stayed silent: the rate-limit skip in
-// dispatchTasks, and a panicking exec (recovered per-task) still routing its
-// completion through the emit.
-
-// TestSearchScheduler_ExecPanicStillEmitsActivity verifies that an exec which
-// panics does not silently swallow the activity signals the panels depend on. The
-// panic is caught by executeTask's inner per-task recover(), converted to an error
-// result, and routed through the normal completion emit, so both signals must
-// still fire. (The outer worker-level recover() in executeTask emits the same way
-// for the near-impossible case of a panic outside the exec goroutine; that branch
-// is covered by inspection since its only triggers are unmockable internals.)
 func TestSearchScheduler_ExecPanicStillEmitsActivity(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newSearchScheduler(nil, 10)
@@ -998,9 +951,6 @@ func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
 			workerPool: make(chan struct{}, 4),
 		}
 
-		// Queued: a push order whose heap array is [4 5 1 2 3 6], so the raw array
-		// cannot pass for dequeue order. Tasks 1 and 6 share a priority and a
-		// creation time, so the task ID has to break the tie.
 		queuedItems := []*taskItem{
 			newItem(1, 11, 2, time.Second),
 			newItem(2, 12, 2, 2*time.Second),
@@ -1013,7 +963,6 @@ func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
 			heap.Push(&s.taskQueue, item)
 		}
 
-		// In-flight: two tasks share a creation time so the task ID has to break the tie.
 		for _, item := range []*taskItem{
 			newItem(20, 20, 0, 3*time.Second),
 			newItem(22, 22, 0, time.Second),
@@ -1058,8 +1007,6 @@ func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
 			}
 		}
 
-		// The same task set pushed in the opposite order gives a different heap
-		// array, and must still come back in the same order.
 		reversed := &searchScheduler{
 			inFlight:   make(map[int]*taskItem),
 			jobs:       make(map[uint64]*jobState),
@@ -1078,8 +1025,6 @@ func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
 	})
 }
 
-// A timed-out task keeps its indexer and worker slot until its exec returns,
-// so an exec that ignores its context cannot pile up goroutines (#2817).
 func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -1121,8 +1066,6 @@ func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
 				case <-time.After(time.Second):
 					t.Fatal("timed-out task did not report completion before its exec returned")
 				}
-				// Enqueue published one signal; the timeout must publish another so the
-				// activity panel drops the finished job while exec is still blocked.
 				synctest.Wait()
 				require.GreaterOrEqual(t, pub.counts()[activity.KindIndexerActivity], 2)
 
@@ -1142,7 +1085,7 @@ func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				time.Sleep(100 * time.Millisecond) // past the dispatch delay
+				time.Sleep(100 * time.Millisecond)
 				synctest.Wait()
 				select {
 				case id := <-started:
@@ -1164,7 +1107,6 @@ func TestSearchScheduler_TimedOutTaskHoldsSlotUntilExecReturns(t *testing.T) {
 	}
 }
 
-// recvWithin fails the test instead of hanging until -timeout when nothing arrives.
 func recvWithin[T any](t *testing.T, ch <-chan T) T {
 	t.Helper()
 	select {
@@ -1177,8 +1119,6 @@ func recvWithin[T any](t *testing.T, ch <-chan T) T {
 	}
 }
 
-// submitStuck submits a task for idx that times out after 20ms while its exec
-// blocks until release closes, and waits for the timeout report.
 func submitStuck(t *testing.T, s *searchScheduler, idx *models.TorznabIndexer, release <-chan struct{}, jobDone chan<- struct{}) {
 	t.Helper()
 	timedOut := make(chan error, 1)
@@ -1198,8 +1138,6 @@ func submitStuck(t *testing.T, s *searchScheduler, idx *models.TorznabIndexer, r
 	require.ErrorIs(t, recvWithin(t, timedOut), context.DeadlineExceeded)
 }
 
-// submitStart submits a task for idx whose exec sends idx.ID on started. Its
-// completion error goes to done.
 func submitStart(t *testing.T, s *searchScheduler, idx *models.TorznabIndexer, started chan<- int, done chan<- error) {
 	t.Helper()
 	_, err := s.Submit(t.Context(), SubmitRequest{
@@ -1213,8 +1151,6 @@ func submitStart(t *testing.T, s *searchScheduler, idx *models.TorznabIndexer, s
 	require.NoError(t, err)
 }
 
-// A timed-out task ends its job at once, and holds only its own indexer: a
-// free worker still runs other indexers.
 func TestSearchScheduler_TimedOutTaskEndsJobAndHoldsOnlyItsIndexer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newSearchScheduler(nil, 2)
@@ -1231,7 +1167,7 @@ func TestSearchScheduler_TimedOutTaskEndsJobAndHoldsOnlyItsIndexer(t *testing.T)
 		submitStart(t, s, stuck, started, done)
 		submitStart(t, s, other, started, done)
 		require.Equal(t, 2, recvWithin(t, started), "a free worker must run the other indexer")
-		time.Sleep(100 * time.Millisecond) // past the dispatch delay
+		time.Sleep(100 * time.Millisecond)
 		synctest.Wait()
 		select {
 		case id := <-started:
@@ -1243,9 +1179,6 @@ func TestSearchScheduler_TimedOutTaskEndsJobAndHoldsOnlyItsIndexer(t *testing.T)
 	})
 }
 
-// A search that runs past its timeout frees the Request slot at the timeout,
-// so a Dir Scan download goes one Request gap later while the exec still hangs.
-// A 429 that arrives after the timeout still starts the Rate-limit cooldown.
 func TestSearchScheduler_TimedOutSearchFreesSlotAtTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		slots := newRequestSlots(150*time.Millisecond, nil, nil)
@@ -1284,8 +1217,6 @@ func TestSearchScheduler_TimedOutSearchFreesSlotAtTimeout(t *testing.T) {
 	})
 }
 
-// After the stuck warning, tasks for that indexer fail at once instead of
-// holding their jobs, and the indexer runs again once the exec returns.
 func TestSearchScheduler_DetachedIndexerFailsQueuedTasks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		old := detachedExecWarnAfter
@@ -1298,14 +1229,11 @@ func TestSearchScheduler_DetachedIndexerFailsQueuedTasks(t *testing.T) {
 		release := make(chan struct{})
 		submitStuck(t, s, stuck, release, make(chan struct{}, 1))
 
-		// Queued before the warning, with no deadline and no pacing wait: only
-		// the warning can wake the loop for it.
 		started := make(chan int, 1)
 		done := make(chan error, 1)
 		submitStart(t, s, stuck, started, done)
 		require.ErrorContains(t, recvWithin(t, done), "still running a timed-out search")
 
-		// Submitted after the warning.
 		submitStart(t, s, stuck, started, done)
 		require.ErrorContains(t, recvWithin(t, done), "still running a timed-out search")
 		require.Empty(t, started, "a task for the stuck indexer ran while its exec still runs")
@@ -1322,8 +1250,6 @@ func TestSearchScheduler_DetachedIndexerFailsQueuedTasks(t *testing.T) {
 	})
 }
 
-// A stuck RSS search keeps its RSS fetch pending. After the warning, a later
-// RSS run must get the stuck-indexer error, not a silent deduplication skip.
 func TestSearchScheduler_DetachedIndexerFailsRSSTasks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		old := detachedExecWarnAfter
@@ -1397,7 +1323,6 @@ func TestSearchScheduler_DetachedExecKeepsReplacementRSSMarker(t *testing.T) {
 		s.mu.Unlock()
 		require.True(t, detached)
 
-		// An RSS run submitted after the detach owns the marker now.
 		s.mu.Lock()
 		s.pendingRSS[stuck.ID] = struct{}{}
 		s.mu.Unlock()

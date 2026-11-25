@@ -162,7 +162,6 @@ function openThemeMenu(): HTMLElement {
   return screen.getByRole("dialog")
 }
 
-// The theme in use adds themes.menu.inUse to the name of its row.
 function menuCheckbox(menu: HTMLElement, name: string): HTMLElement {
   return within(menu).getByRole("checkbox", { name: (accessibleName) => accessibleName === name || accessibleName === `${name} themes.menu.inUse` })
 }
@@ -172,7 +171,6 @@ async function chooseCardAction(name: string, action: "themes.custom.edit" | "th
   fireEvent.click(await screen.findByRole("menuitem", { name: action }))
 }
 
-// Opens the client settings push and resolves with the body of the next PUT.
 function nextSettingsPush(): Promise<Record<string, string>> {
   seedAndMarkReady({})
   return new Promise((resolve) => {
@@ -217,7 +215,6 @@ describe("ThemeSelector", () => {
   })
 
   it("shows two rows of themes until Show all, and every match during a search", () => {
-    // jsdom lays out no grid, so the theme grid reports two columns here.
     const realGetComputedStyle = window.getComputedStyle.bind(window)
     const twoColumns = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
       const style = realGetComputedStyle(element, pseudo)
@@ -246,7 +243,6 @@ describe("ThemeSelector", () => {
       expect(themeCards()).toHaveLength(5)
       expect(screen.queryByRole("button", { name: "themes.selector.showAll" })).toBeNull()
 
-      // An expanded grid collapses again when the search or the filter changes.
       fireEvent.change(screen.getByRole("searchbox", { name: "themes.selector.search" }), { target: { value: "" } })
       fireEvent.click(screen.getByRole("button", { name: "themes.selector.showAll" }))
       fireEvent.click(screen.getByRole("button", { name: /^themes\.groups\.all/ }))

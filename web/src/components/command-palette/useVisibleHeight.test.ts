@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { useVisibleHeight } from "./useVisibleHeight"
 
 afterEach(() => {
-  // The hook stops its listener on the viewport when it unmounts, so it unmounts while the viewport is there.
   cleanup()
   vi.unstubAllGlobals()
 })

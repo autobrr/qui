@@ -27,7 +27,6 @@ function dayBar(year: number, month: number, date: number, bytes: Record<string,
 }
 
 describe("showsYearView", () => {
-  // Built in each test, after beforeAll sets the timezone.
   const now = () => new Date(2026, 5, 15, 12)
 
   it("shows the year view for a range of 121 days and the stacked bars for 120 days", () => {
@@ -38,7 +37,6 @@ describe("showsYearView", () => {
   it("counts the days of all time from the first recording", () => {
     const all = presetPeriod("all", now())
 
-    // February 15 to June 15 are 121 dates.
     expect(showsYearView(all, new Date(2026, 1, 15, 9))).toBe(true)
     expect(showsYearView(all, new Date(2026, 1, 16, 9))).toBe(false)
     expect(showsYearView(presetPeriod("1y", now()), undefined)).toBe(true)
@@ -49,7 +47,6 @@ describe("showsYearView", () => {
 describe("weekBars", () => {
   it("joins the days of each week from Monday on, and keeps a year bar", () => {
     const year: StatisticsBar = { start: new Date(2025, 0, 1).getTime(), width: "year", gapSeconds: 0, bytes: new Map([["a.test", { uploaded: 9, downloaded: 0 }]]) }
-    // January 4, 2026 is a Sunday, January 5 a Monday.
     const bars = [year, dayBar(2026, 0, 4, { "a.test": 1 }), dayBar(2026, 0, 5, { "a.test": 2 }, 60), dayBar(2026, 0, 11, { "a.test": 3, "b.test": 4 }, 120), dayBar(2026, 0, 12, { "b.test": 5 })]
     const weeks = weekBars(bars)
 
@@ -75,7 +72,6 @@ describe("monthBars", () => {
 
 describe("yearSummary", () => {
   it("finds the best day and the best month, and the share of the upload on Saturdays and Sundays", () => {
-    // January 3, 2026 is a Saturday.
     const bars = [dayBar(2026, 0, 2, { "a.test": 10 }), dayBar(2026, 0, 3, { "a.test": 30 }), dayBar(2026, 0, 4, { "b.test": 20 }), dayBar(2026, 1, 2, { "a.test": 25 }), dayBar(2026, 1, 3, { "a.test": 15 })]
     const summary = yearSummary(bars)
 
@@ -94,7 +90,6 @@ describe("yearSummary", () => {
 describe("calendarDays", () => {
   it("has one day for each day of the period in the last 53 weeks, and no upload before the first recording", () => {
     const to = new Date(2026, 5, 15, 12)
-    // buildBars gives a bar with no bytes for each day of the range, also before the first recording.
     const bars = [dayBar(2026, 5, 13, {}), dayBar(2026, 5, 14, { "a.test": 7 }), dayBar(2026, 5, 15, { "a.test": 3, "b.test": 2 })]
     const days = calendarDays(bars, to, new Date(2026, 5, 14, 8))
 
@@ -110,7 +105,6 @@ describe("calendarDays", () => {
   })
 
   it("marks each day that a Recording gap reaches back into", () => {
-    // The gap of 2 days and 1 hour ends on June 15, so it covers a part of June 13 at least, but not surely a part of June 12.
     const gap = (2 * 24 + 1) * 3600
     const bars = [dayBar(2026, 5, 11, { "a.test": 1 }), dayBar(2026, 5, 12, { "a.test": 1 }), dayBar(2026, 5, 13, {}), dayBar(2026, 5, 14, {}), dayBar(2026, 5, 15, { "a.test": 9 }, gap)]
     const days = calendarDays(bars, new Date(2026, 5, 15, 12), undefined)

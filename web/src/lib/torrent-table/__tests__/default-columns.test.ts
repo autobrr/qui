@@ -26,7 +26,6 @@ function columnIds(isUnifiedView: boolean): string[] {
     .map(col => col.id ?? (col as { accessorKey?: string }).accessorKey ?? "")
 }
 
-// Names the offending ids, so a new column left out of the defaults fails with its id.
 function compareIds(listed: string[], columns: string[]) {
   return {
     missing: columns.filter(id => !listed.includes(id)),
@@ -43,7 +42,6 @@ afterEach(() => {
 })
 
 describe("default columns", () => {
-  // A column missing from the default order renders last and is never added to saved orders.
   it.each([
     ["an instance view", false, DEFAULT_COLUMN_ORDER],
     ["the unified view", true, DEFAULT_UNIFIED_COLUMN_ORDER],
@@ -63,7 +61,6 @@ describe("default columns", () => {
     expect(result.current[0]).toEqual(DEFAULT_COLUMN_ORDER)
   })
 
-  // Unified-view orders saved before instance joined the default have no instance id.
   it("adds instance after name to a unified-view order saved without it", () => {
     window.localStorage.setItem("qui-column-order:0", JSON.stringify(DEFAULT_COLUMN_ORDER))
 

@@ -9,7 +9,6 @@ import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ThemeSlots } from "@/types"
 
-// The visit starts from the address at page load, so it is set before the modules load.
 vi.hoisted(() => window.history.replaceState(null, "", "/?theme=default"))
 
 const { mockApi } = vi.hoisted(() => ({

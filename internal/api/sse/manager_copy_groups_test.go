@@ -55,7 +55,6 @@ func TestParseStreamRequests_GroupCopies(t *testing.T) {
 	require.EqualError(t, err, "the Unique size needs a single instance")
 }
 
-// A Copy group change with no torrent change sends the row again in each view.
 func TestCopyGroupChangeResendsRow(t *testing.T) {
 	groups := map[string]*qbittorrent.CopyGroupRow{
 		"plain":                nil,
@@ -138,10 +137,7 @@ func TestFlatAndGroupedSubscribersGetTheirOwnPayload(t *testing.T) {
 	})
 }
 
-// The setter wakes the stream when no torrent changed: the frame carries the
-// ready field and the rows that joined a group.
 func TestStreamFrameAfterCopyGroupsSetter(t *testing.T) {
-	// Its caches start goroutines that do not stop, so it stays out of the bubble.
 	sm := qbittorrent.NewSyncManager(nil, nil)
 	synctest.Test(t, func(t *testing.T) {
 		provider := &fakeSyncProvider{torrentsResponse: flatRows(), groupedResponse: copyGroupRows(false)}

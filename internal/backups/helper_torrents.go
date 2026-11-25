@@ -10,16 +10,10 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// helperTorrents is the helper registry: it names the torrents that qui added
-// for a Transfer or a Share. A tag proves nothing.
 type helperTorrents interface {
-	// HelperCheck returns nil when the instance has no helper torrent.
 	HelperCheck(instanceID int) func(hash string) bool
 }
 
-// SetHelperTorrents leaves the helper torrents out of each backup and each
-// restore: no backup holds one, and no restore changes or removes one. Call
-// it one time at start-up.
 func (s *Service) SetHelperTorrents(helpers helperTorrents) {
 	s.reader = withoutHelpers{backupReader: s.reader, helpers: helpers}
 }

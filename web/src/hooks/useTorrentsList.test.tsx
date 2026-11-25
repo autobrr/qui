@@ -41,9 +41,6 @@ vi.mock("@/hooks/useInstanceCapabilities", async (importOriginal) => ({
   useInstanceCapabilities: vi.fn(),
 }))
 
-// The stream is mocked at the hook boundary so the REST path is exercised by
-// default (disconnected/null state) and tests can drive both the captured
-// onMessage handler and the returned StreamState.
 let streamState: StreamState
 let capturedOnMessage: ((payload: TorrentStreamPayload) => void) | undefined
 let lastStreamParams: StreamParams | null
@@ -51,8 +48,6 @@ let lastStreamOptions: { enabled?: boolean } | undefined
 let hidden = false
 let originalHiddenDescriptor: PropertyDescriptor | undefined
 
-// Drives document visibility for the stream-gating tests: the hook pauses the
-// list subscription after the tab has been hidden past STREAM_HIDDEN_PAUSE_DELAY_MS.
 function setHidden(next: boolean) {
   hidden = next
   act(() => {
@@ -134,8 +129,6 @@ function makeWrapper(
   )
 }
 
-// fake-timer-friendly flush: pumps pending promises + React effects without the
-// real-timer polling that @testing-library's waitFor relies on.
 async function flush(times = 8) {
   for (let i = 0; i < times; i++) {
     await act(async () => {
@@ -208,7 +201,6 @@ describe("useTorrentsList", () => {
     )
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b"])
     expect(result.current.totalCount).toBe(5)
-    // hasMore=true -> not all loaded
     expect(result.current.hasLoadedAll).toBe(false)
     expect(result.current.isLoading).toBe(false)
   })
@@ -355,7 +347,6 @@ describe("useTorrentsList", () => {
     await flush()
     expect(result.current.torrents).toHaveLength(2)
 
-    // Advance past the 500ms throttle window before the first loadMore.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600)
     })
@@ -377,12 +368,6 @@ describe("useTorrentsList", () => {
   })
 
   it("keeps hasLoadedAll false on an appended page when total still exceeds the loaded count", async () => {
-    // Isolates the length>=total fallback effect from the
-    // hasMore branch on a paginated (page > 0) load. The appended page reports
-    // hasMore:false, which on the first page would set hasLoadedAll=true; but only
-    // 2 of total:9 rows are loaded, so on an appended page the fallback governs and
-    // keeps hasLoadedAll=false. This proves the two mechanisms are independent and
-    // that the fallback wins when more rows logically remain.
     const page0 = [makeTorrent({ hash: "a" })]
     const page1 = [makeTorrent({ hash: "b" })]
 
@@ -412,7 +397,6 @@ describe("useTorrentsList", () => {
 
     expect(result.current.torrents).toHaveLength(2)
     expect(result.current.totalCount).toBe(9)
-    // 2 loaded < total 9: the fallback effect overrides the page's hasMore:false.
     expect(result.current.hasLoadedAll).toBe(false)
   })
 
@@ -448,7 +432,6 @@ describe("useTorrentsList", () => {
     await flush()
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
 
-    // The server now reports a new category on a page-0 row and a page-1 row.
     mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
       if (params.page === 0) {
         return Promise.resolve(makeResponse({
@@ -464,7 +447,6 @@ describe("useTorrentsList", () => {
       }))
     })
 
-    // Mirrors the post-mutation refresh that scheduleTorrentListRefetches runs after each Bulk action.
     await act(async () => {
       await queryClient.refetchQueries({ queryKey: ["torrents-list", 1], exact: false, type: "active" })
     })
@@ -507,7 +489,6 @@ describe("useTorrentsList", () => {
     await flush()
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
 
-    // "c" was deleted server-side; later fetches no longer include it.
     mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
       if (params.page === 0) {
         return Promise.resolve(makeResponse({
@@ -573,7 +554,6 @@ describe("useTorrentsList", () => {
     await flush()
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b"])
 
-    // The page-1 torrent was renamed server-side.
     mockedApi.getCrossInstanceTorrents.mockImplementation((params) => {
       if (params.page === 0) {
         return Promise.resolve(makeResponse({
@@ -650,7 +630,6 @@ describe("useTorrentsList", () => {
     await flush()
 
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d", "e", "f"])
-    // Ordinary scrolling must not refetch already-loaded pages.
     expect(pageCalls().filter(page => page === 0).length).toBe(page0CallsAfterLoad)
     expect(pageCalls().filter(page => page === 1).length).toBe(1)
     expect(pageCalls().filter(page => page === 2).length).toBe(1)
@@ -705,9 +684,6 @@ describe("useTorrentsList", () => {
     const page0CallsAfterLoad = pageCalls().filter(page => page === 0).length
     const page1CallsAfterLoad = pageCalls().filter(page => page === 1).length
 
-    // No checking/moving row is present. The later-page torrent completes and a
-    // neighboring row is deleted outside QUI; the interval still refreshes the
-    // complete loaded window because page one is outside stream coverage.
     refreshed = true
     await act(async () => {
       await vi.advanceTimersByTimeAsync(LOADED_WINDOW_POLL_INTERVAL_MS)
@@ -918,7 +894,6 @@ describe("useTorrentsList", () => {
 
     pageOne = { ...pageOne, torrents: [makeTorrent({ hash: "c", progress: 0.8 }), makeTorrent({ hash: "d" })] }
     await act(async () => {
-      // Keep the cache response and frame in one batch so the effect runs last.
       await queryClient.refetchQueries({ queryKey: ["torrents-list", 1], type: "active" })
       capturedOnMessage?.({
         type: "update",
@@ -937,8 +912,6 @@ describe("useTorrentsList", () => {
   })
 
   it("keeps a row that reflows across a page boundary mid-fetch as a single entry", async () => {
-    // Window pages are fetched in parallel against a live cache, so a row can slip
-    // from one page's slice into another between requests and come back twice.
     mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
       if (params.page === 0) {
         return Promise.resolve(makeResponse({
@@ -972,7 +945,6 @@ describe("useTorrentsList", () => {
   })
 
   it("loadMore is a no-op while hasLoadedAll", async () => {
-    // First page reports hasMore=false so hasLoadedAll becomes true.
     mockedApi.getTorrents.mockResolvedValueOnce(
       makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 1, hasMore: false })
     )
@@ -989,7 +961,6 @@ describe("useTorrentsList", () => {
     })
     await flush()
 
-    // hasLoadedAll guard: no new fetch.
     expect(mockedApi.getTorrents).toHaveBeenCalledTimes(callsAfterLoad)
     expect(result.current.torrents).toHaveLength(1)
   })
@@ -1017,8 +988,6 @@ describe("useTorrentsList", () => {
     await flush()
     expect(result.current.torrents).toHaveLength(1)
 
-    // Advance past the initial throttle window, then page in page 1. This call
-    // records the request time that the next call checks.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600)
     })
@@ -1028,14 +997,9 @@ describe("useTorrentsList", () => {
     await flush()
     expect(result.current.torrents).toHaveLength(2)
 
-    // Confirm the in-flight guards have cleared so the next early-return can only
-    // be the 500ms throttle, not a residual isLoadingMore/isFetching guard
-    // (loadMore returns early identically for all three).
     expect(result.current.isLoadingMore).toBe(false)
     expect(result.current.isFetching).toBe(false)
 
-    // A second loadMore fired inside the 500ms window after the last request is
-    // throttled: no page-2 fetch, list unchanged.
     act(() => {
       result.current.loadMore()
     })
@@ -1047,7 +1011,6 @@ describe("useTorrentsList", () => {
     )
     expect(result.current.torrents).toHaveLength(2)
 
-    // Once the throttle window lapses, loadMore advances to page 2.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600)
     })
@@ -1079,8 +1042,6 @@ describe("useTorrentsList", () => {
       await vi.advanceTimersByTimeAsync(600)
     })
 
-    // The mobile virtualizer can report the end twice before React renders
-    // again, so both calls see the same render.
     const { loadMore } = result.current
     act(() => {
       loadMore()
@@ -1221,7 +1182,6 @@ describe("useTorrentsList", () => {
     expect(result.current.isCrossInstanceEndpoint).toBe(true)
     expect(mockedApi.getCrossInstanceTorrents).toHaveBeenCalled()
     expect(mockedApi.getTorrents).not.toHaveBeenCalled()
-    // Cross-seed forces streamParams null: no SSE subscription.
     expect(lastStreamParams).toBeNull()
     expect(lastStreamOptions?.enabled).toBe(false)
   })
@@ -1253,8 +1213,6 @@ describe("useTorrentsList", () => {
   })
 
   describe("a Web API version in the torrent list", () => {
-    // The capabilities query of instance 1 beside the list. qBittorrent runs
-    // 2.15.1 for the first request and 2.9.3 after it.
     function renderWithCapabilities() {
       const getCapabilities = vi.fn()
         .mockResolvedValueOnce({ webAPIVersion: "2.15.1" })
@@ -1266,7 +1224,6 @@ describe("useTorrentsList", () => {
       return { getCapabilities, ...rendered }
     }
 
-    // On a later page, a stream frame reaches only the stream listener.
     // regression: #3760
     it("starts a capabilities request from a stream frame only when the version changes", async () => {
       streamState = { ...DISCONNECTED, connected: true, initialized: true }
@@ -1320,12 +1277,10 @@ describe("useTorrentsList", () => {
       makeTorrent({ hash: "s2", name: "streamed-two" }),
     ]
 
-    // Stream is connected: REST page-0 query should be gated off.
     streamState = { ...DISCONNECTED, connected: true, initialized: true }
 
     const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
 
-    // Stream params exist for a single-instance view.
     expect(lastStreamParams).not.toBeNull()
     expect(typeof capturedOnMessage).toBe("function")
 
@@ -1342,8 +1297,6 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents.map(t => t.hash)).toEqual(["s1", "s2"])
     expect(result.current.totalCount).toBe(2)
     expect(result.current.isStreaming).toBe(true)
-    // REST remains eligible until this listener owns a baseline. The init aborts
-    // that in-flight fallback and takes ownership without allowing it to overwrite.
     expect(mockedApi.getTorrents).toHaveBeenCalledTimes(1)
     expect(mockedApi.getTorrents.mock.calls[0]?.[2]?.aborted).toBe(true)
   })
@@ -1358,7 +1311,6 @@ describe("useTorrentsList", () => {
     const snapshot = makeResponse({ torrents: [makeTorrent({ hash: "stream" })], total: 1, hasMore: false })
     act(() => capturedOnMessage?.({ type: "init", data: snapshot }))
     await flush()
-    // Even an API mock that ignores abort cannot overwrite the stream's cache.
     act(() => resolveRequest(makeResponse({ torrents: [makeTorrent({ hash: "rest" })] })))
     await flush()
     const query = queryClient.getQueryCache().findAll({ queryKey: ["torrents-list"] })[0]
@@ -1487,10 +1439,6 @@ describe("useTorrentsList", () => {
     })
     await flush()
 
-    // toEqual, not toBe: the stream write now flows through query-cache
-    // structural sharing, which may rebuild the counts container. The contract
-    // is the zero VALUES winning over the preserved fallback, not the identity
-    // of the frame's object.
     expect(result.current.counts).toEqual(zeroCounts)
   })
 
@@ -1695,19 +1643,14 @@ describe("useTorrentsList", () => {
   })
 
   it("merges a streamed cross-instance snapshot for the all-instances view and survives REST pagination (#1983)", async () => {
-    // All-instances view with a connected stream routes through the cross-instance
-    // STREAM merge branch (mergeStreamedCrossInstanceFirstPage), keyed on
-    // instanceId+hash. Distinct rows that share a hash across instances stay separate.
     streamState = { ...DISCONNECTED, connected: true, initialized: true }
 
-    // page-0 stream rows: same hash "x" on two instances are two distinct rows.
     const page0Rows = [
       { ...makeTorrent({ hash: "x", name: "x-on-1" }), instanceId: 1, instanceName: "one" },
       { ...makeTorrent({ hash: "x", name: "x-on-2" }), instanceId: 2, instanceName: "two" },
     ] as CrossInstanceTorrent[]
     const aggregateCounts = makeCounts({ status: { all: 2 }, total: 2 })
 
-    // A later REST page the user paginates in; must survive the next page-0 snapshot.
     const laterPageRow = [
       { ...makeTorrent({ hash: "y", name: "y-on-1" }), instanceId: 1, instanceName: "one" },
     ] as CrossInstanceTorrent[]
@@ -1728,11 +1671,9 @@ describe("useTorrentsList", () => {
       { wrapper: makeWrapper() }
     )
 
-    // Aggregated view subscribes to the cross-instance stream.
     expect(lastStreamParams).not.toBeNull()
     expect(typeof capturedOnMessage).toBe("function")
 
-    // First streamed snapshot delivers page 0. snake_case rows are normalized.
     act(() => {
       capturedOnMessage?.({
         type: "init",
@@ -1747,17 +1688,13 @@ describe("useTorrentsList", () => {
     })
     await flush()
 
-    // (a) rows merge in order, both instanceId+hash rows kept distinct.
     expect(result.current.torrents.map(t => (t as CrossInstanceTorrent).instanceId)).toEqual([1, 2])
     expect(result.current.torrents).toHaveLength(2)
-    // (b) totalCount comes from the streamed data.total.
     expect(result.current.totalCount).toBe(10)
     expect(result.current.counts).toBe(aggregateCounts)
     expect(result.current.isStreaming).toBe(true)
     expect(result.current.isCrossInstanceEndpoint).toBe(true)
 
-    // Paginate in a later REST page (page 0 REST is gated off while connected, but
-    // page > 0 still fetches). This appends the trailing row to the displayed list.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600)
     })
@@ -1773,8 +1710,6 @@ describe("useTorrentsList", () => {
       expect.any(AbortSignal)
     )
 
-    // (c) A fresh page-0 stream snapshot must NOT wipe the paginated-in later row:
-    // the cross-instance merge keeps trailing pages alive (issue #1983 regression).
     act(() => {
       capturedOnMessage?.({
         type: "update",
@@ -1794,7 +1729,6 @@ describe("useTorrentsList", () => {
   })
 
   it("polls page 0 on the configured interval while the stream is disconnected", async () => {
-    // Disconnected stream + polling enabled: the REST page-0 query keeps polling.
     streamState = { ...DISCONNECTED, error: "client:disconnected" }
     mockedApi.getTorrents.mockResolvedValue(
       makeResponse({ torrents: [makeTorrent({ hash: "a" })], total: 1, hasMore: false })
@@ -1808,7 +1742,6 @@ describe("useTorrentsList", () => {
     const initialCalls = mockedApi.getTorrents.mock.calls.length
     expect(initialCalls).toBeGreaterThanOrEqual(1)
 
-    // Advance past the single-instance poll interval: a second page-0 fetch fires.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS + 50)
     })
@@ -2048,7 +1981,6 @@ describe("useTorrentsList", () => {
   })
 
   it("does not poll page 0 once the stream is connected", async () => {
-    // Connected stream gates the page-0 REST query off entirely; no poll ever fires.
     streamState = { ...DISCONNECTED, connected: true, initialized: true }
 
     const { result } = renderHook(
@@ -2066,7 +1998,6 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(1)
     const callsAfterInit = mockedApi.getTorrents.mock.calls.length
 
-    // Advancing well past the poll interval must not produce any getTorrents call.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS * 2)
     })
@@ -2077,8 +2008,6 @@ describe("useTorrentsList", () => {
 
   it("ERROR PATH: a rejected getTorrents settles loading false and keeps the list empty", async () => {
     mockedApi.getTorrents.mockRejectedValue(new Error("boom"))
-    // Stream errored too, so the hook is not stuck in its "stream still connecting"
-    // initial-loading state and the REST failure is the only loading signal.
     streamState = { ...DISCONNECTED, error: "client:disconnected" }
 
     const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
@@ -2091,8 +2020,6 @@ describe("useTorrentsList", () => {
   })
 
   it("ERROR PATH: stream client:disconnected keeps the REST page-0 query running", async () => {
-    // Stream params are set, but the stream reports an error and is not connected.
-    // Regression guard: gating on error alone would disable REST and never load.
     streamState = { ...DISCONNECTED, connected: false, error: "client:disconnected" }
 
     mockedApi.getTorrents.mockResolvedValue(
@@ -2252,7 +2179,6 @@ describe("useTorrentsList Copy groups", () => {
     await flush()
     expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["a", "b"])
 
-    // The server starts grouping between the request for page 0 and the request for page 1.
     let windowFetches = 0
     mockedApi.getTorrents.mockClear()
     mockedApi.getTorrents.mockImplementation(async (_instanceId, params) => {
@@ -2384,7 +2310,6 @@ describe("useTorrentsList categories and tags", () => {
     rerender({ id: 2 })
     await flush()
 
-    // The parent keeps the last values that it gets, so one render is enough to show old values.
     expect(rendered.length).toBeGreaterThan(0)
     expect(rendered).toEqual(rendered.map(() => ({ tags: undefined, categories: undefined })))
 
@@ -2491,7 +2416,6 @@ describe("useTorrentsList categories and tags", () => {
     const calls = onFilteredDataUpdate.mock.calls.length
     expect(calls).toBeGreaterThan(0)
 
-    // A new response object with the same empty fields, on the REST poll.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS)
     })
@@ -2504,9 +2428,6 @@ describe("useTorrentsList categories and tags", () => {
   })
 })
 
-// Preserves the stream visibility-gating coverage from #1994: the single-instance
-// list subscription (a heavy limit:300 snapshot) is paused once the tab has been
-// hidden past the delay, and resumes immediately on refocus.
 describe("useTorrentsList background stream gating", () => {
   it("pauses the list stream once the tab has been hidden past the delay", () => {
     const { rerender } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper() })
@@ -2599,13 +2520,6 @@ describe("useTorrentsList background stream gating", () => {
   })
 
   it("keeps one object identity for an unchanged row across REST, stream frames, and cache echoes", async () => {
-    // Row memoization compares torrents by reference, so an unchanged row must
-    // keep ONE identity across every write path: the REST fetch, each stream
-    // frame (whose parsed objects are equal but not identical), and the
-    // processing effect that re-applies the query-cache echo of each stream
-    // write. This captures every render, not just the settled end state — the
-    // regression mode is a transient flip to a second lineage and back within
-    // one tick.
     const seenIdentities: Torrent[] = []
 
     mockedApi.getTorrents.mockResolvedValue(
@@ -2628,7 +2542,6 @@ describe("useTorrentsList background stream gating", () => {
     await flush()
     expect(result.current.torrents).toHaveLength(2)
 
-    // Full stream frame: same values as the REST rows, freshly parsed objects.
     act(() => {
       capturedOnMessage?.({
         type: "init",
@@ -2641,7 +2554,6 @@ describe("useTorrentsList background stream gating", () => {
     })
     await flush()
 
-    // Two delta ticks that change only row b; row a rides along untouched.
     for (const dlspeed of [100, 200]) {
       act(() => {
         capturedOnMessage?.({
@@ -2660,7 +2572,6 @@ describe("useTorrentsList background stream gating", () => {
     expect(seenIdentities.length).toBeGreaterThan(0)
     expect(distinctIdentities.size).toBe(1)
 
-    // And the changed row did update.
     expect(result.current.torrents.find(t => t.hash === "b")?.dlspeed).toBe(200)
   })
 })

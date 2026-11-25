@@ -3,13 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/**
- * Shallow-compares two tracker-icon maps (host -> icon URL) for equality.
- *
- * Used to keep a stable reference for the tracker-icon cache so the table
- * doesn't re-render rows when a poll returns icon data with the same contents
- * but a new object identity.
- */
 export function shallowEqualTrackerIcons(
   prev?: Record<string, string>,
   next?: Record<string, string>

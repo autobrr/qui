@@ -19,18 +19,15 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// RSSSSEHandler manages Server-Sent Events for RSS updates
 type RSSSSEHandler struct {
 	getRSSItems func(context.Context, int, bool) (qbt.RSSItems, error)
 	shutdown    <-chan struct{}
 
-	// Client management
 	mu      sync.RWMutex
-	clients map[int]map[*rssSSEClient]struct{} // instanceID -> set of clients
+	clients map[int]map[*rssSSEClient]struct{}
 
-	// Polling management
 	pollerMu sync.Mutex
-	pollers  map[int]context.CancelFunc // instanceID -> cancel function
+	pollers  map[int]context.CancelFunc
 }
 
 type rssSSEClient struct {
@@ -41,13 +38,11 @@ type rssSSEClient struct {
 	closeOnce  sync.Once
 }
 
-// rssSSEEvent represents an SSE event
 type rssSSEEvent struct {
 	Type string `json:"type"`
 	Data any    `json:"data"`
 }
 
-// Event type constants
 const (
 	rssEventConnected   = "connected"
 	rssEventFeedsUpdate = "feeds_update"
@@ -55,14 +50,12 @@ const (
 	rssMaxPollInterval  = 5 * time.Minute
 )
 
-// FeedsUpdatePayload contains the full RSS items tree
 type FeedsUpdatePayload struct {
 	InstanceID int             `json:"instanceId"`
 	Items      json.RawMessage `json:"items"`
 	Timestamp  int64           `json:"timestamp"`
 }
 
-// NewRSSSSEHandler creates a new RSS SSE handler. Every stream ends when shutdown closes.
 func NewRSSSSEHandler(syncManager *qbittorrent.SyncManager, shutdown <-chan struct{}) *RSSSSEHandler {
 	return &RSSSSEHandler{
 		getRSSItems: syncManager.GetRSSItems,
@@ -72,22 +65,18 @@ func NewRSSSSEHandler(syncManager *qbittorrent.SyncManager, shutdown <-chan stru
 	}
 }
 
-// HandleSSE handles the SSE connection for RSS updates
 func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
 
-	// Get flusher for streaming - check before setting SSE headers
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		RespondError(w, http.StatusInternalServerError, "Streaming not supported")
 		return
 	}
 
-	// Don't report SSE as "connected" until we know RSS polling can succeed at least once.
-	// This avoids a confusing "SSE Live" UI state when the instance is disabled or RSS fetch fails.
 	if _, err := h.getRSSItems(r.Context(), instanceID, false); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "GetRSSItems") {
 			return
@@ -97,13 +86,11 @@ func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+	w.Header().Set("X-Accel-Buffering", "no")
 
-	// Create client
 	client := &rssSSEClient{
 		instanceID: instanceID,
 		showLinks:  middleware.CanReadTrackerPasskeys(r),
@@ -111,14 +98,11 @@ func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		done:       make(chan struct{}),
 	}
 
-	// Register client
 	h.addClient(instanceID, client)
 	defer h.removeClient(instanceID, client)
 
-	// Start poller for this instance if not running
 	h.ensurePoller(instanceID)
 
-	// Send connected event
 	if err := h.sendEvent(w, flusher, rssSSEEvent{
 		Type: rssEventConnected,
 		Data: map[string]any{
@@ -130,7 +114,6 @@ func (h *RSSSSEHandler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stream events
 	ctx := r.Context()
 	for {
 		select {
@@ -155,7 +138,6 @@ func (h *RSSSSEHandler) sendEvent(w http.ResponseWriter, flusher http.Flusher, e
 		return err
 	}
 
-	// SSE format: "event: <type>\ndata: <json>\n\n"
 	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
 	if err != nil {
 		return err
@@ -198,7 +180,6 @@ func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
 	}
 	h.mu.Unlock()
 
-	// Stop poller outside of h.mu: stopPoller takes h.mu under h.pollerMu.
 	if shouldStopPoller {
 		h.stopPoller(instanceID)
 	}
@@ -208,7 +189,6 @@ func (h *RSSSSEHandler) removeClient(instanceID int, client *rssSSEClient) {
 
 func (h *RSSSSEHandler) broadcast(instanceID int, items []byte) {
 	h.mu.RLock()
-	// Copy clients while holding lock to avoid race during iteration
 	clientsCopy := make([]*rssSSEClient, 0, len(h.clients[instanceID]))
 	for client := range h.clients[instanceID] {
 		clientsCopy = append(clientsCopy, client)
@@ -238,7 +218,6 @@ func (h *RSSSSEHandler) broadcast(instanceID int, items []byte) {
 		select {
 		case client.events <- event:
 		default:
-			// Client buffer full, skip
 			log.Debug().Int("instanceID", instanceID).Msg("RSS SSE client buffer full")
 		}
 	}
@@ -262,9 +241,6 @@ func (h *RSSSSEHandler) stopPoller(instanceID int) {
 	h.pollerMu.Lock()
 	defer h.pollerMu.Unlock()
 
-	// A viewer can join between removeClient dropping the last one and this
-	// stop; its ensurePoller saw the old poller, so keep it. Lock order is
-	// pollerMu, then mu.
 	h.mu.RLock()
 	hasClients := len(h.clients[instanceID]) > 0
 	h.mu.RUnlock()
@@ -311,7 +287,6 @@ func nextRSSPollInterval(current time.Duration, unchanged bool) time.Duration {
 func (h *RSSSSEHandler) pollAndBroadcast(ctx context.Context, instanceID int, lastItems []byte) ([]byte, bool) {
 	items, err := h.getRSSItems(ctx, instanceID, true)
 	if err != nil {
-		// Context cancellation is expected during shutdown
 		if ctx.Err() != nil {
 			log.Debug().Int("instanceID", instanceID).Msg("RSS SSE poll cancelled")
 			return lastItems, false
@@ -320,14 +295,12 @@ func (h *RSSSSEHandler) pollAndBroadcast(ctx context.Context, instanceID int, la
 		return lastItems, false
 	}
 
-	// Serialize for comparison
 	currentItems, err := json.Marshal(items)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to marshal RSS items for SSE comparison")
 		return lastItems, false
 	}
 
-	// Check for changes
 	if bytes.Equal(currentItems, lastItems) {
 		return lastItems, true
 	}

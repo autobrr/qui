@@ -32,7 +32,6 @@ func TestCrossSeedRunCountersMigrationBackfillsCrossSeedsAddedPostgresIntegratio
 	checkCrossSeedRunCountersMigration(ctx, t, conn, postgresMigrationsFS, "postgres_migrations/097_rename_cross_seed_run_counters.sql")
 }
 
-// Old torrents_added values counted cross-seeds, so the rename must preserve them.
 func checkCrossSeedRunCountersMigration(ctx context.Context, t *testing.T, conn *sql.DB, fsys fs.ReadFileFS, migration string) {
 	t.Helper()
 

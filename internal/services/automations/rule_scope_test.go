@@ -13,12 +13,10 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// noSkipWindow opens the Rule scope of the rules as a dry run and a preview do.
 func noSkipWindow(rules ...*models.Automation) *ruleScope {
 	return newRuleScope(rules, nil, nil)
 }
 
-// scopeTestTorrent returns a torrent with one tracker for each domain. The first is the tracker in use.
 func scopeTestTorrent(hash string, hasMetadata bool, domains ...string) qbt.Torrent {
 	torrent := qbt.Torrent{Hash: hash, HasMetadata: new(hasMetadata)}
 	for _, domain := range domains {
@@ -35,18 +33,15 @@ func TestRuleScope(t *testing.T) {
 	byName := &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "a"}
 	pauseReadsPrivate := &models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: privateIs("false", false)}}
 	tests := []struct {
-		name    string
-		pattern string
-		// domains are the trackers of the torrent.
+		name       string
+		pattern    string
 		domains    []string
 		conditions *models.ActionConditions
 		sorting    *models.SortingConfig
 		noMetadata bool
-		// stampAge is the time since a live run selected the torrent for a delete. Zero means no stamp.
-		stampAge time.Duration
-		// noWindow opens the Rule scope as a dry run and a preview do.
-		noWindow bool
-		want     scopeAnswer
+		stampAge   time.Duration
+		noWindow   bool
+		want       scopeAnswer
 	}{
 		{name: "wildcard matches all", pattern: "*", domains: []string{"tracker.example.com"}, want: scopeIn},
 		{name: "wildcard matches empty domains", pattern: "*", domains: nil, want: scopeIn},
@@ -121,7 +116,6 @@ func TestRuleScope(t *testing.T) {
 	}
 }
 
-// A grouped Action is all or none. Only a member without a value stops it.
 func TestRuleScope_GroupDropsMember(t *testing.T) {
 	const tracker = "tracker.example.com"
 	torrentByHash := map[string]qbt.Torrent{
@@ -158,7 +152,6 @@ func TestRuleScope_GroupDropsMember(t *testing.T) {
 	}
 }
 
-// The stub lists the torrent after the delete, as qBittorrent does while it removes the torrent.
 func TestRun_SkipWindowStopsASecondDelete(t *testing.T) {
 	svc, instanceID, stub := newSkipTestService(t, webAPIQbit52)
 	rule := parityDeleteRule(DeleteModeKeepFiles, &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorEqual, Value: "withmeta"})
@@ -180,8 +173,6 @@ func TestRun_SkipWindowStopsASecondDelete(t *testing.T) {
 	require.Equal(t, []string{"withmeta", "withmeta"}, deletedHashes(stub))
 }
 
-// A run adds the managed tag back to a torrent that dropped out of the rule. The tag preview
-// lists only the torrents that the rule tags.
 func TestPreview_TorrentWithoutMetadataThatKeepsAManagedTagIsNoTagMatch(t *testing.T) {
 	const torrents = `{
 		"withmeta": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},

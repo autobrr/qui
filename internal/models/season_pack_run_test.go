@@ -190,7 +190,6 @@ func TestSeasonPackRunStore_SettingsRoundTrip(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Defaults should include season pack fields
 	defaults, err := store.GetSettings(ctx)
 	require.NoError(t, err)
 	require.False(t, defaults.SeasonPackEnabled)
@@ -200,7 +199,6 @@ func TestSeasonPackRunStore_SettingsRoundTrip(t *testing.T) {
 	require.False(t, defaults.SeasonPackSimplifyWEBCompare)
 	require.False(t, defaults.SeasonPackSkipYearCompare)
 
-	// Upsert with season pack fields
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		Enabled:                      true,
 		RunIntervalMinutes:           60,
@@ -223,7 +221,6 @@ func TestSeasonPackRunStore_SettingsRoundTrip(t *testing.T) {
 	require.True(t, updated.SeasonPackEnabled)
 	require.InDelta(t, 0.85, updated.SeasonPackCoverageThreshold, 0.0001)
 
-	// Reload should match
 	reloaded, err := store.GetSettings(ctx)
 	require.NoError(t, err)
 	require.True(t, reloaded.SeasonPackSkipRepackCompare)

@@ -12,16 +12,6 @@ import (
 	"testing"
 )
 
-// TestCreate_RespectsUmask verifies that Create requests a permissive directory
-// mode (fsutil.ContentDirMode = 0o777) and lets the process umask decide the
-// final bits, rather than hardcoding 0755. See discussion #1704.
-//
-// With umask 0 a 0o777 request lands as 0o777 on disk, so this test passes only
-// when the code requests 0o777; the old hardcoded 0755 would land as 0755 and
-// fail. This guards against a future "tightening" back to 0755 that would
-// re-break umask-controlled group write for shared-group setups.
-//
-// Not parallel: umask is process-global.
 func TestCreate_RespectsUmask(t *testing.T) {
 	oldUmask := syscall.Umask(0)
 	defer syscall.Umask(oldUmask)

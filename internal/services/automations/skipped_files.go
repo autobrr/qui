@@ -11,9 +11,6 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// detectSkippedFiles reports which torrents have at least one file set to
-// "Do not download" (priority 0). Torrents whose file list could not be fetched
-// get no entry, so HAS_SKIPPED_FILES never matches them.
 func (s *Service) detectSkippedFiles(ctx context.Context, instanceID int, torrents []*qbt.Torrent) (map[string]bool, error) {
 	hashes := make([]string, 0, len(torrents))
 	for _, t := range torrents {
@@ -30,7 +27,7 @@ func buildSkippedFilesResult(filesByHash map[string]qbt.TorrentFiles) map[string
 	result := make(map[string]bool, len(filesByHash))
 	for hash, files := range filesByHash {
 		if len(files) == 0 {
-			continue // No metadata yet
+			continue
 		}
 		result[hash] = slices.ContainsFunc(files, func(f qbt.TorrentFile) bool { return f.Priority == 0 })
 	}

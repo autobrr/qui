@@ -166,7 +166,6 @@ func TestCustomTheme_CreateConflictIgnoresCase(t *testing.T) {
 	require.Equal(t, []string{"Ocean.CSS"}, rig.fileNames(t))
 	require.Empty(t, rig.pub.events)
 
-	// The editor answers a 409 with a replace of the same id.
 	rec = rig.replace(t, "ocean", okThemeCSS)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Equal(t, okThemeCSS, rig.read(t, "Ocean.CSS"))
@@ -374,7 +373,6 @@ func TestCustomTheme_UnwritableFolderNamesFolder(t *testing.T) {
 	require.Empty(t, rig.pub.events)
 }
 
-// The cases of the rule itself are in internal/themes/testdata/outside_files.json.
 func TestCustomTheme_CreateAppliesOutsideFileRule(t *testing.T) {
 	rig := newCustomThemeRig(t, true)
 	rec := rig.create(t, "ocean", "body {\n  background: url(https://example.invalid/a.png);\n}")
@@ -412,7 +410,6 @@ func TestCustomTheme_ReplaceAppliesOutsideFileRule(t *testing.T) {
 
 // regression: #4124
 func TestFindCustomThemeFile(t *testing.T) {
-	// An in-memory folder keeps names that differ only in letter case on every OS.
 	folder := fstest.MapFS{
 		"Ocean.CSS": {}, "Ocean.css": {},
 		"Nord.css": {}, "nord.css": {},

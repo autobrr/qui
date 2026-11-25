@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// torrentSortFields maps the JSON name of each scalar qbt.Torrent field to its
-// field index. A field that go-qbittorrent adds later sorts without an edit.
 var torrentSortFields = func() map[string]int {
 	typ := reflect.TypeFor[qbt.Torrent]()
 	fields := make(map[string]int, typ.NumField())
@@ -25,7 +23,6 @@ var torrentSortFields = func() map[string]int {
 		if name == "" || name == "-" {
 			continue
 		}
-		// Pointer and slice fields stay out and sort by name, like an unknown column.
 		if k := field.Type.Kind(); k == reflect.Int64 || k == reflect.Float64 || k == reflect.Bool || k == reflect.String {
 			fields[name] = i
 		}
@@ -33,8 +30,6 @@ var torrentSortFields = func() map[string]int {
 	return fields
 }()
 
-// sortTorrents sorts the rows of one instance in place. The state sort reads
-// the tracker health from cachedHealth.
 func (sm *SyncManager) sortTorrents(torrents []*qbt.Torrent, column string, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthSnapshot) {
 	health := func(i int) TrackerHealth {
 		if !trackerHealthSupported {
@@ -45,8 +40,6 @@ func (sm *SyncManager) sortTorrents(torrents []*qbt.Torrent, column string, desc
 	sortByIndex(torrents, sm.torrentOrder(torrents, health, column, desc, func(a, b int) int { return a - b }))
 }
 
-// sortCrossInstanceTorrents sorts Unified rows in place. Rows that compare
-// equal sort by instance, ascending in each direction.
 func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrentView, column string, desc bool) {
 	rows := make([]*qbt.Torrent, len(torrents))
 	for i := range torrents {
@@ -77,26 +70,15 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 		sortByIndex(torrents, sm.torrentOrder(rows, health, column, desc, tie))
 		return
 	}
-	// The rows of each instance keep their name order in each direction.
 	byName := sm.torrentOrder(rows, health, "name", false, tie)
 	sortByIndex(torrents, func(a, b int) int {
 		return cmp.Or(flipIf(desc, compareInstance(a, b)), byName(a, b))
 	})
 }
 
-// torrentOrder returns the order of one sort column as a comparator over row
-// indexes. It resolves the sort keys once per row, and calls health only for
-// the state column. tie decides between two rows with the same hash.
-//
-// A plain field sorts by its value, then by hash, and descending flips both.
-// The columns below with their own rule keep the order qui gave them on top of
-// the go-qbittorrent library sort, which qui no longer uses. Both views sort
-// through here, so a column sorts the same way in each. See ADR 0014.
 func (sm *SyncManager) torrentOrder(rows []*qbt.Torrent, health func(int) TrackerHealth, column string, desc bool, tie func(a, b int) int) func(a, b int) int {
 	switch column {
 	case "name":
-		// qBittorrent sorts names case-sensitive, which puts lowercase after
-		// uppercase. The case only breaks ties here.
 		lowered := make([]string, len(rows))
 		for i, t := range rows {
 			lowered[i] = strings.ToLower(t.Name)
@@ -119,8 +101,6 @@ func (sm *SyncManager) torrentOrder(rows []*qbt.Torrent, health func(int) Tracke
 	case "tracker":
 		return sm.trackerOrder(rows, desc, tie)
 	case "priority":
-		// Priority is the queue position, and 0 means not queued. Queued
-		// torrents come first in each direction.
 		return func(a, b int) int {
 			pa, pb := rows[a].Priority, rows[b].Priority
 			switch {
@@ -135,8 +115,6 @@ func (sm *SyncManager) torrentOrder(rows []*qbt.Torrent, health func(int) Tracke
 			return compareHashThenTie(rows, a, b, tie)
 		}
 	case "eta":
-		// An infinite ETA (stalled) comes last in each direction, so it does
-		// not split the active torrents into two groups.
 		const infinityETA int64 = 8640000
 		return func(a, b int) int {
 			ea, eb := rows[a].ETA, rows[b].ETA
@@ -152,8 +130,6 @@ func (sm *SyncManager) torrentOrder(rows []*qbt.Torrent, health func(int) Tracke
 			return compareHashThenTie(rows, a, b, tie)
 		}
 	case "last_activity":
-		// LastActivity does not move each tick for an active torrent, so whole
-		// minutes keep the order still.
 		return timestampOrder(rows, desc, tie, func(t *qbt.Torrent) int64 { return t.LastActivity / 60 })
 	case "added_on":
 		return timestampOrder(rows, desc, tie, func(t *qbt.Torrent) int64 { return t.AddedOn })
@@ -174,7 +150,6 @@ func (sm *SyncManager) torrentOrder(rows []*qbt.Torrent, health func(int) Tracke
 	case reflect.Float64:
 		return fieldOrder(rows, desc, tie, func(i int) float64 { return field(i).Float() })
 	case reflect.Bool:
-		// false sorts before true.
 		return fieldOrder(rows, desc, tie, func(i int) int {
 			if field(i).Bool() {
 				return 1
@@ -186,8 +161,6 @@ func (sm *SyncManager) torrentOrder(rows []*qbt.Torrent, health func(int) Tracke
 	}
 }
 
-// fieldOrder resolves one key per row, then compares by key and hash.
-// Descending flips both.
 func fieldOrder[K cmp.Ordered](rows []*qbt.Torrent, desc bool, tie func(a, b int) int, key func(int) K) func(a, b int) int {
 	keys := make([]K, len(rows))
 	for i := range keys {
@@ -212,7 +185,6 @@ func flipIf(desc bool, result int) int {
 	return result
 }
 
-// compareHashThenTie is the tiebreak that ascending and descending share.
 func compareHashThenTie(rows []*qbt.Torrent, a, b int, tie func(a, b int) int) int {
 	if result := strings.Compare(rows[a].Hash, rows[b].Hash); result != 0 {
 		return result
@@ -220,8 +192,6 @@ func compareHashThenTie(rows []*qbt.Torrent, a, b int, tie func(a, b int) int) i
 	return tie(a, b)
 }
 
-// stateOrder sorts by tracker health first, then by state. Ties show the newest
-// torrent first.
 func stateOrder(rows []*qbt.Torrent, health func(int) TrackerHealth, desc bool, tie func(a, b int) int) func(a, b int) int {
 	type stateSortKey struct {
 		trackerPriority int
@@ -229,8 +199,6 @@ func stateOrder(rows []*qbt.Torrent, health func(int) TrackerHealth, desc bool, 
 		label           string
 	}
 
-	// A library holds thousands of torrents in about fifteen states, so each
-	// state's label is lowered once.
 	loweredStates := make(map[qbt.TorrentState]string, 16)
 	keys := make([]stateSortKey, len(rows))
 	for i, t := range rows {
@@ -266,10 +234,8 @@ func stateOrder(rows []*qbt.Torrent, health func(int) TrackerHealth, desc bool, 
 		case ka.label != kb.label:
 			result = strings.Compare(ka.label, kb.label)
 		case rows[a].AddedOn != rows[b].AddedOn:
-			// Newest first in ascending order.
 			result = cmp.Compare(rows[b].AddedOn, rows[a].AddedOn)
 		default:
-			// Folded on demand: this tie is too rare to justify lower-casing every name.
 			result = stringutils.CompareFold(rows[a].Name, rows[b].Name)
 		}
 		if result == 0 {
@@ -279,16 +245,12 @@ func stateOrder(rows []*qbt.Torrent, health func(int) TrackerHealth, desc bool, 
 	}
 }
 
-// trackerOrder compares by display name first, then domain, then full URL.
-// Display names come from tracker customizations, so merged trackers sort
-// together, and one host never splits on the letter case of its URLs.
-// Torrents without a tracker come last in each direction.
 func (sm *SyncManager) trackerOrder(rows []*qbt.Torrent, desc bool, tie func(a, b int) int) func(a, b int) int {
 	displayNameMap := sm.getTrackerDisplayNameMap()
 
 	type trackerSortKey struct {
 		hasDomain   bool
-		displayName string // custom name if configured, otherwise domain
+		displayName string
 		domain      string
 		normalized  string
 		hash        string
@@ -359,18 +321,13 @@ func (sm *SyncManager) trackerOrder(rows []*qbt.Torrent, desc bool, tie func(a, 
 			result = strings.Compare(ka.hash, kb.hash)
 		}
 		if result == 0 {
-			// A magnet still fetching metadata has neither tracker nor hash.
 			return tie(a, b)
 		}
 		return flipIf(desc, result)
 	}
 }
 
-// timestampOrder sorts by a timestamp, then by state, name, and hash. A
-// timestamp of 0 or -1 means "never" and sorts as the oldest.
 func timestampOrder(rows []*qbt.Torrent, desc bool, tie func(a, b int) int, timestamp func(*qbt.Torrent) int64) func(a, b int) int {
-	// The name is not resolved here: the tie it breaks is rare enough that
-	// folding on demand beats lower-casing the whole library.
 	type timestampSortKey struct {
 		timestamp     int64
 		statePriority int
@@ -402,10 +359,6 @@ func timestampOrder(rows []*qbt.Torrent, desc bool, tie func(a, b int) int, time
 	}
 }
 
-// sortByIndex sorts items in place by comparing indices instead of the items
-// themselves, so sort keys can be resolved once per item up front instead of on
-// every comparison. compare must be a total order over indices (add the index
-// itself as the last tiebreak to keep a stable result).
 func sortByIndex[T any](torrents []T, compare func(aIdx, bIdx int) int) {
 	indices := make([]int, len(torrents))
 	for idx := range indices {
@@ -414,8 +367,6 @@ func sortByIndex[T any](torrents []T, compare func(aIdx, bIdx int) int) {
 
 	slices.SortFunc(indices, compare)
 
-	// indices currently maps newPos -> oldPos; invert it to get elementPos -> targetPos,
-	// then apply in-place cycle permutation.
 	targets := make([]int, len(indices))
 	for newPos, oldPos := range indices {
 		targets[oldPos] = newPos

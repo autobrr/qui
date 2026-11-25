@@ -11,44 +11,33 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// workItemSearch is what happened to one Work item before its candidates.
 type workItemSearch int
 
 const (
 	itemSeedsAlready workItemSearch = iota + 1
-	// itemNoIndexers is not a search.
 	itemNoIndexers
 	itemSearchFailed
-	// itemSearchCanceled is a canceled search, or a Work item that another run finished first.
 	itemSearchCanceled
 	itemSearched
 )
 
-// workItemReport is what the search step, the match step, and the add step
-// report for one Work item.
 type workItemReport struct {
-	files []string
-	// episode marks the search for one episode of a season.
-	episode bool
-	search  workItemSearch
-	// requested and answered are the indexers of an itemSearched search.
+	files      []string
+	episode    bool
+	search     workItemSearch
 	requested  []int
 	answered   []int
 	candidates []candidateReport
 }
 
-// searchCovered reports whether an itemSearched search asked at least one
-// indexer and every requested indexer answered.
 func (r workItemReport) searchCovered() bool {
 	response := jackett.SearchResponse{RequestedIndexerIDs: r.requested, CoveredIndexerIDs: r.answered}
 	return r.search == itemSearched && len(r.requested) > 0 && response.FullyCovered()
 }
 
-// candidateEvent is what happened to one candidate that Dir Scan tried after a search.
 type candidateEvent int
 
 const (
-	// candidateDownloadFailed is a failed .torrent download or parse.
 	candidateDownloadFailed candidateEvent = iota + 1
 	candidateRejected
 	candidateRefused
@@ -56,24 +45,15 @@ const (
 )
 
 type candidateReport struct {
-	event candidateEvent
-	// class is the Result class of a refusal or of an add.
-	class crossseed.ResultClass
-	// routeUnavailable marks an error refusal that an unavailable instance of
-	// the cross-seed route caused.
+	event            candidateEvent
+	class            crossseed.ResultClass
 	routeUnavailable bool
-	// settleQueueFull marks an added torrent that stays paused because the
-	// Settle queue was full.
-	settleQueueFull bool
-	// matchedFiles, hash, and indexerID describe the matched torrent of a
-	// refusal or an add.
-	matchedFiles []string
-	hash         string
-	indexerID    int
+	settleQueueFull  bool
+	matchedFiles     []string
+	hash             string
+	indexerID        int
 }
 
-// isMatch reports whether the candidate counts as a found match: the torrent
-// is in qBittorrent already, or an add ran.
 func (c candidateReport) isMatch() bool {
 	return c.event == candidateAddRan || c.inQBittorrent()
 }
@@ -82,8 +62,6 @@ func (c candidateReport) inQBittorrent() bool {
 	return c.event == candidateRefused && c.class == crossseed.ClassExists
 }
 
-// added reports whether the add counts as added. A torrent that stays paused
-// because the Settle queue was full is a failed add in Dir Scan.
 func (c candidateReport) added() bool {
 	return c.event == candidateAddRan && c.class == crossseed.ClassAdded && !c.settleQueueFull
 }
@@ -92,17 +70,12 @@ func (c candidateReport) waitsForRoute() bool {
 	return c.event == candidateRefused && c.class == crossseed.ClassFailed && c.routeUnavailable
 }
 
-// searcheeFile is one file of a Searchee, with what its stored row says now.
 type searcheeFile struct {
 	path  string
 	video bool
 	final bool
 }
 
-// decideSearcheeOutcome returns the Searchee outcome of one run: the update to
-// write for each file, keyed by path. A file without an entry keeps its stored
-// row. canceled reports a run that stopped before a Work item started. The
-// order of the Work items does not change the result.
 func decideSearcheeOutcome(files []searcheeFile, enabledIndexerIDs []int, canceled bool, items []workItemReport) map[string]dirScanFileUpdate {
 	j := outcomeJoin{best: make(map[string]rankedUpdate), video: make(map[string]bool, len(files)), unfinished: canceled}
 	for _, f := range files {
@@ -112,8 +85,6 @@ func decideSearcheeOutcome(files []searcheeFile, enabledIndexerIDs []int, cancel
 		j.add(item)
 	}
 
-	// A Searchee that is not finished gives no file no_match. A finished one
-	// also finishes its non-video extras, which no episode search covers.
 	for _, f := range files {
 		switch {
 		case j.unfinished:
@@ -129,7 +100,6 @@ func decideSearcheeOutcome(files []searcheeFile, enabledIndexerIDs []int, cancel
 		if !ok || d.update.status == models.DirScanFileStatusPending {
 			continue
 		}
-		// Only a match replaces a final row.
 		if f.final && statusRank(d.update.status) < statusRank(models.DirScanFileStatusInQBittorrent) {
 			continue
 		}
@@ -141,8 +111,6 @@ func decideSearcheeOutcome(files []searcheeFile, enabledIndexerIDs []int, cancel
 	return decisions
 }
 
-// statusRank orders the decisions for one file. Pending leaves the stored row,
-// and it outranks no_match.
 func statusRank(status models.DirScanFileStatus) int {
 	switch status {
 	case models.DirScanFileStatusMatched:
@@ -166,17 +134,12 @@ type rankedUpdate struct {
 }
 
 type outcomeJoin struct {
-	best  map[string]rankedUpdate
-	video map[string]bool
-	// finished is set by a full search or a found match.
-	finished bool
-	// unfinished is set by a failed search, a Work item whose adds all
-	// failed, or a canceled run. It wins over finished.
+	best       map[string]rankedUpdate
+	video      map[string]bool
+	finished   bool
 	unfinished bool
 }
 
-// offer keeps the update with the higher rank. On a tie, an episode search
-// wins over a season search, because it matched the exact file.
 func (j *outcomeJoin) offer(path string, episode bool, update dirScanFileUpdate) {
 	cur, ok := j.best[path]
 	rank := statusRank(update.status)
@@ -208,7 +171,6 @@ func (j *outcomeJoin) add(item workItemReport) {
 func (j *outcomeJoin) addSearched(item workItemReport) {
 	switch {
 	case slices.ContainsFunc(item.candidates, candidateReport.waitsForRoute):
-		// The extras of a finished Searchee still get no_match.
 		for _, path := range item.files {
 			if j.video[path] {
 				j.offer(path, item.episode, dirScanFileUpdate{status: models.DirScanFileStatusPending})
@@ -222,7 +184,6 @@ func (j *outcomeJoin) addSearched(item workItemReport) {
 	if !slices.ContainsFunc(item.candidates, candidateReport.isMatch) {
 		return
 	}
-	// The first add wins, then the first torrent in qBittorrent.
 	primary := slices.IndexFunc(item.candidates, candidateReport.added)
 	status := models.DirScanFileStatusMatched
 	if primary < 0 {

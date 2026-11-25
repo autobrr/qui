@@ -29,7 +29,6 @@ func NewSharesHandler(service *share.Service) *SharesHandler {
 	return &SharesHandler{service: service}
 }
 
-// Routes adds the Share routes under /shares.
 func (h *SharesHandler) Routes(r chi.Router) {
 	r.Post("/", h.Start)
 	r.Get("/", h.List)
@@ -55,7 +54,6 @@ type refusedShare struct {
 }
 
 type startSharesResponse struct {
-	// Error is the first reason when no Share started.
 	Error   string         `json:"error,omitempty"`
 	Shares  []shareView    `json:"shares"`
 	Refused []refusedShare `json:"refused"`
@@ -113,9 +111,6 @@ func viewOf(sh *share.Share) shareView {
 	return v
 }
 
-// Start starts one Share for each torrent. It answers 201 when one started,
-// with the refusals of the others.
-// POST /api/shares
 func (h *SharesHandler) Start(w http.ResponseWriter, r *http.Request) {
 	var req startSharesRequest
 	if err := json.UnmarshalRead(r.Body, &req); err != nil {
@@ -166,8 +161,6 @@ func (h *SharesHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// List returns every Share, the newest first.
-// GET /api/shares
 func (h *SharesHandler) List(w http.ResponseWriter, r *http.Request) {
 	list, err := h.service.List(r.Context())
 	if err != nil {
@@ -182,21 +175,14 @@ func (h *SharesHandler) List(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, views)
 }
 
-// Stop ends an active Share.
-// POST /api/shares/{shareID}/stop
 func (h *SharesHandler) Stop(w http.ResponseWriter, r *http.Request) {
 	h.act(w, r, "stop", h.service.Stop)
 }
 
-// Unlock lets the next downloader of a Share with "Only the first
-// downloader" in.
-// POST /api/shares/{shareID}/unlock
 func (h *SharesHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 	h.act(w, r, "unlock", h.service.Unlock)
 }
 
-// Remove removes the row of an ended Share.
-// DELETE /api/shares/{shareID}
 func (h *SharesHandler) Remove(w http.ResponseWriter, r *http.Request) {
 	h.act(w, r, "remove", h.service.Remove)
 }
@@ -222,8 +208,6 @@ func (h *SharesHandler) act(w http.ResponseWriter, r *http.Request, name string,
 	}
 }
 
-// TorrentFile sends the .torrent of the recipient of a Share again.
-// GET /api/shares/{shareID}/torrent
 func (h *SharesHandler) TorrentFile(w http.ResponseWriter, r *http.Request) {
 	id, ok := shareID(w, r)
 	if !ok {
@@ -263,9 +247,6 @@ func shareID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// shareSettings are the settings of Settings → Shares. TrackerInUse is
-// read only: "own" for qui's own tracker, "outside" for the tracker URL, or
-// "" when no tracker is set.
 type shareSettings struct {
 	Port           int                   `json:"port"`
 	PublicAddress  string                `json:"publicAddress"`
@@ -304,8 +285,6 @@ func settingsView(s share.Settings) shareSettings {
 	}
 }
 
-// Settings returns the settings of Settings → Shares.
-// GET /api/shares/settings
 func (h *SharesHandler) Settings(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.service.Settings(r.Context())
 	if err != nil {
@@ -316,9 +295,6 @@ func (h *SharesHandler) Settings(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, settingsView(settings))
 }
 
-// SaveSettings saves the settings of Settings → Shares. A busy tracker port,
-// or a move of qui's tracker while a Share on it is active, answers 409.
-// PUT /api/shares/settings
 func (h *SharesHandler) SaveSettings(w http.ResponseWriter, r *http.Request) {
 	var body shareSettings
 	if err := json.UnmarshalRead(r.Body, &body); err != nil {

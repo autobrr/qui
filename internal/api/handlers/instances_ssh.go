@@ -19,8 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/sshpool"
 )
 
-// SSHCredentialsRequest is the endpoint and key qui dials the instance's host
-// with. The key is write-only: no response ever carries it back.
 type SSHCredentialsRequest struct {
 	Host       string `json:"host"`
 	Port       int    `json:"port"`
@@ -28,16 +26,10 @@ type SSHCredentialsRequest struct {
 	PrivateKey string `json:"privateKey"`
 }
 
-// SSHHostKeyRequest carries the host public key the user confirmed, base64
-// (standard encoding) over SSH wire format — the same bytes hostKey in
-// SSHTestResponse was built from, echoed back so the server pins what the user
-// actually saw.
 type SSHHostKeyRequest struct {
 	HostKey string `json:"hostKey"`
 }
 
-// SSHTestResponse reports what a dial found. Status "error" carries Error and
-// nothing else: a host that will not answer has no key to show.
 type SSHTestResponse struct {
 	Status            string           `json:"status"`
 	HostKey           string           `json:"hostKey,omitempty"`
@@ -49,7 +41,6 @@ type SSHTestResponse struct {
 	Error             string           `json:"error,omitempty"`
 }
 
-// SSHCapabilities is what a probe of the host found it can do.
 type SSHCapabilities struct {
 	SFTP        bool `json:"sftp"`
 	Statvfs     bool `json:"statvfs"`
@@ -59,7 +50,6 @@ type SSHCapabilities struct {
 	GNUUserland bool `json:"gnuUserland"`
 }
 
-// UpdateSSHCredentials stores the SSH endpoint and private key for an instance.
 func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -72,12 +62,6 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// A new endpoint has never been confirmed, so SetSSHCredentials drops the
-	// pin and the instance has no filesystem access until the user confirms
-	// the new host key. A link mode would keep failing every cross-seed in the
-	// meantime, so refuse the change the way removing the credentials is
-	// refused (#2942). Rotating the key or the username on the same endpoint
-	// keeps the pin and stays allowed.
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
@@ -88,8 +72,6 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		RespondError(w, http.StatusInternalServerError, "Failed to fetch instance")
 		return
 	}
-	// Mirror SetSSHCredentials. Only the presence of the key matters to the
-	// access mode, and SetSSHCredentials refuses an empty key.
 	after := *instance
 	after.SSHHost, after.SSHPort, after.SSHUsername, after.SSHKeyEncrypted = req.Host, req.Port, req.Username, "set"
 	endpointChanged := models.SSHEndpointChanged(instance, req.Host, req.Port)
@@ -100,8 +82,6 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		RespondError(w, http.StatusBadRequest, "Disable hardlink or reflink mode on this instance before changing its SSH host or port")
 		return
 	}
-	// Removing the credentials keeps the pin, so new credentials for the same
-	// endpoint can make the instance remote with no host key confirm.
 	if h.refuseRouteBreak(w, r, instance, &after) {
 		return
 	}
@@ -120,9 +100,6 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		case errors.Is(err, models.ErrInstanceNotFound):
 			RespondError(w, http.StatusNotFound, "Instance not found")
 		case errors.Is(err, models.ErrInvalidSSHCredentials):
-			// A property of the submitted endpoint or key, so the store's own
-			// message is what the user needs to fix; the sentinel's prefix is
-			// for errors.Is, not for the client.
 			RespondError(w, http.StatusBadRequest, strings.TrimPrefix(err.Error(), models.ErrInvalidSSHCredentials.Error()+": "))
 		default:
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to store SSH credentials")
@@ -134,16 +111,12 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
-// DeleteSSHCredentials forgets the key but keeps the pin: the pin belongs to
-// the host, not to whoever last authenticated against it.
 func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
 		return
 	}
 
-	// Clearing the credentials costs a remote instance its Write, and
-	// UpdateInstance refuses to leave a link mode on without it (#2942).
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
@@ -154,8 +127,6 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 		RespondError(w, http.StatusInternalServerError, "Failed to fetch instance")
 		return
 	}
-	// Mirror ClearSSHCredentials: the username, the key and the tier go, and
-	// the host and the pin stay.
 	withoutCredentials := *instance
 	withoutCredentials.SSHUsername = ""
 	withoutCredentials.SSHKeyEncrypted = ""
@@ -189,10 +160,6 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
-// TestSSHConnection dials the instance and reports the host key and what the
-// host can do. A refused or unreachable host is a 200 with status "error", the
-// same shape TestConnection uses: the browser is showing a result, not
-// recovering from a failed request.
 func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Request) {
 	instance, ok := h.loadSSHInstance(w, r)
 	if !ok {
@@ -205,14 +172,9 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 		case errors.Is(err, models.ErrSSHKeyNotConfigured):
 			RespondError(w, http.StatusBadRequest, "SSH credentials are not configured for this instance")
 		case r.Context().Err() != nil:
-			// The client is gone; there is nobody to answer.
 		case errors.Is(err, sshpool.ErrConnect):
-			// The transport's text is what the user needs to act on: a refused
-			// port and a missing route call for different fixes.
 			RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: err.Error()})
 		default:
-			// What qui stored is at fault, and its text is not the client's to
-			// read, as with the confirm and credentials routes.
 			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to read SSH credentials for SSH test")
 			RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: "Failed to read SSH credentials"})
 		}
@@ -220,7 +182,6 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 	}
 
 	response := SSHTestResponse{Status: string(report.Status)}
-	// An unreadable pin on a host that does not answer has no key to show.
 	if report.HostKey != nil {
 		response.HostKey = base64.StdEncoding.EncodeToString(report.HostKey.Marshal())
 		response.Fingerprint = ssh.FingerprintSHA256(report.HostKey)
@@ -232,10 +193,6 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 	}
 	if report.Capabilities != nil {
 		h.storeSSHTier(r.Context(), instance, report.Capabilities)
-		// A pooled connection keeps the tier its own probe found, and that
-		// probe may have got no answer while the row kept exec, so a fresh
-		// probe that matches the row says nothing about the connection. A
-		// test is the user asking for a recheck: the next operation dials.
 		h.sshPool.Invalidate(instance.ID)
 		response.Capabilities = &SSHCapabilities{
 			SFTP:        report.Capabilities.SFTP,
@@ -250,13 +207,10 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 	RespondJSON(w, http.StatusOK, response)
 }
 
-// ConfirmSSHHostKey pins the host key for an instance that has none.
 func (h *InstancesHandler) ConfirmSSHHostKey(w http.ResponseWriter, r *http.Request) {
 	h.pinHostKey(w, r, false)
 }
 
-// ReplaceSSHHostKey pins a new host key over an existing one, the move a user
-// makes after seeing a mismatch and deciding the host was legitimately re-keyed.
 func (h *InstancesHandler) ReplaceSSHHostKey(w http.ResponseWriter, r *http.Request) {
 	h.pinHostKey(w, r, true)
 }
@@ -283,8 +237,6 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
-	// Answer from the row before dialing; the store's compare-and-set still
-	// guards the race.
 	switch pinned := instance.SSHHostKeyEncrypted != ""; {
 	case pinned && !replace:
 		RespondError(w, http.StatusConflict, models.ErrSSHHostKeyAlreadyPinned.Error())
@@ -294,16 +246,12 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
-	// A pin can make the instance remote. Refuse before the dial.
 	pinned := *instance
 	pinned.SSHHostKeyEncrypted = "set"
 	if h.refuseRouteBreak(w, r, instance, &pinned) {
 		return
 	}
 
-	// Re-dial rather than trust the echoed key: pinning what the host presents
-	// right now is the trust-on-first-use the confirmation step exists to
-	// replace, and it is also what makes the flow stateless between requests.
 	capabilities, err := h.sshDialer.Confirm(r.Context(), instance, hostKey)
 	if err != nil {
 		_, mismatch := errors.AsType[*sshpool.MismatchError](err)
@@ -313,14 +261,10 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		case mismatch:
 			RespondError(w, http.StatusConflict, "Host presented a different key than the one being confirmed")
 		case r.Context().Err() != nil:
-			// The client is gone; there is nobody to answer.
 		case errors.Is(err, sshpool.ErrConnect):
 			log.Debug().Err(err).Int("instanceID", instance.ID).Msg("SSH host key confirmation could not connect")
 			RespondError(w, http.StatusBadGateway, "Could not connect to the SSH host")
 		default:
-			// What qui stored is at fault (a key that will not decrypt or parse),
-			// and its text is not the client's to read, as with the credentials
-			// route.
 			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to read SSH credentials for host key confirmation")
 			RespondError(w, http.StatusInternalServerError, "Failed to read SSH credentials")
 		}
@@ -335,10 +279,6 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		if err := pin(r.Context(), instance.ID, instance.SSHHost, instance.SSHPort, hostKey); err != nil {
 			return err
 		}
-		// The pin wrote sftp. A probe that got no answer leaves it there, and
-		// the next connect probes again. The probe write matches the row it
-		// dialed with, so it takes the snapshot Confirm used plus the pin as
-		// stored: credentials rotated meanwhile fail the match, as they should.
 		if capabilities != nil {
 			if pinned, err := h.instanceStore.Get(r.Context(), instance.ID); err != nil {
 				log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to reload the instance after pinning the host key")
@@ -348,13 +288,9 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 				h.storeSSHTier(r.Context(), &probed, capabilities)
 			}
 		}
-		// A refusal memoised against the old pin ends here; the next dial
-		// checks the host against the pin the user just confirmed.
 		h.sshPool.Invalidate(instance.ID)
 		return nil
 	}
-	// Only a replace goes through changeSSH: a first pin has no remote preview
-	// or deletion behind it. The dial above stays outside its lock.
 	if replace {
 		err = h.changeSSH(r.Context(), instance.ID, store)
 	} else {
@@ -380,17 +316,12 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 	RespondJSON(w, http.StatusNoContent, nil)
 }
 
-// storeSSHTier writes the tier and the hardlink flag a probe found. The probe
-// is the answer the user is shown, so a failed write is logged, not returned:
-// the next connect writes them again.
 func (h *InstancesHandler) storeSSHTier(ctx context.Context, probed *models.Instance, capabilities *sshpool.Capabilities) {
 	if err := h.instanceStore.SetSSHProbe(ctx, probed, capabilities.Tier(), capabilities.Hardlink); err != nil {
 		log.Warn().Err(err).Int("instanceID", probed.ID).Msg("Failed to store the SSH probe")
 	}
 }
 
-// loadSSHInstance loads the instance for a dialing endpoint, answering the
-// request itself on every failure.
 func (h *InstancesHandler) loadSSHInstance(w http.ResponseWriter, r *http.Request) (*models.Instance, bool) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {

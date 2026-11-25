@@ -26,7 +26,6 @@ const failedKeys: Partial<Record<CrossSeedGazelleLookupReason, string>> = {
   timed_out: "crossSeedDialog.gazelle.failed.timedOut",
 }
 
-/** gazelleLookupTextKey returns the key of the text that describes one RED/OPS entry. */
 export function gazelleLookupTextKey(lookup: CrossSeedGazelleLookup): string {
   if (lookup.status === "not_asked") {
     return (lookup.reason && notAskedKeys[lookup.reason]) ?? "crossSeedDialog.gazelle.notAsked.other"
@@ -40,7 +39,6 @@ export function gazelleLookupTextKey(lookup: CrossSeedGazelleLookup): string {
   return statusKeys[lookup.status] ?? "crossSeedDialog.gazelle.willAsk"
 }
 
-/** gazelleReportLines is the RED/OPS section of the plain-text search report. */
 export function gazelleReportLines(lookups: CrossSeedGazelleLookup[]): string[] {
   if (lookups.length === 0) {
     return []
@@ -55,7 +53,6 @@ export function gazelleReportLines(lookups: CrossSeedGazelleLookup[]): string[] 
   ]
 }
 
-/** gazelleStatusClass is the text color of the plan or the outcome of a RED/OPS entry. */
 export function gazelleStatusClass(status: CrossSeedGazelleLookup["status"]): string {
   if (status === "failed") return "text-destructive"
   if (status === "match") return "text-primary"

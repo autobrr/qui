@@ -17,13 +17,6 @@ function toShare(amount: number, ratio: number): number {
   return Math.min(amount / ratio, 1)
 }
 
-/**
- * Splits the pieces over at most `width` columns, as the qBittorrent pieces bar does.
- * Each column covers piece count / column count pieces, and a piece that falls across
- * two columns counts in each by its overlap. Returns, for each column, the share of
- * finished and of downloading pieces, from 0 to 1. With fewer pieces than `width`, it
- * returns one column for each piece.
- */
 export function computePieceBarColumns(pieceStates: readonly number[], width: number): PieceBarColumn[] {
   const columnCount = Math.min(Math.floor(width), pieceStates.length)
   if (columnCount <= 0) return []
@@ -55,12 +48,6 @@ export interface PieceBarFill {
   downloadingPixels: number
 }
 
-/**
- * Returns the height in pixels of the finished part and of the downloading part of one
- * column, for a bar of `height` pixels (3 or more). The two parts leave 1 pixel or more
- * free when the column also holds missing pieces, and they fill the height when it holds
- * none. Each part that the column holds is 1 pixel or more.
- */
 export function computePieceBarFill({ finished, downloading }: PieceBarColumn, height: number): PieceBarFill {
   const toPixels = (share: number) => (share > FLOAT_TOLERANCE ? Math.max(1, Math.round(share * height)) : 0)
   const emptyPixels = finished + downloading < 1 - FLOAT_TOLERANCE ? 1 : 0

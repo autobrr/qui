@@ -29,7 +29,6 @@ const tabs = ["overview", "torrents", "steps", "log"] as const
 type DetailsTab = (typeof tabs)[number]
 
 interface TransferDetailsDialogProps {
-  /** The Transfer to show, or null while the dialog is closed. */
   transferId: number | null
   onClose: () => void
 }
@@ -42,7 +41,6 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
   const sideways = useMediaQuery(SIDEWAYS_PHONE_QUERY)
   const phone = mobile || sideways
 
-  // The Transfer stays while the dialog fades out, and each opening starts on Overview.
   const [shown, setShown] = useState<{ id: number | null; open: boolean; tab: DetailsTab }>({ id: transferId, open: transferId !== null, tab: "overview" })
   if (transferId !== null && (!shown.open || transferId !== shown.id)) setShown({ id: transferId, open: true, tab: "overview" })
   if (transferId === null && shown.open) setShown({ ...shown, open: false })
@@ -65,10 +63,6 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
 
   return (
     <Dialog open={transferId !== null} onOpenChange={open => !open && onClose()}>
-      {/*
-        A fixed height, so that the dialog keeps its size while it loads and from tab to tab. The top stays in place, as
-        in the Add torrent dialog.
-      */}
       <DialogContent className="flex h-[min(38rem,90dvh)] w-full max-w-[95vw] flex-col gap-0 p-0 !top-[5dvh] !translate-y-0 sm:!top-[7.5dvh] sm:h-[min(32rem,85dvh)] sm:max-w-2xl lg:max-w-4xl">
         <DialogHeader className="space-y-0 border-b px-6 pt-5 pb-4 pr-12 text-left max-md:px-4 max-md:pr-12">
           <DialogTitle>{t(data?.kind === "export" ? "details.exportTitle" : "details.title")}</DialogTitle>
@@ -147,7 +141,6 @@ function Overview({ data }: { data: TransferDetail }) {
   const { t } = useTranslation("transfers")
   const display = useIncognitoDisplay()
   const facts: Fact[] = []
-  // StateDetail shows the progress while the files pass, and the time of the retry of a failure that waits.
   if (data.progress || (data.state === "failed" && data.finishedAt === null && data.retryAt)) {
     facts.push({ label: t("columns.progress"), value: <StateDetail row={data} /> })
   }
@@ -200,7 +193,6 @@ function TorrentRow({ member, crossSeed }: { member: TransferMember; crossSeed: 
   const display = useIncognitoDisplay()
   const name = display.name(member)
   const path = display.savePath(member.hash, member.savePath)
-  // Incognito mode hides the category and the tags, as it hides the other data of the client.
   const labels = display.incognito ? [] : [member.category, ...member.tags].filter(Boolean)
 
   return (
@@ -248,7 +240,6 @@ function Steps({ data }: { data: TransferDetail }) {
   const { t } = useTranslation("transfers")
   const display = useIncognitoDisplay()
   const steps = shownSteps(data.steps)
-  // The data of a step is for the resume of qui. The dialog names only the torrent of a step that adds one.
   const subject = (step: TransferStep) => {
     if (!torrentSteps.has(step.name)) return null
     const member = data.members.find(m => m.hash === step.detail)
@@ -299,10 +290,6 @@ function Log({ data }: { data: TransferDetail }) {
   )
 }
 
-/**
- * The date of each entry where a new day starts. A touch screen shows no title, so the date must be in the text. When
- * all the entries are of one day, no entry names its date.
- */
 function dayBreaks(times: readonly string[]): (string | null)[] {
   const days = times.map(at => formatDateOnly(Date.parse(at) / 1000))
   if (new Set(days).size < 2) return days.map(() => null)

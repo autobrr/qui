@@ -128,11 +128,9 @@ func TestServerShutdownTwiceEndsStreamsWithoutPanic(t *testing.T) {
 			Config: &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
 		})
 
-		// http.Server.Shutdown starts the registered callbacks on every call.
 		require.NoError(t, server.Shutdown(t.Context()))
 		require.NoError(t, server.Shutdown(t.Context()))
 
-		// Each callback runs in its own goroutine; wait for both so a double close panics here.
 		synctest.Wait()
 		select {
 		case <-server.shuttingDown:
@@ -230,7 +228,6 @@ func newTestDependenciesWithDB(t *testing.T) (*Dependencies, *database.DB) {
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	t.Cleanup(func() { require.NoError(t, transferHistory.Shutdown(context.Background())) })
 	jackettService := jackett.NewService(torznabIndexerStore)
-	// No Transfer and no helper torrent: the API behaves as it did before Transfers.
 	transfers, err := transfer.NewStore(t.Context(), db)
 	require.NoError(t, err)
 	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey)
@@ -246,7 +243,6 @@ func newTestDependenciesWithDB(t *testing.T) (*Dependencies, *database.DB) {
 		Config:    transfer.DefaultConfig(),
 	})
 	t.Cleanup(func() { require.NoError(t, transferService.Close(context.Background())) })
-	// No Share and every Share setting at its default.
 	shareService := share.NewService(share.Deps{
 		Store:           share.NewStore(db),
 		Settings:        share.NewSettingsStore(db),

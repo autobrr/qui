@@ -12,7 +12,6 @@ import type { DisplayProfile } from "@/lib/display-profiles"
 
 import { StableText } from "./StableText"
 
-/** What "Own sort and filters" covers, as a list. The funnel in the profile list of Settings shows it too. */
 export function OwnSortAndFiltersHelp() {
   return (
     <Trans
@@ -28,10 +27,6 @@ export function OwnSortAndFiltersHelp() {
   )
 }
 
-/**
- * The "Own sort and filters" switch of a profile. Default always shares, so it shows a line in place of the switch.
- * The row keeps one height for every profile and in both states of the switch.
- */
 export function OwnSortAndFiltersSetting({ profile }: { profile: DisplayProfile }) {
   const { t } = useTranslation("torrents")
   const { settled, setOwnSortAndFilters } = useDisplayProfiles()

@@ -13,8 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// The expected folders are what qBittorrent's SessionImpl::categorySavePath
-// gives: toValidPath on 5.2, toValidFileName on 5.3.
 func TestCategorySavePath_FolderName(t *testing.T) {
 	t.Parallel()
 
@@ -57,8 +55,6 @@ func TestCategorySavePath_FolderName(t *testing.T) {
 	}
 }
 
-// The parent walk has no depth cap: a deeply nested category that resolved to
-// "" would lose its folder.
 func TestCategorySavePath_DeepInheritanceIsNotDropped(t *testing.T) {
 	t.Parallel()
 

@@ -8,13 +8,11 @@ import { cleanup, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { FilesystemMode, Instance } from "@/types"
 
-// initReactI18next is pulled in through the import graph, so keep the module's other exports.
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-// The mocks hand back the same objects every render, since a fresh one would loop the components' effects.
 const { instances, settingsQuery, runsQuery, mutation, useOrphanScanSettings } = vi.hoisted(() => {
   const instance = (id: number, filesystemMode: FilesystemMode, read = filesystemMode !== "none", identity = filesystemMode === "local") => ({
     id,
@@ -27,8 +25,6 @@ const { instances, settingsQuery, runsQuery, mutation, useOrphanScanSettings } =
   const settingsQuery: { data?: { autoCleanupEnabled: boolean, autoCleanupMaxFiles: number } } = { data: undefined }
   return {
     settingsQuery,
-    // Instance 4 pairs a remote mode with no Read, so the gate is shown to follow the capability rather than the mode.
-    // Instance 5 is a remote instance that reads file identity, where auto-cleanup runs.
     instances: [instance(1, "local"), instance(2, "remote"), instance(3, "none"), instance(4, "remote", false), instance(5, "remote", true, true)] as unknown as Instance[],
     runsQuery: { data: [], isLoading: false },
     mutation: { mutate: () => {}, isPending: false },
@@ -93,7 +89,6 @@ it("says auto-cleanup does not run for a remote instance without file identity e
   settingsQuery.data = { autoCleanupEnabled: true, autoCleanupMaxFiles: 100 }
   const { container } = renderOverview()
 
-  // The local instance and both readable remote ones render a summary. The ones without Read render none.
   const text = container.textContent ?? ""
   expect(text.split("preferences.orphanScanOverview.autoCleanupRemote").length - 1).toBe(1)
   expect(text.split("preferences.orphanScanOverview.autoCleanupEnabled").length - 1).toBe(2)

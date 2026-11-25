@@ -16,24 +16,13 @@ import type { CustomThemeFile } from "@/lib/custom-themes"
 const EMPTY: ParsedCustomThemes = { themes: [], errors: [] }
 const CUSTOM_THEMES_KEY = ["custom-themes"]
 
-/**
- * Loads the custom themes again and registers them at once, so a theme saved a
- * moment ago resolves before the next render.
- */
 export async function refreshCustomThemes(queryClient: QueryClient): Promise<CustomThemeFile[]> {
-  // A list request that started before a write can miss it, so it does not answer this one.
   await queryClient.cancelQueries({ queryKey: CUSTOM_THEMES_KEY })
   const data = await queryClient.fetchQuery({ queryKey: CUSTOM_THEMES_KEY, queryFn: () => api.getCustomThemes(), staleTime: 0 })
   registerCustomThemes(parseCustomThemes(data.themes).themes)
   return data.themes
 }
 
-/**
- * Loads the custom themes (premium-gated). It fetches the directory
- * listing only when the user has premium access, parses each file with the
- * shared theme parser, registers the results so they resolve in the picker,
- * and re-applies / downgrades the stored selection as the registry changes.
- */
 export function useCustomThemes() {
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
 
@@ -51,7 +40,6 @@ export function useCustomThemes() {
     return parseCustomThemes(query.data.themes)
   }, [query.data])
 
-  // Sync the runtime registry and the stored selection with the latest list.
   useEffect(() => {
     const themeId = storedThemeId()
     const action = decideCustomThemeAction({
@@ -76,14 +64,10 @@ export function useCustomThemes() {
         registerCustomThemes(parsed.themes)
         break
       case "register-and-reapply":
-        // Apply the stored custom theme: it wasn't resolvable during the initial
-        // pre-fetch init, or its file was edited and refreshed (CSS changed).
         registerCustomThemes(parsed.themes)
-        // System change: restoring existing state must not be pushed.
         void setTheme(themeId!, undefined, undefined, true)
         break
       case "register-and-downgrade":
-        // The selected custom theme's file was removed/renamed - fall back.
         registerCustomThemes(parsed.themes)
         void setTheme(getDefaultTheme().id)
         break
@@ -98,7 +82,6 @@ export function useCustomThemes() {
     directory: query.data?.directory ?? "",
     isLoading: query.isLoading,
     isFetching: query.isFetching,
-    // Surfaced so consumers can distinguish a failed load from an empty result.
     isError: query.isError,
     refetch: query.refetch,
   }

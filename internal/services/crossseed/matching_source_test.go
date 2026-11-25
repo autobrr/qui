@@ -18,18 +18,14 @@ func TestNormalizeSource(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// WEB-DL variants normalize to WEBDL
 		{"WEB-DL uppercase", "WEB-DL", "WEBDL"},
 		{"web-dl lowercase", "web-dl", "WEBDL"},
 		{"WEBDL no hyphen", "WEBDL", "WEBDL"},
 
-		// WEBRip variants normalize to WEBRIP
 		{"WEBRIP uppercase", "WEBRIP", "WEBRIP"},
 
-		// Plain WEB stays as WEB (ambiguous)
 		{"WEB uppercase", "WEB", "WEB"},
 
-		// Non-web sources pass through uppercased
 		{"BluRay passthrough", "BluRay", "BLURAY"},
 	}
 
@@ -48,24 +44,19 @@ func TestSourcesCompatible(t *testing.T) {
 		candidate  string
 		compatible bool
 	}{
-		// Empty sources are always compatible
 		{"both empty", "", "", true},
 		{"source empty", "", "WEBDL", true},
 		{"candidate empty", "WEBDL", "", true},
 
-		// Identical sources are compatible
 		{"both WEBDL", "WEBDL", "WEBDL", true},
 
-		// WEB is ambiguous - matches both WEBDL and WEBRIP
 		{"WEB matches WEBDL", "WEB", "WEBDL", true},
 		{"WEBDL matches WEB", "WEBDL", "WEB", true},
 		{"WEBRIP matches WEB", "WEBRIP", "WEB", true},
 
-		// WEBDL and WEBRIP are explicitly different
 		{"WEBDL vs WEBRIP", "WEBDL", "WEBRIP", false},
 		{"WEBRIP vs WEBDL", "WEBRIP", "WEBDL", false},
 
-		// Web and non-web sources do not match
 		{"WEB does not match BLURAY", "WEB", "BLURAY", false},
 		{"BLURAY does not match WEB", "BLURAY", "WEB", false},
 	}

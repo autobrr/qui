@@ -31,7 +31,6 @@ func TestNeedsFor(t *testing.T) {
 		rules []*models.Automation
 		want  RuleNeeds
 	}{
-		// One row per field in conditionFieldData.
 		{name: "HARDLINK_SCOPE", rules: onTag(FieldHardlinkScope), want: RuleNeeds{HardlinkScope: true}},
 		{name: "HARDLINK_SCOPE_CROSS", rules: onTag(FieldHardlinkScopeCross), want: RuleNeeds{HardlinkCrossScope: true}},
 		{name: "HAS_MISSING_FILES", rules: onTag(FieldHasMissingFiles), want: RuleNeeds{MissingFiles: true}},
@@ -58,7 +57,6 @@ func TestNeedsFor(t *testing.T) {
 			want: RuleNeeds{FreeSpace: true},
 		},
 
-		// One row per action.
 		{name: "speed limits", rules: enabled(&models.ActionConditions{SpeedLimits: &models.SpeedLimitAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "share limits", rules: enabled(&models.ActionConditions{ShareLimits: &models.ShareLimitsAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
 		{name: "pause", rules: enabled(&models.ActionConditions{Pause: &models.PauseAction{Enabled: true, Condition: scope}}), want: RuleNeeds{HardlinkScope: true}},
@@ -159,8 +157,6 @@ func TestNeedsFor(t *testing.T) {
 	}
 }
 
-// Without an eval context, no field that needs extra data has it. A field that
-// the shortcut in conditionDataKnown leaves out reports known here.
 func TestConditionDataKnown_NoContextIsUnknown(t *testing.T) {
 	for field, data := range conditionFieldData {
 		if data.known != nil {

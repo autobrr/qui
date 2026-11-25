@@ -14,13 +14,10 @@ export interface FeatureNoticeEntry {
   titleKey: string
   descriptionKey: string
   actionLabelKey: string
-  /** A small drawing of what the feature does, shown above the title. Hide it from screen readers. */
   Picture?: ComponentType
-  /** True when the user already uses the feature. Reads Client settings; checked again after each change. */
   isInUse: () => boolean
 }
 
-/** In ship order, oldest first. Three entries at most: to add a fourth, delete the oldest. */
 export const FEATURE_NOTICES = [
   {
     id: "group-copies",

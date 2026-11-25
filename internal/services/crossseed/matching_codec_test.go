@@ -18,7 +18,6 @@ func TestNormalizeVideoCodec(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// AVC/H.264 aliases
 		{"x264 lowercase", "x264", "AVC"},
 		{"X264 uppercase", "X264", "AVC"},
 		{"H.264 with dot", "H.264", "AVC"},
@@ -27,7 +26,6 @@ func TestNormalizeVideoCodec(t *testing.T) {
 		{"AVC direct", "AVC", "AVC"},
 		{"avc lowercase", "avc", "AVC"},
 
-		// HEVC/H.265 aliases
 		{"x265 lowercase", "x265", "HEVC"},
 		{"X265 uppercase", "X265", "HEVC"},
 		{"H.265 with dot", "H.265", "HEVC"},
@@ -36,7 +34,6 @@ func TestNormalizeVideoCodec(t *testing.T) {
 		{"HEVC direct", "HEVC", "HEVC"},
 		{"hevc lowercase", "hevc", "HEVC"},
 
-		// Non-aliased codecs pass through uppercased
 		{"VP9 passthrough", "VP9", "VP9"},
 		{"AV1 passthrough", "AV1", "AV1"},
 		{"XViD passthrough", "XViD", "XVID"},
@@ -298,10 +295,6 @@ func TestReleasesMatch_CodecAliasing(t *testing.T) {
 	}
 }
 
-// TestReleasesMatch_AudioRelaxed verifies that audio codec and channel differences
-// are allowed through at the release matching stage. This is intentional because
-// indexer metadata can be inaccurate (e.g., BTN returning DDPA5.1 when the actual
-// file is DDP5.1). The downstream file size matching will catch real mismatches.
 func TestReleasesMatch_AudioRelaxed(t *testing.T) {
 	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
@@ -334,7 +327,7 @@ func TestReleasesMatch_AudioRelaxed(t *testing.T) {
 				Source:     "WEB-DL",
 				Collection: "NF",
 				Codec:      []string{"H.264"},
-				Audio:      []string{"DDPA"}, // BTN returns this incorrectly
+				Audio:      []string{"DDPA"},
 				Channels:   "5.1",
 				Group:      "Btn",
 			},
@@ -360,7 +353,7 @@ func TestReleasesMatch_AudioRelaxed(t *testing.T) {
 				Source:     "BluRay",
 				Codec:      []string{"HEVC"},
 				Audio:      []string{"TrueHD"},
-				Channels:   "5.1", // Different channels
+				Channels:   "5.1",
 				Group:      "FraMeSToR",
 			},
 			wantMatch:   true,

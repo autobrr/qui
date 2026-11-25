@@ -283,8 +283,6 @@ func (c *AppConfig) UpdateLogSettings(update LogSettingsUpdate) (LogSettingsResp
 		c.viper.Set("logPath", oldPath)
 		c.viper.Set("logMaxSize", oldMaxSize)
 		c.viper.Set("logMaxBackups", oldMaxBackups)
-		// Best-effort restore of logger state (ApplyLogConfig may have partially
-		// applied before failing, e.g., changed log level before path error)
 		c.ApplyLogConfig() //nolint:errcheck // best-effort rollback, error is not actionable
 	}()
 
@@ -314,7 +312,6 @@ func (c *AppConfig) UpdateLogSettings(update LogSettingsUpdate) (LogSettingsResp
 	}
 
 	committed = true
-	// Construct response inline to avoid deadlock (we already hold configMu)
 	return LogSettingsResponse{
 		Level:      canonicalizeLogLevel(c.Config.LogLevel),
 		Path:       c.ResolveLogPath(c.Config.LogPath),

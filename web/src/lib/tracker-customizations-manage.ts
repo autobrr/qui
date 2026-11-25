@@ -7,20 +7,13 @@ import type { TrackerCustomization, TrackerCustomizationInput } from "@/types"
 
 const rowCollator = new Intl.Collator(undefined, { sensitivity: "base" })
 
-/** One row of the tracker customizations list: a customization, or a domain without one. */
 export interface TrackerRow {
   displayName: string
-  /** The first domain, used for the icon and as the row key of a domain without a customization. */
   domain: string
   domains: string[]
   customizationId?: number
 }
 
-/**
- * Lists each customization, and each active domain that no customization holds,
- * sorted by display name. A customization whose domains are all inactive stays
- * in the list, so the user can still edit or delete it.
- */
 export function buildTrackerRows(activeDomains: Iterable<string>, customizations: readonly TrackerCustomization[]): TrackerRow[] {
   const customized = new Set<string>()
   const rows: TrackerRow[] = []
@@ -43,7 +36,6 @@ export interface ImportEntry {
   displayName: string
   domains: string[]
   conflict: { id: number; displayName: string; domains: string[] } | null
-  /** The entry equals an existing customization: same name and the same domains in the same order. */
   isIdentical: boolean
 }
 
@@ -51,12 +43,6 @@ export type ImportError = "invalidJson" | "invalidFormat" | "missingDisplayName"
 
 export type ImportParse = { valid: true; entries: ImportEntry[] } | { valid: false; error: ImportError | null }
 
-/**
- * Reads the JSON of an export, with or without a Markdown code fence. Each
- * entry keeps only displayName and domains, cleaned as the server stores them.
- * A field of an older export, such as includedInStats, is ignored. An empty
- * text gives no error.
- */
 export function parseTrackerCustomizationsImport(text: string, existing: readonly TrackerCustomization[]): ImportParse {
   let jsonText = text.trim()
   if (!jsonText) return { valid: false, error: null }
@@ -86,7 +72,6 @@ export function parseTrackerCustomizationsImport(text: string, existing: readonl
     if (!Array.isArray(domains) || !domains.every(d => typeof d === "string")) {
       return { valid: false, error: "invalidDomains" }
     }
-    // The server stores the domains trimmed, lowercased, and without repeats.
     const normalized = [...new Set(domains.map(d => d.trim().toLowerCase()).filter(Boolean))]
     if (normalized.length === 0) return { valid: false, error: "invalidDomains" }
 
@@ -94,7 +79,6 @@ export function parseTrackerCustomizationsImport(text: string, existing: readonl
     const conflict = match ? { id: match.id, displayName: match.displayName, domains: match.domains } : null
     let isIdentical = false
     if (conflict) {
-      // Order counts: the first domain is the primary.
       const have = conflict.domains.map(d => d.toLowerCase())
       isIdentical = conflict.displayName === displayName && have.length === normalized.length && normalized.every((d, i) => d === have[i])
     }
@@ -107,7 +91,6 @@ export function toCustomizationInput(entry: Pick<ImportEntry, "displayName" | "d
   return { displayName: entry.displayName, domains: entry.domains }
 }
 
-/** The text that the export button copies: JSON in a Markdown code fence. */
 export function exportTrackerCustomizations(customizations: readonly TrackerCustomization[]): string {
   const data = {
     comment: "qui tracker customizations",

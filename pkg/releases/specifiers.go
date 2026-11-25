@@ -45,9 +45,6 @@ func JoinNormalizedCodecSlice(slice []string) string {
 	return strings.Join(normalized, " ")
 }
 
-// sourceAliases maps source names to a canonical form for comparison.
-// WEB-DL variants normalize to WEBDL, WEBRip variants to WEBRIP.
-// Plain "WEB" stays as "WEB" and is treated as ambiguous (matches both).
 var sourceAliases = map[string]string{
 	"WEB-DL":  "WEBDL",
 	"WEBDL":   "WEBDL",

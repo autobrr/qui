@@ -18,7 +18,6 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// newSeasonPackInstanceStore creates one instance per entry, active as given.
 func newSeasonPackInstanceStore(t *testing.T, active []bool) *models.InstanceStore {
 	t.Helper()
 	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "season-pack"), make([]byte, 32))
@@ -129,7 +128,6 @@ func TestBuildAnyInstanceSeasonPackSet_ReadsEveryActiveInstance(t *testing.T) {
 	require.Equal(t, SeasonPackStatusUnpacked, seasonPackStatus(s.releaseParser.Parse("Show.Name.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 }
 
-// An unreadable instance is skipped; the packs of the other instances still count.
 func TestBuildAnyInstanceSeasonPackSet_SkipsUnreadableInstance(t *testing.T) {
 	reader := &seasonPackViewsReader{
 		byInstance: map[int][]qbittorrent.CrossInstanceTorrentView{2: {seasonPackView("Show.Name.S01.1080p.WEB-DL.DDP5.1.H.264-GRP")}},
@@ -147,7 +145,6 @@ func TestBuildAnyInstanceSeasonPackSet_SkipsUnreadableInstance(t *testing.T) {
 	require.Equal(t, SeasonPackStatusPacked, seasonPackStatus(s.releaseParser.Parse("Show.Name.S01E03.1080p.WEB-DL.DDP5.1.H.264-GRP"), packs))
 }
 
-// The preview builds a pack set when only a score rule uses the field, as the run does.
 func TestSeasonPackStatus_PreviewScoreRuleGate(t *testing.T) {
 	rule := &models.Automation{SortingConfig: &models.SortingConfig{
 		Type: models.SortingTypeScore,

@@ -12,13 +12,11 @@ import { Plus, X } from "lucide-react"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
-// Content types a rule may force (mirrors the backend list).
 const CONTENT_TYPE_OPTIONS = ["movie", "tv", "music", "audiobook", "book", "comic", "game", "app"] as const
 
 interface CategoryMappingRulesEditorProps {
   value: CategoryMappingRule[]
   onChange: (rules: CategoryMappingRule[]) => void
-  /** Aggregated qBittorrent category metadata used to suggest categories. */
   categoryMetadata: Record<string, { name: string; savePath: string }>
 }
 

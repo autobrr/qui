@@ -136,8 +136,6 @@ func setRefsTestIntegrity(t testing.TB, path string, algorithm uint16) fileInteg
 	if algorithm == 0 {
 		require.Zero(t, actual.ChecksumAlgorithm, "fixture integrity must be disabled")
 	} else {
-		// ReFS v2 selects CRC32 or CRC64, regardless of which enabled algorithm was requested.
-		// https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/a4517cd5-3f5a-4058-a457-bcff2baac011
 		require.Contains(t, []uint16{1, 2}, actual.ChecksumAlgorithm, "fixture integrity must be enabled")
 	}
 	return actual

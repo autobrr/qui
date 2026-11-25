@@ -137,7 +137,6 @@ func TestDownloadTorrentDoesNotCacheRejectedPayload(t *testing.T) {
 	cache := models.NewTorznabTorrentCacheStore(db)
 	service := NewService(store, WithTorrentCache(cache))
 	t.Cleanup(service.searchScheduler.Stop)
-	// The cache hit touches its row, and the first store starts a cleanup. Both write after the call returns.
 	t.Cleanup(func() {
 		service.background.Wait()
 		cache.WaitTouches()
@@ -160,7 +159,6 @@ func TestDownloadTorrentDoesNotCacheRejectedPayload(t *testing.T) {
 	}
 }
 
-// timeoutError implements net.Error for testing timeout detection
 type timeoutError struct {
 	timeout bool
 }

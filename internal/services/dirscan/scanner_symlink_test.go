@@ -17,10 +17,6 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 )
 
-// A root-level symlinked media file is scanned via its target (develop
-// parity: scanSingleFile follows the link), carrying the target's size and
-// identity. Symlinks inside a searchee directory are still skipped by the
-// walk.
 func TestScanDirectory_ScansRootLevelSymlinksViaTarget(t *testing.T) {
 	root := t.TempDir()
 	realFile := filepath.Join(root, "Movie.2024.1080p.WEB.x264-GRP.mkv")
@@ -31,7 +27,6 @@ func TestScanDirectory_ScansRootLevelSymlinksViaTarget(t *testing.T) {
 		t.Skipf("file symlink creation requires privileges: %v", err)
 	}
 	require.NoError(t, err)
-	// A directory link must not become a file just because its name looks like media.
 	err = os.Symlink(root, filepath.Join(root, "Directory Alias.mkv"))
 	if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
 		t.Skipf("directory symlink creation requires privileges: %v", err)

@@ -22,8 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// The rule builder reads the fields, operators and values from the condition field table. Build every condition
-// that the table allows, and send them through Create, so that the check never rejects a rule that the UI can make.
 func TestAutomationCheckAcceptsEveryRuleBuilderCondition(t *testing.T) {
 	var leaves []map[string]any
 	for field, spec := range automations.ConditionFields {
@@ -60,7 +58,7 @@ func TestAutomationCheckAcceptsEveryRuleBuilderCondition(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "automation-rule-builder")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	localAccess := true // the hardlink and missing files fields need it
+	localAccess := true
 	instance, err := instances.Create(t.Context(), "test", "http://example.invalid", "", "", nil, nil, false, &localAccess)
 	require.NoError(t, err)
 	handler := NewAutomationHandler(models.NewAutomationStore(db), nil, instances, nil, &automations.Service{})

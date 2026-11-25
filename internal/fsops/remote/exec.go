@@ -28,49 +28,26 @@ import (
 )
 
 const (
-	// findRecordLimit caps one find record: the fields and one path. Linux
-	// paths stop at 4096 bytes, so a longer record is not a path.
 	findRecordLimit = 64 << 10
-	// findEntryLimit and findByteLimit bound the walk's sort: a tree that
-	// prints more entries or bytes than this is handed to the sftp walk,
-	// which streams, rather than grow the sort past it. A hostile remote can
-	// print records of findRecordLimit each, so the entry cap alone is not a
-	// bound on memory.
-	findEntryLimit = 500_000
-	findByteLimit  = 64 << 20
+	findEntryLimit  = 500_000
+	findByteLimit   = 64 << 20
 )
 
-// findFormat prints, for each entry below the root, its type, device, inode,
-// link count, size, mtime, permission bits and path relative to the root.
-// Only the path can hold a space, so it goes last, and NUL ends the record
-// because NUL is the one byte a path cannot hold.
 const findFormat = `%y %D %i %n %s %T@ %m %P\0`
 
 const batchFormat = `%y %D %i %n %s %T@ %m %p\0`
 
 const (
-	// batchPaths and batchBytes size one find of a batch stat. The command
-	// goes to the shell as one argument, and Linux caps one argument at
-	// 128 KiB.
 	batchPaths   = 1000
 	batchBytes   = 64 << 10
 	batchTimeout = 30 * time.Second
-	// batchWidth is how many single stats of a batch are in flight at once.
-	// They share the one sftp client, so they overlap their round trips.
-	//
-	// ponytail: a fixed width, so n single stats cost about n/32 round
-	// trips: a torrent of 1,000 moved files is about 32. A per-host setting
-	// is the upgrade if a host with a long delay needs a wider pipeline.
-	batchWidth = 32
+	batchWidth   = 32
 )
 
 var errFindLimit = errors.New("find prints more entries than its limit")
 
 var errRelativePath = errors.New("path is not absolute")
 
-// execTier reports whether the stored tier says this instance runs commands.
-// The live connection decides again: an exec on a connection whose probe
-// found less answers fsops.ErrUnsupported.
 func (b *Backend) execTier() bool { return b.inst.SSHTier == models.SSHTierExec }
 
 func (b *Backend) exec(ctx context.Context) (*sshpool.Conn, error) {
@@ -97,9 +74,6 @@ func output(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command) ([]byt
 	return out, err
 }
 
-// identity reads the device, inode and link count of p with stat. Without
-// follow it is lstat, so a symlink planted in a tree reports itself and never
-// the identity of its target.
 func (b *Backend) identity(ctx context.Context, p string, follow bool) (hardlink.FileID, uint64, error) {
 	conn, err := b.exec(ctx)
 	if err != nil {
@@ -132,8 +106,6 @@ func parseIdentity(dev, ino, nlink string) (hardlink.FileID, uint64, error) {
 	return remoteFileID(numbers[0], numbers[1]), numbers[2], nil
 }
 
-// remoteFileID is the remote form of a device and inode. The tag keeps it
-// apart from a kernel-attested identity on the qui host.
 func remoteFileID(dev, ino uint64) hardlink.FileID {
 	var raw [16]byte
 	binary.BigEndian.PutUint64(raw[0:8], dev)
@@ -156,14 +128,6 @@ func (b *Backend) StatBatch(ctx context.Context, paths []string) ([]*fsops.Lstat
 	return b.statBatch(ctx, paths, true)
 }
 
-// LstatBatch answers fsops.BatchStater. On the exec tier, one find lstats a
-// batch of paths, with identity, in two round trips. Lstat answers each path
-// that find did not print, such as a missing one, so the error is the one
-// Lstat gives. On the sftp tier, Lstat answers every path. The single Lstat
-// calls run batchWidth at a time.
-//
-// The paths must be absolute: find reads an argument that starts with "-",
-// "!" or "(" as an expression.
 func (b *Backend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error) {
 	return b.statBatch(ctx, paths, false)
 }
@@ -176,9 +140,6 @@ func (b *Backend) statBatch(ctx context.Context, paths []string, follow bool) ([
 	infos := make([]*fsops.LstatInfo, len(paths))
 	errs := make([]error, len(paths))
 
-	// find reads a leading "-", "!" or "(" as the start of its expression,
-	// whatever comes before it, so a path that is not absolute is answered
-	// here and never sent.
 	absolute := make([]string, 0, len(paths))
 	for i, p := range paths {
 		if path.IsAbs(p) {
@@ -198,8 +159,6 @@ func (b *Backend) statBatch(ctx context.Context, paths []string, follow bool) ([
 			continue
 		}
 		e, ok := found[p]
-		// find -L prints a link it cannot follow as the link itself, but
-		// Stat of a broken link is an error.
 		if !ok || follow && e.mode&fs.ModeSymlink != 0 {
 			single = append(single, i)
 			continue
@@ -218,9 +177,6 @@ func (b *Backend) statBatch(ctx context.Context, paths []string, follow bool) ([
 		infos[i] = info
 	}
 
-	// After a lost connection, at most one call dials the host again. If
-	// the host is back, each path gets a real answer. If not, the pool
-	// remembers the failed dial, and each path gets its own error at once.
 	var g errgroup.Group
 	g.SetLimit(batchWidth)
 	for _, i := range single {
@@ -233,12 +189,6 @@ func (b *Backend) statBatch(ctx context.Context, paths []string, follow bool) ([
 	return infos, errs
 }
 
-// statFind puts the find record of each path it can read into found, by
-// path, one batch at a time. With follow, find reads the target of a link.
-//
-// ponytail: the batches run one after the other. Running them on the exec
-// sessions of the connection at once is the upgrade if a torrent with many
-// thousand files is ever slow.
 func (b *Backend) statFind(ctx context.Context, paths []string, follow bool, found map[string]findEntry) {
 	conn, err := b.exec(ctx)
 	if err != nil {
@@ -255,8 +205,6 @@ func (b *Backend) statFind(ctx context.Context, paths []string, follow bool, fou
 			n++
 		}
 		batchCtx, cancel := context.WithTimeout(ctx, batchTimeout)
-		// find prints at most one record for each path at depth 0, so a
-		// host that prints more is not find.
 		entries, err := find(batchCtx, conn, sshpool.Command{
 			Name:       "find",
 			Options:    []string{option},
@@ -267,9 +215,6 @@ func (b *Backend) statFind(ctx context.Context, paths []string, follow bool, fou
 		for _, e := range entries {
 			found[e.rel] = e
 		}
-		// find exits non-zero for a missing path and still prints the rest.
-		// A lost connection or an end of ctx stops the batches, and the
-		// single calls then answer the paths that are left.
 		if err != nil && (ctx.Err() != nil || errors.Is(err, sshpool.ErrConnect)) {
 			log.Debug().Int("instanceID", b.inst.ID).Err(err).Msg("remote: batch stat stopped")
 			return
@@ -294,20 +239,7 @@ func (b *Backend) sameFilesystemExec(ctx context.Context, p1, p2 string) (bool, 
 	return devices[0] == devices[1], nil
 }
 
-// walkExec walks root with one find and reports whether it answered the
-// walk. False means find could not, and the sftp walk takes over: find exits
-// non-zero for an unreadable directory, and only the sftp walk can name
-// which one; and a tree past the find limits is one the sftp walk streams.
-//
-// ponytail: find prints in disk order, so the whole tree is read and sorted
-// in memory before the first entry goes out, up to findEntryLimit entries.
-// find does not prune the directories that opts skips, so their entries count
-// toward that limit too.
-// Sorting per directory as the output streams is the upgrade if that
-// ceiling is ever hit.
 func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root string, opts fsops.WalkOptions) bool {
-	// find reads a root that starts with "-", "!" or "(" as an expression, so
-	// only an absolute root goes to it; the sftp walk takes any other.
 	if !path.IsAbs(root) {
 		return false
 	}
@@ -316,7 +248,6 @@ func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root 
 		log.Debug().Int("instanceID", b.inst.ID).Err(err).Msg("remote: walking over sftp")
 		return false
 	}
-	// -H follows only the root.
 	option := "-P"
 	if opts.FollowRoot {
 		option = "-H"
@@ -331,11 +262,9 @@ func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root 
 	case ctx.Err() != nil:
 		return true
 	case errors.Is(err, errFindLimit):
-		// Nothing has been sent yet, so the sftp walk takes the whole tree.
 		log.Debug().Int("instanceID", b.inst.ID).Str("root", root).Err(err).Msg("remote: find output over its limit, walking over sftp")
 		return false
 	case errors.Is(err, sshpool.ErrConnect):
-		// An sftp walk on a new connection reads no identity, and a caller takes the files for ones no torrent holds.
 		send(ctx, ch, fsops.WalkEntry{Path: root, IsDir: true, RelPath: ".", Err: pathError("find", root, lost(err))})
 		return true
 	case err != nil:
@@ -343,8 +272,6 @@ func (b *Backend) walkExec(ctx context.Context, ch chan<- fsops.WalkEntry, root 
 		return false
 	}
 
-	// fsops.Backend promises lexical order within a directory and a directory
-	// before its contents. Comparing path components gives both.
 	slices.SortFunc(entries, func(a, b findEntry) int { return comparePaths(a.rel, b.rel) })
 
 	skipped := ""
@@ -396,12 +323,9 @@ func find(ctx context.Context, conn *sshpool.Conn, cmd sshpool.Command, maxEntri
 	done := make(chan error, 1)
 	go func() {
 		err := conn.Stream(ctx, cmd, pw)
-		// The reader sees a clean end and takes the exit status from done,
-		// so a non-zero exit keeps the records before it.
 		_ = pw.Close()
 		done <- err
 	}()
-	// stop ends the command early: the closed pipe unblocks a write in flight.
 	stop := func(err error) ([]findEntry, error) {
 		cancel()
 		_ = pr.CloseWithError(err)
@@ -472,8 +396,6 @@ func parseFindRecord(record []byte) (findEntry, error) {
 	}, nil
 }
 
-// parseFindTime reads %T@, seconds and a fraction, without the rounding of a
-// float.
 func parseFindTime(text string) (time.Time, error) {
 	secText, fracText, _ := strings.Cut(text, ".")
 	sec, err := strconv.ParseInt(secText, 10, 64)
@@ -519,8 +441,6 @@ func findMode(kind byte, perm uint32) fs.FileMode {
 	return mode
 }
 
-// comparePaths orders slash paths component by component, so a directory
-// sorts before everything beneath it and siblings sort lexically.
 func comparePaths(a, b string) int {
 	for {
 		aHead, aRest, aMore := strings.Cut(a, "/")

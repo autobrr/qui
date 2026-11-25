@@ -92,7 +92,6 @@ describe("firstDueTime", () => {
 describe("useSupportReminder", () => {
   afterEach(() => {
     cleanup()
-    // Clears the push timer that the snapshot starts.
     _resetClientSettingsForTests()
   })
 

@@ -5,8 +5,6 @@ package qbittorrent
 
 import "context"
 
-// TorrentChange is a change of a torrent that moves or removes its files in
-// the client.
 type TorrentChange string
 
 const (
@@ -15,9 +13,6 @@ const (
 	TorrentChangeRename TorrentChange = "rename"
 )
 
-// TorrentChangeGuard learns of a delete, a move, or a rename of torrents
-// before qBittorrent gets it. The Share service ends the Shares of the
-// torrents first.
 type TorrentChangeGuard interface {
 	BeforeTorrentChange(ctx context.Context, instanceID int, hashes []string, change TorrentChange)
 }

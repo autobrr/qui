@@ -129,9 +129,6 @@ func TestRSSSSEInitialCheckOmitsArticleData(t *testing.T) {
 	}
 }
 
-// The last viewer can leave while a new viewer joins: removeClient decides to
-// stop the poller, the new viewer's ensurePoller sees it still running, and
-// then the stop lands. The poller must survive while the instance has a viewer.
 func TestRSSSSEStopPollerKeepsPollerForConnectedViewer(t *testing.T) {
 	handler := &RSSSSEHandler{
 		getRSSItems: func(context.Context, int, bool) (qbt.RSSItems, error) { return qbt.RSSItems{}, nil },
@@ -169,7 +166,6 @@ func TestRSSSSEEndsOnShutdown(t *testing.T) {
 		pollers:  make(map[int]context.CancelFunc),
 	}
 
-	// The request context stays open: http.Server.Shutdown does not cancel it.
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances/1/rss/events", nil)
 	routeCtx := chi.NewRouteContext()
 	routeCtx.URLParams.Add("instanceID", "1")

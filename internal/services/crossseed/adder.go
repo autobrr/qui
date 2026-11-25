@@ -18,7 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 )
 
-// adderSync is what the Adder sends to qBittorrent.
 type adderSync interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
@@ -27,9 +26,6 @@ type adderSync interface {
 
 var _ adderSync = (*qbittorrent.SyncManager)(nil)
 
-// Adder does every cross-seed add: the Pre-add check, the Add verdict, the add,
-// the resume or the hand-off to Settle, and the External Program run. A caller
-// gives facts and placement, never a state option or a Settle resume rule.
 type Adder struct {
 	sync               adderSync
 	blocklist          *models.CrossSeedBlocklistStore
@@ -39,8 +35,6 @@ type Adder struct {
 	routes             *crossseedroute.Service
 }
 
-// NewAdder builds the Adder. resumeBudget returns the Max auto-start download
-// budget, and runExternalProgram sends the Execution Request after an add.
 func NewAdder(
 	sync adderSync,
 	blocklist *models.CrossSeedBlocklistStore,
@@ -57,14 +51,10 @@ func NewAdder(
 	}
 }
 
-// SetCrossSeedRoutes wires the cross-seed routes (ADR 0035), so the Pre-add
-// check also reads the hashes on the instances that a route links. Without
-// them, it checks no linked instance. Safe to call once at startup.
 func (a *Adder) SetCrossSeedRoutes(routes *crossseedroute.Service) {
 	a.routes = routes
 }
 
-// VerifyReason is why a match must pass a full recheck before it seeds.
 type VerifyReason int
 
 const (
@@ -74,73 +64,35 @@ const (
 	VerifyManual
 )
 
-// AddFacts are what a caller knows about one cross-seed add. A caller can ask
-// for the Add verdict early with the facts it has so far.
 type AddFacts struct {
-	// MappedFiles have a retained complete source-to-target file correspondence.
-	MappedFiles bool
-	// PendingFiles is set when some source files are not on disk.
-	PendingFiles bool
-	// Align is set when the caller renames files to the matched torrent after the add.
-	Align bool
-	// RenameOnly is set when each aligned file exists at the matched size.
-	RenameOnly bool
-	// DiscMarker is the disc layout folder (BDMV, VIDEO_TS), or empty.
-	DiscMarker string
-	Verify     VerifyReason
-	// ExactMatch is set when the match type is exact.
-	ExactMatch bool
-	// UnvalidatedManual is set for a Manual match with no validated file mapping.
-	// VerifyManual also covers a Manual match that validated.
-	UnvalidatedManual bool
-	// SizeMismatch is set when a content file differs in size from the matched
-	// file, which points to corruption or to a different release.
-	SizeMismatch bool
-	// UnsafePieces is set when a Pending file shares a piece with a file on disk,
-	// because the download can change that file.
-	UnsafePieces bool
-	// UnsafeFallbackPieces is UnsafePieces for a regular add after a link mode
-	// fallback, where the download would change the original files.
+	MappedFiles          bool
+	PendingFiles         bool
+	Align                bool
+	RenameOnly           bool
+	DiscMarker           string
+	Verify               VerifyReason
+	ExactMatch           bool
+	UnvalidatedManual    bool
+	SizeMismatch         bool
+	UnsafePieces         bool
 	UnsafeFallbackPieces bool
-	// FolderToRootless is set when a folder torrent with Pending files targets
-	// rootless content. A regular add would scatter them in the base folder.
-	FolderToRootless bool
-	// ReflinkAdd is set while reflink mode makes the add: a clone keeps the
-	// original files safe. It turns off when reflink mode falls back.
-	ReflinkAdd bool
-	// LinkFallback is set when hardlink or reflink mode fell back to a regular add.
-	LinkFallback bool
-	// LinkFallbackRecheck is set when link mode asked for a full recheck after its fallback.
-	LinkFallbackRecheck bool
-	// LinkTree is set when hardlink or reflink mode built a link tree for the add.
-	LinkTree bool
-	// PoolMember is set when a partial link tree joins a partial pool, which resumes it.
-	PoolMember bool
-	// LinkedPaths are the hardlinked files that Settle checks before the resume.
-	LinkedPaths map[string]struct{}
-	// RecoverMissingFiles lets Settle resume a torrent that reports missing files.
-	RecoverMissingFiles bool
-	// ManualAssembly is set for a season pack that the user assembles from
-	// selected episodes. It skips the blocklist and always waits for a recheck.
-	ManualAssembly bool
-	// SeasonPackLinked is the byte fraction that a season-pack plan linked.
-	// Settle resumes the pack when the recheck reaches it.
-	SeasonPackLinked float64
-	// SeasonPackRun is the season pack history row that Settle writes when the
-	// linked-file check blocks the resume.
-	SeasonPackRun *models.SeasonPackRun
+	FolderToRootless     bool
+	ReflinkAdd           bool
+	LinkFallback         bool
+	LinkFallbackRecheck  bool
+	LinkTree             bool
+	PoolMember           bool
+	LinkedPaths          map[string]struct{}
+	RecoverMissingFiles  bool
+	ManualAssembly       bool
+	SeasonPackLinked     float64
+	SeasonPackRun        *models.SeasonPackRun
 
-	// The settings of the Trigger.
-	SkipRecheck    bool
-	SkipAutoResume bool
-	StartRunning   bool
-	// SkipPieceBoundaryCheck is the Piece boundary safety check switch. It turns
-	// off UnsafePieces, not UnsafeFallbackPieces.
+	SkipRecheck            bool
+	SkipAutoResume         bool
+	StartRunning           bool
 	SkipPieceBoundaryCheck bool
-	// DirScan is set for a Dir Scan add. Dir Scan has no Max auto-start download
-	// budget: it adds an alignment paused, resumes a link tree with Pending files
-	// after its recheck, and resumes each other add in Settle at 100%.
-	DirScan bool
+	DirScan                bool
 }
 
 const (
@@ -154,11 +106,8 @@ func refuseAdd(status, message string) AddVerdict {
 	return AddVerdict{Refused: true, Status: status, Message: message}
 }
 
-// AddVerdict is the decision for one cross-seed add: refuse with a status,
-// add running, or add paused for Settle.
 type AddVerdict struct {
 	Refused bool
-	// Status and Message describe a refusal.
 	Status  string
 	Message string
 
@@ -169,8 +118,6 @@ type AddVerdict struct {
 	linkRecheck  bool
 }
 
-// exactInPlace is an exact match with every file at its path, so an add reads
-// only bytes that the matched torrent already verified.
 func (f AddFacts) exactInPlace() bool {
 	return f.ExactMatch && !f.Align && !f.PendingFiles
 }
@@ -179,16 +126,10 @@ func (f AddFacts) alignmentPauses() bool {
 	return (f.Align && (f.MappedFiles || f.DirScan)) || (f.SkipRecheck && f.RenameOnly)
 }
 
-// Verdict makes the Add verdict from the facts. A later fact only adds a
-// reason for a refusal or a recheck, except for the link-fallback rule and pool
-// membership. A pool member skips Settle, because its partial pool resumes it.
 func (f AddFacts) Verdict() AddVerdict {
 	disc := f.DiscMarker != ""
 	exactInPlace := f.exactInPlace()
 	linkRecheck := f.LinkFallbackRecheck || (f.LinkFallback && !exactInPlace)
-	// A byte-complete pair needs no recheck after a link-mode fallback: every file
-	// exists at the matched size, and the renames of a rename-only pair are
-	// verified. Link mode itself would add such a pair without a recheck (#2272, #3028).
 	if f.SkipRecheck && (f.RenameOnly || exactInPlace) {
 		linkRecheck = false
 	}
@@ -210,27 +151,16 @@ func (f AddFacts) Verdict() AddVerdict {
 	}
 
 	v := AddVerdict{
-		// A rename-only add with Skip recheck on must not run before its renames land.
-		// Dir Scan and a mapped-file add rename the paths of an alignment before
-		// qBittorrent uses them.
-		paused: !f.StartRunning || verify || disc || linkRecheck || f.alignmentPauses(),
-		// qBittorrent blocks renames while it checks a torrent, so an add that aligns
-		// skips the check and Settle rechecks after the renames.
+		paused:       !f.StartRunning || verify || disc || linkRecheck || f.alignmentPauses(),
 		skipChecking: !f.PendingFiles || f.Align,
 		settle:       verify || disc || linkRecheck || alignRecheck || f.ManualAssembly,
 		linkRecheck:  linkRecheck,
 	}
 	if f.LinkTree {
-		// Every linked file is in place, so qBittorrent skips its check and Settle
-		// rechecks for the Pending files. A link-mode add ignores Start paused.
-		// qBittorrent checks a manual assembly on add.
-		// The after-recheck gate of Dir Scan reads the completed bytes, which
-		// skip_checking reports as done before the recheck runs.
 		v.skipChecking = !f.ManualAssembly && !dirScanPendingTree
 		v.paused = f.SkipAutoResume || v.settle
 	}
 	if f.PoolMember {
-		// The partial pool resumes its members, so a member skips Settle.
 		v.paused, v.settle = true, false
 	}
 	switch {
@@ -241,7 +171,6 @@ func (f AddFacts) Verdict() AddVerdict {
 	case verify:
 		v.gate = GateVerify
 	case dirScanPendingTree:
-		// Download missing files lets the tree fetch its Pending files, also for a disc layout.
 		v.gate = GateAfterRecheck
 	case disc || linkRecheck || f.DirScan || (f.MappedFiles && !f.LinkTree && !f.ReflinkAdd):
 		v.gate = GateComplete
@@ -251,63 +180,39 @@ func (f AddFacts) Verdict() AddVerdict {
 	return v
 }
 
-// PreAddCheck is the result of the blocklist check and the check for an
-// existing torrent. Add takes it, so no add skips the check.
 type PreAddCheck struct {
 	instanceID int
 	hashes     []string
 }
 
-// AddOutcome is what happened to one cross-seed add.
 type AddOutcome int
 
 const (
 	AddRefused AddOutcome = iota
 	AddAdded
 	AddSettling
-	// AddPooled means the torrent waits paused for its partial pool.
 	AddPooled
-	// AddLeftPaused means AfterAdd failed, so the torrent stays paused.
 	AddLeftPaused
 )
 
-// existsInThisInstance is the refusal message for a torrent that the checked
-// instance already has. A torrent on a linked instance names that instance.
 const existsInThisInstance = "Torrent already exists in this instance"
 
-// AddResult is the result of a Pre-add check refusal or of an add.
 type AddResult struct {
-	Outcome AddOutcome
-	// Status names a refusal: a Pre-add check status, a status of the Add verdict, or error.
-	Status string
-	// Message is the text of a refusal. For an added torrent, it is the text
-	// that the caller appends to its own message.
-	Message string
-	// Existing is the torrent that an exists refusal found.
+	Outcome  AddOutcome
+	Status   string
+	Message  string
 	Existing *qbt.Torrent
-	// PauseErr is set when AddLeftPaused could not pause a running torrent.
 	PauseErr error
-	// Err is the cause of a refusal with the status error.
-	Err error
-	// Settled is what Settle reported for an AddSettling torrent.
-	Settled SettleOutcome
-	// Paused is set when qui added the torrent paused.
-	Paused bool
+	Err      error
+	Settled  SettleOutcome
+	Paused   bool
 }
 
-// blocklistCheckFailed starts the message of a failed blocklist read.
 const blocklistCheckFailed = "Failed to check cross-seed blocklist"
 
-// Check runs the Pre-add check for the v1 and v2 hashes of a torrent. Only
-// facts.ManualAssembly applies here: it skips the blocklist. With the routes
-// wired, a hash on a linked instance refuses as exists too, and only the
-// blocklist of instanceID applies. A non-nil result is a refusal, and the check
-// it returns then is empty.
 func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashes ...string) (PreAddCheck, *AddResult) {
 	check := PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
 
-	// The existing torrents come first, so a torrent that is in qBittorrent is
-	// refused as exists also when it is on the blocklist.
 	existing, exists, err := a.sync.HasTorrentByAnyHash(ctx, instanceID, check.hashes)
 	if err != nil {
 		return PreAddCheck{}, &AddResult{Status: "error", Message: fmt.Sprintf("Failed to check existing torrents: %v", err), Err: err}
@@ -355,7 +260,6 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 	return check, nil
 }
 
-// AddPlacement is where a cross-seed lands. The caller owns it.
 type AddPlacement struct {
 	SavePath      string
 	Category      string
@@ -382,21 +286,14 @@ func (p AddPlacement) options() map[string]string {
 	return options
 }
 
-// AddRequest is one cross-seed add.
 type AddRequest struct {
 	Check     PreAddCheck
 	Torrent   []byte
 	Facts     AddFacts
 	Placement AddPlacement
-	// AfterAdd runs when qBittorrent has the torrent, before the resume or Settle.
-	// It gets the IDs that qBittorrent returned for the add. It returns the hash
-	// that qBittorrent lists the torrent under (empty for the first checked hash),
-	// and false when the torrent must stay paused.
-	AfterAdd func(ctx context.Context, addedIDs []string) (hash string, ok bool)
+	AfterAdd  func(ctx context.Context, addedIDs []string) (hash string, ok bool)
 }
 
-// Add makes the Add verdict with all the facts, adds the torrent, resumes it,
-// hands it to Settle, or leaves it paused, and then runs the External Program.
 func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	v := req.Facts.Verdict()
 	if v.Refused {
@@ -409,7 +306,6 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	options["paused"] = paused
 	options["stopped"] = paused
 	if v.skipChecking {
-		// go-qbittorrent also sends this as seedMode, the name that qBittorrent 5.3 (WebAPI 2.16.0) reads.
 		options["skip_checking"] = "true"
 	}
 
@@ -422,8 +318,6 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 			Msg("Failed to add cross-seed torrent")
 		return AddResult{Status: "error", Message: fmt.Sprintf("Failed to add torrent: %v", err), Err: err}
 	}
-	// qBittorrent has the torrent, so the renames, the recheck and the External
-	// Program run also when the run stops now.
 	ctx = context.WithoutCancel(ctx)
 
 	var message string
@@ -455,8 +349,6 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	var settled SettleOutcome
 	switch {
 	case v.settle:
-		// qBittorrent does not recheck a torrent that it adds paused, so Settle
-		// sends the recheck and resumes the torrent when its gate passes.
 		added := AddedTorrent{
 			InstanceID:          instanceID,
 			Hashes:              dedupeHashes(append([]string{hash}, req.Check.hashes...)...),
@@ -474,7 +366,6 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 		message += settled.StatusSuffix()
 		outcome = AddSettling
 	case req.Facts.PoolMember:
-		// The caller wakes the pool, which resumes the torrent.
 		outcome = AddPooled
 	case !v.paused:
 	case req.Facts.SkipAutoResume:

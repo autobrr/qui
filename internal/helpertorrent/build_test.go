@@ -313,9 +313,6 @@ func encodeTorrent(t *testing.T, torrent map[string]any) []byte {
 	return data
 }
 
-// placedFileNames returns where qBittorrent puts each file of the helper,
-// relative to the save path, when it adds the helper with the helper's content
-// layout. It follows TorrentInfo and Path::stripRootFolder in qBittorrent.
 func placedFileNames(t *testing.T, helper helpertorrent.Helper) []string {
 	t.Helper()
 	info := decodeInfo(t, helper.TorrentFile)

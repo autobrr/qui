@@ -5,5 +5,4 @@
 
 import type { ListFacts } from "@/contexts/TorrentSelectionContext"
 
-// The list facts of a single instance with no categories, no tags, and the default sort.
 export const LIST_FACTS: ListFacts = { isCrossInstance: false, allowSubcategories: false, sortField: "added_on", sortOrder: "desc" }

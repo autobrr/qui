@@ -9,7 +9,6 @@ import type { Dispatch, ReactNode } from "react"
 import { createContext, useContext, useMemo, useReducer, useState } from "react"
 
 export interface ListFacts {
-  // The list comes from the cross-instance endpoint, and categories and tags are those of its response.
   isCrossInstance: boolean
   categories?: Record<string, Category>
   tags?: string[]
@@ -19,14 +18,10 @@ export interface ListFacts {
   sortOrder: "asc" | "desc"
 }
 
-// What the desktop table or the mobile cards publish for the header management bar and the bulk action module.
 export interface TorrentSelectionSummary {
   actionTarget: ActionTarget
-  // In Select all mode, the total size of the filter and the size of the loaded Exclusions.
-  // totalSize is 0 outside Select all mode, when qui has no total, and when the table filters in the browser.
   totalSize: number
   excludedSize: number
-  // The instance of the page, and the instance subset of the Unified view.
   instanceId: number
   instanceIds?: number[]
   listFacts: ListFacts
@@ -39,7 +34,6 @@ interface TorrentSelectionContextType {
 }
 
 const TorrentSelectionContext = createContext<TorrentSelectionContextType | undefined>(undefined)
-// A separate context, so a new summary does not re-render the table that publishes it.
 const TorrentSelectionSummaryContext = createContext<TorrentSelectionSummary | null>(null)
 
 export function TorrentSelectionProvider({ children }: { children: ReactNode }) {

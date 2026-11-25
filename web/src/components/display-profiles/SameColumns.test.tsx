@@ -32,7 +32,6 @@ beforeEach(() => {
   localStorage.clear()
   _resetClientSettingsForTests()
   markClientSettingsUnavailable()
-  // A stored Column setup of an instance makes the computed switch start off.
   localStorage.setItem("qui-column-visibility:1", JSON.stringify({ ratio: true }))
 })
 

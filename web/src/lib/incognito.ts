@@ -3,15 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Incognito mode utilities for disguising torrents as Linux ISOs (default) or as
-// office documents while the Spreadsheet theme is active. getLinux* names are kept
-// as the stable incognito API; each getter picks its vocabulary at call time.
-
 import type { Category } from "@/types"
 import { useClientSetting } from "@/lib/client-settings"
 import { isSpreadsheetDisguiseActive } from "./spreadsheet-disguise"
 
-// Linux ISO names for incognito mode
 const linuxIsoNames = [
   "ubuntu-24.04.1-desktop-amd64.iso",
   "ubuntu-24.10-desktop-amd64.iso",
@@ -61,7 +56,6 @@ const linuxIsoNames = [
   "pfsense-ce-2.7.2-amd64.iso",
 ]
 
-// Linux-themed categories for incognito mode
 const LINUX_CATEGORIES: Record<string, Category> = {
   "distributions": { name: "distributions", savePath: "/home/downloads/distributions" },
   "documentation": { name: "documentation", savePath: "/home/downloads/docs" },
@@ -82,7 +76,6 @@ const LINUX_CATEGORIES_ARRAY = [
   "arm-builds",
 ]
 
-// Linux-themed tags for incognito mode
 const LINUX_TAGS = [
   "stable",
   "lts",
@@ -106,7 +99,6 @@ const LINUX_TAGS = [
   "rolling-release",
 ]
 
-// Linux-themed trackers for incognito mode
 const LINUX_TRACKERS = [
   "releases.ubuntu.com",
   "cdimage.debian.org",
@@ -142,7 +134,6 @@ const LINUX_RELEASE_NOTES = [
   "Live session user password documented in /DOCS/credentials.txt.",
 ]
 
-// Linux save paths for incognito mode
 const LINUX_SAVE_PATHS = [
   "/home/downloads/distributions",
   "/home/downloads/docs",
@@ -155,7 +146,6 @@ const LINUX_SAVE_PATHS = [
   "/media/nas/linux",
 ]
 
-// Linux-themed folder names for incognito mode
 const LINUX_FOLDER_NAMES = [
   "ubuntu",
   "debian",
@@ -209,8 +199,6 @@ const LINUX_VOCAB: IncognitoVocab = {
   folderNames: LINUX_FOLDER_NAMES,
 }
 
-// Spreadsheet flavor: served instead of the linux vocabulary while the
-// Spreadsheet theme is active, so incognito rows read as office documents.
 const SHEET_DOC_NAMES = [
   "Q1 Budget Consolidation v3.xlsx",
   "Q2 Budget Consolidation v7 FINAL.xlsx",
@@ -415,8 +403,6 @@ function vocab(): IncognitoVocab {
   return isSpreadsheetDisguiseActive() ? SHEET_VOCAB : LINUX_VOCAB
 }
 
-// The explicit flag (from useSpreadsheetDisguise) keeps callers' memo
-// dependencies honest instead of hiding the theme read in this module.
 export function getIncognitoCategories(spreadsheetDisguise: boolean): Record<string, Category> {
   return spreadsheetDisguise ? SHEET_VOCAB.categories : LINUX_VOCAB.categories
 }
@@ -429,7 +415,6 @@ export function getIncognitoTrackers(spreadsheetDisguise: boolean): string[] {
   return spreadsheetDisguise ? SHEET_VOCAB.trackers : LINUX_VOCAB.trackers
 }
 
-// Generate deterministic Linux folder name based on hash and depth
 export function getLinuxFolderName(hash: string, depth: number): string {
   const folderNames = vocab().folderNames
   if (!hash) {
@@ -445,9 +430,7 @@ export function getLinuxFolderName(hash: string, depth: number): string {
   return folderNames[(offset + depth) % folderNames.length]
 }
 
-// Generate a deterministic but seemingly random Linux ISO name based on hash
 export function getLinuxIsoName(hash: string): string {
-  // Use hash to deterministically select an ISO name
   const names = vocab().names
   let hashSum = 0
   for (let i = 0; i < hash.length; i++) {
@@ -471,19 +454,16 @@ export function getLinuxFileName(hash: string, index: number): string {
   return names[(offset + index) % names.length]
 }
 
-// Generate deterministic Linux category based on hash
 export function getLinuxCategory(hash: string): string {
   let hashSum = 0
   for (let i = 0; i < Math.min(10, hash.length); i++) {
     hashSum += hash.charCodeAt(i) * (i + 1)
   }
-  // 30% chance of no category
   if (hashSum % 10 < 3) return ""
   const categoryKeys = vocab().categoryKeys
   return categoryKeys[hashSum % categoryKeys.length]
 }
 
-// Generate a deterministic Linux category for a category name. Unlike getLinuxCategory, it never returns no category.
 export function getLinuxCategoryName(name: string): string {
   let hashSum = 0
   for (let i = 0; i < name.length; i++) {
@@ -493,7 +473,6 @@ export function getLinuxCategoryName(name: string): string {
   return categoryKeys[hashSum % categoryKeys.length]
 }
 
-// Generate a deterministic release team for a release group name.
 export function getLinuxReleaseGroup(name: string): string {
   let hashSum = 0
   for (let i = 0; i < name.length; i++) {
@@ -503,17 +482,14 @@ export function getLinuxReleaseGroup(name: string): string {
   return releaseTeams[hashSum % releaseTeams.length]
 }
 
-// Generate deterministic Linux tags based on hash
 export function getLinuxTags(hash: string): string {
   let hashSum = 0
   for (let i = 0; i < Math.min(15, hash.length); i++) {
     hashSum += hash.charCodeAt(i) * (i + 2)
   }
 
-  // 20% chance of no tags
   if (hashSum % 10 < 2) return ""
 
-  // Generate 1-3 tags
   const numTags = (hashSum % 3) + 1
   const tagPool = vocab().tags
   const tags: string[] = []
@@ -528,7 +504,6 @@ export function getLinuxTags(hash: string): string {
   return tags.join(", ")
 }
 
-// Generate deterministic Linux save path based on hash
 export function getLinuxSavePath(hash: string): string {
   let hashSum = 0
   for (let i = 0; i < Math.min(8, hash.length); i++) {
@@ -562,7 +537,6 @@ export function getLinuxComment(hash: string): string {
   return `${releaseNotes[hashSum % releaseNotes.length]}`
 }
 
-// Helper to compute tracker index from hash
 function getTrackerIndex(hash: string, trackerCount: number): number {
   let hashSum = 0
   for (let i = 0; i < Math.min(12, hash.length); i++) {
@@ -571,19 +545,16 @@ function getTrackerIndex(hash: string, trackerCount: number): number {
   return hashSum % trackerCount
 }
 
-// Generate deterministic Linux tracker based on hash
 export function getLinuxTracker(hash: string): string {
   const trackers = vocab().trackers
   return `https://${trackers[getTrackerIndex(hash, trackers.length)]}/announce`
 }
 
-// Generate deterministic Linux tracker domain based on hash (without URL prefix/suffix)
 export function getLinuxTrackerDomain(hash: string): string {
   const trackers = vocab().trackers
   return trackers[getTrackerIndex(hash, trackers.length)]
 }
 
-// Generate deterministic count value based on name for UI display
 export function getLinuxCount(name: string, max: number = 50): number {
   let hashSum = 0
   for (let i = 0; i < Math.min(8, name.length); i++) {
@@ -591,40 +562,35 @@ export function getLinuxCount(name: string, max: number = 50): number {
   }
   return (hashSum % max) + 1
 }
-// Generate deterministic ratio value based on hash
 export function getLinuxRatio(hash: string): number {
   let hashSum = 0
   for (let i = 0; i < Math.min(10, hash.length); i++) {
     hashSum += hash.charCodeAt(i) * (i + 5)
   }
 
-  // Generate ratios between 0.1 and 10.0 with some clustering around good values
   const ratioRanges = [
-    { min: 0.1, max: 0.5, weight: 15 },   // Poor ratio
-    { min: 0.5, max: 1.0, weight: 20 },   // Below 1.0
-    { min: 1.0, max: 2.0, weight: 30 },   // Good ratio (most common)
-    { min: 2.0, max: 5.0, weight: 25 },   // Very good ratio
-    { min: 5.0, max: 10.0, weight: 10 },  // Excellent ratio
+    { min: 0.1, max: 0.5, weight: 15 },
+    { min: 0.5, max: 1.0, weight: 20 },
+    { min: 1.0, max: 2.0, weight: 30 },
+    { min: 2.0, max: 5.0, weight: 25 },
+    { min: 5.0, max: 10.0, weight: 10 },
   ]
 
-  // Use weighted distribution
   const totalWeight = ratioRanges.reduce((sum, r) => sum + r.weight, 0)
   let weightPosition = hashSum % totalWeight
 
   for (const range of ratioRanges) {
     if (weightPosition < range.weight) {
-      // Generate value within this range
       const rangeSize = range.max - range.min
-      const position = (hashSum * 7) % 1000 / 1000 // Get decimal between 0-1
+      const position = (hashSum * 7) % 1000 / 1000
       return range.min + (rangeSize * position)
     }
     weightPosition -= range.weight
   }
 
-  return 1.5 // Default fallback
+  return 1.5
 }
 
-// Generate deterministic Linux-style hash based on input hash
 export function getLinuxHash(hash: string): string {
   if (!hash || hash.length === 0) {
     return ""
@@ -635,7 +601,6 @@ export function getLinuxHash(hash: string): string {
     hashSum += hash.charCodeAt(i) * (i + 1)
   }
 
-  // Generate a 40-character hex hash (SHA-1 style)
   const chars = "0123456789abcdef"
   let result = ""
 
@@ -647,12 +612,10 @@ export function getLinuxHash(hash: string): string {
   return result
 }
 
-// Storage key for incognito mode
 const INCOGNITO_STORAGE_KEY = "qui-incognito-mode"
 
 const parseIncognito = (raw: string): boolean => raw === "true"
 
-// Custom hook for managing the DB-backed incognito mode preference
 export function useIncognitoMode(): [boolean, (value: boolean) => void] {
   return useClientSetting<boolean>(INCOGNITO_STORAGE_KEY, {
     defaultValue: false,

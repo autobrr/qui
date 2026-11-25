@@ -283,8 +283,6 @@ func TestGroupCopiesReady(t *testing.T) {
 	f := newCopyGroupFixture(t)
 	instance, err := f.sm.clientPool.instanceStore.Create(t.Context(), "c", "http://127.0.0.1:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err)
-	// An instance that never synced: its client is in failure backoff, so a
-	// list read fails at once and makes no request.
 	unsynced := instance.ID
 	f.sm.clientPool.clients[unsynced] = &Client{}
 	f.sm.clientPool.failureTracker = map[int]*failureInfo{unsynced: {nextRetry: time.Now().Add(time.Hour)}}
@@ -354,7 +352,6 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		1: {"a1": copyGroupKaiju, "b1": copyGroupKaiju, "c1": copyGroupKaiju},
 		2: {"a1": copyGroupKaiju},
 	}, map[int]map[string][]SharedPart{
-		// p1 holds all three episodes of a pack, and q1 holds two of them.
 		1: {"p1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "q1": {{ID: 7, Size: 900}}, "r1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "s1": {{ID: 7, Size: 900}, {ID: 9, Size: 200}}},
 	}, []int{1, 2})
 	sizes := func(instanceID int, torrents ...qbt.Torrent) *TorrentStats {

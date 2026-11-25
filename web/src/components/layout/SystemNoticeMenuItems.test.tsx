@@ -19,7 +19,6 @@ const open: SystemNotice[] = [
   { kind: "brand_new_kind", severity: "error", cause: "something new broke", openedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
 ]
 
-// The header menu and the phone menu wire the rows and the dialog the same way.
 function Menu({ notices }: { notices: SystemNotice[] }) {
   const openNotice = useOpenSystemNotice(notices)
   return (
@@ -66,7 +65,6 @@ describe("SystemNoticeMenuItems", () => {
     try {
       const justOpened: SystemNotice = { ...open[0], openedAt: new Date().toISOString() }
       render(<Menu notices={[justOpened]} />)
-      // The fake setInterval stops the polling of findBy, so the test queries at once.
       fireEvent.click(screen.getByRole("menuitem", { name: /Recording stopped/ }))
       const dialog = screen.getByRole("dialog", { name: "Recording stopped" })
       expect(dialog.textContent).toContain("1 minute ago")
@@ -88,7 +86,6 @@ describe("SystemNoticeMenuItems", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }))
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
-    // Radix moves the focus of a closed dialog on the next task.
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "menu" }))
   })

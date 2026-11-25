@@ -3,18 +3,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Fake API for the demo build: a fetch router over the in-memory store.
-// Every response is JSON with a content-type, never HTML and never a thrown
-// error, because ssoSafeFetch in lib/api.ts treats both as an expired SSO
-// session and navigates the page away. No 401 is ever returned for the same
-// reason: a 401 outside /auth/me sends the app to /login.
-
 import type { TorrentFilters } from "@/types/torrents"
 import { CAPABILITIES, PREFERENCE_VIEW, trackerDomain, type BulkActionBody, type DemoStore, type ListParams } from "./store"
 import { changeDemoSubscriptions, type StreamEntry } from "./stream"
 
-// The built-in themes the Go registry embeds, so the picker and the default
-// look match a real install. Name and id follow internal/themes/registry.go.
 const themeCSS = import.meta.glob("../../../internal/themes/assets/*.css", { query: "?raw", import: "default", eager: true }) as Record<string, string>
 const builtinThemes = Object.entries(themeCSS).map(([file, css]) => {
   const name = /@name:\s*(.+?)\s*(?:\n|\*)/.exec(css)?.[1] ?? file.replace(/.*\/|\.css$/g, "")

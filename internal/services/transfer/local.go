@@ -10,11 +10,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// linkFiles makes the temporary file of each file that the target lacks a
-// hardlink to the file on the source, when both are on one filesystem on
-// qui's own disk. qui copies a file that it cannot link. A temporary file
-// that an earlier run linked is found by its identity, and qui never writes
-// into it.
 func (j *job) linkFiles(ctx context.Context, targetFiles fsops.Backend) error {
 	if j.made == nil {
 		j.made = map[*groupFile]int64{}
@@ -48,8 +43,6 @@ func (j *job) linkFiles(ctx context.Context, targetFiles fsops.Backend) error {
 	return nil
 }
 
-// linkedTo reports whether the file at temp on the target is the file at
-// source on the source.
 func (j *job) linkedTo(ctx context.Context, targetFiles fsops.Backend, temp, source string) bool {
 	t, err := targetFiles.Lstat(ctx, temp)
 	if err != nil {
@@ -59,7 +52,6 @@ func (j *job) linkedTo(ctx context.Context, targetFiles fsops.Backend, temp, sou
 	return err == nil && fsops.CompareFiles(j.target, t.FileID, j.source, s.FileID) == fsops.FilesSame
 }
 
-// linkedBytes returns the count and the size of the files that qui linked.
 func linkedBytes(files []*groupFile) (int, int64) {
 	var n int
 	var size int64

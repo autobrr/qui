@@ -61,7 +61,6 @@ function renderManager() {
   )
 }
 
-/** Answers the question that a delete asks first. */
 async function confirmDelete() {
   fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "trackerCustomizations.delete" }))
 }
@@ -160,7 +159,6 @@ describe("TrackerCustomizationsManager", () => {
     expect(screen.queryByRole("button", { name: "trackerCustomizations.addToMerge" })).toBeNull()
     expect(screen.queryByRole("listitem", { name: "a.example.invalid" })).toBeNull()
 
-    // A delete of the imported customization gives the domain its row back, unselected.
     fireEvent.click(screen.getByRole("button", { name: "trackerCustomizations.delete" }))
     await confirmDelete()
     const box = await screen.findByRole("checkbox", { name: "a.example.invalid" })
@@ -191,7 +189,6 @@ describe("TrackerCustomizationsManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "actions.cancel" }))
     await waitFor(() => expect(screen.queryByLabelText("trackerCustomizations.importDialog.jsonData")).toBeNull())
 
-    // A wide screen and a phone each have a Rename button in the row, and jsdom shows both.
     fireEvent.click(within(screen.getByRole("listitem", { name: "b.example.invalid" })).getAllByRole("button", { name: "trackerCustomizations.rename" })[0])
     fireEvent.change(await screen.findByLabelText("trackerCustomizations.customizeDialog.displayName"), { target: { value: "Bravo" } })
     await act(async () => finishImport())

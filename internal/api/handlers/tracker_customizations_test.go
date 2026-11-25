@@ -15,7 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// An export from before the tick boxes went away still carries includedInStats.
 func TestTrackerCustomizationCreateIgnoresIncludedInStats(t *testing.T) {
 	t.Parallel()
 

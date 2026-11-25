@@ -8,18 +8,14 @@ const (
 	png = "image/png"
 )
 
-// Icon is one logo that qui downloads at runtime. qui ships the address and
-// the hash, never the file: see docs/adr/0037.
 type Icon struct {
 	Name        string
-	URL         string // raw URL pinned to a full commit SHA
+	URL         string
 	SHA256      string
 	ContentType string
 	Fill        string
 }
 
-// Icons is the list that the server serves. A new hash makes each server
-// download the file again, because the file name on disk contains the hash.
 var Icons = []Icon{
 	{"qbittorrent", "https://raw.githubusercontent.com/qbittorrent/qBittorrent/62259b84b333ed5d8db106199db72dbe90ea90c1/src/icons/qbittorrent-tray.svg", "371d532463d91677316853c807f35991e8140b3cd8f6fe25ced10eeef7ee035d", svg, ""},
 	{"transmission", "https://raw.githubusercontent.com/transmission/transmission/f4bd5f3457198d6d88e2acde3b2a96eaa5cc84df/icons/hicolor_apps_scalable_transmission.svg", "3e4d67e348c5f99498bcdfdd7608ec3e4a6d42a57a7418ca25c4b6348a21093a", svg, ""},
@@ -32,7 +28,6 @@ var Icons = []Icon{
 	{"picotorrent", "https://raw.githubusercontent.com/picotorrent/picotorrent/24e3e869470e2ffc9f0199e4972ba035d3581847/docs/src/static/logo.png", "de3ff8f112e3be67c1538d8fc2bd7eb4d35ca90df582fe1f61a969677d405b17", png, ""},
 	{"libretorrent", "https://raw.githubusercontent.com/proninyaroslav/libretorrent/ae96f20b9852d2140fd704a3f2451ed7679e35a0/art/icon.svg", "39bdea586e78d5cabeb2926d61de568348412989f09ebee76d712e61ed7d7c85", svg, ""},
 	{"ktorrent", "https://invent.kde.org/frameworks/breeze-icons/-/raw/e3c7154b4f243413b0cb9028484977f3c37de15c/icons/apps/48/ktorrent.svg", "7f2042bd9900b5c6370a9d9093dc286fbce9b77fe32a342e918adae6bafff3f2", svg, ""},
-	// Simple Icons glyphs are black paths; Fill gives them the brand color from simple-icons.json.
 	{"utorrent", "https://raw.githubusercontent.com/simple-icons/simple-icons/90646e4bf7f3b89df6c37e65baf3e7bc759a517c/icons/utorrent.svg", "dd0eab3000878a6d34952f49f0bc3968ab80d22f0685a7a0ff4d497154c42dbf", svg, "#76b83f"},
 	{"bittorrent", "https://raw.githubusercontent.com/simple-icons/simple-icons/90646e4bf7f3b89df6c37e65baf3e7bc759a517c/icons/bittorrent.svg", "8030fbd63e69f8cf5e5671e77bff1520391dd6dfa09a954b9c9d9807199330e7", svg, "#050505"},
 	{"bitcomet", "https://raw.githubusercontent.com/simple-icons/simple-icons/90646e4bf7f3b89df6c37e65baf3e7bc759a517c/icons/bitcomet.svg", "7c8d1a7242594cc618603b5cc57952530535cc4a61f4029abf3e9c43597d5b80", svg, "#f49923"},

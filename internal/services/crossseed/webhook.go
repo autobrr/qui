@@ -17,9 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// AutobrrApply adds a torrent provided by autobrr to the specified instance using cross-seed logic.
 func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*CrossSeedResponse, error) {
-	// One webhook is one Trigger run, also when it tries several sources.
 	ctx = withRouteRun(ctx)
 	startedAt := time.Now().UTC()
 	if req == nil {
@@ -60,8 +58,6 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 
 	var resp *CrossSeedResponse
 	if req.TorrentName == "" {
-		// Clients that send no announcement provenance keep the legacy strict
-		// match.
 		resp, err = s.invokeCrossSeed(ctx, crossReq)
 	} else {
 		resp, err = s.applyAutobrrAnnouncement(ctx, req.TorrentName, crossReq, settings)
@@ -137,7 +133,6 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 			continue
 		}
 		sources := s.autobrrApplySources(torrents, settings)
-		// Read the sources as the webhook check reads them, so apply adds what the check accepted.
 		sourceReads := s.readLocalTorrents(ctx, instance.ID, sources)
 		for torrent := range sources {
 			sourceSize := searchSourceSize(torrent)
@@ -173,8 +168,6 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 	return matches
 }
 
-// autobrrApplySources yields the local torrents that autobrr apply can use as
-// its source: settled, with no error, and inside the webhook source filters.
 func (s *Service) autobrrApplySources(torrents []qbittorrent.CrossInstanceTorrentView, settings *models.CrossSeedAutomationSettings) iter.Seq[*qbt.Torrent] {
 	gate := s.sourceGate()
 	filter := defaultsFor(triggerWebhook, settings).sourceFilter

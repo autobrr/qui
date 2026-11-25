@@ -21,13 +21,6 @@ import {
 import { displayProfileName } from "@/lib/display-profiles"
 import { changeLanguage, supportedLanguages, type AppLanguage } from "@/i18n"
 
-/**
- * Syncs DB-backed client settings with the server. On load the server
- * snapshot is applied to localStorage (the instant-boot cache), keys the
- * server does not know yet are seeded up from localStorage, and the debounced
- * push queue opens. A "client.settings" activity event invalidates the query
- * so other open tabs and browsers pull changes.
- */
 export function useClientSettingsSync(): void {
   const isAuthed = useIsAuthed()
   const { t } = useTranslation("torrents")
@@ -44,7 +37,6 @@ export function useClientSettingsSync(): void {
     if (error) markClientSettingsUnavailable()
   }, [error])
 
-  // Subscribed before the snapshot effect below runs, so the first snapshot can show the toast too.
   useEffect(() => onActiveDisplayProfileDeleted((profile) => {
     const defaultName = displayProfileName(getDisplayProfiles().active, t("displayProfiles.defaultName"))
     toast.info(t("displayProfiles.deletedToast", { name: profile.name, defaultName }))
@@ -53,8 +45,6 @@ export function useClientSettingsSync(): void {
   useEffect(() => {
     if (!data) return
     const changed = applyServerSettings(data)
-    // i18n boots from localStorage before React mounts; a language applied
-    // from the server needs the imperative switch too.
     if (changed.includes("qui.language")) {
       const language = readRaw("qui.language")
       if (language && supportedLanguages.includes(language as AppLanguage)) {

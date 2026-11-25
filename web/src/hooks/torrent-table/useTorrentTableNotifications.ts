@@ -19,7 +19,6 @@ type FilteredDataUpdate = (
 ) => void
 
 export interface UseTorrentTableNotificationsParams {
-  // onFilteredDataUpdate effect inputs
   onFilteredDataUpdate?: FilteredDataUpdate
   isLoading: boolean
   instanceId: number
@@ -28,34 +27,16 @@ export interface UseTorrentTableNotificationsParams {
   tags?: string[]
   totalCount: number
   torrents: Torrent[]
-  // The fully-derived "subcategories active right now" flag (folds in capabilities,
-  // the always-enabled flag, and the user's use_subcategories preference) — the same
-  // value the table/cards render from, so the parent receives a consistent flag.
   allowSubcategories: boolean
   supportsTrackerHealth: boolean
-  // onSelectionChange effect inputs. The table publishes null when it unmounts.
   onSelectionChange?: (summary: TorrentSelectionSummary | null) => void
   actionTarget: ActionTarget
   totalSize: number
   excludedSize: number
-  // The instance subset of the Unified view, published with the instance.
   instanceIds?: number[]
   listFacts: ListFacts
 }
 
-/**
- * Fires the parent-facing onFilteredDataUpdate / onSelectionChange callbacks
- * when the relevant state changes.
- *
- * onFilteredDataUpdate uses an internal lastMetadataRef no-op suppression: it
- * caches the last-emitted metadata per instance and skips the callback when
- * nothing meaningful changed. This is load-bearing for re-render-loop safety —
- * even if the parent supplies an unmemoized callback identity, an unchanged
- * payload is not re-emitted. Keep the comparison and the instanceId cache-key
- * reset byte-for-byte; do not add instanceId to the effect deps.
- *
- * Parents should still memoize the callbacks where practical.
- */
 export function useTorrentTableNotifications({
   onFilteredDataUpdate,
   isLoading,
@@ -85,7 +66,6 @@ export function useTorrentTableNotifications({
     supportsTrackerHealth?: boolean
   }>({})
 
-  // Call the callback when filtered data updates
   useEffect(() => {
     if (!onFilteredDataUpdate || isLoading) {
       return
@@ -148,12 +128,9 @@ export function useTorrentTableNotifications({
       allowSubcategories: nextAllowSubcategories,
       supportsTrackerHealth: nextSupportsTrackerHealth,
     }
-    // instanceId is intentionally NOT a dependency — it's only a ref cache key
-    // (adding it would change the effect's re-run timing).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, allowSubcategories, supportsTrackerHealth])
 
-  // Call the callback when selection state changes
   useEffect(() => {
     onSelectionChange?.({ actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts })
   }, [onSelectionChange, actionTarget, totalSize, excludedSize, instanceId, instanceIds, listFacts])

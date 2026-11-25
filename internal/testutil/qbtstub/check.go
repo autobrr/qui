@@ -22,18 +22,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// incompleteExt is the suffix of qBittorrent's setting "Append .!qB extension
-// to incomplete files".
 const incompleteExt = ".!qB"
 
-// ContentFile is one file of a .torrent that NewContentTorrent builds.
 type ContentFile struct {
 	Path string
 	Data []byte
 }
 
-// NewContentTorrent builds a .torrent whose files sit in the folder name,
-// with the real piece hashes of their data, and returns it with its infohash.
 func NewContentTorrent(t *testing.T, name string, pieceLength int64, files ...ContentFile) (data []byte, hash string) {
 	t.Helper()
 	info := metainfo.Info{Name: name, PieceLength: pieceLength}
@@ -54,15 +49,10 @@ func NewContentTorrent(t *testing.T, name string, pieceLength int64, files ...Co
 	return buf.Bytes(), mi.HashInfoBytes().HexString()
 }
 
-// Seed adds the torrent of a .torrent file as qBittorrent seeds it: complete
-// and running at savePath, with the files that the test wrote there. It
-// returns the infohash.
 func (s *Server) Seed(data []byte, savePath string) string {
 	return s.SeedWithLayout(data, savePath, "")
 }
 
-// SeedWithLayout is Seed with a content layout of qBittorrent, such as
-// "Subfolder" for the layout "Create subfolder".
 func (s *Server) SeedWithLayout(data []byte, savePath, layout string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -74,12 +64,6 @@ func (s *Server) SeedWithLayout(data []byte, savePath, layout string) string {
 	return t.Hash
 }
 
-// check checks the files of an added torrent and returns its progress. With
-// HashCheck it hashes each piece, and with IncompleteFilesExt it renames each
-// incomplete file as qBittorrent does. A piece with a byte that is not on
-// disk fails, so a partial file passes the pieces that it holds whole. A
-// file that is longer than in the torrent fails each of its pieces. Without
-// HashCheck, a file counts when its size is right.
 func (s *Server) check(t *Torrent) float64 {
 	if !s.HashCheck {
 		return s.onDisk(t)
@@ -88,7 +72,6 @@ func (s *Server) check(t *Torrent) float64 {
 	files := s.diskFiles(t)
 	var stream []byte
 	starts := make([]int64, len(files))
-	// missing holds the parts of the stream that are not on disk.
 	var missing [][2]int64
 	for i, f := range files {
 		starts[i] = int64(len(stream))
@@ -135,8 +118,6 @@ func (s *Server) check(t *Torrent) float64 {
 	return float64(passed) / float64(len(a.pieceStates))
 }
 
-// pieceStatesOf answers torrents/pieceStates: what the last hash check found,
-// or each piece done for a torrent that seed mode took on trust.
 func (s *Server) pieceStatesOf(w http.ResponseWriter, param func(string) string) {
 	t, ok := s.torrents[strings.ToLower(param("hash"))]
 	if !ok || t.add == nil {
@@ -157,7 +138,6 @@ func (s *Server) pieceStatesOf(w http.ResponseWriter, param func(string) string)
 	writeJSON(w, states)
 }
 
-// export answers torrents/export with the .torrent of an added torrent.
 func (s *Server) export(w http.ResponseWriter, param func(string) string) {
 	t, ok := s.torrents[strings.ToLower(param("hash"))]
 	if !ok || t.add == nil {
@@ -168,10 +148,6 @@ func (s *Server) export(w http.ResponseWriter, param func(string) string) {
 	_, _ = w.Write(t.add.torrent)
 }
 
-// renameFile answers torrents/renameFile as libtorrent does: the file moves
-// on disk when it is there, and otherwise only its name changes. A torrent
-// that misses files still misses them after the rename, until a start or a
-// recheck.
 func (s *Server) renameFile(w http.ResponseWriter, param func(string) string) {
 	t, ok := s.torrents[strings.ToLower(param("hash"))]
 	if !ok {
@@ -203,14 +179,12 @@ func (s *Server) renameFile(w http.ResponseWriter, param func(string) string) {
 	}
 }
 
-// stop answers torrents/stop and torrents/pause.
 func (s *Server) stop(t *Torrent) {
 	if t.add != nil {
 		t.add.stopped = true
 	}
 }
 
-// Stopped reports whether an added torrent is stopped.
 func (s *Server) Stopped(hash string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -218,7 +192,6 @@ func (s *Server) Stopped(hash string) bool {
 	return assert.True(s.t, ok && t.add != nil, "no added torrent %s", hash) && t.add.stopped
 }
 
-// Edit changes a torrent as another client does, without qui seeing it.
 func (s *Server) Edit(hash string, edit func(t *Torrent)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -227,7 +200,6 @@ func (s *Server) Edit(hash string, edit func(t *Torrent)) {
 	}
 }
 
-// Has reports whether the stub has the torrent.
 func (s *Server) Has(hash string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

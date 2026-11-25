@@ -27,7 +27,6 @@ interface WorkflowJsonEditDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-// Mounted only while open; the parent unmounts it to close, which also resets the text.
 export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()

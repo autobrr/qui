@@ -75,12 +75,9 @@ export interface CrossSeedDialogProps {
   indexerOptions: CrossSeedIndexerOption[]
   alreadySeededIndexers: CrossSeedIndexerOption[]
   unsupportedIndexers: CrossSeedIndexerOption[]
-  /** The RED/OPS sites for the scope list: the outcome of the last search while the pick is the same, else the plan. */
   gazelleEntries: CrossSeedGazelleLookup[]
   gazelleKeysMissing?: boolean
-  /** The outcome of each RED/OPS site in the last search, for the report. */
   gazelleLookups?: CrossSeedGazelleLookup[]
-  /** The pseudo indexer IDs of the RED/OPS entries that the user can pick. */
   selectableGazelleIds: number[]
   indexerMode: "all" | "custom"
   selectedIndexerIds: number[]
@@ -111,11 +108,9 @@ export interface CrossSeedDialogProps {
   canForceRefresh?: boolean
   refreshCooldownUntil?: number
   onForceRefresh?: () => void
-  /** The Cross-seed instance that receives the adds, when the instance of the torrent routes its cross-seeds. */
   crossSeedInstanceName?: string
 }
 
-// Backend TorrentSearchResponse.query_degraded values; unknown values render nothing.
 const queryDegradedMessageKeys: Record<string, string> = {
   arr_lookup_failed: "crossSeedDialog.arrLookupFailed",
   arr_no_ids: "crossSeedDialog.arrNoIds",
@@ -853,7 +848,6 @@ const CrossSeedDialogComponent = ({
 export const CrossSeedDialog = memo(CrossSeedDialogComponent)
 CrossSeedDialog.displayName = "CrossSeedDialog"
 
-// Plain-text report for sharing in bug reports; deliberately not localized.
 export function buildCrossSeedTraceReport(
   trace: CrossSeedSearchDecisionTrace | undefined,
   sourceName: string,
@@ -912,7 +906,6 @@ function groupTraceReasons(trace: CrossSeedSearchDecisionTrace): Array<{
     }))
 }
 
-// Maps instance status codes to user-friendly display information
 function getInstanceStatusDisplay(
   t: ReturnType<typeof useTranslation<"torrents">>["t"],
   status: string,
@@ -953,7 +946,6 @@ function getInstanceStatusDisplay(
     case "error":
       return { text: t("crossSeedDialog.status.error"), variant: "destructive" }
     default:
-      // For unknown status, use success flag to determine variant
       return { text: status, variant: success ? "success" : "destructive" }
   }
 }

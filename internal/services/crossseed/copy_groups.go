@@ -18,36 +18,22 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// CopyGroup is one Copy group (GLOSSARY.md). ID is keyed, so it does not show
-// the instance or hash of the Group representative (ADR 0041).
 type CopyGroup struct {
 	ID      uint64
 	Members []qbittorrent.CopyGroupMember
 }
 
-// CopyGroupFiles returns the file lists that it can read of torrents on one
-// instance, by normalized hash.
 type CopyGroupFiles func(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error)
 
-// CopyLinks is what one FindCopyGroups call found. With it, the next call
-// reads and compares only the torrents that changed.
 type CopyLinks struct {
-	// prints holds each torrent whose links are complete, as the search read it.
 	prints map[string]copyGroupsPrint
-	// pairs holds the torrents that the search linked.
-	pairs [][2]string
-	// shared holds the linked torrents that share some files but not all.
+	pairs  [][2]string
 	shared [][2]string
-	// sizes holds the sizes of the wanted files of each torrent in pairs or
-	// shared, so a later call can split the data of a torrent that it does not read.
-	sizes map[string][]int64
-	// parts holds the Shared parts by instance and hash.
-	parts map[int]map[string][]qbittorrent.SharedPart
-	// reads holds the read from files of each torrent whose name reads too little.
-	reads localReads
+	sizes  map[string][]int64
+	parts  map[int]map[string][]qbittorrent.SharedPart
+	reads  localReads
 }
 
-// without returns the links with the torrents of keys as changed torrents.
 func (l *CopyLinks) without(keys iter.Seq[string]) *CopyLinks {
 	if l == nil {
 		return nil
@@ -59,14 +45,6 @@ func (l *CopyLinks) without(keys iter.Seq[string]) *CopyLinks {
 	return next
 }
 
-// FindCopyGroups asks read for the file lists of the torrents that can have a
-// copy, and for no other list. A torrent without a list from read stays out of
-// every group. An error of read ends the call.
-//
-// With last, the links of an earlier call, it asks only for the torrents that
-// changed since that call and for the torrents that can be their copies. The
-// file list of a torrent in last must be the same as in that call. The caller
-// keeps the returned links for the next call.
 func (s *Service) FindCopyGroups(
 	ctx context.Context,
 	torrents map[int][]qbittorrent.CrossInstanceTorrentView,
@@ -89,8 +67,6 @@ func (s *Service) FindCopyGroups(
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	// The helper skips a pick whose hash it holds, so a pick of the same hash
-	// on another instance must not block a shared-path pick.
 	for n, instance := range search.instances {
 		shared := make([][]*candidatePick, instance.hi-instance.lo)
 		search.held.addSharedPathPicks(ctx, instance.id, search.all[instance.lo:instance.hi], search.readable(instance, pathGroups[n]), shared, CrossMatchNeeds{})
@@ -109,30 +85,22 @@ func (s *Service) FindCopyGroups(
 	return copyGroupsOf(search.all, roots, key), search.links(roots, pairs, shared, reads), nil
 }
 
-// copyGroupSearch holds the torrents of one FindCopyGroups call and the file
-// lists that it asked for.
 type copyGroupSearch struct {
-	svc       *Service
-	all       []qbittorrent.CrossInstanceTorrentView
-	instances []copyGroupInstance
-	// keys holds the key of each torrent of all, and index its place in all.
-	keys  []string
-	index map[string]int
-	// places holds the place in all of each torrent, for a pick.
-	places map[candidateKey]int
-	held   *batchFiles
-	read   CopyGroupFiles
-	asked  []bool
-	// last holds the links of the call before this one, or nil.
-	last   *CopyLinks
-	prints []copyGroupsPrint
-	// changed marks each torrent that last does not hold as it is now.
-	changed []bool
-	// needsFiles marks each torrent whose name reads too little.
+	svc        *Service
+	all        []qbittorrent.CrossInstanceTorrentView
+	instances  []copyGroupInstance
+	keys       []string
+	index      map[string]int
+	places     map[candidateKey]int
+	held       *batchFiles
+	read       CopyGroupFiles
+	asked      []bool
+	last       *CopyLinks
+	prints     []copyGroupsPrint
+	changed    []bool
 	needsFiles []bool
 }
 
-// copyGroupInstance is the range of one instance in copyGroupSearch.all.
 type copyGroupInstance struct {
 	id, lo, hi int
 }
@@ -156,7 +124,6 @@ func newCopyGroupSearch(s *Service, torrents map[int][]qbittorrent.CrossInstance
 		l.keys[i] = cacheKeyForTorrentFiles(l.all[i].InstanceID, l.all[i].Hash)
 		l.index[l.keys[i]] = i
 		l.places[candidateKey{instanceID: l.all[i].InstanceID, hash: normalizeHash(l.all[i].Hash)}] = i
-		// An entry without a list keeps batchFiles.get away from the client.
 		l.held.fetched[l.keys[i]] = nil
 		l.prints[i] = newCopyGroupsPrint(l.all[i].Torrent)
 		l.changed[i] = last == nil || last.prints[l.keys[i]] != l.prints[i]
@@ -165,10 +132,6 @@ func newCopyGroupSearch(s *Service, torrents map[int][]qbittorrent.CrossInstance
 	return l
 }
 
-// readNamesAndPathGroups asks for the lists of the changed torrents whose name
-// reads too little, and of the shared-path groups that hold a changed torrent.
-// It returns those groups for each instance. The torrents of a group with no
-// changed torrent keep the links of last.
 func (l *copyGroupSearch) readNamesAndPathGroups(ctx context.Context) ([][][]int, error) {
 	want := make([]bool, len(l.all))
 	for i := range l.all {
@@ -188,8 +151,6 @@ func (l *copyGroupSearch) readNamesAndPathGroups(ctx context.Context) ([][][]int
 	return pathGroups, l.fetch(ctx, want)
 }
 
-// fileReads returns the read from files of each torrent whose name reads too
-// little: from last for a torrent that did not change, else from its list.
 func (l *copyGroupSearch) fileReads(rules []models.CategoryMappingRule) localReads {
 	reads := make(localReads)
 	for i := range l.all {
@@ -207,9 +168,6 @@ func (l *copyGroupSearch) fileReads(rules []models.CategoryMappingRule) localRea
 	return reads
 }
 
-// readPicks drops the picks that need no compare, and asks for the lists of
-// the others. A torrent is no copy of itself, and two torrents that did not
-// change keep their link of last.
 func (l *copyGroupSearch) readPicks(ctx context.Context, picks [][]*candidatePick) error {
 	want := make([]bool, len(l.all))
 	for i := range picks {
@@ -224,15 +182,10 @@ func (l *copyGroupSearch) readPicks(ctx context.Context, picks [][]*candidatePic
 	return l.fetch(ctx, want)
 }
 
-// addPackPicks gives each single episode the season packs of its release as
-// picks. A pack is no copy of an episode, so the pick has no name tier: it can
-// only share files. An episode and a pack that did not change keep their link
-// of last.
 func (l *copyGroupSearch) addPackPicks(idx *matchIndex, picks [][]*candidatePick) {
 	m := l.svc.matcher()
 	policy := localMatchPolicy
 	policy.IndividualEpisodes = true
-	// A torrent with two Title keys meets a pack two times.
 	picked := map[[2]int]struct{}{}
 	for key, episodes := range idx.byTitleKey {
 		if key.episode == 0 {
@@ -256,12 +209,9 @@ func (l *copyGroupSearch) addPackPicks(idx *matchIndex, picks [][]*candidatePick
 	}
 }
 
-// links returns what the next call starts from, with the Shared parts. roots
-// holds the root of the Copy group of each torrent.
 func (l *copyGroupSearch) links(roots []int, pairs, shared [][2]string, reads localReads) *CopyLinks {
 	next := &CopyLinks{prints: make(map[string]copyGroupsPrint, len(l.all)), pairs: pairs, shared: shared, sizes: map[string][]int64{}, reads: reads}
 	for i := range l.all {
-		// A torrent whose list did not read is a changed torrent in the next call.
 		if !l.unread(i) {
 			next.prints[l.keys[i]] = l.prints[i]
 		}
@@ -277,8 +227,6 @@ func (l *copyGroupSearch) links(roots []int, pairs, shared [][2]string, reads lo
 	return next
 }
 
-// wantedSizes returns the sizes of the files of a torrent that qBittorrent
-// downloads: from its list if the call read it, else from last.
 func (l *copyGroupSearch) wantedSizes(key string) []int64 {
 	list := l.held.fetched[key]
 	if len(list) == 0 {
@@ -293,14 +241,10 @@ func (l *copyGroupSearch) wantedSizes(key string) []int64 {
 	return sizes
 }
 
-// unread reports whether the call asked for the list of the torrent and got
-// none. Such a torrent stays out of every group (ADR 0041).
 func (l *copyGroupSearch) unread(i int) bool {
 	return l.asked[i] && len(l.held.fetched[l.keys[i]]) == 0
 }
 
-// readable leaves out the torrents without a file list. Such a torrent links
-// to no torrent, and addSharedPathPicks pairs it with each member of its groups.
 func (l *copyGroupSearch) readable(instance copyGroupInstance, pathGroups [][]int) [][]int {
 	for g, group := range pathGroups {
 		pathGroups[g] = slices.DeleteFunc(group, func(i int) bool {
@@ -310,7 +254,6 @@ func (l *copyGroupSearch) readable(instance copyGroupInstance, pathGroups [][]in
 	return pathGroups
 }
 
-// fetch asks read one time for each torrent of want.
 func (l *copyGroupSearch) fetch(ctx context.Context, want []bool) error {
 	for _, instance := range l.instances {
 		var torrents []qbittorrent.CrossInstanceTorrentView
@@ -334,10 +277,6 @@ func (l *copyGroupSearch) fetch(ctx context.Context, want []bool) error {
 	return nil
 }
 
-// link joins the pairs of last that did not change and whose lists the call
-// did not fail to read, and the picks with equal file sizes. It returns the
-// root of each torrent, each pair that it joined, and each pair of torrents
-// that share some files but not all.
 func (l *copyGroupSearch) link(ctx context.Context, picks [][]*candidatePick) ([]int, [][2]string, [][2]string, error) {
 	parent := make([]int, len(l.all))
 	for i := range parent {
@@ -393,8 +332,6 @@ func (l *copyGroupSearch) link(ctx context.Context, picks [][]*candidatePick) ([
 	return parent, pairs, shared, nil
 }
 
-// kept returns the pairs of last whose torrents did not change and whose
-// lists the call did not fail to read.
 func (l *copyGroupSearch) kept(last [][2]string) [][2]string {
 	var kept [][2]string
 	for _, pair := range last {
@@ -407,7 +344,6 @@ func (l *copyGroupSearch) kept(last [][2]string) [][2]string {
 	return kept
 }
 
-// sharesFiles reports whether two lists have a wanted file of the same size.
 func sharesFiles(a, b qbt.TorrentFiles) bool {
 	sizes := make(map[int64]struct{}, len(a))
 	for _, f := range a {
@@ -450,10 +386,6 @@ func copyGroupID(key []byte, instanceID int, hash string) uint64 {
 	return binary.BigEndian.Uint64(mac.Sum(nil))
 }
 
-// sharedParts splits the data of each set of torrents that the Copy groups
-// of roots and the pairs of shared link, when shared holds a pair of the set,
-// into the parts that the same torrents hold. Inside a set, files of equal
-// size hold the same data. Only the torrents of one instance share a part.
 func sharedParts(all []qbittorrent.CrossInstanceTorrentView, roots []int, index map[string]int, shared [][2]string, sizes map[string][]int64) map[int]map[string][]qbittorrent.SharedPart {
 	if len(shared) == 0 {
 		return nil
@@ -514,8 +446,6 @@ func sharedParts(all []qbittorrent.CrossInstanceTorrentView, roots []int, index 
 	return parts
 }
 
-// splitIntoParts groups the files of size lists by the lists that hold them.
-// It returns the parts of each list and the size of each part.
 func splitIntoParts(lists [][]int64) ([][]int, []int64) {
 	counts := make([]map[int64]int, len(lists))
 	var sizes []int64
@@ -534,7 +464,6 @@ func splitIntoParts(lists [][]int64) ([][]int, []int64) {
 		for n := range lists {
 			most = max(most, counts[n][size])
 		}
-		// The k-th file of this size is one file in each list that holds more than k.
 		for k := range most {
 			for n := range lists {
 				holders[n] = '0'
@@ -548,7 +477,6 @@ func splitIntoParts(lists [][]int64) ([][]int, []int64) {
 	return split.held, split.sizes
 }
 
-// partSplit holds the parts that splitIntoParts found, by the lists that hold them.
 type partSplit struct {
 	held   [][]int
 	sizes  []int64

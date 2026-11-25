@@ -7,7 +7,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// ServiceMetrics contains Prometheus metrics for the cross-seed service
 type ServiceMetrics struct {
 	FindCandidatesDuration    prometheus.Histogram
 	FindCandidatesTotal       prometheus.Counter
@@ -29,7 +28,6 @@ type ServiceMetrics struct {
 	GetMatchTypeSizeMatch     prometheus.Counter
 }
 
-// NewServiceMetrics creates Prometheus metrics for the cross-seed service without registering them.
 func NewServiceMetrics() *ServiceMetrics {
 	return &ServiceMetrics{
 		FindCandidatesDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
@@ -111,7 +109,6 @@ func NewServiceMetrics() *ServiceMetrics {
 	}
 }
 
-// Collectors returns the cross-seed collectors that qui updates, for the metrics registry.
 func (m *ServiceMetrics) Collectors() []prometheus.Collector {
 	return []prometheus.Collector{
 		m.GetMatchTypeDuration,

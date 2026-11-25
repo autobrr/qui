@@ -13,13 +13,10 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// torznabRequestInput is what buildTorznabRequest reads. The lookups that fill
-// it run first, so a table test can give each rule its facts with no I/O.
 type torznabRequestInput struct {
-	torrentName string
-	source      namedRelease
-	contentInfo ContentTypeInfo
-	// externalIDs is nil when no lookup found an ID.
+	torrentName   string
+	source        namedRelease
+	contentInfo   ContentTypeInfo
 	externalIDs   *models.ExternalIDs
 	episodeMap    *models.EpisodeMap
 	arrTitles     []string
@@ -30,19 +27,12 @@ type torznabRequestInput struct {
 	cacheMode     string
 }
 
-// buildTorznabRequest holds the rules for what qui asks a Torznab indexer. The
-// normal search and the search for a season group both call it. Both trim the
-// categories after this step, because the trim reads the indexers from the
-// database.
 func (m matcher) buildTorznabRequest(in torznabRequestInput) GatherInput {
 	release := in.source.release
 	rawRelease := m.parseReleaseName(in.torrentName)
 
 	queryRelease := release
 	if in.contentInfo.ContentType == "music" {
-		// Keyed on the content type, not the parsed type: the file-extension signal forces music
-		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
-		// too. Audiobooks are excluded here only; they still take the music query shaping below.
 		queryRelease = m.parseMusicReleaseFromTorrentName(rawRelease, in.torrentName)
 	}
 
@@ -63,11 +53,6 @@ func (m matcher) buildTorznabRequest(in torznabRequestInput) GatherInput {
 
 	if in.externalIDs != nil {
 		applyExternalIDs(req, in.externalIDs)
-		// An absolute-numbered source has an episode but no season, and Torznab
-		// ep counts within a season. The map gives ID-capable indexers the
-		// seasoned pair; text indexers keep the title-only query. Keyed on the
-		// parsed release, not the generated season and episode, so a
-		// caller-supplied query still carries the map.
 		if release.Series == 0 && release.Episode > 0 && in.episodeMap != nil && in.episodeMap.Absolute == release.Episode {
 			req.EpisodeMap = in.episodeMap
 		}
@@ -80,7 +65,6 @@ func (m matcher) buildTorznabRequest(in torznabRequestInput) GatherInput {
 	if len(in.contentInfo.Categories) > 0 {
 		req.Categories = in.contentInfo.Categories
 
-		// Add season/episode info for TV content only if the generated query did not set it
 		if !in.contentInfo.IsMusic && queryRelease.Series > 0 && req.Season == nil {
 			req.Season = new(queryRelease.Series)
 
@@ -89,7 +73,6 @@ func (m matcher) buildTorznabRequest(in torznabRequestInput) GatherInput {
 			}
 		}
 
-		// Year hurts TV searches on many indexers; keep it for movies only.
 		if release.Year > 0 && in.contentInfo.ContentType != "tv" {
 			req.Year = release.Year
 		}
@@ -122,7 +105,7 @@ func applyExternalIDs(req *jackett.TorznabSearchRequest, ids *models.ExternalIDs
 	if ids.TVMazeID > 0 {
 		req.TVMazeID = ids.TVMazeID
 	}
-	req.OmitQueryForIDs = true // Cross-seed: omit q when IDs present
+	req.OmitQueryForIDs = true
 }
 
 func (m matcher) applyMusicFields(req *jackett.TorznabSearchRequest, rawRelease *rls.Release, torrentName string) {
@@ -131,5 +114,5 @@ func (m matcher) applyMusicFields(req *jackett.TorznabSearchRequest, rawRelease 
 		musicRelease = m.parseMusicReleaseFromTorrentName(rawRelease, torrentName)
 	}
 	req.Artist = musicRelease.Artist
-	req.Album = musicRelease.Title // For music, Title represents the album
+	req.Album = musicRelease.Title
 }

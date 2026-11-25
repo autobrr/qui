@@ -36,7 +36,6 @@ import { useTranslation } from "react-i18next"
 
 interface SettingsProps {
   search: SettingsSearch
-  /** Replaces the current history entry, unless replace is false. */
   onSearchChange: (search: SettingsSearch, options?: { replace: boolean }) => void
 }
 

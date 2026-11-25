@@ -13,7 +13,6 @@ import type { Automation, AutomationActivity } from "@/types"
 
 import { WorkflowsOverview } from "./WorkflowsOverview"
 
-// Stable singletons: a fresh object per render would rerun effects forever.
 const mocks = vi.hoisted(() => ({
   instances: { instances: [{ id: 1, name: "seedbox", isActive: true }] },
   trackerData: { data: undefined },

@@ -24,17 +24,12 @@ const (
 	alignerHashV2 = "aa1984dc31d8f7f719a14087b8f97cf52267ce8aaa1984dc31d8f7f719a14087"
 )
 
-// alignerFake is a qBittorrent that keeps one torrent's file list and applies
-// renames to it.
 type alignerFake struct {
-	mu    sync.Mutex
-	hash  string
-	files qbt.TorrentFiles
-	// hiddenReads hides the torrent for that many file list reads.
+	mu          sync.Mutex
+	hash        string
+	files       qbt.TorrentFiles
 	hiddenReads int
-	// lagReads delays each rename by that many file list reads.
-	lagReads int
-	// dropRenames makes that many renames return nil and change nothing.
+	lagReads    int
 	dropRenames int
 	renameErr   error
 	filesErr    error

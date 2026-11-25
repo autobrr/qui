@@ -146,7 +146,6 @@ describe("LibraryTab save", () => {
       seededSearchTags: ["cross-seed"],
       skipAutoResumeSeededSearch: true,
     })
-    // A scheduled run that the search settings start reads the saved auto-resume.
     expect(mocks.patchSettings.mock.invocationCallOrder[0]).toBeLessThan(mocks.patchSearch.mock.invocationCallOrder[0])
   })
 
@@ -182,7 +181,6 @@ describe("LibraryTab save", () => {
   })
 
   it("does not start a Gazelle-only run from a stale OPS/RED-only pick", async () => {
-    // Saved before both Gazelle keys existed; the picker hides OPS/RED now, so nothing is left to show or store.
     Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
     mocks.indexers = [
       { id: 1, indexer_id: "orpheus", name: "OPS", base_url: "https://orpheus.example.invalid", enabled: true },

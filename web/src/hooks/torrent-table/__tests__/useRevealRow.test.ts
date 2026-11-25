@@ -21,7 +21,6 @@ function setup(initial: ListState) {
   const loadMore = vi.fn()
   const onDone = vi.fn()
   const hook = renderHook((list: ListState) => {
-    // As on the Torrents page, onDone drops the target.
     const [target, setTarget] = useState<Torrent | null>(() => torrent("picked"))
     const done = useCallback(() => {
       onDone()

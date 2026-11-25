@@ -49,8 +49,6 @@ func (s *Service) Stop(ctx context.Context, id int64) error {
 	return s.end(ctx, sh, reasonStopped, "the user")
 }
 
-// Unlock lets the next downloader of an active Share with "Only the first
-// downloader" in, also after a restart of qui.
 func (s *Service) Unlock(ctx context.Context, id int64) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -106,12 +104,6 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	return Settings{Tracker: trackerSettings, Options: options}, nil
 }
 
-// SaveSettings saves the settings and applies them to the running tracker.
-// It returns an error that wraps ErrInvalidSettings or
-// sharetracker.ErrInvalidSettings for a value that qui does not take, a
-// *RefusalError for a new port or public address of qui's tracker while a
-// Share on it is active, and sharetracker.ErrPortBusy when another program
-// listens on the port of the tracker. Then it saves nothing.
 func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
 	if err := settings.Options.validate(); err != nil {
 		return err
@@ -136,8 +128,6 @@ func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
 	return s.refresh(ctx)
 }
 
-// keepTrackerOfActiveShares refuses a new port or public address of qui's
-// tracker, also port 0 for the outside tracker, while a Share on it is active.
 func (s *Service) keepTrackerOfActiveShares(ctx context.Context, next sharetracker.Settings) error {
 	saved, err := s.deps.TrackerSettings.Settings(ctx)
 	if err != nil {

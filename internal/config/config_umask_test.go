@@ -14,10 +14,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// TestWriteDefaultConfig_OwnerOnly verifies the generated config file (which
-// holds the session secret) is created 0600 and is not loosened by a permissive
-// process umask. A content-sharing UMASK must not expose the session secret.
-// See discussion #1704. Not parallel: umask is process-global.
 func TestWriteDefaultConfig_OwnerOnly(t *testing.T) {
 	old := syscall.Umask(0)
 	defer syscall.Umask(old)

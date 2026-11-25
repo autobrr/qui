@@ -102,8 +102,6 @@ func newInfoTestHandler(t *testing.T, mainData string) (*Handler, int) {
 	return NewHandler(pool, nil, instanceStore, qbittorrent.NewSyncManager(pool, nil), nil, nil, "/"), instance.ID
 }
 
-// A client behind the proxy needs the announce URL, so the proxy states full
-// passkey access.
 func TestProxyListsKeepTheAnnounceURL(t *testing.T) {
 	t.Parallel()
 

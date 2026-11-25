@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// engines runs a test on SQLite and on Postgres. The CI Postgres job runs
-// only tests whose names contain PostgresIntegration, so each caller has it.
 func engines(t *testing.T, run func(t *testing.T, store *sharetracker.SettingsStore)) {
 	t.Run("sqlite", func(t *testing.T) {
 		t.Parallel()

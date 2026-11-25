@@ -36,13 +36,10 @@ const retryKey = ["transfers", "retry"]
 const cancelKey = ["transfers", "cancel"]
 const removeKey = ["transfers", "remove"]
 const bulkKey = ["transfers", "bulk"]
-// A tick box reaches the size of a finger on a touch screen.
 const CHECKBOX_TAP = "relative pointer-coarse:after:absolute pointer-coarse:after:-inset-3"
 
-/** A step of a row that waits for its answer. */
 type RowStep = "retry" | "cancel" | "remove"
 
-/** The Transfers section of the Transfers page: the Transfers and the Export runs, newest first. */
 export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: number }) {
   const { t, i18n } = useTranslation("transfers")
   const queryClient = useQueryClient()
@@ -50,19 +47,14 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
   const [page, setPage] = useState(0)
   const top = useRef<HTMLDivElement>(null)
   const [detailsId, setDetailsId] = useState<number | null>(null)
-  // The row stays while the dialog fades out.
   const [cancelling, setCancelling] = useState<{ row: TransferRow; open: boolean } | null>(null)
   const [selection, setSelection] = useState<Selection>(noSelection)
-  // The id of the row that the user ticked last, for a range with Shift.
   const lastTicked = useRef<number | null>(null)
-  // The step for the picked rows that waits for the question. The step and its count stay while the dialog fades out,
-  // after the step cleared the selection.
   const [asking, setAsking] = useState<{ action: "cancel" | "remove"; open: boolean; count: number } | null>(null)
 
   const list = useQuery({
     ...transferListQuery(filter, page, pageSize),
     placeholderData: keepPreviousData,
-    // Progress and speed move while a Transfer runs.
     refetchInterval: 3000,
   })
 
@@ -98,7 +90,6 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
     onError,
   })
   const reportBulk = (action: TransferBulkAction, { done, skipped, failed, reasons }: TransferBulkResult) => {
-    // A refusal names its reason. Another error has its reason in the log only.
     const why = reasons.map(reason => display.text(reason)).join(" ")
     const more = [
       skipped > 0 && t("bulk.skipped", { count: skipped }),
@@ -112,7 +103,6 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
   const retrying = usePendingIds(retryKey)
   const cancelRuns = usePendingIds(cancelKey)
   const removing = usePendingIds(removeKey)
-  // A bulk step holds the rows that it names, or each row of its chip.
   const bulkStep = (id: number): RowStep | null => {
     if (!bulk.isPending) return null
     const { request } = bulk.variables
@@ -122,13 +112,11 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
     retrying.has(id) ? "retry" : cancelRuns.has(id) ? "cancel" : removing.has(id) ? "remove" : bulkStep(id)
   const counts = list.data?.counts
   const rows = list.data?.rows ?? []
-  // The rows of the last chip or page show until the new rows arrive. They take no tick and no step until then.
   const stale = list.isPlaceholderData
   const formatCount = useMemo(() => new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language), [i18n.resolvedLanguage, i18n.language])
   const countOf = (chip: TransferFilter) => counts && (chip === "all" ? counts.active + counts.waiting + counts.finished + counts.failed : counts[chip])
   const total = countOf(filter) ?? 0
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
-  // When rows end or go away, the page can lie past the last page. The list then shows the last page.
   if (counts && page >= pageCount) setPage(pageCount - 1)
   const clearSelection = () => {
     setSelection(noSelection)
@@ -137,11 +125,9 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
   const turnTo = (next: number) => {
     setPage(next)
     clearSelection()
-    // The buttons sit below the rows, so the top of the list comes into view.
     top.current?.scrollIntoView({ block: "nearest" })
   }
 
-  // A row that left the page, for example a waiting row that started, leaves the selection too.
   const picked = selection.kind === "filter" ? rows : rows.filter(row => selection.ids.has(row.id))
   const pickedCount = selection.kind === "filter" ? total : picked.length
   const pageTick = pickedCount === 0 ? false : picked.length === rows.length ? true : "indeterminate"
@@ -154,8 +140,6 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
     if (pageTick === true) clearSelection()
     else setSelection({ kind: "rows", ids: new Set(rows.map(row => row.id)) })
   }
-  // A whole chip offers no Retry, so a retry always names its rows. The picked rows that the step does not fit, or
-  // whose own step still waits for its answer, stay out of the request, and the message counts them as skipped.
   const runBulk = (action: TransferBulkAction) => {
     if (selection.kind === "filter" && action !== "retry") return bulk.mutateAsync({ request: { action, filter }, unfit: 0 })
     const ids = fittingIds(action, picked.filter(row => runningStep(row.id) === null))
@@ -174,7 +158,6 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
         queries={[list]}
       >
         <div className="space-y-4">
-          {/* A phone scrolls the filters sideways when their labels do not fit. */}
           <div ref={top} className="overflow-x-auto">
             <Tabs value={filter} onValueChange={value => { setFilter(value as TransferFilter); setPage(0); clearSelection() }}>
               <TabsList aria-label={t("chips.label")} className="max-sm:w-max max-sm:min-w-full">
@@ -191,7 +174,6 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
           {rows.length === 0 ? (
             <EmptyTile title={t("list.empty")} />
           ) : (
-            // The table reaches the edges of the card, as the tables of Statistics do, and fits its columns to the card.
             <div className="-mx-6 border-t max-sm:-mx-4">
               <div aria-busy={stale} className={cn("@container transition-opacity", stale && "opacity-60")}>
                 <Table>
@@ -202,7 +184,6 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
                       </TableHead>
                       <TableHead className="w-full">{t("columns.torrent")}</TableHead>
                       <TableHead className="hidden text-right @xl:table-cell">{t("columns.size")}</TableHead>
-                      {/* The column has the width of a row with progress, so it keeps its width when a Transfer starts or ends. */}
                       <TableHead className="hidden @lg:table-cell @lg:min-w-52">{t("columns.state")}</TableHead>
                       <TableHead className="hidden @3xl:table-cell">{t("columns.started")}</TableHead>
                       <TableHead className="pr-6 max-sm:pr-4"><span className="sr-only">{t("columns.actions")}</span></TableHead>
@@ -297,11 +278,8 @@ export function TransfersTab({ pageSize = transferPageSize }: { pageSize?: numbe
 interface TransferTableRowProps {
   row: TransferRow
   picked: boolean
-  /** The row belongs to the last chip or page, and the new rows load: it takes no tick and no step. */
   stale: boolean
-  /** A tick on the box of the row. With range, Shift was down. */
   onTick: (range: boolean) => void
-  /** The step of the row that waits for its answer: the row takes no other step until then. */
   running: RowStep | null
   onDetails: () => void
   onRetry: () => void
@@ -338,7 +316,6 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
       }}
     >
       <TableCell className="pr-0 pl-6 align-top max-sm:pl-4">
-        {/* The box lines up with the first line of the name. The click carries Shift, which a change of the box does not. */}
         <Checkbox
           checked={picked}
           disabled={stale}
@@ -351,11 +328,8 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
         />
       </TableCell>
       <TableCell className="w-full max-w-0 align-top whitespace-normal">
-        {/* The name wraps in full on touch, where no pointer opens its tooltip. */}
         <div id={nameId} className="font-medium"><TorrentName name={display.name(row)} className="pointer-fine:line-clamp-2" /></div>
-        {/* The dot stays with the fact before it, so a wrapped line does not start with a dot. */}
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-          {/* A narrow table has no Size column, so the route line starts with the size. */}
           {row.size > 0 && (
             <span className="flex items-center gap-x-1.5 @xl:hidden">
               <span className="tabular-nums">{formatBytes(row.size)}</span>
@@ -366,12 +340,10 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
             <span>{t("row.route", { source: instanceName(row.sourceInstanceId), target: instanceName(row.targetInstanceId) })}</span>
             {row.way !== "" && <span aria-hidden="true" className="@max-lg:hidden">·</span>}
           </span>
-          {/* A phone leaves out the way, so the facts take one line. The details name the way. */}
           {row.way !== "" && <span className="@max-lg:hidden">{t([`ways.${row.way}`, "ways.fallback"])}</span>}
           {row.torrents > 1 && <Mark>{t("row.crossSeeds", { count: row.torrents - 1 })}</Mark>}
           {row.kind === "export" && <Mark>{t("row.export")}</Mark>}
         </div>
-        {/* A narrow table has no State or Started column, so the row names them here. The dot stays with the fact before it. */}
         <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground @3xl:hidden">
           <span className="flex items-center gap-1.5 @lg:hidden">
             <StateLabel state={row.state} />
@@ -398,7 +370,6 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
       </TableCell>
       <TableCell className="hidden align-top @3xl:table-cell">
         <div>{started}</div>
-        {/* The name column takes the free width, so the by-line asks for its own width up to 15rem before it wraps. */}
         <div className="w-max max-w-60 text-xs whitespace-normal text-muted-foreground [overflow-wrap:anywhere]"><StartedBy row={row} /></div>
       </TableCell>
       <TableCell className="cursor-default pr-6 max-sm:pr-4" onClick={event => event.stopPropagation()}>
@@ -408,7 +379,6 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
   )
 }
 
-/** A small mark after the facts of a row, as Statistics marks a deleted torrent or a cross-seed. */
 function Mark({ children }: { children: string }) {
   return <Badge variant="outline" className="py-0 text-[10px] font-normal text-muted-foreground">{children}</Badge>
 }

@@ -33,19 +33,16 @@ const (
 	nativeIndexerPacingAllowance = time.Minute
 )
 
-// IndexerResponse wraps an indexer with optional warnings for partial failures
 type IndexerResponse struct {
 	*models.TorznabIndexer
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// JackettHandler handles Jackett/Torznab API endpoints
 type JackettHandler struct {
 	service      *jackett.Service
 	indexerStore *models.TorznabIndexerStore
 }
 
-// NewJackettHandler creates a new Jackett handler
 func NewJackettHandler(service *jackett.Service, indexerStore *models.TorznabIndexerStore) *JackettHandler {
 	return &JackettHandler{
 		service:      service,
@@ -53,12 +50,10 @@ func NewJackettHandler(service *jackett.Service, indexerStore *models.TorznabInd
 	}
 }
 
-// Routes registers the Jackett routes
 func (h *JackettHandler) Routes(r chi.Router) {
 	indexers := middleware.Permissions(models.AreaIndexers)
 
 	r.Route("/torznab", func(r chi.Router) {
-		// Indexer management
 		r.Route("/indexers", func(r chi.Router) {
 			r.With(indexers.Read).Get("/", h.ListIndexers)
 			r.With(indexers.Write).Post("/", h.CreateIndexer)
@@ -75,10 +70,8 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.With(indexers.Read).Get("/{indexerID}/stats", h.GetIndexerStats)
 		})
 
-		// Cross-seed search - intelligent category detection
 		r.With(indexers.Read).Post("/cross-seed/search", h.CrossSeedSearch)
 
-		// General Torznab search
 		r.With(indexers.Read).Get("/search/recent", h.ListRecentSearches)
 		r.With(indexers.Read).Post("/search", h.Search)
 
@@ -87,27 +80,12 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.With(indexers.Write).Put("/settings", h.UpdateSearchCacheSettings)
 		})
 
-		// Search history - completed searches
 		r.With(indexers.Read).Get("/search/history", h.GetSearchHistory)
 
-		// Activity status
 		r.With(indexers.Read).Get("/activity", h.GetActivityStatus)
 	})
 }
 
-// CrossSeedSearch godoc
-// @Summary Search Jackett for cross-seeds with intelligent category detection
-// @Description Searches Jackett indexers for potential cross-seeds. Automatically detects content type (TV shows, movies, daily shows, XXX, etc.) and applies appropriate Torznab categories based on the search parameters.
-// @Tags torznab
-// @Accept json
-// @Produce json
-// @Param request body jackett.TorznabSearchRequest true "Cross-seed search request"
-// @Success 200 {object} jackett.SearchResponse
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 429 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/cross-seed/search [post]
 func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request) {
 	var req jackett.TorznabSearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -116,7 +94,6 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Validate request - require either query or advanced parameters
 	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0 ||
 		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
 
@@ -125,7 +102,6 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Search for cross-seeds
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
 	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
@@ -150,7 +126,6 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 	var response *jackett.SearchResponse
 	select {
 	case response = <-respCh:
-		// continue
 	case err := <-errCh:
 		log.Error().
 			Err(err).
@@ -190,19 +165,6 @@ func respondRateLimitError(w http.ResponseWriter, err error, message string) boo
 	return true
 }
 
-// Search godoc
-// @Summary General Torznab search
-// @Description Performs a general Torznab search across Jackett indexers. Allows specifying categories, IMDb/TVDb IDs, and other search parameters.
-// @Tags torznab
-// @Accept json
-// @Produce json
-// @Param request body jackett.TorznabSearchRequest true "Torznab search request"
-// @Success 200 {object} jackett.SearchResponse
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 429 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/search [post]
 func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	var req jackett.TorznabSearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -211,7 +173,6 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate request - require either query or advanced parameters
 	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0 ||
 		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
 
@@ -220,7 +181,6 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Perform search
 	respCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
 	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
@@ -245,7 +205,6 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	var response *jackett.SearchResponse
 	select {
 	case response = <-respCh:
-		// continue
 	case err := <-errCh:
 		log.Error().
 			Err(err).
@@ -266,14 +225,12 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, searchResponseFor(r, response))
 }
 
-// ListRecentSearches returns the latest cached search queries for autocomplete support.
 func (h *JackettHandler) ListRecentSearches(w http.ResponseWriter, r *http.Request) {
 	limit := defaultRecentSearchLimit
 	if limitParam := strings.TrimSpace(r.URL.Query().Get("limit")); limitParam != "" {
 		if parsed, err := strconv.Atoi(limitParam); err == nil {
 			switch {
 			case parsed <= 0:
-				// keep default
 			case parsed > maxRecentSearchLimit:
 				limit = maxRecentSearchLimit
 			default:
@@ -293,7 +250,6 @@ func (h *JackettHandler) ListRecentSearches(w http.ResponseWriter, r *http.Reque
 	RespondJSON(w, http.StatusOK, searches)
 }
 
-// GetSearchCacheStats returns summary metrics for the search cache.
 func (h *JackettHandler) GetSearchCacheStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.service.GetSearchCacheStats(r.Context())
 	if err != nil {
@@ -305,7 +261,6 @@ func (h *JackettHandler) GetSearchCacheStats(w http.ResponseWriter, r *http.Requ
 	RespondJSON(w, http.StatusOK, stats)
 }
 
-// UpdateSearchCacheSettings updates TTL configuration via the API.
 func (h *JackettHandler) UpdateSearchCacheSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		TTLMinutes int `json:"ttlMinutes"`
@@ -336,15 +291,6 @@ func (h *JackettHandler) UpdateSearchCacheSettings(w http.ResponseWriter, r *htt
 	RespondJSON(w, http.StatusOK, stats)
 }
 
-// ListIndexers godoc
-// @Summary List all Torznab indexers
-// @Description Retrieves all configured Torznab indexers
-// @Tags torznab
-// @Produce json
-// @Success 200 {array} models.TorznabIndexer
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers [get]
 func (h *JackettHandler) ListIndexers(w http.ResponseWriter, r *http.Request) {
 	indexers, err := h.indexerStore.List(r.Context())
 	if err != nil {
@@ -356,17 +302,6 @@ func (h *JackettHandler) ListIndexers(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, indexers)
 }
 
-// CreateIndexer godoc
-// @Summary Create a new Torznab indexer
-// @Description Creates a new Torznab indexer configuration
-// @Tags torznab
-// @Accept json
-// @Produce json
-// @Success 201 {object} models.TorznabIndexer
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers [post]
 func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name            string                          `json:"name"`
@@ -397,7 +332,6 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 	baseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(baseURL, req.BasicUsername, req.BasicPassword)
 	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
 
-	// Validate required fields
 	if name == "" {
 		RespondError(w, http.StatusBadRequest, "name is required")
 		return
@@ -411,8 +345,6 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		// The source connection is authoritative: URL, key, and basic auth
-		// move together so the new row cannot mix servers.
 		baseURL = creds.baseURL
 		apiKey = creds.apiKey
 		req.BasicUsername = creds.basicUsername
@@ -434,7 +366,6 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply defaults
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -467,10 +398,8 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Track warnings for partial failures
 	var warnings []string
 
-	// If capabilities or categories were provided in the request, store them directly
 	if len(req.Capabilities) > 0 || len(req.Categories) > 0 {
 		if len(req.Capabilities) > 0 {
 			if err := h.indexerStore.SetCapabilities(r.Context(), indexer.ID, req.Capabilities); err != nil {
@@ -492,7 +421,6 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 				warnings = append(warnings, "Failed to store categories - sync manually later")
 			}
 		}
-		// Reload indexer to include the stored capabilities and categories
 		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err != nil {
 			log.Warn().
 				Err(err).
@@ -503,7 +431,6 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 			indexer = updated
 		}
 	} else if h.service != nil && indexer.Enabled {
-		// No capabilities/categories provided, try to fetch them from the service
 		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
 			log.Warn().
 				Err(err).
@@ -519,17 +446,6 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusCreated, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
 }
 
-// GetIndexer godoc
-// @Summary Get a Torznab indexer
-// @Description Retrieves a specific Torznab indexer by ID
-// @Tags torznab
-// @Produce json
-// @Param indexerID path int true "Indexer ID"
-// @Success 200 {object} models.TorznabIndexer
-// @Failure 404 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/{indexerID} [get]
 func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
 	if err != nil {
@@ -551,19 +467,6 @@ func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, indexer)
 }
 
-// UpdateIndexer godoc
-// @Summary Update a Torznab indexer
-// @Description Updates an existing Torznab indexer
-// @Tags torznab
-// @Accept json
-// @Produce json
-// @Param indexerID path int true "Indexer ID"
-// @Success 200 {object} models.TorznabIndexer
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 404 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/{indexerID} [put]
 func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
 	if err != nil {
@@ -628,7 +531,6 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		params.Backend = &backend
 	}
 
-	// Basic auth: treat "<redacted>" as "keep existing".
 	if req.BasicPassword != nil && domain.IsRedactedString(strings.TrimSpace(*req.BasicPassword)) {
 		req.BasicPassword = nil
 	}
@@ -636,9 +538,6 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	params.BasicUsername = req.BasicUsername
 	params.BasicPassword = req.BasicPassword
 
-	// Saved-connection import: an empty key with a source copies the source's
-	// URL, key, and basic auth, so credentials move between servers together.
-	// An empty basic auth pointer pair clears the target's stored basic auth.
 	if params.APIKey == "" && req.SourceIndexerID != nil {
 		creds, ok := h.sourceCredsOrRespond(r.Context(), w, *req.SourceIndexerID)
 		if !ok {
@@ -670,10 +569,8 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Track warnings for partial failures
 	var warnings []string
 
-	// If capabilities or categories were provided in the request, store them directly
 	if len(req.Capabilities) > 0 || len(req.Categories) > 0 {
 		if len(req.Capabilities) > 0 {
 			if err := h.indexerStore.SetCapabilities(r.Context(), indexer.ID, req.Capabilities); err != nil {
@@ -695,7 +592,6 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 				warnings = append(warnings, "Failed to store categories - sync manually later")
 			}
 		}
-		// Reload indexer to include the stored capabilities and categories
 		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err != nil {
 			log.Warn().
 				Err(err).
@@ -706,7 +602,6 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 			indexer = updated
 		}
 	} else if h.service != nil && indexer.Enabled {
-		// No capabilities/categories provided, try to fetch them from the service
 		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
 			log.Warn().
 				Err(err).
@@ -731,16 +626,6 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
 }
 
-// DeleteIndexer godoc
-// @Summary Delete a Torznab indexer
-// @Description Deletes a Torznab indexer
-// @Tags torznab
-// @Param indexerID path int true "Indexer ID"
-// @Success 204
-// @Failure 404 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/{indexerID} [delete]
 func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
 	if err != nil {
@@ -771,17 +656,6 @@ func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// TestIndexer godoc
-// @Summary Test a Torznab indexer connection
-// @Description Tests the connection to a Torznab indexer
-// @Tags torznab
-// @Param indexerID path int true "Indexer ID"
-// @Success 200
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 429 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/{indexerID}/test [post]
 func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
 	if err != nil {
@@ -805,8 +679,6 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		Str("indexer_name", indexer.Name).
 		Msg("Testing torznab indexer connectivity")
 
-	// Run a lightweight search via the service to validate connectivity. Bypass
-	// cache/history and wait for the async scheduler's real result.
 	testCtx, cancelTest := context.WithTimeout(r.Context(), indexerTestRequestTimeout(indexer))
 	defer cancelTest()
 	resultCh := make(chan error, 1)
@@ -833,7 +705,6 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Update test status in database
 	if err != nil {
 		errorMsg := err.Error()
 		if updateErr := h.updateTestStatusWithTimeout(id, "error", &errorMsg); updateErr != nil {
@@ -847,7 +718,6 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Test succeeded - update status
 	if updateErr := h.updateTestStatusWithTimeout(id, "ok", nil); updateErr != nil {
 		h.logTestStatusUpdateError(updateErr, id, "ok")
 	}
@@ -890,18 +760,6 @@ func (h *JackettHandler) logTestStatusUpdateError(err error, id int, status stri
 	log.Error().Err(err).Int("indexer_id", id).Msg("Failed to update test status")
 }
 
-// SyncIndexerCaps godoc
-// @Summary Refresh Torznab caps from the backend
-// @Description Fetches the latest capabilities and categories from Jackett, Prowlarr, or a native Torznab endpoint and persists them.
-// @Tags torznab
-// @Param indexerID path int true "Indexer ID"
-// @Success 200 {object} models.TorznabIndexer
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 404 {object} httphelpers.ErrorResponse
-// @Failure 429 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/{indexerID}/caps/sync [post]
 func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request) {
 	if h.service == nil {
 		RespondError(w, http.StatusServiceUnavailable, "Jackett service not configured")
@@ -950,8 +808,6 @@ type sourceCredentials struct {
 	basicPassword *string
 }
 
-// resolveSourceIndexerCredentials loads a stored indexer and returns its
-// decrypted connection credentials for reuse by discovery and create.
 func resolveSourceIndexerCredentials(ctx context.Context, store *models.TorznabIndexerStore, id int) (*sourceCredentials, error) {
 	indexer, err := store.Get(ctx, id)
 	if err != nil {
@@ -978,8 +834,6 @@ func resolveSourceIndexerCredentials(ctx context.Context, store *models.TorznabI
 	return creds, nil
 }
 
-// sourceCredsOrRespond resolves stored credentials for a source indexer id and
-// writes the error response itself when resolution fails.
 func (h *JackettHandler) sourceCredsOrRespond(ctx context.Context, w http.ResponseWriter, id int) (*sourceCredentials, bool) {
 	creds, err := resolveSourceIndexerCredentials(ctx, h.indexerStore, id)
 	if err != nil {
@@ -994,17 +848,6 @@ func (h *JackettHandler) sourceCredsOrRespond(ctx context.Context, w http.Respon
 	return creds, true
 }
 
-// DiscoverIndexers godoc
-// @Summary Discover indexers from a Jackett/Prowlarr instance
-// @Description Discovers all configured indexers from a Jackett or Prowlarr instance using its API. Credentials can be reused from an existing indexer via source_indexer_id.
-// @Tags torznab
-// @Accept json
-// @Produce json
-// @Success 200 {object} jackett.DiscoveryResult
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/discover [post]
 func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		BaseURL         string  `json:"base_url"`
@@ -1025,8 +868,6 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 		if !ok {
 			return
 		}
-		// The source connection is authoritative: stored credentials cannot be
-		// re-paired with another server via the request body.
 		req.BaseURL = creds.baseURL
 		req.APIKey = creds.apiKey
 		req.BasicUsername = creds.basicUsername
@@ -1055,15 +896,6 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, result)
 }
 
-// GetAllHealth godoc
-// @Summary Get health status for all indexers
-// @Description Retrieves health statistics for all Torznab indexers
-// @Tags torznab
-// @Produce json
-// @Success 200 {array} models.TorznabIndexerHealth
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/health [get]
 func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
 	health, err := h.indexerStore.GetAllHealth(r.Context())
 	if err != nil {
@@ -1075,15 +907,6 @@ func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, health)
 }
 
-// GetIndexerTrackerDomains godoc
-// @Summary List tracker domains for enabled indexers
-// @Description Returns tracker domains derived from enabled indexers whose domain can be resolved reliably (native and Prowlarr backends). Jackett indexers are omitted because their base URL is the Jackett server, not the tracker. Used to populate tracker selectors with trackers that have no active torrents.
-// @Tags torznab
-// @Produce json
-// @Success 200 {array} string
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/tracker-domains [get]
 func (h *JackettHandler) GetIndexerTrackerDomains(w http.ResponseWriter, r *http.Request) {
 	domains, err := h.service.GetConfiguredTrackerDomains(r.Context())
 	if err != nil {
@@ -1099,17 +922,6 @@ func (h *JackettHandler) GetIndexerTrackerDomains(w http.ResponseWriter, r *http
 	RespondJSON(w, http.StatusOK, domains)
 }
 
-// GetIndexerHealth godoc
-// @Summary Get health status for an indexer
-// @Description Retrieves health statistics for a specific Torznab indexer
-// @Tags torznab
-// @Produce json
-// @Param indexerID path int true "Indexer ID"
-// @Success 200 {object} models.TorznabIndexerHealth
-// @Failure 404 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/{indexerID}/health [get]
 func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
 	if err != nil {
@@ -1131,18 +943,6 @@ func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, health)
 }
 
-// GetIndexerErrors godoc
-// @Summary Get recent errors for an indexer
-// @Description Retrieves recent error history for a specific Torznab indexer
-// @Tags torznab
-// @Produce json
-// @Param indexerID path int true "Indexer ID"
-// @Param limit query int false "Maximum number of errors to return" default(50)
-// @Success 200 {array} models.TorznabIndexerError
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/{indexerID}/errors [get]
 func (h *JackettHandler) GetIndexerErrors(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
 	if err != nil {
@@ -1167,17 +967,6 @@ func (h *JackettHandler) GetIndexerErrors(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, errors)
 }
 
-// GetIndexerStats godoc
-// @Summary Get latency statistics for an indexer
-// @Description Retrieves aggregated latency statistics for a specific Torznab indexer
-// @Tags torznab
-// @Produce json
-// @Param indexerID path int true "Indexer ID"
-// @Success 200 {array} models.TorznabIndexerLatencyStats
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/indexers/{indexerID}/stats [get]
 func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
 	if err != nil {
@@ -1195,16 +984,6 @@ func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, stats)
 }
 
-// GetSearchHistory godoc
-// @Summary Get search history
-// @Description Returns recent completed searches from the in-memory history buffer
-// @Tags torznab
-// @Produce json
-// @Param limit query int false "Maximum number of entries to return (default: 50, max: 500)"
-// @Success 200 {object} jackett.SearchHistoryResponseWithOutcome
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/search/history [get]
 func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
@@ -1223,15 +1002,6 @@ func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, history)
 }
 
-// GetActivityStatus godoc
-// @Summary Get scheduler and indexer activity status
-// @Description Returns current scheduler state including queued tasks, in-flight jobs, and rate-limited indexers
-// @Tags torznab
-// @Produce json
-// @Success 200 {object} jackett.ActivityStatus
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/torznab/activity [get]
 func (h *JackettHandler) GetActivityStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := h.service.GetActivityStatus(r.Context())
 	if err != nil {

@@ -16,8 +16,6 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }))
 
-// Each dialog with values shows the values that the module gives it, and its
-// confirm button sends the values of the test. The confirmations stay real.
 const stubs = vi.hoisted(() => ({ confirmArgs: {} as Record<string, unknown[]> }))
 vi.mock("@/components/torrents/TorrentDialogs", async (importOriginal) => {
   const { createElement } = await import("react")
@@ -39,7 +37,6 @@ vi.mock("@/components/torrents/TorrentDialogs", async (importOriginal) => {
   }
 })
 
-// The Transfer and Share dialogs show the torrents and the instance that the module gives them.
 vi.mock("@/components/transfers/TransferDialog", async () => {
   const { createElement } = await import("react")
   return {
@@ -56,8 +53,6 @@ vi.mock("@/components/shares/ShareDialog", async () => {
   }
 })
 
-// Keeps the count and the size in the text, so a test can read them in a toast or a dialog.
-// One translator for every render: the tag editor runs an effect again when t changes.
 const translation = vi.hoisted(() => ({
   t: (key: string, opts?: Record<string, unknown>) => opts && "count" in opts ? `${key}/${opts.count}` : opts && "size" in opts ? `${key}/${opts.size}` : opts && "name" in opts ? `${key}/${opts.name}` : key,
 }))
@@ -66,7 +61,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => translation,
 }))
 
-// The size formatter of the delete dialog reads its unit labels from the i18n resources.
 import "@/i18n"
 
 import { BulkActionProvider } from "../BulkActionProvider"
@@ -108,7 +102,6 @@ function makeHarness() {
   return { queryClient, wrapper, refetchSpy, invalidateSpy }
 }
 
-// A Layout that publishes, and an Action surface that picks.
 function renderModule(published?: Partial<TorrentSelectionSummary> & { actionTarget: ActionTarget }) {
   const harness = makeHarness()
   const { result } = renderHook(() => {
@@ -220,9 +213,6 @@ describe("bulk action module - requests", () => {
     expect(refetchedKeys).toContain("torrents-list")
   })
 
-  // Rows outside the SSE live window are only updated by these delayed
-  // refetches. The first one can read the backend before its post-action sync
-  // has landed, so a single read that lands too early would freeze the row wrong.
   it("schedules a follow-up list refetch after the first one", async () => {
     const { result, refetchSpy } = renderModule({ actionTarget: ticks("h1") })
 
@@ -390,7 +380,6 @@ function crossSeedMatch(overrides: Partial<LocalCrossSeedMatch>): LocalCrossSeed
   } as LocalCrossSeedMatch
 }
 
-// Checks for cross-seeds in the open delete dialog, and ticks "also delete cross-seeds" when asked.
 async function findCrossSeeds(matches: LocalCrossSeedMatch[], { tick = true } = {}) {
   mockedApi.getDeleteCrossSeeds.mockResolvedValue({ matches, uncheckedInstances: [] })
   clickButton("crossSeedWarning.idle.check")
@@ -615,7 +604,6 @@ describe("bulk action module - delete", () => {
     expect(mockedToast.success).toHaveBeenCalledWith("actionToasts.success.deleteWithFiles/2")
   })
 
-  // A request on one instance leaves out targets on other instances.
   // regression: #3592
   it("sends the chosen cross-seeds to the all-instances scope when one is on another instance", async () => {
     const { result, queryClient } = renderModule({ actionTarget: ticks("h1") })
@@ -633,13 +621,11 @@ describe("bulk action module - delete", () => {
       [INSTANCE_ID, expect.objectContaining({ hashes: ["h1"] })],
       [0, expect.objectContaining({ hashes: [], targets: [{ instanceId: INSTANCE_ID, hash: "cs1" }, { instanceId: 9, hash: "cs2" }] })],
     ])
-    // The cross-seed on instance 9 is not in the list of this instance.
     const cache = queryClient.getQueryData(TORRENTS_LIST_KEY) as CachedList
     expect(cache.torrents.map(t => t.hash)).toEqual(["keep"])
     expect(cache.totalCount).toBe(8)
   })
 
-  // A retry would send the Select all delete again, and delete each torrent that joined the filter since.
   it("closes the dialog and clears the selection when only the cross-seed request fails", async () => {
     mockedApi.bulkAction.mockResolvedValueOnce(undefined as never).mockRejectedValueOnce(new Error("boom"))
     const { result } = renderModule({ actionTarget: selectAll(50, {}, ["a"]) })
@@ -671,7 +657,6 @@ describe("bulk action module - delete", () => {
     expect(deleteTitle()).toBeNull()
   })
 
-  // The server can delete on one instance before the request fails on the next one.
   // regression: #3989
   it("refetches the list when a delete fails in the Unified view, for Select all and for ticked torrents", async () => {
     const targets: ActionTarget[] = [selectAll(50, {}, ["a"]), pairs([{ instanceId: INSTANCE_ID, hash: "h1" }, { instanceId: 9, hash: "h2" }])]
@@ -748,7 +733,6 @@ describe("bulk action module - delete", () => {
   })
 })
 
-// The values that a stub dialog shows, in the order of its stub.
 function dialogValues(name: string) {
   const title = Array.from(document.body.querySelectorAll("[role=\"dialog\"] h2")).find(h => h.textContent === name)
   return title?.nextElementSibling?.textContent ?? null
@@ -1088,7 +1072,6 @@ describe("bulk action module - export", () => {
 })
 
 describe("bulk action module - renders", () => {
-  // The desktop table reads the module. A dialog that opens or closes must not render the table again.
   it("keeps the value of an Action surface when a dialog opens and closes", () => {
     const { wrapper } = makeHarness()
     let surfaceRenders = 0

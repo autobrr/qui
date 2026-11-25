@@ -11,11 +11,9 @@ import { cn } from "@/lib/utils"
 export interface EmptyTileProps {
   title: string
   description?: ReactNode
-  /** Makes the tile a button with a plus, for the first item of a list. */
   onAdd?: () => void
 }
 
-/** The dashed tile in the place of an empty list, the same height as a row of ResourceList. */
 export function EmptyTile({ title, description, onAdd }: EmptyTileProps) {
   const content = (
     <>

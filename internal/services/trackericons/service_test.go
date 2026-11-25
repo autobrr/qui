@@ -91,7 +91,6 @@ func TestService_GetIcon_RecordsFailureWhenContextExpiresDuringFetch(t *testing.
 		host := "tracker.example.org"
 		_, _ = svc.GetIcon(ctx, host, "")
 
-		// GetIcon can return before the fetch goroutine records the failure.
 		synctest.Wait()
 
 		require.False(t, svc.canAttempt(host))
@@ -268,7 +267,6 @@ func TestPublicOnly(t *testing.T) {
 func TestSafeDial_RefusesNAT64ToPrivateIPv4(t *testing.T) {
 	t.Parallel()
 
-	// 64:ff9b::a9fe:a9fe carries 169.254.169.254, and 64:ff9b::a00:5 carries 10.0.0.5.
 	for _, addr := range []string{"[64:ff9b::a9fe:a9fe]:80", "[64:ff9b::a00:5]:443"} {
 		require.ErrorIs(t, safeDial("tcp6", addr, nil), ssrf.ErrProhibitedIP, addr)
 	}
@@ -301,8 +299,6 @@ func TestService_FetchIconBytes_BlocksRedirectToLocalServer(t *testing.T) {
 	}))
 	defer redirector.Close()
 
-	// The proxy answers the first request with a redirect, so qui sends the
-	// second request to the local server without a proxy.
 	t.Setenv("http_proxy", "")
 	t.Setenv("HTTP_PROXY", redirector.URL)
 	t.Setenv("NO_PROXY", "")
@@ -353,8 +349,6 @@ func TestService_FetchIconBytes_RefusesDirectRequestToProxy(t *testing.T) {
 	svc, err := NewService(t.TempDir(), "qui-test")
 	require.NoError(t, err)
 
-	// Go sends a loopback target direct, so this request does not go through
-	// the proxy. It must not reach the proxy as an ordinary request either.
 	_, _, err = svc.fetchIconBytes(t.Context(), proxy.URL+"/admin")
 	require.ErrorIs(t, err, ssrf.ErrProhibitedIP)
 	require.Zero(t, hits.Load())
@@ -381,10 +375,7 @@ func TestService_FetchIconBytes_ProxyRefusesPrivateTarget(t *testing.T) {
 func TestCheckPublicHost_ResolvesNames(t *testing.T) {
 	t.Parallel()
 
-	// localhost resolves from the hosts file, so this sends no DNS query.
 	require.ErrorIs(t, checkPublicHost(t.Context(), "localhost"), ssrf.ErrProhibitedIP)
-	// The resolver returns this literal as ::ffff:1.1.1.1.
 	require.NoError(t, checkPublicHost(t.Context(), "1.1.1.1"))
-	// The IDNA form of the full-width name is localhost.
 	require.ErrorIs(t, checkPublicHost(t.Context(), "ｌｏｃａｌｈｏｓｔ"), ssrf.ErrProhibitedIP)
 }

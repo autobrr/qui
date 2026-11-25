@@ -50,7 +50,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60
-const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5  // Gazelle-only seeded search: still be polite; per-torrent work can trigger multiple API calls
+const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5
 const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720
 const MIN_SCHEDULE_VALUE = 1
 
@@ -61,7 +61,6 @@ const gazelleReasonKeys: Partial<Record<CrossSeedGazelleLookupReason, string>> =
   not_music: "scan.gazelleSummary.reasons.notMusic",
 }
 
-/** GazelleRunSummary is the RED/OPS line of one Library Scan run. */
 function GazelleRunSummary({ summary }: { summary: CrossSeedGazelleSiteSummary[] }) {
   const { t } = useTranslation("crossseed")
   const sites = summary.map(site => {
@@ -76,10 +75,8 @@ function GazelleRunSummary({ summary }: { summary: CrossSeedGazelleSiteSummary[]
   return <p className="px-2 pt-0.5 text-[11px] text-muted-foreground">{t("scan.gazelleSummary.line", { sites: sites.join("; ") })}</p>
 }
 
-/** RunFiltersLine shows the include and exclude filters that one run used. */
 function RunFiltersLine({ filters }: { filters: CrossSeedSearchFilters }) {
   const { t } = useTranslation("crossseed")
-  // The server sends an empty list as null.
   const describe = (categories?: string[] | null, tags?: string[] | null) => [
     ...(categories?.length ? [t("scan.runFilters.categories", { list: categories.join(", ") })] : []),
     ...(tags?.length ? [t("scan.runFilters.tags", { list: tags.join(", ") })] : []),
@@ -95,7 +92,6 @@ function RunFiltersLine({ filters }: { filters: CrossSeedSearchFilters }) {
   )
 }
 
-/** The text beside Start about the next scheduled run. A time in the past means the run is due. */
 function NextScheduledRun({ at, running }: { at: string; running: boolean }) {
   const { t } = useTranslation("crossseed")
   const formatDateValue = useFormatDateValue()
@@ -189,8 +185,6 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // The tags and auto-resume go first: saving the schedule on can start a
-      // scheduled run at once, and that run reads them.
       const global = await api.patchCrossSeedSettings({
         seededSearchTags,
         skipAutoResumeSeededSearch: skipAutoResume,
@@ -220,7 +214,6 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     },
     onError: (error: Error) => {
       toast.error(error.message)
-      // One PATCH can land while the other fails; refetch both so the caches show what the server kept.
       void queryClient.invalidateQueries({ queryKey: CROSS_SEED_SEARCH_SETTINGS_KEY })
       void queryClient.invalidateQueries({ queryKey: CROSS_SEED_SETTINGS_KEY })
     },
@@ -302,7 +295,6 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
   }, [seededSearchIntervalMinimum])
 
-  // The search asks a RED/OPS site with a key through its API, and leaves out its Torznab indexers.
   const seededSearchIndexerExclusions = useMemo(
     () => new Set((gazelleSites ?? []).flatMap(site => site.replacedIndexerIds)),
     [gazelleSites]
@@ -382,7 +374,6 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
 
   const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? t("overview.seededSearch.gazelleFullDescription") : t("overview.seededSearch.gazellePartialDescription")) : t("overview.seededSearch.noGazelleDescription")
 
-  /** Start checks only the fields that a manual run uses; Save checks the schedule too. */
   const validate = (withSchedule: boolean): boolean => {
     const errors: Record<string, string> = {}
     if (searchIntervalSeconds < seededSearchIntervalMinimum) {
@@ -770,8 +761,6 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                   <div className="space-y-1">
                     {searchRuns.map(run => {
                       const sourceName = instances.find(instance => instance.id === run.instanceId)?.name ?? String(run.instanceId)
-                      // A routed result names the Cross-seed instance that got the add. The label
-                      // truncates on a narrow screen, so the release name keeps its room.
                       const routeLabel = (result: CrossSeedSearchResult) => {
                         if (!result.crossSeedInstanceName) return null
                         const text = crossSeedRouteText(t, sourceName, result.crossSeedInstanceName, result.status === "added")

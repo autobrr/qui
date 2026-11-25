@@ -27,12 +27,9 @@ interface RunFooterProps {
   runLabel: string
   runIcon: ReactNode
   onRun: () => void
-  /** Called after the user confirms the cancel dialog. */
   onCancel: () => void
   cancelDialog: { title: string; description: string }
-  /** Run options such as Dry run, shown after the run button. */
   options?: ReactNode
-  /** The Save button, shown at the right. */
   children: ReactNode
 }
 
@@ -56,7 +53,6 @@ export function RunFooter({ state, runLabel, runIcon, onRun, onCancel, cancelDia
             {t(state.kind === "cancelling" ? "automation.stopping" : "automation.cancel")}
           </Button>
         ) : (
-          // A disabled button lets taps and hover through to the wrapper, which shows why the run is blocked.
           <Tooltip>
             <TooltipTrigger asChild>
               <span className={cn("inline-flex", blocked && "cursor-not-allowed")}>

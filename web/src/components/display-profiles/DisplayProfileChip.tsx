@@ -29,7 +29,6 @@ import { useNamedDisplayProfiles } from "./display-profile-names"
 import { DisplayProfileGlyph, DisplayProfileTile } from "./DisplayProfileTile"
 import { NewDisplayProfileDialog } from "./NewDisplayProfileDialog"
 
-/** The Display profile of this browser in the status bar of the desktop torrent table, with a picker. */
 export function DisplayProfileChip() {
   const { t } = useTranslation("torrents")
   const { profiles, active, settled, pick } = useNamedDisplayProfiles()
@@ -41,7 +40,6 @@ export function DisplayProfileChip() {
 
   useEffect(() => {
     if (!menuOpen) return
-    // Radix focuses the menu, or its first row, when it opens. The row of this browser's profile comes after that.
     const frame = requestAnimationFrame(() => activeRowRef.current?.focus())
     return () => cancelAnimationFrame(frame)
   }, [menuOpen])
@@ -57,7 +55,6 @@ export function DisplayProfileChip() {
       >
         <Tooltip disableHoverableContent>
           <FeatureNotice id="display-profiles" side="top" onAction={() => setNewProfileOpen(true)}>
-            {/* Focus comes back to the chip after each pick, so only a hover shows the name. */}
             <TooltipTrigger asChild onFocus={(event) => event.preventDefault()}>
               <DropdownMenuTrigger asChild>
                 <Button

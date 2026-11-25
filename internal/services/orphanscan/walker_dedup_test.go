@@ -1,8 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// The FileID literals below spell unix Dev/Ino fields; the scenarios they
-// drive (bind-mount aliases) are unix-only anyway.
 //go:build !windows
 
 package orphanscan
@@ -94,7 +92,6 @@ func TestScanWalker_AliasDedup(t *testing.T) {
 			want:    []string{early, late},
 		},
 		{
-			// A remote ID with no instance has no filesystem scope.
 			name:    "unscoped remote IDs",
 			inUse:   true,
 			entries: []fsops.WalkEntry{entry(early, hardlink.RemoteFileID([]byte{1}), 1), entry(inUse, hardlink.RemoteFileID([]byte{1}), 1)},
@@ -126,14 +123,13 @@ func listedPaths(orphans []OrphanFile) []string {
 	return paths
 }
 
-// The disc unit's delete would remove the alias, so the whole unit stays.
 func TestScanWalker_DiscUnitHoldingInUseAliasIsNotListed(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name  string
 		dir   string
-		young bool // the shared file is inside the grace period
+		young bool
 	}{
 		{name: "alias walked first", dir: "a-disc"},
 		{name: "alias walked last", dir: "z-disc"},
@@ -164,8 +160,6 @@ func TestScanWalker_DiscUnitHoldingInUseAliasIsNotListed(t *testing.T) {
 	}
 }
 
-// Of two paths to one orphan file, the first sits in a unit dropped for holding
-// an in-use alias, so the other path is listed instead.
 func TestScanWalker_OrphanAliasInsideADroppedUnitListsTheOtherPath(t *testing.T) {
 	t.Parallel()
 
@@ -190,15 +184,14 @@ func TestScanWalker_OrphanAliasInsideADroppedUnitListsTheOtherPath(t *testing.T)
 	require.Equal(t, []string{other}, listedPaths(orphans))
 }
 
-// Disc units that share files are both listed while each holds a file of its own.
 func TestScanWalker_DiscUnitAliasesKeepUniqueFiles(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name   string
-		shared string // relative to each disc folder
+		shared string
 		young  bool
-		unique []string // b-disc only
+		unique []string
 		want   []string
 	}{
 		{name: "b-disc holds only shared files", shared: "BDMV/index.bdmv", want: []string{"a-disc"}},
@@ -218,7 +211,6 @@ func TestScanWalker_DiscUnitAliasesKeepUniqueFiles(t *testing.T) {
 				backdate(t, a)
 				backdate(t, b)
 			}
-			// a-disc needs one listed file of its own when the shared one is young.
 			own := []string{filepath.Join(root, "a-disc", "BDMV", "MovieObject.bdmv")}
 			for _, u := range tt.unique {
 				own = append(own, filepath.Join(root, "b-disc", filepath.FromSlash(u)))
@@ -241,13 +233,12 @@ func TestScanWalker_DiscUnitAliasesKeepUniqueFiles(t *testing.T) {
 	}
 }
 
-// A file reached through two paths counts once toward the bytes found.
 func TestScanWalker_AliasBytesCountOnce(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name   string
-		shared []string // two paths to one 10-byte file
+		shared []string
 		want   map[string]int64
 	}{
 		{
@@ -330,8 +321,6 @@ func TestScanWalker_HardlinkOrphansReportedPerPath(t *testing.T) {
 	}
 
 	tfm := NewTorrentFileMap(fsops.HostPaths)
-	// Neither file is in the TFM. Hardlinks (nlink=2) are distinct directory
-	// entries, so both paths are reported as orphan units.
 
 	orphans, _, err := walkScanRoot(
 		t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100,

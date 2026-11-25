@@ -149,8 +149,6 @@ func TestAdaptiveExportDelayHonorsConfiguredMinAboveCap(t *testing.T) {
 
 type concurrentExportStub struct {
 	torrents []qbt.Torrent
-	// gates holds an export until its gate closes or its ctx ends. A hash
-	// without a gate exports at once.
 	gates    map[string]chan struct{}
 	errs     map[string]error
 	exported func(hash string)
@@ -257,8 +255,7 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 			category = "cat-b"
 		}
 		torrents = append(torrents, qbt.Torrent{
-			Hash: hash,
-			// Colliding names force ensureUniquePath to disambiguate in input order.
+			Hash:      hash,
 			Name:      "Duplicate Name",
 			Category:  category,
 			Tags:      "tag1, tag2",
@@ -268,7 +265,6 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 	errs["hash-05"] = errors.New("could not get export; status code: 409: unexpected status code")
 	errs["hash-16"] = qbt.ErrTorrentMetadataNotDownloadedYet
 
-	// Serial reference: what the pre-concurrency loop would have produced.
 	var expectedHashes, expectedPaths []string
 	expectedCounts := map[string]int{}
 	var expectedBytes int64
@@ -290,10 +286,6 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 		expectedBytes += int64(len("payload-" + torrent.Hash))
 	}
 
-	// The exports finish in an order other than the input order: within each
-	// window of exportWorkers inputs, which the workers hold at once, the last
-	// one finishes first. The end of each export opens the gate of the export
-	// released after it.
 	var release []string
 	for start := 0; start < torrentCount; start += exportWorkers {
 		for i := min(start+exportWorkers, torrentCount) - 1; i >= start; i-- {
@@ -319,8 +311,6 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 		}
 		close(stub.gates[release[0]])
 
-		// A gate chain out of step with the workers ends on this timeout
-		// instead of hanging the test.
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		result, err := svc.executeBackup(ctx, job{runID: runID, instanceID: instanceID, kind: models.BackupRunKindManual})
 		cancel()
@@ -353,8 +343,6 @@ func TestExecuteBackupConcurrentMatchesSerialOrdering(t *testing.T) {
 	require.Equal(t, 2*torrentCount, stub.calls)
 }
 
-// rendezvousExportStub blocks every export until at least two are in flight at
-// once, so a serial implementation cannot pass.
 type rendezvousExportStub struct {
 	concurrentExportStub
 	ready     chan struct{}
@@ -408,9 +396,6 @@ func TestExecuteBackupRunsExportsConcurrently(t *testing.T) {
 func TestExecuteBackupConcurrentFailsFastOnExportError(t *testing.T) {
 	t.Parallel()
 
-	// The first torrent fails at once while every other export waits on its
-	// ctx; if the error did not cancel outstanding work, the run would never
-	// end.
 	errBoom := errors.New("boom")
 	torrents := make([]qbt.Torrent, 0, 12)
 	gates := make(map[string]chan struct{}, 12)
@@ -430,8 +415,6 @@ func TestExecuteBackupConcurrentFailsFastOnExportError(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		// t.Context ends when the test does, so a run that ignores the
-		// first error does not keep its workers blocked after a failure.
 		_, err := svc.executeBackup(t.Context(), job{runID: 1, instanceID: instanceID, kind: models.BackupRunKindManual})
 		done <- err
 	}()

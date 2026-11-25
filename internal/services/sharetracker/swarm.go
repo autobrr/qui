@@ -19,9 +19,6 @@ type swarm struct {
 	holder     netip.Addr
 }
 
-// answer is the peer list of one announce. owner is true when the client also
-// gets the public peer address of the user's own client. locked is true when
-// the client took the lock, and blocked when the lock keeps it out.
 type answer struct {
 	owner   bool
 	locked  bool
@@ -29,17 +26,9 @@ type answer struct {
 	peers   []netip.AddrPort
 }
 
-// join records the announce of client in the swarm of its Share and returns
-// the peers that the client gets. A new recipient client of a Share that has
-// its peers per Share gets errFull. With FirstDownloaderOnly, the first
-// recipient client that announces with something left to download takes the
-// lock, and from then on the user's client and that address see only each
-// other. A new swarm starts with the holder of the table.
 func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req announceRequest) (answer, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// The table of this announce can be older than a Share that another
-	// announce already joined, so the swarms follow the table as it is now.
 	active := t.shares.ActiveShares()
 	for id := range t.swarms {
 		if _, ok := active.share(id); !ok {
@@ -100,8 +89,6 @@ func (t *Tracker) join(table *Table, client announcer, peer netip.AddrPort, req 
 	return a, nil
 }
 
-// Unlock lets the next downloader of the Share take the lock, also when the
-// table still names a holder.
 func (t *Tracker) Unlock(shareID int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()

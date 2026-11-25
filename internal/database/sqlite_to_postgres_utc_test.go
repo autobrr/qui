@@ -12,10 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These tests replace time.Local, which is process-global, so none of them may
-// call t.Parallel.
-
-// migrationSessionZone differs from UTC and from each process zone by more than an hour.
 const migrationSessionZone = "Pacific/Honolulu"
 
 // regression: #3943
@@ -34,7 +30,6 @@ func TestSQLiteToPostgresMigrationKeepsEachInstantPostgresIntegration(t *testing
 			require.NoError(t, err)
 			_, err = sqliteDB.Conn().ExecContext(ctx, `CREATE TABLE utc_migration (label TEXT PRIMARY KEY, ts TIMESTAMP)`)
 			require.NoError(t, err)
-			// An older qui bound times in the process zone, so the driver stored the offset in the text.
 			_, err = sqliteDB.Conn().ExecContext(ctx, `INSERT INTO utc_migration (label, ts) VALUES ('offset', '2026-03-01 07:34:56.123456 -0500 EST')`)
 			require.NoError(t, err)
 			_, err = sqliteDB.Conn().ExecContext(ctx, `INSERT INTO utc_migration (label, ts) VALUES ('clock', CURRENT_TIMESTAMP)`)

@@ -183,7 +183,6 @@ describe("InstanceSSHPanel", () => {
     await waitFor(() => expect(document.querySelector("[data-ssh-status]")).toBeNull())
     expect(screen.getByText("preferences.ssh.test.saveFirst")).not.toBeNull()
     expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(true)
-    // typed back to the stored value: nothing unsaved, Test is back
     setValue("ssh-host", "box.example")
     await waitFor(() => expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false))
     expect(screen.queryByText("preferences.ssh.test.saveFirst")).toBeNull()
@@ -209,7 +208,6 @@ describe("InstanceSSHPanel", () => {
     setValue("ssh-private-key", "KEY")
     submitForm()
     await waitFor(() => expect(mocks.api.setSSHCredentials).toHaveBeenCalledWith(7, { host: "Other.Example", port: 22, username: "qui", privateKey: "KEY" }))
-    // the refetched row carries the lowercased host
     rerender(<InstanceSSHPanel instance={{ ...storedInstance, sshHost: "other.example" }} />)
     await waitFor(() => expect((document.getElementById("ssh-host") as HTMLInputElement).value).toBe("other.example"))
     expect((document.getElementById("ssh-private-key") as HTMLTextAreaElement).value).toBe("")

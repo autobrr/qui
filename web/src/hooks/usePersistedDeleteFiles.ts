@@ -20,12 +20,8 @@ export function usePersistedDeleteFiles(defaultValue: boolean = false) {
     parse: String,
     serialize: String,
   })
-  // Unlocked means "don't remember": the choice lives only in this component
-  // instance, like the old useState did.
   const [localValue, setLocalValue] = useState<boolean>(defaultValue)
 
-  // Legacy state (pre-lock-key) stored only the preference; its presence
-  // implied the lock. "" is the cleared sentinel.
   const isLocked = lockRaw !== "" ? lockRaw === "true" : (readRaw(PREF_KEY) ?? "") !== ""
 
   const deleteFiles = isLocked ? storedValue : localValue
@@ -43,7 +39,6 @@ export function usePersistedDeleteFiles(defaultValue: boolean = false) {
 
   const toggleLock = useCallback(() => {
     if (isLocked) {
-      // Keep the current choice visible, stop remembering it.
       setLocalValue(storedValue)
       setLockRaw("false")
       writeRaw(PREF_KEY, "")

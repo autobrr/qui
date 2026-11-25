@@ -13,7 +13,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// fakeHelpers is the helper registry: the helper torrents of instance 1.
 type fakeHelpers map[string]bool
 
 func (f fakeHelpers) IsHelper(instanceID int, hash string) bool { return instanceID == 1 && f[hash] }
@@ -25,8 +24,6 @@ func (f fakeHelpers) HelperCheck(instanceID int) func(hash string) bool {
 	return func(hash string) bool { return f[hash] }
 }
 
-// Cross-seed matches no helper torrent. A torrent of the user with the helper
-// tag and no registry row is a normal cross-seed.
 func TestCrossSeedSkipsHelperTorrents(t *testing.T) {
 	t.Parallel()
 
@@ -46,8 +43,6 @@ func TestCrossSeedSkipsHelperTorrents(t *testing.T) {
 	require.Equal(t, map[string]string{"dddd": matchTypeContentPath}, matchedTiers(matches))
 }
 
-// The cross-seed views leave out what the badge of the row builder names. The
-// row builder sets it from the same registry.
 // regression: #4231
 func TestCrossSeedViewsLeaveOutTheBadgedTorrents(t *testing.T) {
 	t.Parallel()

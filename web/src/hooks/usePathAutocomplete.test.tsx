@@ -23,7 +23,6 @@ vi.mock("./useDirectoryContent", () => {
   const results = new Map<string, { data: string[] }>()
   return {
     useDirectoryContent: (_id: number, path: string, options: { mode?: string; enabled?: boolean }) => {
-      // A disabled query has no data, as in React Query.
       if (options.enabled === false) return { data: undefined }
       const key = `${options.mode ?? "dirs"}:${path}`
       if (path) requestedPaths.push(path)
@@ -250,7 +249,6 @@ describe("usePathAutocomplete keyboard navigation", () => {
     const { result } = renderHook(() => usePathAutocomplete(vi.fn(), 1))
     mountRefs(result)
     act(() => result.current.handleInputChange("/data/al"))
-    // Type and delete a character in one render, so the deferred input never changes.
     act(() => {
       result.current.handleInputChange("/data/alp")
       result.current.handleInputChange("/data/al")

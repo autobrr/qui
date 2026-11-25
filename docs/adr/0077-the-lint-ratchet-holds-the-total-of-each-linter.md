@@ -16,7 +16,7 @@ When a total grows, the message names each entry that grew, so that the author f
 ## Consequences
 
 - A split or a rename of a Go file with held reports passes when the same change moves the counts to the new paths.
-- A change can fix a report in one file and add a report of the same linter in another file, and the check passes. The comment count and the suppressed ESLint rules already allow this trade. A reviewer sees it in the diff of the allowlist.
+- A change can fix a report in one file and add a report of the same linter in another file, and the check passes. The suppressed ESLint rules already allow this trade. A reviewer sees it in the diff of the allowlist.
 - The `go` lane of the bot (ADR 0020) only lowers entries, so it does not change.
 
 ## Considered options

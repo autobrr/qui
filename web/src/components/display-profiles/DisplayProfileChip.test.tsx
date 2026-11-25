@@ -51,19 +51,16 @@ function row(name: string): HTMLElement {
   return screen.getByRole("menuitemradio", { name })
 }
 
-/** Radix moves the focus of a menu in a timeout, so the check waits for it. */
 async function pressAndExpectFocus(key: string, expected: () => HTMLElement): Promise<void> {
   fireEvent.keyDown(document.activeElement as Element, { key })
   await waitFor(() => expect(document.activeElement).toBe(expected()))
 }
 
-/** Opens the picker of renderWithThreeProfiles, and waits for the focus on the row of Laptop. */
 async function openPickerOnLaptop(): Promise<void> {
   openMenu()
   await waitFor(() => expect(document.activeElement).toBe(row("Laptop")))
 }
 
-/** Default, Laptop, and Phone, with this browser on Laptop: the row in the middle. */
 function renderWithThreeProfiles(): void {
   createDisplayProfile("Phone")
   const laptop = createDisplayProfile("Laptop")
@@ -82,7 +79,6 @@ afterEach(() => {
 })
 
 describe("DisplayProfileChip", () => {
-  // The first read of the server ended, so the picker takes picks.
   beforeEach(markClientSettingsUnavailable)
 
   it("lets the user pick or make a profile only after the first read of the server ends", () => {
@@ -213,7 +209,6 @@ describe("DisplayProfileChip Feature notice", () => {
   const noticeTitle = "torrents:featureNotice.displayProfiles.title"
   const noticeShown = () => screen.queryByText(noticeTitle) !== null
 
-  // The first server snapshot, as useClientSettingsSync loads it. Feature notices wait for it.
   function loadServerSnapshot(): void {
     act(() => {
       applyServerSettings({})
@@ -225,7 +220,6 @@ describe("DisplayProfileChip Feature notice", () => {
     render(<TooltipProvider><DisplayProfileChip /></TooltipProvider>)
   }
 
-  // A page load picks the due notice again.
   function reloadPage(): void {
     cleanup()
     _resetFeatureNoticesForTests()
@@ -235,7 +229,6 @@ describe("DisplayProfileChip Feature notice", () => {
   beforeEach(() => {
     _resetFeatureNoticesForTests()
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }))
-    // The notice of Group copies comes first in the list.
     writeClientSetting("qui-feature-notice-seen:group-copies", true)
   })
 

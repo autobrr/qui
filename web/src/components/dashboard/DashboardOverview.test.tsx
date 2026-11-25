@@ -124,12 +124,10 @@ function visibleText(node: Element): string {
   return copy.textContent ?? ""
 }
 
-// The host of each open detail band, in the order of the rows.
 function openHosts(table: HTMLElement): string[] {
   return within(table).queryAllByTestId("fact-host").map(fact => fact.textContent ?? "")
 }
 
-// The two calls that useClientSettingsSync makes for the first server snapshot.
 function loadServerSnapshot(settings: Record<string, string> = {}) {
   act(() => {
     applyServerSettings(settings)
@@ -367,7 +365,6 @@ describe("DashboardOverview, Live", () => {
       now: new Date(now).toISOString(),
       instances: [
         { instanceId: 1, samples: [sample(5, 1024), sample(3, 4096), sample(1, 2048)] },
-        // Not in the list of the Dashboard.
         { instanceId: 9, samples: [sample(3, 1024 ** 3), sample(1, 1024 ** 3)] },
       ],
     }
@@ -674,7 +671,6 @@ describe("DashboardOverview instances", () => {
 
     fireEvent.click(within(table).getByRole("button", { name: "instances.altSpeedTurnOn" }))
     await vi.waitFor(() => expect(toggles).toEqual([1]))
-    // The answer of qBittorrent shows before the stream brings the new value.
     await vi.waitFor(() => expect(within(table).getAllByRole("button", { name: "instances.altSpeedTurnOff" })).toHaveLength(2))
     expect(openHosts(table)).toEqual([])
   })
@@ -740,20 +736,16 @@ describe("DashboardOverview instances", () => {
 })
 
 describe("DashboardOverview pointed layer", () => {
-  // The layers of the chart that show as pointed and as faded.
   function marks() {
     const layers = screen.getAllByTestId("chart-layer")
     const withMark = (mark: string) => layers.filter(layer => layer.hasAttribute(mark)).map(layer => layer.getAttribute("data-layer"))
     return { pointed: withMark("data-pointed"), faded: withMark("data-faded") }
   }
 
-  // The chart of two instances that each uploaded 1 GiB in the hour that started 2 hours ago, and the x of that hour.
   async function chartOfTwoLayers() {
     const chart = await screen.findByRole("img", { name: "stream.dayLabel" })
     await vi.waitFor(() => expect(screen.getAllByTestId("chart-layer")).toHaveLength(2))
-    // jsdom has no layout. The chart gets the size of its viewBox, so that a pointer position is a viewBox position.
     chart.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 200 }) as DOMRect
-    // The chart has 24 hours, and the last one is the hour of now.
     return { chart, x: ((24 - 1 - 2 + 0.5) / 24) * 600 }
   }
 
@@ -786,7 +778,6 @@ describe("DashboardOverview pointed layer", () => {
       return { ...marks(), rows: ["instance 1", "instance 2"].filter(name => rowOf(table, name).querySelector("[data-pointed]")) }
     }
 
-    // The zero line is at 120. The 2 GiB of upload reach up to 6, and the 1 GiB of download of instance 2 reaches down to 194.
     expect(pointAt(100)).toEqual({ pointed: ["0"], faded: ["1"], rows: ["instance 1"] })
     expect(pointAt(30)).toEqual({ pointed: ["1"], faded: ["0"], rows: ["instance 2"] })
     expect(pointAt(2)).toEqual({ pointed: [], faded: [], rows: [] })
@@ -802,7 +793,6 @@ describe("DashboardOverview pointed layer", () => {
     renderOverview([stats(1), stats(2)])
     const { chart, x } = await chartOfTwoLayers()
 
-    // With no download, the 2 GiB of upload reach from 200 up to 6.
     fireEvent.click(chart, { clientX: x, clientY: 150 })
     const lines = within(screen.getByRole("list", { name: "instances.title" })).getAllByRole("listitem")
     expect(lines.map(line => line.querySelector("[data-pointed]") !== null)).toEqual([true, false])

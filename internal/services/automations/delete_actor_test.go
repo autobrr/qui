@@ -22,7 +22,6 @@ type recordedDelete struct {
 	actor       qbittorrent.DeleteActor
 }
 
-// recordingDeleter records each delete and passes it on to the sync manager.
 type recordingDeleter struct {
 	torrentDeleter
 
@@ -51,7 +50,6 @@ func namedDeleteRule(id int, name, mode, tag string) *models.Automation {
 	return rule
 }
 
-// Each delete of a run names the rule that chose its torrents.
 func TestApplyRules_EachDeleteNamesItsRule(t *testing.T) {
 	const (
 		x = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

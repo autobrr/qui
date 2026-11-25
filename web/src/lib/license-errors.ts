@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Returns a settings namespace key for the license error.
 export function getLicenseErrorKey(error: Error | null): string | null {
   if (!error) return null
 

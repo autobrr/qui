@@ -67,7 +67,6 @@ export function collectMissingKeysForSource({
   const namespaces = parseNamespaces(source)
   const defaultNamespace = namespaces[0]
   const directiveNamespace = source.match(/^\s*\/\/\s*i18n-namespace:\s*(\S+)/m)?.[1]
-  // A route file holds one staticData title, so its titleNs covers every titleKey in the file.
   const titleNamespace = source.match(/\btitleNs:\s*"([^"]+)"/)?.[1]
 
   const localeCache = new Map()
@@ -99,7 +98,6 @@ export function collectMissingKeysForSource({
     missingKeys.add(`${relativePath}: remove "// i18n-namespace: ${directiveNamespace}"; useTranslation sets the namespace`)
   }
 
-  // Data tables hand these values to t() later, so the t("...") scan below never sees them.
   for (const match of source.matchAll(keyPropertyPattern)) {
     const lineStart = source.lastIndexOf("\n", match.index) + 1
     if (source.slice(lineStart, match.index).trimStart().startsWith("//")) {
@@ -117,7 +115,6 @@ export function collectMissingKeysForSource({
     checkKey(namespace, key)
   }
 
-  // A helper that takes t as a parameter names its namespace with the directive.
   const callNamespace = defaultNamespace ?? directiveNamespace
 
   for (const match of source.matchAll(translationCallPattern)) {

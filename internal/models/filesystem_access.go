@@ -3,7 +3,6 @@
 
 package models
 
-// FilesystemMode describes how qui reaches an instance's torrent data.
 type FilesystemMode string
 
 const (
@@ -12,14 +11,6 @@ const (
 	FilesystemModeRemote FilesystemMode = "remote"
 )
 
-// FilesystemAccessMode: local takes precedence over remote, and remote requires
-// a confirmed host-key pin — an SSH host with credentials but no pin is a
-// connection the user has not trusted yet, and no filesystem operation may run
-// over it.
-//
-// This routes, it does not authorize. A row whose pin has been tampered with
-// still reads as remote here; the connection layer is what must treat
-// GetHostKeyPin's error as fatal.
 func FilesystemAccessMode(inst *Instance) FilesystemMode {
 	if inst.HasLocalFilesystemAccess {
 		return FilesystemModeLocal
@@ -30,41 +21,26 @@ func FilesystemAccessMode(inst *Instance) FilesystemMode {
 	return FilesystemModeNone
 }
 
-// FilesystemCapability names one thing qui can do with an instance's files.
 type FilesystemCapability string
 
 const (
-	// CapabilityRead is listing, stat, and walking paths.
-	CapabilityRead FilesystemCapability = "read"
-	// CapabilityIdentity is reading a file's identity (device and inode) to
-	// find hardlinks. A remote host may report it, so it serves matching and
-	// dedup, and it may narrow a destructive action but never widen one.
-	CapabilityIdentity FilesystemCapability = "identity"
-	// CapabilityTrustedIdentity is Identity that may widen a destructive
-	// action, such as adding hardlinked torrents to a delete. Only a
-	// kernel-attested identity counts, so only a local instance has it.
+	CapabilityRead            FilesystemCapability = "read"
+	CapabilityIdentity        FilesystemCapability = "identity"
 	CapabilityTrustedIdentity FilesystemCapability = "trustedIdentity"
-	// CapabilityWrite is creating and removing link trees.
-	CapabilityWrite FilesystemCapability = "write"
-	// CapabilityContent is reading file bytes for downloads, MediaInfo, and
-	// disc scans, which expect the files on qui's own disk.
-	CapabilityContent FilesystemCapability = "content"
-	// CapabilityReadBytes is reading file bytes through the file layer.
-	CapabilityReadBytes FilesystemCapability = "readBytes"
-	// CapabilityWriteBytes is writing file bytes through the file layer.
-	CapabilityWriteBytes FilesystemCapability = "writeBytes"
+	CapabilityWrite           FilesystemCapability = "write"
+	CapabilityContent         FilesystemCapability = "content"
+	CapabilityReadBytes       FilesystemCapability = "readBytes"
+	CapabilityWriteBytes      FilesystemCapability = "writeBytes"
 )
 
-// FilesystemCapabilities is what qui can do with one instance's files.
 type FilesystemCapabilities struct {
 	Read            bool `json:"read"`
 	Identity        bool `json:"identity"`
 	TrustedIdentity bool `json:"trustedIdentity"`
 	Write           bool `json:"write"`
 	Content         bool `json:"content"`
-	// ReadBytes and WriteBytes are not in the API: no page reads them.
-	ReadBytes  bool `json:"-"`
-	WriteBytes bool `json:"-"`
+	ReadBytes       bool `json:"-"`
+	WriteBytes      bool `json:"-"`
 }
 
 func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
@@ -87,15 +63,6 @@ func (c FilesystemCapabilities) Has(capability FilesystemCapability) bool {
 	return false
 }
 
-// FilesystemCapabilitiesOf maps an instance's filesystem mode to what qui may
-// do with its files. A remote instance has Read, Write (#2725, #2942),
-// ReadBytes, and WriteBytes, and Identity when its key reaches the exec tier
-// (#2726).
-//
-// Some callers narrow Write by reading the mode themselves, because no
-// capability names what they need: reflink mode needs a cloning filesystem
-// (UpdateInstance, and reflinkAllowed in the settings panel), and the orphan-scan
-// confirm also needs a remote run's walk to have read every file's identity.
 func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
 	switch FilesystemAccessMode(inst) {
 	case FilesystemModeLocal:
@@ -107,13 +74,9 @@ func FilesystemCapabilitiesOf(inst *Instance) FilesystemCapabilities {
 	return FilesystemCapabilities{}
 }
 
-// SSHTier is what a remote instance's key lets qui run, as the last connect
-// probed it.
 type SSHTier string
 
 const (
-	// SSHTierSFTP is the sftp subsystem only.
 	SSHTierSFTP SSHTier = "sftp"
-	// SSHTierExec adds a shell with GNU find, and stat from GNU or uutils coreutils.
 	SSHTierExec SSHTier = "exec"
 )

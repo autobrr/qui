@@ -110,7 +110,6 @@ describe("isInsideBase", () => {
   })
 
   it("is false for a shared prefix without a slash boundary", () => {
-    // The load-bearing edge: '/data/movies2' must NOT count as inside '/data/movies'.
     expect(isInsideBase("/data/movies2", "/data/movies")).toBe(false)
   })
 })
@@ -265,7 +264,6 @@ describe("useLocalCrossSeedMatches", () => {
     expect(mockedApi.getInstances).toHaveBeenCalled()
     expect(mockedApi.getLocalCrossSeedMatches).toHaveBeenCalledWith(2, "torrenthash")
     expect(result.current.matchingTorrents[0]).toEqual(toCompatibleMatch(makeMatch()))
-    // Verify the hook->mapping wiring independently of the transform implementation.
     expect(result.current.matchingTorrents[0].save_path).toBe("/data/movies")
     expect(result.current.matchingTorrents[0].total_size).toBe(12345)
     expect(result.current.allInstances).toEqual([{ id: 2, name: "seedbox" }])
@@ -349,7 +347,6 @@ describe("useLocalCrossSeedMatches", () => {
       { wrapper: makeWrapper() }
     )
 
-    // Give both queries a chance to fire before asserting they stayed idle.
     await waitFor(() => {
       expect(result.current.isLoadingMatches).toBe(false)
     })
@@ -389,7 +386,6 @@ describe("useLocalCrossSeedMatches", () => {
     })
 
     expect(result.current.allInstances).toEqual([])
-    // The matches query is independent and still resolves.
     await waitFor(() => {
       expect(result.current.matchingTorrents).toHaveLength(1)
     })

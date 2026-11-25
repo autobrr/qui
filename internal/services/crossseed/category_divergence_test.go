@@ -14,9 +14,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// divergentCategorySyncManager embeds the rootless mock and overrides category
-// lookups so a cross-seed category can be made to already exist with a save path
-// that diverges from the matched torrent's location.
 type divergentCategorySyncManager struct {
 	*rootlessSavePathSyncManager
 	categories map[string]qbt.Category
@@ -39,12 +36,6 @@ func (m *divergentCategorySyncManager) CreateCategory(_ context.Context, _ int, 
 	return nil
 }
 
-// TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath verifies that when
-// the affixed cross-seed category already exists with a save path that differs from the
-// matched torrent's location, qui does NOT delegate the path to qBittorrent via autoTMM
-// (which would relocate/re-download into the category's path). Instead it pins an explicit
-// savepath at the matched torrent's location so existing files are reused. This mirrors
-// hardlink/reflink mode and prevents the "<base>/<category>.cross re-download" bug.
 func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing.T) {
 	t.Parallel()
 
@@ -61,9 +52,6 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 		{Name: "Show.S01E01.mkv", Size: 1024},
 	}
 
-	// Matched torrent is auto-managed and lives at /downloads/tv/Show.S01E01.
-	// ContentPath dir matches SavePath, so the rootless-content-dir override does NOT
-	// fire; the only thing that can disable autoTMM here is the divergence guard.
 	matchedTorrent := qbt.Torrent{
 		Hash:        matchedHash,
 		Name:        matchedName,
@@ -83,8 +71,6 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 		},
 	}
 
-	// The affixed category already exists pointing at the wrong (divergent) folder,
-	// exactly like qBittorrent's implicit "<default>/tv.cross" path or stale config.
 	sync := &divergentCategorySyncManager{
 		rootlessSavePathSyncManager: base,
 		categories: map[string]qbt.Category{
@@ -123,10 +109,7 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 	require.Equal(t, "added", result.Status)
 
 	require.NotNil(t, base.addedOptions)
-	// The category is still applied for isolation...
 	require.Equal(t, "tv.cross", base.addedOptions["category"])
-	// ...but autoTMM is disabled and the save path is pinned to the matched torrent's
-	// location so qBittorrent reuses the existing files instead of re-downloading.
 	require.Equal(t, "false", base.addedOptions["autoTMM"], "autoTMM must be disabled when the cross category save path diverges")
 	require.Equal(t, "/downloads/tv/Show.S01E01", base.addedOptions["savepath"])
 }

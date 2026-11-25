@@ -15,36 +15,25 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// CopyGroups maps instance and hash to a Copy group id, with the record of instances that ended a first read.
 type CopyGroups struct {
-	ids   map[int]map[string]uint64
-	read  map[int]struct{}
-	parts map[int]map[string][]SharedPart
-	// partIDs is one more than the highest id of a Shared part.
+	ids     map[int]map[string]uint64
+	read    map[int]struct{}
+	parts   map[int]map[string][]SharedPart
 	partIDs uint64
-	// sizes holds what the Unique size reads of each torrent of ids and parts,
-	// so that it looks up a hash one time.
-	sizes map[int]map[string]uniqueSizeEntry
+	sizes   map[int]map[string]uniqueSizeEntry
 }
 
-// uniqueSizeEntry is the Copy group and the Shared parts of one torrent.
 type uniqueSizeEntry struct {
 	group             uint64
 	grouped, hasParts bool
 	parts             []SharedPart
 }
 
-// SharedPart is one part of the data of torrents that share some files but
-// not all (GLOSSARY.md). Each torrent that holds the part has it in its list,
-// and the Unique size counts the part one time. The ids of one map are low
-// numbers from 0, so a slice can hold a mark for each part.
 type SharedPart struct {
 	ID   uint64
 	Size int64
 }
 
-// NewCopyGroups keeps ids and parts, so the caller must not change them after
-// the call. parts holds the Shared parts by instance and hash.
 func NewCopyGroups(ids map[int]map[string]uint64, parts map[int]map[string][]SharedPart, read []int) *CopyGroups {
 	record := make(map[int]struct{}, len(read))
 	for _, id := range read {
@@ -62,7 +51,6 @@ func NewCopyGroups(ids map[int]map[string]uint64, parts map[int]map[string][]Sha
 			g.sizes[instanceID] = make(map[string]uniqueSizeEntry, len(byHash))
 		}
 		for hash, list := range byHash {
-			// The Unique size reads only the parts of a torrent that has them.
 			g.sizes[instanceID][hash] = uniqueSizeEntry{hasParts: true, parts: list}
 			for _, part := range list {
 				g.partIDs = max(g.partIDs, part.ID+1)
@@ -88,25 +76,15 @@ func (g *CopyGroups) GroupID(instanceID int, hash string) (uint64, bool) {
 	return id, ok
 }
 
-// uniqueSizes adds up the Unique size (GLOSSARY.md) of the torrents of one
-// instance, and of the torrents among them that seed. A torrent with Shared
-// parts counts each part one time. Torrents with the same content path also
-// count one time, as in TotalSize, so a copy that the last build did not group
-// does not count twice.
 type uniqueSizes struct {
-	entries map[string]uniqueSizeEntry
-	// counted and countedSeeding mark the Shared parts that the totals hold, by id.
+	entries                 map[string]uniqueSizeEntry
 	counted, countedSeeding []bool
-	// onPath holds each torrent with Shared parts whose content path another
-	// torrent has.
-	onPath []partsOnPath
-	// parent joins the Copy groups and the content paths that hold the same data.
-	parent  []int32
-	byGroup map[uint64]int32
-	byPath  map[string]int32
-	members []uniqueSizeMember
-	// total and seeding count the torrents that share their data with no torrent.
-	total, seeding int64
+	onPath                  []partsOnPath
+	parent                  []int32
+	byGroup                 map[uint64]int32
+	byPath                  map[string]int32
+	members                 []uniqueSizeMember
+	total, seeding          int64
 }
 
 type partsOnPath struct {
@@ -120,7 +98,6 @@ type uniqueSizeMember struct {
 	seeding bool
 }
 
-// uniqueSizes is nil until a build that read the instance ends.
 func (g *CopyGroups) uniqueSizes(instanceID int) *uniqueSizes {
 	if !g.hasRead(instanceID) {
 		return nil
@@ -132,9 +109,6 @@ func (g *CopyGroups) uniqueSizes(instanceID int) *uniqueSizes {
 	return u
 }
 
-// add counts one torrent. sharedPath is its mark from findSharedContentPaths.
-// A torrent that does not seed still joins its group and its content path, so
-// it can link two torrents that seed.
 func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
 	if u == nil {
 		return
@@ -169,7 +143,6 @@ func (u *uniqueSizes) add(t *qbt.Torrent, sharedPath, seeding bool) {
 	u.members = append(u.members, uniqueSizeMember{set: set, size: t.Size, seeding: seeding})
 }
 
-// count adds each part that the totals do not hold yet.
 func (u *uniqueSizes) count(parts []SharedPart, seeding bool) {
 	for _, part := range parts {
 		u.total += countOnce(u.counted, part)
@@ -179,7 +152,6 @@ func (u *uniqueSizes) count(parts []SharedPart, seeding bool) {
 	}
 }
 
-// countOnce returns the size of part the first time that it sees the part.
 func countOnce(counted []bool, part SharedPart) int64 {
 	if counted[part.ID] {
 		return 0
@@ -206,8 +178,6 @@ func (u *uniqueSizes) root(set int32) int32 {
 	return set
 }
 
-// totals counts each joined set at the size of its largest torrent: a copy can
-// skip files.
 func (u *uniqueSizes) totals() (total, seeding int64) {
 	all := make([]int64, len(u.parent))
 	seeds := make([]int64, len(u.parent))
@@ -218,18 +188,12 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 			seeds[set] = max(seeds[set], m.size)
 		}
 	}
-	// A torrent on the content path of a torrent with Shared parts has no
-	// parts of its own, but it holds the parts of that path. A torrent that
-	// seeds and is as large as those parts seeds each of them.
 	paths := u.partsOnPaths()
 	for set, parts := range paths {
 		if seeds[set] >= partsSize(parts, nil) {
 			u.count(parts, true)
 		}
 	}
-	// Only the bytes of such a torrent above the parts count. A smaller torrent
-	// that seeds counts above the parts of its path that seed, because its
-	// file list is not known.
 	for set, parts := range paths {
 		all[set] -= partsSize(parts, nil)
 		seeds[set] -= partsSize(parts, u.countedSeeding)
@@ -242,9 +206,6 @@ func (u *uniqueSizes) totals() (total, seeding int64) {
 	return total, seeding
 }
 
-// partsOnPaths returns the Shared parts of each content path set that also
-// holds a torrent without Shared parts. Only such a torrent gives its content
-// path a set.
 func (u *uniqueSizes) partsOnPaths() map[int32][]SharedPart {
 	var paths map[int32][]SharedPart
 	for _, holder := range u.onPath {
@@ -265,7 +226,6 @@ func (u *uniqueSizes) partsOnPaths() map[int32][]SharedPart {
 	return paths
 }
 
-// partsSize adds the sizes of parts. With marks, it adds only the marked parts.
 func partsSize(parts []SharedPart, marks []bool) int64 {
 	var size int64
 	for _, part := range parts {
@@ -277,8 +237,7 @@ func partsSize(parts []SharedPart, marks []bool) int64 {
 }
 
 type CopyGroupRow struct {
-	ID string `json:"id"`
-	// FirstSorted is set on the Group representative only.
+	ID          string           `json:"id"`
 	FirstSorted *CopyGroupMember `json:"first_sorted,omitempty"`
 }
 
@@ -287,7 +246,6 @@ type CopyGroupMember struct {
 	Hash       string `json:"hash"`
 }
 
-// CompareRepresentative sorts the Group representative of a Copy group first.
 func CompareRepresentative(aInstanceID int, a *qbt.Torrent, bInstanceID int, b *qbt.Torrent) int {
 	return cmp.Or(
 		cmp.Compare(a.AddedOn, b.AddedOn),
@@ -296,7 +254,6 @@ func CompareRepresentative(aInstanceID int, a *qbt.Torrent, bInstanceID int, b *
 	)
 }
 
-// SetCopyGroups wakes the streams of each instance whose entries or ready state changed.
 func (sm *SyncManager) SetCopyGroups(next *CopyGroups) {
 	prev := sm.copyGroups.Swap(next)
 	for _, instanceID := range changedCopyGroupInstances(prev, next) {
@@ -308,8 +265,6 @@ func (sm *SyncManager) CopyGroups() *CopyGroups {
 	return sm.copyGroups.Load()
 }
 
-// LastSuccessfulSync reads the pool offline, so it never waits on a login. It
-// is zero for an instance with no client or no successful sync.
 func (sm *SyncManager) LastSuccessfulSync(ctx context.Context, instanceID int) time.Time {
 	client, err := sm.clientPool.GetClientOffline(ctx, instanceID)
 	if err != nil {
@@ -445,7 +400,6 @@ type copyGroupPageRow struct {
 	group *CopyGroupRow
 }
 
-// A limit <= 0 means no limit.
 func (l *copyGroupLayout) page(offset, limit int, member func(i int) CopyGroupMember) ([]copyGroupPageRow, bool) {
 	start := min(max(offset, 0), len(l.starts))
 	stop := len(l.starts)
@@ -482,7 +436,6 @@ func collapseInstanceTorrents(rows []*qbt.Torrent, instanceID int, groups *CopyG
 	})
 }
 
-// The rows are built for this request, so their views take the group data in place.
 func collapseCrossInstanceTorrents(rows []CrossInstanceTorrentView, groups *CopyGroups, offset, limit int) ([]CrossInstanceTorrentView, bool) {
 	layout := collapseCopyGroups(len(rows),
 		func(i int) (uint64, bool) { return groups.GroupID(rows[i].InstanceID, rows[i].Hash) },

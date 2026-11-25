@@ -18,7 +18,6 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// Delete mode constants
 const (
 	DeleteModeNone                        = "none"
 	DeleteModeKeepFiles                   = "delete"
@@ -27,39 +26,27 @@ const (
 	DeleteModeWithFilesIncludeCrossSeeds  = "deleteWithFilesIncludeCrossSeeds"
 )
 
-// Tag mode constants
 const (
-	TagModeFull   = "full"   // Add to matches, remove from non-matches
-	TagModeAdd    = "add"    // Only add to matches
-	TagModeRemove = "remove" // Only remove from matches
+	TagModeFull   = "full"
+	TagModeAdd    = "add"
+	TagModeRemove = "remove"
 )
 
-// FreeSpaceSourceType defines the source for free space checks in workflows.
 type FreeSpaceSourceType string
 
 const (
-	// FreeSpaceSourceQBittorrent uses qBittorrent's reported free space (default download dir).
 	FreeSpaceSourceQBittorrent FreeSpaceSourceType = "qbittorrent"
-	// FreeSpaceSourcePath reads free space at a path through the instance's
-	// filesystem backend, local or SSH.
-	FreeSpaceSourcePath FreeSpaceSourceType = "path"
-	// FreeSpaceSourceAllowance is an allowance that the user sets, minus the
-	// size of the files under a path. It serves a shared host, where the free
-	// space of the disk is not the space that the user may fill.
-	FreeSpaceSourceAllowance FreeSpaceSourceType = "allowance"
-	// FreeSpaceSourceQbitPath reads free space at a path on the qBittorrent host.
-	// It needs Web API 2.15.2 and no filesystem access.
-	FreeSpaceSourceQbitPath FreeSpaceSourceType = "qbitPath"
+	FreeSpaceSourcePath        FreeSpaceSourceType = "path"
+	FreeSpaceSourceAllowance   FreeSpaceSourceType = "allowance"
+	FreeSpaceSourceQbitPath    FreeSpaceSourceType = "qbitPath"
 )
 
-// FreeSpaceSource configures how FREE_SPACE conditions obtain available disk space.
 type FreeSpaceSource struct {
 	Type           FreeSpaceSourceType `json:"type" doc:"'qbittorrent' uses the free space that qBittorrent reports. 'path' reads the free space at 'path'. 'qbitPath' asks qBittorrent for the free space at 'path' on its own host. 'allowance' is 'allowanceBytes' minus the size of the files under 'path'."`
 	Path           string              `json:"path,omitempty" doc:"With type 'path' or 'qbitPath': the path to read. With type 'allowance': the folder to measure. Types 'path' and 'allowance' need filesystem access on the instance. Type 'qbitPath' needs qBittorrent with Web API 2.15.2 or later."`
 	AllowanceBytes int64               `json:"allowanceBytes,omitzero" doc:"With type 'allowance': the space that the user may fill, in bytes."`
 }
 
-// ScoreRuleType defines the type of score rule.
 type ScoreRuleType string
 
 const (
@@ -81,27 +68,22 @@ const (
 	SortingTypeScore  SortingType = "score"
 )
 
-// FieldMultiplierScoreRule applies a multiplier to a numeric field.
 type FieldMultiplierScoreRule struct {
 	Field      ConditionField `json:"field" doc:"The condition field whose value is multiplied."`
 	Multiplier float64        `json:"multiplier" doc:"The number to multiply the field value by. The result is added to the score."`
 }
 
-// ConditionalScoreRule adds a flat score if a condition is met.
 type ConditionalScoreRule struct {
 	Condition *RuleCondition `json:"condition" doc:"When the torrent matches this condition, score is added."`
 	Score     float64        `json:"score" doc:"The score to add."`
 }
 
-// ScoreRule defines a single weighted rule for scoring torrents.
 type ScoreRule struct {
 	Type            ScoreRuleType             `json:"type" doc:"The kind of rule."`
 	FieldMultiplier *FieldMultiplierScoreRule `json:"fieldMultiplier,omitempty" doc:"With type 'field_multiplier': the field and multiplier."`
 	Conditional     *ConditionalScoreRule     `json:"conditional,omitempty" doc:"With type 'conditional': the condition and score."`
 }
 
-// SortingConfig defines how torrents are sorted before processing.
-// This is the top-level structure stored in the `sorting_config` JSON column.
 type SortingConfig struct {
 	SchemaVersion string         `json:"schemaVersion" doc:"Must be '1'."`
 	Type          SortingType    `json:"type" doc:"'simple' sorts by one field. 'score' sorts by the sum of 'scoreRules'."`
@@ -173,13 +155,13 @@ type Automation struct {
 	Name            string            `json:"name"`
 	TrackerPattern  string            `json:"trackerPattern"`
 	Conditions      *ActionConditions `json:"conditions"`
-	FreeSpaceSource *FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
-	SortingConfig   *SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default sorting (oldest first)
+	FreeSpaceSource *FreeSpaceSource  `json:"freeSpaceSource,omitempty"`
+	SortingConfig   *SortingConfig    `json:"sortingConfig,omitempty"`
 	Enabled         bool              `json:"enabled"`
 	DryRun          bool              `json:"dryRun"`
 	Notify          bool              `json:"notify"`
 	SortOrder       int               `json:"sortOrder"`
-	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
+	IntervalSeconds *int              `json:"intervalSeconds,omitempty"`
 	CreatedAt       time.Time         `json:"createdAt"`
 	UpdatedAt       time.Time         `json:"updatedAt"`
 }
@@ -551,15 +533,12 @@ func (s *AutomationStore) Reorder(ctx context.Context, instanceID int, orderedID
 	return tx.Commit()
 }
 
-// AutomationReference represents a minimal automation reference for cascade delete warnings.
 type AutomationReference struct {
 	ID         int    `json:"id"`
 	InstanceID int    `json:"instanceId"`
 	Name       string `json:"name"`
 }
 
-// FindByExternalProgramID returns automations that reference the given external program ID.
-// Returns all automations referencing the program, regardless of whether the action is enabled.
 func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID int) ([]*AutomationReference, error) {
 	dialect := dbinterface.DialectOf(s.db)
 	programIDArg := any(programID)
@@ -584,9 +563,6 @@ func (s *AutomationStore) FindByExternalProgramID(ctx context.Context, programID
 	return refs, rows.Err()
 }
 
-// ClearExternalProgramAction removes the external program action from all automations
-// that reference the given program ID. This is used for cascade delete.
-// Clears references regardless of whether the action is enabled or disabled.
 func (s *AutomationStore) ClearExternalProgramAction(ctx context.Context, programID int) (int64, error) {
 	dialect := dbinterface.DialectOf(s.db)
 	programIDArg := any(programID)
@@ -640,11 +616,9 @@ func boolToInt(v bool) int {
 	return 0
 }
 
-// ConditionField represents a field from the qBittorrent Torrent struct that can be filtered on.
 type ConditionField string
 
 const (
-	// String fields
 	FieldName          ConditionField = "NAME"
 	FieldHash          ConditionField = "HASH"
 	FieldInfohashV1    ConditionField = "INFOHASH_V1"
@@ -660,7 +634,6 @@ const (
 	FieldContentType   ConditionField = "CONTENT_TYPE"
 	FieldEffectiveName ConditionField = "EFFECTIVE_NAME"
 
-	// RLS-derived specifiers (from torrent name parsing)
 	FieldRlsSource      ConditionField = "RLS_SOURCE"
 	FieldRlsResolution  ConditionField = "RLS_RESOLUTION"
 	FieldRlsCodec       ConditionField = "RLS_CODEC"
@@ -675,7 +648,6 @@ const (
 	FieldTrackerMessage ConditionField = "TRACKER_MESSAGE"
 	FieldComment        ConditionField = "COMMENT"
 
-	// Numeric fields (bytes)
 	FieldSize              ConditionField = "SIZE"
 	FieldTotalSize         ConditionField = "TOTAL_SIZE"
 	FieldCompleted         ConditionField = "COMPLETED"
@@ -686,7 +658,6 @@ const (
 	FieldAmountLeft        ConditionField = "AMOUNT_LEFT"
 	FieldFreeSpace         ConditionField = "FREE_SPACE"
 
-	// Time fields (timestamp-backed ages + duration seconds)
 	FieldAddedOn                  ConditionField = "ADDED_ON"
 	FieldCompletionOn             ConditionField = "COMPLETION_ON"
 	FieldLastActivity             ConditionField = "LAST_ACTIVITY"
@@ -700,12 +671,10 @@ const (
 	FieldSeedingTimeLimit         ConditionField = "SEEDING_TIME_LIMIT"
 	FieldInactiveSeedingTimeLimit ConditionField = "INACTIVE_SEEDING_TIME_LIMIT"
 
-	// Legacy age aliases (computed as nowUnix - timestamp)
 	FieldAddedOnAge      ConditionField = "ADDED_ON_AGE"
 	FieldCompletionOnAge ConditionField = "COMPLETION_ON_AGE"
 	FieldLastActivityAge ConditionField = "LAST_ACTIVITY_AGE"
 
-	// Numeric fields (float64)
 	FieldRatio            ConditionField = "RATIO"
 	FieldRatioLimit       ConditionField = "RATIO_LIMIT"
 	FieldMaxRatio         ConditionField = "MAX_RATIO"
@@ -714,13 +683,11 @@ const (
 	FieldAvailability     ConditionField = "AVAILABILITY"
 	FieldPopularity       ConditionField = "POPULARITY"
 
-	// Numeric fields (speeds)
 	FieldDlSpeed ConditionField = "DL_SPEED"
 	FieldUpSpeed ConditionField = "UP_SPEED"
 	FieldDlLimit ConditionField = "DL_LIMIT"
 	FieldUpLimit ConditionField = "UP_LIMIT"
 
-	// Numeric fields (counts/misc)
 	FieldNumSeeds      ConditionField = "NUM_SEEDS"
 	FieldNumLeechs     ConditionField = "NUM_LEECHS"
 	FieldNumComplete   ConditionField = "NUM_COMPLETE"
@@ -729,7 +696,6 @@ const (
 	FieldPriority      ConditionField = "PRIORITY"
 	FieldGroupSize     ConditionField = "GROUP_SIZE"
 
-	// Boolean fields
 	FieldPrivate                ConditionField = "PRIVATE"
 	FieldAutoManaged            ConditionField = "AUTO_MANAGED"
 	FieldFirstLastPiecePrio     ConditionField = "FIRST_LAST_PIECE_PRIO"
@@ -746,11 +712,9 @@ const (
 	FieldSeedingOnSameInstance  ConditionField = "SEEDING_ON_SAME_INSTANCE"
 	FieldCrossSeedTags          ConditionField = "CROSS_SEED_TAGS"
 
-	// Season pack fields
 	FieldSeasonPackStatus            ConditionField = "SEASON_PACK_STATUS"
 	FieldSeasonPackStatusAnyInstance ConditionField = "SEASON_PACK_STATUS_ANY_INSTANCE"
 
-	// System time fields
 	FieldSystemHour      ConditionField = "SYSTEM_HOUR"
 	FieldSystemMinute    ConditionField = "SYSTEM_MINUTE"
 	FieldSystemDayOfWeek ConditionField = "SYSTEM_DAY_OF_WEEK"
@@ -758,17 +722,9 @@ const (
 	FieldSystemMonth     ConditionField = "SYSTEM_MONTH"
 	FieldSystemYear      ConditionField = "SYSTEM_YEAR"
 
-	// Enum-like fields
 	FieldHardlinkScope      ConditionField = "HARDLINK_SCOPE"
 	FieldHardlinkScopeCross ConditionField = "HARDLINK_SCOPE_CROSS"
 )
-
-// WrapsBetween reports whether a BETWEEN range on this field wraps when the
-// minimum is greater than the maximum. Clock fields cycle, so 20 to 6 on the
-// hour means the night that crosses midnight. A wrapped range stops before its
-// maximum, see matchesBetween. SYSTEM_DAY and SYSTEM_YEAR do not wrap: a month
-// boundary depends on the month length, and years do not cycle.
-//
 
 func (f ConditionField) WrapsBetween() bool {
 	switch f {
@@ -779,35 +735,26 @@ func (f ConditionField) WrapsBetween() bool {
 	}
 }
 
-// Hardlink scope values (wire format - stable API values).
-// The stored per-torrent scope is one of none/torrents_only/outside_qbittorrent/both,
-// a partition of the two independent facts "linked inside the torrent set" and
-// "linked outside it". As condition values, outside_qbittorrent also matches "both"
-// (its historical meaning), and inside_qbittorrent matches torrents_only or "both".
 const (
-	HardlinkScopeNone               = "none"                // No file has link count > 1
-	HardlinkScopeTorrentsOnly       = "torrents_only"       // Links exist only between torrents in the set
-	HardlinkScopeOutsideQBitTorrent = "outside_qbittorrent" // Links outside the torrent set (stored: outside only; condition: also matches "both")
-	HardlinkScopeBoth               = "both"                // Links both inside and outside the torrent set
-	HardlinkScopeInsideQBitTorrent  = "inside_qbittorrent"  // Condition-only: linked to other torrents, even if also outside (#1177)
+	HardlinkScopeNone               = "none"
+	HardlinkScopeTorrentsOnly       = "torrents_only"
+	HardlinkScopeOutsideQBitTorrent = "outside_qbittorrent"
+	HardlinkScopeBoth               = "both"
+	HardlinkScopeInsideQBitTorrent  = "inside_qbittorrent"
 )
 
-// Season pack status values. Empty when the name parses without exactly one season.
 const (
-	SeasonPackStatusPack     = "pack"     // A whole single season
-	SeasonPackStatusPacked   = "packed"   // An episode whose season pack of the same release is in the client
-	SeasonPackStatusUnpacked = "unpacked" // An episode with no such pack
+	SeasonPackStatusPack     = "pack"
+	SeasonPackStatusPacked   = "packed"
+	SeasonPackStatusUnpacked = "unpacked"
 )
 
-// ConditionOperator represents operators for comparing field values.
 type ConditionOperator string
 
 const (
-	// Logical operators (for groups)
 	OperatorAnd ConditionOperator = "AND"
 	OperatorOr  ConditionOperator = "OR"
 
-	// Comparison operators
 	OperatorEqual              ConditionOperator = "EQUAL"
 	OperatorNotEqual           ConditionOperator = "NOT_EQUAL"
 	OperatorContains           ConditionOperator = "CONTAINS"
@@ -819,14 +766,12 @@ const (
 	OperatorLessThan           ConditionOperator = "LESS_THAN"
 	OperatorLessThanOrEqual    ConditionOperator = "LESS_THAN_OR_EQUAL"
 	OperatorBetween            ConditionOperator = "BETWEEN"
-	OperatorMatches            ConditionOperator = "MATCHES" // regex
+	OperatorMatches            ConditionOperator = "MATCHES"
 
-	// Cross-category lookup operators (NAME field only)
-	OperatorExistsIn   ConditionOperator = "EXISTS_IN"   // exact name match in target category
-	OperatorContainsIn ConditionOperator = "CONTAINS_IN" // partial name match in target category
+	OperatorExistsIn   ConditionOperator = "EXISTS_IN"
+	OperatorContainsIn ConditionOperator = "CONTAINS_IN"
 )
 
-// RuleCondition represents a condition or group of conditions for filtering torrents.
 type RuleCondition struct {
 	Field      ConditionField    `json:"field,omitempty" doc:"The condition field to test. Leave it out on an 'AND' or 'OR' group."`
 	Operator   ConditionOperator `json:"operator" doc:"An operator that the field allows, or 'AND' or 'OR' for a group."`
@@ -837,15 +782,13 @@ type RuleCondition struct {
 	Regex      bool              `json:"regex,omitempty" doc:"When 'true', 'value' is a regular expression. Applies to string fields. 'MATCHES' always uses a regular expression."`
 	Negate     bool              `json:"negate,omitempty" doc:"When 'true', the condition matches when the test is false."`
 	Conditions []*RuleCondition  `json:"conditions,omitempty" doc:"For an 'AND' or 'OR' group: the child conditions."`
-	Compiled   *regexp.Regexp    `json:"-"` // compiled regex, not serialized
+	Compiled   *regexp.Regexp    `json:"-"`
 }
 
-// IsGroup returns true if this condition is an AND/OR group containing child conditions.
 func (c *RuleCondition) IsGroup() bool {
 	return len(c.Conditions) > 0 && (c.Operator == OperatorAnd || c.Operator == OperatorOr)
 }
 
-// CompileRegex compiles the regex pattern if needed. Safe to call multiple times.
 func (c *RuleCondition) CompileRegex() error {
 	if c.Compiled != nil {
 		return nil
@@ -858,8 +801,6 @@ func (c *RuleCondition) CompileRegex() error {
 	return err
 }
 
-// ActionConditions holds per-action conditions with action configuration.
-// This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
 	SchemaVersion      string                    `json:"schemaVersion" doc:"Must be '1'."`
 	Grouping           *GroupingConfig           `json:"grouping,omitempty" doc:"Group definitions for group-aware actions and conditions."`
@@ -870,7 +811,7 @@ type ActionConditions struct {
 	Recheck            *RecheckAction            `json:"recheck,omitempty" doc:"Force a recheck of matching torrents."`
 	Reannounce         *ReannounceAction         `json:"reannounce,omitempty" doc:"Force a reannounce of matching torrents."`
 	Delete             *DeleteAction             `json:"delete,omitempty" doc:"Delete matching torrents. A rule with 'delete' has no other action."`
-	Tag                *TagAction                `json:"tag,omitempty" doc:"-"` // Legacy single-tag action (backward compatible alias for first entry in Tags)
+	Tag                *TagAction                `json:"tag,omitempty" doc:"-"`
 	Tags               []*TagAction              `json:"tags,omitempty" doc:"Tag actions. Each entry manages its own set of tags."`
 	Category           *CategoryAction           `json:"category,omitempty" doc:"Set the category of matching torrents."`
 	Move               *MoveAction               `json:"move,omitempty" doc:"Move matching torrents to a different save path."`
@@ -880,7 +821,6 @@ type ActionConditions struct {
 	TransferToInstance *TransferToInstanceAction `json:"transferToInstance,omitempty" doc:"Move matching torrents with their files to a different qBittorrent instance. Needs qBittorrent 5.1 or newer on both instances."`
 }
 
-// SpeedLimitAction configures speed limit application with optional conditions.
 type SpeedLimitAction struct {
 	Enabled     bool           `json:"enabled" doc:"Whether the action runs."`
 	UploadKiB   *int64         `json:"uploadKiB,omitempty" doc:"Upload limit in KiB/s. '0' removes the limit. Leave it out to keep the current limit."`
@@ -888,7 +828,6 @@ type SpeedLimitAction struct {
 	Condition   *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// ShareLimitsAction configures share limit (ratio/seeding time) application with optional conditions.
 type ShareLimitsAction struct {
 	Enabled            bool           `json:"enabled" doc:"Whether the action runs."`
 	RatioLimit         *float64       `json:"ratioLimit,omitempty" doc:"Ratio limit. '-2' uses the global setting, '-1' means no limit. Leave it out to keep the current limit."`
@@ -898,37 +837,31 @@ type ShareLimitsAction struct {
 	Condition          *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// PauseAction configures pause action with conditions.
 type PauseAction struct {
 	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
 	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// ResumeAction configures resume action with conditions.
 type ResumeAction struct {
 	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
 	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// RecheckAction configures force recheck action with optional conditions.
 type RecheckAction struct {
 	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
 	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// ReannounceAction configures force reannounce action with optional conditions.
 type ReannounceAction struct {
 	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
 	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// AutoManagementAction configures automatic torrent management (ATM) with optional conditions.
 type AutoManagementAction struct {
 	Enabled   bool           `json:"enabled" doc:"'true' turns automatic torrent management on, 'false' turns it off."`
 	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none. This action runs whenever it is present, also with 'enabled' set to 'false'."`
 }
 
-// DeleteAction configures deletion with mode and conditions.
 type DeleteAction struct {
 	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
 	Mode             string         `json:"mode" doc:"What to delete. Default: 'delete'. When 'condition' uses 'FREE_SPACE', the mode must not be 'delete', because a delete that keeps the files frees no disk space."`
@@ -938,7 +871,6 @@ type DeleteAction struct {
 	Condition        *RuleCondition `json:"condition,omitempty" doc:"Required when 'enabled' is 'true'. The action deletes only torrents that match this condition."`
 }
 
-// TagAction configures tagging with smart add/remove logic.
 type TagAction struct {
 	Enabled           bool           `json:"enabled" doc:"Whether the action runs."`
 	Tags              []string       `json:"tags" doc:"The tags that this action manages. With 'useTrackerAsTag', qui uses them when a torrent has no tracker domain."`
@@ -950,14 +882,11 @@ type TagAction struct {
 	Condition         *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// CategoryAction configures category assignment with optional conditions.
 type CategoryAction struct {
-	Enabled           bool   `json:"enabled" doc:"Whether the action runs."`
-	Category          string `json:"category" doc:"The category to set. An empty string removes the category."`
-	IncludeCrossSeeds bool   `json:"includeCrossSeeds,omitempty" doc:"Also move the cross-seeds of each matching torrent to the category."`
-	GroupID           string `json:"groupId,omitempty" doc:"Change the category of each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
-	// BlockIfCrossSeedInCategories prevents category changes when any other cross-seed torrent
-	// (same ContentPath + SavePath) is found in one of the listed categories.
+	Enabled                      bool           `json:"enabled" doc:"Whether the action runs."`
+	Category                     string         `json:"category" doc:"The category to set. An empty string removes the category."`
+	IncludeCrossSeeds            bool           `json:"includeCrossSeeds,omitempty" doc:"Also move the cross-seeds of each matching torrent to the category."`
+	GroupID                      string         `json:"groupId,omitempty" doc:"Change the category of each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
 	BlockIfCrossSeedInCategories []string       `json:"blockIfCrossSeedInCategories,omitempty" doc:"Skip a torrent when one of its cross-seeds is in one of these categories."`
 	Condition                    *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
@@ -971,14 +900,11 @@ type MoveAction struct {
 	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// GroupingConfig defines how torrents can be grouped for group-aware actions and conditions.
-// Group definitions are per-rule (stored inside the rule's conditions JSON).
 type GroupingConfig struct {
 	DefaultGroupID string            `json:"defaultGroupId,omitempty" doc:"The group that 'GROUP_SIZE' and 'IS_GROUPED' use when the condition has no 'groupId'. A built-in group ID or the id of a group in 'groups'."`
 	Groups         []GroupDefinition `json:"groups,omitempty" doc:"Custom group definitions."`
 }
 
-// GroupDefinition defines a single grouping strategy.
 type GroupDefinition struct {
 	ID                    string   `json:"id" doc:"The group ID. Conditions and actions refer to the group by this ID."`
 	Keys                  []string `json:"keys" doc:"Torrents with equal values for all these keys are in the same group."`
@@ -986,14 +912,12 @@ type GroupDefinition struct {
 	MinFileOverlapPercent int      `json:"minFileOverlapPercent,omitempty" doc:"With 'verify_overlap': the percentage of files that must overlap. Default '90'."`
 }
 
-// ExternalProgramAction configures external program execution with optional conditions.
 type ExternalProgramAction struct {
 	Enabled   bool           `json:"enabled" doc:"Whether the action runs."`
-	ProgramID int            `json:"programId" doc:"The ID of the external program in this qui. An export keeps the ID of the qui that made it."` // FK to external_programs table
+	ProgramID int            `json:"programId" doc:"The ID of the external program in this qui. An export keeps the ID of the qui that made it."`
 	Condition *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// Validate checks that the ExternalProgramAction has valid configuration.
 func (a *ExternalProgramAction) Validate() error {
 	if a == nil {
 		return nil
@@ -1004,7 +928,6 @@ func (a *ExternalProgramAction) Validate() error {
 	return nil
 }
 
-// ExportToInstanceAction configures exporting a torrent to a different qBittorrent instance.
 type ExportToInstanceAction struct {
 	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
 	TargetInstanceID int            `json:"targetInstanceId" doc:"The ID of the target instance in this qui. The ID is in the URL of the instance page, '/instances/ID'."`
@@ -1017,8 +940,6 @@ type ExportToInstanceAction struct {
 	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// TransferToInstanceAction starts a Transfer of a torrent, with the torrents
-// that share its files, to a different qBittorrent instance.
 type TransferToInstanceAction struct {
 	Enabled          bool           `json:"enabled" doc:"Whether the action runs."`
 	TargetInstanceID int            `json:"targetInstanceId" doc:"The ID of the target instance in this qui. The ID is in the URL of the instance page, '/instances/ID'."`
@@ -1031,7 +952,6 @@ type TransferToInstanceAction struct {
 	Condition        *RuleCondition `json:"condition,omitempty" doc:"Optional. When set, the action applies only to torrents that also match this condition. All running actions of a rule must have the same condition, or all must have none."`
 }
 
-// SkipCheckingEnabled returns the effective skip_checking value (defaults true).
 func (a *ExportToInstanceAction) SkipCheckingEnabled() bool {
 	if a.SkipChecking == nil {
 		return true
@@ -1039,7 +959,6 @@ func (a *ExportToInstanceAction) SkipCheckingEnabled() bool {
 	return *a.SkipChecking
 }
 
-// Validate checks that the ExportToInstanceAction has valid configuration.
 func (a *ExportToInstanceAction) Validate() error {
 	if a == nil {
 		return nil
@@ -1050,7 +969,6 @@ func (a *ExportToInstanceAction) Validate() error {
 	return nil
 }
 
-// IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	for range ac.Conditions() {
 		return false
@@ -1058,16 +976,12 @@ func (ac *ActionConditions) IsEmpty() bool {
 	return true
 }
 
-// ActionCondition is one configured action's condition, as ActionConditions.Conditions yields it.
 type ActionCondition struct {
-	Path      string // JSON pointer to the condition, for example "/conditions/move/condition"
+	Path      string
 	Enabled   bool
 	Condition *RuleCondition
 }
 
-// Conditions yields every configured action with its condition, which can be nil. Each caller
-// decides whether a disabled action counts. An AutoManagement action counts as enabled whenever
-// it exists, because its Enabled field is the ATM value that it sets.
 func (ac *ActionConditions) Conditions() iter.Seq[ActionCondition] {
 	return func(yield func(ActionCondition) bool) {
 		if ac == nil {
@@ -1128,7 +1042,6 @@ func (ac *ActionConditions) Conditions() iter.Seq[ActionCondition] {
 	}
 }
 
-// Normalize normalizes legacy/new action fields for in-memory use.
 func (ac *ActionConditions) Normalize() {
 	if ac == nil {
 		return
@@ -1152,7 +1065,6 @@ func (ac *ActionConditions) Normalize() {
 	}
 }
 
-// TagActions returns all configured tag actions (multi-tag aware).
 func (ac *ActionConditions) TagActions() []*TagAction {
 	if ac == nil {
 		return nil

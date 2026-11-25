@@ -29,16 +29,9 @@ import (
 )
 
 const (
-	// Bounds each issuer candidate, so a provider host that drops packets cannot
-	// hold a login request for the 30s dial timeout.
-	oidcDiscoveryTimeout = 5 * time.Second
-	// A failed discovery answers every request for this long, so reloading the
-	// login page does not send a request to a provider that is down each time.
+	oidcDiscoveryTimeout  = 5 * time.Second
 	oidcDiscoveryCooldown = 10 * time.Second
-	// Stays under the 1s backlog timeout of the /auth throttle. A request that
-	// waited for the whole attempt would hold the group's single slot, and
-	// password logins would fail with 429 while the provider hangs.
-	oidcDiscoveryWait = 500 * time.Millisecond
+	oidcDiscoveryWait     = 500 * time.Millisecond
 )
 
 var (
@@ -57,17 +50,12 @@ type OIDCHandler struct {
 	discovery      *oidcDiscovery
 }
 
-// oidcClient holds what qui learns from provider discovery.
 type oidcClient struct {
 	provider    *oidc.Provider
 	verifier    *oidc.IDTokenVerifier
 	oauthConfig *oauth2.Config
 }
 
-// oidcDiscovery runs provider discovery when a request needs it, until one
-// attempt succeeds. Concurrent callers share one attempt, and a failed attempt
-// answers callers until oidcDiscoveryCooldown passes. qui then starts with the
-// provider down, and the first login after the provider comes back succeeds.
 type oidcDiscovery struct {
 	discover func(context.Context) (*oidcClient, error)
 
@@ -83,7 +71,6 @@ type oidcDiscoveryAttempt struct {
 	finished time.Time
 }
 
-// newOIDCDiscovery starts the first attempt at once, so the first login does not wait for it.
 func newOIDCDiscovery(ctx context.Context, discover func(context.Context) (*oidcClient, error)) *oidcDiscovery {
 	d := &oidcDiscovery{discover: discover}
 	d.attempt = d.startAttempt(ctx)
@@ -114,7 +101,6 @@ func (d *oidcDiscovery) get(ctx context.Context) (*oidcClient, error) {
 
 func (d *oidcDiscovery) startAttempt(ctx context.Context) *oidcDiscoveryAttempt {
 	attempt := &oidcDiscoveryAttempt{done: make(chan struct{})}
-	// Detached: a caller that gives up must not cancel the attempt that other callers wait on.
 	ctx = context.WithoutCancel(ctx)
 	go func() {
 		client, err := d.discover(ctx)
@@ -138,7 +124,6 @@ func (a *oidcDiscoveryAttempt) cooledDown() bool {
 	}
 }
 
-// OIDCClaims represents the claims returned from the OIDC provider
 type OIDCClaims struct {
 	Email             string   `json:"email"`
 	EmailVerified     oidcBool `json:"email_verified"`
@@ -150,7 +135,6 @@ type OIDCClaims struct {
 	Picture           string   `json:"picture"`
 }
 
-// oidcBool decodes a boolean claim that some providers send as the string "true".
 type oidcBool bool
 
 func (b *oidcBool) UnmarshalJSON(data []byte) error {
@@ -158,7 +142,6 @@ func (b *oidcBool) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// VerifiedEmail returns the email only when the provider marks it as verified.
 func (c OIDCClaims) VerifiedEmail() string {
 	if !c.EmailVerified {
 		return ""
@@ -166,7 +149,6 @@ func (c OIDCClaims) VerifiedEmail() string {
 	return c.Email
 }
 
-// OIDCConfigResponse represents the OIDC configuration response
 type OIDCConfigResponse struct {
 	Enabled             bool   `json:"enabled"`
 	AuthorizationURL    string `json:"authorizationUrl"`
@@ -211,7 +193,6 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 	return handler, nil
 }
 
-// client waits at most oidcDiscoveryWait. A slower attempt keeps running, and a later request gets its result.
 func (h *OIDCHandler) client(ctx context.Context) (*oidcClient, error) {
 	ctx, cancel := context.WithTimeout(ctx, oidcDiscoveryWait)
 	defer cancel()
@@ -269,7 +250,6 @@ func (h *OIDCHandler) discoverClient(ctx context.Context) (*oidcClient, error) {
 }
 
 func (h *OIDCHandler) Routes(r chi.Router) {
-	// Re-apply throttling because chi.Route creates a fresh middleware stack.
 	r.Use(middleware.ThrottleBacklog(1, 1, time.Second))
 	r.Get("/config", h.getConfig)
 	r.Get("/callback", h.handleCallback)
@@ -286,7 +266,6 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 	var lastErr error
 	for _, candidate := range candidates {
 		candidateCtx, cancel := context.WithTimeout(ctx, oidcDiscoveryTimeout)
-		// go-oidc keeps only the HTTP client from this context, so the provider stays usable after cancel.
 		provider, err := oidcNewProvider(candidateCtx, candidate)
 		cancel()
 		if err == nil {
@@ -301,14 +280,11 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 }
 
 func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
-	// Clear any prior authorization state before generating a new config response.
 	h.sessionManager.Remove(r.Context(), "oidc_state")
 	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
 
-	// Get the config first
 	config, state, pkceVerifier, err := h.GetConfigResponse(r.Context())
 	if errors.Is(err, errOIDCProviderUnavailable) {
-		// The login page reads disableBuiltInLogin from this body to keep the password form hidden.
 		RespondJSON(w, http.StatusServiceUnavailable, oidcUnavailableResponse{
 			Error:               errOIDCProviderUnavailable.Error(),
 			DisableBuiltInLogin: h.config.Live().OIDCDisableBuiltInLogin,
@@ -321,8 +297,6 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store state and PKCE verifier in session for later validation
-	// This is needed even if user is already authenticated, in case they're re-authenticating
 	h.sessionManager.Put(r.Context(), "oidc_state", state)
 	if pkceVerifier != "" {
 		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", pkceVerifier)
@@ -334,15 +308,12 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	log.Debug().Msg("handling OIDC callback")
 
-	// Runs before the one-time state and PKCE verifier are consumed, so after a qui
-	// restart the user can reload this callback once discovery succeeds.
 	client, err := h.client(r.Context())
 	if err != nil {
 		RespondError(w, http.StatusServiceUnavailable, errOIDCProviderUnavailable.Error())
 		return
 	}
 
-	// Get and validate state parameter
 	expectedState := h.sessionManager.GetString(r.Context(), "oidc_state")
 	if expectedState == "" {
 		log.Error().Msg("no state found in session")
@@ -360,10 +331,8 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear the state from session after successful validation
 	h.sessionManager.Remove(r.Context(), "oidc_state")
 
-	// Retrieve and clear the PKCE verifier stored during the authorization request
 	pkceVerifier := h.sessionManager.GetString(r.Context(), "oidc_pkce_verifier")
 	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
 
@@ -407,14 +376,11 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try to get additional claims from userinfo endpoint
 	userInfo, userInfoErr := client.provider.UserInfo(r.Context(), oauth2.StaticTokenSource(oauth2Token))
 	if userInfoErr != nil {
 		log.Error().Err(userInfoErr).Msg("failed to get userinfo")
 	}
 
-	// OIDC Core 5.3.4: user info for another subject must not be used, or its
-	// verified email could pass oidcAllowedEmail for this login.
 	if userInfo != nil && userInfo.Subject != claims.Sub {
 		log.Warn().Str("sub", claims.Sub).Str("userinfo_sub", userInfo.Subject).Msg("userinfo subject does not match ID token subject, ignoring userinfo")
 		userInfo = nil
@@ -436,8 +402,6 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	cfg := h.config.Live()
 	if !cfg.IsOIDCUserAllowed(claims.Sub, claims.VerifiedEmail()) {
-		// Only the email check depends on user info. The error is logged above
-		// and can hold the provider response body, so it stays out of the reply.
 		if userInfoErr != nil && cfg.OIDCAllowedEmail != "" {
 			RespondError(w, http.StatusBadGateway, "could not verify user: failed to get userinfo")
 			return
@@ -453,14 +417,12 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create new session
 	if err := renewSessionToken(r.Context(), h.sessionManager); err != nil {
 		log.Error().Err(err).Msgf("Auth: Failed to renew session token for username: [%s] ip: %s", username, r.RemoteAddr)
 		RespondError(w, http.StatusInternalServerError, "could not renew session token")
 		return
 	}
 
-	// Set session values using sessionManager
 	h.sessionManager.Put(r.Context(), "authenticated", true)
 	h.sessionManager.Put(r.Context(), "username", username)
 	h.sessionManager.Put(r.Context(), "created", time.Now().Unix())
@@ -470,23 +432,17 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Put(r.Context(), "profile_picture", claims.Picture)
 	h.sessionManager.RememberMe(r.Context(), true)
 
-	// Redirect to the frontend
-	// Prefer relative URLs for security, but support absolute URLs for development
-	frontendURL := "/dashboard" // Safe default
+	frontendURL := "/dashboard"
 
-	// Only construct absolute URLs if explicitly configured
 	if cfg.OIDCRedirectURL != "" {
-		// Parse the redirect URL to get the frontend base
 		if idx := strings.Index(cfg.OIDCRedirectURL, "/api/auth/oidc/callback"); idx > 0 {
 			candidateURL := cfg.OIDCRedirectURL[:idx] + "/dashboard"
 
-			// Validate the URL to ensure it's pointing to our application
 			if isValidRedirectURL(candidateURL, cfg.OIDCRedirectURL) {
 				frontendURL = candidateURL
 			}
 		}
 	} else if cfg.BaseURL != "" && cfg.BaseURL != "/" {
-		// Use configured base URL
 		base := strings.TrimSuffix(cfg.BaseURL, "/")
 		if base == "" {
 			base = "/"
@@ -506,11 +462,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, frontendURL, http.StatusFound)
 }
 
-// mergeUserInfoClaims overrides the ID token claims with the non-empty claims
-// from the userinfo endpoint.
 func mergeUserInfoClaims(claims *OIDCClaims, userInfo *oidc.UserInfo) {
-	// Take the user-info email and its verified flag together, never an
-	// unverified user-info email with the verified flag of the ID token.
 	if userInfo.Email != "" {
 		claims.Email = userInfo.Email
 		claims.EmailVerified = oidcBool(userInfo.EmailVerified)
@@ -548,8 +500,6 @@ func mergeUserInfoClaims(claims *OIDCClaims, userInfo *oidc.UserInfo) {
 	}
 }
 
-// oidcUsername picks the username from the claims: preferred username, then
-// nickname, name, email, and subject.
 func oidcUsername(claims OIDCClaims) string {
 	switch {
 	case claims.PreferredUsername != "":
@@ -567,10 +517,7 @@ func oidcUsername(claims OIDCClaims) string {
 	}
 }
 
-// isValidRedirectURL validates that the redirect URL is safe
-// For a self-hosted application, we ensure the URL points to the same host as configured
 func isValidRedirectURL(candidateURL, configuredURL string) bool {
-	// Parse both URLs
 	candidate, err := url.Parse(candidateURL)
 	if err != nil {
 		return false
@@ -581,8 +528,6 @@ func isValidRedirectURL(candidateURL, configuredURL string) bool {
 		return false
 	}
 
-	// Ensure the host matches our configured redirect URL
-	// This prevents open redirects to arbitrary domains
 	return candidate.Host == configured.Host
 }
 
@@ -617,7 +562,6 @@ type oidcUnavailableResponse struct {
 	DisableBuiltInLogin bool   `json:"disableBuiltInLogin"`
 }
 
-// GetConfigResponse returns errOIDCProviderUnavailable while provider discovery has not succeeded.
 func (h *OIDCHandler) GetConfigResponse(ctx context.Context) (OIDCConfigResponse, string, string, error) {
 	client, err := h.client(ctx)
 	if err != nil {

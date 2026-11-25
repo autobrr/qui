@@ -87,5 +87,5 @@ func TestAllowedHostsRequiresRestart(t *testing.T) {
 func TestWithLocalHosts(t *testing.T) {
 	hosts := withLocalHosts([]string{"qui.test", "localhost"})
 	require.Equal(t, []string{"qui.test", "localhost", "127.0.0.1", "::1"}, hosts[:4])
-	require.LessOrEqual(t, len(hosts), 5) // the machine hostname, when valid
+	require.LessOrEqual(t, len(hosts), 5)
 }

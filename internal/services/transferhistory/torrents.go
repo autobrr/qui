@@ -15,8 +15,6 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// torrentGroup returns the group of a torrent in a grouping, from the record
-// of the torrent now. A release attribute that the name does not hold is "".
 func torrentGroup(mapper *trackergroup.Mapper, f *models.TransferHistoryTorrentFacts, grouping Grouping) string {
 	switch grouping {
 	case GroupByTracker:
@@ -39,8 +37,6 @@ func torrentGroup(mapper *trackergroup.Mapper, f *models.TransferHistoryTorrentF
 	}
 }
 
-// torrentBucket is the transfer of one torrent in one bucket of the torrent
-// rows: a UTC day, a year that qui folded, or the days of the whole period.
 type torrentBucket struct {
 	facts                *models.TransferHistoryTorrentFacts
 	width                Bucket
@@ -49,10 +45,6 @@ type torrentBucket struct {
 	uploaded, downloaded int64
 }
 
-// torrentRows reads the torrent rows of the period, of the torrents of the
-// group of the query when it has one, and calls emit for each. It returns the
-// records of those torrents, by id. A total holds the days of the period, and
-// each year that qui folded apart.
 func (a *answer) torrentRows(ctx context.Context, store *models.TransferHistoryStore, emit func(torrentBucket)) (map[int64]*models.TransferHistoryTorrentFacts, error) {
 	q := a.query
 	within := cmp.Or(q.GroupOf, q.GroupBy)
@@ -77,8 +69,6 @@ func (a *answer) torrentRows(ctx context.Context, store *models.TransferHistoryS
 	if len(byID) == 0 {
 		return byID, nil
 	}
-	// The statement reads only the torrents of a group, so that a small group
-	// does not read the days of each torrent of the instance.
 	var torrentIDs []int64
 	if len(byID) < len(facts) || hash != "" {
 		torrentIDs = slices.Sorted(maps.Keys(byID))
@@ -116,11 +106,6 @@ func (a *answer) torrentRows(ctx context.Context, store *models.TransferHistoryS
 	return byID, nil
 }
 
-// yearsInPeriod returns whether the year row of a fold belongs to the period
-// of UTC days [fromDay, toDay). A year holds only the days before the latest
-// fold. The caller reads the rows first: the cutoff only grows, so a cutoff
-// read after the rows also covers the years in them, also when a fold
-// commits between the two reads.
 func yearsInPeriod(ctx context.Context, store *models.TransferHistoryStore, fromDay, toDay int64) (func(year int64) bool, error) {
 	foldedBefore, err := store.TorrentDaysFoldedBefore(ctx)
 	if err != nil {
@@ -136,11 +121,6 @@ func yearStart(year int64) time.Time {
 	return time.Date(int(year), time.January, 1, 0, 0, 0, 0, time.UTC)
 }
 
-// byTorrent reads the rows of each torrent, and adds them up by the group of
-// each torrent in the grouping of the query. A day row is a UTC day, and a
-// query for hours gets day rows. A total covers each whole stored bucket that
-// overlaps the period, UTC days and the years that qui folded, and starts at
-// the first of them.
 func (a *answer) byTorrent(ctx context.Context, store *models.TransferHistoryStore) error {
 	if a.query.GroupBy == GroupByTorrent && a.query.Group == nil && a.query.Bucket == BucketTotal && a.query.Limit > 0 {
 		return a.topTorrents(ctx, store)
@@ -188,7 +168,6 @@ func (a *answer) byTorrent(ctx context.Context, store *models.TransferHistorySto
 	return a.addGaps(ctx, store, fromDay*24, toDay*24, models.TransferHistoryBuckets{Width: 24}, BucketDay, false)
 }
 
-// torrentSum is the transfer of one torrent in the period, for topTorrents.
 type torrentSum struct {
 	uploaded, downloaded int64
 	start                time.Time
@@ -202,12 +181,6 @@ func (s *torrentSum) rank() int64 {
 	return s.uploaded + s.baseline.Uploaded
 }
 
-// topTorrents answers the totals of the torrents with the most upload, as
-// byTorrent does. It reads the records of the torrents that it keeps only,
-// because the records of each torrent of a large library take longer to read
-// than the bytes of a short period. It keeps each torrent that ties with the
-// last one, so that Transfer picks among them by hash, as for the other
-// queries.
 func (a *answer) topTorrents(ctx context.Context, store *models.TransferHistoryStore) error {
 	q := a.query
 	fromDay, toDay := daysOf(q.From, q.To)
@@ -276,8 +249,6 @@ func (a *answer) topTorrents(ctx context.Context, store *models.TransferHistoryS
 	return a.addGaps(ctx, store, fromDay*24, toDay*24, models.TransferHistoryBuckets{}, BucketTotal, false)
 }
 
-// topSums returns the ids of the limit torrents with the most upload, and of
-// each torrent that ties with the last of them, in no order.
 func topSums(sums map[int64]*torrentSum, limit int) []int64 {
 	if len(sums) <= limit {
 		return slices.Collect(maps.Keys(sums))
@@ -297,9 +268,6 @@ func topSums(sums map[int64]*torrentSum, limit int) []int64 {
 	return ids
 }
 
-// addTorrentFacts sets the facts of the torrent of each row of the grouping by
-// torrent. Transfer calls it after the limit, so that only the kept rows get
-// them.
 func (a *answer) addTorrentFacts(rows []TransferRow) {
 	if a.torrents == nil {
 		return

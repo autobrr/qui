@@ -51,7 +51,6 @@ import { useTranslation } from "react-i18next"
 
 import { getPieceSizeOptions, TorrentPieceSize } from "./piece-size"
 
-/** Parse newline-separated input into array of non-empty trimmed strings */
 function parseLines(input: string): string[] {
   return input.split("\n").map((line) => line.trim()).filter(Boolean)
 }
@@ -112,7 +111,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
   const supportsFormatSelection = versionInfo.isLibtorrent2 !== false
   const libtorrentVersionLabel = versionInfo.libtorrentMajorVersion? `libtorrent ${versionInfo.libtorrentMajorVersion}.x`: "libtorrent 1.x"
 
-  // Fetch active trackers for the select dropdown
   const { data: activeTrackers } = useInstanceTrackers(instanceId, { enabled: open })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId)
@@ -126,7 +124,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       setError(null)
       onOpenChange(false)
       form.reset()
-      // Invalidate tasks and badge count so polling views update immediately
       queryClient.invalidateQueries({ queryKey: ["torrent-creation-tasks", instanceId] })
       queryClient.invalidateQueries({ queryKey: ["active-task-count", instanceId] })
       toast.success(t("creatorDialog.toast.taskQueued"))
@@ -145,7 +142,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       comment: "",
       source: "",
       startSeeding: true,
-      // Advanced options
       format: "v1" as TorrentFormat,
       pieceSize: "",
       torrentFilePath: "",
@@ -210,7 +206,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     }
   }, [supportsFormatSelection, form])
 
-  // Reset form and error state when dialog closes
   useEffect(() => {
     if (!open) {
       form.reset()
@@ -246,7 +241,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               </Alert>
             )}
 
-            {/* Source Path */}
             <form.Field name="sourcePath">
               {(field) => (
                 <div className="space-y-2">
@@ -295,7 +289,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               )}
             </form.Field>
 
-            {/* Private */}
             <form.Field name="private">
               {(field) => (
                 <div className="flex items-center justify-between">
@@ -314,7 +307,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               )}
             </form.Field>
 
-            {/* Trackers */}
             <form.Field name="trackers">
               {(field) => (
                 <div className="space-y-2">
@@ -361,7 +353,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               )}
             </form.Field>
 
-            {/* Comment */}
             <form.Field name="comment">
               {(field) => (
                 <div className="space-y-2">
@@ -376,7 +367,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               )}
             </form.Field>
 
-            {/* Source */}
             <form.Field name="source">
               {(field) => (
                 <div className="space-y-2">
@@ -391,7 +381,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               )}
             </form.Field>
 
-            {/* Start Seeding */}
             <form.Field name="startSeeding">
               {(field) => (
                 <div className="flex items-center justify-between">
@@ -410,7 +399,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               )}
             </form.Field>
 
-            {/* Advanced Options */}
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger asChild>
                 <Button
@@ -425,7 +413,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-4 pt-4">
-                {/* Torrent Format */}
                 {supportsFormatSelection ? (
                   <form.Field name="format">
                     {(field) => (
@@ -460,17 +447,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   </Alert>
                 )}
 
-                {/* Piece Size
-                  https://github.com/qbittorrent/qBittorrent/blob/master/src/gui/torrentcreatordialog.cpp#L86-L92
-
-                  m_ui->comboPieceSize->addItem(tr("Auto"), 0);
-                  for (int i = 4; i <= 17; ++i)
-                  {
-                      const int size = 1024 << i;
-                      const QString displaySize = Utils::Misc::friendlyUnit(size, false, 0);
-                      m_ui->comboPieceSize->addItem(displaySize, size);
-                  }
-              */}
                 <form.Field name="pieceSize">
                   {(field) => (
                     <div className="space-y-2">
@@ -500,7 +476,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   )}
                 </form.Field>
 
-                {/* Torrent File Path */}
                 <form.Field
                   name="torrentFilePath"
                   validators={{
@@ -558,7 +533,6 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   )}
                 </form.Field>
 
-                {/* URL Seeds */}
                 <form.Field name="urlSeeds">
                   {(field) => (
                     <div className="space-y-2">

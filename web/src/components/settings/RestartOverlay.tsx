@@ -35,8 +35,6 @@ export function RestartOverlay({ state, update }: { state: RestartOverlayState; 
   }
   const done = state === "notApplied" || state === "installed"
 
-  // A modal with no close path: it traps focus, so the keyboard cannot reach
-  // a Settings tab whose switch would unmount the poll.
   return (
     <Dialog open>
       <DialogContent

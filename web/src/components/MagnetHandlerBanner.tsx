@@ -20,12 +20,10 @@ export function MagnetHandlerBanner() {
   const { t } = useTranslation("common")
   const [dismissed, setDismissed] = useState(() => isProtocolHandlerBannerDismissed())
 
-  // Don't show if browser doesn't support registerProtocolHandler or not HTTPS
   if (!canRegisterProtocolHandler()) {
     return null
   }
 
-  // Don't show if user has dismissed
   if (dismissed) {
     return null
   }

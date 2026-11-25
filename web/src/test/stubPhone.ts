@@ -13,10 +13,6 @@ const MATCHES = {
   desktop: [],
 } satisfies Record<string, string[]>
 
-/**
- * Stubs `window.matchMedia` as `useIsPhone` and the `(hover: none)` checks read it on an upright phone, a phone
- * turned sideways, or a desktop. Undo it with `vi.unstubAllGlobals()`.
- */
 export function stubPhone(kind: keyof typeof MATCHES): void {
   const matches: readonly string[] = MATCHES[kind]
   vi.stubGlobal("matchMedia", (query: string) => ({

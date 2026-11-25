@@ -61,7 +61,6 @@ func TestCrossSeedStore_GazelleKeys_PreserveAndClear(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Preserve RED (redacted placeholder), clear OPS (empty string).
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		GazelleEnabled: true,
 		RedactedAPIKey: domain.RedactedStr,

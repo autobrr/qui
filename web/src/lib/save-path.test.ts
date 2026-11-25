@@ -79,7 +79,6 @@ describe("resolveDestinationPath", () => {
     })).toBe("/downloads")
   })
 
-  // qBittorrent: a subcategory with no path saves under its parent's folder, and a relative path counts from the default folder.
   // regression: #4129
   it.each([
     ["tv/anime", { tv: { name: "tv", savePath: "/media/tv" }, "tv/anime": { name: "tv/anime", savePath: "" } }, "/data", "/media/tv/anime"],

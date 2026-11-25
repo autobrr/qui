@@ -50,8 +50,6 @@ describe("useInstanceMetadata", () => {
   it("fetches categories and tags via the fallback when no stream has hydrated the cache", async () => {
     const { result } = renderHook(() => useInstanceMetadata(1), { wrapper: makeWrapper() })
 
-    // The fallback fires after the default 400ms delay; advancing flushes its
-    // Promise.all + the resulting query-cache update.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500)
     })

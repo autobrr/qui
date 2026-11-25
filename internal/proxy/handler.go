@@ -70,8 +70,6 @@ type writeNoter interface {
 	NoteWrite(instanceID int)
 }
 
-// deleteNoter learns who deletes which torrents through the proxy, before
-// qBittorrent gets the delete.
 type deleteNoter interface {
 	NoteProxiedDelete(ctx context.Context, instanceID int, hashes []string, keyName string)
 }
@@ -136,7 +134,6 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		bufferPool:        bufferPool,
 	}
 
-	// Fallback when an instance has no client transport. Tuned from autobrr's sharedhttp.Transport.
 	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
 	baseTransport.MaxIdleConnsPerHost = 10
 	baseTransport.ResponseHeaderTimeout = 120 * time.Second
@@ -183,8 +180,6 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 
 	proxyCtx.applyAuthHeaders(pr.Out)
 
-	// qBittorrent's CSRF check rejects a Referer or Origin that does not match its own host
-	// with 401. The values come from the calling app, not the instance, so drop them.
 	pr.Out.Header.Del("Referer")
 	pr.Out.Header.Del("Origin")
 
@@ -251,11 +246,6 @@ func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string
 	}
 }
 
-// bufferRequestBody reads the request body, restores it for ParseForm, and returns the buffered bytes.
-// This allows both parsing form data and forwarding the request body to the proxy.
-//
-// IMPORTANT: Limits body size to 10MB to prevent OOM attacks. Larger requests will be rejected.
-// This limit is appropriate for torrent operations which use small form data payloads.
 func bufferRequestBody(r *http.Request) ([]byte, error) {
 	const maxBodySize = 10 * 1024 * 1024
 
@@ -427,7 +417,6 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
 		pr.Post("/api/v2/torrents/add", h.handleAddTorrents)
 
-		// Intercepted only to clean up the folders a move leaves behind
 		pr.Post("/api/v2/torrents/setCategory", h.handleSetCategory)
 		pr.Post("/api/v2/torrents/setAutoManagement", h.handleSetAutoManagement)
 		pr.Post("/api/v2/torrents/editCategory", h.handleEditCategory)
@@ -955,8 +944,6 @@ func isHTTPSRequest(r *http.Request) bool {
 	return false
 }
 
-// validateQueryParams checks if all query parameters are in the allowed list
-// Returns true if validation passes, false if validation fails (and proxies upstream)
 func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, allowedParams map[string]struct{}, endpoint string) bool {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
@@ -1149,9 +1136,6 @@ func buildTorrentSearchFilters(queryParams url.Values) qbittorrent.FilterOptions
 	return filters
 }
 
-// parseInfoQueryValues reads a category or tag parameter of torrents/info. As
-// in qBittorrent, a present parameter with no value (category=) asks for the
-// torrents with no category or no tag, which the value "" selects.
 func parseInfoQueryValues(queryParams url.Values, key string) []string {
 	values := parseCSVQueryValues(queryParams, key)
 	if _, present := queryParams[key]; present && len(values) == 0 {
@@ -1670,7 +1654,6 @@ func (h *Handler) handleTorrentMediaInfo(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// handleAuthLogin handles /api/v2/auth/login requests (ceremonial - proxy already authenticated)
 func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
@@ -1749,8 +1732,6 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		Str("hashes", hashes).
 		Msg("Intercepting setLocation request for cache invalidation")
 
-	// Defer cache invalidation to ensure it happens even if proxy panics
-	// Use background context with timeout to avoid cancellation issues
 	defer func() {
 		panicValue := recover()
 		if panicValue != nil {
@@ -1954,10 +1935,6 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 	h.proxy.ServeHTTP(w, r)
 }
 
-// deleteHashes returns the torrents that a torrents/delete request names and
-// whether it deletes their files, as qBittorrent reads them from a urlencoded
-// or a multipart body (RequestParser::parsePostMessage): the last value of
-// each field.
 func deleteHashes(r *http.Request, body []byte) (hashes []string, deleteFiles bool, ok bool) {
 	if form, ok := parseQBTForm(r, body); ok {
 		return splitHashes(form.get("hashes")), strings.EqualFold(form.get("deleteFiles"), "true"), true

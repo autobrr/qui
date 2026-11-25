@@ -334,8 +334,6 @@ func TestExecWaitsWhenTheSessionThatFilledTheHostEndsFirst(t *testing.T) {
 		_, err := conn.Output(t.Context(), Command{Name: "sleep", Paths: []string{"0.05"}})
 		first <- err
 	}()
-	// The first command now holds the host's last session, and it ends before
-	// the refusal of the next open arrives.
 	<-opened
 	_, err = conn.Output(t.Context(), Command{Name: "true"})
 	require.NoError(t, err)

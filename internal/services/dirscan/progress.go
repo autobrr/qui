@@ -19,14 +19,9 @@ type trackedFilesIndex struct {
 	byPath   map[string]*models.DirScanFile
 	byFileID map[fsops.FileKey]*models.DirScanFile
 	instance *models.Instance
-	// endpoint (fsops.WalkedEndpointTag) ends every stored remote identity,
-	// since the same device and inode on another server is another file. It
-	// lives in the row so a run that overlaps an SSH edit, which still writes
-	// the old identity, needs no cleanup.
 	endpoint []byte
 }
 
-// storedFileID is the dir_scan_files.file_id value for id.
 func (idx *trackedFilesIndex) storedFileID(id hardlink.FileID) []byte {
 	if id.IsZero() {
 		return nil
@@ -42,8 +37,6 @@ func (idx *trackedFilesIndex) keyOf(id hardlink.FileID) (fsops.FileKey, bool) {
 	return fsops.FileKeyOf(id, idx.instance)
 }
 
-// keyOfStored decodes a dir_scan_files.file_id value. A row from before the
-// tagged form or from another endpoint decodes to no identity and is never indexed.
 func (idx *trackedFilesIndex) keyOfStored(stored []byte) (fsops.FileKey, bool) {
 	raw, ok := bytes.CutSuffix(stored, idx.endpoint)
 	if !ok {
@@ -131,7 +124,6 @@ func (s *Service) refreshTrackedFilesFromScan(
 				return nil, fmt.Errorf("upsert tracked file: %w", err)
 			}
 
-			// Keep the in-memory index in sync for eligibility filtering.
 			idx.byPath[fileModel.FilePath] = fileModel
 			if key, ok := idx.keyOfStored(fileModel.FileID); ok {
 				idx.byFileID[key] = fileModel
@@ -173,7 +165,6 @@ func buildTrackedFileUpsert(
 	unchanged := false
 
 	if existing != nil {
-		// Whole seconds, because the database column and the filesystem keep different precision.
 		unchanged = existing.FileSize == scanned.Size && existing.FileModTime.Unix() == scanned.ModTime.Unix()
 		if unchanged {
 			status = existing.Status
@@ -183,8 +174,6 @@ func buildTrackedFileUpsert(
 		}
 	}
 
-	// If the file is already seeding, treat it as final (unless it was already finalized
-	// to a different status like matched).
 	if alreadySeeding && (existing == nil || !isFinalFileStatus(existing.Status)) {
 		status = models.DirScanFileStatusAlreadySeeding
 		matchedTorrentHash = ""
@@ -192,11 +181,6 @@ func buildTrackedFileUpsert(
 		searchedIndexerIDs = nil
 	}
 
-	// A file already seeding stays so, even when it changed on disk, until the
-	// index shows the torrent is gone. Only an index that built in full,
-	// checked against the file's identity, shows that. Then the file becomes
-	// eligible again. The match fields are empty here: a changed file never
-	// copied them, and every already_seeding row is stored without them.
 	if existing != nil && existing.Status == models.DirScanFileStatusAlreadySeeding {
 		if alreadySeeding || !seeding.knowsNotSeeding(scanned.FileID) {
 			status = models.DirScanFileStatusAlreadySeeding
@@ -205,9 +189,7 @@ func buildTrackedFileUpsert(
 		}
 	}
 
-	// If the file changed on disk, clear any prior match and reprocess.
 	if existing != nil && status != existing.Status {
-		// status already pending; ensure match info isn't carried forward.
 		matchedTorrentHash = ""
 		matchedIndexerID = nil
 		searchedIndexerIDs = nil

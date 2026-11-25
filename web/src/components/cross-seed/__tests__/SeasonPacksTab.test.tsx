@@ -30,7 +30,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
-  // Echo interpolation values, so a test can read the counts.
   useTranslation: () => ({
     t: (key: string, options?: unknown) =>
       options && typeof options === "object" ? `${key}:${Object.values(options).join(",")}` : key,
@@ -124,7 +123,6 @@ describe("SeasonPacksTab season pack runs", () => {
     expect(chip("skipped").textContent).toBe("seasonPackRuns.statusLabels.skipped 1")
     expect(chip("failed").textContent).toBe("seasonPackRuns.statusLabels.failed 2")
 
-    // The header counts all runs, not only the runs that the chips show.
     expect(screen.getByText(/seasonPackRuns\.runsCount:5/).textContent).toBe(
       "seasonPackRuns.runsCount:5 • seasonPackRuns.appliedCount:1 • seasonPackRuns.failedCount:2"
     )

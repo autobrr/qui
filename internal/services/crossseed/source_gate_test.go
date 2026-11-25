@@ -33,8 +33,8 @@ func TestSourceGateCheck(t *testing.T) {
 		state       qbt.TorrentState
 		recoveryOff sourceAnswer
 		recoveryOn  sourceAnswer
-		partialOn   sourceAnswer // recovery on, progress below 100%
-		partialOff  sourceAnswer // recovery off, progress below 100%
+		partialOn   sourceAnswer
+		partialOff  sourceAnswer
 	}{
 		{qbt.TorrentStateUploading, sourcePass, sourcePass, sourceIncomplete, sourceIncomplete},
 		{qbt.TorrentStatePausedUp, sourcePass, sourcePass, sourceIncomplete, sourceIncomplete},
@@ -65,7 +65,6 @@ func TestSourceGateCheck(t *testing.T) {
 		assert.Equal(t, row.recoveryOn, on.check(torrent, sourceFilter{}), "%s, recovery on, empty filter", row.state)
 		assert.Equal(t, row.recoveryOff, off.check(torrent, keeper), "%s, recovery off, set filter", row.state)
 
-		// The filter comes first, at any state.
 		assert.Equal(t, sourceOutsideFilter, off.check(torrent, sourceFilter{excludeCategories: []string{"tv"}}), "%s, outside filter", row.state)
 
 		torrent.Progress = 0.99
@@ -100,8 +99,6 @@ func TestSourceGateCheck(t *testing.T) {
 	}
 }
 
-// turnStateSyncManager answers the per-torrent lookups at the turn of a torrent
-// with a later state than the list of the queue build.
 type turnStateSyncManager struct {
 	*hashFilteringSyncManager
 	atTurn map[string]qbt.Torrent
@@ -204,8 +201,7 @@ func TestProcessSearchCandidate_ContentAnalysisRefusalWritesNoHistory(t *testing
 				run:                       &models.CrossSeedSearchRun{},
 				opts:                      SearchRunOptions{InstanceID: env.instanceID},
 				resolvedTorznabIndexerIDs: env.indexerIDs,
-				// The stale indexers are the history that a refusal must not stamp.
-				staleWork: map[string]candidateStaleWork{torrent.Hash: {indexerIDs: env.indexerIDs}},
+				staleWork:                 map[string]candidateStaleWork{torrent.Hash: {indexerIDs: env.indexerIDs}},
 			}
 
 			delay, err := svc.processSearchCandidate(ctx, state, &torrent)
@@ -221,8 +217,6 @@ func TestProcessSearchCandidate_ContentAnalysisRefusalWritesNoHistory(t *testing
 	}
 }
 
-// laterLookupSyncManager answers the first per-torrent lookup with the list
-// state and each later lookup with the state in later.
 type laterLookupSyncManager struct {
 	*hashFilteringSyncManager
 	later   qbt.TorrentState
@@ -242,10 +236,6 @@ func (m *laterLookupSyncManager) GetTorrentRefs(ctx context.Context, instanceID 
 	return torrents, err
 }
 
-// A torrent can pass content analysis and move before the search source load.
-// The stale indexer that the content filter excluded would get a cooldown stamp
-// if the refusal came after the history writes.
-//
 // regression: #3707
 func TestProcessSearchCandidate_SearchSourceLoadRefusalWritesNoHistory(t *testing.T) {
 	ctx, env := newSearchHistoryTestEnv(t, "crossseed-source-gate-load", 2)

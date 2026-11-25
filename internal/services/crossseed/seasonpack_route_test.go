@@ -26,8 +26,6 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// seasonPackRig is the routed rig with the episodes of a season pack on the
-// Source instance "lib": one torrent per episode file in downloads.
 type seasonPackRig struct {
 	*routedRig
 	runs        *stubSeasonPackRunStore
@@ -77,7 +75,6 @@ func (r *seasonPackRig) apply(instanceIDs ...int) *SeasonPackApplyResponse {
 	return resp
 }
 
-// lastRun is the newest season pack history row.
 func (r *seasonPackRig) lastRun() *models.SeasonPackRun {
 	r.t.Helper()
 	require.NotEmpty(r.t, r.runs.runs)
@@ -124,8 +121,6 @@ func TestRoutedSeasonPackLandsOnTheCrossSeedInstance(t *testing.T) {
 	}
 }
 
-// A user with no saved route sees no change: the add goes to the instance
-// that holds the episodes, and history names that instance as the receiver.
 func TestSeasonPackWithoutARouteAddsToTheSourceInstance(t *testing.T) {
 	r := newSeasonPackRig(t, false)
 	require.NoError(t, r.routes.Delete(t.Context(), r.source.ID))
@@ -141,8 +136,6 @@ func TestSeasonPackWithoutARouteAddsToTheSourceInstance(t *testing.T) {
 	assert.Equal(t, r.source.ID, resp.AddedInstanceID)
 }
 
-// The route maps with the base folder of the tree that the cross-device retry
-// built, not the first ranked folder.
 func TestRoutedSeasonPackUsesTheBaseFolderOfTheRetry(t *testing.T) {
 	r := newSeasonPackRig(t, false)
 	first := filepath.Join(filepath.Dir(r.links), "first")
@@ -234,14 +227,10 @@ func TestRoutedSeasonPackAppliesOnlyTheCrossSeedInstanceBlocklist(t *testing.T) 
 	}
 }
 
-// An unavailable Cross-seed instance of any eligible instance stops the whole
-// apply. Another instance never takes the pack in its place.
 func TestRoutedSeasonPackStopsWhenTheCrossSeedInstanceIsUnavailable(t *testing.T) {
 	tests := []struct {
-		name string
-		down bool
-		// other adds an instance without a route that holds the same episodes
-		// and comes first, so it would win.
+		name    string
+		down    bool
 		other   bool
 		wantMsg string
 	}{
@@ -275,7 +264,6 @@ func TestRoutedSeasonPackStopsWhenTheCrossSeedInstanceIsUnavailable(t *testing.T
 	}
 }
 
-// A link error keeps its status and never makes a regular add.
 func TestRoutedSeasonPackLinkErrorFailsWithItsStatus(t *testing.T) {
 	r := newSeasonPackRig(t, false)
 	r.svc.seasonPackLinkCreator = func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
@@ -292,8 +280,6 @@ func TestRoutedSeasonPackLinkErrorFailsWithItsStatus(t *testing.T) {
 	assert.Equal(t, &r.crossSeed.ID, r.lastRun().AddedInstanceID)
 }
 
-// The Cross-seed instance has no route, so a match on it stays on it. Its
-// add still checks the hashes on its Source instance.
 func TestRoutedSeasonPackMatchOnTheCrossSeedInstanceStaysThere(t *testing.T) {
 	for _, hashOnSource := range []bool{false, true} {
 		t.Run(fmt.Sprintf("hash on the Source instance %v", hashOnSource), func(t *testing.T) {
@@ -322,9 +308,6 @@ func TestRoutedSeasonPackMatchOnTheCrossSeedInstanceStaysThere(t *testing.T) {
 	}
 }
 
-// Manual assembly sends the add to the Cross-seed instance, skips its
-// blocklist, and shows the mapped destination. The Settle row of the
-// linked-file check names the Cross-seed instance too.
 func TestRoutedManualAssembly(t *testing.T) {
 	r := newSeasonPackRig(t, false)
 	r.updateSource(&models.InstanceUpdateParams{HardlinkDirPreset: new("by-instance")})
@@ -365,7 +348,6 @@ func TestRoutedManualAssemblyStopsWhenTheCrossSeedInstanceIsUnavailable(t *testi
 	r.requireNoLinkTree()
 }
 
-// blockPack puts the hashes of the pack on the blocklist of instanceID.
 func (r *seasonPackRig) blockPack(instanceID int) {
 	r.t.Helper()
 	data, err := base64.StdEncoding.DecodeString(r.torrentData)
@@ -376,8 +358,6 @@ func (r *seasonPackRig) blockPack(instanceID int) {
 	require.NoError(r.t, err)
 }
 
-// addEpisodeInstance adds an instance without a route, in hardlink mode, that
-// holds the same episodes as lib.
 func (r *seasonPackRig) addEpisodeInstance(name string) *models.Instance {
 	r.t.Helper()
 	inst, err := r.instances.Create(r.t.Context(), name, qbtstub.New(r.t, r.t.TempDir()).URL, "user", "pass", nil, nil, false, new(true))

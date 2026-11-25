@@ -23,7 +23,6 @@ func TestThemeSettingsStore_SlotsAreIndependent(t *testing.T) {
 
 	require.NoError(t, store.Set(ctx, models.ThemeSlotDefault, &models.ThemeSettings{ThemeID: "minimal", Mode: "dark", Variation: "blue"}))
 	require.NoError(t, store.Set(ctx, models.ThemeSlotMobile, &models.ThemeSettings{ThemeID: "catppuccin", Mode: "dark"}))
-	// Overwrite: the slot's row is replaced, variation cleared.
 	require.NoError(t, store.Set(ctx, models.ThemeSlotDefault, &models.ThemeSettings{ThemeID: "catppuccin", Mode: "auto"}))
 
 	slots, err = store.GetAll(ctx)
@@ -40,8 +39,6 @@ func TestThemeSettingsStore_SlotsAreIndependent(t *testing.T) {
 }
 
 func TestThemeSettingsMigration_KeepsSingleRowAsDefaultSlot(t *testing.T) {
-	// Put the database back at the single-row schema with a stored selection,
-	// then let the slot migration run again on open.
 	dbPath := testdb.CloneMigratedSQLite(t, "theme-settings-migration")
 	db, err := database.New(dbPath)
 	require.NoError(t, err)

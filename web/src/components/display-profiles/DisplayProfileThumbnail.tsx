@@ -19,10 +19,6 @@ interface DisplayProfileThumbnailProps {
   className?: string
 }
 
-/**
- * A small picture of the torrent list of a profile, drawn like the theme thumbnails in the neutral colors of the
- * theme in use: the filter sidebar when it is open, and the rows at the row density of the profile.
- */
 export function DisplayProfileThumbnail({ density, filterSidebarOpen, className }: DisplayProfileThumbnailProps) {
   const listX = filterSidebarOpen ? 44 : 6
   const listWidth = 154 - listX

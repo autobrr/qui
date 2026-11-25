@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// shownKeysPath is the key list that the frontend reads to check its labels.
 const shownKeysPath = "../../../web/src/lib/preference-catalog-keys.json"
 
 func appPreferencesKeys() []string {
@@ -31,8 +30,6 @@ func appPreferencesKeys() []string {
 	return keys
 }
 
-// TestCatalogCoversAppPreferences fails when go-qbittorrent has a key without a
-// catalog entry, so that a go-qbittorrent update forces a decision for each new key.
 func TestCatalogCoversAppPreferences(t *testing.T) {
 	structKeys := appPreferencesKeys()
 
@@ -63,8 +60,6 @@ func TestCatalogCoversAppPreferences(t *testing.T) {
 	}
 }
 
-// TestShownKeysFileIsCurrent writes the shown keys for the frontend and fails
-// when the checked-in file was out of date.
 func TestShownKeysFileIsCurrent(t *testing.T) {
 	var shown []string
 	for _, entry := range catalog {

@@ -15,7 +15,6 @@ import { server } from "@/test/msw/server"
 import type { DatabaseShrinkStatus } from "@/types"
 
 const i18n = vi.hoisted(() => ({ t: (key: string) => key }))
-// The byte units come from the loaded locale, and the toast text stays as keys.
 vi.mock("react-i18next", async (importOriginal) => ({ ...(await importOriginal<typeof import("react-i18next")>()), useTranslation: () => i18n }))
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
@@ -54,7 +53,6 @@ describe("DatabaseShrinkProvider", () => {
     await waitFor(() => expect(queryClient.getQueryData<DatabaseShrinkStatus>(databaseShrinkQueryKey)?.result).toBeUndefined())
     expect(toast.success).toHaveBeenCalledTimes(1)
 
-    // A shrink at a later start, while the tab stays open.
     status = { ...base, result: { beforeBytes: 500, afterBytes: 200 } }
     await act(() => queryClient.invalidateQueries({ queryKey: databaseShrinkQueryKey }))
 

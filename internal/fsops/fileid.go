@@ -13,25 +13,12 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// FileKey is a FileID bound to the filesystem it came from. Two keys are
-// equal exactly when SameFile holds, so an index that mixes instances keys
-// on it instead of on the bare FileID.
 type FileKey struct {
-	id hardlink.FileID
-	// scope is an interned host:port. Not the string, and not a uint32: a
-	// pointer-free key with no padding hashes as one memhash call, and
-	// orphan scan and the hardlink index key hundreds of thousands of these.
+	id    hardlink.FileID
 	scope [4]byte
 }
 
-// FileKeyOf binds id to the instance that reported it. Local kinds all live
-// on the qui host, so they share one scope; a remote kind is scoped to the
-// SSH host and port, the same-filesystem rule orphan scan merges by. A nil
-// instance is the qui host itself. ok is false when id names no file: a zero
-// ID, or a remote ID with a nil instance or an empty SSH host, which has no
-// scope. Such a key matches nothing, so a caller must not index it.
 func FileKeyOf(id hardlink.FileID, instance *models.Instance) (key FileKey, ok bool) {
-	// Kept to one branch so the local path inlines; orphan scan calls this per file.
 	if id.Kind() != hardlink.KindRemote {
 		return FileKey{id: id}, !id.IsZero()
 	}
@@ -58,8 +45,6 @@ var remoteScopes = struct {
 	ids map[string]uint32
 }{ids: map[string]uint32{}}
 
-// remoteScope interns one host:port per process. 0 stays the qui host, so a
-// remote identity never shares a scope with a local one.
 func remoteScope(hostPort string) uint32 {
 	remoteScopes.Lock()
 	defer remoteScopes.Unlock()

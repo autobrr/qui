@@ -13,13 +13,10 @@ import (
 	"github.com/autobrr/qui/internal/services/activity"
 )
 
-// maxClientSettingsBodySize caps one PUT payload.
-const maxClientSettingsBodySize = 1 << 20 // 1 MiB
+const maxClientSettingsBodySize = 1 << 20
 
 type ClientSettingsHandler struct {
-	store *models.ClientSettingsStore
-	// activity signals stored-settings changes so open tabs refetch instead
-	// of polling.
+	store    *models.ClientSettingsStore
 	activity activity.Publisher
 }
 
@@ -27,7 +24,6 @@ func NewClientSettingsHandler(store *models.ClientSettingsStore, publisher activ
 	return &ClientSettingsHandler{store: store, activity: publisher}
 }
 
-// GetClientSettings returns every stored setting as a key-value map.
 func (h *ClientSettingsHandler) GetClientSettings(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.store.GetAll(r.Context())
 	if err != nil {
@@ -38,8 +34,6 @@ func (h *ClientSettingsHandler) GetClientSettings(w http.ResponseWriter, r *http
 	RespondJSON(w, http.StatusOK, settings)
 }
 
-// UpdateClientSettings upserts the submitted settings. The payload is a
-// partial map; keys not present stay untouched.
 func (h *ClientSettingsHandler) UpdateClientSettings(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxClientSettingsBodySize)
 

@@ -17,20 +17,16 @@ import { useTranslation } from "react-i18next"
 
 const CHART_ID = "statistics-year"
 
-// The share of the series color for each step of upload above zero.
 const HEAT = [25, 50, 75, 100].map(percent => `color-mix(in oklab, var(--color-heat) ${percent}%, transparent)`)
 
 interface YearViewProps {
-  // The day bars of the period, by Tracker group.
   bars: StatisticsBar[]
-  // The Tracker groups with a series color, in series order.
   groups: string[]
   to: Date
   since?: Date
   displayName: (group: string) => string
 }
 
-/** The upload of a long period: a calendar of the last 53 weeks, the best day and month, the weekend share, and the months by Tracker group. */
 export function YearView({ bars, groups, to, since, displayName }: YearViewProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -45,7 +41,6 @@ export function YearView({ bars, groups, to, since, displayName }: YearViewProps
   return (
     <div className="@container/year" data-chart={CHART_ID}>
       <ChartStyle id={CHART_ID} config={config} />
-      {/* A wide card puts the three numbers next to the calendar. A wider card puts them below it, and the months next to both. */}
       <div className="space-y-6 sm:space-y-8 @[96rem]/year:grid @[96rem]/year:grid-cols-[minmax(0,auto)_minmax(36rem,1fr)] @[96rem]/year:items-center @[96rem]/year:gap-x-10 @[96rem]/year:space-y-0">
         <div className="grid grid-cols-1 gap-6 sm:gap-8 @[68rem]/year:grid-cols-[minmax(0,auto)_minmax(14rem,1fr)] @[68rem]/year:items-center @[96rem]/year:grid-cols-1">
           <Calendar days={days} />
@@ -82,10 +77,8 @@ function Calendar({ days }: { days: CalendarDay[] }) {
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { preferences } = usePersistedDateTimePreferences()
   const scroller = useRef<HTMLDivElement>(null)
-  // The start of the day that the pointer is on, or that the user tapped last.
   const [shown, setShown] = useState<number>()
 
-  // On a narrow screen the calendar scrolls sideways, so it opens at the latest weeks.
   useEffect(() => {
     if (scroller.current) {
       scroller.current.scrollLeft = scroller.current.scrollWidth
@@ -97,7 +90,6 @@ function Calendar({ days }: { days: CalendarDay[] }) {
     return [0.25, 0.5, 0.75].map(quantile => values[Math.floor(values.length * quantile)] ?? 0)
   }, [days])
 
-  // One column for each week from Monday on. The first column starts on the weekday of the first day.
   const weeks = useMemo(() => {
     const columns: (CalendarDay | undefined)[][] = []
     const lead = daysSinceMonday(new Date(days[0].start))
@@ -128,13 +120,11 @@ function Calendar({ days }: { days: CalendarDay[] }) {
         </span>
       </div>
       <div ref={scroller} className="overflow-x-auto pb-1">
-        {/* The cells grow with the card. The padding at the end holds the hit area of the last column, so that a calendar that fits does not scroll. */}
         <ol className="grid w-full min-w-min auto-cols-[minmax(0.75rem,1.125rem)] grid-flow-col gap-[3px] pe-0.5" aria-label={t("yearView.calendar")} onMouseLeave={() => setShown(undefined)}>
           {weeks.map((week, index) => {
             const first = week.find(day => day && new Date(day.start).getDate() === 1)
             return (
               <li key={index} className="flex min-w-0 flex-col gap-[3px]">
-                {/* The name of a month is wider than its column. In the last columns it ends at the column, so that it stays in the calendar. */}
                 <span className={cn("flex h-4 text-[10px] leading-4 whitespace-nowrap text-muted-foreground", index >= weeks.length - 2 && "justify-end")} aria-hidden>
                   {first && new Date(first.start).toLocaleDateString(locale, { month: "short" })}
                 </span>
@@ -147,7 +137,6 @@ function Calendar({ days }: { days: CalendarDay[] }) {
                       onMouseEnter={() => setShown(day.start)}
                       onClick={() => setShown(day.start)}
                       className={cn(
-                        // The hit area covers the gaps around the cell, so that each tap in the calendar lands on a day.
                         "relative aspect-square w-full rounded-[3px] after:absolute after:-inset-[1.5px]",
                         day.uploaded === undefined ? "border border-dashed border-border" : !day.uploaded && "bg-muted",
                         day.gapSeconds > 0 && "ring-1 ring-yellow-500",
@@ -171,7 +160,6 @@ function YearFact({ label, value, detail, className }: { label: string; value?: 
     <div className={cn("min-w-0 border-l-2 pl-3", className)} style={{ borderLeftColor: "var(--color-heat)" }}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 text-lg font-semibold tabular-nums sm:text-xl"><TruncatedText wrap className="block sm:truncate">{value ?? "–"}</TruncatedText></dd>
-      {/* In the one column next to the calendar, a long detail goes to a second line. */}
       {detail && <dd className="text-sm text-muted-foreground"><TruncatedText className="block @[68rem]/year:whitespace-normal">{detail}</TruncatedText></dd>}
     </div>
   )

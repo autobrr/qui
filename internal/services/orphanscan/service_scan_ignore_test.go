@@ -28,9 +28,6 @@ func (stubInstanceGetter) Get(_ context.Context, id int) (*models.Instance, erro
 	return &models.Instance{ID: id, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}, nil
 }
 
-// newScanTestService wires a service that scans one instance holding two
-// torrents: one in an existing save path, one in a save path that does not
-// exist on this host (issue #2483).
 func newScanTestService(t *testing.T) (*Service, *models.OrphanScanStore, string, string) {
 	t.Helper()
 
@@ -104,7 +101,6 @@ func runScanForTest(t *testing.T, svc *Service, store *models.OrphanScanStore) *
 	return run
 }
 
-// Ignoring an unavailable path excludes it from scan coverage (issue #2483).
 func TestExecuteScan_IgnorePathDropsUnreachableScanRoot(t *testing.T) {
 	t.Parallel()
 
@@ -124,8 +120,6 @@ func TestExecuteScan_IgnorePathDropsUnreachableScanRoot(t *testing.T) {
 	assert.Equal(t, []string{filepath.Clean(presentRoot)}, run.ScanPaths)
 }
 
-// Ignoring a parent of every save path leaves nothing to walk, and the run must
-// say so instead of reporting that no torrent has an absolute save path.
 func TestExecuteScan_IgnorePathsCoverEveryScanRoot(t *testing.T) {
 	t.Parallel()
 
@@ -137,8 +131,6 @@ func TestExecuteScan_IgnorePathsCoverEveryScanRoot(t *testing.T) {
 	assert.Equal(t, "no scan roots left: ignore paths cover every scan path", run.ErrorMessage)
 }
 
-// Ignoring "/" keeps the scan roots. The walk then ignores every file, so the
-// run completes with zero orphans instead of failing with "no scan roots left".
 func TestExecuteScan_RootIgnorePathKeepsScanRoots(t *testing.T) {
 	t.Parallel()
 
@@ -190,7 +182,6 @@ func TestExecuteScan_PathDisappearsDuringScan(t *testing.T) {
 			require.NoError(t, os.MkdirAll(missingRoot, 0o755))
 			filesProvider := stubSync(svc).getTorrentFilesBatch
 			stubSync(svc).getTorrentFilesBatch = func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
-				// The torrent snapshot still contains this path when its directory disappears.
 				if err := os.RemoveAll(missingRoot); err != nil {
 					return nil, err
 				}
@@ -225,8 +216,6 @@ func TestExecuteScan_PathDisappearsDuringScan(t *testing.T) {
 			require.Equal(t, "preview_ready", run.Status)
 			require.Equal(t, 1, run.FilesFound)
 			require.FileExists(t, orphanPath)
-			// Automatic cleanup would hold the deletion lock or finish the run,
-			// so a successful manual confirmation also checks that it did not start.
 			require.NoError(t, svc.ConfirmDeletion(t.Context(), 1, runID))
 			select {
 			case event := <-events:
@@ -392,9 +381,6 @@ func TestExecuteScan_IgnoredTransitionalPathDoesNotMakeScanPartial(t *testing.T)
 	require.Empty(t, run.ErrorMessage)
 }
 
-// A category destination qBittorrent has not created yet is absent by design,
-// so it must not raise a partial-scan warning. A save path a torrent points at
-// is a different story and still gets reported.
 func TestExecuteScan_AbsentCategoryPathStaysQuiet(t *testing.T) {
 	t.Parallel()
 
@@ -420,15 +406,11 @@ func TestExecuteScan_AbsentCategoryPathStaysQuiet(t *testing.T) {
 	assert.Contains(t, run.ErrorMessage, missingRoot)
 }
 
-// A category destination a torrent actually saves into is not expected to be
-// absent: it went missing after the fact, which is the unmounted-volume case
-// discussion #2483 is about, so the warning must survive.
 func TestExecuteScan_AbsentCategoryPathWithTorrentStillWarns(t *testing.T) {
 	t.Parallel()
 
 	svc, store, _, missingRoot := newScanTestService(t)
 
-	// The same path the "missing" torrent saves into.
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: filepath.Dir(missingRoot), CategorySaveFolders: []string{missingRoot}})
 
 	defaults := DefaultSettings()

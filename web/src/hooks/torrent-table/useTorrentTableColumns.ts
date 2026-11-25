@@ -12,14 +12,12 @@ import type { TFunction } from "i18next"
 import { useMemo } from "react"
 
 export interface UseTorrentTableColumnsParams {
-  // Selection (from useTorrentSelection)
   handleSelectAll: () => void
   isSelectAllChecked: boolean
   isSelectAllIndeterminate: boolean
   isTorrentSelected: (torrent: Torrent) => boolean
   handleCheckboxPointerDown: (event: React.PointerEvent<HTMLElement>) => void
   handleCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
-  // Display / format
   incognitoMode: boolean
   speedUnit: SpeedUnit
   trackerIcons?: Record<string, string>
@@ -32,7 +30,6 @@ export interface UseTorrentTableColumnsParams {
   trackerCustomizationLookup?: TrackerCustomizationLookup
   isReadOnly: boolean
   t: TFunction
-  // Data (for the duplicate-identity counts that feed the table's getRowId)
   sortedTorrents: Torrent[]
 }
 
@@ -41,12 +38,6 @@ export interface TorrentTableColumns {
   torrentIdentityCounts: Map<string, number>
 }
 
-/**
- * Builds the table column definitions (via createColumns) and the per-identity
- * duplicate counts the table's getRowId uses. Kept as a hook so the heavy
- * createColumns call stays memoized over its exact inputs and the torrent table
- * orchestrator only consumes the result.
- */
 export function useTorrentTableColumns({
   handleSelectAll,
   isSelectAllChecked,
@@ -68,7 +59,6 @@ export function useTorrentTableColumns({
   t,
   sortedTorrents,
 }: UseTorrentTableColumnsParams): TorrentTableColumns {
-  // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(
     () => createColumns({
       incognitoMode,

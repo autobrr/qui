@@ -38,7 +38,6 @@ func stubOIDCNewProvider(t *testing.T, fn func(context.Context, string) (*oidc.P
 }
 
 func newOIDCOnlyConfig() *domain.Config {
-	// Test-only OIDC client config values.
 	cfg := &domain.Config{
 		OIDCEnabled:             true,
 		OIDCIssuer:              "https://issuer.example.com",
@@ -80,7 +79,6 @@ func TestOIDCDiscoveryReadsPublishedConfig(t *testing.T) {
 
 	cfg := newOIDCOnlyConfig()
 	cfg.Publish()
-	// A reload writes these fields before it publishes them.
 	cfg.OIDCIssuer = "https://reload.example.invalid"
 	cfg.OIDCClientID = "client-id-from-reload"
 
@@ -93,7 +91,6 @@ func TestOIDCDiscoveryReadsPublishedConfig(t *testing.T) {
 
 // regression: #3404
 func TestOIDCConfigAnswersWithinWaitWhileDiscoveryHangs(t *testing.T) {
-	// Outside the bubble: the memstore cleanup goroutine ticks forever.
 	sessionManager := scs.New()
 	synctest.Test(t, func(t *testing.T) {
 		stubOIDCNewProvider(t, func(ctx context.Context, _ string) (*oidc.Provider, error) {
@@ -113,7 +110,6 @@ func TestOIDCConfigAnswersWithinWaitWhileDiscoveryHangs(t *testing.T) {
 		assert.Equal(t, oidcDiscoveryWait, time.Since(start))
 		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 
-		// Let the attempt finish before the stub cleanup restores oidcNewProvider.
 		_, err = handler.discovery.get(context.Background())
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
@@ -141,7 +137,6 @@ func TestOIDCCallbackKeepsStateWhileProviderIsUnavailable(t *testing.T) {
 	assert.Equal(t, "synthetic-verifier", handler.sessionManager.GetString(ctx, "oidc_pkce_verifier"))
 }
 
-// discoverOIDCProvider cancels its context, and go-oidc fetches signing keys on the first Verify.
 func TestDiscoveredVerifierFetchesKeysAfterDiscoveryContextEnds(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)

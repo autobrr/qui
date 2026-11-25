@@ -79,7 +79,6 @@ describe("buildBars", () => {
   it("keeps a folded UTC day on its own date at UTC+13", () => {
     process.env.TZ = "Pacific/Auckland"
     try {
-      // A folded Friday, January 31, and the local day of Saturday, February 1, which starts at 11:00 UTC on January 31.
       const rows: TransferHistoryRow[] = [
         { group: "a.test", start: "2025-01-31T00:00:00Z", width: "day", gapSeconds: 0, uploaded: 100, downloaded: 0, statisticsCrossSeedUploaded: 0 },
         { group: "a.test", start: "2025-01-31T11:00:00Z", width: "day", gapSeconds: 0, uploaded: 7, downloaded: 0, statisticsCrossSeedUploaded: 0 },
@@ -125,7 +124,6 @@ describe("buildCategoryBars", () => {
   // regression: #4099
   it("keeps two UTC days of a category apart when the period starts inside the second one east of UTC", () => {
     inZone("Asia/Shanghai", () => {
-      // 24 hours from 03:00 on January 2 in Shanghai, which is 19:00 UTC on January 1.
       const period = { from: new Date(2026, 0, 2, 3), to: new Date(2026, 0, 3, 3), unit: "hour" as const }
       const bars = buildCategoryBars([[day("2026-01-01T00:00:00Z", 100), day("2026-01-02T00:00:00Z", 200)]], period, undefined)!
 
@@ -139,7 +137,6 @@ describe("buildCategoryBars", () => {
       const period = { from: new Date(2026, 0, 2, 3), to: new Date(2026, 0, 3, 3), unit: "hour" as const }
       const bars = buildCategoryBars([[]], period, undefined)!
 
-      // 22:00 UTC on January 1 is 06:00 on January 2 in Shanghai, after the end of the local January 1.
       expect(recordedUnits(bars, new Date("2026-01-01T22:00:00Z"), "day", true)).toBe(2)
     })
   })
@@ -201,7 +198,6 @@ describe("recordedUnits", () => {
 
   // regression: #4099
   it("counts a 25-hour day when the first recording is in its last hour", () => {
-    // In New York, November 1, 2026 has 25 hours.
     const bars = buildBars([[]], { from: new Date(2026, 10, 1), to: new Date(2026, 10, 2) }, "day")
 
     expect(recordedUnits(bars, new Date(2026, 10, 1, 23, 30), "day")).toBe(1)
@@ -239,7 +235,6 @@ describe("previousPeriod", () => {
 describe("customPeriod", () => {
   // regression: #4084
   it("keeps hourly bars for seven dates across a change of the clock", () => {
-    // In New York, October 26 to November 1, 2026 lasts 169 hours.
     expect(customPeriod(new Date(2026, 9, 26), new Date(2026, 10, 1), new Date(2026, 11, 1)).unit).toBe("hour")
     expect(customPeriod(new Date(2026, 9, 26), new Date(2026, 10, 2), new Date(2026, 11, 1)).unit).toBe("day")
   })
@@ -269,7 +264,6 @@ describe("byteTicks", () => {
 
 describe("labelledGaps", () => {
   it("labels a gap only when it is far enough from the last labelled gap", () => {
-    // 365 daily bars: a label needs 61 bars of room.
     expect([...labelledGaps([300, 340, 360, 364], 365)]).toEqual([300, 364])
   })
 })

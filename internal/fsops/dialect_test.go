@@ -21,7 +21,6 @@ func TestSlashPathsIsHostIndependent(t *testing.T) {
 	require.Equal(t, "a/b", d.FromSlash("a/b"))
 	require.Equal(t, "a/b", d.ToSlash("a/b"))
 	require.Equal(t, "/", d.Separator())
-	// A backslash is a filename byte on POSIX, never a separator.
 	require.Equal(t, `/data/a\b`, d.Join("/data", `a\b`))
 	require.Equal(t, `a\b`, d.Base(`/data/a\b`))
 }

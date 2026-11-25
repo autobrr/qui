@@ -15,8 +15,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// The list of the Transfers page answers one page of rows, with the counts
-// of all the rows.
 func TestTheTransferListAnswersOnePage(t *testing.T) {
 	store, err := transfer.NewStore(t.Context(), testdb.NewMigratedSQLite(t, "transfer-list-page"))
 	require.NoError(t, err)
@@ -31,7 +29,6 @@ func TestTheTransferListAnswersOnePage(t *testing.T) {
 		require.NoError(t, store.Create(t.Context(), record))
 		ids = append(ids, record.ID)
 	}
-	// A Service with no run: no row has progress.
 	h := NewTransfersHandler(&transfer.Service{}, store, nil)
 
 	list := func(query string) (int, transferListResponse) {

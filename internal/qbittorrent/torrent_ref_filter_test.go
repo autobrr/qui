@@ -14,8 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newRefRig is a sync manager over a qBittorrent stub that holds torrents in
-// several states, categories, and tags.
 func newRefRig(t *testing.T) (*SyncManager, *Client) {
 	t.Helper()
 
@@ -52,8 +50,6 @@ func TestGetTorrentRefsSelectsSyncSnapshotTorrents(t *testing.T) {
 	sm, client := newRefRig(t)
 	snapshot := client.SyncOwner().SnapshotUnchecked()
 
-	// Each want holds what the qBittorrent filter of go-qbittorrent selects for
-	// the same options, except that a read by hash keeps the order of the hashes.
 	for _, tc := range []struct {
 		name   string
 		filter TorrentRefFilter

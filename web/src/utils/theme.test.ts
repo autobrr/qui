@@ -17,7 +17,6 @@ const cssVars = {
 }
 
 beforeEach(() => {
-  // jsdom has no matchMedia; setTheme resolves the system preference with it.
   vi.stubGlobal("matchMedia", vi.fn(() => ({
     matches: false,
     addEventListener: vi.fn(),
@@ -51,10 +50,7 @@ describe("setTheme locked fallback", () => {
     window.removeEventListener("themechange", listener)
 
     expect(document.documentElement.getAttribute("data-theme")).toBe("minimal")
-    // The stored selection survives so it comes back when the license does.
     expect(localStorage.getItem("color-theme")).toBe("locked-premium")
-    // Flagged as system-driven so useThemeSettingsSync never pushes the
-    // downgrade to the server, which would overwrite the stored selection.
     expect(events).toEqual([{ themeId: "minimal", isSystemChange: true }])
   })
 
@@ -67,8 +63,6 @@ describe("setTheme locked fallback", () => {
     await setTheme("minimal", undefined, undefined, true)
     window.removeEventListener("themechange", listener)
 
-    // Hydration and server pulls restore existing state; the sync hook must
-    // never push them.
     expect(events).toEqual([true])
   })
 
@@ -91,8 +85,6 @@ describe("setTheme locked fallback", () => {
     window.removeEventListener("themechange", listener)
 
     expect(localStorage.getItem("color-theme")).toBe("locked-premium")
-    // A user change dispatched with the applied fallback theme; the sync hook
-    // maps it back to the stored selection before pushing to the server.
     expect(events).toEqual([{ themeId: "minimal", isSystemChange: false }])
   })
 })

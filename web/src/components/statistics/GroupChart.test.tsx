@@ -20,7 +20,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
   useTranslation: () => i18n,
 }))
 
-// jsdom has no layout, so the chart gets a fixed size in place of the size of its container.
 vi.mock("recharts", async (importOriginal) => ({
   ...await importOriginal<typeof import("recharts")>(),
   ResponsiveContainer: ({ children }: { children: ReactNode }) => isValidElement(children) ? cloneElement(children, { width: 800, height: 200 } as object) : null,
