@@ -10,6 +10,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 func (s *Service) seasonPackLookup(ctx context.Context, prep *seasonPackPrep, instances []*models.Instance) *heldLookup {
@@ -29,7 +30,7 @@ func seasonPackNotHeld(ctx context.Context, lookup *heldLookup) bool {
 	if lookup == nil {
 		return false
 	}
-	return lookup.holdsNothing(ctx) && (!lookup.awaitDueSyncs(ctx) || lookup.holdsNothing(ctx))
+	return lookup.holdsNothing(ctx, releases.ContentTypeTV) && (!lookup.awaitDueSyncs(ctx) || lookup.holdsNothing(ctx, releases.ContentTypeTV))
 }
 
 func (s *Service) seasonPackTorrents(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup, matchedTitles map[string][]string) func(instanceID int) (iter.Seq2[*qbt.Torrent, []string], error) {
