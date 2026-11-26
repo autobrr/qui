@@ -130,6 +130,8 @@ The reporter commented on a `pending-close` discussion. Read the comment and do 
 
 qui mirrors the qBittorrent WebAPI. A request for a control that qBittorrent exposes and qui lacks is always an accepted `enhancement`. Add `qbit-native-feature`. Never close it as `wontfix`. It goes to `ready-for-human` like every `enhancement`, and the brief names the WebAPI endpoint.
 
+A request that changes a control the qBittorrent WebUI also has, such as the torrent filter box, is not a parity gap. Read how the WebUI does it with `./.github/scripts/qbit-source.sh release-<latest> src/webui/www/private/<path>` before you recommend a design, and say in the brief how qBittorrent behaves.
+
 ### Bug or enhancement
 
 Use this test when no duplicate, mechanical wontfix, or missing fact decides the outcome.
