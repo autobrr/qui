@@ -108,10 +108,12 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 
 	ctx := context.Background()
 	instanceID := 2
+	sourceV2 := strings.Repeat("ab", 32)
 	sourceTorrent := qbt.Torrent{
-		Hash:     "abc123",
-		Name:     "Show.S01.1080p.BluRay-GROUP",
-		Progress: 1.0,
+		Hash:       sourceV2[:40],
+		InfohashV2: sourceV2,
+		Name:       "Show.S01.1080p.BluRay-GROUP",
+		Progress:   1.0,
 	}
 
 	sync := newEpisodeSyncManager()
@@ -174,7 +176,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	}
 
 	withAdder(service)
-	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, req)
+	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, strings.ToUpper(sourceV2), req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")

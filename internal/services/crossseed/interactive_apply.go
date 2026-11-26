@@ -40,6 +40,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 	if len(torrents) == 0 || s.isHelper(instanceID, torrents[0].Hash) {
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
+	hash = torrents[0].Hash
 
 	cachedSearchResults := s.getCachedSearchResults(instanceID, hash)
 	if cachedSearchResults == nil || len(cachedSearchResults.results) == 0 {

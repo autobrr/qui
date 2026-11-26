@@ -326,7 +326,7 @@ func TestSplitTagsAndNormalizeHashes(t *testing.T) {
 			out = append(out, torrent.Hash)
 		}
 	}
-	require.Equal(t, []string{first, second}, out)
+	require.Equal(t, []string{first, first, second}, out)
 }
 
 func TestSettingsCache_LoadAndReplace(t *testing.T) {

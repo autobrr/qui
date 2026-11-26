@@ -191,20 +191,29 @@ func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes 
 		return nil
 	}
 	torrents := s.lookupTorrents(ctx, instanceID, hashes)
+	queued := make(map[*qbt.Torrent]bool, len(torrents))
 	var handled []infohash.Hash
 	for i, torrent := range torrents {
-		if torrent == nil || !s.torrentMeetsCriteria(*torrent, settings) {
+		if torrent == nil {
 			continue
 		}
-		if s.hasHealthyTracker(torrent.Trackers) {
-			continue
+		ok, decided := queued[torrent]
+		if !decided {
+			ok = s.requestReannounce(instanceID, torrent, settings)
+			queued[torrent] = ok
 		}
-		trackers := s.getProblematicTrackers(torrent.Trackers)
-		if s.enqueue(instanceID, torrent.Hash, torrent.Name, trackers) {
+		if ok {
 			handled = append(handled, hashes[i])
 		}
 	}
 	return handled
+}
+
+func (s *Service) requestReannounce(instanceID int, torrent *qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
+	if !s.torrentMeetsCriteria(*torrent, settings) || s.hasHealthyTracker(torrent.Trackers) {
+		return false
+	}
+	return s.enqueue(instanceID, torrent.Hash, torrent.Name, s.getProblematicTrackers(torrent.Trackers))
 }
 
 func (s *Service) loop(ctx context.Context) {
@@ -591,16 +600,10 @@ func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []i
 		return nil
 	}
 	torrents := qbittorrent.NewHashIndex(sync.Snapshot()).Torrents(hashes)
-	seen := make(map[*qbt.Torrent]struct{}, len(torrents))
 	for i, torrent := range torrents {
-		if torrent == nil {
-			continue
-		}
-		if _, dup := seen[torrent]; dup || s.isHelper(instanceID, torrent.Hash) {
+		if torrent != nil && s.isHelper(instanceID, torrent.Hash) {
 			torrents[i] = nil
-			continue
 		}
-		seen[torrent] = struct{}{}
 	}
 	return torrents
 }

@@ -21,18 +21,21 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-const stalledHash = "5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e"
+const (
+	stalledID = "5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e"
+	stalledV1 = "0ddba11c0ddba11c0ddba11c0ddba11c0ddba11c"
+)
 
 func TestProxyReannounceOfAMonitoredStalledTorrentQueuesAQuiJob(t *testing.T) {
 	t.Parallel()
-	sent := strings.ToUpper(stalledHash)
+	sent := strings.ToUpper(stalledV1) + "|" + stalledID
 	var forwarded atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.11.4"))
 		case "/api/v2/sync/maindata":
-			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"Show.S01E01.1080p.WEB-GRP","state":"stalledUP","added_on":1700000000}}}`, stalledHash)
+			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"Show.S01E01.1080p.WEB-GRP","infohash_v1":%q,"infohash_v2":%q,"state":"stalledUP","added_on":1700000000}}}`, stalledID, stalledV1, stalledID+strings.Repeat("e", 24))
 		case "/api/v2/torrents/info":
 			_, _ = w.Write([]byte("[]"))
 		case "/api/v2/torrents/reannounce":
