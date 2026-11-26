@@ -127,12 +127,9 @@ func (j *job) pass(ctx context.Context, p *part, base int64) error {
 	}); err != nil {
 		return err
 	}
-	torrent, checked, err := j.await(ctx, j.target, helper.InfoHash, j.svc.deps.Config.CheckPolls, func(t *qbt.Torrent) bool { return !isChecking(t.State) })
-	switch {
-	case err != nil:
+	torrent, err := j.awaitCheck(ctx, j.target, helper.InfoHash)
+	if err != nil {
 		return err
-	case !checked:
-		return temporary("The check of the Transfer torrent on %s did not end.", j.target.Name)
 	}
 	seeded := torrent.Progress < 1
 	var left int64
@@ -310,6 +307,12 @@ func (j *job) download(ctx context.Context, hash string, base, size int64) (*qbt
 			return nil, err
 		case torrent == nil:
 			return nil, temporary("The Transfer torrent left %s.", j.target.Name)
+		case isChecking(torrent.State):
+			if _, err := j.awaitCheck(ctx, j.target, hash); err != nil {
+				return nil, err
+			}
+			idle = 0
+			continue
 		}
 		j.meter.reach(base + int64(torrent.Progress*float64(size)))
 		switch {
@@ -323,6 +326,17 @@ func (j *job) download(ctx context.Context, hash string, base, size int64) (*qbt
 			}
 		}
 	}
+}
+
+func (j *job) awaitCheck(ctx context.Context, inst *models.Instance, hash string) (*qbt.Torrent, error) {
+	torrent, checked, err := j.await(ctx, inst, hash, j.svc.deps.Config.CheckPolls, func(t *qbt.Torrent) bool { return !isChecking(t.State) })
+	switch {
+	case err != nil:
+		return nil, err
+	case !checked:
+		return nil, temporary("The check of the Transfer torrent on %s did not end.", inst.Name)
+	}
+	return torrent, nil
 }
 
 func (j *job) await(ctx context.Context, inst *models.Instance, hash string, polls int, done func(*qbt.Torrent) bool) (*qbt.Torrent, bool, error) {

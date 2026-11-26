@@ -150,7 +150,7 @@ If the target has a Cross-seed instance, the cross-seeds of a group go to that C
 
 - The torrent on the source continues to seed during the copy.
 - qui and its automations refuse to delete, move, or rename a torrent that a Transfer holds.
-- If the source torrent changes during the copy, for example a move, a rename, or a recheck, the Transfer fails.
+- If the source torrent changes during the copy, for example a move or a rename, the Transfer fails. If qBittorrent checks a torrent of the Transfer again, for example with **Recheck torrents on completion**, the Transfer waits for the check to end. It fails when the check of the source finds missing pieces. A check that runs for more than an hour is a temporary failure.
 - In one automation run, a Delete action wins over a Transfer. A Move action in the same run makes the Transfer wait.
 - If an instance is off, its Transfers wait. If you delete an instance, its Transfers fail.
 - If you change the URL, the SSH user, the host key, or the file access of an instance, qui stops its Transfers. You decide what happens next.
