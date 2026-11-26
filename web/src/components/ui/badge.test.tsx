@@ -16,3 +16,13 @@ describe("Badge size", () => {
     expect(classes).not.toContain("text-xs")
   })
 })
+
+describe("Badge status variants", () => {
+  it.each(["success", "warning", "info"] as const)("tints %s with its status color only", (status) => {
+    render(<Badge variant={status}>Status</Badge>)
+
+    const classes = [...screen.getByText("Status").classList]
+    expect(classes).toEqual(expect.arrayContaining([`border-${status}/20`, `bg-${status}/10`, `text-${status}`]))
+    expect(classes.filter((name) => /^(bg|text|border)-(primary|secondary|foreground)/.test(name))).toEqual([])
+  })
+})
