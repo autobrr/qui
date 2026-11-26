@@ -1291,7 +1291,7 @@ func countListed(hashes []infohash.Hash) func(torrentIndex) (int, int) {
 	}
 }
 
-func (sm *SyncManager) editTorrents(ctx context.Context, instanceID int, hashes []string, operation string, cleanup *FolderCleanupOp, call func(*Client) error) error {
+func (sm *SyncManager) editTorrents(ctx context.Context, instanceID int, hashes []string, operation string, cleanup *FolderCleanupOp, call func(client *Client, ids []string) error) error {
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return err
@@ -1299,11 +1299,14 @@ func (sm *SyncManager) editTorrents(ctx context.Context, instanceID int, hashes 
 	if err := sm.validateTorrentsExist(ctx, client, hashes, operation); err != nil {
 		return err
 	}
+	ids := client.torrentIDs(hashes)
 	var folders FolderCleanupBatch
 	if cleanup != nil {
-		folders = sm.PrepareFolderCleanup(ctx, instanceID, *cleanup)
+		op := *cleanup
+		op.Hashes = ids
+		folders = sm.PrepareFolderCleanup(ctx, instanceID, op)
 	}
-	if err := call(client); err != nil {
+	if err := call(client, ids); err != nil {
 		return err
 	}
 	folders.Queue()
@@ -2659,15 +2662,12 @@ func fetchTorrentFilesWithRetry(ctx context.Context, client torrentFilesClient, 
 }
 
 func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
-	id, err := infohash.Parse(hash)
-	if err != nil {
-		return nil, nil
-	}
-	filesByHash, err := sm.GetTorrentFilesBatch(ctx, instanceID, []string{id.String()})
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
 	if err != nil {
 		return nil, err
 	}
 
+	id, _ := infohash.Parse(hash)
 	files, ok := filesByHash[id.String()]
 	if !ok {
 		return nil, nil
@@ -4003,19 +4003,19 @@ func (sm *SyncManager) calculateStats(torrents []*qbt.Torrent, unique *uniqueSiz
 }
 
 func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "add tags", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "add tags", nil, func(client *Client, hashes []string) error {
 		return client.AddTagsCtx(ctx, hashes, tags)
 	})
 }
 
 func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "remove tags", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "remove tags", nil, func(client *Client, hashes []string) error {
 		return client.RemoveTagsCtx(ctx, hashes, tags)
 	})
 }
 
 func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "set tags", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set tags", nil, func(client *Client, hashes []string) error {
 		if client.Supports(CapSetTags) {
 			return client.SetTags(ctx, hashes, tags)
 		}
@@ -4075,14 +4075,14 @@ func (sm *SyncManager) SetComment(ctx context.Context, instanceID int, hashes []
 		return err
 	}
 
-	return sm.editTorrents(ctx, instanceID, hashes, "set comment", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set comment", nil, func(client *Client, hashes []string) error {
 		return client.SetCommentCtx(ctx, hashes, comment)
 	})
 }
 
 func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error {
 	cleanup := &FolderCleanupOp{Kind: FolderCleanupSetCategory, Hashes: hashes, Category: category}
-	return sm.editTorrents(ctx, instanceID, hashes, "set category", cleanup, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set category", cleanup, func(client *Client, hashes []string) error {
 		return client.SetCategoryCtx(ctx, hashes, category)
 	})
 }
@@ -4092,13 +4092,13 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 	if enable {
 		cleanup = &FolderCleanupOp{Kind: FolderCleanupEnableATM, Hashes: hashes}
 	}
-	return sm.editTorrents(ctx, instanceID, hashes, "set auto TMM", cleanup, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set auto TMM", cleanup, func(client *Client, hashes []string) error {
 		return client.SetAutoManagementCtx(ctx, hashes, enable)
 	})
 }
 
 func (sm *SyncManager) SetForceStart(ctx context.Context, instanceID int, hashes []string, enable bool) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "set force start", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set force start", nil, func(client *Client, hashes []string) error {
 		if err := client.SetForceStartCtx(ctx, hashes, enable); err != nil {
 			return err
 		}
@@ -4316,7 +4316,7 @@ func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID in
 }
 
 func (sm *SyncManager) AddPeersToTorrents(ctx context.Context, instanceID int, hashes []string, peers []string) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "add peers", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "add peers", nil, func(client *Client, hashes []string) error {
 		if err := client.AddPeersForTorrentsCtx(ctx, hashes, peers); err != nil {
 			return fmt.Errorf("failed to add peers: %w", err)
 		}
@@ -4400,7 +4400,7 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 }
 
 func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64, shareLimitAction, shareLimitsMode string) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "set share limits", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set share limits", nil, func(client *Client, hashes []string) error {
 		if err := client.EnsureCapabilities(ctx); err != nil {
 			return fmt.Errorf("read the qBittorrent version: %w", err)
 		}
@@ -4429,7 +4429,7 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 }
 
 func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int, hashes []string, limitKBs int64) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "set upload limit", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set upload limit", nil, func(client *Client, hashes []string) error {
 		if err := client.SetTorrentUploadLimitCtx(ctx, hashes, limitKBs*1024); err != nil {
 			return fmt.Errorf("failed to set torrent upload limit: %w", err)
 		}
@@ -4438,7 +4438,7 @@ func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int
 }
 
 func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID int, hashes []string, limitKBs int64) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "set download limit", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set download limit", nil, func(client *Client, hashes []string) error {
 		if err := client.SetTorrentDownloadLimitCtx(ctx, hashes, limitKBs*1024); err != nil {
 			return fmt.Errorf("failed to set torrent download limit: %w", err)
 		}
@@ -4452,7 +4452,7 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 	}
 
 	cleanup := &FolderCleanupOp{Kind: FolderCleanupSetLocation, Hashes: hashes, Path: location}
-	return sm.editTorrents(ctx, instanceID, hashes, "set location", cleanup, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "set location", cleanup, func(client *Client, hashes []string) error {
 		sm.beforeTorrentChange(ctx, instanceID, hashes, TorrentChangeMove)
 		if err := client.SetLocationCtx(ctx, hashes, location); err != nil {
 			return fmt.Errorf("failed to set torrent location: %w", err)
@@ -4481,7 +4481,8 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 		return err
 	}
 
-	return sm.editTorrents(ctx, instanceID, []string{hash}, "set file priorities", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, []string{hash}, "set file priorities", nil, func(client *Client, forwarded []string) error {
+		hash := forwarded[0]
 		if len(indices) == 0 {
 			return errors.New("at least one file index is required")
 		}
@@ -4530,7 +4531,8 @@ func (sm *SyncManager) RenameTorrent(ctx context.Context, instanceID int, hash, 
 		return err
 	}
 
-	return sm.editTorrents(ctx, instanceID, []string{hash}, "rename torrent", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, []string{hash}, "rename torrent", nil, func(client *Client, forwarded []string) error {
+		hash := forwarded[0]
 		trimmed := strings.TrimSpace(name)
 		if trimmed == "" {
 			return errors.New("torrent name cannot be empty")
@@ -4553,7 +4555,8 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 		return err
 	}
 
-	return sm.editTorrents(ctx, instanceID, []string{hash}, "rename file", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, []string{hash}, "rename file", nil, func(client *Client, forwarded []string) error {
+		hash := forwarded[0]
 		if strings.TrimSpace(oldPath) == "" {
 			return errors.New("original file path cannot be empty")
 		}
@@ -4588,7 +4591,8 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 		return err
 	}
 
-	return sm.editTorrents(ctx, instanceID, []string{hash}, "rename folder", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, []string{hash}, "rename folder", nil, func(client *Client, forwarded []string) error {
+		hash := forwarded[0]
 		if strings.TrimSpace(oldPath) == "" {
 			return errors.New("original folder path cannot be empty")
 		}
@@ -4614,7 +4618,8 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 }
 
 func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, hash, oldURL, newURL string) error {
-	return sm.editTorrents(ctx, instanceID, []string{hash}, "edit tracker", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, []string{hash}, "edit tracker", nil, func(client *Client, forwarded []string) error {
+		hash := forwarded[0]
 		if err := client.EditTrackerCtx(ctx, hash, oldURL, newURL); err != nil {
 			return fmt.Errorf("failed to edit tracker: %w", err)
 		}
@@ -4639,7 +4644,8 @@ func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, h
 }
 
 func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, hash, urls string) error {
-	return sm.editTorrents(ctx, instanceID, []string{hash}, "add trackers", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, []string{hash}, "add trackers", nil, func(client *Client, forwarded []string) error {
+		hash := forwarded[0]
 		if err := client.AddTrackersCtx(ctx, hash, urls); err != nil {
 			return fmt.Errorf("failed to add trackers: %w", err)
 		}
@@ -4663,7 +4669,8 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 }
 
 func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int, hash, urls string) error {
-	return sm.editTorrents(ctx, instanceID, []string{hash}, "remove trackers", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, []string{hash}, "remove trackers", nil, func(client *Client, forwarded []string) error {
+		hash := forwarded[0]
 		if err := client.RemoveTrackersCtx(ctx, hash, urls); err != nil {
 			return fmt.Errorf("failed to remove trackers: %w", err)
 		}
@@ -4695,7 +4702,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 		return err
 	}
 
-	return sm.editTorrents(ctx, instanceID, hashes, "bulk edit trackers", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "bulk edit trackers", nil, func(client *Client, hashes []string) error {
 		updatedHashes := make([]string, 0, len(hashes))
 
 		var lastErr error
@@ -4738,7 +4745,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 }
 
 func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hashes []string, urls string) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "bulk add trackers", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "bulk add trackers", nil, func(client *Client, hashes []string) error {
 		successfulHashes := make([]string, 0, len(hashes))
 		var lastErr error
 
@@ -4778,7 +4785,7 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 }
 
 func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, hashes []string, urls string) error {
-	return sm.editTorrents(ctx, instanceID, hashes, "bulk remove trackers", nil, func(client *Client) error {
+	return sm.editTorrents(ctx, instanceID, hashes, "bulk remove trackers", nil, func(client *Client, hashes []string) error {
 		successfulHashes := make([]string, 0, len(hashes))
 		var lastErr error
 

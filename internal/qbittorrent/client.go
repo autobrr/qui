@@ -979,3 +979,17 @@ func getTargetState(action string, progress float64) qbt.TorrentState {
 		return ""
 	}
 }
+
+func (c *Client) torrentIDs(hashes []string) []string {
+	ids := slices.Clone(hashes)
+	syncManager := c.SyncOwner()
+	if syncManager == nil {
+		return ids
+	}
+	for i, torrent := range snapshotIndex(syncManager.Snapshot()).Torrents(infohash.ParseAll(hashes)) {
+		if torrent != nil {
+			ids[i] = torrent.Hash
+		}
+	}
+	return ids
+}

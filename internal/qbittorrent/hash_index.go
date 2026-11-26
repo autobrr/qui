@@ -25,8 +25,8 @@ type torrentIndex interface {
 }
 
 type HashIndex struct {
-	snapshot   *qbt.SyncSnapshot
-	alternates func() map[infohash.Hash]*qbt.Torrent
+	snapshot *qbt.SyncSnapshot
+	scan     func(*qbt.SyncSnapshot) map[infohash.Hash]*qbt.Torrent
 }
 
 type alternateIndex struct {
@@ -41,17 +41,13 @@ func NewHashIndex(snapshot *qbt.SyncSnapshot) HashIndex {
 }
 
 func newHashIndex(snapshot *qbt.SyncSnapshot, scan func(*qbt.SyncSnapshot) map[infohash.Hash]*qbt.Torrent) HashIndex {
-	if snapshot == nil {
-		return HashIndex{}
-	}
-	index := cachedAlternateIndex(snapshot)
-	return HashIndex{
-		snapshot: snapshot,
-		alternates: func() map[infohash.Hash]*qbt.Torrent {
-			index.once.Do(func() { index.hashes = scan(snapshot) })
-			return index.hashes
-		},
-	}
+	return HashIndex{snapshot: snapshot, scan: scan}
+}
+
+func (x HashIndex) alternates() map[infohash.Hash]*qbt.Torrent {
+	index := cachedAlternateIndex(x.snapshot)
+	index.once.Do(func() { index.hashes = x.scan(x.snapshot) })
+	return index.hashes
 }
 
 func cachedAlternateIndex(snapshot *qbt.SyncSnapshot) *alternateIndex {
@@ -85,22 +81,18 @@ func (x HashIndex) Matching(match func(*qbt.Torrent) bool) []*qbt.Torrent {
 }
 
 func (x HashIndex) Torrent(hash infohash.Hash) (*qbt.Torrent, bool) {
-	if hash.IsZero() || x.snapshot == nil {
-		return nil, false
-	}
-	if torrent, ok := x.snapshot.Torrent(hash.String()); ok {
-		return torrent, true
-	}
-	if hash.IsV2() {
-		if torrent, ok := x.snapshot.Torrent(hash.TorrentID().String()); ok {
-			return torrent, true
-		}
-	}
-	if x.alternates == nil {
-		return nil, false
+	if torrent, ok := x.Listed(hash); ok || hash.IsZero() || x.snapshot == nil {
+		return torrent, ok
 	}
 	torrent, ok := x.alternates()[hash]
 	return torrent, ok
+}
+
+func (x HashIndex) Listed(hash infohash.Hash) (*qbt.Torrent, bool) {
+	if hash.IsZero() || x.snapshot == nil {
+		return nil, false
+	}
+	return x.snapshot.Torrent(hash.TorrentID().String())
 }
 
 func (x HashIndex) Torrents(hashes []infohash.Hash) []*qbt.Torrent {

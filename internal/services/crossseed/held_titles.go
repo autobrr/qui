@@ -159,20 +159,33 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 }
 
 func (inst *heldInstance) torrents(hashes []string) []*qbt.Torrent {
-	return slices.DeleteFunc(inst.lookup(hashes), func(torrent *qbt.Torrent) bool { return torrent == nil })
+	torrents := make([]*qbt.Torrent, 0, len(hashes))
+	index := qbittorrent.NewHashIndex(inst.snapshot)
+	for _, hash := range hashes {
+		if torrent, ok := listed(index, hash); ok {
+			torrents = append(torrents, torrent)
+		}
+	}
+	return torrents
 }
 
-func (inst *heldInstance) lookup(hashes []string) []*qbt.Torrent {
-	return qbittorrent.NewHashIndex(inst.snapshot).Torrents(infohash.ParseAll(hashes))
+func listed(index qbittorrent.HashIndex, hash string) (*qbt.Torrent, bool) {
+	id, err := infohash.Parse(hash)
+	if err != nil {
+		return nil, false
+	}
+	return index.Listed(id)
 }
 
 func (inst *heldInstance) alternateTitles(hashes []string) map[*qbt.Torrent][]string {
 	titles := map[*qbt.Torrent][]string{}
-	for i, torrent := range inst.lookup(hashes) {
-		if torrent == nil {
+	index := qbittorrent.NewHashIndex(inst.snapshot)
+	for _, hash := range hashes {
+		torrent, ok := listed(index, hash)
+		if !ok {
 			continue
 		}
-		if alternates := inst.index.alternates.of(inst.index.torrents[hashes[i]].title); len(alternates) > 0 {
+		if alternates := inst.index.alternates.of(inst.index.torrents[hash].title); len(alternates) > 0 {
 			titles[torrent] = alternates
 		}
 	}

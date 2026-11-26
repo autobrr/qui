@@ -18,7 +18,12 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 )
 
-const caseEditHash = "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00"
+const (
+	caseEditHash   = "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00"
+	caseEditV2Only = "d00dfeedd00dfeedd00dfeedd00dfeedd00dfeedd00dfeedd00dfeedd00dfeed"
+	caseEditHybrid = "beefcafebeefcafebeefcafebeefcafebeefcafebeefcafebeefcafebeefcafe"
+	caseEditV1     = "facade00facade00facade00facade00facade00"
+)
 
 type caseEditRig struct {
 	sm         *SyncManager
@@ -41,7 +46,8 @@ func newCaseEditRig(t *testing.T) *caseEditRig {
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.11.4"))
 		case "/api/v2/sync/maindata":
-			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"Show.S01E01.1080p.WEB-GRP","category":"tv","state":"stalledUP"}},"categories":{"tv":{"name":"tv"},"movies":{"name":"movies"}}}`, caseEditHash)
+			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"Show.S01E01.1080p.WEB-GRP","category":"tv","state":"stalledUP"},%q:{"name":"Show.S01E02.1080p.WEB-GRP","infohash_v2":%q,"category":"tv","state":"stalledUP"},%q:{"name":"Show.S01E03.1080p.WEB-GRP","infohash_v1":%q,"infohash_v2":%q,"category":"tv","state":"stalledUP"}},"categories":{"tv":{"name":"tv"},"movies":{"name":"movies"}}}`,
+				caseEditHash, caseEditV2Only[:40], caseEditV2Only, caseEditHybrid[:40], caseEditV1, caseEditHybrid)
 		case "/api/v2/torrents/categories":
 			_, _ = w.Write([]byte(`{"tv":{"name":"tv"},"movies":{"name":"movies"}}`))
 		case "/api/v2/torrents/export":
@@ -100,6 +106,27 @@ func TestEditsByAnUppercaseHashSucceed(t *testing.T) {
 		require.NoError(t, rig.sm.SetCategory(t.Context(), rig.instanceID, []string{upper}, "movies"))
 		require.True(t, strings.EqualFold(caseEditHash, rig.sent("/api/v2/torrents/setCategory")), rig.sent("/api/v2/torrents/setCategory"))
 	})
+}
+
+func TestAnEditByAnotherHashOfATorrentSendsItsTorrentID(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		sent string
+		want string
+	}{
+		"the v2 of a v2-only torrent":            {sent: caseEditV2Only, want: caseEditV2Only[:40]},
+		"the uppercase v2 of a v2-only torrent":  {sent: strings.ToUpper(caseEditV2Only), want: caseEditV2Only[:40]},
+		"the v1 of a hybrid stored under its v2": {sent: caseEditV1, want: caseEditHybrid[:40]},
+		"the v2 of a hybrid stored under its v2": {sent: caseEditHybrid, want: caseEditHybrid[:40]},
+		"an uppercase torrent ID":                {sent: strings.ToUpper(caseEditHash), want: caseEditHash},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			rig := newCaseEditRig(t)
+			require.NoError(t, rig.sm.SetCategory(t.Context(), rig.instanceID, []string{tc.sent}, "movies"))
+			require.Equal(t, tc.want, rig.sent("/api/v2/torrents/setCategory"))
+		})
+	}
 }
 
 func TestExportByAnUppercaseHashNamesTheFileAfterTheTorrent(t *testing.T) {

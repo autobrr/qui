@@ -94,7 +94,7 @@ func helpersOf(snapshot *qbt.SyncSnapshot, helpers HelperTorrents, instanceID in
 		if err != nil {
 			continue
 		}
-		if t, ok := index.Torrent(id); ok {
+		if t, ok := index.Listed(id); ok {
 			found.torrents = append(found.torrents, t)
 			found.kinds = append(found.kinds, kind)
 		}
@@ -128,7 +128,7 @@ func (sm *SyncManager) ListedLookup(instanceID int, snapshot *qbt.SyncSnapshot) 
 		if err != nil {
 			return nil, false
 		}
-		torrent, ok := index.Torrent(id)
+		torrent, ok := index.Listed(id)
 		if !ok || kinds[torrent.Hash] != "" {
 			return nil, false
 		}
