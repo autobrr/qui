@@ -250,7 +250,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			lookupResult, lookupErr := a.client.LookupByTerm(ctx, lookupTerm, lookupYear)
 			if lookupErr != nil {
 				incomplete = true
-				log.Debug().Err(lookupErr).
+				log.Trace().Err(lookupErr).
 					Int("instanceId", a.instance.ID).
 					Str("instanceName", a.instance.Name).
 					Str("term", lookupTerm).
