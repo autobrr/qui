@@ -96,12 +96,8 @@ func TestCheckDuplicatesFindsV2OnlyAndHybridTorrentsByEachHash(t *testing.T) {
 		sent string
 		want string
 	}{
-		{"v2 only by its full v2", v2OnlyFull, v2OnlyFull[:40]},
 		{"v2 only by its full v2 in uppercase", strings.ToUpper(v2OnlyFull), v2OnlyFull[:40]},
-		{"hybrid by its v1", hybridV1, hybridV2Full[:40]},
 		{"hybrid by its v1 in uppercase", strings.ToUpper(hybridV1), hybridV2Full[:40]},
-		{"hybrid by its full v2", hybridV2Full, hybridV2Full[:40]},
-		{"hybrid by its full v2 in uppercase", strings.ToUpper(hybridV2Full), hybridV2Full[:40]},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

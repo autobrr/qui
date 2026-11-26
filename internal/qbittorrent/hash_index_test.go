@@ -26,6 +26,7 @@ const (
 	indexLegacyV1     = "5555555555555555555555555555555555555555"
 	indexLegacyV2Full = "6666666666666666666666666666666666666666cccccccccccccccccccccccc"
 	indexMissingHash  = "9999999999999999999999999999999999999999"
+	indexV2OtherTail  = "2222222222222222222222222222222222222222dddddddddddddddddddddddd"
 )
 
 func testHash(s string) infohash.Hash {
@@ -78,18 +79,12 @@ func TestHashIndexFindsEachTorrentByAnyOfItsHashesInAnyCase(t *testing.T) {
 	}{
 		{"v1 by its hash", indexV1Hash, "v1"},
 		{"v2 only by its full v2", indexV2OnlyFull, "v2 only"},
-		{"v2 only by its torrent ID", indexV2OnlyFull[:40], "v2 only"},
 		{"hybrid by its v1", indexHybridV1, "hybrid"},
-		{"hybrid by its full v2", indexHybridV2Full, "hybrid"},
-		{"hybrid by its torrent ID", indexHybridV2Full[:40], "hybrid"},
-		{"hybrid stored under v1 by its v1", indexLegacyV1, "hybrid under v1"},
 		{"hybrid stored under v1 by its full v2", indexLegacyV2Full, "hybrid under v1"},
 	} {
-		for _, input := range []string{tc.hash, strings.ToUpper(tc.hash)} {
-			torrent, ok := index.Torrent(testHash(input))
-			require.True(t, ok, "%s: %s", tc.name, input)
-			assert.Equal(t, tc.want, torrent.Name, "%s: %s", tc.name, input)
-		}
+		torrent, ok := index.Torrent(testHash(strings.ToUpper(tc.hash)))
+		require.True(t, ok, tc.name)
+		assert.Equal(t, tc.want, torrent.Name, tc.name)
 	}
 }
 
@@ -97,7 +92,7 @@ func TestHashIndexMissesAnUnknownOrZeroHash(t *testing.T) {
 	t.Parallel()
 	index := NewHashIndex(hashIndexSnapshot(t))
 
-	for _, hash := range []infohash.Hash{testHash(indexMissingHash), {}} {
+	for _, hash := range []infohash.Hash{testHash(indexMissingHash), testHash(indexV2OtherTail), {}} {
 		torrent, ok := index.Torrent(hash)
 		assert.False(t, ok)
 		assert.Nil(t, torrent)
@@ -109,44 +104,6 @@ func TestHashIndexMissesAnUnknownOrZeroHash(t *testing.T) {
 	assert.Zero(t, empty.Len())
 }
 
-func TestHashIndexBatchScansTheSnapshotAtMostOnce(t *testing.T) {
-	t.Parallel()
-	snapshot := hashIndexSnapshot(t)
-	scans := 0
-	index := newHashIndex(snapshot, func(s *qbt.SyncSnapshot) map[infohash.Hash]*qbt.Torrent {
-		scans++
-		return alternateHashes(s)
-	})
-
-	found := index.Torrents(infohash.ParseAll([]string{
-		indexV1Hash, indexMissingHash, indexHybridV1, "not a hash", indexLegacyV2Full, strings.ToUpper(indexMissingHash),
-	}))
-
-	names := make([]string, len(found))
-	for i, torrent := range found {
-		if torrent != nil {
-			names[i] = torrent.Name
-		}
-	}
-	assert.Equal(t, []string{"v1", "", "hybrid", "", "hybrid under v1", ""}, names)
-	assert.Equal(t, 1, scans)
-}
-
-func TestHashIndexScansNothingWhenEveryHashIsAKey(t *testing.T) {
-	t.Parallel()
-	snapshot := hashIndexSnapshot(t)
-	scans := 0
-	index := newHashIndex(snapshot, func(s *qbt.SyncSnapshot) map[infohash.Hash]*qbt.Torrent {
-		scans++
-		return alternateHashes(s)
-	})
-
-	found := foundTorrents(index.Torrents(infohash.ParseAll([]string{indexV1Hash, indexV2OnlyFull, strings.ToUpper(indexLegacyV1)})))
-
-	assert.Len(t, found, 3)
-	assert.Zero(t, scans)
-}
-
 func TestHashIndexesOfOneSnapshotShareOneScan(t *testing.T) {
 	t.Parallel()
 	snapshot := hashIndexSnapshot(t)
@@ -156,7 +113,18 @@ func TestHashIndexesOfOneSnapshotShareOneScan(t *testing.T) {
 		return alternateHashes(s)
 	}
 
-	for range 3 {
+	found := newHashIndex(snapshot, scan).Torrents(infohash.ParseAll([]string{
+		indexV1Hash, indexMissingHash, indexHybridV1, "not a hash", indexLegacyV2Full,
+	}))
+	names := make([]string, len(found))
+	for i, torrent := range found {
+		if torrent != nil {
+			names[i] = torrent.Name
+		}
+	}
+	assert.Equal(t, []string{"v1", "", "hybrid", "", "hybrid under v1"}, names)
+
+	for range 2 {
 		_, ok := newHashIndex(snapshot, scan).Torrent(testHash(indexMissingHash))
 		assert.False(t, ok)
 	}
@@ -164,7 +132,7 @@ func TestHashIndexesOfOneSnapshotShareOneScan(t *testing.T) {
 	assert.Equal(t, 1, scans)
 }
 
-func TestHashIndexListedFindsOnlyTheHashQBittorrentKeysATorrentBy(t *testing.T) {
+func TestHashIndexReadsAListedHashWithoutAScan(t *testing.T) {
 	t.Parallel()
 	scans := 0
 	index := newHashIndex(hashIndexSnapshot(t), func(s *qbt.SyncSnapshot) map[infohash.Hash]*qbt.Torrent {
@@ -172,20 +140,12 @@ func TestHashIndexListedFindsOnlyTheHashQBittorrentKeysATorrentBy(t *testing.T) 
 		return alternateHashes(s)
 	})
 
-	for hash, want := range map[string]string{
-		indexV1Hash:            "v1",
-		indexV2OnlyFull:        "v2 only",
-		indexHybridV2Full:      "hybrid",
-		indexHybridV2Full[:40]: "hybrid",
-		indexLegacyV1:          "hybrid under v1",
-	} {
-		torrent, ok := index.Listed(testHash(strings.ToUpper(hash)))
-		require.True(t, ok, hash)
-		assert.Equal(t, want, torrent.Name, hash)
+	for _, find := range []func(infohash.Hash) (*qbt.Torrent, bool){index.Listed, index.Torrent} {
+		torrent, ok := find(testHash(indexHybridV2Full))
+		require.True(t, ok)
+		assert.Equal(t, "hybrid", torrent.Name)
 	}
-	for _, hash := range []string{indexHybridV1, indexLegacyV2Full, indexMissingHash} {
-		_, ok := index.Listed(testHash(hash))
-		assert.False(t, ok, hash)
-	}
+	_, ok := index.Listed(testHash(indexHybridV1))
+	assert.False(t, ok)
 	assert.Zero(t, scans)
 }

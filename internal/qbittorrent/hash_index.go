@@ -92,7 +92,11 @@ func (x HashIndex) Listed(hash infohash.Hash) (*qbt.Torrent, bool) {
 	if hash.IsZero() || x.snapshot == nil {
 		return nil, false
 	}
-	return x.snapshot.Torrent(hash.TorrentID().String())
+	torrent, ok := x.snapshot.Torrent(hash.TorrentID().String())
+	if !ok || !hash.IsV2() || hash.Is(torrent.InfohashV2) {
+		return torrent, ok
+	}
+	return nil, false
 }
 
 func (x HashIndex) Torrents(hashes []infohash.Hash) []*qbt.Torrent {

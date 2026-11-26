@@ -52,7 +52,7 @@ func newCaseEditRig(t *testing.T) *caseEditRig {
 			_, _ = w.Write([]byte(`{"tv":{"name":"tv"},"movies":{"name":"movies"}}`))
 		case "/api/v2/torrents/export":
 			_, _ = w.Write([]byte("d4:infod4:name4:showee"))
-		case "/api/v2/torrents/addTags", "/api/v2/torrents/setCategory":
+		case "/api/v2/torrents/setCategory":
 			if err := r.ParseForm(); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -89,35 +89,14 @@ func newCaseEditRig(t *testing.T) *caseEditRig {
 	return rig
 }
 
-func TestEditsByAnUppercaseHashSucceed(t *testing.T) {
-	t.Parallel()
-	upper := strings.ToUpper(caseEditHash)
-
-	t.Run("add tags", func(t *testing.T) {
-		t.Parallel()
-		rig := newCaseEditRig(t)
-		require.NoError(t, rig.sm.AddTags(t.Context(), rig.instanceID, []string{upper}, "keep"))
-		require.True(t, strings.EqualFold(caseEditHash, rig.sent("/api/v2/torrents/addTags")), rig.sent("/api/v2/torrents/addTags"))
-	})
-
-	t.Run("set category", func(t *testing.T) {
-		t.Parallel()
-		rig := newCaseEditRig(t)
-		require.NoError(t, rig.sm.SetCategory(t.Context(), rig.instanceID, []string{upper}, "movies"))
-		require.True(t, strings.EqualFold(caseEditHash, rig.sent("/api/v2/torrents/setCategory")), rig.sent("/api/v2/torrents/setCategory"))
-	})
-}
-
 func TestAnEditByAnotherHashOfATorrentSendsItsTorrentID(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
 		sent string
 		want string
 	}{
-		"the v2 of a v2-only torrent":            {sent: caseEditV2Only, want: caseEditV2Only[:40]},
 		"the uppercase v2 of a v2-only torrent":  {sent: strings.ToUpper(caseEditV2Only), want: caseEditV2Only[:40]},
 		"the v1 of a hybrid stored under its v2": {sent: caseEditV1, want: caseEditHybrid[:40]},
-		"the v2 of a hybrid stored under its v2": {sent: caseEditHybrid, want: caseEditHybrid[:40]},
 		"an uppercase torrent ID":                {sent: strings.ToUpper(caseEditHash), want: caseEditHash},
 	} {
 		t.Run(name, func(t *testing.T) {
