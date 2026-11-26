@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type transferRunner interface {
@@ -63,7 +64,7 @@ func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string,
 	}
 	if !failedTargets[action.TargetInstanceID] {
 		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, []string{hash})
+		_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, infohash.ParseAll([]string{hash}))
 		cancel()
 		if err != nil {
 			failedTargets[action.TargetInstanceID] = true

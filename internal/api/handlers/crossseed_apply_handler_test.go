@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type seasonPackHandlerInstanceStore struct {
@@ -85,7 +86,7 @@ func (*seasonPackHandlerSyncManager) ExportTorrent(context.Context, int, string)
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*seasonPackHandlerSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*seasonPackHandlerSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

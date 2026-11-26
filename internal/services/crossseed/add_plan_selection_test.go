@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -36,7 +37,7 @@ func (*alignmentFailureSyncManager) GetTorrentRefs(_ context.Context, _ int, fil
 
 	torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 	for _, hash := range filter.Hashes {
-		torrents = append(torrents, qbt.Torrent{Hash: hash, Progress: 1.0})
+		torrents = append(torrents, qbt.Torrent{Hash: hash.String(), Progress: 1.0})
 	}
 	return testTorrentRefs(torrents), nil
 }
@@ -58,7 +59,7 @@ func (*alignmentFailureSyncManager) ExportTorrent(context.Context, int, string) 
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*alignmentFailureSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*alignmentFailureSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

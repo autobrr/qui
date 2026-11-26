@@ -21,6 +21,8 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
+const catalogSourceHash = "5ec0000000000000000000000000000000000001"
+
 func TestCatalogApplyObligations(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
@@ -62,7 +64,7 @@ func TestCatalogApplyObligations(t *testing.T) {
 			if strings.HasPrefix(tt.name, "renames") {
 				files[0].Name = "Mira Calder - Morning Is Near (1992) [FLAC]/renamed.flac"
 			}
-			svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, "source", meta.Name, files, meta.HashV1, meta.Files)
+			svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, catalogSourceHash, meta.Name, files, meta.HashV1, meta.Files)
 			source := candidate.Torrents[0]
 			source.Size, source.TotalSize = 110, 110
 			listing := "Different listing"

@@ -26,6 +26,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/testutil/syncsnap"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type peerSyncTestTransport func(*http.Request) (*http.Response, error)
@@ -66,14 +67,14 @@ func TestPeerSyncManagerIdleExpiry(t *testing.T) {
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 			}),
 		})
-		client := &Client{Client: qbtClient, peerSyncManager: make(map[string]*peerSyncEntry)}
-		active := client.GetOrCreatePeerSyncManager(activeHash)
-		idle := client.GetOrCreatePeerSyncManager(idleHash)
+		client := &Client{Client: qbtClient, peerSyncManager: make(map[infohash.Hash]*peerSyncEntry)}
+		active := client.GetOrCreatePeerSyncManager(testHash(activeHash))
+		idle := client.GetOrCreatePeerSyncManager(testHash(idleHash))
 		require.NoError(t, active.Sync(t.Context()))
 		require.NoError(t, idle.Sync(t.Context()))
 
 		time.Sleep(4 * time.Minute)
-		require.Same(t, active, client.GetOrCreatePeerSyncManager(strings.ToUpper(activeHash)))
+		require.Same(t, active, client.GetOrCreatePeerSyncManager(testHash(strings.ToUpper(activeHash))))
 		require.NoError(t, active.Sync(t.Context()))
 		require.Equal(t, int64(2), active.GetPeers().Rid)
 		require.Equal(t, "192.0.2.1", active.GetPeers().Peers["192.0.2.1:1"].IP)
@@ -81,10 +82,10 @@ func TestPeerSyncManagerIdleExpiry(t *testing.T) {
 
 		time.Sleep(2 * time.Minute)
 		synctest.Wait()
-		require.NotContains(t, client.peerSyncManager, idleHash, "idle entries expire without another lookup")
-		require.Contains(t, client.peerSyncManager, activeHash, "reads renew the idle timeout")
+		require.NotContains(t, client.peerSyncManager, testHash(idleHash), "idle entries expire without another lookup")
+		require.Contains(t, client.peerSyncManager, testHash(activeHash), "reads renew the idle timeout")
 		require.Equal(t, int64(1), idle.GetPeers().Rid, "eviction preserves data held by an existing reader")
-		replacement := client.GetOrCreatePeerSyncManager(idleHash)
+		replacement := client.GetOrCreatePeerSyncManager(testHash(idleHash))
 		require.NotSame(t, idle, replacement)
 		require.NoError(t, replacement.Sync(t.Context()))
 		require.Equal(t, int64(1), replacement.GetPeers().Rid, "a reopened torrent starts with a full sync")
@@ -123,16 +124,16 @@ func TestPeerSyncManagerTorrentRemoval(t *testing.T) {
 	require.NoError(t, err)
 	defer client.optimisticUpdates.Close()
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
-	active := client.GetOrCreatePeerSyncManager(activeHash)
-	removed := client.GetOrCreatePeerSyncManager(strings.ToUpper(removedHash))
+	active := client.GetOrCreatePeerSyncManager(testHash(activeHash))
+	removed := client.GetOrCreatePeerSyncManager(testHash(strings.ToUpper(removedHash)))
 	empty := syncsnap.Update(t).Snapshot
 	t.Cleanup(func() { client.prunePeerSyncManagers(empty) })
 
 	phase.Store(1)
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
-	require.NotContains(t, client.peerSyncManager, removedHash)
-	require.Same(t, active, client.GetOrCreatePeerSyncManager(activeHash), "an unchanged torrent survives a delta")
-	require.NotSame(t, removed, client.GetOrCreatePeerSyncManager(removedHash))
+	require.NotContains(t, client.peerSyncManager, testHash(removedHash))
+	require.Same(t, active, client.GetOrCreatePeerSyncManager(testHash(activeHash)), "an unchanged torrent survives a delta")
+	require.NotSame(t, removed, client.GetOrCreatePeerSyncManager(testHash(removedHash)))
 
 	phase.Store(2)
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
@@ -177,9 +178,10 @@ func (m *mockSyncEventSink) getTrackerHealthUpdates() []int {
 }
 
 func TestGetTorrentPeersSyncsAndMergesWithoutProxyWarmup(t *testing.T) {
+	const peersHash = "abc123abc123abc123abc123abc123abc123abc1"
 	var requests atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v2/sync/torrentPeers" || r.URL.Query().Get("hash") != "abc123" {
+		if r.URL.Path != "/api/v2/sync/torrentPeers" || r.URL.Query().Get("hash") != peersHash {
 			t.Errorf("unexpected request: %s", r.URL)
 			http.NotFound(w, r)
 			return
@@ -201,17 +203,17 @@ func TestGetTorrentPeersSyncsAndMergesWithoutProxyWarmup(t *testing.T) {
 	client := &Client{
 		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, APIKey: "test-key"}),
 		isHealthy:       true,
-		peerSyncManager: make(map[string]*peerSyncEntry),
+		peerSyncManager: make(map[infohash.Hash]*peerSyncEntry),
 	}
 	sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
 
-	full, err := sm.GetTorrentPeers(t.Context(), 1, "abc123")
+	full, err := sm.GetTorrentPeers(t.Context(), 1, peersHash)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), full.Rid)
 	require.Len(t, full.Peers, 2)
 	require.Contains(t, full.Peers, "remove")
 
-	merged, err := sm.GetTorrentPeers(t.Context(), 1, "abc123")
+	merged, err := sm.GetTorrentPeers(t.Context(), 1, peersHash)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), merged.Rid)
 	require.Len(t, merged.Peers, 2)
@@ -278,7 +280,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	getterDone := make(chan struct{})
 	go func() {
 		defer close(getterDone)
-		_ = client.getTorrentsByHashes([]string{"abc"})
+		_ = client.getTorrentsByHashes(infohash.ParseAll([]string{"abc"}))
 	}()
 
 	select {
@@ -863,13 +865,13 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 
 		client := &Client{
 			Client:          qbtClient,
-			peerSyncManager: make(map[string]*peerSyncEntry),
+			peerSyncManager: make(map[infohash.Hash]*peerSyncEntry),
 		}
 
 		var wg sync.WaitGroup
 		for _, callerHash := range []string{hash, strings.ToUpper(hash)} {
 			wg.Go(func() {
-				_, err := client.SyncPeers(t.Context(), callerHash)
+				_, err := client.SyncPeers(t.Context(), testHash(callerHash))
 				require.NoError(t, err)
 			})
 		}
@@ -883,7 +885,7 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 		}
 		mu.Unlock()
 
-		peers := client.GetOrCreatePeerSyncManager(hash).GetPeers()
+		peers := client.GetOrCreatePeerSyncManager(testHash(hash)).GetPeers()
 		require.Equal(t, wantRid, peers.Rid, "rid regressed to an older snapshot")
 		if wantStalePeer {
 			require.Contains(t, peers.Peers, stalePeer)
@@ -891,7 +893,7 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 			require.NotContains(t, peers.Peers, stalePeer, "an older snapshot restored a removed peer")
 		}
 
-		peers, err := client.SyncPeers(t.Context(), hash)
+		peers, err := client.SyncPeers(t.Context(), testHash(hash))
 		require.NoError(t, err)
 		require.Equal(t, int64(2), peers.Rid)
 		require.NotContains(t, peers.Peers, stalePeer, "a removal from an incremental update was lost")
@@ -914,13 +916,13 @@ func TestSyncPeersLeavesWhenCallerGoesAway(t *testing.T) {
 
 	client := &Client{
 		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
-		peerSyncManager: make(map[string]*peerSyncEntry),
+		peerSyncManager: make(map[infohash.Hash]*peerSyncEntry),
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	errs := make(chan error, 1)
 	go func() {
-		_, err := client.SyncPeers(ctx, hash)
+		_, err := client.SyncPeers(ctx, testHash(hash))
 		errs <- err
 	}()
 

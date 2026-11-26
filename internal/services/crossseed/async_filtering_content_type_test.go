@@ -237,7 +237,8 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 	t.Parallel()
 
 	const instanceID = 1
-	hash := "deadbeefcafe"
+	hash := strings.Repeat("de", 20)
+	requested := strings.ToUpper(hash + strings.Repeat("ad", 12))
 	movieName := "Example.Movie.2019.1080p.BluRay.x264-GROUP"
 
 	newService := func(cachedType string) (*Service, *AsyncIndexerFilteringState) {
@@ -254,7 +255,7 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 		return &Service{
 			instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
 			syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
-				Hash: hash, Name: movieName, Progress: 1, Size: 1000,
+				Hash: hash, InfohashV2: strings.ToLower(requested), Name: movieName, Progress: 1, Size: 1000,
 			}}, map[string]qbt.TorrentFiles{
 				hash: {{Name: movieName + ".mkv", Size: 1000}},
 			}),
@@ -265,13 +266,13 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 	}
 
 	svc, cachedState := newService("movie")
-	result, err := svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, hash, true)
+	result, err := svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, requested, true)
 	require.NoError(t, err)
 	require.Same(t, cachedState, result.FilteringState, "matching content type must reuse the cached run")
 	require.Equal(t, []int{7}, result.TorrentInfo.FilteredIndexers)
 
 	svc, cachedState = newService("audiobook")
-	result, err = svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, hash, true)
+	result, err = svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, requested, true)
 	require.NoError(t, err)
 	require.NotSame(t, cachedState, result.FilteringState, "different content type must not reuse the cached run")
 	require.NotEqual(t, []int{7}, result.TorrentInfo.FilteredIndexers)

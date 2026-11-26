@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -452,10 +453,10 @@ type existingHashSyncManager struct {
 	existing string
 }
 
-func (m *existingHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (m *existingHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	for _, h := range hashes {
-		if h == m.existing {
-			return &qbt.Torrent{Hash: h}, true, nil
+		if h.Is(m.existing) {
+			return &qbt.Torrent{Hash: h.String()}, true, nil
 		}
 	}
 	return nil, false, nil
@@ -557,11 +558,11 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 			results: []jackett.SearchResult{
 				func() jackett.SearchResult {
 					r := packResult("existing")
-					r.InfoHashV1 = "deadbeef"
+					r.InfoHashV1 = "deadbeef00000000000000000000000000000000"
 					return r
 				}(),
 			},
-			existingHash: "deadbeef",
+			existingHash: "deadbeef00000000000000000000000000000000",
 			wantSkipped:  1,
 			wantMessage:  "no season pack candidates",
 		},

@@ -13,6 +13,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -794,7 +795,7 @@ func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingR
 
 func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []string) (map[string]*qbt.Torrent, bool) {
 	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
-	torrents, err := s.sync.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+	torrents, err := s.sync.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 	cancel()
 	if err != nil {
 		log.Debug().

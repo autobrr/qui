@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -39,10 +40,10 @@ func (m *discPolicySyncManager) GetTorrentRefs(_ context.Context, _ int, filter 
 	if len(filter.Hashes) > 0 {
 		torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 		for _, hash := range filter.Hashes {
-			if m.matchedTorrent != nil && strings.EqualFold(m.matchedTorrent.Hash, hash) {
+			if m.matchedTorrent != nil && hash.Is(m.matchedTorrent.Hash) {
 				torrents = append(torrents, *m.matchedTorrent)
 			} else {
-				torrents = append(torrents, qbt.Torrent{Hash: hash})
+				torrents = append(torrents, qbt.Torrent{Hash: hash.String()})
 			}
 		}
 		return testTorrentRefs(torrents), nil
@@ -69,7 +70,7 @@ func (*discPolicySyncManager) ExportTorrent(context.Context, int, string) ([]byt
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*discPolicySyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*discPolicySyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

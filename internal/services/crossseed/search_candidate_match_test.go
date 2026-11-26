@@ -1664,23 +1664,30 @@ func TestSelectTitleRescueAttemptsSpreadsAcrossIndexers(t *testing.T) {
 }
 
 func TestAttemptTitleRescueResultsSkipsKnownDuplicatesAndBackfills(t *testing.T) {
-	const instanceID = 1
+	const (
+		instanceID     = 1
+		alreadyPresent = "a0000000000000000000000000000000000000a1"
+		hashB          = "b0000000000000000000000000000000000000b1"
+		hashC          = "c0000000000000000000000000000000000000c1"
+		hashD          = "d0000000000000000000000000000000000000d1"
+		hashE          = "e0000000000000000000000000000000000000e1"
+	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	syncManager := newFakeSyncManager(instance, []qbt.Torrent{
 		{Hash: "source"},
-		{Hash: "already-present"},
+		{Hash: alreadyPresent},
 	}, nil)
 	service := &Service{syncManager: syncManager}
 	results := []TorrentSearchResult{
-		{Title: "one-duplicate", IndexerID: 1, InfoHashV1: "already-present", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
-		{Title: "one-backup", IndexerID: 1, InfoHashV1: "hash-b", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
-		{Title: "two", IndexerID: 2, InfoHashV1: "hash-c", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
-		{Title: "three", IndexerID: 3, InfoHashV1: "hash-d", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
-		{Title: "four", IndexerID: 4, InfoHashV1: "hash-e", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "one-duplicate", IndexerID: 1, InfoHashV1: alreadyPresent, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "one-backup", IndexerID: 1, InfoHashV1: hashB, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "two", IndexerID: 2, InfoHashV1: hashC, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "three", IndexerID: 3, InfoHashV1: hashD, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "four", IndexerID: 4, InfoHashV1: hashE, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
 	}
 	var attempted []string
 
-	err := service.attemptTitleRescueResults(context.Background(), instanceID, results, nil, map[string]struct{}{"hash-c": {}}, func(result TorrentSearchResult) {
+	err := service.attemptTitleRescueResults(context.Background(), instanceID, results, nil, map[string]struct{}{hashC: {}}, func(result TorrentSearchResult) {
 		attempted = append(attempted, result.Title)
 	})
 
@@ -1708,14 +1715,15 @@ func TestLimitTitleRescueResultsDoesNotLimitNormalResults(t *testing.T) {
 
 func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.T) {
 	const (
-		instanceID = 1
-		sourceHash = "source"
+		instanceID   = 1
+		sourceHash   = "5000000000000000000000000000000000000051"
+		existingHash = "e000000000000000000000000000000000000051"
 	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
 			{Hash: sourceHash, Name: "Source"},
-			{Hash: "existing", Name: "Existing"},
+			{Hash: existingHash, Name: "Existing"},
 		}, nil),
 		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
@@ -1740,7 +1748,7 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 	duplicate := result
 	duplicate.Title = "duplicate"
 	duplicate.DownloadURL = "https://example.invalid/duplicate.torrent"
-	duplicate.InfoHashV1 = "existing"
+	duplicate.InfoHashV1 = existingHash
 	service.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{duplicate, result})
 	selection := TorrentSearchSelection{
 		Indexer:     result.Indexer,

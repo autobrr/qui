@@ -24,6 +24,7 @@ import (
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -32,7 +33,7 @@ func TestFilterIndexersByExistingContentUsesConfiguredIndexerDomains(t *testing.
 
 	const instanceID = 1
 	source := qbt.Torrent{
-		Hash:     "sourcehash",
+		Hash:     "5011ce0000000000000000000000000000000001",
 		Name:     "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC",
 		Progress: 1,
 		Tracker:  "https://source.example/announce",
@@ -47,7 +48,7 @@ func TestFilterIndexersByExistingContentUsesConfiguredIndexerDomains(t *testing.
 			},
 		},
 		files: map[string]qbt.TorrentFiles{
-			"sourcehash": {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
+			"5011ce0000000000000000000000000000000001": {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
 			"uploadhash": {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
 			"mttvhash":   {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
 			"hdbhash":    {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
@@ -77,7 +78,7 @@ func TestFilterIndexersByExistingContentMatchesFolderSourceToRootlessExisting(t 
 	t.Parallel()
 
 	const instanceID = 1
-	const sourceHash = "sourcehash"
+	const sourceHash = "5011ce0000000000000000000000000000000001"
 	const retroHash = "830214dd915a3b57843d0f369d06bc9ad5253c6f"
 	const mediaFile = "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv"
 	const mediaSize = int64(4_294_967_296)
@@ -123,7 +124,7 @@ func TestFilterIndexersByExistingContentMatchesRootlessSourceToFolderExisting(t 
 	t.Parallel()
 
 	const instanceID = 1
-	const sourceHash = "sourcehash"
+	const sourceHash = "5011ce0000000000000000000000000000000001"
 	const existingHash = "folderhash"
 	const mediaFile = "Movie.2024.1080p.BluRay.x264-GROUP.mkv"
 	const mediaSize = int64(2048)
@@ -169,7 +170,7 @@ func TestFilterIndexersByExistingContentRejectsDifferentFileSize(t *testing.T) {
 	t.Parallel()
 
 	const instanceID = 1
-	const sourceHash = "sourcehash"
+	const sourceHash = "5011ce0000000000000000000000000000000001"
 	const existingHash = "existinghash"
 	const mediaFile = "Movie.2024.1080p.BluRay.x264-GROUP.mkv"
 
@@ -215,7 +216,7 @@ func TestFilterIndexersByExistingContentRejectsSidecarOnlyExisting(t *testing.T)
 	t.Parallel()
 
 	const instanceID = 1
-	const sourceHash = "sourcehash"
+	const sourceHash = "5011ce0000000000000000000000000000000001"
 	const existingHash = "existinghash"
 
 	source := qbt.Torrent{
@@ -257,7 +258,7 @@ const (
 	seededTrackerPack       = "Example.Show.S02.1080p.WEB-DL.H.264-GRP"
 	seededTrackerMovie      = "Example.Movie.2024.1080p.BluRay.x264-GRP"
 	seededTrackerCollection = "Example.Collection.1080p.BluRay.x264-GRP"
-	seededTrackerSourceHash = "sourcehash"
+	seededTrackerSourceHash = "5011ce0000000000000000000000000000000001"
 	seededTrackerIndexerB   = 10
 )
 
@@ -289,7 +290,7 @@ func seededTrackerPackTorrent(hash string) seededTrackerTorrent {
 func seededTrackerEpisodeTorrent(episode int) seededTrackerTorrent {
 	name := seededTrackerEpisodeName(episode)
 	return seededTrackerTorrent{
-		hash:  fmt.Sprintf("episode%02dhash", episode),
+		hash:  fmt.Sprintf("e9%038x", episode),
 		name:  name,
 		files: qbt.TorrentFiles{{Name: name + ".mkv", Size: seededTrackerEpisodeSizeLargestIsSeven(episode)}},
 	}
@@ -641,7 +642,7 @@ func TestFilterSearchResultsByLateContentFilterMissingOrIncompleteStateLeavesRes
 	t.Parallel()
 
 	const instanceID = 1
-	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
+	source := &qbt.Torrent{Hash: "5011ce0000000000000000000000000000000001", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
 	results := []jackett.SearchResult{
 		{Indexer: "Indexer One", IndexerID: 1, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
 	}
@@ -671,7 +672,7 @@ func TestFilterSearchResultsByLateContentFilterCompletedStateNoExcludedResultInd
 	t.Parallel()
 
 	const instanceID = 1
-	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
+	source := &qbt.Torrent{Hash: "5011ce0000000000000000000000000000000001", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
 	results := []jackett.SearchResult{
 		{Indexer: "Indexer One", IndexerID: 1, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
 		{Indexer: "Indexer Two", IndexerID: 2, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
@@ -697,7 +698,7 @@ func TestFilterSearchResultsByLateContentFilterCompletedStateWithNoResultsReturn
 	t.Parallel()
 
 	const instanceID = 1
-	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
+	source := &qbt.Torrent{Hash: "5011ce0000000000000000000000000000000001", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
 	svc := &Service{
 		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 	}
@@ -822,7 +823,7 @@ func TestFilterSearchResultsByLateContentFilterDropsExcludedIndexers(t *testing.
 	t.Parallel()
 
 	const instanceID = 1
-	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
+	source := &qbt.Torrent{Hash: "5011ce0000000000000000000000000000000001", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
 	results := []jackett.SearchResult{
 		{Indexer: "Indexer One", IndexerID: 1, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
 		{Indexer: "Indexer Two", IndexerID: 2, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
@@ -1317,7 +1318,7 @@ func (m *duplicateFilteringSyncManager) GetTorrentRefs(_ context.Context, instan
 
 	targets := make(map[string]struct{}, len(filter.Hashes))
 	for _, hash := range filter.Hashes {
-		if normalized := normalizeHash(hash); normalized != "" {
+		if normalized := hash.String(); normalized != "" {
 			targets[normalized] = struct{}{}
 		}
 	}
@@ -1358,13 +1359,13 @@ func (*duplicateFilteringSyncManager) ExportTorrent(context.Context, int, string
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (m *duplicateFilteringSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+func (m *duplicateFilteringSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if m.hashErr != nil {
 		return nil, false, m.hashErr
 	}
 
 	for _, hash := range hashes {
-		normalized := normalizeHash(hash)
+		normalized := hash.String()
 		if torrent, ok := m.existingByHash[normalized]; ok {
 			copied := torrent
 			return &copied, true, nil
@@ -1374,7 +1375,7 @@ func (m *duplicateFilteringSyncManager) HasTorrentByAnyHash(_ context.Context, i
 	for i := range m.torrents[instanceID] {
 		torrent := m.torrents[instanceID][i]
 		for _, hash := range hashes {
-			normalized := normalizeHash(hash)
+			normalized := hash.String()
 			if normalized == "" {
 				continue
 			}

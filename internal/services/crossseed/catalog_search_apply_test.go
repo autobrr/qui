@@ -32,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type catalogReplaySync struct {
@@ -42,7 +43,7 @@ type catalogReplaySync struct {
 }
 
 func (m *catalogReplaySync) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
-	if len(filter.Hashes) == 0 || slices.Contains(filter.Hashes, m.source.Hash) {
+	if len(filter.Hashes) == 0 || slices.ContainsFunc(filter.Hashes, func(h infohash.Hash) bool { return h.Is(m.source.Hash) }) {
 		return []*qbt.Torrent{m.source}, nil
 	}
 	return nil, nil

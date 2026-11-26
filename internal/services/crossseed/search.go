@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func mergeTorrentSearchResults(gazelleResults, torznabResults []TorrentSearchResult) []TorrentSearchResult {
@@ -128,7 +129,7 @@ func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash str
 		return nil, nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})})
 	if err != nil {
 		return nil, nil, fmt.Errorf("load torrents: %w", err)
 	}
@@ -704,7 +705,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 		res := item.result
 		hashes := torrentSearchResultInfoHashes(res.InfoHashV1, res.InfoHashV2)
 		if len(hashes) > 0 && s.syncManager != nil {
-			existing, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes)
+			existing, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes))
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return nil, duplicateFilteredCount, err

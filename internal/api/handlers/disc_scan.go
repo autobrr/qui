@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/discscan"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type DiscScanHandler struct {
@@ -100,7 +101,7 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contentPath := ""
-	if torrents, err := h.resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}}); err == nil && len(torrents) > 0 {
+	if torrents, err := h.resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})}); err == nil && len(torrents) > 0 {
 		contentPath = torrents[0].ContentPath
 	}
 

@@ -5,8 +5,6 @@ package reannounce
 
 import (
 	"context"
-	"maps"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type fakeHelpers struct {
@@ -60,7 +59,7 @@ func TestReannounceSkipsHelperTorrents(t *testing.T) {
 		helpers map[string]bool
 		want    []string
 	}{
-		{name: "a helper torrent is left out", helpers: map[string]bool{helper: true}, want: []string{strings.ToUpper(own)}},
+		{name: "a helper torrent is left out", helpers: map[string]bool{helper: true}, want: []string{own}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			newService := func() (*Service, int, *[]string) {
@@ -81,7 +80,12 @@ func TestReannounceSkipsHelperTorrents(t *testing.T) {
 			require.ElementsMatch(t, tc.want, *jobs, "scan")
 
 			svc, instanceID, _ = newService()
-			requested := slices.Collect(maps.Keys(svc.lookupTorrents(t.Context(), instanceID, []string{helper, own})))
+			var requested []string
+			for _, torrent := range svc.lookupTorrents(t.Context(), instanceID, infohash.ParseAll([]string{helper, own})) {
+				if torrent != nil {
+					requested = append(requested, torrent.Hash)
+				}
+			}
 			require.ElementsMatch(t, tc.want, requested, "request")
 		})
 	}

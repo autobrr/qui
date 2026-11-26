@@ -35,7 +35,7 @@ func (g *hashFilteringSyncManager) GetTorrentRefs(_ context.Context, _ int, opts
 	out := make([]qbt.Torrent, 0, len(opts.Hashes))
 	for _, torrent := range g.torrents {
 		for _, h := range opts.Hashes {
-			if strings.EqualFold(torrent.Hash, h) {
+			if h.Is(torrent.Hash) {
 				out = append(out, torrent)
 			}
 		}

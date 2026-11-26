@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -233,7 +234,7 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 		attemptedNames[normName] = struct{}{}
 		hashes := torrentSearchResultInfoHashes(res.InfoHashV1, res.InfoHashV2)
 		if len(hashes) > 0 && s.syncManager != nil {
-			if _, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, state.opts.InstanceID, hashes); hashErr == nil && exists {
+			if _, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, state.opts.InstanceID, infohash.ParseAll(hashes)); hashErr == nil && exists {
 				continue
 			}
 		}

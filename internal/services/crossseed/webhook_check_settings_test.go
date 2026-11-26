@@ -22,7 +22,7 @@ import (
 const settingsCheckName = "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA"
 
 func settingsCheckLibrary() ([]qbt.Torrent, map[string]qbt.TorrentFiles) {
-	torrent := qbt.Torrent{Hash: "harbor", Name: settingsCheckName, Category: "films", Size: 4 << 30, TotalSize: 4 << 30, Progress: 1, State: qbt.TorrentStateUploading}
+	torrent := qbt.Torrent{Hash: "ba5b0000000000000000000000000000000000a1", Name: settingsCheckName, Category: "films", Size: 4 << 30, TotalSize: 4 << 30, Progress: 1, State: qbt.TorrentStateUploading}
 	return []qbt.Torrent{torrent}, map[string]qbt.TorrentFiles{torrent.Hash: {{Name: settingsCheckName + ".mkv", Size: torrent.Size}}}
 }
 

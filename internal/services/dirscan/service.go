@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Config struct {
@@ -99,7 +100,7 @@ type Service struct {
 
 type syncManagerTorrentChecker struct{ sm *qbittorrent.SyncManager }
 
-func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if c == nil || c.sm == nil {
 		return nil, false, nil
 	}

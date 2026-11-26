@@ -477,7 +477,7 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	d := backend.Paths()
 	judge := make([]*pendingFolder, 0, len(ready))
 	for _, item := range ready {
-		if t, ok := rows[canonicalizeHash(item.snap.Hash)]; ok && item.waitsFor(d, t) {
+		if t, ok := rows[item.snap.Hash]; ok && item.waitsFor(d, t) {
 			hint = true
 			retry = append(retry, item)
 			continue

@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -255,7 +256,7 @@ func (j *job) removeHelpers(ctx context.Context) error {
 		if len(hashes) == 0 {
 			continue
 		}
-		present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+		present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 		if err != nil {
 			return fmt.Errorf("%s: %w", inst.Name, err)
 		}

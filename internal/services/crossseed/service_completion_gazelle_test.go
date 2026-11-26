@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -92,7 +93,7 @@ func (m *completionGazelleSyncMock) GetTorrentRefs(_ context.Context, _ int, fil
 		return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 	}
 	for _, h := range filter.Hashes {
-		if normalizeHash(h) == normalizeHash(m.torrent.Hash) {
+		if h.Is(m.torrent.Hash) {
 			return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 		}
 	}
@@ -112,7 +113,7 @@ func (m *completionGazelleSyncMock) ExportTorrent(context.Context, int, string) 
 	return nil, "", "", nil
 }
 
-func (m *completionGazelleSyncMock) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (m *completionGazelleSyncMock) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type TorrentRefFilter struct {
-	Hashes    []string
+	Hashes    []infohash.Hash
 	Category  string
 	Tag       string
 	Completed bool
@@ -53,19 +55,8 @@ func (f TorrentRefFilter) Select(snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
 	if snapshot == nil {
 		return nil
 	}
-	refs := make([]*qbt.Torrent, 0, len(f.Hashes))
-	seen := make(map[*qbt.Torrent]struct{}, len(f.Hashes))
-	for _, hash := range f.Hashes {
-		t, ok := snapshot.Torrent(canonicalizeHash(hash))
-		if !ok || !f.matches(t) {
-			continue
-		}
-		if _, repeat := seen[t]; !repeat {
-			seen[t] = struct{}{}
-			refs = append(refs, t)
-		}
-	}
-	return refs
+	refs := foundTorrents(NewHashIndex(snapshot).Torrents(f.Hashes))
+	return slices.DeleteFunc(refs, func(t *qbt.Torrent) bool { return !f.matches(t) })
 }
 
 func (sm *SyncManager) GetTorrentRefs(ctx context.Context, instanceID int, filter TorrentRefFilter) ([]*qbt.Torrent, error) {

@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func (j *job) prove(ctx context.Context) error {
@@ -626,7 +627,7 @@ func (j *job) after(ctx context.Context) error {
 }
 
 func (j *job) running(ctx context.Context) ([]string, error) {
-	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(j.hashes())})
 	if err != nil {
 		return nil, temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
 	}
@@ -671,7 +672,7 @@ func (j *job) finishRemoval(ctx context.Context) error {
 }
 
 func (j *job) removeFromSource(ctx context.Context, keep string) error {
-	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(j.hashes())})
 	if err != nil {
 		return temporary("qui cannot read the torrents of %s: %v", j.source.Name, err)
 	}
@@ -775,7 +776,7 @@ func (j *job) keepReason(ctx context.Context) string {
 }
 
 func (j *job) changedOnSource(ctx context.Context) string {
-	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(j.hashes())})
 	if err != nil {
 		return "qui cannot read the torrents on " + j.source.Name
 	}

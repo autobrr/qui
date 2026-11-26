@@ -72,7 +72,7 @@ func TestSearchLinksNeedTorrentsWrite(t *testing.T) {
 	}{
 		{"/api/torznab/search", `{"query":"Show"}`},
 		{"/api/torznab/cross-seed/search", `{"query":"Show"}`},
-		{"/api/cross-seed/torrents/1/aaa/search", `{}`},
+		{"/api/cross-seed/torrents/1/" + stubHashA + "/search", `{}`},
 	}
 	callers := []struct {
 		name   string
@@ -107,14 +107,14 @@ func TestKeyWithoutTorrentsWriteAppliesSearchResultByHiddenGUID(t *testing.T) {
 	rig := newSecretsRig(t)
 	key := rig.key(t, models.Permission{Area: models.AreaCrossSeed, Level: models.LevelWrite})
 
-	found := rig.searchLinks(t, "/api/cross-seed/torrents/1/aaa/search", key, nil, `{}`).Results[0]
+	found := rig.searchLinks(t, "/api/cross-seed/torrents/1/"+stubHashA+"/search", key, nil, `{}`).Results[0]
 	require.Empty(t, found.DownloadURL)
 
 	selection, err := json.Marshal(crossseed.ApplyTorrentSearchRequest{Selections: []crossseed.TorrentSearchSelection{
 		{IndexerID: found.IndexerID, Indexer: "stub", Title: stubReleaseName, GUID: found.GUID},
 	}})
 	require.NoError(t, err)
-	status, response := rig.post(t, "/api/cross-seed/torrents/1/aaa/apply", key, nil, string(selection))
+	status, response := rig.post(t, "/api/cross-seed/torrents/1/"+stubHashA+"/apply", key, nil, string(selection))
 	require.Equal(t, http.StatusOK, status, response)
 	require.NotContains(t, response, "does not match cached search results")
 

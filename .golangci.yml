@@ -158,6 +158,9 @@ linters:
         - pattern: ^\(?\*?qbittorrent\.SyncSnapshot\)?\.(Torrents|Matching)$
           pkg: ^github\.com/autobrr/go-qbittorrent$
           msg: list an instance's torrents through the sync manager reads, which leave out Helper torrents (ADR 0092)
+        - pattern: ^\(?\*?qbittorrent\.SyncSnapshot\)?\.Torrent$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: look a torrent up by an infohash.Hash through qbittorrent.HashIndex in internal/qbittorrent/hash_index.go, which finds v1, v2, and hybrid torrents by any hash
         - pattern: ^\(?\*?\w+\.\w+\)?\.PendingSync$
           msg: wait on a due sync through the Held titles lookup in internal/services/crossseed/held_titles_lookup.go
         - pattern: ^crossseed\.(Service\.(CheckSeasonPackWebhook|ApplySeasonPackWebhook)|SeasonPack(CheckRequest|CheckMatch|CheckResponse|ApplyRequest|ApplyResponse))$
@@ -358,6 +361,13 @@ linters:
         linters:
           - forbidigo
         text: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup\.go, never the full torrent list
+
+      # The hash index owns the lookup of a torrent by hash. Tests read the
+      # shared snapshot to check pointer identity.
+      - path: internal/qbittorrent/hash_index\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: look a torrent up by an infohash.Hash
 
       # Only the qBittorrent package lists the raw Sync snapshot.
       - path: ^internal/qbittorrent/|_test\.go$

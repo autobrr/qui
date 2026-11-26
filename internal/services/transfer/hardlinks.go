@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func (s *Service) versionsOf(ctx context.Context, inst *models.Instance, first *source, stay []string) ([]string, error) {
@@ -35,7 +36,7 @@ func (s *Service) versionsOf(ctx context.Context, inst *models.Instance, first *
 	}
 	var versions []string
 	for _, hash := range stay {
-		torrent, found, err := s.deps.Sync.HasTorrentByAnyHash(ctx, inst.ID, []string{hash})
+		torrent, found, err := s.deps.Sync.HasTorrentByAnyHash(ctx, inst.ID, infohash.ParseAll([]string{hash}))
 		if err != nil {
 			return nil, fmt.Errorf("read the torrents of %s: %w", inst.Name, err)
 		}

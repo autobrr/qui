@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func TestTorrentMeetsCriteria_MonitorAllAndAge(t *testing.T) {
@@ -313,9 +314,19 @@ func TestSplitTagsAndNormalizeHashes(t *testing.T) {
 	require.Len(t, tags, 2)
 	require.Equal(t, []string{"tagA", "tagB"}, tags)
 
-	input := []string{" abcd ", "ABCD", "ef01"}
-	out := normalizeHashes(input)
-	require.Equal(t, []string{"ABCD", "EF01"}, out)
+	first, second := strings.Repeat("ab", 20), strings.Repeat("ef", 20)
+	svc, instanceID, _ := newScanTestService(t, "2.11.4", map[string]qbt.Torrent{
+		first:  {Hash: first, Name: "First"},
+		second: {Hash: second, Name: "Second"},
+	})
+	input := infohash.ParseAll([]string{" " + first + " ", strings.ToUpper(first), second})
+	var out []string
+	for _, torrent := range svc.lookupTorrents(t.Context(), instanceID, input) {
+		if torrent != nil {
+			out = append(out, torrent.Hash)
+		}
+	}
+	require.Equal(t, []string{first, first, second}, out)
 }
 
 func TestSettingsCache_LoadAndReplace(t *testing.T) {
@@ -431,8 +442,8 @@ func TestServiceRecordActivityLimit(t *testing.T) {
 
 	events := svc.GetActivity(1, 0)
 	require.Len(t, events, 4)
-	require.Equal(t, "HASH2", events[0].Hash)
-	require.Equal(t, "HASH5", events[3].Hash)
+	require.Equal(t, "hash2", events[0].Hash)
+	require.Equal(t, "hash5", events[3].Hash)
 
 	limited := svc.GetActivity(1, 2)
 	require.Len(t, limited, 2)
@@ -515,13 +526,13 @@ func TestScanInstance_FetchesOnlyCandidates(t *testing.T) {
 				ExcludeTags: true, Tags: []string{"tag"},
 			},
 			wantHashes: []string{"eligible", "other", "healthy"},
-			wantJobs:   []string{"ELIGIBLE", "OTHER"},
+			wantJobs:   []string{"eligible", "other"},
 		},
 		{
 			name:       "category or tag inclusion",
 			settings:   models.InstanceReannounceSettings{Categories: []string{"eligible"}, Tags: []string{"tag"}},
 			wantHashes: []string{"eligible", "tag"},
-			wantJobs:   []string{"ELIGIBLE", "TAG"},
+			wantJobs:   []string{"eligible", "tag"},
 		},
 		{
 			name:       "empty candidates",
@@ -533,7 +544,7 @@ func TestScanInstance_FetchesOnlyCandidates(t *testing.T) {
 			name:       "tracker inclusion with empty cache lists",
 			settings:   models.InstanceReannounceSettings{Trackers: []string{"eligible.test"}},
 			wantHashes: []string{"eligible", "other", "category", "tag", "healthy"},
-			wantJobs:   []string{"ELIGIBLE"},
+			wantJobs:   []string{"eligible"},
 		},
 		{
 			name: "tracker inclusion or category with tag exclusion",
@@ -542,7 +553,7 @@ func TestScanInstance_FetchesOnlyCandidates(t *testing.T) {
 				ExcludeTags: true, Tags: []string{"tag"},
 			},
 			wantHashes: []string{"eligible", "other", "category", "healthy"},
-			wantJobs:   []string{"ELIGIBLE", "CATEGORY"},
+			wantJobs:   []string{"eligible", "category"},
 		},
 		{
 			name: "tracker exclusion keeps category scope",
@@ -550,7 +561,7 @@ func TestScanInstance_FetchesOnlyCandidates(t *testing.T) {
 				Categories: []string{"eligible", "category"}, ExcludeTrackers: true, Trackers: []string{"category.test"},
 			},
 			wantHashes: []string{"eligible", "category"},
-			wantJobs:   []string{"ELIGIBLE"},
+			wantJobs:   []string{"eligible"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -604,7 +615,7 @@ func TestScanInstance_OlderClientUsesCache(t *testing.T) {
 	svc.runJob = func(_ context.Context, _ int, hash, _, _ string) { jobs = append(jobs, hash) }
 	svc.scanInstance(t.Context(), instanceID, &models.InstanceReannounceSettings{Enabled: true, MonitorAll: true})
 	require.Empty(t, requests)
-	require.Equal(t, []string{"ELIGIBLE"}, jobs)
+	require.Equal(t, []string{"eligible"}, jobs)
 }
 
 func newScanTestService(t *testing.T, version string, torrents map[string]qbt.Torrent) (*Service, int, <-chan []string) {

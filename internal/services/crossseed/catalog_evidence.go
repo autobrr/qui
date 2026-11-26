@@ -20,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type catalogFileEvidence struct {
@@ -188,7 +189,7 @@ func (s *Service) findCatalogCandidate(ctx context.Context, req *FindCandidatesR
 	if instance == nil {
 		return nil, errors.New("bound source instance unavailable")
 	}
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, p.SourceInstanceID, qbittorrent.TorrentRefFilter{Hashes: []string{p.SourceHash}})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, p.SourceInstanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{p.SourceHash})})
 	if err != nil {
 		return nil, err
 	}

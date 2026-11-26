@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -89,9 +90,9 @@ func (f *routedSync) AddTorrent(_ context.Context, instanceID int, _ []byte, opt
 	return &qbt.TorrentAddResponse{}, nil
 }
 
-func (f *routedSync) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+func (f *routedSync) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if f.existing[instanceID] {
-		return &qbt.Torrent{Hash: hashes[0], Name: routedName}, true, nil
+		return &qbt.Torrent{Hash: hashes[0].String(), Name: routedName}, true, nil
 	}
 	return nil, false, nil
 }

@@ -985,7 +985,7 @@ func (s *settleScript) GetTorrentRefs(_ context.Context, _ int, filter qbittorre
 	}
 	torrent := *s.current
 	if torrent.Hash == "" && len(filter.Hashes) > 0 {
-		torrent.Hash = filter.Hashes[0]
+		torrent.Hash = filter.Hashes[0].String()
 	}
 	return testTorrentRefs([]qbt.Torrent{torrent}), nil
 }

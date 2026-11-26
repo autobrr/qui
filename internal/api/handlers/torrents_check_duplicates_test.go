@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,4 +76,65 @@ func TestCheckDuplicatesMatchesHashesInAnyCase(t *testing.T) {
 		hybridHash: {mixedHybrid},
 		v2OnlyHash: {upperV2Only},
 	}, got)
+}
+
+func TestCheckDuplicatesFindsV2OnlyAndHybridTorrentsByEachHash(t *testing.T) {
+	t.Parallel()
+
+	const (
+		v2OnlyFull   = "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2baaaaaaaaaaaaaaaaaaaaaaaa"
+		hybridV1     = "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+		hybridV2Full = "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4dbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+	stored := []qbt.Torrent{
+		{Name: "Album.2023.FLAC-GRP", Hash: v2OnlyFull[:40], InfohashV2: v2OnlyFull, AddedOn: 1},
+		{Name: "Film.2024.2160p.BluRay-GRP", Hash: hybridV2Full[:40], InfohashV1: hybridV1, InfohashV2: hybridV2Full, AddedOn: 2},
+	}
+
+	for _, tc := range []struct {
+		name string
+		sent string
+		want string
+	}{
+		{"v2 only by its full v2 in uppercase", strings.ToUpper(v2OnlyFull), v2OnlyFull[:40]},
+		{"hybrid by its v1 in uppercase", strings.ToUpper(hybridV1), hybridV2Full[:40]},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := checkDuplicates(t, stored, []string{tc.sent})
+			require.Equal(t, map[string][]string{tc.want: {tc.sent}}, got)
+		})
+	}
+}
+
+func checkDuplicates(t *testing.T, stored []qbt.Torrent, hashes []string) map[string][]string {
+	t.Helper()
+
+	db := testdb.NewMigratedSQLite(t, t.Name())
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	srv := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, stored)})
+
+	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
+	rec := httptest.NewRecorder()
+	handler.CheckDuplicates(rec, newTorrentFieldRequest(t, instance.ID, map[string]any{"hashes": hashes}))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var resp struct {
+		Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	got := make(map[string][]string, len(resp.Duplicates))
+	for _, match := range resp.Duplicates {
+		got[match.Hash] = match.MatchedHashes
+	}
+	return got
 }

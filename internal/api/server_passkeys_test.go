@@ -33,6 +33,8 @@ const (
 	queryOrigin  = "https://query.example.invalid"
 	seedOrigin   = "https://seed.example.invalid"
 	pathTracker  = pathOrigin + "/" + pathPasskey + "/announce"
+	stubHashA    = "aaa0000000000000000000000000000000000000"
+	stubHashB    = "bbb0000000000000000000000000000000000000"
 	queryTracker = queryOrigin + "/announce?passkey=" + queryPasskey
 )
 
@@ -50,10 +52,10 @@ func newQBittorrentStub(t *testing.T) *httptest.Server {
 		"/api/v2/sync/maindata": map[string]any{
 			"rid": 1, "full_update": true,
 			"torrents": map[string]any{
-				"aaa": torrent("aaa", pathTracker, 2),
-				"bbb": torrent("bbb", queryTracker, 1),
+				stubHashA: torrent("aaa", pathTracker, 2),
+				stubHashB: torrent("bbb", queryTracker, 1),
 			},
-			"trackers": map[string]any{pathTracker: []string{"aaa"}, queryTracker: []string{"bbb"}},
+			"trackers": map[string]any{pathTracker: []string{stubHashA}, queryTracker: []string{stubHashB}},
 		},
 		"/api/v2/app/preferences":     map[string]any{"add_trackers_enabled": true, "add_trackers": pathTracker + "\n\n" + queryTracker},
 		"/api/v2/app/buildInfo":       map[string]any{},
@@ -76,7 +78,7 @@ func newQBittorrentStub(t *testing.T) *httptest.Server {
 			_, _ = io.WriteString(w, "Ok.")
 			return
 		case "/api/v2/torrents/trackers":
-			rows := map[string]string{"aaa": pathTracker, "bbb": queryTracker}
+			rows := map[string]string{stubHashA: pathTracker, stubHashB: queryTracker}
 			_ = json.MarshalWrite(w, []map[string]any{
 				{"url": "** [DHT] **", "status": 0},
 				{"url": rows[strings.ToLower(r.URL.Query().Get("hash"))], "status": 2},
@@ -119,8 +121,8 @@ func newPasskeyRig(t *testing.T) *passkeyRig {
 	run := &models.BackupRun{InstanceID: instance.ID, Kind: models.BackupRunKindManual, Status: models.BackupRunStatusSuccess, RequestedBy: "test", RequestedAt: time.Now()}
 	require.NoError(t, backupStore.CreateRun(t.Context(), run))
 	require.NoError(t, backupStore.InsertItems(t.Context(), run.ID, []models.BackupItem{
-		{TorrentHash: "aaa", Name: "aaa", Category: new("snapshot"), SizeBytes: 100},
-		{TorrentHash: "bbb", Name: "bbb", Category: new("snapshot"), SizeBytes: 100},
+		{TorrentHash: stubHashA, Name: "aaa", Category: new("snapshot"), SizeBytes: 100},
+		{TorrentHash: stubHashB, Name: "bbb", Category: new("snapshot"), SizeBytes: 100},
 	}))
 
 	deps.InstanceStore = instanceStore
@@ -209,14 +211,14 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 		name, method, path, body string
 		passkeys, origins        []string
 	}{
-		{"torrent trackers, passkey in the path", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents/aaa/trackers", id), "", []string{pathPasskey}, []string{pathOrigin, "** [DHT] **"}},
-		{"torrent trackers, passkey in the query", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents/bbb/trackers", id), "", []string{queryPasskey}, []string{queryOrigin, "** [DHT] **"}},
+		{"torrent trackers, passkey in the path", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents/%s/trackers", id, stubHashA), "", []string{pathPasskey}, []string{pathOrigin, "** [DHT] **"}},
+		{"torrent trackers, passkey in the query", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents/%s/trackers", id, stubHashB), "", []string{queryPasskey}, []string{queryOrigin, "** [DHT] **"}},
 		{"instance trackers", http.MethodGet, fmt.Sprintf("/api/instances/%d/trackers", id), "", both, bothOrigins},
 		{"torrent list", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents", id), "", both, bothOrigins},
 		{"cross-instance list", http.MethodGet, fmt.Sprintf("/api/torrents/cross-instance?instanceIds=%d", id), "", both, bothOrigins},
-		{"local matches, passkey in the query", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/aaa/local-matches", id), "", []string{queryPasskey}, []string{queryOrigin}},
-		{"local matches, passkey in the path", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/bbb/local-matches", id), "", []string{pathPasskey}, []string{pathOrigin}},
-		{"delete check", http.MethodPost, fmt.Sprintf("/api/instances/%d/torrents/delete-cross-seeds", id), `{"hashes":["aaa"],"action":"delete","deleteFiles":true}`, []string{queryPasskey}, []string{queryOrigin}},
+		{"local matches, passkey in the query", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/%s/local-matches", id, stubHashA), "", []string{queryPasskey}, []string{queryOrigin}},
+		{"local matches, passkey in the path", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/%s/local-matches", id, stubHashB), "", []string{pathPasskey}, []string{pathOrigin}},
+		{"delete check", http.MethodPost, fmt.Sprintf("/api/instances/%d/torrents/delete-cross-seeds", id), `{"hashes":["` + stubHashA + `"],"action":"delete","deleteFiles":true}`, []string{queryPasskey}, []string{queryOrigin}},
 		{"torrent creator status", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrent-creator/status", id), "", []string{pathPasskey, queryPasskey, seedPasskey}, []string{pathOrigin, queryOrigin, seedOrigin}},
 		{"preferences", http.MethodGet, fmt.Sprintf("/api/instances/%d/preferences", id), "", both, bothOrigins},
 		{"restore preview", http.MethodPost, fmt.Sprintf("/api/instances/%d/backups/runs/%d/restore/preview", id, rig.runID), `{"mode":"overwrite"}`, both, bothOrigins},
@@ -260,7 +262,7 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 
 	t.Run("a key with only Cross-seed: read gets no passkey from local matches", func(t *testing.T) {
 		key := rig.key(t, models.Permission{Area: models.AreaCrossSeed, Level: models.LevelRead})
-		status, body := rig.fetch(t, http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/aaa/local-matches", id), key, "", nil)
+		status, body := rig.fetch(t, http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/%s/local-matches", id, stubHashA), key, "", nil)
 		require.Equal(t, http.StatusOK, status, body)
 		require.NotContains(t, body, queryPasskey)
 		require.Contains(t, body, queryOrigin)
@@ -280,7 +282,7 @@ func TestReadKeyListLeavesTheSyncSnapshotWhole(t *testing.T) {
 	require.NoError(t, err)
 	snapshot := client.SyncOwner().SnapshotUnchecked()
 	require.NotNil(t, snapshot)
-	for hash, tracker := range map[string]string{"aaa": pathTracker, "bbb": queryTracker} {
+	for hash, tracker := range map[string]string{stubHashA: pathTracker, stubHashB: queryTracker} {
 		torrent, ok := snapshot.Torrent(hash)
 		require.True(t, ok, hash)
 		require.Equal(t, tracker, torrent.Tracker, hash)
@@ -294,7 +296,7 @@ func TestMagnetFieldNeedsTorrentsWrite(t *testing.T) {
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
 	writeKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelWrite})
 	path := fmt.Sprintf("/api/instances/%d/torrents/field", rig.instanceID)
-	field := func(name string) string { return `{"field":"` + name + `","hashes":["aaa"]}` }
+	field := func(name string) string { return `{"field":"` + name + `","hashes":["` + stubHashA + `"]}` }
 
 	status, body := rig.fetch(t, http.MethodPost, path, readKey, field("magnet_uri"), nil)
 	require.Equal(t, http.StatusForbidden, status)

@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type partialPoolAdmissionSync struct {
@@ -49,7 +50,7 @@ func (m *partialPoolAdmissionSync) AddTorrent(ctx context.Context, instanceID in
 	return m.addResponse, err
 }
 
-func (m *partialPoolAdmissionSync) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (m *partialPoolAdmissionSync) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	m.hasCalls++
 	return m.resolved, m.resolved != nil, nil
 }

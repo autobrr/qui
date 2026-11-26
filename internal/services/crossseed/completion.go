@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type completionLane struct {
@@ -682,7 +683,7 @@ func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, has
 	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
 	defer cancel()
 
-	torrents, err := s.syncManager.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+	torrents, err := s.syncManager.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}

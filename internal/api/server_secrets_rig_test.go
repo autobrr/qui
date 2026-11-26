@@ -93,7 +93,7 @@ func stubTorrent(hash, name, tracker string) string {
 func (rig *secretsRig) qBittorrentResponses() map[string]string {
 	pathTracker := "https://tracker.example.invalid/" + rig.plant("announce path passkey", shownWithTorrentsWrite) + "/announce"
 	queryTracker := "https://query.example.invalid/announce?passkey=" + rig.plant("announce query passkey", shownWithTorrentsWrite)
-	first, second := stubTorrent("aaa", stubReleaseName, pathTracker), stubTorrent("bbb", "bbb", queryTracker)
+	first, second := stubTorrent(stubHashA, stubReleaseName, pathTracker), stubTorrent(stubHashB, "bbb", queryTracker)
 	feedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed key", shownWithTorrentsWrite) + "/feed.xml"
 	feedNamedByURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed name key", shownWithTorrentsWrite) + "/feed.xml"
 	goneFeedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS rule feed key", shownWithTorrentsWrite) + "/gone.xml"
@@ -133,11 +133,11 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/app/webapiVersion": "2.16.0",
 		"/api/v2/app/version":       "v5.2.0",
 		"/api/v2/auth/login":        "Ok.",
-		"/api/v2/sync/maindata": `{"rid":1,"full_update":true,"torrents":{"aaa":` + first + `,"bbb":` + second + `},` +
-			`"trackers":{"` + pathTracker + `":["aaa"],"` + queryTracker + `":["bbb"]},"server_state":{"connection_status":"connected"}}`,
+		"/api/v2/sync/maindata": `{"rid":1,"full_update":true,"torrents":{"` + stubHashA + `":` + first + `,"` + stubHashB + `":` + second + `},` +
+			`"trackers":{"` + pathTracker + `":["` + stubHashA + `"],"` + queryTracker + `":["` + stubHashB + `"]},"server_state":{"connection_status":"connected"}}`,
 		"/api/v2/torrents/info":                   `[` + first + `,` + second + `]`,
-		"/api/v2/torrents/trackers?aaa":           trackerRow(pathTracker),
-		"/api/v2/torrents/trackers?bbb":           trackerRow(queryTracker),
+		"/api/v2/torrents/trackers?" + stubHashA:  trackerRow(pathTracker),
+		"/api/v2/torrents/trackers?" + stubHashB:  trackerRow(queryTracker),
 		"/api/v2/app/preferences":                 preferences,
 		"/api/v2/app/buildInfo":                   `{}`,
 		"/api/v2/app/defaultSavePath":             `/data`,
@@ -324,7 +324,7 @@ func newSecretsRig(t *testing.T) *secretsRig {
 	})
 	require.NoError(t, err)
 
-	_, err = deps.DiscScanStore.Create(ctx, instance.ID, "aaa", "/data/Show.S01", "/data/Show.S01")
+	_, err = deps.DiscScanStore.Create(ctx, instance.ID, stubHashA, "/data/Show.S01", "/data/Show.S01")
 	require.NoError(t, err)
 
 	_, err = deps.OrphanScanStore.CreateRunIfNoActive(ctx, instance.ID, "manual")
@@ -335,8 +335,8 @@ func newSecretsRig(t *testing.T) *secretsRig {
 	require.NoError(t, backupStore.CreateRun(ctx, run))
 	require.EqualValues(t, 1, run.ID)
 	require.NoError(t, backupStore.InsertItems(ctx, run.ID, []models.BackupItem{
-		{TorrentHash: "aaa", Name: "aaa", Category: new("snapshot"), SizeBytes: 100},
-		{TorrentHash: "bbb", Name: "bbb", Category: new("snapshot"), SizeBytes: 100},
+		{TorrentHash: stubHashA, Name: "aaa", Category: new("snapshot"), SizeBytes: 100},
+		{TorrentHash: stubHashB, Name: "bbb", Category: new("snapshot"), SizeBytes: 100},
 	}))
 	deps.BackupService = backups.NewService(backupStore, deps.SyncManager, backups.Config{DataDir: t.TempDir()}, nil)
 

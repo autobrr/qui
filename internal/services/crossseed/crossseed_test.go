@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -1479,11 +1480,11 @@ func (f *fakeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, s
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if torrents, ok := f.all[instanceID]; ok {
 		targets := make(map[string]struct{}, len(hashes))
 		for _, h := range hashes {
-			if normalized := normalizeHash(h); normalized != "" {
+			if normalized := h.String(); normalized != "" {
 				targets[normalized] = struct{}{}
 			}
 		}
@@ -1684,7 +1685,7 @@ func (m *mockRecoverSyncManager) GetTorrentRefs(_ context.Context, instanceID in
 	var result []qbt.Torrent
 	if len(filter.Hashes) > 0 {
 		for _, hash := range filter.Hashes {
-			if torrent, ok := m.torrents[hash]; ok {
+			if torrent, ok := m.torrents[hash.String()]; ok {
 				result = append(result, *torrent)
 			}
 		}
@@ -1749,7 +1750,7 @@ func (m *mockRecoverSyncManager) GetTorrentFilesBatch(context.Context, int, []st
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockRecoverSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (m *mockRecoverSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, errors.New("not implemented")
 }
 
@@ -1846,26 +1847,32 @@ func TestRecoverErroredTorrents_ContextCancelled(t *testing.T) {
 }
 
 func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
+	const (
+		erroredHash     = "e0000000000000000000000000000000000e0123"
+		missingHash     = "f0000000000000000000000000000000000f0123"
+		downloadingHash = "d0000000000000000000000000000000000d0123"
+		completedHash   = "c0000000000000000000000000000000000c0123"
+	)
 	erroredTorrent := qbt.Torrent{
-		Hash:     "error123",
+		Hash:     erroredHash,
 		Name:     "errored.torrent",
 		State:    qbt.TorrentStateError,
 		Progress: 0.0,
 	}
 	missingFilesTorrent := qbt.Torrent{
-		Hash:     "missing123",
+		Hash:     missingHash,
 		Name:     "missing.torrent",
 		State:    qbt.TorrentStateMissingFiles,
 		Progress: 0.0,
 	}
 	downloadingTorrent := qbt.Torrent{
-		Hash:     "download123",
+		Hash:     downloadingHash,
 		Name:     "downloading.torrent",
 		State:    qbt.TorrentStateDownloading,
 		Progress: 0.3,
 	}
 	completedTorrent := qbt.Torrent{
-		Hash:     "complete123",
+		Hash:     completedHash,
 		Name:     "completed.torrent",
 		State:    qbt.TorrentStatePausedDl,
 		Progress: 1.0,
@@ -1879,13 +1886,13 @@ func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
 
 	var hasPauseBatch, hasRecheckBatch, hasResumeBatch bool
 	for _, call := range mockSync.calls {
-		if strings.HasPrefix(call, "BulkAction:pause:") && strings.Contains(call, "error123") && strings.Contains(call, "missing123") {
+		if strings.HasPrefix(call, "BulkAction:pause:") && strings.Contains(call, erroredHash) && strings.Contains(call, missingHash) {
 			hasPauseBatch = true
 		}
-		if strings.HasPrefix(call, "BulkAction:recheck:") && strings.Contains(call, "error123") && strings.Contains(call, "missing123") {
+		if strings.HasPrefix(call, "BulkAction:recheck:") && strings.Contains(call, erroredHash) && strings.Contains(call, missingHash) {
 			hasRecheckBatch = true
 		}
-		if strings.HasPrefix(call, "BulkAction:resume:") && strings.Contains(call, "error123") && strings.Contains(call, "missing123") {
+		if strings.HasPrefix(call, "BulkAction:resume:") && strings.Contains(call, erroredHash) && strings.Contains(call, missingHash) {
 			hasResumeBatch = true
 		}
 	}
@@ -1893,8 +1900,8 @@ func TestRecoverErroredTorrents_MixedStates(t *testing.T) {
 	assert.True(t, hasRecheckBatch, "expected batched recheck call with both errored hashes")
 	assert.True(t, hasResumeBatch, "expected batched resume call with both errored hashes")
 	for _, call := range mockSync.calls {
-		assert.NotContains(t, call, "download123", "downloading torrent should not be in any calls")
-		assert.NotContains(t, call, "complete123", "completed torrent should not be in any calls")
+		assert.NotContains(t, call, downloadingHash, "downloading torrent should not be in any calls")
+		assert.NotContains(t, call, completedHash, "completed torrent should not be in any calls")
 	}
 }
 
@@ -2019,7 +2026,7 @@ func (f *infohashTestSyncManager) ExportTorrent(context.Context, int, string) ([
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (f *infohashTestSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+func (f *infohashTestSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if result, ok := f.hashResults[instanceID]; ok {
 		return result.torrent, result.exists, result.err
 	}
@@ -2996,7 +3003,7 @@ func (m *rssFilterTestSyncManager) ExportTorrent(context.Context, int, string) (
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (m *rssFilterTestSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
+func (m *rssFilterTestSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

@@ -40,6 +40,7 @@ import (
 	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -166,7 +167,7 @@ func (s *seasonPackEndpointSync) GetCachedInstanceTorrents(ctx context.Context, 
 	return s.SyncManager.GetCachedInstanceTorrents(ctx, instanceID)
 }
 
-func (s *seasonPackEndpointSync) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+func (s *seasonPackEndpointSync) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if s.hasErr != nil {
 		return nil, false, s.hasErr
 	}

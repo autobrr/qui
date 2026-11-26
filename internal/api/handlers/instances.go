@@ -166,12 +166,7 @@ func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.
 	if events == nil {
 		events = []reannounce.ActivityEvent{}
 	}
-	normalized := make([]reannounce.ActivityEvent, len(events))
-	for i, event := range events {
-		event.Hash = strings.ToLower(event.Hash)
-		normalized[i] = event
-	}
-	RespondJSON(w, http.StatusOK, normalized)
+	RespondJSON(w, http.StatusOK, events)
 }
 
 func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *http.Request) {
@@ -193,13 +188,7 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 		candidates = []reannounce.MonitoredTorrent{}
 	}
 
-	normalized := make([]reannounce.MonitoredTorrent, len(candidates))
-	for i, candidate := range candidates {
-		candidate.Hash = strings.ToLower(candidate.Hash)
-		normalized[i] = candidate
-	}
-
-	RespondJSON(w, http.StatusOK, normalized)
+	RespondJSON(w, http.StatusOK, candidates)
 }
 
 type transferInfoResponse struct {

@@ -15,6 +15,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -72,19 +74,19 @@ type maindataFilesClient struct {
 	onFetch      func()
 }
 
-func (c *maindataFilesClient) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+func (c *maindataFilesClient) getTorrentsByHashes(hashes []infohash.Hash) []*qbt.Torrent {
 	c.mu.Lock()
 	c.checkedReads++
 	c.mu.Unlock()
 	return c.getTorrentsByHashesUnchecked(hashes)
 }
 
-func (c *maindataFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
+func (c *maindataFilesClient) getTorrentsByHashesUnchecked(hashes []infohash.Hash) []*qbt.Torrent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var torrents []*qbt.Torrent
 	for _, hash := range hashes {
-		if torrent, ok := c.maindata[hash]; ok {
+		if torrent, ok := c.maindata[hash.String()]; ok {
 			c.visited++
 			torrents = append(torrents, &torrent)
 		}
@@ -378,7 +380,7 @@ func TestGetTorrentFilesBatch_RenameDuringFetchDropsOldList(t *testing.T) {
 		rig.client.mu.Lock()
 		rig.client.files[longHash] = renamed
 		rig.client.mu.Unlock()
-		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, testHash(longHash)))
 	})
 
 	first := rig.read(WithFilesUntilChanged(t.Context()), t, longHash)
@@ -394,10 +396,10 @@ func TestFileCacheDropsKeepNoHashOnceNoFetchRuns(t *testing.T) {
 	t.Parallel()
 	rig := newFilesModeRig(longHash)
 	rig.client.onFetch = sync.OnceFunc(func() {
-		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, testHash(longHash)))
 	})
 	rig.read(WithFilesUntilChanged(t.Context()), t, longHash)
-	require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+	require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, testHash(longHash)))
 
 	require.Empty(t, rig.sm.filesInvalidations.dropped, "a deleted torrent must not stay in memory")
 }

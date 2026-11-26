@@ -242,3 +242,25 @@ func TestCountTestSleeps(t *testing.T) {
 		})
 	}
 }
+
+func TestCountHashCase(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"lower of a hash field", `import "strings"; func f(t T) string { return strings.ToLower(t.Hash) }`, 1},
+		{"renamed strings import", `import str "strings"; func f(targetHash string) string { return str.ToLower(targetHash) }`, 1},
+		{"lower trim helper", `func f(hashes []string) string { return normalizeLowerTrim(hashes[0]) }`, 1},
+		{"default normalizer", `import "x/stringutils"; func f(hash string) string { return stringutils.DefaultNormalizer.Normalize(hash) }`, 1},
+		{"lower of a name", `import "strings"; func f(name string) string { return strings.ToLower(name) }`, 0},
+		{"no strings import", `func f(hash string) string { return strings.ToLower(hash) }`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := countHashCase("x.go", []byte("package x\n"+tt.src+"\n"))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, n)
+		})
+	}
+}
