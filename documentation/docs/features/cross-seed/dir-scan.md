@@ -38,7 +38,9 @@ Each immediate child (folder or file) becomes one searchee. Files within `Movie.
 
 ### Correct path choices
 
-On Windows, Dir Scan rejects paths that differ only in case, including on case-sensitive volumes and before a directory exists. Windows webhook routing cannot distinguish those spellings. On Unix-like hosts, distinct directories on a case-sensitive filesystem remain configurable. If an older configuration contains duplicate entries, remove the extra entry so webhooks can select one scan configuration.
+A directory path must be unique for each target instance. Two instances can use the same path, for example two seedboxes that both keep media at `/home/user/media`. A webhook then needs `instanceId` to pick one. See [Same path on two instances](#same-path-on-two-instances).
+
+When qui runs on Windows, Dir Scan rejects two paths of one local instance that differ only in case, including on case-sensitive volumes and before a directory exists. Windows webhook routing cannot distinguish those spellings. A path on a remote instance keeps its case. On Unix-like hosts, distinct directories on a case-sensitive filesystem remain configurable. If an older configuration contains duplicate entries, remove the extra entry so webhooks can select one scan configuration.
 
 | Content type | Recommended path | Why |
 |-------------|------------------|-----|
@@ -75,7 +77,7 @@ qui requires direct read access to the files, either on the same host or through
 Dir Scan also works when the target is a remote instance. qui then reads the directory over SSH.
 
 - The **Directory Path** is a path on the remote machine, and it must be absolute.
-- You cannot add the same directory path two times, also for two different instances.
+- You can add a directory path one time for each instance. Two instances can use the same path. See [Same path on two instances](#same-path-on-two-instances).
 - Hardlink mode and regular adds work. Reflink mode needs local filesystem access.
 - On a remote instance where qui only has SFTP, Dir Scan cannot detect files that already seed. Dir Scan searches each such file one time. Files that an earlier scan marked as already seeding keep that status until you click **Reset Scan Progress**.
 - qBittorrent can run in a container where a save path differs from the path that the SSH user sees. Dir Scan then cannot detect the already-seeding files of the torrents in that save path.
@@ -397,6 +399,20 @@ qui uses longest-prefix matching against the configured Dir Scan **Directory Pat
 
 In split-mount configurations, the *arr app must send the same library path that qui sees on disk. If Sonarr or Radarr uses a different mount path than qui, the webhook does not find a matching directory.
 
+#### Same path on two instances
+
+Add `instanceId` to the webhook URL to match only the directories of one instance:
+
+```
+POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY&instanceId=2
+```
+
+- It works for the Sonarr, Radarr, Lidarr, and Readarr payloads and for the plain `{"path": ...}` body.
+- Without `instanceId`, a webhook returns `409` when its best match is the same directory path on two instances. The message lists the instance IDs.
+- A longer directory path still wins. If one instance has `/data/media` and another has `/data/media/tv`, a webhook for `/data/media/tv/Show Name` without `instanceId` scans the second one.
+- With `instanceId`, the **Test** button in the *arr app returns `404` when that instance has no enabled Dir Scan directory.
+- The instance ID is the number in the address of the instance page, for example `2` in `/instances/2`.
+
 #### Response codes
 
 | Status Code | Meaning |
@@ -404,9 +420,9 @@ In split-mount configurations, the *arr app must send the same library path that
 | `200` | Webhook accepted but skipped by directory filters. Example: `{"skipped": true, "reason": "download client not allowed"}` |
 | `202` | Scan accepted. If no webhook scan runs for that directory, qui starts the run immediately. This is also true when a full scan runs. If a webhook scan already runs for that directory, qui keeps one queued follow-up run and merges the paths of later webhooks into it. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
 | `204` | Test webhook accepted. No scan started |
-| `400` | Invalid JSON payload, or no supported path field in the request body |
-| `404` | No enabled directory matches the path in the payload |
-| `409` | Request conflicts with directory state, such as multiple matching directories |
+| `400` | Invalid JSON payload, no supported path field in the request body, or an `instanceId` that is not a positive number |
+| `404` | No enabled directory matches the path in the payload. With `instanceId`, no enabled directory of that instance matches |
+| `409` | Request conflicts with directory state, such as multiple matching directories. If the directories belong to different instances, add `instanceId` |
 | `500` | Internal server error. qui failed to start the scan because of an internal failure |
 
 If a second webhook arrives while a webhook scan of the same directory runs, qui returns `202` again. It does not reject the request, and the client does not have to try again. qui updates one queued follow-up webhook scan for that directory. If necessary, it changes the queued `scanRoot` to the nearest common parent folder of the two paths. A webhook never merges into a queued full scan.

@@ -711,7 +711,7 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 			},
 			want: []want{
 				{titleMismatchReason, "", 0},
-				{"group mismatch", "debug", 1},
+				{"group mismatch", "trace", 1},
 			},
 		},
 		{
@@ -733,8 +733,8 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 			},
 			want: []want{
 				{notInPackReason, "", 0},
-				{"episode numbering mismatch", "debug", 2},
-				{"source not settled", "debug", 1},
+				{"episode numbering mismatch", "trace", 2},
+				{"source not settled", "trace", 1},
 			},
 		},
 	}
