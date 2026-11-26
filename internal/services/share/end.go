@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -132,7 +133,7 @@ func (s *Service) readClient(ctx context.Context, instanceID int, shares []Share
 			hashes = append(hashes, sh.Hash, sh.HelperHash)
 		}
 	}
-	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 	view := &clientView{torrents: map[string]*qbt.Torrent{}, err: err}
 	for _, t := range torrents {
 		view.torrents[lower(t.Hash)] = t
@@ -252,7 +253,7 @@ func (s *Service) removeRow(ctx context.Context, id int64) error {
 }
 
 func (s *Service) gone(ctx context.Context, sh *Share) (bool, error) {
-	left, err := s.deps.Sync.GetTorrentRefsFresh(ctx, sh.InstanceID, qbittorrent.TorrentRefFilter{Hashes: []string{sh.HelperHash}})
+	left, err := s.deps.Sync.GetTorrentRefsFresh(ctx, sh.InstanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{sh.HelperHash})})
 	return len(left) == 0, err
 }
 

@@ -41,6 +41,9 @@ func main() {
 	if got[testSleepLinter], err = testSleepCounts(); err != nil {
 		fail(err)
 	}
+	if got[hashCaseLinter], err = hashCaseCounts(); err != nil {
+		fail(err)
+	}
 	offLines, err := offLogLines()
 	if err != nil {
 		fail(err)

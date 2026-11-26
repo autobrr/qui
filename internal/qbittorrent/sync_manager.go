@@ -37,6 +37,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/trackergroup"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -59,32 +60,9 @@ type CachedFilesEntry struct {
 }
 
 type torrentFilesClient interface {
-	getTorrentsByHashes(hashes []string) []*qbt.Torrent
-	getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent
+	getTorrentsByHashes(hashes []infohash.Hash) []*qbt.Torrent
+	getTorrentsByHashesUnchecked(hashes []infohash.Hash) []*qbt.Torrent
 	GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error)
-}
-
-type torrentLookup interface {
-	Torrent(hash string) (*qbt.Torrent, bool)
-}
-
-type torrentIndex interface {
-	torrentLookup
-	Matching(match func(*qbt.Torrent) bool) []*qbt.Torrent
-	Len() int
-}
-
-type noTorrents struct{}
-
-func (noTorrents) Torrent(string) (*qbt.Torrent, bool)             { return nil, false }
-func (noTorrents) Matching(func(*qbt.Torrent) bool) []*qbt.Torrent { return nil }
-func (noTorrents) Len() int                                        { return 0 }
-
-func snapshotIndex(snapshot *qbt.SyncSnapshot) torrentIndex {
-	if snapshot == nil {
-		return noTorrents{}
-	}
-	return snapshot
 }
 
 type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
@@ -541,9 +519,9 @@ func (sm *SyncManager) SetFilesChangedHandler(handler func(instanceID int, hash 
 	sm.filesChangedHandler.Store(&handler)
 }
 
-func (sm *SyncManager) notifyFilesChanged(instanceID int, hash string) {
+func (sm *SyncManager) notifyFilesChanged(instanceID int, hash infohash.Hash) {
 	if handler := sm.filesChangedHandler.Load(); handler != nil {
-		(*handler)(instanceID, canonicalizeHash(hash))
+		(*handler)(instanceID, hash.String())
 	}
 }
 
@@ -1135,18 +1113,18 @@ func (sm *SyncManager) SetTorrentAddedHandler(handler TorrentAddedHandler) {
 	sm.clientPool.SetTorrentAddedHandler(sm.skipHelperAdds(handler))
 }
 
-func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, hash string) error {
+func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, hash infohash.Hash) error {
 	defer sm.notifyFilesChanged(instanceID, hash)
 	return sm.dropCachedFiles(ctx, instanceID, hash)
 }
 
-func (sm *SyncManager) dropCachedFiles(ctx context.Context, instanceID int, hash string) error {
+func (sm *SyncManager) dropCachedFiles(ctx context.Context, instanceID int, hash infohash.Hash) error {
 	fm := sm.getFilesManager()
 	if fm == nil {
 		return nil
 	}
 	return sm.filesInvalidations.invalidate(instanceID, hash, func() error {
-		return fm.InvalidateCache(ctx, instanceID, hash)
+		return fm.InvalidateCache(ctx, instanceID, hash.String())
 	})
 }
 
@@ -1178,7 +1156,7 @@ func (f *filesInvalidations) release() {
 	}
 }
 
-func (f *filesInvalidations) invalidate(instanceID int, hash string, drop func() error) error {
+func (f *filesInvalidations) invalidate(instanceID int, hash infohash.Hash, drop func() error) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.seq++
@@ -1186,7 +1164,7 @@ func (f *filesInvalidations) invalidate(instanceID int, hash string, drop func()
 		if f.dropped == nil {
 			f.dropped = make(map[filesInvalidationKey]uint64)
 		}
-		f.dropped[filesInvalidationKey{instanceID, canonicalizeHash(hash)}] = f.seq
+		f.dropped[filesInvalidationKey{instanceID, hash.String()}] = f.seq
 	}
 	return drop()
 }
@@ -1276,7 +1254,8 @@ func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID i
 	return client, syncManager, nil
 }
 
-func (sm *SyncManager) validateTorrentsExist(ctx context.Context, client *Client, hashes []string, operation string) error {
+func (sm *SyncManager) validateTorrentsExist(ctx context.Context, client *Client, requested []string, operation string) error {
+	hashes := infohash.ParseAll(requested)
 	if !client.hasAnyTorrent(hashes) {
 		if client != nil && client.syncManager != nil && postAddBulkActionRetry(ctx) {
 			found, _ := bulkActionSyncRetry(context.WithoutCancel(ctx), ownerSyncer{client.syncManager}, hashes, client.instanceID, operation,
@@ -1300,11 +1279,11 @@ func (sm *SyncManager) validateTorrentsExist(ctx context.Context, client *Client
 	return nil
 }
 
-func countListed(hashes []string) func(torrentIndex) (int, int) {
+func countListed(hashes []infohash.Hash) func(torrentIndex) (int, int) {
 	return func(index torrentIndex) (int, int) {
 		found := 0
-		for _, hash := range hashes {
-			if _, ok := index.Torrent(hash); ok {
+		for _, torrent := range index.Torrents(hashes) {
+			if torrent != nil {
 				found++
 			}
 		}
@@ -1397,8 +1376,8 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	if len(filters.Hashes) == 1 && syncSnapshot != nil {
 		rest := filters
 		rest.Hashes = nil
-		if rest.IsEmpty() {
-			if torrent, ok := lookupTorrentByExactHash(syncSnapshot.Torrent, filters.Hashes[0]); ok {
+		if hash, err := infohash.Parse(filters.Hashes[0]); err == nil && rest.IsEmpty() {
+			if torrent, ok := snapshotIndex(syncSnapshot).Torrent(hash); ok {
 				filteredTorrents = []*qbt.Torrent{torrent}
 				hashLookupHit = true
 			}
@@ -1910,27 +1889,32 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	return sm.bulkAction(ctx, instanceID, hashes, action, DeleteActor{})
 }
 
-func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []string, action string, actor DeleteActor) error {
+func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, requested []string, action string, actor DeleteActor) error {
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return err
 	}
 
-	canonicalHashes := make([]string, 0, len(hashes))
+	hashes := infohash.ParseAll(requested)
+	var targets []*qbt.Torrent
+	resolvedCount := 0
 	variantResolutions := 0
 
 	resolveAllHashes := func(snapshot torrentIndex) (resolved, variants int) {
-		canonicalHashes = canonicalHashes[:0]
-		for _, hash := range hashes {
-			torrent, found := resolveTorrentByVariantHash(snapshot, hash)
-			if found {
-				canonicalHashes = append(canonicalHashes, torrent.Hash)
-				if !strings.EqualFold(torrent.Hash, hash) {
-					variants++
-				}
+		found := snapshot.Torrents(hashes)
+		resolved = 0
+		for i, torrent := range found {
+			if torrent == nil {
+				continue
+			}
+			resolved++
+			if !hashes[i].Is(torrent.Hash) {
+				variants++
 			}
 		}
-		return len(canonicalHashes), variants
+		targets = foundTorrents(found)
+		resolvedCount = resolved
+		return resolved, variants
 	}
 
 	syncer := ownerSyncer{syncManager}
@@ -1956,7 +1940,6 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 		)
 	}
 
-	resolvedCount := len(canonicalHashes)
 	if resolvedCount == 0 {
 		return fmt.Errorf("no valid torrents found for bulk action: %s", action)
 	}
@@ -1978,21 +1961,13 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 			Msg("Some torrents not found for bulk action")
 	}
 
-	if len(canonicalHashes) > 1 {
-		seen := make(map[string]struct{}, len(canonicalHashes))
-		unique := canonicalHashes[:0]
-		for _, hash := range canonicalHashes {
-			key := canonicalizeHash(hash)
-			if key == "" {
-				continue
-			}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			unique = append(unique, hash)
+	canonicalHashes := make([]string, len(targets))
+	targetHashes := make([]infohash.Hash, 0, len(targets))
+	for i, torrent := range targets {
+		canonicalHashes[i] = torrent.Hash
+		if hash, err := infohash.Parse(torrent.Hash); err == nil {
+			targetHashes = append(targetHashes, hash)
 		}
-		canonicalHashes = unique
 	}
 
 	var folders FolderCleanupBatch
@@ -2004,7 +1979,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 		if err := waitForPostAddRecheckReady(
 			retryCtx,
 			syncer,
-			canonicalHashes,
+			targetHashes,
 			instanceID,
 			postAddRecheckReadyAttempts,
 			postAddRecheckReadyInterval,
@@ -2017,7 +1992,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 		}
 	}
 
-	sm.applyOptimisticCacheUpdate(instanceID, canonicalHashes, action, nil)
+	sm.applyOptimisticCacheUpdate(instanceID, targetHashes, action, nil)
 
 	switch action {
 	case "pause":
@@ -2031,9 +2006,9 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 		if err == nil {
 			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
-			for _, hash := range canonicalHashes {
+			for _, hash := range targetHashes {
 				if invalidateErr := sm.InvalidateFileCache(ctx, instanceID, hash); invalidateErr != nil {
-					log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
+					log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash.String()).
 						Msg("Failed to invalidate file cache after torrent deletion")
 				}
 			}
@@ -2046,9 +2021,9 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, hashes []
 			folders.Queue()
 			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
-			for _, hash := range canonicalHashes {
+			for _, hash := range targetHashes {
 				if invalidateErr := sm.InvalidateFileCache(ctx, instanceID, hash); invalidateErr != nil {
-					log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
+					log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash.String()).
 						Msg("Failed to invalidate file cache after torrent deletion")
 				}
 			}
@@ -2100,7 +2075,7 @@ func bulkActionRetryAttempts(ctx context.Context, resolved, requested int) int {
 func waitForPostAddRecheckReady(
 	ctx context.Context,
 	syncManager bulkActionTorrentSyncer,
-	hashes []string,
+	hashes []infohash.Hash,
 	instanceID int,
 	maxAttempts int,
 	retryInterval time.Duration,
@@ -2169,13 +2144,9 @@ func postAddRecheckReadyTimeout(maxAttempts int, retryInterval, syncTimeout time
 	return syncTimeout
 }
 
-func postAddRecheckReady(snapshot torrentIndex, hashes []string) bool {
-	for _, hash := range hashes {
-		torrent, found := resolveTorrentByVariantHash(snapshot, hash)
-		if !found {
-			return false
-		}
-		if torrent.State == qbt.TorrentStateCheckingResumeData {
+func postAddRecheckReady(snapshot torrentIndex, hashes []infohash.Hash) bool {
+	for _, torrent := range snapshot.Torrents(hashes) {
+		if torrent == nil || torrent.State == qbt.TorrentStateCheckingResumeData {
 			return false
 		}
 	}
@@ -2186,7 +2157,7 @@ func postAddRecheckReady(snapshot torrentIndex, hashes []string) bool {
 func bulkActionSyncRetry(
 	ctx context.Context,
 	syncManager bulkActionTorrentSyncer,
-	hashes []string,
+	hashes []infohash.Hash,
 	instanceID int,
 	action string,
 	maxAttempts int,
@@ -2329,7 +2300,8 @@ func (sm *SyncManager) GetTorrentTrackers(ctx context.Context, instanceID int, h
 		return nil, err
 	}
 
-	noteRead := sm.beginTrackersRead(instanceID, syncManager, hash)
+	id, _ := infohash.Parse(hash)
+	noteRead := sm.beginTrackersRead(instanceID, syncManager, id)
 	trackers, err := client.GetTorrentTrackersCtx(ctx, hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent trackers: %w", err)
@@ -2371,7 +2343,11 @@ func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	peers, err := clientWrapper.SyncPeers(ctx, hash)
+	id, err := infohash.Parse(hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sync torrent peers: %w", err)
+	}
+	peers, err := clientWrapper.SyncPeers(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync torrent peers: %w", err)
 	}
@@ -2412,13 +2388,13 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 		return nil, err
 	}
 
-	normalized := normalizeHashes(hashes)
-	if len(normalized.canonical) == 0 {
+	canonical := uniqueHashStrings(hashes)
+	if len(canonical) == 0 {
 		return map[string]qbt.TorrentFiles{}, nil
 	}
 
-	filesByHash := make(map[string]qbt.TorrentFiles, len(normalized.canonical))
-	hashesToFetch := normalized.canonical
+	filesByHash := make(map[string]qbt.TorrentFiles, len(canonical))
+	hashesToFetch := canonical
 	cacheHits := 0
 
 	fm := sm.getFilesManager()
@@ -2431,19 +2407,19 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 			cacheErr error
 		)
 		if mode := filesCacheModeOf(ctx); mode != filesCacheByAge {
-			prints = readFilesPrints(client, normalized.canonical)
-			cached, missing, cacheErr = sm.cachedFilesUntilChanged(ctx, fm, instanceID, normalized.canonical, prints, mode)
+			prints = readFilesPrints(client, canonical)
+			cached, missing, cacheErr = sm.cachedFilesUntilChanged(ctx, fm, instanceID, canonical, prints, mode)
 		} else {
-			cached, missing, cacheErr = fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, filesCacheMaxAge(ctx))
+			cached, missing, cacheErr = fm.GetCachedFilesBatch(ctx, instanceID, canonical, filesCacheMaxAge(ctx))
 		}
 		if cacheErr != nil {
-			if len(normalized.canonical) > 1 {
+			if len(canonical) > 1 {
 				return nil, fmt.Errorf("load cached torrent files: %w", cacheErr)
 			}
 			log.Warn().
 				Err(cacheErr).
 				Int("instanceID", instanceID).
-				Int("hashes", len(normalized.canonical)).
+				Int("hashes", len(canonical)).
 				Msg("Failed to load cached torrent files in batch")
 		} else {
 			for hash, files := range cached {
@@ -2476,18 +2452,6 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	var fetchErrors []error
 
 	for _, hash := range hashesToFetch {
-		canonicalHash := canonicalizeHash(hash)
-		if canonicalHash == "" {
-			continue
-		}
-		requestHash := normalized.canonicalToPreferred[canonicalHash]
-		if requestHash == "" {
-			requestHash = canonicalHash
-		}
-
-		ch := canonicalHash
-		rh := requestHash
-
 		g.Go(func() error {
 			release, acquireErr := sm.acquireFileFetchSlot(gctx, instanceID)
 			if acquireErr != nil {
@@ -2495,7 +2459,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 			}
 			defer release()
 
-			files, fetchErr := fetchTorrentFilesWithRetry(gctx, client, rh, attempts, interval)
+			files, fetchErr := fetchTorrentFilesWithRetry(gctx, client, hash, attempts, interval)
 			if fetchErr != nil {
 				if errors.Is(fetchErr, context.Canceled) || errors.Is(fetchErr, context.DeadlineExceeded) {
 					return fetchErr
@@ -2514,7 +2478,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 			}
 
 			mu.Lock()
-			filesByHash[ch] = callerCopy
+			filesByHash[hash] = callerCopy
 			mu.Unlock()
 			return nil
 		})
@@ -2553,7 +2517,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 			Err(errors.Join(fetchErrors[:min(len(fetchErrors), 3)]...)).
 			Int("instanceID", instanceID).
 			Int("missing", len(fetchErrors)).
-			Int("requested", len(normalized.canonical)).
+			Int("requested", len(canonical)).
 			Msg("Completed batch torrent file fetch with partial failures")
 	}
 
@@ -2562,7 +2526,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 		fetchedCount := max(len(filesByHash)-cacheHits, 0)
 		log.Debug().
 			Int("instanceID", instanceID).
-			Int("requested", len(normalized.canonical)).
+			Int("requested", len(canonical)).
 			Int("cacheHits", cacheHits).
 			Int("fetched", fetchedCount).
 			Int("fetchErrors", len(fetchErrors)).
@@ -2622,10 +2586,10 @@ func (mode filesCacheMode) current(hash string, entry CachedFilesEntry, live *in
 }
 
 func readFilesPrints(client torrentFilesClient, hashes []string) map[string]int64 {
-	torrents := client.getTorrentsByHashesUnchecked(hashes)
+	torrents := client.getTorrentsByHashesUnchecked(infohash.ParseAll(hashes))
 	prints := make(map[string]int64, len(torrents))
 	for _, torrent := range torrents {
-		prints[canonicalizeHash(torrent.Hash)] = FilesPrint(*torrent)
+		prints[torrent.Hash] = FilesPrint(*torrent)
 	}
 	return prints
 }
@@ -2695,37 +2659,30 @@ func fetchTorrentFilesWithRetry(ctx context.Context, client torrentFilesClient, 
 }
 
 func (sm *SyncManager) GetTorrentFiles(ctx context.Context, instanceID int, hash string) (*qbt.TorrentFiles, error) {
-	normalizedHash := canonicalizeHash(hash)
-	filesByHash, err := sm.GetTorrentFilesBatch(ctx, instanceID, []string{normalizedHash})
+	id, err := infohash.Parse(hash)
+	if err != nil {
+		return nil, nil
+	}
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, instanceID, []string{id.String()})
 	if err != nil {
 		return nil, err
 	}
 
-	files, ok := filesByHash[normalizedHash]
+	files, ok := filesByHash[id.String()]
 	if !ok {
 		return nil, nil
 	}
 	return &files, nil
 }
 
-func (sm *SyncManager) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+func (sm *SyncManager) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	lookup, err := sm.getTorrentLookup(ctx, instanceID)
 	if err != nil {
 		return nil, false, err
 	}
 
-	normalized := normalizeHashes(hashes)
-	if len(normalized.canonical) == 0 {
-		return nil, false, nil
-	}
-
-	for _, variant := range normalized.lookup {
-		torrent, ok := lookup.Torrent(variant)
-		if !ok {
-			continue
-		}
-
-		if matchesAnyHash(torrent, normalized.canonicalSet) {
+	for _, torrent := range lookup.Torrents(hashes) {
+		if torrent != nil {
 			return new(*torrent), true, nil
 		}
 	}
@@ -2745,114 +2702,6 @@ func fileFetchConcurrency(requestCount int) int {
 	return limit
 }
 
-type normalizedHashes struct {
-	canonical            []string
-	canonicalSet         map[string]struct{}
-	canonicalToPreferred map[string]string
-	lookup               []string
-}
-
-func canonicalizeHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
-}
-
-func normalizeHashes(hashes []string) normalizedHashes {
-	result := normalizedHashes{
-		canonical:            make([]string, 0, len(hashes)),
-		canonicalSet:         make(map[string]struct{}, len(hashes)),
-		canonicalToPreferred: make(map[string]string, len(hashes)),
-		lookup:               make([]string, 0, len(hashes)),
-	}
-
-	seenLookup := make(map[string]struct{}, len(hashes)*2)
-
-	for _, hash := range hashes {
-		trimmed := strings.TrimSpace(hash)
-		canonical := canonicalizeHash(trimmed)
-		if canonical == "" {
-			continue
-		}
-
-		if _, exists := result.canonicalSet[canonical]; !exists {
-			result.canonicalSet[canonical] = struct{}{}
-			result.canonical = append(result.canonical, canonical)
-			result.canonicalToPreferred[canonical] = trimmed
-		}
-
-		for _, variant := range []string{trimmed, canonical, strings.ToUpper(trimmed)} {
-			if variant == "" {
-				continue
-			}
-			if _, ok := seenLookup[variant]; ok {
-				continue
-			}
-			seenLookup[variant] = struct{}{}
-			result.lookup = append(result.lookup, variant)
-		}
-	}
-
-	return result
-}
-
-func lookupTorrentByExactHash(get func(string) (*qbt.Torrent, bool), hash string) (*qbt.Torrent, bool) {
-	trimmed := strings.TrimSpace(hash)
-	if trimmed == "" {
-		return nil, false
-	}
-	for _, variant := range []string{trimmed, strings.ToLower(trimmed), strings.ToUpper(trimmed)} {
-		if torrent, ok := get(variant); ok {
-			return torrent, true
-		}
-	}
-	return nil, false
-}
-
-func matchesAnyHash(torrent *qbt.Torrent, targetSet map[string]struct{}) bool {
-	if len(targetSet) == 0 {
-		return false
-	}
-
-	for _, candidate := range []string{
-		torrent.Hash,
-		torrent.InfohashV1,
-		torrent.InfohashV2,
-	} {
-		if candidate == "" {
-			continue
-		}
-		if _, ok := targetSet[canonicalizeHash(candidate)]; ok {
-			return true
-		}
-	}
-
-	return false
-}
-
-func resolveTorrentByVariantHash(snapshot torrentIndex, inputHash string) (*qbt.Torrent, bool) {
-	trimmed := strings.TrimSpace(inputHash)
-	if trimmed == "" {
-		return nil, false
-	}
-
-	for _, variant := range []string{trimmed, strings.ToLower(trimmed), strings.ToUpper(trimmed)} {
-		if torrent, exists := snapshot.Torrent(variant); exists {
-			return torrent, true
-		}
-	}
-
-	normalized := canonicalizeHash(trimmed)
-
-	var found *qbt.Torrent
-	snapshot.Matching(func(torrent *qbt.Torrent) bool {
-		if found == nil && (torrent.InfohashV1 != "" && canonicalizeHash(torrent.InfohashV1) == normalized ||
-			torrent.InfohashV2 != "" && canonicalizeHash(torrent.InfohashV2) == normalized) {
-			found = torrent
-		}
-		return false
-	})
-	return found, found != nil
-}
-
 func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error) {
 	if hash == "" {
 		return nil, "", "", errors.New("torrent hash is required")
@@ -2865,7 +2714,8 @@ func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash s
 
 	suggestedName := strings.TrimSpace(hash)
 	trackerDomain := ""
-	if torrents := client.getTorrentsByHashes([]string{hash}); len(torrents) > 0 {
+	id, _ := infohash.Parse(hash)
+	if torrents := client.getTorrentsByHashes([]infohash.Hash{id}); len(torrents) > 0 {
 		torrent := torrents[0]
 		if name := strings.TrimSpace(torrent.Name); name != "" {
 			suggestedName = name
@@ -3233,7 +3083,7 @@ func (sm *SyncManager) filterTorrentsByExpr(torrents []*qbt.Torrent, expression 
 	return filtered
 }
 
-func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []string, action string, payload map[string]any) {
+func (sm *SyncManager) applyOptimisticCacheUpdate(instanceID int, hashes []infohash.Hash, action string, payload map[string]any) {
 	client, err := sm.clientPool.GetClient(context.Background(), instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for optimistic update")
@@ -3406,17 +3256,11 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 		timeout = 10 * time.Minute
 	}
 
-	pending := make(map[string]*resumeWhenCompletePending, len(hashes))
-	for _, hash := range hashes {
-		canonicalHash := strings.TrimSpace(hash)
-		normalizedHash := strings.ToLower(canonicalHash)
-		if normalizedHash == "" {
-			continue
+	pending := make(map[infohash.Hash]*resumeWhenCompletePending, len(hashes))
+	for _, hash := range infohash.ParseAll(hashes) {
+		if _, exists := pending[hash]; !exists && !hash.IsZero() {
+			pending[hash] = &resumeWhenCompletePending{hash: hash.String()}
 		}
-		if _, exists := pending[normalizedHash]; exists {
-			continue
-		}
-		pending[normalizedHash] = &resumeWhenCompletePending{hash: canonicalHash}
 	}
 
 	if len(pending) == 0 {
@@ -3459,10 +3303,12 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			}
 
 			var resumeList []string
-			var resumeKeys []string
-			for key, req := range pending {
-				torrent, found := resolveTorrentByVariantHash(snapshot, req.hash)
-				if !found {
+			var resumeKeys []infohash.Hash
+			keys := slices.Collect(maps.Keys(pending))
+			for i, torrent := range snapshot.Torrents(keys) {
+				key := keys[i]
+				req := pending[key]
+				if torrent == nil {
 					continue
 				}
 
@@ -3521,7 +3367,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 				continue
 			}
 
-			sm.applyOptimisticCacheUpdate(instanceID, resumeList, "resume", nil)
+			sm.applyOptimisticCacheUpdate(instanceID, infohash.ParseAll(resumeList), "resume", nil)
 			sm.syncAfterModification(instanceID, client, "resume_when_complete")
 
 			for _, key := range resumeKeys {
@@ -3604,8 +3450,10 @@ func (sm *SyncManager) pendingStates(instanceID int, client *Client, lastSyncTim
 		optimisticCount := 0
 		removedCount := 0
 
+		index := snapshotIndex(snapshot)
 		for hash, optimisticUpdate := range instanceUpdates {
-			if torrent, exists := snapshot.Torrent(hash); exists {
+			id, _ := infohash.Parse(hash)
+			if torrent, exists := index.Torrent(id); exists {
 				shouldClear := false
 				timeSinceUpdate := time.Since(optimisticUpdate.UpdatedAt)
 
@@ -4186,7 +4034,7 @@ func (sm *SyncManager) setTagsFallback(ctx context.Context, instanceID int, clie
 		return fmt.Errorf("failed to read existing tags during fallback: %w", err)
 	}
 	existingTagsSet := make(map[string]bool)
-	for _, torrent := range torrentsByHash(snapshotIndex(syncManager.SnapshotUnchecked()), hashes) {
+	for _, torrent := range foundTorrents(snapshotIndex(syncManager.SnapshotUnchecked()).Torrents(infohash.ParseAll(hashes))) {
 		if torrent.Tags != "" {
 			torrentTags := strings.SplitSeq(torrent.Tags, ", ")
 			for tag := range torrentTags {
@@ -4255,7 +4103,7 @@ func (sm *SyncManager) SetForceStart(ctx context.Context, instanceID int, hashes
 			return err
 		}
 		if enable {
-			client.applyOptimisticCacheUpdate(hashes, "force_resume", nil)
+			client.applyOptimisticCacheUpdate(infohash.ParseAll(hashes), "force_resume", nil)
 		}
 		return nil
 	})
@@ -4610,9 +4458,12 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 			return fmt.Errorf("failed to set torrent location: %w", err)
 		}
 
-		for _, hash := range hashes {
+		for _, hash := range infohash.ParseAll(hashes) {
+			if hash.IsZero() {
+				continue
+			}
 			if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
-				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
+				log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash.String()).
 					Msg("Failed to invalidate file cache after location change")
 			}
 		}
@@ -4660,7 +4511,8 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 			}
 		}
 
-		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+		id, _ := infohash.Parse(hash)
+		if err := sm.dropCachedFiles(ctx, instanceID, id); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
 				Msg("Failed to invalidate file cache after priority change")
 		}
@@ -4715,12 +4567,13 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 			return fmt.Errorf("failed to rename file: %w", err)
 		}
 
-		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+		id, _ := infohash.Parse(hash)
+		if err := sm.dropCachedFiles(ctx, instanceID, id); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
 				Msg("Failed to invalidate file cache after file rename")
 		}
 
-		sm.notifyFilesChanged(instanceID, hash)
+		sm.notifyFilesChanged(instanceID, id)
 		return nil
 	})
 }
@@ -4749,12 +4602,13 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 			return fmt.Errorf("failed to rename folder: %w", err)
 		}
 
-		if err := sm.dropCachedFiles(ctx, instanceID, hash); err != nil {
+		id, _ := infohash.Parse(hash)
+		if err := sm.dropCachedFiles(ctx, instanceID, id); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).
 				Msg("Failed to invalidate file cache after folder rename")
 		}
 
-		sm.notifyFilesChanged(instanceID, hash)
+		sm.notifyFilesChanged(instanceID, id)
 		return nil
 	})
 }

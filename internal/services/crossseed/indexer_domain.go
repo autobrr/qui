@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -52,7 +53,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Int("indexerCount", len(indexerIDs)).
 		Msg("filtering indexers by existing content")
 
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})})
 	if err != nil {
 		return indexerIDs, nil, nil, nil, err
 	}

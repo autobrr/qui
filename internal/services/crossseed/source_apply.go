@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type sourceApplyEntry struct {
@@ -213,7 +214,7 @@ func (s *Service) titleRescueResultExists(ctx context.Context, instanceID int, r
 	if len(hashes) == 0 || s.syncManager == nil {
 		return false, nil
 	}
-	_, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes)
+	_, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes))
 	if err == nil {
 		return exists, nil
 	}

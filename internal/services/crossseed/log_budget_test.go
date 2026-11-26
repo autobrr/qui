@@ -45,7 +45,7 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 			files[batch] = qbt.TorrentFiles{
 				{Name: path.Join(name, fmt.Sprintf("Lantern%04d.E140.MULTi.1080p.BluRay.x264-QUiRK.mkv", i)), Size: batchSize},
 			}
-			movie := fmt.Sprintf("m%039x", i)
+			movie := fmt.Sprintf("a%039x", i)
 			name = fmt.Sprintf("Quarry%04d.1080p.BluRay.x264-QUiRK", i)
 			torrents = append(torrents, qbt.Torrent{
 				Hash: movie, Name: name, Size: batchSize, TotalSize: batchSize, Progress: 1, AddedOn: 1,

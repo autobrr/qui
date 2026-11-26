@@ -2019,14 +2019,15 @@ func TestReserveExports(t *testing.T) {
 }
 
 func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
+	const doneHash = "dddddddddddddddddddddddddddddddddddddddd"
 	s := &Service{
-		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
-		inFlightExports: map[string]struct{}{"2:done": {}},
+		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{doneHash: true}},
+		inFlightExports: map[string]struct{}{"2:" + doneHash: {}},
 	}
 	s.SetExportRunner(noExports{t})
 	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
 
-	results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: "done", action: action, mark: exportReady}})
+	results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: doneHash, action: action, mark: exportReady}})
 
 	for activity := range results {
 		t.Fatalf("unexpected activity: %s %s", activity.Outcome, activity.Reason)

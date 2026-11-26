@@ -16,11 +16,12 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type adderSync interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 }
 
@@ -213,7 +214,7 @@ const blocklistCheckFailed = "Failed to check cross-seed blocklist"
 func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashes ...string) (PreAddCheck, *AddResult) {
 	check := PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
 
-	existing, exists, err := a.sync.HasTorrentByAnyHash(ctx, instanceID, check.hashes)
+	existing, exists, err := a.sync.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(check.hashes))
 	if err != nil {
 		return PreAddCheck{}, &AddResult{Status: "error", Message: fmt.Sprintf("Failed to check existing torrents: %v", err), Err: err}
 	}

@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func testBackendPool(instance *models.Instance) *fsops.Pool {
@@ -61,7 +62,7 @@ type adderQbit struct {
 	existingOn int
 }
 
-func (q adderQbit) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+func (q adderQbit) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if q.existingOn != 0 && instanceID != q.existingOn {
 		return nil, false, nil
 	}

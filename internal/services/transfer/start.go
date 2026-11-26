@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Request struct {
@@ -205,7 +206,7 @@ func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, ver
 	if slices.ContainsFunc(versions, func(hash string) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
 		return ErrStays
 	}
-	_, onTarget, err := s.deps.Sync.HasTorrentByAnyHash(ctx, targetID, versions)
+	_, onTarget, err := s.deps.Sync.HasTorrentByAnyHash(ctx, targetID, infohash.ParseAll(versions))
 	if err != nil {
 		return fmt.Errorf("read the torrents of instance %d: %w", targetID, err)
 	}
@@ -387,7 +388,7 @@ func (s *Service) torrent(ctx context.Context, instanceID int, hash string) (*qb
 }
 
 func (s *Service) read(ctx context.Context, instanceID int, hash string, fresh bool) (*qbt.Torrent, error) {
-	filter := qbittorrent.TorrentRefFilter{Hashes: []string{hash}}
+	filter := qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})}
 	var torrents []*qbt.Torrent
 	var err error
 	if fresh {

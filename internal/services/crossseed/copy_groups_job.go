@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -118,11 +119,11 @@ func (j *copyGroupsJob) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) 
 		j.seen[instanceID] = seen
 	}
 	changed := false
-	for _, hash := range update.Changes.Torrents {
-		torrent, ok := update.Snapshot.Torrent(hash)
-		if !ok {
+	for i, torrent := range qbittorrent.NewHashIndex(update.Snapshot).Torrents(infohash.ParseAll(update.Changes.Torrents)) {
+		if torrent == nil {
 			continue
 		}
+		hash := update.Changes.Torrents[i]
 		if now := newCopyGroupsPrint(torrent); seen[hash] != now {
 			seen[hash] = now
 			changed = true

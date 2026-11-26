@@ -96,9 +96,9 @@ func TestAddBulkTarget_DeduplicatesByInstanceAndHash(t *testing.T) {
 	targetsByInstance := make(map[int][]string)
 	seen := make(map[int]map[string]struct{})
 
-	addBulkTarget(targetsByInstance, seen, 1, "ABC")
-	addBulkTarget(targetsByInstance, seen, 1, "abc")
-	addBulkTarget(targetsByInstance, seen, 2, "abc")
+	addBulkTarget(targetsByInstance, seen, 1, "ABC0000000000000000000000000000000000000")
+	addBulkTarget(targetsByInstance, seen, 1, "abc0000000000000000000000000000000000000")
+	addBulkTarget(targetsByInstance, seen, 2, "abc0000000000000000000000000000000000000")
 
 	if len(targetsByInstance[1]) != 1 {
 		t.Fatalf("expected one hash for instance 1, got %d", len(targetsByInstance[1]))
@@ -113,33 +113,33 @@ func TestAppendTargetsFromCrossInstanceTorrents_RespectsExclusions(t *testing.T)
 
 	torrents := []qbittorrent.CrossInstanceTorrentView{
 		{
-			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "aaa"}},
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "aaa0000000000000000000000000000000000000"}},
 			InstanceID:  1,
 		},
 		{
-			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "bbb"}},
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "bbb0000000000000000000000000000000000000"}},
 			InstanceID:  1,
 		},
 		{
-			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ccc"}},
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ccc0000000000000000000000000000000000000"}},
 			InstanceID:  2,
 		},
 		{
-			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ddd", InfohashV1: "eee"}},
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ddd0000000000000000000000000000000000000", InfohashV1: "eee0000000000000000000000000000000000000"}},
 			InstanceID:  1,
 		},
 	}
 
 	targetsByInstance := make(map[int][]string)
 	seen := make(map[int]map[string]struct{})
-	excludeHashes := map[string]struct{}{"bbb": {}, "eee": {}}
+	excludeHashes := buildExcludeHashSet([]string{"bbb0000000000000000000000000000000000000", "eee0000000000000000000000000000000000000"})
 	excludeTargets := buildExcludeTargetSet([]BulkActionTarget{
-		{InstanceID: 2, Hash: "ccc"},
+		{InstanceID: 2, Hash: "ccc0000000000000000000000000000000000000"},
 	})
 
 	appendTargetsFromCrossInstanceTorrents(targetsByInstance, seen, torrents, excludeHashes, excludeTargets)
 
-	if len(targetsByInstance[1]) != 1 || targetsByInstance[1][0] != "aaa" {
+	if len(targetsByInstance[1]) != 1 || targetsByInstance[1][0] != "aaa0000000000000000000000000000000000000" {
 		t.Fatalf("expected only hash aaa for instance 1, got %+v", targetsByInstance[1])
 	}
 	if len(targetsByInstance[2]) != 0 {
@@ -247,7 +247,7 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clientPool.Close() })
 
-	shared := []qbt.Torrent{{Name: "Shared", Hash: "shared", AddedOn: 1}}
+	shared := []qbt.Torrent{{Name: "Shared", Hash: "5ba7ed0000000000000000000000000000000000", AddedOn: 1}}
 	clients := make(map[int]*qbittorrent.Client, 2)
 	instanceIDs := make(map[string]int, 2)
 	recheckHits := map[string]*atomic.Int64{"alpha": {}, "beta": {}}
@@ -257,7 +257,7 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 			case "/api/v2/torrents/recheck":
 				hits.Add(1)
 			case "/api/v2/sync/maindata":
-				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"shared":{"name":"Shared","hash":"shared","added_on":1}}}`))
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"5ba7ed0000000000000000000000000000000000":{"name":"Shared","hash":"5ba7ed0000000000000000000000000000000000","added_on":1}}}`))
 				return
 			}
 			_, _ = w.Write([]byte("Ok."))
@@ -274,8 +274,8 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"action":      "recheck",
-		"hashes":      []string{"shared"},
-		"targets":     []map[string]any{{"instanceId": instanceIDs["alpha"], "hash": "shared"}},
+		"hashes":      []string{"5ba7ed0000000000000000000000000000000000"},
+		"targets":     []map[string]any{{"instanceId": instanceIDs["alpha"], "hash": "5ba7ed0000000000000000000000000000000000"}},
 		"instanceIds": []int{instanceIDs["alpha"], instanceIDs["beta"]},
 	})
 
@@ -307,7 +307,7 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 			rechecked = append(rechecked, r.Form.Get("hashes"))
 			mu.Unlock()
 		case "/api/v2/sync/maindata":
-			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aaa":{"name":"Plain","hash":"aaa","added_on":2},"ddd":{"name":"Hybrid","hash":"ddd","infohash_v1":"eee","added_on":1}}}`))
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aaa0000000000000000000000000000000000000":{"name":"Plain","hash":"aaa0000000000000000000000000000000000000","added_on":2},"ddd0000000000000000000000000000000000000":{"name":"Hybrid","hash":"ddd0000000000000000000000000000000000000","infohash_v1":"eee0000000000000000000000000000000000000","added_on":1}}}`))
 			return
 		}
 		_, _ = w.Write([]byte("Ok."))
@@ -317,8 +317,8 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
-		{Name: "Plain", Hash: "aaa", AddedOn: 2},
-		{Name: "Hybrid", Hash: "ddd", InfohashV1: "eee", AddedOn: 1},
+		{Name: "Plain", Hash: "aaa0000000000000000000000000000000000000", AddedOn: 2},
+		{Name: "Hybrid", Hash: "ddd0000000000000000000000000000000000000", InfohashV1: "eee0000000000000000000000000000000000000", AddedOn: 1},
 	})})
 
 	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
@@ -326,7 +326,7 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 		"action":        "recheck",
 		"selectAll":     true,
 		"instanceIds":   []int{instance.ID},
-		"excludeHashes": []string{"EEE"},
+		"excludeHashes": []string{"EEE0000000000000000000000000000000000000"},
 	})
 
 	rec := httptest.NewRecorder()
@@ -335,7 +335,7 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	mu.Lock()
 	defer mu.Unlock()
-	require.Equal(t, []string{"aaa"}, rechecked)
+	require.Equal(t, []string{"aaa0000000000000000000000000000000000000"}, rechecked)
 }
 
 func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
@@ -346,7 +346,7 @@ func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
 		filters map[string]any
 		want    []string
 	}{
-		{"running leaves out a paused torrent of qBittorrent 4.x", map[string]any{"status": []string{"running"}}, []string{"aaa"}},
+		{"running leaves out a paused torrent of qBittorrent 4.x", map[string]any{"status": []string{"running"}}, []string{"aaa0000000000000000000000000000000000000"}},
 		{"an unknown excludeStatus value", map[string]any{"excludeStatus": []string{"tpyo"}}, nil},
 		{"an unknown status next to a known one", map[string]any{"status": []string{"running", "tpyo"}}, nil},
 		{"an expression that does not compile", map[string]any{"expr": "Ratio >"}, nil},
@@ -377,8 +377,8 @@ func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
 			instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
 			require.NoError(t, err)
 			testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
-				{Name: "Seeding", Hash: "aaa", State: qbt.TorrentStateUploading, AddedOn: 2},
-				{Name: "Paused", Hash: "bbb", State: qbt.TorrentStatePausedUp, AddedOn: 1},
+				{Name: "Seeding", Hash: "aaa0000000000000000000000000000000000000", State: qbt.TorrentStateUploading, AddedOn: 2},
+				{Name: "Paused", Hash: "bbb0000000000000000000000000000000000000", State: qbt.TorrentStatePausedUp, AddedOn: 1},
 			})})
 
 			handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)

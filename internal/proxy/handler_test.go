@@ -350,18 +350,20 @@ func TestSplitStatusFilters(t *testing.T) {
 func TestParseHashesQueryValues(t *testing.T) {
 	t.Helper()
 
+	abc, def, ghi := strings.Repeat("abc0", 10), strings.Repeat("def0", 10), strings.Repeat("0123", 10)
 	queryParams := url.Values{}
-	queryParams.Add("hashes", "abc|def, ghi")
+	queryParams.Add("hashes", abc+"|"+def+", "+ghi)
 	queryParams.Add("hashes", "all")
-	queryParams.Add("hashes", "DEF|jkl")
+	queryParams.Add("hashes", strings.ToUpper(def)+"|Not-A-Hash ")
 
 	hashes := parseHashesQueryValues(queryParams)
-	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI", "JKL"}, hashes))
+	require.True(t, slices.Equal([]string{abc, def, ghi, "Not-A-Hash"}, hashes))
 }
 
 func TestBuildTorrentSearchFilters_EnhancedAndLegacyCompatibility(t *testing.T) {
 	t.Helper()
 
+	abc, def, ghi := strings.Repeat("abc0", 10), strings.Repeat("def0", 10), strings.Repeat("0123", 10)
 	queryParams := url.Values{}
 	queryParams.Add("status", "active, downloading")
 	queryParams.Add("excludeStatus", "paused")
@@ -378,8 +380,8 @@ func TestBuildTorrentSearchFilters_EnhancedAndLegacyCompatibility(t *testing.T) 
 	queryParams.Add("trackers", "tracker-a,tracker-b")
 	queryParams.Add("excludeTrackers", "tracker-c")
 	queryParams.Add("excludetrackers", "tracker-d")
-	queryParams.Add("hashes", "abc|def")
-	queryParams.Add("hashes", "DEF|ghi")
+	queryParams.Add("hashes", abc+"|"+def)
+	queryParams.Add("hashes", strings.ToUpper(def)+"|"+ghi)
 	queryParams.Set("expr", " ratio > 1 ")
 
 	filters := buildTorrentSearchFilters(queryParams)
@@ -392,7 +394,7 @@ func TestBuildTorrentSearchFilters_EnhancedAndLegacyCompatibility(t *testing.T) 
 	require.True(t, slices.Equal([]string{"skip", "hold"}, filters.ExcludeTags))
 	require.True(t, slices.Equal([]string{"tracker-a", "tracker-b"}, filters.Trackers))
 	require.True(t, slices.Equal([]string{"tracker-c", "tracker-d"}, filters.ExcludeTrackers))
-	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI"}, filters.Hashes))
+	require.True(t, slices.Equal([]string{abc, def, ghi}, filters.Hashes))
 	require.Equal(t, "ratio > 1", filters.Expr)
 }
 

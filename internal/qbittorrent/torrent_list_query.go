@@ -11,6 +11,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/trackergroup"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type statusDef struct {
@@ -198,7 +199,7 @@ func (r *trackerResolver) inAny(t *qbt.Torrent, set map[string]struct{}) bool {
 
 type torrentListRule struct {
 	none              bool
-	hashes            map[string]struct{}
+	hashes            map[infohash.Hash]struct{}
 	status            []statusDef
 	excludeStatus     []statusDef
 	categories        []string
@@ -243,9 +244,11 @@ func newTorrentListRule(filters FilterOptions, health *TrackerHealthSnapshot, us
 			continue
 		}
 		if r.hashes == nil {
-			r.hashes = make(map[string]struct{}, len(filters.Hashes))
+			r.hashes = make(map[infohash.Hash]struct{}, len(filters.Hashes))
 		}
-		r.hashes[strings.ToUpper(hash)] = struct{}{}
+		if id, err := infohash.Parse(hash); err == nil {
+			r.hashes[id] = struct{}{}
+		}
 	}
 
 	matchesAll := false
@@ -322,13 +325,12 @@ func hasTag(tags string, set map[string]struct{}) bool {
 	return false
 }
 
-func hashMatches(t *qbt.Torrent, set map[string]struct{}) bool {
+func hashMatches(t *qbt.Torrent, set map[infohash.Hash]struct{}) bool {
 	for _, candidate := range [...]string{t.Hash, t.InfohashV1, t.InfohashV2} {
-		if candidate == "" {
-			continue
-		}
-		if _, ok := set[strings.ToUpper(candidate)]; ok {
-			return true
+		if id, err := infohash.Parse(candidate); err == nil {
+			if _, ok := set[id]; ok {
+				return true
+			}
 		}
 	}
 	return false

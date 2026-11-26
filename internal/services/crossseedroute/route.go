@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/linktree"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
@@ -101,7 +102,7 @@ func (s *Service) Get(ctx context.Context, sourceInstanceID int) (*models.CrossS
 }
 
 type HashFinder interface {
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 }
 
 func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
@@ -144,7 +145,7 @@ func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int,
 	if err := s.CheckAvailable(ctx, instanceID, false); err != nil {
 		return nil, instance.Name, err
 	}
-	torrent, _, err := finder.HasTorrentByAnyHash(ctx, instanceID, hashes)
+	torrent, _, err := finder.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes))
 	if err != nil {
 		return nil, instance.Name, fmt.Errorf("%w: %s: %w", ErrUnavailable, instance.Name, err)
 	}

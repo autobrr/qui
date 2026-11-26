@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const exportsAtATime = 5
@@ -168,7 +169,7 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		}
 		e.logf("Resumed: the add did not reach the target, so qui adds the torrent again.")
 	}
-	if _, has, err := e.svc.deps.Sync.HasTorrentByAnyHash(ctx, m.TargetInstanceID, []string{m.Hash}); err == nil && has {
+	if _, has, err := e.svc.deps.Sync.HasTorrentByAnyHash(ctx, m.TargetInstanceID, infohash.ParseAll([]string{m.Hash})); err == nil && has {
 		e.result.AlreadyOnTarget = true
 		e.logf("The target already has the torrent, so qui adds nothing.")
 		return e.end(ctx, "", false), true
@@ -228,7 +229,7 @@ func (e *exportJob) verify(ctx context.Context, added torrentadd.Result) string 
 	if reason == "" {
 		return ""
 	}
-	torrent, found, err := e.svc.deps.Sync.HasTorrentByAnyHash(ctx, m.TargetInstanceID, []string{m.Hash})
+	torrent, found, err := e.svc.deps.Sync.HasTorrentByAnyHash(ctx, m.TargetInstanceID, infohash.ParseAll([]string{m.Hash}))
 	if err == nil && found && torrent.State != qbt.TorrentStateMissingFiles && torrent.State != qbt.TorrentStateError &&
 		torrent.Progress >= 1 {
 		e.logf("The torrent turned healthy after the wait for it.")

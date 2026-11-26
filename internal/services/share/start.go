@@ -24,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Request struct {
@@ -274,7 +275,7 @@ type source struct {
 }
 
 func (s *Service) readTorrent(ctx context.Context, inst *models.Instance, hash string) (*source, error) {
-	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})})
 	if err != nil {
 		return nil, fmt.Errorf("read the torrents of %s: %w", inst.Name, err)
 	}

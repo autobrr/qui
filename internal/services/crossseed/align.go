@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -227,7 +228,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			}
 		}
 
-		torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+		torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 		if err == nil && len(torrents) > 0 {
 			for _, torrent := range torrents {
 				active := strings.TrimSpace(torrent.Hash)

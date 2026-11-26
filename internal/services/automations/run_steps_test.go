@@ -17,6 +17,12 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
+const (
+	stepHashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	stepHashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	stepHashC = "cccccccccccccccccccccccccccccccccccccccc"
+)
+
 func newStepRig(t *testing.T, torrents map[string]map[string]any, configure func(*stubQbt)) (*Service, int, *stubQbt) {
 	t.Helper()
 	full := make(map[string]map[string]any, len(torrents))
@@ -98,7 +104,7 @@ func TestPlanSteps_DryRunMatchesLiveRun(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc, instanceID, stub := newStepRig(t, map[string]map[string]any{"a": tt.torrent, "b": tt.torrent}, nil)
+			svc, instanceID, stub := newStepRig(t, map[string]map[string]any{stepHashA: tt.torrent, stepHashB: tt.torrent}, nil)
 			conditions := tt.conditions
 			rule := stepRule(7, &conditions)
 
@@ -143,9 +149,9 @@ func TestPlanSteps_ShareLimitsAddUpGroupsWithTheSameLimits(t *testing.T) {
 	for _, dryRun := range []bool{false, true} {
 		t.Run(map[bool]string{false: "live", true: "dry run"}[dryRun], func(t *testing.T) {
 			svc, instanceID, _ := newStepRig(t, map[string]map[string]any{
-				"a": {"tags": "stop"},
-				"b": {"tags": "remove"},
-				"c": {"tags": "remove"},
+				stepHashA: {"tags": "stop"},
+				stepHashB: {"tags": "remove"},
+				stepHashC: {"tags": "remove"},
 			}, nil)
 			shareRule := func(id int, action string) *models.Automation {
 				return stepRule(id, &models.ActionConditions{ShareLimits: &models.ShareLimitsAction{
@@ -165,10 +171,10 @@ func TestPlanSteps_ShareLimitsAddUpGroupsWithTheSameLimits(t *testing.T) {
 func TestPlanSteps_TagsCountOnlyAcceptedTorrents(t *testing.T) {
 	for _, webAPI := range []string{"2.10.0", "2.11.4"} {
 		t.Run(webAPI, func(t *testing.T) {
-			svc, instanceID, _ := newStepRig(t, map[string]map[string]any{"a": nil, "b": nil}, func(stub *stubQbt) {
+			svc, instanceID, _ := newStepRig(t, map[string]map[string]any{stepHashA: nil, stepHashB: nil}, func(stub *stubQbt) {
 				stub.webAPIVersion = webAPI
 				stub.refuse = func(path string, form url.Values) bool {
-					return (path == "torrents/addTags" || path == "torrents/setTags") && form.Get("hashes") == "b"
+					return (path == "torrents/addTags" || path == "torrents/setTags") && form.Get("hashes") == stepHashB
 				}
 			})
 			svc.cfg.MaxBatchHashes = 1
@@ -181,15 +187,15 @@ func TestPlanSteps_TagsCountOnlyAcceptedTorrents(t *testing.T) {
 			require.Equal(t, models.ActivityActionTagsChanged, views[0].Action)
 			require.JSONEq(t, `{"added":{"managed":1},"removed":{}}`, views[0].Details)
 			require.Len(t, views[0].Items, 1)
-			require.Equal(t, "a", views[0].Items[0].Hash)
+			require.Equal(t, stepHashA, views[0].Items[0].Hash)
 		})
 	}
 }
 
 func TestPlanSteps_MoveRowsListOnlyPathsWithTorrents(t *testing.T) {
 	svc, instanceID, _ := newStepRig(t, map[string]map[string]any{
-		"a": {"tags": "one"},
-		"b": {"tags": "two"},
+		stepHashA: {"tags": "one"},
+		stepHashB: {"tags": "two"},
 	}, func(stub *stubQbt) {
 		stub.refuse = func(path string, form url.Values) bool {
 			return path == "torrents/setLocation" && form.Get("location") == "/two"
@@ -211,9 +217,9 @@ func TestPlanSteps_MoveRowsListOnlyPathsWithTorrents(t *testing.T) {
 }
 
 func TestPlanSteps_RefusedPauseBatchWritesNoFailedRow(t *testing.T) {
-	svc, instanceID, _ := newStepRig(t, map[string]map[string]any{"a": nil, "b": nil}, func(stub *stubQbt) {
+	svc, instanceID, _ := newStepRig(t, map[string]map[string]any{stepHashA: nil, stepHashB: nil}, func(stub *stubQbt) {
 		stub.refuse = func(path string, form url.Values) bool {
-			return (path == "torrents/pause" || path == "torrents/stop") && form.Get("hashes") == "b"
+			return (path == "torrents/pause" || path == "torrents/stop") && form.Get("hashes") == stepHashB
 		}
 	})
 	svc.cfg.MaxBatchHashes = 1
@@ -225,7 +231,7 @@ func TestPlanSteps_RefusedPauseBatchWritesNoFailedRow(t *testing.T) {
 	require.Equal(t, models.ActivityActionPaused, views[0].Action)
 	require.JSONEq(t, `{"count":1}`, views[0].Details)
 	require.Len(t, views[0].Items, 1)
-	require.Equal(t, "a", views[0].Items[0].Hash)
+	require.Equal(t, stepHashA, views[0].Items[0].Hash)
 }
 
 type recordingNotifier struct{ events []notifications.Event }
@@ -236,11 +242,11 @@ func (n *recordingNotifier) Notify(_ context.Context, event notifications.Event)
 
 func TestPlanSteps_CategoryNotificationCountsEachTorrentOnce(t *testing.T) {
 	svc, instanceID, _ := newStepRig(t, map[string]map[string]any{
-		"a": {"tags": "x", "content_path": "/data/shared"},
-		"b": {"tags": "y", "content_path": "/data/shared"},
-		"c": {"content_path": "/data/shared"},
+		stepHashA: {"tags": "x", "content_path": "/data/shared"},
+		stepHashB: {"tags": "y", "content_path": "/data/shared"},
+		stepHashC: {"content_path": "/data/shared"},
 	}, nil)
-	svc.crossMatcher = parityCrossMatcher{sameContent: map[string][]string{"a": {"b", "c"}, "b": {"a", "c"}, "c": {"a", "b"}}}
+	svc.crossMatcher = parityCrossMatcher{sameContent: map[string][]string{stepHashA: {stepHashB, stepHashC}, stepHashB: {stepHashA, stepHashC}, stepHashC: {stepHashA, stepHashB}}}
 	notifier := &recordingNotifier{}
 	svc.notifier = notifier
 	categoryRule := func(id int, tag string) *models.Automation {

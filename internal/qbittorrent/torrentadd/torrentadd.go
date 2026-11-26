@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Adder struct {
@@ -269,7 +270,7 @@ func (a *Adder) poll(ctx context.Context, owner *syncowner.Owner, req Request) R
 	if err := owner.Sync(ctx); err != nil {
 		return Result{Failure: PollFailed, Err: err}
 	}
-	torrent, found, err := a.sync.HasTorrentByAnyHash(ctx, req.InstanceID, []string{req.Hash})
+	torrent, found, err := a.sync.HasTorrentByAnyHash(ctx, req.InstanceID, infohash.ParseAll([]string{req.Hash}))
 	switch {
 	case err != nil:
 		return Result{Failure: PollFailed, Err: err}

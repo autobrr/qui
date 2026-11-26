@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type failure struct {
@@ -403,7 +404,7 @@ func (j *job) checkedSource(ctx context.Context) ([]*qbt.Torrent, error) {
 		if err := j.pause(ctx, poll); err != nil {
 			return nil, err
 		}
-		torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+		torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(j.hashes())})
 		if err != nil {
 			return nil, temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
 		}

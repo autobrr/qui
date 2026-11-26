@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -206,21 +207,28 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+const (
+	listRuleHash1 = "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+	listRuleHash2 = "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
+	listRuleHash3 = "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+	listRuleHash4 = "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
+)
+
 func TestListRules_Exclusions(t *testing.T) {
 	sm := &SyncManager{}
 
 	torrents := []qbt.Torrent{
-		{Hash: "hash1", State: qbt.TorrentStateUploading, Category: "movies", Tags: "tagA, tagB", Tracker: "http://trackerA.com/announce"},
-		{Hash: "hash2", State: qbt.TorrentStateDownloading, Category: "tv", Tags: "", Tracker: ""},
-		{Hash: "hash3", State: qbt.TorrentStateUploading, Category: "documentary", Tags: "tagC", Tracker: "udp://trackerb.com:80/announce"},
-		{Hash: "hash4", State: qbt.TorrentStateDownloading, Category: "movies", Tags: "tagC, tagD", Tracker: "https://trackerc.com/announce"},
+		{Hash: listRuleHash1, State: qbt.TorrentStateUploading, Category: "movies", Tags: "tagA, tagB", Tracker: "http://trackerA.com/announce"},
+		{Hash: listRuleHash2, State: qbt.TorrentStateDownloading, Category: "tv", Tags: "", Tracker: ""},
+		{Hash: listRuleHash3, State: qbt.TorrentStateUploading, Category: "documentary", Tags: "tagC", Tracker: "udp://trackerb.com:80/announce"},
+		{Hash: listRuleHash4, State: qbt.TorrentStateDownloading, Category: "movies", Tags: "tagC, tagD", Tracker: "https://trackerc.com/announce"},
 	}
 
 	mainData := &qbt.MainData{
 		Trackers: map[string][]string{
-			"http://trackerA.com/announce":   {"hash1"},
-			"udp://trackerb.com:80/announce": {"hash3"},
-			"https://trackerc.com/announce":  {"hash4"},
+			"http://trackerA.com/announce":   {listRuleHash1},
+			"udp://trackerb.com:80/announce": {listRuleHash3},
+			"https://trackerc.com/announce":  {listRuleHash4},
 		},
 	}
 
@@ -240,37 +248,37 @@ func TestListRules_Exclusions(t *testing.T) {
 		{
 			name:     "exclude status uploading",
 			filters:  FilterOptions{ExcludeStatus: []string{"uploading"}},
-			expected: []string{"hash2", "hash4"},
+			expected: []string{listRuleHash2, listRuleHash4},
 		},
 		{
 			name:     "exclude category movies",
 			filters:  FilterOptions{ExcludeCategories: []string{"movies"}},
-			expected: []string{"hash2", "hash3"},
+			expected: []string{listRuleHash2, listRuleHash3},
 		},
 		{
 			name:     "exclude tracker domain",
 			filters:  FilterOptions{ExcludeTrackers: []string{"trackerb.com"}},
-			expected: []string{"hash1", "hash2", "hash4"},
+			expected: []string{listRuleHash1, listRuleHash2, listRuleHash4},
 		},
 		{
 			name:     "exclude no tracker",
 			filters:  FilterOptions{ExcludeTrackers: []string{""}},
-			expected: []string{"hash1", "hash3", "hash4"},
+			expected: []string{listRuleHash1, listRuleHash3, listRuleHash4},
 		},
 		{
 			name:     "exclude tag removes matching",
 			filters:  FilterOptions{ExcludeTags: []string{"tagD"}},
-			expected: []string{"hash1", "hash2", "hash3"},
+			expected: []string{listRuleHash1, listRuleHash2, listRuleHash3},
 		},
 		{
 			name:     "combined include and exclude",
 			filters:  FilterOptions{Categories: []string{"movies"}, ExcludeTrackers: []string{"trackerc.com"}},
-			expected: []string{"hash1"},
+			expected: []string{listRuleHash1},
 		},
 		{
 			name:     "hash filters include subset",
-			filters:  FilterOptions{Hashes: []string{"hash1", "HASH3"}},
-			expected: []string{"hash1", "hash3"},
+			filters:  FilterOptions{Hashes: []string{listRuleHash1, strings.ToUpper(listRuleHash3)}},
+			expected: []string{listRuleHash1, listRuleHash3},
 		},
 	}
 

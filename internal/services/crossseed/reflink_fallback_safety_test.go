@@ -15,6 +15,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -27,7 +28,7 @@ type reflinkFallbackSafetySyncManager struct {
 func (*reflinkFallbackSafetySyncManager) GetTorrentRefs(_ context.Context, _ int, filter internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 	for _, hash := range filter.Hashes {
-		torrents = append(torrents, qbt.Torrent{Hash: hash})
+		torrents = append(torrents, qbt.Torrent{Hash: hash.String()})
 	}
 	if len(torrents) == 0 {
 		torrents = append(torrents, qbt.Torrent{Hash: "dummy"})
@@ -52,7 +53,7 @@ func (*reflinkFallbackSafetySyncManager) ExportTorrent(context.Context, int, str
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*reflinkFallbackSafetySyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*reflinkFallbackSafetySyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

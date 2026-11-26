@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func (r *diskRoot) Link(ctx context.Context, oldName, newName string) error {
@@ -140,7 +141,7 @@ func TestTransferUsesFilesAlreadyOnTheTarget(t *testing.T) {
 				}
 			}
 			require.ElementsMatch(t, copied, slices.Collect(maps.Keys(written)), "qui writes only the missing files")
-			seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 			require.NoError(t, err)
 			require.Len(t, seeding, 1)
 			require.Equal(t, "stalledUP", string(seeding[0].State))

@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -32,7 +33,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		return nil, fmt.Errorf("%w: no selections provided", ErrInvalidRequest)
 	}
 
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})})
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +238,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 		return TorrentSearchAddResult{}, false, nil
 	}
 
-	existing, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes)
+	existing, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes))
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return TorrentSearchAddResult{}, false, err

@@ -41,6 +41,7 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type show struct {
@@ -519,7 +520,7 @@ func TestTransferMovesATorrent(t *testing.T) {
 	require.Equal(t, "true", add.Get("seedMode"))
 	require.Equal(t, "false", add.Get("autoTMM"))
 	require.Equal(t, r.dstDir, add.Get("savepath"))
-	seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+	seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 	require.NoError(t, err)
 	require.Len(t, seeding, 1)
 	require.Equal(t, "stalledUP", string(seeding[0].State))
@@ -558,7 +559,7 @@ func TestTransferFollowsTheAfterChoice(t *testing.T) {
 			if tc.sourceTorrent {
 				require.False(t, r.src.Stopped(s.hash), "the source seeds on")
 			}
-			seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 			require.NoError(t, err)
 			require.Len(t, seeding, 1)
 			require.Equal(t, tc.targetState, string(seeding[0].State))
@@ -591,7 +592,7 @@ func TestTransferPutsATorrentAtTheSavePathOfItsCategory(t *testing.T) {
 
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 			require.Equal(t, contents(s, tc.folder+"/"+showName), tree(t, r.dstDir))
-			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 			require.NoError(t, err)
 			require.Len(t, landed, 1)
 			require.Equal(t, "archive", landed[0].Category)
@@ -630,7 +631,7 @@ func TestTransferLeavesATorrentOnAutomaticManagement(t *testing.T) {
 
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 			require.Equal(t, contents(s, path.Join(tc.folder, showName)), tree(t, r.dstDir))
-			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 			require.NoError(t, err)
 			require.Len(t, landed, 1)
 			require.Equal(t, tc.managed, landed[0].AutoManaged)

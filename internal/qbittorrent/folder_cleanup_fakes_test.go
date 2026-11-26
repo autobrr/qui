@@ -80,12 +80,12 @@ func (v *fakeView) ownRows(_ context.Context, _ int, hashes []string) (map[strin
 	}
 	want := make(map[string]struct{}, len(hashes))
 	for _, hash := range hashes {
-		want[canonicalizeHash(hash)] = struct{}{}
+		want[strings.ToLower(hash)] = struct{}{}
 	}
 	rows := make(map[string]*qbt.Torrent)
 	for _, t := range v.torrents {
-		if _, ok := want[canonicalizeHash(t.Hash)]; ok {
-			rows[canonicalizeHash(t.Hash)] = &t
+		if _, ok := want[strings.ToLower(t.Hash)]; ok {
+			rows[strings.ToLower(t.Hash)] = &t
 		}
 	}
 	return rows, nil

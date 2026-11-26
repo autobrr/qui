@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 
 	"github.com/autobrr/qui/internal/models"
@@ -1011,7 +1012,7 @@ func (*queueTestSyncManager) ExportTorrent(context.Context, int, string) ([]byte
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*queueTestSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*queueTestSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -1104,9 +1105,9 @@ func (g *gazelleSkipHashSyncManager) ExportTorrent(context.Context, int, string)
 	return g.exportedTorrent, "", "", nil
 }
 
-func (g *gazelleSkipHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (g *gazelleSkipHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	for _, h := range hashes {
-		if strings.EqualFold(strings.TrimSpace(h), strings.TrimSpace(g.expectedTargetHash)) {
+		if h.Is(g.expectedTargetHash) {
 			return &qbt.Torrent{Hash: g.expectedTargetHash, Name: "already-there"}, true, nil
 		}
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -1417,7 +1418,7 @@ func (s *Service) gazelleTargetsSeeded(ctx context.Context, instanceID int, torr
 		if err != nil {
 			return false
 		}
-		if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes); err != nil || !exists {
+		if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes)); err != nil || !exists {
 			return false
 		}
 	}

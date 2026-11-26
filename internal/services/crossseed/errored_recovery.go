@@ -14,6 +14,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/externalprograms"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, hashes []string) {
@@ -33,7 +34,7 @@ func (s *Service) findAddedTorrent(ctx context.Context, instanceID int, hashes [
 		}
 	}
 	s.waitForTorrentAvailability(ctx, instanceID, lookup, crossSeedRenameWaitTimeout)
-	return s.syncManager.HasTorrentByAnyHash(ctx, instanceID, lookup)
+	return s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(lookup))
 }
 
 func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, hashes []string) {
@@ -183,7 +184,7 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 				pendingHashes = append(pendingHashes, h)
 			}
 
-			currentTorrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: pendingHashes})
+			currentTorrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(pendingHashes)})
 			if err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to check recheck progress")
 				time.Sleep(pollInterval)

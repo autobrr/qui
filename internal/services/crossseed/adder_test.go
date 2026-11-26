@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -51,7 +52,7 @@ func (f *adderFake) AddTorrent(_ context.Context, instanceID int, _ []byte, opti
 	return &qbt.TorrentAddResponse{AddedTorrentIds: f.addedIDs}, f.addErr
 }
 
-func (f *adderFake) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+func (f *adderFake) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if f.existingOn != 0 && instanceID != f.existingOn {
 		return nil, false, f.findErr
 	}

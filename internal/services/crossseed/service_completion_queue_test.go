@@ -24,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/logbudget"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func setupCompletionStoreForQueueTests(t *testing.T) *models.InstanceCrossSeedCompletionStore {
@@ -90,7 +91,7 @@ func (m *completionPollingSyncMock) GetTorrentRefs(_ context.Context, _ int, fil
 		return nil, nil
 	}
 
-	hash := normalizeHash(filter.Hashes[0])
+	hash := filter.Hashes[0].String()
 	if m.lookups != nil {
 		m.lookups <- hash
 	}
@@ -128,7 +129,7 @@ func (*completionPollingSyncMock) ExportTorrent(context.Context, int, string) ([
 	return nil, "", "", nil
 }
 
-func (*completionPollingSyncMock) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*completionPollingSyncMock) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

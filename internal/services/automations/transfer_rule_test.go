@@ -431,7 +431,12 @@ func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T
 }
 
 func TestTransferToInstanceWaitsForASlowTargetOncePerRun(t *testing.T) {
-	torrents := []qbt.Torrent{{Hash: "a", Tags: "x"}, {Hash: "b", Tags: "x"}, {Hash: "c", Tags: "x"}}
+	const (
+		a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		c = "cccccccccccccccccccccccccccccccccccccccc"
+	)
+	torrents := []qbt.Torrent{{Hash: a, Tags: "x"}, {Hash: b, Tags: "x"}, {Hash: c, Tags: "x"}}
 	rule := planTestRule(1, &models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{
 		Enabled: true, TargetInstanceID: 2, Condition: tagsContain("x"),
 	}})
@@ -441,8 +446,8 @@ func TestTransferToInstanceWaitsForASlowTargetOncePerRun(t *testing.T) {
 		wait    time.Duration
 		planned []string
 	}{
-		{name: "slow target", target: fakeTargetLookup{slow: true}, wait: 10 * time.Second, planned: []string{"a", "b", "c"}},
-		{name: "target answers", target: fakeTargetLookup{onTarget: map[string]bool{"b": true, "c": true}}, planned: []string{"a"}},
+		{name: "slow target", target: fakeTargetLookup{slow: true}, wait: 10 * time.Second, planned: []string{a, b, c}},
+		{name: "target answers", target: fakeTargetLookup{onTarget: map[string]bool{b: true, c: true}}, planned: []string{a}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {

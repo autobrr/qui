@@ -16,6 +16,7 @@ import (
 
 	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -158,23 +159,20 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 }
 
 func (inst *heldInstance) torrents(hashes []string) []*qbt.Torrent {
-	torrents := make([]*qbt.Torrent, 0, len(hashes))
-	for _, hash := range hashes {
-		if torrent, ok := inst.snapshot.Torrent(hash); ok {
-			torrents = append(torrents, torrent)
-		}
-	}
-	return torrents
+	return slices.DeleteFunc(inst.lookup(hashes), func(torrent *qbt.Torrent) bool { return torrent == nil })
+}
+
+func (inst *heldInstance) lookup(hashes []string) []*qbt.Torrent {
+	return qbittorrent.NewHashIndex(inst.snapshot).Torrents(infohash.ParseAll(hashes))
 }
 
 func (inst *heldInstance) alternateTitles(hashes []string) map[*qbt.Torrent][]string {
 	titles := map[*qbt.Torrent][]string{}
-	for _, hash := range hashes {
-		torrent, ok := inst.snapshot.Torrent(hash)
-		if !ok {
+	for i, torrent := range inst.lookup(hashes) {
+		if torrent == nil {
 			continue
 		}
-		if alternates := inst.index.alternates.of(inst.index.torrents[hash].title); len(alternates) > 0 {
+		if alternates := inst.index.alternates.of(inst.index.torrents[hashes[i]].title); len(alternates) > 0 {
 			titles[torrent] = alternates
 		}
 	}

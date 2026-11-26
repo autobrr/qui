@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -69,7 +70,7 @@ var (
 type partialPoolSync interface {
 	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error)
 }
@@ -234,7 +235,7 @@ func (s *partialPoolCoordinator) join(
 	if responseIDs := normalizedHashes(addedTorrentIDs...); len(responseIDs) > 0 {
 		fetchHash = responseIDs[0]
 	} else {
-		addedTorrent, found, resolveErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, memberAliases)
+		addedTorrent, found, resolveErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, infohash.ParseAll(memberAliases))
 		if resolveErr != nil {
 			return nil, nil, fmt.Errorf("resolve added partial pool torrent: %w", resolveErr)
 		}
@@ -291,7 +292,7 @@ func (s *partialPoolCoordinator) join(
 		sourceInstanceID = req.SearchDecision.SourceInstanceID
 		sourceKey = normalizeHash(req.SearchDecision.SourceHash)
 		sourceAliases = []string{sourceKey}
-		if sourceTorrent, sourceFound, sourceErr := s.syncManager.HasTorrentByAnyHash(ctx, sourceInstanceID, sourceAliases); sourceErr == nil && sourceFound {
+		if sourceTorrent, sourceFound, sourceErr := s.syncManager.HasTorrentByAnyHash(ctx, sourceInstanceID, infohash.ParseAll(sourceAliases)); sourceErr == nil && sourceFound {
 			sourceKey = partialPoolCanonicalTorrentKey(sourceTorrent)
 			sourceAliases = partialPoolTorrentAliases(sourceTorrent)
 		}
@@ -811,7 +812,7 @@ func (s *partialPoolCoordinator) observeRequestedPartialPoolRechecks(ctx context
 		torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, instanceID, hashes)
 		if !fresh {
 			var loadErr error
-			torrents, loadErr = s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+			torrents, loadErr = s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 			if loadErr != nil {
 				for _, member := range targets {
 					if !s.expirePartialPoolRecheckObservation(ctx, now, member) {
@@ -875,7 +876,7 @@ func (s *partialPoolCoordinator) forcePartialPoolTorrentSnapshot(ctx context.Con
 	if snapshot == nil {
 		return nil, false
 	}
-	return qbittorrent.TorrentRefFilter{Hashes: hashes}.Select(snapshot), true
+	return qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)}.Select(snapshot), true
 }
 
 func (s *partialPoolCoordinator) refreshPartialPoolTorrentStates(

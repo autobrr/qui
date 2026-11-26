@@ -186,8 +186,7 @@ func (s *cleanupScope) indexLive(torrents []*qbt.Torrent, ready []*pendingFolder
 	d := s.d
 	byHash := make(map[string][]*pendingFolder, len(ready))
 	for _, item := range ready {
-		hash := canonicalizeHash(item.snap.Hash)
-		byHash[hash] = append(byHash[hash], item)
+		byHash[item.snap.Hash] = append(byHash[item.snap.Hash], item)
 	}
 	waiting := make(map[*pendingFolder]struct{})
 
@@ -200,7 +199,7 @@ func (s *cleanupScope) indexLive(torrents []*qbt.Torrent, ready []*pendingFolder
 		}
 	}
 	for _, t := range torrents {
-		for _, item := range byHash[canonicalizeHash(t.Hash)] {
+		for _, item := range byHash[t.Hash] {
 			if item.waitsFor(d, t) {
 				waiting[item] = struct{}{}
 			}
