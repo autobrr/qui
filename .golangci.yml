@@ -160,6 +160,12 @@ linters:
           msg: list an instance's torrents through the sync manager reads, which leave out Helper torrents (ADR 0092)
         - pattern: ^\(?\*?\w+\.\w+\)?\.PendingSync$
           msg: wait on a due sync through the Held titles lookup in internal/services/crossseed/held_titles_lookup.go
+        - pattern: ^crossseed\.(Service\.(CheckSeasonPackWebhook|ApplySeasonPackWebhook)|SeasonPack(CheckRequest|CheckMatch|CheckResponse|ApplyRequest|ApplyResponse))$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
+        - pattern: ^\(?\*?handlers\.CrossSeedHandler\)?\.(SeasonPackCheck|SeasonPackApply)$
+          pkg: ^github\.com/autobrr/qui/internal/api/handlers$
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: only the Transfer history module in internal/services/transferhistory calls the history store
@@ -339,7 +345,7 @@ linters:
 
       # The webhook check and the season pack check read their candidates from Held titles.
       # Their fallback to the full list is in webhook_all_torrents.go and seasonpack_all_torrents.go.
-      - path-except: internal/services/crossseed/(webhook_check|seasonpack|seasonpack_candidates)\.go$
+      - path-except: internal/services/crossseed/(webhook_check|webhook_season_pack|seasonpack|seasonpack_candidates)\.go$
         linters:
           - forbidigo
         text: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup\.go, never the full torrent list
@@ -355,6 +361,17 @@ linters:
         linters:
           - forbidigo
         text: wait on a due sync through the Held titles lookup
+
+      # Only the season pack adapter uses the legacy season pack types. These test
+      # files are older than the rule; a new test goes through the webhook check and apply.
+      - path: internal/services/crossseed/seasonpack_endpoints\.go$|internal/api/handlers/crossseed_seasonpack_endpoints\.go$
+        linters:
+          - forbidigo
+        text: season pack endpoints are a frozen adapter
+      - path: internal/services/crossseed/(log_budget|path_dialect|seasonpack|seasonpack_(blocklist|regression|route|held|held_apply|held_budget|held_freshness|held_rig))_test\.go$|internal/api/handlers/crossseed_(apply_handler|seasonpack)_test\.go$
+        linters:
+          - forbidigo
+        text: season pack endpoints are a frozen adapter
 
       # Only the Aligner renames torrent files in the cross-seed and Dir Scan packages.
       - path-except: ^internal/services/(crossseed|dirscan)/
