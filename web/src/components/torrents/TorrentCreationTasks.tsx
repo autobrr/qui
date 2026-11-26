@@ -32,7 +32,7 @@ const STATUS_COLORS: Record<TorrentCreationStatus, string> = {
   Queued: "bg-warning text-background p-1",
   Running: "bg-info text-background p-1",
   Finished: "bg-success text-background p-1",
-  Failed: "bg-destructive text-background p-1",
+  Failed: "bg-destructive text-destructive-foreground p-1",
 }
 
 const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
