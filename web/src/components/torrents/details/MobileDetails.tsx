@@ -14,7 +14,7 @@ import { renderTextWithLinks } from "@/lib/linkUtils"
 import { getTrackerStatusBadge, isValidTrackerUrl } from "@/lib/tracker-utils"
 import { breakableName, cn, copyTextToClipboard } from "@/lib/utils"
 import type { TorrentTracker } from "@/types"
-import { ChevronLeft, Copy, Edit, Folder, Tag } from "lucide-react"
+import { ChevronLeft, Copy, Edit } from "lucide-react"
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -99,25 +99,6 @@ export function MobileDetailsHeader({ name, status, progress, size, ratio, onBac
           </span>
         </div>
       </div>
-    </div>
-  )
-}
-
-export function MobileCategoryTagsRow({ category, tags }: { category: string; tags: string }) {
-  const tagList = tags.split(",").map(tag => tag.trim()).filter(Boolean)
-  if (!category && tagList.length === 0) return null
-  return (
-    <div className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-b px-4 py-2.5">
-      {category && (
-        <Badge variant="secondary" className="gap-1">
-          <Folder className="size-3" />{category}
-        </Badge>
-      )}
-      {tagList.map(tag => (
-        <Badge key={tag} variant="outline" className="gap-1">
-          <Tag className="size-3" />{tag}
-        </Badge>
-      ))}
     </div>
   )
 }

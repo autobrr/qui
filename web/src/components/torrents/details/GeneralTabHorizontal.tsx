@@ -16,6 +16,7 @@ import type { Torrent, TorrentProperties } from "@/types"
 import { Loader2 } from "lucide-react"
 import { memo, useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { CategoryTagBadges } from "./CategoryTagBadges"
 import { PieceBar } from "./PieceBar"
 import { StatRow } from "./StatRow"
 
@@ -121,6 +122,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   return (
     <ScrollArea className="h-full">
       <div className="p-3">
+        <CategoryTagBadges torrent={torrent} className="mb-2 flex flex-wrap gap-1.5" />
         <div className="grid grid-cols-2 gap-6 h-5">
           <div className="flex items-start gap-2 min-w-0">
             <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
