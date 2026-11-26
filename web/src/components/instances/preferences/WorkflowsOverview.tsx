@@ -86,7 +86,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Braces, Clock, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
 import { toast } from "sonner"
@@ -789,11 +789,11 @@ export function WorkflowsOverview() {
     }
   }
 
-  const outcomeClasses: Record<AutomationActivity["outcome"], string> = {
-    success: "bg-success/10 text-success border-success/20",
-    failed: "bg-destructive/10 text-destructive border-destructive/30",
-    "dry-run": "bg-info/10 text-info border-info/20",
-    skipped: "bg-warning/10 text-warning border-warning/20",
+  const outcomeBadges: Record<AutomationActivity["outcome"], Pick<ComponentProps<typeof Badge>, "variant" | "className">> = {
+    success: { variant: "success" },
+    failed: { variant: "outline", className: "bg-destructive/10 text-destructive border-destructive/30" },
+    "dry-run": { variant: "info" },
+    skipped: { variant: "warning" },
   }
 
   const actionClasses: Record<AutomationActivity["action"], string> = {
@@ -1271,10 +1271,10 @@ export function WorkflowsOverview() {
                                         </Badge>
                                         {(!runSummaryActions.has(event.action) || event.outcome === "dry-run") && (
                                           <Badge
-                                            variant="outline"
+                                            variant={outcomeBadges[event.outcome].variant}
                                             className={cn(
                                               "text-10 px-1.5 py-0 h-5 shrink-0",
-                                              outcomeClasses[event.outcome]
+                                              outcomeBadges[event.outcome].className
                                             )}
                                           >
                                             {getOutcomeBadgeText(event)}

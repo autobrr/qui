@@ -22,7 +22,7 @@ import { cn, formatErrorReason } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ComponentProps } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -154,11 +154,11 @@ export function ReannounceOverview({
     setPendingEnableInstance(null)
   }
 
-  const outcomeClasses: Record<InstanceReannounceActivity["outcome"], string> = {
-    succeeded: "bg-success/10 text-success border-success/20",
-    failed: "bg-destructive/10 text-destructive border-destructive/30",
-    skipped: "bg-muted text-muted-foreground border-border/60",
-    started: "bg-info/10 text-info border-info/20",
+  const outcomeBadges: Record<InstanceReannounceActivity["outcome"], Pick<ComponentProps<typeof Badge>, "variant" | "className">> = {
+    succeeded: { variant: "success" },
+    failed: { variant: "outline", className: "bg-destructive/10 text-destructive border-destructive/30" },
+    skipped: { variant: "outline", className: "bg-muted text-muted-foreground border-border/60" },
+    started: { variant: "info" },
   }
 
   const getSettingsSummaryParts = (settings: InstanceReannounceSettings): string[] => {
@@ -432,10 +432,10 @@ export function ReannounceOverview({
                                             </TooltipContent>
                                           </Tooltip>
                                           <Badge
-                                            variant="outline"
+                                            variant={outcomeBadges[event.outcome].variant}
                                             className={cn(
                                               "capitalize text-10 px-1.5 py-0 h-5",
-                                              outcomeClasses[event.outcome]
+                                              outcomeBadges[event.outcome].className
                                             )}
                                           >
                                             {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
