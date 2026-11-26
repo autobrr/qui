@@ -1552,6 +1552,8 @@
       "addedMany": "{{count}} torrenty byly úspěšně přidány",
       "failedMany": "Nepodařilo se přidat {{count}} torrent(ů)",
       "partialSuccess": "Přidáno {{added}}, nepodařilo se přidat {{failed}}",
+      "batchFailed": "Přidáno {{added}} z {{total}} torrentů",
+      "batchFailedDescription": "Dávka {{batch}} z {{batches}} selhala: {{error}}. Zbytek zůstává v seznamu, takže je můžete přidat znovu.",
       "rejectedOne": "1 soubor odmítnut (ne .torrent soubor)",
       "rejectedMany": "{{count}} soubory odmítnuty (ne .torrent soubory)"
     }

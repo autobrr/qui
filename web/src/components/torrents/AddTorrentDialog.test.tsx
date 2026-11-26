@@ -4,7 +4,7 @@
  */
 
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { addFilesInBatches } from "@/lib/add-torrent-files"
+import { addFilesInBatches, BatchAddError } from "@/lib/add-torrent-files"
 import { api } from "@/lib/api"
 import type { AddTorrentResponse, AppPreferences, PreferenceField } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -22,7 +22,7 @@ vi.mock("@/lib/api", () => ({ api: {
   checkTorrentDuplicates: vi.fn(),
   getInstancePreferenceView: vi.fn(),
 } }))
-vi.mock("@/lib/add-torrent-files", () => ({ addFilesInBatches: vi.fn() }))
+vi.mock("@/lib/add-torrent-files", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/add-torrent-files")>(), addFilesInBatches: vi.fn() }))
 vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => metadataResult }))
 vi.mock("@/hooks/useInstanceCapabilities", () => ({ useInstanceCapabilities: () => ({ data: { supportsTorrentTmpPath: true, supportsPathAutocomplete: false } }) }))
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: { current?: number; total?: number }) => values?.current ? `${key} ${values.current}/${values.total}` : key }) }))
@@ -328,4 +328,35 @@ it("shows which batch it adds while it sends the dropped files in batches", asyn
   expect(vi.mocked(addFilesInBatches).mock.calls[0][2]).toEqual(files)
   finish({ added: 2, failed: 0, message: "" })
   await waitFor(() => expect(toast.success).toHaveBeenCalled())
+})
+
+it("keeps only the unconfirmed files in the dialog when a batch fails, so Add sends just those again", async () => {
+  vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
+  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
+  const files = ["Example.Show.S01E01.torrent", "Example.Show.S01E02.torrent", "Example.Show.S01E03.torrent"].map(name => new File(["x"], name))
+  vi.mocked(addFilesInBatches)
+    .mockRejectedValueOnce(new BatchAddError("HTTP error! status: 504", 1, 3, 2, 3, files.slice(1)))
+    .mockResolvedValueOnce({ added: 2, failed: 0, message: "" })
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  client.setQueryData(["instance-preferences", 1], preferences)
+  const dialog = (dropPayload: AddTorrentDropPayload | null) => (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <AddTorrentDialog instanceId={1} open onOpenChange={() => {}} dropPayload={dropPayload} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+  const ui = render(dialog({ type: "file", files }))
+  ui.rerender(dialog(null))
+
+  fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" })))
+
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("addTorrentDialog.toast.batchFailed", expect.anything()))
+  await waitFor(() => expect(ui.queryByText("Example.Show.S01E01.torrent")).toBeNull())
+  expect(ui.getByText("Example.Show.S01E02.torrent")).not.toBeNull()
+
+  fireEvent.click(ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" }))
+  await waitFor(() => expect(addFilesInBatches).toHaveBeenCalledTimes(2))
+  expect(vi.mocked(addFilesInBatches).mock.calls[1][2]).toEqual(files.slice(1))
 })

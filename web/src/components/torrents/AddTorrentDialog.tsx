@@ -41,7 +41,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities.ts"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { useAddTorrentPreferences, useSubcategoriesEnabled } from "@/hooks/usePreferenceValues"
-import { addFilesInBatches } from "@/lib/add-torrent-files"
+import { addFilesInBatches, BatchAddError } from "@/lib/add-torrent-files"
 import { addUrlsByIndexer } from "@/lib/add-torrent-urls"
 import { api } from "@/lib/api"
 import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
@@ -488,6 +488,21 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const duplicatePreviewRemaining = Math.max(duplicateSummary.existingNames.length - duplicatePreviewNames.length, 0)
   const showDuplicateCheckIndicator = duplicateCheckStatus === "visible"
 
+  const refetchAfterAdd = () => {
+    setTimeout(() => {
+      queryClient.refetchQueries({
+        queryKey: ["torrents-list", instanceId],
+        exact: false,
+        type: "active",
+      })
+      queryClient.refetchQueries({
+        queryKey: ["instance-metadata", instanceId],
+        exact: false,
+        type: "active",
+      })
+    }, 500)
+  }
+
   const mutation = useMutation({
     retry: false,
     mutationFn: async (data: FormData) => {
@@ -526,6 +541,16 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     },
     onSettled: () => setBatchProgress(null),
     onError: (error) => {
+      if (error instanceof BatchAddError) {
+        refetchAfterAdd()
+        form.setFieldValue("torrentFiles", error.unconfirmed)
+        toast.error(t("addTorrentDialog.toast.batchFailed", { added: error.added, total: error.total }), {
+          description: t("addTorrentDialog.toast.batchFailedDescription", { batch: error.batch, batches: error.batches, error: error.message }),
+          duration: 10000,
+        })
+        return
+      }
+
       let description = t("addTorrentDialog.toast.verifyInput")
       if (error instanceof Error && error.message && !error.message.startsWith("HTTP error! status:")) {
         description = error.message
@@ -537,18 +562,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       })
     },
     onSuccess: (response: AddTorrentResponse) => {
-      setTimeout(() => {
-        queryClient.refetchQueries({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-          type: "active",
-        })
-        queryClient.refetchQueries({
-          queryKey: ["instance-metadata", instanceId],
-          exact: false,
-          type: "active",
-        })
-      }, 500)
+      refetchAfterAdd()
 
       if (response.failed === 0) {
         toast.success(
@@ -599,7 +613,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       indexerByUrl: undefined as Record<string, number> | undefined,
     },
     onSubmit: async ({ value }) => {
-      await mutation.mutateAsync(value)
+      await mutation.mutateAsync(value).catch(() => undefined)
     },
   })
 

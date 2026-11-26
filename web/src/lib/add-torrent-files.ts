@@ -9,6 +9,24 @@ const ADD_TORRENT_FILE_BATCH_SIZE = 500
 
 type AddRequest = { torrentFiles?: File[] }
 
+export class BatchAddError extends Error {
+  readonly added: number
+  readonly total: number
+  readonly batch: number
+  readonly batches: number
+  readonly unconfirmed: File[]
+
+  constructor(message: string, added: number, total: number, batch: number, batches: number, unconfirmed: File[]) {
+    super(message)
+    this.name = "BatchAddError"
+    this.added = added
+    this.total = total
+    this.batch = batch
+    this.batches = batches
+    this.unconfirmed = unconfirmed
+  }
+}
+
 export async function addFilesInBatches<T extends AddRequest>(
   add: (request: T) => Promise<AddTorrentResponse>,
   base: T,
@@ -26,22 +44,20 @@ export async function addFilesInBatches<T extends AddRequest>(
 
   const failedFiles: AddTorrentFailedFile[] = []
   const total: AddTorrentResponse = { message: "", added: 0, failed: 0, failedFiles }
-  const errors: unknown[] = []
   for (const [index, batch] of batches.entries()) {
     onBatch(index + 1, batches.length)
+    let response: AddTorrentResponse
     try {
-      const response = await add({ ...base, torrentFiles: batch })
-      total.message = response.message
-      total.added += response.added
-      total.failed += response.failed
-      failedFiles.push(...(response.failedFiles ?? []))
+      response = await add({ ...base, torrentFiles: batch })
     } catch (error) {
-      errors.push(error)
+      if (index === 0) throw error
       const message = error instanceof Error ? error.message : String(error)
-      total.failed += batch.length
-      failedFiles.push(...batch.map(file => ({ filename: file.name, error: message })))
+      throw new BatchAddError(message, total.added, files.length, index + 1, batches.length, files.slice(index * ADD_TORRENT_FILE_BATCH_SIZE))
     }
+    total.message = response.message
+    total.added += response.added
+    total.failed += response.failed
+    failedFiles.push(...(response.failedFiles ?? []))
   }
-  if (errors.length === batches.length) throw errors[0]
   return total
 }

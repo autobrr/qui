@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { addFilesInBatches } from "@/lib/add-torrent-files"
+import { addFilesInBatches, BatchAddError } from "@/lib/add-torrent-files"
 import type { AddTorrentResponse } from "@/types"
 import { describe, expect, it } from "vitest"
 
@@ -45,22 +45,26 @@ describe("addFilesInBatches", () => {
     expect(calls).toHaveLength(1)
   })
 
-  it("still sends the other batches when one fails, and counts the files of the failed batch as failed with its error", async () => {
+  it("stops at a failed batch and keeps the files that no response confirmed, so a retry sends only those", async () => {
     const { calls, add, onBatch } = recorder(2)
     const selection = files(1200)
-    const response = await addFilesInBatches(add, {}, selection, onBatch)
+    const error = await addFilesInBatches(add, {}, selection, onBatch).catch((caught: unknown) => caught)
 
-    expect(calls).toHaveLength(3)
-    expect(response.added).toBe(700)
-    expect(response.failed).toBe(500)
-    expect(response.failedFiles).toHaveLength(500)
-    expect(response.failedFiles?.[0]).toEqual({ filename: selection[500].name, error: "Failed to add all torrents: qBittorrent is offline" })
+    expect(calls).toHaveLength(2)
+    expect(error).toBeInstanceOf(BatchAddError)
+    if (!(error instanceof BatchAddError)) return
+    expect(error.added).toBe(500)
+    expect(error.total).toBe(1200)
+    expect(error.batch).toBe(2)
+    expect(error.batches).toBe(3)
+    expect(error.message).toBe("Failed to add all torrents: qBittorrent is offline")
+    expect(error.unconfirmed).toEqual(selection.slice(500))
   })
 
-  it("fails when every batch fails, so the dialog shows the error and keeps the files", async () => {
-    const add = async (): Promise<AddTorrentResponse> => {
-      throw new Error("Instance is disabled")
-    }
-    await expect(addFilesInBatches(add, {}, files(1200), () => {})).rejects.toThrow("Instance is disabled")
+  it("throws the request error unchanged when the first batch fails", async () => {
+    const { add, onBatch } = recorder(1)
+    const error = await addFilesInBatches(add, {}, files(1200), onBatch).catch((caught: unknown) => caught)
+    expect(error).not.toBeInstanceOf(BatchAddError)
+    expect(error).toBeInstanceOf(Error)
   })
 })
