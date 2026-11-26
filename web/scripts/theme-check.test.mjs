@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import fs from "node:fs"
 import path from "node:path"
 
-import { builtInThemeFiles, checkTheme } from "./theme-check.mjs"
+import { builtInThemeFiles, checkTheme, declarations } from "./theme-check.mjs"
 
 const WHITE_SURFACES = ["background", "card", "popover", "muted", "secondary", "accent", "sidebar", "sidebar-accent"]
 const BLACK_FILLS = [
@@ -135,5 +135,36 @@ test("each community theme keeps its ratio colors readable on the plain and the 
       .filter(pair => !pair.ok && /^chart-\d text on (row|striped row)$/.test(pair.label))
       .map(pair => `${pair.mode} ${pair.label}`)
     assert.deepEqual(faint, [], path.basename(file))
+  }
+})
+
+test("each built-in theme sets its own status colors in light and dark", () => {
+  const files = builtInThemeFiles()
+  assert.ok(files.length > 0)
+
+  for (const file of files) {
+    const css = fs.readFileSync(file, "utf8")
+    const missing = [["light", ":root"], ["dark", ".dark"]].flatMap(([mode, selector]) => {
+      const vars = declarations(css, selector)
+      return ["--success", "--warning", "--info"].filter(name => !vars[name]).map(name => `${mode} ${name}`)
+    })
+    assert.deepEqual(missing, [], path.basename(file))
+  }
+})
+
+const SELECTED_ROW_TOO_BRIGHT = ["success", "warning", "info"].map(name => `dark ${name} text on selected row`)
+const ACCEPTED_STATUS_PAIRS = {
+  "bubblegum.css": SELECTED_ROW_TOO_BRIGHT,
+  "cyberpunk.css": SELECTED_ROW_TOO_BRIGHT,
+  "nord.css": SELECTED_ROW_TOO_BRIGHT,
+}
+
+test("each built-in theme keeps its status colors readable, except the pairs that the maintainer accepted", () => {
+  for (const file of builtInThemeFiles()) {
+    const name = path.basename(file)
+    const faint = checkTheme(fs.readFileSync(file, "utf8")).pairs
+      .filter(pair => !pair.ok && /^(success|warning|info) text on /.test(pair.label))
+      .map(pair => `${pair.mode} ${pair.label}`)
+    assert.deepEqual([...new Set(faint)], ACCEPTED_STATUS_PAIRS[name] ?? [], name)
   }
 })

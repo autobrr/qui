@@ -1,0 +1,91 @@
+name: Benchmark drift
+
+on:
+  schedule:
+    - cron: "37 1 * * 6"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  measure:
+    name: Compare each benchmark with its starting commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      issue: ${{ steps.drift.outputs.issue }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Get the benchmarks that the last run skipped
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          mkdir "$RUNNER_TEMP/last"
+          for run in $(gh run list --workflow bench-drift.yml --branch "$BRANCH" --status completed --limit 10 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$run" --name bench-drift --dir "$RUNNER_TEMP/last"; then
+              break
+            fi
+          done
+      - name: Measure
+        id: drift
+        run: |
+          status=0
+          go run ./scripts/benchcompare drift -timeout 2h -count 20 -skipped "$RUNNER_TEMP/last/skipped.txt" -out "$RUNNER_TEMP/drift" || status=$?
+          if [ -s "$RUNNER_TEMP/drift/summary.md" ]; then
+            cat "$RUNNER_TEMP/drift/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -s "$RUNNER_TEMP/drift/issue.md" ]; then
+            echo "issue=true" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$status"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: bench-drift
+          path: ${{ runner.temp }}/drift
+          if-no-files-found: error
+          retention-days: 90
+
+  report:
+    name: Report the drift
+    needs: measure
+    if: always() && needs.measure.outputs.issue == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: bench-drift
+          path: ${{ runner.temp }}/drift
+      - name: Open the issue or comment on the open one
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="$RUNNER_TEMP/drift/issue.md"
+          printf '\n[The full table](%s)\n' "$RUN_URL" >> "$body"
+          open=$(gh issue list --label bench-drift --state open --limit 1 --json number --jq '.[].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file "$body"
+          else
+            gh label create bench-drift --description "The weekly benchmark check found a difference" --force
+            gh issue create --title "Go benchmarks drifted from their starting commits" --label bench-drift --body-file "$body"
+          fi

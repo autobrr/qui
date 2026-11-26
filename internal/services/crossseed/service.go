@@ -215,11 +215,12 @@ type Service struct {
 	completionMaxAttempts  int
 
 	seasonPackRunStore seasonPackRunCreator
+	seasonPackApplies  seasonPackApplies
 
 	backendPool atomic.Value
 
 	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
+	seasonPackApplier       func(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
 	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
