@@ -511,7 +511,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
   const mutation = useMutation({
     retry: false,
-    mutationFn: async (data: FormData) => {
+    mutationFn: async ({ session, ...data }: FormData & { session: number }) => {
       const autoTMM = data.autoTMM
       const tempPathChanged =
         !autoTMM && (data.tempPathEnabled !== preferenceDefaults.tempPathEnabled ||
@@ -537,7 +537,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       }
 
       if (activeTab === "file" && data.torrentFiles && data.torrentFiles.length > 0) {
-        const session = dialogSessionRef.current
         return addFilesInBatches(request => api.addTorrent(instanceId, request), submitData, data.torrentFiles, (current, total) => {
           if (session === dialogSessionRef.current) setBatchProgress({ current, total })
         })
@@ -548,14 +547,13 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
       return api.addTorrent(instanceId, submitData)
     },
-    onMutate: () => dialogSessionRef.current,
-    onSettled: (_data, _error, _submitted, session) => {
+    onSettled: (_data, _error, { session }) => {
       if (session === dialogSessionRef.current) setBatchProgress(null)
     },
-    onError: (error, submitted, session) => {
+    onError: (error, submitted) => {
       if (error instanceof BatchAddError) {
         refetchAfterAdd()
-        if (session === dialogSessionRef.current) {
+        if (submitted.session === dialogSessionRef.current) {
           const addedSince = (form.getFieldValue("torrentFiles") ?? []).filter(file => !submitted.torrentFiles?.includes(file))
           form.setFieldValue("torrentFiles", [...error.unconfirmed, ...addedSince])
         }
@@ -579,7 +577,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         duration: 5000,
       })
     },
-    onSuccess: (response: AddTorrentResponse, _submitted, session) => {
+    onSuccess: (response: AddTorrentResponse, { session }) => {
       refetchAfterAdd()
 
       if (response.failed === 0) {
@@ -633,7 +631,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       indexerByUrl: undefined as Record<string, number> | undefined,
     },
     onSubmit: async ({ value }) => {
-      await mutation.mutateAsync(value).catch(() => undefined)
+      await mutation.mutateAsync({ ...value, session: dialogSessionRef.current }).catch(() => undefined)
     },
   })
 

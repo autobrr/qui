@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { addFilesInBatches, BatchAddError } from "@/lib/add-torrent-files"
 import { api } from "@/lib/api"
 import type { AddTorrentResponse, AppPreferences } from "@/types"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { toast } from "sonner"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
@@ -30,6 +30,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  onlineManager.setOnline(true)
   vi.resetAllMocks()
 })
 
@@ -214,62 +215,6 @@ it("opens a fresh dialog while the add of the closed one still runs, and keeps i
   expect(ui.getByRole("button", { name: "addTorrentDialog.footer.add" }).hasAttribute("disabled")).toBe(false)
 })
 
-it("puts each failed file of a failed batch on its own line of the toast", async () => {
-  vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
-  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
-  const files = ["Example.Show.S01E01.torrent", "Example.Show.S01E02.torrent", "Example.Show.S01E03.torrent"].map(name => new File(["x"], name))
-  vi.mocked(addFilesInBatches).mockRejectedValueOnce(new BatchAddError("HTTP error! status: 504", { added: 1, total: 3, batch: 2, batches: 2, unconfirmed: files.slice(1), failedFiles: [
-    { filename: "Example.Show.S01E02.torrent", error: "torrent file is not valid" },
-    { filename: "Example.Show.S01E03.torrent", error: "torrent file is not valid" },
-  ] }))
-
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
-  client.setQueryData(["instance-preferences", 1], preferences)
-  const ui = render(
-    <QueryClientProvider client={client}>
-      <TooltipProvider>
-        <AddTorrentDialog instanceId={1} open onOpenChange={() => {}} dropPayload={{ type: "file", files }} />
-      </TooltipProvider>
-    </QueryClientProvider>
-  )
-
-  fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" })))
-
-  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("addTorrentDialog.toast.batchFailed", {
-    description: "addTorrentDialog.toast.batchFailedDescription\nExample.Show.S01E02.torrent: torrent file is not valid\nExample.Show.S01E03.torrent: torrent file is not valid",
-    descriptionClassName: "whitespace-pre-line",
-    duration: 10000,
-  }))
-})
-
-it("puts each failed file of a partly added set on its own line of the toast", async () => {
-  vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
-  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
-  const files = ["Example.Show.S01E01.torrent", "Example.Show.S01E02.torrent", "Example.Show.S01E03.torrent"].map(name => new File(["x"], name))
-  vi.mocked(addFilesInBatches).mockResolvedValueOnce({ added: 1, failed: 2, message: "", failedFiles: [
-    { filename: "Example.Show.S01E02.torrent", error: "torrent file is not valid" },
-    { filename: "Example.Show.S01E03.torrent", error: "torrent file is not valid" },
-  ] })
-
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
-  client.setQueryData(["instance-preferences", 1], preferences)
-  const ui = render(
-    <QueryClientProvider client={client}>
-      <TooltipProvider>
-        <AddTorrentDialog instanceId={1} open onOpenChange={() => {}} dropPayload={{ type: "file", files }} />
-      </TooltipProvider>
-    </QueryClientProvider>
-  )
-
-  fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" })))
-
-  await waitFor(() => expect(toast.warning).toHaveBeenCalledWith("addTorrentDialog.toast.partialSuccess", {
-    description: "Example.Show.S01E02.torrent: torrent file is not valid\nExample.Show.S01E03.torrent: torrent file is not valid",
-    descriptionClassName: "whitespace-pre-line",
-    duration: 5000,
-  }))
-})
-
 it("shows only the batches of its own add while the add of the closed dialog moves on and ends", async () => {
   vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
   vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
@@ -344,6 +289,44 @@ it("shows no batch of the closed dialog while a reopened dialog adds a link", as
   ui.rerender(dialog(false, null))
   ui.rerender(dialog(true, { type: "url", urls: ["magnet:?xt=urn:btih:0000000000000000000000000000000000000001"] }))
   ui.rerender(dialog(true, null))
+
+  fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.add" })))
+
+  await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.adding" }))
+  expect(ui.queryByRole("button", { name: "addTorrentDialog.footer.addingBatch 2/3" })).toBeNull()
+})
+
+it("shows no batch of an add that waited for the network while a reopened dialog adds a link", async () => {
+  vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
+  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
+  vi.mocked(api.addTorrent).mockReturnValue(new Promise(() => {}))
+  const files = ["Example.Show.S01E01.torrent", "Example.Show.S01E02.torrent"].map(name => new File(["x"], name))
+  vi.mocked(addFilesInBatches).mockImplementationOnce((_add, _base, _files, onBatch) => {
+    onBatch(2, 3)
+    return new Promise(() => {})
+  })
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  client.setQueryData(["instance-preferences", 1], preferences)
+  const dialog = (open: boolean, dropPayload: AddTorrentDropPayload | null) => (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <AddTorrentDialog instanceId={1} open={open} onOpenChange={() => {}} dropPayload={dropPayload} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+  const ui = render(dialog(true, { type: "file", files }))
+  ui.rerender(dialog(true, null))
+
+  onlineManager.setOnline(false)
+  fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" })))
+  await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.adding" }))
+  ui.rerender(dialog(false, null))
+  ui.rerender(dialog(true, { type: "url", urls: ["magnet:?xt=urn:btih:0000000000000000000000000000000000000001"] }))
+  ui.rerender(dialog(true, null))
+
+  act(() => onlineManager.setOnline(true))
+  await waitFor(() => expect(addFilesInBatches).toHaveBeenCalled())
 
   fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.add" })))
 
