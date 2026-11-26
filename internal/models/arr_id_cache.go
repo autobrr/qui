@@ -161,8 +161,8 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 
 	query := `
 		INSERT INTO arr_id_cache (title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json,
-			episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, cached_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(title_hash, content_type) DO UPDATE SET
 			arr_instance_id = excluded.arr_instance_id,
 			imdb_id = excluded.imdb_id,
@@ -175,7 +175,7 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 			episode_map_absolute = excluded.episode_map_absolute,
 			episode_map_known = excluded.episode_map_known,
 			is_negative = excluded.is_negative,
-			cached_at = CURRENT_TIMESTAMP,
+			cached_at = excluded.cached_at,
 			expires_at = excluded.expires_at
 		WHERE excluded.is_negative = 0
 			OR arr_id_cache.is_negative = 1
@@ -183,7 +183,7 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 	`
 
 	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, titlesJSON,
-		mapSeason, mapEpisode, mapAbsolute, BoolToSQLite(episodeMapKnown), BoolToSQLite(isNegative), expiresAt, now)
+		mapSeason, mapEpisode, mapAbsolute, BoolToSQLite(episodeMapKnown), BoolToSQLite(isNegative), now, expiresAt, now)
 	if err != nil {
 		return fmt.Errorf("failed to set arr id cache entry: %w", err)
 	}
