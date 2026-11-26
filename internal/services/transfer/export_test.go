@@ -305,11 +305,11 @@ func TestExportResumesAfterACrash(t *testing.T) {
 			}
 			require.True(t, r.seeding(r.source.ID, s.hash), "the source seeds on")
 
-			src, dst := sent(r.src), sent(r.dst)
+			src, dst := sentWithoutResync(r.src), sentWithoutResync(r.dst)
 			r.restart()
 			r.svc.Wait()
-			require.Equal(t, src, sent(r.src))
-			require.Equal(t, dst, sent(r.dst))
+			require.Equal(t, src, sentWithoutResync(r.src))
+			require.Equal(t, dst, sentWithoutResync(r.dst))
 		})
 	}
 }

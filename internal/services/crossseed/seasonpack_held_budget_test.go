@@ -43,7 +43,7 @@ func TestMemoryBudget_SeasonPackCheck(t *testing.T) {
 	small, large := newBigHeldLibrary(t, biglib.Size/10), newBigHeldLibrary(t, biglib.Size)
 	smallSvc := small.checksPacks(small.heldTitles(t.Context(), t, small.releases))
 	largeSvc := large.checksPacks(large.heldTitles(t.Context(), t, large.releases))
-	budgets := map[string]uint64{"nothing held": biglib.MB / 4, "held show": 4 * biglib.MB}
+	budgets := map[string]uint64{"nothing held": biglib.MB / 4, "held show": packCheckBudget}
 	for name, req := range packBudgetCases(t) {
 		t.Run(name, func(t *testing.T) {
 			few := biglib.AllocatedBytes(5, func() { checkSeasonPack(t, smallSvc, req) })

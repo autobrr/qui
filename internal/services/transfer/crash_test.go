@@ -204,11 +204,11 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 				require.Equal(t, notifications.EventTransferFailed, notified.events[0].Type)
 			}
 
-			src, dst, sends := sent(r.src), sent(r.dst), len(notified.events)
+			src, dst, sends := sentWithoutResync(r.src), sentWithoutResync(r.dst), len(notified.events)
 			r.restart()
 			r.svc.Wait()
-			require.Equal(t, src, sent(r.src))
-			require.Equal(t, dst, sent(r.dst))
+			require.Equal(t, src, sentWithoutResync(r.src))
+			require.Equal(t, dst, sentWithoutResync(r.dst))
 			require.Len(t, notified.events, sends)
 		})
 	}

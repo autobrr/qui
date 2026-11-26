@@ -34,6 +34,7 @@ import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
 import type { CellContext } from "@tanstack/react-table"
 import type { TorrentTableColumnDef, TorrentTableFeatures } from "./tanstackTableFeatures"
+import { CellText } from "./table/CellText"
 import {
   AlertCircle,
   ArrowDownAZ,
@@ -418,18 +419,18 @@ export const createColumns = ({
         const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
         const helper = row.original.qui_helper
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm">
+          <div className="flex min-w-0 items-center text-sm">
             {helper && (
               <Tooltip>
                 <TooltipTrigger asChild openOnTap="only">
-                  <Badge variant="outline" className={cn("mr-1.5", badgePadding)}>
+                  <Badge variant="outline" className={cn("mr-1.5 shrink-0", badgePadding)}>
                     {helper === "share" ? helperShareLabel : helperTransferLabel}
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>{helperHint}</TooltipContent>
               </Tooltip>
             )}
-            {displayName}
+            <CellText>{displayName}</CellText>
           </div>
         )
       },
@@ -633,11 +634,7 @@ export const createColumns = ({
       header: t("tableColumns.category"),
       cell: ({ row }) => {
         const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
-        return (
-          <div className="overflow-hidden whitespace-nowrap text-sm">
-            {displayCategory || ""}
-          </div>
-        )
+        return <CellText className="text-sm">{displayCategory}</CellText>
       },
       size: 150,
     },
@@ -647,11 +644,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
         const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
-        return (
-          <div className="overflow-hidden whitespace-nowrap text-sm">
-            {displayTags}
-          </div>
-        )
+        return <CellText className="text-sm">{displayTags}</CellText>
       },
       size: 200,
     },

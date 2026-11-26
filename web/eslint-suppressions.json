@@ -1005,7 +1005,7 @@
       "count": 3
     },
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 10
+      "count": 9
     },
     "qui/no-direct-effect": {
       "count": 6
@@ -1129,7 +1129,7 @@
   },
   "src/components/torrents/details/MobileDetails.tsx": {
     "shadcn/no-restyle": {
-      "count": 3
+      "count": 1
     },
     "shadcn/require-static-classes": {
       "count": 1

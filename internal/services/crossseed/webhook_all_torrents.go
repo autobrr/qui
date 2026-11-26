@@ -23,12 +23,28 @@ type webhookCheckInput struct {
 	policy    announcementMatchPolicy
 }
 
+func newWebhookCheckInput(announced namedRelease, size uint64, findIndividualEpisodes bool, settings *models.CrossSeedAutomationSettings, instances []*models.Instance) webhookCheckInput {
+	return webhookCheckInput{
+		instances: instances,
+		announced: announced,
+		size:      size,
+		settings:  settings,
+		policy: announcementMatchPolicy{
+			findIndividualEpisodes: findIndividualEpisodes,
+			rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
+			allowUnknownSize:       size == 0,
+			skipRecheck:            settings.SkipRecheck,
+		},
+	}
+}
+
 type webhookCheckAnswer struct {
 	matches          []WebhookCheckMatch
 	hasCompleteMatch bool
 	hasPendingMatch  bool
 	nearMisses       int
 	nothingHeld      bool
+	seasonPack       *WebhookSeasonPack
 }
 
 func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookCheckInput) (webhookCheckAnswer, error) {

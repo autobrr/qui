@@ -20,6 +20,8 @@ Fixes # (issue)
 
 <!--- Follow docs/agents/performance-checks.md.
       Include before/after measurements and a conclusion for changes that can affect performance.
+      For Go code, paste the output of make bench-compare. Investigate only LOOK rows.
+      Resolve each CAN'T TELL row by hand, or say why not.
       Describe the workload and measurement method, or link to the results.
       If no performance risk applies, explain why. Keep this section. --->
 
