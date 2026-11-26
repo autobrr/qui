@@ -1390,7 +1390,7 @@ func (s *Service) selectBestCandidateAddPlan(
 		}
 		candidateRelease := candidateRead.release
 
-		manualTarget := manualHash.Is(torrent.Hash)
+		manualTarget := torrentHasHash(torrent, manualHash)
 
 		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease); reject && !manualTarget {
 			if reason != "" && (bestRejectReason == "" || len(reason) > len(bestRejectReason)) {

@@ -50,7 +50,7 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 
 	want := parseHash(req.ManualTargetHash)
 	for _, torrent := range torrents {
-		if !want.Is(torrent.Hash) {
+		if !torrentHasHash(torrent, want) {
 			continue
 		}
 		switch s.sourceGate().check(torrent, sourceFilter{}) {
@@ -165,7 +165,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 			continue
 		}
 		torrent := view.Torrent
-		if requested.Is(torrent.Hash) {
+		if torrentHasHash(torrent, requested) {
 			requestedTorrent = torrent
 			continue
 		}
@@ -216,7 +216,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	for _, torrent := range shortlist {
 		candidateFiles := filesByHash[torrent.Hash]
 		overlap := overlapBytesBySize(sourceSizes, candidateFiles)
-		isRequested := requested.Is(torrent.Hash)
+		isRequested := torrentHasHash(torrent, requested)
 		if overlap == 0 && !isRequested {
 			continue
 		}
@@ -239,7 +239,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	})
 	proposalsTruncated := len(proposals) > proposalLimit || (packMode && packEpisodeCount > manualMatchCoarseLimit)
 	if requestedIdx := slices.IndexFunc(proposals, func(p ManualMatchProposal) bool {
-		return requested.Is(p.Hash)
+		return requestedTorrent != nil && p.Hash == requestedTorrent.Hash
 	}); requestedIdx >= proposalLimit {
 		proposals = append(proposals[:proposalLimit], proposals[requestedIdx])
 	} else if len(proposals) > proposalLimit {

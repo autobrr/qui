@@ -599,6 +599,10 @@ func uniqueHashes(hashes ...infohash.Hash) []infohash.Hash {
 	return out
 }
 
+func torrentHasHash(torrent *qbt.Torrent, hash infohash.Hash) bool {
+	return hash.Is(torrent.Hash) || hash.Is(torrent.InfohashV1) || hash.Is(torrent.InfohashV2)
+}
+
 func hashStrings(hashes []infohash.Hash) []string {
 	out := make([]string, len(hashes))
 	for i, hash := range hashes {

@@ -198,15 +198,18 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 	const (
 		instanceID   = 1
 		targetHash   = "dddddddddddddddddddddddddddddddddddddddd"
+		targetHashV2 = "dddddddddddddddddddddddddddddddddddddddd0000000000000000000000ee"
 		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
 	)
 
 	tests := []struct {
 		name         string
 		useHardlinks bool
+		requested    string
 	}{
-		{name: "regular instance"},
-		{name: "hardlink instance skips link mode", useHardlinks: true},
+		{name: "regular instance", requested: targetHash},
+		{name: "hardlink instance skips link mode", useHardlinks: true, requested: targetHash},
+		{name: "full v2 hash of a hybrid target", requested: strings.ToUpper(targetHashV2)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -214,7 +217,7 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 			torrentBytes := createNamedFileTestTorrent(t, incomingName, incomingName+".mkv", 4<<20)
 
 			instance := &models.Instance{ID: instanceID, Name: "main", UseHardlinks: tt.useHardlinks}
-			target := qbt.Torrent{Hash: targetHash, Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
+			target := qbt.Torrent{Hash: targetHash, InfohashV1: targetHash, InfohashV2: targetHashV2, Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
 			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
 				targetHash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
 			})
@@ -223,7 +226,7 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs: []int{instanceID},
-				ManualTargetHash:  targetHash,
+				ManualTargetHash:  tt.requested,
 			})
 			require.NoError(t, err)
 			require.True(t, resp.Success, "zero-overlap manual match rejected: %+v", resp.Results)
@@ -403,30 +406,39 @@ func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
 	sourceTotal := meta.Info.TotalLength()
 
 	requested := qbt.Torrent{
-		Hash:     "5555555555555555555555555555555555555555",
-		Name:     "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI",
-		SavePath: "/downloads",
-		Progress: 1,
-		Size:     1,
+		Hash:       "5555555555555555555555555555555555555555",
+		InfohashV1: "5555555555555555555555555555555555555555",
+		InfohashV2: "5555555555555555555555555555555555555555000000000000000000000077",
+		Name:       "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI",
+		SavePath:   "/downloads",
+		Progress:   1,
+		Size:       1,
 	}
 	torrents := make([]qbt.Torrent, 0, manualMatchCoarseLimit+11)
 	torrents = append(torrents, requested)
+	files := make(map[string]qbt.TorrentFiles, manualMatchCoarseLimit+10)
 	for i := range manualMatchCoarseLimit + 10 {
-		torrents = append(torrents, qbt.Torrent{
+		torrent := qbt.Torrent{
 			Hash:     fmt.Sprintf("%040x", i+1),
 			Name:     fmt.Sprintf("Azure.Compass.S01E%02d.1080p.WEB-DL.AAC2.0.H.264-KIRI", i+1),
 			SavePath: "/downloads",
 			Progress: 1,
 			Size:     sourceTotal,
-		})
+		}
+		torrents = append(torrents, torrent)
+		files[torrent.Hash] = qbt.TorrentFiles{{Name: torrent.Name + ".mkv", Size: sourceTotal}}
 	}
 
-	svc := manualMatchTestService(instance, torrents, nil)
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, requested.Hash))
-	require.NoError(t, err)
-	require.True(t, slices.ContainsFunc(resp.Proposals, func(p ManualMatchProposal) bool {
-		return p.Hash == requested.Hash
-	}), "requested target must be included even when title keeps fill the coarse pass")
+	for _, hash := range []string{requested.Hash, requested.InfohashV2} {
+		t.Run(hash, func(t *testing.T) {
+			svc := manualMatchTestService(instance, torrents, files)
+			resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, hash))
+			require.NoError(t, err)
+			require.True(t, slices.ContainsFunc(resp.Proposals, func(p ManualMatchProposal) bool {
+				return p.Hash == requested.Hash
+			}), "requested target must be included even when title keeps fill the coarse pass")
+		})
+	}
 }
 
 func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
