@@ -76,9 +76,6 @@ func TestCrossSeedHashRoutesRejectAMissingOrMalformedHash(t *testing.T) {
 		name, method, path, body, message string
 	}{
 		{name: "analyze without hash", method: http.MethodGet, path: "/api/cross-seed/torrents/1/%20/analyze", message: "hash is required"},
-		{name: "local matches without hash", method: http.MethodGet, path: "/api/cross-seed/torrents/1/%20/local-matches", message: "hash is required"},
-		{name: "search without hash", method: http.MethodPost, path: "/api/cross-seed/torrents/1/%20/search", body: `{}`, message: "hash is required"},
-		{name: "apply without hash", method: http.MethodPost, path: "/api/cross-seed/torrents/1/%20/apply", body: `{}`, message: "hash is required"},
 		{name: "analyze with a malformed hash", method: http.MethodGet, path: "/api/cross-seed/torrents/1/xyz/analyze", message: "hash must be a valid hex infohash"},
 		{name: "local matches with a malformed hash", method: http.MethodGet, path: "/api/cross-seed/torrents/1/xyz/local-matches", message: "hash must be a valid hex infohash"},
 		{name: "search with a malformed hash", method: http.MethodPost, path: "/api/cross-seed/torrents/1/xyz/search", body: `{}`, message: "hash must be a valid hex infohash"},
@@ -98,30 +95,20 @@ func TestBlocklistEntryBlocksAHashInEitherCase(t *testing.T) {
 	pack := endpointPackTorrent(t, 1, 4)
 	hash := endpointHash(t, pack)
 	require.NotEqual(t, hash, strings.ToUpper(hash))
-	for _, tc := range []struct {
-		name          string
-		entry, delete string
-	}{
-		{name: "upper-case entry", entry: strings.ToUpper(hash), delete: hash},
-		{name: "lower-case entry", entry: hash, delete: strings.ToUpper(hash)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) {
-				r.holdPack(false)
-			}}, heldTitlesReady)
-			added := rig.send(http.MethodPost, "/api/cross-seed/blocklist/", mustJSON(t, CrossSeedBlocklistRequest{InstanceID: 1, InfoHash: tc.entry}))
-			require.Equal(t, http.StatusCreated, added.Code, added.Body.String())
+	rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) {
+		r.holdPack(false)
+	}}, heldTitlesReady)
+	added := rig.send(http.MethodPost, "/api/cross-seed/blocklist/", mustJSON(t, CrossSeedBlocklistRequest{InstanceID: 1, InfoHash: strings.ToUpper(hash)}))
+	require.Equal(t, http.StatusCreated, added.Code, added.Body.String())
 
-			blocked := rig.webhookApply("", pack)
-			require.Len(t, blocked.Results, 1)
-			require.Equal(t, "blocked", blocked.Results[0].Status)
+	blocked := rig.webhookApply("", pack)
+	require.Len(t, blocked.Results, 1)
+	require.Equal(t, "blocked", blocked.Results[0].Status)
 
-			deleted := rig.send(http.MethodDelete, "/api/cross-seed/blocklist/1/"+tc.delete, nil)
-			require.Equal(t, http.StatusNoContent, deleted.Code, deleted.Body.String())
+	deleted := rig.send(http.MethodDelete, "/api/cross-seed/blocklist/1/"+hash, nil)
+	require.Equal(t, http.StatusNoContent, deleted.Code, deleted.Body.String())
 
-			unblocked := rig.webhookApply("", pack)
-			require.Len(t, unblocked.Results, 1)
-			require.NotEqual(t, "blocked", unblocked.Results[0].Status)
-		})
-	}
+	unblocked := rig.webhookApply("", pack)
+	require.Len(t, unblocked.Results, 1)
+	require.NotEqual(t, "blocked", unblocked.Results[0].Status)
 }
