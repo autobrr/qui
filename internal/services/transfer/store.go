@@ -500,21 +500,15 @@ func (s *Store) HelperKinds(instanceID int) map[string]string {
 	return kinds
 }
 
-func (s *Store) HelperCheck(instanceID int) func(hash string) bool {
+func (s *Store) ClaimCheck(instanceID int) func(hash string) bool {
 	s.mu.RLock()
-	helpers := hashesOn(nil, s.helpers, instanceID)
+	claimed := hashesOn(s.claims, instanceID)
 	s.mu.RUnlock()
-	return hashCheck(helpers)
+	return hashCheck(claimed)
 }
 
-func (s *Store) HoldCheck(instanceID int) func(hash string) bool {
-	s.mu.RLock()
-	held := hashesOn(hashesOn(nil, s.claims, instanceID), s.helpers, instanceID)
-	s.mu.RUnlock()
-	return hashCheck(held)
-}
-
-func hashesOn[V any](hashes map[string]struct{}, entries map[torrentKey]V, instanceID int) map[string]struct{} {
+func hashesOn(entries map[torrentKey]int64, instanceID int) map[string]struct{} {
+	var hashes map[string]struct{}
 	for key := range entries {
 		if key.instanceID != instanceID {
 			continue

@@ -36,7 +36,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 	if err != nil {
 		return nil, err
 	}
-	if len(torrents) == 0 {
+	if len(torrents) == 0 || s.isHelper(instanceID, torrents[0].Hash) {
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
 

@@ -4,7 +4,6 @@
 package automations
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,13 +11,14 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-type fakeHeld map[string]error
+type fakeTransfers struct{ claimed, helper string }
 
-func (f fakeHeld) HoldCheck(int) func(hash string) bool {
-	if len(f) == 0 {
-		return nil
-	}
-	return func(hash string) bool { return f[hash] != nil }
+func (f fakeTransfers) ClaimCheck(int) func(hash string) bool {
+	return func(hash string) bool { return hash == f.claimed }
+}
+
+func (f fakeTransfers) HelperKinds(int) map[string]string {
+	return map[string]string{f.helper: "transfer"}
 }
 
 func TestRulesLeaveOutTorrentsThatQuiHolds(t *testing.T) {
@@ -32,7 +32,13 @@ func TestRulesLeaveOutTorrentsThatQuiHolds(t *testing.T) {
 		{helper, "Example.Show.S01E02.1080p.WEB-DL-GRP", "del,mv,qui-transfer", ""},
 		{own, "Example.Show.S01E03.1080p.WEB-DL-GRP", "del,mv,qui-transfer", ""},
 	}
-	held := fakeHeld{claimed: errors.New("a Transfer holds this torrent"), helper: errors.New("qui added this torrent")}
+	transfers := fakeTransfers{claimed: claimed, helper: helper}
+	newService := func(t *testing.T) (*Service, int, *stubQbt) {
+		svc, instanceID, stub := newWriteStubService(t, torrents)
+		svc.syncManager.SetHelperTorrents(transfers)
+		svc.SetClaimedTorrents(transfers)
+		return svc, instanceID, stub
+	}
 
 	tests := map[string]struct {
 		rule *models.Automation
@@ -43,14 +49,12 @@ func TestRulesLeaveOutTorrentsThatQuiHolds(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			svc, instanceID, stub := newWriteStubService(t, torrents)
-			svc.SetHeldTorrents(held)
+			svc, instanceID, stub := newService(t)
 			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{tt.rule}, false)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, stub.writtenHashes())
 
-			svc, instanceID, stub = newWriteStubService(t, torrents)
-			svc.SetHeldTorrents(held)
+			svc, instanceID, stub = newService(t)
 			rule := *tt.rule
 			rule.DryRun = true
 			activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{&rule}, true)
@@ -61,8 +65,7 @@ func TestRulesLeaveOutTorrentsThatQuiHolds(t *testing.T) {
 	}
 
 	t.Run("delete preview", func(t *testing.T) {
-		svc, instanceID, _ := newWriteStubService(t, torrents)
-		svc.SetHeldTorrents(held)
+		svc, instanceID, _ := newService(t)
 		preview, err := svc.PreviewDeleteRule(t.Context(), instanceID, deleteRule(DeleteModeWithFilesIncludeCrossSeeds, tagsContain("del")), 10, 0, "")
 		require.NoError(t, err)
 		hashes := make([]string, 0, len(preview.Examples))

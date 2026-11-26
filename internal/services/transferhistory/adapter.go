@@ -17,9 +17,8 @@ import (
 const minReadingInterval = 50 * time.Second
 
 type Adapter struct {
-	module  *Module
-	sync    *qbittorrent.SyncManager
-	helpers qbittorrent.HelperTorrents
+	module *Module
+	sync   *qbittorrent.SyncManager
 
 	mu        sync.Mutex
 	instances map[int]*adapterInstance
@@ -40,10 +39,6 @@ type adapterInstance struct {
 
 func NewAdapter(module *Module, syncManager *qbittorrent.SyncManager) *Adapter {
 	return &Adapter{module: module, sync: syncManager, instances: make(map[int]*adapterInstance)}
-}
-
-func (a *Adapter) SetHelperTorrents(helpers qbittorrent.HelperTorrents) {
-	a.helpers = helpers
 }
 
 func (a *Adapter) instance(instanceID int) *adapterInstance {
@@ -173,7 +168,7 @@ func (inst *adapterInstance) start(now, builtAt time.Time) (failedSince time.Tim
 
 func (a *Adapter) record(b readingBuild) {
 	instanceID := b.instanceID
-	torrents := qbittorrent.WithoutHelpers(b.update.Snapshot, a.helpers, instanceID)
+	torrents := a.sync.ListSnapshot(instanceID, b.update.Snapshot)
 	facts := a.sync.TorrentFactsOf(instanceID, torrents, b.update.Trackers)
 	reading := Reading{
 		InstanceID: instanceID, Time: b.now, FailedSince: b.failedSince, Torrents: make([]Torrent, len(torrents)),

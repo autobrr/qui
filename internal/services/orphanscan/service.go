@@ -2014,7 +2014,6 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialec
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.leaveOutHelpers(instanceID, torrents)
 
 	return scanRootsFromTorrents(d, torrents), nil
 }
@@ -2059,7 +2058,6 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.leaveOutHelpers(instanceID, torrents)
 
 	filesCtx := qbittorrent.WithForceFilesRefresh(ctx)
 	filesByHash, err := s.sync.GetTorrentFilesBatch(filesCtx, instanceID, torrentHashes(torrents))

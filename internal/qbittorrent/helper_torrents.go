@@ -103,12 +103,19 @@ func (h snapshotHelpers) drop(torrents []*qbt.Torrent) []*qbt.Torrent {
 	return slices.DeleteFunc(torrents, func(t *qbt.Torrent) bool { return slices.Contains(h.torrents, t) })
 }
 
-func WithoutHelpers(snapshot *qbt.SyncSnapshot, helpers HelperTorrents, instanceID int) []*qbt.Torrent {
-	return helpersOf(snapshot, helpers, instanceID).drop(snapshot.Torrents())
-}
-
 func (sm *SyncManager) ListSnapshot(instanceID int, snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
 	return helpersOf(snapshot, sm.helpers(), instanceID).drop(snapshotTorrents(snapshot))
+}
+
+func (sm *SyncManager) ListedLookup(instanceID int, snapshot *qbt.SyncSnapshot) func(hash string) (*qbt.Torrent, bool) {
+	kinds := sm.helperKinds(instanceID)
+	return func(hash string) (*qbt.Torrent, bool) {
+		torrent, ok := snapshot.Torrent(hash)
+		if !ok || kinds[strings.ToLower(torrent.Hash)] != "" {
+			return nil, false
+		}
+		return torrent, true
+	}
 }
 
 func (sm *SyncManager) helperKinds(instanceID int) map[string]string {
