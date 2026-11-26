@@ -1,0 +1,558 @@
+{
+  "nav": {
+    "dashboard": "儀表板",
+    "statistics": "統計",
+    "search": "搜尋",
+    "crossSeed": "輔種",
+    "automations": "自動化",
+    "transfers": "傳輸",
+    "transfersQueued_other": "{{count}} 項正在執行或等待",
+    "backups": "備份",
+    "rss": "RSS",
+    "settings": "設定",
+    "logs": "日誌",
+    "instances": "實例",
+    "generalSettings": "一般設定",
+    "manageInstances": "管理實例",
+    "appearance": "外觀",
+    "instanceBackups": "實例備份",
+    "backToSite": "返回 getqui.com",
+    "docs": "文件"
+  },
+  "sidebar": {
+    "instances": "實例",
+    "allInstancesDisabled": "所有實例均已停用",
+    "noInstancesConfigured": "尚未配置實例",
+    "logout": "登出",
+    "version": "版本 {{version}}",
+    "language": "語言",
+    "viewOnGitHub": "在 GitHub 上檢視",
+    "rssRunning": "輔種 RSS 執行中",
+    "rssEnabled": "輔種 RSS 已啟用",
+    "scanRunning": "掃描執行中",
+    "collapseToIcons": "收合為圖示",
+    "expandSidebar": "展開側邊欄",
+    "hideSidebar": "隱藏側邊欄",
+    "showSidebar": "顯示側邊欄",
+    "keepOpen": "固定側邊欄",
+    "menu": "選單"
+  },
+  "problemReports": {
+    "reportProblem": "回報問題",
+    "subtitle": "你的回報會傳送給 qui 維護者。",
+    "textLabel": "你的回報",
+    "placeholders": {
+      "menu": "發生了什麼？你原本預期是什麼結果？",
+      "notice": "發生這件事時你正在做什麼？",
+      "search": "你預期符合哪一筆結果，以及在哪個索引器上？"
+    },
+    "sentWithIt": "隨回報附帶的資訊",
+    "summary_other": "qui {{version}} 和 {{count}} 個實例",
+    "details": "詳細資料",
+    "view": "檢視",
+    "whatGetsSent": "將傳送的內容",
+    "whatGetsSentNote": "由 qui 自動填寫。在你傳送回報之前，不會有任何內容離開 qui。",
+    "loadingFacts": "正在載入回報詳細資料...",
+    "factsFailed": "無法載入回報詳細資料：{{message}}",
+    "facts": {
+      "version": "版本",
+      "system": "系統",
+      "appContainer": "在容器中",
+      "database": "資料庫",
+      "logLevel": "日誌級別",
+      "started": "啟動時間",
+      "experimentalFeatures": "實驗性功能",
+      "instance": "實例 {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "未知",
+      "states": {
+        "connected": "已連線",
+        "offline": "離線",
+        "disabled": "已停用"
+      },
+      "torrentCount_other": "{{count}} 個種子",
+      "notices": "系統通知",
+      "openCount_other": "{{count}} 則未關閉",
+      "page": "頁面",
+      "browser": "瀏覽器",
+      "screen": "{{width}} × {{height}}，像素比 {{ratio}}",
+      "failedRequests": "失敗的請求",
+      "failedCount_other": "本次工作階段 {{count}} 次",
+      "noAnswer": "無回應",
+      "none": "無"
+    },
+    "logs": {
+      "title": "日誌",
+      "scopeLabel": "要包含的日誌行",
+      "scopes": {
+        "warnings": "警告和錯誤",
+        "all": "最近全部",
+        "none": "不包含"
+      },
+      "notes": {
+        "warnings_other": "最近 {{count}} 則警告和錯誤。qui 會移除金鑰與機密資訊。",
+        "all_other": "日誌級別 {{level}} 下最近的 {{count}} 行。qui 會移除金鑰與機密資訊。",
+        "none": "回報中不包含日誌行。"
+      },
+      "empty": "沒有日誌行。",
+      "debugMissing": "目前日誌級別為 {{level}}，因此 qui 不會記錄除錯日誌。如需包含，請在 設定 > 日誌 中將日誌級別設為 DEBUG，重現問題後再重新回報。"
+    },
+    "privacy": {
+      "anonymous": "匿名：無姓名，無帳號。brrbin 不保留 IP 位址。",
+      "signedIn": "維護者可以看到你的 {{provider}} 名稱（{{name}}），並可能會聯絡你。",
+      "link": "隱私權政策"
+    },
+    "sender": {
+      "label": "傳送身分",
+      "anonymous": "匿名",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "使用 {{provider}} 登入",
+      "signOut": "登出",
+      "waiting": "正在等待 {{provider}}",
+      "errors": {
+        "discordNotMember": "你的 Discord 帳號不在 autobrr Discord 伺服器中。請加入該伺服器後重新登入，使用 GitHub 登入，或匿名傳送。",
+        "refused": "登入遭拒絕：{{reason}}",
+        "expired": "登入已過期。請重新登入。",
+        "popupBlocked": "你的瀏覽器封鎖了登入視窗。請允許 qui 開啟彈出式視窗，然後重新登入。",
+        "unavailable": "brrbin 現在無法為你登入。請稍後再試。",
+        "startFailed": "無法開始登入：{{message}}",
+        "signOutFailed": "無法登出：{{message}}"
+      }
+    },
+    "newerRelease": "目前執行 {{running}}。新版本 <release>{{newer}}</release> 已發布。",
+    "send": "傳送",
+    "sendAnyway": "仍然傳送",
+    "sending": "正在傳送",
+    "sent": "回報已傳送",
+    "errors": {
+      "anonymousFull": {
+        "title": "今天的匿名回報已滿",
+        "body": "請登入後立即傳送，或明天再試。你輸入的內容會作為草稿保留在這裡。"
+      },
+      "signInRequired": "請登入後傳送此回報。你輸入的內容會作為草稿保留在這裡。",
+      "accountLimit": "你在過去一小時內傳送了很多回報。請稍後再試。",
+      "reporterFull": "你的回報已用完 brrbin 給每個人的全部空間。請在已傳送的回報中刪除一則舊回報，然後再傳送。",
+      "tooLarge": "回報太大。請選擇較少的日誌行或較小的圖片。",
+      "tokenRejected": "你的登入已結束。請重新登入後再傳送。",
+      "unavailable": "brrbin 現在無法接收回報。請稍後再試。",
+      "sendFailed": "無法傳送回報：{{message}}"
+    },
+    "sentReports": {
+      "title": "已傳送的回報",
+      "subtitle": "每次開啟此清單時，qui 都會檢查回報狀態。",
+      "changed_other": "{{count}} 則狀態已變更",
+      "status": {
+        "received": "已收到",
+        "issue": "已轉為 Issue #{{number}}",
+        "issueClosed": "Issue #{{number}} 已關閉",
+        "closed": "已關閉：{{reason}}",
+        "closedNoReason": "已關閉",
+        "notSent": "未傳送"
+      },
+      "delete": "刪除回報",
+      "deleteUnavailable": "brrbin 現在無法刪除回報。請稍後再試。",
+      "deleteFailed": "無法刪除回報：{{message}}",
+      "empty": "沒有已傳送的回報。",
+      "back": "返回回報"
+    }
+  },
+  "header": {
+    "currentInstance": "目前實例：{{name}}。點選切換實例。",
+    "connected": "已連線",
+    "disconnected": "已斷開",
+    "showFilters": "顯示篩選器",
+    "hideFilters": "隱藏篩選器",
+    "addTorrent": "新增種子",
+    "createTorrent": "建立種子",
+    "torrentCreationTasks": "種子建立任務",
+    "instanceSettings": "實例設定",
+    "addToInstance": "新增到實例",
+    "createForInstance": "為實例建立",
+    "tasksForInstance": "實例任務",
+    "settingsForInstance": "實例設定",
+    "clearSearch": "清除搜尋",
+    "searchTorrents": "搜尋種子...",
+    "globPattern": "Glob 模式...",
+    "smartSearchTitle": "智慧搜尋功能：",
+    "smartSearchGlob": "Glob 模式：",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "模糊匹配：",
+    "smartSearchFuzzyExample": "\"breaking bad\" 可匹配 \"Breaking.Bad\"",
+    "smartSearchDots": "自動處理點號、底線和方括號",
+    "smartSearchFields": "搜尋名稱、分類和標籤",
+    "smartSearchEnter": "按Enter 鍵立即搜尋",
+    "smartSearchAuto": "暫停輸入 500 毫秒後自動搜尋",
+    "smartSearchShortcut": "按 {{shortcutKey}} 跳至搜尋框",
+    "smartSearchPalette": "按 {{shortcutKey}} 開啟指令面板",
+    "torrentCreationTasksTitle": "種子建立任務",
+    "allScope": "全部",
+    "unified": "統一檢視"
+  },
+  "titleBar": {
+    "speeds": "下載：{{download}} 上傳：{{upload}}"
+  },
+  "unifiedScope": {
+    "unified": "統一檢視",
+    "collapseScope": "摺疊統一檢視",
+    "expandScope": "展開統一檢視",
+    "allActive": "全部活動 ({{count}})"
+  },
+  "commandPalette": {
+    "title": "指令面板",
+    "placeholder": "搜尋頁面、設定和種子...",
+    "placeholderIn": "在 {{name}} 中搜尋...",
+    "groups": {
+      "pages": "頁面",
+      "actions": "操作"
+    },
+    "current": "目前",
+    "statisticsNote": "實例的上傳與下載歷史",
+    "searchTorrentsFor": "搜尋種子「{{query}}」",
+    "torrentMatches_other": "{{count}} 個種子符合",
+    "noTorrentMatches": "沒有符合的種子",
+    "searching": "正在搜尋...",
+    "searchFailed": "種子搜尋失敗",
+    "listFiltersApply": "已套用清單篩選器",
+    "noMatchIn": "{{name}} 中沒有符合的項目",
+    "moreOf": "{{name}} 的更多選項",
+    "hints": {
+      "navigate": "導覽",
+      "open": "開啟",
+      "more": "更多",
+      "searchTorrents": "搜尋種子",
+      "back": "返回"
+    }
+  },
+  "mobileNav": {
+    "dashboard": "儀表板",
+    "statistics": "統計",
+    "clients": "用戶端",
+    "settings": "設定",
+    "qbittorrentClients": "qBittorrent 用戶端",
+    "instances": "實例",
+    "loading": "載入中...",
+    "noActiveClients": "沒有活動的用戶端",
+    "updateAvailable": "有可用更新",
+    "updateVersion": "版本 {{version}}",
+    "rssRunning": "輔種 RSS 執行中",
+    "rssEnabled": "輔種 RSS 已啟用",
+    "scanRunning": "掃描執行中",
+    "logout": "登出",
+    "version": "版本 {{version}}",
+    "viewOnGitHub": "在 GitHub 上檢視"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr - GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "取消",
+    "close": "關閉",
+    "create": "建立",
+    "scrollToTop": "回到頂部",
+    "search": "搜尋",
+    "select": "選擇",
+    "copyValue": "複製 {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "知道了"
+  },
+  "placeholders": {
+    "search": "搜尋...",
+    "selectItems": "選擇項目..."
+  },
+  "feedback": {
+    "noResultsFound": "未找到結果。",
+    "copied": "{{label}} 已複製到剪貼簿",
+    "copyFailed": "複製到剪貼簿失敗"
+  },
+  "errors": {
+    "unknown": "未知錯誤",
+    "httpStatus": "HTTP 錯誤！狀態：{{status}}",
+    "httpStatusHtml": "HTTP 錯誤！狀態：{{status}}（伺服器傳回了 HTML 錯誤頁面）",
+    "ssoHtmlResponse": "API 傳回了 HTML 回應而非 JSON。如果您位於 SSO 代理（Cloudflare Access、Pangolin 等）之後，請嘗試重新整理頁面或在新分頁中重新開啟該 URL。",
+    "torrentFileDownloadFailed": "下載種子檔案失敗：{{status}}",
+    "altSpeedToggle": "變更備用速度限制失敗：{{message}}",
+    "altSpeedToggleHidden": "變更備用速度限制失敗。隱身模式隱藏了原因。"
+  },
+  "status": {
+    "disabled": "已停用",
+    "notContacted": "未連線",
+    "working": "工作中",
+    "updating": "更新中",
+    "error": "錯誤",
+    "unknown": "未知",
+    "unavailable": "無法取得",
+    "trackerError": "Tracker 錯誤",
+    "unreachable": "無法連線"
+  },
+  "contentTypeLabels": {
+    "movie": "電影",
+    "tv": "電視劇",
+    "music": "音樂",
+    "audiobook": "有聲書",
+    "book": "圖書",
+    "comic": "漫畫",
+    "game": "遊戲",
+    "app": "應用",
+    "adult": "成人",
+    "unknown": "未知"
+  },
+  "themeToggle": {
+    "changeTheme": "切換主題",
+    "appearance": "外觀",
+    "mode": "模式",
+    "light": "淺色",
+    "dark": "深色",
+    "system": "跟隨系統",
+    "theme": "主題",
+    "switchedToMode": "已切換到{{mode}}模式",
+    "switchedToTheme": "已切換到{{theme}}主題",
+    "switchedToThemeVariation": "已切換到{{theme}}主題（{{variation}}）",
+    "premiumThemeError": "此主題需要授權。請前往設定 > 主題啟用授權。"
+  },
+  "updateBanner": {
+    "updateAvailable": "有可用更新",
+    "versionAvailable": "版本 {{version}} 現已可用",
+    "dismiss": "關閉"
+  },
+  "systemNotice": {
+    "needsAttention": "需要處理",
+    "since": "自 {{time}} 起，{{age}}",
+    "causeLabel": "原因",
+    "actionFallback": "前往修復",
+    "kinds": {
+      "recording_stopped": {
+        "short": "記錄已停止",
+        "title": "記錄已停止",
+        "effect": "qui 無法寫入傳輸歷史。它會在下次寫入時重試。",
+        "fix": "請確認磁碟有可用空間，且 qui 可以寫入資料庫檔案。",
+        "menuFix": "為資料庫釋放磁碟空間"
+      },
+      "shrink_failed": {
+        "short": "壓縮失敗",
+        "title": "壓縮失敗",
+        "effect": "qui 無法縮小資料庫檔案。資料庫沒有變更，qui 照常執行。",
+        "fix": "詳情請查看 qui 日誌。",
+        "menuFix": "查看 qui 日誌",
+        "reasons": {
+          "disk_full": {
+            "fix": "磁碟可用空間不足。壓縮最多需要資料庫檔案大小的兩倍空間。請釋放磁碟空間後重試。",
+            "menuFix": "釋放空間後重試"
+          },
+          "locked": {
+            "fix": "另一個程式佔用了資料庫檔案。請關閉該程式（例如備份工具或資料庫檢視器）後重試。",
+            "menuFix": "關閉其他程式後重試"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "磁碟空間不足",
+        "title": "磁碟空間不足",
+        "effect": "qui 資料庫所在磁碟的可用空間很少。磁碟寫滿後，qui 的每次寫入都會失敗。",
+        "fix": "請釋放磁碟空間，或在統計設定中縮短「保留每日詳情」，或刪除較早的歷史。",
+        "menuFix": "為資料庫釋放磁碟空間",
+        "action": "開啟統計設定"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted 金鑰遭拒",
+        "title": "Redacted 拒絕了 API 金鑰",
+        "effect": "Redacted 拒絕了上一次搜尋。qui 會在下一次搜尋時再次查詢。",
+        "fix": "如果金鑰有誤，請在您的 Redacted 個人檔案設定中建立具有 Torrents 權限的 API 金鑰，然後將其貼到 qui 的 Gazelle (OPS/RED) 設定中。如果 Redacted 封鎖了 qui 的 IP，新金鑰也無濟於事：請聯絡 Redacted 的管理團隊。",
+        "menuFix": "在設定中貼上新金鑰",
+        "action": "開啟 Gazelle (OPS/RED) 設定"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus 金鑰遭拒",
+        "title": "Orpheus 拒絕了 API 金鑰",
+        "effect": "Orpheus 拒絕了上一次搜尋。qui 會在下一次搜尋時再次查詢。",
+        "fix": "如果金鑰有誤，請在您的 Orpheus 個人檔案設定中建立具有 Torrents 權限的 API 金鑰，然後將其貼到 qui 的 Gazelle (OPS/RED) 設定中。如果 Orpheus 封鎖了 qui 的 IP，新金鑰也無濟於事：請聯絡 Orpheus 的管理團隊。",
+        "menuFix": "在設定中貼上新金鑰",
+        "action": "開啟 Gazelle (OPS/RED) 設定"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "做種庫掃描排程受阻",
+        "title": "做種庫掃描排程無法執行",
+        "effect": "qui 無法啟動做種庫掃描的排程執行。它會每小時重試一次。",
+        "fix": "請檢查做種庫掃描設定。qui 會每小時重試一次。",
+        "menuFix": "檢查做種庫掃描設定",
+        "action": "開啟做種庫掃描設定",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "做種庫掃描設定中的 Torznab 已關閉，且未設定 RED 或 OPS API 金鑰。請開啟 Torznab，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",
+            "menuFix": "開啟 Torznab，或新增 RED 或 OPS 金鑰"
+          },
+          "no_indexer": {
+            "fix": "沒有已啟用的索引器。請啟用一個 Torznab 索引器，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",
+            "menuFix": "啟用一個索引器"
+          },
+          "instance_missing": {
+            "fix": "已儲存的做種庫掃描設定中的實例不存在。請在做種庫掃描設定中選擇一個實例，然後儲存。qui 會每小時重試一次。",
+            "menuFix": "選擇一個實例，然後儲存"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "重試",
+      "dismiss": "忽略",
+      "openLog": "開啟日誌"
+    },
+    "unknown": {
+      "short": "系統通知",
+      "title": "系統通知",
+      "effect": "qui 發現了一個需要你處理的故障。",
+      "fix": "詳情請查看 qui 日誌。",
+      "menuFix": "查看 qui 日誌"
+    }
+  },
+  "databaseShrink": {
+    "done": "資料庫檔案已從 {{before}} 壓縮至 {{after}}",
+    "nextStart": "壓縮將在 qui 下次啟動時執行",
+    "failed": "無法要求壓縮"
+  },
+  "pwaUpdate": {
+    "reload": "重新載入",
+    "waitingDescription": "重新載入以套用最新的 qui 版本。",
+    "activatedTitle": "qui 已更新",
+    "activatedDescription": "方便時請重新載入，以完成最新版本的安裝。"
+  },
+  "notFound": {
+    "title": "迷路了？",
+    "subtitle": "看起來您進入了未知區域。",
+    "bugReport": "如果您認為這是一個 bug 而不是無效連結，",
+    "reportTo": "歡迎在我們的",
+    "githubRepository": "GitHub 儲存庫",
+    "getBackOnTrack": "提交反饋。我們來幫您回到正軌！",
+    "returnToDashboard": "返回儀表板"
+  },
+  "magnetHandler": {
+    "registerPrompt": "將 qui 註冊為磁力連結處理程式",
+    "register": "註冊",
+    "dismiss": "關閉",
+    "registrationRequested": "已請求註冊磁力連結處理程式",
+    "registrationFailed": "註冊磁力連結處理程式失敗",
+    "guidance": {
+      "standalone": "請在一般瀏覽器分頁中開啟 qui 進行註冊（提示可能出現在位址列中，PWA 不會顯示位址列）。",
+      "chromium": "Chrome 通常會在位址列中顯示一個小的協議處理圖示；如果沒有出現，請在 chrome://settings/handlers 中啟用協議處理。",
+      "default": "如果瀏覽器彈出提示，請接受以完成註冊。"
+    }
+  },
+  "fieldHelp": {
+    "trigger": "更多資訊"
+  },
+  "numberInput": {
+    "unlimited": "無限制"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "剛剛",
+    "today": "今天",
+    "yesterday": "昨天",
+    "past": "{{value}}前",
+    "future": "{{value}}後",
+    "units": {
+      "second_other": "{{count}} 秒",
+      "minute_other": "{{count}} 分鐘",
+      "hour_other": "{{count}} 小時",
+      "day_other": "{{count}} 天",
+      "week_other": "{{count}} 週",
+      "month_other": "{{count}} 個月",
+      "year_other": "{{count}} 年"
+    }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
+  "support": {
+    "title": "支援 qui",
+    "description": "支援 qui 的方式及其價格。",
+    "heading": "協助 qui 持續維護",
+    "intro": "qui 是免費的，無論您是否付費，功能都完全相同。支援款項用於支付投入 qui 的時間與工具。",
+    "licensed": "感謝您購買主題授權。",
+    "releases_other": "qui 在過去 12 個月發布了 {{count}} 個版本。",
+    "releaseMap": "過去 52 週，每天一個方塊。亮色方塊代表當天有新版本發布。",
+    "releaseDay": "有新版本發布的日子",
+    "plans": {
+      "yearly": "每年 {{price}}",
+      "yearlyNote": "每月 {{price}}，按年付款",
+      "yearlyNoteWithLicense": "每月 {{price}}，按年付款。包含主題授權。",
+      "license": "主題授權，{{price}} 起",
+      "licenseNote": "所有目前和未來的進階主題，終身有效",
+      "onePayment": "一次付清"
+    },
+    "checkout": "前往結帳",
+    "fromPrice": "{{price}} 起",
+    "terms": {
+      "yearly": "您今天支付 {{price}}，之後每年支付 {{price}}，直到您取消為止。",
+      "license": "一次支付 {{price}} 或以上，金額於結帳時設定。非訂閱制。"
+    },
+    "perks": {
+      "yearly": "贊助者可在 qui 中獲得贊助者徽章，並在 Discord 獲得贊助者身分組。結帳後，請將您的贊助者金鑰新增到此伺服器。",
+      "license": "授權可解鎖進階主題。結帳後，請將您的授權金鑰新增到此伺服器。"
+    },
+    "existing": "已經是贊助者？",
+    "addKey": "新增贊助者金鑰",
+    "key": {
+      "help": "您的贊助者金鑰會顯示在結帳頁面上，也在附有收據的電子郵件中。",
+      "label": "贊助者金鑰",
+      "submit": "新增金鑰",
+      "back": "返回"
+    },
+    "ended": "此伺服器上的贊助者金鑰已失效。qui 每天都會重新檢查。如果您的支援已結束，您的主題授權仍會保留。請在<portal>授權門戶</portal>中找到它的金鑰，然後在設定的主題頁中新增。",
+    "removeKey": "從此伺服器移除贊助者金鑰",
+    "supporter": {
+      "badge": "贊助者",
+      "title": "您正在支援 qui",
+      "thanks": "謝謝。您的支援用於支付投入 qui 的時間與工具。",
+      "detail": "您擁有 qui 中的贊助者徽章與 Discord 中的贊助者身分組。您的支援也會解鎖進階主題，並包含一份終身主題授權。請在<portal>授權門戶</portal>中找到授權金鑰。",
+      "manage": "管理或取消支援"
+    },
+    "reminder": {
+      "title_other": "qui 已在此伺服器上執行 {{count}} 天",
+      "tooltip": "僅在此伺服器上計算，從不傳送。qui 每年只詢問一次。",
+      "subtitle": "支援 qui。qui 每年只詢問一次。",
+      "notNow": "以後再說",
+      "serverDays_other": "此伺服器已執行 qui {{count}} 天。qui 只在此伺服器上計算這個數字，從不傳送。",
+      "notNowToast": "qui 將在一年後再次詢問",
+      "dontAskAgain": "不再詢問",
+      "offToast": "qui 不會再詢問",
+      "offToastDescription": "支援捷徑會保留。可在設定的應用頁中重新開啟提醒。",
+      "undo": "復原",
+      "hiddenToast": "支援捷徑已隱藏",
+      "hiddenToastDescription": "qui 不會再詢問。可在設定的應用頁中恢復捷徑。",
+      "notForYou": "不感興趣？<reminder>關閉年度提醒</reminder>，或<heart>隱藏愛心</heart>。可在設定中恢復兩者。",
+      "notForYouHeart": "不感興趣？<heart>隱藏愛心</heart>。可在設定中恢復。"
+    }
+  },
+  "labels": {
+    "path": "路徑",
+    "beta": "測試版"
+  },
+  "kit": {
+    "loadFailed": "此區塊載入失敗。",
+    "retry": "重試",
+    "edit": "編輯",
+    "moreActions": "更多操作",
+    "enabled": "已啟用",
+    "clearSelection": "清除選取"
+  }
+}

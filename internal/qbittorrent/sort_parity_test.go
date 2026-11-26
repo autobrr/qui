@@ -1,0 +1,112 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package qbittorrent
+
+import (
+	"maps"
+	"slices"
+	"testing"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+)
+
+func TestUnifiedSortMatchesSingleInstance(t *testing.T) {
+	t.Parallel()
+
+	store, err := models.NewInstanceStore(testdb.NewMigratedSQLite(t, "qbittorrent-sort-parity"), make([]byte, 32))
+	require.NoError(t, err)
+	clients := make(map[int]*Client, 2)
+	idByName := make(map[string]int, 2)
+	trackersByName := map[string]func(int) []qbt.TorrentTracker{
+		"a": sortGoldenTrackers,
+		"b": func(i int) []qbt.TorrentTracker { return sortGoldenTrackers((i + 6) % 24) },
+	}
+	for _, name := range []string{"b", "a"} {
+		instance, err := store.Create(t.Context(), name, "http://127.0.0.1:8080", "", "", nil, nil, false, nil)
+		require.NoError(t, err)
+		clients[instance.ID] = newSortTestClient(t, instance.ID, trackersByName[name])
+		idByName[name] = instance.ID
+	}
+	ids := slices.Sorted(maps.Keys(clients))
+	sm := NewSyncManager(&ClientPool{instanceStore: store, clients: clients}, nil)
+	for _, id := range ids {
+		sm.refreshTrackerHealthCounts(t.Context(), id)
+		require.NotZero(t, sm.GetTrackerHealthSnapshot(id).Count(TrackerHealthUnregistered), "the state sort must see tracker health")
+	}
+
+	for _, column := range append(sortGoldenColumns(), "instance") {
+		for _, order := range []string{"asc", "desc"} {
+			t.Run(column+" "+order, func(t *testing.T) {
+				both, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: ids, Sort: column, Order: order})
+				require.NoError(t, err)
+
+				singleColumn, singleOrder := column, order
+				if column == "instance" {
+					singleColumn, singleOrder = "name", "asc"
+				}
+				for _, id := range ids {
+					single, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: id, Sort: singleColumn, Order: singleOrder, SidebarCounts: true})
+					require.NoError(t, err)
+					scoped, err := sm.ListTorrents(t.Context(), TorrentListView{Unified: true, InstanceIDs: []int{id}, Sort: column, Order: order, SidebarCounts: true})
+					require.NoError(t, err)
+
+					var scopedRows, bothRows []TorrentView
+					for _, row := range scoped.CrossInstanceTorrents {
+						scopedRows = append(scopedRows, *row.TorrentView)
+					}
+					for _, row := range both.CrossInstanceTorrents {
+						if row.InstanceID == id {
+							bothRows = append(bothRows, *row.TorrentView)
+						}
+					}
+
+					want := sortParityHashes(single.Torrents)
+					require.Equal(t, want, sortParityHashes(scopedRows), "instance %d scoped alone", id)
+					require.Equal(t, want, sortParityHashes(bothRows), "instance %d among all instances", id)
+					require.Equal(t, single.Torrents, scopedRows)
+					require.Equal(t, single.Total, scoped.Total)
+					require.Equal(t, single.Stats, scoped.Stats)
+					require.NotNil(t, single.Counts)
+					require.Equal(t, single.Counts, scoped.Counts)
+					require.ElementsMatch(t, single.Tags, scoped.Tags)
+				}
+
+				switch column {
+				case "state":
+					return
+				case "instance":
+					first, last := idByName["a"], idByName["b"]
+					if order == "desc" {
+						first, last = last, first
+					}
+					half := len(both.CrossInstanceTorrents) / 2
+					want := append(slices.Repeat([]int{first}, half), slices.Repeat([]int{last}, half)...)
+					got := make([]int, 0, len(both.CrossInstanceTorrents))
+					for _, row := range both.CrossInstanceTorrents {
+						got = append(got, row.InstanceID)
+					}
+					require.Equal(t, want, got)
+					return
+				}
+				for i := 0; i < len(both.CrossInstanceTorrents); i += 2 {
+					first, second := both.CrossInstanceTorrents[i], both.CrossInstanceTorrents[i+1]
+					require.Equal(t, first.Hash, second.Hash, "row %d", i)
+					require.Equal(t, []int{idByName["a"], idByName["b"]}, []int{first.InstanceID, second.InstanceID}, "row %d", i)
+				}
+			})
+		}
+	}
+}
+
+func sortParityHashes(rows []TorrentView) []string {
+	hashes := make([]string, len(rows))
+	for i, row := range rows {
+		hashes[i] = row.Hash[:2]
+	}
+	return hashes
+}

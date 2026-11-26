@@ -1,0 +1,80 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+//go:build !windows
+
+package automations
+
+import (
+	"os"
+	"testing"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
+)
+
+func localFreeSpaceService() *Service {
+	row := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
+	return &Service{backendPool: fsops.NewPool(rowGetter{row: row}, local.NewBackend())}
+}
+
+func TestFreeSpaceBytes_PathViaBackend(t *testing.T) {
+	tmpDir := os.TempDir()
+	src := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: tmpDir}
+	bytes, err := localFreeSpaceService().freeSpaceBytes(t.Context(), &models.Instance{ID: 1}, src)
+	if err != nil {
+		t.Fatalf("freeSpaceBytes(%q) returned error: %v", tmpDir, err)
+	}
+	if bytes <= 0 {
+		t.Errorf("freeSpaceBytes(%q) returned %d, want > 0", tmpDir, bytes)
+	}
+}
+
+func TestGetFreeSpaceSourceKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   *models.FreeSpaceSource
+		wantKey string
+	}{
+		{
+			name:    "nil defaults to qbt",
+			input:   nil,
+			wantKey: "qbt",
+		},
+		{
+			name:    "empty type defaults to qbt",
+			input:   &models.FreeSpaceSource{Type: ""},
+			wantKey: "qbt",
+		},
+		{
+			name:    "path type with path",
+			input:   &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data"},
+			wantKey: "path:/mnt/data",
+		},
+		{
+			name:    "path type with trailing slash is cleaned",
+			input:   &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/mnt/data/"},
+			wantKey: "path:/mnt/data",
+		},
+		{
+			name:    "path type with whitespace is cleaned",
+			input:   &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "  /mnt/data  "},
+			wantKey: "path:/mnt/data",
+		},
+		{
+			name:    "unknown type defaults to qbt",
+			input:   &models.FreeSpaceSource{Type: "unknown"},
+			wantKey: "qbt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GetFreeSpaceSourceKey(tt.input)
+			if got != tt.wantKey {
+				t.Errorf("GetFreeSpaceSourceKey() = %v, want %v", got, tt.wantKey)
+			}
+		})
+	}
+}

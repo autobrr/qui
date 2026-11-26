@@ -1,0 +1,193 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package sse
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
+)
+
+func (m *StreamManager) instanceLoopCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.syncLoops)
+}
+
+func (m *StreamManager) hasInstance(instanceID int) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, hasIndex := m.instanceIndex[instanceID]
+	_, hasLoop := m.syncLoops[instanceID]
+	_, hasGroups := m.instanceGroups[instanceID]
+	return hasIndex && hasLoop && hasGroups
+}
+
+func (m *StreamManager) instanceSubCount(instanceID int) int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.instanceIndex[instanceID])
+}
+
+func TestMultiInstanceSubscriptionLifecycle(t *testing.T) {
+	manager := NewStreamManager(nil, &fakeSyncProvider{}, &fakeSyncProvider{}, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	multiOpts := StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2, 3}, Limit: 100, Sort: "added_on", Order: "desc"}}
+	conn := manager.openConnection(false, 0)
+	multi, err := manager.registerSubscription(multiOpts, "multi", conn, false)
+	require.NoError(t, err)
+
+	for _, id := range []int{1, 2, 3} {
+		require.Truef(t, manager.hasInstance(id), "expected member instance %d to be registered", id)
+		require.Equal(t, 1, manager.instanceSubCount(id))
+	}
+	require.Equal(t, 3, manager.instanceLoopCount())
+
+	singleOpts := StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 2, Limit: 100, Sort: "added_on", Order: "desc"}}
+	single, err := manager.registerSubscription(singleOpts, "single", conn, false)
+	require.NoError(t, err)
+	require.Equal(t, 2, manager.instanceSubCount(2))
+
+	manager.Unregister(multi.id)
+	require.False(t, manager.hasInstance(1))
+	require.False(t, manager.hasInstance(3))
+	require.True(t, manager.hasInstance(2))
+	require.Equal(t, 1, manager.instanceSubCount(2))
+	require.Equal(t, 1, manager.instanceLoopCount())
+
+	manager.Unregister(single.id)
+	require.False(t, manager.hasInstance(2))
+	require.Equal(t, 0, manager.instanceLoopCount())
+}
+
+func TestToStreamOptionsMultiInstance(t *testing.T) {
+	t.Run("dedupes and marks multi-instance", func(t *testing.T) {
+		opts, err := streamRequestPayload{InstanceIDs: []int{3, 1, 1, 2}}.toStreamOptions()
+		require.NoError(t, err)
+		require.True(t, opts.isMultiInstance())
+		require.Equal(t, 0, opts.View.InstanceID)
+		require.Equal(t, []int{3, 1, 2}, opts.View.InstanceIDs)
+		require.ElementsMatch(t, []int{1, 2, 3}, opts.instanceIDs())
+	})
+
+	t.Run("rejects non-positive member", func(t *testing.T) {
+		_, err := streamRequestPayload{InstanceIDs: []int{1, 0}}.toStreamOptions()
+		require.ErrorIs(t, err, errInvalidInstanceID)
+	})
+
+	t.Run("single instance unaffected", func(t *testing.T) {
+		opts, err := streamRequestPayload{InstanceID: 5}.toStreamOptions()
+		require.NoError(t, err)
+		require.False(t, opts.isMultiInstance())
+		require.Equal(t, []int{5}, opts.instanceIDs())
+	})
+}
+
+func TestMaterializeGroupResponseOmitsInstanceScopedMetaWithoutSingleConcreteInstance(t *testing.T) {
+	lastGood := time.Now().Add(-90 * time.Second)
+
+	tests := []struct {
+		name      string
+		opts      StreamOptions
+		provider  *fakeSyncProvider
+		wantRetry bool
+	}{
+		{
+			name: "two member aggregate",
+			opts: StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2}, Limit: 100}},
+			provider: &fakeSyncProvider{
+				crossInstanceErr: errors.New("boom"),
+			},
+		},
+		{
+			name: "empty ids with zero instance",
+			opts: StreamOptions{View: qbittorrent.TorrentListView{Limit: 100}},
+			provider: &fakeSyncProvider{
+				torrentsErr: errors.New("boom"),
+			},
+		},
+		{
+			name: "zero representative aggregate",
+			opts: StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{0}, Limit: 100}},
+			provider: &fakeSyncProvider{
+				crossInstanceErr: errors.New("boom"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := NewStreamManager(nil, tt.provider, tt.provider, nil)
+			t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+			var stampCalls int
+			manager.lastSuccessfulSyncFn = func(_ context.Context, _ int) time.Time {
+				stampCalls++
+				return lastGood
+			}
+
+			_, errPayload := manager.materializeGroupResponse(tt.opts, &StreamMeta{Timestamp: time.Now()}, "test-group")
+
+			require.NotNil(t, errPayload)
+			require.NotNil(t, errPayload.Meta)
+			require.Nil(t, errPayload.Meta.LastSuccessfulSync)
+			if tt.wantRetry {
+				require.Positive(t, errPayload.Meta.RetryInSeconds)
+			} else {
+				require.Zero(t, errPayload.Meta.RetryInSeconds)
+			}
+			require.Zero(t, stampCalls, "ambiguous aggregate errors must not resolve a representative freshness stamp")
+		})
+	}
+}
+
+func TestMaterializeGroupResponseOmitsRetryForMultiMemberAggregateWithDifferentBackoff(t *testing.T) {
+	manager := NewStreamManager(nil, &fakeSyncProvider{crossInstanceErr: errors.New("boom")}, &fakeSyncProvider{}, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	manager.mu.Lock()
+	manager.syncBackoff[1] = &backoffState{interval: 4 * time.Second}
+	manager.syncBackoff[2] = &backoffState{interval: 16 * time.Second}
+	manager.mu.Unlock()
+
+	lastSuccessfulSync := time.Now().Add(-time.Minute)
+	_, errPayload := manager.materializeGroupResponse(
+		StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2}, Limit: 100}},
+		&StreamMeta{Timestamp: time.Now(), RetryInSeconds: 99, LastSuccessfulSync: &lastSuccessfulSync},
+		"test-group",
+	)
+
+	require.NotNil(t, errPayload)
+	require.NotNil(t, errPayload.Meta)
+	require.Zero(t, errPayload.Meta.RetryInSeconds, "multi-member aggregate retry must not expose a single member interval")
+	require.Nil(t, errPayload.Meta.LastSuccessfulSync, "multi-member aggregate freshness must not expose one member timestamp")
+}
+
+func TestMultiInstanceUpdateUsesCrossInstanceProvider(t *testing.T) {
+	provider := &fakeSyncProvider{
+		crossInstanceResponse: &qbittorrent.TorrentResponse{Total: 2, IsCrossInstance: true},
+	}
+	manager := NewStreamManager(nil, provider, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	_, err := manager.registerSubscription(StreamOptions{View: qbittorrent.TorrentListView{Unified: true, InstanceIDs: []int{1, 2}, Limit: 100}}, "multi", manager.openConnection(false, 0), false)
+	require.NoError(t, err)
+	builds := provider.signalBuilds()
+
+	manager.HandleSyncUpdate(2, qbt.SyncUpdate{})
+	receive(t, builds, "the aggregated group build")
+
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.Positive(t, provider.crossInstanceCalls, "expected the aggregated group to build as a Unified view")
+	require.True(t, provider.crossView.CacheOnly, "a stream read must not start a sync")
+	require.Zero(t, provider.torrentsCalls)
+}

@@ -1,0 +1,224 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { api } from "@/lib/api"
+import type { FilesystemCapabilities, LocalCrossSeedMatch, Torrent } from "@/types"
+import type { TFunction } from "i18next"
+import { useQuery } from "@tanstack/react-query"
+import { useMemo } from "react"
+
+export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/]+/g, "/").replace(/\/$/, "") || ""
+
+export const parseNonNegativeInt = (value: string): number => Math.max(0, Math.floor(Number(value) || 0))
+
+export const crossSeedRouteStatusKeys: Partial<Record<string, string>> = {
+  crossseed_instance_unavailable: "crossseed:routeStatus.unavailable",
+  crossseed_instance_cannot_see_data: "crossseed:routeStatus.cannotSeeData",
+}
+
+export const crossSeedRouteText = (t: TFunction, source: string, crossSeed: string, added: boolean): string =>
+  t(added ? "crossseed:route.foundOnAddedTo" : "crossseed:route.foundOnRoutedTo", { source, crossSeed })
+
+export const changedSecret = (value: string, saved: string | undefined): string | undefined =>
+  value === (saved ?? "") ? undefined : value
+
+export const isInsideBase = (path: string, base: string): boolean => {
+  if (!base) return false
+  return path === base || path.startsWith(base + "/")
+}
+
+export const isHardlinkManaged = (
+  match: { save_path?: string; content_path?: string },
+  instance: { useHardlinks?: boolean; capabilities?: Pick<FilesystemCapabilities, "write">; hardlinkBaseDir?: string } | undefined
+): boolean => {
+  if (!instance?.useHardlinks || !instance?.capabilities?.write) return false
+  const base = normalizePath(instance.hardlinkBaseDir || "")
+  if (!base) return false
+  const savePath = normalizePath(match.save_path || "")
+  const contentPath = normalizePath(match.content_path || "")
+  return isInsideBase(savePath, base) || isInsideBase(contentPath, base)
+}
+
+export interface CrossSeedTorrent extends Torrent {
+  instanceId: number
+  instanceName: string
+  matchType: LocalCrossSeedMatch["matchType"]
+}
+
+export interface LocalMatchTypeInfo {
+  independentlyUsable: boolean
+  breaksWhenSourceDeleted: boolean
+}
+
+export function getLocalMatchTypeInfo(
+  matchType: LocalCrossSeedMatch["matchType"]
+): LocalMatchTypeInfo {
+  switch (matchType) {
+    case "content_path":
+      return {
+        independentlyUsable: false,
+        breaksWhenSourceDeleted: true,
+      }
+    case "hardlink":
+    case "reflink":
+      return {
+        independentlyUsable: true,
+        breaksWhenSourceDeleted: false,
+      }
+    case "name":
+    case "release":
+      return {
+        independentlyUsable: false,
+        breaksWhenSourceDeleted: false,
+      }
+  }
+}
+
+export function getMatchTypeLabel(matchType: string, t: TFunction): { label: string; description: string } {
+  switch (matchType) {
+    case "content_path":
+      return {
+        label: t("crossSeedTable.matchTypes.contentPath.label"),
+        description: t("crossSeedTable.matchTypes.contentPath.description"),
+      }
+    case "name":
+      return {
+        label: t("crossSeedTable.matchTypes.name.label"),
+        description: t("crossSeedTable.matchTypes.name.description"),
+      }
+    case "release":
+      return {
+        label: t("crossSeedTable.matchTypes.release.label"),
+        description: t("crossSeedTable.matchTypes.release.description"),
+      }
+    case "hardlink":
+      return {
+        label: t("crossSeedTable.matchTypes.hardlink.label"),
+        description: t("crossSeedTable.matchTypes.hardlink.description"),
+      }
+    case "reflink":
+      return {
+        label: t("crossSeedTable.matchTypes.reflink.label"),
+        description: t("crossSeedTable.matchTypes.reflink.description"),
+      }
+    default:
+      return { label: matchType, description: matchType }
+  }
+}
+
+export function hasBreakableLocalMatches(
+  matches: readonly Pick<LocalCrossSeedMatch, "matchType">[]
+): boolean {
+  return matches.some(match => getLocalMatchTypeInfo(match.matchType).breaksWhenSourceDeleted)
+}
+
+export const useLocalCrossSeedMatches = (
+  instanceId: number,
+  torrent: Torrent | null,
+  enabled: boolean = true
+) => {
+  const { data: allInstances, isLoading: isLoadingInstances } = useQuery({
+    queryKey: ["instances"],
+    queryFn: api.getInstances,
+    enabled,
+    staleTime: 60000,
+  })
+
+  const { data: matches, isLoading: isLoadingMatches, error: matchesError } = useQuery({
+    queryKey: ["cross-seed-local-matches", instanceId, torrent?.hash],
+    queryFn: () => api.getLocalCrossSeedMatches(instanceId, torrent!.hash),
+    enabled: enabled && !!torrent && instanceId > 0,
+    staleTime: 60000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  })
+
+  const matchingTorrents = useMemo((): CrossSeedTorrent[] => {
+    if (!matches) return []
+    return matches.map((m): CrossSeedTorrent => toCompatibleMatch(m))
+  }, [matches])
+
+  return {
+    matchingTorrents,
+    matchesError: matchesError ?? null,
+    isLoadingMatches: isLoadingInstances || isLoadingMatches,
+    isLoadingInstances,
+    pendingQueryCount: isLoadingMatches ? 1 : 0,
+    allInstances: allInstances || [],
+  }
+}
+
+export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
+  return {
+    hash: m.hash,
+    name: m.name,
+    size: m.size,
+    progress: m.progress,
+    save_path: m.savePath,
+    content_path: m.contentPath,
+    category: m.category,
+    tags: m.tags,
+    state: m.state,
+    tracker: m.tracker,
+    tracker_health: m.trackerHealth as "unregistered" | "tracker_down" | "tracker_error" | undefined,
+    instanceId: m.instanceId,
+    instanceName: m.instanceName,
+    matchType: m.matchType,
+    added_on: 0,
+    completion_on: 0,
+    dlspeed: 0,
+    downloaded: 0,
+    downloaded_session: 0,
+    eta: 0,
+    num_leechs: 0,
+    num_seeds: 0,
+    priority: 0,
+    seq_dl: false,
+    f_l_piece_prio: false,
+    super_seeding: false,
+    force_start: false,
+    auto_tmm: false,
+    seen_complete: 0,
+    time_active: 0,
+    num_complete: 0,
+    num_incomplete: 0,
+    amount_left: 0,
+    completed: 0,
+    last_activity: 0,
+    availability: 0,
+    dl_limit: 0,
+    download_path: "",
+    infohash_v1: "",
+    infohash_v2: "",
+    popularity: 0,
+    private: false,
+    max_ratio: 0,
+    max_seeding_time: 0,
+    seeding_time: 0,
+    ratio: 0,
+    ratio_limit: 0,
+    reannounce: 0,
+    seeding_time_limit: 0,
+    total_size: m.size,
+    trackers_count: 0,
+    up_limit: 0,
+    uploaded: 0,
+    uploaded_session: 0,
+    upspeed: 0,
+  }
+}
+
+export function normalizeStringList(values: string[]): string[] {
+  return Array.from(new Set(values.map(item => item.trim()).filter(Boolean)))
+}
+
+export function normalizeNumberList(values: Array<string | number>): number[] {
+  return Array.from(new Set(
+    values
+      .map(value => Number(value))
+      .filter(value => !Number.isNaN(value) && value > 0)
+  ))
+}

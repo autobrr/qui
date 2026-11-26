@@ -1,0 +1,550 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/rls"
+	"github.com/stretchr/testify/require"
+
+	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/releases"
+	"github.com/autobrr/qui/pkg/stringutils"
+)
+
+func TestGetMatchType_EnforcesLayoutCompatibility(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	localRelease := rls.Release{Title: "Example", Year: 2024}
+	newRelease := rls.Release{Title: "Example", Year: 2024}
+
+	mkvFiles := qbt.TorrentFiles{{Name: "Example.2024.1080p.mkv", Size: 4 << 30}}
+	archiveFiles := qbt.TorrentFiles{{Name: "Example.part01.rar", Size: 2 << 30}, {Name: "Example.part02.r00", Size: 2 << 30}}
+
+	match := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, mkvFiles, archiveFiles, 0).MatchType
+	require.Empty(t, match, "local mkv torrent should not match a new rar-only torrent")
+
+	archiveMatch := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, archiveFiles, archiveFiles, 0).MatchType
+	require.NotEmpty(t, archiveMatch, "identical archive layouts should match")
+
+	fileMatch := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, mkvFiles, mkvFiles, 0).MatchType
+	require.Equal(t, "exact", fileMatch, "identical file layouts should be exact matches")
+}
+
+func TestFindBestCandidateMatch_PrefersLayoutCompatibleTorrent(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"rar": {{Name: "Example.part01.rar", Size: 2 << 30}, {Name: "Example.part02.r00", Size: 2 << 30}},
+				"mkv": {{Name: "Example.2024.1080p.mkv", Size: 4 << 30}},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{Title: "Example", Year: 2024}
+	sourceFiles := qbt.TorrentFiles{{Name: "Example.2024.1080p.mkv", Size: 4 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []*qbt.Torrent{
+			{Hash: "rar", Name: "Example.RAR.Release", Progress: 1.0},
+			{Hash: "mkv", Name: "Example.2024.1080p.GRP", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "mkv", bestTorrent.Hash)
+	require.Equal(t, "exact", matchType)
+	require.Len(t, files, 1)
+}
+
+func TestFindBestCandidateMatch_PrefersLayoutCompatibilityBeforeTopLevelFolder(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"single": {{Name: "payload.bin", Size: 4 << 30}},
+				"folder": {
+					{Name: "folder/payload.bin", Size: 4 << 30},
+					{Name: "folder/extra.txt", Size: 1 << 20},
+				},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{}
+	sourceFiles := qbt.TorrentFiles{{Name: "PAYLOAD.bin", Size: 4 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []*qbt.Torrent{
+			{Hash: "single", Name: "Minimal.Payload", Progress: 1.0},
+			{Hash: "folder", Name: "Minimal.Payload", Progress: 1.0},
+		},
+	}
+
+	localRelease := svc.releaseCache.Parse("Minimal.Payload")
+	singleMatch := svc.matcher().getMatchTypeWithReason(localRelease, &sourceRelease, svc.syncManager.(*candidateSelectionSyncManager).files["single"], sourceFiles, 0).MatchType
+	folderMatch := svc.matcher().getMatchTypeWithReason(localRelease, &sourceRelease, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], sourceFiles, 0).MatchType
+	require.Equal(t, singleMatch, folderMatch, "test setup should create identical match priorities")
+	require.Equal(t, "size", singleMatch)
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "single", bestTorrent.Hash, "same-shape rootless layout should win before folder-root tie-breakers")
+	require.Equal(t, "size", matchType)
+	require.Len(t, files, 1, "should return rootless file list")
+}
+
+func TestFindBestCandidateMatch_FolderIncomingPrefersFolderExisting(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"rootless": {{Name: "payload.bin", Size: 4 << 30}},
+				"folder":   {{Name: "Existing.Release/payload.bin", Size: 4 << 30}},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{}
+	sourceFiles := qbt.TorrentFiles{{Name: "Incoming.Release/PAYLOAD.bin", Size: 4 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []*qbt.Torrent{
+			{Hash: "rootless", Name: "Payload.Rootless", Progress: 1.0},
+			{Hash: "folder", Name: "Payload.Folder", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "folder", bestTorrent.Hash)
+	require.Equal(t, "size", matchType)
+	require.Len(t, files, 1)
+	require.Equal(t, "Existing.Release/payload.bin", files[0].Name)
+}
+
+func TestFindBestCandidateMatch_FilenameAlignmentBeatsRootFolderAlignment(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"filename": {{Name: "payload.bin", Size: 4 << 30}},
+				"folder":   {{Name: "Existing.Release/PAYLOAD.bin", Size: 4 << 30}},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{}
+	sourceFiles := qbt.TorrentFiles{{Name: "PAYLOAD.bin", Size: 4 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []*qbt.Torrent{
+			{Hash: "folder", Name: "Payload.Folder", Progress: 1.0},
+			{Hash: "filename", Name: "Payload.Rootless", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "filename", bestTorrent.Hash)
+	require.Equal(t, "size", matchType)
+	require.Len(t, files, 1)
+	require.Equal(t, "payload.bin", files[0].Name)
+}
+
+func TestFindBestCandidateMatch_UploadCXRootlessRegression(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"folder": {
+					{
+						Name: "Some.Release.2017.LIMITED.1080p.BluRay.x264-DRONES/Some.Release.2017.1080p.BluRay.x264-DRONES.mkv",
+						Size: 7 << 30,
+					},
+				},
+				"rootless": {
+					{Name: "Some.Release.2017.1080p.BluRay.x264-DRONES.MKV", Size: 7 << 30},
+				},
+			},
+		},
+	}
+
+	torrentName := "Some.Release.2017.1080p.BluRay.x264-DRONES.mkv"
+	sourceRelease := svc.releaseCache.Parse(torrentName)
+	sourceFiles := qbt.TorrentFiles{{Name: torrentName, Size: 7 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []*qbt.Torrent{
+			{Hash: "folder", Name: "Some.Release.2017.LIMITED.1080p.BluRay.x264-DRONES", Progress: 1.0},
+			{Hash: "rootless", Name: "some.release.2017.limited.1080p.bluray.x264-drones.mkv", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "rootless", bestTorrent.Hash)
+	require.Equal(t, "partial-contains", matchType)
+	require.Len(t, files, 1)
+	require.Equal(t, "Some.Release.2017.1080p.BluRay.x264-DRONES.MKV", files[0].Name)
+}
+
+func TestFindBestCandidateMatch_RejectsSeasonPackAgainstEpisodeCandidate(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"ep": {{Name: "The.Show.S01E01.2160p.WEB-DL-GRP.mkv", Size: 2 << 30}},
+			},
+		},
+	}
+
+	seasonPackName := "The.Show.S01.2160p.WEB-DL-GRP"
+	sourceRelease := svc.releaseCache.Parse(seasonPackName)
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "The.Show.S01E01.2160p.WEB-DL-GRP.mkv", Size: 2 << 30},
+		{Name: "The.Show.S01E02.2160p.WEB-DL-GRP.mkv", Size: 2 << 30},
+	}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []*qbt.Torrent{
+			{Hash: "ep", Name: "The.Show.S01E01.2160p.WEB-DL-GRP", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, rejectReason := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.Nil(t, bestTorrent)
+	require.Nil(t, files)
+	require.Empty(t, matchType)
+	require.Equal(t, rejectReasonSeasonPackFromEpisode, rejectReason)
+}
+
+type candidateSelectionSyncManager struct {
+	files map[string]qbt.TorrentFiles
+}
+
+func (c *candidateSelectionSyncManager) GetTorrentRefs(context.Context, int, internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) GetTorrentFiles(_ context.Context, _ int, hash string) (*qbt.TorrentFiles, error) {
+	key := strings.ToLower(hash)
+	files, ok := c.files[key]
+	if !ok {
+		return nil, errors.New("files not found")
+	}
+	copyFiles := make(qbt.TorrentFiles, len(files))
+	copy(copyFiles, files)
+	return &copyFiles, nil
+}
+
+func (c *candidateSelectionSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
+	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
+}
+
+func (c *candidateSelectionSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	result := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, h := range hashes {
+		if files, err := c.GetTorrentFiles(ctx, instanceID, h); err == nil && files != nil {
+			result[normalizeHash(h)] = *files
+		}
+	}
+	return result, nil
+}
+
+func (*candidateSelectionSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
+func (*candidateSelectionSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+	return nil, false, nil
+}
+
+func (c *candidateSelectionSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) BulkAction(context.Context, int, []string, string) error {
+	return errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) ExtractDomainFromURL(string) string {
+	return ""
+}
+
+func (c *candidateSelectionSyncManager) GetSyncOwner(context.Context, int) (*syncowner.Owner, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) RenameTorrent(context.Context, int, string, string) error {
+	return errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
+	return errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
+	return errors.New("not implemented")
+}
+
+func (c *candidateSelectionSyncManager) SetTags(context.Context, int, []string, string) error {
+	return nil
+}
+
+func (c *candidateSelectionSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	return map[string]qbt.Category{}, nil
+}
+
+func (c *candidateSelectionSyncManager) CreateCategory(_ context.Context, _ int, _, _ string) error {
+	return nil
+}
+
+func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	targetRelease := svc.releaseCache.Parse("[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]")
+	candidateRelease := svc.releaseCache.Parse("[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]")
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "random_data_file.bin", Size: 1024},
+	}
+
+	match := svc.matcher().getMatchTypeFromTitle(targetRelease, candidateRelease, candidateFiles)
+	require.Equal(t, "partial-in-pack", match, "fallback should match the same absolute episode when the files give no release keys")
+}
+
+func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	targetRelease := rls.Release{
+		Title: "Movie 2020",
+		Year:  2020,
+	}
+
+	candidateRelease := rls.Release{
+		Title: "Different Movie 2012",
+		Year:  2012,
+	}
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Different.Movie.2012.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
+	}
+
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
+	require.Empty(t, match, "non-episodic candidates with mismatched release keys should not match")
+}
+
+func TestGetMatchTypeFromTitle_NonEpisodicWithMatchingReleaseKey(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	targetRelease := rls.Release{
+		Title: "Movie 2020",
+		Year:  2020,
+	}
+
+	candidateRelease := rls.Release{
+		Title: "Another Movie 2020",
+		Year:  2020,
+	}
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Another.Movie.2020.1080p.BluRay.x264-OTHER.mkv", Size: 4 << 30},
+	}
+
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
+	require.Equal(t, "partial-in-pack", match, "non-episodic candidates with matching release keys should match")
+}
+
+func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	targetRelease := rls.Release{
+		Title: "Oddsparks An Automation Adventure Coaster Rush",
+		Group: "RUNE",
+		Type:  rls.Game,
+	}
+
+	candidateRelease := rls.Release{
+		Title: "Oddsparks An Automation Adventure Coaster Rush",
+		Group: "RUNE",
+		Type:  rls.Game,
+	}
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "rune-oddsparks.rar", Size: 100 << 20},
+		{Name: "rune-oddsparks.r00", Size: 100 << 20},
+		{Name: "rune-oddsparks.r01", Size: 100 << 20},
+		{Name: "rune-oddsparks.sfv", Size: 1024},
+		{Name: "rune-oddsparks.nfo", Size: 4096},
+	}
+
+	match := svc.matcher().getMatchTypeFromTitle(&targetRelease, &candidateRelease, candidateFiles)
+	require.Equal(t, "release-match", match, "game scene releases with RAR files should match when titles match")
+}
+
+func TestGetMatchType_FileNameFallback(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	localRelease := rls.Release{Title: "Example Show"}
+	newRelease := rls.Release{Title: "Example Show"}
+
+	localFiles := qbt.TorrentFiles{
+		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
+	}
+	newFiles := qbt.TorrentFiles{
+		{Name: "[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]/[TestGroup] Example Show - 1150 (1080p) [ABCDEF01].mkv", Size: 1 << 30},
+	}
+
+	match := svc.matcher().getMatchTypeWithReason(&localRelease, &newRelease, localFiles, newFiles, 0).MatchType
+	require.Equal(t, "size", match, "single-file torrents with matching base names should fallback to size match")
+}
+
+func TestGetMatchTypeFromTitle_SeasonlessBatchAgainstSeasonPack(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	const localName = "[KAIJU] Kaiju Squad (BDRip 1080p x264) [dual-audio]"
+	episodeFiles := qbt.TorrentFiles{
+		{Name: localName + "/[KAIJU] Kaiju Squad - 01 (BDRip 1080p x264).mkv", Size: 1 << 30},
+		{Name: localName + "/[KAIJU] Kaiju Squad - 02 (BDRip 1080p x264).mkv", Size: 1 << 30},
+	}
+	movieFiles := qbt.TorrentFiles{
+		{Name: localName + "/[KAIJU] Kaiju Squad (BDRip 1080p x264).mkv", Size: 4 << 30},
+	}
+
+	tests := []struct {
+		name   string
+		target string
+		files  qbt.TorrentFiles
+		want   string
+	}{
+		{name: "season 1 pack", target: "Kaiju Squad S01 2003 1080p BluRay x264 FLAC 2.0 Dual Audio-KAIJU", files: episodeFiles, want: "release-match"},
+		{name: "season 2 pack", target: "Kaiju Squad S02 2003 1080p BluRay x264 FLAC 2.0 Dual Audio-KAIJU", files: episodeFiles, want: ""},
+		{name: "files without episodes", target: "Kaiju Squad S01 2003 1080p BluRay x264 FLAC 2.0 Dual Audio-KAIJU", files: movieFiles, want: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			target := svc.releaseCache.Parse(test.target)
+			local := svc.releaseCache.Parse(localName)
+			match := svc.matcher().getMatchTypeFromTitle(target, local, test.files)
+			require.Equal(t, test.want, match)
+		})
+	}
+}
+
+func TestGetMatchTypeFromTitle_SeasonlessBatchRanges(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	const localName = "[GRP] Kaiju Squad - 04 - 06 (1080p)"
+	files := qbt.TorrentFiles{
+		{Name: localName + "/[GRP] Kaiju Squad - 04 (1080p).mkv", Size: 1 << 30},
+		{Name: localName + "/[GRP] Kaiju Squad - 05 (1080p).mkv", Size: 1 << 30},
+		{Name: localName + "/[GRP] Kaiju Squad - 06 (1080p).mkv", Size: 1 << 30},
+	}
+
+	tests := []struct {
+		name   string
+		target string
+		want   string
+	}{
+		{name: "same batch", target: localName, want: "release-match"},
+		{name: "other batch", target: "[GRP] Kaiju Squad - 01 - 03 (1080p)", want: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			target := svc.releaseCache.Parse(test.target)
+			local := svc.releaseCache.Parse(localName)
+			require.Equal(t, test.want, svc.matcher().getMatchTypeFromTitle(target, local, files))
+		})
+	}
+}
+
+func (*candidateSelectionSyncManager) GetDirectoryContentCtx(context.Context, int, string, qbt.DirectoryContentMode, bool) (any, error) {
+	return nil, nil
+}

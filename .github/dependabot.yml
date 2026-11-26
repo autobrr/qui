@@ -1,0 +1,84 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+      time: "07:00"
+    groups:
+      github:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      golang:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+      semver-minor-days: 7
+      semver-major-days: 14
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: monthly
+    groups:
+      npm:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@shadcn/lint"
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+      semver-minor-days: 7
+      semver-major-days: 14
+    ignore:
+      # typescript-eslint peer-caps at <6.1.0; unpin once TS 7.1 exposes the APIs
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /documentation
+    schedule:
+      interval: monthly
+    groups:
+      npm:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+      semver-minor-days: 7
+      semver-major-days: 14
+
+  - package-ecosystem: npm
+    directory: /.github/scripts/triage
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      # A new Claude model needs a newer SDK, so the SDK does not wait.
+      # Change the model in run.mjs in the same pull request.
+      exclude:
+        - "@anthropic-ai/*"
+
+  - package-ecosystem: npm
+    directory: /.github/scripts/exceptions
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      # The counter reads the frontend with the parser that web/ uses, so both move to a new major together.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]

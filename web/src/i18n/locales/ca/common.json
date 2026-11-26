@@ -1,0 +1,577 @@
+{
+  "nav": {
+    "dashboard": "Tauler",
+    "statistics": "Estadístiques",
+    "search": "Cerca",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automatitzacions",
+    "transfers": "Transferències",
+    "transfersQueued_one": "{{count}} element en curs o en espera",
+    "transfersQueued_other": "{{count}} elements en curs o en espera",
+    "backups": "Còpies de seguretat",
+    "rss": "RSS",
+    "settings": "Configuració",
+    "logs": "Registres",
+    "instances": "Instàncies",
+    "generalSettings": "Configuració general",
+    "manageInstances": "Gestiona les instàncies",
+    "appearance": "Aspecte",
+    "instanceBackups": "Còpies de seguretat de les instàncies",
+    "backToSite": "Torna a getqui.com",
+    "docs": "Documentació"
+  },
+  "sidebar": {
+    "instances": "Instàncies",
+    "allInstancesDisabled": "Totes les instàncies estan desactivades",
+    "noInstancesConfigured": "No hi ha cap instància configurada",
+    "logout": "Tanca la sessió",
+    "version": "Versió {{version}}",
+    "language": "Idioma",
+    "viewOnGitHub": "Mostra-ho a GitHub",
+    "rssRunning": "RSS de cross-seed en execució",
+    "rssEnabled": "RSS de cross-seed activat",
+    "scanRunning": "Exploració en curs",
+    "collapseToIcons": "Redueix a icones",
+    "expandSidebar": "Amplia la barra lateral",
+    "hideSidebar": "Amaga la barra lateral",
+    "showSidebar": "Mostra la barra lateral",
+    "keepOpen": "Mantén la barra lateral oberta",
+    "menu": "Menú"
+  },
+  "problemReports": {
+    "reportProblem": "Informa d'un problema",
+    "subtitle": "El teu informe va als mantenidors de qui.",
+    "textLabel": "El teu informe",
+    "placeholders": {
+      "menu": "Què ha passat i què esperaves?",
+      "notice": "Què estaves fent quan ha passat això?",
+      "search": "Quina coincidència esperaves i en quin indexador?"
+    },
+    "sentWithIt": "Inclòs amb l'informe",
+    "summary_one": "qui {{version}} i {{count}} instància",
+    "summary_other": "qui {{version}} i {{count}} instàncies",
+    "details": "Detalls",
+    "view": "Mostra",
+    "whatGetsSent": "Què s'envia",
+    "whatGetsSentNote": "qui omple això. Res surt de qui fins que enviïs l'informe.",
+    "loadingFacts": "S'estan carregant els detalls...",
+    "factsFailed": "No s'han pogut carregar els detalls: {{message}}",
+    "facts": {
+      "version": "Versió",
+      "system": "Sistema",
+      "appContainer": "En un contenidor",
+      "database": "Base de dades",
+      "logLevel": "Nivell de registre",
+      "started": "Iniciat",
+      "experimentalFeatures": "Experimental",
+      "instance": "Instància {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "desconeguda",
+      "states": {
+        "connected": "Connectat",
+        "offline": "Fora de línia",
+        "disabled": "Desactivat"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrents",
+      "notices": "Avisos del sistema",
+      "openCount_one": "{{count}} obert",
+      "openCount_other": "{{count}} oberts",
+      "page": "Pàgina",
+      "browser": "Navegador",
+      "screen": "{{width}} × {{height}}, relació de píxels {{ratio}}",
+      "failedRequests": "Peticions fallides",
+      "failedCount_one": "{{count}} en aquesta sessió",
+      "failedCount_other": "{{count}} en aquesta sessió",
+      "noAnswer": "sense resposta",
+      "none": "Cap"
+    },
+    "logs": {
+      "title": "Registres",
+      "scopeLabel": "Línies de registre a incloure",
+      "scopes": {
+        "warnings": "Avisos i errors",
+        "all": "Tot el recent",
+        "none": "Omet"
+      },
+      "notes": {
+        "warnings_one": "{{count}} avís o error recent. qui elimina claus i secrets.",
+        "warnings_other": "{{count}} avisos i errors recents. qui elimina claus i secrets.",
+        "all_one": "{{count}} línia recent al nivell de registre {{level}}. qui elimina claus i secrets.",
+        "all_other": "{{count}} línies recents al nivell de registre {{level}}. qui elimina claus i secrets.",
+        "none": "No s'inclou cap línia de registre a l'informe."
+      },
+      "empty": "No hi ha línies de registre.",
+      "debugMissing": "El nivell de registre és {{level}}, així que qui no desa línies de depuració. Per incloure-les, posa Nivell de registre a DEBUG a Configuració > Registres, reprodueix el problema i torna a informar."
+    },
+    "privacy": {
+      "anonymous": "Anònim: sense nom ni compte. brrbin no guarda cap adreça IP.",
+      "signedIn": "Els mantenidors veuen el teu nom de {{provider}} ({{name}}) i et poden contactar.",
+      "link": "Política de privadesa"
+    },
+    "sender": {
+      "label": "Envia com a",
+      "anonymous": "Anònim",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Inicia la sessió amb {{provider}}",
+      "signOut": "Tanca la sessió",
+      "waiting": "S'està esperant {{provider}}",
+      "errors": {
+        "discordNotMember": "El teu compte de Discord no és al servidor de Discord d'autobrr. Uneix-te al servidor i torna a iniciar la sessió, inicia la sessió amb GitHub o envia de manera anònima.",
+        "refused": "Inici de sessió rebutjat: {{reason}}",
+        "expired": "L'inici de sessió ha caducat. Torna a iniciar la sessió.",
+        "popupBlocked": "El teu navegador ha bloquejat la finestra d'inici de sessió. Permet les finestres emergents per a qui i torna a iniciar la sessió.",
+        "unavailable": "brrbin no pot iniciar la sessió ara mateix. Torna-ho a provar més tard.",
+        "startFailed": "No s'ha pogut iniciar la sessió: {{message}}",
+        "signOutFailed": "No s'ha pogut tancar la sessió: {{message}}"
+      }
+    },
+    "newerRelease": "Fas servir {{running}}. Ja ha sortit <release>{{newer}}</release>.",
+    "send": "Envia",
+    "sendAnyway": "Envia igualment",
+    "sending": "S'està enviant",
+    "sent": "Informe enviat",
+    "errors": {
+      "anonymousFull": {
+        "title": "Els informes anònims d'avui estan plens",
+        "body": "Inicia la sessió per enviar-lo ara, o torna-ho a provar demà. El teu text queda aquí com a esborrany."
+      },
+      "signInRequired": "Inicia la sessió per enviar aquest informe. El teu text queda aquí com a esborrany.",
+      "accountLimit": "Has enviat molts informes en l'última hora. Torna-ho a provar més tard.",
+      "reporterFull": "Els teus informes ocupen tot l'espai que brrbin dona a una persona. Esborra un informe antic a Informes enviats i torna a enviar.",
+      "tooLarge": "L'informe és massa gran. Tria menys línies de registre o una imatge més petita.",
+      "tokenRejected": "La sessió ha acabat. Torna a iniciar la sessió i envia.",
+      "unavailable": "brrbin no pot rebre informes ara mateix. Torna-ho a provar més tard.",
+      "sendFailed": "No s'ha pogut enviar l'informe: {{message}}"
+    },
+    "sentReports": {
+      "title": "Informes enviats",
+      "subtitle": "qui comprova l'estat dels informes cada vegada que obres aquesta llista.",
+      "changed_one": "{{count}} estat ha canviat",
+      "changed_other": "{{count}} estats han canviat",
+      "status": {
+        "received": "Rebut",
+        "issue": "Convertit en incidència #{{number}}",
+        "issueClosed": "Incidència #{{number}} tancada",
+        "closed": "Tancat: {{reason}}",
+        "closedNoReason": "Tancat",
+        "notSent": "No enviat"
+      },
+      "delete": "Esborra l'informe",
+      "deleteUnavailable": "brrbin no pot esborrar informes ara mateix. Torna-ho a provar més tard.",
+      "deleteFailed": "No s'ha pogut esborrar l'informe: {{message}}",
+      "empty": "No hi ha informes enviats.",
+      "back": "Torna a l'informe"
+    }
+  },
+  "header": {
+    "currentInstance": "Instància actual: {{name}}. Fes clic per canviar d'instància.",
+    "connected": "Connectat",
+    "disconnected": "Desconnectat",
+    "showFilters": "Mostra els filtres",
+    "hideFilters": "Amaga els filtres",
+    "addTorrent": "Afegeix un torrent",
+    "createTorrent": "Crea un torrent",
+    "torrentCreationTasks": "Tasques de creació de torrents",
+    "instanceSettings": "Configuració de la instància",
+    "addToInstance": "Afegeix a la instància",
+    "createForInstance": "Crea per a la instància",
+    "tasksForInstance": "Tasques de la instància",
+    "settingsForInstance": "Configuració per a la instància",
+    "clearSearch": "Neteja la cerca",
+    "searchTorrents": "Cerca torrents...",
+    "globPattern": "Patró glob...",
+    "smartSearchTitle": "Funcions de cerca intel·ligent:",
+    "smartSearchGlob": "Patrons glob:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "Coincidència aproximada:",
+    "smartSearchFuzzyExample": "\"breaking bad\" troba \"Breaking.Bad\"",
+    "smartSearchDots": "Gestiona punts, guions baixos i claudàtors",
+    "smartSearchFields": "Cerca al nom, la categoria i les etiquetes",
+    "smartSearchEnter": "Prem Retorn per cercar a l'instant",
+    "smartSearchAuto": "Cerca automàticament després d'una pausa de 500 ms",
+    "smartSearchShortcut": "Prem {{shortcutKey}} per anar a la cerca",
+    "smartSearchPalette": "Prem {{shortcutKey}} per obrir la paleta d'ordres",
+    "torrentCreationTasksTitle": "Tasques de creació de torrents",
+    "allScope": "TOTES",
+    "unified": "Unificat"
+  },
+  "titleBar": {
+    "speeds": "B: {{download}} P: {{upload}}"
+  },
+  "unifiedScope": {
+    "unified": "Unificat",
+    "collapseScope": "Redueix l'àmbit unificat",
+    "expandScope": "Amplia l'àmbit unificat",
+    "allActive": "Totes les actives ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Paleta d'ordres",
+    "placeholder": "Cerca pàgines, configuració i torrents...",
+    "placeholderIn": "Cerca a {{name}}...",
+    "groups": {
+      "pages": "Pàgines",
+      "actions": "Accions"
+    },
+    "current": "Actual",
+    "statisticsNote": "Historial de pujada i baixada de les teves instàncies",
+    "searchTorrentsFor": "Cerca \"{{query}}\" als torrents",
+    "torrentMatches_one": "{{count}} torrent coincideix",
+    "torrentMatches_other": "{{count}} torrents coincideixen",
+    "noTorrentMatches": "Cap torrent coincideix",
+    "searching": "S'està cercant...",
+    "searchFailed": "La cerca de torrents ha fallat",
+    "listFiltersApply": "S'apliquen els filtres de la llista",
+    "noMatchIn": "No hi ha cap coincidència a {{name}}",
+    "moreOf": "Més opcions de {{name}}",
+    "hints": {
+      "navigate": "Navega",
+      "open": "Obre",
+      "more": "Més",
+      "searchTorrents": "Cerca torrents",
+      "back": "Enrere"
+    }
+  },
+  "mobileNav": {
+    "dashboard": "Tauler",
+    "statistics": "Estadístiques",
+    "clients": "Clients",
+    "settings": "Configuració",
+    "qbittorrentClients": "Clients de qBittorrent",
+    "instances": "Instàncies",
+    "loading": "S'està carregant...",
+    "noActiveClients": "No hi ha cap client actiu",
+    "updateAvailable": "Actualització disponible",
+    "updateVersion": "Versió {{version}}",
+    "rssRunning": "RSS de cross-seed en execució",
+    "rssEnabled": "RSS de cross-seed activat",
+    "scanRunning": "Exploració en curs",
+    "logout": "Tanca la sessió",
+    "version": "Versió {{version}}",
+    "viewOnGitHub": "Mostra-ho a GitHub"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Cancel·la",
+    "close": "Tanca",
+    "create": "Crea",
+    "scrollToTop": "Vés a dalt de tot",
+    "search": "Cerca",
+    "select": "Selecciona",
+    "copyValue": "Copia {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Entesos"
+  },
+  "placeholders": {
+    "search": "Cerca...",
+    "selectItems": "Selecciona elements..."
+  },
+  "feedback": {
+    "noResultsFound": "No s'ha trobat cap resultat.",
+    "copied": "S'ha copiat {{label}} al porta-retalls",
+    "copyFailed": "No s'ha pogut copiar al porta-retalls"
+  },
+  "errors": {
+    "unknown": "Error desconegut",
+    "httpStatus": "Error HTTP! Estat: {{status}}",
+    "httpStatusHtml": "Error HTTP! Estat: {{status}} (el servidor ha retornat una pàgina d'error HTML)",
+    "ssoHtmlResponse": "S'ha rebut una resposta HTML en lloc de JSON de l'API. Si ets darrere d'un servidor intermediari SSO (Cloudflare Access, Pangolin, etc.), prova d'actualitzar la pàgina o de tornar a obrir l'URL en una pestanya nova.",
+    "torrentFileDownloadFailed": "No s'ha pogut baixar el fitxer torrent: {{status}}",
+    "altSpeedToggle": "No s'han pogut canviar els límits de velocitat alternatius: {{message}}",
+    "altSpeedToggleHidden": "No s'han pogut canviar els límits de velocitat alternatius. El mode incògnit n’amaga la causa."
+  },
+  "status": {
+    "disabled": "Desactivat",
+    "notContacted": "No contactat",
+    "working": "Funcionant",
+    "updating": "S'està actualitzant",
+    "error": "Error",
+    "unknown": "Desconegut",
+    "unavailable": "No disponible",
+    "trackerError": "Error del tracker",
+    "unreachable": "Inaccessible"
+  },
+  "contentTypeLabels": {
+    "movie": "Pel·lícula",
+    "tv": "TV",
+    "music": "Música",
+    "audiobook": "Audiollibre",
+    "book": "Llibre",
+    "comic": "Còmic",
+    "game": "Joc",
+    "app": "Aplicació",
+    "adult": "Adults",
+    "unknown": "Desconegut"
+  },
+  "themeToggle": {
+    "changeTheme": "Canvia el tema",
+    "appearance": "Aspecte",
+    "mode": "Mode",
+    "light": "Clar",
+    "dark": "Fosc",
+    "system": "Sistema",
+    "theme": "Tema",
+    "switchedToMode": "S'ha canviat al mode {{mode}}",
+    "switchedToTheme": "S'ha canviat al tema {{theme}}",
+    "switchedToThemeVariation": "S'ha canviat al tema {{theme}} ({{variation}})",
+    "premiumThemeError": "Aquest tema necessita una llicència. Obre Configuració → Temes per activar-ne una."
+  },
+  "updateBanner": {
+    "updateAvailable": "Actualització disponible",
+    "versionAvailable": "La versió {{version}} ja està disponible",
+    "dismiss": "Descarta"
+  },
+  "systemNotice": {
+    "needsAttention": "Requereix atenció",
+    "since": "Des de {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Ves a la solució",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Enregistrament aturat",
+        "title": "Enregistrament aturat",
+        "effect": "qui no pot escriure l'historial de transferències. Ho torna a provar a la propera escriptura.",
+        "fix": "Assegura't que el disc té espai lliure i que qui pot escriure el fitxer de la base de dades.",
+        "menuFix": "Allibera espai de disc per a la base de dades"
+      },
+      "shrink_failed": {
+        "short": "La reducció ha fallat",
+        "title": "La reducció ha fallat",
+        "effect": "qui no ha pogut reduir el fitxer de la base de dades. La base de dades no ha canviat i qui funciona com sempre.",
+        "fix": "El registre de qui té els detalls.",
+        "menuFix": "Llegeix el registre de qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "El disc té massa poc espai lliure. Una reducció necessita fins a dues vegades la mida del fitxer de la base de dades. Allibera espai al disc i torna-ho a provar.",
+            "menuFix": "Allibera espai i torna-ho a provar"
+          },
+          "locked": {
+            "fix": "Un altre programa tenia obert el fitxer de la base de dades. Atura aquest programa, per exemple una eina de còpia de seguretat o un visor de bases de dades, i torna-ho a provar.",
+            "menuFix": "Atura l'altre programa i torna-ho a provar"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Poc espai al disc",
+        "title": "Poc espai al disc",
+        "effect": "El disc de la base de dades de qui té poc espai lliure. Quan el disc és ple, totes les escriptures de qui fallen.",
+        "fix": "Allibera espai al disc, redueix «Conserva el detall diari durant» o elimina l'historial antic a la configuració d'Estadístiques.",
+        "menuFix": "Allibera espai de disc per a la base de dades",
+        "action": "Obre la configuració d'Estadístiques"
+      },
+      "redacted_key_rejected": {
+        "short": "Clau de Redacted rebutjada",
+        "title": "Redacted ha rebutjat la clau API",
+        "effect": "Redacted ha rebutjat l'última cerca. qui el torna a consultar a la cerca següent.",
+        "fix": "Si la clau és incorrecta, crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Redacted i enganxa-la a la configuració Gazelle (OPS/RED) de qui. Si Redacted ha bloquejat la IP de qui, una clau nova no ajuda: contacta amb l'equip de Redacted.",
+        "menuFix": "Enganxa una clau nova a la configuració",
+        "action": "Obre la configuració Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Clau de Orpheus rebutjada",
+        "title": "Orpheus ha rebutjat la clau API",
+        "effect": "Orpheus ha rebutjat l'última cerca. qui el torna a consultar a la cerca següent.",
+        "fix": "Si la clau és incorrecta, crea una clau API amb el permís «Torrents» a la configuració del teu perfil de Orpheus i enganxa-la a la configuració Gazelle (OPS/RED) de qui. Si Orpheus ha bloquejat la IP de qui, una clau nova no ajuda: contacta amb l'equip de Orpheus.",
+        "menuFix": "Enganxa una clau nova a la configuració",
+        "action": "Obre la configuració Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Programació de l'exploració bloquejada",
+        "title": "La programació de l'exploració de la biblioteca no es pot executar",
+        "effect": "qui no pot iniciar l'execució programada de l'exploració de la biblioteca. Ho torna a provar cada hora.",
+        "fix": "Comprova la configuració de l'exploració de la biblioteca. qui ho torna a provar cada hora.",
+        "menuFix": "Comprova la configuració de l'exploració",
+        "action": "Obre la configuració de l'exploració de la biblioteca",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab està desactivat a la configuració de l'exploració de la biblioteca, i no hi ha cap clau API de RED ni d'OPS. Activa Torznab, o afegeix una clau de RED o d'OPS a la configuració Gazelle (OPS/RED). qui ho torna a provar cada hora.",
+            "menuFix": "Activa Torznab, o afegeix una clau de RED o d'OPS"
+          },
+          "no_indexer": {
+            "fix": "No hi ha cap indexador activat. Activa un indexador Torznab, o afegeix una clau de RED o d'OPS a la configuració Gazelle (OPS/RED). qui ho torna a provar cada hora.",
+            "menuFix": "Activa un indexador"
+          },
+          "instance_missing": {
+            "fix": "La instància de la configuració desada de l'exploració de la biblioteca no existeix. Tria una instància a la configuració de l'exploració de la biblioteca i desa. qui ho torna a provar cada hora.",
+            "menuFix": "Tria una instància i desa"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "Torna-ho a provar",
+      "dismiss": "Descarta",
+      "openLog": "Obre el registre"
+    },
+    "unknown": {
+      "short": "Avís del sistema",
+      "title": "Avís del sistema",
+      "effect": "qui ha trobat un error que necessita una acció teva.",
+      "fix": "El registre de qui té els detalls.",
+      "menuFix": "Llegeix el registre de qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Fitxer de la base de dades reduït de {{before}} a {{after}}",
+    "nextStart": "La reducció s'executa en el proper inici de qui",
+    "failed": "No s'ha pogut demanar la reducció"
+  },
+  "pwaUpdate": {
+    "reload": "Recarrega",
+    "waitingDescription": "Recarrega per aplicar la darrera versió de qui.",
+    "activatedTitle": "qui s'ha actualitzat",
+    "activatedDescription": "Recarrega quan et vagi bé per acabar d'instal·lar la darrera versió."
+  },
+  "notFound": {
+    "title": "Ups! T'has perdut dins de l'eixam?",
+    "subtitle": "Sembla que t'has endinsat en terreny desconegut.",
+    "bugReport": "Si creus que això és un error i no pas un enllaç que falta,",
+    "reportTo": "no dubtis a informar-ne al nostre",
+    "githubRepository": "repositori de GitHub",
+    "getBackOnTrack": "Si no, deixa que t'ajudem a tornar al bon camí!",
+    "returnToDashboard": "Torna al tauler"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Registra qui com a gestor dels enllaços magnet",
+    "register": "Registra",
+    "dismiss": "Descarta",
+    "registrationRequested": "S'ha sol·licitat el registre del gestor de magnet",
+    "registrationFailed": "No s'ha pogut registrar el gestor de magnet",
+    "guidance": {
+      "standalone": "Obre qui en una pestanya normal del navegador per fer el registre (l'avís pot aparèixer a la barra d'adreces, que les PWA no mostren).",
+      "chromium": "Chrome sovint ho mostra com una petita icona de gestor de protocols a la barra d'adreces; si no apareix res, activa els gestors de protocols a chrome://settings/handlers.",
+      "default": "Si el navegador t'ho demana, accepta-ho per completar el registre."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "Més informació"
+  },
+  "numberInput": {
+    "unlimited": "Il·limitat"
+  },
+  "dateTime": {
+    "na": "N/D",
+    "justNow": "Ara mateix",
+    "today": "Avui",
+    "yesterday": "Ahir",
+    "past": "fa {{value}}",
+    "future": "d'aquí a {{value}}",
+    "units": {
+      "second_one": "{{count}} segon",
+      "second_other": "{{count}} segons",
+      "minute_one": "{{count}} minut",
+      "minute_other": "{{count}} minuts",
+      "hour_one": "{{count}} hora",
+      "hour_other": "{{count}} hores",
+      "day_one": "{{count}} dia",
+      "day_other": "{{count}} dies",
+      "week_one": "{{count}} setmana",
+      "week_other": "{{count}} setmanes",
+      "month_one": "{{count}} mes",
+      "month_other": "{{count}} mesos",
+      "year_one": "{{count}} any",
+      "year_other": "{{count}} anys"
+    }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
+  "support": {
+    "title": "Fes costat a qui",
+    "description": "Les maneres de donar suport a qui i els seus preus.",
+    "heading": "Ajuda a mantenir qui",
+    "intro": "qui és gratuït i funciona igual tant si pagues com si no. El suport paga el temps i les eines que s'hi dediquen.",
+    "licensed": "Gràcies per la teva llicència dels temes.",
+    "releases_one": "qui ha publicat {{count}} versió en els darrers 12 mesos.",
+    "releases_other": "qui ha publicat {{count}} versions en els darrers 12 mesos.",
+    "releaseMap": "Les darreres 52 setmanes, un quadrat per a cada dia. Un quadrat brillant és un dia amb una versió nova.",
+    "releaseDay": "Un dia amb una versió nova",
+    "plans": {
+      "yearly": "{{price}} l'any",
+      "yearlyNote": "{{price}} al mes, pagament anual",
+      "yearlyNoteWithLicense": "{{price}} al mes, pagament anual. Inclou la llicència dels temes.",
+      "license": "Llicència dels temes, des de {{price}}",
+      "licenseNote": "Tots els temes prèmium actuals i futurs, de per vida",
+      "onePayment": "un sol pagament"
+    },
+    "checkout": "Continua al pagament",
+    "fromPrice": "des de {{price}}",
+    "terms": {
+      "yearly": "Pagues {{price}} avui i després {{price}} cada any fins que cancel·lis.",
+      "license": "Un sol pagament de {{price}} o més, que tries en pagar. Sense subscripció."
+    },
+    "perks": {
+      "yearly": "Els mecenes reben la insígnia Mecenes a qui i el rol de mecenes a Discord. Després del pagament, afegeix la teva clau de mecenes a aquest servidor.",
+      "license": "La llicència desbloqueja els temes prèmium. Després del pagament, afegeix la teva clau de llicència a aquest servidor."
+    },
+    "existing": "Ja ets mecenes?",
+    "addKey": "Afegeix la clau de mecenes",
+    "key": {
+      "help": "La clau de mecenes és a la pàgina de pagament i al correu amb el rebut.",
+      "label": "Clau de mecenes",
+      "submit": "Afegeix la clau",
+      "back": "Enrere"
+    },
+    "ended": "La clau de mecenes d'aquest servidor ja no és vàlida. qui la torna a comprovar cada dia. Si el teu suport ha acabat, conserves la llicència dels temes. Troba'n la clau al <portal>portal de llicències</portal> i afegeix-la a Configuració, a Temes.",
+    "removeKey": "Elimina la clau de mecenes d'aquest servidor",
+    "supporter": {
+      "badge": "Mecenes",
+      "title": "Fas costat a qui",
+      "thanks": "Gràcies. El teu suport paga el temps i les eines que es dediquen a qui.",
+      "detail": "Tens la insígnia Mecenes a qui i el rol de mecenes a Discord. El teu suport també desbloqueja els temes prèmium i inclou una llicència dels temes de per vida. Troba la clau de llicència al <portal>portal de llicències</portal>.",
+      "manage": "Gestiona o cancel·la el suport"
+    },
+    "reminder": {
+      "title_one": "{{count}} dia de qui en aquest servidor",
+      "title_other": "{{count}} dies de qui en aquest servidor",
+      "tooltip": "Comptat en aquest servidor i mai enviat. qui ho demana un cop l'any.",
+      "subtitle": "Fes costat a qui. qui ho demana un cop l'any.",
+      "notNow": "Ara no",
+      "serverDays_one": "Aquest servidor fa {{count}} dia que executa qui. qui ho compta en aquest servidor i no ho envia mai.",
+      "serverDays_other": "Aquest servidor fa {{count}} dies que executa qui. qui ho compta en aquest servidor i no ho envia mai.",
+      "notNowToast": "qui ho tornarà a demanar d'aquí a un any",
+      "dontAskAgain": "No ho tornis a demanar",
+      "offToast": "qui no ho tornarà a demanar",
+      "offToastDescription": "La drecera de suport es manté. Torna a activar el recordatori a Configuració, a Aplicació.",
+      "undo": "Desfés",
+      "hiddenToast": "La drecera de suport està amagada",
+      "hiddenToastDescription": "qui no ho tornarà a demanar. Recupera la drecera a Configuració, a Aplicació.",
+      "notForYou": "No és per a tu? <reminder>Desactiva el recordatori anual</reminder> o <heart>amaga el cor</heart>. La configuració els recupera tots dos.",
+      "notForYouHeart": "No és per a tu? <heart>Amaga el cor</heart>. La configuració el recupera."
+    }
+  },
+  "labels": {
+    "path": "Camí",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "Aquesta secció no s'ha pogut carregar.",
+    "retry": "Torna-ho a provar",
+    "edit": "Edita",
+    "moreActions": "Més accions",
+    "enabled": "Activat",
+    "clearSelection": "Esborra la selecció"
+  }
+}

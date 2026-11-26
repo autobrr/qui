@@ -1,0 +1,43 @@
+import Details from "@theme/Details";
+
+<Details summary="Default ignores">
+Orphan scan skips common OS and NAS metadata, recycle bin, snapshot, and Kubernetes volume-internal entries. Matching is case-insensitive.
+
+**Ignored files (exact names)**
+- `.DS_Store`
+- `.directory`
+- `desktop.ini`
+- `Thumbs.db`
+
+**Ignored files (name prefixes)**
+- `.fuse*` (for example `.fuse_hidden*`)
+- `.nfs*`
+- `._*`
+- `.goutputstream-*`
+- `.#*`
+- `~$*`
+
+**Ignored files (name suffixes)**
+- `*.parts` (qBittorrent partial download files)
+- `*.!qB` (qBittorrent incomplete download files)
+
+**Ignored directories (exact names)**
+- `.AppleDB`
+- `.AppleDouble`
+- `.TemporaryItems`
+- `.Trashes`
+- `.Recycle.Bin`
+- `.recycle`
+- `.snapshot`
+- `.snapshots`
+- `.zfs`
+- `@eaDir`
+- `$RECYCLE.BIN`
+- `#recycle`
+- `lost+found`
+- `System Volume Information`
+
+**Ignored directories (name prefixes)**
+- `.Trash-*`
+- `..*` (Kubernetes internals like `..data` and timestamp dirs)
+</Details>

@@ -1,0 +1,727 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/automations"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
+)
+
+type AutomationHandler struct {
+	store                *models.AutomationStore
+	activityStore        *models.AutomationActivityStore
+	instanceStore        *models.InstanceStore
+	externalProgramStore *models.ExternalProgramStore
+	service              *automations.Service
+	routes               *models.CrossSeedRouteStore
+}
+
+func NewAutomationHandler(store *models.AutomationStore, activityStore *models.AutomationActivityStore, instanceStore *models.InstanceStore, externalProgramStore *models.ExternalProgramStore, service *automations.Service) *AutomationHandler {
+	return &AutomationHandler{
+		store:                store,
+		activityStore:        activityStore,
+		instanceStore:        instanceStore,
+		externalProgramStore: externalProgramStore,
+		service:              service,
+	}
+}
+
+func (h *AutomationHandler) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	if routes != nil {
+		h.routes = routes.CrossSeedRouteStore
+	}
+}
+
+type AutomationPayload struct {
+	Name            string                   `json:"name" doc:"Rule name. Required."`
+	TrackerPattern  string                   `json:"trackerPattern" doc:"Tracker domains that the rule applies to, separated by commas. '*' matches all trackers. 'tracker.example.com' matches one domain, '*.example.com' its subdomains, and '.example.com' the domain and its subdomains. A leading '!' excludes a domain."`
+	TrackerDomains  []string                 `json:"trackerDomains" doc:"-"`
+	Enabled         *bool                    `json:"enabled" doc:"Whether the rule runs. Import always sets it to 'false'. Edit as JSON keeps the current value."`
+	DryRun          *bool                    `json:"dryRun" doc:"When 'true', the rule logs what it would do and changes nothing. Default 'false'."`
+	Notify          *bool                    `json:"notify" doc:"When 'true', qui sends a notification when the rule acts. Default 'true'."`
+	SortOrder       *int                     `json:"sortOrder" doc:"Position of the rule in the list. Import puts the rule at the end. Edit as JSON keeps the current value."`
+	IntervalSeconds *int                     `json:"intervalSeconds,omitempty" doc:"How often the rule runs, in seconds. At least '60'. Default '900' (15 minutes)."`
+	Conditions      *models.ActionConditions `json:"conditions" doc:"The actions of the rule, each with its condition. All running actions must have the same condition, or qui refuses to save the rule. An action runs when its 'enabled' is 'true', and 'autoManagement' runs whenever it is present. Required."`
+	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty" doc:"Where the 'FREE_SPACE' condition field reads free space. Default: the free space that qBittorrent reports."`
+	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty" doc:"The order in which the rule processes torrents. Default: oldest first."`
+	PreviewLimit    *int                     `json:"previewLimit" doc:"-"`
+	PreviewOffset   *int                     `json:"previewOffset" doc:"-"`
+	PreviewView     string                   `json:"previewView,omitempty" doc:"-"`
+}
+
+type AutomationDryRunResult struct {
+	Status      string                       `json:"status"`
+	ActivityIDs []int                        `json:"activityIds,omitempty"`
+	Activities  []*models.AutomationActivity `json:"activities,omitempty"`
+}
+
+func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
+	trackerPattern := p.TrackerPattern
+	if strings.TrimSpace(trackerPattern) == "" {
+		trackerPattern = strings.Join(models.SanitizeCommaSeparatedStringSlice(p.TrackerDomains), ",")
+	}
+
+	automation := &models.Automation{
+		ID:              id,
+		InstanceID:      instanceID,
+		Name:            p.Name,
+		TrackerPattern:  trackerPattern,
+		Conditions:      p.Conditions,
+		FreeSpaceSource: p.FreeSpaceSource,
+		SortingConfig:   p.SortingConfig,
+		Enabled:         true,
+		DryRun:          false,
+		Notify:          true,
+		IntervalSeconds: p.IntervalSeconds,
+	}
+	if p.Enabled != nil {
+		automation.Enabled = *p.Enabled
+	}
+	if p.DryRun != nil {
+		automation.DryRun = *p.DryRun
+	}
+	if p.Notify != nil {
+		automation.Notify = *p.Notify
+	}
+	if p.SortOrder != nil {
+		automation.SortOrder = *p.SortOrder
+	}
+	return automation
+}
+
+func (h *AutomationHandler) List(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	automations, err := h.store.ListByInstance(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to list automations")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automations")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, automations)
+}
+
+func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil, true)
+	if payload == nil {
+		RespondError(w, status, msg)
+		return
+	}
+
+	automation, err := h.store.Create(r.Context(), payload.toModel(instanceID, 0))
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to create automation")
+		RespondError(w, http.StatusInternalServerError, "Failed to create automation")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, automation)
+}
+
+func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	ruleIDStr := chi.URLParam(r, "ruleID")
+	ruleID, err := strconv.Atoi(ruleIDStr)
+	if err != nil || ruleID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid automation ID")
+		return
+	}
+
+	existing, err := h.store.Get(r.Context(), instanceID, ruleID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Automation not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to get automation for update")
+		RespondError(w, http.StatusInternalServerError, "Failed to update automation")
+		return
+	}
+
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, existing, true)
+	if payload == nil {
+		RespondError(w, status, msg)
+		return
+	}
+
+	automation, err := h.store.Update(r.Context(), payload.toModel(instanceID, ruleID))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("automation not found for update")
+			RespondError(w, http.StatusNotFound, "Automation not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to update automation")
+		RespondError(w, http.StatusInternalServerError, "Failed to update automation")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, automation)
+}
+
+func (h *AutomationHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	ruleIDStr := chi.URLParam(r, "ruleID")
+	ruleID, err := strconv.Atoi(ruleIDStr)
+	if err != nil || ruleID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid automation ID")
+		return
+	}
+
+	if err := h.store.Delete(r.Context(), instanceID, ruleID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Automation not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to delete automation")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete automation")
+		return
+	}
+
+	RespondJSON(w, http.StatusNoContent, nil)
+}
+
+func (h *AutomationHandler) Reorder(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	var payload struct {
+		OrderedIDs []int `json:"orderedIds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || len(payload.OrderedIDs) == 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if err := h.store.Reorder(r.Context(), instanceID, payload.OrderedIDs); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to reorder automations")
+		RespondError(w, http.StatusInternalServerError, "Failed to reorder automations")
+		return
+	}
+
+	RespondJSON(w, http.StatusNoContent, nil)
+}
+
+func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	rules, err := h.store.ListByInstance(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to list rules for manual apply")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
+		return
+	}
+	rules = slices.DeleteFunc(rules, func(rule *models.Automation) bool { return !rule.Enabled })
+	if !h.canReachExportTargets(w, r, rules...) {
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
+		return
+	}
+
+	err = h.service.ApplyOnceForInstance(r.Context(), instanceID)
+	if errors.Is(err, automations.ErrRunInProgress) {
+		RespondError(w, http.StatusConflict, "A run is in progress. Try again in a moment.")
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: manual apply failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply automations")
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
+}
+
+func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	ruleID, err := strconv.Atoi(chi.URLParam(r, "ruleID"))
+	if err != nil || ruleID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid automation ID")
+		return
+	}
+
+	rule, err := h.store.Get(r.Context(), instanceID, ruleID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			RespondError(w, http.StatusNotFound, "Automation not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("failed to get automation for manual run")
+		RespondError(w, http.StatusInternalServerError, "Failed to run automation")
+		return
+	}
+	if !h.canReachExportTargets(w, r, rule) {
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
+		return
+	}
+
+	activities, err := h.service.ApplyRuleNow(r.Context(), instanceID, rule)
+	if errors.Is(err, automations.ErrRunInProgress) {
+		RespondError(w, http.StatusConflict, "A run is in progress. Try again in a moment.")
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Int("automationID", ruleID).Msg("automations: manual run failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to run automation")
+		return
+	}
+
+	status := "applied"
+	if rule.DryRun {
+		status = "dry-run-completed"
+	}
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+		Status:      status,
+		ActivityIDs: activityIDs(activities),
+		Activities:  activities,
+	})
+}
+
+func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	payload, status, msg := h.decodeAndCheckPayload(r, instanceID, nil, false)
+	if payload == nil {
+		RespondError(w, status, msg)
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
+		return
+	}
+
+	automation := payload.toModel(instanceID, 0)
+	automation.Enabled = true
+	automation.DryRun = true
+
+	activities, err := h.service.ApplyRuleDryRun(r.Context(), instanceID, automation)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: manual dry-run failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to run dry-run")
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+		Status:      "dry-run-completed",
+		ActivityIDs: activityIDs(activities),
+		Activities:  activities,
+	})
+}
+
+func (h *AutomationHandler) canReachExportTargets(w http.ResponseWriter, r *http.Request, rules ...*models.Automation) bool {
+	for _, rule := range rules {
+		if status, message := h.reachTargets(r, rule.Conditions); status != 0 {
+			RespondError(w, status, message)
+			return false
+		}
+	}
+	return true
+}
+
+func (h *AutomationHandler) reachTargets(r *http.Request, conditions *models.ActionConditions) (int, string) {
+	targets := targetInstances(conditions)
+	if transfer := conditions.TransferToInstance; transfer != nil && transfer.Enabled && h.routes != nil {
+		route, err := h.routes.Get(r.Context(), transfer.TargetInstanceID)
+		if err != nil {
+			log.Error().Err(err).Int("targetInstanceID", transfer.TargetInstanceID).Msg("automations: failed to read the cross-seed route of the Transfer target")
+			return http.StatusInternalServerError, "Failed to validate target instance"
+		}
+		if route != nil {
+			targets = append(targets, route.CrossSeedInstanceID)
+		}
+	}
+	for _, target := range targets {
+		if !middleware.ReachesInstance(r, target) {
+			return http.StatusForbidden, middleware.CannotReachInstance(target)
+		}
+	}
+	return 0, ""
+}
+
+func targetInstances(conditions *models.ActionConditions) []int {
+	var targets []int
+	if export := conditions.ExportToInstance; export != nil && export.Enabled {
+		targets = append(targets, export.TargetInstanceID)
+	}
+	if transfer := conditions.TransferToInstance; transfer != nil && transfer.Enabled {
+		targets = append(targets, transfer.TargetInstanceID)
+	}
+	return targets
+}
+
+func activityIDs(activities []*models.AutomationActivity) []int {
+	ids := make([]int, 0, len(activities))
+	for _, activity := range activities {
+		if activity == nil || activity.ID <= 0 {
+			continue
+		}
+		ids = append(ids, activity.ID)
+	}
+	return ids
+}
+
+func parseInstanceID(w http.ResponseWriter, r *http.Request) (int, error) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return 0, fmt.Errorf("invalid instance ID: %s", instanceIDStr)
+	}
+	return instanceID, nil
+}
+
+func (h *AutomationHandler) decodeAndCheckPayload(r *http.Request, instanceID int, stored *models.Automation, saves bool) (*AutomationPayload, int, string) {
+	ctx := r.Context()
+	var instance *models.Instance
+	if h.instanceStore != nil {
+		var err error
+		instance, err = h.instanceStore.Get(ctx, instanceID)
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			return nil, http.StatusNotFound, "Instance not found"
+		}
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get instance for validation")
+			return nil, http.StatusInternalServerError, "Failed to validate automation"
+		}
+	}
+
+	payload, err := decodeAutomationPayload(r.Body, instanceID, instance, stored, saves)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: invalid rule payload")
+		return nil, http.StatusBadRequest, err.Error()
+	}
+
+	if status, message := h.reachTargets(r, payload.Conditions); status != 0 {
+		return nil, status, message
+	}
+	for _, target := range targetInstances(payload.Conditions) {
+		if h.instanceStore == nil {
+			return nil, http.StatusInternalServerError, "Instance store not configured"
+		}
+		if _, err := h.instanceStore.Get(ctx, target); err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				return nil, http.StatusBadRequest, "Target instance not found"
+			}
+			return nil, http.StatusInternalServerError, "Failed to validate target instance"
+		}
+	}
+
+	if program := payload.Conditions.ExternalProgram; program != nil && program.Enabled && program.ProgramID > 0 {
+		if h.externalProgramStore == nil {
+			log.Warn().Msg("automations: external program store is nil, skipping program existence check")
+			return nil, http.StatusServiceUnavailable, "External program service not available"
+		}
+		if _, err := h.externalProgramStore.GetByID(ctx, program.ProgramID); err != nil {
+			if errors.Is(err, models.ErrExternalProgramNotFound) {
+				return nil, http.StatusBadRequest, "Referenced external program does not exist"
+			}
+			return nil, http.StatusInternalServerError, "Failed to verify external program"
+		}
+	}
+
+	return payload, 0, ""
+}
+
+func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	limit := 100
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			if parsed > 1000 {
+				parsed = 1000
+			}
+			limit = parsed
+		}
+	}
+
+	if h.activityStore == nil {
+		RespondJSON(w, http.StatusOK, []*models.AutomationActivity{})
+		return
+	}
+
+	activities, err := h.activityStore.ListByInstance(r.Context(), instanceID, limit)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to list automation activity")
+		RespondError(w, http.StatusInternalServerError, "Failed to load activity")
+		return
+	}
+
+	if activities == nil {
+		activities = []*models.AutomationActivity{}
+	}
+
+	RespondJSON(w, http.StatusOK, activities)
+}
+
+func (h *AutomationHandler) GetActivityRun(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	activityIDStr := chi.URLParam(r, "activityId")
+	activityID, err := strconv.Atoi(activityIDStr)
+	if err != nil || activityID <= 0 {
+		RespondError(w, http.StatusBadRequest, "Invalid activity ID")
+		return
+	}
+
+	limit := 200
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			if parsed > 1000 {
+				parsed = 1000
+			}
+			limit = parsed
+		}
+	}
+
+	offset := 0
+	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
+		if parsed, err := strconv.Atoi(offsetStr); err == nil && parsed > 0 {
+			offset = parsed
+		}
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusNotFound, "Run details not available (in-memory only)")
+		return
+	}
+
+	run, err := h.service.GetActivityRun(instanceID, activityID, limit, offset)
+	if errors.Is(err, automations.ErrActivityRunNotFound) {
+		RespondError(w, http.StatusNotFound, "Run details not available (in-memory only)")
+		return
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Int("activityID", activityID).Msg("failed to load activity run details")
+		RespondError(w, http.StatusInternalServerError, "Failed to load run details")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, run)
+}
+
+func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	olderThanDays := 7
+	if olderThanStr := r.URL.Query().Get("older_than"); olderThanStr != "" {
+		if parsed, err := strconv.Atoi(olderThanStr); err == nil && parsed >= 0 {
+			olderThanDays = parsed
+		}
+	}
+
+	if h.activityStore == nil {
+		RespondJSON(w, http.StatusOK, map[string]int64{"deleted": 0})
+		return
+	}
+
+	deleted, err := h.activityStore.DeleteOlderThan(r.Context(), instanceID, olderThanDays)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Int("olderThanDays", olderThanDays).Msg("failed to delete automation activity")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete activity")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
+}
+
+type previewActionType int
+
+const (
+	previewActionNone previewActionType = iota
+	previewActionDelete
+	previewActionCategory
+	previewActionTag
+	previewActionBoth
+)
+
+func detectPreviewAction(conditions *models.ActionConditions) previewActionType {
+	hasDelete := conditions != nil && conditions.Delete != nil && conditions.Delete.Enabled
+	hasCategory := conditions != nil && conditions.Category != nil && conditions.Category.Enabled
+	hasTag := false
+	for _, tagAction := range conditions.TagActions() {
+		if tagAction != nil && tagAction.Enabled {
+			hasTag = true
+			break
+		}
+	}
+
+	switch {
+	case hasDelete && hasCategory:
+		return previewActionBoth
+	case hasCategory:
+		return previewActionCategory
+	case hasDelete:
+		return previewActionDelete
+	case hasTag:
+		return previewActionTag
+	default:
+		return previewActionNone
+	}
+}
+
+func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := parseInstanceID(w, r)
+	if err != nil {
+		return
+	}
+
+	var payload AutomationPayload
+	if err = json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to decode preview payload")
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
+		return
+	}
+
+	action := detectPreviewAction(payload.Conditions)
+	switch action {
+	case previewActionBoth:
+		RespondError(w, http.StatusBadRequest, "Cannot preview rule with both delete and category actions enabled")
+		return
+	case previewActionNone:
+		RespondError(w, http.StatusBadRequest, "Preview requires a delete, category, or tag action to be enabled")
+		return
+	case previewActionDelete, previewActionCategory, previewActionTag:
+	}
+
+	automation := payload.toModel(instanceID, 0)
+	previewLimit, previewOffset := payload.previewPagination()
+
+	if action == previewActionCategory {
+		h.handleCategoryPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
+		return
+	}
+
+	if action == previewActionTag {
+		h.handleTagPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
+		return
+	}
+
+	h.handleDeletePreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset, payload.PreviewView)
+}
+
+func (p *AutomationPayload) previewPagination() (limit, offset int) {
+	if p.PreviewLimit != nil {
+		limit = *p.PreviewLimit
+	}
+	if p.PreviewOffset != nil {
+		offset = *p.PreviewOffset
+	}
+	return
+}
+
+func (h *AutomationHandler) handleCategoryPreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int) {
+	result, err := h.service.PreviewCategoryRule(ctx, instanceID, automation, limit, offset)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview category rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
+		return
+	}
+	RespondJSON(w, http.StatusOK, result)
+}
+
+func (h *AutomationHandler) handleTagPreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int) {
+	result, err := h.service.PreviewTagRule(ctx, instanceID, automation, limit, offset)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview tag rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
+		return
+	}
+	RespondJSON(w, http.StatusOK, result)
+}
+
+func (h *AutomationHandler) handleDeletePreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int, previewView string) {
+	if previewView == "" {
+		previewView = "needed"
+	}
+	result, err := h.service.PreviewDeleteRule(ctx, instanceID, automation, limit, offset, previewView)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview delete rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
+		return
+	}
+	RespondJSON(w, http.StatusOK, result)
+}
+
+func (h *AutomationHandler) ValidateRegex(w http.ResponseWriter, r *http.Request) {
+	var payload AutomationPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Msg("automations: failed to decode validate-regex payload")
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	validationErrors := automations.ConditionRegexErrors(payload.Conditions)
+
+	RespondJSON(w, http.StatusOK, map[string]any{
+		"valid":  len(validationErrors) == 0,
+		"errors": validationErrors,
+	})
+}

@@ -1,0 +1,1333 @@
+{
+  "title": "設定",
+  "description": "管理您的應用偏好和安全設定",
+  "tabs": {
+    "application": "應用",
+    "instances": "實例",
+    "indexers": "索引器",
+    "searchCache": "搜尋快取",
+    "integrations": "整合",
+    "clientProxy": "用戶端代理",
+    "apiKeys": "API 金鑰",
+    "externalPrograms": "外部程式",
+    "shares": "共享",
+    "notifications": "通知",
+    "dateTime": "時間與語言",
+    "displayProfiles": "顯示設定檔",
+    "statistics": "統計",
+    "trackers": "Tracker 自訂",
+    "premiumThemes": "主題",
+    "security": "安全",
+    "logs": "日誌"
+  },
+  "nav": {
+    "general": "一般",
+    "connections": "連線",
+    "access": "存取"
+  },
+  "language": {
+    "cardTitle": "語言",
+    "cardDescription": "選擇您偏好的顯示語言"
+  },
+  "changePassword": {
+    "currentPassword": "目前密碼",
+    "newPassword": "新密碼",
+    "confirmPassword": "確認新密碼",
+    "submit": "修改密碼",
+    "toasts": {
+      "success": "密碼修改成功",
+      "error": "密碼修改失敗，請檢查目前密碼。"
+    },
+    "validation": {
+      "currentRequired": "目前密碼為必填項",
+      "newRequired": "新密碼為必填項",
+      "minLength": "密碼至少需要 8 個字元",
+      "confirmRequired": "請確認密碼",
+      "mismatch": "兩次輸入的密碼不一致"
+    },
+    "newPasswordHint": "至少 8 個字元。"
+  },
+  "instances": {
+    "title": "實例",
+    "description": "管理您的 qBittorrent 連線設定",
+    "addButton": "新增實例",
+    "titleBarSpeeds": {
+      "label": "在分頁標題中顯示傳輸速度"
+    },
+    "browserTab": {
+      "title": "瀏覽器分頁"
+    },
+    "icons": {
+      "title": "實例圖示",
+      "description": "選擇實例在側邊欄和選單中的顯示方式。"
+    }
+  },
+  "integrations": {
+    "title": "Sonarr 和 Radarr",
+    "description": "cross-seed 會在此查詢 IMDb、TMDb 和 TVDb ID，以取得更精確的配對。"
+  },
+  "clientApiKeys": {
+    "cardTitle": "用戶端代理金鑰",
+    "cardDescription": "讓 autobrr 等應用程式透過 qui 存取 qBittorrent 的金鑰。",
+    "createButton": "建立金鑰",
+    "unknownError": "發生了未知錯誤",
+    "instanceDeleted": "實例已刪除",
+    "idLabel": "ID：{{id}}",
+    "labels": {
+      "created": "建立時間：",
+      "lastUsed": "最後使用：",
+      "showHost": "顯示主機",
+      "hideHost": "隱藏主機"
+    },
+    "createDialog": {
+      "title": "新建代理金鑰",
+      "description": "此金鑰只能存取您選擇的 qBittorrent 實例。",
+      "clientNameLabel": "用戶端名稱",
+      "clientNamePlaceholder": "例如：autobrr、tqm、sonarr、radarr、cross-seed",
+      "instanceLabel": "qBittorrent 實例",
+      "instancePlaceholder": "選擇一個實例"
+    },
+    "newKey": {
+      "title": "已為 {{name}} 建立金鑰",
+      "warning": "請立即複製代理 URL。qui 只顯示一次。",
+      "proxyUrl": "代理 URL",
+      "showProxyUrl": "顯示代理 URL",
+      "hideProxyUrl": "隱藏代理 URL",
+      "done": "完成"
+    },
+    "deleteDialog": {
+      "title": "刪除金鑰？",
+      "description": "{{name}} 將無法再透過 qui 存取 qBittorrent。此操作無法復原。",
+      "delete": "刪除"
+    },
+    "toasts": {
+      "created": "用戶端 API 金鑰建立成功",
+      "createFailed": "建立用戶端 API 金鑰失敗",
+      "deleted": "用戶端 API 金鑰已刪除",
+      "deleteFailed": "刪除用戶端 API 金鑰失敗：{{error}}"
+    },
+    "emptyTitle": "尚無金鑰",
+    "emptyDescription": "為每個與 qBittorrent 通訊的應用程式建立一個金鑰。",
+    "lastUsed": "最後使用：{{date}}",
+    "neverUsed": "從未使用",
+    "validation": {
+      "clientNameRequired": "用戶端名稱為必填項",
+      "selectInstance": "請選擇一個 qBittorrent 實例"
+    },
+    "created": "建立時間：{{date}}"
+  },
+  "apiKeys": {
+    "cardTitle": "API 金鑰",
+    "loadingAuthMode": "正在載入認證模式...",
+    "authDisabledTitle": "內建認證已停用，API 金鑰不可用",
+    "authDisabledDescription": "透過反向代理和 CIDR 允許清單的請求可以直接使用 qui API。",
+    "cardDescription": "管理用於外部存取的 API 金鑰",
+    "apiDocs": "API 文件",
+    "description": "API 金鑰允許外部應用程式存取您的 qBittorrent 實例。",
+    "createButton": "建立 API 金鑰",
+    "editButton": "編輯 {{name}}",
+    "deleteButton": "刪除 {{name}}",
+    "loading": "正在載入 API 金鑰...",
+    "empty": "尚未建立任何 API 金鑰",
+    "createDialog": {
+      "title": "建立 API 金鑰",
+      "description": "為金鑰命名，並只選擇它需要的存取權限。",
+      "nameLabel": "名稱",
+      "namePlaceholder": "例如：自動化指令碼",
+      "nameRequired": "名稱為必填項",
+      "submit": "建立 API 金鑰",
+      "creating": "建立中..."
+    },
+    "editDialog": {
+      "title": "編輯 API 金鑰",
+      "description": "變更從此金鑰的下一個請求起生效。qui 不會再次顯示金鑰本身。",
+      "submit": "儲存變更",
+      "saving": "正在儲存..."
+    },
+    "templates": {
+      "title": "範本",
+      "help": "將下方權限替換為該工具所需的權限，並在需要時清除實例限制。之後您仍可更改任意核取方塊。",
+      "pick": "選擇範本",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "輔種與季包 Webhook（不用於下載用戶端）"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "實例清單與傳輸總量（需 dashbrr 0.5.0 或更高版本）"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "qui 小工具。僅在小工具設定了 instance 時，才將金鑰限制到該實例"
+        },
+        "arrDirScan": {
+          "name": "Sonarr、Radarr、Lidarr、Readarr",
+          "description": "僅用於目錄掃描器 Webhook；下載用戶端請使用用戶端代理"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "從瀏覽器新增種子的瀏覽器擴充功能"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension（輔種）",
+          "description": "新增種子、手動輔種配對與季包組裝"
+        }
+      }
+    },
+    "permissions": {
+      "title": "權限",
+      "help": "寫入包含讀取和執行。執行不包含讀取，因為設定中保存著憑證。",
+      "required": "請至少選擇一項權限。",
+      "access": "存取",
+      "allAreas": "全部區域",
+      "allAreasExcept": "除{{areas}}外的全部區域",
+      "refusedByLimit": "輔種和目錄掃描器拒絕帶實例限制的金鑰，因此 qui 不會儲存這些權限。",
+      "entry": "{{area}}：{{level}}",
+      "showByArea": "依區域顯示 {{name}} 的存取權限",
+      "partialArea": "{{area}}（僅{{levels}}）",
+      "legend": {
+        "title": "每個權限區域一個方塊：",
+        "none": "無權限"
+      },
+      "levels": {
+        "read": "讀取",
+        "run": "執行",
+        "write": "寫入"
+      },
+      "areas": {
+        "instances": "實例",
+        "torrents": "種子",
+        "crossSeed": "輔種",
+        "dirScan": "目錄掃描器",
+        "automations": "自動化",
+        "rss": "RSS",
+        "backups": "備份",
+        "orphanScan": "孤立項目掃描",
+        "externalPrograms": "外部程式",
+        "indexers": "索引器",
+        "arr": "Arr",
+        "notifications": "通知",
+        "settings": "設定",
+        "logs": "日誌",
+        "system": "系統"
+      }
+    },
+    "instanceLimit": {
+      "title": "實例限制",
+      "help": "選擇此金鑰可以存取的實例。不選擇表示所有實例，包括之後新增的實例。",
+      "reaches": "可存取",
+      "all": "所有實例",
+      "only": "僅 {{instances}}",
+      "none": "無實例。此限制只包含已刪除的實例。",
+      "deleted": "已刪除的實例 {{id}}"
+    },
+    "newKey": {
+      "label": "您的新 API 金鑰",
+      "warning": "請立即儲存此金鑰。之後將無法再次檢視。",
+      "done": "完成",
+      "apiKey": "API 金鑰"
+    },
+    "deleteDialog": {
+      "title": "刪除 API 金鑰？",
+      "description": "此操作無法復原。使用此金鑰的所有應用程式將無法存取。",
+      "cancel": "取消",
+      "delete": "刪除"
+    },
+    "toasts": {
+      "created": "API 金鑰建立成功",
+      "createFailed": "建立 API 金鑰失敗",
+      "deleted": "API 金鑰已刪除",
+      "deleteFailed": "刪除 API 金鑰失敗",
+      "updated": "API 金鑰更新成功",
+      "updateFailed": "更新 API 金鑰失敗"
+    }
+  },
+  "externalPrograms": {
+    "cardTitle": "外部程式",
+    "cardDescription": "配置可從 Torrent 右鍵選單執行的外部程式或指令碼",
+    "createButton": "新增程式",
+    "createTitle": "新增外部程式",
+    "createDescription": "配置一個可從 Torrent 右鍵選單執行的外部程式或指令碼。",
+    "unknownError": "未知錯誤",
+    "editTitle": "編輯外部程式",
+    "deleteTitle": "刪除外部程式",
+    "delete": "刪除",
+    "deleteConflictIntro": "此程式正被以下自動化規則使用：",
+    "deleteConflictDescription": "如果繼續，外部程式操作將從這些自動化規則中移除。",
+    "deleteDescription": "確定要刪除「{{name}}」嗎？此操作無法復原。",
+    "deleteAnyway": "仍然刪除",
+    "nameLabel": "名稱",
+    "namePlaceholder": "我的外部程式",
+    "pathLabel": "程式路徑",
+    "pathPlaceholder": "/usr/bin/my-script.sh or C:\\Scripts\\my-script.bat",
+    "argumentsLabel": "參數範本",
+    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
+    "availablePlaceholders": "可用佔位符",
+    "pathMappings": "路徑對應",
+    "remotePathPlaceholder": "/mnt/remote-storage",
+    "localPathPlaceholder": "/home/user/mounts/remote",
+    "removePathMapping": "移除路徑對應",
+    "addPathMapping": "新增路徑對應",
+    "pathMappingsDescription": "路徑對應將遠端路徑轉換為本機掛載點。當在本機 qui 伺服器上執行外部程式而 qBittorrent 在遠端時非常有用。路徑按最長字首優先匹配。請使用與遠端 qBittorrent 實例相同的路徑分隔符風格（Linux 使用 /，Windows 使用 \\）。",
+    "launchInTerminal": "在終端視窗中啟動",
+    "launchInTerminalDescription": "啟用後，程式將在新的終端視窗中開啟。對於 GUI 應用程式或不需要終端輸出的程式，請停用此選項。",
+    "enableProgram": "已啟用",
+    "toasts": {
+      "created": "外部程式建立成功",
+      "createFailed": "建立外部程式失敗：{{error}}",
+      "updated": "外部程式更新成功",
+      "updateFailed": "更新外部程式失敗：{{error}}",
+      "deleted": "外部程式已刪除",
+      "deleteFailed": "刪除外部程式失敗：{{error}}"
+    },
+    "validation": {
+      "nameRequired": "程式名稱為必填項",
+      "pathRequired": "程式路徑為必填項"
+    },
+    "placeholders": {
+      "hash": "Torrent 雜湊值",
+      "name": "Torrent 名稱",
+      "savePath": "儲存路徑",
+      "contentPath": "內容路徑",
+      "category": "分類",
+      "tags": "標籤（逗號分隔）",
+      "state": "Torrent 狀態",
+      "size": "大小（位元組）",
+      "progress": "進度（0-1）",
+      "comment": "Torrent 備註"
+    },
+    "remotePath": "遠端路徑",
+    "localPath": "本機路徑",
+    "save": "儲存",
+    "emptyTitle": "沒有外部程式",
+    "emptyDescription": "新增程式或指令碼，即可從種子的右鍵選單中執行。",
+    "pathMappingsCount_other": "{{count}} 條路徑對應"
+  },
+  "notifications": {
+    "cardTitle": "通知",
+    "cardDescription": "透過任何 Shoutrrr 支援的服務傳送警報和狀態更新",
+    "addButton": "新增目標",
+    "allEvents": "除系統通知外的全部事件",
+    "groups": {
+      "torrent": "種子",
+      "maintenance": "維護",
+      "crossSeed": "輔種",
+      "automations": "自動化",
+      "other": "其他"
+    },
+    "form": {
+      "name": "名稱",
+      "namePlaceholder": "我的 Discord",
+      "url": "Shoutrrr URL",
+      "urlPlaceholder": "discord://token@id or notifiarrapi://apikey",
+      "urlDescriptionPrefix": "可使用任何 Shoutrrr 支援的 URL 方案。Notifiarr API 使用",
+      "urlDescriptionSuffix": "Discord webhook URL 會自動轉換為",
+      "examples": {
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
+      },
+      "enabled": "已啟用",
+      "events": "事件",
+      "allEvents": "全部事件",
+      "selectGroup": "全部{{group}}事件"
+    },
+    "dialog": {
+      "newTitle": "新建通知目標",
+      "newDescription": "配置 qui 應將警報和狀態更新傳送到何處。",
+      "editTitle": "編輯通知目標",
+      "editDescription": "更新此目標的投遞設定。",
+      "deleteTitle": "刪除通知目標？",
+      "deleteDescription": "這將移除 {{name}}。如有需要，可以稍後重新新增。",
+      "save": "儲存",
+      "delete": "刪除"
+    },
+    "validation": {
+      "nameRequired": "名稱為必填項",
+      "urlRequired": "通知 URL 為必填項",
+      "selectEvent": "請至少選擇一個事件"
+    },
+    "toasts": {
+      "created": "通知目標建立成功",
+      "createFailed": "建立通知目標失敗",
+      "updated": "通知目標更新成功",
+      "updateFailed": "更新通知目標失敗",
+      "deleted": "通知目標已刪除",
+      "deleteFailed": "刪除通知目標失敗",
+      "testSent": "測試通知傳送成功",
+      "testFailed": "傳送測試通知失敗"
+    },
+    "emptyTitle": "尚無通知目標",
+    "emptyDescription": "新增一個目標，即可透過 Discord、Telegram、Notifiarr 或其他 Shoutrrr 服務接收提醒。",
+    "eventSummary": "{{total}} 個事件中的 {{selected}} 個",
+    "actions": {
+      "sendTest": "傳送測試"
+    }
+  },
+  "dateTime": {
+    "cardTitle": "日期和時間",
+    "cardDescription": "配置時區、日期格式和時間顯示偏好",
+    "timezone": "時區",
+    "detected": "已檢測",
+    "regions": {
+      "UTC": "UTC",
+      "Americas": "美洲",
+      "Europe": "歐洲",
+      "Asia": "亞洲",
+      "Africa": "非洲",
+      "Oceania": "大洋洲"
+    },
+    "use12Hour": "使用 12 小時制（AM/PM）",
+    "dateFormat": "日期格式",
+    "isoFormat": "ISO 8601（YYYY-MM-DD）",
+    "usFormat": "美國格式（MM/DD/YYYY）",
+    "euFormat": "歐洲格式（DD/MM/YYYY）",
+    "relativeFormat": "相對（例如：「2 小時前」）",
+    "preview": "預覽",
+    "previewDescription": "日期和時間將以此方式在應用中顯示"
+  },
+  "statistics": {
+    "cardTitle": "統計",
+    "cardDescription": "qui 會在資料庫中記錄每個種子的上傳與下載。這些設定適用於所有實例。",
+    "recording": {
+      "label": "記錄傳輸歷史",
+      "description": "關閉時，qui 不記錄任何內容，並保留已儲存的歷史。關閉的期間會成為記錄空缺。"
+    },
+    "retention": {
+      "label": "保留每日詳情",
+      "description": "超過此時間後，qui 會將每小時的合計合併為天，並將每個種子的每日位元組合併為每年一列。合計維持不變。選擇較短的時間後，qui 會在下一次讀取時合併較早的詳情，且無法復原。",
+      "days90": "90 天",
+      "days400": "400 天",
+      "forever": "永久"
+    },
+    "size": {
+      "label": "歷史大小"
+    },
+    "deleteHistory": {
+      "label": "刪除歷史",
+      "description": "刪除一個實例或所有實例的傳輸歷史。刪除後無法復原。",
+      "instance": "實例",
+      "allInstances": "所有實例",
+      "unnamedInstance": "實例 {{id}}",
+      "everything": "全部",
+      "before": "某日期之前的全部",
+      "date": "日期",
+      "button": "刪除歷史",
+      "confirmTitle": "刪除歷史？",
+      "confirmEverything": "qui 將刪除 {{name}} 的全部歷史。記錄將以新的基準重新開始。此操作無法復原。",
+      "confirmBefore": "qui 將刪除 {{name}} 在 {{date}} 之前的歷史。如果記錄在該日期之前開始，首次記錄之前的位元組也會刪除，「自…起記錄」會改為該日期。此操作無法復原。",
+      "sqliteSpace": "資料庫檔案大小不變。SQLite 會將可用空間重新用於新的歷史。",
+      "postgresSpace": "刪除所有實例的全部歷史會立即將空間歸還給磁碟。其他刪除之後，Postgres 會將可用空間重新用於新的歷史。",
+      "confirm": "刪除",
+      "deleted": "歷史已刪除",
+      "failed": "刪除歷史失敗",
+      "shrink": {
+        "label": "同時壓縮資料庫檔案",
+        "restart": "qui 會重新啟動並縮小檔案，以便取回磁碟空間。qui 會短暫無法使用。",
+        "nextStart": "在此安裝方式下，qui 無法自行重新啟動。壓縮將在 qui 下次啟動時執行。",
+        "tooLittleSpace": "磁碟可用空間為 {{free}}，壓縮最多需要 {{need}}。不勾選此項是安全的：SQLite 會將閒置空間重新用於新的歷史記錄。",
+        "manualDocs": "手動壓縮檔案"
+      }
+    },
+    "toasts": {
+      "saved": "統計設定已儲存",
+      "saveFailed": "無法儲存統計設定"
+    }
+  },
+  "security": {
+    "changePassword": {
+      "title": "修改密碼",
+      "description": "更新您的帳戶密碼"
+    },
+    "browserIntegration": {
+      "title": "瀏覽器整合",
+      "registerDescription": "將 qui 註冊為瀏覽器的磁力連結處理程式。這允許您直接在 qui 中開啟磁力連結。",
+      "registerButton": "註冊為處理程式",
+      "toasts": {
+        "requested": "已請求註冊磁力連結處理程式",
+        "failed": "註冊磁力連結處理程式失敗"
+      }
+    }
+  },
+  "logs": {
+    "description": "檢視即時日誌並配置日誌設定",
+    "configuration": {
+      "title": "日誌設定",
+      "description": "調整日誌級別、輸出路徑和輪轉設定。",
+      "level": "日誌級別",
+      "levelPlaceholder": "選擇日誌級別",
+      "path": "日誌檔案路徑",
+      "pathPlaceholder": "留空則僅輸出到 stdout",
+      "maxSize": "最大大小（MB）",
+      "maxBackups": "最大備份數",
+      "saveSettings": "儲存設定",
+      "lockedByEnv": "由環境變數設定",
+      "lockedByEmptyEnv": "由空的環境變數設定",
+      "configFile": "設定檔"
+    },
+    "viewer": {
+      "connected": "已連線",
+      "searchPlaceholder": "搜尋日誌...",
+      "allLevels": "所有級別",
+      "all": "全部",
+      "none": "無",
+      "levelCount_other": "{{count}} 個級別",
+      "mutedCount_other": "{{count}} 個已靜音",
+      "mutedMessages": "已靜音訊息",
+      "clearAll": "清除全部",
+      "clear": "清除",
+      "noEntriesMatch": "沒有條目匹配目前篩選條件",
+      "waiting": "等待日誌條目...",
+      "showing": "顯示 {{shown}} / {{total}} 條（最多 {{max}} 條，{{mode}}）",
+      "maxLive": "即時最大值",
+      "maxPaused": "暫停時最大值",
+      "oldestEntriesDropped": "· 最早的條目已丟棄",
+      "muteSimilarEntries": "靜音類似條目",
+      "title": "即時日誌",
+      "description": "qui 寫入新條目時會立即顯示。",
+      "pause": "暫停",
+      "follow": "跟隨",
+      "connecting": "正在連線…",
+      "reconnecting": "連線已中斷。正在重新連線…",
+      "levels": "級別",
+      "unmute": "取消靜音：{{message}}"
+    },
+    "entryDialog": {
+      "title": "日誌條目",
+      "rawLine": "原始日誌行",
+      "copyRaw": "複製原始內容",
+      "copyJson": "複製 JSON",
+      "mute": "靜音類似條目"
+    },
+    "toasts": {
+      "settingsUpdated": "日誌設定已更新",
+      "settingsFailed": "更新日誌設定失敗",
+      "jsonCopied": "JSON 日誌條目已複製",
+      "rawCopied": "原始日誌條目已複製",
+      "copyFailed": "複製日誌條目失敗"
+    },
+    "files": {
+      "title": "日誌檔案",
+      "toasts": {
+        "downloadFailed": "下載 {{filename}} 失敗"
+      },
+      "description": "目前的日誌檔案及其輪替副本。",
+      "emptyTitle": "沒有日誌檔案",
+      "emptyDescription": "設定日誌檔案路徑，即可將日誌儲存到磁碟。",
+      "download": "下載"
+    },
+    "validation": {
+      "maxSize": "請輸入 1 或更大的數",
+      "maxBackups": "請輸入 0 或更大的數"
+    }
+  },
+  "themes": {
+    "selector": {
+      "title": "主題",
+      "loadingDescription": "正在載入可用主題...",
+      "description": "點擊主題即可使用。",
+      "verificationUnavailable": "授權驗證不可用。切換到需要授權的主題暫時停用。",
+      "notLoaded": "需要授權的主題未載入",
+      "notLoadedDescription": "執行",
+      "defaultThemeVisit": "由於網址中包含 ?theme=default，qui 在本次造訪中顯示預設主題。選擇一個主題即可結束。",
+      "search": "搜尋主題",
+      "filterLabel": "篩選主題",
+      "noMatch": "沒有符合「{{query}}」的主題。",
+      "needsLicense": "需要授權",
+      "lockedCount_other": "{{count}} 個主題需要授權。",
+      "showAll_other": "顯示全部 {{count}} 個主題",
+      "showFewer": "顯示較少主題",
+      "variationCount_other": "{{count}} 種色彩變化"
+    },
+    "current": {
+      "label": "使用中",
+      "colors": "色彩變化"
+    },
+    "groups": {
+      "all": "全部",
+      "free": "免費",
+      "licensed": "需授權",
+      "custom": "自訂"
+    },
+    "menu": {
+      "button": "選擇選單主題",
+      "title": "選擇選單主題",
+      "description": "選擇主題選單（頂端列與手機底部列）中列出的主題。使用中的主題一律在選單中。",
+      "groupCount": "{{shown}}/{{total}}",
+      "groupsLocked": "清除搜尋後才能使用群組核取方塊。",
+      "inUse": "使用中",
+      "summary": "選單中有 {{shown}}/{{total}} 個主題",
+      "reset": "恢復預設值",
+      "undo": "復原重設",
+      "done": "完成"
+    },
+    "toasts": {
+      "premiumRequired": "需要授權",
+      "premiumRequiredDescription": "新增有效的授權以解鎖所有主題。"
+    },
+    "license": {
+      "loadingTitle": "授權管理",
+      "loadingDescription": "正在載入主題授權...",
+      "managementTitle": "授權管理",
+      "managementDescription": "管理您的主題授權",
+      "providers": {
+        "licensePortal": "授權門戶"
+      },
+      "status": {
+        "unlockTitle": "解鎖所有主題",
+        "unlockDescription": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
+        "activeTitle": "授權已啟用",
+        "activeDescription": "您可以使用所有目前和未來的主題",
+        "supporterTitle": "主題已解鎖",
+        "supporterDescription": "您的支援會解鎖所有目前和未來的主題，並包含一份終身主題授權。若要在支援結束後保留這些主題，請新增授權門戶中的授權金鑰。",
+        "supportEndedDescription": "您的支援包含一份終身主題授權。請在授權門戶中找到它的金鑰，並在此處新增。",
+        "activationRequiredTitle": "需要啟用授權",
+        "activationRequiredDescription": "您的授權需要在此裝置上啟用",
+        "offlineTitle": "無法連線至授權服務",
+        "offlineDescription": "qui 已有 7 天無法連線至授權服務，因此需要授權的主題已鎖定。qui 會在啟動時及每天檢查一次。授權服務回應後，主題會再次解鎖。您不需要重新啟用授權。"
+      },
+      "portalHelp": {
+        "prefix": "在 DodoPayments 購買，然後在此輸入您的授權金鑰。如果丟失了金鑰，可透過",
+        "suffix": "找回。"
+      },
+      "discord": {
+        "title": "Discord 福利",
+        "prefix": "領取",
+        "afterRole": "身分組以存取私密頻道。",
+        "openDiscord": "開啟 qui Discord",
+        "opensInNewTab": "（在新分頁中開啟）",
+        "afterLink": "，執行",
+        "copyVerifyAriaLabel": "複製 /verify 命令",
+        "copyVerifyTitle": "點選複製",
+        "verifyCommand": "/verify",
+        "afterVerify": "在",
+        "channel": "#qui",
+        "suffix": "，並使用您的授權電子郵件登入。"
+      },
+      "details": {
+        "productAdded": "{{productName}} · 新增於 {{date}}",
+        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}",
+        "statusLabels": {
+          "invalid": "無效",
+          "offline": "離線",
+          "unknown": "未知"
+        }
+      },
+      "invalid": {
+        "dodo": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入，然後在 Machine Instances 中停用一臺不再使用的裝置。"
+      },
+      "errors": {
+        "expired": "您的授權金鑰已過期。",
+        "notActive": "此授權金鑰已不再有效。",
+        "invalid": "此授權金鑰無效。",
+        "notFound": "您輸入的授權金鑰無效。",
+        "databaseCopied": "此授權已在另一臺裝置上啟用。資料庫似乎是複製過來的。",
+        "conditionsMismatch": "授權金鑰不符合要求的條件。",
+        "activationLimit": "已達到授權啟用上限。請前往 <portal>licenses.getqui.com</portal>，使用購買授權時的電子郵件註冊或登入。開啟 Machine Instances，停用一臺不再使用的裝置，然後重試。",
+        "limitReached": "已達到授權啟用上限。",
+        "usageLimit": "已超出授權使用上限。",
+        "unreachable": "無法連線至授權服務。請稍後重試。",
+        "tooManyAttempts": "嘗試次數過多。請稍候再試。",
+        "rateLimited": "請稍候再試。",
+        "generic": "驗證授權金鑰失敗。請重試。",
+        "deleteFailed": "移除授權失敗。請重試。"
+      },
+      "actions": {
+        "addLicense": "新增授權",
+        "remove": "移除",
+        "getPremium": "取得授權",
+        "reactivate": "重新啟用授權",
+        "activating": "啟用中...",
+        "copyLicenseKey": "複製授權金鑰",
+        "activate": "啟用授權",
+        "openDodoCheckout": "開啟 DodoPayments 結帳",
+        "openLicensePortal": "開啟授權門戶"
+      },
+      "deleteDialog": {
+        "title": "移除授權？",
+        "description": "確定要從此裝置移除此授權嗎？qui 也會嘗試釋放遠端啟用名額，但即使該請求失敗，本機移除仍會完成。",
+        "keyLabel": "要移除的授權金鑰：",
+        "recoverPrefix": "如有需要，您可以稍後從"
+      },
+      "addDialog": {
+        "title": "新增授權",
+        "description": "輸入您的授權金鑰以解鎖所有主題。",
+        "label": "授權金鑰",
+        "placeholder": "輸入您的授權金鑰",
+        "recoverKey": "找回金鑰？",
+        "validation": {
+          "required": "授權金鑰為必填項"
+        }
+      },
+      "paymentDialog": {
+        "title": "取得授權",
+        "description": "隨心付費（最低 $9.99）· 終身授權 · 所有主題",
+        "steps": {
+          "choosePaymentMethod": {
+            "title": "選擇支付方式",
+            "cardTitle": "銀行卡或本機支付",
+            "cardDescription": "直接在 DodoPayments 中支付。支付完成後將返回 qui。",
+            "cryptoTitle": "加密貨幣",
+            "cryptoDescription": "加密貨幣支付仍在 DodoPayments 結帳中完成。",
+            "xmrHelp": "XMR 為手動支付：請在 Discord 上聯絡或發郵件至 s0up4200@pm.me。",
+            "cryptoSteps": {
+              "readmePrefix": "使用",
+              "readmeSuffix": "中的位址進行捐贈。",
+              "verifyPrefix": "在",
+              "verifySuffix": "進行驗證以獲取折扣碼。",
+              "applyCode": "開啟 DodoPayments 結帳，在折扣碼處貼上程式碼，然後點選應用。",
+              "completeCheckout": "確認總計為 $0.00，然後完成結帳。"
+            }
+          },
+          "findLicenseKey": {
+            "title": "找到您的授權金鑰",
+            "description": "授權金鑰會在結帳後顯示。您也可以稍後從授權門戶找回。"
+          },
+          "activateLicense": {
+            "title": "啟用您的授權",
+            "description": "從結帳返回後，使用「新增授權」來啟用您的金鑰。"
+          }
+        }
+      },
+      "copiedVerify": "驗證命令已複製",
+      "failedCopyVerify": "複製驗證命令失敗",
+      "toasts": {
+        "activationSuccessPremium": "授權已啟用！感謝您的支援！",
+        "activationSuccessSupporter": "贊助者金鑰已新增。感謝您！",
+        "paymentCompleted": "支付完成。請新增您的授權金鑰以完成設定。",
+        "paymentNotCompleted": "支付未成功完成。",
+        "returnedFromCheckout": "已從結帳返回。準備好後請新增您的授權金鑰。",
+        "keyCopied": "授權金鑰已複製到剪貼簿",
+        "copyFailed": "複製授權金鑰失敗",
+        "removedFromMachine": "授權已從此裝置移除"
+      }
+    },
+    "custom": {
+      "title": "自訂主題",
+      "description": "在主題編輯器中撰寫或貼上主題，或將主題 CSS 檔案放入伺服器上的主題資料夾。",
+      "lockedDescription": "取得授權即可新增您自己的主題：在主題編輯器中撰寫或貼上主題，或將主題 CSS 檔案放入伺服器上的主題資料夾。",
+      "unlockCta": "取得授權",
+      "refresh": "重新整理",
+      "themeCount_other": "{{count}} 個主題",
+      "folderLabel": "主題資料夾",
+      "actionsFor": "{{theme}} 的操作",
+      "parseErrorsTitle": "無效的主題：",
+      "parseErrorsHint": "請編輯檔案進行修正，或將其移除。",
+      "noneFound": "尚無自訂主題。點選新增主題，或將 .css 檔案放入主題資料夾，然後點選重新整理。",
+      "loadError": "無法載入自訂主題。請檢查伺服器日誌和主題資料夾的權限。",
+      "newTheme": "新增主題",
+      "copyPrompt": "複製給 AI 的提示詞",
+      "promptCopied": "提示詞已複製。請將其貼到您的 AI 助理中，並描述您想要的外觀。",
+      "promptCopyFailed": "無法複製提示詞",
+      "edit": "編輯",
+      "remove": "移除",
+      "removeTitle": "要移除 {{theme}} 嗎？",
+      "removeDescription": "qui 將從主題資料夾中刪除此主題的檔案。此操作無法復原。使用此主題的裝置將顯示預設主題。",
+      "removeConfirm": "移除",
+      "removed": "主題已移除",
+      "removeFailed": "無法移除主題：{{message}}",
+      "editLoadFailed": "無法讀取主題檔案：{{message}}",
+      "editor": {
+        "newTitle": "新增主題",
+        "editTitle": "編輯主題",
+        "description": "在此瀏覽器中預覽變更。點選儲存會將主題存放到伺服器。",
+        "name": "名稱",
+        "namePlaceholder": "主題名稱",
+        "savedAs": "檔名：{{filename}}",
+        "css": "CSS",
+        "cssHelp": "貼上或撰寫主題的 CSS。它需要一個用於淺色模式的 :root 區塊和一個用於深色模式的 .dark 區塊，每個區塊至少包含一個設計權杖。「複製給 AI 的提示詞」會向 AI 助理提供完整規則。",
+        "cssPlaceholder": "/* @name: 我的主題 */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "請輸入包含字母或數字的名稱。",
+        "nameRequired": "請輸入名稱，或在 CSS 中新增 @name 行。",
+        "save": "儲存",
+        "saveFailed": "無法儲存主題。",
+        "saved": "主題已儲存",
+        "savedNotLoaded": "主題已儲存，但 qui 無法載入主題清單。請點選主題資料夾旁的重新整理。",
+        "replaceTitle": "要取代此主題嗎？",
+        "replaceDescription": "已存在檔名為 {{filename}} 的自訂主題。要用此主題取代它嗎？",
+        "replace": "取代",
+        "problems": {
+          "missingRoot": "qui 無法使用此 CSS：其中沒有包含設計權杖的 :root 區塊。預覽顯示的是 qui 上次能夠使用的 CSS。",
+          "missingDark": "qui 無法使用此 CSS：其中沒有包含設計權杖的 .dark 區塊。預覽顯示的是 qui 上次能夠使用的 CSS。",
+          "outsideFile": "第 {{line}} 行可能會從其他網站載入檔案。預覽會保留上次有效的 CSS，儲存也會拒絕此 CSS。",
+          "unreadable": "qui 無法讀取第 {{line}} 行：有引號字串或 url() 未關閉。預覽顯示的是 qui 上次能夠使用的 CSS。"
+        },
+        "previewing": "正在此瀏覽器中預覽",
+        "previewWaits": "變更 CSS 後即開始預覽。",
+        "emptyStatus": "貼上或撰寫主題的 CSS 以檢視預覽。"
+      }
+    },
+    "layout": {
+      "title": "主題同步",
+      "mobileSplit": "為行動版面配置使用獨立主題",
+      "mobileSplitHelp": "行動版面配置（寬度小於 768 px 的視窗）與桌面版面配置各自保留自己的主題、模式與變體。此設定適用於所有瀏覽器。",
+      "localOnly": "在此瀏覽器中本機保留主題",
+      "localOnlyHelp": "此瀏覽器不會從伺服器取得主題，也不會將其主題變更傳送到伺服器。此設定僅適用於此瀏覽器。",
+      "changesMobile": "變更行動主題",
+      "changesDesktop": "變更桌面主題",
+      "changesLocal": "僅變更此瀏覽器的主題。",
+      "splitNeedsSync": "若要變更行動版面配置設定，請關閉本機設定。",
+      "saveError": "儲存主題設定失敗",
+      "mobileSplitOffWarning": "關閉此設定會刪除行動主題。"
+    }
+  },
+  "arrInstances": {
+    "addButton": "新增實例",
+    "addDialog": {
+      "title": "新建實例",
+      "description": "cross-seed 用來查詢 ID 的 Sonarr 或 Radarr 伺服器。"
+    },
+    "editDialog": {
+      "title": "編輯實例"
+    },
+    "deleteDialog": {
+      "title": "刪除實例？",
+      "description": "qui 將不再使用 {{name}} 查詢 ID。此操作無法復原。"
+    },
+    "unknownError": "未知錯誤",
+    "actions": {
+      "testConnection": "測試連線",
+      "delete": "刪除",
+      "save": "儲存"
+    },
+    "form": {
+      "type": "類型",
+      "name": "名稱",
+      "namePlaceholder": "我的 {{type}}",
+      "baseUrl": "基礎 URL",
+      "apiKey": "API 金鑰",
+      "apiKeyPlaceholder": "輸入 API 金鑰",
+      "apiKeyPlaceholderEdit": "••••••••",
+      "apiKeyDescription": "在 {{type}} 的 Settings > General 中可找到",
+      "basicAuth": "基本認證",
+      "basicAuthDescription": "對反向代理後的 ARR 使用 HTTP 基本認證。",
+      "basicUsername": "使用者名稱",
+      "basicPassword": "密碼",
+      "basicPasswordKeep": "保持不變即可保留目前密碼。",
+      "priority": "優先順序",
+      "priorityDescription": "優先順序較高的實例將優先查詢",
+      "timeoutSeconds": "逾時時間（秒）",
+      "enabled": "啟用此實例",
+      "types": {
+        "sonarr": "Sonarr（電視劇）",
+        "radarr": "Radarr（電影）",
+        "sonarrShort": "Sonarr",
+        "radarrShort": "Radarr"
+      },
+      "apiKeyKeep": "留空以保留目前金鑰。"
+    },
+    "validation": {
+      "nameRequired": "名稱為必填項",
+      "baseUrlRequired": "基礎 URL 為必填項",
+      "apiKeyRequired": "API 金鑰為必填項",
+      "baseUrlAndApiKeyRequired": "測試連線需要基礎 URL 和 API 金鑰",
+      "basicUsernameRequired": "基本認證使用者名稱為必填項",
+      "basicPasswordRequired": "測試連線需要基本認證密碼",
+      "basicPasswordRequiredSubmit": "基本認證密碼為必填項",
+      "basicPasswordKeepOrEnter": "請輸入新的基本認證密碼或保留現有密碼"
+    },
+    "toasts": {
+      "created": "ARR 實例建立成功",
+      "createFailed": "建立 ARR 實例失敗：{{error}}",
+      "updated": "ARR 實例更新成功",
+      "updateFailed": "更新 ARR 實例失敗：{{error}}",
+      "deleted": "ARR 實例已刪除",
+      "deleteFailed": "刪除 ARR 實例失敗：{{error}}",
+      "connectionSuccess": "連線成功",
+      "connectionFailed": "連線失敗：{{error}}",
+      "testFailed": "測試連線失敗：{{error}}"
+    },
+    "status": {
+      "connected": "已連線",
+      "failed": "測試失敗"
+    },
+    "tested": "上次測試：{{date}}",
+    "emptyTitle": "尚無 Sonarr 或 Radarr",
+    "emptyDescription": "新增一個，讓 cross-seed 可以依 ID 搜尋。"
+  },
+  "indexers": {
+    "title": "Torznab 索引器",
+    "deleteIndexer": "刪除索引器",
+    "deleteIndexerDescription": "確定要刪除「{{name}}」嗎？此操作無法復原。",
+    "deleteAllIndexers": "刪除所有索引器",
+    "deleteAllDescription": "確定要刪除全部 {{count}} 個索引器嗎？此操作無法復原。",
+    "toast": {
+      "deletedSuccess": "索引器已刪除",
+      "deleteFailed": "刪除索引器失敗",
+      "deleteAllSuccess": "已刪除全部 {{count}} 個索引器",
+      "deleteAllPartial": "已刪除 {{success}} 個索引器，{{failed}} 個失敗：{{names}}",
+      "testSuccess": "連線測試成功",
+      "noIndexersToTest": "沒有可測試的索引器",
+      "testing": "正在測試 {{count}} 個索引器...",
+      "testAllSuccess": "全部 {{count}} 個索引器測試成功",
+      "testAllPartial": "{{success}} 個透過，{{failed}} 個失敗",
+      "failedIndexers": "失敗的索引器：{{names}}",
+      "capsSynced": "已從後端同步功能資訊",
+      "failedToSyncCaps": "同步功能資訊失敗",
+      "testFailed": "連線測試失敗"
+    },
+    "priorityLabels": {
+      "interactive": "互動式",
+      "rss": "RSS",
+      "completion": "補全",
+      "background": "後臺"
+    },
+    "contentTypeLabels": {
+      "movie": "電影",
+      "tv": "劇集",
+      "tv_daily": "每日劇集",
+      "xxx": "成人",
+      "music": "音樂",
+      "audiobook": "有聲書",
+      "book": "書籍",
+      "comic": "漫畫",
+      "magazine": "雜誌",
+      "education": "教育",
+      "app": "應用",
+      "game": "遊戲",
+      "unknown": "未知"
+    },
+    "page": {
+      "summary": "{{enabled}} 個已啟用，{{capabilities}} 個有功能資訊",
+      "description": "管理由 Jackett、Prowlarr 或原生 Tracker 端點驅動的 Torznab 索引器",
+      "deleteAll": "刪除全部",
+      "addMenu": {
+        "discover": "在 Jackett 或 Prowlarr 中探索",
+        "manual": "透過 URL 新增一個"
+      }
+    },
+    "dialog": {
+      "addTitle": "新增索引器",
+      "editTitle": "編輯索引器",
+      "addDescription": "新增一個新的 Torznab 索引器用於 cross-seed 發現",
+      "editDescription": "更新索引器設定",
+      "labels": {
+        "name": "名稱",
+        "backend": "後端",
+        "baseUrl": "基礎 URL",
+        "indexerId": "索引器 ID",
+        "apiKey": "API 金鑰",
+        "priority": "優先順序",
+        "timeout": "逾時時間（秒）",
+        "enabled": "已啟用",
+        "basicAuth": "基本認證",
+        "basicAuthDescription": "對反向代理後的 Torznab 使用 HTTP 基本認證。",
+        "basicUsername": "基本認證使用者名稱",
+        "basicPassword": "基本認證密碼"
+      },
+      "placeholders": {
+        "name": "我的索引器",
+        "selectBackend": "選擇後端",
+        "apiKeyEdit": "留空以保留現有值",
+        "apiKeyCreate": "您的 API 金鑰",
+        "indexerIdProwlarr": "Prowlarr 索引器 ID（例如：1）",
+        "indexerIdJackett": "可選的 Jackett 索引器 ID（例如：aither）",
+        "username": "使用者名稱",
+        "password": "密碼"
+      },
+      "hints": {
+        "indexerIdProwlarr": "輸入 Prowlarr 索引器詳情頁中的數字 ID。",
+        "indexerIdJackett": "Jackett 可選。留空則由 qui 自動推導。",
+        "basicPasswordKeep": "保留 <redacted> 以保持現有密碼。"
+      },
+      "backends": {
+        "jackett": "Jackett",
+        "prowlarr": "Prowlarr",
+        "native": "原生 Torznab"
+      },
+      "buttons": {
+        "save": "儲存"
+      },
+      "toast": {
+        "createdSuccess": "索引器建立成功",
+        "createdWithWarnings": "索引器已建立，但有警告：{{warnings}}",
+        "updatedSuccess": "索引器更新成功",
+        "updatedWithWarnings": "索引器已更新，但有警告：{{warnings}}",
+        "failedCreate": "建立索引器失敗",
+        "failedEdit": "編輯索引器失敗",
+        "basicUsernameRequired": "基本認證使用者名稱為必填項",
+        "basicPasswordRequired": "基本認證密碼為必填項",
+        "basicPasswordRequiredOrKeep": "基本認證密碼為必填項（或保留 <redacted>）"
+      },
+      "validation": {
+        "nameRequired": "請輸入名稱。",
+        "baseUrlRequired": "請輸入基礎 URL。",
+        "baseUrlInvalid": "請輸入完整的 URL，例如 {{example}}。",
+        "indexerIdRequired": "請輸入 Prowlarr 索引器 ID。",
+        "apiKeyRequired": "請輸入 API 金鑰。",
+        "priorityInvalid": "請輸入 0 或更大的整數。",
+        "timeoutInvalid": "請輸入 5 到 120 之間的整數。"
+      }
+    },
+    "autodiscovery": {
+      "title": "發現索引器",
+      "descriptionInput": "連線到 Jackett 或 Prowlarr 以發現已配置的索引器",
+      "descriptionSelect": "選擇要匯入的索引器",
+      "labels": {
+        "indexerUrl": "索引器 URL",
+        "apiKey": "API 金鑰",
+        "basicAuth": "基本認證",
+        "basicAuthDescription": "對反向代理後的 Jackett/Prowlarr 使用 HTTP 基本認證。",
+        "basicUsername": "基本認證使用者名稱",
+        "basicPassword": "基本認證密碼"
+      },
+      "placeholders": {
+        "indexerUrl": "http://localhost:9696",
+        "apiKey": "您的索引器 API 金鑰",
+        "username": "使用者名稱",
+        "password": "密碼"
+      },
+      "hints": {
+        "indexerUrl": "Prowlarr 預設為 http://localhost:9696，Jackett 預設為 http://localhost:9117。"
+      },
+      "buttons": {
+        "discover": "發現",
+        "back": "返回",
+        "import": "匯入 {{count}} 個索引器",
+        "importPlural": "匯入 {{count}} 個索引器",
+        "selectAll": "全選",
+        "deselectAll": "取消全選"
+      },
+      "selectionCount": "已選擇 {{selected}} / {{total}}",
+      "noIndexersFound": "未找到索引器",
+      "willUpdate": "將更新",
+      "typeLabel": "類型：",
+      "notConfigured": "未配置",
+      "unknownError": "未知錯誤",
+      "toast": {
+        "urlRequired": "索引器 URL 為必填項",
+        "basicAuthRequired": "基本認證需要使用者名稱和密碼",
+        "discoveredWithExisting": "找到 {{total}} 個索引器（{{existing}} 個已存在）",
+        "discovered": "找到 {{count}} 個索引器",
+        "discoverFailed": "發現索引器失敗：{{error}}",
+        "importSuccess": "成功：{{details}}",
+        "importWithWarnings": "{{details}}（{{warningCount}} 個有警告）",
+        "moreWarnings": "...還有 {{count}} 個警告",
+        "moreErrors": "...還有 {{count}} 個錯誤",
+        "created": "{{count}} 個已建立",
+        "updated": "{{count}} 個已更新",
+        "failed": "{{count}} 個失敗"
+      },
+      "savedConnections": {
+        "title": "已儲存的連線",
+        "description": "使用您之前匯入過的伺服器。API 金鑰儲存在伺服器上。",
+        "manual": "手動輸入",
+        "storedKey": "將使用該伺服器已儲存的 API 金鑰。",
+        "indexerCount_other": "{{count}} 個索引器"
+      }
+    },
+    "table": {
+      "name": "名稱",
+      "backend": "後端",
+      "priority": "優先順序",
+      "status": "狀態",
+      "capabilities": "功能",
+      "working": "正常",
+      "failed": "失敗",
+      "untested": "未測試",
+      "testAll": "全部測試",
+      "clearFilters": "清除篩選",
+      "showingCount": "顯示 {{shown}} / {{total}} 個索引器",
+      "noMatch": "沒有索引器匹配目前篩選條件",
+      "noCapabilities": "無功能資訊",
+      "filterStatus": "狀態",
+      "filterTestStatus": "測試狀態",
+      "filterBackend": "後端",
+      "filterAll": "全部",
+      "filterJackett": "Jackett",
+      "filterProwlarr": "Prowlarr",
+      "filterNative": "原生",
+      "tooltipTest": "測試連線",
+      "tooltipSyncCaps": "同步功能",
+      "tooltipDelete": "刪除",
+      "sortBy": "排序方式",
+      "sortAscending": "升冪",
+      "sortDescending": "降冪",
+      "sortAndFilter": "排序和篩選",
+      "order": "順序",
+      "filterEnabled": "已啟用",
+      "filterDisabled": "已停用"
+    },
+    "activity": {
+      "title": "排程器活動",
+      "running": "執行中",
+      "queued": "排隊中",
+      "rateLimited": "速率受限",
+      "noActiveTasks": "沒有活動任務或速率限制",
+      "andMore": "...還有 {{count}} 個",
+      "workersStatus": "{{used}}/{{total}} 個工作執行緒",
+      "ready": "就緒",
+      "left": "剩餘 {{time}}",
+      "description": "正在執行、在佇列中等待或等待速率限制結束的搜尋。"
+    },
+    "searchHistory": {
+      "title": "搜尋歷史",
+      "searches": "{{count}} 次搜尋",
+      "noSearchesYet": "暫無搜尋記錄",
+      "successful": "{{count}} 次成功",
+      "failed": "{{count}} 次失敗",
+      "source": "來源：{{source}}",
+      "results": "{{count}} 個結果",
+      "detail": {
+        "release": "釋出",
+        "results": "結果",
+        "duration": "耗時",
+        "priority": "優先順序",
+        "crossSeed": "輔種",
+        "added": "已新增 {{count}} 個",
+        "error": "錯誤",
+        "searchParameters": "搜尋參數",
+        "mode": "模式",
+        "type": "類型",
+        "job": "任務 {{id}}",
+        "statusSuccess": "成功",
+        "statusFailed": "失敗",
+        "statusSkipped": "已跳過",
+        "statusRateLimited": "速率受限",
+        "season": "季",
+        "episode": "集",
+        "query": "查詢",
+        "finished": "完成時間"
+      },
+      "description": "qui 最近傳送到索引器的搜尋。",
+      "showAll": "顯示全部（{{count}}）",
+      "showFewer": "收合"
+    },
+    "list": {
+      "testing": "測試中",
+      "priority": "優先順序 {{priority}}",
+      "emptyTitle": "還沒有索引器",
+      "emptyDescription": "從 Jackett 或 Prowlarr 中探索，或手動新增一個。",
+      "capabilities_other": "{{count}} 項功能"
+    }
+  },
+  "gazelle": {
+    "title": "Gazelle（OPS/RED）",
+    "description": "啟用對 Orpheus 和 Redacted 的直接 API 匹配。這與 Torznab 並行執行；OPS/RED Torznab 索引器將被忽略。",
+    "enableMatching": "啟用 Gazelle 匹配",
+    "enableDescription": "應用於所有源種子。如果可能，qui 還會透過 Gazelle 檢查 RED/OPS。",
+    "redactedApiKey": "Redacted API 金鑰",
+    "orpheusApiKey": "Orpheus API 金鑰",
+    "pasteRedKey": "貼上 RED API 金鑰",
+    "pasteOpsKey": "貼上 OPS API 金鑰",
+    "enableToConfigure": "啟用後進行配置",
+    "redDescription": "用於 redacted.sh 查詢。貼上以替換，清空以移除。",
+    "opsDescription": "用於 orpheus.network 查詢。貼上以替換，清空以移除。",
+    "save": "儲存"
+  },
+  "searchCache": {
+    "title": "搜尋快取",
+    "description": "來自 Torznab 索引器的快取搜尋結果。",
+    "refreshStats": "重新整理",
+    "configTitle": "快取配置",
+    "configDescription": "調整搜尋結果的快取時長。",
+    "cacheTTL": "快取 TTL（分鐘）",
+    "saveTTL": "儲存",
+    "ttlHelper": "最低 {{min}} 分鐘。值越高，索引器負載越低。",
+    "entries": "條目",
+    "hitCount": "命中次數",
+    "approxSize": "大致大小",
+    "newestEntry": "最新條目",
+    "lastUsed": "最後使用",
+    "enabled": "已啟用",
+    "disabled": "已停用",
+    "toasts": {
+      "ttlUpdated": "快取 TTL 已更新為 {{minutes}} 分鐘",
+      "ttlUpdateFailed": "更新快取 TTL 失敗"
+    },
+    "validation": {
+      "invalidNumber": "請輸入有效的數字",
+      "ttlMinimum": "TTL 至少為 {{min}} 分鐘"
+    },
+    "status": "狀態"
+  },
+  "application": {
+    "build": {
+      "title": "構建",
+      "description": "版本和構建詳情。",
+      "refresh": "重新整理",
+      "version": "版本",
+      "commit": "提交",
+      "buildDate": "構建日期",
+      "updateStatus": "更新狀態",
+      "statuses": {
+        "disabled": "已停用",
+        "disabledDetail": "更新檢查已停用",
+        "devBuild": "開發版本",
+        "checking": "檢查中...",
+        "checkingDetail": "正在檢查更新",
+        "updateAvailable": "有可用更新",
+        "upToDate": "已是最新",
+        "upToDateDetail": "正在執行最新版本",
+        "notCheckedYet": "尚未檢查",
+        "lastChecked": "上次檢查 {{date}}"
+      }
+    },
+    "support": {
+      "description": "qui 是免費的。贊助者和主題授權支付 qui 的開發工作。",
+      "open": "支援 qui 的方式",
+      "openSupporter": "您的支援",
+      "shortcut": "顯示支援捷徑",
+      "shortcutHelp": "頁首中的愛心，以及手機選單中的「支援 qui」。",
+      "reminder": "每年提醒一次",
+      "reminderDescription": "每年只提醒一次。隱藏支援捷徑時關閉。",
+      "reminderSupporter": "qui 不會提醒贊助者。"
+    },
+    "restart": {
+      "button": "重新啟動",
+      "confirmTitle": "重新啟動 qui？",
+      "confirmDescription": "qui 會像正常停止時一樣關閉，然後重新啟動。正在執行的工作，例如交叉做種搜尋、自動化、備份和孤立檔案掃描，都會停止。qui 恢復後頁面會自動重新載入。",
+      "confirm": "重新啟動",
+      "overlay": {
+        "restartingTitle": "正在重新啟動 qui…",
+        "restartingDetail": "qui 再次回應後頁面會重新載入。",
+        "slowTitle": "qui 尚未回應",
+        "slowDetail": "qui 可能仍在啟動，此頁面會繼續等待。請查看 qui 日誌。如果你變更了連接埠或基礎 URL，請在新位址開啟 qui。"
+      }
+    },
+    "update": {
+      "support": {
+        "checkingTitle": "正在檢查支援情況",
+        "checkingDescription": "正在檢查 qui 是否可以安裝此更新。",
+        "failedTitle": "無法檢查更新支援情況",
+        "failedDescription": "無法檢查是否支援自我更新。",
+        "retryDescription": "安裝更新前，請重試支援檢查。",
+        "retry": "重試"
+      },
+      "unavailable": {
+        "description": "此環境不支援自動安裝。",
+        "nextStep": "如何更新",
+        "guide": "更新指南",
+        "container": {
+          "reason": "qui 在容器中執行。更新透過容器映像提供。",
+          "step": "拉取新的 qui 映像，然後使用現有設定和資料卷重新建立容器。"
+        },
+        "disabled": {
+          "reason": "qui 設定中已停用自我更新。",
+          "step": "使用安裝 qui 時所用的套件管理員或安裝方式進行更新。"
+        },
+        "development": {
+          "reason": "此 qui 組建不是發佈版本。自動安裝需要發佈版本。",
+          "step": "停止 qui，將二進位檔替換為官方發佈版本或新組建，然後重新啟動 qui。"
+        },
+        "directory": {
+          "reason": "qui 無法存取或寫入其二進位檔所在的目錄。",
+          "step": "停止 qui，使用有寫入權限的帳號將二進位檔替換為新版本，然後重新啟動 qui。"
+        }
+      },
+      "button": "安裝更新",
+      "confirmTitle": "安裝更新？",
+      "confirmDescription": "qui 會下載新版本，驗證其簽章，並將目前的二進位檔保留為備份。然後 qui 會重新啟動。qui 恢復後頁面會自動重新載入。",
+      "runningWork": "正在執行的工作，例如交叉做種搜尋、自動化、備份和孤立檔案掃描，都會停止。",
+      "currentVersion": "目前版本",
+      "targetVersion": "新版本",
+      "releaseNotes": "發行說明",
+      "confirm": "安裝更新",
+      "overlay": {
+        "notAppliedTitle": "更新未生效",
+        "notAppliedDetail": "qui 已恢復，但執行的是其他版本。請查看 qui 日誌。",
+        "installedTitle": "qui 已更新",
+        "installedDetail": "重新載入頁面以開啟新版本。",
+        "reload": "重新載入頁面",
+        "noBackup": "qui 已更新，但未保留備份：{{error}}。如需回復，請手動下載舊版本。",
+        "rollbackIntro": "如果新版本無法啟動，請執行此命令，然後再次啟動 qui：",
+        "rollbackLabel": "回復命令",
+        "rollbackDocs": "回復步驟"
+      }
+    },
+    "runtime": {
+      "title": "執行時",
+      "description": "伺服器執行時資訊。",
+      "uptime": "執行時間",
+      "runtime": "執行時",
+      "bindAddress": "繫結位址"
+    },
+    "auth": {
+      "title": "認證",
+      "description": "認證配置。",
+      "currentSessionAuth": "目前工作階段",
+      "yes": "是",
+      "no": "否",
+      "oidcEnabled": "OIDC 已啟用",
+      "builtInLoginEnabled": "內建登入",
+      "oidcIssuerHost": "OIDC 簽發者"
+    },
+    "storage": {
+      "title": "儲存",
+      "description": "資料庫和檔案系統路徑。",
+      "database": "資料庫",
+      "configDir": "配置目錄",
+      "dataDir": "資料目錄"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker 自訂",
+    "cardDescription": "重新命名 Tracker，並將同一 Tracker 的多個網域合併為一個項目。選擇 Tracker 以重新命名或合併。",
+    "loading": "正在載入 Tracker…",
+    "mergedFrom": "合併自：{{domains}}",
+    "original": "原始：{{domain}}",
+    "mergeTooltip": "將選取的 Tracker 合併到此分組",
+    "mergeIntoGroup": "合併到分組",
+    "addToMerge": "新增到合併",
+    "rename": "重新命名",
+    "delete": "刪除",
+    "customizeDialog": {
+      "editTitle": "編輯 Tracker 名稱",
+      "renameTitle": "重新命名 Tracker",
+      "mergeTitle": "合併 Tracker",
+      "editDescription": "更新此 Tracker 的顯示名稱。",
+      "renameDescription": "為此 Tracker 指定自訂顯示名稱。",
+      "mergeDescription": "將這些 Tracker 合併為一個條目並設定自訂名稱。",
+      "displayName": "顯示名稱",
+      "displayNamePlaceholder": "例如 TorrentLeech",
+      "domains": "域名",
+      "selectedTrackers": "已選 Tracker",
+      "primary": "主要",
+      "removeDomain": "移除 {{domain}}",
+      "save": "儲存",
+      "renameAction": "重新命名",
+      "mergeAction": "合併"
+    },
+    "importDialog": {
+      "title": "匯入 Tracker 自訂配置",
+      "description": "貼上 JSON 以匯入 Tracker 自訂配置（重新命名與合併）。",
+      "jsonData": "JSON 資料",
+      "invalidFormat": "格式無效：需要 trackerCustomizations 陣列",
+      "missingDisplayName": "條目無效：缺少 displayName",
+      "invalidDomains": "條目無效：domains 必須是非空陣列",
+      "invalidJson": "JSON 格式無效",
+      "newCount": "{{count}} 個新增",
+      "conflictCount_other": "{{count}} 個衝突",
+      "unchangedCount": "{{count}} 個未變更",
+      "resolveConflicts": "解決衝突",
+      "conflictsWith": "與以下條目衝突：{{name}}",
+      "skip": "跳過",
+      "overwrite": "覆蓋",
+      "importing": "匯入中……",
+      "import": "匯入"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "沒有可匯出的自訂配置",
+      "copiedToClipboard": "已複製到剪貼簿",
+      "failedToCopy": "複製到剪貼簿失敗",
+      "createFailed": "建立 Tracker 自訂配置失敗",
+      "updateFailed": "更新 Tracker 自訂配置失敗",
+      "deleteFailed": "刪除 Tracker 自訂配置失敗",
+      "failedToImport": "匯入失敗：{{names}}",
+      "importedAndSkipped": "已匯入 {{imported}} 項，跳過 {{skipped}} 項",
+      "importedCount_other": "已匯入 {{count}} 項自訂配置",
+      "noCustomizationsImported": "未匯入任何自訂配置"
+    },
+    "cardHelp": "qui 會在所有顯示該 Tracker 的地方使用顯示名稱。",
+    "emptyTitle": "尚無 Tracker",
+    "emptyDescription": "實例中有種子後，Tracker 會顯示在這裡。",
+    "importButton": "匯入",
+    "exportButton": "匯出",
+    "selectionLabel": "已選擇的 Tracker",
+    "selectedCount_other": "已選擇 {{count}} 個",
+    "deleteDialog": {
+      "title": "刪除自訂？",
+      "description": "{{name}} 的 Tracker 將重新顯示其原始網域。此操作無法復原。"
+    }
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "options": {
+    "days": "Jours avant la fin d'un Partage",
+    "daysInvalid": "Saisissez un nombre entier de jours, 1 ou plus.",
+    "endAtFirstDownload": "Terminer au premier téléchargement complet",
+    "endAtFirstDownloadDescription": "Le Partage se termine dès qu'un client possède tous les fichiers.",
+    "firstDownloaderOnly": "Premier téléchargeur uniquement",
+    "firstDownloaderOnlyDescription": "Le tracker donne votre adresse au premier client qui télécharge, et à aucun autre. Cela contrôle qui apprend votre adresse par le tracker, pas qui peut se connecter.",
+    "firstDownloaderOnlyUnavailable": "Indisponible avec un tracker externe : qui ne voit aucune annonce."
+  },
+  "settings": {
+    "title": "Partages",
+    "description": "Un Partage donne les fichiers d'un torrent à quelqu'un dont qui ne gère pas le client. Le tracker de Partage permet à son client de trouver le vôtre.",
+    "loadFailed": "Échec du chargement des paramètres de Partage",
+    "save": "Sauvegarder",
+    "saved": "Paramètres de Partage enregistrés",
+    "saveFailed": "Échec de l'enregistrement des paramètres de Partage",
+    "inUse": {
+      "own": "Les nouveaux Partages utilisent le tracker de qui.",
+      "outside": "Les nouveaux Partages utilisent le tracker externe.",
+      "none": "Aucun tracker n'est défini, donc aucun Partage ne peut démarrer."
+    },
+    "tracker": {
+      "heading": "Tracker de Partage",
+      "own": "Le tracker propre à qui",
+      "ownDescription": "qui n'écoute sur son propre port que pendant qu'un Partage est en cours, et ne répond que pour les Partages actifs.",
+      "outside": "Un tracker externe",
+      "outsideDescription": "Pour un qui sans adresse publique. qui ne voit alors aucune annonce : la liste des adresses et la fin au premier téléchargement fonctionnent au mieux, et le verrouillage n'est pas disponible.",
+      "port": "Port",
+      "publicAddress": "Adresse publique",
+      "publicAddressDescription": "L'URL par laquelle Internet atteint ce port, avec un proxy devant pour le HTTPS. Le .torrent de chaque Partage la contient, donc un changement attend la fin des Partages sur le tracker de qui.",
+      "trustedProxies": "Proxys de confiance",
+      "trustedProxiesDescription": "Indiquez uniquement les adresses ou plages CIDR de vos proxys, une par ligne, et non les réseaux des clients. qui ne lit l'adresse client transmise que depuis ces proxys.",
+      "trackerUrl": "URL du tracker",
+      "trackerUrlDescription": "Une URL d'annonce http, https ou udp.",
+      "publicAddressPlaceholder": "https://share.example.com",
+      "trackerUrlPlaceholder": "udp://tracker.example.org:1337/announce"
+    },
+    "limits": {
+      "heading": "Limites",
+      "maxActive": "Partages actifs",
+      "peersPerShare": "Pairs par Partage"
+    },
+    "defaults": {
+      "heading": "Valeurs par défaut d'un nouveau Partage",
+      "description": "La boîte de dialogue de Partage s'ouvre avec ces valeurs."
+    }
+  },
+  "dialog": {
+    "title": "Partager avec quelqu'un",
+    "description_one": "Donnez les fichiers de {{name}} à quelqu'un dont qui ne gère pas le client.",
+    "description_other": "Donnez les fichiers de {{count}} torrents à quelqu'un dont qui ne gère pas le client. Chaque torrent reçoit son propre Partage.",
+    "cancel": "Annuler",
+    "create": "Créer",
+    "done": "Terminé",
+    "warning": "Votre ami voit l'adresse IP de votre client. Toute personne qui possède le .torrent peut télécharger jusqu'à la fin du Partage.",
+    "refused": "Non partagé",
+    "refusedEntry": "{{name}} : {{reason}}",
+    "tracker": {
+      "label": "Tracker de Partage",
+      "settings": "Paramètres de partage",
+      "own": "Tracker de qui à {{address}}",
+      "outside": "Tracker externe {{url}}"
+    },
+    "result": {
+      "description_one": "Envoyez le .torrent et le message à votre ami dans votre propre messagerie. qui n'héberge aucun lien de téléchargement.",
+      "description_other": "Envoyez chaque .torrent et son message à votre ami dans votre propre messagerie. qui n'héberge aucun lien de téléchargement.",
+      "torrent": ".torrent",
+      "copyMessage": "Copier le message",
+      "copied": "Message copié",
+      "copyFailed": "Échec de la copie du message"
+    }
+  },
+  "message": {
+    "intro": "Je partage « {{name}} » ({{size}}) avec toi. Ouvre le fichier .torrent joint dans un client BitTorrent, comme qBittorrent, Transmission ou Deluge, pour le télécharger directement depuis chez moi. Il ne fonctionnera plus à partir du {{date}}.",
+    "endAtFirstDownload": "Il cesse aussi de fonctionner dès qu'un téléchargement est terminé, alors garde ton client ouvert jusqu'à la fin."
+  },
+  "tab": {
+    "description": "Les torrents que vous donnez à quelqu'un dont qui ne gère pas le client.",
+    "empty": "Aucun Partage pour l'instant.",
+    "endedStay": "Les Partages terminés restent dans la liste pendant 30 jours.",
+    "unknownInstance": "Instance n° {{id}}",
+    "endsAt": "Se termine le {{date}}",
+    "endedAt": "Terminé le {{date}}",
+    "progress": "Téléchargé : {{percent}}",
+    "progressLabel": "Progression du téléchargement",
+    "sent": "Envoyé : {{size}}",
+    "announced": "Adresses qui ont annoncé",
+    "connectedPeers": "Pairs connectés",
+    "noPeers": "Pas encore",
+    "unlock": "Déverrouiller",
+    "stop": "Arrêter",
+    "remove": "Retirer",
+    "state": {
+      "active": "Actif",
+      "ending": "Fin en cours",
+      "ended": "Terminé",
+      "unknown": "Inconnu"
+    },
+    "endReason": {
+      "downloaded": "Le destinataire a les fichiers.",
+      "expired": "Le Partage a expiré.",
+      "stopped": "Arrêté par l'utilisateur.",
+      "torrent_deleted": "Le torrent a été supprimé.",
+      "torrent_moved": "Le torrent a été déplacé.",
+      "files_renamed": "Les fichiers du torrent ont été renommés.",
+      "share_torrent_gone": "Le torrent du Partage n'est plus dans le client."
+    }
+  }
+}

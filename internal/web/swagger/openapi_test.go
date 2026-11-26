@@ -1,0 +1,222 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package swagger
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+func TestOpenAPISpec(t *testing.T) {
+	if len(openapiYAML) == 0 {
+		t.Fatal("OpenAPI spec is empty")
+	}
+
+	var spec map[string]any
+	if err := yaml.Unmarshal(openapiYAML, &spec); err != nil {
+		t.Fatalf("Failed to parse OpenAPI spec: %v", err)
+	}
+
+	if spec["openapi"] == nil {
+		t.Error("Missing 'openapi' field")
+	}
+
+	if spec["info"] == nil {
+		t.Error("Missing 'info' field")
+	}
+
+	if spec["paths"] == nil {
+		t.Error("Missing 'paths' field")
+	}
+
+	paths, ok := spec["paths"].(map[string]any)
+	if !ok {
+		t.Fatal("'paths' is not a map")
+	}
+
+	totalEndpoints := 0
+	for _, pathItem := range paths {
+		if methods, ok := pathItem.(map[string]any); ok {
+			for method := range methods {
+				if method == "get" || method == "post" || method == "put" || method == "delete" || method == "patch" {
+					totalEndpoints++
+				}
+			}
+		}
+	}
+
+	t.Logf("OpenAPI spec documents %d endpoints", totalEndpoints)
+
+	components, ok := spec["components"].(map[string]any)
+	if !ok {
+		t.Fatal("Missing or invalid 'components' section")
+	}
+
+	schemas, ok := components["schemas"].(map[string]any)
+	if !ok {
+		t.Fatal("Missing or invalid 'schemas' section")
+	}
+
+	requiredSchemas := []string{
+		"User",
+		"ApiKey",
+		"Instance",
+		"InstanceCapabilities",
+		"Torrent",
+		"TorrentProperties",
+		"Tracker",
+		"TorrentFile",
+		"Category",
+	}
+
+	for _, schema := range requiredSchemas {
+		if schemas[schema] == nil {
+			t.Errorf("Missing schema: %s", schema)
+		}
+	}
+}
+
+func TestOpenAPISecuritySchemes(t *testing.T) {
+	var spec map[string]any
+	if err := yaml.Unmarshal(openapiYAML, &spec); err != nil {
+		t.Fatalf("Failed to parse OpenAPI spec: %v", err)
+	}
+
+	components, ok := spec["components"].(map[string]any)
+	if !ok {
+		t.Fatal("Missing or invalid 'components' section")
+	}
+
+	securitySchemes, ok := components["securitySchemes"].(map[string]any)
+	if !ok {
+		t.Fatal("Missing or invalid 'securitySchemes' section")
+	}
+
+	requiredSchemes := []string{"ApiKeyAuth", "SessionAuth"}
+	for _, scheme := range requiredSchemes {
+		if securitySchemes[scheme] == nil {
+			t.Errorf("Missing security scheme: %s", scheme)
+		}
+	}
+}
+
+func TestAddTorrentFormFieldsDocumented(t *testing.T) {
+	handlerPath := filepath.Join("..", "..", "api", "handlers", "torrents.go")
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, handlerPath, nil, 0)
+	if err != nil {
+		t.Fatalf("Failed to parse torrents handler: %v", err)
+	}
+
+	handlerFields := make(map[string]bool)
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "AddTorrent" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			index, ok := n.(*ast.IndexExpr)
+			if ok && selectorChain(index.X, "r", "MultipartForm", "File") {
+				arg, ok := index.Index.(*ast.BasicLit)
+				if ok && arg.Kind == token.STRING {
+					field := arg.Value[1 : len(arg.Value)-1]
+					handlerFields[field] = true
+				}
+			}
+
+			call, ok := n.(*ast.CallExpr)
+			if !ok || len(call.Args) != 1 {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "FormValue" {
+				return true
+			}
+			arg, ok := call.Args[0].(*ast.BasicLit)
+			if !ok || arg.Kind != token.STRING {
+				return true
+			}
+			field := arg.Value[1 : len(arg.Value)-1]
+			handlerFields[field] = true
+			return true
+		})
+	}
+	if len(handlerFields) == 0 {
+		t.Fatal("No multipart fields found in AddTorrent handler")
+	}
+
+	var spec map[string]any
+	if err := yaml.Unmarshal(openapiYAML, &spec); err != nil {
+		t.Fatalf("Failed to parse OpenAPI spec: %v", err)
+	}
+
+	asMap := func(v any, path string) map[string]any {
+		t.Helper()
+		m, ok := v.(map[string]any)
+		if !ok {
+			t.Fatalf("Expected map at %s, got %T", path, v)
+		}
+		return m
+	}
+	key := func(m map[string]any, k, path string) any {
+		t.Helper()
+		v, ok := m[k]
+		if !ok {
+			t.Fatalf("Missing key %q at %s", k, path)
+		}
+		return v
+	}
+
+	paths := asMap(spec["paths"], "spec.paths")
+	torrentsPath := asMap(key(paths, "/api/instances/{instanceID}/torrents", "paths"), "paths[torrents]")
+	post := asMap(key(torrentsPath, "post", "torrents"), "torrents.post")
+	reqBody := asMap(key(post, "requestBody", "post"), "post.requestBody")
+	content := asMap(key(reqBody, "content", "requestBody"), "requestBody.content")
+	formData := asMap(key(content, "multipart/form-data", "content"), "content[multipart/form-data]")
+	schema := asMap(key(formData, "schema", "formData"), "formData.schema")
+	properties := asMap(key(schema, "properties", "schema"), "schema.properties")
+
+	specFields := make(map[string]bool)
+	for name := range properties {
+		specFields[name] = true
+	}
+
+	for field := range handlerFields {
+		if !specFields[field] {
+			t.Errorf("Handler reads multipart field %q but OpenAPI spec does not document it", field)
+		}
+	}
+
+	for field := range specFields {
+		if !handlerFields[field] {
+			t.Errorf("OpenAPI spec documents %q but handler does not read it", field)
+		}
+	}
+
+	t.Logf("Handler fields: %d, Spec fields: %d", len(handlerFields), len(specFields))
+}
+
+func selectorChain(expr ast.Expr, parts ...string) bool {
+	if len(parts) == 0 {
+		return false
+	}
+
+	current := expr
+	for i := len(parts) - 1; i > 0; i-- {
+		sel, ok := current.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != parts[i] {
+			return false
+		}
+		current = sel.X
+	}
+
+	ident, ok := current.(*ast.Ident)
+	return ok && ident.Name == parts[0]
+}

@@ -1,0 +1,100 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "@/components/torrents/torrentSortOptions"
+import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
+import { columnLabel } from "@/lib/torrent-table/column-label"
+import type { ColumnOrderState, ColumnVisibilityState } from "@tanstack/react-table"
+import { useCallback, useMemo, useRef } from "react"
+import { useTranslation } from "react-i18next"
+import type { TorrentTable } from "@/components/torrents/tanstackTableFeatures"
+
+export interface UseCompactViewSortParams {
+  table: TorrentTable
+  columnVisibility: ColumnVisibilityState
+  columnOrder: ColumnOrderState
+  activeSortField: string
+  activeSortOrder: "asc" | "desc"
+  setSorting: (sorting: Array<{ id: string; desc: boolean }>) => void
+}
+
+export function useCompactViewSort({
+  table,
+  columnVisibility,
+  columnOrder,
+  activeSortField,
+  activeSortOrder,
+  setSorting,
+}: UseCompactViewSortParams) {
+  const tableRef = useRef(table)
+  tableRef.current = table
+  const { t } = useTranslation("torrents")
+
+  const resolveSortColumnId = useCallback((field: string): string => {
+    const columns = tableRef.current.getAllLeafColumns()
+    const directMatch = columns.find(column => column.id === field)
+    if (directMatch) {
+      return directMatch.id
+    }
+
+    const backendMatch = columns.find(column => getBackendSortField(column.id) === field)
+    if (backendMatch) {
+      return backendMatch.id
+    }
+
+    return field
+  }, [])
+
+  const compactSortOptions = useMemo(() => {
+    const columns = tableRef.current.getAllLeafColumns()
+    const availableFields = new Set<string>()
+
+    for (const column of columns) {
+      availableFields.add(column.id)
+      availableFields.add(getBackendSortField(column.id))
+    }
+
+    return TORRENT_SORT_OPTIONS.filter(option => availableFields.has(option.value))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnVisibility, columnOrder])
+
+  const currentCompactSortLabel = useMemo(() => {
+    const directOption = compactSortOptions.find(option => option.value === activeSortField)
+    if (directOption) {
+      return t(directOption.labelKey)
+    }
+
+    const columns = tableRef.current.getAllLeafColumns()
+    const column = columns.find(column => column.id === activeSortField)
+      ?? columns.find(column => getBackendSortField(column.id) === activeSortField)
+    return column ? columnLabel(column) : activeSortField
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compactSortOptions, activeSortField, columnVisibility, columnOrder, t])
+
+  const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
+    if (activeSortField === value) {
+      return
+    }
+
+    const columnId = resolveSortColumnId(value)
+    const defaultOrder = getDefaultSortOrder(value)
+
+    setSorting([{ id: columnId, desc: defaultOrder === "desc" }])
+  }, [activeSortField, resolveSortColumnId, setSorting])
+
+  const handleCompactSortOrderToggle = useCallback(() => {
+    const columnId = resolveSortColumnId(activeSortField)
+    const nextDesc = activeSortOrder === "asc"
+
+    setSorting([{ id: columnId, desc: nextDesc }])
+  }, [activeSortField, activeSortOrder, resolveSortColumnId, setSorting])
+
+  return {
+    compactSortOptions,
+    currentCompactSortLabel,
+    handleCompactSortFieldChange,
+    handleCompactSortOrderToggle,
+  }
+}

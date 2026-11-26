@@ -1,0 +1,273 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { PathCell } from "@/components/ui/path-cell"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useConfirmOrphanScanDeletion, useOrphanScanRun } from "@/hooks/useOrphanScan"
+import { api } from "@/lib/api"
+import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
+import { formatBytes } from "@/lib/utils"
+import type { OrphanScanFile } from "@/types"
+import { Download, Folder, Loader2, Trash2 } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+interface OrphanScanPreviewDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  instanceId: number
+  runId: number
+}
+
+const PAGE_SIZE = 200
+
+export function OrphanScanPreviewDialog({
+  open,
+  onOpenChange,
+  instanceId,
+  runId,
+}: OrphanScanPreviewDialogProps) {
+  const { t } = useTranslation("instances")
+  const { formatISOTimestamp } = useDateTimeFormatters()
+  const [offset, setOffset] = useState(0)
+  const [files, setFiles] = useState<OrphanScanFile[]>([])
+  const [isExporting, setIsExporting] = useState(false)
+
+  const runQuery = useOrphanScanRun(instanceId, runId, {
+    limit: PAGE_SIZE,
+    offset,
+    enabled: open,
+  })
+
+  const confirmMutation = useConfirmOrphanScanDeletion(instanceId)
+
+  useEffect(() => {
+    const page = runQuery.data?.files
+    if (!page) return
+
+    setFiles((prev) => {
+      const seen = new Set(prev.map((f) => f.id))
+      const next = [...prev]
+      for (const item of page) {
+        if (!seen.has(item.id)) next.push(item)
+      }
+      return next
+    })
+  }, [runQuery.data])
+
+  const run = runQuery.data
+  const totalItems = run?.filesFound ?? 0
+  const deleteUnavailable = run?.filesystemMode === "remote" && !run.identityComplete
+  const hasMore = files.length < totalItems
+
+  const totalSize = useMemo(() => {
+    if (!run) return 0
+    return run.bytesReclaimed || 0
+  }, [run])
+
+  const handleLoadMore = () => {
+    setOffset((prev) => prev + PAGE_SIZE)
+  }
+
+  const handleConfirm = () => {
+    confirmMutation.mutate(runId, {
+      onSuccess: () => {
+        toast.success(t("preferences.orphanScanPreview.toast.deletionStarted"), { description: t("preferences.orphanScanPreview.toast.deletionDescription") })
+        onOpenChange(false)
+      },
+      onError: (error) => {
+        toast.error(t("preferences.orphanScanPreview.toast.deletionFailed"), {
+          description: error instanceof Error ? error.message : "Unknown error",
+        })
+      },
+    })
+  }
+
+  const csvColumns: CsvColumn<OrphanScanFile>[] = [
+    { header: "Path", accessor: f => f.filePath },
+    { header: "Type", accessor: f => f.isAbandonedDir ? "directory" : "file" },
+    { header: "Size", accessor: f => f.isAbandonedDir ? "" : formatBytes(f.fileSize) },
+    { header: "Size (bytes)", accessor: f => f.isAbandonedDir ? "" : f.fileSize },
+    { header: "Modified", accessor: f => f.modifiedAt ?? "" },
+  ]
+
+  const handleExport = async () => {
+    if (!run || totalItems === 0) return
+
+    setIsExporting(true)
+    try {
+      const pageSize = 500
+      const allItems: OrphanScanFile[] = []
+      let exportOffset = 0
+
+      while (allItems.length < totalItems) {
+        const result = await api.getOrphanScanRun(instanceId, runId, {
+          limit: pageSize,
+          offset: exportOffset,
+        })
+        allItems.push(...result.files)
+        exportOffset += pageSize
+        if (result.files.length === 0) break
+      }
+
+      const csv = toCsv(allItems, csvColumns)
+      downloadBlob(csv, `orphan_scan_${runId}.csv`)
+      toast.success(t("preferences.orphanScanPreview.toast.exportedItems", { count: allItems.length }))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("preferences.orphanScanPreview.toast.exportFailed"))
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-4xl max-h-[85dvh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{t("preferences.orphanScanPreview.title")}</DialogTitle>
+          <DialogDescription>
+            {deleteUnavailable ? t("preferences.orphanScanPreview.remoteDescription") : t("preferences.orphanScanPreview.description")}
+          </DialogDescription>
+        </DialogHeader>
+
+        {run && (
+          <div className="text-sm text-muted-foreground">
+            {t("preferences.orphanScanPreview.itemsCount", { count: run.filesFound, size: formatBytes(totalSize) })}
+            {run.truncated && t("preferences.orphanScanPreview.truncated")}
+          </div>
+        )}
+
+        {run?.errorMessage && (
+          <div role="alert" className="shrink-0 max-h-40 overflow-auto rounded-md border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
+            {run.partial && <p className="mb-1 font-medium">{t("preferences.orphanScanOverview.statusPartial")}</p>}
+            <p className="whitespace-pre-wrap break-all">{run.errorMessage}</p>
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-hidden border rounded-lg">
+          <div className="overflow-auto max-h-[50vh]">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="sticky top-0">
+                <tr className="border-b">
+                  <th className="text-left p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.path")}</th>
+                  <th className="text-right p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.size")}</th>
+                  <th className="text-right p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.modified")}</th>
+                  <th className="text-left p-2 font-medium bg-muted whitespace-nowrap">{t("preferences.orphanScanPreview.status")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {files.map((f) => (
+                  <tr key={f.id} className="border-b last:border-0 hover:bg-muted/30">
+                    <td className="p-2 w-full max-w-0">
+                      <div className="flex items-center gap-1.5">
+                        {f.isAbandonedDir && (
+                          <Folder
+                            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                            aria-label={t("preferences.orphanScanPreview.directory")}
+                          />
+                        )}
+                        <PathCell path={f.filePath} />
+                      </div>
+                    </td>
+                    <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
+                      {f.isAbandonedDir ? "-" : formatBytes(f.fileSize)}
+                    </td>
+                    <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
+                      {f.modifiedAt ? formatISOTimestamp(f.modifiedAt) : "-"}
+                    </td>
+                    <td className="p-2">
+                      <div className="text-xs font-mono text-muted-foreground whitespace-nowrap">
+                        {t(`preferences.orphanScanPreview.statusLabels.${f.status}`, f.status)}
+                        {f.errorMessage ? (
+                          <div className="mt-1 text-[11px] text-muted-foreground/80 whitespace-pre-wrap break-all">
+                            {f.errorMessage}
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {runQuery.isLoading && files.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
+                      {t("preferences.orphanScanPreview.loadingFiles")}
+                    </td>
+                  </tr>
+                )}
+                {!runQuery.isLoading && files.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                      {t("preferences.orphanScanPreview.noItems")}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {hasMore && (
+            <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
+              <span>{t("preferences.orphanScanPreview.showing", { shown: files.length, total: totalItems })}</span>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleLoadMore}
+                disabled={runQuery.isFetching}
+              >
+                {runQuery.isFetching && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {t("preferences.orphanScanPreview.loadMore")}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {deleteUnavailable && (
+          <p className="text-sm text-muted-foreground">{t("preferences.orphanScanPreview.remoteDeleteUnavailable")}</p>
+        )}
+
+        <DialogFooter className="mt-4 sm:justify-between">
+          <div>
+            {totalItems > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {t("preferences.orphanScanPreview.exportCSV")}
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              {t("preferences.orphanScanPreview.close")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirm}
+              disabled={confirmMutation.isPending || !run || run.status !== "preview_ready" || deleteUnavailable}
+            >
+              {confirmMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              {t("preferences.orphanScanPreview.deleteItems")}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

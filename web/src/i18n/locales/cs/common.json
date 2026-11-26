@@ -1,0 +1,596 @@
+{
+  "nav": {
+    "dashboard": "Domů",
+    "statistics": "Statistiky",
+    "search": "Hledat",
+    "crossSeed": "Křížové sdílení",
+    "automations": "Automatizace",
+    "transfers": "Přenosy",
+    "transfersQueued_one": "{{count}} položka běží nebo čeká",
+    "transfersQueued_few": "{{count}} položky běží nebo čekají",
+    "transfersQueued_other": "{{count}} položek běží nebo čeká",
+    "backups": "Zálohy",
+    "rss": "RSS",
+    "settings": "Nastavení",
+    "logs": "Logy",
+    "instances": "Instance",
+    "generalSettings": "Obecná nastavení",
+    "manageInstances": "Spravovat instance",
+    "appearance": "Vzhled",
+    "instanceBackups": "Zálohy instance",
+    "backToSite": "Zpět na getqui.com",
+    "docs": "Dokumentace"
+  },
+  "sidebar": {
+    "instances": "Instance",
+    "allInstancesDisabled": "Všechny instance jsou zakázány",
+    "noInstancesConfigured": "Žádné instance nejsou nakonfigurovány",
+    "logout": "Odhlásit se",
+    "version": "Verze {{version}}",
+    "language": "Jazyk",
+    "viewOnGitHub": "Zobrazit na GitHubu",
+    "rssRunning": "RSS křížového sdílení běží",
+    "rssEnabled": "RSS křížového sdílení je zapnuto",
+    "scanRunning": "Scan běží",
+    "collapseToIcons": "Sbalit na ikony",
+    "expandSidebar": "Rozbalit postranní panel",
+    "hideSidebar": "Skrýt postranní panel",
+    "showSidebar": "Zobrazit postranní panel",
+    "keepOpen": "Ponechat postranní panel otevřený",
+    "menu": "Nabídka"
+  },
+  "problemReports": {
+    "reportProblem": "Nahlásit problém",
+    "subtitle": "Vaše hlášení dostanou správci qui.",
+    "textLabel": "Vaše hlášení",
+    "placeholders": {
+      "menu": "Co se stalo a co jste očekávali?",
+      "notice": "Co jste dělali, když se to stalo?",
+      "search": "Jakou shodu jste očekávali a na kterém indexeru?"
+    },
+    "sentWithIt": "Přiloženo k hlášení",
+    "summary_one": "qui {{version}} a {{count}} instance",
+    "summary_few": "qui {{version}} a {{count}} instance",
+    "summary_other": "qui {{version}} a {{count}} instancí",
+    "details": "Podrobnosti",
+    "view": "Zobrazit",
+    "whatGetsSent": "Co se odešle",
+    "whatGetsSentNote": "qui tyto údaje doplní samo. Nic qui neopustí, dokud hlášení neodešlete.",
+    "loadingFacts": "Načítání podrobností...",
+    "factsFailed": "Podrobnosti se nepodařilo načíst: {{message}}",
+    "facts": {
+      "version": "Verze",
+      "system": "Systém",
+      "appContainer": "V kontejneru",
+      "database": "Databáze",
+      "logLevel": "Úroveň logu",
+      "started": "Spuštěno",
+      "experimentalFeatures": "Experimentální",
+      "instance": "Instance {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "neznámá",
+      "states": {
+        "connected": "Připojeno",
+        "offline": "Offline",
+        "disabled": "Vypnuto"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_few": "{{count}} torrenty",
+      "torrentCount_other": "{{count}} torrentů",
+      "notices": "Systémová upozornění",
+      "openCount_one": "{{count}} otevřené",
+      "openCount_few": "{{count}} otevřená",
+      "openCount_other": "{{count}} otevřených",
+      "page": "Stránka",
+      "browser": "Prohlížeč",
+      "screen": "{{width}} × {{height}}, poměr pixelů {{ratio}}",
+      "failedRequests": "Neúspěšné požadavky",
+      "failedCount_one": "{{count}} v této relaci",
+      "failedCount_few": "{{count}} v této relaci",
+      "failedCount_other": "{{count}} v této relaci",
+      "noAnswer": "bez odpovědi",
+      "none": "Žádné"
+    },
+    "logs": {
+      "title": "Logy",
+      "scopeLabel": "Řádky logu k přiložení",
+      "scopes": {
+        "warnings": "Varování a chyby",
+        "all": "Vše nedávné",
+        "none": "Vynechat"
+      },
+      "notes": {
+        "warnings_one": "{{count}} nedávné varování nebo chyba. qui odstraňuje klíče a tajné údaje.",
+        "warnings_few": "{{count}} nedávná varování a chyby. qui odstraňuje klíče a tajné údaje.",
+        "warnings_other": "{{count}} nedávných varování a chyb. qui odstraňuje klíče a tajné údaje.",
+        "all_one": "{{count}} nedávný řádek na úrovni logu {{level}}. qui odstraňuje klíče a tajné údaje.",
+        "all_few": "{{count}} nedávné řádky na úrovni logu {{level}}. qui odstraňuje klíče a tajné údaje.",
+        "all_other": "{{count}} nedávných řádků na úrovni logu {{level}}. qui odstraňuje klíče a tajné údaje.",
+        "none": "K hlášení se nepřiloží žádné řádky logu."
+      },
+      "empty": "Žádné řádky logu.",
+      "debugMissing": "Úroveň logu je {{level}}, takže qui nezapisuje ladicí řádky. Chcete-li je přiložit, nastavte Úroveň logu na DEBUG v Nastavení > Logy, zopakujte problém a nahlaste ho znovu."
+    },
+    "privacy": {
+      "anonymous": "Anonymně: bez jména a účtu. brrbin neukládá IP adresu.",
+      "signedIn": "Správci vidí vaše jméno účtu {{provider}} ({{name}}) a mohou vás kontaktovat.",
+      "link": "Zásady ochrany soukromí"
+    },
+    "sender": {
+      "label": "Odeslat jako",
+      "anonymous": "Anonymně",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Přihlásit se přes {{provider}}",
+      "signOut": "Odhlásit se",
+      "waiting": "Čekání na {{provider}}",
+      "errors": {
+        "discordNotMember": "Váš účet Discord není na Discord serveru autobrr. Připojte se na server a přihlaste se znovu, přihlaste se přes GitHub, nebo odešlete anonymně.",
+        "refused": "Přihlášení zamítnuto: {{reason}}",
+        "expired": "Přihlášení vypršelo. Přihlaste se znovu.",
+        "popupBlocked": "Váš prohlížeč zablokoval přihlašovací okno. Povolte vyskakovací okna pro qui a pak se přihlaste znovu.",
+        "unavailable": "brrbin vás teď nemůže přihlásit. Zkuste to později.",
+        "startFailed": "Přihlášení se nepodařilo spustit: {{message}}",
+        "signOutFailed": "Nepodařilo se odhlásit: {{message}}"
+      }
+    },
+    "newerRelease": "Používáte {{running}}. Vyšla verze <release>{{newer}}</release>.",
+    "send": "Odeslat",
+    "sendAnyway": "Přesto odeslat",
+    "sending": "Odesílání",
+    "sent": "Hlášení odesláno",
+    "errors": {
+      "anonymousFull": {
+        "title": "Anonymní hlášení jsou pro dnešek vyčerpána",
+        "body": "Přihlaste se a odešlete ho hned, nebo to zkuste zítra. Váš text tu zůstane jako koncept."
+      },
+      "signInRequired": "Pro odeslání tohoto hlášení se přihlaste. Váš text tu zůstane jako koncept.",
+      "accountLimit": "Za poslední hodinu jste odeslali mnoho hlášení. Zkuste to později.",
+      "reporterFull": "Vaše hlášení zabírají všechno místo, které brrbin dává jedné osobě. Smažte staré hlášení v Odeslaných hlášeních a odešlete znovu.",
+      "tooLarge": "Hlášení je příliš velké. Vyberte méně řádků logu nebo menší obrázek.",
+      "tokenRejected": "Vaše přihlášení skončilo. Přihlaste se znovu a pak odešlete.",
+      "unavailable": "brrbin teď nemůže přijímat hlášení. Zkuste to později.",
+      "sendFailed": "Hlášení se nepodařilo odeslat: {{message}}"
+    },
+    "sentReports": {
+      "title": "Odeslaná hlášení",
+      "subtitle": "qui kontroluje stav hlášení pokaždé, když tento seznam otevřete.",
+      "changed_one": "{{count}} stav se změnil",
+      "changed_few": "{{count}} stavy se změnily",
+      "changed_other": "{{count}} stavů se změnilo",
+      "status": {
+        "received": "Přijato",
+        "issue": "Převedeno na issue #{{number}}",
+        "issueClosed": "Issue #{{number}} uzavřeno",
+        "closed": "Uzavřeno: {{reason}}",
+        "closedNoReason": "Uzavřeno",
+        "notSent": "Neodesláno"
+      },
+      "delete": "Smazat hlášení",
+      "deleteUnavailable": "brrbin teď nemůže mazat hlášení. Zkuste to později.",
+      "deleteFailed": "Hlášení se nepodařilo smazat: {{message}}",
+      "empty": "Žádná odeslaná hlášení.",
+      "back": "Zpět na hlášení"
+    }
+  },
+  "header": {
+    "currentInstance": "Aktuální instance: {{name}}. Klikněte pro přepnutí instance.",
+    "connected": "Připojeno",
+    "disconnected": "Odpojeno",
+    "showFilters": "Zobrazit filtry",
+    "hideFilters": "Skrýt filtry",
+    "addTorrent": "Přidat torrent",
+    "createTorrent": "Vytvořit torrent",
+    "torrentCreationTasks": "Úlohy vytváření torrentů",
+    "instanceSettings": "Nastavení instance",
+    "addToInstance": "Přidat do instance",
+    "createForInstance": "Vytvořit pro instanci",
+    "tasksForInstance": "Úlohy pro instanci",
+    "settingsForInstance": "Nastavení pro instanci",
+    "clearSearch": "Vymazat hledání",
+    "searchTorrents": "Hledat torrenty...",
+    "globPattern": "Vzorové hledání...",
+    "smartSearchTitle": "Inteligentní hledání:",
+    "smartSearchGlob": "Vzorové hledání:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "Hrubé hledání:",
+    "smartSearchFuzzyExample": "\"breaking bad\" najde \"Breaking.Bad\"",
+    "smartSearchDots": "Zpracovává tečky, podtržítka a závorky",
+    "smartSearchFields": "Hledá název, kategorii a tagy",
+    "smartSearchEnter": "Stiskněte Enter pro okamžité hledání",
+    "smartSearchAuto": "Automaticky hledá po 500ms pauze",
+    "smartSearchShortcut": "Stiskněte {{shortcutKey}} pro přechod do hledání",
+    "smartSearchPalette": "Stiskněte {{shortcutKey}} pro otevření palety příkazů",
+    "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
+    "allScope": "VŠE",
+    "unified": "Unifikované"
+  },
+  "titleBar": {
+    "speeds": "↓ {{download}} ↑ {{upload}}"
+  },
+  "unifiedScope": {
+    "unified": "Unifikované",
+    "collapseScope": "Sbalit unifikovaný rozsah",
+    "expandScope": "Rozbalit unifikovaný rozsah",
+    "allActive": "Všechny aktivní ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Paleta příkazů",
+    "placeholder": "Hledat stránky, nastavení a torrenty...",
+    "placeholderIn": "{{name}}: hledat...",
+    "groups": {
+      "pages": "Stránky",
+      "actions": "Akce"
+    },
+    "current": "Aktuální",
+    "statisticsNote": "Historie odeslaných a stažených dat vašich instancí",
+    "searchTorrentsFor": "Hledat torrenty: \"{{query}}\"",
+    "torrentMatches_one": "Odpovídá {{count}} torrent",
+    "torrentMatches_few": "Odpovídají {{count}} torrenty",
+    "torrentMatches_other": "Odpovídá {{count}} torrentů",
+    "noTorrentMatches": "Neodpovídá žádný torrent",
+    "searching": "Hledání...",
+    "searchFailed": "Hledání torrentů selhalo",
+    "listFiltersApply": "Platí filtry seznamu",
+    "noMatchIn": "{{name}}: žádná shoda",
+    "moreOf": "{{name}}: další možnosti",
+    "hints": {
+      "navigate": "Procházet",
+      "open": "Otevřít",
+      "more": "Další",
+      "searchTorrents": "Hledat torrenty",
+      "back": "Zpět"
+    }
+  },
+  "mobileNav": {
+    "dashboard": "Domů",
+    "statistics": "Statistiky",
+    "clients": "Klienti",
+    "settings": "Nastavení",
+    "qbittorrentClients": "qBittorrent klienti",
+    "instances": "Instance",
+    "loading": "Načítání...",
+    "noActiveClients": "Žádní aktivní klienti",
+    "updateAvailable": "Aktualizace dostupná",
+    "updateVersion": "Verze {{version}}",
+    "rssRunning": "RSS křížového sdílení běží",
+    "rssEnabled": "RSS křížového sdílení je zapnuto",
+    "scanRunning": "Scan běží",
+    "logout": "Odhlásit se",
+    "version": "Verze {{version}}",
+    "viewOnGitHub": "Zobrazit na GitHubu"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Zrušit",
+    "close": "Zavřít",
+    "create": "Vytvořit",
+    "scrollToTop": "Posunout na začátek",
+    "search": "Hledat",
+    "select": "Vybrat",
+    "copyValue": "Kopírovat {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Rozumím"
+  },
+  "placeholders": {
+    "search": "Hledat...",
+    "selectItems": "Vybrat položky..."
+  },
+  "feedback": {
+    "noResultsFound": "Žádné výsledky.",
+    "copied": "{{label}} byl zkopírován do schránky",
+    "copyFailed": "Nepodařilo se zkopírovat do schránky"
+  },
+  "errors": {
+    "unknown": "Neznámá chyba",
+    "httpStatus": "Chyba HTTP! Stav: {{status}}",
+    "httpStatusHtml": "Chyba HTTP! Stav: {{status}} (server vrátil chybovou stránku HTML)",
+    "ssoHtmlResponse": "Místo JSON přišla z API odpověď HTML. Pokud jste za SSO proxy (Cloudflare Access, Pangolin atd.), zkuste obnovit stránku nebo znovu otevřít URL v nové kartě.",
+    "torrentFileDownloadFailed": "Stažení torrent souboru se nezdařilo: {{status}}",
+    "altSpeedToggle": "Alternativní rychlostní limity se nepodařilo změnit: {{message}}",
+    "altSpeedToggleHidden": "Alternativní rychlostní limity se nepodařilo změnit. Anonymní režim skrývá příčinu."
+  },
+  "status": {
+    "disabled": "Vypnuto",
+    "notContacted": "Nekontaktováno",
+    "working": "Pracuje",
+    "updating": "Aktualizace",
+    "error": "Chyba",
+    "unknown": "Neznámé",
+    "unavailable": "Nedostupné",
+    "trackerError": "Chyba trackeru",
+    "unreachable": "Nedostupné"
+  },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Seriál",
+    "music": "Hudba",
+    "audiobook": "Audiokniha",
+    "book": "Kniha",
+    "comic": "Komiks",
+    "game": "Hra",
+    "app": "Aplikace",
+    "adult": "Pro dospělé",
+    "unknown": "Neznámé"
+  },
+  "themeToggle": {
+    "changeTheme": "Změnit vzhled",
+    "appearance": "Vzhled",
+    "mode": "Režim",
+    "light": "Světlý",
+    "dark": "Tmavý",
+    "system": "Systém",
+    "theme": "Vzhled",
+    "switchedToMode": "Přepnuto na {{mode}} režim",
+    "switchedToTheme": "Přepnuto na {{theme}} vzhled",
+    "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
+    "premiumThemeError": "Tento vzhled vyžaduje licenci. Otevřete Nastavení → Motivy pro aktivaci licence."
+  },
+  "updateBanner": {
+    "updateAvailable": "Aktualizace dostupná",
+    "versionAvailable": "Verze {{version}} je nyní dostupná",
+    "dismiss": "Zavřít"
+  },
+  "systemNotice": {
+    "needsAttention": "Vyžaduje pozornost",
+    "since": "Od {{time}}, {{age}}",
+    "causeLabel": "Příčina",
+    "actionFallback": "Přejít k opravě",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Záznam zastaven",
+        "title": "Záznam zastaven",
+        "effect": "qui nemůže zapisovat historii přenosů. Zkusí to znovu při dalším zápisu.",
+        "fix": "Zkontrolujte, že disk má volné místo a že qui může zapisovat do souboru databáze.",
+        "menuFix": "Uvolněte místo na disku pro databázi"
+      },
+      "shrink_failed": {
+        "short": "Zmenšení selhalo",
+        "title": "Zmenšení selhalo",
+        "effect": "qui nemohl zmenšit soubor databáze. Databáze se nezměnila a qui běží jako obvykle.",
+        "fix": "Podrobnosti jsou v logu qui.",
+        "menuFix": "Přečíst log qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Na disku je málo volného místa. Zmenšení potřebuje až dvojnásobek velikosti souboru databáze. Uvolněte místo na disku a zkuste to znovu.",
+            "menuFix": "Uvolněte místo a zkuste to znovu"
+          },
+          "locked": {
+            "fix": "Soubor databáze držel jiný program. Ukončete tento program, například nástroj pro zálohy nebo prohlížeč databází, a zkuste to znovu.",
+            "menuFix": "Ukončete jiný program a zkuste to znovu"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Málo místa na disku",
+        "title": "Málo místa na disku",
+        "effect": "Disk s databází qui má málo volného místa. Když je disk plný, každý zápis qui selže.",
+        "fix": "Uvolněte místo na disku, zkraťte „Uchovávat denní podrobnosti po dobu“ nebo smažte starší historii v nastavení Statistik.",
+        "menuFix": "Uvolněte místo na disku pro databázi",
+        "action": "Otevřít nastavení Statistik"
+      },
+      "redacted_key_rejected": {
+        "short": "Klíč pro Redacted odmítnut",
+        "title": "Redacted odmítl klíč API",
+        "effect": "Redacted odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Redacted klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Redacted zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Redacted.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Klíč pro Orpheus odmítnut",
+        "title": "Orpheus odmítl klíč API",
+        "effect": "Orpheus odmítl poslední hledání. qui se ho zeptá znovu při dalším hledání.",
+        "fix": "Pokud je klíč špatný, vytvořte v nastavení profilu na Orpheus klíč API s oprávněním „Torrents“ a vložte ho do nastavení Gazelle (OPS/RED) v qui. Pokud Orpheus zablokoval IP adresu qui, nový klíč nepomůže: kontaktujte tým Orpheus.",
+        "menuFix": "Vložte nový klíč v nastavení",
+        "action": "Otevřít nastavení Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Plán hledání ve sdílených je blokovaný",
+        "title": "Plán hledání ve sdílených nemůže běžet",
+        "effect": "qui nemůže spustit plánované hledání ve sdílených. Zkusí to znovu každou hodinu.",
+        "fix": "Zkontrolujte nastavení hledání ve sdílených. qui to zkusí znovu každou hodinu.",
+        "menuFix": "Zkontrolovat nastavení hledání ve sdílených",
+        "action": "Otevřít nastavení hledání ve sdílených",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab je v nastavení hledání ve sdílených vypnutý a není nastaven žádný klíč API pro RED ani OPS. Zapněte Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout Torznab, nebo přidat klíč pro RED nebo OPS"
+          },
+          "no_indexer": {
+            "fix": "Není zapnutý žádný indexer. Zapněte indexer Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout indexer"
+          },
+          "instance_missing": {
+            "fix": "Instance v uloženém nastavení hledání ve sdílených neexistuje. Vyberte instanci v nastavení hledání ve sdílených a uložte. qui to zkusí znovu každou hodinu.",
+            "menuFix": "Vybrat instanci a uložit"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "Zkusit znovu",
+      "dismiss": "Zavřít",
+      "openLog": "Otevřít log"
+    },
+    "unknown": {
+      "short": "Systémové upozornění",
+      "title": "Systémové upozornění",
+      "effect": "qui našel chybu, která od vás vyžaduje zásah.",
+      "fix": "Podrobnosti najdete v logu qui.",
+      "menuFix": "Přečtěte si log qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "Soubor databáze zmenšen z {{before}} na {{after}}",
+    "nextStart": "Zmenšení proběhne při příštím spuštění qui",
+    "failed": "Zmenšení se nepodařilo vyžádat"
+  },
+  "pwaUpdate": {
+    "reload": "Znovu načíst",
+    "waitingDescription": "Znovu načtěte stránku, aby se použila nejnovější verze qui.",
+    "activatedTitle": "qui bylo aktualizováno",
+    "activatedDescription": "Až se vám to bude hodit, znovu načtěte stránku a dokončete instalaci nejnovější verze."
+  },
+  "notFound": {
+    "title": "Ajeje! Ztratil jsi se?",
+    "subtitle": "Zdá se, že jsi se ztratil.",
+    "bugReport": "Pokud si myslíš, že se jedná o chybu,",
+    "reportTo": "nahlaš nám to na naší",
+    "githubRepository": "GitHub stránce",
+    "getBackOnTrack": "Pokud si myslíš, že se jedná o chybu, nahlaš nám to.",
+    "returnToDashboard": "Vrátit se na domovskou stránku"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Zaregistruj qui jako váš program na otevíraní magnet linků",
+    "register": "Zaregistrovat",
+    "dismiss": "Zavřít",
+    "registrationRequested": "Zaregistrován program na otevíraní magnet linků",
+    "registrationFailed": "Nepodařilo se zaregistrovat program na otevíraní magnet linků",
+    "guidance": {
+      "standalone": "Otevřete qui v běžném prohlížeči pro registraci (výzva může být zobrazena v adresním řádku, který PWAs nezobrazují).",
+      "chromium": "Chrome to často zobrazuje jako malou ikonu v adresním řádku prohlížeče; pokud se nic nezobrazí, povolte manipulaci protokolů v chrome://settings/handlers.",
+      "default": "Pokud váš prohlížeč požádá o registraci, prosím, přijměte ji."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "Více informací"
+  },
+  "numberInput": {
+    "unlimited": "Neomezené"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "Právě teď",
+    "today": "Dnes",
+    "yesterday": "Včera",
+    "past": "{{value}} před",
+    "future": "{{value}} po",
+    "units": {
+      "second_one": "{{count}} sekunda",
+      "second_few": "{{count}} sekundy",
+      "second_other": "{{count}} sekund",
+      "minute_one": "{{count}} minuta",
+      "minute_few": "{{count}} minuty",
+      "minute_other": "{{count}} minut",
+      "hour_one": "{{count}} hodina",
+      "hour_few": "{{count}} hodiny",
+      "hour_other": "{{count}} hodin",
+      "day_one": "{{count}} den",
+      "day_few": "{{count}} dny",
+      "day_other": "{{count}} dní",
+      "week_one": "{{count}} týden",
+      "week_few": "{{count}} týdny",
+      "week_other": "{{count}} týdnů",
+      "month_one": "{{count}} měsíc",
+      "month_few": "{{count}} měsíce",
+      "month_other": "{{count}} měsíců",
+      "year_one": "{{count}} rok",
+      "year_few": "{{count}} roky",
+      "year_other": "{{count}} let"
+    }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
+  "support": {
+    "title": "Podpořit qui",
+    "description": "Způsoby, jak podpořit qui, a jejich ceny.",
+    "heading": "Pomozte udržovat qui",
+    "intro": "qui je zdarma a funguje stejně, ať zaplatíte, nebo ne. Podpora platí čas a nástroje, které se do qui vkládají.",
+    "licensed": "Děkujeme za vaši licenci k motivům.",
+    "releases_one": "qui za posledních 12 měsíců vydalo {{count}} verzi.",
+    "releases_few": "qui za posledních 12 měsíců vydalo {{count}} verze.",
+    "releases_other": "qui za posledních 12 měsíců vydalo {{count}} verzí.",
+    "releaseMap": "Posledních 52 týdnů, jeden čtverec za každý den. Světlý čtverec je den s novou verzí.",
+    "releaseDay": "Den s novou verzí",
+    "plans": {
+      "yearly": "{{price}} ročně",
+      "yearlyNote": "{{price}} měsíčně, placeno ročně",
+      "yearlyNoteWithLicense": "{{price}} měsíčně, placeno ročně. Včetně licence k motivům.",
+      "license": "Licence k motivům, od {{price}}",
+      "licenseNote": "Všechny současné i budoucí prémiové motivy, doživotně",
+      "onePayment": "jedna platba"
+    },
+    "checkout": "Pokračovat k platbě",
+    "fromPrice": "od {{price}}",
+    "terms": {
+      "yearly": "Dnes zaplatíte {{price}}, pak {{price}} každý rok, dokud podporu nezrušíte.",
+      "license": "Jedna platba ve výši {{price}} nebo více, částku zvolíte při platbě. Bez předplatného."
+    },
+    "perks": {
+      "yearly": "Podporovatelé získají v qui odznak Podporovatel a na Discordu roli podporovatele. Po zaplacení přidejte na tento server svůj klíč podporovatele.",
+      "license": "Licence odemyká prémiové motivy. Po zaplacení přidejte na tento server svůj licenční klíč."
+    },
+    "existing": "Už jste podporovatel?",
+    "addKey": "Přidat klíč podporovatele",
+    "key": {
+      "help": "Klíč podporovatele najdete na stránce platby a v e-mailu s potvrzením platby.",
+      "label": "Klíč podporovatele",
+      "submit": "Přidat klíč",
+      "back": "Zpět"
+    },
+    "ended": "Klíč podporovatele na tomto serveru už není platný. qui ho každý den kontroluje znovu. Pokud vaše podpora skončila, licence k motivům vám zůstává. Její klíč najdete v <portal>licenčním portálu</portal>. Přidejte ho v Nastavení, v části Motivy.",
+    "removeKey": "Odebrat klíč podporovatele z tohoto serveru",
+    "supporter": {
+      "badge": "Podporovatel",
+      "title": "Podporujete qui",
+      "thanks": "Děkujeme. Vaše podpora platí čas a nástroje, které se do qui vkládají.",
+      "detail": "Máte v qui odznak Podporovatel a na Discordu roli podporovatele. Vaše podpora také odemyká prémiové motivy a zahrnuje doživotní licenci k motivům. Licenční klíč najdete v <portal>licenčním portálu</portal>.",
+      "manage": "Spravovat nebo zrušit podporu"
+    },
+    "reminder": {
+      "title_one": "{{count}} den s qui na tomto serveru",
+      "title_few": "{{count}} dny s qui na tomto serveru",
+      "title_other": "{{count}} dní s qui na tomto serveru",
+      "tooltip": "Počítá se na tomto serveru a nikdy se neodesílá. qui se ptá jednou za rok.",
+      "subtitle": "Podpořit qui. qui se ptá jednou za rok.",
+      "notNow": "Teď ne",
+      "serverDays_one": "Tento server používá qui {{count}} den. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "serverDays_few": "Tento server používá qui {{count}} dny. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "serverDays_other": "Tento server používá qui {{count}} dní. qui to počítá na tomto serveru a nikdy to neodesílá.",
+      "notNowToast": "qui se znovu zeptá za rok",
+      "dontAskAgain": "Už se neptat",
+      "offToast": "qui se už nezeptá",
+      "offToastDescription": "Zkratka pro podporu zůstává. Připomínku znovu zapnete v Nastavení, v části Aplikace.",
+      "undo": "Zpět",
+      "hiddenToast": "Zkratka pro podporu je skrytá",
+      "hiddenToastDescription": "qui se už nezeptá. Zkratku vrátíte v Nastavení, v části Aplikace.",
+      "notForYou": "Není to pro vás? <reminder>Vypněte roční připomínku</reminder>, nebo <heart>skryjte srdce</heart>. V Nastavení obojí vrátíte.",
+      "notForYouHeart": "Není to pro vás? <heart>Skryjte srdce</heart>. V Nastavení ho vrátíte."
+    }
+  },
+  "labels": {
+    "path": "Cesta",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "Tuto sekci se nepodařilo načíst.",
+    "retry": "Zkusit znovu",
+    "edit": "Upravit",
+    "moreActions": "Další akce",
+    "enabled": "Povoleno",
+    "clearSelection": "Zrušit výběr"
+  }
+}

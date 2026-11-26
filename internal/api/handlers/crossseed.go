@@ -1,0 +1,1694 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/jackett"
+)
+
+type CrossSeedHandler struct {
+	service            *crossseed.Service
+	completionStore    *models.InstanceCrossSeedCompletionStore
+	instanceStore      *models.InstanceStore
+	seasonPackRunStore *models.SeasonPackRunStore
+	routes             *crossseedroute.Service
+	torrents           crossseedroute.TorrentReader
+	gazelleBaseURL     string
+}
+
+var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
+
+type automationSettingsRequest struct {
+	Enabled                        bool                            `json:"enabled"`
+	RunIntervalMinutes             int                             `json:"runIntervalMinutes"`
+	TargetInstanceIDs              []int                           `json:"targetInstanceIds"`
+	TargetIndexerIDs               []int                           `json:"targetIndexerIds"`
+	MaxResultsPerRun               int                             `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes         bool                            `json:"findIndividualEpisodes"`
+	AutoResumeMaxDownloadMB        *int                            `json:"autoResumeMaxDownloadMb"`
+	PooledPartialCompletionEnabled bool                            `json:"pooledPartialCompletionEnabled"`
+	UseCategoryFromIndexer         bool                            `json:"useCategoryFromIndexer"`
+	UseCrossCategoryAffix          bool                            `json:"useCrossCategoryAffix"`
+	CategoryAffixMode              string                          `json:"categoryAffixMode"`
+	CategoryAffix                  string                          `json:"categoryAffix"`
+	UseCustomCategory              bool                            `json:"useCustomCategory"`
+	CustomCategory                 string                          `json:"customCategory"`
+	RunExternalProgramID           *int                            `json:"runExternalProgramId"`
+	SkipRecheck                    bool                            `json:"skipRecheck"`
+	RescueTitleMismatches          bool                            `json:"rescueTitleMismatches"`
+	SeasonPackEnabled              bool                            `json:"seasonPackEnabled"`
+	SeasonPackAutomationEnabled    bool                            `json:"seasonPackAutomationEnabled"`
+	SeasonPackSkipRepackCompare    bool                            `json:"seasonPackSkipRepackCompare"`
+	SeasonPackSimplifyHDRCompare   bool                            `json:"seasonPackSimplifyHdrCompare"`
+	SeasonPackSimplifyWEBCompare   bool                            `json:"seasonPackSimplifyWebCompare"`
+	SeasonPackSkipYearCompare      bool                            `json:"seasonPackSkipYearCompare"`
+	SeasonPackCoverageThreshold    float64                         `json:"seasonPackCoverageThreshold"`
+	SeasonPackTags                 []string                        `json:"seasonPackTags"`
+	SeasonPackCategory             string                          `json:"seasonPackCategory"`
+	SeasonPackCategoryRules        []models.SeasonPackCategoryRule `json:"seasonPackCategoryRules"`
+	CategoryMappingRules           []models.CategoryMappingRule    `json:"categoryMappingRules"`
+	RSSSourceCategories            []string                        `json:"rssSourceCategories"`
+	RSSSourceTags                  []string                        `json:"rssSourceTags"`
+	RSSSourceExcludeCategories     []string                        `json:"rssSourceExcludeCategories"`
+	RSSSourceExcludeTags           []string                        `json:"rssSourceExcludeTags"`
+	WebhookSourceCategories        []string                        `json:"webhookSourceCategories"`
+	WebhookSourceTags              []string                        `json:"webhookSourceTags"`
+	WebhookSourceExcludeCategories []string                        `json:"webhookSourceExcludeCategories"`
+	WebhookSourceExcludeTags       []string                        `json:"webhookSourceExcludeTags"`
+	RSSAutomationTags              *[]string                       `json:"rssAutomationTags"`
+	SeededSearchTags               *[]string                       `json:"seededSearchTags"`
+	CompletionSearchTags           *[]string                       `json:"completionSearchTags"`
+	WebhookTags                    *[]string                       `json:"webhookTags"`
+	SkipPieceBoundarySafetyCheck   *bool                           `json:"skipPieceBoundarySafetyCheck"`
+	InheritSourceTags              bool                            `json:"inheritSourceTags"`
+	SkipAutoResumeRSS              bool                            `json:"skipAutoResumeRss"`
+	SkipAutoResumeSeededSearch     bool                            `json:"skipAutoResumeSeededSearch"`
+	SkipAutoResumeCompletion       bool                            `json:"skipAutoResumeCompletion"`
+	SkipAutoResumeWebhook          bool                            `json:"skipAutoResumeWebhook"`
+	GazelleEnabled                 bool                            `json:"gazelleEnabled"`
+	RedactedAPIKey                 *string                         `json:"redactedApiKey"`
+	OrpheusAPIKey                  *string                         `json:"orpheusApiKey"`
+	SeasonPackTVDBAPIKey           *string                         `json:"seasonPackTvdbApiKey"`
+	SeasonPackTVDBPIN              *string                         `json:"seasonPackTvdbPin"`
+}
+
+type automationSettingsPatchRequest struct {
+	Enabled                        *bool                            `json:"enabled,omitempty"`
+	RunIntervalMinutes             *int                             `json:"runIntervalMinutes,omitempty"`
+	TargetInstanceIDs              *[]int                           `json:"targetInstanceIds,omitempty"`
+	TargetIndexerIDs               *[]int                           `json:"targetIndexerIds,omitempty"`
+	MaxResultsPerRun               *int                             `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
+	RSSSourceCategories            *[]string                        `json:"rssSourceCategories,omitempty"`
+	RSSSourceTags                  *[]string                        `json:"rssSourceTags,omitempty"`
+	RSSSourceExcludeCategories     *[]string                        `json:"rssSourceExcludeCategories,omitempty"`
+	RSSSourceExcludeTags           *[]string                        `json:"rssSourceExcludeTags,omitempty"`
+	WebhookSourceCategories        *[]string                        `json:"webhookSourceCategories,omitempty"`
+	WebhookSourceTags              *[]string                        `json:"webhookSourceTags,omitempty"`
+	WebhookSourceExcludeCategories *[]string                        `json:"webhookSourceExcludeCategories,omitempty"`
+	WebhookSourceExcludeTags       *[]string                        `json:"webhookSourceExcludeTags,omitempty"`
+	FindIndividualEpisodes         *bool                            `json:"findIndividualEpisodes,omitempty"`
+	AutoResumeMaxDownloadMB        *int                             `json:"autoResumeMaxDownloadMb,omitempty"`
+	PooledPartialCompletionEnabled *bool                            `json:"pooledPartialCompletionEnabled,omitempty"`
+	UseCategoryFromIndexer         *bool                            `json:"useCategoryFromIndexer,omitempty"`
+	UseCrossCategoryAffix          *bool                            `json:"useCrossCategoryAffix,omitempty"`
+	CategoryAffixMode              *string                          `json:"categoryAffixMode,omitempty"`
+	CategoryAffix                  *string                          `json:"categoryAffix,omitempty"`
+	UseCustomCategory              *bool                            `json:"useCustomCategory,omitempty"`
+	CustomCategory                 *string                          `json:"customCategory,omitempty"`
+	RunExternalProgramID           optionalInt                      `json:"runExternalProgramId"`
+	RSSAutomationTags              *[]string                        `json:"rssAutomationTags,omitempty"`
+	SeededSearchTags               *[]string                        `json:"seededSearchTags,omitempty"`
+	CompletionSearchTags           *[]string                        `json:"completionSearchTags,omitempty"`
+	WebhookTags                    *[]string                        `json:"webhookTags,omitempty"`
+	InheritSourceTags              *bool                            `json:"inheritSourceTags,omitempty"`
+	SkipAutoResumeRSS              *bool                            `json:"skipAutoResumeRss,omitempty"`
+	SkipAutoResumeSeededSearch     *bool                            `json:"skipAutoResumeSeededSearch,omitempty"`
+	SkipAutoResumeCompletion       *bool                            `json:"skipAutoResumeCompletion,omitempty"`
+	SkipAutoResumeWebhook          *bool                            `json:"skipAutoResumeWebhook,omitempty"`
+	SkipRecheck                    *bool                            `json:"skipRecheck,omitempty"`
+	RescueTitleMismatches          *bool                            `json:"rescueTitleMismatches,omitempty"`
+	SkipPieceBoundarySafetyCheck   *bool                            `json:"skipPieceBoundarySafetyCheck,omitempty"`
+	SeasonPackEnabled              *bool                            `json:"seasonPackEnabled,omitempty"`
+	SeasonPackAutomationEnabled    *bool                            `json:"seasonPackAutomationEnabled,omitempty"`
+	SeasonPackSkipRepackCompare    *bool                            `json:"seasonPackSkipRepackCompare,omitempty"`
+	SeasonPackSimplifyHDRCompare   *bool                            `json:"seasonPackSimplifyHdrCompare,omitempty"`
+	SeasonPackSimplifyWEBCompare   *bool                            `json:"seasonPackSimplifyWebCompare,omitempty"`
+	SeasonPackSkipYearCompare      *bool                            `json:"seasonPackSkipYearCompare,omitempty"`
+	SeasonPackCoverageThreshold    *float64                         `json:"seasonPackCoverageThreshold,omitempty"`
+	SeasonPackTags                 *[]string                        `json:"seasonPackTags,omitempty"`
+	SeasonPackCategory             *string                          `json:"seasonPackCategory,omitempty"`
+	SeasonPackCategoryRules        *[]models.SeasonPackCategoryRule `json:"seasonPackCategoryRules,omitempty"`
+	CategoryMappingRules           *[]models.CategoryMappingRule    `json:"categoryMappingRules,omitempty"`
+	GazelleEnabled                 *bool                            `json:"gazelleEnabled,omitempty"`
+	RedactedAPIKey                 *string                          `json:"redactedApiKey,omitempty"`
+	OrpheusAPIKey                  *string                          `json:"orpheusApiKey,omitempty"`
+	SeasonPackTVDBAPIKey           *string                          `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN              *string                          `json:"seasonPackTvdbPin,omitempty"`
+}
+
+func valueOrDefault[T any](v *T, def T) T {
+	if v == nil {
+		return def
+	}
+	return *v
+}
+
+type optionalInt struct {
+	Set   bool
+	Value *int
+}
+
+func (o *optionalInt) UnmarshalJSON(data []byte) error {
+	o.Set = true
+	if string(data) == "null" {
+		o.Value = nil
+		return nil
+	}
+	var value int
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	o.Value = &value
+	return nil
+}
+
+type searchSettingsPatchRequest struct {
+	InstanceID             optionalInt `json:"instanceId"`
+	Categories             *[]string   `json:"categories,omitempty"`
+	Tags                   *[]string   `json:"tags,omitempty"`
+	ExcludeCategories      *[]string   `json:"excludeCategories,omitempty"`
+	ExcludeTags            *[]string   `json:"excludeTags,omitempty"`
+	IndexerIDs             *[]int      `json:"indexerIds,omitempty"`
+	IntervalSeconds        *int        `json:"intervalSeconds,omitempty"`
+	CooldownMinutes        *int        `json:"cooldownMinutes,omitempty"`
+	MaxAddedAgeDays        *int        `json:"maxAddedAgeDays,omitempty"`
+	SkipIndividualEpisodes *bool       `json:"skipIndividualEpisodes,omitempty"`
+	TorznabEnabled         *bool       `json:"torznabEnabled,omitempty"`
+	ScheduleEnabled        *bool       `json:"scheduleEnabled,omitempty"`
+	ScheduleIntervalHours  *int        `json:"scheduleIntervalHours,omitempty"`
+	ScheduleMaxSearches    *int        `json:"scheduleMaxSearches,omitempty"`
+	ScheduleMaxAgeDays     *int        `json:"scheduleMaxAgeDays,omitempty"`
+}
+
+func (r searchSettingsPatchRequest) isEmpty() bool {
+	return !r.InstanceID.Set &&
+		r.Categories == nil &&
+		r.Tags == nil &&
+		r.ExcludeCategories == nil &&
+		r.ExcludeTags == nil &&
+		r.IndexerIDs == nil &&
+		r.IntervalSeconds == nil &&
+		r.CooldownMinutes == nil &&
+		r.MaxAddedAgeDays == nil &&
+		r.SkipIndividualEpisodes == nil &&
+		r.TorznabEnabled == nil &&
+		r.ScheduleEnabled == nil &&
+		r.ScheduleIntervalHours == nil &&
+		r.ScheduleMaxSearches == nil &&
+		r.ScheduleMaxAgeDays == nil
+}
+
+func (r automationSettingsPatchRequest) isEmpty() bool {
+	return r.Enabled == nil &&
+		r.RunIntervalMinutes == nil &&
+		r.TargetInstanceIDs == nil &&
+		r.TargetIndexerIDs == nil &&
+		r.MaxResultsPerRun == nil &&
+		r.RSSSourceCategories == nil &&
+		r.RSSSourceTags == nil &&
+		r.RSSSourceExcludeCategories == nil &&
+		r.RSSSourceExcludeTags == nil &&
+		r.WebhookSourceCategories == nil &&
+		r.WebhookSourceTags == nil &&
+		r.WebhookSourceExcludeCategories == nil &&
+		r.WebhookSourceExcludeTags == nil &&
+		r.FindIndividualEpisodes == nil &&
+		r.AutoResumeMaxDownloadMB == nil &&
+		r.PooledPartialCompletionEnabled == nil &&
+		r.UseCategoryFromIndexer == nil &&
+		r.UseCrossCategoryAffix == nil &&
+		r.CategoryAffixMode == nil &&
+		r.CategoryAffix == nil &&
+		r.UseCustomCategory == nil &&
+		r.CustomCategory == nil &&
+		!r.RunExternalProgramID.Set &&
+		r.RSSAutomationTags == nil &&
+		r.SeededSearchTags == nil &&
+		r.CompletionSearchTags == nil &&
+		r.WebhookTags == nil &&
+		r.InheritSourceTags == nil &&
+		r.SkipAutoResumeRSS == nil &&
+		r.SkipAutoResumeSeededSearch == nil &&
+		r.SkipAutoResumeCompletion == nil &&
+		r.SkipAutoResumeWebhook == nil &&
+		r.SkipRecheck == nil &&
+		r.RescueTitleMismatches == nil &&
+		r.SkipPieceBoundarySafetyCheck == nil &&
+		r.SeasonPackEnabled == nil &&
+		r.SeasonPackAutomationEnabled == nil &&
+		r.SeasonPackSkipRepackCompare == nil &&
+		r.SeasonPackSimplifyHDRCompare == nil &&
+		r.SeasonPackSimplifyWEBCompare == nil &&
+		r.SeasonPackSkipYearCompare == nil &&
+		r.SeasonPackCoverageThreshold == nil &&
+		r.SeasonPackTags == nil &&
+		r.SeasonPackCategory == nil &&
+		r.SeasonPackCategoryRules == nil &&
+		r.CategoryMappingRules == nil &&
+		r.GazelleEnabled == nil &&
+		r.RedactedAPIKey == nil &&
+		r.OrpheusAPIKey == nil &&
+		r.SeasonPackTVDBAPIKey == nil &&
+		r.SeasonPackTVDBPIN == nil
+}
+
+func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
+	if patch.Enabled != nil {
+		settings.Enabled = *patch.Enabled
+	}
+	if patch.RunIntervalMinutes != nil {
+		settings.RunIntervalMinutes = *patch.RunIntervalMinutes
+	}
+	if patch.TargetInstanceIDs != nil {
+		settings.TargetInstanceIDs = *patch.TargetInstanceIDs
+	}
+	if patch.TargetIndexerIDs != nil {
+		settings.TargetIndexerIDs = *patch.TargetIndexerIDs
+	}
+	if patch.MaxResultsPerRun != nil {
+		settings.MaxResultsPerRun = *patch.MaxResultsPerRun
+	}
+	if patch.RSSSourceCategories != nil {
+		settings.RSSSourceCategories = *patch.RSSSourceCategories
+	}
+	if patch.RSSSourceTags != nil {
+		settings.RSSSourceTags = *patch.RSSSourceTags
+	}
+	if patch.RSSSourceExcludeCategories != nil {
+		settings.RSSSourceExcludeCategories = *patch.RSSSourceExcludeCategories
+	}
+	if patch.RSSSourceExcludeTags != nil {
+		settings.RSSSourceExcludeTags = *patch.RSSSourceExcludeTags
+	}
+	if patch.WebhookSourceCategories != nil {
+		settings.WebhookSourceCategories = *patch.WebhookSourceCategories
+	}
+	if patch.WebhookSourceTags != nil {
+		settings.WebhookSourceTags = *patch.WebhookSourceTags
+	}
+	if patch.WebhookSourceExcludeCategories != nil {
+		settings.WebhookSourceExcludeCategories = *patch.WebhookSourceExcludeCategories
+	}
+	if patch.WebhookSourceExcludeTags != nil {
+		settings.WebhookSourceExcludeTags = *patch.WebhookSourceExcludeTags
+	}
+	if patch.FindIndividualEpisodes != nil {
+		settings.FindIndividualEpisodes = *patch.FindIndividualEpisodes
+	}
+	if patch.AutoResumeMaxDownloadMB != nil {
+		settings.AutoResumeMaxDownloadMB = *patch.AutoResumeMaxDownloadMB
+	}
+	if patch.PooledPartialCompletionEnabled != nil {
+		settings.PooledPartialCompletionEnabled = *patch.PooledPartialCompletionEnabled
+	}
+	if patch.UseCategoryFromIndexer != nil {
+		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
+	}
+	if patch.UseCrossCategoryAffix != nil {
+		settings.UseCrossCategoryAffix = *patch.UseCrossCategoryAffix
+	}
+	if patch.CategoryAffixMode != nil {
+		settings.CategoryAffixMode = *patch.CategoryAffixMode
+	}
+	if patch.CategoryAffix != nil {
+		settings.CategoryAffix = strings.TrimSpace(*patch.CategoryAffix)
+	}
+	if patch.UseCustomCategory != nil {
+		settings.UseCustomCategory = *patch.UseCustomCategory
+	}
+	if patch.CustomCategory != nil {
+		settings.CustomCategory = *patch.CustomCategory
+	}
+	if patch.RunExternalProgramID.Set {
+		settings.RunExternalProgramID = patch.RunExternalProgramID.Value
+	}
+	if patch.RSSAutomationTags != nil {
+		settings.RSSAutomationTags = *patch.RSSAutomationTags
+	}
+	if patch.SeededSearchTags != nil {
+		settings.SeededSearchTags = *patch.SeededSearchTags
+	}
+	if patch.CompletionSearchTags != nil {
+		settings.CompletionSearchTags = *patch.CompletionSearchTags
+	}
+	if patch.WebhookTags != nil {
+		settings.WebhookTags = *patch.WebhookTags
+	}
+	if patch.InheritSourceTags != nil {
+		settings.InheritSourceTags = *patch.InheritSourceTags
+	}
+	if patch.SkipAutoResumeRSS != nil {
+		settings.SkipAutoResumeRSS = *patch.SkipAutoResumeRSS
+	}
+	if patch.SkipAutoResumeSeededSearch != nil {
+		settings.SkipAutoResumeSeededSearch = *patch.SkipAutoResumeSeededSearch
+	}
+	if patch.SkipAutoResumeCompletion != nil {
+		settings.SkipAutoResumeCompletion = *patch.SkipAutoResumeCompletion
+	}
+	if patch.SkipAutoResumeWebhook != nil {
+		settings.SkipAutoResumeWebhook = *patch.SkipAutoResumeWebhook
+	}
+	if patch.SkipRecheck != nil {
+		settings.SkipRecheck = *patch.SkipRecheck
+	}
+	if patch.RescueTitleMismatches != nil {
+		settings.RescueTitleMismatches = *patch.RescueTitleMismatches
+	}
+	if patch.SkipPieceBoundarySafetyCheck != nil {
+		settings.SkipPieceBoundarySafetyCheck = *patch.SkipPieceBoundarySafetyCheck
+	}
+	if patch.SeasonPackEnabled != nil {
+		settings.SeasonPackEnabled = *patch.SeasonPackEnabled
+	}
+	if patch.SeasonPackAutomationEnabled != nil {
+		settings.SeasonPackAutomationEnabled = *patch.SeasonPackAutomationEnabled
+	}
+	if patch.SeasonPackSkipRepackCompare != nil {
+		settings.SeasonPackSkipRepackCompare = *patch.SeasonPackSkipRepackCompare
+	}
+	if patch.SeasonPackSimplifyHDRCompare != nil {
+		settings.SeasonPackSimplifyHDRCompare = *patch.SeasonPackSimplifyHDRCompare
+	}
+	if patch.SeasonPackSimplifyWEBCompare != nil {
+		settings.SeasonPackSimplifyWEBCompare = *patch.SeasonPackSimplifyWEBCompare
+	}
+	if patch.SeasonPackSkipYearCompare != nil {
+		settings.SeasonPackSkipYearCompare = *patch.SeasonPackSkipYearCompare
+	}
+	if patch.SeasonPackCoverageThreshold != nil {
+		settings.SeasonPackCoverageThreshold = *patch.SeasonPackCoverageThreshold
+	}
+	if patch.SeasonPackTags != nil {
+		settings.SeasonPackTags = *patch.SeasonPackTags
+	}
+	if patch.SeasonPackCategory != nil {
+		settings.SeasonPackCategory = strings.TrimSpace(*patch.SeasonPackCategory)
+	}
+	if patch.SeasonPackCategoryRules != nil {
+		settings.SeasonPackCategoryRules = normalizeSeasonPackCategoryRules(*patch.SeasonPackCategoryRules)
+	}
+	if patch.CategoryMappingRules != nil {
+		settings.CategoryMappingRules = normalizeCategoryMappingRules(*patch.CategoryMappingRules)
+	}
+	if patch.GazelleEnabled != nil {
+		settings.GazelleEnabled = *patch.GazelleEnabled
+	}
+	settings.RedactedAPIKey = patchSecret(patch.RedactedAPIKey)
+	settings.OrpheusAPIKey = patchSecret(patch.OrpheusAPIKey)
+	settings.SeasonPackTVDBAPIKey = patchSecret(patch.SeasonPackTVDBAPIKey)
+	settings.SeasonPackTVDBPIN = patchSecret(patch.SeasonPackTVDBPIN)
+}
+
+func patchSecret(value *string) string {
+	if value == nil {
+		return domain.RedactedStr
+	}
+	return strings.TrimSpace(*value)
+}
+
+var validSeasonPackRuleSources = map[string]struct{}{
+	"WEB":    {},
+	"BLURAY": {},
+	"REMUX":  {},
+	"HDTV":   {},
+}
+
+func normalizeSeasonPackCategoryRules(rules []models.SeasonPackCategoryRule) []models.SeasonPackCategoryRule {
+	normalized := make([]models.SeasonPackCategoryRule, 0, len(rules))
+	seen := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
+		resolution := strings.ToLower(strings.TrimSpace(rule.Resolution))
+		category := strings.TrimSpace(rule.Category)
+		if resolution == "" || category == "" {
+			continue
+		}
+
+		source := strings.ToUpper(strings.TrimSpace(rule.Source))
+		if source != "" {
+			if _, ok := validSeasonPackRuleSources[source]; !ok {
+				continue
+			}
+		}
+
+		key := resolution + "|" + source
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		normalized = append(normalized, models.SeasonPackCategoryRule{
+			Resolution: resolution,
+			Source:     source,
+			Category:   category,
+		})
+	}
+	return normalized
+}
+
+func normalizeCategoryMappingRules(rules []models.CategoryMappingRule) []models.CategoryMappingRule {
+	normalized := make([]models.CategoryMappingRule, 0, len(rules))
+	seen := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
+		contentType := strings.ToLower(strings.TrimSpace(rule.ContentType))
+		if _, ok := crossseed.RuleContentTypeInfo(contentType); !ok {
+			continue
+		}
+
+		categories := make([]string, 0, len(rule.Categories))
+		for _, category := range rule.Categories {
+			category = strings.TrimSpace(category)
+			if category == "" {
+				continue
+			}
+			if _, ok := seen[category]; ok {
+				continue
+			}
+			seen[category] = struct{}{}
+			categories = append(categories, category)
+		}
+		if len(categories) == 0 {
+			continue
+		}
+
+		normalized = append(normalized, models.CategoryMappingRule{
+			Categories:  categories,
+			ContentType: contentType,
+		})
+	}
+	return normalized
+}
+
+type automationRunRequest struct {
+	DryRun bool `json:"dryRun"`
+}
+
+type searchRunRequest struct {
+	InstanceID             int      `json:"instanceId"`
+	Categories             []string `json:"categories"`
+	Tags                   []string `json:"tags"`
+	ExcludeCategories      []string `json:"excludeCategories"`
+	ExcludeTags            []string `json:"excludeTags"`
+	IntervalSeconds        int      `json:"intervalSeconds"`
+	IndexerIDs             []int    `json:"indexerIds"`
+	DisableTorznab         bool     `json:"disableTorznab"`
+	CooldownMinutes        int      `json:"cooldownMinutes"`
+	SkipIndividualEpisodes bool     `json:"skipIndividualEpisodes"`
+	MaxAddedAgeDays        int      `json:"maxAddedAgeDays"`
+}
+
+type CrossSeedBlocklistRequest struct {
+	InstanceID int    `json:"instanceId"`
+	InfoHash   string `json:"infoHash"`
+	Note       string `json:"note"`
+}
+
+func NewCrossSeedHandler(
+	service *crossseed.Service,
+	completionStore *models.InstanceCrossSeedCompletionStore,
+	instanceStore *models.InstanceStore,
+	seasonPackRunStore *models.SeasonPackRunStore,
+	routes *crossseedroute.Service,
+	torrents crossseedroute.TorrentReader,
+) *CrossSeedHandler {
+	return &CrossSeedHandler{
+		service:            service,
+		completionStore:    completionStore,
+		instanceStore:      instanceStore,
+		seasonPackRunStore: seasonPackRunStore,
+		routes:             routes,
+		torrents:           torrents,
+	}
+}
+
+func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler) http.Handler, apiKeyQueryMiddleware func(http.Handler) http.Handler) {
+	crossSeed := middleware.Permissions(models.AreaCrossSeed)
+
+	r.With(authMiddleware, crossSeed.Read).Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
+
+	r.Route("/cross-seed", func(r chi.Router) {
+		r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run).Post("/apply", h.AutobrrApply)
+		r.Route("/webhook", func(r chi.Router) {
+			r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run).Post("/check", h.WebhookCheck)
+		})
+
+		r.With(authMiddleware).Route("/torrents", func(r chi.Router) {
+			r.With(crossSeed.Read).Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
+			r.With(crossSeed.Read).Get("/{instanceID}/{hash}/local-matches", h.GetLocalMatches)
+			r.With(crossSeed.Read).Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
+			r.With(crossSeed.Write).Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
+		})
+		r.With(authMiddleware, crossSeed.Read).Get("/settings", h.GetAutomationSettings)
+		r.With(authMiddleware, crossSeed.Read).Get("/gazelle/sites", h.GetGazelleSites)
+		r.With(authMiddleware, crossSeed.Write).Patch("/settings", h.PatchAutomationSettings)
+		r.With(authMiddleware, crossSeed.Write).Put("/settings", h.UpdateAutomationSettings)
+		r.With(authMiddleware, crossSeed.Read).Get("/status", h.GetAutomationStatus)
+		r.With(authMiddleware, crossSeed.Read).Get("/runs", h.ListAutomationRuns)
+		r.With(authMiddleware, crossSeed.Run).Post("/run", h.TriggerAutomationRun)
+		r.With(authMiddleware, crossSeed.Run).Post("/run/cancel", h.CancelAutomationRun)
+		r.With(authMiddleware).Route("/blocklist", func(r chi.Router) {
+			r.With(crossSeed.Read).Get("/", h.ListBlocklist)
+			r.With(crossSeed.Write).Post("/", h.AddBlocklistEntry)
+			r.With(crossSeed.Write).Delete("/{instanceID}/{infohash}", h.DeleteBlocklistEntry)
+		})
+		r.With(authMiddleware).Route("/search", func(r chi.Router) {
+			r.With(crossSeed.Read).Get("/settings", h.GetSearchSettings)
+			r.With(crossSeed.Write).Patch("/settings", h.PatchSearchSettings)
+			r.With(crossSeed.Read).Get("/status", h.GetSearchRunStatus)
+			r.With(crossSeed.Run).Post("/run", h.StartSearchRun)
+			r.With(crossSeed.Run).Post("/run/cancel", h.CancelSearchRun)
+			r.With(crossSeed.Run).Post("/schedule/run", h.RunSearchScheduleNow)
+			r.With(crossSeed.Read).Get("/runs", h.ListSearchRunHistory)
+		})
+		r.With(authMiddleware).Route("/manual", func(r chi.Router) {
+			r.With(crossSeed.Read).Post("/proposals", h.ManualMatchProposals)
+			r.With(crossSeed.Write).Post("/apply", h.ManualMatchApply)
+			r.With(crossSeed.Read).Post("/assemble/check", h.ManualAssembleCheck)
+			r.With(crossSeed.Write).Post("/assemble", h.ManualAssembleApply)
+		})
+		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
+			r.With(crossSeed.Read).Get("/{instanceID}", h.GetInstanceCompletionSettings)
+			r.With(crossSeed.Write).Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
+		})
+		r.With(authMiddleware).Route("/routes", func(r chi.Router) {
+			r.With(crossSeed.Read).Get("/", h.ListCrossSeedRoutes)
+			r.With(crossSeed.Read).Get("/{instanceID}", h.GetCrossSeedRoute)
+			r.With(crossSeed.Write).Put("/{instanceID}", h.SaveCrossSeedRoute)
+			r.With(crossSeed.Write).Delete("/{instanceID}", h.ClearCrossSeedRoute)
+			r.With(crossSeed.Write).Post("/{instanceID}/test", h.TestCrossSeedRoute)
+		})
+		r.Route("/season-pack", func(r chi.Router) {
+			h.seasonPackEndpoints(r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run))
+			r.With(authMiddleware, crossSeed.Read).Get("/runs", h.ListSeasonPackRuns)
+		})
+	})
+}
+
+func parseTorrentParams(w http.ResponseWriter, r *http.Request) (instanceID int, hash string, ok bool) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	id, err := strconv.Atoi(instanceIDStr)
+	if err != nil || id <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return 0, "", false
+	}
+
+	h := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if h == "" {
+		RespondError(w, http.StatusBadRequest, "hash is required")
+		return 0, "", false
+	}
+
+	return id, h, true
+}
+
+func normalizeInfoHashInput(value string) (string, bool) {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" || !infoHashRegex.MatchString(trimmed) {
+		return "", false
+	}
+	return trimmed, true
+}
+
+func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *http.Request) {
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
+		return
+	}
+
+	torrentInfo, err := h.service.AnalyzeTorrentForSearch(r.Context(), instanceID, hash)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to analyze torrent for search")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, torrentInfo)
+}
+
+func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Request) {
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
+		return
+	}
+
+	response, err := h.service.FindCrossSeeds(r.Context(), instanceID, hash)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to find local cross-seed matches")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	hideMatchPasskeys(r, response.Matches)
+	RespondJSON(w, http.StatusOK, response)
+}
+
+func hideMatchPasskeys(r *http.Request, matches []crossseed.LocalMatch) {
+	if middleware.CanReadTrackerPasskeys(r) {
+		return
+	}
+	for i := range matches {
+		matches[i].Tracker = qbittorrent.TrackerOrigin(matches[i].Tracker)
+	}
+}
+
+func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "hash is required")
+		return
+	}
+
+	var opts crossseed.TorrentSearchOptions
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&opts); err != nil && !errors.Is(err, io.EOF) {
+			log.Error().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Msg("Failed to decode torrent search request")
+			RespondError(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+	}
+
+	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
+	opts.TitleRescueResultLimit = 3
+	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
+	if err != nil {
+		if respondRateLimitError(w, err, err.Error()) {
+			return
+		}
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to search cross-seed matches")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, torrentSearchResponseFor(r, response))
+}
+
+func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.AutobrrApplyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode autobrr apply request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	var torrentName, torrentHash string
+	var totalSize int64
+	var fileCount int
+	if torrentBytes, err := base64.StdEncoding.DecodeString(req.TorrentData); err == nil {
+		if meta, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
+			torrentName = meta.Name
+			torrentHash = meta.HashV1
+			if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
+				torrentHash = meta.HashV2
+			}
+			if meta.Info != nil {
+				totalSize = meta.Info.TotalLength()
+			}
+			fileCount = len(meta.Files)
+		}
+	}
+
+	log.Debug().
+		Str("source", "cross-seed.webhook").
+		Str("announcedName", req.TorrentName).
+		Str("torrentName", torrentName).
+		Str("torrentHash", torrentHash).
+		Int64("size", totalSize).
+		Int("fileCount", fileCount).
+		Ints("instanceIds", req.InstanceIDs).
+		Str("indexer", req.Indexer).
+		Str("category", req.Category).
+		Msg("Webhook apply: received request")
+
+	response, err := h.service.AutobrrApply(context.WithoutCancel(r.Context()), &req)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to apply autobrr torrent")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if hash == "" {
+		RespondError(w, http.StatusBadRequest, "hash is required")
+		return
+	}
+
+	var req crossseed.ApplyTorrentSearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to decode cross-seed apply request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Selections) == 0 {
+		RespondError(w, http.StatusBadRequest, "selections are required")
+		return
+	}
+
+	response, err := h.service.ApplyTorrentSearchResults(context.WithoutCancel(r.Context()), instanceID, hash, &req)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to apply cross-seed search results")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
+}
+
+func mapCrossSeedErrorStatus(err error) int {
+	switch {
+	case err == nil:
+		return http.StatusOK
+	case errors.Is(err, crossseed.ErrInvalidRequest),
+		errors.Is(err, crossseed.ErrTorrentNotFound),
+		errors.Is(err, crossseed.ErrTorrentNotComplete),
+		errors.Is(err, crossseed.ErrSourceNotSettled),
+		errors.Is(err, crossseed.ErrSourceErrored),
+		errors.Is(err, crossseed.ErrNoIndexersConfigured):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+type automationSettingsSaveResponse struct {
+	*models.CrossSeedAutomationSettings
+	WarningResponse
+}
+
+func (h *CrossSeedHandler) checkGazelleKeys(ctx context.Context, settings *models.CrossSeedAutomationSettings) (warning string, passed []string, err error) {
+	if !settings.GazelleEnabled {
+		return "", nil, nil
+	}
+	var warnings []string
+	for _, site := range gazellemusic.Sites() {
+		key := settings.GazelleAPIKey(site.SettingsName)
+		if key == "" || domain.IsRedactedString(key) {
+			continue
+		}
+		client, err := gazellemusic.NewClient(site.Host, h.gazelleBaseURL, key)
+		if err != nil {
+			return "", nil, err
+		}
+		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err = client.CheckKey(checkCtx)
+		cancel()
+		if errors.Is(err, gazellemusic.ErrAccessDenied) {
+			return "", nil, fmt.Errorf("%s %w", client.SourceFlag(), err)
+		}
+		if err != nil {
+			log.Warn().Err(err).Str("host", site.Host).Msg("Could not check the Gazelle API key")
+			warnings = append(warnings, fmt.Sprintf("qui could not check the %s API key. The log has the details.", client.SourceFlag()))
+			continue
+		}
+		passed = append(passed, site.Host)
+	}
+	return strings.Join(warnings, "; "), passed, nil
+}
+
+func (h *CrossSeedHandler) GetGazelleSites(w http.ResponseWriter, r *http.Request) {
+	sites, err := h.service.GazelleSites(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load the RED/OPS sites")
+		RespondError(w, http.StatusInternalServerError, "Failed to load the RED/OPS sites")
+		return
+	}
+	RespondJSON(w, http.StatusOK, sites)
+}
+
+func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.service.GetAutomationSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed automation settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automation settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, settings)
+}
+
+func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *http.Request) {
+	var req automationSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.CategoryAffixMode != "" || req.UseCrossCategoryAffix {
+		if req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix {
+			RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+			return
+		}
+	}
+
+	req.CategoryAffix = strings.TrimSpace(req.CategoryAffix)
+
+	if req.CategoryAffix != "" {
+		if strings.Contains(req.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return
+		}
+		if strings.Contains(req.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return
+		}
+		if req.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(req.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return
+		}
+		if req.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(req.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return
+		}
+	}
+
+	enabledModes := 0
+	if req.UseCategoryFromIndexer {
+		enabledModes++
+	}
+	if req.UseCrossCategoryAffix {
+		enabledModes++
+	}
+	if req.UseCustomCategory {
+		enabledModes++
+	}
+	if enabledModes > 1 {
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
+		return
+	}
+	if req.SeasonPackCoverageThreshold <= 0 || req.SeasonPackCoverageThreshold > 1 {
+		RespondError(w, http.StatusBadRequest, "Season pack coverage threshold must be between 0 (exclusive) and 1 (inclusive)")
+		return
+	}
+
+	defaults := models.DefaultCrossSeedAutomationSettings()
+
+	autoResumeMaxDownloadMB := valueOrDefault(req.AutoResumeMaxDownloadMB, defaults.AutoResumeMaxDownloadMB)
+	if autoResumeMaxDownloadMB < 0 {
+		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
+		return
+	}
+
+	settings := &models.CrossSeedAutomationSettings{
+		Enabled:                        req.Enabled,
+		RunIntervalMinutes:             req.RunIntervalMinutes,
+		TargetInstanceIDs:              req.TargetInstanceIDs,
+		TargetIndexerIDs:               req.TargetIndexerIDs,
+		MaxResultsPerRun:               req.MaxResultsPerRun,
+		FindIndividualEpisodes:         req.FindIndividualEpisodes,
+		AutoResumeMaxDownloadMB:        autoResumeMaxDownloadMB,
+		PooledPartialCompletionEnabled: req.PooledPartialCompletionEnabled,
+		UseCategoryFromIndexer:         req.UseCategoryFromIndexer,
+		UseCrossCategoryAffix:          req.UseCrossCategoryAffix,
+		CategoryAffixMode:              req.CategoryAffixMode,
+		CategoryAffix:                  req.CategoryAffix,
+		UseCustomCategory:              req.UseCustomCategory,
+		CustomCategory:                 req.CustomCategory,
+		RunExternalProgramID:           req.RunExternalProgramID,
+		SkipRecheck:                    req.SkipRecheck,
+		RescueTitleMismatches:          req.RescueTitleMismatches,
+		SeasonPackEnabled:              req.SeasonPackEnabled,
+		SeasonPackAutomationEnabled:    req.SeasonPackAutomationEnabled,
+		SeasonPackSkipRepackCompare:    req.SeasonPackSkipRepackCompare,
+		SeasonPackSimplifyHDRCompare:   req.SeasonPackSimplifyHDRCompare,
+		SeasonPackSimplifyWEBCompare:   req.SeasonPackSimplifyWEBCompare,
+		SeasonPackSkipYearCompare:      req.SeasonPackSkipYearCompare,
+		SeasonPackCoverageThreshold:    req.SeasonPackCoverageThreshold,
+		SeasonPackTags:                 req.SeasonPackTags,
+		SeasonPackCategory:             strings.TrimSpace(req.SeasonPackCategory),
+		SeasonPackCategoryRules:        normalizeSeasonPackCategoryRules(req.SeasonPackCategoryRules),
+		CategoryMappingRules:           normalizeCategoryMappingRules(req.CategoryMappingRules),
+		RSSSourceCategories:            req.RSSSourceCategories,
+		RSSSourceTags:                  req.RSSSourceTags,
+		RSSSourceExcludeCategories:     req.RSSSourceExcludeCategories,
+		RSSSourceExcludeTags:           req.RSSSourceExcludeTags,
+		WebhookSourceCategories:        req.WebhookSourceCategories,
+		WebhookSourceTags:              req.WebhookSourceTags,
+		WebhookSourceExcludeCategories: req.WebhookSourceExcludeCategories,
+		WebhookSourceExcludeTags:       req.WebhookSourceExcludeTags,
+		RSSAutomationTags:              valueOrDefault(req.RSSAutomationTags, defaults.RSSAutomationTags),
+		SeededSearchTags:               valueOrDefault(req.SeededSearchTags, defaults.SeededSearchTags),
+		CompletionSearchTags:           valueOrDefault(req.CompletionSearchTags, defaults.CompletionSearchTags),
+		WebhookTags:                    valueOrDefault(req.WebhookTags, defaults.WebhookTags),
+		InheritSourceTags:              req.InheritSourceTags,
+		SkipAutoResumeRSS:              req.SkipAutoResumeRSS,
+		SkipAutoResumeSeededSearch:     req.SkipAutoResumeSeededSearch,
+		SkipAutoResumeCompletion:       req.SkipAutoResumeCompletion,
+		SkipAutoResumeWebhook:          req.SkipAutoResumeWebhook,
+		SkipPieceBoundarySafetyCheck:   valueOrDefault(req.SkipPieceBoundarySafetyCheck, defaults.SkipPieceBoundarySafetyCheck),
+		GazelleEnabled:                 req.GazelleEnabled,
+		RedactedAPIKey:                 patchSecret(req.RedactedAPIKey),
+		OrpheusAPIKey:                  patchSecret(req.OrpheusAPIKey),
+		SeasonPackTVDBAPIKey:           patchSecret(req.SeasonPackTVDBAPIKey),
+		SeasonPackTVDBPIN:              patchSecret(req.SeasonPackTVDBPIN),
+	}
+
+	warning, passed, err := h.checkGazelleKeys(r.Context(), settings)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to update cross-seed automation settings")
+		if status == http.StatusBadRequest {
+			RespondError(w, status, err.Error())
+		} else {
+			RespondError(w, status, "Failed to update automation settings")
+		}
+		return
+	}
+	h.service.GazelleKeysSaved(settings, passed)
+
+	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
+}
+
+func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *http.Request) {
+	var req automationSettingsPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.isEmpty() {
+		RespondError(w, http.StatusBadRequest, "No fields provided to update")
+		return
+	}
+
+	if req.RSSSourceCategories != nil || req.RSSSourceExcludeCategories != nil ||
+		req.WebhookSourceCategories != nil || req.WebhookSourceExcludeCategories != nil {
+		log.Debug().
+			Interface("rssSourceCategories", req.RSSSourceCategories).
+			Interface("rssSourceExcludeCategories", req.RSSSourceExcludeCategories).
+			Interface("rssSourceTags", req.RSSSourceTags).
+			Interface("rssSourceExcludeTags", req.RSSSourceExcludeTags).
+			Interface("webhookSourceCategories", req.WebhookSourceCategories).
+			Interface("webhookSourceExcludeCategories", req.WebhookSourceExcludeCategories).
+			Msg("[API] Received source filter patch request")
+	}
+
+	if req.CategoryAffixMode != nil && *req.CategoryAffixMode != "" && *req.CategoryAffixMode != models.CategoryAffixModePrefix && *req.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+		return
+	}
+
+	if req.SeasonPackCoverageThreshold != nil {
+		t := *req.SeasonPackCoverageThreshold
+		if t <= 0 || t > 1 {
+			RespondError(w, http.StatusBadRequest, "Season pack coverage threshold must be between 0 (exclusive) and 1 (inclusive)")
+			return
+		}
+	}
+	if req.AutoResumeMaxDownloadMB != nil && *req.AutoResumeMaxDownloadMB < 0 {
+		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
+		return
+	}
+
+	current, err := h.service.GetAutomationSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed automation settings for patch")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automation settings")
+		return
+	}
+
+	merged := *current
+	applyAutomationSettingsPatch(&merged, req)
+
+	if merged.CategoryAffix != "" {
+		if strings.Contains(merged.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return
+		}
+		if strings.Contains(merged.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return
+		}
+		if merged.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(merged.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return
+		}
+		if merged.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(merged.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return
+		}
+	}
+
+	if merged.UseCrossCategoryAffix && merged.CategoryAffixMode != models.CategoryAffixModePrefix && merged.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+		return
+	}
+
+	enabledModes := 0
+	if merged.UseCategoryFromIndexer {
+		enabledModes++
+	}
+	if merged.UseCrossCategoryAffix {
+		enabledModes++
+	}
+	if merged.UseCustomCategory {
+		enabledModes++
+	}
+	if enabledModes > 1 {
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
+		return
+	}
+
+	warning, passed, err := h.checkGazelleKeys(r.Context(), &merged)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	updated, err := h.service.UpdateAutomationSettings(r.Context(), &merged)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to patch cross-seed automation settings")
+		if status == http.StatusBadRequest {
+			RespondError(w, status, err.Error())
+		} else {
+			RespondError(w, status, "Failed to update automation settings")
+		}
+		return
+	}
+	h.service.GazelleKeysSaved(&merged, passed)
+
+	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
+}
+
+func (h *CrossSeedHandler) GetAutomationStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.service.GetAutomationStatus(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed automation status")
+		RespondError(w, http.StatusInternalServerError, "Failed to load automation status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, status)
+}
+
+func (h *CrossSeedHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Request) {
+	limit := 25
+	offset := 0
+
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	runs, err := h.service.ListAutomationRuns(r.Context(), limit, offset)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list cross-seed automation runs")
+		RespondError(w, http.StatusInternalServerError, "Failed to list automation runs")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, runs)
+}
+
+func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.Request) {
+	var req automationRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	run, err := h.service.RunAutomation(context.WithoutCancel(r.Context()), crossseed.AutomationRunOptions{
+		RequestedBy: "api",
+		Mode:        models.CrossSeedRunModeManual,
+		DryRun:      req.DryRun,
+	})
+	if err != nil {
+		if errors.Is(err, crossseed.ErrAutomationRunning) {
+			RespondError(w, http.StatusConflict, "Automation already running")
+			return
+		}
+		if errors.Is(err, crossseed.ErrAutomationCooldownActive) {
+			RespondError(w, http.StatusTooManyRequests, err.Error())
+			return
+		}
+		if errors.Is(err, crossseed.ErrNoIndexersConfigured) {
+			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running automation.")
+			return
+		}
+		if errors.Is(err, crossseed.ErrNoTargetInstancesConfigured) {
+			RespondError(w, http.StatusBadRequest, "Select at least one target instance before running automation.")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to trigger cross-seed automation run")
+		RespondError(w, http.StatusInternalServerError, "Failed to start automation run")
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, run)
+}
+
+func (h *CrossSeedHandler) CancelAutomationRun(w http.ResponseWriter, r *http.Request) {
+	canceled := h.service.CancelAutomationRun()
+	if !canceled {
+		RespondError(w, http.StatusConflict, "No automation run is currently active")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *CrossSeedHandler) ListBlocklist(w http.ResponseWriter, r *http.Request) {
+	instanceID := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("instanceId")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+			return
+		}
+		instanceID = parsed
+	}
+
+	entries, err := h.service.ListBlocklist(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list cross-seed blocklist")
+		RespondError(w, http.StatusInternalServerError, "Failed to load blocklist")
+		return
+	}
+	if entries == nil {
+		entries = []*models.CrossSeedBlocklistEntry{}
+	}
+
+	RespondJSON(w, http.StatusOK, entries)
+}
+
+func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Request) {
+	var payload CrossSeedBlocklistRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if payload.InstanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+		return
+	}
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), payload.InstanceID)
+		switch {
+		case err == nil:
+		case errors.Is(err, models.ErrInstanceNotFound):
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		default:
+			log.Error().Err(err).Int("instanceID", payload.InstanceID).Msg("Failed to validate instance for cross-seed blocklist")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	infohash, ok := normalizeInfoHashInput(payload.InfoHash)
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "infoHash must be a valid hex infohash")
+		return
+	}
+
+	entry := &models.CrossSeedBlocklistEntry{
+		InstanceID: payload.InstanceID,
+		InfoHash:   infohash,
+		Note:       strings.TrimSpace(payload.Note),
+	}
+
+	created, err := h.service.UpsertBlocklistEntry(r.Context(), entry)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to add cross-seed blocklist entry")
+		RespondError(w, http.StatusInternalServerError, "Failed to add blocklist entry")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, created)
+}
+
+func (h *CrossSeedHandler) DeleteBlocklistEntry(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	infohash, ok := normalizeInfoHashInput(chi.URLParam(r, "infohash"))
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "infohash must be a valid hex infohash")
+		return
+	}
+
+	if err := h.service.DeleteBlocklistEntry(r.Context(), instanceID, infohash); err != nil {
+		if errors.Is(err, crossseed.ErrBlocklistEntryNotFound) {
+			RespondError(w, http.StatusNotFound, "Blocklist entry not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to delete cross-seed blocklist entry")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete blocklist entry")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *CrossSeedHandler) GetSearchSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.service.GetSearchSettings(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load cross-seed search settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load search settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, settings)
+}
+
+func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Request) {
+	var patch searchSettingsPatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if patch.isEmpty() {
+		RespondError(w, http.StatusBadRequest, "No settings provided")
+		return
+	}
+
+	updated, err := h.service.PatchSearchSettings(r.Context(), crossseed.SearchSettingsPatch{
+		InstanceIDSet:          patch.InstanceID.Set,
+		InstanceID:             patch.InstanceID.Value,
+		Categories:             patch.Categories,
+		Tags:                   patch.Tags,
+		ExcludeCategories:      patch.ExcludeCategories,
+		ExcludeTags:            patch.ExcludeTags,
+		IndexerIDs:             patch.IndexerIDs,
+		IntervalSeconds:        patch.IntervalSeconds,
+		CooldownMinutes:        patch.CooldownMinutes,
+		MaxAddedAgeDays:        patch.MaxAddedAgeDays,
+		SkipIndividualEpisodes: patch.SkipIndividualEpisodes,
+		TorznabEnabled:         patch.TorznabEnabled,
+		ScheduleEnabled:        patch.ScheduleEnabled,
+		ScheduleIntervalHours:  patch.ScheduleIntervalHours,
+		ScheduleMaxSearches:    patch.ScheduleMaxSearches,
+		ScheduleMaxAgeDays:     patch.ScheduleMaxAgeDays,
+	})
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to update cross-seed search settings")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, updated)
+}
+
+func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request) {
+	var req searchRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.InstanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+		return
+	}
+
+	run, err := h.service.StartSearchRun(context.WithoutCancel(r.Context()), crossseed.SearchRunOptions{
+		InstanceID:             req.InstanceID,
+		Categories:             req.Categories,
+		Tags:                   req.Tags,
+		ExcludeCategories:      req.ExcludeCategories,
+		ExcludeTags:            req.ExcludeTags,
+		IntervalSeconds:        req.IntervalSeconds,
+		IndexerIDs:             req.IndexerIDs,
+		DisableTorznab:         req.DisableTorznab,
+		CooldownMinutes:        req.CooldownMinutes,
+		SkipIndividualEpisodes: req.SkipIndividualEpisodes,
+		MaxAddedAgeDays:        req.MaxAddedAgeDays,
+		RequestedBy:            "api",
+	})
+	if err != nil {
+		if errors.Is(err, crossseed.ErrSearchRunActive) {
+			RespondError(w, http.StatusConflict, "Search run already active")
+			return
+		}
+		if errors.Is(err, crossseed.ErrNoIndexersConfigured) {
+			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer before running seeded torrent search.")
+			return
+		}
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to start search run")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, run)
+}
+
+func (h *CrossSeedHandler) RunSearchScheduleNow(w http.ResponseWriter, r *http.Request) {
+	run, err := h.service.RunScheduledSearchNow(context.WithoutCancel(r.Context()))
+	if err != nil {
+		if errors.Is(err, crossseed.ErrSearchRunActive) {
+			RespondError(w, http.StatusConflict, "Search run already active")
+			return
+		}
+		if errors.Is(err, crossseed.ErrNoIndexersConfigured) {
+			RespondError(w, http.StatusBadRequest, "No Torznab indexers configured. Add at least one enabled indexer, or a RED or OPS key, before the Library Scan schedule can run.")
+			return
+		}
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().Err(err).Msg("Failed to start a scheduled search run")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusAccepted, run)
+}
+
+func (h *CrossSeedHandler) CancelSearchRun(w http.ResponseWriter, r *http.Request) {
+	h.service.CancelSearchRun()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *CrossSeedHandler) GetSearchRunStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.service.GetSearchRunStatus(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get cross-seed search run status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get search run status")
+		return
+	}
+	RespondJSON(w, http.StatusOK, status)
+}
+
+func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.Request) {
+	instanceStr := r.URL.Query().Get("instanceId")
+	if strings.TrimSpace(instanceStr) == "" {
+		RespondError(w, http.StatusBadRequest, "instanceId query parameter is required")
+		return
+	}
+	instanceID, err := strconv.Atoi(instanceStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+		return
+	}
+
+	limit := 25
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+	offset := 0
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	runs, err := h.service.ListSearchRuns(r.Context(), instanceID, limit, offset)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Int("limit", limit).
+			Int("offset", offset).
+			Msg("Failed to list cross-seed search runs")
+		RespondError(w, http.StatusInternalServerError, "Failed to list search runs")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, runs)
+}
+
+func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	RespondError(w, http.StatusNotImplemented, fmt.Sprintf("cross-seed status for instance %d is not implemented yet", instanceID))
+}
+
+func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.WebhookCheckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode webhook check request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	response, err := h.service.CheckWebhook(r.Context(), &req)
+	if err != nil {
+		switch {
+		case errors.Is(err, crossseed.ErrInvalidWebhookRequest):
+			log.Warn().Err(err).Msg("Invalid webhook payload")
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		default:
+			log.Error().Err(err).Msg("Failed to check webhook")
+			RespondError(w, http.StatusInternalServerError, "Failed to check webhook")
+			return
+		}
+	}
+
+	RespondJSON(w, webhookResponseStatus(response), response)
+}
+
+func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
+	switch {
+	case response == nil:
+		return http.StatusInternalServerError
+	case response.CanCrossSeed:
+		return http.StatusOK
+	case len(response.Matches) > 0:
+		return http.StatusAccepted
+	default:
+		return http.StatusNotFound
+	}
+}
+
+func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Request) {
+	if h.seasonPackRunStore == nil {
+		log.Error().Msg("Season pack run store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Season pack run store not configured")
+		return
+	}
+
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 400 {
+			limit = parsed
+		}
+	}
+
+	runs, err := h.seasonPackRunStore.List(r.Context(), limit)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list season pack runs")
+		RespondError(w, http.StatusInternalServerError, "Failed to list season pack runs")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, runs)
+}
+
+type instanceCompletionSettingsResponse struct {
+	InstanceID         int      `json:"instanceId"`
+	Enabled            bool     `json:"enabled"`
+	Categories         []string `json:"categories"`
+	Tags               []string `json:"tags"`
+	ExcludeCategories  []string `json:"excludeCategories"`
+	ExcludeTags        []string `json:"excludeTags"`
+	IndexerIDs         []int    `json:"indexerIds"`
+	BypassTorznabCache bool     `json:"bypassTorznabCache"`
+	DelaySeconds       int      `json:"delaySeconds"`
+}
+
+func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionSettings) instanceCompletionSettingsResponse {
+	return instanceCompletionSettingsResponse{
+		InstanceID:         s.InstanceID,
+		Enabled:            s.Enabled,
+		Categories:         s.Categories,
+		Tags:               s.Tags,
+		ExcludeCategories:  s.ExcludeCategories,
+		ExcludeTags:        s.ExcludeTags,
+		IndexerIDs:         s.IndexerIDs,
+		BypassTorznabCache: s.BypassTorznabCache,
+		DelaySeconds:       s.DelaySeconds,
+	}
+}
+
+type instanceCompletionSettingsRequest struct {
+	Enabled            bool     `json:"enabled"`
+	Categories         []string `json:"categories"`
+	Tags               []string `json:"tags"`
+	ExcludeCategories  []string `json:"excludeCategories"`
+	ExcludeTags        []string `json:"excludeTags"`
+	IndexerIDs         []int    `json:"indexerIds"`
+	BypassTorznabCache bool     `json:"bypassTorznabCache"`
+	DelaySeconds       int      `json:"delaySeconds"`
+}
+
+func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	if h.completionStore == nil {
+		log.Error().Int("instanceID", instanceID).Msg("Completion store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings not available")
+		return
+	}
+
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+				RespondError(w, http.StatusNotFound, "Instance not found")
+				return
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for completion settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	settings, err := h.completionStore.Get(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get instance completion settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load completion settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(settings))
+}
+
+func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	if h.completionStore == nil {
+		log.Error().Int("instanceID", instanceID).Msg("Completion store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Completion settings not available")
+		return
+	}
+
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), instanceID)
+		if err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				log.Warn().Int("instanceID", instanceID).Msg("Instance not found for completion settings")
+				RespondError(w, http.StatusNotFound, "Instance not found")
+				return
+			}
+			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for completion settings")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	var req instanceCompletionSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode instance completion settings request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.DelaySeconds < 0 || req.DelaySeconds > models.MaxCompletionDelaySeconds {
+		RespondError(w, http.StatusBadRequest, fmt.Sprintf("delaySeconds must be between 0 and %d", models.MaxCompletionDelaySeconds))
+		return
+	}
+
+	settings := &models.InstanceCrossSeedCompletionSettings{
+		InstanceID:         instanceID,
+		Enabled:            req.Enabled,
+		Categories:         req.Categories,
+		Tags:               req.Tags,
+		ExcludeCategories:  req.ExcludeCategories,
+		ExcludeTags:        req.ExcludeTags,
+		IndexerIDs:         req.IndexerIDs,
+		BypassTorznabCache: req.BypassTorznabCache,
+		DelaySeconds:       req.DelaySeconds,
+	}
+
+	saved, err := h.completionStore.Upsert(r.Context(), settings)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to save instance completion settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to save completion settings")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
+}

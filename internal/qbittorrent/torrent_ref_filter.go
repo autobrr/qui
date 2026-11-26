@@ -1,0 +1,85 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package qbittorrent
+
+import (
+	"context"
+	"slices"
+	"strings"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+)
+
+type TorrentRefFilter struct {
+	Hashes    []string
+	Category  string
+	Tag       string
+	Completed bool
+
+	WithHelperTorrents bool
+}
+
+func (f TorrentRefFilter) matches(t *qbt.Torrent) bool {
+	if f.Category != "" && t.Category != f.Category {
+		return false
+	}
+	if f.Tag != "" && !hasExactTag(t.Tags, f.Tag) {
+		return false
+	}
+	return !f.Completed || slices.Contains(completedStates, t.State)
+}
+
+func hasExactTag(tags, target string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	for tag := range strings.SplitSeq(tags, ",") {
+		if strings.TrimSpace(tag) == target {
+			return true
+		}
+	}
+	return false
+}
+
+func (f TorrentRefFilter) Select(snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
+	if len(f.Hashes) == 0 {
+		if f.Category == "" && f.Tag == "" && !f.Completed {
+			return snapshotTorrents(snapshot)
+		}
+		return snapshotMatching(snapshot, f.matches)
+	}
+	if snapshot == nil {
+		return nil
+	}
+	refs := make([]*qbt.Torrent, 0, len(f.Hashes))
+	seen := make(map[*qbt.Torrent]struct{}, len(f.Hashes))
+	for _, hash := range f.Hashes {
+		t, ok := snapshot.Torrent(canonicalizeHash(hash))
+		if !ok || !f.matches(t) {
+			continue
+		}
+		if _, repeat := seen[t]; !repeat {
+			seen[t] = struct{}{}
+			refs = append(refs, t)
+		}
+	}
+	return refs
+}
+
+func (sm *SyncManager) GetTorrentRefs(ctx context.Context, instanceID int, filter TorrentRefFilter) ([]*qbt.Torrent, error) {
+	_, owner, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	return sm.selectRefs(instanceID, filter, owner.Snapshot()), nil
+}
+
+func (sm *SyncManager) selectRefs(instanceID int, filter TorrentRefFilter, snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
+	refs := filter.Select(snapshot)
+	if len(filter.Hashes) > 0 || filter.WithHelperTorrents {
+		return refs
+	}
+	return helpersOf(snapshot, sm.helpers(), instanceID).drop(refs)
+}

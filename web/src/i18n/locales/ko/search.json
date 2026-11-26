@@ -1,0 +1,195 @@
+{
+  "pageTitle": "인덱서 검색",
+  "pageDescription": "인덱서를 검색하고 릴리스를 qBittorrent에 추가하세요.",
+  "indexerSheet": {
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "기본",
+      "jackett": "Jackett"
+    }
+  },
+  "instanceSelector": {
+    "offline": "오프라인"
+  },
+  "picker": {
+    "indexersTitle": "검색할 인덱서",
+    "filter": "필터",
+    "all": "전체",
+    "none": "없음",
+    "done": "완료",
+    "noMatch": "필터와 일치하는 항목이 없습니다"
+  },
+  "form": {
+    "indexers": "인덱서",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "{{label}} 제거",
+    "clearFields": "필드 지우기",
+    "clearQuery": "검색어 지우기",
+    "recentSearches": "최근 검색",
+    "noIndexersTitle": "아직 인덱서가 없습니다",
+    "noIndexersBody": "인덱서를 추가하면 이 페이지에서 검색할 수 있습니다.",
+    "noIndexersAction": "인덱서 추가",
+    "indexersFailed": "인덱서를 불러오지 못했습니다"
+  },
+  "searchForm": {
+    "advanced": "고급",
+    "searching": "검색 중...",
+    "search": "검색",
+    "advancedNote": "ID와 번호를 지원하는 인덱서에서는 정확하게 검색됩니다.",
+    "searchType": "검색 유형",
+    "searchQuery": "검색어"
+  },
+  "searchTypes": {
+    "movies": {
+      "label": "영화",
+      "placeholder": "예: \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "예: \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "음악",
+      "placeholder": "예: \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "도서 및 만화",
+      "placeholder": "예: \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "앱 및 게임",
+      "placeholder": "예: \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "성인",
+      "placeholder": "특정 성인 릴리스 이름을 입력하세요"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "연도",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "시즌",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "에피소드",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "아티스트",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "앨범",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "제한",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "오프셋",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "count_other": "결과 {{count}}개",
+    "filteredCount_other": "결과 {{count}}개 중 {{shown}}개",
+    "searching_other": "인덱서 {{count}}개 검색 중...",
+    "filterPlaceholder": "결과 필터링...",
+    "clearFilters": "필터 지우기",
+    "noMatches": "필터와 일치하는 결과가 없습니다.",
+    "cachedSummary": "캐시됨 {{cached}} · 만료 {{expires}}",
+    "cachedAgo": "캐시됨 · {{age}}",
+    "live": "실시간",
+    "partial": "불완전",
+    "partialHint": "일부 인덱서가 응답하지 않았습니다. 새로 고침하여 다시 요청하세요.",
+    "refresh": "새로 고침",
+    "refreshFromIndexers": "인덱서에서 새로 고침",
+    "refreshCooldown": "잠시 후 다시 새로 고칠 수 있습니다",
+    "showMore": "더 보기",
+    "shownOf": "{{total}}개 중 {{shown}}개 표시",
+    "categoryFallback": "카테고리 {{id}}",
+    "noResults": "결과를 찾을 수 없습니다",
+    "noResultsFor": "\"{{query}}\"에 대한 결과를 찾을 수 없습니다",
+    "noResultsHint": "철자를 확인하거나, 다른 검색 유형을 선택하거나, 더 많은 인덱서를 검색하세요.",
+    "searchAllIndexers": "모든 인덱서 검색",
+    "failed": "검색에 실패했습니다",
+    "retry": "다시 시도",
+    "idleTitle": "인덱서 검색",
+    "idleHint": "제목, tt1234567 같은 IMDb ID 또는 tvdb 123456 같은 TVDb ID를 입력하세요.",
+    "free": "무료"
+  },
+  "facets": {
+    "collection": "서비스",
+    "normal": "일반"
+  },
+  "sort": {
+    "label": "정렬",
+    "seeders": "시더 많은 순",
+    "newest": "최신순",
+    "oldest": "오래된 순",
+    "largest": "큰 순",
+    "smallest": "작은 순",
+    "title": "제목 A–Z",
+    "indexer": "인덱서 A–Z"
+  },
+  "columns": {
+    "age": "경과 시간"
+  },
+  "row": {
+    "add": "추가",
+    "addTo": "추가할 위치",
+    "more": "추가 작업",
+    "openIndexer": "인덱서에서 열기",
+    "copyTitle": "제목 복사",
+    "discount": "{{percent}}%",
+    "upload": "업로드 {{factor}}×"
+  },
+  "bulk": {
+    "label": "선택한 결과",
+    "selected_other": "{{count}}개 선택됨",
+    "selectShown": "표시된 결과 모두 선택"
+  },
+  "historyMeta": "{{type}} · 결과 {{count}}개 · {{timestamp}}",
+  "table": {
+    "title": "제목",
+    "indexer": "인덱서",
+    "size": "크기",
+    "seeders": "시더",
+    "leechers": "리처",
+    "category": "카테고리",
+    "source": "소스",
+    "group": "그룹",
+    "freeleech": "Freeleech",
+    "actions": "작업",
+    "downloadTorrent": ".torrent 다운로드"
+  },
+  "refreshDialog": {
+    "title": "캐시를 우회하시겠습니까?",
+    "description": "선택한 모든 인덱서에 요청을 직접 전송합니다. 속도 제한을 피하려면 신중하게 사용하세요. 짧은 대기 시간 후 다시 새로 고칠 수 있습니다.",
+    "refreshNow": "지금 새로 고침"
+  },
+  "cache": {
+    "cacheAndLive": "캐시 + 실시간"
+  },
+  "card": {
+    "addToNamed": "{{name}}에 추가"
+  },
+  "toast": {
+    "noDownloadUrl": "이 결과에 사용 가능한 다운로드 URL이 없습니다",
+    "invalidProtocol": "잘못된 URL 프로토콜",
+    "invalidUrl": "잘못된 URL 형식"
+  }
+}

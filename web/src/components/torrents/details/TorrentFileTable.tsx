@@ -1,0 +1,471 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { FilePrioritySelect } from "@/components/torrents/FilePrioritySelect"
+import { DiscReportButton } from "@/components/torrents/TorrentDiscReportDialog"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
+import { SortIcon } from "@/components/ui/sort-icon"
+import { TruncatedText } from "@/components/ui/truncated-text"
+import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
+import type { FilePriorityValue } from "@/lib/file-priority"
+import { buildFileTree, DEFAULT_FILE_SORT, discPathOf, sortFileTree, toggleFileSort, type FileSortColumn, type FileTreeNode } from "@/lib/file-tree"
+import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
+import { getLinuxSavePath } from "@/lib/incognito"
+import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
+import type { DiscScanRun, TorrentFile } from "@/types"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import { ChevronDown, ChevronRight, Copy, Download, File, Folder, Info, Loader2, Pencil, Search, X } from "lucide-react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+interface TorrentFileTableProps {
+  files: TorrentFile[] | undefined
+  loading: boolean
+  supportsFilePriority: boolean
+  pendingFileIndices: Set<number>
+  incognitoMode: boolean
+  torrentHash: string
+  savePath?: string
+  onToggleFile: (file: TorrentFile, selected: boolean) => void
+  onToggleFileRange: (indices: number[], selected: boolean) => void
+  onToggleFolder: (folderPath: string, selected: boolean) => void
+  onSetFilePriority: (file: TorrentFile, priority: number) => void
+  onSetFolderPriority: (folderPath: string, priority: number) => void
+  onRenameFile?: (filePath: string) => void
+  onRenameFolder?: (folderPath: string) => void
+  onDownloadFile?: (file: TorrentFile) => void
+  onShowMediaInfo?: (file: TorrentFile) => void
+  discScans?: ReadonlyMap<string, DiscScanRun>
+  onShowDiscReport?: (discPath: string) => void
+}
+
+interface FlatRow {
+  node: FileTreeNode
+  depth: number
+  isExpanded: boolean
+  hasChildren: boolean
+  isVisible: boolean
+}
+
+function flattenTree(
+  nodes: FileTreeNode[],
+  expandedFolders: Set<string>,
+  depth = 0,
+  visible = false
+): FlatRow[] {
+  const rows: FlatRow[] = []
+
+  for (const node of nodes) {
+    const hasChildren = node.kind === "folder" && Boolean(node.children?.length)
+    const isExpanded = expandedFolders.has(node.id)
+    const isVisible = depth === 0 || visible
+
+    rows.push({ node, depth, isExpanded, hasChildren, isVisible })
+
+    if (hasChildren && node.children) {
+      rows.push(
+        ...flattenTree(
+          node.children,
+          expandedFolders,
+          depth + 1,
+          isVisible && isExpanded
+        )
+      )
+    }
+  }
+
+  return rows
+}
+
+export const TorrentFileTable = memo(function TorrentFileTable({
+  files,
+  loading,
+  supportsFilePriority,
+  pendingFileIndices,
+  incognitoMode,
+  torrentHash,
+  savePath,
+  onToggleFile,
+  onToggleFileRange,
+  onToggleFolder,
+  onSetFilePriority,
+  onSetFolderPriority,
+  onRenameFile,
+  onRenameFolder,
+  onDownloadFile,
+  onShowMediaInfo,
+  discScans,
+  onShowDiscReport,
+}: TorrentFileTableProps) {
+  const { t } = useTranslation("torrents")
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
+  const [searchQuery, setSearchQuery] = useState("")
+  const [sort, setSort] = useState(DEFAULT_FILE_SORT)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  const { nodes, folderIds } = useMemo(
+    () => buildFileTree(files ?? [], incognitoMode, torrentHash),
+    [files, incognitoMode, torrentHash]
+  )
+  const tree = useMemo(() => sortFileTree(nodes, sort), [nodes, sort])
+
+  const [knownExpansion, setKnownExpansion] = useState<{ hash: string; ids: Set<string> } | null>(null)
+  if (tree.length > 0 && (knownExpansion?.hash !== torrentHash || knownExpansion.ids !== folderIds)) {
+    setKnownExpansion({ hash: torrentHash, ids: folderIds })
+    setExpandedFolders(
+      knownExpansion?.hash === torrentHash? reconcileExpandedFolders(expandedFolders, knownExpansion.ids, folderIds): new Set(folderIds)
+    )
+  }
+
+  const flatRows = useMemo(
+    () => flattenTree(tree, expandedFolders),
+    [tree, expandedFolders]
+  )
+
+  const filteredRows = useMemo(() => {
+    const visibleRows = flatRows.filter((row) => row.isVisible)
+    if (!searchQuery.trim()) return visibleRows
+
+    const query = searchQuery.toLowerCase()
+    const matchingIds = new Set<string>()
+
+    for (const row of flatRows) {
+      if (row.node.name.toLowerCase().includes(query)) {
+        matchingIds.add(row.node.id)
+        const parts = row.node.id.split("/")
+        let parentPath = ""
+        for (let i = 0; i < parts.length - 1; i++) {
+          parentPath = parentPath ? `${parentPath}/${parts[i]}` : parts[i]
+          matchingIds.add(parentPath)
+        }
+      }
+    }
+
+    return visibleRows.filter((row) => matchingIds.has(row.node.id))
+  }, [flatRows, searchQuery])
+
+  const ROW_HEIGHT = 28
+
+  const virtualizer = useVirtualizer({
+    count: filteredRows.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: filteredRows.length > 5000 ? 5 : filteredRows.length > 1000 ? 10 : 15,
+    getItemKey: useCallback((index: number) => {
+      const row = filteredRows[index]
+      return row ? row.node.id : `row-${index}`
+    }, [filteredRows]),
+  })
+
+  useEffect(() => {
+    virtualizer.measure()
+  }, [filteredRows.length, virtualizer])
+
+  const virtualRows = virtualizer.getVirtualItems()
+
+  const toggleFolder = useCallback((folderId: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) {
+        next.delete(folderId)
+      } else {
+        next.add(folderId)
+      }
+      return next
+    })
+  }, [])
+
+  const expandAll = useCallback(() => {
+    setExpandedFolders(new Set(folderIds))
+  }, [folderIds])
+
+  const collapseAll = useCallback(() => {
+    setExpandedFolders(new Set())
+  }, [])
+
+  const { handleCheckboxPointerDown, clearShift, handleFileCheckbox } = useFileRangeSelection({
+    getRows: () => filteredRows,
+    onToggleFile,
+    onToggleFileRange,
+    resetKey: torrentHash,
+  })
+
+  const sortHeader = (column: FileSortColumn, label: string, className: string) => {
+    const active = sort.column === column
+    return (
+      <button
+        type="button"
+        className={cn("flex items-center gap-1 px-2 py-1.5 font-medium text-muted-foreground select-none hover:bg-muted/50", className)}
+        aria-pressed={active}
+        aria-label={active ? `${label}, ${t(`sort.${sort.direction === "asc" ? "ascending" : "descending"}`)}` : undefined}
+        onClick={() => setSort(prev => toggleFileSort(prev, column))}
+      >
+        {label}
+        <SortIcon sorted={active ? sort.direction : false} />
+      </button>
+    )
+  }
+
+  if (loading && !files) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-5 w-5 animate-spin" />
+      </div>
+    )
+  }
+
+  if (!files || files.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+        {t("fileTable.noFiles")}
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col min-h-0">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b text-xs">
+        <button
+          className="text-muted-foreground hover:text-foreground"
+          onClick={expandAll}
+        >
+          {t("fileTable.expandAll")}
+        </button>
+        <span className="text-muted-foreground">/</span>
+        <button
+          className="text-muted-foreground hover:text-foreground"
+          onClick={collapseAll}
+        >
+          {t("fileTable.collapseAll")}
+        </button>
+        <div className="relative ml-2">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder={t("fileTable.searchFiles")}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-6 w-40 pl-7 pr-7 text-xs"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        <span className="ml-auto text-muted-foreground">
+          {searchQuery ? t("fileTable.filteredCount", { filtered: filteredRows.length, total: files.length }) : t("fileTable.fileCount", { count: files.length })}
+        </span>
+      </div>
+
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 min-h-0 overflow-auto scrollbar-thin"
+      >
+        <div className={cn("min-w-[500px]", supportsFilePriority && "min-w-[640px]")}>
+          <div className="sticky top-0 z-10 bg-background border-b flex text-xs">
+            {supportsFilePriority && (
+              <div className="w-8 px-2 py-1.5 text-left shrink-0"></div>
+            )}
+            {sortHeader("name", t("fileTable.headers.name"), "flex-1")}
+            {sortHeader("progress", t("fileTable.headers.progress"), "w-28 shrink-0")}
+            {sortHeader("size", t("fileTable.headers.size"), "w-24 shrink-0 justify-end")}
+            {supportsFilePriority && sortHeader("priority", t("filePriority.header"), "w-36 shrink-0")}
+          </div>
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualRows.map((virtualRow) => {
+              const row = filteredRows[virtualRow.index]
+              if (!row) return null
+              const { node, depth, isExpanded, hasChildren } = row
+              const isFile = node.kind === "file"
+              const file = node.file
+              const isPending = file && pendingFileIndices.has(file.index)
+              const isSelected = isFile ? (file?.priority !== 0) : (node.selectedCount === node.totalCount)
+              const isIndeterminate = !isFile && node.selectedCount > 0 && node.selectedCount < node.totalCount
+              const progress = node.totalSize > 0 ? (node.totalProgress / node.totalSize) * 100 : 0
+              const discPath = onShowDiscReport ? discPathOf(node) : null
+
+              const rowContent = (
+                <div
+                  className="flex items-center border-b border-border/30 hover:bg-muted/30 cursor-default text-xs"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {supportsFilePriority && (
+                    <div className="w-8 px-2 py-1.5 shrink-0 flex items-center">
+                      <Checkbox
+                        checked={isIndeterminate ? "indeterminate" : isSelected}
+                        onPointerDown={handleCheckboxPointerDown}
+                        onCheckedChange={(checked) => {
+                          if (isFile && file) {
+                            handleFileCheckbox(file, virtualRow.index, checked === true)
+                          } else {
+                            clearShift()
+                            onToggleFolder(node.id, checked === true)
+                          }
+                        }}
+                        disabled={isPending}
+                        className="h-3.5 w-3.5"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 px-2 py-1.5 overflow-hidden min-w-0">
+                    <div
+                      className="flex items-center gap-1 min-w-0"
+                      style={{ paddingLeft: depth * 16 }}
+                    >
+                      {hasChildren ? (
+                        <button
+                          className="p-0.5 hover:bg-muted rounded shrink-0"
+                          onClick={() => toggleFolder(node.id)}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      ) : (
+                        <span className="w-4 shrink-0" />
+                      )}
+                      {isFile ? (
+                        <File className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      ) : (
+                        <Folder className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
+                      )}
+                      <TruncatedText
+                        className={cn(isPending && "opacity-50")}
+                        tooltipSide="top"
+                      >
+                        {node.name}
+                      </TruncatedText>
+                      {!isFile && (
+                        <span className="text-muted-foreground ml-1 shrink-0">
+                          ({node.totalCount})
+                        </span>
+                      )}
+                      {onShowDiscReport && discPath !== null && (
+                        <DiscReportButton
+                          className="ml-1 shrink-0"
+                          status={discScans?.get(discPath)?.status}
+                          disabled={incognitoMode}
+                          onClick={() => onShowDiscReport(discPath)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="w-28 px-2 py-1.5 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Progress value={progress} className="h-1.5 w-16" />
+                      <span className="tabular-nums text-10 text-muted-foreground w-10">
+                        {(Math.floor(progress * 10) / 10).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="w-24 px-2 py-1.5 text-right tabular-nums shrink-0">
+                    {formatBytes(node.totalSize)}
+                  </div>
+                  {supportsFilePriority && (
+                    <div className="w-36 px-2 shrink-0 flex items-center">
+                      <FilePrioritySelect
+                        value={node.priority}
+                        disabled={isPending}
+                        className="w-full"
+                        onChange={(priority: FilePriorityValue) => {
+                          if (isFile && file) {
+                            onSetFilePriority(file, priority)
+                          } else {
+                            onSetFolderPriority(node.id, priority)
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+
+              if (onRenameFile || onRenameFolder || onDownloadFile || onShowMediaInfo) {
+                return (
+                  <ContextMenu key={node.id}>
+                    <ContextMenuTrigger asChild>
+                      {rowContent}
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        onClick={async () => {
+                          const fullPath = incognitoMode? joinPath(getLinuxSavePath(torrentHash), node.name): savePath? joinPath(savePath, node.id): node.id
+                          try {
+                            await copyTextToClipboard(fullPath)
+                            toast.success(isFile ? t("fileTable.filePathCopied") : t("fileTable.folderPathCopied"))
+                          } catch {
+                            toast.error(t("fileTable.copyPathFailed"))
+                          }
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-2" />
+                        {t("fileTable.copyPath")}
+                      </ContextMenuItem>
+                      {isFile && onDownloadFile && node.file && (
+                        <ContextMenuItem
+                          onClick={() => onDownloadFile(node.file!)}
+                          disabled={incognitoMode}
+                        >
+                          <Download className="h-3.5 w-3.5 mr-2" />
+                          {t("fileTable.download")}
+                        </ContextMenuItem>
+                      )}
+                      {isFile && onShowMediaInfo && node.file && (
+                        <ContextMenuItem
+                          onClick={() => onShowMediaInfo(node.file!)}
+                          disabled={incognitoMode}
+                        >
+                          <Info className="h-3.5 w-3.5 mr-2" />
+                          {t("fileTable.mediaInfo")}
+                        </ContextMenuItem>
+                      )}
+                      {isFile && onRenameFile && (
+                        <ContextMenuItem onClick={() => onRenameFile(node.id)}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" />
+                          {t("fileTable.renameFile")}
+                        </ContextMenuItem>
+                      )}
+                      {!isFile && onRenameFolder && (
+                        <ContextMenuItem onClick={() => onRenameFolder(node.id)}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" />
+                          {t("fileTable.renameFolder")}
+                        </ContextMenuItem>
+                      )}
+                    </ContextMenuContent>
+                  </ContextMenu>
+                )
+              }
+
+              return <div key={node.id} className="contents">{rowContent}</div>
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})

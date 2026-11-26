@@ -1,0 +1,582 @@
+{
+  "automatic setting alone": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "disabled"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "disabled",
+        "message": "",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "below threshold": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "below_threshold",
+      "message": "best coverage 50% on instance 1 (2/4 episodes)",
+      "matches": [
+        {
+          "instanceId": 1,
+          "matchedEpisodes": 2,
+          "totalEpisodes": 4,
+          "coverage": 0.5
+        },
+        {
+          "instanceId": 2,
+          "matchedEpisodes": 1,
+          "totalEpisodes": 4,
+          "coverage": 0.25
+        }
+      ]
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "below_threshold",
+        "message": "best coverage 50% on instance 1 (2/4 episodes)",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 4,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "below threshold with torrent": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "below_threshold",
+      "message": "best coverage 50% on instance 1 (2/4 episodes)",
+      "matches": [
+        {
+          "instanceId": 1,
+          "matchedEpisodes": 2,
+          "totalEpisodes": 4,
+          "coverage": 0.5
+        }
+      ]
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "below_threshold",
+        "message": "best coverage 50% on instance 1 (2/4 episodes)",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 4,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "episodes held, none match": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "no_matches",
+      "message": "no matching episodes found on any instance"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "no_matches",
+        "message": "no matching episodes found on any instance",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 4,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "episodes held, none match, no threshold": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "no_matches",
+      "message": "no matching episodes found on any instance",
+      "thresholdSkipped": true
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "no_matches",
+        "message": "no matching episodes found on any instance",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "invalid body": {
+    "status": 400,
+    "response": {
+      "error": "Invalid request body"
+    },
+    "runs": []
+  },
+  "invalid torrent, no episode file": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "invalid_torrent",
+      "message": "no playable episode files found in torrent"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "invalid_torrent",
+        "message": "no playable episode files found in torrent",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "invalid torrent, not a torrent": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "invalid_torrent",
+      "message": "failed to parse torrent metadata"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "invalid_torrent",
+        "message": "failed to parse torrent metadata",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "invalid torrent, not base64": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "invalid_torrent",
+      "message": "failed to decode torrent data"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "invalid_torrent",
+        "message": "failed to decode torrent data",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "movie": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "not_season_pack",
+      "message": "release \"Copper.Lantern.2025.1080p.WEB-DL.H.264-LUMA\" is not a season pack"
+    },
+    "runs": [
+      {
+        "torrentName": "Copper.Lantern.2025.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "not_season_pack",
+        "message": "release \"Copper.Lantern.2025.1080p.WEB-DL.H.264-LUMA\" is not a season pack",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "no eligible instance": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "no_eligible_instances",
+      "message": "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "no_eligible_instances",
+        "message": "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "no name": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "invalid_payload",
+      "message": "torrentName is required"
+    },
+    "runs": [
+      {
+        "torrentName": "",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "invalid_payload",
+        "message": "torrentName is required",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "nothing held": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "no_matches",
+      "message": "no matching episodes found on any instance"
+    },
+    "runs": []
+  },
+  "nothing held with torrent": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "no_matches",
+      "message": "no matching episodes found on any instance"
+    },
+    "runs": []
+  },
+  "nothing held, no threshold": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "no_matches",
+      "message": "no matching episodes found on any instance"
+    },
+    "runs": []
+  },
+  "ready by name": {
+    "status": 200,
+    "response": {
+      "ready": true,
+      "message": "1 instance(s) meet 75% coverage threshold",
+      "matches": [
+        {
+          "instanceId": 1,
+          "matchedEpisodes": 4,
+          "totalEpisodes": 4,
+          "coverage": 1
+        }
+      ]
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "ready",
+        "reason": "",
+        "message": "",
+        "instanceId": 1,
+        "matchedEpisodes": 4,
+        "totalEpisodes": 4,
+        "coverage": 1,
+        "linkMode": ""
+      }
+    ]
+  },
+  "ready on a requested instance": {
+    "status": 200,
+    "response": {
+      "ready": true,
+      "message": "1 instance(s) meet 75% coverage threshold",
+      "matches": [
+        {
+          "instanceId": 2,
+          "matchedEpisodes": 3,
+          "totalEpisodes": 4,
+          "coverage": 0.75
+        }
+      ]
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "ready",
+        "reason": "",
+        "message": "",
+        "instanceId": 2,
+        "matchedEpisodes": 3,
+        "totalEpisodes": 4,
+        "coverage": 0.75,
+        "linkMode": ""
+      }
+    ]
+  },
+  "ready on one of two instances": {
+    "status": 200,
+    "response": {
+      "ready": true,
+      "message": "1 instance(s) meet 75% coverage threshold",
+      "matches": [
+        {
+          "instanceId": 1,
+          "matchedEpisodes": 1,
+          "totalEpisodes": 4,
+          "coverage": 0.25
+        },
+        {
+          "instanceId": 2,
+          "matchedEpisodes": 4,
+          "totalEpisodes": 4,
+          "coverage": 1
+        }
+      ]
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "ready",
+        "reason": "",
+        "message": "",
+        "instanceId": 2,
+        "matchedEpisodes": 4,
+        "totalEpisodes": 4,
+        "coverage": 1,
+        "linkMode": ""
+      }
+    ]
+  },
+  "ready with torrent": {
+    "status": 200,
+    "response": {
+      "ready": true,
+      "message": "1 instance(s) meet 75% coverage threshold",
+      "matches": [
+        {
+          "instanceId": 1,
+          "matchedEpisodes": 3,
+          "totalEpisodes": 4,
+          "coverage": 0.75
+        }
+      ]
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "ready",
+        "reason": "",
+        "message": "",
+        "instanceId": 1,
+        "matchedEpisodes": 3,
+        "totalEpisodes": 4,
+        "coverage": 0.75,
+        "linkMode": ""
+      }
+    ]
+  },
+  "ready with torrent, no episode total": {
+    "status": 200,
+    "response": {
+      "ready": true,
+      "message": "1 instance(s) meet 75% coverage threshold",
+      "matches": [
+        {
+          "instanceId": 1,
+          "matchedEpisodes": 3,
+          "totalEpisodes": 4,
+          "coverage": 0.75
+        }
+      ]
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "ready",
+        "reason": "",
+        "message": "",
+        "instanceId": 1,
+        "matchedEpisodes": 3,
+        "totalEpisodes": 4,
+        "coverage": 0.75,
+        "linkMode": ""
+      }
+    ]
+  },
+  "ready, no threshold": {
+    "status": 200,
+    "response": {
+      "ready": true,
+      "message": "1 instance(s) have matching episodes (threshold skipped, no episode total available)",
+      "matches": [
+        {
+          "instanceId": 1,
+          "matchedEpisodes": 2,
+          "totalEpisodes": 0,
+          "coverage": 0
+        }
+      ],
+      "thresholdSkipped": true
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "ready_no_threshold",
+        "reason": "no_episode_total",
+        "message": "",
+        "instanceId": 1,
+        "matchedEpisodes": 2,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "ready, no threshold, two instances": {
+    "status": 200,
+    "response": {
+      "ready": true,
+      "message": "2 instance(s) have matching episodes (threshold skipped, no episode total available)",
+      "matches": [
+        {
+          "instanceId": 1,
+          "matchedEpisodes": 1,
+          "totalEpisodes": 0,
+          "coverage": 0
+        },
+        {
+          "instanceId": 2,
+          "matchedEpisodes": 2,
+          "totalEpisodes": 0,
+          "coverage": 0
+        }
+      ],
+      "thresholdSkipped": true
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "ready_no_threshold",
+        "reason": "no_episode_total",
+        "message": "",
+        "instanceId": 2,
+        "matchedEpisodes": 2,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "requested instance is gone": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "no_eligible_instances",
+      "message": "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "no_eligible_instances",
+        "message": "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "setting off": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "disabled"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "disabled",
+        "message": "",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "settings fail to load": {
+    "status": 500,
+    "response": {
+      "error": "Failed to check season pack"
+    },
+    "runs": []
+  },
+  "single episode": {
+    "status": 404,
+    "response": {
+      "ready": false,
+      "reason": "not_season_pack",
+      "message": "release \"Harbor.Signal.S01E01.1080p.WEB-DL.H.264-LUMA\" is not a season pack"
+    },
+    "runs": [
+      {
+        "torrentName": "Harbor.Signal.S01E01.1080p.WEB-DL.H.264-LUMA",
+        "phase": "check",
+        "status": "skipped",
+        "reason": "not_season_pack",
+        "message": "release \"Harbor.Signal.S01E01.1080p.WEB-DL.H.264-LUMA\" is not a season pack",
+        "matchedEpisodes": 0,
+        "totalEpisodes": 0,
+        "coverage": 0,
+        "linkMode": ""
+      }
+    ]
+  },
+  "torrent list fails": {
+    "status": 500,
+    "response": {
+      "error": "Failed to check season pack"
+    },
+    "runs": []
+  }
+}

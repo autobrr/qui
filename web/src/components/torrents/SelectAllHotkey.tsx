@@ -1,0 +1,74 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { useEffect } from "react"
+
+interface SelectAllHotkeyProps {
+  onSelectAll: () => void
+  enabled?: boolean
+  isMac?: boolean
+}
+
+export function SelectAllHotkey({
+  onSelectAll,
+  enabled = true,
+  isMac,
+}: SelectAllHotkeyProps) {
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+
+    const platformIsMac =
+      typeof isMac === "boolean"? isMac: typeof window !== "undefined" &&
+          /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
+
+    const handleSelectAllHotkey = (event: KeyboardEvent) => {
+      if (event.key !== "a" && event.key !== "A") {
+        return
+      }
+
+      if (event.shiftKey || event.altKey) {
+        return
+      }
+
+      const target = event.target
+      const elementTarget = target instanceof Element ? target : null
+
+      if (
+        elementTarget &&
+        (elementTarget.tagName === "INPUT" ||
+          elementTarget.tagName === "TEXTAREA" ||
+          elementTarget.tagName === "SELECT" ||
+          elementTarget instanceof HTMLElement && elementTarget.isContentEditable ||
+          elementTarget.closest("[role=\"dialog\"]") ||
+          elementTarget.closest("[role=\"combobox\"]"))
+      ) {
+        return
+      }
+
+      if (platformIsMac && event.ctrlKey && !event.metaKey) {
+        return
+      }
+
+      const usesSelectModifier = platformIsMac ? event.metaKey : event.ctrlKey
+      if (!usesSelectModifier) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      onSelectAll()
+    }
+
+    window.addEventListener("keydown", handleSelectAllHotkey)
+
+    return () => {
+      window.removeEventListener("keydown", handleSelectAllHotkey)
+    }
+  }, [onSelectAll, enabled, isMac])
+
+  return null
+}

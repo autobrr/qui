@@ -1,0 +1,205 @@
+{
+  "page": {
+    "title": "傳輸",
+    "description": "查看 qui 在實例之間移動的內容，以及您與他人分享的內容。"
+  },
+  "tabs": {
+    "transfers": "傳輸",
+    "shares": "共享"
+  },
+  "chips": {
+    "label": "顯示",
+    "all": "全部",
+    "active": "進行中",
+    "waiting": "等待中",
+    "finished": "已完成",
+    "failed": "失敗"
+  },
+  "columns": {
+    "torrent": "種子",
+    "size": "大小",
+    "progress": "進度",
+    "state": "狀態",
+    "started": "開始時間",
+    "actions": "操作"
+  },
+  "row": {
+    "crossSeeds_other": "+{{count}} 個輔種",
+    "export": "匯出",
+    "route": "{{source}} → {{target}}",
+    "byUser": "由你啟動",
+    "byRule": "由規則 {{name}} 啟動",
+    "byDeletedRule": "由已刪除的規則啟動",
+    "retryAt": "{{time}}重試",
+    "timeLeft": "剩餘 {{time}}",
+    "unknownInstance": "實例 {{id}}"
+  },
+  "ways": {
+    "sftp": "透過 SFTP 複製",
+    "local": "在 qui 的磁碟上複製",
+    "none": "不複製",
+    "bittorrent": "BitTorrent",
+    "fallback": "未知方式"
+  },
+  "states": {
+    "waiting": "等待中",
+    "copying": "複製中",
+    "checking": "檢查中",
+    "finishing": "收尾中",
+    "done": "完成",
+    "failed": "失敗",
+    "cancelled": "已取消",
+    "fallback": "未知狀態"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} 使用 qBittorrent 的預設設定「TCP 與 μTP」。在 qui 的測試中，「僅 TCP」快約三倍。請在 {{instance}} 的 BitTorrent 設定中變更。"
+  },
+  "actions": {
+    "details": "詳細資料",
+    "retry": "重試",
+    "cancel": "取消",
+    "remove": "移除",
+    "retried": "傳輸將重新執行。",
+    "cancelled": "qui 取消此傳輸並復原已完成的操作。",
+    "removed": "該列已移除。",
+    "failed": "失敗：{{message}}"
+  },
+  "cancelDialog": {
+    "title": "取消此傳輸？",
+    "description": "qui 將停止 {{name}} 的傳輸，移除它在目標上寫入的檔案和新增的種子，並在來源上重新啟動該種子。",
+    "keep": "繼續執行",
+    "confirm": "取消傳輸"
+  },
+  "list": {
+    "description": "qui 移到其他實例的種子，以及「匯出到實例」規則的執行紀錄。",
+    "empty": "尚無傳輸。",
+    "pages": "清單分頁",
+    "range": "第 {{from}}–{{to}} 項，共 {{total}} 項",
+    "previous": "上一頁",
+    "next": "下一頁"
+  },
+  "bulk": {
+    "label": "已選列",
+    "pickPage": "選取此頁的列",
+    "picked_other": "已選取 {{count}} 項",
+    "wholeChip_other": "已選取全部 {{count}} 項",
+    "pickAll_other": "全選 {{count}} 項",
+    "done": {
+      "retry_other": "{{count}} 列將重新執行。",
+      "cancel_other": "qui 將取消 {{count}} 列。",
+      "remove_other": "已移除 {{count}} 列。"
+    },
+    "skipped_other": "{{count}} 列不適用此操作，保持不變。",
+    "failed_other": "{{count}} 列失敗。qui 日誌中有原因。",
+    "failedBecause_other": "{{count}} 列失敗。{{reasons}}",
+    "nothing": "沒有已選列適用此操作。",
+    "cancelDialog": {
+      "title": "取消已選列？",
+      "description_other": "已選取 {{count}} 列。qui 將取消每個尚未結束的列並復原已完成的操作：移除它在目標上新增的檔案和種子，並在來源上重新啟動該種子。",
+      "confirm": "取消這些列",
+      "keep": "繼續執行"
+    },
+    "removeDialog": {
+      "title": "移除已選列？",
+      "description_other": "已選取 {{count}} 列。qui 將從清單中移除每個已結束的列。種子及其檔案保持原位。",
+      "confirm": "移除這些列",
+      "keep": "保留這些列"
+    }
+  },
+  "details": {
+    "title": "傳輸詳細資訊",
+    "exportTitle": "匯出執行詳細資訊",
+    "overview": "概覽",
+    "sections": "詳細資訊分區",
+    "finished": "完成時間",
+    "leftStopped": "在目標上保持停止",
+    "instance": "實例",
+    "failure": "失敗原因",
+    "torrents": "種子",
+    "steps": "步驟",
+    "log": "日誌",
+    "noLog": "尚無日誌。",
+    "loading": "正在載入傳輸…",
+    "error": "qui 無法載入此傳輸：{{message}}",
+    "stale": "qui 無法重新整理詳細資料，內容可能已過時：{{message}}"
+  },
+  "steps": {
+    "start": "已開始",
+    "prepare": "已準備兩端",
+    "passByBitTorrent": "正在透過傳輸種子傳遞",
+    "passedByBitTorrent": "已透過傳輸種子傳遞",
+    "fallBackToSftp": "已改為透過 SFTP 複製",
+    "copyHardlink": "已複製硬連結",
+    "check": "已在目標上檢查",
+    "checkFiles": "已在目標上檢查檔案",
+    "copyMissing": "正在複製缺少的檔案",
+    "checkPartials": "已在目標上檢查不完整的檔案",
+    "copyFailedPieces": "正在複製未通過檢查的區塊",
+    "place": "已放置檔案",
+    "add": "正在新增到目標",
+    "added": "已新增到目標",
+    "rename": "正在重新命名目標上的檔案",
+    "after": "已處理來源",
+    "removeFromSource": "正在從來源移除",
+    "cleanUp": "正在清理",
+    "removePlaced": "已移除放置的檔案"
+  },
+  "stepFallback": "其他步驟",
+  "incognitoHidden": "隱身模式下已隱藏",
+  "form": {
+    "target": "目標實例",
+    "targetPlaceholder": "選擇實例",
+    "noTargets": "新增另一個實例後才能將種子傳輸過去。",
+    "savePath": "儲存路徑",
+    "savePathHelp": "目標上的資料夾。qui 會在其下保留種子及其輔種的資料夾結構。留空則使用目標上該分類的儲存路徑，未設定分類時則使用目標的預設儲存路徑。儲存路徑留空時，如果自動種子管理是目標的預設模式，種子也會啟用自動種子管理。",
+    "savePathPlaceholder": "目標的預設儲存路徑",
+    "savePathPlaceholderCategory": "分類的儲存路徑",
+    "category": "分類",
+    "noCategory": "無分類",
+    "tags": "標籤",
+    "tagsPlaceholder": "標籤1, 標籤2",
+    "after": "傳輸完成後",
+    "afterHelp": "目標開始做種後，qui 如何處理來源上的種子。",
+    "afterOptions": {
+      "removeWithFiles": "從來源移除種子及其檔案",
+      "keepFiles": "從來源移除種子但保留檔案",
+      "keepSeeding": "在來源上繼續做種"
+    },
+    "leaveStopped": "在目標上保持種子停止",
+    "way": "方式",
+    "wayHelp": "自動：當 qui 能在自己的磁碟上存取某一端的檔案時，透過 qui 複製；否則透過兩個 qBittorrent 之間的傳輸種子傳遞檔案。",
+    "wayOptions": {
+      "auto": "自動",
+      "copy": "透過 qui 複製",
+      "bittorrent": "傳輸種子"
+    }
+  },
+  "dialog": {
+    "title": "傳輸到另一個實例",
+    "verified": "qui 會在變更來源之前檢查目標上的每個區塊。",
+    "warningsMore": "顯示完整警告",
+    "warningsLess": "每則警告只顯示一行",
+    "start": "開始傳輸",
+    "starting": "正在開始…",
+    "started": "{{name}} 的傳輸正在排隊等候。",
+    "cancel": "關閉"
+  },
+  "summary": {
+    "title": "摘要",
+    "pickTarget": "選擇目標實例以檢視摘要。",
+    "loading": "正在規劃傳輸…",
+    "refused": "qui 不會啟動此傳輸：{{message}}",
+    "torrents": "種子",
+    "size": "大小",
+    "way": "方式",
+    "free": "目標可用空間",
+    "unknown": "未知",
+    "freeUnknown": "可用空間未知：在 qBittorrent 5.3 之前，qBittorrent 僅回報其預設儲存路徑的可用空間。",
+    "notEnoughSpace": "目標的可用空間少於此傳輸所需的空間。",
+    "noFileAccess": "qui 無法檢視 {{instance}} 上的檔案，因此同一路徑下內容不同的檔案可能會被取代。",
+    "crossSeedsStay_other": "{{count}} 個輔種會留在 {{source}}。它們透過硬連結讀取這些檔案，而 qui 在沒有檔案存取權限時無法在 {{target}} 上建立硬連結。若要一併傳輸，請為 qui 提供 {{target}} 的檔案存取權限（qui 自己的磁碟或 SSH），或在 {{target}} 上重新輔種。",
+    "crossSeedsStayForced_other": "{{count}} 個輔種會留在 {{source}}。它們透過硬連結讀取這些檔案，而傳輸種子無法建立硬連結。若要一併傳輸，請選擇方式「自動」或「透過 qui 複製」。",
+    "crossSeed": "輔種",
+    "crossSeedInstance": "新增到 {{instance}}"
+  }
+}

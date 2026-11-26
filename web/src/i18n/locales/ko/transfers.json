@@ -1,0 +1,205 @@
+{
+  "page": {
+    "title": "전송",
+    "description": "qui가 인스턴스 사이에서 옮기는 항목과 다른 사람과 공유하는 항목을 확인합니다."
+  },
+  "tabs": {
+    "transfers": "전송",
+    "shares": "공유"
+  },
+  "chips": {
+    "label": "표시",
+    "all": "전체",
+    "active": "진행 중",
+    "waiting": "대기 중",
+    "finished": "완료",
+    "failed": "실패"
+  },
+  "columns": {
+    "torrent": "토렌트",
+    "size": "크기",
+    "progress": "진행률",
+    "state": "상태",
+    "started": "시작",
+    "actions": "작업"
+  },
+  "row": {
+    "crossSeeds_other": "+{{count}} 크로스시드",
+    "export": "내보내기",
+    "route": "{{source}} → {{target}}",
+    "byUser": "직접 시작",
+    "byRule": "규칙 {{name}}(으)로 시작",
+    "byDeletedRule": "삭제된 규칙으로 시작",
+    "retryAt": "{{time}} 다시 시도",
+    "timeLeft": "{{time}} 남음",
+    "unknownInstance": "인스턴스 {{id}}"
+  },
+  "ways": {
+    "sftp": "SFTP로 복사",
+    "local": "qui 디스크에서 복사",
+    "none": "복사 안 함",
+    "bittorrent": "BitTorrent",
+    "fallback": "알 수 없는 방식"
+  },
+  "states": {
+    "waiting": "대기 중",
+    "copying": "복사 중",
+    "checking": "확인 중",
+    "finishing": "마무리 중",
+    "done": "완료",
+    "failed": "실패",
+    "cancelled": "취소됨",
+    "fallback": "알 수 없는 상태"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}}은(는) qBittorrent 기본값인 \"TCP 및 μTP\"를 사용합니다. qui 테스트에서는 \"TCP만\"이 약 3배 빨랐습니다. {{instance}}의 BitTorrent 설정에서 변경하세요."
+  },
+  "actions": {
+    "details": "세부 정보",
+    "retry": "다시 시도",
+    "cancel": "취소",
+    "remove": "제거",
+    "retried": "전송을 다시 실행합니다.",
+    "cancelled": "qui가 전송을 취소하고 수행한 작업을 되돌립니다.",
+    "removed": "행을 제거했습니다.",
+    "failed": "실패: {{message}}"
+  },
+  "cancelDialog": {
+    "title": "이 전송을 취소할까요?",
+    "description": "qui가 {{name}}의 전송을 중지하고, 대상에 쓴 파일과 추가한 토렌트를 제거한 뒤, 원본의 토렌트를 다시 시작합니다.",
+    "keep": "계속 실행",
+    "confirm": "전송 취소"
+  },
+  "list": {
+    "description": "qui가 다른 인스턴스로 옮기는 토렌트와 인스턴스로 내보내기 규칙의 실행 기록입니다.",
+    "empty": "아직 전송이 없습니다.",
+    "pages": "목록 페이지",
+    "range": "{{total}}개 중 {{from}}–{{to}}",
+    "previous": "이전",
+    "next": "다음"
+  },
+  "bulk": {
+    "label": "선택한 행",
+    "pickPage": "이 페이지의 행 선택",
+    "picked_other": "{{count}}개 선택됨",
+    "wholeChip_other": "모든 페이지에서 {{count}}개 선택됨",
+    "pickAll_other": "모두 선택 ({{count}})",
+    "done": {
+      "retry_other": "{{count}}개 행을 다시 실행합니다.",
+      "cancel_other": "qui가 {{count}}개 행을 취소합니다.",
+      "remove_other": "{{count}}개 행을 제거했습니다."
+    },
+    "skipped_other": "{{count}}개 행은 이 작업에 맞지 않아 그대로 둡니다.",
+    "failed_other": "{{count}}개 행이 실패했습니다. qui 로그에서 이유를 확인할 수 있습니다.",
+    "failedBecause_other": "{{count}}개 행이 실패했습니다. {{reasons}}",
+    "nothing": "선택한 행 중 이 작업에 맞는 행이 없습니다.",
+    "cancelDialog": {
+      "title": "선택한 행을 취소할까요?",
+      "description_other": "{{count}}개 행을 선택했습니다. qui가 끝나지 않은 각 행을 취소하고 수행한 작업을 되돌립니다. 대상에 추가한 파일과 토렌트를 제거하고, 원본의 토렌트를 다시 시작합니다.",
+      "confirm": "행 취소",
+      "keep": "계속 실행"
+    },
+    "removeDialog": {
+      "title": "선택한 행을 제거할까요?",
+      "description_other": "{{count}}개 행을 선택했습니다. qui가 끝난 각 행을 목록에서 제거합니다. 토렌트와 파일은 그대로 남습니다.",
+      "confirm": "행 제거",
+      "keep": "행 유지"
+    }
+  },
+  "details": {
+    "title": "전송 세부 정보",
+    "exportTitle": "내보내기 실행 세부 정보",
+    "overview": "개요",
+    "sections": "세부 정보 섹션",
+    "finished": "완료 시간",
+    "leftStopped": "대상에서 정지 상태로 둠",
+    "instance": "인스턴스",
+    "failure": "실패 원인",
+    "torrents": "토렌트",
+    "steps": "단계",
+    "log": "로그",
+    "noLog": "아직 로그가 없습니다.",
+    "loading": "전송 불러오는 중…",
+    "error": "qui가 전송을 불러올 수 없습니다: {{message}}",
+    "stale": "qui가 세부 정보를 새로 고칠 수 없어 오래된 정보일 수 있습니다: {{message}}"
+  },
+  "steps": {
+    "start": "시작함",
+    "prepare": "양쪽 준비 완료",
+    "passByBitTorrent": "전송 토렌트로 전달 중",
+    "passedByBitTorrent": "전송 토렌트로 전달 완료",
+    "fallBackToSftp": "SFTP 복사로 전환함",
+    "copyHardlink": "하드링크 복사함",
+    "check": "대상에서 확인 완료",
+    "checkFiles": "대상에서 파일 확인함",
+    "copyMissing": "누락된 파일 복사 중",
+    "checkPartials": "대상에서 일부만 받은 파일 확인함",
+    "copyFailedPieces": "확인에 실패한 조각 복사 중",
+    "place": "파일 배치 완료",
+    "add": "대상에 추가 중",
+    "added": "대상에 추가 완료",
+    "rename": "대상에서 파일 이름 변경 중",
+    "after": "원본 처리 완료",
+    "removeFromSource": "원본에서 제거 중",
+    "cleanUp": "정리 중",
+    "removePlaced": "배치한 파일 제거 완료"
+  },
+  "stepFallback": "기타 단계",
+  "incognitoHidden": "시크릿 모드에서 숨겨짐",
+  "form": {
+    "target": "대상 인스턴스",
+    "targetPlaceholder": "인스턴스 선택",
+    "noTargets": "토렌트를 전송하려면 다른 인스턴스를 추가하세요.",
+    "savePath": "저장 경로",
+    "savePathHelp": "대상의 폴더입니다. qui는 토렌트와 크로스시드의 폴더 구조를 그 아래에 유지합니다. 비워 두면 대상에서 카테고리의 저장 경로를 사용하고, 카테고리가 없으면 대상의 기본 저장 경로를 사용합니다. 저장 경로를 비워 두면, 자동 토렌트 관리가 대상의 기본 모드인 경우 토렌트에도 자동 토렌트 관리가 적용됩니다.",
+    "savePathPlaceholder": "대상의 기본 저장 경로",
+    "savePathPlaceholderCategory": "카테고리의 저장 경로",
+    "category": "카테고리",
+    "noCategory": "카테고리 없음",
+    "tags": "태그",
+    "tagsPlaceholder": "태그1, 태그2",
+    "after": "전송 후",
+    "afterHelp": "대상이 시딩을 시작하면 qui가 원본의 토렌트를 처리하는 방법입니다.",
+    "afterOptions": {
+      "removeWithFiles": "원본에서 토렌트와 파일 제거",
+      "keepFiles": "원본에서 토렌트만 제거하고 파일 유지",
+      "keepSeeding": "원본에서 계속 시딩"
+    },
+    "leaveStopped": "대상에서 토렌트를 중지된 상태로 두기",
+    "way": "방식",
+    "wayHelp": "자동은 qui가 한쪽의 파일에 자체 디스크에서 접근할 수 있으면 qui를 통해 복사하고, 그렇지 않으면 두 qBittorrent 사이에서 전송 토렌트로 파일을 전달합니다.",
+    "wayOptions": {
+      "auto": "자동",
+      "copy": "qui를 통해 복사",
+      "bittorrent": "전송 토렌트"
+    }
+  },
+  "dialog": {
+    "title": "다른 인스턴스로 전송",
+    "verified": "qui는 원본을 변경하기 전에 대상에서 모든 조각을 확인합니다.",
+    "warningsMore": "경고 전체 보기",
+    "warningsLess": "경고를 한 줄씩 보기",
+    "start": "전송 시작",
+    "starting": "시작 중…",
+    "started": "{{name}} 전송이 차례를 기다립니다.",
+    "cancel": "닫기"
+  },
+  "summary": {
+    "title": "요약",
+    "pickTarget": "요약을 보려면 대상 인스턴스를 선택하세요.",
+    "loading": "전송 계획 중…",
+    "refused": "qui가 이 전송을 시작하지 않습니다: {{message}}",
+    "torrents": "토렌트",
+    "size": "크기",
+    "way": "방식",
+    "free": "대상의 여유 공간",
+    "unknown": "알 수 없음",
+    "freeUnknown": "여유 공간 알 수 없음: qBittorrent 5.3 이전에는 qBittorrent가 기본 저장 경로의 여유 공간만 알려 줍니다.",
+    "notEnoughSpace": "대상의 여유 공간이 전송에 필요한 공간보다 적습니다.",
+    "noFileAccess": "qui가 {{instance}}의 파일을 볼 수 없으므로, 같은 경로에 내용이 다른 파일이 있으면 덮어쓸 수 있습니다.",
+    "crossSeedsStay_other": "크로스시드 {{count}}개는 {{source}}에 남습니다. 하드링크로 이 파일을 읽는데, qui는 파일 접근 권한이 없으면 {{target}}에 하드링크를 만들 수 없습니다. 함께 옮기려면 qui에 {{target}}의 파일 접근 권한(qui 자체 디스크 또는 SSH)을 주거나, {{target}}에서 크로스시드를 다시 실행하세요.",
+    "crossSeedsStayForced_other": "크로스시드 {{count}}개는 {{source}}에 남습니다. 하드링크로 이 파일을 읽는데, 전송 토렌트는 하드링크를 만들 수 없습니다. 함께 옮기려면 방식에서 \"자동\" 또는 \"qui를 통해 복사\"를 선택하세요.",
+    "crossSeed": "크로스시드",
+    "crossSeedInstance": "{{instance}}(으)로"
+  }
+}

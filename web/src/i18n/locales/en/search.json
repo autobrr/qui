@@ -1,0 +1,199 @@
+{
+  "pageTitle": "Search Indexers",
+  "pageDescription": "Search your indexers and add a release to qBittorrent.",
+  "indexerSheet": {
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Native",
+      "jackett": "Jackett"
+    }
+  },
+  "instanceSelector": {
+    "offline": "Offline"
+  },
+  "picker": {
+    "indexersTitle": "Indexers to search",
+    "filter": "Filter",
+    "all": "All",
+    "none": "None",
+    "done": "Done",
+    "noMatch": "Nothing matches the filter"
+  },
+  "form": {
+    "indexers": "Indexers",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Remove {{label}}",
+    "clearFields": "Clear fields",
+    "clearQuery": "Clear the query",
+    "recentSearches": "Recent searches",
+    "noIndexersTitle": "No indexers yet",
+    "noIndexersBody": "Add an indexer to search it from this page.",
+    "noIndexersAction": "Add indexers",
+    "indexersFailed": "Failed to load indexers"
+  },
+  "searchForm": {
+    "advanced": "Advanced",
+    "searching": "Searching...",
+    "search": "Search",
+    "advancedNote": "IDs and numbers make the search exact on indexers that support them.",
+    "searchType": "Search type",
+    "searchQuery": "Search Query"
+  },
+  "searchTypes": {
+    "movies": {
+      "label": "Movies",
+      "placeholder": "e.g., \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "e.g., \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Music",
+      "placeholder": "e.g., \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "Books & comics",
+      "placeholder": "e.g., \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "Apps & games",
+      "placeholder": "e.g., \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Adult",
+      "placeholder": "Enter a specific adult release name"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Year",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Season",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Episode",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Artist",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Album",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Limit",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Offset",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "count_one": "{{count}} result",
+    "count_other": "{{count}} results",
+    "filteredCount_one": "{{shown}} of {{count}} result",
+    "filteredCount_other": "{{shown}} of {{count}} results",
+    "searching_one": "Searching {{count}} indexer...",
+    "searching_other": "Searching {{count}} indexers...",
+    "filterPlaceholder": "Filter results...",
+    "clearFilters": "Clear filters",
+    "noMatches": "No result matches the filters.",
+    "cachedSummary": "Cached {{cached}} · Expires {{expires}}",
+    "cachedAgo": "Cached · {{age}}",
+    "live": "Live",
+    "partial": "Incomplete",
+    "partialHint": "Some indexers did not answer. Refresh to ask them again.",
+    "refresh": "Refresh",
+    "refreshFromIndexers": "Refresh from indexers",
+    "refreshCooldown": "You can refresh again in a moment",
+    "showMore": "Show more",
+    "shownOf": "{{shown}} of {{total}} shown",
+    "categoryFallback": "Category {{id}}",
+    "noResults": "No results found",
+    "noResultsFor": "No results found for \"{{query}}\"",
+    "noResultsHint": "Check the spelling, pick another search type, or search more indexers.",
+    "searchAllIndexers": "Search all indexers",
+    "failed": "The search failed",
+    "retry": "Try again",
+    "idleTitle": "Search your indexers",
+    "idleHint": "Enter a title, an IMDb ID such as tt1234567, or a TVDb ID such as tvdb 123456.",
+    "free": "Free"
+  },
+  "facets": {
+    "collection": "Service",
+    "normal": "Normal"
+  },
+  "sort": {
+    "label": "Sort",
+    "seeders": "Most seeders",
+    "newest": "Newest",
+    "oldest": "Oldest",
+    "largest": "Largest",
+    "smallest": "Smallest",
+    "title": "Title A–Z",
+    "indexer": "Indexer A–Z"
+  },
+  "columns": {
+    "age": "Age"
+  },
+  "row": {
+    "add": "Add",
+    "addTo": "Add to",
+    "more": "More actions",
+    "openIndexer": "Open on indexer",
+    "copyTitle": "Copy title",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× upload"
+  },
+  "bulk": {
+    "label": "Selected results",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "selectShown": "Select all shown"
+  },
+  "historyMeta": "{{type}} · {{count}} results · {{timestamp}}",
+  "table": {
+    "title": "Title",
+    "indexer": "Indexer",
+    "size": "Size",
+    "seeders": "Seeders",
+    "leechers": "Leechers",
+    "category": "Category",
+    "source": "Source",
+    "group": "Group",
+    "freeleech": "Freeleech",
+    "actions": "Actions",
+    "downloadTorrent": "Download .torrent"
+  },
+  "refreshDialog": {
+    "title": "Bypass the cache?",
+    "description": "This will send the request directly to every selected indexer. Use sparingly to avoid rate limits. You can refresh again after a short cooldown.",
+    "refreshNow": "Refresh now"
+  },
+  "cache": {
+    "cacheAndLive": "Cache + live"
+  },
+  "card": {
+    "addToNamed": "Add to {{name}}"
+  },
+  "toast": {
+    "noDownloadUrl": "No download URL available for this result",
+    "invalidProtocol": "Invalid URL protocol",
+    "invalidUrl": "Invalid URL format"
+  }
+}

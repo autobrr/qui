@@ -1,0 +1,137 @@
+{
+  "title": "仪表盘",
+  "description": "所有 qBittorrent 实例的概览",
+  "incognito": {
+    "turnOn": "开启隐身模式",
+    "turnOff": "关闭隐身模式"
+  },
+  "stream": {
+    "day": "24 小时",
+    "live": "实时",
+    "noHistory": "过去 24 小时内没有实例记录任何传输。实时视图会在此页面打开期间显示速度。",
+    "uploadSpeed": "上传速度",
+    "downloadSpeed": "下载速度",
+    "dayUploaded": "24 小时内上传 {{size}}，{{percent}} 来自辅种",
+    "dayDownloaded": "24 小时内下载 {{size}}",
+    "liveSeeding": "做种：{{seeding}} · 节点：{{peers}}",
+    "liveDownloading": "下载中：{{downloading}} · 剩余：{{size}}",
+    "peakHour": "最忙时段：{{size}}",
+    "peakSpeed": "峰值：{{speed}}",
+    "dayLabel": "所有实例在过去 24 小时内每小时的上传和下载",
+    "liveLabel": "所有实例在过去 3 分钟内的上传和下载速度",
+    "liveStart": "3 分钟前",
+    "now": "现在",
+    "loadError": "无法加载历史数据：{{message}}"
+  },
+  "instances": {
+    "title": "实例",
+    "instance": "实例",
+    "uploaded24h": "已上传（24 小时）",
+    "upload": "上传",
+    "download": "下载",
+    "torrents": "种子",
+    "issues": "问题",
+    "noIssues": "无",
+    "loading": "加载中",
+    "expandAll": "全部展开",
+    "collapseAll": "全部收起",
+    "altSpeedOff": "备用速度限制已关闭",
+    "altSpeedTurnOn": "开启备用速度限制",
+    "altSpeedTurnOff": "关闭备用速度限制",
+    "streamStatus": {
+      "cached": "刷新时显示缓存的仪表盘快照",
+      "fallback": "正在刷新仪表盘统计信息",
+      "error": "流出现问题；正在使用备用刷新"
+    }
+  },
+  "offline": {
+    "password": "离线：qui 需要重新输入实例的密码",
+    "cause": "离线：{{cause}}",
+    "noAnswer": "离线：qBittorrent 无响应",
+    "hidden": "离线。隐身模式隐藏了原因。"
+  },
+  "issues": {
+    "unregistered_other": "{{count}} 个未注册",
+    "tracker_down_other": "{{count}} 个 Tracker 离线",
+    "tracker_error_other": "{{count}} 个 Tracker 错误",
+    "errored_other": "{{count}} 个错误"
+  },
+  "details": {
+    "host": "主机",
+    "torrents": "种子",
+    "active": "活跃",
+    "downloading": "下载中",
+    "seeding": "做种中",
+    "size": "大小",
+    "freeSpace": "可用空间（默认路径）",
+    "peers": "节点",
+    "uptime": "运行时间",
+    "version": "qBittorrent",
+    "libtorrent": "libtorrent",
+    "connection": "连接",
+    "externalAddresses": "外部地址",
+    "unknown": "未知",
+    "last24h": "过去 24 小时",
+    "allTime": "全部时间",
+    "uploaded": "已上传",
+    "downloaded": "已下载",
+    "ratio": "分享率 {{ratio}}",
+    "uploadSpeed": "上传速度",
+    "downloadSpeed": "下载速度",
+    "chartLabel": "{{name}} 在过去 24 小时内每小时的上传和下载",
+    "altSpeed": "备用速度限制",
+    "altSpeedOn": "备用速度限制已开启",
+    "addTorrent": "添加种子",
+    "openTorrents": "打开种子",
+    "openSettings": "打开实例设置"
+  },
+  "connection": {
+    "connected": "可连接",
+    "firewalled": "受防火墙限制",
+    "disconnected": "已断开",
+    "other": "其他"
+  },
+  "trackers": {
+    "title": "热门 Tracker（过去 24 小时）",
+    "statistics": "统计",
+    "empty": "过去 24 小时内没有上传。"
+  },
+  "attention": {
+    "title": "需要注意",
+    "offline": "{{name}} 已离线",
+    "lowDisk": "{{name}}：剩余 {{free}}",
+    "firewalled": "{{name}} 受防火墙限制"
+  },
+  "storage": {
+    "title": "存储",
+    "help": "此处有一个或多个用量条为估算值。当 qui 无法读取实例的磁盘时，填充部分显示该实例的种子大小，空白部分显示可用空间。如需查看真实的磁盘使用情况，请在实例设置中启用“本地文件系统访问”或设置 SSH 访问。",
+    "free": "剩余 {{size}}"
+  },
+  "library": {
+    "title": "媒体库",
+    "torrents": "种子",
+    "totalSize": "总大小",
+    "seedingSize": "做种大小",
+    "instances": "已连接实例",
+    "allTime": "全部时间",
+    "uploaded": "已上传",
+    "downloaded": "已下载",
+    "ratio": "分享率"
+  },
+  "uniqueSize": {
+    "calculating": "计算中",
+    "calculatingTooltip": "qui 正在读取文件列表以查找每个发布的副本。在完成之前，此大小会完整计算每个链接的辅种。"
+  },
+  "quickActions": {
+    "addTorrent": "添加种子",
+    "addTo": "添加到 {{name}}"
+  },
+  "addInstance": "添加实例",
+  "emptyState": {
+    "noInstances": "尚未配置实例",
+    "getStarted": "添加您的第一个 qBittorrent 实例以开始使用",
+    "allDisabled": "所有实例均已禁用",
+    "enableInstance": "在设置 > 实例中启用实例以查看仪表盘统计数据。",
+    "manageInstances": "管理实例"
+  }
+}

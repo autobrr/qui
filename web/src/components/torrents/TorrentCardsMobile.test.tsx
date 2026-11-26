@@ -1,0 +1,683 @@
+/*
+ * Copyright (c) 2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { TorrentCardsMobile } from "@/components/torrents/TorrentCardsMobile"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
+import type { BulkActionPick } from "@/components/torrents/bulk-actions/bulk-action-state"
+import { BulkActionsContext } from "@/components/torrents/bulk-actions/bulk-actions-context"
+import { TorrentSelectionProvider, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
+import "@/i18n"
+import { makeFilters } from "@/test/mockFilters"
+import { makeTorrent } from "@/test/mockTorrent"
+import {
+  _resetClientSettingsForTests,
+  createDisplayProfile,
+  getDisplayProfiles,
+  markClientSettingsUnavailable,
+  pickDisplayProfile
+} from "@/lib/client-settings"
+import { DEFAULT_DISPLAY_PROFILE_ID } from "@/lib/display-profiles"
+import { formatBytes } from "@/lib/utils"
+import type { ActionTarget } from "@/lib/torrent-selection"
+import type { Torrent, TorrentFilters } from "@/types"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react"
+import { useMemo, useRef, type ComponentProps, type ReactNode } from "react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+
+const scenario = vi.hoisted(() => ({
+  rows: [] as Torrent[],
+  totalCount: 0,
+  hasLoadedAll: true,
+  copyGroupsReady: undefined as boolean | undefined,
+  listOptions: undefined as { groupCopies?: boolean } | undefined,
+  isDemo: false,
+}))
+const controller = vi.hoisted(() => ({ current: undefined as undefined | { loadedRows: number; reportNearEnd: () => void } }))
+
+vi.mock("react-i18next", async (importOriginal) => {
+  const translation = {
+    t: (key: string | string[], options?: Record<string, unknown>) =>
+      typeof key === "string" && /^(copyGroups\.|statusBar\.|mobileCards\.added$)/.test(key) && options ? `${key} ${JSON.stringify(options)}` : key,
+    i18n: { resolvedLanguage: "en", language: "en" },
+  }
+  return {
+    ...(await importOriginal<typeof import("react-i18next")>()),
+    useTranslation: () => translation,
+  }
+})
+
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+  const search = {}
+  const navigate = vi.fn()
+  return {
+    ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+    useSearch: () => search,
+    useNavigate: () => navigate,
+    Link: ({ to, search, children, ...props }: { to: string; search?: Record<string, string>; children: ReactNode }) => (
+      <a href={`${to}?${new URLSearchParams(search)}`} {...props}>{children}</a>
+    ),
+  }
+})
+
+vi.mock("@/contexts/SyncStreamContext", async (importOriginal) => {
+  const streamState = { connected: false, error: null, lastMeta: undefined, retrying: false, nextRetryAt: undefined, retryAttempt: 0 }
+  return {
+    ...(await importOriginal<typeof import("@/contexts/SyncStreamContext")>()),
+    useSyncStream: () => streamState,
+  }
+})
+
+vi.mock("@tanstack/react-virtual", () => {
+  let count = 0
+  let items: { index: number; key: number; start: number; size: number }[] = []
+  const virtualizer = {
+    getVirtualItems: () => items,
+    getTotalSize: () => count * 86,
+    measure: vi.fn(),
+    scrollToOffset: vi.fn(),
+  }
+  return {
+    useVirtualizer: (options: { count: number }) => {
+      if (options.count !== count) {
+        count = options.count
+        items = Array.from({ length: count }, (_, index) => ({ index, key: index, start: index * 86, size: 86 }))
+      }
+      return virtualizer
+    },
+  }
+})
+
+vi.mock("@/hooks/useTorrentListController", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/hooks/useTorrentListController")>()
+  return {
+    ...actual,
+    useTorrentListController: (params: Parameters<typeof actual.useTorrentListController>[0]) => {
+      const result = actual.useTorrentListController(params)
+      controller.current = result
+      return result
+    },
+  }
+})
+
+vi.mock("@/lib/demo", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/demo")>()),
+  get isDemo() { return scenario.isDemo },
+}))
+
+vi.mock("@/lib/api", () => ({
+  api: new Proxy({} as Record<string, ReturnType<typeof vi.fn>>, {
+    get: (target, prop: string) => (target[prop] ??= vi.fn(() => Promise.resolve(undefined))),
+  }),
+}))
+
+vi.mock("@/hooks/useTrackerIcons", () => {
+  const result = { data: {} as Record<string, string> }
+  return { useTrackerIcons: () => result }
+})
+vi.mock("@/hooks/useTrackerCustomizations", () => {
+  const result = { data: [] as unknown[] }
+  return { useTrackerCustomizations: () => result }
+})
+
+vi.mock("@/hooks/useTorrentsList", () => {
+  let result: Record<string, unknown> | undefined
+  return {
+    TORRENT_STREAM_POLL_INTERVAL_SECONDS: 2,
+    useTorrentsList: (_instanceId: number, options: { groupCopies?: boolean }) => {
+      scenario.listOptions = options
+      result ??= {
+        get torrents() { return scenario.rows },
+        get totalCount() { return scenario.totalCount },
+        stats: { totalSize: 0 },
+        counts: { status: {}, categories: {}, tags: {}, trackers: {} },
+        categories: {},
+        tags: [] as string[],
+        trackerHealthSupported: false,
+        useSubcategories: false,
+        isLoading: false,
+        isLoadingMore: false,
+        get hasLoadedAll() { return scenario.hasLoadedAll },
+        loadMore: vi.fn(),
+        get copyGroupsReady() { return scenario.copyGroupsReady },
+        isCrossInstanceEndpoint: false,
+      }
+      return result
+    },
+  }
+})
+
+const picks: Array<{ pick: BulkActionPick; target?: ActionTarget }> = []
+
+function BulkActionSpy({ children }: { children: ReactNode }) {
+  const published = useTorrentSelectionSummary()
+  const publishedRef = useRef(published)
+  publishedRef.current = published
+  const value = useMemo(() => ({
+    pick: (pick: BulkActionPick) => picks.push({ pick, target: publishedRef.current?.actionTarget }),
+    isPending: false,
+    isExporting: false,
+  }), [])
+  return <BulkActionsContext.Provider value={value}>{children}</BulkActionsContext.Provider>
+}
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+  vi.useRealTimers()
+})
+
+const GROUP_COPIES_KEY = "qui-group-copies"
+const VIEW_MODE_KEY = "qui-torrent-mobile-view-mode"
+const SORT_KEY = "qui:torrent-mobile-sort:1"
+const DATE_TIME_KEY = "qui-datetime-preferences"
+const CARD_SIZES = ["normal", "compact", "ultra-compact"] as const
+
+function copyGroupRows(overrides: { top?: Partial<Torrent>; sorted?: Partial<Torrent>; third?: Partial<Torrent> } = {}) {
+  return [
+    makeTorrent({ hash: "hash-top", name: "Delta Release", copy_group: { id: "g1", first_sorted: { instance_id: 1, hash: "hash-sorted" } }, ...overrides.top }),
+    makeTorrent({ hash: "hash-sorted", name: "Delta Release copy B", copy_group: { id: "g1" }, ...overrides.sorted }),
+    makeTorrent({ hash: "hash-third", name: "Delta Release copy C", copy_group: { id: "g1" }, ...overrides.third }),
+    makeTorrent({ hash: "hash-plain", name: "Echo Release" }),
+  ]
+}
+
+function flatRows(count: number) {
+  return Array.from({ length: count }, (_, i) => makeTorrent({ hash: `hash-${i}`, name: `Release ${i}` }))
+}
+
+type CardsProps = Partial<ComponentProps<typeof TorrentCardsMobile>>
+
+function renderCards(rows: Torrent[], props: CardsProps = {}) {
+  scenario.rows = rows
+  scenario.totalCount ||= rows.length
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <MobileScrollProvider>
+        <TorrentSelectionProvider>
+          <BulkActionSpy>
+            <TooltipProvider>{children}</TooltipProvider>
+          </BulkActionSpy>
+        </TorrentSelectionProvider>
+      </MobileScrollProvider>
+    </QueryClientProvider>
+  )
+  const filters: TorrentFilters = props.filters ?? makeFilters()
+  const view = render(<TorrentCardsMobile instanceId={1} {...props} filters={filters} />, { wrapper })
+  return {
+    ...view,
+    showRows(next: Torrent[]) {
+      scenario.rows = next
+      view.rerender(<TorrentCardsMobile instanceId={1} {...props} filters={filters} onFilteredDataUpdate={vi.fn()} />)
+    },
+  }
+}
+
+function renderGroups(rows: Torrent[] = copyGroupRows(), props: CardsProps = {}) {
+  localStorage.setItem(GROUP_COPIES_KEY, "true")
+  scenario.copyGroupsReady = true
+  return renderCards(rows, props)
+}
+
+const cardNames = (container: HTMLElement) => Array.from(container.querySelectorAll("h3"), name => name.textContent)
+const cardOf = (container: HTMLElement, name: string) => within(container).getByText(name)
+const pills = (container: HTMLElement) => Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-label^=\"copyGroups.\"]"))
+const warnings = (container: HTMLElement) => container.querySelectorAll("button[aria-label^=\"copyGroups.labelWithProblem\"]")
+const tickedCards = (container: HTMLElement) =>
+  Array.from(container.querySelectorAll("[role=\"checkbox\"][aria-checked=\"true\"]"), box => box.closest(".cursor-pointer")?.querySelector("h3")?.textContent)
+
+async function sortMenuItem(view: ReturnType<typeof render>, role: "menuitem" | "menuitemcheckbox", name: string | RegExp) {
+  if (!view.queryByRole("menu")) {
+    fireEvent.pointerDown(view.getByRole("button", { name: /^mobileCards\.sort:/ }), { button: 0, ctrlKey: false })
+  }
+  return view.findByRole(role, { name })
+}
+
+function longPress(card: HTMLElement) {
+  vi.useFakeTimers()
+  fireEvent.touchStart(card, { touches: [{ clientX: 10, clientY: 10 }] })
+  act(() => { vi.advanceTimersByTime(600) })
+  fireEvent.touchEnd(card)
+  vi.useRealTimers()
+}
+
+beforeEach(() => {
+  localStorage.clear()
+  scenario.rows = []
+  scenario.totalCount = 0
+  scenario.hasLoadedAll = true
+  scenario.copyGroupsReady = undefined
+  scenario.listOptions = undefined
+  scenario.isDemo = false
+  picks.length = 0
+})
+
+describe("TorrentCardsMobile Group copies switch", () => {
+  it("holds the switch in the sort menu and asks for groups while it is on", async () => {
+    const view = renderCards(flatRows(3))
+    const groupSwitch = () => sortMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies")
+    expect(scenario.listOptions?.groupCopies).toBe(false)
+    expect((await groupSwitch()).getAttribute("aria-checked")).toBe("false")
+
+    fireEvent.click(await groupSwitch())
+
+    expect(scenario.listOptions?.groupCopies).toBe(true)
+    expect(localStorage.getItem(GROUP_COPIES_KEY)).toBe("true")
+    expect((await groupSwitch()).getAttribute("aria-checked")).toBe("true")
+
+    fireEvent.click(await groupSwitch())
+
+    expect(scenario.listOptions?.groupCopies).toBe(false)
+  })
+
+  it("asks for no groups in Filter Cross-Seeds", () => {
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    renderCards(flatRows(3), { filters: makeFilters({ expr: "Hash == \"hash-0\" || Hash == \"hash-1\"" }) })
+
+    expect(scenario.listOptions?.groupCopies).toBe(false)
+  })
+
+  it("asks for no groups and shows no switch in the demo", async () => {
+    scenario.isDemo = true
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    const view = renderCards(flatRows(3))
+
+    fireEvent.pointerDown(view.getByRole("button", { name: /^mobileCards\.sort:/ }), { button: 0, ctrlKey: false })
+    await view.findByRole("menu")
+
+    expect(scenario.listOptions?.groupCopies).toBe(false)
+    expect(view.queryByRole("menuitemcheckbox", { name: "copyGroups.groupCopies" })).toBeNull()
+  })
+
+  it("starts the load-more window again at the first rows on a tap on the switch", async () => {
+    const view = renderCards(flatRows(300))
+    act(() => controller.current?.reportNearEnd())
+    expect(controller.current?.loadedRows).toBe(200)
+
+    fireEvent.click(await sortMenuItem(view, "menuitemcheckbox", "copyGroups.groupCopies"))
+
+    expect(controller.current?.loadedRows).toBe(100)
+  })
+})
+
+describe("TorrentCardsMobile Copy groups", () => {
+  describe.each(CARD_SIZES)("in the %s card size", (size) => {
+    beforeEach(() => {
+      localStorage.setItem(VIEW_MODE_KEY, size)
+    })
+
+    it("shows a closed group as one card with a pill that counts the hidden copies, and the next torrent on the card after it", () => {
+      const { container } = renderGroups()
+
+      expect(cardNames(container)).toEqual(["Delta Release", "Echo Release"])
+      const [pill, ...others] = pills(container)
+      expect(others).toEqual([])
+      expect(pill.getAttribute("aria-expanded")).toBe("false")
+      expect(pill.getAttribute("aria-label")).toBe("copyGroups.copies {\"count\":2,\"name\":\"Delta Release\"}")
+      expect(pill.textContent).toContain("copyGroups.badge {\"hidden\":2}")
+      expect(cardOf(container, "Delta Release").closest(".cursor-pointer")?.contains(pill)).toBe(true)
+    })
+
+    it("opens and closes the group from the pill, with no tick and no details panel", () => {
+      const onTorrentSelect = vi.fn()
+      const { container } = renderGroups(copyGroupRows(), { onTorrentSelect })
+
+      fireEvent.click(pills(container)[0])
+
+      expect(cardNames(container)).toEqual(["Delta Release", "Delta Release copy B", "Delta Release copy C", "Echo Release"])
+      expect(pills(container).map(pill => pill.getAttribute("aria-expanded"))).toEqual(["true"])
+
+      fireEvent.click(pills(container)[0])
+
+      expect(cardNames(container)).toEqual(["Delta Release", "Echo Release"])
+      expect(container.querySelector("[role=\"checkbox\"]")).toBeNull()
+      expect(onTorrentSelect).not.toHaveBeenCalled()
+    })
+  })
+
+  it("shows the warning pill when a hidden copy changes to an error, and none for a problem on the top row", () => {
+    const rows = copyGroupRows({ top: { state: "error" } })
+    const view = renderGroups(rows)
+    expect(warnings(view.container).length).toBe(0)
+
+    view.showRows([rows[0], rows[1], { ...rows[2], state: "missingFiles" }, rows[3]])
+
+    expect(warnings(view.container).length).toBe(1)
+  })
+
+  it("shows the sorted value of the first-sorted member on the card of a closed group, and a tap gives the Group representative to the details", () => {
+    localStorage.setItem(SORT_KEY, JSON.stringify({ field: "name", order: "asc" }))
+    const rows = copyGroupRows({ sorted: { name: "Alpha Copy Of Delta" } })
+    const onTorrentSelect = vi.fn()
+    const { container } = renderGroups(rows, { onTorrentSelect })
+
+    expect(cardNames(container)).toEqual(["Alpha Copy Of Delta", "Echo Release"])
+
+    fireEvent.click(cardOf(container, "Alpha Copy Of Delta"))
+
+    expect(onTorrentSelect).toHaveBeenCalledExactlyOnceWith(rows[0])
+  })
+
+  describe("selection", () => {
+    const pausedHashes = (view: ReturnType<typeof render>) => {
+      fireEvent.click(view.getByRole("button", { name: "managementBar.pause" }))
+      expect(picks.map(({ pick }) => pick)).toEqual([{ action: "pause" }])
+      const target = picks[0].target
+      return target?.kind === "ticks" ? target.hashes : undefined
+    }
+
+    it("selects one torrent on a long press on the card of a closed group, and a bulk pause reaches only that torrent", () => {
+      const view = renderGroups()
+
+      longPress(cardOf(view.container, "Delta Release"))
+
+      expect(tickedCards(view.container)).toEqual(["Delta Release"])
+      expect(pausedHashes(view)).toEqual(["hash-top"])
+    })
+
+    it("starts no selection on a long press on the pill", () => {
+      const { container } = renderGroups()
+
+      longPress(pills(container)[0])
+
+      expect(container.querySelector("[role=\"checkbox\"]")).toBeNull()
+    })
+
+    it("keeps a tick on a copy when its group closes, and the pill counts it", () => {
+      const view = renderGroups()
+      const { container } = view
+      longPress(cardOf(container, "Echo Release"))
+      fireEvent.click(pills(container)[0])
+      fireEvent.click(cardOf(container, "Delta Release copy C"))
+      expect(pills(container)[0].textContent).toContain("copyGroups.badge {\"hidden\":2}")
+
+      fireEvent.click(pills(container)[0])
+
+      expect(tickedCards(container)).toEqual(["Echo Release"])
+      expect(pills(container)[0].textContent).toContain("copyGroups.badgeTicked {\"hidden\":2,\"count\":1}")
+      expect(pausedHashes(view)).toEqual(["hash-plain", "hash-third"])
+    })
+
+    it("shows no ticks on the pill in Select all mode", () => {
+      const view = renderGroups()
+      longPress(cardOf(view.container, "Delta Release"))
+
+      fireEvent.click(view.getByRole("button", { name: "detailsPanel.selectAll" }))
+
+      expect(tickedCards(view.container)).toEqual(["Delta Release", "Echo Release"])
+      expect(pills(view.container)[0].textContent).toContain("copyGroups.badge {\"hidden\":2}")
+      expect(pausedHashes(view)).toBeUndefined()
+    })
+  })
+
+})
+
+describe("TorrentCardsMobile swipe actions", () => {
+  beforeEach(() => {
+    Element.prototype.setPointerCapture = vi.fn()
+  })
+
+  const swipeLeft = (card: HTMLElement) => {
+    const touch = { pointerId: 1, pointerType: "touch", isPrimary: true, clientY: 10 }
+    fireEvent.pointerDown(card, { ...touch, clientX: 300 })
+    fireEvent.pointerMove(card, { ...touch, clientX: 280 })
+    fireEvent.pointerMove(card, { ...touch, clientX: 100 })
+    fireEvent.pointerUp(card, { ...touch, clientX: 100 })
+  }
+  const openCard = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-swipe-open]")
+  const tapAction = (container: HTMLElement, name: string) => {
+    const action = within(openCard(container)!).getByRole("button", { name })
+    fireEvent.pointerDown(action, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.pointerUp(action, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.click(action)
+    const target = picks[0].target
+    return target?.kind === "ticks" ? target.hashes : undefined
+  }
+
+  it("reaches only the swiped card with Delete, selects nothing, and keeps the card open for the dialog", () => {
+    const { container } = renderCards(flatRows(3))
+
+    swipeLeft(cardOf(container, "Release 1"))
+
+    expect(tapAction(container, "managementBar.delete")).toEqual(["hash-1"])
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "delete" }])
+    expect(tickedCards(container)).toEqual([])
+    expect(openCard(container)?.querySelector("h3")?.textContent).toBe("Release 1")
+  })
+
+  it("resumes a stopped torrent, pauses a running one, and closes the card", () => {
+    const { container } = renderCards([makeTorrent({ hash: "hash-stopped", name: "Stopped Release", state: "stoppedUP" }), makeTorrent({ hash: "hash-running", name: "Running Release", state: "uploading" })])
+
+    swipeLeft(cardOf(container, "Stopped Release"))
+    expect(tapAction(container, "managementBar.resume")).toEqual(["hash-stopped"])
+    expect(openCard(container)).toBeNull()
+
+    picks.length = 0
+    swipeLeft(cardOf(container, "Running Release"))
+    expect(tapAction(container, "managementBar.pause")).toEqual(["hash-running"])
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "pause" }])
+  })
+
+  it("closes the open card on a tap on another card, and opens no details", () => {
+    const onTorrentSelect = vi.fn()
+    const { container } = renderCards(flatRows(3), { onTorrentSelect })
+    swipeLeft(cardOf(container, "Release 1"))
+
+    const other = cardOf(container, "Release 2")
+    fireEvent.pointerDown(other, { pointerId: 2, pointerType: "touch", isPrimary: true })
+    fireEvent.click(other)
+
+    expect(openCard(container)).toBeNull()
+    expect(onTorrentSelect).not.toHaveBeenCalled()
+  })
+
+  it("ignores a swipe while torrents are selected, also after the selection ends", () => {
+    const { container } = renderCards(flatRows(3))
+    longPress(cardOf(container, "Release 0"))
+
+    swipeLeft(cardOf(container, "Release 1"))
+    fireEvent.click(cardOf(container, "Release 0"))
+
+    expect(tickedCards(container)).toEqual([])
+    expect(openCard(container)).toBeNull()
+  })
+})
+
+describe("TorrentCardsMobile Compact card", () => {
+  const ADDED_ON = 1767270600
+  const LATER_ADDED_ON = 1767341700
+  const NOW = 1767348900
+  const GIB = 1024 ** 3
+
+  beforeEach(() => {
+    localStorage.setItem(VIEW_MODE_KEY, "compact")
+    localStorage.setItem(DATE_TIME_KEY, JSON.stringify({ timezone: "UTC", timeFormat: "24h", dateFormat: "iso" }))
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(NOW * 1000)
+  })
+
+  const cardText = (container: HTMLElement, name: string) => cardOf(container, name).closest(".cursor-pointer")?.textContent ?? ""
+
+  it("shows the size and how long ago the torrent was added on a complete idle torrent, and no percent", () => {
+    const { container } = renderCards([
+      makeTorrent({ name: "Foxtrot Release", progress: 1, size: 2 * GIB, downloaded: 2 * GIB, state: "stalledUP", added_on: ADDED_ON }),
+    ])
+
+    const text = cardText(container, "Foxtrot Release")
+    expect(text).toContain("mobileCards.added {\"time\":\"21 hours ago\"}")
+    expect(text).toContain(formatBytes(2 * GIB))
+    expect(text).not.toContain(" / ")
+    expect(text).not.toContain("%")
+  })
+
+  it("shows the upload speed on a complete seeding torrent, and no percent and no added time", () => {
+    const { container } = renderCards([
+      makeTorrent({ name: "Hotel Release", progress: 1, size: 2 * GIB, downloaded: 2 * GIB, upspeed: 1024, state: "uploading", added_on: ADDED_ON }),
+    ])
+
+    const text = cardText(container, "Hotel Release")
+    expect(text).toContain("↑")
+    expect(text).not.toContain("%")
+    expect(text).not.toContain("mobileCards.added")
+  })
+
+  it("shows the downloaded size, the size, and the percent on an incomplete torrent, and no added time", () => {
+    const { container } = renderCards([
+      makeTorrent({ name: "Golf Release", progress: 0.5, size: 2 * GIB, downloaded: GIB, state: "pausedDL", added_on: ADDED_ON }),
+    ])
+
+    const text = cardText(container, "Golf Release")
+    expect(text).toContain(`${formatBytes(GIB)} / ${formatBytes(2 * GIB)}`)
+    expect(text).toContain("50%")
+    expect(text).not.toContain("mobileCards.added")
+  })
+
+  it("shows the added time of the first-sorted member on the card of a closed group sorted by added time", () => {
+    localStorage.setItem(SORT_KEY, JSON.stringify({ field: "added_on", order: "desc" }))
+    const complete = { progress: 1, state: "stalledUP" as const }
+    const { container } = renderGroups(copyGroupRows({
+      top: { ...complete, added_on: ADDED_ON },
+      sorted: { ...complete, added_on: LATER_ADDED_ON },
+      third: { ...complete, added_on: ADDED_ON },
+    }))
+
+    expect(cardText(container, "Delta Release")).toContain("mobileCards.added {\"time\":\"2 hours ago\"}")
+  })
+})
+
+describe("TorrentCardsMobile count bar", () => {
+  beforeEach(() => {
+    scenario.hasLoadedAll = false
+    scenario.totalCount = 500
+  })
+
+  it("counts the torrents in memory on a grouped list, not the cards", () => {
+    const { container } = renderGroups()
+
+    expect(container.textContent).toContain("statusBar.torrentsLoaded {\"loaded\":4,\"total\":500}")
+  })
+
+  it("counts the torrents in memory on a flat list, not the load-more window", () => {
+    const { container } = renderCards(flatRows(150))
+
+    expect(container.textContent).toContain("statusBar.torrentsLoaded {\"loaded\":150,\"total\":500}")
+  })
+
+  it("shows the Grouping hint in place of the count while the ready field is false", () => {
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    scenario.copyGroupsReady = false
+    const { container } = renderCards(flatRows(3))
+
+    expect(container.textContent).toContain("copyGroups.grouping")
+    expect(container.textContent).not.toContain("statusBar.torrentsLoaded")
+  })
+
+  it("shows the count and no hint for a response with no ready field", () => {
+    localStorage.setItem(GROUP_COPIES_KEY, "true")
+    const { container } = renderCards(flatRows(3))
+
+    expect(container.textContent).not.toContain("copyGroups.grouping")
+    expect(container.textContent).toContain("statusBar.torrentsLoaded {\"loaded\":3,\"total\":500}")
+  })
+})
+
+describe("TorrentCardsMobile Display profile", () => {
+  beforeEach(() => {
+    _resetClientSettingsForTests()
+    markClientSettingsUnavailable()
+  })
+
+  it("the sheet takes a pick or a new profile only after the first read of the server ends", async () => {
+    const laptop = createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    _resetClientSettingsForTests()
+    const view = renderCards(flatRows(3))
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+    const sheet = view.getByRole("dialog", { name: "displayProfiles.menuLabel" })
+    const laptopRow = () => within(within(sheet).getByRole("list")).getAllByRole("button")[1]
+    const newProfile = () => within(sheet).getByRole("button", { name: "displayProfiles.newProfile" }) as HTMLButtonElement
+
+    fireEvent.click(laptopRow())
+    expect(getDisplayProfiles().active.id).toBe(DEFAULT_DISPLAY_PROFILE_ID)
+    expect(newProfile().disabled).toBe(true)
+
+    act(() => markClientSettingsUnavailable())
+
+    expect(newProfile().disabled).toBe(false)
+    fireEvent.click(laptopRow())
+    expect(getDisplayProfiles().active.id).toBe(laptop)
+  })
+
+  it("opens the profile list in a sheet from the sort menu, and a tap on a row picks that profile and closes the sheet", async () => {
+    const laptop = createDisplayProfile("Laptop")
+    pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
+    const view = renderCards(flatRows(3))
+
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+
+    const sheet = view.getByRole("dialog", { name: "displayProfiles.menuLabel" })
+    const rows = within(within(sheet).getByRole("list")).getAllByRole("button")
+    expect(rows.map((row) => row.textContent)).toEqual(["displayProfiles.defaultNamedisplayProfiles.settings.thisBrowser", "Laptop"])
+
+    fireEvent.click(rows[1])
+
+    expect(getDisplayProfiles().active.id).toBe(laptop)
+    expect(view.queryByRole("dialog")).toBeNull()
+  })
+
+  it("New profile in the sheet closes the sheet and opens the New profile dialog with focus on the name", async () => {
+    const view = renderCards(flatRows(3))
+    fireEvent.click(await sortMenuItem(view, "menuitem", /^displayProfiles\.menuLabel/))
+
+    fireEvent.click(within(view.getByRole("dialog", { name: "displayProfiles.menuLabel" })).getByRole("button", { name: "displayProfiles.newProfile" }))
+
+    const dialog = await view.findByRole("dialog", { name: "displayProfiles.newDialog.title" })
+    expect(view.queryAllByRole("dialog", { hidden: true })).toEqual([dialog])
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("textbox", { name: "displayProfiles.newDialog.name" })))
+  })
+})
+
+describe("TorrentCardsMobile Transfer and Share", () => {
+  const moreActions = (view: ReturnType<typeof render>) => {
+    fireEvent.click(view.getByRole("button", { name: "mobileCards.more" }))
+    return within(view.getByRole("dialog"))
+  }
+
+  it("offers Transfer and Share for one selected torrent, and the pick reaches only that torrent", () => {
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 1"))
+
+    const sheet = moreActions(view)
+    expect(sheet.getByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeTruthy()
+    fireEvent.click(sheet.getByRole("button", { name: "contextMenu.transferToInstance" }))
+
+    expect(picks.map(({ pick }) => pick)).toEqual([{ action: "transfer" }])
+    const target = picks[0].target
+    expect(target?.kind === "ticks" ? target.hashes : undefined).toEqual(["hash-1"])
+  })
+
+  it("offers only Share for two selected torrents", () => {
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 0"))
+    fireEvent.click(cardOf(view.container, "Release 2"))
+
+    const sheet = moreActions(view)
+    expect(sheet.queryByRole("button", { name: "contextMenu.transferToInstance" })).toBeNull()
+    expect(sheet.getByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeTruthy()
+  })
+
+  it("offers neither in the demo", () => {
+    scenario.isDemo = true
+    const view = renderCards(flatRows(3))
+    longPress(cardOf(view.container, "Release 1"))
+
+    const sheet = moreActions(view)
+    expect(sheet.queryByRole("button", { name: "contextMenu.transferToInstance" })).toBeNull()
+    expect(sheet.queryByRole("button", { name: "contextMenu.shareWithSomeone" })).toBeNull()
+  })
+})

@@ -1,0 +1,44 @@
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  args_bin = ["serve"]
+  bin = "./tmp/main"
+  cmd = "go build -ldflags \"-X github.com/autobrr/qui/internal/buildinfo.Version=0.0.0-dev -X github.com/autobrr/qui/internal/buildinfo.Commit=$(git rev-parse HEAD 2>/dev/null || echo) -X github.com/autobrr/qui/internal/buildinfo.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o ./tmp/main ./cmd/qui"
+  delay = 1000
+  exclude_dir = ["assets", "tmp", "vendor", "testdata", "web", "internal/web/dist"]
+  exclude_file = []
+  exclude_regex = ["_test.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  full_bin = ""
+  include_dir = []
+  include_ext = ["go", "tpl", "tmpl", "html", "css"]
+  include_file = []
+  kill_delay = "0s"
+  log = "build-errors.log"
+  poll = false
+  poll_interval = 0
+  rerun = false
+  rerun_delay = 500
+  send_interrupt = false
+  stop_on_error = false
+
+[color]
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  main_only = false
+  time = false
+
+[misc]
+  clean_on_exit = false
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

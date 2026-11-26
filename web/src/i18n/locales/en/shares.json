@@ -1,0 +1,110 @@
+{
+  "options": {
+    "days": "Days until a Share ends",
+    "daysInvalid": "Enter a whole number of days, 1 or more.",
+    "endAtFirstDownload": "End at the first complete download",
+    "endAtFirstDownloadDescription": "The Share ends as soon as one client has every file.",
+    "firstDownloaderOnly": "Only the first downloader",
+    "firstDownloaderOnlyDescription": "The tracker gives your address to the first client that downloads, and to no other. This controls who learns your address from the tracker, not who can connect.",
+    "firstDownloaderOnlyUnavailable": "Not available with an outside tracker: qui sees no announces."
+  },
+  "settings": {
+    "title": "Shares",
+    "description": "A Share gives the files of one torrent to someone whose client qui does not manage. The Share tracker lets their client find yours.",
+    "loadFailed": "Failed to load the Share settings",
+    "save": "Save",
+    "saved": "Share settings saved",
+    "saveFailed": "Failed to save the Share settings",
+    "inUse": {
+      "own": "New Shares use qui's tracker.",
+      "outside": "New Shares use the outside tracker.",
+      "none": "No tracker is set, so no Share can start."
+    },
+    "tracker": {
+      "heading": "Share tracker",
+      "own": "qui's own tracker",
+      "ownDescription": "qui listens on its own port only while a Share runs, and answers only for active Shares.",
+      "outside": "An outside tracker",
+      "outsideDescription": "For a qui without a public address. qui then sees no announces: the address list and the end at the first download are best effort, and the lock is not available.",
+      "port": "Port",
+      "publicAddress": "Public address",
+      "publicAddressDescription": "The URL at which the internet reaches this port, with a proxy in front for HTTPS. The .torrent of each Share carries it, so a change waits until the Shares on qui's tracker end.",
+      "trustedProxies": "Trusted proxies",
+      "trustedProxiesDescription": "List only the addresses or CIDR ranges of your proxies, not client networks, one per line. qui reads the forwarded client address only from these proxies.",
+      "trackerUrl": "Tracker URL",
+      "trackerUrlDescription": "An http, https, or udp announce URL.",
+      "publicAddressPlaceholder": "https://share.example.com",
+      "trackerUrlPlaceholder": "udp://tracker.example.org:1337/announce"
+    },
+    "limits": {
+      "heading": "Limits",
+      "maxActive": "Active Shares",
+      "peersPerShare": "Peers for each Share"
+    },
+    "defaults": {
+      "heading": "Defaults for a new Share",
+      "description": "The Share dialog starts with these values."
+    }
+  },
+  "dialog": {
+    "title": "Share with someone",
+    "description_one": "Give the files of {{name}} to someone whose client qui does not manage.",
+    "description_other": "Give the files of {{count}} torrents to someone whose client qui does not manage. Each torrent gets its own Share.",
+    "cancel": "Cancel",
+    "create": "Create",
+    "done": "Done",
+    "warning": "Your friend sees the IP address of your client. Anyone who has the .torrent can download until the Share ends.",
+    "refused": "Not shared",
+    "refusedEntry": "{{name}}: {{reason}}",
+    "tracker": {
+      "label": "Share tracker",
+      "settings": "Share settings",
+      "own": "qui's tracker at {{address}}",
+      "outside": "Outside tracker {{url}}"
+    },
+    "result": {
+      "description_one": "Send the .torrent and the message to your friend in your own chat. qui hosts no download link.",
+      "description_other": "Send each .torrent and its message to your friend in your own chat. qui hosts no download link.",
+      "torrent": ".torrent",
+      "copyMessage": "Copy message",
+      "copied": "Message copied",
+      "copyFailed": "Failed to copy the message"
+    }
+  },
+  "message": {
+    "intro": "I am sharing \"{{name}}\" ({{size}}) with you. Open the attached .torrent file in a BitTorrent client, such as qBittorrent, Transmission, or Deluge, to download it from me. It stops working on {{date}}.",
+    "endAtFirstDownload": "It also stops working when one download completes, so keep your client open until it is done."
+  },
+  "tab": {
+    "description": "Torrents that you give to someone whose client qui does not manage.",
+    "empty": "No Shares yet.",
+    "endedStay": "Ended Shares stay in the list for 30 days.",
+    "unknownInstance": "Instance {{id}}",
+    "endsAt": "Ends {{date}}",
+    "endedAt": "Ended {{date}}",
+    "progress": "Downloaded {{percent}}",
+    "progressLabel": "Download progress",
+    "sent": "Sent {{size}}",
+    "announced": "Addresses that announced",
+    "connectedPeers": "Connected peers",
+    "noPeers": "None yet",
+    "unlock": "Unlock",
+    "stop": "Stop",
+    "remove": "Remove",
+    "state": {
+      "active": "Active",
+      "ending": "Ending",
+      "ended": "Ended",
+      "unknown": "Unknown"
+    },
+    "endReason": {
+      "downloaded": "The recipient has the files.",
+      "expired": "The Share expired.",
+      "stopped": "Stopped by the user.",
+      "torrent_deleted": "The torrent was deleted.",
+      "torrent_moved": "The torrent was moved.",
+      "files_renamed": "The files of the torrent were renamed.",
+      "share_torrent_gone": "The Share torrent is gone from the client."
+    }
+  }
+}

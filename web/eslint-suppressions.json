@@ -1,0 +1,2184 @@
+{
+  "src/components/automations/tabs.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/command-palette/CommandPalette.tsx": {
+    "qui/no-direct-effect": {
+      "count": 2
+    }
+  },
+  "src/components/command-palette/CommandPaletteContent.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/entry-files": {
+      "count": 1
+    }
+  },
+  "src/components/command-palette/open.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/command-palette/useDestinations.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/command-palette/useTorrentResults.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/cross-seed/AfterInjectionTab.tsx": {
+    "shadcn/no-restyle": {
+      "count": 1
+    }
+  },
+  "src/components/cross-seed/CategoriesTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/cross-seed/CompletionTab.tsx": {
+    "qui/entry-files": {
+      "count": 1
+    }
+  },
+  "src/components/cross-seed/CrossSeedRouteForm.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/DirScanTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "qui/no-direct-effect": {
+      "count": 3
+    },
+    "shadcn/no-restyle": {
+      "count": 19
+    }
+  },
+  "src/components/cross-seed/HardlinkModeSettings.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/cross-seed/LibraryTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 5
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/RouteProtectionConfirm.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/RssRunItem.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 2
+    }
+  },
+  "src/components/cross-seed/RssTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    }
+  },
+  "src/components/cross-seed/SeasonPackRunsPanel.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 5
+    }
+  },
+  "src/components/cross-seed/tabs.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/dashboard/DashboardOverview.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/dashboard/InstanceList.tsx": {
+    "qui/entry-files": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/dashboard/StreamChart.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/components/dashboard/TopTrackerGroups.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/database/DatabaseShrinkProvider.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/database/ShrinkFailedActions.tsx": {
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/display-profiles/DisplayProfileChip.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 6
+    }
+  },
+  "src/components/display-profiles/DisplayProfileEditor.tsx": {
+    "shadcn/no-restyle": {
+      "count": 1
+    }
+  },
+  "src/components/display-profiles/DisplayProfileIconPicker.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/display-profiles/DisplayProfileSheet.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/display-profiles/NewDisplayProfileDialog.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/components/feature-notice/FeatureNotice.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/feature-notice/notices.ts": {
+    "qui/entry-files": {
+      "count": 1
+    }
+  },
+  "src/components/indexers/AutodiscoveryDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/indexers/IndexerDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/components/indexers/IndexerToolbar.tsx": {
+    "shadcn/no-restyle": {
+      "count": 4
+    }
+  },
+  "src/components/instances/InstanceErrorDisplay.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/instances/InstanceForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/instances/InstanceSettingsButton.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/components/instances/marks/InstanceMarkEditor.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/instances/marks/InstanceMarkIcon.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/AutomationActivityRunDialog.tsx": {
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 6
+    }
+  },
+  "src/components/instances/preferences/CompletionOverview.tsx": {
+    "shadcn/no-restyle": {
+      "count": 4
+    }
+  },
+  "src/components/instances/preferences/InstancePreferencesDialog.tsx": {
+    "shadcn/no-restyle": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/InstanceSSHPanel.tsx": {
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/InstanceSettingsPanel.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 8
+    }
+  },
+  "src/components/instances/preferences/OrphanScanOverview.tsx": {
+    "shadcn/no-restyle": {
+      "count": 1
+    },
+    "shadcn/require-static-classes": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/OrphanScanPreviewDialog.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/OrphanScanSettingsForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 24
+    }
+  },
+  "src/components/instances/preferences/PreferenceWidgets.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/disable-reason": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 9
+    }
+  },
+  "src/components/instances/preferences/PreferencesForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/PreferencesFormShell.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/ReannounceOverview.tsx": {
+    "shadcn/no-restyle": {
+      "count": 5
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/TrackerReannounceForm.tsx": {
+    "qui/no-direct-effect": {
+      "count": 3
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 15
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/instances/preferences/WorkflowDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 16
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 7
+    },
+    "qui/no-direct-effect": {
+      "count": 9
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 82
+    }
+  },
+  "src/components/instances/preferences/WorkflowPreviewDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/WorkflowsOverview.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 6
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 75
+    },
+    "shadcn/require-static-classes": {
+      "count": 2
+    }
+  },
+  "src/components/instances/preferences/preferenceView.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/kit/Editor.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/kit/ResourceList.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/kit/Section.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/kit/SelectionBar.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/kit/use-pending-ids.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/layout/Header.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "qui/disable-reason": {
+      "count": 1
+    },
+    "qui/entry-files": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 3
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/layout/HeaderInstanceTitle.tsx": {
+    "qui/entry-files": {
+      "count": 1
+    }
+  },
+  "src/components/layout/MobileClientsTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/entry-files": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/layout/MobileFooterNav.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 1
+    }
+  },
+  "src/components/layout/SectionedPage.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/layout/Sidebar.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/entry-files": {
+      "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 3
+    },
+    "shadcn/no-restyle": {
+      "count": 6
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/layout/UnifiedScopeDropdownSection.tsx": {
+    "qui/entry-files": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/magicui/shine-border.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/problem-reports/ProblemReportDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 3
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/problem-reports/SenderMenu.tsx": {
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/problem-reports/SentReports.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 5
+    }
+  },
+  "src/components/problem-reports/draft.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/query-builder/ConditionGroup.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 4
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 7
+    }
+  },
+  "src/components/query-builder/FieldCombobox.tsx": {
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/query-builder/LeafCondition.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 4
+    }
+  },
+  "src/components/query-builder/QueryBuilder.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "src/components/query-builder/constants.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    }
+  },
+  "src/components/search/ChecklistPicker.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/search/SearchForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 1
+    }
+  },
+  "src/components/search/SearchResults.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "qui/entry-files": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 6
+    }
+  },
+  "src/components/settings/ApiKeysManager.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 1
+    }
+  },
+  "src/components/settings/ApplicationSettings.tsx": {
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/settings/ArrInstancesManager.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/settings/ExternalProgramsManager.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/settings/InstancesSettings.tsx": {
+    "qui/entry-files": {
+      "count": 3
+    },
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/components/settings/LogSettingsPanel.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 7
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 6
+    }
+  },
+  "src/components/settings/SecuritySettings.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/settings/StatisticsDeleteHistory.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/settings/StatisticsSettingsCard.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/settings/TimeLanguageSettings.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/components/settings/TrackerCustomizationsManager.tsx": {
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/settings/tabs.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/shares/ShareDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/shares/ShareSettingsForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/spreadsheet/SpreadsheetFormulaBar.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/statistics/DeletedTorrents.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    },
+    "qui/no-direct-effect": {
+      "count": 3
+    }
+  },
+  "src/components/statistics/EventsChart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/GroupChart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/statistics/GroupTable.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/require-static-classes": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/LibraryGrowthChart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/StatisticsControls.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/TransferChart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/components/statistics/YearView.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 5
+    }
+  },
+  "src/components/statistics/useTapTooltip.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/support/SupportButton.tsx": {
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/support/SupportDialog.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 6
+    },
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/support/reminder.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/themes/CustomThemeEditor.tsx": {
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/themes/LicenseManager.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 4
+    },
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/themes/ThemeMenuDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/themes/ThemeSelector.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/AddTorrentDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 9
+    },
+    "qui/no-direct-effect": {
+      "count": 5
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 6
+    }
+  },
+  "src/components/torrents/AddTorrentPickers.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 7
+    }
+  },
+  "src/components/torrents/CategoryTree.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/ColumnFilterPopover.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 14
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 8
+    }
+  },
+  "src/components/torrents/CrossSeedDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 8
+    },
+    "shadcn/no-restyle": {
+      "count": 19
+    }
+  },
+  "src/components/torrents/CrossSeedWarning.tsx": {
+    "shadcn/no-restyle": {
+      "count": 6
+    }
+  },
+  "src/components/torrents/DeleteTorrentDialog.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/DiscScanToasts.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/DraggableTableHeader.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    }
+  },
+  "src/components/torrents/FilePrioritySelect.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/FilterClearButton.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/FilterSidebar.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 6
+    },
+    "shadcn/no-restyle": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/ManualCrossSeedDialog.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 4
+    }
+  },
+  "src/components/torrents/SelectAllHotkey.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TagCategoryManagement.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentCardsMobile.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 5
+    },
+    "qui/disable-reason": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 8
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 5
+    },
+    "shadcn/no-restyle": {
+      "count": 18
+    },
+    "shadcn/require-static-classes": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/TorrentCreationTasks.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/TorrentCreatorDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentDetailsPanel.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 9
+    },
+    "qui/no-direct-effect": {
+      "count": 6
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 14
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentDialogs.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/disable-reason": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 11
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 16
+    }
+  },
+  "src/components/torrents/TorrentDiscReportDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentDropZone.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentFileMediaInfoDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentFileTree.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/TorrentTableColumns.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/disable-reason": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 8
+    },
+    "shadcn/require-static-classes": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/TorrentTableOptimized.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 6
+    },
+    "qui/disable-reason": {
+      "count": 1
+    },
+    "qui/entry-files": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 7
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 3
+    },
+    "shadcn/no-restyle": {
+      "count": 16
+    }
+  },
+  "src/components/torrents/bulk-actions/BulkActionProvider.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "qui/no-direct-effect": {
+      "count": 3
+    }
+  },
+  "src/components/torrents/bulk-actions/bulk-action-state.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/CrossSeedTable.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 10
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/MobileDetails.tsx": {
+    "shadcn/no-restyle": {
+      "count": 1
+    },
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/PeersTable.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/components/torrents/details/PieceBar.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/StatRow.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/TorrentFileTable.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/details/TrackersTable.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/CompactRow.tsx": {
+    "shadcn/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/GroupCopiesNoticePicture.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/TorrentTableRow.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/disable-reason": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/table/TrackerIcon.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/components/torrents/torrentLimitDialogHelpers.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/components/transfers/BetaBadge.tsx": {
+    "shadcn/no-arbitrary-values": {
+      "count": 3
+    },
+    "shadcn/no-restyle": {
+      "count": 6
+    }
+  },
+  "src/components/transfers/TransferDetailsDialog.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/transfers/TransferDialog.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/transfers/TransferForm.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/components/transfers/TransferSelectionBar.tsx": {
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/components/transfers/TransfersTab.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/transfers/tabs.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/ui/ThemeToggle.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    }
+  },
+  "src/components/ui/badge.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/components/ui/button.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/components/ui/chart.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/ui/copy-button.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/ui/drawer.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/ui/json-editor.tsx": {
+    "qui/disable-reason": {
+      "count": 1
+    }
+  },
+  "src/components/ui/multi-select.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/components/ui/responsive-command-popover.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/components/ui/scroll-to-top-button.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/ui/sonner.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/components/ui/tabs.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/ui/tooltip.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/ui/torrent-name.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/components/ui/tracker-icon.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/components/ui/truncated-text.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/config/themes.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/contexts/LayoutRouteContext.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/contexts/MobileScrollContext.tsx": {
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/contexts/SyncStreamContext.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 15
+    },
+    "qui/no-direct-effect": {
+      "count": 11
+    },
+    "react-refresh/only-export-components": {
+      "count": 4
+    }
+  },
+  "src/contexts/TorrentSelectionContext.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/demo/api.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    }
+  },
+  "src/demo/main.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    }
+  },
+  "src/demo/store.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 11
+    }
+  },
+  "src/demo/stream.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/torrent-table/useColumnDnd.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/hooks/torrent-table/useCompactViewSort.ts": {
+    "qui/disable-reason": {
+      "count": 2
+    },
+    "qui/layer-order": {
+      "count": 2
+    }
+  },
+  "src/hooks/torrent-table/useRevealRow.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/torrent-table/useTorrentSelection.ts": {
+    "qui/no-direct-effect": {
+      "count": 2
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableArrowNavigation.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableColumns.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/layer-order": {
+      "count": 2
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableFilterExpr.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableNotifications.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/disable-reason": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 3
+    }
+  },
+  "src/hooks/torrent-table/useTorrentTableVirtualization.ts": {
+    "qui/layer-order": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    }
+  },
+  "src/hooks/useActiveTaskCount.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useAuth.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useClientSettingsSync.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 3
+    }
+  },
+  "src/hooks/useCrossSeedSearch.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/layer-order": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/hooks/useCrossSeedWarning.ts": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useCustomThemes.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDashboardChartView.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDashboardOpenInstances.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDirScan.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDynamicFavicon.ts": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useInstanceBackups.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/hooks/useInstanceCapabilities.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/hooks/useInstanceMetadata.ts": {
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "react-hooks/exhaustive-deps": {
+      "count": 2
+    }
+  },
+  "src/hooks/useInstancePreferences.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/hooks/useInstances.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useKeyboardNavigation.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useManualRunCooldown.ts": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useMediaQuery.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useMobileDetailsHistory.ts": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useOrphanScan.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    }
+  },
+  "src/hooks/usePathAutocomplete.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    }
+  },
+  "src/hooks/usePersistedColumnSizing.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedColumnSorting.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedColumnVisibility.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedCompactViewState.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    }
+  },
+  "src/hooks/usePersistedLogExclusions.ts": {
+    "react-hooks/exhaustive-deps": {
+      "count": 1
+    }
+  },
+  "src/hooks/usePersistedTabState.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useQBittorrentAppInfo.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useRSS.ts": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useSearchPreferences.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useSelfUpdate.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useSeriesColors.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useStatisticsPeriod.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useSwipeActions.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    }
+  },
+  "src/hooks/useSwipeToClose.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useTheme.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useThemeSettingsSync.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 3
+    }
+  },
+  "src/hooks/useTitleBarSpeeds.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 5
+    }
+  },
+  "src/hooks/useTorrentDetailTab.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    }
+  },
+  "src/hooks/useTorrentExporter.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/hooks/useTorrentListEscape.ts": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/useTorrentsList.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "qui/no-direct-effect": {
+      "count": 6
+    }
+  },
+  "src/hooks/useTransferHistoryLibrary.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "src/hooks/useTransferHistoryRows.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "src/i18n/index.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "qui/layer-order": {
+      "count": 2
+    }
+  },
+  "src/layouts/AppLayout.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    },
+    "qui/entry-files": {
+      "count": 1
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 4
+    }
+  },
+  "src/lib/add-torrent-urls.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "src/lib/api-key-permissions.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/lib/api.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 8
+    }
+  },
+  "src/lib/category-utils.ts": {
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/lib/client-settings.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 5
+    },
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/lib/column-filter-utils.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 10
+    }
+  },
+  "src/lib/copy-groups.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    }
+  },
+  "src/lib/cross-instance-torrents.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 6
+    }
+  },
+  "src/lib/cross-seed-utils.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/lib/custom-theme-preview.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/dateTimeUtils.ts": {
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/lib/display-profiles.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    }
+  },
+  "src/lib/filter-views.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/instance-marks.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    }
+  },
+  "src/lib/manual-cross-seed.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/protocol-handler.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/router-search.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/rss-events.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/lib/search-derived-params.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/search-results.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/statistics-library.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/lib/sync-stream-state.ts": {
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/lib/theme-areas.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/lib/theme-storage.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/theme-thumbnail.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-action-targets.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-selection.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-table/column-label.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/lib/torrent-table/row-height.ts": {
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/lib/tracker-customizations-manage.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 2
+    }
+  },
+  "src/lib/tracker-icons.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/lib/tracker-utils.tsx": {
+    "qui/layer-order": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 24
+    }
+  },
+  "src/lib/unit-format.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 6
+    }
+  },
+  "src/lib/utils.ts": {
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    }
+  },
+  "src/lib/workflow-utils.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 4
+    }
+  },
+  "src/main.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/pages/Automations.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
+    "qui/entry-files": {
+      "count": 5
+    }
+  },
+  "src/pages/Dashboard.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/disable-reason": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 4
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/pages/InstanceBackups.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 5
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 7
+    },
+    "qui/no-direct-effect": {
+      "count": 6
+    },
+    "shadcn/no-restyle": {
+      "count": 23
+    }
+  },
+  "src/pages/Login.tsx": {
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 4
+    }
+  },
+  "src/pages/NotFound.tsx": {
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/pages/RSSPage.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 9
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    },
+    "qui/no-direct-effect": {
+      "count": 4
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 10
+    }
+  },
+  "src/pages/Search.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/pages/Settings.tsx": {
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/pages/Setup.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    }
+  },
+  "src/pages/Statistics.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
+  "src/pages/Torrents.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 7
+    },
+    "qui/no-direct-effect": {
+      "count": 7
+    },
+    "shadcn/no-arbitrary-values": {
+      "count": 2
+    }
+  },
+  "src/router.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/automations.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/backups.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/cross-seed.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/instances.$instanceId.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/routes/_authenticated/instances.index.tsx": {
+    "qui/no-direct-effect": {
+      "count": 1
+    },
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/rss.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/settings.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/statistics.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/routes/_authenticated/transfers.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/routes/add.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/no-direct-effect": {
+      "count": 3
+    },
+    "react-refresh/only-export-components": {
+      "count": 2
+    }
+  },
+  "src/routes/index.tsx": {
+    "react-refresh/only-export-components": {
+      "count": 1
+    }
+  },
+  "src/types/app.ts": {
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/types/auth.ts": {
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/utils/fontLoader.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "src/utils/pwaNativeTheme.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "qui/layer-order": {
+      "count": 1
+    }
+  },
+  "src/utils/theme.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 3
+    },
+    "qui/layer-order": {
+      "count": 4
+    }
+  },
+  "src/utils/themeLoader.ts": {
+    "qui/layer-order": {
+      "count": 1
+    }
+  }
+}

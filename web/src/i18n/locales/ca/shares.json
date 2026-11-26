@@ -1,0 +1,110 @@
+{
+  "options": {
+    "days": "Dies fins que acaba una Compartició",
+    "daysInvalid": "Introdueix un nombre enter de dies, 1 o més.",
+    "endAtFirstDownload": "Acaba a la primera baixada completa",
+    "endAtFirstDownloadDescription": "La Compartició acaba tan bon punt un client té tots els fitxers.",
+    "firstDownloaderOnly": "Només el primer que baixa",
+    "firstDownloaderOnlyDescription": "El tracker dona la teva adreça al primer client que baixa, i a cap altre. Això controla qui coneix la teva adreça a través del tracker, no qui s'hi pot connectar.",
+    "firstDownloaderOnlyUnavailable": "No disponible amb un tracker extern: qui no veu cap anunci."
+  },
+  "settings": {
+    "title": "Comparticions",
+    "description": "Una Compartició dona els fitxers d'un torrent a algú el client del qual qui no gestiona. El tracker de Compartició permet que el seu client trobi el teu.",
+    "loadFailed": "No s'ha pogut carregar la configuració de les Comparticions",
+    "save": "Desa",
+    "saved": "S'ha desat la configuració de les Comparticions",
+    "saveFailed": "No s'ha pogut desar la configuració de les Comparticions",
+    "inUse": {
+      "own": "Les Comparticions noves fan servir el tracker de qui.",
+      "outside": "Les Comparticions noves fan servir el tracker extern.",
+      "none": "No hi ha cap tracker definit, així que no pot començar cap Compartició."
+    },
+    "tracker": {
+      "heading": "Tracker de Compartició",
+      "own": "El tracker propi de qui",
+      "ownDescription": "qui escolta al seu propi port només mentre una Compartició està en marxa, i només respon per a Comparticions actives.",
+      "outside": "Un tracker extern",
+      "outsideDescription": "Per a un qui sense adreça pública. Aleshores qui no veu cap anunci: la llista d'adreces i el final a la primera baixada funcionen tan bé com poden, i el bloqueig no està disponible.",
+      "port": "Port",
+      "publicAddress": "Adreça pública",
+      "publicAddressDescription": "La URL a través de la qual internet arriba a aquest port, amb un servidor intermediari al davant per a HTTPS. El .torrent de cada Compartició la porta, així que un canvi espera fins que acabin les Comparticions al tracker de qui.",
+      "trustedProxies": "Servidors intermediaris de confiança",
+      "trustedProxiesDescription": "Introdueix només les adreces o els rangs CIDR dels teus servidors intermediaris, no les xarxes dels clients, una per línia. qui només llegeix l'adreça del client reenviada des d'aquests servidors intermediaris.",
+      "trackerUrl": "URL del tracker",
+      "trackerUrlDescription": "Una URL d'anunci http, https o udp.",
+      "publicAddressPlaceholder": "https://share.example.com",
+      "trackerUrlPlaceholder": "udp://tracker.example.org:1337/announce"
+    },
+    "limits": {
+      "heading": "Límits",
+      "maxActive": "Comparticions actives",
+      "peersPerShare": "Parells per Compartició"
+    },
+    "defaults": {
+      "heading": "Valors per defecte per a una Compartició nova",
+      "description": "El diàleg de Compartició comença amb aquests valors."
+    }
+  },
+  "dialog": {
+    "title": "Comparteix amb algú",
+    "description_one": "Dona els fitxers de {{name}} a algú el client del qual qui no gestiona.",
+    "description_other": "Dona els fitxers de {{count}} torrents a algú el client del qual qui no gestiona. Cada torrent té la seva pròpia Compartició.",
+    "cancel": "Cancel·la",
+    "create": "Crea",
+    "done": "Fet",
+    "warning": "El teu amic veu l'adreça IP del teu client. Qualsevol persona que tingui el .torrent pot baixar fins que acabi la Compartició.",
+    "refused": "No compartit",
+    "refusedEntry": "{{name}}: {{reason}}",
+    "tracker": {
+      "label": "Tracker de Compartició",
+      "settings": "Configuració de comparticions",
+      "own": "Tracker de qui a {{address}}",
+      "outside": "Tracker extern {{url}}"
+    },
+    "result": {
+      "description_one": "Envia el .torrent i el missatge al teu amic pel teu propi xat. qui no allotja cap enllaç de baixada.",
+      "description_other": "Envia cada .torrent i el seu missatge al teu amic pel teu propi xat. qui no allotja cap enllaç de baixada.",
+      "torrent": ".torrent",
+      "copyMessage": "Copia el missatge",
+      "copied": "S'ha copiat el missatge",
+      "copyFailed": "No s'ha pogut copiar el missatge"
+    }
+  },
+  "message": {
+    "intro": "Comparteixo «{{name}}» ({{size}}) amb tu. Obre el fitxer .torrent adjunt en un client BitTorrent, com ara qBittorrent, Transmission o Deluge, per baixar-lo directament de mi. Deixa de funcionar el {{date}}.",
+    "endAtFirstDownload": "També deixa de funcionar quan s'acaba una baixada, així que mantén el client obert fins que acabi."
+  },
+  "tab": {
+    "description": "Els torrents que dones a algú el client del qual qui no gestiona.",
+    "empty": "Encara no hi ha cap Compartició.",
+    "endedStay": "Les Comparticions acabades es queden a la llista durant 30 dies.",
+    "unknownInstance": "Instància {{id}}",
+    "endsAt": "Acaba el {{date}}",
+    "endedAt": "Ha acabat el {{date}}",
+    "progress": "Baixat {{percent}}",
+    "progressLabel": "Progrés de la baixada",
+    "sent": "Enviat {{size}}",
+    "announced": "Adreces que s'han anunciat",
+    "connectedPeers": "Parells connectats",
+    "noPeers": "Encara cap",
+    "unlock": "Desbloqueja",
+    "stop": "Atura",
+    "remove": "Suprimeix",
+    "state": {
+      "active": "Activa",
+      "ending": "Acabant",
+      "ended": "Acabada",
+      "unknown": "Desconeguda"
+    },
+    "endReason": {
+      "downloaded": "El destinatari ja té els fitxers.",
+      "expired": "La Compartició ha caducat.",
+      "stopped": "Aturada per l'usuari.",
+      "torrent_deleted": "El torrent s'ha suprimit.",
+      "torrent_moved": "El torrent s'ha mogut.",
+      "files_renamed": "Els fitxers del torrent s'han reanomenat.",
+      "share_torrent_gone": "El torrent de la Compartició ja no és al client."
+    }
+  }
+}

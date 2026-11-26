@@ -1,0 +1,417 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package hardlinktree
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+	"testing"
+)
+
+func TestCreate_NilPlan(t *testing.T) {
+	_, err := Create(nil)
+	if err == nil {
+		t.Error("Expected error for nil plan")
+	}
+}
+
+func TestCreate_EmptyRootDir(t *testing.T) {
+	plan := &TreePlan{
+		RootDir: "",
+		Files:   []FilePlan{{SourcePath: "/src", TargetPath: "/dst"}},
+	}
+	_, err := Create(plan)
+	if err == nil {
+		t.Error("Expected error for empty root directory")
+	}
+}
+
+func TestCreate_NoFiles(t *testing.T) {
+	plan := &TreePlan{
+		RootDir: "/tmp/test",
+		Files:   []FilePlan{},
+	}
+	_, err := Create(plan)
+	if err == nil {
+		t.Error("Expected error for plan with no files")
+	}
+}
+
+func TestCreate_SingleFile(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	srcFile := filepath.Join(srcDir, "testfile.txt")
+	testContent := []byte("test content")
+	if err := os.WriteFile(srcFile, testContent, 0o600); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	dstFile := filepath.Join(dstDir, "linked.txt")
+	plan := &TreePlan{
+		RootDir: dstDir,
+		Files: []FilePlan{
+			{SourcePath: srcFile, TargetPath: dstFile},
+		},
+	}
+
+	_, err := Create(plan)
+	if err != nil {
+		t.Fatalf("Create error: %v", err)
+	}
+
+	if _, err := os.Stat(dstFile); os.IsNotExist(err) {
+		t.Error("Target file was not created")
+	}
+
+	srcInfo, err := os.Stat(srcFile)
+	if err != nil {
+		t.Fatalf("Failed to stat source: %v", err)
+	}
+	dstInfo, err := os.Stat(dstFile)
+	if err != nil {
+		t.Fatalf("Failed to stat destination: %v", err)
+	}
+	if !os.SameFile(srcInfo, dstInfo) {
+		t.Error("Destination is not a hardlink to source")
+	}
+}
+
+func TestCreate_MultipleFiles(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	files := []string{"file1.txt", "file2.txt", "file3.txt"}
+	for _, f := range files {
+		if err := os.WriteFile(filepath.Join(srcDir, f), []byte(f), 0o600); err != nil {
+			t.Fatalf("Failed to create source file %s: %v", f, err)
+		}
+	}
+
+	filePlans := make([]FilePlan, 0, len(files))
+	for _, f := range files {
+		filePlans = append(filePlans, FilePlan{
+			SourcePath: filepath.Join(srcDir, f),
+			TargetPath: filepath.Join(dstDir, f),
+		})
+	}
+	plan := &TreePlan{
+		RootDir: dstDir,
+		Files:   filePlans,
+	}
+
+	_, err := Create(plan)
+	if err != nil {
+		t.Fatalf("Create error: %v", err)
+	}
+
+	for _, f := range files {
+		if _, err := os.Stat(filepath.Join(dstDir, f)); os.IsNotExist(err) {
+			t.Errorf("Target file %s was not created", f)
+		}
+	}
+}
+
+func TestCreate_NestedDirectories(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	srcFile := filepath.Join(srcDir, "file.txt")
+	if err := os.WriteFile(srcFile, []byte("test"), 0o600); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	dstFile := filepath.Join(dstDir, "subdir", "nested", "file.txt")
+	plan := &TreePlan{
+		RootDir: dstDir,
+		Files: []FilePlan{
+			{SourcePath: srcFile, TargetPath: dstFile},
+		},
+	}
+
+	_, err := Create(plan)
+	if err != nil {
+		t.Fatalf("Create error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Dir(dstFile)); os.IsNotExist(err) {
+		t.Error("Nested directory was not created")
+	}
+
+	if _, err := os.Stat(dstFile); os.IsNotExist(err) {
+		t.Error("Target file was not created")
+	}
+}
+
+func TestCreate_Idempotent(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	srcFile := filepath.Join(srcDir, "file.txt")
+	if err := os.WriteFile(srcFile, []byte("test"), 0o600); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	dstFile := filepath.Join(dstDir, "file.txt")
+	plan := &TreePlan{
+		RootDir: dstDir,
+		Files: []FilePlan{
+			{SourcePath: srcFile, TargetPath: dstFile},
+		},
+	}
+
+	if _, err := Create(plan); err != nil {
+		t.Fatalf("First Create error: %v", err)
+	}
+	second, err := Create(plan)
+	if err != nil {
+		t.Fatalf("Second Create error (should be idempotent): %v", err)
+	}
+	if len(second.Files) != 0 {
+		t.Errorf("Second Create should not claim ownership of skipped files, got %v", second.Files)
+	}
+
+	srcInfo, _ := os.Stat(srcFile)
+	dstInfo, _ := os.Stat(dstFile)
+	if !os.SameFile(srcInfo, dstInfo) {
+		t.Error("File is not a hardlink after second Create")
+	}
+}
+
+func TestCreate_SourceNotFound(t *testing.T) {
+	dstDir := t.TempDir()
+
+	plan := &TreePlan{
+		RootDir: dstDir,
+		Files: []FilePlan{
+			{SourcePath: "/nonexistent/file.txt", TargetPath: filepath.Join(dstDir, "file.txt")},
+		},
+	}
+
+	_, err := Create(plan)
+	if err == nil {
+		t.Error("Expected error when source file doesn't exist")
+	}
+}
+
+func TestRollback(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+
+	srcFile1 := filepath.Join(srcDir, "file1.txt")
+	srcFile2 := filepath.Join(srcDir, "file2.txt")
+	if err := os.WriteFile(srcFile1, []byte("test1"), 0o600); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+	if err := os.WriteFile(srcFile2, []byte("test2"), 0o600); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	plan := &TreePlan{
+		RootDir: dstDir,
+		Files: []FilePlan{
+			{SourcePath: srcFile1, TargetPath: filepath.Join(dstDir, "subdir", "file1.txt")},
+			{SourcePath: srcFile2, TargetPath: filepath.Join(dstDir, "subdir", "file2.txt")},
+		},
+	}
+
+	created, err := Create(plan)
+	if err != nil {
+		t.Fatalf("Create error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "file1.txt")); os.IsNotExist(err) {
+		t.Fatal("File1 should exist before rollback")
+	}
+
+	if err := created.Rollback(); err != nil {
+		t.Fatalf("Rollback error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "file1.txt")); !os.IsNotExist(err) {
+		t.Error("File1 should be removed after rollback")
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "file2.txt")); !os.IsNotExist(err) {
+		t.Error("File2 should be removed after rollback")
+	}
+
+	if _, err := os.Stat(filepath.Join(dstDir, "subdir")); !os.IsNotExist(err) {
+		t.Error("Created subdir should be removed after rollback")
+	}
+	if _, err := os.Stat(dstDir); err != nil {
+		t.Errorf("Pre-existing root should survive rollback: %v", err)
+	}
+}
+
+func TestRollback_RemovesCreatedRootChain(t *testing.T) {
+	srcDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "file.txt")
+	if err := os.WriteFile(srcFile, []byte("test"), 0o600); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	base := t.TempDir()
+	rootDir := filepath.Join(base, "a", "b", "c")
+	plan := &TreePlan{
+		RootDir: rootDir,
+		Files: []FilePlan{
+			{SourcePath: srcFile, TargetPath: filepath.Join(rootDir, "pack", "file.txt")},
+		},
+	}
+
+	created, err := Create(plan)
+	if err != nil {
+		t.Fatalf("Create error: %v", err)
+	}
+	if err := created.Rollback(); err != nil {
+		t.Fatalf("Rollback error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(base, "a")); !os.IsNotExist(err) {
+		t.Error("Created ancestor chain should be removed after rollback")
+	}
+	if _, err := os.Stat(base); err != nil {
+		t.Errorf("Pre-existing base should survive rollback: %v", err)
+	}
+}
+
+func TestRollback_NilHandle(t *testing.T) {
+	var created *Created
+	if err := created.Rollback(); err != nil {
+		t.Errorf("nil handle Rollback should not error, got: %v", err)
+	}
+}
+
+func TestRollback_EmptyHandle(t *testing.T) {
+	if err := (&Created{}).Rollback(); err != nil {
+		t.Errorf("empty handle Rollback should not error, got: %v", err)
+	}
+}
+
+func TestRollback_KeepsDirWithForeignContent(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "shared")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sibling.mkv"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := (&Created{Dirs: []string{dir}}).Rollback(); err != nil {
+		t.Fatalf("Rollback should ignore a non-empty dir, got: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("non-empty dir should be kept: %v", err)
+	}
+}
+
+func TestIsDirNotEmpty(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "ENOTEMPTY", err: fmt.Errorf("rollback: %w", &fs.PathError{Op: "remove", Path: "/data/x", Err: syscall.ENOTEMPTY}), want: true},
+		{name: "permission denied", err: &fs.PathError{Op: "remove", Path: "/data/x", Err: fs.ErrPermission}, want: false},
+		{name: "not exist", err: &fs.PathError{Op: "remove", Path: "/data/x", Err: fs.ErrNotExist}, want: false},
+		{name: "permission denied on a path with not empty", err: &fs.PathError{Op: "remove", Path: "/data/not empty", Err: fs.ErrPermission}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isDirNotEmpty(tt.err); got != tt.want {
+				t.Errorf("isDirNotEmpty(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCreate_ExistingTargetIsErrTargetExists(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src", "a.mkv")
+	target := filepath.Join(dir, "links", "a.mkv")
+	for p, body := range map[string]string{src: "a", target: "stranger"} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := Create(&TreePlan{RootDir: filepath.Join(dir, "links"), Files: []FilePlan{{SourcePath: src, TargetPath: target}}})
+	if !errors.Is(err, ErrTargetExists) {
+		t.Fatalf("got %v, want ErrTargetExists", err)
+	}
+}
+
+func TestTargetSatisfiesPlan(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.mkv")
+	if err := os.WriteFile(src, []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.mkv")
+	if err := os.Link(src, link); err != nil {
+		t.Fatal(err)
+	}
+	stranger := filepath.Join(dir, "stranger.mkv")
+	if err := os.WriteFile(stranger, []byte("b"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	symlinkAtTarget := filepath.Join(dir, "planted.mkv")
+	viaSymlink := filepath.Join(dir, "src.via-symlink.mkv")
+	linkOfSymlinked := filepath.Join(dir, "link-of-symlinked.mkv")
+	symlinkErr := os.Symlink(src, symlinkAtTarget)
+	if symlinkErr == nil {
+		symlinkErr = os.Symlink(src, viaSymlink)
+	}
+	symlinkUnavailable := runtime.GOOS == "windows" && errors.Is(symlinkErr, syscall.Errno(1314))
+	if symlinkErr != nil && !symlinkUnavailable {
+		t.Fatal(symlinkErr)
+	}
+	if !symlinkUnavailable {
+		if err := os.Link(viaSymlink, linkOfSymlinked); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tt := range []struct {
+		name            string
+		source          string
+		target          string
+		requiresSymlink bool
+		wantSatisfied   bool
+		wantErr         error
+	}{
+		{name: "link to the source is already done", source: src, target: link, wantSatisfied: true},
+		{name: "missing target is ours to create", source: src, target: filepath.Join(dir, "absent.mkv")},
+		{name: "another file is the collision", source: src, target: stranger, wantErr: ErrTargetExists},
+		{name: "a symlink planted at the target is the collision", source: src, target: symlinkAtTarget, requiresSymlink: true, wantErr: ErrTargetExists},
+		{name: "the link an earlier run made from a symlinked source is already done", source: viaSymlink, target: linkOfSymlinked, requiresSymlink: true, wantSatisfied: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.requiresSymlink && symlinkUnavailable {
+				t.Skip("creating a symlink requires Developer Mode or SeCreateSymbolicLinkPrivilege")
+			}
+			satisfied, err := targetSatisfiesPlan(FilePlan{SourcePath: tt.source, TargetPath: tt.target})
+			if satisfied != tt.wantSatisfied {
+				t.Errorf("satisfied = %v, want %v", satisfied, tt.wantSatisfied)
+			}
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else if !errors.Is(err, tt.wantErr) {
+				t.Errorf("got %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}

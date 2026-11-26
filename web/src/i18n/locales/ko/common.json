@@ -1,0 +1,558 @@
+{
+  "nav": {
+    "dashboard": "대시보드",
+    "statistics": "통계",
+    "search": "검색",
+    "crossSeed": "Cross-Seed",
+    "automations": "자동화",
+    "transfers": "전송",
+    "transfersQueued_other": "실행 중이거나 대기 중인 항목 {{count}}개",
+    "backups": "백업",
+    "rss": "RSS",
+    "settings": "설정",
+    "logs": "로그",
+    "instances": "인스턴스",
+    "generalSettings": "일반 설정",
+    "manageInstances": "인스턴스 관리",
+    "appearance": "테마",
+    "instanceBackups": "인스턴스 백업",
+    "backToSite": "getqui.com으로 돌아가기",
+    "docs": "문서"
+  },
+  "sidebar": {
+    "instances": "인스턴스",
+    "allInstancesDisabled": "모든 인스턴스가 비활성화되어 있습니다",
+    "noInstancesConfigured": "구성된 인스턴스가 없습니다",
+    "logout": "로그아웃",
+    "version": "버전 {{version}}",
+    "language": "언어",
+    "viewOnGitHub": "GitHub에서 보기",
+    "rssRunning": "Cross-seed RSS 실행 중",
+    "rssEnabled": "Cross-seed RSS 활성화됨",
+    "scanRunning": "스캔 실행 중",
+    "collapseToIcons": "아이콘으로 접기",
+    "expandSidebar": "사이드바 펼치기",
+    "hideSidebar": "사이드바 숨기기",
+    "showSidebar": "사이드바 표시",
+    "keepOpen": "사이드바 고정",
+    "menu": "메뉴"
+  },
+  "problemReports": {
+    "reportProblem": "문제 신고",
+    "subtitle": "신고 내용은 qui 관리자에게 전달됩니다.",
+    "textLabel": "신고 내용",
+    "placeholders": {
+      "menu": "무슨 일이 일어났고 어떤 결과를 기대했나요?",
+      "notice": "이 문제가 생겼을 때 무엇을 하고 있었나요?",
+      "search": "어떤 인덱서에서 어떤 일치를 기대했나요?"
+    },
+    "sentWithIt": "함께 전송되는 정보",
+    "summary_other": "qui {{version}} 및 인스턴스 {{count}}개",
+    "details": "세부 정보",
+    "view": "보기",
+    "whatGetsSent": "전송되는 내용",
+    "whatGetsSentNote": "qui가 이 항목을 채웁니다. 신고를 보내기 전에는 아무것도 qui 밖으로 나가지 않습니다.",
+    "loadingFacts": "세부 정보를 불러오는 중...",
+    "factsFailed": "세부 정보를 불러오지 못했습니다: {{message}}",
+    "facts": {
+      "version": "버전",
+      "system": "시스템",
+      "appContainer": "컨테이너 환경",
+      "database": "데이터베이스",
+      "logLevel": "로그 수준",
+      "started": "시작 시간",
+      "experimentalFeatures": "실험적 기능",
+      "instance": "인스턴스 {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "알 수 없음",
+      "states": {
+        "connected": "연결됨",
+        "offline": "오프라인",
+        "disabled": "비활성화됨"
+      },
+      "torrentCount_other": "토렌트 {{count}}개",
+      "notices": "시스템 알림",
+      "openCount_other": "{{count}}개 열림",
+      "page": "페이지",
+      "browser": "브라우저",
+      "screen": "{{width}} × {{height}}, 픽셀 비율 {{ratio}}",
+      "failedRequests": "실패한 요청",
+      "failedCount_other": "이 세션에서 {{count}}건",
+      "noAnswer": "응답 없음",
+      "none": "없음"
+    },
+    "logs": {
+      "title": "로그",
+      "scopeLabel": "포함할 로그 줄",
+      "scopes": {
+        "warnings": "경고 및 오류",
+        "all": "최근 전체",
+        "none": "제외"
+      },
+      "notes": {
+        "warnings_other": "최근 경고 및 오류 {{count}}줄. qui가 키와 비밀 값을 제거합니다.",
+        "all_other": "로그 수준 {{level}}의 최근 {{count}}줄. qui가 키와 비밀 값을 제거합니다.",
+        "none": "신고에 로그 줄을 포함하지 않습니다."
+      },
+      "empty": "로그 줄이 없습니다.",
+      "debugMissing": "로그 수준이 {{level}}이므로 qui가 디버그 줄을 기록하지 않습니다. 포함하려면 설정 > 로그에서 로그 수준을 DEBUG로 바꾼 뒤 문제를 재현하고 다시 신고하세요."
+    },
+    "privacy": {
+      "anonymous": "익명: 이름도 계정도 없습니다. brrbin은 IP 주소를 보관하지 않습니다.",
+      "signedIn": "관리자가 {{provider}} 이름({{name}})을 확인하고 연락할 수 있습니다.",
+      "link": "개인정보 처리방침"
+    },
+    "sender": {
+      "label": "다음으로 보내기",
+      "anonymous": "익명",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "{{provider}}로 로그인",
+      "signOut": "로그아웃",
+      "waiting": "{{provider}} 대기 중",
+      "errors": {
+        "discordNotMember": "Discord 계정이 autobrr Discord 서버에 없습니다. 서버에 가입한 뒤 다시 로그인하거나, GitHub로 로그인하거나 익명으로 보내세요.",
+        "refused": "로그인이 거부되었습니다: {{reason}}",
+        "expired": "로그인이 만료되었습니다. 다시 로그인하세요.",
+        "popupBlocked": "브라우저가 로그인 창을 차단했습니다. qui에서 팝업을 허용한 뒤 다시 로그인하세요.",
+        "unavailable": "brrbin이 지금은 로그인을 처리할 수 없습니다. 나중에 다시 시도하세요.",
+        "startFailed": "로그인을 시작하지 못했습니다: {{message}}",
+        "signOutFailed": "로그아웃하지 못했습니다: {{message}}"
+      }
+    },
+    "newerRelease": "현재 {{running}} 버전을 사용 중입니다. <release>{{newer}}</release> 버전이 나왔습니다.",
+    "send": "보내기",
+    "sendAnyway": "그래도 보내기",
+    "sending": "보내는 중",
+    "sent": "신고를 보냈습니다",
+    "errors": {
+      "anonymousFull": {
+        "title": "오늘 익명 신고가 모두 찼습니다",
+        "body": "로그인하면 지금 보낼 수 있고, 아니면 내일 다시 시도하세요. 작성한 내용은 초안으로 여기에 남습니다."
+      },
+      "signInRequired": "이 신고를 보내려면 로그인하세요. 작성한 내용은 초안으로 여기에 남습니다.",
+      "accountLimit": "지난 한 시간 동안 신고를 많이 보냈습니다. 나중에 다시 시도하세요.",
+      "reporterFull": "신고가 brrbin이 한 사람에게 주는 공간을 모두 쓰고 있습니다. 보낸 신고에서 오래된 신고를 삭제한 뒤 다시 보내세요.",
+      "tooLarge": "신고가 너무 큽니다. 로그 줄을 줄이거나 더 작은 이미지를 고르세요.",
+      "tokenRejected": "로그인이 끝났습니다. 다시 로그인한 뒤 보내세요.",
+      "unavailable": "brrbin이 지금은 신고를 받을 수 없습니다. 나중에 다시 시도하세요.",
+      "sendFailed": "신고를 보내지 못했습니다: {{message}}"
+    },
+    "sentReports": {
+      "title": "보낸 신고",
+      "subtitle": "이 목록을 열 때마다 qui가 신고 상태를 확인합니다.",
+      "changed_other": "상태 {{count}}건 변경됨",
+      "status": {
+        "received": "접수됨",
+        "issue": "이슈 #{{number}} 등록됨",
+        "issueClosed": "이슈 #{{number}} 닫힘",
+        "closed": "닫힘: {{reason}}",
+        "closedNoReason": "닫힘",
+        "notSent": "전송되지 않음"
+      },
+      "delete": "신고 삭제",
+      "deleteUnavailable": "brrbin이 지금은 신고를 삭제할 수 없습니다. 나중에 다시 시도하세요.",
+      "deleteFailed": "신고를 삭제하지 못했습니다: {{message}}",
+      "empty": "보낸 신고가 없습니다.",
+      "back": "신고로 돌아가기"
+    }
+  },
+  "header": {
+    "currentInstance": "현재 인스턴스: {{name}}. 클릭하여 인스턴스를 전환합니다.",
+    "connected": "연결됨",
+    "disconnected": "연결 끊김",
+    "showFilters": "필터 표시",
+    "hideFilters": "필터 숨기기",
+    "addTorrent": "토렌트 추가",
+    "createTorrent": "토렌트 생성",
+    "torrentCreationTasks": "토렌트 생성 작업",
+    "instanceSettings": "인스턴스 설정",
+    "addToInstance": "인스턴스에 추가",
+    "createForInstance": "인스턴스용 생성",
+    "tasksForInstance": "인스턴스 작업",
+    "settingsForInstance": "인스턴스 설정",
+    "clearSearch": "검색 지우기",
+    "searchTorrents": "토렌트 검색...",
+    "globPattern": "Glob 패턴...",
+    "smartSearchTitle": "스마트 검색 기능:",
+    "smartSearchGlob": "Glob 패턴:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "유사 일치:",
+    "smartSearchFuzzyExample": "\"breaking bad\"로 \"Breaking.Bad\"를 찾습니다",
+    "smartSearchDots": "점, 밑줄, 대괄호를 처리합니다",
+    "smartSearchFields": "이름, 카테고리, 태그를 검색합니다",
+    "smartSearchEnter": "Enter를 눌러 즉시 검색",
+    "smartSearchAuto": "500ms 일시정지 후 자동 검색",
+    "smartSearchShortcut": "{{shortcutKey}}를 눌러 검색창으로 이동",
+    "smartSearchPalette": "{{shortcutKey}}를 눌러 명령 팔레트 열기",
+    "torrentCreationTasksTitle": "토렌트 생성 작업",
+    "allScope": "전체",
+    "unified": "통합"
+  },
+  "titleBar": {
+    "speeds": "↓ {{download}} ↑ {{upload}}"
+  },
+  "unifiedScope": {
+    "unified": "통합",
+    "collapseScope": "통합 범위 접기",
+    "expandScope": "통합 범위 펼치기",
+    "allActive": "모두 활성 ({{count}})"
+  },
+  "commandPalette": {
+    "title": "명령 팔레트",
+    "placeholder": "페이지, 설정, 토렌트 검색...",
+    "placeholderIn": "{{name}}에서 검색...",
+    "groups": {
+      "pages": "페이지",
+      "actions": "작업"
+    },
+    "current": "현재",
+    "statisticsNote": "인스턴스의 업로드 및 다운로드 기록",
+    "searchTorrentsFor": "\"{{query}}\" 토렌트 검색",
+    "torrentMatches_other": "일치하는 토렌트 {{count}}개",
+    "noTorrentMatches": "일치하는 토렌트 없음",
+    "searching": "검색 중...",
+    "searchFailed": "토렌트 검색에 실패했습니다",
+    "listFiltersApply": "목록 필터 적용됨",
+    "noMatchIn": "{{name}}에 일치하는 항목 없음",
+    "moreOf": "{{name}} 더 보기",
+    "hints": {
+      "navigate": "이동",
+      "open": "열기",
+      "more": "더 보기",
+      "searchTorrents": "토렌트 검색",
+      "back": "뒤로"
+    }
+  },
+  "mobileNav": {
+    "dashboard": "대시보드",
+    "statistics": "통계",
+    "clients": "클라이언트",
+    "settings": "설정",
+    "qbittorrentClients": "qBittorrent 클라이언트",
+    "instances": "인스턴스",
+    "loading": "불러오는 중...",
+    "noActiveClients": "활성 클라이언트 없음",
+    "updateAvailable": "업데이트 사용 가능",
+    "updateVersion": "버전 {{version}}",
+    "rssRunning": "Cross-seed RSS 실행 중",
+    "rssEnabled": "Cross-seed RSS 활성화됨",
+    "scanRunning": "스캔 실행 중",
+    "logout": "로그아웃",
+    "version": "버전 {{version}}",
+    "viewOnGitHub": "GitHub에서 보기"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "취소",
+    "close": "닫기",
+    "create": "생성",
+    "scrollToTop": "맨 위로 스크롤",
+    "search": "검색",
+    "select": "선택",
+    "copyValue": "{{label}} 복사"
+  },
+  "featureNotice": {
+    "gotIt": "확인"
+  },
+  "placeholders": {
+    "search": "검색...",
+    "selectItems": "항목 선택..."
+  },
+  "feedback": {
+    "noResultsFound": "결과를 찾을 수 없습니다.",
+    "copied": "{{label}}이(가) 클립보드에 복사되었습니다",
+    "copyFailed": "클립보드에 복사하지 못했습니다"
+  },
+  "errors": {
+    "unknown": "알 수 없는 오류",
+    "httpStatus": "HTTP 오류! 상태: {{status}}",
+    "httpStatusHtml": "HTTP 오류! 상태: {{status}} (서버가 HTML 오류 페이지를 반환했습니다)",
+    "ssoHtmlResponse": "API에서 JSON 대신 HTML 응답을 받았습니다. SSO 프록시(Cloudflare Access, Pangolin 등)를 사용 중이라면 페이지를 새로 고치거나 새 탭에서 URL을 다시 열어 보세요.",
+    "torrentFileDownloadFailed": "토렌트 파일을 다운로드하지 못했습니다: {{status}}",
+    "altSpeedToggle": "대체 속도 제한을 변경하지 못했습니다: {{message}}",
+    "altSpeedToggleHidden": "대체 속도 제한을 변경하지 못했습니다. 시크릿 모드에서는 원인이 숨겨집니다."
+  },
+  "status": {
+    "disabled": "비활성화됨",
+    "notContacted": "접속 시도 안 함",
+    "working": "정상",
+    "updating": "업데이트 중",
+    "error": "오류",
+    "unknown": "알 수 없음",
+    "unavailable": "사용 불가",
+    "trackerError": "트래커 오류",
+    "unreachable": "도달할 수 없음"
+  },
+  "contentTypeLabels": {
+    "movie": "영화",
+    "tv": "TV",
+    "music": "음악",
+    "audiobook": "오디오북",
+    "book": "도서",
+    "comic": "만화",
+    "game": "게임",
+    "app": "앱",
+    "adult": "성인",
+    "unknown": "알 수 없음"
+  },
+  "themeToggle": {
+    "changeTheme": "테마 변경",
+    "appearance": "테마",
+    "mode": "모드",
+    "light": "밝게",
+    "dark": "어둡게",
+    "system": "시스템",
+    "theme": "테마",
+    "switchedToMode": "{{mode}} 모드로 전환했습니다",
+    "switchedToTheme": "{{theme}} 테마로 전환했습니다",
+    "switchedToThemeVariation": "{{theme}} 테마({{variation}})로 전환했습니다",
+    "premiumThemeError": "이 테마에는 라이선스가 필요합니다. 설정 → 테마에서 라이선스를 활성화하세요."
+  },
+  "updateBanner": {
+    "updateAvailable": "업데이트 사용 가능",
+    "versionAvailable": "버전 {{version}}을(를) 지금 사용할 수 있습니다",
+    "dismiss": "닫기"
+  },
+  "systemNotice": {
+    "needsAttention": "확인 필요",
+    "since": "{{time}}부터, {{age}}",
+    "causeLabel": "원인",
+    "actionFallback": "해결하러 가기",
+    "kinds": {
+      "recording_stopped": {
+        "short": "기록 중지됨",
+        "title": "기록 중지됨",
+        "effect": "qui가 전송 기록을 쓸 수 없습니다. 다음 쓰기 때 다시 시도합니다.",
+        "fix": "디스크에 여유 공간이 있는지, qui가 데이터베이스 파일에 쓸 수 있는지 확인하세요.",
+        "menuFix": "데이터베이스용 디스크 공간 확보"
+      },
+      "shrink_failed": {
+        "short": "축소 실패",
+        "title": "축소 실패",
+        "effect": "qui가 데이터베이스 파일을 축소하지 못했습니다. 데이터베이스는 변경되지 않았고 qui는 평소처럼 실행됩니다.",
+        "fix": "자세한 내용은 qui 로그에 있습니다.",
+        "menuFix": "qui 로그 읽기",
+        "reasons": {
+          "disk_full": {
+            "fix": "디스크의 여유 공간이 부족합니다. 축소에는 데이터베이스 파일 크기의 최대 두 배가 필요합니다. 디스크 공간을 확보한 후 다시 시도하세요.",
+            "menuFix": "공간을 확보한 후 다시 시도"
+          },
+          "locked": {
+            "fix": "다른 프로그램이 데이터베이스 파일을 사용하고 있었습니다. 백업 도구나 데이터베이스 뷰어 같은 해당 프로그램을 종료한 후 다시 시도하세요.",
+            "menuFix": "다른 프로그램을 종료한 후 다시 시도"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "디스크 공간 부족",
+        "title": "디스크 공간 부족",
+        "effect": "qui 데이터베이스가 있는 디스크의 여유 공간이 적습니다. 디스크가 가득 차면 qui의 모든 쓰기가 실패합니다.",
+        "fix": "디스크 공간을 확보하거나, 통계 설정에서 '일별 상세 보관 기간'을 줄이거나 오래된 기록을 삭제하세요.",
+        "menuFix": "데이터베이스용 디스크 공간 확보",
+        "action": "통계 설정 열기"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted 키 거부됨",
+        "title": "Redacted에서 API 키를 거부했습니다",
+        "effect": "Redacted에서 마지막 검색을 거부했습니다. qui는 다음 검색 때 다시 조회합니다.",
+        "fix": "키가 잘못된 경우 Redacted 프로필 설정에서 Torrents 권한이 있는 API 키를 만들고 qui의 Gazelle (OPS/RED) 설정에 붙여 넣으세요. Redacted에서 qui의 IP를 차단했다면 새 키로는 해결되지 않습니다. Redacted 운영진에 문의하세요.",
+        "menuFix": "설정에 새 키 붙여 넣기",
+        "action": "Gazelle (OPS/RED) 설정 열기"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus 키 거부됨",
+        "title": "Orpheus에서 API 키를 거부했습니다",
+        "effect": "Orpheus에서 마지막 검색을 거부했습니다. qui는 다음 검색 때 다시 조회합니다.",
+        "fix": "키가 잘못된 경우 Orpheus 프로필 설정에서 Torrents 권한이 있는 API 키를 만들고 qui의 Gazelle (OPS/RED) 설정에 붙여 넣으세요. Orpheus에서 qui의 IP를 차단했다면 새 키로는 해결되지 않습니다. Orpheus 운영진에 문의하세요.",
+        "menuFix": "설정에 새 키 붙여 넣기",
+        "action": "Gazelle (OPS/RED) 설정 열기"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "라이브러리 스캔 일정 차단됨",
+        "title": "라이브러리 스캔 일정을 실행할 수 없습니다",
+        "effect": "qui가 예약된 라이브러리 스캔 실행을 시작할 수 없습니다. 매시간 다시 시도합니다.",
+        "fix": "라이브러리 스캔 설정을 확인하세요. qui는 매시간 다시 시도합니다.",
+        "menuFix": "라이브러리 스캔 설정 확인",
+        "action": "라이브러리 스캔 설정 열기",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "라이브러리 스캔 설정에서 Torznab이 꺼져 있고, RED 또는 OPS API 키가 설정되어 있지 않습니다. Torznab을 켜거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "Torznab을 켜거나 RED 또는 OPS 키 추가"
+          },
+          "no_indexer": {
+            "fix": "활성화된 인덱서가 없습니다. Torznab 인덱서를 활성화하거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "인덱서 활성화"
+          },
+          "instance_missing": {
+            "fix": "저장된 라이브러리 스캔 설정의 인스턴스가 존재하지 않습니다. 라이브러리 스캔 설정에서 인스턴스를 선택한 뒤 저장하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "인스턴스를 선택한 뒤 저장"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "다시 시도",
+      "dismiss": "닫기",
+      "openLog": "로그 열기"
+    },
+    "unknown": {
+      "short": "시스템 알림",
+      "title": "시스템 알림",
+      "effect": "qui가 사용자의 조치가 필요한 오류를 발견했습니다.",
+      "fix": "자세한 내용은 qui 로그를 확인하세요.",
+      "menuFix": "qui 로그 확인"
+    }
+  },
+  "databaseShrink": {
+    "done": "데이터베이스 파일을 {{before}}에서 {{after}}(으)로 축소했습니다",
+    "nextStart": "축소는 qui가 다음에 시작할 때 실행됩니다",
+    "failed": "축소를 요청하지 못했습니다"
+  },
+  "pwaUpdate": {
+    "reload": "새로고침",
+    "waitingDescription": "최신 qui 릴리스를 적용하려면 새로고침하세요.",
+    "activatedTitle": "qui가 업데이트됨",
+    "activatedDescription": "편할 때 새로고침하여 최신 릴리스 설치를 완료하세요."
+  },
+  "notFound": {
+    "title": "이런! 군집 속에서 길을 잃으셨나요?",
+    "subtitle": "미지의 영역으로 들어오신 것 같습니다.",
+    "bugReport": "누락된 링크가 아니라 버그라고 생각되시면,",
+    "reportTo": "편하게 다음 위치에 보고해 주세요:",
+    "githubRepository": "GitHub 저장소",
+    "getBackOnTrack": "그렇지 않다면, 다시 제자리로 돌아가도록 도와드리겠습니다!",
+    "returnToDashboard": "대시보드로 돌아가기"
+  },
+  "magnetHandler": {
+    "registerPrompt": "qui를 마그넷 링크 핸들러로 등록",
+    "register": "등록",
+    "dismiss": "닫기",
+    "registrationRequested": "마그넷 핸들러 등록을 요청했습니다",
+    "registrationFailed": "마그넷 핸들러 등록에 실패했습니다",
+    "guidance": {
+      "standalone": "등록하려면 일반 브라우저 탭에서 qui를 여세요(프롬프트가 주소 표시줄에 나타날 수 있으며, PWA에서는 표시되지 않습니다).",
+      "chromium": "Chrome에서는 보통 주소 표시줄에 작은 프로토콜 핸들러 아이콘으로 표시됩니다. 아무것도 나타나지 않으면 chrome://settings/handlers에서 프로토콜 핸들러를 활성화하세요.",
+      "default": "브라우저에서 메시지가 표시되면 등록을 완료하기 위해 수락해 주세요."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "자세한 정보"
+  },
+  "numberInput": {
+    "unlimited": "무제한"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "방금 전",
+    "today": "오늘",
+    "yesterday": "어제",
+    "past": "{{value}} 전",
+    "future": "{{value}} 후",
+    "units": {
+      "second_other": "{{count}}초",
+      "minute_other": "{{count}}분",
+      "hour_other": "{{count}}시간",
+      "day_other": "{{count}}일",
+      "week_other": "{{count}}주",
+      "month_other": "{{count}}개월",
+      "year_other": "{{count}}년"
+    }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}}{{unit}}"
+  },
+  "support": {
+    "title": "qui 후원하기",
+    "description": "qui를 후원하는 방법과 가격입니다.",
+    "heading": "qui의 유지 관리를 도와주세요",
+    "intro": "qui는 무료이며, 결제 여부와 관계없이 똑같이 작동합니다. 후원금은 qui에 들어가는 시간과 도구 비용으로 쓰입니다.",
+    "licensed": "테마 라이선스를 구매해 주셔서 감사합니다.",
+    "releases_other": "qui는 지난 12개월 동안 {{count}}번 릴리스되었습니다.",
+    "releaseMap": "지난 52주를 하루에 한 칸씩 보여 줍니다. 밝은 칸은 릴리스가 있었던 날입니다.",
+    "releaseDay": "릴리스가 있었던 날",
+    "plans": {
+      "yearly": "연 {{price}}",
+      "yearlyNote": "월 {{price}}, 연간 결제",
+      "yearlyNoteWithLicense": "월 {{price}}, 연간 결제. 테마 라이선스 포함.",
+      "license": "테마 라이선스, {{price}}부터",
+      "licenseNote": "현재 및 향후 모든 프리미엄 테마, 평생 사용",
+      "onePayment": "1회 결제"
+    },
+    "checkout": "결제 계속하기",
+    "fromPrice": "{{price}}부터",
+    "terms": {
+      "yearly": "오늘 {{price}}, 이후 취소할 때까지 매년 {{price}}씩 결제됩니다.",
+      "license": "{{price}} 이상 1회 결제이며, 금액은 결제할 때 정합니다. 구독이 아닙니다."
+    },
+    "perks": {
+      "yearly": "후원자는 qui에서 후원자 배지를, Discord에서 후원자 역할을 받습니다. 결제 후 이 서버에 후원자 키를 추가하세요.",
+      "license": "라이선스로 프리미엄 테마가 잠금 해제됩니다. 결제 후 이 서버에 라이선스 키를 추가하세요."
+    },
+    "existing": "이미 후원자이신가요?",
+    "addKey": "후원자 키 추가",
+    "key": {
+      "help": "후원자 키는 결제 페이지와 영수증 이메일에 있습니다.",
+      "label": "후원자 키",
+      "submit": "키 추가",
+      "back": "뒤로"
+    },
+    "ended": "이 서버의 후원자 키가 더 이상 유효하지 않습니다. qui는 매일 키를 다시 확인합니다. 후원이 끝났다면 테마 라이선스는 그대로 남아 있습니다. <portal>라이선스 포털</portal>에서 라이선스 키를 찾아 설정의 테마에서 추가하세요.",
+    "removeKey": "이 서버에서 후원자 키 제거",
+    "supporter": {
+      "badge": "후원자",
+      "title": "qui 후원 중",
+      "thanks": "감사합니다. 여러분의 후원은 qui에 들어가는 시간과 도구 비용으로 쓰입니다.",
+      "detail": "qui의 후원자 배지와 Discord의 후원자 역할을 받으셨습니다. 후원으로 프리미엄 테마도 잠금 해제되며, 평생 사용할 수 있는 테마 라이선스가 포함됩니다. <portal>라이선스 포털</portal>에서 라이선스 키를 찾을 수 있습니다.",
+      "manage": "후원 관리 또는 취소"
+    },
+    "reminder": {
+      "title_other": "이 서버에서 qui를 사용한 지 {{count}}일",
+      "tooltip": "이 서버에서만 계산하며 외부로 보내지 않습니다. qui는 1년에 한 번 묻습니다.",
+      "subtitle": "qui 후원하기. qui는 1년에 한 번 묻습니다.",
+      "notNow": "나중에",
+      "serverDays_other": "이 서버는 {{count}}일 동안 qui를 실행했습니다. qui는 이 값을 이 서버에서 계산하며 외부로 보내지 않습니다.",
+      "notNowToast": "qui가 1년 뒤에 다시 묻습니다",
+      "dontAskAgain": "다시 묻지 않기",
+      "offToast": "qui가 더 이상 묻지 않습니다",
+      "offToastDescription": "후원 바로가기는 그대로 남습니다. 설정의 애플리케이션에서 알림을 다시 켤 수 있습니다.",
+      "undo": "실행 취소",
+      "hiddenToast": "후원 바로가기를 숨겼습니다",
+      "hiddenToastDescription": "qui가 더 이상 묻지 않습니다. 설정의 애플리케이션에서 바로가기를 다시 표시할 수 있습니다.",
+      "notForYou": "관심 없으신가요? <reminder>연간 알림 끄기</reminder> 또는 <heart>하트 숨기기</heart>. 설정에서 둘 다 되돌릴 수 있습니다.",
+      "notForYouHeart": "관심 없으신가요? <heart>하트 숨기기</heart>. 설정에서 되돌릴 수 있습니다."
+    }
+  },
+  "labels": {
+    "path": "경로",
+    "beta": "베타"
+  },
+  "kit": {
+    "loadFailed": "이 섹션을 불러오지 못했습니다.",
+    "retry": "다시 시도",
+    "edit": "편집",
+    "moreActions": "추가 작업",
+    "enabled": "사용",
+    "clearSelection": "선택 해제"
+  }
+}

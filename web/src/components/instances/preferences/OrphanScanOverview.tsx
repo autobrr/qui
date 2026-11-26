@@ -1,0 +1,560 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { OrphanScanPreviewDialog } from "@/components/instances/preferences/OrphanScanPreviewDialog"
+import { OrphanScanRemoteLimits } from "@/components/instances/preferences/OrphanScanRemoteLimits"
+import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
+import { CopyButton } from "@/components/ui/copy-button"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useInstances } from "@/hooks/useInstances"
+import {
+  useCancelOrphanScanRun,
+  useOrphanScanRunPaths,
+  useOrphanScanRuns,
+  useOrphanScanSettings,
+  useTriggerOrphanScan,
+  useUpdateOrphanScanSettings
+} from "@/hooks/useOrphanScan"
+import { cn, formatBytes } from "@/lib/utils"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import type { Instance, OrphanScanRun } from "@/types"
+import { AlertTriangle, ChevronDown as ChevronDownIcon, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
+import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+interface OrphanScanOverviewProps {
+  onConfigureInstance?: (instanceId: number) => void
+  expandedInstances?: string[]
+  onExpandedInstancesChange?: (values: string[]) => void
+}
+
+function getStatusBadge(run: OrphanScanRun, t: (key: string) => string) {
+  const { status, filesFound } = run
+  if (run.partial && (status === "completed" || status === "preview_ready")) {
+    return { variant: "warning" as const, label: t("preferences.orphanScanOverview.statusPartial") }
+  }
+  if ((status === "completed" || status === "preview_ready") && filesFound === 0 && !run.errorMessage) {
+    return { variant: "outline" as const, className: "bg-muted text-muted-foreground border-border/60", label: t("preferences.orphanScanOverview.statusClean") }
+  }
+
+  switch (status) {
+    case "pending":
+    case "scanning":
+      return { variant: "info" as const, label: status === "pending" ? t("preferences.orphanScanOverview.statusStarting") : t("preferences.orphanScanOverview.statusScanning") }
+    case "preview_ready":
+      return { variant: "warning" as const, label: t("preferences.orphanScanOverview.statusReadyForReview") }
+    case "deleting":
+      return { variant: "outline" as const, className: "bg-orange-500/10 text-orange-500 border-orange-500/20", label: t("preferences.orphanScanOverview.statusDeleting") }
+    case "completed":
+      return { variant: "success" as const, label: t("preferences.orphanScanOverview.statusCompleted") }
+    case "failed":
+      return { variant: "outline" as const, className: "bg-destructive/10 text-destructive border-destructive/30", label: t("preferences.orphanScanOverview.statusFailed") }
+    case "canceled":
+      return { variant: "outline" as const, className: "bg-muted text-muted-foreground border-border/60", label: t("preferences.orphanScanOverview.statusCanceled") }
+    default:
+      return { variant: "outline" as const, className: "", label: status }
+  }
+}
+
+export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
+  const { t } = useTranslation("instances")
+  const statusBadge = getStatusBadge(run, t)
+  const hasError = !!run.errorMessage
+  const hasScanPaths = run.scanPathCount > 0
+  const hasDetails = hasError || hasScanPaths
+  const [opened, setOpened] = useState(false)
+  const pathsQuery = useOrphanScanRunPaths(run.instanceId, run.id, opened && hasScanPaths)
+  const pathsBox = pathsQuery.data
+    ? { className: "font-mono", text: pathsQuery.data.join("\n") }
+    : pathsQuery.isError
+      ? { className: "text-destructive", text: t("preferences.orphanScanOverview.scanPathsLoadFailed") }
+      : { className: "text-muted-foreground", text: t("preferences.orphanScanOverview.scanPathsLoading") }
+
+  const hasWarning = run.status === "completed" && hasError && !run.partial
+
+  const rowContent = (
+    <div className="p-3 flex items-center gap-3">
+      <div className="flex flex-1 min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex items-center gap-3">
+          <Badge {...statusBadge} className={statusBadge.className}>
+            {statusBadge.label}
+          </Badge>
+          {hasWarning && (
+            <Tooltip>
+              <TooltipTrigger asChild openOnTap>
+                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t("preferences.orphanScanOverview.partialFailureExpand")}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <span className="text-xs text-muted-foreground capitalize">{run.triggeredBy}</span>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {(run.status === "completed" || run.status === "preview_ready") && run.filesFound === 0 && !run.partial && !hasError && (
+            <span>{t("preferences.orphanScanOverview.zeroOrphans")}</span>
+          )}
+          {run.status === "completed" && run.filesFound > 0 && (
+            <span>
+              {t("preferences.orphanScanOverview.deletedStats", {
+                deleted: [
+                  ...run.filesDeleted > 0 || run.foldersDeleted === 0 ? [t("preferences.orphanScanOverview.deletedFiles", { count: run.filesDeleted })] : [],
+                  ...run.foldersDeleted > 0 ? [t("preferences.orphanScanOverview.deletedDirs", { count: run.foldersDeleted })] : [],
+                ].join(t("preferences.orphanScanOverview.deletedSeparator")),
+                size: formatBytes(run.bytesReclaimed).replace(" ", "\u00a0"),
+              })}
+            </span>
+          )}
+          {run.startedAt && (
+            <span className="whitespace-nowrap">{formatRelativeTime(run.startedAt)}</span>
+          )}
+        </div>
+      </div>
+      {hasDetails && (
+        <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+      )}
+    </div>
+  )
+
+  if (!hasDetails) {
+    return <div>{rowContent}</div>
+  }
+
+  return (
+    <Collapsible className="group" onOpenChange={(open) => open && setOpened(true)}>
+      <CollapsibleTrigger className="w-full text-left cursor-pointer hover:bg-muted/50 transition-colors">
+        {rowContent}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="px-3 pb-3 pt-0 space-y-3">
+          {hasError && (
+            <div className={cn(
+              "relative p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
+              run.status === "failed"? "bg-destructive/10 text-destructive border border-destructive/20": "bg-warning/10 text-warning border border-warning/20"
+            )}>
+              <CopyButton value={run.errorMessage ?? ""} label={t("preferences.orphanScanOverview.errorMessage")} className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100" />
+              {run.errorMessage}
+            </div>
+          )}
+          {hasScanPaths && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t("preferences.orphanScanOverview.scannedPaths", { total: run.scanPathCount })}
+                </p>
+                {pathsQuery.data && (
+                  <CopyButton value={pathsBox.text} label={t("preferences.orphanScanOverview.scanPaths")} className="h-7 w-7 opacity-60 hover:opacity-100" />
+                )}
+              </div>
+              <div className={cn("p-3 rounded-md border bg-muted/40 text-xs whitespace-pre-wrap break-all max-h-48 overflow-y-auto", pathsBox.className)}>
+                {pathsBox.text}
+              </div>
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function InstanceOrphanScanItem({
+  instance,
+  onConfigureInstance,
+  isExpanded,
+  onToggle,
+}: {
+  instance: Instance
+  onConfigureInstance?: (instanceId: number) => void
+  isExpanded: boolean
+  onToggle: () => void
+}) {
+  const { t } = useTranslation("instances")
+  const hasAccess = instance.capabilities.read
+  const settingsQuery = useOrphanScanSettings(instance.id, { enabled: hasAccess })
+  const runsQuery = useOrphanScanRuns(instance.id, { limit: 5, enabled: hasAccess })
+  const triggerMutation = useTriggerOrphanScan(instance.id)
+  const updateSettingsMutation = useUpdateOrphanScanSettings(instance.id)
+  const cancelMutation = useCancelOrphanScanRun(instance.id)
+  const [previewOpen, setPreviewOpen] = useState(false)
+
+  const settings = settingsQuery.data
+  const runs = runsQuery.data ?? []
+  const latestRun = runs[0]
+
+  const isEnabled = settings?.enabled ?? false
+  const isActiveRun = latestRun && ["pending", "scanning", "deleting"].includes(latestRun.status)
+
+  const handleToggleEnabled = (enabled: boolean) => {
+    updateSettingsMutation.mutate(
+      { enabled },
+      {
+        onSuccess: () => {
+          toast.success(enabled ? t("preferences.orphanScanOverview.toast.scanningEnabled") : t("preferences.orphanScanOverview.toast.scanningDisabled"), {
+            description: instance.name,
+          })
+        },
+        onError: (error) => {
+          toast.error(t("preferences.orphanScanOverview.toast.updateFailed"), {
+            description: error instanceof Error ? error.message : t("preferences.orphanScanOverview.toast.updateFailedDescription"),
+          })
+        },
+      }
+    )
+  }
+
+  const handleTriggerScan = () => {
+    triggerMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success(t("preferences.orphanScanOverview.toast.scanStarted"), { description: instance.name })
+      },
+      onError: (error) => {
+        toast.error(t("preferences.orphanScanOverview.toast.scanStartFailed"), {
+          description: error instanceof Error ? error.message : "Unknown error",
+        })
+      },
+    })
+  }
+
+  const handleCancelRun = (runId: number) => {
+    cancelMutation.mutate(runId, {
+      onSuccess: () => {
+        toast.success(t("preferences.orphanScanOverview.toast.scanCanceled"), { description: instance.name })
+      },
+      onError: (error) => {
+        toast.error(t("preferences.orphanScanOverview.toast.cancelFailed"), {
+          description: error instanceof Error ? error.message : "Unknown error",
+        })
+      },
+    })
+  }
+
+  const latestRunBadge = latestRun ? getStatusBadge(latestRun, t) : null
+
+  if (!hasAccess) {
+    return (
+      <AccordionItem value={String(instance.id)} disabled>
+        <div className="px-6 py-4 flex items-center justify-between opacity-60">
+          <div className="flex items-center gap-3">
+            <span className="font-medium">{instance.name}</span>
+            <Badge variant="outline">{t("preferences.orphanScanOverview.noFilesystemAccess")}</Badge>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertTriangle className="h-4 w-4 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[250px]">
+              <p>{t("preferences.orphanScanOverview.noFilesystemAccessTooltip")}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </AccordionItem>
+    )
+  }
+
+  return (
+    <AccordionItem value={String(instance.id)} className="group/item">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center px-6">
+        <AccordionTrigger className="min-w-0 py-4 pr-4 hover:no-underline [&>svg]:hidden">
+          <div className="flex items-center justify-between gap-3 w-full min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+              <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
+              {latestRunBadge && (
+                <Badge {...latestRunBadge} className={latestRunBadge.className}>
+                  {latestRunBadge.label}
+                </Badge>
+              )}
+              {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
+                <Badge variant="outline">
+                  {t("preferences.orphanScanOverview.itemsSummary", {
+                    count: latestRun.filesFound,
+                    size: formatBytes(latestRun.bytesReclaimed || 0),
+                  })}
+                </Badge>
+              )}
+              {latestRun?.status === "completed" && latestRun.errorMessage && !latestRun.partial && (
+                <Tooltip>
+                  <TooltipTrigger asChild openOnTap>
+                    <AlertTriangle className="h-4 w-4 text-warning" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{t("preferences.orphanScanOverview.partialFailure")}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+
+            {latestRun?.completedAt && (
+              <span className="text-xs text-muted-foreground hidden sm:block shrink-0 whitespace-nowrap">
+                {formatRelativeTime(latestRun.completedAt)}
+              </span>
+            )}
+          </div>
+        </AccordionTrigger>
+        <div className="flex items-center gap-4 py-4">
+          <div
+            className="flex items-center gap-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className={cn(
+              "text-xs font-medium",
+              isEnabled ? "text-success" : "text-muted-foreground"
+            )}>
+              {isEnabled ? t("preferences.orphanScanOverview.on") : t("preferences.orphanScanOverview.off")}
+            </span>
+            <Switch
+              checked={isEnabled}
+              onCheckedChange={handleToggleEnabled}
+              disabled={updateSettingsMutation.isPending}
+              className="scale-90"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? t("preferences.orphanScan.collapse") : t("preferences.orphanScan.expand")}
+          >
+            <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+          </button>
+        </div>
+      </div>
+
+      <AccordionContent className="px-6 pb-4">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-y-3 p-3 rounded-lg bg-muted/40 border">
+            <div className="space-y-0.5 flex-1">
+              <p className="text-sm text-muted-foreground">
+                {settings? (
+                  <SettingsSummary
+                    parts={[
+                      t("preferences.orphanScanOverview.summaryGrace", { grace: settings.gracePeriodMinutes }),
+                      t("preferences.orphanScanOverview.summaryInterval", { interval: settings.scanIntervalHours }),
+                      t("preferences.orphanScanOverview.summaryMax", { max: settings.maxFilesPerRun }),
+                    ]}
+                  />
+                ): t("preferences.orphanScanOverview.loading")}
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                {instance.filesystemMode === "remote" && !instance.capabilities.identity? t("preferences.orphanScanOverview.autoCleanupRemote"): settings?.autoCleanupEnabled? t("preferences.orphanScanOverview.autoCleanupEnabled", { max: settings.autoCleanupMaxFiles }): t("preferences.orphanScanOverview.autoCleanupDisabled")}
+                {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
+                  <>{t("preferences.orphanScanOverview.pathsIgnored", { count: settings.ignorePaths.length })}</>
+                )}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTriggerScan}
+                disabled={isActiveRun || triggerMutation.isPending}
+                className="h-8"
+              >
+                {triggerMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    {t("preferences.orphanScanOverview.scanNow")}
+                  </>
+                )}
+              </Button>
+              {latestRun && ["pending", "scanning"].includes(latestRun.status) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCancelRun(latestRun.id)}
+                  disabled={cancelMutation.isPending}
+                  className="h-8"
+                >
+                  {cancelMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <X className="h-4 w-4 mr-2" />
+                      {t("preferences.orphanScanOverview.cancel")}
+                    </>
+                  )}
+                </Button>
+              )}
+              {onConfigureInstance && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onConfigureInstance(instance.id)}
+                  className="h-8"
+                >
+                  <Settings2 className="h-4 w-4 mr-2" />
+                  {t("preferences.orphanScanOverview.configure")}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits hasIdentity={instance.capabilities.identity} />}
+
+          {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
+            <div className="p-4 rounded-lg border border-warning/40 bg-warning/10 space-y-3">
+              <div className="flex items-start gap-3">
+                <Files className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">
+                    {t("preferences.orphanScanOverview.orphanItemsFound", { count: latestRun.filesFound })}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("preferences.orphanScanOverview.totalSize", { size: formatBytes(latestRun.bytesReclaimed || 0) })}
+                    {latestRun.truncated && t("preferences.orphanScanOverview.scanTruncated")}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPreviewOpen(true)}
+                  className="h-auto min-h-8 max-w-full py-1.5"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  <span className="whitespace-normal text-left">{t("preferences.orphanScanOverview.viewPreview")}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleCancelRun(latestRun.id)}
+                  disabled={cancelMutation.isPending}
+                  className="h-8"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  {t("preferences.orphanScanOverview.cancel")}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {previewOpen && latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
+            <OrphanScanPreviewDialog
+              open={previewOpen}
+              onOpenChange={setPreviewOpen}
+              instanceId={instance.id}
+              runId={latestRun.id}
+            />
+          )}
+
+          {runs.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">{t("preferences.orphanScanOverview.recentScans")}</h4>
+              <div className="rounded-md border divide-y">
+                {runs.map((run) => (
+                  <OrphanScanRunItem key={run.id} run={run} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {runs.length === 0 && !runsQuery.isLoading && (
+            <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
+              <div className="p-2 rounded-full bg-muted/50">
+                <Files className="h-5 w-5 text-muted-foreground/50" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {t("preferences.orphanScanOverview.noScansYet")}
+              </p>
+            </div>
+          )}
+        </div>
+      </AccordionContent>
+    </AccordionItem>
+  )
+}
+
+export function OrphanScanOverview({
+  onConfigureInstance,
+  expandedInstances: controlledExpanded,
+  onExpandedInstancesChange,
+}: OrphanScanOverviewProps) {
+  const { t } = useTranslation("instances")
+  const { instances } = useInstances()
+
+  const [internalExpanded, setInternalExpanded] = useState<string[]>([])
+
+  const expandedInstances = controlledExpanded ?? internalExpanded
+  const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
+
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter((inst) => inst.isActive),
+    [instances]
+  )
+
+  if (!instances || instances.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("preferences.orphanScanOverview.title")}</CardTitle>
+          <CardDescription>
+            {t("preferences.orphanScanOverview.noInstancesDescription")}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <CardTitle>{t("preferences.orphanScanOverview.title")}</CardTitle>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[300px]">
+              <p>
+                {t("preferences.orphanScanOverview.tooltip")}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <CardDescription>
+          {t("preferences.orphanScanOverview.description")}
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="p-0">
+        <Accordion
+          type="multiple"
+          value={expandedInstances}
+          onValueChange={setExpandedInstances}
+          className="border-t"
+        >
+          {activeInstances.map((instance) => {
+            const itemValue = String(instance.id)
+            return (
+              <InstanceOrphanScanItem
+                key={instance.id}
+                instance={instance}
+                onConfigureInstance={onConfigureInstance}
+                isExpanded={expandedInstances.includes(itemValue)}
+                onToggle={() => {
+                  if (expandedInstances.includes(itemValue)) {
+                    setExpandedInstances(expandedInstances.filter((v) => v !== itemValue))
+                  } else {
+                    setExpandedInstances([...expandedInstances, itemValue])
+                  }
+                }}
+              />
+            )
+          })}
+        </Accordion>
+      </CardContent>
+    </Card>
+  )
+}

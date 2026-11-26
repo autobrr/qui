@@ -1,0 +1,881 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import type { Automation, FilesystemCapabilities, RuleCondition, TransferToInstanceAction } from "@/types"
+
+const mocks = vi.hoisted(() => {
+  const t = (key: string) => key
+  return {
+    query: { data: undefined },
+    instancesQuery: { data: [] as unknown[], isLoading: false, error: null },
+    translation: { t, i18n: { t, language: "en" } },
+    error: vi.fn(),
+    preview: vi.fn(),
+    save: vi.fn(),
+    create: vi.fn(),
+    validateRegex: vi.fn(),
+    dryRun: vi.fn().mockResolvedValue({ activities: [] }),
+  }
+})
+
+vi.mock("@tanstack/react-query", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@tanstack/react-query")>(),
+  useQuery: ({ queryKey }: { queryKey: string[] }) => queryKey[0] === "instances" ? mocks.instancesQuery : mocks.query,
+}))
+vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => mocks.query }))
+vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => mocks.query }))
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
+  useTranslation: () => mocks.translation,
+}))
+vi.mock("sonner", () => ({ toast: { error: mocks.error, success: vi.fn() } }))
+vi.mock("@/lib/api", () => ({
+  api: {
+    previewAutomation: mocks.preview,
+    updateAutomation: mocks.save,
+    createAutomation: mocks.create,
+    validateAutomationRegex: mocks.validateRegex,
+    dryRunAutomation: mocks.dryRun,
+  },
+}))
+
+const scrollIntoView = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView")
+
+afterEach(() => {
+  if (scrollIntoView) Object.defineProperty(Element.prototype, "scrollIntoView", scrollIntoView)
+  else Reflect.deleteProperty(Element.prototype, "scrollIntoView")
+  cleanup()
+  vi.clearAllMocks()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
+import { WorkflowDialog } from "./WorkflowDialog"
+
+const rule: Automation = {
+  id: 1,
+  instanceId: 1,
+  name: "Category validation",
+  trackerPattern: "*",
+  conditions: { schemaVersion: "1", pause: { enabled: true } },
+  enabled: false,
+  dryRun: true,
+  notify: false,
+  sortOrder: 0,
+}
+
+const key = (suffix: string) => `preferences.workflowDialog.${suffix}`
+
+describe("WorkflowDialog category validation", () => {
+  it("rejects an unselected category for save and dry run, but accepts Uncategorized", async () => {
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={rule} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+
+    fireEvent.keyDown(screen.getByText(key("actions.addAction")), { key: "ArrowDown" })
+    fireEvent.click(await screen.findByRole("option", { name: key("actions.category") }))
+
+    const enable = screen.getByRole("switch", { name: key("footer.enabled") })
+    fireEvent.click(enable)
+    expect(enable.getAttribute("aria-checked")).toBe("true")
+    expect(mocks.error).not.toHaveBeenCalled()
+
+    for (const control of [
+      screen.getByRole("button", { name: key("save") }),
+      screen.getByRole("button", { name: key("runDryRunNow") }),
+    ]) {
+      mocks.error.mockClear()
+      fireEvent.click(control)
+      expect(mocks.error).toHaveBeenCalledWith(key("toast.selectCategory"))
+      expect(mocks.save).not.toHaveBeenCalled()
+      expect(mocks.preview).not.toHaveBeenCalled()
+      expect(mocks.dryRun).not.toHaveBeenCalled()
+    }
+
+    fireEvent.keyDown(screen.getByText(key("category.selectCategory")), { key: "ArrowDown" })
+    fireEvent.click(await screen.findByRole("option", { name: key("uncategorized") }))
+    fireEvent.click(screen.getByRole("button", { name: key("runDryRunNow") }))
+    await waitFor(() => expect(mocks.dryRun).toHaveBeenCalledWith(1, expect.objectContaining({
+      conditions: expect.objectContaining({ category: expect.objectContaining({ enabled: true, category: "" }) }),
+    })))
+    client.clear()
+  })
+})
+
+const noCapabilities: FilesystemCapabilities = { read: false, identity: false, trustedIdentity: false, write: false, content: false }
+
+describe("WorkflowDialog include hardlinks", () => {
+  const deleteRule: Automation = {
+    ...rule,
+    conditions: { schemaVersion: "1", delete: { enabled: true, mode: "deleteWithFilesIncludeCrossSeeds" } },
+  }
+
+  it.each([
+    { name: "a local instance", hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true }, enabled: true },
+    { name: "a remote instance", hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true }, enabled: false },
+    { name: "a remote instance with the identity capability", hasLocalFilesystemAccess: false, filesystemMode: "remote", capabilities: { ...noCapabilities, read: true, identity: true }, enabled: false },
+    { name: "an instance with the trusted identity capability", hasLocalFilesystemAccess: false, filesystemMode: "local", capabilities: { ...noCapabilities, read: true, identity: true, trustedIdentity: true }, enabled: true },
+  ])("follows the trusted identity capability for $name", ({ hasLocalFilesystemAccess, filesystemMode, capabilities, enabled }) => {
+    mocks.instancesQuery.data = [{ id: 1, hasLocalFilesystemAccess, filesystemMode, capabilities }]
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={deleteRule} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+
+    const checkbox = screen.getByRole("checkbox", { name: key("delete.includeHardlinkedCopies") })
+    expect(checkbox.hasAttribute("disabled")).toBe(!enabled)
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog tracker pattern", () => {
+  it.each([
+    { name: "include", trackerPattern: "a.example,b.example", chips: ["a.example", "b.example"], mode: "trackerMatchInclude" },
+    { name: "exclude", trackerPattern: "!a.example,!b.example", chips: ["a.example", "b.example"], mode: "trackerMatchExclude" },
+    { name: "mixed", trackerPattern: "a.example,!b.example", chips: ["a.example", "b.example"], mode: null },
+    { name: "all trackers", trackerPattern: "*", chips: [], mode: null },
+  ])("loads the chips and mode from a $name pattern and saves only the pattern", async ({ trackerPattern, chips, mode }) => {
+    mocks.instancesQuery.data = []
+    mocks.save.mockResolvedValue({ ...rule, trackerPattern })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={{ ...rule, trackerPattern }} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("switch", { name: key("allTrackers") }).getAttribute("aria-checked")).toBe(String(trackerPattern === "*"))
+    for (const chip of chips) {
+      expect(screen.getAllByText(chip).length).toBeGreaterThan(0)
+    }
+    const selectedModes = ["trackerMatchInclude", "trackerMatchExclude"].filter((m) =>
+      screen.queryByRole("button", { name: key(m) })?.className.includes("bg-secondary"))
+    expect(selectedModes).toEqual(mode ? [mode] : [])
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    const payload = mocks.save.mock.calls[0][2]
+    expect(payload.trackerPattern).toBe(trackerPattern)
+    expect(payload).not.toHaveProperty("trackerDomains")
+    client.clear()
+  })
+})
+
+function renderDialog(dialogRule: Automation | null, instances: unknown[] = []) {
+  Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
+  mocks.instancesQuery.data = instances
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={dialogRule} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+  return client
+}
+
+async function optionLabels(trigger: HTMLElement) {
+  fireEvent.keyDown(trigger, { key: "ArrowDown" })
+  await screen.findAllByRole("option")
+  return screen.getAllByRole("option").map(option => option.textContent)
+}
+
+const combinableLabels = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "exportToInstance", "transferToInstance"]
+  .map(action => key(`actions.${action}`))
+
+describe("WorkflowDialog action order", () => {
+  it("renders the action sections in run order", () => {
+    const client = renderDialog({
+      ...rule,
+      conditions: {
+        schemaVersion: "1",
+        speedLimits: { enabled: true, uploadKiB: 100 },
+        shareLimits: { enabled: true, ratioLimit: 2 },
+        pause: { enabled: true },
+        resume: { enabled: true },
+        recheck: { enabled: true },
+        reannounce: { enabled: true },
+        autoManagement: { enabled: true },
+        tags: [{ enabled: true, tags: ["ordered"], mode: "add" }],
+        category: { enabled: true, category: "sorted" },
+        move: { enabled: true, path: "/moved" },
+        externalProgram: { enabled: true, programId: 1 },
+        exportToInstance: { enabled: true, targetInstanceId: 2, savePath: "" },
+        transferToInstance: { enabled: true, targetInstanceId: 3, savePath: "" },
+      },
+    })
+
+    const headings = ["actions.speedLimits", "actions.shareLimits", "actions.pause", "actions.resume", "actions.recheck", "actions.reannounce", "actions.autoManagement", "tag.title", "actions.category", "actions.move", "actions.externalProgram", "export.title", "transfer.title"]
+      .map(suffix => screen.getByText(key(suffix)))
+    const inDomOrder = [...headings].sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)
+    expect(inDomOrder.map(heading => heading.textContent)).toEqual(headings.map(heading => heading.textContent))
+    client.clear()
+  })
+
+  it("lists actions in run order when a rule has none, with delete last", async () => {
+    const client = renderDialog({ ...rule, conditions: { schemaVersion: "1" } })
+
+    expect(await optionLabels(screen.getByText(key("actions.selectAction")))).toEqual([...combinableLabels, key("actions.deleteStandalone")])
+    client.clear()
+  })
+
+  it("offers the remaining actions in run order", async () => {
+    const client = renderDialog(rule)
+
+    expect(await optionLabels(screen.getByText(key("actions.addAction")))).toEqual(combinableLabels.filter(label => label !== key("actions.pause")))
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog Transfer to Instance", () => {
+  const renderRule = (conditions: Automation["conditions"]) => {
+    mocks.instancesQuery.data = [{ id: 1, name: "Source", capabilities: noCapabilities }, { id: 2, name: "Archive", capabilities: noCapabilities }]
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={{ ...rule, conditions }} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    return client
+  }
+  afterEach(() => {
+    mocks.instancesQuery.data = []
+  })
+
+  it("saves each field of the action as the rule has it", async () => {
+    mocks.save.mockResolvedValue({})
+    const transferToInstance: TransferToInstanceAction = {
+      enabled: true, targetInstanceId: 2, savePath: "/archive/{{ .Category }}", category: "linux", tags: ["moved", "old"],
+      after: "keepFiles", leaveStopped: true, way: "copy",
+    }
+    const client = renderRule({ schemaVersion: "1", transferToInstance })
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    expect(mocks.save.mock.calls[0][2].conditions.transferToInstance).toEqual(transferToInstance)
+    client.clear()
+  })
+
+  it("asks for a target instance before a save", async () => {
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
+    const client = renderRule({ schemaVersion: "1", pause: { enabled: true } })
+
+    fireEvent.keyDown(screen.getByText(key("actions.addAction")), { key: "ArrowDown" })
+    fireEvent.click(await screen.findByRole("option", { name: key("actions.transferToInstance") }))
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.selectTargetInstance"))
+    expect(mocks.save).not.toHaveBeenCalled()
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog move path on a disabled rule", () => {
+  const renderRule = (path: string) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const moveRule: Automation = { ...rule, enabled: false, conditions: { schemaVersion: "1", move: { enabled: true, path } } }
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={moveRule} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    return client
+  }
+
+  it("saves a rule saved before the check existed, since the server skips disabled rules", async () => {
+    mocks.save.mockResolvedValue({})
+    const client = renderRule("data/archive")
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    client.clear()
+  })
+
+  it("shows the dialog's own move path error when a dry run is blocked", () => {
+    const client = renderRule("data/archive")
+    expect(screen.queryByText(key("move.errors.mustBeAbsolute"))).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: key("runDryRunNow") }))
+
+    expect(mocks.dryRun).not.toHaveBeenCalled()
+    expect(screen.getByText(key("move.errors.mustBeAbsolute"))).not.toBeNull()
+    expect(screen.getByRole("button", { name: key("save") }).hasAttribute("disabled")).toBe(false)
+    client.clear()
+  })
+
+  it("shows the server's move path error when a dry run is rejected", async () => {
+    const message = "Move path must be absolute, for example /data/archive or D:\\Archive. For a sample torrent it renders \"sample/x\""
+    mocks.dryRun.mockRejectedValueOnce(new Error(message))
+    const client = renderRule("{{ .Category }}/x")
+
+    fireEvent.click(screen.getByRole("button", { name: key("runDryRunNow") }))
+
+    expect(await screen.findByText(message)).not.toBeNull()
+    expect(mocks.error).not.toHaveBeenCalled()
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog Save flow", () => {
+  const actions: Record<string, Automation["conditions"]> = {
+    delete: {
+      schemaVersion: "1",
+      delete: { enabled: true, mode: "deleteWithFilesPreserveCrossSeeds", condition: { field: "RATIO", operator: "GREATER_THAN", value: "2" } },
+    },
+    category: { schemaVersion: "1", category: { enabled: true, category: "sorted" } },
+    tag: { schemaVersion: "1", tags: [{ enabled: true, tags: ["ordered"], mode: "add" }] },
+    pause: { schemaVersion: "1", pause: { enabled: true } },
+  }
+  const previewActions = ["delete", "category", "tag"]
+  const previewConfirm = key("saveRule")
+  const saveWithoutPreview = "preferences.workflowPreview.saveWithoutPreview"
+  const saveAndEnable = key("enableDryRunPrompt.saveAndEnable")
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
+    mocks.instancesQuery.data = []
+    mocks.preview.mockResolvedValue({ totalMatches: 0, examples: [] })
+    mocks.save.mockResolvedValue({})
+    mocks.create.mockResolvedValue({})
+    mocks.validateRegex.mockResolvedValue({ valid: true, errors: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const settle = () => act(() => vi.advanceTimersByTimeAsync(1100))
+
+  async function openEditor(dialogRule?: Automation) {
+    const onOpenChange = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={onOpenChange} instanceId={1} rule={dialogRule ?? null} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    await settle()
+    mocks.preview.mockClear()
+    return onOpenChange
+  }
+
+  const enableSwitch = () => screen.getByRole("switch", { name: key("footer.enabled") })
+  const dryRunSwitch = () => screen.getByRole("switch", { name: key("footer.dryRun") })
+  const nameInput = () => screen.getByLabelText<HTMLInputElement>(key("nameLabel"))
+  const rename = (name: string) => fireEvent.change(nameInput(), { target: { value: name } })
+  const clickButton = (name: string) => fireEvent.click(screen.getByRole("button", { name }))
+  const clickSave = async () => {
+    clickButton(key("save"))
+    await settle()
+  }
+
+  it.each(Object.keys(actions))("flips the Enable switch of a %s rule with no request and no dialog", async (action) => {
+    await openEditor({ ...rule, conditions: actions[action] })
+
+    fireEvent.click(enableSwitch())
+    await settle()
+
+    expect(enableSwitch().getAttribute("aria-checked")).toBe("true")
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+    expect(mocks.preview).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { action: "delete", enabled: false },
+    { action: "category", enabled: false },
+    { action: "tag", enabled: false },
+    { action: "pause", enabled: false },
+    { action: "pause", enabled: true },
+  ])("closes the editor of a $action rule with enabled $enabled on Save with no changes, with no checks", async ({ action, enabled }) => {
+    const onOpenChange = await openEditor({ ...rule, enabled, conditions: actions[action] })
+
+    await clickSave()
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.validateRegex).not.toHaveBeenCalled()
+    expect(mocks.preview).not.toHaveBeenCalled()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("reports a missing category when the user adds only that action", async () => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions.pause })
+
+    fireEvent.keyDown(screen.getByText(key("actions.addAction")), { key: "ArrowDown" })
+    await settle()
+    fireEvent.click(screen.getByRole("option", { name: key("actions.category") }))
+    await settle()
+    await clickSave()
+
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.selectCategory"))
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it("reports a blank tag action that the payload leaves out", async () => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions.tag })
+
+    clickButton(key("tag.addAction"))
+    await clickSave()
+
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.specifyTagOrTrackerName"))
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it("does not ask after the check when the user changed the form during the check", async () => {
+    let finishCheck: (result: { valid: boolean; errors: never[] }) => void = () => {}
+    mocks.validateRegex.mockReturnValueOnce(new Promise((resolve) => { finishCheck = resolve }))
+    await openEditor({ ...rule, enabled: true, conditions: actions.pause })
+
+    rename("First name")
+    clickButton(key("save"))
+    rename("Second name")
+    await act(async () => finishCheck({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+
+    await clickSave()
+    expect(mocks.validateRegex).toHaveBeenCalledTimes(2)
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: key("save") }))
+    await settle()
+    expect(mocks.save).toHaveBeenCalledTimes(1)
+    expect(mocks.save.mock.calls[0][2]).toMatchObject({ name: "Second name" })
+  })
+
+  it.each([
+    { name: "stays closed", reopen: false },
+    { name: "opens again", reopen: true },
+  ])("asks nothing after the check when the editor closes during the check and $name", async ({ reopen }) => {
+    let finishCheck: (result: { valid: boolean; errors: never[] }) => void = () => {}
+    mocks.validateRegex.mockReturnValueOnce(new Promise((resolve) => { finishCheck = resolve }))
+    const dialogRule = { ...rule, enabled: true, conditions: actions.pause }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const editor = (open: boolean, editorRule = dialogRule) => (
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open={open} onOpenChange={vi.fn()} instanceId={1} rule={editorRule} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(editor(true))
+    await settle()
+
+    rename("Changed")
+    clickButton(key("save"))
+    rerender(editor(false))
+    await settle()
+    if (reopen) {
+      rerender(editor(true, { ...dialogRule, name: "Changed" }))
+      await settle()
+    }
+    await act(async () => finishCheck({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("enables Save again when the user cancels a preview that still loads", async () => {
+    mocks.preview.mockReturnValue(new Promise(() => {}))
+    await openEditor({ ...rule, enabled: true, conditions: actions.tag })
+    rename("Changed")
+    clickButton(key("save"))
+    await settle()
+
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "preferences.workflowPreview.cancel" }))
+    await settle()
+
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: key("save") }).disabled).toBe(false)
+  })
+
+  it("runs only the last check when the user clicks Save twice", async () => {
+    const finishChecks: ((result: { valid: boolean; errors: never[] }) => void)[] = []
+    mocks.validateRegex.mockImplementation(() => new Promise((resolve) => { finishChecks.push(resolve) }))
+    await openEditor({ ...rule, enabled: true, conditions: actions.tag })
+
+    rename("Changed")
+    clickButton(key("save"))
+    clickButton(key("save"))
+    await act(async () => finishChecks[0]({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+
+    await act(async () => finishChecks[1]({ valid: true, errors: [] }))
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).not.toBeNull()
+  })
+
+  it("counts a flip of the switch and a flip back as no change", async () => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions.tag })
+
+    fireEvent.click(enableSwitch())
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it.each(["tag", "pause"])("saves a changed %s rule with Enabled off and no dialog", async (action) => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions[action] })
+
+    rename("Renamed")
+    await clickSave()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.validateRegex).not.toHaveBeenCalled()
+    expect(mocks.save).toHaveBeenCalledWith(1, 1, expect.objectContaining({ name: "Renamed", enabled: false }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it("saves with no question when the user only turns a live rule off", async () => {
+    await openEditor({ ...rule, enabled: true, conditions: actions.tag })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.save).toHaveBeenCalledWith(1, 1, expect.objectContaining({ enabled: false }))
+  })
+
+  it.each(previewActions)("opens the preview on Save of an enabled %s rule", async (action) => {
+    await openEditor({ ...rule, conditions: actions[action] })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(mocks.validateRegex).toHaveBeenCalled()
+    expect(mocks.preview).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: previewConfirm })).not.toBeNull()
+    expect(screen.queryByText(key("enableDryRunPrompt.title"))).toBeNull()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("asks about dry run on Save of an enabled rule with other actions", async () => {
+    await openEditor({ ...rule, conditions: actions.pause })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(mocks.validateRegex).toHaveBeenCalled()
+    expect(screen.getByText(key("enableDryRunPrompt.title"))).not.toBeNull()
+    expect(mocks.preview).not.toHaveBeenCalled()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it("opens no dialog when the regex check fails", async () => {
+    mocks.validateRegex.mockResolvedValue({ valid: false, errors: [{ path: "x", message: "bad", pattern: "(" }] })
+    await openEditor({ ...rule, conditions: actions.pause })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(mocks.error).toHaveBeenCalledWith(key("toast.invalidRegexPatternUnsupported"))
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: "the dry-run question", action: "pause", cancel: key("cancel") },
+    { name: "the preview", action: "tag", cancel: "preferences.workflowPreview.cancel" },
+  ])("keeps the switch and the edits when the user cancels $name", async ({ action, cancel }) => {
+    const onOpenChange = await openEditor({ ...rule, conditions: actions[action] })
+
+    rename("Renamed")
+    fireEvent.click(enableSwitch())
+    await clickSave()
+    clickButton(cancel)
+    await settle()
+
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+    expect(enableSwitch().getAttribute("aria-checked")).toBe("true")
+    expect(nameInput().value).toBe("Renamed")
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: "the dry-run question", action: "pause", confirm: saveAndEnable },
+    { name: "the preview", action: "tag", confirm: previewConfirm },
+  ])("sends the toggle value of $name to the save request", async ({ action, confirm }) => {
+    await openEditor({ ...rule, dryRun: false, conditions: actions[action] })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+    expect(dryRunSwitch().getAttribute("aria-checked")).toBe("false")
+    fireEvent.click(dryRunSwitch())
+    expect(dryRunSwitch().getAttribute("aria-checked")).toBe("true")
+    clickButton(confirm)
+    await settle()
+
+    expect(mocks.save).toHaveBeenCalledWith(1, 1, expect.objectContaining({ enabled: true, dryRun: true }))
+  })
+
+  it("lets the user set dry run while the preview loads, and sends no second preview", async () => {
+    await openEditor({ ...rule, dryRun: false, conditions: actions.tag })
+    mocks.preview.mockReturnValue(new Promise(() => {}))
+
+    fireEvent.click(enableSwitch())
+    clickButton(key("save"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    fireEvent.click(dryRunSwitch())
+    await settle()
+    expect(mocks.preview).toHaveBeenCalledTimes(1)
+    clickButton(saveWithoutPreview)
+    await settle()
+
+    expect(mocks.save).toHaveBeenCalledWith(1, 1, expect.objectContaining({ enabled: true, dryRun: true }))
+  })
+
+  it("keeps the toggle value in the editor after Cancel", async () => {
+    await openEditor({ ...rule, dryRun: false, conditions: actions.pause })
+
+    fireEvent.click(enableSwitch())
+    await clickSave()
+    fireEvent.click(dryRunSwitch())
+    clickButton(key("cancel"))
+    await settle()
+
+    expect(dryRunSwitch().getAttribute("aria-checked")).toBe("true")
+  })
+
+  it.each([
+    { name: "a rule that turns on", enabled: false, label: saveAndEnable },
+    { name: "a rule that is already enabled", enabled: true, label: key("save") },
+  ])("names the save button for $name", async ({ enabled, label }) => {
+    await openEditor({ ...rule, enabled, conditions: actions.pause })
+
+    rename("Renamed")
+    if (!enabled) fireEvent.click(enableSwitch())
+    await clickSave()
+
+    expect(within(screen.getByRole("alertdialog")).getByRole("button", { name: label })).not.toBeNull()
+  })
+
+  it("asks a new rule the same question, with the label for a rule that turns on", async () => {
+    await openEditor()
+
+    rename("New rule")
+    fireEvent.click(screen.getByRole("switch", { name: key("allTrackers") }))
+    fireEvent.keyDown(screen.getByText(key("actions.selectAction")), { key: "ArrowDown" })
+    await settle()
+    fireEvent.click(screen.getByRole("option", { name: key("actions.pause") }))
+    await settle()
+    fireEvent.click(enableSwitch())
+    clickButton(key("create"))
+    await settle()
+
+    expect(mocks.create).not.toHaveBeenCalled()
+    clickButton(saveAndEnable)
+    await settle()
+
+    expect(mocks.create).toHaveBeenCalledWith(1, expect.objectContaining({ name: "New rule", enabled: true }))
+  })
+
+  it("asks again on a second save, also after a reload of the dialog", async () => {
+    const enabledRule = { ...rule, enabled: true, conditions: actions.pause }
+    for (const name of ["First", "Second"]) {
+      await openEditor(enabledRule)
+      rename(name)
+      await clickSave()
+
+      expect(screen.getByText(key("enableDryRunPrompt.title"))).not.toBeNull()
+      cleanup()
+    }
+  })
+})
+
+describe("WorkflowDialog mixed action conditions", () => {
+  const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
+  const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
+  const tag = (tags: string[], condition: RuleCondition) => ({ enabled: true, tags, mode: "full" as const, condition })
+  const mixedTags: Automation["conditions"] = { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked)] }
+  const notice = key("mixedActionConditions")
+
+  it.each([
+    { name: "a rule whose actions have different conditions", shown: true, dialogRule: { ...rule, conditions: mixedTags } },
+    { name: "a rule whose actions have one condition", shown: false, dialogRule: { ...rule, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed)], pause: { enabled: true, condition: packed } } } },
+    { name: "a new rule", shown: false, dialogRule: null },
+  ])("shows the notice for $name: $shown", ({ shown, dialogRule }) => {
+    const client = renderDialog(dialogRule)
+    expect(screen.queryByText(notice) !== null).toBe(shown)
+    client.clear()
+  })
+
+  it("keeps save enabled and saves one condition on every action", async () => {
+    mocks.save.mockResolvedValue(rule)
+    const client = renderDialog({ ...rule, conditions: mixedTags })
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    const tags = mocks.save.mock.calls[0][2].conditions.tags
+    expect(tags.map((t: { condition: unknown }) => t.condition)).toEqual([packed, packed])
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog switched-off actions", () => {
+  const shown: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "shown" }
+  const other: RuleCondition = { field: "RATIO", operator: "GREATER_THAN", value: "3" }
+  const runningTag = { enabled: true, tags: ["running"], mode: "full" as const, condition: shown }
+  const switchedOffTag = { enabled: false, tags: ["later"], mode: "add" as const, useDisplayName: true, condition: other }
+  const switchedOffSpeedLimits = { enabled: false, uploadKiB: 512, downloadKiB: 0, condition: other }
+  const tagRule: Automation = {
+    ...rule,
+    conditions: { schemaVersion: "1", tags: [runningTag, switchedOffTag], speedLimits: switchedOffSpeedLimits },
+  }
+
+  const pick = async (trigger: string, option: string) => {
+    fireEvent.keyDown(screen.getAllByText(key(trigger))[0], { key: "ArrowDown" })
+    fireEvent.click(await screen.findByRole("option", { name: key(option) }))
+  }
+  const save = async (label = "save") => {
+    fireEvent.click(screen.getByRole("button", { name: key(label) }))
+    await waitFor(() => expect(mocks.save.mock.calls.length + mocks.create.mock.calls.length).toBe(1))
+    return (mocks.save.mock.calls[0]?.[2] ?? mocks.create.mock.calls[0][1]).conditions
+  }
+
+  beforeEach(() => {
+    mocks.save.mockResolvedValue(rule)
+    mocks.create.mockResolvedValue(rule)
+  })
+
+  it("keeps each switched-off action with its own keys and condition on a rename", async () => {
+    const client = renderDialog(tagRule)
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    const conditions = await save()
+
+    expect(conditions.speedLimits).toEqual(switchedOffSpeedLimits)
+    expect(conditions.tags).toEqual([{ ...runningTag, includeCrossSeeds: false, deleteFromClient: false, useTrackerAsTag: false, useDisplayName: false }, switchedOffTag])
+    client.clear()
+  })
+
+  it("saves the speed limits of the form when the user switches them on", async () => {
+    const client = renderDialog(tagRule)
+
+    await pick("actions.addAction", "actions.speedLimits")
+    await pick("option.noChange", "option.unlimited")
+    const conditions = await save()
+
+    expect(conditions.speedLimits).toEqual({ enabled: true, uploadKiB: 0, condition: shown })
+    client.clear()
+  })
+
+  it("leaves out the switched-off tags when the user switches on Delete, and keeps the other switched-off actions", async () => {
+    const client = renderDialog({
+      ...rule,
+      conditions: { schemaVersion: "1", pause: { enabled: true, condition: shown }, tags: [switchedOffTag], speedLimits: switchedOffSpeedLimits },
+    })
+
+    const pauseSection = screen.getByText(key("actions.pause")).parentElement!
+    fireEvent.click(within(pauseSection).getByRole("button"))
+    await pick("actions.selectAction", "actions.deleteStandalone")
+    const conditions = await save()
+
+    expect(conditions.delete).toEqual(expect.objectContaining({ enabled: true, condition: shown }))
+    expect(conditions.tags).toBeUndefined()
+    expect(conditions.tag).toBeUndefined()
+    expect(conditions.speedLimits).toEqual(switchedOffSpeedLimits)
+    client.clear()
+  })
+
+  it("saves a new rule with only the actions of the form", async () => {
+    const client = renderDialog(null)
+
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "New" } })
+    fireEvent.click(screen.getByRole("switch", { name: key("allTrackers") }))
+    await pick("actions.selectAction", "actions.pause")
+    const conditions = await save("create")
+
+    expect(conditions).toEqual({ schemaVersion: "1", pause: { enabled: true } })
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog free space source", () => {
+  const localInstance = { id: 1, hasLocalFilesystemAccess: true, filesystemMode: "local", capabilities: { read: true, identity: true, trustedIdentity: true, write: true, content: true } }
+  const source = { type: "allowance" as const, path: "/home/user", allowanceBytes: 1024 ** 4 }
+  const allowanceRule = (conditions: Automation["conditions"], extra: Partial<Automation> = {}): Automation => ({ ...rule, conditions, freeSpaceSource: source, ...extra })
+  const saved = async () => {
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(1))
+    return mocks.save.mock.calls[0][2]
+  }
+
+  beforeEach(() => {
+    mocks.save.mockResolvedValue(rule)
+  })
+
+  it("keeps a saved allowance source while the capabilities load", async () => {
+    const client = renderDialog(allowanceRule({
+      schemaVersion: "1",
+      pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
+    }), [localInstance])
+
+    expect((await saved()).freeSpaceSource).toEqual(source)
+    client.clear()
+  })
+
+  it("shows the source when only the sorting reads Free Space", async () => {
+    const client = renderDialog(allowanceRule({ schemaVersion: "1", pause: { enabled: true } }, {
+      sortingConfig: { schemaVersion: "1", type: "simple", field: "FREE_SPACE", direction: "ASC" },
+    }), [localInstance])
+
+    expect(screen.getByText(key("freeSpace.allowanceLabel"))).toBeTruthy()
+    expect((await saved()).freeSpaceSource).toEqual(source)
+    client.clear()
+  })
+
+  it("refuses an allowance that rounds to zero bytes", async () => {
+    const client = renderDialog(allowanceRule({
+      schemaVersion: "1",
+      pause: { enabled: true, condition: { field: "FREE_SPACE", operator: "LESS_THAN", value: "1000" } },
+    }), [localInstance])
+
+    fireEvent.change(screen.getByLabelText(key("freeSpace.allowanceLabel")), { target: { value: "0.0000000000001" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+
+    expect(await screen.findByText(key("freeSpace.errors.allowanceRequired"))).toBeTruthy()
+    expect(mocks.save).not.toHaveBeenCalled()
+    client.clear()
+  })
+})

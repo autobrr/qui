@@ -1,0 +1,72 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package jackett
+
+import (
+	"io"
+	"log"
+	"net/http"
+	"net/http/cookiejar"
+	"time"
+
+	"golang.org/x/net/publicsuffix"
+)
+
+var (
+	DefaultTimeout = 60 * time.Second
+)
+
+type Client struct {
+	cfg Config
+
+	http    *http.Client
+	timeout time.Duration
+
+	log *log.Logger
+}
+
+type Config struct {
+	Host   string
+	APIKey string
+
+	TLSSkipVerify bool
+
+	BasicUser string
+
+	BasicPass string
+
+	Timeout int
+	Log     *log.Logger
+
+	DirectMode bool
+}
+
+func NewClient(cfg Config) *Client {
+	c := &Client{
+		cfg:     cfg,
+		log:     log.New(io.Discard, "", log.LstdFlags),
+		timeout: DefaultTimeout,
+	}
+
+	if cfg.Log != nil {
+		c.log = cfg.Log
+	}
+
+	if cfg.Timeout > 0 {
+		c.timeout = time.Duration(cfg.Timeout) * time.Second
+	}
+
+	jarOptions := &cookiejar.Options{PublicSuffixList: publicsuffix.List}
+	jar, err := cookiejar.New(jarOptions)
+	if err != nil {
+		c.log.Println("new client cookie error")
+	}
+
+	c.http = &http.Client{
+		Timeout: c.timeout,
+		Jar:     jar,
+	}
+
+	return c
+}

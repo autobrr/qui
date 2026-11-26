@@ -1,0 +1,114 @@
+{
+  "options": {
+    "days": "Počet dní do konce Sdílení",
+    "daysInvalid": "Zadejte celý počet dní, 1 nebo více.",
+    "endAtFirstDownload": "Ukončit po prvním dokončeném stažení",
+    "endAtFirstDownloadDescription": "Sdílení skončí, jakmile má jeden klient všechny soubory.",
+    "firstDownloaderOnly": "Jen první stahující",
+    "firstDownloaderOnlyDescription": "Tracker předá vaši adresu prvnímu klientovi, který začne stahovat, a nikomu jinému. Určuje to, kdo se od trackeru dozví vaši adresu, ne kdo se může připojit.",
+    "firstDownloaderOnlyUnavailable": "S externím trackerem nedostupné: qui nevidí žádná ohlášení."
+  },
+  "settings": {
+    "title": "Sdílení",
+    "description": "Sdílení předá soubory jednoho torrentu někomu, jehož klienta qui nespravuje. Tracker Sdílení umožní jeho klientovi najít ten váš.",
+    "loadFailed": "Nastavení Sdílení se nepodařilo načíst",
+    "save": "Uložit",
+    "saved": "Nastavení Sdílení uloženo",
+    "saveFailed": "Nastavení Sdílení se nepodařilo uložit",
+    "inUse": {
+      "own": "Nová Sdílení používají tracker qui.",
+      "outside": "Nová Sdílení používají externí tracker.",
+      "none": "Není nastaven žádný tracker, takže žádné Sdílení nemůže začít."
+    },
+    "tracker": {
+      "heading": "Tracker Sdílení",
+      "own": "Vlastní tracker qui",
+      "ownDescription": "qui naslouchá na svém vlastním portu jen během běžícího Sdílení a odpovídá jen pro aktivní Sdílení.",
+      "outside": "Externí tracker",
+      "outsideDescription": "Pro qui bez veřejné adresy. qui pak nevidí žádná ohlášení: seznam adres a ukončení po prvním stažení fungují jen podle možností a zámek není k dispozici.",
+      "port": "Port",
+      "publicAddress": "Veřejná adresa",
+      "publicAddressDescription": "URL, přes kterou internet dosáhne na tento port, s proxy před ním pro HTTPS. Obsahuje ji .torrent každého Sdílení, takže změna počká, dokud Sdílení na trackeru qui neskončí.",
+      "trustedProxies": "Důvěryhodné proxy",
+      "trustedProxiesDescription": "Uveďte jen adresy nebo rozsahy CIDR svých proxy, ne sítě klientů, jednu na řádek. qui čte přeposlanou adresu klienta jen z těchto proxy.",
+      "trackerUrl": "URL trackeru",
+      "trackerUrlDescription": "Ohlašovací URL typu http, https nebo udp.",
+      "publicAddressPlaceholder": "https://share.example.com",
+      "trackerUrlPlaceholder": "udp://tracker.example.org:1337/announce"
+    },
+    "limits": {
+      "heading": "Limity",
+      "maxActive": "Aktivní Sdílení",
+      "peersPerShare": "Počet peerů na Sdílení"
+    },
+    "defaults": {
+      "heading": "Výchozí hodnoty pro nové Sdílení",
+      "description": "Dialog Sdílení začíná s těmito hodnotami."
+    }
+  },
+  "dialog": {
+    "title": "Sdílet s někým",
+    "description_one": "Předejte soubory torrentu {{name}} někomu, jehož klienta qui nespravuje.",
+    "description_few": "Předejte soubory {{count}} torrentů někomu, jehož klienta qui nespravuje. Každý torrent dostane vlastní Sdílení.",
+    "description_many": "Předejte soubory {{count}} torrentu někomu, jehož klienta qui nespravuje. Každý torrent dostane vlastní Sdílení.",
+    "description_other": "Předejte soubory {{count}} torrentů někomu, jehož klienta qui nespravuje. Každý torrent dostane vlastní Sdílení.",
+    "cancel": "Zrušit",
+    "create": "Vytvořit",
+    "done": "Hotovo",
+    "warning": "Váš přítel uvidí IP adresu vašeho klienta. Kdokoli, kdo má .torrent, může stahovat, dokud Sdílení neskončí.",
+    "refused": "Nesdíleno",
+    "refusedEntry": "{{name}}: {{reason}}",
+    "tracker": {
+      "label": "Tracker Sdílení",
+      "settings": "Nastavení sdílení",
+      "own": "Tracker qui na {{address}}",
+      "outside": "Externí tracker {{url}}"
+    },
+    "result": {
+      "description_one": "Pošlete .torrent a zprávu příteli přes vlastní chat. qui nehostuje žádný odkaz ke stažení.",
+      "description_few": "Pošlete každý .torrent a jeho zprávu příteli přes vlastní chat. qui nehostuje žádný odkaz ke stažení.",
+      "description_many": "Pošlete každý .torrent a jeho zprávu příteli přes vlastní chat. qui nehostuje žádný odkaz ke stažení.",
+      "description_other": "Pošlete každý .torrent a jeho zprávu příteli přes vlastní chat. qui nehostuje žádný odkaz ke stažení.",
+      "torrent": ".torrent",
+      "copyMessage": "Kopírovat zprávu",
+      "copied": "Zpráva zkopírována",
+      "copyFailed": "Zprávu se nepodařilo zkopírovat"
+    }
+  },
+  "message": {
+    "intro": "Sdílím s tebou „{{name}}“ ({{size}}). Otevři přiložený soubor .torrent v BitTorrent klientovi, například qBittorrent, Transmission nebo Deluge, a stáhni si to přímo ode mě. Přestane fungovat {{date}}.",
+    "endAtFirstDownload": "Přestane fungovat i po dokončení jednoho stažení, tak nech klienta zapnutého, dokud stahování neskončí."
+  },
+  "tab": {
+    "description": "Torrenty, které předáváte někomu, jehož klienta qui nespravuje.",
+    "empty": "Zatím žádná Sdílení.",
+    "endedStay": "Ukončená Sdílení zůstávají v seznamu 30 dní.",
+    "unknownInstance": "Instance č. {{id}}",
+    "endsAt": "Končí {{date}}",
+    "endedAt": "Skončilo {{date}}",
+    "progress": "Staženo {{percent}}",
+    "progressLabel": "Průběh stahování",
+    "sent": "Odesláno {{size}}",
+    "announced": "Adresy, které se ohlásily",
+    "connectedPeers": "Připojení peeři",
+    "noPeers": "Zatím žádní",
+    "unlock": "Odemknout",
+    "stop": "Zastavit",
+    "remove": "Odstranit",
+    "state": {
+      "active": "Aktivní",
+      "ending": "Končí",
+      "ended": "Skončilo",
+      "unknown": "Neznámé"
+    },
+    "endReason": {
+      "downloaded": "Příjemce má soubory.",
+      "expired": "Platnost Sdílení vypršela.",
+      "stopped": "Zastaveno uživatelem.",
+      "torrent_deleted": "Torrent byl smazán.",
+      "torrent_moved": "Torrent byl přesunut.",
+      "files_renamed": "Soubory torrentu byly přejmenovány.",
+      "share_torrent_gone": "Torrent Sdílení už v klientu není."
+    }
+  }
+}

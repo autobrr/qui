@@ -1,0 +1,1089 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package orphanscan
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlink"
+)
+
+const orphanFileName = "orphan.txt"
+
+type cancelAwareWalkBackend struct {
+	fsops.Backend
+	err error
+}
+
+type statFailureWalkBackend struct {
+	fsops.Backend
+	failedPath string
+	entries    []fsops.WalkEntry
+}
+
+func (b *statFailureWalkBackend) WalkDir(_ context.Context, _ string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	entries := b.entries
+	if opts.EmitStatErrors {
+		entries = append([]fsops.WalkEntry{{Path: b.failedPath, StatErr: errors.New("metadata unavailable")}}, entries...)
+	}
+
+	ch := make(chan fsops.WalkEntry, len(entries))
+	for _, entry := range entries {
+		ch <- entry
+	}
+	close(ch)
+	return ch, nil
+}
+
+func (b *cancelAwareWalkBackend) WalkDir(ctx context.Context, _ string, _ fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	ch := make(chan fsops.WalkEntry, 1)
+	ch <- fsops.WalkEntry{Err: b.err}
+
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+func TestWalkScanRoot_CancelsProducerBeforeDrainingOnEntryError(t *testing.T) {
+	walkErr := errors.New("walk entry failed")
+	backend := &cancelAwareWalkBackend{
+		Backend: newTestBackend(),
+		err:     walkErr,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	root := t.TempDir()
+
+	result := make(chan error, 1)
+	protected := newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths))
+	go func() {
+		_, _, err := walkScanRoot(ctx, root, protected, 0, 0, backend, nil)
+		result <- err
+	}()
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, walkErr) {
+			t.Fatalf("walkScanRoot error = %v, want %v", err, walkErr)
+		}
+	case <-time.After(time.Second):
+		cancel()
+		err := <-result
+		t.Fatalf("walk remained blocked until the parent context was canceled: %v", err)
+	}
+}
+
+func TestWalkScanRoot_CollapsesDiscLayoutIntoSingleOrphanUnit(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	paths := []string{
+		filepath.Join(bdmvDir, "index.bdmv"),
+		filepath.Join(streamDir, "00000.m2ts"),
+		filepath.Join(streamDir, "00001.m2ts"),
+	}
+	for _, p := range paths {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		old := time.Now().Add(-2 * time.Hour)
+		_ = os.Chtimes(p, old, old)
+	}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan unit, got %d", len(orphans))
+	}
+	if filepath.Clean(orphans[0].Path) != filepath.Clean(movieDir) {
+		t.Fatalf("expected orphan unit path %q, got %q", movieDir, orphans[0].Path)
+	}
+	if orphans[0].Size <= 0 {
+		t.Fatalf("expected aggregated size > 0")
+	}
+}
+
+func TestWalkScanRoot_DiscUnitSuppressedWhenAnyContainedFileInUse(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	inUse := filepath.Join(bdmvDir, "index.bdmv")
+	other := filepath.Join(streamDir, "00000.m2ts")
+	for _, p := range []string{inUse, other} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		old := time.Now().Add(-2 * time.Hour)
+		_ = os.Chtimes(p, old, old)
+	}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, inUse))
+
+	orphans, _, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("expected no orphans when disc unit contains an in-use file, got %d", len(orphans))
+	}
+}
+
+func TestWalkScanRoot_DiscUnitSuppressedWhenOwnedFileIsNotOnDiskYet(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	streamDir := filepath.Join(root, "Movie.2024", "BDMV", "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	for _, p := range []string{filepath.Join(streamDir, "00001.m2ts.!qB"), filepath.Join(streamDir, "00002.m2ts")} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		old := time.Now().Add(-2 * time.Hour)
+		_ = os.Chtimes(p, old, old)
+	}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(filepath.Join(streamDir, "00001.m2ts"))
+
+	orphans, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("expected no orphans when a torrent owns a file in the disc unit, got %v", orphans)
+	}
+}
+
+func TestWalkScanRoot_DiscUnitSuppressedWhenOwnedFileMetadataFails(t *testing.T) {
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	inUse := filepath.Join(bdmvDir, "index.bdmv")
+	sibling := filepath.Join(streamDir, "00000.m2ts")
+	for _, path := range []string{inUse, sibling} {
+		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(inUse)
+	backend := &statFailureWalkBackend{
+		Backend:    newTestBackend(),
+		failedPath: inUse,
+		entries: []fsops.WalkEntry{{
+			Path:    sibling,
+			Size:    1,
+			ModTime: time.Now().Add(-time.Hour),
+		}},
+	}
+
+	orphans, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, backend, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("owned disc unit was exposed as orphan: %#v", orphans)
+	}
+}
+
+func TestWalkScanRoot_SkipsUnownedFileWhenMetadataFails(t *testing.T) {
+	root := t.TempDir()
+	backend := &statFailureWalkBackend{
+		Backend:    newTestBackend(),
+		failedPath: filepath.Join(root, "unreadable.mkv"),
+	}
+
+	orphans, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, 100, backend, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("metadata failure was exposed as orphan: %#v", orphans)
+	}
+}
+
+func TestWalkScanRoot_UsesMarkerDirWhenMarkerIsDirectlyUnderScanRoot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	bdmvDir := filepath.Join(root, "BDMV")
+	if err := os.MkdirAll(filepath.Join(bdmvDir, "STREAM"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	p := filepath.Join(bdmvDir, "STREAM", "00000.m2ts")
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(p, old, old)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, _, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(orphans))
+	}
+	if filepath.Clean(orphans[0].Path) != filepath.Clean(bdmvDir) {
+		t.Fatalf("expected orphan unit path %q, got %q", bdmvDir, orphans[0].Path)
+	}
+}
+
+func TestWalkScanRoot_NestedScanRootIsNeverADiscUnit(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		nested []string
+		ignore string
+		want   []string
+	}{
+		{name: "nested scan root", nested: []string{"Movie.2024"}, want: []string{"Movie.2024/BDMV", "Movie.2024/readme.txt"}},
+		{name: "nested scan root in another case", nested: []string{"MOVIE.2024"}, want: []string{"Movie.2024/BDMV", "Movie.2024/readme.txt"}},
+		{name: "ignored content in the marker", nested: []string{"Movie.2024"}, ignore: "Movie.2024/BDMV/keep", want: []string{
+			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "marker that is a scan root below another", nested: []string{"Movie.2024", "Movie.2024/BDMV"}, want: []string{
+			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "marker that is a scan root", nested: []string{"Movie.2024/BDMV"}, want: []string{
+			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "scan root inside the marker", nested: []string{"Movie.2024/BDMV/STREAM"}, want: []string{
+			"Movie.2024/BDMV/STREAM/00000.m2ts", "Movie.2024/BDMV/index.bdmv", "Movie.2024/readme.txt",
+		}},
+		{name: "scan root beside the marker", nested: []string{"Movie.2024/Extras"}, want: []string{
+			"Movie.2024/BDMV", "Movie.2024/Extras/extra.mkv", "Movie.2024/readme.txt",
+		}},
+		{name: "ordinary folder", want: []string{"Movie.2024"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			movieDir := filepath.Join(root, "Movie.2024")
+			if slices.Contains(tc.nested, "Movie.2024/Extras") {
+				writeOldFile(t, filepath.Join(movieDir, "Extras", "extra.mkv"))
+			}
+			writeOldFile(t, filepath.Join(movieDir, "BDMV", "index.bdmv"))
+			writeOldFile(t, filepath.Join(movieDir, "BDMV", "STREAM", "00000.m2ts"))
+			writeOldFile(t, filepath.Join(movieDir, "readme.txt"))
+
+			var ignore []string
+			if tc.ignore != "" {
+				ignore = []string{filepath.Join(root, filepath.FromSlash(tc.ignore))}
+				writeOldFile(t, filepath.Join(ignore[0], "keep.txt"))
+			}
+			protected := newTestProtected(t, fsops.HostPaths, ignore, NewTorrentFileMap(fsops.HostPaths))
+			roots := []string{root}
+			for _, nested := range tc.nested {
+				roots = append(roots, filepath.Join(root, filepath.FromSlash(nested)))
+			}
+			protected.setScanRoots(roots)
+			orphans, _, err := walkScanRoot(t.Context(), root, protected, 0, 100, local.NewBackend(), nil)
+			if err != nil {
+				t.Fatalf("walkScanRoot: %v", err)
+			}
+			got := make([]string, 0, len(orphans))
+			for _, o := range orphans {
+				rel, err := filepath.Rel(root, o.Path)
+				if err != nil {
+					t.Fatalf("rel: %v", err)
+				}
+				got = append(got, filepath.ToSlash(rel))
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("orphans = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWalkScanRoot_ScanRootAnswerIsPerFolder(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		nested string
+		want   []string
+	}{
+		{name: "nested root first", nested: "A.Movie", want: []string{"A.Movie/BDMV", "A.Movie/readme.txt", "B.Movie"}},
+		{name: "ordinary folder first", nested: "B.Movie", want: []string{"A.Movie", "B.Movie/BDMV", "B.Movie/readme.txt"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			for _, movie := range []string{"A.Movie", "B.Movie"} {
+				writeOldFile(t, filepath.Join(root, movie, "BDMV", "index.bdmv"))
+				writeOldFile(t, filepath.Join(root, movie, "BDMV", "STREAM", "00000.m2ts"))
+				writeOldFile(t, filepath.Join(root, movie, "readme.txt"))
+			}
+			protected := newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths))
+			protected.setScanRoots([]string{root, filepath.Join(root, tc.nested)})
+			orphans, _, err := walkScanRoot(t.Context(), root, protected, 0, 100, local.NewBackend(), nil)
+			if err != nil {
+				t.Fatalf("walkScanRoot: %v", err)
+			}
+			got := make([]string, 0, len(orphans))
+			for _, o := range orphans {
+				rel, err := filepath.Rel(root, o.Path)
+				if err != nil {
+					t.Fatalf("rel: %v", err)
+				}
+				got = append(got, filepath.ToSlash(rel))
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("orphans = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenSiblingContentInUse(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	for _, p := range []string{
+		filepath.Join(bdmvDir, "index.bdmv"),
+		filepath.Join(streamDir, "00000.m2ts"),
+	} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		old := time.Now().Add(-2 * time.Hour)
+		_ = os.Chtimes(p, old, old)
+	}
+
+	extra := filepath.Join(movieDir, "readme.txt")
+	if err := os.WriteFile(extra, []byte("hello"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(extra, old, old)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(fsops.NormalizePath(fsops.HostPaths, extra))
+
+	orphans, truncated, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan unit (marker dir), got %d", len(orphans))
+	}
+	if filepath.Clean(orphans[0].Path) != filepath.Clean(bdmvDir) {
+		t.Fatalf("expected orphan unit path %q, got %q", bdmvDir, orphans[0].Path)
+	}
+}
+
+func TestWalkScanRoot_IgnoresFuseHiddenFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	fuseHidden := filepath.Join(root, ".fuse_hidden0005c2cb00000025")
+	if err := os.WriteFile(fuseHidden, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	normal := filepath.Join(root, orphanFileName)
+	if err := os.WriteFile(normal, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(fuseHidden, old, old)
+	_ = os.Chtimes(normal, old, old)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := make([]string, 0, len(orphans))
+	for _, o := range orphans {
+		paths = append(paths, filepath.Base(o.Path))
+	}
+	for _, p := range paths {
+		if strings.HasPrefix(p, ".fuse") {
+			t.Fatalf("expected .fuse* to be ignored, got orphan %q", p)
+		}
+	}
+	foundNormal := false
+	for _, p := range paths {
+		if p == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
+	}
+}
+
+func TestWalkScanRoot_IgnoresPartsFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	partsFile := filepath.Join(root, "movie.mkv.parts")
+	if err := os.WriteFile(partsFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	normal := filepath.Join(root, orphanFileName)
+	if err := os.WriteFile(normal, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(partsFile, old, old)
+	_ = os.Chtimes(normal, old, old)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := make([]string, 0, len(orphans))
+	for _, o := range orphans {
+		paths = append(paths, filepath.Base(o.Path))
+	}
+	for _, p := range paths {
+		if strings.HasSuffix(p, ".parts") {
+			t.Fatalf("expected *.parts to be ignored, got orphan %q", p)
+		}
+	}
+	foundNormal := false
+	for _, p := range paths {
+		if p == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
+	}
+}
+
+func writeOldFile(t *testing.T, path string) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(path, old, old)
+}
+
+func orphanPaths(orphans []OrphanFile) []string {
+	paths := make([]string, 0, len(orphans))
+	for _, o := range orphans {
+		paths = append(paths, fsops.NormalizePath(fsops.HostPaths, o.Path))
+	}
+	return paths
+}
+
+func TestWalkScanRoot_IgnoresTrashDirs(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	inTrash := filepath.Join(root, ".Trash-1000", "trash.txt")
+	writeOldFile(t, inTrash)
+
+	normal := filepath.Join(root, orphanFileName)
+	writeOldFile(t, normal)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := orphanPaths(orphans)
+	for _, p := range paths {
+		if strings.Contains(p, fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, ".Trash-1000"))) {
+			t.Fatalf("expected .Trash-* to be ignored, got orphan %q", p)
+		}
+	}
+
+	foundNormal := false
+	for _, p := range paths {
+		if filepath.Base(p) == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
+	}
+}
+
+func TestWalkScanRoot_IgnoresKubernetesInternalDirs(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	inKube := filepath.Join(root, "..data", "kube.txt")
+	writeOldFile(t, inKube)
+
+	normal := filepath.Join(root, orphanFileName)
+	writeOldFile(t, normal)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+
+	paths := orphanPaths(orphans)
+	for _, p := range paths {
+		if strings.Contains(p, fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, "..data"))) {
+			t.Fatalf("expected k8s internal dirs to be ignored, got orphan %q", p)
+		}
+	}
+
+	foundNormal := false
+	for _, p := range paths {
+		if filepath.Base(p) == orphanFileName {
+			foundNormal = true
+		}
+	}
+	if !foundNormal {
+		t.Fatalf("expected orphan.txt to be included, got %v", paths)
+	}
+}
+
+func TestWalkScanRoot_IgnorePathSiblingPreventsParentDiscUnit(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	for _, p := range []string{
+		filepath.Join(bdmvDir, "index.bdmv"),
+		filepath.Join(streamDir, "00000.m2ts"),
+	} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		old := time.Now().Add(-2 * time.Hour)
+		_ = os.Chtimes(p, old, old)
+	}
+
+	extra := filepath.Join(movieDir, "readme.txt")
+	if err := os.WriteFile(extra, []byte("hello"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(extra, old, old)
+
+	ignorePaths := []string{extra}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, ignorePaths, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if truncated {
+		t.Fatalf("expected not truncated")
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan unit (marker dir fallback), got %d", len(orphans))
+	}
+	if filepath.Clean(orphans[0].Path) != filepath.Clean(bdmvDir) {
+		t.Fatalf("expected orphan unit path %q, got %q", bdmvDir, orphans[0].Path)
+	}
+}
+
+func TestWalkScanRoot_IgnorePathInsideMarkerMultipleFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fileIgnored := filepath.Join(bdmvDir, "index.bdmv")
+	fileA := filepath.Join(streamDir, "00000.m2ts")
+	fileB := filepath.Join(streamDir, "00001.m2ts")
+	fileC := filepath.Join(streamDir, "00002.m2ts")
+	for _, p := range []string{fileIgnored, fileA, fileB, fileC} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		old := time.Now().Add(-2 * time.Hour)
+		_ = os.Chtimes(p, old, old)
+	}
+
+	ignorePaths := []string{fileIgnored}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, _, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, ignorePaths, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 3 {
+		t.Fatalf("expected 3 individual file orphans, got %d", len(orphans))
+	}
+	orphanPaths := make(map[string]bool)
+	for _, o := range orphans {
+		orphanPaths[filepath.Clean(o.Path)] = true
+	}
+	for _, expected := range []string{fileA, fileB, fileC} {
+		if !orphanPaths[filepath.Clean(expected)] {
+			t.Errorf("expected orphan path %q not found", expected)
+		}
+	}
+}
+
+func TestWalkScanRoot_MixedCaseMarkerOnDisk(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "bdmv")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fileA := filepath.Join(bdmvDir, "index.bdmv")
+	if err := os.WriteFile(fileA, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(fileA, old, old)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, _, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan unit, got %d", len(orphans))
+	}
+	expectedUnit := movieDir
+	gotUnit := filepath.Clean(orphans[0].Path)
+	if fsops.NormalizePath(fsops.HostPaths, gotUnit) != fsops.NormalizePath(fsops.HostPaths, expectedUnit) {
+		t.Fatalf("expected orphan unit path %q (normalized), got %q (normalized)", fsops.NormalizePath(fsops.HostPaths, expectedUnit), fsops.NormalizePath(fsops.HostPaths, gotUnit))
+	}
+	if _, err := os.Stat(bdmvDir); err != nil {
+		t.Fatalf("expected marker directory %q to exist: %v", bdmvDir, err)
+	}
+}
+
+func TestWalkScanRoot_MixedCaseMarkerDirectlyUnderScanRoot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	bdmvDir := filepath.Join(root, "bdmv")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fileA := filepath.Join(bdmvDir, "index.bdmv")
+	if err := os.WriteFile(fileA, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(fileA, old, old)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	orphans, _, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 orphan unit, got %d", len(orphans))
+	}
+	gotUnit := filepath.Clean(orphans[0].Path)
+	if gotUnit != filepath.Clean(bdmvDir) {
+		t.Fatalf("expected orphan unit path %q (exact casing), got %q", bdmvDir, gotUnit)
+	}
+}
+
+func TestWalkScanRoot_UnicodeCanonicalEquivalenceDoesNotFalseOrphan(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dirDecomposed := filepath.Join(root, "La\u030apsley")
+	if err := os.MkdirAll(dirDecomposed, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fileDecomposed := filepath.Join(dirDecomposed, "track.flac")
+	if err := os.WriteFile(fileDecomposed, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(fileDecomposed, old, old)
+
+	fileComposed := filepath.Join(root, "Låpsley", "track.flac")
+	if fileComposed == fileDecomposed {
+		t.Fatalf("expected composed and decomposed paths to differ (test bug): %q", fileComposed)
+	}
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(fileComposed)
+
+	orphans, _, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("expected no orphans for canonical-equivalent unicode paths, got %d: %v", len(orphans), orphans)
+	}
+}
+
+func TestWalkScanRoot_CaseDifferenceDoesNotFalseOrphan(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	trackerDir := filepath.Join(root, "TrackerName")
+	if err := os.MkdirAll(trackerDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	onDisk := filepath.Join(trackerDir, "Show.S01E01.mkv")
+	if err := os.WriteFile(onDisk, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(onDisk, old, old)
+
+	tfm := NewTorrentFileMap(fsops.HostPaths)
+	tfm.Add(filepath.Join(root, "trackername", "Show.S01E01.mkv"))
+
+	orphans, _, err := walkScanRoot(context.Background(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 100, local.NewBackend(), nil)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("expected no orphans for case-different owned path, got %d: %v", len(orphans), orphans)
+	}
+}
+
+func TestNormalizeIgnorePaths_KeepsUserCasing(t *testing.T) {
+	t.Parallel()
+
+	typed := filepath.Join(t.TempDir(), "downloads", "Keep", "Archive")
+
+	got, err := NormalizeIgnorePaths(fsops.HostPaths, []string{typed})
+	if err != nil {
+		t.Fatalf("NormalizeIgnorePaths: %v", err)
+	}
+	if len(got) != 1 || got[0] != typed {
+		t.Fatalf("expected ignore path stored verbatim %q, got %v", typed, got)
+	}
+}
+
+func TestDiscUnitFromParentMarker_CaseVariantSiblingsDoNotShareCache(t *testing.T) {
+	t.Parallel()
+
+	sep := string(filepath.Separator)
+	upper := filepath.Join(sep, "rips", "Pack")
+	lower := filepath.Join(sep, "rips", "pack")
+	cache := make(map[string]discUnitDecision)
+
+	unitFor := func(dir string) string {
+		unit, ok := discUnitFromParentMarker(
+			context.Background(),
+			filepath.Join(dir, "BDMV", "STREAM", "a.m2ts"),
+			dir, filepath.Join(dir, "BDMV"), "BDMV", newTestProtected(t, fsops.HostPaths, nil, nil), cache,
+			local.NewBackend())
+		if !ok {
+			t.Fatalf("expected a disc unit for %q", dir)
+		}
+		return unit
+	}
+
+	if u, l := unitFor(upper), unitFor(lower); u == l {
+		t.Fatalf("distinct disc directories must not share a unit path: %q", u)
+	}
+}
+
+func TestWalkScanRoot_PermissionError(t *testing.T) {
+	for _, atRoot := range []bool{true, false} {
+		name := "child remains skipped"
+		if atRoot {
+			name = "unreadable root fails"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			errorPath := filepath.Join(root, "unreadable-child")
+			if atRoot {
+				errorPath = root
+			}
+			backend := &fakeWalkBackend{
+				Backend: newTestBackend(),
+				entries: []fsops.WalkEntry{{Path: errorPath, Err: fs.ErrPermission}},
+			}
+			_, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, 0, backend, nil)
+			if atRoot {
+				if !errors.Is(err, fs.ErrPermission) {
+					t.Fatalf("expected root permission error, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("child permission error must remain skipped: %v", err)
+			}
+		})
+	}
+}
+
+func TestWalkScanRoot_LostConnectionIsNeverSkipped(t *testing.T) {
+	root := t.TempDir()
+	lost := fmt.Errorf("%w: %w", fsops.ErrConnectionLost, fs.ErrPermission)
+	backend := &fakeWalkBackend{
+		Backend: newTestBackend(),
+		entries: []fsops.WalkEntry{{Path: filepath.Join(root, "child"), Err: lost}},
+	}
+	_, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, NewTorrentFileMap(fsops.HostPaths)), 0, 0, backend, nil)
+	if !errors.Is(err, fsops.ErrConnectionLost) {
+		t.Fatalf("a lost connection must fail the scan, got %v", err)
+	}
+}
+
+func TestWalkScanRoot_NestedDiscFoldsIntoOutermostDiscUnit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		files    map[string]int
+		inUse    []string
+		wantPath string
+		wantSize int64
+	}{
+		{
+			name: "every file orphaned",
+			files: map[string]int{
+				"Outer/BDMV/STREAM/a.m2ts":         1,
+				"Outer/extra/Disc2/VIDEO_TS/V.VOB": 10,
+				"Outer/extra/Disc2/info.nfo":       100,
+			},
+			wantPath: "Outer",
+			wantSize: 111,
+		},
+		{
+			name: "outer disc in use",
+			files: map[string]int{
+				"Outer/BDMV/STREAM/a.m2ts":         1,
+				"Outer/extra/Disc2/VIDEO_TS/V.VOB": 10,
+				"Outer/extra/Disc2/info.nfo":       100,
+			},
+			inUse:    []string{"Outer/BDMV/STREAM/a.m2ts"},
+			wantPath: "Outer/extra/Disc2",
+			wantSize: 110,
+		},
+		{
+			name: "outer disc in use after an orphan",
+			files: map[string]int{
+				"Outer/BDMV/CLIPINF/a.clpi":        1000,
+				"Outer/BDMV/STREAM/a.m2ts":         1,
+				"Outer/extra/Disc2/VIDEO_TS/V.VOB": 10,
+				"Outer/extra/Disc2/info.nfo":       100,
+			},
+			inUse:    []string{"Outer/BDMV/STREAM/a.m2ts"},
+			wantPath: "Outer/extra/Disc2",
+			wantSize: 110,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			base := time.Now().Add(-2 * time.Hour)
+			var wantModified time.Time
+			for rel, size := range tt.files {
+				p := filepath.Join(root, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(p, make([]byte, size), 0o600); err != nil {
+					t.Fatalf("write file: %v", err)
+				}
+				mod := base.Add(time.Duration(size) * time.Second)
+				if err := os.Chtimes(p, mod, mod); err != nil {
+					t.Fatalf("chtimes: %v", err)
+				}
+				if mod.After(wantModified) && !slices.Contains(tt.inUse, rel) && strings.HasPrefix(rel, tt.wantPath) {
+					wantModified = mod
+				}
+			}
+
+			tfm := NewTorrentFileMap(fsops.HostPaths)
+			for _, rel := range tt.inUse {
+				tfm.Add(fsops.NormalizePath(fsops.HostPaths, filepath.Join(root, filepath.FromSlash(rel))))
+			}
+
+			for run := range 100 {
+				orphans, _, err := walkScanRoot(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 0, local.NewBackend(), nil)
+				if err != nil {
+					t.Fatalf("run %d: walkScanRoot: %v", run, err)
+				}
+				if tt.wantPath == "" {
+					if len(orphans) != 0 {
+						t.Fatalf("run %d: expected no orphans, got %+v", run, orphans)
+					}
+					continue
+				}
+				if len(orphans) != 1 {
+					t.Fatalf("run %d: expected 1 orphan unit, got %+v", run, orphans)
+				}
+				got := orphans[0]
+				if got.Path != filepath.Join(root, filepath.FromSlash(tt.wantPath)) || got.Size != tt.wantSize {
+					t.Fatalf("run %d: got %s size %d, want %s size %d", run, got.Path, got.Size, tt.wantPath, tt.wantSize)
+				}
+				if !got.ModifiedAt.Equal(wantModified) {
+					t.Fatalf("run %d: ModifiedAt = %v, want %v", run, got.ModifiedAt, wantModified)
+				}
+			}
+		})
+	}
+}
+
+func TestScanWalker_FileWithoutAKeyMarksIdentityIncomplete(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	inUse := filepath.Join(root, "in-use.mkv")
+	orphan := filepath.Join(root, "orphan.mkv")
+	ignored := filepath.Join(root, "ignored", "file.mkv")
+	instance := &models.Instance{ID: 1, SSHHost: "box.example", SSHPort: 22}
+	old := time.Now().Add(-time.Hour)
+	file := func(path string, id byte) fsops.WalkEntry {
+		entry := fsops.WalkEntry{Path: path, Size: 1, ModTime: old, Nlinks: 1}
+		if id != 0 {
+			entry.FileID = hardlink.RemoteFileID([]byte{id})
+		}
+		return entry
+	}
+	dir := fsops.WalkEntry{Path: filepath.Join(root, "sub"), IsDir: true, Mode: fs.ModeDir, ModTime: old}
+
+	for _, tc := range []struct {
+		name           string
+		entries        []fsops.WalkEntry
+		wantIncomplete bool
+	}{
+		{"every file keyed", []fsops.WalkEntry{dir, file(inUse, 1), file(orphan, 2)}, false},
+		{"in-use file without a key", []fsops.WalkEntry{file(inUse, 0), file(orphan, 2)}, true},
+		{"orphan without a key", []fsops.WalkEntry{file(inUse, 1), file(orphan, 0)}, true},
+		{"ignored file without a key is never listed", []fsops.WalkEntry{file(inUse, 1), file(ignored, 0)}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tfm := NewTorrentFileMap(fsops.HostPaths)
+			tfm.Add(inUse)
+			protected := newTestProtected(t, fsops.HostPaths, []string{filepath.Join(root, "ignored")}, tfm)
+			keys := newFileKeys()
+			backend := &fakeWalkBackend{Backend: local.NewBackend(), entries: tc.entries}
+			if _, _, _, err := walkScanRootWithUnitFilter(t.Context(), root, protected, 0, 0, nil, backend, instance, false, keys); err != nil {
+				t.Fatalf("walk: %v", err)
+			}
+			if keys.incomplete != tc.wantIncomplete {
+				t.Fatalf("incomplete = %v, want %v", keys.incomplete, tc.wantIncomplete)
+			}
+		})
+	}
+
+	t.Run("symlinked save path with a torrent file it cannot key", func(t *testing.T) {
+		t.Parallel()
+
+		tfm := NewTorrentFileMap(fsops.HostPaths)
+		tfm.Add(inUse)
+		keys := newFileKeys()
+		backend := &fakeWalkBackend{Backend: local.NewBackend(), entries: []fsops.WalkEntry{file(inUse, 0)}}
+		if err := recordInUse(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), backend, instance, keys); err != nil {
+			t.Fatalf("recordInUse: %v", err)
+		}
+		if !keys.incomplete {
+			t.Fatal("a torrent file recordInUse cannot key must mark identity incomplete")
+		}
+	})
+}

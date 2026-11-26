@@ -1,0 +1,267 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package notifications
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"slices"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+)
+
+func TestValidateNotifiarrAPIKeySkipsNonNotifiarrAPI(t *testing.T) {
+	t.Parallel()
+
+	err := ValidateNotifiarrAPIKey(context.Background(), "discord://token@channel")
+	require.NoError(t, err)
+}
+
+func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
+	var (
+		hits atomic.Int32
+		ch   = make(chan struct {
+			key  string
+			path string
+		}, 1)
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		ch <- struct {
+			key  string
+			path string
+		}{
+			key:  r.Header.Get("X-API-Key"),
+			path: r.URL.Path,
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	endpoint := server.URL + "/api/v1/notification/qui"
+	rawURL := "notifiarrapi://abc123?endpoint=" + url.QueryEscape(endpoint)
+
+	err := ValidateNotifiarrAPIKey(context.Background(), rawURL)
+	require.NoError(t, err)
+	require.Equal(t, int32(1), hits.Load())
+	select {
+	case got := <-ch:
+		require.Equal(t, "abc123", got.key)
+		require.Equal(t, "/api/v1/user/validate", got.path)
+	case <-time.After(time.Second):
+		t.Fatal("expected validation request")
+	}
+}
+
+func TestValidateNotifiarrAPIKeyInvalid(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte("invalid key"))
+	}))
+	t.Cleanup(server.Close)
+
+	endpoint := server.URL + "/api/v1/notification/qui"
+	rawURL := "notifiarrapi://abc123?endpoint=" + url.QueryEscape(endpoint)
+
+	err := ValidateNotifiarrAPIKey(context.Background(), rawURL)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "notifiarr api key invalid")
+	require.Contains(t, err.Error(), "invalid key")
+}
+
+func TestBuildNotifiarrAPIDataIncludesStructuredFields(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	event := Event{
+		Type: EventCrossSeedAutomationFailed,
+		CrossSeed: &CrossSeedEventData{
+			RunID:      9,
+			Mode:       "rss",
+			Status:     "partial",
+			FeedItems:  120,
+			Candidates: 8,
+			Added:      3,
+			Failed:     1,
+			Skipped:    4,
+			Samples:    []string{"Example.One", "Example.Two"},
+		},
+		ErrorMessage:  "indexer timeout",
+		ErrorMessages: []string{"indexer timeout", "upstream 502"},
+	}
+
+	data := svc.buildNotifiarrAPIData(context.Background(), event, "title", "message")
+	require.NotNil(t, data.CrossSeed)
+	require.Equal(t, int64(9), data.CrossSeed.RunID)
+	require.Equal(t, "rss", data.CrossSeed.Mode)
+	require.Equal(t, "partial", data.CrossSeed.Status)
+
+	require.GreaterOrEqual(t, len(data.ErrorMessages), 2)
+	require.Equal(t, "indexer timeout", data.ErrorMessages[0])
+	require.True(t, slices.Contains(data.ErrorMessages, "upstream 502"))
+	require.False(t, slices.Contains(data.ErrorMessages, ""))
+	require.False(t, slices.Contains(data.ErrorMessages, "   "))
+	require.NotEmpty(t, strings.TrimSpace(data.Description))
+}
+
+func TestBuildNotifiarrAPIDataIncludesTorrentFields(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	addedOn := time.Now().Add(-10 * time.Second).Unix()
+	etaSeconds := int64(3600)
+	event := Event{
+		Type:                   EventTorrentAdded,
+		TorrentName:            "Example.Movie.2026.1080p",
+		TorrentHash:            "abcdef0123456789abcdef0123456789abcdef01",
+		TorrentAddedOn:         addedOn,
+		TorrentETASeconds:      etaSeconds,
+		TorrentState:           "downloading",
+		TorrentProgress:        0.25,
+		TorrentTotalSizeBytes:  20_000_000_000,
+		TorrentDownloadedBytes: 5_000_000_000,
+		TorrentAmountLeftBytes: 15_000_000_000,
+		TorrentDlSpeedBps:      25_000_000,
+		TorrentUpSpeedBps:      1_000_000,
+		TorrentNumSeeds:        120,
+		TorrentNumLeechs:       35,
+	}
+
+	data := svc.buildNotifiarrAPIData(context.Background(), event, "title", "message")
+	require.NotNil(t, data.Torrent)
+	require.NotNil(t, data.Torrent.AddedAt)
+	require.Equal(t, time.Unix(addedOn, 0).UTC(), *data.Torrent.AddedAt)
+	require.NotNil(t, data.Torrent.EtaSeconds)
+	require.Equal(t, etaSeconds, *data.Torrent.EtaSeconds)
+	require.NotNil(t, data.Torrent.EstimatedCompletionAt)
+	require.True(t, data.Torrent.EstimatedCompletionAt.Equal(data.Timestamp.Add(time.Duration(etaSeconds)*time.Second)))
+	require.NotNil(t, data.Torrent.State)
+	require.Equal(t, "downloading", *data.Torrent.State)
+	require.NotNil(t, data.Torrent.Progress)
+	require.InDelta(t, 0.25, *data.Torrent.Progress, 1e-9)
+	require.NotNil(t, data.Torrent.TotalSizeBytes)
+	require.Equal(t, int64(20_000_000_000), *data.Torrent.TotalSizeBytes)
+	require.NotNil(t, data.Torrent.DownloadedBytes)
+	require.Equal(t, int64(5_000_000_000), *data.Torrent.DownloadedBytes)
+	require.NotNil(t, data.Torrent.AmountLeftBytes)
+	require.Equal(t, int64(15_000_000_000), *data.Torrent.AmountLeftBytes)
+	require.NotNil(t, data.Torrent.DlSpeedBps)
+	require.Equal(t, int64(25_000_000), *data.Torrent.DlSpeedBps)
+	require.NotNil(t, data.Torrent.UpSpeedBps)
+	require.Equal(t, int64(1_000_000), *data.Torrent.UpSpeedBps)
+	require.NotNil(t, data.Torrent.NumSeeds)
+	require.Equal(t, int64(120), *data.Torrent.NumSeeds)
+	require.NotNil(t, data.Torrent.NumLeechs)
+	require.Equal(t, int64(35), *data.Torrent.NumLeechs)
+}
+
+func TestBuildNotifiarrTestPayload(t *testing.T) {
+	t.Parallel()
+
+	for _, eventType := range []EventType{EventTorrentAdded, EventTorrentCompleted} {
+		t.Run(string(eventType), func(t *testing.T) {
+			encoded, err := BuildNotifiarrTestPayload(Event{Type: eventType, InstanceID: 1})
+			require.NoError(t, err)
+
+			var payload notifiarrAPIPayload
+			require.NoError(t, json.Unmarshal(encoded, &payload))
+			require.Equal(t, string(eventType), payload.Event)
+			require.Equal(t, string(eventType), payload.Data.Event)
+			require.NotEmpty(t, payload.Data.Subject)
+			require.Contains(t, payload.Data.Message, "Progress: 0.0000")
+			require.Contains(t, payload.Data.Message, "Total size bytes: 0")
+			require.Contains(t, payload.Data.Fields, notifiarrField{Title: "Total size bytes", Text: "0", Inline: true})
+			require.Equal(t, new("Instance"), payload.Data.InstanceName)
+
+			torrent := payload.Data.Torrent
+			require.NotNil(t, torrent)
+			for _, metric := range []*int64{
+				torrent.EtaSeconds, torrent.TotalSizeBytes, torrent.DownloadedBytes,
+				torrent.AmountLeftBytes, torrent.DlSpeedBps, torrent.UpSpeedBps,
+				torrent.NumSeeds, torrent.NumLeechs,
+			} {
+				require.NotNil(t, metric)
+				require.Zero(t, *metric)
+			}
+			for _, metric := range []*float64{torrent.Progress, torrent.Ratio} {
+				require.NotNil(t, metric)
+				require.Zero(t, *metric)
+			}
+			require.Equal(t, &payload.Data.Timestamp, torrent.EstimatedCompletionAt)
+		})
+	}
+
+	t.Run("unknown event", func(t *testing.T) {
+		payload, err := BuildNotifiarrTestPayload(Event{Type: "unknown"})
+		require.NoError(t, err)
+		require.Nil(t, payload)
+	})
+}
+
+func TestSendTestNotifiarrAPIUsesConfiguredEventType(t *testing.T) {
+	type receivedPayload struct {
+		payload notifiarrAPIPayload
+		err     error
+	}
+	payloads := make(chan receivedPayload, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload notifiarrAPIPayload
+		err := json.NewDecoder(r.Body).Decode(&payload)
+		payloads <- receivedPayload{
+			payload: payload,
+			err:     err,
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	endpoint := server.URL + "/api/v1/notification/qui"
+	target := &models.NotificationTarget{
+		URL:        "notifiarrapi://abc123?endpoint=" + url.QueryEscape(endpoint),
+		EventTypes: []string{string(EventCrossSeedCompletionSucceeded)},
+	}
+
+	err := (&Service{}).SendTest(context.Background(), target, "Test notification", "Test message")
+	require.NoError(t, err)
+
+	select {
+	case received := <-payloads:
+		require.NoError(t, received.err)
+		payload := received.payload
+		require.Equal(t, string(EventCrossSeedCompletionSucceeded), payload.Event)
+		require.Equal(t, string(EventCrossSeedCompletionSucceeded), payload.Data.Event)
+		require.Equal(t, "Test notification", payload.Data.Subject)
+		require.Equal(t, "Test message", payload.Data.Message)
+	case <-time.After(time.Second):
+		t.Fatal("expected test notification request")
+	}
+}
+
+func TestSendTestNotifiarrAPIRequiresConfiguredEventType(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	endpoint := server.URL + "/api/v1/notification/qui"
+	target := &models.NotificationTarget{
+		URL: "notifiarrapi://abc123?endpoint=" + url.QueryEscape(endpoint),
+	}
+
+	err := (&Service{}).SendTest(context.Background(), target, "Test notification", "Test message")
+	require.EqualError(t, err, "notifiarr api test requires at least one event type")
+	require.Zero(t, hits.Load())
+}

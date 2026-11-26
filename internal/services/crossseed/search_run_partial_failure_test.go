@@ -1,0 +1,338 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
+
+	"github.com/autobrr/qui/internal/models"
+	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+)
+
+type hashFilteringSyncManager struct {
+	gazelleSkipHashSyncManager
+}
+
+func (g *hashFilteringSyncManager) GetTorrentRefs(_ context.Context, _ int, opts internalqb.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	if len(opts.Hashes) == 0 {
+		copied := make([]qbt.Torrent, len(g.torrents))
+		copy(copied, g.torrents)
+		return testTorrentRefs(copied), nil
+	}
+	out := make([]qbt.Torrent, 0, len(opts.Hashes))
+	for _, torrent := range g.torrents {
+		for _, h := range opts.Hashes {
+			if strings.EqualFold(torrent.Hash, h) {
+				out = append(out, torrent)
+			}
+		}
+	}
+	return testTorrentRefs(out), nil
+}
+
+func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilteringSyncManager) (*Service, *searchRunState) {
+	t.Helper()
+	prevInterval := minSearchIntervalSecondsGazelleOnly
+	minSearchIntervalSecondsGazelleOnly = 0
+	t.Cleanup(func() { minSearchIntervalSecondsGazelleOnly = prevInterval })
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, dbName)
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	clients, err := gazelleClientsForTest()
+	require.NoError(t, err)
+
+	stubGazelleMatchLookup(t)
+
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
+		InstanceID:      instance.ID,
+		Status:          models.CrossSeedSearchRunStatusRunning,
+		StartedAt:       time.Now().UTC(),
+		Filters:         models.CrossSeedSearchFilters{},
+		IndexerIDs:      []int{},
+		IntervalSeconds: 60,
+		CooldownMinutes: 0,
+		Results:         []models.CrossSeedSearchResult{},
+	})
+	require.NoError(t, err)
+	state := &searchRunState{
+		run:  run,
+		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true},
+	}
+	state.gazelleClients = clients
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		syncManager:      syncManager,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	svc.searchMu.Lock()
+	svc.searchState = state
+	svc.searchMu.Unlock()
+	return svc, state
+}
+
+func runSearchLoopToCompletion(t *testing.T, svc *Service, state *searchRunState) {
+	t.Helper()
+	runCtx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	done := make(chan struct{})
+	go func() {
+		svc.searchRunLoop(runCtx, state)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("search run loop did not finish")
+	}
+}
+
+func TestSearchRunLoop_OneFailedCandidateDoesNotFailWholeRun(t *testing.T) {
+	sourceHash := "223759985c562a644428312c8cd3585d04686847"
+	sourceHashNorm := strings.ToLower(sourceHash)
+	sourceTorrent := qbt.Torrent{
+		Hash:     sourceHash,
+		Name:     "During - LMK (2024 WF)",
+		Progress: 1.0,
+		Size:     123,
+		Tracker:  "https://flacsfor.me/announce",
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "During - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+	}
+	brokenTorrent := qbt.Torrent{
+		Hash:     "aaaa59985c562a644428312c8cd3585d04686847",
+		Name:     "Broken - Candidate (2024 WF)",
+		Progress: 1.0,
+		Size:     456,
+		Tracker:  "https://flacsfor.me/announce",
+	}
+	cachedCandidate := qbt.Torrent{
+		Hash:     "c1f58f7e5c7f6f45c8f5d6f6a6c4fbb4d4f2b1a9e",
+		Name:     "During - LMK (2024 WF)",
+		Progress: 1.0,
+		Size:     123,
+		Tracker:  "https://orpheus.network/announce",
+	}
+
+	torrentDict := map[string]any{
+		"announce": "https://flacsfor.me/announce",
+		"info": map[string]any{
+			"length": int64(123),
+			"name":   "During - LMK (2024 WF)",
+		},
+	}
+	torrentBytes, err := bencode.Marshal(torrentDict)
+	require.NoError(t, err)
+
+	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-partial-failure", &hashFilteringSyncManager{
+		torrents: []qbt.Torrent{brokenTorrent, sourceTorrent},
+		filesByHash: map[string]qbt.TorrentFiles{
+			sourceHashNorm: sourceFiles,
+			strings.ToLower(cachedCandidate.Hash): {
+				{Name: "During - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+			},
+		},
+		cachedInstanceTorrents: []internalqb.CrossInstanceTorrentView{
+			{
+				TorrentView: &internalqb.TorrentView{
+					Torrent: &cachedCandidate,
+				},
+				InstanceID:   1,
+				InstanceName: "Local Node",
+			},
+		},
+		exportedTorrent: torrentBytes,
+	})
+
+	runSearchLoopToCompletion(t, svc, state)
+
+	svc.searchMu.Lock()
+	status := state.run.Status
+	errorMessage := state.run.ErrorMessage
+	processed := state.run.Processed
+	failed := state.run.TorrentsFailed
+	results := append([]models.CrossSeedSearchResult(nil), state.run.Results...)
+	svc.searchMu.Unlock()
+
+	require.Equal(t, 2, processed, "both candidates should be processed")
+	require.Equal(t, 1, failed, "the broken candidate should be counted as failed")
+
+	var brokenResult *models.CrossSeedSearchResult
+	for i := range results {
+		if strings.EqualFold(results[i].TorrentHash, brokenTorrent.Hash) {
+			brokenResult = &results[i]
+			break
+		}
+	}
+	require.NotNil(t, brokenResult, "per-item failure should be recorded")
+	require.Equal(t, models.CrossSeedSearchResultStatusFailed, brokenResult.Status)
+
+	errText := ""
+	if errorMessage != nil {
+		errText = *errorMessage
+	}
+	require.Equal(t, models.CrossSeedSearchRunStatusSuccess, status,
+		"a completed run must not be marked failed because one candidate errored (error message: %s)", errText)
+	require.Nil(t, errorMessage)
+}
+
+func TestSearchRunLoop_AllCandidatesFailedMarksRunFailed(t *testing.T) {
+	brokenTorrent := qbt.Torrent{
+		Hash:     "aaaa59985c562a644428312c8cd3585d04686847",
+		Name:     "Broken - Candidate (2024 WF)",
+		Progress: 1.0,
+		Size:     456,
+		Tracker:  "https://flacsfor.me/announce",
+	}
+
+	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-total-failure", &hashFilteringSyncManager{
+		torrents: []qbt.Torrent{brokenTorrent},
+	})
+
+	runSearchLoopToCompletion(t, svc, state)
+
+	svc.searchMu.Lock()
+	status := state.run.Status
+	errorMessage := state.run.ErrorMessage
+	processed := state.run.Processed
+	failed := state.run.TorrentsFailed
+	svc.searchMu.Unlock()
+
+	require.Equal(t, 1, processed)
+	require.Equal(t, 1, failed)
+	require.Equal(t, models.CrossSeedSearchRunStatusFailed, status,
+		"a run where every candidate failed must not be reported as success")
+	require.NotNil(t, errorMessage)
+	require.Contains(t, *errorMessage, "all 1 searched candidates failed")
+}
+
+func TestPersistSearchRun_FlushesResultsEveryN(t *testing.T) {
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "search-run-flush")
+	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
+		InstanceID: instance.ID,
+		Status:     models.CrossSeedSearchRunStatusRunning,
+		StartedAt:  time.Now().UTC(),
+	})
+	require.NoError(t, err)
+
+	svc := &Service{automationStore: store}
+	state := &searchRunState{run: run}
+	svc.searchState = state
+
+	storedRun := func() *models.CrossSeedSearchRun {
+		stored, err := store.GetSearchRun(ctx, run.ID)
+		require.NoError(t, err)
+		return stored
+	}
+	skipped := models.CrossSeedSearchResult{TorrentHash: "hash", Status: models.CrossSeedSearchResultStatusSkipped, ProcessedAt: time.Now().UTC()}
+
+	for range searchResultsFlushEvery - 1 {
+		state.run.Processed++
+		svc.appendSearchResult(state, skipped)
+		svc.persistSearchRun(state)
+	}
+	stored := storedRun()
+	require.Equal(t, searchResultsFlushEvery-1, stored.Processed, "counters persist on every candidate")
+	require.Empty(t, stored.Results, "results blob stays untouched below the flush threshold")
+
+	svc.appendSearchResult(state, skipped)
+	svc.persistSearchRun(state)
+	require.Len(t, storedRun().Results, searchResultsFlushEvery, "results blob flushed at the threshold")
+
+	svc.appendSearchResult(state, skipped)
+	svc.persistSearchRun(state)
+	require.Len(t, storedRun().Results, searchResultsFlushEvery, "next candidate goes back to a counters-only write")
+
+	svc.finalizeSearchRun(state, false)
+	require.Len(t, storedRun().Results, searchResultsFlushEvery+1, "finalize writes the full row")
+}
+
+type listFailingIndexerStore struct {
+	failingEnabledIndexerStore
+}
+
+func (s *listFailingIndexerStore) List(context.Context) ([]*models.TorznabIndexer, error) {
+	return nil, errors.New("prowlarr down")
+}
+
+func TestProcessSearchCandidate_IndexerListingFailureStampsNoIndexer(t *testing.T) {
+	ctx, env := newSearchHistoryTestEnv(t, "crossseed-listing-failure-history", 2)
+	instanceStore, err := models.NewInstanceStore(env.db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	clients, err := gazelleClientsForTest()
+	require.NoError(t, err)
+	stubGazelleMatchLookup(t)
+
+	torrent := qbt.Torrent{
+		Hash:     torznabGazelleSourceHash,
+		Name:     "During - LMK (2024 WF)",
+		Progress: 1.0,
+		Size:     123,
+		Tracker:  "https://flacsfor.me/announce",
+	}
+	svc := &Service{
+		instanceStore:   instanceStore,
+		automationStore: env.store,
+		jackettService:  jackett.NewService(&listFailingIndexerStore{}),
+		syncManager: &hashFilteringSyncManager{
+			torrents: []qbt.Torrent{torrent},
+			filesByHash: map[string]qbt.TorrentFiles{
+				torznabGazelleSourceHash: {{Name: "During - LMK (2024 WF)/01 - Track.flac", Size: 123}},
+			},
+		},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	state := &searchRunState{
+		run:                       &models.CrossSeedSearchRun{},
+		opts:                      SearchRunOptions{InstanceID: env.instanceID},
+		resolvedTorznabIndexerIDs: env.indexerIDs,
+		gazelleClients:            clients,
+		staleWork: map[string]candidateStaleWork{
+			torznabGazelleSourceHash: {indexerIDs: env.indexerIDs, gazelle: true},
+		},
+	}
+
+	_, err = svc.processSearchCandidate(ctx, state, &torrent)
+	require.NoError(t, err)
+	require.Error(t, state.torznabErr, "the listing failure reaches the run")
+
+	history, err := env.store.GetIndexerSearchHistory(ctx, env.instanceID, torrent.Hash)
+	require.NoError(t, err)
+	require.Empty(t, history, "qui asked no Torznab indexer")
+}

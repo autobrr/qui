@@ -1,0 +1,122 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import type { SelectionRow } from "@/hooks/torrent-table/useTorrentSelection"
+import { type UseTorrentSelectionDerivationsParams, useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
+import { EMPTY_SELECTION, type TorrentSelectionState } from "@/lib/torrent-selection"
+import { makeFilters } from "@/test/mockFilters"
+import { makeTorrent } from "@/test/mockTorrent"
+import type { Torrent } from "@/types"
+import { renderHook } from "@testing-library/react"
+import { describe, expect, it } from "vitest"
+import "@/i18n"
+
+const TORRENTS = [
+  makeTorrent({ hash: "h0", name: "t0", size: 100 }),
+  makeTorrent({ hash: "h1", name: "t1", size: 200 }),
+  makeTorrent({ hash: "h2", name: "t2", size: 300 }),
+]
+
+function makeRows(torrents: Torrent[]): SelectionRow[] {
+  return torrents.map((original, index) => ({ id: String(index), original }))
+}
+
+function ticked(...keys: string[]): TorrentSelectionState {
+  return { ...EMPTY_SELECTION, selected: new Set(keys) }
+}
+
+function allSelected(...excluded: string[]): TorrentSelectionState {
+  return { ...EMPTY_SELECTION, isAllSelected: true, excluded: new Set(excluded) }
+}
+
+function render(overrides: Partial<UseTorrentSelectionDerivationsParams> = {}) {
+  const params: UseTorrentSelectionDerivationsParams = {
+    selection: EMPTY_SELECTION,
+    getSelectionIdentity: (t: Torrent) => t.hash,
+    getVisibleRows: () => makeRows(TORRENTS),
+    sortedTorrents: TORRENTS,
+    columnFiltersExpr: null,
+    filters: makeFilters(),
+    search: "",
+    stats: { totalSize: 600 },
+    totalCount: 3,
+    isCrossInstanceEndpoint: false,
+    instanceId: 1,
+    ...overrides,
+  }
+  return {
+    ...renderHook((p: UseTorrentSelectionDerivationsParams) => useTorrentSelectionDerivations(p), { initialProps: params }),
+    params,
+  }
+}
+
+const previewHashes = (result: { current: ReturnType<typeof useTorrentSelectionDerivations> }) =>
+  result.current.actionTarget.previewTorrents.map(t => t.hash)
+
+describe("useTorrentSelectionDerivations — the rows of the Action target", () => {
+  it("keeps a ticked torrent that left the visible rows", () => {
+    const { result, rerender, params } = render({ selection: ticked("h0", "h2") })
+    rerender({ ...params, getVisibleRows: () => makeRows([TORRENTS[1]]), sortedTorrents: [TORRENTS[1]] })
+    expect(previewHashes(result)).toEqual(["h0", "h2"])
+    expect(result.current.actionTarget.count).toBe(2)
+  })
+
+  it("resolves the visible rows in select-all mode when the column filter applies client-side", () => {
+    const { result, rerender, params } = render({
+      selection: allSelected(),
+      columnFiltersExpr: "state == \"downloading\"",
+      clientSideFiltering: true,
+      getVisibleRows: () => makeRows([TORRENTS[1]]),
+      totalCount: 3,
+    })
+    expect(previewHashes(result)).toEqual(["h1"])
+    expect(result.current.actionTarget.count).toBe(1)
+    expect(result.current.selectedTotalSize).toBe(TORRENTS[1].size)
+
+    rerender({ ...params, columnFiltersExpr: null, getVisibleRows: () => makeRows(TORRENTS) })
+    expect(previewHashes(result)).toEqual(["h0", "h1", "h2"])
+  })
+})
+
+describe("useTorrentSelectionDerivations — selectedTotalSize", () => {
+  it("sums the selected torrents in regular mode", () => {
+    const { result } = render({ selection: ticked("h0", "h1") })
+    expect(result.current.selectedTotalSize).toBe(300)
+  })
+
+  it("uses the aggregate stats total in select-all mode with no exclusions", () => {
+    const { result } = render({ selection: allSelected(), stats: { totalSize: 600 } })
+    expect(result.current.selectedTotalSize).toBe(600)
+  })
+
+  it("subtracts excluded sizes from the aggregate in select-all mode", () => {
+    const { result } = render({ selection: allSelected("h1"), stats: { totalSize: 600 } })
+    expect(result.current.selectedTotalSize).toBe(400)
+  })
+})
+
+describe("useTorrentSelectionDerivations — no-selection identity across stream ticks", () => {
+  it("returns the same Action target when sortedTorrents is replaced", () => {
+    const { result, rerender, params } = render({ sortedTorrents: [...TORRENTS] })
+    const first = result.current
+
+    rerender({ ...params, sortedTorrents: [...TORRENTS] })
+
+    expect(result.current.actionTarget).toBe(first.actionTarget)
+  })
+})
+
+describe("useTorrentSelectionDerivations — size facts for the delete dialog", () => {
+  it("publishes the total of the filter and the size of the loaded Exclusions in Select all mode", () => {
+    const { result } = render({ selection: allSelected("h1"), stats: { totalSize: 600 } })
+    expect(result.current.totalSize).toBe(600)
+    expect(result.current.excludedSize).toBe(200)
+  })
+
+  it("publishes no total of the filter when the table filters in the browser", () => {
+    const { result } = render({ selection: allSelected(), stats: { totalSize: 600 }, clientSideFiltering: true })
+    expect(result.current.totalSize).toBe(0)
+  })
+})

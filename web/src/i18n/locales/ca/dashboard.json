@@ -1,0 +1,141 @@
+{
+  "title": "Tauler",
+  "description": "Visió general de totes les teves instàncies de qBittorrent",
+  "incognito": {
+    "turnOn": "Activa el mode incògnit",
+    "turnOff": "Desactiva el mode incògnit"
+  },
+  "stream": {
+    "day": "24 h",
+    "live": "En directe",
+    "noHistory": "Cap instància no ha enregistrat cap transferència en les últimes 24 hores. En directe mostra la velocitat mentre aquesta pàgina és oberta.",
+    "uploadSpeed": "Velocitat de pujada",
+    "downloadSpeed": "Velocitat de baixada",
+    "dayUploaded": "{{size}} pujats en 24 h, {{percent}} de cross-seeds",
+    "dayDownloaded": "{{size}} baixats en 24 h",
+    "liveSeeding": "Sembrant: {{seeding}} · Parells: {{peers}}",
+    "liveDownloading": "Baixant: {{downloading}} · Queden: {{size}}",
+    "peakHour": "Hora amb més activitat: {{size}}",
+    "peakSpeed": "Màxim: {{speed}}",
+    "dayLabel": "Pujada i baixada de totes les instàncies en cadascuna de les últimes 24 hores",
+    "liveLabel": "Velocitat de pujada i baixada de totes les instàncies en els últims 3 minuts",
+    "liveStart": "fa 3 min",
+    "now": "Ara",
+    "loadError": "No s’ha pogut carregar l’historial: {{message}}"
+  },
+  "instances": {
+    "title": "Instàncies",
+    "instance": "Instància",
+    "uploaded24h": "Pujat, 24 h",
+    "upload": "Pujada",
+    "download": "Baixada",
+    "torrents": "Torrents",
+    "issues": "Problemes",
+    "noIssues": "Cap",
+    "loading": "Carregant",
+    "expandAll": "Expandeix-ho tot",
+    "collapseAll": "Redueix-ho tot",
+    "altSpeedOff": "Els límits de velocitat alternatius estan desactivats",
+    "altSpeedTurnOn": "Activa els límits de velocitat alternatius",
+    "altSpeedTurnOff": "Desactiva els límits de velocitat alternatius",
+    "streamStatus": {
+      "cached": "Es mostra una instantània del tauler desada a la memòria cau mentre s'actualitza",
+      "fallback": "S'estan actualitzant les estadístiques del tauler",
+      "error": "Problema amb el flux; es fa servir l'actualització alternativa"
+    }
+  },
+  "offline": {
+    "password": "Fora de línia: qui torna a necessitar la contrasenya de la instància",
+    "cause": "Fora de línia: {{cause}}",
+    "noAnswer": "Fora de línia: qBittorrent no respon",
+    "hidden": "Fora de línia. El mode incògnit n’amaga la causa."
+  },
+  "issues": {
+    "unregistered_one": "{{count}} no registrat",
+    "unregistered_other": "{{count}} no registrats",
+    "tracker_down_one": "{{count}} amb el tracker caigut",
+    "tracker_down_other": "{{count}} amb el tracker caigut",
+    "tracker_error_one": "{{count}} error del tracker",
+    "tracker_error_other": "{{count}} errors del tracker",
+    "errored_one": "{{count}} error",
+    "errored_other": "{{count}} errors"
+  },
+  "details": {
+    "host": "Amfitrió",
+    "torrents": "Torrents",
+    "active": "Actius",
+    "downloading": "Baixant",
+    "seeding": "Sembrant",
+    "size": "Mida",
+    "freeSpace": "Espai lliure (camí predeterminat)",
+    "peers": "Parells",
+    "uptime": "Temps actiu",
+    "version": "qBittorrent",
+    "libtorrent": "libtorrent",
+    "connection": "Connexió",
+    "externalAddresses": "Adreces externes",
+    "unknown": "Desconegut",
+    "last24h": "Últimes 24 h",
+    "allTime": "Des de l’inici",
+    "uploaded": "Pujat",
+    "downloaded": "Baixat",
+    "ratio": "ràtio {{ratio}}",
+    "uploadSpeed": "Velocitat de pujada",
+    "downloadSpeed": "Velocitat de baixada",
+    "chartLabel": "Pujada i baixada de {{name}} en cadascuna de les últimes 24 hores",
+    "altSpeed": "Límits de velocitat alternatius",
+    "altSpeedOn": "Els límits de velocitat alternatius estan activats",
+    "addTorrent": "Afegeix un torrent",
+    "openTorrents": "Obre els torrents",
+    "openSettings": "Obre la configuració de la instància"
+  },
+  "connection": {
+    "connected": "Connectable",
+    "firewalled": "Darrere d’un tallafoc",
+    "disconnected": "Desconnectat",
+    "other": "Altres"
+  },
+  "trackers": {
+    "title": "Trackers principals, últimes 24 h",
+    "statistics": "Estadístiques",
+    "empty": "Cap pujada en les últimes 24 hores."
+  },
+  "attention": {
+    "title": "Requereix atenció",
+    "offline": "{{name}} és fora de línia",
+    "lowDisk": "{{name}}: {{free}} lliures",
+    "firewalled": "{{name}} és darrere d’un tallafoc"
+  },
+  "storage": {
+    "title": "Emmagatzematge",
+    "help": "Una o més barres aquí són estimacions. Quan qui no pot llegir el disc d'una instància, la part plena mostra els seus torrents i la part buida mostra l'espai lliure. Per veure l'ús real del disc, activa «Accés al sistema de fitxers local» o configura l'accés SSH a la configuració de la instància.",
+    "free": "{{size}} lliures"
+  },
+  "library": {
+    "title": "Biblioteca",
+    "torrents": "Torrents",
+    "totalSize": "Mida total",
+    "seedingSize": "Mida en sembra",
+    "instances": "Instàncies connectades",
+    "allTime": "Des de l’inici",
+    "uploaded": "Pujat",
+    "downloaded": "Baixat",
+    "ratio": "Ràtio"
+  },
+  "uniqueSize": {
+    "calculating": "calculant",
+    "calculatingTooltip": "qui està llegint les llistes de fitxers per trobar les còpies de cada publicació. Fins que acabi, aquesta mida compta cada cross-seed enllaçat sencer."
+  },
+  "quickActions": {
+    "addTorrent": "Afegeix un torrent",
+    "addTo": "Afegeix a {{name}}"
+  },
+  "addInstance": "Afegeix una instància",
+  "emptyState": {
+    "noInstances": "No hi ha cap instància configurada",
+    "getStarted": "Comença afegint la teva primera instància de qBittorrent",
+    "allDisabled": "Totes les instàncies estan desactivades",
+    "enableInstance": "Activa una instància a Configuració → Instàncies per veure les estadístiques del tauler.",
+    "manageInstances": "Gestiona les instàncies"
+  }
+}

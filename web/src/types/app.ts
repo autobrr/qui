@@ -1,0 +1,340 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import type { ThemeMode } from "@/utils/theme"
+
+export interface ApplicationDatabaseInfo {
+  engine: string
+  target: string
+}
+
+export type ExperimentalFeature = "problemReports" | "heldTitles"
+
+export interface ApplicationInfo {
+  version: string
+  commit?: string
+  commitShort?: string
+  buildDate?: string
+  startedAt: string
+  uptimeSeconds: number
+  goVersion: string
+  goOS: string
+  goArch: string
+  baseUrl: string
+  host: string
+  port: number
+  configDir: string
+  dataDir: string
+  authMode: "builtin" | "oidc" | "disabled"
+  oidcEnabled: boolean
+  builtInLoginEnabled: boolean
+  oidcIssuerHost?: string
+  checkForUpdates: boolean
+  database: ApplicationDatabaseInfo
+  experimentalFeatures: ExperimentalFeature[]
+  problemReports: boolean
+}
+
+export interface VersionInfo {
+  version: string
+  latestVersion?: string
+  updateAvailable: boolean
+  selfUpdate: boolean
+  selfUpdateUnavailableReason: "" | "container" | "disabled" | "development" | "directory"
+  restart: boolean
+}
+
+export interface SystemNotice {
+  kind: string
+  severity: "error" | "warning"
+  reason?: string
+  cause: string
+  openedAt: string
+}
+
+export interface DatabaseShrinkStatus {
+  available: boolean
+  fileBytes: number
+  freeBytes: number
+  needBytes: number
+  restartAvailable: boolean
+  pending: boolean
+  result?: { beforeBytes: number; afterBytes: number }
+}
+
+export interface SelfUpdateResult {
+  version: string
+  rollbackCommand: string
+  backupError: string
+}
+
+export interface PreferenceField {
+  key: string
+  value: unknown
+  tab: "behavior" | "downloads" | "connection" | "speed" | "bittorrent" | "rss" | "webui" | "advanced"
+  section: string
+  control: "switch" | "number" | "text" | "password" | "select" | "path" | "list" | "watchFolders"
+  wireUnit?: string
+  displayUnit?: string
+  optionSource?: "fixed" | "pathAutocomplete" | "networkInterfaces" | "interfaceAddresses"
+  options?: unknown[]
+  dependsOn?: string
+  readOnly?: boolean
+  reason?: string
+}
+
+export interface NetworkBindingInterface {
+  name: string
+  value: string
+  available: boolean
+  addresses: { address: string; available: boolean }[]
+}
+
+export interface AppPreferences {
+  dl_limit: number
+  up_limit: number
+  alt_dl_limit: number
+  alt_up_limit: number
+
+  queueing_enabled: boolean
+  max_active_downloads: number
+  max_active_torrents: number
+  max_active_uploads: number
+  max_active_checking_torrents: number
+
+  listen_port: number
+  random_port: boolean
+  upnp: boolean
+  upnp_lease_duration: number
+
+  bittorrent_protocol: number
+  utp_tcp_mixed_mode: number
+
+  current_network_interface: string
+  current_interface_address: string
+
+  announce_ip: string
+  reannounce_when_address_changed: boolean
+
+  max_connec: number
+  max_connec_per_torrent: number
+  max_uploads: number
+  max_uploads_per_torrent: number
+  enable_multi_connections_from_same_ip: boolean
+
+  outgoing_ports_min: number
+  outgoing_ports_max: number
+  limit_lan_peers: boolean
+  limit_tcp_overhead: boolean
+  limit_utp_rate: boolean
+  peer_tos: number
+  socket_backlog_size: number
+  send_buffer_watermark: number
+  send_buffer_low_watermark: number
+  send_buffer_watermark_factor: number
+  max_concurrent_http_announces: number
+  request_queue_size: number
+  stop_tracker_timeout: number
+
+  max_ratio_enabled: boolean
+  max_ratio: number
+  max_seeding_time_enabled: boolean
+  max_seeding_time: number
+
+  save_path: string
+  temp_path: string
+  temp_path_enabled: boolean
+  auto_tmm_enabled: boolean
+  save_resume_data_interval: number
+
+  start_paused_enabled?: boolean
+  add_stopped_enabled?: boolean
+
+  dht: boolean
+  pex: boolean
+  lsd: boolean
+  encryption: number
+  anonymous_mode: boolean
+
+  proxy_type: number | string
+  proxy_ip: string
+  proxy_port: number
+  proxy_username: string
+  proxy_password: string
+  proxy_auth_enabled: boolean
+  proxy_peer_connections: boolean
+  proxy_torrents_only: boolean
+  proxy_hostname_lookup: boolean
+
+  ip_filter_enabled: boolean
+  ip_filter_path: string
+  ip_filter_trackers: boolean
+  banned_IPs: string
+  block_peers_on_privileged_ports: boolean
+  resolve_peer_countries: boolean
+
+  async_io_threads: number
+  hashing_threads: number
+  file_pool_size: number
+  disk_cache: number
+  disk_cache_ttl: number
+  disk_queue_size: number
+  disk_io_type: number
+  disk_io_read_mode: number
+  disk_io_write_mode: number
+  checking_memory_use: number
+  memory_working_set_limit: number
+  enable_coalesce_read_write: boolean
+
+  upload_choking_algorithm: number
+  upload_slots_behavior: number
+
+  peer_turnover: number
+  peer_turnover_cutoff: number
+  peer_turnover_interval: number
+
+  enable_embedded_tracker: boolean
+  embedded_tracker_port: number
+  embedded_tracker_port_forwarding: boolean
+
+  scheduler_enabled: boolean
+  schedule_from_hour: number
+  schedule_from_min: number
+  schedule_to_hour: number
+  schedule_to_min: number
+  scheduler_days: number
+
+  web_ui_port: number
+  web_ui_username: string
+  use_https: boolean
+  web_ui_address: string
+  web_ui_ban_duration: number
+  web_ui_clickjacking_protection_enabled: boolean
+  web_ui_csrf_protection_enabled: boolean
+  web_ui_custom_http_headers: string
+  web_ui_domain_list: string
+  web_ui_host_header_validation_enabled: boolean
+  web_ui_https_cert_path: string
+  web_ui_https_key_path: string
+  web_ui_max_auth_fail_count: number
+  web_ui_reverse_proxies_list: string
+  web_ui_reverse_proxy_enabled: boolean
+  web_ui_secure_cookie_enabled: boolean
+  web_ui_session_timeout: number
+  web_ui_upnp: boolean
+  web_ui_use_custom_http_headers_enabled: boolean
+
+  add_trackers_enabled: boolean
+  add_trackers: string
+  announce_to_all_tiers: boolean
+  announce_to_all_trackers: boolean
+
+  torrent_content_layout: string
+  incomplete_files_ext: boolean
+  preallocate_all: boolean
+  excluded_file_names_enabled: boolean
+  excluded_file_names: string
+
+  category_changed_tmm_enabled: boolean
+  save_path_changed_tmm_enabled: boolean
+  use_category_paths_in_manual_mode: boolean
+  use_subcategories?: boolean
+
+  torrent_changed_tmm_enabled: boolean
+  torrent_stop_condition: string
+
+  alternative_webui_enabled: boolean
+  alternative_webui_path: string
+  auto_delete_mode: number
+  autorun_enabled: boolean
+  autorun_on_torrent_added_enabled: boolean
+  autorun_on_torrent_added_program: string
+  autorun_program: string
+  bypass_auth_subnet_whitelist: string
+  bypass_auth_subnet_whitelist_enabled: boolean
+  bypass_local_auth: boolean
+  dont_count_slow_torrents: boolean
+  export_dir: string
+  export_dir_fin: string
+  idn_support_enabled: boolean
+  locale: string
+  performance_warning: boolean
+  recheck_completed_torrents: boolean
+  refresh_interval: number
+  resume_data_storage_type: string
+  slow_torrent_dl_rate_threshold: number
+  slow_torrent_inactive_timer: number
+  slow_torrent_ul_rate_threshold: number
+  ssrf_mitigation: boolean
+  validate_https_tracker_certificate: boolean
+
+  rss_auto_downloading_enabled: boolean
+  rss_download_repack_proper_episodes: boolean
+  rss_max_articles_per_feed: number
+  rss_processing_enabled: boolean
+  rss_refresh_interval: number
+  rss_smart_episode_filters: string
+
+  dyndns_domain: string
+  dyndns_enabled: boolean
+  dyndns_password: string
+  dyndns_service: number
+  dyndns_username: string
+
+  mail_notification_auth_enabled: boolean
+  mail_notification_email: string
+  mail_notification_enabled: boolean
+  mail_notification_password: string
+  mail_notification_sender: string
+  mail_notification_smtp: string
+  mail_notification_ssl_enabled: boolean
+  mail_notification_username: string
+
+  scan_dirs: Record<string, unknown>
+
+  [key: string]: unknown
+}
+
+export interface QBittorrentBuildInfo {
+  qt: string
+  libtorrent: string
+  boost: string
+  openssl: string
+  bitness: number
+  platform?: string
+}
+
+export interface QBittorrentAppInfo {
+  version: string
+  webAPIVersion?: string
+  buildInfo?: QBittorrentBuildInfo
+  processInfo?: QBittorrentProcessInfo
+}
+
+export interface QBittorrentProcessInfo {
+  launchTime: number
+}
+
+export interface ThemeSettings {
+  themeId: string
+  mode: ThemeMode
+  variation?: string
+}
+
+export type ThemeSlot = "default" | "mobile"
+
+export type ThemeSlots = Partial<Record<ThemeSlot, ThemeSettings>>
+
+export interface BuiltinTheme {
+  id: string
+  name: string
+  description?: string
+  premium: boolean
+  css?: string
+  preview?: {
+    light: Record<string, string>
+    dark: Record<string, string>
+  }
+}

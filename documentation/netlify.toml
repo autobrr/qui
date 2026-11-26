@@ -1,0 +1,22 @@
+[build]
+  publish = "build"
+  command = "(cd ../web && pnpm install --frozen-lockfile && pnpm build:demo) && rm -rf static/demo && cp -r ../web/dist-demo static/demo && pnpm build"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+[[redirects]]
+  from = "/chrome-extension"
+  to = "https://chromewebstore.google.com/detail/kbjnjgihepmcoilegnghgpmijbecoili"
+  status = 301
+
+[[redirects]]
+  from = "/firefox-extension"
+  to = "https://addons.mozilla.org/en-US/firefox/addon/qui/"
+  status = 301
+
+# The demo is the qui SPA under /demo/; a reload on a deep link needs the shell.
+[[redirects]]
+  from = "/demo/*"
+  to = "/demo/index.html"
+  status = 200

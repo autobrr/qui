@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" data-dynamic-favicon="svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>qui</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <script>
+      /* Anti-FOUC: Apply theme immediately before render */
+      (function() {
+        // ?theme=default shows the default theme for this visit, so the stored theme caches are skipped.
+        var defaultThemeVisit = false;
+        try {
+          defaultThemeVisit = new URLSearchParams(window.location.search).get('theme') === 'default';
+        } catch (e) {}
+        try {
+          // Spreadsheet disguise: the static icon is the qui logo, so blank it until useDynamicFavicon draws the sheet grid.
+          var cachedTheme = defaultThemeVisit ? null : JSON.parse(localStorage.getItem('theme-cache') || 'null');
+          if (cachedTheme && (cachedTheme.id === 'spreadsheet' || cachedTheme.id === 'spreadsheet-classic')) {
+            document.querySelector('link[data-dynamic-favicon="svg"]').href = 'data:,';
+          }
+        } catch (e) {}
+        try {
+          // Check if current theme is lightOnly (e.g., Napster)
+          var isLightOnly = !defaultThemeVisit && localStorage.getItem('theme-light-only') === 'true';
+
+          // Get stored theme preferences
+          var themeMode = localStorage.getItem('theme') || 'auto';
+          var isDark = !isLightOnly && (themeMode === 'dark' ||
+                       (themeMode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches));
+
+          // Apply dark class if needed
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+
+          // Set immediate background to prevent flash
+          // Default to minimal theme dark background
+          document.documentElement.style.backgroundColor = isDark ? 'oklch(0.1450 0 0)' : 'oklch(0.98 0 0)';
+          document.body && (document.body.style.backgroundColor = isDark ? 'oklch(0.1450 0 0)' : 'oklch(0.98 0 0)');
+
+          // Check if we have stored critical theme vars for more accurate color
+          var criticalVars = defaultThemeVisit ? null : localStorage.getItem('theme-critical-vars');
+          if (criticalVars) {
+            try {
+              var vars = JSON.parse(criticalVars);
+              if (vars.background) {
+                document.documentElement.style.backgroundColor = vars.background;
+                document.body && (document.body.style.backgroundColor = vars.background);
+              }
+            } catch(e) {}
+          }
+        } catch (e) {
+          // Fallback to dark theme on error
+          document.documentElement.style.backgroundColor = 'oklch(0.1450 0 0)';
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

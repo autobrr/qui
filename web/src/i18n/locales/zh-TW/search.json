@@ -1,0 +1,195 @@
+{
+  "pageTitle": "搜尋索引器",
+  "pageDescription": "搜尋您的索引器，並將釋出加入 qBittorrent。",
+  "indexerSheet": {
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "原生",
+      "jackett": "Jackett"
+    }
+  },
+  "instanceSelector": {
+    "offline": "離線"
+  },
+  "picker": {
+    "indexersTitle": "要搜尋的索引器",
+    "filter": "篩選",
+    "all": "全選",
+    "none": "全不選",
+    "done": "完成",
+    "noMatch": "沒有符合篩選的項目"
+  },
+  "form": {
+    "indexers": "索引器",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "移除 {{label}}",
+    "clearFields": "清除欄位",
+    "clearQuery": "清除搜尋內容",
+    "recentSearches": "最近的搜尋",
+    "noIndexersTitle": "尚未設定索引器",
+    "noIndexersBody": "新增索引器後，即可在此頁面搜尋。",
+    "noIndexersAction": "新增索引器",
+    "indexersFailed": "載入索引器失敗"
+  },
+  "searchForm": {
+    "advanced": "進階",
+    "searching": "搜尋中……",
+    "search": "搜尋",
+    "advancedNote": "在支援的索引器上，ID 與編號能讓搜尋精確比對。",
+    "searchType": "搜尋類型",
+    "searchQuery": "搜尋內容"
+  },
+  "searchTypes": {
+    "movies": {
+      "label": "電影",
+      "placeholder": "例如 \"Sample Movie 2024\"、\"Another Film 1999\"、\"tt1234567\""
+    },
+    "tv": {
+      "label": "劇集",
+      "placeholder": "例如 \"Sample Show S01E01\"、\"tvdb 123456\"、\"Fictional Series S02\""
+    },
+    "music": {
+      "label": "音樂",
+      "placeholder": "例如 \"Example Artist – Example Album\"、\"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "圖書與漫畫",
+      "placeholder": "例如 \"Example Book Title\"、\"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "應用程式與遊戲",
+      "placeholder": "例如 \"Sample OS ISO\"、\"Example App 2025\""
+    },
+    "xxx": {
+      "label": "成人",
+      "placeholder": "輸入具體的成人資源名稱"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "年份",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "季",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "集",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "藝術家",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "專輯",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "限制",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "偏移量",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "count_other": "{{count}} 筆結果",
+    "filteredCount_other": "{{shown}}/{{count}} 筆結果",
+    "searching_other": "正在搜尋 {{count}} 個索引器……",
+    "filterPlaceholder": "篩選結果……",
+    "clearFilters": "清除篩選",
+    "noMatches": "沒有符合篩選條件的結果。",
+    "cachedSummary": "已快取 {{cached}} · {{expires}} 過期",
+    "cachedAgo": "已快取 · {{age}}",
+    "live": "即時",
+    "partial": "不完整",
+    "partialHint": "部分索引器未回應。重新整理即可再次查詢。",
+    "refresh": "重新整理",
+    "refreshFromIndexers": "從索引器重新整理",
+    "refreshCooldown": "稍後即可再次重新整理",
+    "showMore": "顯示更多",
+    "shownOf": "已顯示 {{shown}}/{{total}}",
+    "categoryFallback": "分類 {{id}}",
+    "noResults": "找不到結果",
+    "noResultsFor": "未找到「{{query}}」的結果",
+    "noResultsHint": "請檢查拼字、換一種搜尋類型，或搜尋更多索引器。",
+    "searchAllIndexers": "搜尋所有索引器",
+    "failed": "搜尋失敗",
+    "retry": "重試",
+    "idleTitle": "搜尋您的索引器",
+    "idleHint": "輸入標題、IMDb ID（例如 tt1234567）或 TVDb ID（例如 tvdb 123456）。",
+    "free": "免費"
+  },
+  "facets": {
+    "collection": "服務",
+    "normal": "一般"
+  },
+  "sort": {
+    "label": "排序",
+    "seeders": "做種者最多",
+    "newest": "最新",
+    "oldest": "最舊",
+    "largest": "最大",
+    "smallest": "最小",
+    "title": "標題 A–Z",
+    "indexer": "索引器 A–Z"
+  },
+  "columns": {
+    "age": "發布至今"
+  },
+  "row": {
+    "add": "加入",
+    "addTo": "新增到",
+    "more": "更多操作",
+    "openIndexer": "在索引器上開啟",
+    "copyTitle": "複製標題",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× 上傳"
+  },
+  "bulk": {
+    "label": "已選結果",
+    "selected_other": "已選 {{count}} 項",
+    "selectShown": "全選顯示的結果"
+  },
+  "historyMeta": "{{type}} · {{count}} 條結果 · {{timestamp}}",
+  "table": {
+    "title": "標題",
+    "indexer": "索引器",
+    "size": "大小",
+    "seeders": "做種者",
+    "leechers": "下載者",
+    "category": "分類",
+    "source": "來源",
+    "group": "分組",
+    "freeleech": "Freeleech",
+    "actions": "操作",
+    "downloadTorrent": "下載 .torrent"
+  },
+  "refreshDialog": {
+    "title": "跳過快取？",
+    "description": "這將直接向每個選取的索引器傳送請求。請謹慎使用以避免觸發速率限制。短暫冷卻後可再次重新整理。",
+    "refreshNow": "立即重新整理"
+  },
+  "cache": {
+    "cacheAndLive": "快取 + 即時"
+  },
+  "card": {
+    "addToNamed": "新增到 {{name}}"
+  },
+  "toast": {
+    "noDownloadUrl": "此結果沒有可用的下載連結",
+    "invalidProtocol": "URL 協議無效",
+    "invalidUrl": "URL 格式無效"
+  }
+}

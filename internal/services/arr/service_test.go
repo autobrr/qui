@@ -1,0 +1,621 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package arr
+
+import (
+	"context"
+	"database/sql"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
+
+	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+)
+
+type testQuerier struct {
+	db *sql.DB
+}
+
+func (q *testQuerier) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return q.db.QueryRowContext(ctx, query, args...)
+}
+
+func (q *testQuerier) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return q.db.ExecContext(ctx, query, args...)
+}
+
+func (q *testQuerier) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return q.db.QueryContext(ctx, query, args...)
+}
+
+func (q *testQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	return q.db.BeginTx(ctx, opts)
+}
+
+func openTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+
+	_, err = db.ExecContext(t.Context(), `CREATE TABLE arr_id_cache (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, title_hash TEXT NOT NULL,
+		content_type TEXT NOT NULL CHECK(content_type IN ('movie','tv','anime','unknown')),
+		arr_instance_id INTEGER, imdb_id TEXT, tmdb_id INTEGER, tvdb_id INTEGER, tvmaze_id INTEGER,
+		titles_json TEXT, episode_map_season INTEGER, episode_map_episode INTEGER,
+		episode_map_absolute INTEGER, episode_map_known INTEGER NOT NULL DEFAULT 0,
+		is_negative BOOLEAN DEFAULT 0, is_incomplete INTEGER NOT NULL DEFAULT 0,
+		cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMP NOT NULL,
+		UNIQUE(title_hash,content_type)
+	)`)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	return db
+}
+
+func TestService_getArrTypeForContent(t *testing.T) {
+	s := &Service{}
+
+	tests := []struct {
+		name        string
+		contentType ContentType
+		want        models.ArrInstanceType
+	}{
+		{
+			name:        "movie maps to radarr",
+			contentType: ContentTypeMovie,
+			want:        models.ArrInstanceTypeRadarr,
+		},
+		{
+			name:        "tv maps to sonarr",
+			contentType: ContentTypeTV,
+			want:        models.ArrInstanceTypeSonarr,
+		},
+		{
+			name:        "anime maps to sonarr",
+			contentType: ContentTypeAnime,
+			want:        models.ArrInstanceTypeSonarr,
+		},
+		{
+			name:        "unknown returns empty",
+			contentType: ContentTypeUnknown,
+			want:        "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.getArrTypeForContent(tt.contentType)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestService_LookupExternalIDsReturnsCacheCancellation(t *testing.T) {
+	tests := []struct {
+		name    string
+		context func(t *testing.T) context.Context
+		wantErr error
+	}{
+		{
+			name: "context canceled",
+			context: func(t *testing.T) context.Context {
+				t.Helper()
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			wantErr: context.Canceled,
+		},
+		{
+			name: "deadline exceeded",
+			context: func(t *testing.T) context.Context {
+				t.Helper()
+				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				t.Cleanup(cancel)
+				return ctx
+			},
+			wantErr: context.DeadlineExceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cacheStore := models.NewArrIDCacheStore(&testQuerier{db: openTestDB(t)})
+			s := &Service{
+				cacheStore:       cacheStore,
+				nextCacheCleanup: time.Now().Add(time.Hour),
+			}
+
+			result, err := s.LookupExternalIDs(tt.context(t), "Example Movie", ContentTypeMovie)
+
+			require.Error(t, err)
+			require.ErrorIs(t, err, tt.wantErr)
+			assert.Nil(t, result)
+		})
+	}
+}
+
+func TestService_LookupExternalIDsUsesNegativeCache(t *testing.T) {
+	ctx := context.Background()
+	title := "Breaking Bad S01E01"
+
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected ARR request after negative cache hit: %s", r.URL.Path)
+	}))
+
+	titleHash := models.ComputeTitleHash(title)
+	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, nil, true, time.Hour))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.FromCache)
+	require.Equal(t, "cache", result.Source)
+	require.Nil(t, result.IDs)
+}
+
+func TestService_LookupExternalIDsKeepsLegacyPositiveCacheWhenAliasHydrationMisses(t *testing.T) {
+	ctx := context.Background()
+	title := "Haibara-kun no Tsuyokute Seishun New Game S01E01"
+	legacyIDs := &models.ExternalIDs{
+		TVDbID: 471000,
+		TMDbID: 316424,
+		IMDbID: "tt39122622",
+	}
+
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"series": null}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	titleHash := models.ComputeTitleHash(title)
+	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, legacyIDs, false, time.Hour))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.FromCache)
+	require.Equal(t, "cache", result.Source)
+	require.False(t, result.TitlesKnown)
+	require.Empty(t, result.Titles)
+	require.Equal(t, legacyIDs, result.IDs)
+
+	cacheEntry, err := cacheStore.Get(ctx, titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.False(t, cacheEntry.IsNegative)
+	require.False(t, cacheEntry.HasTitles)
+	require.Equal(t, *legacyIDs, cacheEntry.ExternalIDs)
+}
+
+func TestService_LookupExternalIDsHydratesLegacyPositiveCacheTitles(t *testing.T) {
+	ctx := context.Background()
+	title := "Haibara-kun no Tsuyokute Seishun New Game S01E01"
+	legacyIDs := &models.ExternalIDs{
+		TVDbID: 471000,
+		TMDbID: 316424,
+		IMDbID: "tt39122622",
+	}
+
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{
+				"series": {
+					"title": "Haibara's Teenage New Game+",
+					"alternateTitles": [
+						{"title": "Haibara-kun no Tsuyokute Seishun New Game"}
+					],
+					"tvdbId": 471000,
+					"tmdbId": 316424,
+					"imdbId": "tt39122622"
+				}
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	titleHash := models.ComputeTitleHash(title)
+	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, legacyIDs, false, time.Hour))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.FromCache)
+	require.Equal(t, "parse", result.Source)
+	require.True(t, result.TitlesKnown)
+	require.Equal(t, legacyIDs, result.IDs)
+	require.Equal(t, []string{
+		"Haibara's Teenage New Game+",
+		"Haibara-kun no Tsuyokute Seishun New Game",
+	}, result.Titles)
+
+	cacheEntry, err := cacheStore.Get(ctx, titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.False(t, cacheEntry.IsNegative)
+	require.True(t, cacheEntry.HasTitles)
+	require.Equal(t, result.Titles, cacheEntry.Titles)
+	require.Equal(t, *legacyIDs, cacheEntry.ExternalIDs)
+}
+
+func TestService_LookupExternalIDsUsesParseOnly(t *testing.T) {
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"movie": {"tmdbId": 27205, "imdbId": "tt1375666"}}`))
+		default:
+			t.Fatalf("unexpected ARR request: %s", r.URL.Path)
+		}
+	}))
+
+	result, err := service.LookupExternalIDs(context.Background(), "Inception", ContentTypeMovie)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "parse", result.Source)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}, result.IDs)
+}
+
+func newArrLookupTestService(t *testing.T, instanceType models.ArrInstanceType, handler http.Handler) (*Service, *models.ArrIDCacheStore) {
+	t.Helper()
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	db := testdb.NewMigratedSQLite(t, "arr-service")
+
+	key := []byte("01234567890123456789012345678901")
+	instanceStore, err := models.NewArrInstanceStore(db, key)
+	require.NoError(t, err)
+	_, err = instanceStore.Create(context.Background(), instanceType, "Test ARR", server.URL, "api-key", nil, nil, true, 1, 15)
+	require.NoError(t, err)
+
+	cacheStore := models.NewArrIDCacheStore(db)
+	service := NewService(instanceStore, cacheStore)
+	service.nextCacheCleanup = time.Now().Add(time.Hour)
+
+	return service, cacheStore
+}
+
+func TestService_LookupSeasonEpisodeTotalReturnsSeasonTitles(t *testing.T) {
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko"}}`))
+		case "/api/v3/series/7":
+			_, _ = w.Write([]byte(`{"id": 7, "title": "Oshi no Ko", "alternateTitles": [
+				{"title": "Oshi no Ko Romaji"},
+				{"title": "Oshi no Ko 2nd Season", "seasonNumber": 2},
+				{"title": "Oshi no Ko 3rd Season", "seasonNumber": 3}
+			]}`))
+		case "/api/v3/episode":
+			_, _ = w.Write([]byte(`[
+				{"id": 1, "seasonNumber": 2, "episodeNumber": 1},
+				{"id": 2, "seasonNumber": 2, "episodeNumber": 2}
+			]`))
+		default:
+			t.Fatalf("unexpected ARR request: %s", r.URL.Path)
+		}
+	}))
+
+	result, err := service.LookupSeasonEpisodeTotal(context.Background(), "Oshi.no.Ko.S02.1080p.WEB.x264-GRP", 2)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 2, result.TotalEpisodes)
+	require.Contains(t, result.Titles, "Oshi no Ko")
+	require.Contains(t, result.Titles, "Oshi no Ko Romaji")
+	require.Contains(t, result.Titles, "Oshi no Ko 2nd Season", "same-season alias must ride along")
+	require.NotContains(t, result.Titles, "Oshi no Ko 3rd Season", "other-season alias must be filtered")
+}
+
+func TestService_LookupSeasonEpisodeTotalKeepsTitlesWhenSeasonHasNoEpisodes(t *testing.T) {
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko"}}`))
+		case "/api/v3/series/7":
+			_, _ = w.Write([]byte(`{"id": 7, "title": "Oshi no Ko", "alternateTitles": [
+				{"title": "Oshi no Ko Romaji"}
+			]}`))
+		case "/api/v3/episode":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			t.Fatalf("unexpected ARR request: %s", r.URL.Path)
+		}
+	}))
+
+	result, err := service.LookupSeasonEpisodeTotal(context.Background(), "Oshi.no.Ko.S02.1080p.WEB.x264-GRP", 2)
+
+	require.NoError(t, err)
+	require.NotNil(t, result, "aliases must survive an empty season episode list")
+	require.Equal(t, 0, result.TotalEpisodes)
+	require.Contains(t, result.Titles, "Oshi no Ko")
+	require.Contains(t, result.Titles, "Oshi no Ko Romaji")
+}
+
+func TestService_LookupSeasonEpisodeTotalSurvivesHydrationFailure(t *testing.T) {
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko"}}`))
+		case "/api/v3/series/7":
+			w.WriteHeader(http.StatusInternalServerError)
+		case "/api/v3/episode":
+			_, _ = w.Write([]byte(`[
+				{"id": 1, "seasonNumber": 2, "episodeNumber": 1},
+				{"id": 2, "seasonNumber": 2, "episodeNumber": 2}
+			]`))
+		default:
+			t.Fatalf("unexpected ARR request: %s", r.URL.Path)
+		}
+	}))
+
+	result, err := service.LookupSeasonEpisodeTotal(context.Background(), "Oshi.no.Ko.S02.1080p.WEB.x264-GRP", 2)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 2, result.TotalEpisodes)
+	require.Equal(t, []string{"Oshi no Ko"}, result.Titles)
+}
+
+func TestSeasonLookupTitles_SuppressesExpansionForOtherSeasonAliasPacks(t *testing.T) {
+	season := func(i int) *int { return &i }
+	series := &SonarrSeries{
+		Title: "Oshi no Ko",
+		AlternateTitles: []AlternateTitle{
+			{Title: "Oshi no Ko Romaji"},
+			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2), SceneSeasonNumber: season(1)},
+			{Title: "Oshi no Ko Kai", SceneSeasonNumber: season(2)},
+			{Title: "Oshi no Ko", SceneSeasonNumber: season(1)},
+		},
+	}
+
+	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S01.1080p.WEB.x264-GRP", 1))
+
+	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.Kai.S01.1080p.WEB.x264-GRP", 1))
+	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.Kai.S02.1080p.WEB.x264-GRP", 2))
+
+	s2 := seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S02.1080p.WEB.x264-GRP", 2)
+	require.Contains(t, s2, "Oshi no Ko")
+	require.Contains(t, s2, "Oshi no Ko 2nd Season")
+
+	s1 := seasonLookupTitles(series, "Oshi.no.Ko.S01.1080p.WEB.x264-GRP", 1)
+	require.Contains(t, s1, "Oshi no Ko")
+	require.Contains(t, s1, "Oshi no Ko Romaji")
+}
+
+func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
+	season := func(i int) *int { return &i }
+	series := &SonarrSeries{
+		Title: "Oshi no Ko",
+		AlternateTitles: []AlternateTitle{
+			{Title: "Oshi no Ko Romaji"},
+			{Title: "Oshi no Ko Wide", SeasonNumber: season(-1)},
+			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2)},
+			{Title: "Oshi no Ko Scene S3", SceneSeasonNumber: season(3)},
+			{Title: "Oshi no Ko Scene Mapped", SeasonNumber: season(2), SceneSeasonNumber: season(1)},
+		},
+	}
+
+	s2 := titlesForSeason(series, 2)
+	require.Contains(t, s2, "Oshi no Ko")
+	require.Contains(t, s2, "Oshi no Ko Romaji")
+	require.Contains(t, s2, "Oshi no Ko Wide")
+	require.Contains(t, s2, "Oshi no Ko 2nd Season", "same-season alias must be kept (bridges 2nd-season locals)")
+	require.Contains(t, s2, "Oshi no Ko Scene Mapped", "Sonarr-season-2 alias must be kept for season 2")
+	require.NotContains(t, s2, "Oshi no Ko Scene S3", "a different season's alias must be dropped")
+
+	s1 := titlesForSeason(series, 1)
+	require.Contains(t, s1, "Oshi no Ko Romaji")
+	require.NotContains(t, s1, "Oshi no Ko 2nd Season", "season-2 alias must not bridge into a season-1 pack")
+	require.NotContains(t, s1, "Oshi no Ko Scene Mapped", "sceneSeasonNumber must not count as season alignment")
+	require.NotContains(t, s1, "Oshi no Ko Scene S3")
+
+	require.NotContains(t, titlesForSeason(series, 3), "Oshi no Ko Scene S3")
+
+	all := titlesFromSeries(series)
+	require.Contains(t, all, "Oshi no Ko 2nd Season")
+	require.Contains(t, all, "Oshi no Ko Scene S3")
+}
+
+func TestCacheWritesSurviveCallerCancellation(t *testing.T) {
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.NotFoundHandler())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	const title = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+	titleHash := models.ComputeTitleHash(title)
+	instance := &models.ArrInstance{ID: 1}
+	lookupResult := &ExternalIDsLookupResult{
+		IDs:    &models.ExternalIDs{TVDbID: 424536},
+		Titles: []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"},
+	}
+
+	result := service.cacheAndBuildResult(ctx, titleHash, title, ContentTypeTV, instance, lookupResult, "parse", true)
+	require.NotNil(t, result)
+
+	entry, err := cacheStore.Get(context.Background(), titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.NotNil(t, entry)
+	require.Equal(t, []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"}, entry.Titles)
+}
+
+func sonarrEpisodeMapHandler(t *testing.T, parseCalls *int, episodes string) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			*parseCalls++
+			_, _ = w.Write([]byte(`{
+				"series": {"title": "Solitude", "tvdbId": 471000},
+				"episodes": [` + episodes + `]
+			}`))
+		default:
+			t.Errorf("unexpected ARR request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+}
+
+const solitudeMappedEpisode = `{"seasonNumber": 4, "episodeNumber": 15, "absoluteEpisodeNumber": 81}`
+
+func TestService_LookupExternalIDsRoundTripsEpisodeMap(t *testing.T) {
+	ctx := context.Background()
+	title := "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv"
+	want := &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}
+	parseCalls := 0
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, solitudeMappedEpisode))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.Equal(t, "parse", result.Source)
+	require.True(t, result.EpisodeMapKnown)
+	require.Equal(t, want, result.EpisodeMap)
+
+	entry, err := cacheStore.Get(ctx, models.ComputeTitleHash(title), string(ContentTypeTV))
+	require.NoError(t, err)
+	require.True(t, entry.HasEpisodeMap)
+	require.Equal(t, want, entry.EpisodeMap)
+
+	cached, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.True(t, cached.FromCache)
+	require.True(t, cached.EpisodeMapKnown)
+	require.Equal(t, want, cached.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+}
+
+func TestService_LookupExternalIDsDoesNotRefetchWhenNoMapWasFound(t *testing.T) {
+	ctx := context.Background()
+	title := "Solitude.S04.1080p.WEB.H264-KAIZOKU"
+	parseCalls := 0
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, ""))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.True(t, result.EpisodeMapKnown)
+	require.Nil(t, result.EpisodeMap)
+
+	entry, err := cacheStore.Get(ctx, models.ComputeTitleHash(title), string(ContentTypeTV))
+	require.NoError(t, err)
+	require.True(t, entry.HasEpisodeMap)
+	require.Nil(t, entry.EpisodeMap)
+
+	cached, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.True(t, cached.FromCache)
+	require.True(t, cached.EpisodeMapKnown)
+	require.Nil(t, cached.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+}
+
+func TestService_LookupExternalIDsRefetchesPreMapRowOnce(t *testing.T) {
+	ctx := context.Background()
+	title := "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv"
+	titleHash := models.ComputeTitleHash(title)
+	parseCalls := 0
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, solitudeMappedEpisode))
+
+	require.NoError(t, cacheStore.SetWithTitles(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{TVDbID: 471000}, []string{"Solitude"}, nil, false, false, time.Hour))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.Equal(t, "parse", result.Source)
+	require.Equal(t, &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}, result.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+
+	cached, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.True(t, cached.FromCache)
+	require.Equal(t, result.EpisodeMap, cached.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+}
+
+func TestService_LookupExternalIDsServesCachedMapFromDisabledInstance(t *testing.T) {
+	ctx := context.Background()
+	title := "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv"
+	parseCalls := 0
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, solitudeMappedEpisode))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.NotNil(t, result.EpisodeMap)
+
+	instances, err := service.instanceStore.ListEnabledByType(ctx, models.ArrInstanceTypeSonarr)
+	require.NoError(t, err)
+	require.Len(t, instances, 1)
+	disabled := false
+	_, err = service.instanceStore.Update(ctx, instances[0].ID, &models.ArrInstanceUpdateParams{Enabled: &disabled})
+	require.NoError(t, err)
+
+	cached, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.NotNil(t, cached)
+	require.True(t, cached.FromCache)
+	require.Equal(t, result.EpisodeMap, cached.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+}
+
+func TestService_LookupExternalIDsLeavesMapUnknownWhenParseNeverAnswered(t *testing.T) {
+	ctx := context.Background()
+	title := "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv"
+	parseCalls := 0
+	parseHealthy := false
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			parseCalls++
+			if !parseHealthy {
+				http.Error(w, "boom", http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write([]byte(`{"series": {"title": "Solitude", "tvdbId": 471000}, "episodes": [` + solitudeMappedEpisode + `]}`))
+		case "/api/v3/series/lookup":
+			_, _ = w.Write([]byte(`[{"title": "Solitude", "tvdbId": 471000}]`))
+		default:
+			t.Errorf("unexpected ARR request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.Equal(t, "lookup", result.Source)
+	require.False(t, result.EpisodeMapKnown)
+	require.Nil(t, result.EpisodeMap)
+
+	entry, err := cacheStore.Get(ctx, models.ComputeTitleHash(title), string(ContentTypeTV))
+	require.NoError(t, err)
+	require.True(t, entry.HasTitles)
+	require.False(t, entry.HasEpisodeMap)
+
+	parseHealthy = true
+	healed, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.Equal(t, "parse", healed.Source)
+	require.Equal(t, &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}, healed.EpisodeMap)
+	require.Equal(t, 2, parseCalls)
+}

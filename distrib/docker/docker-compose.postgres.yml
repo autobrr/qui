@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: qui-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qui
+      POSTGRES_PASSWORD: qui
+      POSTGRES_DB: qui
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qui:
+    image: ghcr.io/autobrr/qui:latest
+    container_name: qui
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "7476:7476"
+    volumes:
+      - ./qui:/config
+    environment:
+      QUI__DATABASE_ENGINE: postgres
+      QUI__DATABASE_DSN: postgres://qui:qui@postgres:5432/qui?sslmode=disable

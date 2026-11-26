@@ -1,0 +1,230 @@
+---
+sidebar_position: 8
+title: Launch external programs from qui
+sidebar_label: External Programs
+description: Run scripts or desktop applications from the torrent context menu, with path mapping and torrent metadata as arguments.
+---
+
+# External Programs
+
+Launch scripts or desktop applications from the torrent context menu. Each program definition stores the executable path, optional arguments, and path-mapping rules. qui uses them to pass torrent metadata to your tools.
+
+## Security: allow list
+
+Define an allow list in [`config.toml`](../configuration/reference.md) so qui executes only trusted paths:
+
+```toml
+externalProgramAllowList = [
+  "/usr/local/bin/sonarr",
+  "/home/user/bin"  # Directories allow any executable inside them
+]
+```
+
+If you leave the list empty, qui accepts any path. The allow list lives only in `config.toml`. The web UI cannot edit this file, so you retain full control over the binaries that qui runs.
+
+## Where programs run
+
+External programs run on the machine or container that hosts the qui backend, not on the browser client. Make sure that the host process has access to all required executable paths, mounts, and environment variables. If you deploy qui inside Docker, qui executes programs inside the container. If an executable resides on the host, mount that executable into the container.
+
+## Creating and editing a program
+
+1. Open qui and go to **Settings → External programs**.
+2. Click **Add program**.
+3. Fill in the form fields, then click **Add program**. Turn on **Enabled** to show the program in torrent context menus.
+4. To change a program, click it in the list. The switch on each row turns the program on or off, and **Delete** removes it.
+
+### Field reference
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Display label in the torrent context menu and settings list. Must be unique. |
+| **Program path** | Absolute path to the executable or script. Use the host path that the qui backend sees (for example `/usr/local/bin/my-script.sh`, `C:\Scripts\postprocess.bat`, `C:\python312\python.exe`). |
+| **Arguments** | Optional string of command-line arguments. qui substitutes torrent metadata placeholders before it spawns the process. |
+| **Path mappings** | Optional array of `from → to` prefixes that rewrite remote qBittorrent paths into local mount points. If qui runs locally and qBittorrent stores data elsewhere, configure path mappings here. |
+| **Open in a terminal** | Opens the program in an interactive terminal window. See [Supported terminal emulators](#supported-terminal-emulators) for the list of detected terminals. If you run GUI apps or background daemons, disable this option. |
+| **Enabled** | Controls whether the program appears in the torrent context menu. |
+
+## Torrent placeholders
+
+qui parses arguments with shell-style quoting and replaces each placeholder with the torrent value before execution.
+
+| Placeholder | Value |
+|-------------|-------|
+| `{hash}` | Torrent hash (always lowercase) |
+| `{name}` | Torrent name |
+| `{save_path}` | Torrent save path after qui applies path mappings |
+| `{content_path}` | Full content path (file or folder) after qui applies path mappings |
+| `{category}` | Torrent category |
+| `{tags}` | Comma-separated list of tags |
+| `{state}` | qBittorrent torrent state string |
+| `{size}` | Size in bytes |
+| `{progress}` | Progress value between 0 and 1 rounded to two decimal places |
+| `{comment}` | Torrent comment |
+
+**Example arguments:**
+
+```text
+"{hash}" "{name}" --save "{save_path}" --category "{category}" --tags "{tags}"
+```
+
+```text
+"D:\Upload Assistant\upload.py" "{save_path}\{name}"
+```
+
+qui splits the template into arguments before it runs substitutions. Quotes keep a path with spaces as one argument. qui removes the quotes, so the program receives the value without them. If the program requires literal quotes, put a different quote type inside the outer pair, for example `'"{name}"'`.
+
+## Path mappings
+
+If the filesystem paths from qBittorrent do not match the paths visible to qui, use path mappings. Each mapping replaces the longest matching prefix.
+
+| Remote path (from qBittorrent) | Local path seen by qui | Mapping |
+|--------------------------------|------------------------|---------|
+| `/data/torrents` | `/mnt/qbt` | `from=/data/torrents`, `to=/mnt/qbt` |
+| `Z:\downloads` | `/srv/downloads` | `from=Z:\downloads`, `to=/srv/downloads` |
+
+With the first mapping, `{save_path}` becomes `/mnt/qbt/Movies` instead of `/data/torrents/Movies`. Use the same path separator style (`/` or `\`) as the remote qBittorrent instance. If no mapping matches, qui uses the original path.
+
+## Launch modes
+
+- **Enable terminal window**: Use this option for scripts that require interaction or visible output.
+- **Disable terminal window**: Use this option for GUI applications or background tasks.
+
+Programs run asynchronously. qui does not wait for processes to complete.
+
+### Supported terminal emulators
+
+If you turn on **Open in a terminal**, qui detects and uses an available terminal emulator. Detection priority:
+
+1. **TERM_PROGRAM environment variable**: qui accepts `WezTerm`, `Hyper`, `kitty`, `alacritty`, `iTerm.app`, and `Apple_Terminal`. If qui finds the matching terminal, it uses it
+2. **Cross-platform terminals** (checked on all platforms):
+   - WezTerm
+   - Hyper
+   - Kitty
+   - Alacritty
+3. **Linux terminals**:
+   - GNOME Terminal
+   - Konsole
+   - Xfce4 Terminal
+   - MATE Terminal
+   - xterm
+   - Terminator
+4. **macOS native terminals**:
+   - iTerm2
+   - Terminal.app
+5. **Fallback**: If qui finds no terminal, qui runs the command in the background with `sh -c`
+
+On Windows, terminal-window programs use `cmd.exe`. With the terminal option disabled, qui launches native executables directly and passes arguments literally, including shell characters such as `&` and `%`. Batch files (`.bat` and `.cmd`) also use `cmd.exe`. In terminal and batch mode, qui quotes each argument for `cmd.exe`, so the program gets it literally too. `%VARIABLE%` does not expand, and operators such as `&` do not run. If a batch file needs an environment variable, read it in the script. A double quote (`"`) in a value reaches the program as two double quotes. This is the rule for batch file arguments. Programs built with current Microsoft compilers read the pair as one quote. Some other programs, for example programs written in Go, split the value at that point.
+
+For Python, PowerShell and other scripts, set **Program Path** to the interpreter executable and pass the script path as the first argument. File associations and shortcuts are not used for background launches. If an existing program uses a shortcut, change **Program Path** to its target executable.
+
+:::tip
+Terminal windows stay open after the command finishes so you can inspect output. Close the window when you finish.
+:::
+
+## Executing programs
+
+1. Select one or more torrents
+2. Right-click to open the context menu
+3. Hover **External Programs**, then click the program name
+4. qui queues one execution per selected torrent and reports results through toast notifications (success, partial success, or failure)
+
+Execution requests include only torrents from the currently selected instance. The submenu hides disabled programs. qui logs start failures at `error` level and non-zero exit codes at `warn` level with the full command line. If you enable debug logging, qui also logs each command before execution.
+
+## REST API
+
+Manage external programs through the backend API. All endpoints require authentication. Create, update, and remove need a signed-in browser, or authentication turned off, and return `403` to an API key. List and execute work with an API key:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/external-programs` | List programs |
+| `POST` | `/api/external-programs` | Create a program |
+| `PUT` | `/api/external-programs/{id}` | Update a program |
+| `DELETE` | `/api/external-programs/{id}` | Remove a program |
+| `POST` | `/api/external-programs/execute` | Execute a program |
+
+**Example request:**
+
+```http
+POST /api/external-programs/execute
+Content-Type: application/json
+
+{
+  "program_id": 2,
+  "instance_id": 1,
+  "hashes": ["c0ffee...", "deadbeef..."]
+}
+```
+
+The response contains a `results` array with per-hash `success` flags and optional error messages. Treat the endpoint as fire-and-forget. It returns after qui queues the programs. A program can start later. For more information, see [Execution limit](#execution-limit).
+
+## Execution limit
+
+qui has 8 execution slots. This limit applies to all instances, automations, cross-seed rules, and manual runs together. Other programs wait for a free slot, so a program can start later than its trigger. To change the limit, set `externalProgramMaxRunning` in `config.toml` or `QUI__EXTERNAL_PROGRAM_MAX_RUNNING`, then restart qui.
+
+- A program that runs directly holds its slot until it exits, including console executables on Windows.
+- A recognized Windows GUI executable releases its slot after startup. It still receives arguments literally.
+- A program that runs in a terminal window, or a Windows batch file, holds its slot only while qui starts it.
+- If qui finds no terminal emulator, for example in Docker, a terminal-window program runs directly and holds its slot until it exits.
+- If a program already waits for a torrent, qui does not queue the same program for that torrent again. An automation rule that matches the torrent on each pass therefore queues only one run.
+- At most 1000 programs can wait. When the queue is full, qui does not start the program. qui writes "not started: execution queue full" to the activity log and a warning to the qui log.
+- A program that waits for more than 30 minutes does not start. qui writes "not started: execution limit reached" to the activity log and a warning to the qui log.
+- When qui shuts down, it drops the programs that wait.
+
+On Windows, qui resolves the program through `PATH` and `PATHEXT` before choosing how to launch it. A path without an extension that resolves to `.bat` or `.cmd` follows the batch-file behavior above. If an argument for a batch file or a terminal window contains a line break, qui does not start the program. `cmd.exe` stops the command at a line break and drops the rest of the arguments.
+
+A native GUI program can still show its window. GUI programs often stay open for user interaction, so they release their slot after startup. Other programs can then start without waiting for a window to close. qui identifies these programs from the executable's Windows GUI subsystem. If it cannot read that information, it holds the slot until the process exits. If a program starts another process and exits, qui tracks the process it launched, not the replacement.
+
+## Automation integration
+
+When torrents match configured conditions, [automation rules](./automations.md) trigger external programs. Cross-seed [rules](./cross-seed/rules.md) can also run a program after qui adds a cross-seed torrent.
+
+### Setting up automation triggers
+
+1. Create and enable an external program in **Settings → External programs**
+2. Go to **Automations** and create or edit a rule
+3. Add an **External Program** action and select your program
+4. Set the conditions of the rule. The program runs for each torrent that matches them, unless a later rule with an enabled External Program action matches the same torrent. Then only the program of the later rule runs (see [External Program](./automations.md#external-program))
+
+### Behavior
+
+| Aspect | Description |
+|--------|-------------|
+| **Execution** | Programs run asynchronously (fire-and-forget) and do not block automation processing |
+| **Configuration** | Automation uses the same program configuration (path, arguments, path mappings) as manual execution |
+| **Availability** | The dropdown lists enabled programs. A disabled program stays in the list, marked "(disabled)", only when the rule already uses it |
+| **Combinable** | You can combine this action with other actions (speed limits, share limits, pause, tag, category) |
+
+### Activity logging
+
+qui logs automation executions in the activity feed with:
+- Rule name and rule ID that triggered the execution
+- Torrent name and hash
+- Success or failure status
+- Error details if the program failed to start
+
+:::note
+qui logs success after the program starts, not when qui queues the task. If the program fails to start (for example, executable not found or permission denied), qui captures and logs the error.
+
+On Windows, batch and terminal launchers report their activity after the command wrapper exits so qui can detect dispatch errors. A long-running batch script therefore delays its activity entry until completion. Restarting qui before it exits can leave no entry for that run. Native GUI programs report successful startup without waiting for the window to close.
+:::
+
+### Example use cases
+
+**Post-processing completed downloads:**
+- Condition: `State is completed`
+- Action: External Program that runs a media processing script
+
+**Webhook notifications:**
+- Condition: `Is Unregistered is true`
+- Action: External Program that sends a notification via curl/webhook
+
+**Media library scans:**
+- Condition: `Category is movies`
+- Action: External Program that triggers a Plex or Jellyfin scan
+
+## Troubleshooting
+
+- **Docker**: If qui runs in Docker, place the executable inside the container or bind-mount it from the host.
+- **Paths are wrong**: Add or adjust path mappings so `{save_path}` and `{content_path}` resolve to local mount points.
+- **Multiple torrents**: The program runs once per torrent, and runs can overlap. Runs that open a terminal window, and Windows batch files, hold a slot only while qui starts them. For more information, see [Execution limit](#execution-limit). Make sure that your script handles concurrent executions or uses a lock.
+- **Automation not triggering**: Make sure that you enabled the program in **Settings → External programs**. Disabled programs do not appear in the dropdown for new rules.

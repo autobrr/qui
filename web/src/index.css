@@ -1,0 +1,478 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* Keep only the custom accordion animations not provided by tw-animate-css */
+@theme {
+  /* These are the only custom animations we need - tw-animate-css handles the rest */
+  --animate-accordion-down: accordion-down 0.1s ease-out;
+  --animate-accordion-up: accordion-up 0.1s ease-out;
+  --animate-feature-notice-pulse: feature-notice-pulse 1.6s ease-out infinite;
+
+  @keyframes feature-notice-pulse {
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 30%, transparent);
+    }
+    70%,
+    100% {
+      box-shadow: 0 0 8px 6px transparent;
+    }
+  }
+}
+
+/* Hide scrollbars on mobile devices */
+@media (max-width: 768px) {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  *::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  * {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
+
+/* Custom accordion animations not provided by tw-animate-css */
+@layer utilities {
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+@custom-variant dark (&:is(.dark *));
+/* A phone turned sideways, as useIsPhone in hooks/useMediaQuery.ts reads it. */
+@custom-variant sideways (@media (pointer: coarse) and (max-height: 499px) and (max-width: 1023px));
+/* A window too short for the compact rows of the sidebar. */
+@custom-variant short (@media (max-height: 760px));
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.1450 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.1450 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.1450 0 0);
+  --primary: oklch(0.2050 0 0);
+  --primary-foreground: oklch(0.9850 0 0);
+  --secondary: oklch(0.9700 0 0);
+  --secondary-foreground: oklch(0.2050 0 0);
+  --muted: oklch(0.9700 0 0);
+  --muted-foreground: oklch(0.5560 0 0);
+  --accent: oklch(0.9700 0 0);
+  --accent-foreground: oklch(0.2050 0 0);
+  --destructive: oklch(0.5770 0.2450 27.3250);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9220 0 0);
+  --input: oklch(0.9220 0 0);
+  --ring: oklch(0.7080 0 0);
+  --chart-1: oklch(0.8100 0.1000 252);
+  --chart-2: oklch(0.6200 0.1900 260);
+  --chart-3: oklch(0.5500 0.2200 263);
+  --chart-4: oklch(0.4900 0.2200 264);
+  --chart-5: oklch(0.4200 0.1800 266);
+  --sidebar: oklch(0.9850 0 0);
+  --sidebar-foreground: oklch(0.1450 0 0);
+  --sidebar-primary: oklch(0.2050 0 0);
+  --sidebar-primary-foreground: oklch(0.9850 0 0);
+  --sidebar-accent: oklch(0.9700 0 0);
+  --sidebar-accent-foreground: oklch(0.2050 0 0);
+  --sidebar-border: oklch(0.9220 0 0);
+  --sidebar-ring: oklch(0.7080 0 0);
+  --ratio-bad: oklch(0.5770 0.2450 27.3250);
+  --ratio-almost: oklch(0.6920 0.2041 42.4293);
+  --ratio-good: oklch(0.6250 0.1772 140.4448);
+  --ratio-best: oklch(0.4880 0.2172 264.3763);
+  --success: oklch(0.5270 0.1540 150.0690);
+  --warning: oklch(0.5550 0.1630 48.9980);
+  --info: oklch(0.5460 0.2450 262.8810);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius: 0.625rem;
+  --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: oklch(0.1450 0 0);
+  --foreground: oklch(0.9850 0 0);
+  --card: oklch(0.2050 0 0);
+  --card-foreground: oklch(0.9850 0 0);
+  --popover: oklch(0.2690 0 0);
+  --popover-foreground: oklch(0.9850 0 0);
+  --primary: oklch(0.9220 0 0);
+  --primary-foreground: oklch(0.2050 0 0);
+  --secondary: oklch(0.2690 0 0);
+  --secondary-foreground: oklch(0.9850 0 0);
+  --muted: oklch(0.2690 0 0);
+  --muted-foreground: oklch(0.7080 0 0);
+  --accent: oklch(0.3710 0 0);
+  --accent-foreground: oklch(0.9850 0 0);
+  --destructive: oklch(0.7040 0.1910 22.2160);
+  --destructive-foreground: oklch(0.9850 0 0);
+  --border: oklch(0.2750 0 0);
+  --input: oklch(0.3250 0 0);
+  --ring: oklch(0.5560 0 0);
+  --chart-1: oklch(0.8100 0.1000 252);
+  --chart-2: oklch(0.6200 0.1900 260);
+  --chart-3: oklch(0.5500 0.2200 263);
+  --chart-4: oklch(0.4900 0.2200 264);
+  --chart-5: oklch(0.4200 0.1800 266);
+  --sidebar: oklch(0.2050 0 0);
+  --sidebar-foreground: oklch(0.9850 0 0);
+  --sidebar-primary: oklch(0.4880 0.2430 264.3760);
+  --sidebar-primary-foreground: oklch(0.9850 0 0);
+  --sidebar-accent: oklch(0.2690 0 0);
+  --sidebar-accent-foreground: oklch(0.9850 0 0);
+  --sidebar-border: oklch(0.2750 0 0);
+  --sidebar-ring: oklch(0.4390 0 0);
+  --ratio-bad: oklch(0.7040 0.1910 22.2160);
+  --ratio-almost: oklch(0.7693 0.0876 34.1875);
+  --ratio-good: oklch(0.8577 0.1092 142.7153);
+  --ratio-best: oklch(0.4880 0.2172 264.3763);
+  --success: oklch(0.7920 0.2090 151.7110);
+  --warning: oklch(0.8280 0.1890 84.4290);
+  --info: oklch(0.7070 0.1650 254.6240);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --radius: 0.625rem;
+  --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+  --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+
+  --text-10: 10px;
+  --text-13: 13px;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+  --animate-shine: shine var(--duration) infinite linear;
+  @keyframes shine {
+  0% {
+    background-position: 0% 0%;
+    transform: translateZ(0);
+    }
+  50% {
+    background-position: 100% 100%;
+    transform: translateZ(0);
+    }
+  to {
+    background-position: 0% 0%;
+    transform: translateZ(0);
+    }
+  }
+}
+
+/* Base styles for the app */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* Full-height layouts subtract both, because #root clips what extends below the screen. */
+  :root {
+    --app-inset-top: env(safe-area-inset-top);
+    --app-fade-gap: 0px;
+  }
+
+  /* iOS 26.1+ Home Screen web apps fade the content below the status bar (autobrr/qui#2520); the top inset can be 0 there, so the gap is fixed. */
+  @media (display-mode: standalone) {
+    @supports (-webkit-touch-callout: none) {
+      :root {
+        --app-fade-gap: 20px;
+      }
+    }
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    letter-spacing: var(--tracking-normal);
+    font-family: var(--font-sans);
+  }
+
+  /* The safe-area space is on #root, not on body: an open dialog or menu locks scrolling, and the lock sets the padding of body to 0. MobileFooterNav handles the bottom. */
+  #root {
+    padding-top: var(--app-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Apply font families from theme */
+  .font-sans {
+    font-family: var(--font-sans);
+  }
+
+  .font-serif {
+    font-family: var(--font-serif);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Ensure proper font inheritance */
+  code, pre, kbd, samp {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Theme transition enhancements */
+@layer base {
+  /* Smooth transitions for theme-aware elements */
+  .theme-transition [data-theme] {
+    transition: opacity 200ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+
+  /* Icon transitions */
+  .theme-transition svg:not([class*="lucide"]) {
+    transition: color 300ms cubic-bezier(0.4, 0.0, 0.2, 1),
+                transform 300ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+
+  /* Interactive element hover states during transition */
+  .theme-transition button:hover,
+  .theme-transition a:hover,
+  .theme-transition [role="button"]:hover {
+    transition-duration: 150ms;
+  }
+
+  /* Subtle spin animation for theme toggle */
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-spin-slow {
+    animation: spin-slow 400ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+}
+
+/* Custom scrollbar styles */
+@layer base {
+  /* Set color-scheme for native scrollbar theming in Safari */
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  /* Base styles for all browsers */
+  * {
+    scrollbar-width: thin;
+  }
+
+  /* Chrome, Edge, and Safari */
+  *::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: var(--radius);
+  }
+
+  /* Use CSS variables directly for better Safari compatibility */
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: var(--radius);
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+
+  /* Firefox with relative color support */
+  @supports (color: oklch(from red l c h)) {
+    * {
+      scrollbar-color: oklch(from var(--border) l c h) transparent;
+    }
+  }
+
+  /* Firefox fallback */
+  @supports not (color: oklch(from red l c h)) {
+    * {
+      scrollbar-color: var(--border) transparent;
+    }
+  }
+
+  /* Additional Safari-specific optimizations */
+  @supports (-webkit-appearance: none) and (not (-moz-appearance: none)) {
+    /* Ensure Safari uses the CSS variables */
+    *::-webkit-scrollbar-thumb {
+      background-color: var(--border) !important;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: var(--muted-foreground) !important;
+    }
+  }
+
+  /* Only enable momentum scrolling helpers on devices with any coarse pointer (e.g. touch) */
+  @supports (-webkit-overflow-scrolling: touch) {
+    @media (any-pointer: coarse) {
+      * {
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Auto-hiding scrollbars for table - show on hover or when scrolling */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.2s;
+  }
+
+  .scrollbar-thin:hover,
+  .scrollbar-thin:focus,
+  .scrollbar-thin:focus-within {
+    scrollbar-color: var(--border) transparent;
+  }
+
+  /* Webkit browsers (Chrome, Safari, Edge) */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+
+  .scrollbar-thin:hover::-webkit-scrollbar-thumb,
+  .scrollbar-thin:focus::-webkit-scrollbar-thumb,
+  .scrollbar-thin:focus-within::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+}
+
+/* The color of an instance mark: the hue that the user picked (--mark-hue), with the chroma of the theme's
+   primary color and a lightness that reads on the sidebar in light and dark mode. See lib/instance-marks.ts.
+   The name starts with text-, because menu and select items gray out each svg whose class has no text-. */
+@layer utilities {
+  .text-instance-mark {
+    color: oklch(from var(--primary) 0.55 clamp(0.07, c, 0.19) var(--mark-hue));
+  }
+
+  .dark .text-instance-mark {
+    color: oklch(from var(--primary) 0.75 clamp(0.07, c, 0.17) var(--mark-hue));
+  }
+}

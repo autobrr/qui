@@ -1,0 +1,501 @@
+package clientmigrate
+
+import (
+	"bytes"
+	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
+
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
+)
+
+type RTorrentImport struct {
+	opts Options
+}
+
+func NewRTorrentImporter(opts Options) *RTorrentImport {
+	return &RTorrentImport{opts: opts}
+}
+
+var (
+	rtStateFileExtension         = ".rtorrent"
+	libtorrentStateFileExtension = ".libtorrent_resume"
+)
+
+func (i *RTorrentImport) Migrate() error {
+	torrentsSessionDir := i.opts.SourceDir
+
+	sourceDirInfo, err := os.Stat(torrentsSessionDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return errors.Errorf("source directory does not exist: %s", torrentsSessionDir)
+		}
+
+		return errors.Wrapf(err, "source directory error: %s", torrentsSessionDir)
+	}
+
+	if !sourceDirInfo.IsDir() {
+		return errors.Errorf("source is a file, not a directory: %s", torrentsSessionDir)
+	}
+
+	if !i.opts.DryRun {
+		if err := os.MkdirAll(i.opts.QbitDir, os.ModePerm); err != nil {
+			return errors.Wrapf(err, "qbit directory error: %s", i.opts.QbitDir)
+		}
+	}
+
+	matches, err := filepath.Glob(filepath.Join(torrentsSessionDir, "*.torrent"))
+	if err != nil {
+		return errors.Wrapf(err, "glob error: %s", torrentsSessionDir)
+	}
+
+	if len(matches) == 0 {
+		log.Info().Msgf("Found 0 files to process in: %s", torrentsSessionDir)
+		return nil
+	}
+
+	totalJobs := len(matches)
+
+	log.Info().Msgf("Total torrents to process: %d", totalJobs)
+
+	positionNum := 0
+	imported := 0
+	failed := 0
+	skipped := 0
+	for _, match := range matches {
+		positionNum++
+
+		switch i.importTorrent(match, positionNum, totalJobs) {
+		case rtorrentImported:
+			imported++
+		case rtorrentFailed:
+			failed++
+		case rtorrentSkipped:
+			skipped++
+		}
+	}
+
+	logImportSummary(i.opts.DryRun, imported, failed, skipped, totalJobs)
+
+	return nil
+}
+
+type rtorrentOutcome int
+
+const (
+	rtorrentImported rtorrentOutcome = iota
+	rtorrentFailed
+	rtorrentSkipped
+)
+
+func (i *RTorrentImport) importTorrent(match string, positionNum, totalJobs int) rtorrentOutcome {
+	file, err := metainfo.LoadFromFile(match)
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not load torrent file %s", match)
+		return rtorrentFailed
+	}
+
+	if len(file.InfoBytes) == 0 {
+		log.Debug().Msgf("(%d/%d) skipping magnet/meta download session file: %s", positionNum, totalJobs, match)
+		return rtorrentSkipped
+	}
+
+	metaInfo, err := file.UnmarshalInfo()
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not unmarshal torrent file %s", match)
+		return rtorrentFailed
+	}
+
+	torrentID := file.HashInfoBytes().HexString()
+
+	torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
+
+	if _, err = os.Stat(torrentOutFile); err == nil {
+		log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
+		return rtorrentSkipped
+	}
+
+	resumeFile, err := i.decodeRTorrentLibTorrentResumeFile(match)
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not decode rtorrent libtorrent resume file %s for %s", match, torrentID)
+		return rtorrentFailed
+	}
+
+	rtFile, err := i.decodeRTorrentFile(match)
+	if err != nil {
+		log.Error().Err(err).Msgf("Could not decode rtorrent state file %s for %s", match, torrentID)
+		return rtorrentFailed
+	}
+
+	pieces, complete := rtorrentPieces(resumeFile, &metaInfo)
+	if !complete {
+		log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.Name, match)
+		return rtorrentSkipped
+	}
+
+	dir := rtorrentSaveDir(rtFile.Directory, i.opts.PathReplaces)
+
+	if !filepath.IsAbs(dir) {
+		log.Warn().Msgf("(%d/%d) %s download directory %q is not an absolute path on this OS, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.Name, rtFile.Directory)
+		return rtorrentSkipped
+	}
+
+	if i.opts.DryRun {
+		log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
+		return rtorrentImported
+	}
+
+	newFastResume := newRTorrentFastresume(match, dir, file, &metaInfo, resumeFile, rtFile)
+
+	newFastResume.Pieces = pieces
+
+	fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
+	if err = newFastResume.Encode(fastResumeOutFile); err != nil {
+		log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s", fastResumeOutFile)
+		return rtorrentFailed
+	}
+
+	if err = CopyFile(match, torrentOutFile); err != nil {
+		log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s", torrentOutFile)
+		return rtorrentFailed
+	}
+
+	log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
+
+	return rtorrentImported
+}
+
+func rtorrentSaveDir(directory string, rules []PathReplace) string {
+	dir := directory
+	if strings.HasPrefix(dir, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			dir = filepath.Join(home, dir[2:])
+		}
+	}
+	return filepath.Clean(replacePath(dir, rules))
+}
+
+func newRTorrentFastresume(match, dir string, file *metainfo.MetaInfo, metaInfo *metainfo.Info, resumeFile *RTorrentLibTorrentResumeFile, rtFile *RTorrentTorrentFile) Fastresume {
+	addedTime := firstNonZero(
+		strToIntClean(rtFile.Custom.AddTime),
+		rtFile.TimestampStarted,
+		fileModTime(match+rtStateFileExtension),
+		time.Now().Unix(),
+	)
+
+	finishedTime := firstNonZero(rtFile.TimestampFinished, addedTime)
+
+	seedingSince := firstNonZero(strToIntClean(rtFile.Custom.SeedingTime), finishedTime)
+	seedingDuration := max(time.Now().Unix()-seedingSince, 0)
+
+	totalDownloaded := rtFile.TotalDownloaded
+	if totalDownloaded == 0 {
+		totalDownloaded = metaInfo.TotalLength()
+	}
+
+	paused := int64(1)
+	if rtFile.State == 1 {
+		paused = 0
+	}
+
+	newFastResume := Fastresume{
+		ActiveTime:                seedingDuration,
+		AddedTime:                 addedTime,
+		Allocation:                "sparse",
+		ApplyIPFilter:             1,
+		AutoManaged:               1 - paused,
+		CompletedTime:             finishedTime,
+		DisableDHT:                0,
+		DisableLSD:                0,
+		DisablePEX:                0,
+		DownloadRateLimit:         -1,
+		FileFormat:                "libtorrent resume file",
+		FileVersion:               1,
+		FilePriority:              rtorrentFilePriorities(resumeFile.Files, len(metaInfo.UpvertedFiles())),
+		FinishedTime:              seedingDuration,
+		LastDownload:              0,
+		LastSeenComplete:          finishedTime,
+		LastUpload:                0,
+		LibTorrentVersion:         "1.2.11.0",
+		MaxConnections:            16777215,
+		MaxUploads:                -1,
+		NumComplete:               16777215,
+		NumDownloaded:             16777215,
+		NumIncomplete:             0,
+		Paused:                    paused,
+		Peers:                     "",
+		Peers6:                    "",
+		QbtCategory:               rtorrentLabel(rtFile.Custom1),
+		QbtContentLayout:          "Original",
+		QbtFirstLastPiecePriority: 0,
+		QbtName:                   "",
+		QbtRatioLimit:             -2000,
+		QbtSavePath:               dir,
+		QbtSeedStatus:             1,
+		QbtSeedingTimeLimit:       -2,
+		QbtTags:                   []string{"migrated"},
+		SavePath:                  dir,
+		SeedMode:                  0,
+		SeedingTime:               seedingDuration,
+		SequentialDownload:        0,
+		ShareMode:                 0,
+		StopWhenReady:             0,
+		SuperSeeding:              0,
+		TotalDownloaded:           totalDownloaded,
+		TotalUploaded:             rtFile.TotalUploaded,
+		UploadMode:                0,
+		UploadRateLimit:           -1,
+		URLList:                   file.UrlList,
+	}
+
+	setRTorrentLayout(&newFastResume, metaInfo, dir)
+
+	newFastResume.Trackers = rtorrentTrackers(file, resumeFile)
+
+	newFastResume.InfoHash = file.HashInfoBytes().Bytes()
+
+	return newFastResume
+}
+
+func setRTorrentLayout(fr *Fastresume, metaInfo *metainfo.Info, dir string) {
+	if !metaInfo.IsDir() {
+		fr.QbtHasRootFolder = 0
+		return
+	}
+
+	if filepath.Base(dir) == metaInfo.Name {
+		savePath := filepath.Dir(dir)
+		fr.SavePath = savePath
+		fr.QbtSavePath = savePath
+		fr.QbtHasRootFolder = 1
+		return
+	}
+
+	fr.QbtContentLayout = "NoSubfolder"
+	fr.QbtHasRootFolder = 0
+
+	files := metaInfo.UpvertedFiles()
+	mapped := make([]string, 0, len(files))
+	for _, f := range files {
+		mapped = append(mapped, strings.Join(f.BestPath(), "/"))
+	}
+	fr.MappedFiles = mapped
+}
+
+func rtorrentPieces(resume *RTorrentLibTorrentResumeFile, info *metainfo.Info) (string, bool) {
+	numPieces := info.NumPieces()
+	if numPieces == 0 || info.PieceLength <= 0 {
+		return "", false
+	}
+
+	havePiece := make([]bool, numPieces)
+	switch v := resume.Bitfield.(type) {
+	case int64:
+		if v != int64(numPieces) {
+			return "", false
+		}
+		for i := range havePiece {
+			havePiece[i] = true
+		}
+	case string:
+		if len(v) < (numPieces+7)/8 {
+			return "", false
+		}
+		for i := range numPieces {
+			havePiece[i] = v[i/8]>>(7-i%8)&1 == 1
+		}
+	default:
+		return "", false
+	}
+
+	files := info.UpvertedFiles()
+	wanted := make([]bool, len(files))
+	for i := range wanted {
+		wanted[i] = true
+	}
+	if len(resume.Files) == len(files) {
+		for i, f := range resume.Files {
+			wanted[i] = f.Priority != 0
+		}
+	}
+
+	fileLengths := make([]int64, len(files))
+	for i, f := range files {
+		fileLengths[i] = f.Length
+	}
+	wp := wantedPieces(fileLengths, wanted, info.PieceLength, numPieces)
+
+	pieces := make([]byte, numPieces)
+	complete := true
+	for p := range numPieces {
+		if havePiece[p] {
+			pieces[p] = 1
+		} else if wp[p] {
+			complete = false
+		}
+	}
+
+	return string(pieces), complete
+}
+
+func rtorrentFilePriorities(entries []RTorrentResumeFileEntry, fileCount int) []int {
+	prios := make([]int, 0, fileCount)
+
+	if len(entries) != fileCount {
+		for range fileCount {
+			prios = append(prios, 1)
+		}
+		return prios
+	}
+
+	for _, f := range entries {
+		switch f.Priority {
+		case 0:
+			prios = append(prios, 0)
+		case 2:
+			prios = append(prios, 6)
+		default:
+			prios = append(prios, 1)
+		}
+	}
+
+	return prios
+}
+
+func rtorrentLabel(custom1 string) string {
+	label, err := url.PathUnescape(custom1)
+	if err != nil {
+		return custom1
+	}
+	return label
+}
+
+func rtorrentTrackers(file *metainfo.MetaInfo, resume *RTorrentLibTorrentResumeFile) [][]string {
+	enabled := func(trackerURL string) bool {
+		status, ok := resume.Trackers[trackerURL]
+		if !ok {
+			return true
+		}
+		return status["enabled"] != 0
+	}
+
+	known := make(map[string]struct{})
+
+	var tiers [][]string
+	for _, tier := range file.UpvertedAnnounceList() {
+		var kept []string
+		for _, trackerURL := range tier {
+			known[trackerURL] = struct{}{}
+			if enabled(trackerURL) {
+				kept = append(kept, trackerURL)
+			}
+		}
+		if len(kept) > 0 {
+			tiers = append(tiers, kept)
+		}
+	}
+
+	var extras []string
+	for trackerURL, status := range resume.Trackers {
+		if trackerURL == "dht://" {
+			continue
+		}
+		if _, ok := known[trackerURL]; ok {
+			continue
+		}
+		if status["enabled"] != 0 {
+			extras = append(extras, trackerURL)
+		}
+	}
+	slices.Sort(extras)
+
+	for _, trackerURL := range extras {
+		tiers = append(tiers, []string{trackerURL})
+	}
+
+	return tiers
+}
+
+func fileModTime(path string) int64 {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return fi.ModTime().Unix()
+}
+
+func (i *RTorrentImport) decodeRTorrentLibTorrentResumeFile(path string) (*RTorrentLibTorrentResumeFile, error) {
+	dat, err := os.ReadFile(path + libtorrentStateFileExtension)
+	if err != nil {
+		return nil, err
+	}
+
+	var torrentResumeFile RTorrentLibTorrentResumeFile
+	if err := bencode.NewDecoder(bytes.NewReader(dat)).Decode(&torrentResumeFile); err != nil {
+		return nil, err
+	}
+
+	return &torrentResumeFile, nil
+}
+
+func (i *RTorrentImport) decodeRTorrentFile(path string) (*RTorrentTorrentFile, error) {
+	dat, err := os.ReadFile(path + rtStateFileExtension)
+	if err != nil {
+		return nil, err
+	}
+
+	var torrentFile RTorrentTorrentFile
+	if err := bencode.NewDecoder(bytes.NewReader(dat)).Decode(&torrentFile); err != nil {
+		return nil, err
+	}
+
+	return &torrentFile, nil
+}
+
+func strToIntClean(line string) int64 {
+	s := strings.TrimSpace(line)
+	if s == "" {
+		return 0
+	}
+
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return i
+}
+
+type RTorrentLibTorrentResumeFile struct {
+	Bitfield any                       `bencode:"bitfield"`
+	Files    []RTorrentResumeFileEntry `bencode:"files"`
+	Trackers map[string]map[string]int `bencode:"trackers"`
+}
+
+type RTorrentResumeFileEntry struct {
+	Completed int64 `bencode:"completed"`
+	Mtime     int64 `bencode:"mtime"`
+	Priority  int64 `bencode:"priority"`
+}
+
+type RTorrentTorrentFile struct {
+	Complete int64 `bencode:"complete"`
+	Custom   struct {
+		AddTime     string `bencode:"addtime"`
+		SeedingTime string `bencode:"seedingtime"`
+	} `bencode:"custom"`
+	Custom1           string `bencode:"custom1"`
+	Directory         string `bencode:"directory"`
+	State             int64  `bencode:"state"`
+	TotalDownloaded   int64  `bencode:"total_downloaded"`
+	TotalUploaded     int64  `bencode:"total_uploaded"`
+	TimestampFinished int64  `bencode:"timestamp.finished"`
+	TimestampStarted  int64  `bencode:"timestamp.started"`
+}

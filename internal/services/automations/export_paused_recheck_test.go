@@ -1,0 +1,295 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package automations
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+)
+
+func TestExecuteExportToInstance_PausedRecheck(t *testing.T) {
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsPayload})
+
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
+	require.Equal(t, int32(1), result.rechecks.Load())
+	require.Zero(t, result.ignoredRechecks.Load())
+	require.Zero(t, result.starts.Load())
+	require.Empty(t, result.deleteFiles)
+	require.GreaterOrEqual(t, len(result.statesAfterRecheck), 3)
+	require.Equal(t, []string{"stoppedDL", "checkingDL", "stoppedUP"}, result.statesAfterRecheck[:3])
+}
+
+func TestExecuteExportToInstance_PausedRecheckFailure(t *testing.T) {
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusInternalServerError, afterRecheck: recheckFindsPayload})
+
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
+	require.True(t, strings.HasPrefix(result.activities[0].Reason, "Recheck on target failed:"), result.activities[0].Reason)
+	require.Equal(t, []string{"false"}, result.deleteFiles)
+	require.Equal(t, []recordedDelete{{
+		hashes: []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		actor:  qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: "export paused recheck"},
+	}}, result.deletes)
+	require.Zero(t, result.starts.Load())
+}
+
+func TestExecuteExportToInstance_PausedRecheckPayloadMissing(t *testing.T) {
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckFindsNoPayload})
+
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeFailed, result.activities[0].Outcome)
+	require.Equal(t, int32(1), result.rechecks.Load())
+	require.Zero(t, result.ignoredRechecks.Load())
+	require.Zero(t, result.starts.Load())
+	require.Equal(t, []string{"false"}, result.deleteFiles)
+}
+
+func TestExecuteExportToInstance_PausedRecheckStillChecking(t *testing.T) {
+	result := runExport(t, exportCase{paused: true, recheckStatus: http.StatusOK, afterRecheck: recheckKeepsChecking})
+
+	require.Len(t, result.activities, 1)
+	require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
+	require.Equal(t, int32(1), result.rechecks.Load())
+	require.Zero(t, result.ignoredRechecks.Load())
+	require.Zero(t, result.starts.Load())
+	require.Empty(t, result.deleteFiles)
+}
+
+func TestExecuteExportToInstance_RecheckOnlyWhenPausedAndChecking(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		paused       bool
+		skipChecking bool
+		wantRechecks int32
+	}{
+		{"paused, checking", true, false, 1},
+		{"paused, skip checking", true, true, 0},
+		{"started, skip checking", false, true, 0},
+		{"started, checking", false, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := runExport(t, exportCase{paused: tc.paused, skipChecking: tc.skipChecking, recheckStatus: http.StatusOK,
+				afterRecheck: recheckFindsPayload})
+
+			require.Len(t, result.activities, 1)
+			require.Equal(t, models.ActivityOutcomeSuccess, result.activities[0].Outcome, result.activities[0].Reason)
+			require.Equal(t, tc.wantRechecks, result.rechecks.Load())
+			require.Empty(t, result.deleteFiles)
+		})
+	}
+}
+
+func exportOnTransfers(t *testing.T, svc *Service, db dbinterface.Querier) {
+	t.Helper()
+	store, err := transfer.NewStore(t.Context(), db)
+	require.NoError(t, err)
+	transfers := transfer.NewService(t.Context(), transfer.Deps{Store: store, Instances: svc.instanceStore, Sync: svc.syncManager,
+		Config: transfer.Config{ExportPolls: 6, ExportPollInterval: 30 * time.Millisecond}})
+	t.Cleanup(func() { require.NoError(t, transfers.Close(context.Background())) })
+	svc.SetExportRunner(transfers)
+}
+
+type deleteNotes struct {
+	mu      sync.Mutex
+	deletes []recordedDelete
+}
+
+func (n *deleteNotes) NoteDelete(_ int, hashes []string, actor qbittorrent.DeleteActor) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.deletes = append(n.deletes, recordedDelete{hashes: slices.Clone(hashes), actor: actor})
+}
+
+func (n *deleteNotes) recorded() []recordedDelete {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return slices.Clone(n.deletes)
+}
+
+type recheckOutcome int
+
+const (
+	recheckFindsPayload recheckOutcome = iota
+	recheckFindsNoPayload
+	recheckKeepsChecking
+)
+
+type exportCase struct {
+	paused        bool
+	skipChecking  bool
+	recheckStatus int
+	afterRecheck  recheckOutcome
+}
+
+type exportResult struct {
+	activities         []*models.AutomationActivity
+	rechecks           atomic.Int32
+	ignoredRechecks    atomic.Int32
+	starts             atomic.Int32
+	deleteFiles        []string
+	deletes            []recordedDelete
+	statesAfterRecheck []string
+}
+
+func runExport(t *testing.T, tc exportCase) *exportResult {
+	t.Helper()
+	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	var mu sync.Mutex
+	var added, listed, rechecked bool
+	var postAddPolls, postRecheckPolls int
+	result := &exportResult{}
+
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.10.0"))
+		case "/api/v2/sync/maindata":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"` + hash + `":{"name":"Export Sample","progress":1,"state":"stalledUP"}}}`))
+		case "/api/v2/torrents/export":
+			_, _ = w.Write([]byte("export-sample-torrent"))
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Ok."))
+		}
+	}))
+	t.Cleanup(source.Close)
+
+	targetState := func() (string, string) {
+		if !tc.paused || tc.skipChecking {
+			return "stoppedUP", "1"
+		}
+		if !rechecked {
+			return "stoppedDL", "0"
+		}
+		poll := postRecheckPolls
+		postRecheckPolls++
+		state, progress := "stoppedDL", "0"
+		switch {
+		case tc.afterRecheck == recheckKeepsChecking, tc.afterRecheck == recheckFindsPayload && poll == 1:
+			state, progress = "checkingDL", "0.5"
+		case tc.afterRecheck == recheckFindsPayload && poll >= 2:
+			state, progress = "stoppedUP", "1"
+		}
+		result.statesAfterRecheck = append(result.statesAfterRecheck, state)
+		return state, progress
+	}
+
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.10.0"))
+		case "/api/v2/sync/maindata":
+			w.Header().Set("Content-Type", "application/json")
+			mu.Lock()
+			defer mu.Unlock()
+			if added {
+				postAddPolls++
+				listed = listed || postAddPolls >= 2
+			}
+			if !listed {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+				return
+			}
+			state, progress := targetState()
+			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"Export Sample","progress":%s,"state":"%s"}}}`, hash, progress, state)
+		case "/api/v2/torrents/add":
+			mu.Lock()
+			added = true
+			mu.Unlock()
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/torrents/recheck":
+			result.rechecks.Add(1)
+			_ = r.ParseForm()
+			mu.Lock()
+			switch {
+			case !listed || r.PostForm.Get("hashes") != hash:
+				result.ignoredRechecks.Add(1)
+			case tc.recheckStatus == http.StatusOK:
+				rechecked = true
+			}
+			mu.Unlock()
+			w.WriteHeader(tc.recheckStatus)
+		case "/api/v2/torrents/start", "/api/v2/torrents/resume", "/api/v2/torrents/setForceStart":
+			result.starts.Add(1)
+			w.WriteHeader(http.StatusOK)
+		case "/api/v2/torrents/delete":
+			_ = r.ParseForm()
+			mu.Lock()
+			result.deleteFiles = append(result.deleteFiles, r.PostForm.Get("deleteFiles"))
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Ok."))
+		}
+	}))
+	t.Cleanup(target.Close)
+
+	db := testdb.NewMigratedSQLite(t, t.Name())
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	sourceInstance, err := instanceStore.Create(t.Context(), "source", source.URL, "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+	targetInstance, err := instanceStore.Create(t.Context(), "target", target.URL, "", "", nil, nil, false, new(false))
+	require.NoError(t, err)
+
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
+	deletes := &deleteNotes{}
+	syncManager.SetDeleteNoter(deletes)
+	svc := NewService(Config{}, instanceStore, nil, models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, nil, fsops.NewPool(instanceStore, localbackend.NewBackend()))
+	exportOnTransfers(t, svc, db)
+	ch := svc.executeExportToInstance(t.Context(), sourceInstance.ID, []pendingExportToInstance{{
+		hash: hash,
+		torrent: qbt.Torrent{
+			Hash: hash,
+			Name: "Export Sample",
+		},
+		action: &models.ExportToInstanceAction{
+			Enabled:          true,
+			TargetInstanceID: targetInstance.ID,
+			Paused:           tc.paused,
+			SkipChecking:     &tc.skipChecking,
+		},
+		ruleID:   1,
+		ruleName: "export paused recheck",
+	}})
+
+	for activity := range ch {
+		result.activities = append(result.activities, activity)
+	}
+	target.Close()
+	result.deletes = deletes.recorded()
+	return result
+}

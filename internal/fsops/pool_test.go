@@ -1,0 +1,261 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package fsops
+
+import (
+	"context"
+	"io"
+	"io/fs"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlinktree"
+)
+
+type fakeInstanceStore struct {
+	instances map[int]*models.Instance
+	gets      int
+}
+
+func (s *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	s.gets++
+	inst, ok := s.instances[id]
+	if !ok {
+		return nil, nil
+	}
+	return inst, nil
+}
+
+type fakeBackend struct{ kind string }
+
+func (f fakeBackend) Stat(context.Context, string) (*LstatInfo, error) {
+	return &LstatInfo{}, nil
+}
+func (f fakeBackend) Lstat(context.Context, string) (*LstatInfo, error) { return nil, nil }
+func (f fakeBackend) Paths() PathDialect                                { return HostPaths }
+func (f fakeBackend) ReadDir(context.Context, string) ([]DirEntry, error) {
+	return nil, nil
+}
+func (f fakeBackend) WalkDir(context.Context, string, WalkOptions) (<-chan WalkEntry, error) {
+	return nil, nil
+}
+func (f fakeBackend) Statfs(context.Context, string) (*StatfsResult, error) { return nil, nil }
+func (f fakeBackend) SameFilesystem(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+func (f fakeBackend) MkdirAll(context.Context, string, fs.FileMode) error { return nil }
+func (f fakeBackend) Mkdir(context.Context, string, fs.FileMode) error    { return nil }
+func (f fakeBackend) Remove(context.Context, string, RemoveOptions) error {
+	return nil
+}
+func (f fakeBackend) HardlinkTree(context.Context, *hardlinktree.TreePlan) (*TreeCreateResult, error) {
+	return nil, nil
+}
+func (f fakeBackend) ReflinkTree(context.Context, *hardlinktree.TreePlan) (*TreeCreateResult, error) {
+	return nil, nil
+}
+func (f fakeBackend) RemoveTree(context.Context, *TreeCreateResult) error { return nil }
+func (f fakeBackend) SupportsReflink(context.Context, string) (bool, string, error) {
+	return false, "", nil
+}
+func (f fakeBackend) OpenRead(context.Context, string, int64) (io.ReadCloser, error) {
+	return nil, nil
+}
+func (f fakeBackend) OpenWrite(context.Context, string, int64) (FileWriter, error) {
+	return nil, nil
+}
+
+func remoteFactory(backend Backend) func(*models.Instance) Backend {
+	return func(*models.Instance) Backend { return backend }
+}
+
+func TestPool_LocalAccess(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+	}}
+	local := fakeBackend{kind: "local"}
+	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
+
+	backend, err := pool.GetBackend(context.Background(), 1)
+	require.NoError(t, err)
+	assert.Equal(t, Backend(local), backend)
+}
+
+func TestPool_NoAccess(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		2: {ID: 2, HasLocalFilesystemAccess: false},
+	}}
+	local := fakeBackend{kind: "local"}
+	pool := NewPoolWithRemote(store, local, remoteFactory(fakeBackend{kind: "remote"}))
+
+	backend, err := pool.GetBackend(context.Background(), 2)
+	require.NoError(t, err)
+
+	_, err = backend.Stat(context.Background(), "/any")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	err = backend.MkdirAll(context.Background(), "/any", 0o755)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+}
+
+func TestPool_RemoteAccess(t *testing.T) {
+	remote := fakeBackend{kind: "remote"}
+	instance := &models.Instance{ID: 3, SSHHost: "box.example.com", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"}
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{3: instance}}
+
+	var got *models.Instance
+	pool := NewPoolWithRemote(store, fakeBackend{kind: "local"}, func(inst *models.Instance) Backend {
+		got = inst
+		return remote
+	})
+
+	backend, err := pool.GetBackend(context.Background(), 3)
+	require.NoError(t, err)
+	assert.Equal(t, Backend(remote), backend)
+	assert.Same(t, instance, got)
+}
+
+func TestPool_RemoteInstanceWithoutFactoryFailsLoudly(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}}
+	pool := NewPool(store, fakeBackend{kind: "local"})
+
+	backend, err := pool.GetBackend(context.Background(), 3)
+	require.ErrorIs(t, err, ErrRemoteBackendNotWired, "a pool without a remote factory must not pass a remote instance off as unconfigured")
+	assert.Nil(t, backend)
+}
+
+func TestPool_ResolveReturnsTheModeItRoutedBy(t *testing.T) {
+	local := fakeBackend{kind: "local"}
+	remote := fakeBackend{kind: "remote"}
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+		2: {ID: 2},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}}
+	pool := NewPoolWithRemote(store, local, remoteFactory(remote))
+
+	for _, tc := range []struct {
+		id          int
+		wantMode    models.FilesystemMode
+		wantBackend Backend
+	}{
+		{1, models.FilesystemModeLocal, local},
+		{2, models.FilesystemModeNone, noopBackend{}},
+		{3, models.FilesystemModeRemote, remote},
+	} {
+		backend, mode, err := pool.Resolve(context.Background(), tc.id)
+		require.NoError(t, err)
+		assert.Equal(t, tc.wantMode, mode, "instance %d", tc.id)
+		assert.Equal(t, tc.wantBackend, backend, "instance %d", tc.id)
+	}
+}
+
+func TestPool_RequireGrantsByMode(t *testing.T) {
+	local := fakeBackend{kind: "local"}
+	remote := fakeBackend{kind: "remote"}
+	instances := map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+		2: {ID: 2},
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}
+
+	for _, tc := range []struct {
+		id          int
+		capability  models.FilesystemCapability
+		wantBackend Backend
+	}{
+		{1, models.CapabilityContent, local},
+		{2, models.CapabilityRead, nil},
+		{3, models.CapabilityWrite, remote},
+	} {
+		store := &fakeInstanceStore{instances: instances}
+		pool := NewPoolWithRemote(store, local, remoteFactory(remote))
+
+		backend, instance, err := pool.Require(t.Context(), tc.id, tc.capability)
+		assert.Equal(t, 1, store.gets, "instance %d %s", tc.id, tc.capability)
+		if tc.wantBackend == nil {
+			require.ErrorIs(t, err, ErrNotCapable, "instance %d %s", tc.id, tc.capability)
+			assert.Nil(t, backend)
+			assert.Nil(t, instance)
+			continue
+		}
+		require.NoError(t, err, "instance %d %s", tc.id, tc.capability)
+		assert.Equal(t, tc.wantBackend, backend, "instance %d %s", tc.id, tc.capability)
+		assert.Same(t, instances[tc.id], instance, "instance %d %s", tc.id, tc.capability)
+	}
+}
+
+func TestPool_InstanceNotFound(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
+	pool := NewPoolWithRemote(store, fakeBackend{}, remoteFactory(fakeBackend{kind: "remote"}))
+
+	_, err := pool.GetBackend(context.Background(), 999)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestNoopBackend_AllMethodsError(t *testing.T) {
+	b := noopBackend{}
+	ctx := context.Background()
+
+	_, err := b.Stat(ctx, "/x")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.Lstat(ctx, "/x")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.ReadDir(ctx, "/x")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.WalkDir(ctx, "/x", WalkOptions{})
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.Statfs(ctx, "/x")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.SameFilesystem(ctx, "/x", "/y")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	require.ErrorIs(t, b.MkdirAll(ctx, "/x", 0o755), ErrNoFilesystemAccess)
+	require.ErrorIs(t, b.Remove(ctx, "/x", RemoveOptions{}), ErrNoFilesystemAccess)
+	require.NoError(t, b.RemoveTree(ctx, nil))
+	require.ErrorIs(t, b.RemoveTree(ctx, &TreeCreateResult{Files: []string{"/x"}}), ErrNoFilesystemAccess)
+
+	_, err = b.HardlinkTree(ctx, nil)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.ReflinkTree(ctx, nil)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, _, err = b.SupportsReflink(ctx, "/x")
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.OpenRead(ctx, "/x", 0)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.OpenWrite(ctx, "/x", 0)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
+}
+
+func TestPool_RequireNeedsEveryCapability(t *testing.T) {
+	remote := fakeBackend{kind: "remote"}
+	built := 0
+	pool := NewPoolWithRemote(&fakeInstanceStore{instances: map[int]*models.Instance{
+		3: {ID: 3, SSHHost: "box.example.invalid", SSHKeyEncrypted: "k", SSHHostKeyEncrypted: "hk"},
+	}}, fakeBackend{kind: "local"}, func(*models.Instance) Backend { built++; return remote })
+
+	backend, _, err := pool.Require(t.Context(), 3, models.CapabilityWrite, models.CapabilityIdentity)
+	require.ErrorIs(t, err, ErrNotCapable)
+	assert.Nil(t, backend)
+	assert.Zero(t, built, "a refused Require builds no backend")
+
+	backend, _, err = pool.Require(t.Context(), 3, models.CapabilityRead, models.CapabilityWrite)
+	require.NoError(t, err)
+	assert.Equal(t, remote, backend)
+}

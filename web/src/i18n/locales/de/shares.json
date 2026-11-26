@@ -1,0 +1,110 @@
+{
+  "options": {
+    "days": "Tage bis zum Ende einer Freigabe",
+    "daysInvalid": "Gib eine ganze Zahl von Tagen ein, 1 oder mehr.",
+    "endAtFirstDownload": "Beim ersten vollständigen Download beenden",
+    "endAtFirstDownloadDescription": "Die Freigabe endet, sobald ein Client alle Dateien hat.",
+    "firstDownloaderOnly": "Nur der erste Downloader",
+    "firstDownloaderOnlyDescription": "Der Tracker gibt deine Adresse an den ersten Client, der herunterlädt, und an keinen anderen. Das legt fest, wer deine Adresse vom Tracker erfährt, nicht wer sich verbinden kann.",
+    "firstDownloaderOnlyUnavailable": "Mit einem externen Tracker nicht verfügbar: qui sieht keine Announces."
+  },
+  "settings": {
+    "title": "Freigaben",
+    "description": "Eine Freigabe gibt die Dateien eines Torrents an jemanden, dessen Client qui nicht verwaltet. Über den Freigabe-Tracker findet dessen Client deinen.",
+    "loadFailed": "Die Freigabe-Einstellungen konnten nicht geladen werden",
+    "save": "Speichern",
+    "saved": "Freigabe-Einstellungen gespeichert",
+    "saveFailed": "Die Freigabe-Einstellungen konnten nicht gespeichert werden",
+    "inUse": {
+      "own": "Neue Freigaben nutzen den Tracker von qui.",
+      "outside": "Neue Freigaben nutzen den externen Tracker.",
+      "none": "Es ist kein Tracker eingestellt, daher kann keine Freigabe starten."
+    },
+    "tracker": {
+      "heading": "Freigabe-Tracker",
+      "own": "Der eigene Tracker von qui",
+      "ownDescription": "qui lauscht nur auf seinem eigenen Port, solange eine Freigabe läuft, und antwortet nur für aktive Freigaben.",
+      "outside": "Ein externer Tracker",
+      "outsideDescription": "Für ein qui ohne öffentliche Adresse. qui sieht dann keine Announces: Die Adressliste und das Ende beim ersten Download funktionieren nur nach bestem Bemühen, und die Sperre ist nicht verfügbar.",
+      "port": "Port",
+      "publicAddress": "Öffentliche Adresse",
+      "publicAddressDescription": "Die URL, unter der das Internet diesen Port erreicht, mit einem Proxy davor für HTTPS. Die .torrent jeder Freigabe enthält sie, daher wartet eine Änderung, bis die Freigaben auf dem Tracker von qui enden.",
+      "trustedProxies": "Vertrauenswürdige Proxys",
+      "trustedProxiesDescription": "Gib nur Adressen oder CIDR-Bereiche deiner Proxys an, eine pro Zeile, und keine Client-Netzwerke. qui liest die weitergeleitete Client-Adresse nur von diesen Proxys.",
+      "trackerUrl": "Tracker-URL",
+      "trackerUrlDescription": "Eine http-, https- oder udp-Announce-URL.",
+      "publicAddressPlaceholder": "https://share.example.com",
+      "trackerUrlPlaceholder": "udp://tracker.example.org:1337/announce"
+    },
+    "limits": {
+      "heading": "Begrenzungen",
+      "maxActive": "Aktive Freigaben",
+      "peersPerShare": "Peers pro Freigabe"
+    },
+    "defaults": {
+      "heading": "Standardwerte für eine neue Freigabe",
+      "description": "Der Freigabe-Dialog startet mit diesen Werten."
+    }
+  },
+  "dialog": {
+    "title": "Mit jemandem teilen",
+    "description_one": "Gib die Dateien von {{name}} an jemanden, dessen Client qui nicht verwaltet.",
+    "description_other": "Gib die Dateien von {{count}} Torrents an jemanden, dessen Client qui nicht verwaltet. Jeder Torrent bekommt eine eigene Freigabe.",
+    "cancel": "Abbrechen",
+    "create": "Erstellen",
+    "done": "Fertig",
+    "warning": "Dein Freund sieht die IP-Adresse deines Clients. Jeder, der die .torrent hat, kann herunterladen, bis die Freigabe endet.",
+    "refused": "Nicht freigegeben",
+    "refusedEntry": "{{name}}: {{reason}}",
+    "tracker": {
+      "label": "Freigabe-Tracker",
+      "settings": "Freigabe-Einstellungen",
+      "own": "Tracker von qui unter {{address}}",
+      "outside": "Externer Tracker {{url}}"
+    },
+    "result": {
+      "description_one": "Schick die .torrent und die Nachricht in deinem eigenen Chat an deinen Freund. qui stellt keinen Download-Link bereit.",
+      "description_other": "Schick jede .torrent und ihre Nachricht in deinem eigenen Chat an deinen Freund. qui stellt keinen Download-Link bereit.",
+      "torrent": ".torrent",
+      "copyMessage": "Nachricht kopieren",
+      "copied": "Nachricht kopiert",
+      "copyFailed": "Die Nachricht konnte nicht kopiert werden"
+    }
+  },
+  "message": {
+    "intro": "Ich teile „{{name}}“ ({{size}}) mit dir. Öffne die angehängte .torrent-Datei in einem BitTorrent-Client wie qBittorrent, Transmission oder Deluge, um es direkt von mir herunterzuladen. Ab {{date}} funktioniert sie nicht mehr.",
+    "endAtFirstDownload": "Sie funktioniert auch nicht mehr, sobald ein Download abgeschlossen ist. Lass deinen Client also offen, bis dein Download fertig ist."
+  },
+  "tab": {
+    "description": "Torrents, die du an jemanden gibst, dessen Client qui nicht verwaltet.",
+    "empty": "Noch keine Freigaben.",
+    "endedStay": "Beendete Freigaben bleiben 30 Tage in der Liste.",
+    "unknownInstance": "Instanz {{id}}",
+    "endsAt": "Endet am {{date}}",
+    "endedAt": "Beendet am {{date}}",
+    "progress": "Heruntergeladen: {{percent}}",
+    "progressLabel": "Download-Fortschritt",
+    "sent": "Gesendet: {{size}}",
+    "announced": "Adressen mit Announce",
+    "connectedPeers": "Verbundene Peers",
+    "noPeers": "Noch keine",
+    "unlock": "Entsperren",
+    "stop": "Stoppen",
+    "remove": "Entfernen",
+    "state": {
+      "active": "Aktiv",
+      "ending": "Endet",
+      "ended": "Beendet",
+      "unknown": "Unbekannt"
+    },
+    "endReason": {
+      "downloaded": "Der Empfänger hat die Dateien.",
+      "expired": "Die Freigabe ist abgelaufen.",
+      "stopped": "Vom Benutzer gestoppt.",
+      "torrent_deleted": "Der Torrent wurde gelöscht.",
+      "torrent_moved": "Der Torrent wurde verschoben.",
+      "files_renamed": "Die Dateien des Torrents wurden umbenannt.",
+      "share_torrent_gone": "Der Freigabe-Torrent ist nicht mehr im Client."
+    }
+  }
+}

@@ -1,0 +1,104 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package swagger
+
+import (
+	_ "embed"
+	"encoding/json"
+	"maps"
+	"net/http"
+	"strings"
+
+	"github.com/autobrr/qui/pkg/httphelpers"
+
+	"github.com/go-chi/chi/v5"
+	"gopkg.in/yaml.v3"
+)
+
+//go:embed openapi.yaml
+var openapiYAML []byte
+
+//go:embed index.html
+var swaggerHTML string
+
+type Handler struct {
+	spec    map[string]any
+	baseURL string
+}
+
+func NewHandler(baseURL string) (*Handler, error) {
+	if len(openapiYAML) == 0 {
+		return nil, nil
+	}
+
+	var spec map[string]any
+	if err := yaml.Unmarshal(openapiYAML, &spec); err != nil {
+		return nil, err
+	}
+
+	baseURL = httphelpers.NormalizeBasePath(baseURL)
+
+	return &Handler{
+		spec:    spec,
+		baseURL: baseURL,
+	}, nil
+}
+
+func (h *Handler) RegisterRoutes(r chi.Router) {
+	r.Get(h.baseURL+"/api/docs", h.ServeSwaggerUI)
+	r.Get(h.baseURL+"/api/openapi.json", h.ServeOpenAPISpec)
+}
+
+func (h *Handler) ServeSwaggerUI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	openAPIPath := h.baseURL + "/api/openapi.json"
+	faviconPath := h.baseURL + "/qui.png"
+
+	html := strings.ReplaceAll(swaggerHTML, "{{OPENAPI_URL}}", openAPIPath)
+	html = strings.ReplaceAll(html, "{{FAVICON_URL}}", faviconPath)
+
+	_, _ = w.Write([]byte(html))
+}
+
+func GetOpenAPISpec() ([]byte, error) {
+	if len(openapiYAML) == 0 {
+		return nil, nil
+	}
+	return openapiYAML, nil
+}
+
+func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	spec := make(map[string]any)
+	maps.Copy(spec, h.spec)
+
+	if h.baseURL != "" {
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		host := r.Host
+
+		servers := []map[string]any{
+			{
+				"url":         scheme + "://" + host + h.baseURL,
+				"description": "Current server with base URL",
+			},
+		}
+
+		if existingServers, ok := spec["servers"].([]any); ok {
+			for _, s := range existingServers {
+				if server, ok := s.(map[string]any); ok {
+					servers = append(servers, server)
+				}
+			}
+		}
+
+		spec["servers"] = servers
+	}
+
+	_ = json.NewEncoder(w).Encode(spec) //nolint:errchkjson // spec comes from the embedded YAML with string keys; only a client write error can occur, and the handler cannot recover from it
+}

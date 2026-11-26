@@ -1,0 +1,577 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "statistics": "Statistiken",
+    "search": "Suche",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automatisierungen",
+    "transfers": "Transfers",
+    "transfersQueued_one": "{{count}} Eintrag läuft oder wartet",
+    "transfersQueued_other": "{{count}} Einträge laufen oder warten",
+    "backups": "Backups",
+    "rss": "RSS",
+    "settings": "Einstellungen",
+    "logs": "Protokolle",
+    "instances": "Instanzen",
+    "generalSettings": "Allgemeine Einstellungen",
+    "manageInstances": "Instanzen verwalten",
+    "appearance": "Darstellung",
+    "instanceBackups": "Instanz-Backups",
+    "backToSite": "Zurück zu getqui.com",
+    "docs": "Doku"
+  },
+  "sidebar": {
+    "instances": "Instanzen",
+    "allInstancesDisabled": "Alle Instanzen sind deaktiviert",
+    "noInstancesConfigured": "Keine Instanzen konfiguriert",
+    "logout": "Abmelden",
+    "version": "Version {{version}}",
+    "language": "Sprache",
+    "viewOnGitHub": "Auf GitHub ansehen",
+    "rssRunning": "Cross-Seed-RSS läuft",
+    "rssEnabled": "Cross-Seed-RSS aktiviert",
+    "scanRunning": "Scan läuft",
+    "collapseToIcons": "Auf Symbole reduzieren",
+    "expandSidebar": "Sidebar ausklappen",
+    "hideSidebar": "Sidebar ausblenden",
+    "showSidebar": "Sidebar anzeigen",
+    "keepOpen": "Sidebar geöffnet lassen",
+    "menu": "Menü"
+  },
+  "problemReports": {
+    "reportProblem": "Problem melden",
+    "subtitle": "Deine Meldung geht an die qui-Maintainer.",
+    "textLabel": "Deine Meldung",
+    "placeholders": {
+      "menu": "Was ist passiert und was hast du erwartet?",
+      "notice": "Was hast du getan, als das passiert ist?",
+      "search": "Welchen Treffer hast du erwartet und auf welchem Indexer?"
+    },
+    "sentWithIt": "Wird mitgesendet",
+    "summary_one": "qui {{version}} und {{count}} Instanz",
+    "summary_other": "qui {{version}} und {{count}} Instanzen",
+    "details": "Details",
+    "view": "Anzeigen",
+    "whatGetsSent": "Was gesendet wird",
+    "whatGetsSentNote": "qui füllt dies aus. Nichts verlässt qui, bis du die Meldung sendest.",
+    "loadingFacts": "Berichtsdetails werden geladen...",
+    "factsFailed": "Berichtsdetails konnten nicht geladen werden: {{message}}",
+    "facts": {
+      "version": "Version",
+      "system": "System",
+      "appContainer": "Im Container",
+      "database": "Datenbank",
+      "logLevel": "Log-Level",
+      "started": "Gestartet",
+      "experimentalFeatures": "Experimentell",
+      "instance": "Instanz {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "unbekannt",
+      "states": {
+        "connected": "Verbunden",
+        "offline": "Offline",
+        "disabled": "Deaktiviert"
+      },
+      "torrentCount_one": "{{count}} Torrent",
+      "torrentCount_other": "{{count}} Torrents",
+      "notices": "Systemhinweise",
+      "openCount_one": "{{count}} offen",
+      "openCount_other": "{{count}} offen",
+      "page": "Seite",
+      "browser": "Browser",
+      "screen": "{{width}} × {{height}}, Pixelverhältnis {{ratio}}",
+      "failedRequests": "Fehlgeschlagene Anfragen",
+      "failedCount_one": "{{count}} in dieser Sitzung",
+      "failedCount_other": "{{count}} in dieser Sitzung",
+      "noAnswer": "keine Antwort",
+      "none": "Keine"
+    },
+    "logs": {
+      "title": "Protokolle",
+      "scopeLabel": "Einzuschließende Logzeilen",
+      "scopes": {
+        "warnings": "Warnungen und Fehler",
+        "all": "Alles Aktuelle",
+        "none": "Weglassen"
+      },
+      "notes": {
+        "warnings_one": "{{count}} aktuelle Warnung oder Fehler. qui entfernt Schlüssel und Geheimnisse.",
+        "warnings_other": "{{count}} aktuelle Warnungen und Fehler. qui entfernt Schlüssel und Geheimnisse.",
+        "all_one": "{{count}} aktuelle Zeile auf Log-Level {{level}}. qui entfernt Schlüssel und Geheimnisse.",
+        "all_other": "{{count}} aktuelle Zeilen auf Log-Level {{level}}. qui entfernt Schlüssel und Geheimnisse.",
+        "none": "Es werden keine Logzeilen mit deiner Meldung gesendet."
+      },
+      "empty": "Keine Logzeilen.",
+      "debugMissing": "Das Log-Level ist {{level}}, daher zeichnet qui keine Debug-Zeilen auf. Um sie einzuschließen, setze Log-Level unter Einstellungen > Protokolle auf DEBUG, stelle das Problem nach und melde es erneut."
+    },
+    "privacy": {
+      "anonymous": "Anonym: kein Name, kein Konto. brrbin speichert keine IP-Adresse.",
+      "signedIn": "Die Maintainer sehen deinen {{provider}}-Namen ({{name}}) und können dich kontaktieren.",
+      "link": "Datenschutz"
+    },
+    "sender": {
+      "label": "Senden als",
+      "anonymous": "Anonym",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Mit {{provider}} anmelden",
+      "signOut": "Abmelden",
+      "waiting": "Warte auf {{provider}}",
+      "errors": {
+        "discordNotMember": "Dein Discord-Konto ist nicht auf dem autobrr-Discord-Server. Tritt dem Server bei und melde dich erneut an, melde dich mit GitHub an oder sende anonym.",
+        "refused": "Anmeldung abgelehnt: {{reason}}",
+        "expired": "Anmeldung abgelaufen. Melde dich erneut an.",
+        "popupBlocked": "Dein Browser hat das Anmeldefenster blockiert. Erlaube Pop-ups für qui und melde dich dann erneut an.",
+        "unavailable": "brrbin kann dich gerade nicht anmelden. Versuche es später erneut.",
+        "startFailed": "Die Anmeldung konnte nicht gestartet werden: {{message}}",
+        "signOutFailed": "Abmelden fehlgeschlagen: {{message}}"
+      }
+    },
+    "newerRelease": "Du nutzt {{running}}. <release>{{newer}}</release> ist verfügbar.",
+    "send": "Senden",
+    "sendAnyway": "Trotzdem senden",
+    "sending": "Wird gesendet",
+    "sent": "Meldung gesendet",
+    "errors": {
+      "anonymousFull": {
+        "title": "Anonyme Meldungen sind für heute voll",
+        "body": "Melde dich an, um jetzt zu senden, oder versuche es morgen erneut. Dein Text bleibt hier als Entwurf."
+      },
+      "signInRequired": "Melde dich an, um diese Meldung zu senden. Dein Text bleibt hier als Entwurf.",
+      "accountLimit": "Du hast in der letzten Stunde viele Meldungen gesendet. Versuche es später erneut.",
+      "reporterFull": "Deine Meldungen belegen den ganzen Platz, den brrbin einer Person gibt. Lösche eine alte Meldung unter Gesendete Meldungen und sende dann erneut.",
+      "tooLarge": "Die Meldung ist zu groß. Wähle weniger Logzeilen oder ein kleineres Bild.",
+      "tokenRejected": "Deine Anmeldung ist abgelaufen. Melde dich erneut an und sende dann.",
+      "unavailable": "brrbin kann gerade keine Meldungen annehmen. Versuche es später erneut.",
+      "sendFailed": "Die Meldung konnte nicht gesendet werden: {{message}}"
+    },
+    "sentReports": {
+      "title": "Gesendete Meldungen",
+      "subtitle": "qui prüft den Status der Meldungen jedes Mal, wenn du diese Liste öffnest.",
+      "changed_one": "{{count}} Status geändert",
+      "changed_other": "{{count}} Status geändert",
+      "status": {
+        "received": "Eingegangen",
+        "issue": "Wurde zu Issue #{{number}}",
+        "issueClosed": "Issue #{{number}} geschlossen",
+        "closed": "Geschlossen: {{reason}}",
+        "closedNoReason": "Geschlossen",
+        "notSent": "Nicht gesendet"
+      },
+      "delete": "Meldung löschen",
+      "deleteUnavailable": "brrbin kann gerade keine Meldungen löschen. Versuche es später erneut.",
+      "deleteFailed": "Die Meldung konnte nicht gelöscht werden: {{message}}",
+      "empty": "Keine gesendeten Meldungen.",
+      "back": "Zurück zur Meldung"
+    }
+  },
+  "header": {
+    "currentInstance": "Aktuelle Instanz: {{name}}. Zum Wechseln der Instanz klicken.",
+    "connected": "Verbunden",
+    "disconnected": "Getrennt",
+    "showFilters": "Filter anzeigen",
+    "hideFilters": "Filter ausblenden",
+    "addTorrent": "Torrent hinzufügen",
+    "createTorrent": "Torrent erstellen",
+    "torrentCreationTasks": "Torrent-Erstellungsaufgaben",
+    "instanceSettings": "Instanz-Einstellungen",
+    "addToInstance": "Zur Instanz hinzufügen",
+    "createForInstance": "Für Instanz erstellen",
+    "tasksForInstance": "Aufgaben für Instanz",
+    "settingsForInstance": "Einstellungen für Instanz",
+    "clearSearch": "Suche zurücksetzen",
+    "searchTorrents": "Torrents suchen...",
+    "globPattern": "Glob-Muster...",
+    "smartSearchTitle": "Funktionen der intelligenten Suche:",
+    "smartSearchGlob": "Glob-Muster:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "Unscharfe Suche:",
+    "smartSearchFuzzyExample": "\"breaking bad\" findet \"Breaking.Bad\"",
+    "smartSearchDots": "Verarbeitet Punkte, Unterstriche und Klammern",
+    "smartSearchFields": "Durchsucht Name, Kategorie und Tags",
+    "smartSearchEnter": "Enter für sofortige Suche drücken",
+    "smartSearchAuto": "Sucht automatisch nach 500 ms Pause",
+    "smartSearchShortcut": "{{shortcutKey}} drücken, um zur Suche zu springen",
+    "smartSearchPalette": "{{shortcutKey}} drücken, um die Befehlspalette zu öffnen",
+    "torrentCreationTasksTitle": "Torrent-Erstellungsaufgaben",
+    "allScope": "ALLE",
+    "unified": "Vereinheitlicht"
+  },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
+  },
+  "unifiedScope": {
+    "unified": "Vereinheitlicht",
+    "collapseScope": "Vereinheitlichten Bereich einklappen",
+    "expandScope": "Vereinheitlichten Bereich ausklappen",
+    "allActive": "Alle aktiv ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Befehlspalette",
+    "placeholder": "Seiten, Einstellungen und Torrents suchen...",
+    "placeholderIn": "In {{name}} suchen...",
+    "groups": {
+      "pages": "Seiten",
+      "actions": "Aktionen"
+    },
+    "current": "Aktuell",
+    "statisticsNote": "Upload- und Download-Verlauf deiner Instanzen",
+    "searchTorrentsFor": "Torrents nach \"{{query}}\" durchsuchen",
+    "torrentMatches_one": "{{count}} Torrent passt",
+    "torrentMatches_other": "{{count}} Torrents passen",
+    "noTorrentMatches": "Kein Torrent passt",
+    "searching": "Suche läuft...",
+    "searchFailed": "Die Torrent-Suche ist fehlgeschlagen",
+    "listFiltersApply": "Filter der Liste aktiv",
+    "noMatchIn": "Kein Treffer in {{name}}",
+    "moreOf": "Mehr zu {{name}}",
+    "hints": {
+      "navigate": "Navigieren",
+      "open": "Öffnen",
+      "more": "Mehr",
+      "searchTorrents": "Torrents suchen",
+      "back": "Zurück"
+    }
+  },
+  "mobileNav": {
+    "dashboard": "Dashboard",
+    "statistics": "Statistiken",
+    "clients": "Clients",
+    "settings": "Einstellungen",
+    "qbittorrentClients": "qBittorrent-Clients",
+    "instances": "Instanzen",
+    "loading": "Wird geladen...",
+    "noActiveClients": "Keine aktiven Clients",
+    "updateAvailable": "Update verfügbar",
+    "updateVersion": "Version {{version}}",
+    "rssRunning": "Cross-Seed-RSS läuft",
+    "rssEnabled": "Cross-Seed-RSS aktiviert",
+    "scanRunning": "Scan läuft",
+    "logout": "Abmelden",
+    "version": "Version {{version}}",
+    "viewOnGitHub": "Auf GitHub ansehen"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "create": "Erstellen",
+    "scrollToTop": "Nach oben scrollen",
+    "search": "Suchen",
+    "select": "Auswählen",
+    "copyValue": "{{label}} kopieren"
+  },
+  "featureNotice": {
+    "gotIt": "Verstanden"
+  },
+  "placeholders": {
+    "search": "Suchen...",
+    "selectItems": "Elemente auswählen..."
+  },
+  "feedback": {
+    "noResultsFound": "Keine Ergebnisse gefunden.",
+    "copied": "{{label}} in die Zwischenablage kopiert",
+    "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
+  },
+  "errors": {
+    "unknown": "Unbekannter Fehler",
+    "httpStatus": "HTTP-Fehler! Status: {{status}}",
+    "httpStatusHtml": "HTTP-Fehler! Status: {{status}} (Server hat eine HTML-Fehlerseite zurückgegeben)",
+    "ssoHtmlResponse": "Die API hat HTML statt JSON zurückgegeben. Wenn du hinter einem SSO-Proxy (Cloudflare Access, Pangolin usw.) bist, lade die Seite neu oder öffne die URL in einem neuen Tab.",
+    "torrentFileDownloadFailed": "Torrent-Datei konnte nicht heruntergeladen werden: {{status}}",
+    "altSpeedToggle": "Alternative Geschwindigkeitsbegrenzungen konnten nicht geändert werden: {{message}}",
+    "altSpeedToggleHidden": "Alternative Geschwindigkeitsbegrenzungen konnten nicht geändert werden. Der Incognito-Modus verbirgt die Ursache."
+  },
+  "status": {
+    "disabled": "Deaktiviert",
+    "notContacted": "Nicht kontaktiert",
+    "working": "Funktioniert",
+    "updating": "Wird aktualisiert",
+    "error": "Fehler",
+    "unknown": "Unbekannt",
+    "unavailable": "Nicht verfügbar",
+    "trackerError": "Tracker-Fehler",
+    "unreachable": "Nicht erreichbar"
+  },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Serie",
+    "music": "Musik",
+    "audiobook": "Hörbuch",
+    "book": "Buch",
+    "comic": "Comic",
+    "game": "Spiel",
+    "app": "App",
+    "adult": "Erwachsene",
+    "unknown": "Unbekannt"
+  },
+  "themeToggle": {
+    "changeTheme": "Design ändern",
+    "appearance": "Darstellung",
+    "mode": "Modus",
+    "light": "Hell",
+    "dark": "Dunkel",
+    "system": "System",
+    "theme": "Design",
+    "switchedToMode": "Zu Modus {{mode}} gewechselt",
+    "switchedToTheme": "Zu Design {{theme}} gewechselt",
+    "switchedToThemeVariation": "Zu Design {{theme}} ({{variation}}) gewechselt",
+    "premiumThemeError": "Dieses Design erfordert eine Lizenz. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren."
+  },
+  "updateBanner": {
+    "updateAvailable": "Update verfügbar",
+    "versionAvailable": "Version {{version}} ist jetzt verfügbar",
+    "dismiss": "Verwerfen"
+  },
+  "systemNotice": {
+    "needsAttention": "Erfordert Aufmerksamkeit",
+    "since": "Seit {{time}}, {{age}}",
+    "causeLabel": "Ursache",
+    "actionFallback": "Zur Behebung",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Aufzeichnung gestoppt",
+        "title": "Aufzeichnung gestoppt",
+        "effect": "qui kann den Übertragungsverlauf nicht schreiben. Es versucht es beim nächsten Schreiben erneut.",
+        "fix": "Stelle sicher, dass der Datenträger freien Speicher hat und qui die Datenbankdatei schreiben kann.",
+        "menuFix": "Speicher für die Datenbank freigeben"
+      },
+      "shrink_failed": {
+        "short": "Verkleinern fehlgeschlagen",
+        "title": "Verkleinern fehlgeschlagen",
+        "effect": "qui konnte die Datenbankdatei nicht verkleinern. Die Datenbank ist unverändert, und qui läuft normal weiter.",
+        "fix": "Details stehen im qui-Log.",
+        "menuFix": "qui-Log lesen",
+        "reasons": {
+          "disk_full": {
+            "fix": "Auf dem Datenträger ist zu wenig Platz frei. Das Verkleinern braucht bis zum Doppelten der Größe der Datenbankdatei. Gib Platz frei und versuche es erneut.",
+            "menuFix": "Platz freigeben, dann erneut versuchen"
+          },
+          "locked": {
+            "fix": "Ein anderes Programm hielt die Datenbankdatei. Beende dieses Programm, zum Beispiel ein Backup-Tool oder einen Datenbank-Viewer, und versuche es erneut.",
+            "menuFix": "Anderes Programm beenden, dann erneut versuchen"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Wenig Speicherplatz",
+        "title": "Wenig Speicherplatz",
+        "effect": "Der Datenträger der qui-Datenbank hat wenig freien Platz. Ist der Datenträger voll, schlägt jeder Schreibvorgang von qui fehl.",
+        "fix": "Gib Platz auf dem Datenträger frei, verkürze „Tägliche Details behalten für“ oder lösche älteren Verlauf in den Statistik-Einstellungen.",
+        "menuFix": "Speicher für die Datenbank freigeben",
+        "action": "Statistik-Einstellungen öffnen"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted-Schlüssel abgelehnt",
+        "title": "Redacted hat den API-Schlüssel abgelehnt",
+        "effect": "Redacted hat die letzte Suche abgelehnt. qui fragt bei der nächsten Suche erneut an.",
+        "fix": "Wenn der Schlüssel falsch ist, erstelle in deinen Redacted-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein. Wenn Redacted die IP von qui gesperrt hat, hilft ein neuer Schlüssel nicht: wende dich an das Team von Redacted.",
+        "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
+        "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus-Schlüssel abgelehnt",
+        "title": "Orpheus hat den API-Schlüssel abgelehnt",
+        "effect": "Orpheus hat die letzte Suche abgelehnt. qui fragt bei der nächsten Suche erneut an.",
+        "fix": "Wenn der Schlüssel falsch ist, erstelle in deinen Orpheus-Profileinstellungen einen API-Schlüssel mit der Berechtigung „Torrents“ und füge ihn in den Gazelle (OPS/RED)-Einstellungen von qui ein. Wenn Orpheus die IP von qui gesperrt hat, hilft ein neuer Schlüssel nicht: wende dich an das Team von Orpheus.",
+        "menuFix": "Neuen Schlüssel in den Einstellungen einfügen",
+        "action": "Gazelle (OPS/RED)-Einstellungen öffnen"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Zeitplan des Bibliotheks-Scans blockiert",
+        "title": "Zeitplan des Bibliotheks-Scans kann nicht laufen",
+        "effect": "qui kann den geplanten Bibliotheks-Scan nicht starten. qui versucht es jede Stunde erneut.",
+        "fix": "Prüfe die Einstellungen des Bibliotheks-Scans. qui versucht es jede Stunde erneut.",
+        "menuFix": "Einstellungen des Bibliotheks-Scans prüfen",
+        "action": "Einstellungen des Bibliotheks-Scans öffnen",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab ist in den Einstellungen des Bibliotheks-Scans aus, und kein RED- oder OPS-API-Schlüssel ist gesetzt. Schalte Torznab ein, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
+            "menuFix": "Torznab einschalten oder RED- oder OPS-Schlüssel hinzufügen"
+          },
+          "no_indexer": {
+            "fix": "Kein Indexer ist aktiviert. Aktiviere einen Torznab-Indexer, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
+            "menuFix": "Einen Indexer aktivieren"
+          },
+          "instance_missing": {
+            "fix": "Die Instanz in den gespeicherten Einstellungen des Bibliotheks-Scans existiert nicht. Wähle eine Instanz in den Einstellungen des Bibliotheks-Scans und speichere. qui versucht es jede Stunde erneut.",
+            "menuFix": "Instanz wählen, dann speichern"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "Erneut versuchen",
+      "dismiss": "Ausblenden",
+      "openLog": "Log öffnen"
+    },
+    "unknown": {
+      "short": "Systemhinweis",
+      "title": "Systemhinweis",
+      "effect": "qui hat einen Fehler gefunden, der eine Aktion von dir benötigt.",
+      "fix": "Details stehen im qui-Log.",
+      "menuFix": "qui-Log lesen"
+    }
+  },
+  "databaseShrink": {
+    "done": "Datenbankdatei von {{before}} auf {{after}} verkleinert",
+    "nextStart": "Das Verkleinern läuft beim nächsten Start von qui",
+    "failed": "Verkleinern konnte nicht angefordert werden"
+  },
+  "pwaUpdate": {
+    "reload": "Neu laden",
+    "waitingDescription": "Neu laden, um die neueste qui-Version zu übernehmen.",
+    "activatedTitle": "qui wurde aktualisiert",
+    "activatedDescription": "Bei Gelegenheit neu laden, um die Installation der neuesten Version abzuschließen."
+  },
+  "notFound": {
+    "title": "Hoppla! Im Schwarm verloren?",
+    "subtitle": "Sieht aus, als hättest du dich ins Unbekannte gewagt.",
+    "bugReport": "Falls du denkst, dass dies eher ein Fehler als ein fehlender Link ist,",
+    "reportTo": "melde dies gerne in unserem",
+    "githubRepository": "GitHub-Repository",
+    "getBackOnTrack": "Andernfalls helfen wir dir, wieder auf Kurs zu kommen!",
+    "returnToDashboard": "Zurück zum Dashboard"
+  },
+  "magnetHandler": {
+    "registerPrompt": "qui als deinen Magnet-Link-Handler registrieren",
+    "register": "Registrieren",
+    "dismiss": "Verwerfen",
+    "registrationRequested": "Registrierung des Magnet-Handlers angefordert",
+    "registrationFailed": "Registrierung des Magnet-Handlers fehlgeschlagen",
+    "guidance": {
+      "standalone": "Öffne qui in einem normalen Browser-Tab, um es zu registrieren (die Aufforderung erscheint möglicherweise in der Adressleiste, die PWAs nicht anzeigen).",
+      "chromium": "Chrome zeigt dies oft als kleines Protokoll-Handler-Symbol in der Adressleiste an; falls nichts erscheint, aktiviere die Protokoll-Handler unter chrome://settings/handlers.",
+      "default": "Wenn dein Browser dich dazu auffordert, bestätige bitte, um die Registrierung abzuschließen."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "Weitere Informationen"
+  },
+  "numberInput": {
+    "unlimited": "Unbegrenzt"
+  },
+  "dateTime": {
+    "na": "N/V",
+    "justNow": "Gerade eben",
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "past": "vor {{value}}",
+    "future": "in {{value}}",
+    "units": {
+      "second_one": "{{count}} Sekunde",
+      "second_other": "{{count}} Sekunden",
+      "minute_one": "{{count}} Minute",
+      "minute_other": "{{count}} Minuten",
+      "hour_one": "{{count}} Stunde",
+      "hour_other": "{{count}} Stunden",
+      "day_one": "{{count}} Tag",
+      "day_other": "{{count}} Tage",
+      "week_one": "{{count}} Woche",
+      "week_other": "{{count}} Wochen",
+      "month_one": "{{count}} Monat",
+      "month_other": "{{count}} Monate",
+      "year_one": "{{count}} Jahr",
+      "year_other": "{{count}} Jahre"
+    }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
+  "support": {
+    "title": "qui unterstützen",
+    "description": "Die Wege, qui zu unterstützen, und ihre Preise.",
+    "heading": "Hilf mit, qui zu pflegen",
+    "intro": "qui ist kostenlos und funktioniert gleich, ob du zahlst oder nicht. Die Unterstützung bezahlt die Zeit und die Werkzeuge, die in qui stecken.",
+    "licensed": "Danke für deine Design-Lizenz.",
+    "releases_one": "qui hat in den letzten 12 Monaten {{count}} Version veröffentlicht.",
+    "releases_other": "qui hat in den letzten 12 Monaten {{count}} Versionen veröffentlicht.",
+    "releaseMap": "Die letzten 52 Wochen, ein Quadrat pro Tag. Ein helles Quadrat ist ein Tag mit einer neuen Version.",
+    "releaseDay": "Ein Tag mit einer neuen Version",
+    "plans": {
+      "yearly": "{{price}} pro Jahr",
+      "yearlyNote": "{{price}} pro Monat, jährlich bezahlt",
+      "yearlyNoteWithLicense": "{{price}} pro Monat, jährlich bezahlt. Inklusive Design-Lizenz.",
+      "license": "Design-Lizenz, ab {{price}}",
+      "licenseNote": "Alle aktuellen und zukünftigen Premium-Designs, lebenslang",
+      "onePayment": "einmalige Zahlung"
+    },
+    "checkout": "Weiter zum Checkout",
+    "fromPrice": "ab {{price}}",
+    "terms": {
+      "yearly": "Du zahlst heute {{price}} und danach jedes Jahr {{price}}, bis du kündigst.",
+      "license": "Eine Zahlung von {{price}} oder mehr, den Betrag legst du im Checkout fest. Kein Abo."
+    },
+    "perks": {
+      "yearly": "Supporter erhalten das Supporter-Abzeichen in qui und die Supporter-Rolle in Discord. Füge nach dem Checkout deinen Supporter-Schlüssel zu diesem Server hinzu.",
+      "license": "Die Lizenz schaltet die Premium-Designs frei. Füge nach dem Checkout deinen Lizenzschlüssel zu diesem Server hinzu."
+    },
+    "existing": "Schon Supporter?",
+    "addKey": "Supporter-Schlüssel hinzufügen",
+    "key": {
+      "help": "Dein Supporter-Schlüssel steht auf der Checkout-Seite und in der E-Mail mit deiner Quittung.",
+      "label": "Supporter-Schlüssel",
+      "submit": "Schlüssel hinzufügen",
+      "back": "Zurück"
+    },
+    "ended": "Der Supporter-Schlüssel auf diesem Server ist nicht mehr gültig. qui prüft ihn jeden Tag erneut. Wenn deine Unterstützung beendet ist, bleibt deine Design-Lizenz erhalten. Ihren Schlüssel findest du im <portal>Lizenzportal</portal>. Füge ihn unter Einstellungen, Designs hinzu.",
+    "removeKey": "Supporter-Schlüssel von diesem Server entfernen",
+    "supporter": {
+      "badge": "Supporter",
+      "title": "Du unterstützt qui",
+      "thanks": "Danke. Deine Unterstützung bezahlt die Zeit und die Werkzeuge, die in qui stecken.",
+      "detail": "Du hast das Supporter-Abzeichen in qui und die Supporter-Rolle in Discord. Deine Unterstützung schaltet auch die Premium-Designs frei und enthält eine lebenslange Design-Lizenz. Den Lizenzschlüssel findest du im <portal>Lizenzportal</portal>.",
+      "manage": "Unterstützung verwalten oder kündigen"
+    },
+    "reminder": {
+      "title_one": "{{count}} Tag qui auf diesem Server",
+      "title_other": "{{count}} Tage qui auf diesem Server",
+      "tooltip": "Auf diesem Server gezählt und nie gesendet. qui fragt einmal im Jahr.",
+      "subtitle": "qui unterstützen. qui fragt einmal im Jahr.",
+      "notNow": "Nicht jetzt",
+      "serverDays_one": "Dieser Server nutzt qui seit {{count}} Tag. qui zählt das auf diesem Server und sendet es nie.",
+      "serverDays_other": "Dieser Server nutzt qui seit {{count}} Tagen. qui zählt das auf diesem Server und sendet es nie.",
+      "notNowToast": "qui fragt in einem Jahr wieder",
+      "dontAskAgain": "Nicht mehr fragen",
+      "offToast": "qui fragt nicht mehr",
+      "offToastDescription": "Die Verknüpfung zum Unterstützen bleibt. Schalte die Erinnerung unter Einstellungen, Anwendung wieder ein.",
+      "undo": "Rückgängig",
+      "hiddenToast": "Die Verknüpfung zum Unterstützen ist ausgeblendet",
+      "hiddenToastDescription": "qui fragt nicht mehr. Hole die Verknüpfung unter Einstellungen, Anwendung zurück.",
+      "notForYou": "Nichts für dich? <reminder>Schalte die jährliche Erinnerung aus</reminder> oder <heart>blende das Herz aus</heart>. Die Einstellungen bringen beides zurück.",
+      "notForYouHeart": "Nichts für dich? <heart>Blende das Herz aus</heart>. Die Einstellungen bringen es zurück."
+    }
+  },
+  "labels": {
+    "path": "Pfad",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "Dieser Abschnitt konnte nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "edit": "Bearbeiten",
+    "moreActions": "Weitere Aktionen",
+    "enabled": "Aktiviert",
+    "clearSelection": "Auswahl aufheben"
+  }
+}

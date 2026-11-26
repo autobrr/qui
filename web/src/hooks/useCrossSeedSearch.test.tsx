@@ -1,0 +1,1248 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act, renderHook, waitFor } from "@testing-library/react"
+import type { ReactNode } from "react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+vi.mock("@/lib/api", () => ({
+  api: {
+    listTorznabIndexers: vi.fn(),
+    getCrossSeedSettings: vi.fn(),
+    analyzeTorrentForCrossSeedSearch: vi.fn(),
+    searchCrossSeedTorrent: vi.fn(),
+    applyCrossSeedSearchResults: vi.fn(),
+    listCrossSeedRoutes: vi.fn(),
+    getInstances: vi.fn(),
+  },
+}))
+
+vi.mock("sonner", () => ({
+  toast: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    success: vi.fn(),
+  },
+}))
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, opts?: { message?: string; count?: number; added?: number; failed?: number; completedPart?: string; completedPrefix?: string }) => {
+      if (opts?.message) return `${key}:${opts.message}`
+      const values = [opts?.count, opts?.added, opts?.failed, opts?.completedPart, opts?.completedPrefix].filter(v => v !== undefined && v !== "")
+      return values.length > 0 ? `${key}:${values.join("/")}` : key
+    },
+  }),
+}))
+
+type DialogProps = Record<string, unknown>
+vi.mock("@/components/torrents/CrossSeedDialog", () => ({
+  CrossSeedDialog: () => null,
+}))
+
+let phone = false
+vi.mock("@/hooks/useMediaQuery", async importOriginal => ({
+  ...await importOriginal<typeof import("@/hooks/useMediaQuery")>(),
+  useIsPhone: () => phone,
+}))
+
+import { api } from "@/lib/api"
+import { toast } from "sonner"
+import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
+import { makeTorrent } from "@/test/mockTorrent"
+import type { CrossSeedGazelleLookup, CrossSeedInstanceResult, CrossSeedTorrentSearchResponse, TorznabIndexer } from "@/types"
+
+const mockedApi = vi.mocked(api, true)
+const mockedToast = vi.mocked(toast, true)
+
+const red = { site: "redacted.sh", name: "Redacted (API)", shortName: "Redacted", indexerId: -1001 }
+const ops = { site: "orpheus.network", name: "Orpheus (API)", shortName: "Orpheus", indexerId: -1002 }
+
+function makeIndexer(overrides: Partial<TorznabIndexer> = {}): TorznabIndexer {
+  return {
+    id: 1,
+    name: "indexer-1",
+    base_url: "http://example",
+    indexer_id: "idx-1",
+    backend: "native",
+    enabled: true,
+    priority: 0,
+    timeout_seconds: 30,
+    capabilities: [],
+    categories: [],
+    last_test_status: "ok",
+    created_at: "",
+    updated_at: "",
+    ...overrides,
+  }
+}
+
+function makeSearchResponse(
+  overrides: Partial<CrossSeedTorrentSearchResponse> = {}
+): CrossSeedTorrentSearchResponse {
+  return {
+    sourceTorrent: { name: "test-torrent", hash: "abcdef0123456789" },
+    results: [],
+    ...overrides,
+  }
+}
+
+function makeResult(
+  overrides: Partial<CrossSeedTorrentSearchResponse["results"][number]> = {}
+): CrossSeedTorrentSearchResponse["results"][number] {
+  return {
+    indexer: "indexer-1",
+    indexerId: 1,
+    title: "Some Release",
+    downloadUrl: "http://dl/1",
+    size: 100,
+    seeders: 5,
+    leechers: 1,
+    categoryId: 5000,
+    categoryName: "TV",
+    publishDate: "",
+    downloadVolumeFactor: 1,
+    uploadVolumeFactor: 1,
+    guid: "guid-1",
+    matchScore: 1,
+    ...overrides,
+  }
+}
+
+function makeWrapper(queryClient?: QueryClient) {
+  const client =
+    queryClient ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  )
+}
+
+type HookResult = ReturnType<typeof useCrossSeedSearch>
+
+function dialogProps(result: { current: HookResult }): DialogProps {
+  const element = result.current.crossSeedDialog as { props: DialogProps }
+  return element.props
+}
+
+async function renderSettled(instanceId = 1, queryClient?: QueryClient) {
+  const utils = renderHook(() => useCrossSeedSearch(instanceId), {
+    wrapper: makeWrapper(queryClient),
+  })
+  await act(async () => {
+    await Promise.resolve()
+  })
+  await waitFor(() => {
+    expect(mockedApi.listTorznabIndexers).toHaveBeenCalled()
+    expect(mockedApi.getCrossSeedSettings).toHaveBeenCalled()
+  })
+  await act(async () => {
+    await Promise.resolve()
+  })
+  return utils
+}
+
+describe("useCrossSeedSearch", () => {
+  beforeEach(() => {
+    mockedApi.listTorznabIndexers.mockResolvedValue([makeIndexer()])
+    mockedApi.getCrossSeedSettings.mockResolvedValue({
+      findIndividualEpisodes: false,
+    } as never)
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({
+      name: "test-torrent",
+      hash: "abcdef0123456789",
+    } as never)
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse())
+    mockedApi.listCrossSeedRoutes.mockResolvedValue([])
+    mockedApi.getInstances.mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    phone = false
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it("gates canCrossSeedSearch on having at least one enabled indexer", async () => {
+    mockedApi.listTorznabIndexers.mockResolvedValue([
+      makeIndexer({ id: 1, enabled: false }),
+    ])
+    const { result } = await renderSettled()
+    expect(result.current.canCrossSeedSearch).toBe(false)
+  })
+
+  it("enables canCrossSeedSearch once an indexer is enabled", async () => {
+    mockedApi.listTorznabIndexers.mockResolvedValue([
+      makeIndexer({ id: 1, enabled: false }),
+      makeIndexer({ id: 2, enabled: true }),
+    ])
+    const { result } = await renderSettled()
+    expect(result.current.canCrossSeedSearch).toBe(true)
+  })
+
+  it("blocks incomplete torrents with a completed-only toast and does not analyze", async () => {
+    const { result } = await renderSettled()
+
+    act(() => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 0.5 }))
+    })
+
+    expect(mockedToast.info).toHaveBeenCalledWith("hooks.search.completedOnly")
+    expect(mockedApi.analyzeTorrentForCrossSeedSearch).not.toHaveBeenCalled()
+  })
+
+  it("blocks when there are no enabled indexers", async () => {
+    mockedApi.listTorznabIndexers.mockResolvedValue([
+      makeIndexer({ enabled: false }),
+    ])
+    const { result } = await renderSettled()
+
+    act(() => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1 }))
+    })
+
+    expect(mockedToast.error).toHaveBeenCalledWith("hooks.search.noIndexers")
+    expect(mockedApi.analyzeTorrentForCrossSeedSearch).not.toHaveBeenCalled()
+  })
+
+  it("searches RED/OPS when only a RED/OPS key is set", async () => {
+    mockedApi.listTorznabIndexers.mockResolvedValue([])
+    mockedApi.getCrossSeedSettings.mockResolvedValue({
+      findIndividualEpisodes: false,
+      gazelleEnabled: true,
+    } as never)
+    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }]
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-gazelle", gazellePlan: plan } as never)
+    const { result } = await renderSettled()
+    expect(result.current.canCrossSeedSearch).toBe(true)
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-gazelle" }))
+      await Promise.resolve()
+    })
+    expect(mockedToast.error).not.toHaveBeenCalled()
+    expect(dialogProps(result).selectableGazelleIds).toEqual([red.indexerId])
+    expect(dialogProps(result).gazelleKeysMissing).toBe(false)
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    expect(mockedApi.searchCrossSeedTorrent).toHaveBeenCalledTimes(1)
+    expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]?.indexerIds).toBeUndefined()
+  })
+
+  it("tells the dialog that RED/OPS is on and no site has an API key", async () => {
+    mockedApi.listTorznabIndexers.mockResolvedValue([])
+    mockedApi.getCrossSeedSettings.mockResolvedValue({ findIndividualEpisodes: false, gazelleEnabled: true } as never)
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-no-keys", gazellePlan: [] } as never)
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-no-keys" }))
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).gazelleKeysMissing).toBe(true)
+  })
+
+  it("blocks when RED/OPS keys are set but RED/OPS is off and no indexer is enabled", async () => {
+    mockedApi.listTorznabIndexers.mockResolvedValue([])
+    mockedApi.getCrossSeedSettings.mockResolvedValue({
+      findIndividualEpisodes: false,
+      gazelleEnabled: false,
+      redactedApiKey: "red-key",
+      orpheusApiKey: "ops-key",
+    } as never)
+    const { result } = await renderSettled()
+    expect(result.current.canCrossSeedSearch).toBe(false)
+
+    act(() => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1 }))
+    })
+    expect(mockedToast.error).toHaveBeenCalledWith("hooks.search.noIndexers")
+  })
+
+  it("analyzes the source torrent on the happy-path open", async () => {
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-open" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    expect(mockedApi.analyzeTorrentForCrossSeedSearch).toHaveBeenCalledTimes(1)
+    expect(mockedApi.analyzeTorrentForCrossSeedSearch).toHaveBeenCalledWith(
+      1,
+      "hash-open"
+    )
+  })
+
+  it("runs a search, toggles searching state, and selects all results by default", async () => {
+    let resolveSearch!: (r: CrossSeedTorrentSearchResponse) => void
+    mockedApi.searchCrossSeedTorrent.mockReturnValue(
+      new Promise<CrossSeedTorrentSearchResponse>(resolve => {
+        resolveSearch = resolve
+      })
+    )
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-search" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    act(() => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+    })
+
+    expect(result.current.isCrossSeedSearching).toBe(true)
+
+    const results = [
+      makeResult({ guid: "guid-a", downloadUrl: "http://dl/a" }),
+      makeResult({ guid: "guid-b", downloadUrl: "http://dl/b" }),
+    ]
+    await act(async () => {
+      resolveSearch(makeSearchResponse({ results }))
+      await Promise.resolve()
+    })
+
+    expect(result.current.isCrossSeedSearching).toBe(false)
+    const selected = dialogProps(result).selectedKeys as Set<string>
+    expect(selected.has("guid-a")).toBe(true)
+    expect(selected.has("guid-b")).toBe(true)
+    expect(selected.size).toBe(2)
+  })
+
+  it("keeps the search results when the opening analysis answers after the search", async () => {
+    let resolveAnalyze!: (info: CrossSeedTorrentSearchResponse["sourceTorrent"]) => void
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockReturnValue(
+      new Promise(resolve => {
+        resolveAnalyze = resolve
+      }) as never
+    )
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [makeResult({ guid: "guid-early" })] })
+    )
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-late-analyze" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      resolveAnalyze({ name: "test-torrent", hash: "hash-late-analyze" })
+      await Promise.resolve()
+    })
+
+    const results = dialogProps(result).results as CrossSeedTorrentSearchResponse["results"]
+    expect(results.map(r => r.guid)).toEqual(["guid-early"])
+  })
+
+  it("keeps the search results when the opening analysis fails after the search", async () => {
+    let rejectAnalyze!: (error: Error) => void
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectAnalyze = reject
+      }) as never
+    )
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [makeResult({ guid: "guid-early" })] })
+    )
+
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-late-analyze-error" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      rejectAnalyze(new Error("analyze boom"))
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).error).toBeNull()
+    const results = dialogProps(result).results as CrossSeedTorrentSearchResponse["results"]
+    expect(results.map(r => r.guid)).toEqual(["guid-early"])
+  })
+
+  it("ignores the analysis of a torrent that the dialog no longer shows", async () => {
+    const resolvers: Record<string, (info: CrossSeedTorrentSearchResponse["sourceTorrent"]) => void> = {}
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockImplementation(((_: number, hash: string) =>
+      new Promise(resolve => {
+        resolvers[hash] = resolve
+      })) as never)
+
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-a" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onClose as () => void)()
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-b" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      resolvers["hash-a"]({ name: "torrent-a", hash: "hash-a" })
+      await Promise.resolve()
+    })
+    await act(async () => {
+      resolvers["hash-b"]({ name: "torrent-b", hash: "hash-b" })
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).sourceTorrent).toEqual({ name: "torrent-b", hash: "hash-b" })
+  })
+
+  it("ignores the search results of a torrent that the dialog no longer shows", async () => {
+    let resolveSearch!: (response: CrossSeedTorrentSearchResponse) => void
+    mockedApi.searchCrossSeedTorrent.mockReturnValue(
+      new Promise(resolve => {
+        resolveSearch = resolve
+      }) as never
+    )
+
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-a" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onClose as () => void)()
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-b" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      resolveSearch(makeSearchResponse({ results: [makeResult({ guid: "guid-a" })] }))
+      await Promise.resolve()
+    })
+
+    const results = dialogProps(result).results as CrossSeedTorrentSearchResponse["results"]
+    expect(results.map(r => r.guid)).not.toContain("guid-a")
+  })
+
+  it("ignores the search results that arrive after the dialog closes", async () => {
+    let resolveSearch!: (response: CrossSeedTorrentSearchResponse) => void
+    mockedApi.searchCrossSeedTorrent.mockReturnValue(
+      new Promise(resolve => {
+        resolveSearch = resolve
+      }) as never
+    )
+
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-closed" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onClose as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      resolveSearch(makeSearchResponse({ results: [makeResult({ guid: "guid-late" })] }))
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).results).toEqual([])
+  })
+
+  it("forwards the partial flag from the search response to the dialog", async () => {
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [makeResult()], partial: true })
+    )
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-partial-flag" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).partial).toBe(true)
+  })
+
+  it("forwards sorted indexer ids, excludes filtered ids, and forwards findIndividualEpisodes", async () => {
+    mockedApi.getCrossSeedSettings.mockResolvedValue({
+      findIndividualEpisodes: true,
+    } as never)
+    mockedApi.listTorznabIndexers.mockResolvedValue([
+      makeIndexer({ id: 1, name: "bravo", enabled: true, priority: 1 }),
+      makeIndexer({ id: 2, name: "alpha", enabled: true, priority: 5 }),
+      makeIndexer({ id: 3, name: "charlie", enabled: true, priority: 1 }),
+    ])
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({
+      name: "t",
+      hash: "hash-scope",
+      excludedIndexers: { 3: "no caps" },
+    } as never)
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-scope" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(mockedApi.searchCrossSeedTorrent).toHaveBeenCalledTimes(1)
+    const [calledInstanceId, calledHash, options] =
+      mockedApi.searchCrossSeedTorrent.mock.calls[0]
+    expect(calledInstanceId).toBe(1)
+    expect(calledHash).toBe("hash-scope")
+    expect(options?.indexerIds).toEqual([2, 1])
+    expect(options?.findIndividualEpisodes).toBe(true)
+  })
+
+  it("leaves an empty search to the dialog, with no toast", async () => {
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [] })
+    )
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-empty" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).hasSearched).toBe(true)
+    expect(dialogProps(result).results).toEqual([])
+    expect(mockedToast.info).not.toHaveBeenCalled()
+  })
+
+  it("forwards a failed RED/OPS lookup to the dialog", async () => {
+    const lookups: CrossSeedGazelleLookup[] = [{ ...red, status: "no_match" }, { ...ops, status: "failed", reason: "timed_out" }]
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [], gazelleLookups: lookups })
+    )
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-gazelle-timeout" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).gazelleEntries).toEqual(lookups)
+  })
+
+  it("forwards the Torznab failure note to the dialog", async () => {
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [], torznabFailed: true })
+    )
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-torznab-failed-empty" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).torznabFailed).toBe(true)
+  })
+
+  it("applies a cooldown on force-refresh and recovers after 30s", async () => {
+    const { result } = await renderSettled()
+    vi.useFakeTimers()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-refresh" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).canForceRefresh).toBe(true)
+
+    await act(async () => {
+      ;(dialogProps(result).onForceRefresh as () => void)()
+      await Promise.resolve()
+    })
+
+    const refreshCall = mockedApi.searchCrossSeedTorrent.mock.calls.at(-1)
+    expect(refreshCall?.[2]?.cacheMode).toBe("bypass")
+
+    expect(dialogProps(result).canForceRefresh).toBe(false)
+    expect(dialogProps(result).refreshCooldownUntil).toBeGreaterThan(0)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+    })
+    expect(dialogProps(result).canForceRefresh).toBe(true)
+    expect(dialogProps(result).refreshCooldownUntil).toBe(0)
+  })
+
+  it("wraps rate-limit search failures and preserves the error on close", async () => {
+    mockedApi.searchCrossSeedTorrent.mockRejectedValue(
+      new Error("429 too many requests rate limit")
+    )
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-429" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).error).toEqual(expect.stringContaining("hooks.search.rateLimitSearch"))
+    expect(mockedToast.error).not.toHaveBeenCalled()
+    expect(result.current.isCrossSeedSearching).toBe(false)
+    const errorBeforeClose = dialogProps(result).error
+    expect(errorBeforeClose).toBeTruthy()
+
+    await act(async () => {
+      ;(dialogProps(result).onClose as () => void)()
+      await Promise.resolve()
+    })
+    expect(dialogProps(result).error).toBe(errorBeforeClose)
+  })
+
+  it("shows the add outcome in the drawer, not in a toast, on a phone", async () => {
+    phone = true
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ results: [makeResult({ guid: "guid-phone" })] }))
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [{ title: "Some Release", indexer: "indexer-1", success: true, instanceResults: [{ instanceId: 1, instanceName: "inst", success: true, status: "added", class: "added" }] }],
+    } as never)
+
+    const { result } = await renderSettled()
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-phone" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(mockedToast.success).not.toHaveBeenCalled()
+    expect((dialogProps(result).applyOutcomes as Map<string, unknown>).size).toBe(1)
+    expect(dialogProps(result).applySummary).toEqual({ level: "success", message: "hooks.search.applySuccess:1" })
+  })
+
+  it("applies selected results and invalidates torrent queries", async () => {
+    const results = [makeResult({ guid: "guid-apply" })]
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results })
+    )
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [
+        {
+          title: "Some Release",
+          indexer: "indexer-1",
+          success: true,
+          instanceResults: [
+            {
+              instanceId: 1,
+              instanceName: "inst",
+              success: true,
+              status: "added",
+              class: "added",
+            },
+          ],
+        },
+      ],
+    } as never)
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+
+    const { result } = await renderSettled(1, queryClient)
+    const torrent = makeTorrent({ progress: 1, hash: "hash-apply" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(mockedApi.applyCrossSeedSearchResults).toHaveBeenCalledTimes(1)
+    const [applyInstanceId, applyHash, payload] =
+      mockedApi.applyCrossSeedSearchResults.mock.calls[0]
+    expect(applyInstanceId).toBe(1)
+    expect(applyHash).toBe("hash-apply")
+    expect(payload.selections).toHaveLength(1)
+    expect(payload.selections[0].guid).toBe("guid-apply")
+
+    expect(mockedToast.success).toHaveBeenCalledWith("hooks.search.applySuccess:1")
+    expect(mockedToast.warning).not.toHaveBeenCalled()
+    expect(mockedToast.error).not.toHaveBeenCalled()
+    expect(dialogProps(result).selectionCount).toBe(0)
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["torrents-list", 1],
+      exact: false,
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ["torrent-counts", 1],
+      exact: false,
+    })
+  })
+
+  it("names the Cross-seed instance and refreshes its torrent list after a routed apply", async () => {
+    mockedApi.listCrossSeedRoutes.mockResolvedValue([{ sourceInstanceId: 1, crossSeedInstanceId: 2, rows: [] }])
+    mockedApi.getInstances.mockResolvedValue([{ id: 1, name: "lib" }, { id: 2, name: "seeds" }] as never)
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ results: [makeResult({ guid: "guid-routed" })] }))
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [{
+        title: "Some Release", indexer: "indexer-1", success: true,
+        instanceResults: [{ instanceId: 1, instanceName: "lib", success: true, status: "added_hardlink", class: "added", crossSeedInstanceId: 2, crossSeedInstanceName: "seeds" }],
+      }],
+    } as never)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries")
+    const { result } = await renderSettled(1, queryClient)
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-routed" }))
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(dialogProps(result).crossSeedInstanceName).toBe("seeds"))
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["torrents-list", 2], exact: false })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["torrents-list", 1], exact: false })
+  })
+
+  it("maps partial apply results (some added, some failed) to a warning", async () => {
+    const results = [makeResult({ guid: "guid-partial" })]
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results })
+    )
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [
+        {
+          title: "Some Release",
+          indexer: "indexer-1",
+          success: true,
+          instanceResults: [
+            {
+              instanceId: 1,
+              instanceName: "a",
+              success: true,
+              status: "added",
+              class: "added",
+            },
+            {
+              instanceId: 2,
+              instanceName: "b",
+              success: false,
+              status: "error",
+              class: "failed",
+            },
+          ],
+        },
+      ],
+    } as never)
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-partial" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(mockedToast.warning).toHaveBeenCalledWith("hooks.search.applyPartial:1/1")
+    expect(mockedToast.success).not.toHaveBeenCalled()
+  })
+
+  it("unticks each sent result and keeps its outcome, also for a failed add", async () => {
+    const results = [makeResult({ guid: "guid-landed", title: "Cedar Harbor A" }), makeResult({ guid: "guid-failed", title: "Cedar Harbor B" })]
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ results }))
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [
+        { title: "Cedar Harbor A", indexer: "indexer-1", success: true, instanceResults: [{ instanceId: 1, instanceName: "a", success: true, status: "added", class: "added" }] },
+        { title: "Cedar Harbor B", indexer: "indexer-1", success: false, instanceResults: [{ instanceId: 1, instanceName: "a", success: false, status: "size_mismatch", class: "failed" }] },
+      ],
+    } as never)
+
+    const { result } = await renderSettled()
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-mixed" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    expect(dialogProps(result).selectionCount).toBe(2)
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(dialogProps(result).selectionCount).toBe(0)
+    expect([...(dialogProps(result).applyOutcomes as Map<string, unknown>).keys()]).toEqual(["guid-landed", "guid-failed"])
+  })
+
+  it("maps an all-failed apply result to an error toast", async () => {
+    const results = [makeResult({ guid: "guid-failed" })]
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results })
+    )
+    mockedApi.applyCrossSeedSearchResults.mockResolvedValue({
+      results: [
+        {
+          title: "Some Release",
+          indexer: "indexer-1",
+          success: false,
+          instanceResults: [
+            {
+              instanceId: 1,
+              instanceName: "a",
+              success: false,
+              status: "error",
+              class: "failed",
+            },
+          ],
+        },
+      ],
+    } as never)
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-failed" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(mockedToast.error).toHaveBeenCalledWith("hooks.search.applyFailed:1")
+    expect(mockedToast.success).not.toHaveBeenCalled()
+  })
+
+  describe("apply toast", () => {
+    const added: CrossSeedInstanceResult = { instanceId: 1, instanceName: "a", success: true, status: "added_hardlink", class: "added" }
+    const exists: CrossSeedInstanceResult = { instanceId: 2, instanceName: "b", success: false, status: "exists", class: "exists" }
+    const noMatch: CrossSeedInstanceResult = { instanceId: 3, instanceName: "c", success: false, status: "no_match", class: "skipped" }
+    const stranded: CrossSeedInstanceResult = { instanceId: 4, instanceName: "d", success: false, status: "alignment_failed", class: "stranded" }
+    const failed: CrossSeedInstanceResult = { instanceId: 5, instanceName: "e", success: false, status: "error", class: "failed" }
+    const withInstances = (...instanceResults: CrossSeedInstanceResult[]) => ({ title: "t", indexer: "i", success: false, instanceResults })
+    const noDetails = (success: boolean) => ({ title: "t", indexer: "i", success })
+
+    it.each([
+      ["every result exists", [withInstances(exists, exists)], "info", "hooks.search.applyAlreadyInClient"],
+      ["exists with no_match", [withInstances(exists, noMatch)], "info", "hooks.search.applyNoChanges"],
+      ["no results", [], "info", "hooks.search.applyNoChanges"],
+      ["an add with exists and no_match", [withInstances(added, exists, noMatch)], "success", "hooks.search.applySuccess:1"],
+      ["a stranded result", [withInstances(stranded)], "error", "hooks.search.applyFailed:1"],
+      ["stranded and failed beside exists", [withInstances(stranded, failed, exists)], "error", "hooks.search.applyFailed:2"],
+      ["no instance results and no success", [noDetails(false)], "error", "hooks.search.applyFailed:1"],
+      ["exists with a result that has no instance results and no success", [withInstances(exists), noDetails(false)], "error", "hooks.search.applyFailed:1"],
+      ["a result that completed without details", [noDetails(true)], "success", "hooks.search.applyCompletedUnavailable"],
+      ["exists with a result that completed without details", [withInstances(exists), noDetails(true)], "success", "hooks.search.applyCompletedUnavailable"],
+      ["an add with a result that completed without details", [withInstances(added), noDetails(true)], "success", "hooks.search.applySuccessWithCompleted:1"],
+      ["an add and a failure with a result that completed without details", [withInstances(added, failed), noDetails(true)], "warning", "hooks.search.applyPartial:1/1/hooks.search.applyCompletedPart:1"],
+      ["a failure with a result that completed without details", [withInstances(failed), noDetails(true)], "error", "hooks.search.applyFailed:1/hooks.search.applyCompletedPrefix:1"],
+    ] as const)("shows the right toast for %s", async (_name, results, level, message) => {
+      mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ results: [makeResult({ guid: "guid-toast" })] }))
+      mockedApi.applyCrossSeedSearchResults.mockResolvedValue({ results } as never)
+
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-toast" }))
+        await Promise.resolve()
+      })
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        await (dialogProps(result).onApply as () => Promise<void>)()
+      })
+
+      const shown = (["info", "success", "warning", "error"] as const).flatMap(l =>
+        mockedToast[l].mock.calls.map(call => [l, call[0]])
+      )
+      expect(shown).toEqual([[level, message]])
+    })
+  })
+
+  it("warns without calling the API when applying with no selection", async () => {
+    const results = [makeResult({ guid: "guid-none" })]
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results })
+    )
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-none" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    act(() => {
+      ;(
+        dialogProps(result).onClearSelection as () => void
+      )()
+    })
+
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(mockedToast.warning).toHaveBeenCalledWith("hooks.search.selectResult")
+    expect(mockedApi.applyCrossSeedSearchResults).not.toHaveBeenCalled()
+  })
+
+  it("surfaces an apply failure via toast.error", async () => {
+    const results = [makeResult({ guid: "guid-throw" })]
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results })
+    )
+    mockedApi.applyCrossSeedSearchResults.mockRejectedValue(
+      new Error("apply boom")
+    )
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-throw" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await (dialogProps(result).onApply as () => Promise<void>)()
+    })
+
+    expect(mockedToast.error).toHaveBeenCalledWith("apply boom", { position: undefined })
+    expect(mockedToast.success).not.toHaveBeenCalled()
+  })
+
+  it("wraps rate-limit analyze failures on open and surfaces them", async () => {
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockRejectedValue(
+      new Error("429 rate limit")
+    )
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-analyze-429" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    expect(mockedToast.error).not.toHaveBeenCalled()
+    expect(dialogProps(result).error).toBeTruthy()
+    expect(dialogProps(result).error).toEqual(
+      expect.stringContaining("hooks.search.rateLimitAnalyze")
+    )
+  })
+
+  it("warns when scope-searching in custom mode with no indexer selected", async () => {
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-custom-empty" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    const [only] = dialogProps(result).indexerOptions as Array<{ id: number }>
+    act(() => {
+      ;(dialogProps(result).onToggleIndexer as (id: number) => void)(only.id)
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(mockedToast.warning).toHaveBeenCalledWith("hooks.search.selectTracker")
+    expect(mockedApi.searchCrossSeedTorrent).not.toHaveBeenCalled()
+  })
+
+  describe("RED/OPS entries", () => {
+    const plan: CrossSeedGazelleLookup[] = [
+      { ...red, status: "not_asked", reason: "source_site", replacedIndexerIds: [7] },
+      { ...ops, status: "will_ask", replacedIndexerIds: [8] },
+    ]
+
+    async function openWithPlan() {
+      mockedApi.listTorznabIndexers.mockResolvedValue([
+        makeIndexer({ id: 1, name: "generic" }),
+        makeIndexer({ id: 7, name: "Redacted" }),
+        makeIndexer({ id: 8, name: "Orpheus" }),
+      ])
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-plan", gazellePlan: plan } as never)
+      const rendered = await renderSettled()
+      await act(async () => {
+        rendered.result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-plan" }))
+        await Promise.resolve()
+      })
+      return rendered.result
+    }
+
+    function toggle(result: { current: HookResult }, id: number) {
+      act(() => {
+        ;(dialogProps(result).onToggleIndexer as (id: number) => void)(id)
+      })
+    }
+
+    async function searchCustom(result: { current: HookResult }, ids: number[]) {
+      const all = [
+        ...(dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id),
+        ...(dialogProps(result).selectableGazelleIds as number[]),
+      ]
+      for (const id of all.filter(id => !ids.includes(id))) {
+        toggle(result, id)
+      }
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+      return mockedApi.searchCrossSeedTorrent.mock.calls[0][2]
+    }
+
+    it("shows the plan and leaves out the Torznab indexers that the sites replace", async () => {
+      const result = await openWithPlan()
+
+      expect(dialogProps(result).gazelleEntries).toEqual(plan)
+      expect(dialogProps(result).selectableGazelleIds).toEqual([ops.indexerId])
+      expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
+    })
+
+    it("asks every site and no replaced indexer when the user picks all", async () => {
+      const result = await openWithPlan()
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+
+      const options = mockedApi.searchCrossSeedTorrent.mock.calls[0][2]
+      expect(options?.indexerIds).toEqual([1])
+      expect(options?.gazelleSites).toBeUndefined()
+    })
+
+    it("picks the rest when the user takes one entry out, and all again when the user puts it back", async () => {
+      const result = await openWithPlan()
+
+      toggle(result, ops.indexerId)
+      expect(dialogProps(result).indexerMode).toBe("custom")
+      expect(dialogProps(result).selectedIndexerIds).toEqual([1])
+
+      toggle(result, ops.indexerId)
+      expect(dialogProps(result).indexerMode).toBe("all")
+      expect(dialogProps(result).selectedIndexerIds).toEqual([])
+    })
+
+    it("lists the indexers that the user already seeds from, without the ones that a site replaces", async () => {
+      mockedApi.listTorznabIndexers.mockResolvedValue([
+        makeIndexer({ id: 1, name: "generic" }),
+        makeIndexer({ id: 2, name: "seeded" }),
+        makeIndexer({ id: 3, name: "tv only" }),
+        makeIndexer({ id: 7, name: "Redacted" }),
+      ])
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({
+        name: "t", hash: "hash-plan", gazellePlan: plan, availableIndexers: [1, 2, 7], excludedIndexers: { 2: "seeded", 7: "Redacted" },
+      } as never)
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-plan" }))
+        await Promise.resolve()
+      })
+
+      expect(dialogProps(result).alreadySeededIndexers).toEqual([{ id: 2, name: "seeded" }])
+      expect(dialogProps(result).unsupportedIndexers).toEqual([{ id: 3, name: "tv only" }])
+      expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
+    })
+
+    it("keeps the analysis while a search runs", async () => {
+      mockedApi.listTorznabIndexers.mockResolvedValue([
+        makeIndexer({ id: 1, name: "generic" }),
+        makeIndexer({ id: 2, name: "seeded" }),
+        makeIndexer({ id: 3, name: "tv only" }),
+      ])
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({
+        name: "t", hash: "hash-keep", gazellePlan: plan, availableIndexers: [1, 2], excludedIndexers: { 2: "seeded" },
+      } as never)
+      mockedApi.searchCrossSeedTorrent.mockReturnValue(new Promise(() => {}) as never)
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-keep" }))
+        await Promise.resolve()
+      })
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+
+      expect(dialogProps(result).isLoading).toBe(true)
+      expect(dialogProps(result).sourceTorrent).toMatchObject({ hash: "hash-keep" })
+      expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
+      expect(dialogProps(result).alreadySeededIndexers).toEqual([{ id: 2, name: "seeded" }])
+    })
+
+    it("picks no entry, then each entry again, from the select controls", async () => {
+      const result = await openWithPlan()
+      act(() => (dialogProps(result).onSetAllIndexers as (picked: boolean) => void)(false))
+
+      expect(dialogProps(result).indexerMode).toBe("custom")
+      expect(dialogProps(result).selectedIndexerIds).toEqual([])
+
+      act(() => (dialogProps(result).onSetAllIndexers as (picked: boolean) => void)(true))
+
+      expect(dialogProps(result).indexerMode).toBe("all")
+    })
+
+    it("asks only RED/OPS when the user picks only a RED/OPS entry", async () => {
+      const options = await searchCustom(await openWithPlan(), [ops.indexerId])
+
+      expect(options?.indexerIds).toBeUndefined()
+      expect(options?.gazelleSites).toEqual(["orpheus.network"])
+    })
+
+    it("keeps the plan after a search that left a site out", async () => {
+      const result = await openWithPlan()
+      mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({
+        gazelleLookups: [{ ...red, status: "not_asked", reason: "source_site" }, { ...ops, status: "not_asked", reason: "not_selected" }],
+      }))
+      await searchCustom(result, [1])
+
+      expect(dialogProps(result).selectableGazelleIds).toEqual([ops.indexerId])
+      expect((dialogProps(result).indexerOptions as Array<{ id: number }>).map(option => option.id)).toEqual([1])
+    })
+
+    it("shows the plan again in the scope list when the pick changes after a search", async () => {
+      const lookups: CrossSeedGazelleLookup[] = [{ ...red, status: "not_asked", reason: "source_site" }, { ...ops, status: "not_asked", reason: "not_selected" }]
+      mockedApi.searchCrossSeedTorrent.mockResolvedValue(makeSearchResponse({ gazelleLookups: lookups }))
+      const result = await openWithPlan()
+      await searchCustom(result, [1])
+
+      expect(dialogProps(result).gazelleEntries).toEqual(lookups)
+      expect(dialogProps(result).gazelleLookups).toEqual(lookups)
+
+      toggle(result, ops.indexerId)
+
+      expect(dialogProps(result).gazelleEntries).toEqual(plan)
+      expect(dialogProps(result).gazelleLookups).toEqual(lookups)
+    })
+
+    it("loads the plan again when the user retries after a failed analysis", async () => {
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockRejectedValueOnce(new Error("analyze failed"))
+      const { result } = await renderSettled()
+      await act(async () => {
+        result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-plan" }))
+        await Promise.resolve()
+      })
+      expect(dialogProps(result).error).toBe("analyze failed")
+
+      mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-plan", gazellePlan: plan } as never)
+      await act(async () => {
+        ;(dialogProps(result).onRetry as () => void)()
+        await Promise.resolve()
+      })
+
+      await waitFor(() => expect(dialogProps(result).selectableGazelleIds).toEqual([ops.indexerId]))
+    })
+
+    it("asks no RED/OPS site when the user picks only Torznab indexers", async () => {
+      const options = await searchCustom(await openWithPlan(), [1])
+
+      expect(options?.indexerIds).toEqual([1])
+      expect(options?.gazelleSites).toEqual([])
+    })
+  })
+})

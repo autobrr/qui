@@ -1,0 +1,3163 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import type {
+  ApiKey,
+  ApiKeyRequest,
+  AddRSSFeedRequest,
+  AddRSSFolderRequest,
+  AddTorrentResponse,
+  ApplicationInfo,
+  ListedProblemReport,
+  ProblemReportFacts,
+  ProblemReportPayload,
+  ProblemReportProvider,
+  ProblemReportSender,
+  ProblemReportSignInState,
+  ProblemReportStartedFrom,
+  SentProblemReport,
+  AppPreferences,
+  PreferenceField,
+  NetworkBindingInterface,
+  AuthResponse,
+  Automation,
+  AutomationActivity,
+  AutomationActivityRun,
+  AutomationDryRunResult,
+  AutomationInput,
+  AutomationPreviewInput,
+  AutomationPreviewResult,
+  BackupManifest,
+  BackupRun,
+  BackupRunsResponse,
+  BackupSettings,
+  Category,
+  CrossSeedApplyResponse,
+  CrossSeedAutomationSettings,
+  CrossSeedAutomationSettingsPatch,
+  CrossSeedAutomationStatus,
+  CrossSeedBlocklistEntry,
+  CrossSeedRoute,
+  CrossSeedRouteRow,
+  CrossSeedRouteStatus,
+  CrossSeedRouteTestResult,
+  CrossSeedInstanceResult,
+  CrossSeedResultClass,
+  CrossSeedQueryDegradedReason,
+  CrossSeedSearchDecisionTrace,
+  CrossSeedRun,
+  CrossSeedSearchRun,
+  CrossSeedSearchSettings,
+  CrossSeedSearchSettingsPatch,
+  CrossSeedSearchStatus,
+  DiscScanRun,
+  ManualAssembleRequest,
+  ManualAssembleResponse,
+  ManualCrossSeedApplyResponse,
+  ManualCrossSeedProposal,
+  ManualCrossSeedProposalsResponse,
+  SeasonPackRun,
+  CrossSeedGazelleLookup,
+  CrossSeedGazelleSite,
+  CrossSeedTorrentInfo,
+  CrossSeedTorrentSearchResponse,
+  CrossSeedTorrentSearchSelection,
+  DashboardSettings,
+  DashboardSettingsInput,
+  TransferHistorySettings,
+  TransferHistorySettingsStatus,
+  DirScanDirectory,
+  DirScanDirectoryCreate,
+  DirScanTriggerResponse,
+  DirScanDirectoryUpdate,
+  DirScanRequeueResponse,
+  DirScanRun,
+  DirScanRunInjection,
+  DirScanSettings,
+  DirScanStatus,
+  DirScanSettingsUpdate,
+  DiscoverJackettResponse,
+  DuplicateTorrentMatch,
+  ExternalProgram,
+  ExternalProgramCreate,
+  ExternalProgramExecute,
+  ExternalProgramExecuteResponse,
+  ExternalProgramUpdate,
+  FilterView,
+  FilterViewInput,
+  IndexerActivityStatus,
+  IndexerResponse,
+  InstanceCapabilities,
+  InstanceCrossSeedCompletionSettings,
+  InstanceDisk,
+  InstanceFormData,
+  InstanceReannounceActivity,
+  InstanceResponse,
+  LocalCrossSeedMatch,
+  LogExclusions,
+  LogExclusionsInput,
+  LogFile,
+  LogSettings,
+  LogSettingsUpdate,
+  MarkRSSAsReadRequest,
+  MoveRSSItemRequest,
+  OrphanScanRun,
+  OrphanScanRunWithFiles,
+  OrphanScanSettings,
+  OrphanScanSettingsUpdate,
+  NotificationEventDefinition,
+  NotificationTarget,
+  NotificationTargetRequest,
+  NotificationTestRequest,
+  QBittorrentAppInfo,
+  RefreshRSSItemRequest,
+  RegexValidationResult,
+  RemoveRSSItemRequest,
+  RestoreMode,
+  RestorePlan,
+  RestoreResult,
+  RSSItems,
+  RSSMatchingArticles,
+  RSSRules,
+  SearchHistoryResponse,
+  SetRSSFeedURLRequest,
+  SetRSSRuleRequest,
+  SortedPeersResponse,
+  TorrentCreationParams,
+  TorrentCreationTask,
+  TorrentCreationTaskResponse,
+  TorrentFile,
+  TorrentFileMediaInfoResponse,
+  TorrentFilters,
+  TorrentProperties,
+  TorrentResponse,
+  TorrentTracker,
+  TorznabIndexer,
+  TorznabIndexerFormData,
+  TorznabRecentSearch,
+  TorznabSearchCacheMetadata,
+  TorznabSearchCacheStats,
+  TorznabSearchRequest,
+  TorznabSearchResponse,
+  TorznabSearchResult,
+  TrackerCustomization,
+  TrackerCustomizationInput,
+  TransferInfo,
+  BuiltinTheme,
+  SelfUpdateResult,
+  ThemeSettings,
+  ThemeSlot,
+  ThemeSlots,
+  UncheckedInstance,
+  User,
+  VersionInfo,
+  SystemNotice,
+  DatabaseShrinkStatus,
+  WarningResponse,
+  WebSeed,
+  SSHCredentials,
+  SSHTestResponse,
+  LiveTrackerGroup,
+  TransferHistoryInstance,
+  LiveSamples,
+  TransferHistoryLibraryRow,
+  TransferHistoryQuery,
+  TransferHistoryRow,
+  TransferHistoryDeletesAnswer,
+  TransferHistoryDeletesQuery
+} from "@/types"
+import type {
+  ArrInstance,
+  ArrInstanceFormData,
+  ArrInstanceUpdateData,
+  ArrTestConnectionRequest,
+  ArrTestResponse
+} from "@/types/arr"
+import { getApiBaseUrl, withBasePath } from "./base-url"
+import { recordFailedRequest } from "./failed-requests"
+import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
+import type { CustomThemeFile } from "./custom-themes"
+import i18n from "i18next"
+
+const API_BASE = getApiBaseUrl()
+
+function serializeFilters(filters: TorrentFilters | null | undefined): TorrentFilters | undefined {
+  if (!filters) {
+    return undefined
+  }
+  const { expandedCategories, expandedExcludeCategories, ...rest } = filters
+  return {
+    ...rest,
+    categories: expandedCategories ?? filters.categories,
+    excludeCategories: expandedExcludeCategories ?? filters.excludeCategories,
+  }
+}
+
+const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<number, string> | undefined => {
+  if (!excluded) {
+    return undefined
+  }
+
+  const normalizedEntries = Object.entries(excluded)
+    .map(([key, value]) => {
+      const numericKey = Number(key)
+      if (Number.isNaN(numericKey)) {
+        return null
+      }
+      return [numericKey, value] as const
+    })
+    .filter((entry): entry is readonly [number, string] => entry !== null)
+
+  if (normalizedEntries.length === 0) {
+    return undefined
+  }
+
+  return Object.fromEntries(normalizedEntries) as Record<number, string>
+}
+
+const SSO_RECOVERY_GUARD_KEY = "qui_sso_recovery_attempted"
+const SSO_RECOVERY_TS_KEY = "qui_sso_recovery_ts"
+const SSO_RECOVERY_COOLDOWN_MS = 10_000
+
+if (typeof sessionStorage !== "undefined") {
+  const lastAttempt = parseInt(sessionStorage.getItem(SSO_RECOVERY_TS_KEY) || "0", 10)
+  if (Date.now() - lastAttempt > SSO_RECOVERY_COOLDOWN_MS) {
+    sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_TS_KEY)
+  }
+}
+
+function isSSOBlockedNetworkError(error: unknown): boolean {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    if (error.name === "NetworkError") {
+      return true
+    }
+  }
+
+  const maybeName = typeof error === "object" && error !== null && "name" in error? String((error as { name?: unknown }).name): ""
+  if (maybeName === "NetworkError") {
+    return true
+  }
+
+  const msg = error instanceof Error? error.message: typeof error === "string"? error: ""
+
+  if (!msg) {
+    return false
+  }
+
+  const normalized = msg.toLowerCase()
+  return normalized.includes("networkerror") ||
+    normalized.includes("network error") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("cors request did not succeed") ||
+    normalized.includes("cors") ||
+    normalized.includes("load failed") ||
+    normalized.includes("network request failed") ||
+    normalized.includes("request failed")
+}
+
+function isSSOHTMLResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type") || ""
+  if (!contentType.includes("text/html")) {
+    return false
+  }
+  const status = response.status
+  return status < 500
+}
+
+async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
+  if (isSSOHTMLResponse(response)) {
+    return true
+  }
+
+  if (response.status >= 500) {
+    return false
+  }
+
+  const contentType = response.headers.get("content-type") || ""
+  if (contentType && !contentType.includes("text/html")) {
+    return false
+  }
+
+  if (response.headers.get("content-disposition")) {
+    return false
+  }
+
+  const contentLength = Number(response.headers.get("content-length") || "0")
+  if (contentLength > 1_000_000) {
+    return false
+  }
+
+  try {
+    const body = response.clone().body
+    if (!body) {
+      return false
+    }
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    const maxBytes = 1024
+    let totalBytes = 0
+    let snippet = ""
+    try {
+      while (totalBytes < maxBytes) {
+        const { value, done } = await reader.read()
+        if (done) {
+          break
+        }
+        if (value) {
+          const remaining = maxBytes - totalBytes
+          const chunk = value.length > remaining? value.subarray(0, remaining): value
+          totalBytes += chunk.length
+          snippet += decoder.decode(chunk, { stream: true })
+          if (snippet.length >= maxBytes) {
+            break
+          }
+        }
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined)
+      reader.releaseLock()
+    }
+    snippet += decoder.decode()
+    const trimmed = snippet.trimStart().toLowerCase()
+    return trimmed.startsWith("<!doctype html") ||
+      trimmed.startsWith("<html") ||
+      trimmed.startsWith("<head") ||
+      trimmed.startsWith("<body")
+  } catch {
+    return false
+  }
+}
+
+let ssoRecoveryPaused = false
+
+export function setSSORecoveryPaused(paused: boolean): void {
+  ssoRecoveryPaused = paused
+}
+
+export async function clearQuiServiceWorker(): Promise<void> {
+  const quiScope = new URL(withBasePath("/"), window.location.origin).href
+  await unregisterServiceWorkers(quiScope)
+  await deleteCaches(quiScope)
+}
+
+async function unregisterServiceWorkers(quiScope: string): Promise<void> {
+  if (!("serviceWorker" in navigator)) return
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations()
+    await Promise.all(
+      registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
+    )
+  } catch {
+    return
+  }
+}
+
+async function deleteCaches(quiScope: string): Promise<void> {
+  if (!("caches" in window)) return
+  try {
+    const names = await caches.keys()
+    await Promise.all(
+      names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
+    )
+  } catch {
+    return
+  }
+}
+
+async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): Promise<boolean> {
+  if (ssoRecoveryPaused || typeof window === "undefined" || typeof sessionStorage === "undefined") {
+    return false
+  }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return false
+  }
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    return false
+  }
+  if (!options?.bypassGuard && sessionStorage.getItem(SSO_RECOVERY_GUARD_KEY)) {
+    return false
+  }
+  sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
+  sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
+
+  await clearQuiServiceWorker()
+
+  sessionStorage.setItem("qui_sso_recovered", "1")
+
+  const target = options?.target ?? withBasePath("/")
+  window.location.assign(new URL(target, window.location.origin).href)
+  return true
+}
+
+function clearSSORecoveryGuard(): void {
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_TS_KEY)
+  }
+}
+
+async function extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
+  const fallbackMessage = i18n.t("errors.httpStatus", { ns: "common", status: response.status })
+
+  try {
+    const contentType = response.headers.get("content-type") || ""
+    const rawBody = await response.text()
+
+    if (!rawBody) {
+      return { message: fallbackMessage }
+    }
+
+    try {
+      const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: unknown }
+      const parsedMessage = errorData?.error ?? errorData?.message
+      if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
+        return { message: parsedMessage, data: errorData }
+      }
+      return { message: fallbackMessage, data: errorData }
+    } catch {
+      if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
+        return { message: i18n.t("errors.httpStatusHtml", { ns: "common", status: response.status }) }
+      }
+
+      const trimmed = rawBody.trim()
+      if (trimmed.length > 0 && trimmed.length < 500) {
+        return { message: trimmed }
+      }
+    }
+
+    return { message: fallbackMessage }
+  } catch {
+    return { message: fallbackMessage }
+  }
+}
+
+async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
+  const isLoginRequest = url.includes("/api/auth/login")
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        ...options.headers,
+      },
+      credentials: "include",
+    })
+  } catch (error) {
+    if (isSSOBlockedNetworkError(error) && url.includes("/api/")) {
+      if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
+        return new Promise<Response>(() => {})
+      }
+    }
+    if (!cancelledByCaller(options.signal)) {
+      recordFailedRequest(url, options.method, undefined, error instanceof Error ? error.message : String(error))
+    }
+    throw error
+  }
+
+  if (await isLikelySSOHTMLResponse(response)) {
+    if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
+      return new Promise<Response>(() => {})
+    }
+    const message = i18n.t("errors.ssoHtmlResponse", { ns: "common" })
+    recordFailedRequest(url, options.method, response.status, message)
+    throw new Error(message)
+  }
+
+  clearSSORecoveryGuard()
+  if (!response.ok) {
+    const time = new Date().toISOString()
+    void extractErrorData(response.clone()).then(({ message }) => recordFailedRequest(url, options.method, response.status, message, time))
+  }
+  return response
+}
+
+function cancelledByCaller(signal: AbortSignal | null | undefined): boolean {
+  return signal?.aborted === true && (signal.reason as Error | undefined)?.name !== "TimeoutError"
+}
+
+export class APIError extends Error {
+  status: number
+  data?: unknown
+
+  constructor(message: string, status: number, data?: unknown) {
+    super(message)
+    this.name = "APIError"
+    this.status = status
+    this.data = data
+  }
+}
+
+type RawCrossSeedMatchedTorrent = {
+  hash?: string
+  name?: string
+  progress?: number
+  size?: number
+}
+
+type RawCrossSeedInstanceResult = {
+  instance_id: number
+  instance_name: string
+  success: boolean
+  status: string
+  class: CrossSeedResultClass
+  message?: string
+  matched_torrent?: RawCrossSeedMatchedTorrent
+  cross_seed_instance_id?: number
+  cross_seed_instance_name?: string
+}
+
+function mapRawCrossSeedInstanceResult(instance: RawCrossSeedInstanceResult): CrossSeedInstanceResult {
+  return {
+    instanceId: instance.instance_id,
+    instanceName: instance.instance_name,
+    success: instance.success,
+    status: instance.status,
+    class: instance.class,
+    message: instance.message,
+    crossSeedInstanceId: instance.cross_seed_instance_id,
+    crossSeedInstanceName: instance.cross_seed_instance_name,
+    matchedTorrent: instance.matched_torrent? {
+      hash: instance.matched_torrent.hash ?? "",
+      name: instance.matched_torrent.name ?? "",
+      progress: instance.matched_torrent.progress ?? 0,
+      size: instance.matched_torrent.size ?? 0,
+    }: undefined,
+  }
+}
+
+type RawLocalMatchesResponse = {
+  matches: Array<{
+    instance_id: number
+    instance_name: string
+    hash: string
+    name: string
+    size: number
+    progress: number
+    save_path: string
+    content_path: string
+    category: string
+    tags: string
+    state: string
+    tracker: string
+    tracker_health?: string
+    match_type: string
+  }>
+}
+
+function toLocalCrossSeedMatches(raw: RawLocalMatchesResponse): LocalCrossSeedMatch[] {
+  return (raw.matches || []).map((m) => ({
+    instanceId: m.instance_id,
+    instanceName: m.instance_name,
+    hash: m.hash,
+    name: m.name,
+    size: m.size,
+    progress: m.progress,
+    savePath: m.save_path,
+    contentPath: m.content_path,
+    category: m.category,
+    tags: m.tags,
+    state: m.state,
+    tracker: m.tracker,
+    trackerHealth: m.tracker_health,
+    matchType: m.match_type as LocalCrossSeedMatch["matchType"],
+  }))
+}
+
+export interface StreamSubscription {
+  key: string
+  instanceId: number
+  instanceIds?: number[] | null
+  page: number
+  limit: number
+  sort: string
+  order: "asc" | "desc"
+  search?: string
+  filters?: TorrentFilters | null
+  summary?: boolean
+  groupCopies?: boolean
+  uniqueSize?: boolean
+}
+
+function normalizeStreamSubscription(stream: StreamSubscription) {
+  return {
+    key: stream.key,
+    instanceId: stream.instanceId,
+    instanceIds: stream.instanceIds ?? null,
+    page: stream.page,
+    limit: stream.limit,
+    sort: stream.sort,
+    order: stream.order,
+    search: stream.search ?? "",
+    filters: serializeFilters(stream.filters) ?? null,
+    summary: stream.summary ?? false,
+    ...(stream.groupCopies ? { groupCopies: true } : {}),
+    ...(stream.uniqueSize ? { uniqueSize: true } : {}),
+  }
+}
+
+class ApiClient {
+  async request<T>(
+    endpoint: string,
+    options?: RequestInit
+  ): Promise<T> {
+    const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+    })
+
+    if (!response.ok) {
+      const { message, data } = await extractErrorData(response)
+      this.handleAuthError(response.status, endpoint, message)
+      throw new APIError(message, response.status, data)
+    }
+
+    if (response.status === 204 || response.headers.get("content-length") === "0") {
+      return undefined as T
+    }
+
+    return response.json()
+  }
+
+  private handleAuthError(status: number, endpoint: string, errorMessage: string): void {
+    if (!this.shouldForceLogout(status, endpoint, errorMessage)) {
+      return
+    }
+
+    window.location.href = withBasePath("/login")
+    throw new Error("Session expired")
+  }
+
+  private shouldForceLogout(status: number, endpoint: string, errorMessage: string): boolean {
+    if (typeof window === "undefined") {
+      return false
+    }
+
+    if (this.isAuthCheckEndpoint(endpoint)) {
+      return false
+    }
+
+    const pathname = window.location.pathname
+    if (pathname.startsWith(withBasePath("/login")) || pathname.startsWith(withBasePath("/setup"))) {
+      return false
+    }
+
+    if (status === 401) {
+      return true
+    }
+
+    if (status === 403) {
+      const normalizedMessage = errorMessage.trim().toLowerCase()
+      return normalizedMessage === "unauthorized"
+    }
+
+    return false
+  }
+
+  private isAuthCheckEndpoint(endpoint: string): boolean {
+    return endpoint === "/auth/me" || endpoint === "/auth/validate"
+  }
+
+  async checkAuth(): Promise<User> {
+    return this.request<User>("/auth/me")
+  }
+
+  async checkSetupRequired(): Promise<boolean> {
+    try {
+      const response = await ssoSafeFetch(`${API_BASE}/auth/check-setup`, {
+        method: "GET",
+      })
+      const data = await response.json()
+      return data.setupRequired || false
+    } catch {
+      return false
+    }
+  }
+
+  async setup(username: string, password: string): Promise<AuthResponse> {
+    return this.request<AuthResponse>("/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    })
+  }
+
+  async login(username: string, password: string, rememberMe = false): Promise<AuthResponse> {
+    return this.request<AuthResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password, remember_me: rememberMe }),
+    })
+  }
+
+  async logout(): Promise<void> {
+    return this.request("/auth/logout", { method: "POST" })
+  }
+
+  async validate(): Promise<{
+    username: string
+    auth_method?: string
+    profile_picture?: string
+  }> {
+    return this.request("/auth/validate")
+  }
+
+  async getOIDCConfig(): Promise<{
+    enabled: boolean
+    authorizationUrl: string
+    disableBuiltInLogin: boolean
+    issuerUrl: string
+    providerUnavailable: boolean
+  }> {
+    try {
+      const config = await this.request<{
+        enabled: boolean
+        authorizationUrl: string
+        disableBuiltInLogin: boolean
+        issuerUrl: string
+      }>("/auth/oidc/config")
+      return { ...config, providerUnavailable: false }
+    } catch (error) {
+      if (error instanceof APIError && error.status === 503) {
+        const data = error.data as { disableBuiltInLogin?: boolean } | undefined
+        return {
+          enabled: true,
+          authorizationUrl: "",
+          disableBuiltInLogin: data?.disableBuiltInLogin === true,
+          issuerUrl: "",
+          providerUnavailable: true,
+        }
+      }
+      if (error instanceof APIError && (error.status === 404 || error.status === 428)) {
+        return {
+          enabled: false,
+          authorizationUrl: "",
+          disableBuiltInLogin: false,
+          issuerUrl: "",
+          providerUnavailable: false,
+        }
+      }
+      throw error
+    }
+  }
+
+  async getInstances(): Promise<InstanceResponse[]> {
+    return this.request<InstanceResponse[]>("/instances")
+  }
+
+  async createInstance(data: InstanceFormData): Promise<InstanceResponse> {
+    return this.request<InstanceResponse>("/instances", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateInstance(
+    id: number,
+    data: Partial<InstanceFormData>
+  ): Promise<InstanceResponse> {
+    return this.request<InstanceResponse>(`/instances/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateInstanceStatus(
+    id: number,
+    isActive: boolean
+  ): Promise<InstanceResponse> {
+    return this.request<InstanceResponse>(`/instances/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ isActive }),
+    })
+  }
+
+  async deleteInstance(id: number): Promise<void> {
+    return this.request(`/instances/${id}`, { method: "DELETE" })
+  }
+
+  async testConnection(id: number): Promise<{ connected: boolean; message: string }> {
+    return this.request(`/instances/${id}/test`, { method: "POST" })
+  }
+
+  async setSSHCredentials(id: number, data: SSHCredentials): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "PUT", body: JSON.stringify(data) })
+  }
+
+  async clearSSHCredentials(id: number): Promise<void> {
+    return this.request(`/instances/${id}/ssh-credentials`, { method: "DELETE" })
+  }
+
+  async testSSH(id: number): Promise<SSHTestResponse> {
+    return this.request<SSHTestResponse>(`/instances/${id}/ssh-test`, { method: "POST" })
+  }
+
+  async confirmSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key`, { method: "POST", body: JSON.stringify({ hostKey }) })
+  }
+
+  async replaceSSHHostKey(id: number, hostKey: string): Promise<void> {
+    return this.request(`/instances/${id}/ssh-host-key/replace`, { method: "POST", body: JSON.stringify({ hostKey }) })
+  }
+
+  async getInstanceCapabilities(id: number): Promise<InstanceCapabilities> {
+    return this.request<InstanceCapabilities>(`/instances/${id}/capabilities`)
+  }
+
+  async getTransferInfo(id: number): Promise<TransferInfo> {
+    return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
+  }
+
+  async getInstanceDisk(id: number): Promise<InstanceDisk> {
+    return this.request<InstanceDisk>(`/instances/${id}/disk`)
+  }
+
+  async getFreeSpaceAtPath(id: number, path: string): Promise<{ path: string; bytes: number | null }> {
+    return this.request<{ path: string; bytes: number | null }>(
+      `/instances/${id}/free-space?path=${encodeURIComponent(path)}`
+    )
+  }
+
+  async getTransferHistory(instanceId: number, query: TransferHistoryQuery): Promise<TransferHistoryRow[]> {
+    const params = new URLSearchParams({ to: query.to.toISOString(), bucket: query.bucket, groupBy: query.groupBy })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    if (query.group !== undefined) {
+      params.set("group", query.group)
+    }
+    if (query.groupOf) {
+      params.set("groupOf", query.groupOf)
+    }
+    if (query.limit) {
+      params.set("limit", String(query.limit))
+    }
+    if (query.timeZone) {
+      params.set("timeZone", query.timeZone)
+    }
+    const response = await this.request<{ rows: TransferHistoryRow[] }>(`/instances/${instanceId}/transfer-history?${params}`)
+    return response.rows
+  }
+
+  async getTransferHistoryLibrary(instanceId: number, query: { from?: Date; to: Date }): Promise<TransferHistoryLibraryRow[]> {
+    const params = new URLSearchParams({ to: query.to.toISOString() })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    const response = await this.request<{ rows: TransferHistoryLibraryRow[] }>(`/instances/${instanceId}/transfer-history/library?${params}`)
+    return response.rows
+  }
+
+  async getTrackerGroups(instanceId: number): Promise<LiveTrackerGroup[]> {
+    const response = await this.request<{ groups: LiveTrackerGroup[] }>(`/instances/${instanceId}/tracker-groups`)
+    return response.groups
+  }
+
+  async getTransferHistoryDeletes(instanceId: number, query: TransferHistoryDeletesQuery): Promise<TransferHistoryDeletesAnswer> {
+    const params = new URLSearchParams({ to: query.to.toISOString(), limit: String(query.limit), offset: String(query.offset) })
+    if (query.from) {
+      params.set("from", query.from.toISOString())
+    }
+    if (query.cause) {
+      params.set("cause", query.cause)
+    }
+    return this.request<TransferHistoryDeletesAnswer>(`/instances/${instanceId}/transfer-history/deletes?${params}`)
+  }
+
+  async getTransferHistoryStatus(): Promise<TransferHistoryInstance[]> {
+    const response = await this.request<{ instances: TransferHistoryInstance[] }>("/transfer-history/status")
+    return response.instances
+  }
+
+  async getLiveSamples(): Promise<LiveSamples> {
+    return this.request<LiveSamples>("/live-samples")
+  }
+
+  async getInstanceReannounceActivity(
+    instanceId: number,
+    limit?: number
+  ): Promise<InstanceReannounceActivity[]> {
+    const query = typeof limit === "number" ? `?limit=${limit}` : ""
+    return this.request<InstanceReannounceActivity[]>(`/instances/${instanceId}/reannounce/activity${query}`)
+  }
+
+  async reorderInstances(instanceIds: number[]): Promise<InstanceResponse[]> {
+    return this.request<InstanceResponse[]>("/instances/order", {
+      method: "PUT",
+      body: JSON.stringify({ instanceIds }),
+    })
+  }
+
+  async getBackupSettings(instanceId: number): Promise<BackupSettings> {
+    return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`)
+  }
+
+  async updateBackupSettings(instanceId: number, payload: {
+    enabled: boolean
+    hourlyEnabled: boolean
+    dailyEnabled: boolean
+    weeklyEnabled: boolean
+    monthlyEnabled: boolean
+    keepHourly: number
+    keepDaily: number
+    keepWeekly: number
+    keepMonthly: number
+    includeCategories: boolean
+    includeTags: boolean
+    includeSavePaths: boolean
+  }): Promise<BackupSettings> {
+    return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async triggerBackup(instanceId: number, payload: { kind?: string; requestedBy?: string } = {}): Promise<BackupRun> {
+    return this.request<BackupRun>(`/instances/${instanceId}/backups/run`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async listBackupRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<BackupRunsResponse> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<BackupRunsResponse>(`/instances/${instanceId}/backups/runs${suffix}`)
+  }
+
+  async getBackupManifest(instanceId: number, runId: number): Promise<BackupManifest> {
+    return this.request<BackupManifest>(`/instances/${instanceId}/backups/runs/${runId}/manifest`)
+  }
+
+  async deleteBackupRun(instanceId: number, runId: number): Promise<{ deleted: boolean }> {
+    return this.request<{ deleted: boolean }>(`/instances/${instanceId}/backups/runs/${runId}`, {
+      method: "DELETE",
+    })
+  }
+
+  async deleteAllBackups(instanceId: number): Promise<{ deleted: boolean }> {
+    return this.request<{ deleted: boolean }>(`/instances/${instanceId}/backups/runs`, {
+      method: "DELETE",
+    })
+  }
+
+  async importBackupManifest(instanceId: number, manifestFile: File): Promise<BackupRun> {
+    const formData = new FormData()
+    formData.append("archive", manifestFile)
+
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/backups/import`, {
+      method: "POST",
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const { message } = await extractErrorData(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/backups/import`, message)
+      throw new Error(message)
+    }
+
+    return response.json()
+  }
+
+  async previewRestore(
+    instanceId: number,
+    runId: number,
+    payload: { mode?: RestoreMode; excludeHashes?: string[] } = {}
+  ): Promise<RestorePlan> {
+    return this.request<RestorePlan>(`/instances/${instanceId}/backups/runs/${runId}/restore/preview`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async executeRestore(
+    instanceId: number,
+    runId: number,
+    payload: {
+      mode: RestoreMode
+      dryRun?: boolean
+      excludeHashes?: string[]
+      startPaused?: boolean
+      skipHashCheck?: boolean
+      autoResumeVerified?: boolean
+    }
+  ): Promise<RestoreResult> {
+    return this.request<RestoreResult>(`/instances/${instanceId}/backups/runs/${runId}/restore`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  getBackupDownloadUrl(instanceId: number, runId: number, format?: string): string {
+    const url = new URL(withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/download`), window.location.origin)
+    if (format && format !== "zip") {
+      url.searchParams.set("format", format)
+    }
+    return url.toString()
+  }
+
+  getBackupTorrentDownloadUrl(instanceId: number, runId: number, torrentHash: string): string {
+    const encodedHash = encodeURIComponent(torrentHash)
+    return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/items/${encodedHash}/download`)
+  }
+
+  downloadContentFile(instanceId: number, hash: string, fileIndex: number): void {
+    const url = new URL(
+      withBasePath(`/api/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/download`),
+      window.location.origin
+    )
+    const a = document.createElement("a")
+    a.href = url.toString()
+    a.download = ""
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  async getTorrentFileMediaInfo(instanceId: number, hash: string, fileIndex: number): Promise<TorrentFileMediaInfoResponse> {
+    return this.request<TorrentFileMediaInfoResponse>(
+      `/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/mediainfo`
+    )
+  }
+
+  async listDiscScans(instanceId: number, hash: string): Promise<DiscScanRun[]> {
+    return this.request<DiscScanRun[]>(`/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/disc-scans`)
+  }
+
+  async startDiscScan(instanceId: number, hash: string, discPath: string, force = false): Promise<DiscScanRun> {
+    return this.request<DiscScanRun>(`/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/disc-scans`, {
+      method: "POST",
+      body: JSON.stringify({ discPath, force }),
+    })
+  }
+
+  async getDiscScan(instanceId: number, runId: number): Promise<DiscScanRun> {
+    return this.request<DiscScanRun>(`/instances/${instanceId}/disc-scans/${runId}`)
+  }
+
+  async cancelDiscScan(instanceId: number, runId: number): Promise<DiscScanRun> {
+    return this.request<DiscScanRun>(`/instances/${instanceId}/disc-scans/${runId}/cancel`, { method: "POST" })
+  }
+
+  async getTorrents(
+    instanceId: number,
+    params: {
+      page?: number
+      limit?: number
+      sort?: string
+      order?: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters
+      preferCached?: boolean
+      groupCopies?: boolean
+      uniqueSize?: boolean
+    },
+    signal?: AbortSignal
+  ): Promise<TorrentResponse> {
+    const searchParams = new URLSearchParams()
+    if (params.page !== undefined) searchParams.set("page", params.page.toString())
+    if (params.limit !== undefined) searchParams.set("limit", params.limit.toString())
+    if (params.sort) searchParams.set("sort", params.sort)
+    if (params.order) searchParams.set("order", params.order)
+    if (params.search) searchParams.set("search", params.search)
+    if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
+    if (params.preferCached) searchParams.set("prefer", "stale")
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
+    if (params.uniqueSize) searchParams.set("uniqueSize", "true")
+
+    return this.request<TorrentResponse>(
+      `/instances/${instanceId}/torrents?${searchParams}`,
+      { signal }
+    )
+  }
+
+  getTorrentsStreamBatchUrl(
+    streams: StreamSubscription[],
+    options: { activity?: boolean } = {}
+  ): string {
+    const params = new URLSearchParams()
+
+    if (streams.length > 0) {
+      params.set("streams", JSON.stringify(streams.map(normalizeStreamSubscription)))
+    }
+
+    if (options.activity) {
+      params.set("activity", "1")
+    }
+
+    return withBasePath(`/api/stream?${params.toString()}`)
+  }
+
+  async changeStreamSubscriptions(connectionId: string, add: StreamSubscription[], remove: string[], signal?: AbortSignal): Promise<void> {
+    return this.request("/stream/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ connectionId, add: add.map(normalizeStreamSubscription), remove }),
+      signal,
+    })
+  }
+
+  async getTorrentField(
+    instanceId: number,
+    field: "name" | "hash" | "full_path" | "tags" | "magnet_uri",
+    params: {
+      sort?: string
+      order?: "asc" | "desc"
+      hashes?: string[]
+      targets?: Array<{ instanceId: number; hash: string }>
+      selectAll?: boolean
+      search?: string
+      filters?: TorrentFilters
+      excludeHashes?: string[]
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
+    }
+  ): Promise<{ values: string[]; total: number }> {
+    return this.request(
+      `/instances/${instanceId}/torrents/field`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          field,
+          sort: params.sort,
+          order: params.order,
+          hashes: params.hashes,
+          targets: params.targets,
+          selectAll: params.selectAll,
+          search: params.search,
+          filters: serializeFilters(params.filters),
+          excludeHashes: params.excludeHashes,
+          excludeTargets: params.excludeTargets,
+          instanceIds: params.instanceIds,
+        }),
+      }
+    )
+  }
+
+  async getCrossInstanceTorrents(
+    params: {
+      page?: number
+      limit?: number
+      sort?: string
+      order?: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters
+      instanceIds?: number[]
+      groupCopies?: boolean
+    },
+    signal?: AbortSignal
+  ): Promise<TorrentResponse> {
+    const searchParams = new URLSearchParams()
+    if (params.page !== undefined) searchParams.set("page", params.page.toString())
+    if (params.limit !== undefined) searchParams.set("limit", params.limit.toString())
+    if (params.sort) searchParams.set("sort", params.sort)
+    if (params.order) searchParams.set("order", params.order)
+    if (params.search) searchParams.set("search", params.search)
+    if (params.filters) searchParams.set("filters", JSON.stringify(serializeFilters(params.filters)))
+    if (params.instanceIds && params.instanceIds.length > 0) {
+      searchParams.set("instanceIds", params.instanceIds.join(","))
+    }
+    if (params.groupCopies) searchParams.set("groupCopies", "true")
+
+    const response = await this.request<TorrentResponse>(
+      `/torrents/cross-instance?${searchParams}`,
+      { signal }
+    )
+
+    const normalizedCrossInstanceTorrents = normalizeCrossInstanceTorrents(
+      (response.crossInstanceTorrents ?? response.cross_instance_torrents) as RawCrossInstanceTorrent[] | undefined
+    )
+
+    if (normalizedCrossInstanceTorrents) {
+      response.crossInstanceTorrents = normalizedCrossInstanceTorrents
+      response.cross_instance_torrents = normalizedCrossInstanceTorrents
+    }
+
+    return response
+  }
+
+  async addTorrent(
+    instanceId: number,
+    data: {
+      torrentFiles?: File[]
+      urls?: string[]
+      category?: string
+      tags?: string[]
+      startPaused?: boolean
+      savePath?: string
+      useDownloadPath?: boolean
+      downloadPath?: string
+      autoTMM?: boolean
+      skipHashCheck?: boolean
+      sequentialDownload?: boolean
+      firstLastPiecePrio?: boolean
+      limitUploadSpeed?: number
+      limitDownloadSpeed?: number
+      limitRatio?: number
+      limitSeedTime?: number
+      contentLayout?: string
+      rename?: string
+      indexerId?: number
+    }
+  ): Promise<AddTorrentResponse> {
+    const formData = new FormData()
+    if (data.torrentFiles) {
+      data.torrentFiles.forEach(file => formData.append("torrent", file))
+    }
+    if (data.urls) formData.append("urls", data.urls.join("\n"))
+    if (data.category) formData.append("category", data.category)
+    if (data.tags) formData.append("tags", data.tags.join(","))
+    if (data.startPaused !== undefined) formData.append("paused", data.startPaused.toString())
+    if (data.autoTMM !== undefined) formData.append("autoTMM", data.autoTMM.toString())
+    if (data.skipHashCheck !== undefined) formData.append("skip_checking", data.skipHashCheck.toString())
+    if (data.sequentialDownload !== undefined) formData.append("sequentialDownload", data.sequentialDownload.toString())
+    if (data.firstLastPiecePrio !== undefined) formData.append("firstLastPiecePrio", data.firstLastPiecePrio.toString())
+    if (data.limitUploadSpeed !== undefined && data.limitUploadSpeed > 0) formData.append("upLimit", data.limitUploadSpeed.toString())
+    if (data.limitDownloadSpeed !== undefined && data.limitDownloadSpeed > 0) formData.append("dlLimit", data.limitDownloadSpeed.toString())
+    if (data.limitRatio !== undefined && data.limitRatio > 0) formData.append("ratioLimit", data.limitRatio.toString())
+    if (data.limitSeedTime !== undefined && data.limitSeedTime > 0) formData.append("seedingTimeLimit", data.limitSeedTime.toString())
+    if (data.contentLayout) formData.append("contentLayout", data.contentLayout)
+    if (data.rename) formData.append("rename", data.rename)
+    if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
+    if (data.useDownloadPath !== undefined) formData.append("useDownloadPath", data.useDownloadPath.toString())
+    if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
+    if (data.indexerId) formData.append("indexer_id", data.indexerId.toString())
+
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/torrents`, {
+      method: "POST",
+      body: formData,
+    })
+
+    if (!response.ok) {
+      let errorMessage = `HTTP error! status: ${response.status}`
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorData.message || errorMessage
+      } catch {
+        const errorText = await response.text().catch(() => "")
+        errorMessage = errorText || errorMessage
+      }
+      throw new Error(errorMessage)
+    }
+
+    return response.json()
+  }
+
+  async checkTorrentDuplicates(instanceId: number, hashes: string[]): Promise<{ duplicates: DuplicateTorrentMatch[] }> {
+    return this.request<{ duplicates: DuplicateTorrentMatch[] }>(`/instances/${instanceId}/torrents/check-duplicates`, {
+      method: "POST",
+      body: JSON.stringify({ hashes }),
+    })
+  }
+
+
+  async bulkAction(
+    instanceId: number,
+    data: {
+      hashes: string[]
+      targets?: Array<{ instanceId: number; hash: string }>
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "setComment" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
+      deleteFiles?: boolean
+      category?: string
+      tags?: string
+      comment?: string
+      enable?: boolean
+      selectAll?: boolean
+      filters?: TorrentFilters
+      search?: string
+      excludeHashes?: string[]
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
+      ratioLimit?: number
+      seedingTimeLimit?: number
+      inactiveSeedingTimeLimit?: number
+      shareLimitAction?: string
+      shareLimitsMode?: string
+      uploadLimit?: number
+      downloadLimit?: number
+      location?: string
+      trackerOldURL?: string
+      trackerNewURL?: string
+      trackerURLs?: string
+    }
+  ): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/bulk-action`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, filters: serializeFilters(data.filters) }),
+    })
+  }
+
+  async analyzeTorrentForCrossSeedSearch(
+    instanceId: number,
+    hash: string
+  ): Promise<CrossSeedTorrentInfo> {
+    type RawTorrentInfo = {
+      instance_id?: number
+      instance_name?: string
+      hash?: string
+      name: string
+      category?: string
+      size?: number
+      progress?: number
+      total_files?: number
+      matching_files?: number
+      file_count?: number
+      content_type?: string
+      search_type?: string
+      search_categories?: number[]
+      required_caps?: string[]
+      disc_layout?: boolean
+      disc_marker?: string
+      available_indexers?: number[]
+      filtered_indexers?: number[]
+      excluded_indexers?: Record<string, string>
+      content_matches?: string[]
+      gazellePlan?: CrossSeedGazelleLookup[]
+    }
+
+    const raw = await this.request<RawTorrentInfo>(
+      `/cross-seed/torrents/${instanceId}/${hash}/analyze`,
+      { method: "GET" }
+    )
+
+    return {
+      instanceId: raw.instance_id,
+      instanceName: raw.instance_name,
+      hash: raw.hash,
+      name: raw.name,
+      category: raw.category,
+      size: raw.size,
+      progress: raw.progress,
+      totalFiles: raw.total_files,
+      matchingFiles: raw.matching_files,
+      fileCount: raw.file_count,
+      contentType: raw.content_type,
+      searchType: raw.search_type,
+      searchCategories: raw.search_categories,
+      requiredCaps: raw.required_caps,
+      discLayout: raw.disc_layout,
+      discMarker: raw.disc_marker,
+      availableIndexers: raw.available_indexers,
+      filteredIndexers: raw.filtered_indexers,
+      excludedIndexers: normalizeExcludedIndexerMap(raw.excluded_indexers),
+      contentMatches: raw.content_matches,
+      gazellePlan: raw.gazellePlan,
+    }
+  }
+
+  async getLocalCrossSeedMatches(
+    instanceId: number,
+    hash: string
+  ): Promise<LocalCrossSeedMatch[]> {
+    const raw = await this.request<RawLocalMatchesResponse>(
+      `/cross-seed/torrents/${instanceId}/${hash}/local-matches`,
+      { method: "GET" }
+    )
+    return toLocalCrossSeedMatches(raw)
+  }
+
+  async getDeleteCrossSeeds(
+    instanceId: number,
+    selection: {
+      targets?: Array<{ instanceId: number; hash: string }>
+      selectAll?: boolean
+      filters?: TorrentFilters
+      search?: string
+      excludeHashes?: string[]
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
+    },
+    signal?: AbortSignal
+  ): Promise<{ matches: LocalCrossSeedMatch[]; uncheckedInstances: UncheckedInstance[] }> {
+    const raw = await this.request<RawLocalMatchesResponse & {
+      unchecked_instances: Array<{ instance_id: number; instance_name: string; reason: UncheckedInstance["reason"] }>
+    }>(
+      `/instances/${instanceId}/torrents/delete-cross-seeds`,
+      { method: "POST", body: JSON.stringify({ ...selection, filters: serializeFilters(selection.filters) }), signal }
+    )
+    return {
+      matches: toLocalCrossSeedMatches(raw),
+      uncheckedInstances: raw.unchecked_instances.map(u => ({ instanceId: u.instance_id, instanceName: u.instance_name, reason: u.reason })),
+    }
+  }
+
+  async searchCrossSeedTorrent(
+    instanceId: number,
+    hash: string,
+    options: {
+      query?: string
+      limit?: number
+      indexerIds?: number[]
+      gazelleSites?: string[]
+      findIndividualEpisodes?: boolean
+      cacheMode?: "bypass"
+    } = {}
+  ): Promise<CrossSeedTorrentSearchResponse> {
+    const body: Record<string, unknown> = {}
+    const trimmedQuery = options.query?.trim()
+    if (trimmedQuery) {
+      body.query = trimmedQuery
+    }
+    if (options.limit !== undefined) {
+      body.limit = options.limit
+    }
+    if (options.indexerIds && options.indexerIds.length > 0) {
+      body.indexer_ids = options.indexerIds
+    }
+    if (options.gazelleSites) {
+      body.gazelle_sites = options.gazelleSites
+    }
+    if (options.findIndividualEpisodes !== undefined) {
+      body.find_individual_episodes = options.findIndividualEpisodes
+    }
+    if (options.cacheMode) {
+      body.cache_mode = options.cacheMode
+    }
+
+    type RawTorrentInfo = {
+      instance_id?: number
+      instance_name?: string
+      hash?: string
+      name?: string
+      category?: string
+      size?: number
+      progress?: number
+      total_files?: number
+      matching_files?: number
+      file_count?: number
+      content_type?: string
+      search_type?: string
+      search_categories?: number[]
+      required_caps?: string[]
+      disc_layout?: boolean
+      disc_marker?: string
+      available_indexers?: number[]
+      filtered_indexers?: number[]
+      excluded_indexers?: Record<string, string>
+      content_matches?: string[]
+      gazellePlan?: CrossSeedGazelleLookup[]
+    } | null
+
+    type RawSearchResult = {
+      indexer: string
+      indexer_id: number
+      title: string
+      download_url: string
+      info_url?: string
+      size: number
+      seeders: number
+      leechers: number
+      category_id: number
+      category_name: string
+      publish_date: string
+      download_volume_factor: number
+      upload_volume_factor: number
+      guid: string
+      infohash_v1?: string
+      infohash_v2?: string
+      imdb_id?: string
+      tvdb_id?: string
+      match_reason?: string
+      match_score?: number
+    }
+
+    type RawSearchResponse = {
+      source_torrent: RawTorrentInfo
+      results?: RawSearchResult[]
+      cache?: TorznabSearchCacheMetadata
+      partial?: boolean
+      query_degraded?: CrossSeedQueryDegradedReason
+      gazelleLookups?: CrossSeedGazelleLookup[]
+      torznab_failed?: boolean
+      decisionTrace?: CrossSeedSearchDecisionTrace
+    }
+
+    const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
+      method: "POST",
+      body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
+    })
+
+    const normalizeTorrentInfo = (torrent?: RawTorrentInfo): CrossSeedTorrentInfo => ({
+      instanceId: torrent?.instance_id ?? undefined,
+      instanceName: torrent?.instance_name ?? undefined,
+      hash: torrent?.hash ?? undefined,
+      name: torrent?.name ?? trimmedQuery ?? "",
+      category: torrent?.category ?? undefined,
+      size: torrent?.size ?? undefined,
+      progress: torrent?.progress ?? undefined,
+      totalFiles: torrent?.total_files ?? undefined,
+      matchingFiles: torrent?.matching_files ?? undefined,
+      fileCount: torrent?.file_count ?? undefined,
+      contentType: torrent?.content_type ?? undefined,
+      searchType: torrent?.search_type ?? undefined,
+      searchCategories: torrent?.search_categories ?? undefined,
+      requiredCaps: torrent?.required_caps ?? undefined,
+      discLayout: torrent?.disc_layout ?? undefined,
+      discMarker: torrent?.disc_marker ?? undefined,
+      availableIndexers: torrent?.available_indexers ?? undefined,
+      filteredIndexers: torrent?.filtered_indexers ?? undefined,
+      excludedIndexers: normalizeExcludedIndexerMap(torrent?.excluded_indexers),
+      contentMatches: torrent?.content_matches ?? undefined,
+      gazellePlan: torrent?.gazellePlan ?? undefined,
+    })
+
+    return {
+      sourceTorrent: normalizeTorrentInfo(response.source_torrent ?? null),
+      results: (response.results ?? []).map((result): CrossSeedTorrentSearchResponse["results"][number] => ({
+        indexer: result.indexer,
+        indexerId: result.indexer_id,
+        title: result.title,
+        downloadUrl: result.download_url,
+        infoUrl: result.info_url,
+        size: result.size,
+        seeders: result.seeders,
+        leechers: result.leechers,
+        categoryId: result.category_id,
+        categoryName: result.category_name,
+        publishDate: result.publish_date,
+        downloadVolumeFactor: result.download_volume_factor,
+        uploadVolumeFactor: result.upload_volume_factor,
+        guid: result.guid,
+        infoHashV1: result.infohash_v1 ?? undefined,
+        infoHashV2: result.infohash_v2 ?? undefined,
+        imdbId: result.imdb_id ?? undefined,
+        tvdbId: result.tvdb_id ?? undefined,
+        matchReason: result.match_reason ?? undefined,
+        matchScore: result.match_score ?? 0,
+      })),
+      cache: response.cache,
+      partial: response.partial ?? undefined,
+      queryDegraded: response.query_degraded ?? undefined,
+      gazelleLookups: response.gazelleLookups ?? undefined,
+      torznabFailed: response.torznab_failed ?? undefined,
+      decisionTrace: response.decisionTrace,
+    }
+  }
+
+  async applyCrossSeedSearchResults(
+    instanceId: number,
+    hash: string,
+    payload: {
+      selections: CrossSeedTorrentSearchSelection[]
+      useTag: boolean
+      tagName?: string
+      startPaused?: boolean
+      findIndividualEpisodes?: boolean
+    }
+  ): Promise<CrossSeedApplyResponse> {
+    const body: Record<string, unknown> = {
+      selections: payload.selections.map(selection => {
+        const item: Record<string, unknown> = {
+          indexer_id: selection.indexerId,
+          indexer: selection.indexer,
+          download_url: selection.downloadUrl,
+          title: selection.title,
+        }
+        if (selection.guid) {
+          item.guid = selection.guid
+        }
+        return item
+      }),
+      use_tag: payload.useTag,
+    }
+
+    if (payload.tagName) {
+      body.tag_name = payload.tagName
+    }
+    if (payload.startPaused !== undefined) {
+      body.start_paused = payload.startPaused
+    }
+    if (payload.findIndividualEpisodes !== undefined) {
+      body.find_individual_episodes = payload.findIndividualEpisodes
+    }
+
+    type RawApplyResult = {
+      title: string
+      indexer: string
+      torrent_name?: string
+      info_hash?: string
+      success: boolean
+      instance_results?: RawCrossSeedInstanceResult[]
+      error?: string
+    }
+
+    type RawApplyResponse = {
+      results?: RawApplyResult[]
+    }
+
+    const response = await this.request<RawApplyResponse>(`/cross-seed/torrents/${instanceId}/${hash}/apply`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+
+    return {
+      results: (response.results ?? []).map((result): CrossSeedApplyResponse["results"][number] => ({
+        title: result.title,
+        indexer: result.indexer,
+        torrentName: result.torrent_name ?? undefined,
+        infoHash: result.info_hash ?? undefined,
+        success: result.success,
+        instanceResults: (result.instance_results ?? []).map(mapRawCrossSeedInstanceResult),
+        error: result.error ?? undefined,
+      })),
+    }
+  }
+
+  async getManualCrossSeedProposals(payload: {
+    instanceId: number
+    torrentData: string
+    targetHash?: string
+  }): Promise<ManualCrossSeedProposalsResponse> {
+    type RawProposal = {
+      hash: string
+      name: string
+      size: number
+      category?: string
+      effective_save_path?: string
+      overlap_bytes: number
+      overlap_fraction: number
+    }
+    type RawResponse = {
+      pack_mode: boolean
+      pack_episode_count: number
+      assembly_unavailable_reason: string
+      proposal_limit: number
+      proposals_truncated: boolean
+      source_name: string
+      source_size: number
+      source_file_count: number
+      default_tags?: string[]
+      pinned_category?: string
+      proposals?: RawProposal[]
+    }
+
+    const body: Record<string, unknown> = {
+      instance_id: payload.instanceId,
+      torrent_data: payload.torrentData,
+    }
+    if (payload.targetHash) {
+      body.target_hash = payload.targetHash
+    }
+
+    const raw = await this.request<RawResponse>("/cross-seed/manual/proposals", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+
+    return {
+      packMode: raw.pack_mode,
+      packEpisodeCount: raw.pack_episode_count,
+      assemblyUnavailableReason: raw.assembly_unavailable_reason,
+      proposalLimit: raw.proposal_limit,
+      proposalsTruncated: raw.proposals_truncated,
+      sourceName: raw.source_name,
+      sourceSize: raw.source_size,
+      sourceFileCount: raw.source_file_count,
+      defaultTags: raw.default_tags ?? [],
+      pinnedCategory: raw.pinned_category ?? "",
+      proposals: (raw.proposals ?? []).map((proposal): ManualCrossSeedProposal => ({
+        hash: proposal.hash,
+        name: proposal.name,
+        size: proposal.size,
+        category: proposal.category ?? "",
+        effectiveSavePath: proposal.effective_save_path ?? "",
+        overlapBytes: proposal.overlap_bytes,
+        overlapFraction: proposal.overlap_fraction,
+      })),
+    }
+  }
+
+  async applyManualCrossSeed(payload: {
+    instanceId: number
+    torrentData: string
+    targetHash: string
+    category?: string
+    tags?: string[]
+  }): Promise<ManualCrossSeedApplyResponse> {
+    type RawResponse = {
+      success: boolean
+      results?: RawCrossSeedInstanceResult[]
+    }
+
+    const body: Record<string, unknown> = {
+      instance_id: payload.instanceId,
+      torrent_data: payload.torrentData,
+      target_hash: payload.targetHash,
+    }
+    if (payload.category) {
+      body.category = payload.category
+    }
+    if (payload.tags && payload.tags.length > 0) {
+      body.tags = payload.tags
+    }
+    const raw = await this.request<RawResponse>("/cross-seed/manual/apply", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+
+    return {
+      success: raw.success,
+      results: (raw.results ?? []).map(mapRawCrossSeedInstanceResult),
+    }
+  }
+
+  async checkManualAssemble(payload: ManualAssembleRequest, signal?: AbortSignal): Promise<ManualAssembleResponse> {
+    return this.manualAssemble("/cross-seed/manual/assemble/check", payload, signal)
+  }
+
+  async applyManualAssemble(payload: ManualAssembleRequest): Promise<ManualAssembleResponse> {
+    return this.manualAssemble("/cross-seed/manual/assemble", payload)
+  }
+
+  private async manualAssemble(endpoint: string, payload: ManualAssembleRequest, signal?: AbortSignal): Promise<ManualAssembleResponse> {
+    const raw = await this.request<{
+      ready: boolean
+      applied: boolean
+      reason: string
+      message: string
+      targets: ManualAssembleResponse["targets"]
+      matched_episodes: number
+      total_episodes: number
+      coverage: number
+      linked_bytes: number
+      missing_bytes: number
+      destination: string
+      default_category: string
+      link_mode: string
+    }>(endpoint, {
+      method: "POST",
+      signal,
+      body: JSON.stringify({
+        instance_id: payload.instanceId,
+        torrent_data: payload.torrentData,
+        target_hashes: payload.targetHashes,
+        category: payload.category ?? "",
+        tags: payload.tags ?? [],
+      }),
+    })
+    return {
+      ready: raw.ready,
+      applied: raw.applied,
+      reason: raw.reason,
+      message: raw.message,
+      targets: raw.targets,
+      matchedEpisodes: raw.matched_episodes,
+      totalEpisodes: raw.total_episodes,
+      coverage: raw.coverage,
+      linkedBytes: raw.linked_bytes,
+      missingBytes: raw.missing_bytes,
+      destination: raw.destination,
+      defaultCategory: raw.default_category,
+      linkMode: raw.link_mode,
+    }
+  }
+
+  async getCrossSeedSettings(): Promise<CrossSeedAutomationSettings> {
+    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
+  }
+
+  async getCrossSeedGazelleSites(): Promise<CrossSeedGazelleSite[]> {
+    return this.request<CrossSeedGazelleSite[]>("/cross-seed/gazelle/sites")
+  }
+
+  async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch) {
+    return this.request<CrossSeedAutomationSettings & { warning?: string }>("/cross-seed/settings", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async listCrossSeedRoutes(): Promise<CrossSeedRoute[]> {
+    return this.request<CrossSeedRoute[]>("/cross-seed/routes")
+  }
+
+  async getCrossSeedRoute(sourceInstanceId: number): Promise<CrossSeedRouteStatus | null> {
+    return this.request<CrossSeedRouteStatus | null>(`/cross-seed/routes/${sourceInstanceId}`)
+  }
+
+  async saveCrossSeedRoute(sourceInstanceId: number, payload: { crossSeedInstanceId: number; rows: CrossSeedRouteRow[] }): Promise<CrossSeedRoute> {
+    return this.request<CrossSeedRoute>(`/cross-seed/routes/${sourceInstanceId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async clearCrossSeedRoute(sourceInstanceId: number): Promise<void> {
+    await this.request(`/cross-seed/routes/${sourceInstanceId}`, { method: "DELETE" })
+  }
+
+  async testCrossSeedRoute(sourceInstanceId: number, payload: { crossSeedInstanceId: number; rows: CrossSeedRouteRow[] }): Promise<CrossSeedRouteTestResult> {
+    return this.request<CrossSeedRouteTestResult>(`/cross-seed/routes/${sourceInstanceId}/test`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async listCrossSeedBlocklist(instanceId?: number): Promise<CrossSeedBlocklistEntry[]> {
+    const search = new URLSearchParams()
+    if (instanceId !== undefined) search.set("instanceId", instanceId.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<CrossSeedBlocklistEntry[]>(`/cross-seed/blocklist${suffix}`)
+  }
+
+  async addCrossSeedBlocklist(payload: { instanceId: number; infoHash: string; note?: string }): Promise<CrossSeedBlocklistEntry> {
+    return this.request<CrossSeedBlocklistEntry>("/cross-seed/blocklist", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteCrossSeedBlocklist(instanceId: number, infoHash: string): Promise<void> {
+    await this.request(`/cross-seed/blocklist/${instanceId}/${infoHash}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getInstanceCompletionSettings(instanceId: number): Promise<InstanceCrossSeedCompletionSettings> {
+    return this.request<InstanceCrossSeedCompletionSettings>(`/cross-seed/completion/${instanceId}`)
+  }
+
+  async updateInstanceCompletionSettings(
+    instanceId: number,
+    payload: Omit<InstanceCrossSeedCompletionSettings, "instanceId">
+  ): Promise<InstanceCrossSeedCompletionSettings> {
+    return this.request<InstanceCrossSeedCompletionSettings>(`/cross-seed/completion/${instanceId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getCrossSeedSearchSettings(): Promise<CrossSeedSearchSettings> {
+    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings")
+  }
+
+  async patchCrossSeedSearchSettings(payload: CrossSeedSearchSettingsPatch): Promise<CrossSeedSearchSettings> {
+    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getCrossSeedStatus(): Promise<CrossSeedAutomationStatus> {
+    return this.request<CrossSeedAutomationStatus>("/cross-seed/status")
+  }
+
+  async listCrossSeedRuns(params?: { limit?: number; offset?: number }): Promise<CrossSeedRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<CrossSeedRun[]>(`/cross-seed/runs${suffix}`)
+  }
+
+  async getCrossSeedSearchStatus(): Promise<CrossSeedSearchStatus> {
+    return this.request<CrossSeedSearchStatus>("/cross-seed/search/status")
+  }
+
+  async startCrossSeedSearchRun(payload: {
+    instanceId: number
+    categories: string[]
+    tags: string[]
+    excludeCategories: string[]
+    excludeTags: string[]
+    intervalSeconds: number
+    indexerIds: number[]
+    disableTorznab?: boolean
+    cooldownMinutes: number
+    skipIndividualEpisodes?: boolean
+    maxAddedAgeDays?: number
+  }): Promise<CrossSeedSearchRun> {
+    return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async runCrossSeedSearchScheduleNow(): Promise<CrossSeedSearchRun> {
+    return this.request<CrossSeedSearchRun>("/cross-seed/search/schedule/run", { method: "POST" })
+  }
+
+  async cancelCrossSeedSearchRun(): Promise<void> {
+    await this.request("/cross-seed/search/run/cancel", { method: "POST" })
+  }
+
+  async cancelCrossSeedAutomationRun(): Promise<void> {
+    await this.request("/cross-seed/run/cancel", { method: "POST" })
+  }
+
+  async listCrossSeedSearchRuns(instanceId: number, params?: { limit?: number; offset?: number }): Promise<CrossSeedSearchRun[]> {
+    const search = new URLSearchParams({ instanceId: instanceId.toString() })
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+    return this.request<CrossSeedSearchRun[]>(`/cross-seed/search/runs?${search.toString()}`)
+  }
+
+  async listSeasonPackRuns(params?: { limit?: number }): Promise<SeasonPackRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<SeasonPackRun[]>(`/cross-seed/season-pack/runs${suffix}`)
+  }
+
+  async triggerCrossSeedRun(payload: { dryRun?: boolean } = {}): Promise<CrossSeedRun> {
+    return this.request<CrossSeedRun>("/cross-seed/run", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async getTorrentProperties(instanceId: number, hash: string): Promise<TorrentProperties> {
+    return this.request<TorrentProperties>(`/instances/${instanceId}/torrents/${hash}/properties`)
+  }
+
+  async getTorrentTrackers(instanceId: number, hash: string): Promise<TorrentTracker[]> {
+    return this.request<TorrentTracker[]>(`/instances/${instanceId}/torrents/${hash}/trackers`)
+  }
+
+  async renameTorrent(instanceId: number, hash: string, name: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/rename`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    })
+  }
+
+  async renameTorrentFile(instanceId: number, hash: string, oldPath: string, newPath: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/rename-file`, {
+      method: "PUT",
+      body: JSON.stringify({ oldPath, newPath }),
+    })
+  }
+
+  async renameTorrentFolder(instanceId: number, hash: string, oldPath: string, newPath: string): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/rename-folder`, {
+      method: "PUT",
+      body: JSON.stringify({ oldPath, newPath }),
+    })
+  }
+
+  async getTorrentFiles(instanceId: number, hash: string, options?: { refresh?: boolean }): Promise<TorrentFile[]> {
+    const query = options?.refresh ? "?refresh=1" : ""
+    return this.request<TorrentFile[]>(`/instances/${instanceId}/torrents/${hash}/files${query}`)
+  }
+
+  async setTorrentFilePriority(instanceId: number, hash: string, indices: number[], priority: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/${hash}/files`, {
+      method: "PUT",
+      body: JSON.stringify({ indices, priority }),
+    })
+  }
+
+  async exportTorrent(instanceId: number, hash: string): Promise<{ blob: Blob; filename: string | null }> {
+    const encodedHash = encodeURIComponent(hash)
+    const response = await ssoSafeFetch(`${API_BASE}/instances/${instanceId}/torrents/${encodedHash}/export`, {
+      method: "GET",
+    })
+
+    if (!response.ok) {
+      const { message } = await extractErrorData(response)
+      this.handleAuthError(response.status, `/instances/${instanceId}/torrents/${encodedHash}/export`, message)
+      throw new Error(message)
+    }
+
+    const blob = await response.blob()
+    const disposition = response.headers.get("content-disposition")
+    const filename = parseContentDispositionFilename(disposition)
+
+    return { blob, filename }
+  }
+
+  async exportTorrentsArchive(targets: Array<{
+    instanceId: number
+    instanceName: string
+    hash: string
+    category: string
+    filename?: string
+  }>): Promise<{ blob: Blob; filename: string | null }> {
+    const response = await ssoSafeFetch(`${API_BASE}/torrents/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targets }),
+    })
+
+    if (!response.ok) {
+      const { message } = await extractErrorData(response)
+      this.handleAuthError(response.status, "/torrents/export", message)
+      throw new Error(message)
+    }
+
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(response.headers.get("content-disposition")),
+    }
+  }
+
+  async getTorrentPeers(instanceId: number, hash: string): Promise<SortedPeersResponse> {
+    return this.request<SortedPeersResponse>(`/instances/${instanceId}/torrents/${hash}/peers`)
+  }
+
+  async getTorrentWebSeeds(instanceId: number, hash: string): Promise<WebSeed[]> {
+    return this.request<WebSeed[]>(`/instances/${instanceId}/torrents/${hash}/webseeds`)
+  }
+
+  async getTorrentPieceStates(instanceId: number, hash: string): Promise<number[]> {
+    return this.request<number[]>(`/instances/${instanceId}/torrents/${hash}/pieces`)
+  }
+
+  async addPeersToTorrents(instanceId: number, hashes: string[], peers: string[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/add-peers`, {
+      method: "POST",
+      body: JSON.stringify({ hashes, peers }),
+    })
+  }
+
+  async banPeers(instanceId: number, peers: string[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/torrents/ban-peers`, {
+      method: "POST",
+      body: JSON.stringify({ peers }),
+    })
+  }
+
+  async createTorrent(instanceId: number, params: TorrentCreationParams): Promise<TorrentCreationTaskResponse> {
+    return this.request(`/instances/${instanceId}/torrent-creator`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    })
+  }
+
+  async getTorrentCreationTasks(instanceId: number, taskID?: string): Promise<TorrentCreationTask[]> {
+    const query = taskID ? `?taskID=${encodeURIComponent(taskID)}` : ""
+    return this.request(`/instances/${instanceId}/torrent-creator/status${query}`)
+  }
+
+  async getActiveTaskCount(instanceId: number): Promise<number> {
+    const response = await this.request<{ count: number }>(`/instances/${instanceId}/torrent-creator/count`)
+    return response.count
+  }
+
+  async downloadTorrentFile(instanceId: number, taskID: string): Promise<void> {
+    const response = await ssoSafeFetch(
+      `${API_BASE}/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}/file`,
+      { method: "GET" }
+    )
+
+    if (!response.ok) {
+      throw new Error(i18n.t("errors.torrentFileDownloadFailed", { ns: "common", status: response.statusText }))
+    }
+
+    const contentDisposition = response.headers.get("Content-Disposition")
+    let filename = `${taskID}.torrent`
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?([^";]+)"?/)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
+      }
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
+  async deleteTorrentCreationTask(instanceId: number, taskID: string): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/torrent-creator/${encodeURIComponent(taskID)}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getCategories(instanceId: number): Promise<Record<string, Category>> {
+    return this.request(`/instances/${instanceId}/categories`)
+  }
+
+  async createCategory(instanceId: number, name: string, savePath?: string): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/categories`, {
+      method: "POST",
+      body: JSON.stringify({ name, savePath: savePath || "" }),
+    })
+  }
+
+  async editCategory(instanceId: number, name: string, savePath: string): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/categories`, {
+      method: "PUT",
+      body: JSON.stringify({ name, savePath }),
+    })
+  }
+
+  async removeCategories(instanceId: number, categories: string[]): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/categories`, {
+      method: "DELETE",
+      body: JSON.stringify({ categories }),
+    })
+  }
+
+  async getTags(instanceId: number): Promise<string[]> {
+    return this.request(`/instances/${instanceId}/tags`)
+  }
+
+  async createTags(instanceId: number, tags: string[]): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/tags`, {
+      method: "POST",
+      body: JSON.stringify({ tags }),
+    })
+  }
+
+  async deleteTags(instanceId: number, tags: string[]): Promise<{ message: string }> {
+    return this.request(`/instances/${instanceId}/tags`, {
+      method: "DELETE",
+      body: JSON.stringify({ tags }),
+    })
+  }
+
+  async getActiveTrackers(instanceId: number): Promise<Record<string, string>> {
+    return this.request(`/instances/${instanceId}/trackers`)
+  }
+
+  async getDirectoryContent(
+    instanceId: number,
+    dirPath: string,
+    mode: "dirs" | "files",
+    signal?: AbortSignal
+  ): Promise<string[]> {
+    const params = new URLSearchParams({ dirPath, mode })
+    const response = await ssoSafeFetch(
+      `${API_BASE}/instances/${instanceId}/getDirectoryContent?${params}`,
+      { method: "GET", signal }
+    )
+    if (!response.ok) {
+      throw new Error("Failed to fetch directory content")
+    }
+    return response.json()
+  }
+
+  async listAutomations(instanceId: number): Promise<Automation[]> {
+    return this.request(`/instances/${instanceId}/automations`)
+  }
+
+  async createAutomation(instanceId: number, payload: AutomationInput): Promise<Automation> {
+    return this.request(`/instances/${instanceId}/automations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async updateAutomation(instanceId: number, ruleId: number, payload: AutomationInput): Promise<Automation> {
+    return this.request(`/instances/${instanceId}/automations/${ruleId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async deleteAutomation(instanceId: number, ruleId: number): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/${ruleId}`, {
+      method: "DELETE",
+    })
+  }
+
+  async reorderAutomations(instanceId: number, orderedIds: number[]): Promise<void> {
+    return this.request(`/instances/${instanceId}/automations/order`, {
+      method: "PUT",
+      body: JSON.stringify({ orderedIds }),
+    })
+  }
+
+  async dryRunAutomation(instanceId: number, payload: AutomationInput): Promise<AutomationDryRunResult> {
+    return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/dry-run`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async applyAutomationNow(instanceId: number, ruleId: number): Promise<AutomationDryRunResult> {
+    return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/${ruleId}/apply`, {
+      method: "POST",
+    })
+  }
+
+  async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
+    const query = typeof limit === "number" ? `?limit=${limit}` : ""
+    return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)
+  }
+
+  async getAutomationActivityRun(
+    instanceId: number,
+    activityId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<AutomationActivityRun> {
+    const query = new URLSearchParams()
+    if (typeof params?.limit === "number") {
+      query.set("limit", String(params.limit))
+    }
+    if (typeof params?.offset === "number") {
+      query.set("offset", String(params.offset))
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : ""
+    return this.request<AutomationActivityRun>(`/instances/${instanceId}/automations/activity/${activityId}${suffix}`)
+  }
+
+  async deleteAutomationActivity(instanceId: number, olderThanDays: number): Promise<{ deleted: number }> {
+    return this.request<{ deleted: number }>(`/instances/${instanceId}/automations/activity?older_than=${olderThanDays}`, {
+      method: "DELETE",
+    })
+  }
+
+  async previewAutomation(instanceId: number, payload: AutomationPreviewInput): Promise<AutomationPreviewResult> {
+    return this.request<AutomationPreviewResult>(`/instances/${instanceId}/automations/preview`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async validateAutomationRegex(instanceId: number, payload: AutomationInput): Promise<RegexValidationResult> {
+    return this.request<RegexValidationResult>(`/instances/${instanceId}/automations/validate-regex`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    return this.request("/auth/change-password", {
+      method: "PUT",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    })
+  }
+
+  async getApiKeys(): Promise<ApiKey[]> {
+    return this.request("/api-keys")
+  }
+
+  async createApiKey(data: ApiKeyRequest): Promise<{ id: number; key: string; name: string }> {
+    return this.request("/api-keys", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateApiKey(id: number, data: ApiKeyRequest): Promise<ApiKey> {
+    return this.request(`/api-keys/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteApiKey(id: number): Promise<void> {
+    return this.request(`/api-keys/${id}`, { method: "DELETE" })
+  }
+
+  async getClientApiKeys(): Promise<{
+    id: number
+    clientName: string
+    instanceId: number
+    createdAt: string
+    lastUsedAt?: string
+    instance?: {
+      id: number
+      name: string
+      host: string
+    } | null
+  }[]> {
+    return this.request("/client-api-keys")
+  }
+
+  async createClientApiKey(data: {
+    clientName: string
+    instanceId: number
+  }): Promise<{
+    key: string
+    clientApiKey: {
+      id: number
+      clientName: string
+      instanceId: number
+      createdAt: string
+    }
+    instance?: {
+      id: number
+      name: string
+      host: string
+    }
+    proxyUrl: string
+  }> {
+    return this.request("/client-api-keys", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteClientApiKey(id: number): Promise<void> {
+    return this.request(`/client-api-keys/${id}`, { method: "DELETE" })
+  }
+
+  async activateLicense(licenseKey: string): Promise<{
+    valid: boolean
+    productName?: string
+    expiresAt?: string
+    message?: string
+    error?: string
+  }> {
+    return this.request("/license/activate", {
+      method: "POST",
+      body: JSON.stringify({ licenseKey }),
+    })
+  }
+
+  async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean; isSupporter: boolean; setupAt?: string }> {
+    return this.request("/license/licensed")
+  }
+
+  async getAllLicenses(): Promise<Array<{
+    licenseKey: string
+    productName: string
+    status: string
+    createdAt: string
+  }>> {
+    return this.request("/license/licenses")
+  }
+
+  async deleteLicense(licenseKey: string): Promise<{ message: string }> {
+    return this.request(`/license/${licenseKey}`, { method: "DELETE" })
+  }
+
+  async getBuiltinThemes(signal?: AbortSignal): Promise<{ themes: BuiltinTheme[] }> {
+    return this.request("/themes", { signal })
+  }
+
+  async getCustomThemes(): Promise<{
+    directory: string
+    themes: CustomThemeFile[]
+  }> {
+    return this.request("/themes/custom")
+  }
+
+  async createCustomTheme(id: string, css: string): Promise<CustomThemeFile> {
+    return this.request<CustomThemeFile>("/themes/custom", {
+      method: "POST",
+      body: JSON.stringify({ id, css }),
+    })
+  }
+
+  async replaceCustomTheme(id: string, css: string): Promise<CustomThemeFile> {
+    return this.request<CustomThemeFile>(`/themes/custom/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ css }),
+    })
+  }
+
+  async deleteCustomTheme(id: string): Promise<void> {
+    return this.request(`/themes/custom/${encodeURIComponent(id)}`, { method: "DELETE" })
+  }
+
+  async getThemeSettings(): Promise<ThemeSlots> {
+    return this.request<ThemeSlots>("/themes/settings")
+  }
+
+  async updateThemeSettings(data: ThemeSettings, slot: ThemeSlot = "default"): Promise<ThemeSettings> {
+    return this.request<ThemeSettings>(`/themes/settings?slot=${slot}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteMobileThemeSettings(): Promise<void> {
+    return this.request("/themes/settings?slot=mobile", { method: "DELETE" })
+  }
+
+  async getClientSettings(): Promise<Record<string, string>> {
+    return this.request<Record<string, string>>("/client-settings")
+  }
+
+  async getInstancePreferenceView(instanceId: number): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`)
+  }
+
+  async updateInstancePreferences(
+    instanceId: number,
+    preferences: Partial<AppPreferences>
+  ): Promise<PreferenceField[]> {
+    return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`, {
+      method: "PATCH",
+      body: JSON.stringify(preferences),
+    })
+  }
+
+  async getNetworkBinding(instanceId: number): Promise<NetworkBindingInterface[]> {
+    return this.request<NetworkBindingInterface[]>(`/instances/${instanceId}/network-binding`)
+  }
+
+  async sendTestEmail(instanceId: number): Promise<void> {
+    await this.request<void>(`/instances/${instanceId}/preferences/test-email`, { method: "POST" })
+  }
+
+  async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
+    return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits/toggle`, {
+      method: "POST",
+    })
+  }
+
+  async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
+    return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
+  }
+
+  async getApplicationInfo(): Promise<ApplicationInfo> {
+    return this.request<ApplicationInfo>("/application/info")
+  }
+
+  async getProblemReportFacts(startedFrom: ProblemReportStartedFrom): Promise<ProblemReportFacts> {
+    return this.request<ProblemReportFacts>(`/problem-reports/facts?startedFrom=${startedFrom}`)
+  }
+
+  async sendProblemReport(report: ProblemReportPayload, sender: ProblemReportSender): Promise<SentProblemReport> {
+    const endpoint = "/problem-reports"
+    const formData = new FormData()
+    formData.append("report", JSON.stringify(report))
+    formData.append("sender", JSON.stringify(sender))
+
+    const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
+      method: "POST",
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const { message, data } = await extractErrorData(response)
+      this.handleAuthError(response.status, endpoint, message)
+      throw new APIError(message, response.status, data)
+    }
+
+    return response.json()
+  }
+
+  async getSentProblemReports(): Promise<ListedProblemReport[]> {
+    return this.request<ListedProblemReport[]>("/problem-reports")
+  }
+
+  async deleteProblemReport(id: string): Promise<void> {
+    await this.request<void>(`/problem-reports/${encodeURIComponent(id)}`, { method: "DELETE" })
+  }
+
+  async getProblemReportSender(): Promise<ProblemReportSender> {
+    return this.request<ProblemReportSender>("/problem-reports/sender")
+  }
+
+  async startProblemReportSignIn(provider: ProblemReportProvider): Promise<{ url: string }> {
+    return this.request<{ url: string }>("/problem-reports/sign-in", { method: "POST", body: JSON.stringify({ provider }) })
+  }
+
+  async getProblemReportSignInState(): Promise<ProblemReportSignInState> {
+    return this.request<ProblemReportSignInState>("/problem-reports/sign-in")
+  }
+
+  async signOutOfProblemReports(): Promise<void> {
+    await this.request<void>("/problem-reports/sign-in", { method: "DELETE" })
+  }
+
+  async getVersion(): Promise<VersionInfo> {
+    return this.request<VersionInfo>("/version")
+  }
+
+  async restartQui(): Promise<void> {
+    await this.request<void>("/system/restart", { method: "POST" })
+  }
+
+  async selfUpdateQui(version: string): Promise<SelfUpdateResult> {
+    return this.request<SelfUpdateResult>("/system/update", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    })
+  }
+
+  async getLatestVersion(): Promise<{
+    tag_name: string
+    name?: string
+    html_url: string
+    published_at: string
+  } | null> {
+    try {
+      const response = await this.request<{
+        tag_name: string
+        name?: string
+        html_url: string
+        published_at: string
+      } | null>("/version/latest")
+
+      return response ?? null
+    } catch {
+      return null
+    }
+  }
+
+  async getSystemNotices(): Promise<SystemNotice[]> {
+    return this.request<SystemNotice[]>("/system-notices")
+  }
+
+  async dismissSystemNotice(kind: string): Promise<void> {
+    await this.request<void>(`/system-notices/${encodeURIComponent(kind)}`, { method: "DELETE" })
+  }
+
+  async getDatabaseShrink(): Promise<DatabaseShrinkStatus> {
+    return this.request<DatabaseShrinkStatus>("/database/shrink")
+  }
+
+  async requestDatabaseShrink(): Promise<{ restarting: boolean }> {
+    return this.request<{ restarting: boolean }>("/database/shrink", { method: "POST" })
+  }
+
+  async dismissDatabaseShrinkResult(): Promise<void> {
+    await this.request<void>("/database/shrink/result", { method: "DELETE" })
+  }
+
+  async getTrackerIcons(): Promise<Record<string, string>> {
+    return this.request<Record<string, string>>("/tracker-icons")
+  }
+
+  async listExternalPrograms(): Promise<ExternalProgram[]> {
+    return this.request<ExternalProgram[]>("/external-programs")
+  }
+
+  async createExternalProgram(program: ExternalProgramCreate): Promise<ExternalProgram> {
+    return this.request<ExternalProgram>("/external-programs", {
+      method: "POST",
+      body: JSON.stringify(program),
+    })
+  }
+
+  async updateExternalProgram(id: number, program: ExternalProgramUpdate): Promise<ExternalProgram> {
+    return this.request<ExternalProgram>(`/external-programs/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(program),
+    })
+  }
+
+  async deleteExternalProgram(id: number, force?: boolean): Promise<void> {
+    const url = force ? `/external-programs/${id}?force=true` : `/external-programs/${id}`
+    return this.request(url, {
+      method: "DELETE",
+    })
+  }
+
+  async executeExternalProgram(request: ExternalProgramExecute): Promise<ExternalProgramExecuteResponse> {
+    return this.request<ExternalProgramExecuteResponse>("/external-programs/execute", {
+      method: "POST",
+      body: JSON.stringify(request),
+    })
+  }
+
+  async listNotificationEvents(): Promise<NotificationEventDefinition[]> {
+    return this.request<NotificationEventDefinition[]>("/notifications/events")
+  }
+
+  async listNotificationTargets(): Promise<NotificationTarget[]> {
+    return this.request<NotificationTarget[]>("/notifications/targets")
+  }
+
+  async createNotificationTarget(data: NotificationTargetRequest): Promise<NotificationTarget> {
+    return this.request<NotificationTarget>("/notifications/targets", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateNotificationTarget(id: number, data: NotificationTargetRequest): Promise<NotificationTarget> {
+    return this.request<NotificationTarget>(`/notifications/targets/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteNotificationTarget(id: number): Promise<void> {
+    return this.request(`/notifications/targets/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async testNotificationTarget(id: number, data?: NotificationTestRequest): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/notifications/targets/${id}/test`, {
+      method: "POST",
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
+  async listTrackerCustomizations(): Promise<TrackerCustomization[]> {
+    return this.request<TrackerCustomization[]>("/tracker-customizations")
+  }
+
+  async createTrackerCustomization(data: TrackerCustomizationInput): Promise<TrackerCustomization> {
+    return this.request<TrackerCustomization>("/tracker-customizations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTrackerCustomization(id: number, data: TrackerCustomizationInput): Promise<TrackerCustomization> {
+    return this.request<TrackerCustomization>(`/tracker-customizations/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTrackerCustomization(id: number): Promise<void> {
+    return this.request(`/tracker-customizations/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async listFilterViews(): Promise<FilterView[]> {
+    return this.request<FilterView[]>("/filter-views")
+  }
+
+  async createFilterView(data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>("/filter-views", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateFilterView(id: number, data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>(`/filter-views/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteFilterView(id: number): Promise<void> {
+    return this.request(`/filter-views/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getDashboardSettings(): Promise<DashboardSettings> {
+    return this.request<DashboardSettings>("/dashboard-settings")
+  }
+
+  async updateDashboardSettings(data: DashboardSettingsInput): Promise<DashboardSettings> {
+    return this.request<DashboardSettings>("/dashboard-settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getTransferHistorySettingsStatus(): Promise<TransferHistorySettingsStatus> {
+    return this.request<TransferHistorySettingsStatus>("/transfer-history/status")
+  }
+
+  async updateTransferHistorySettings(data: TransferHistorySettings): Promise<TransferHistorySettings> {
+    return this.request<TransferHistorySettings>("/transfer-history/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTransferHistory(target: { instanceId: number | "all"; before?: Date }): Promise<void> {
+    const params = new URLSearchParams({ instanceId: String(target.instanceId) })
+    if (target.before) {
+      params.set("before", target.before.toISOString())
+    }
+    return this.request<void>(`/transfer-history?${params}`, { method: "DELETE" })
+  }
+
+  async getLogExclusions(): Promise<LogExclusions> {
+    return this.request<LogExclusions>("/log-exclusions")
+  }
+
+  async updateLogExclusions(data: LogExclusionsInput): Promise<LogExclusions> {
+    return this.request<LogExclusions>("/log-exclusions", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async listTorznabIndexers(): Promise<TorznabIndexer[]> {
+    return this.request<TorznabIndexer[]>("/torznab/indexers")
+  }
+
+  async getIndexerTrackerDomains(): Promise<string[]> {
+    return this.request<string[]>("/torznab/indexers/tracker-domains")
+  }
+
+  async createTorznabIndexer(data: TorznabIndexerFormData): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>("/torznab/indexers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTorznabIndexer(id: number, data: Partial<TorznabIndexerFormData>): Promise<IndexerResponse> {
+    return this.request<IndexerResponse>(`/torznab/indexers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async syncTorznabCaps(id: number): Promise<TorznabIndexer> {
+    return this.request<TorznabIndexer>(`/torznab/indexers/${id}/caps/sync`, {
+      method: "POST",
+    })
+  }
+
+  async deleteTorznabIndexer(id: number): Promise<void> {
+    return this.request<void>(`/torznab/indexers/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async testTorznabIndexer(id: number): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/torznab/indexers/${id}/test`, {
+      method: "POST",
+    })
+  }
+
+  async getIndexerActivityStatus(): Promise<IndexerActivityStatus> {
+    return this.request<IndexerActivityStatus>("/torznab/activity")
+  }
+
+  async getSearchHistory(limit?: number): Promise<SearchHistoryResponse> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
+  }
+
+  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string, sourceIndexerId?: number): Promise<DiscoverJackettResponse> {
+    const user = basicUsername?.trim() ?? ""
+    const payload: Record<string, unknown> = { base_url: baseUrl, api_key: apiKey }
+    if (user) {
+      payload.basic_username = user
+      payload.basic_password = basicPassword ?? ""
+    }
+    if (sourceIndexerId !== undefined) {
+      payload.source_indexer_id = sourceIndexerId
+    }
+    return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async searchTorznab(request: TorznabSearchRequest): Promise<TorznabSearchResponse> {
+    const response = await this.request<{
+      results: Array<{
+        indexer: string
+        indexer_id: number
+        title: string
+        download_url: string
+        info_url?: string
+        size: number
+        seeders: number
+        leechers: number
+        category_id: number
+        category_name: string
+        publish_date: string
+        download_volume_factor: number
+        upload_volume_factor: number
+        guid: string
+        imdb_id?: string
+        tvdb_id?: string
+        source?: string
+        collection?: string
+        group?: string
+      }>
+      total: number
+      cache?: TorznabSearchCacheMetadata
+    }>("/torznab/search", {
+      method: "POST",
+      body: JSON.stringify(request),
+    })
+
+    return {
+      ...response,
+      results: response.results.map((result): TorznabSearchResult => ({
+        indexer: result.indexer,
+        indexerId: result.indexer_id,
+        title: result.title,
+        downloadUrl: result.download_url,
+        infoUrl: result.info_url,
+        size: result.size,
+        seeders: result.seeders,
+        leechers: result.leechers,
+        categoryId: result.category_id,
+        categoryName: result.category_name,
+        publishDate: result.publish_date,
+        downloadVolumeFactor: result.download_volume_factor,
+        uploadVolumeFactor: result.upload_volume_factor,
+        guid: result.guid,
+        imdbId: result.imdb_id,
+        tvdbId: result.tvdb_id,
+        source: result.source,
+        collection: result.collection,
+        group: result.group,
+      })),
+    }
+  }
+
+  async getRecentTorznabSearches(limit?: number, scope?: string): Promise<TorznabRecentSearch[]> {
+    const params = new URLSearchParams()
+    if (limit && limit > 0) {
+      params.set("limit", String(limit))
+    }
+    if (scope) {
+      params.set("scope", scope)
+    }
+    const query = params.toString() ? `?${params.toString()}` : ""
+    return this.request<TorznabRecentSearch[]>(`/torznab/search/recent${query}`)
+  }
+
+  async getTorznabSearchCacheStats(): Promise<TorznabSearchCacheStats> {
+    return this.request<TorznabSearchCacheStats>("/torznab/search/cache")
+  }
+
+  async updateTorznabSearchCacheSettings(ttlMinutes: number): Promise<TorznabSearchCacheStats> {
+    return this.request<TorznabSearchCacheStats>("/torznab/search/cache/settings", {
+      method: "PUT",
+      body: JSON.stringify({ ttlMinutes }),
+    })
+  }
+
+  async getOrphanScanSettings(instanceId: number): Promise<OrphanScanSettings> {
+    return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`)
+  }
+
+  async updateOrphanScanSettings(
+    instanceId: number,
+    payload: OrphanScanSettingsUpdate
+  ): Promise<OrphanScanSettings> {
+    return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    })
+  }
+
+  async triggerOrphanScan(instanceId: number): Promise<{ runId: number }> {
+    return this.request<{ runId: number }>(`/instances/${instanceId}/orphan-scan/scan`, {
+      method: "POST",
+    })
+  }
+
+  async listOrphanScanRuns(
+    instanceId: number,
+    params?: { limit?: number }
+  ): Promise<OrphanScanRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<OrphanScanRun[]>(`/instances/${instanceId}/orphan-scan/runs${suffix}`)
+  }
+
+  async getOrphanScanRun(
+    instanceId: number,
+    runId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<OrphanScanRunWithFiles> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    if (params?.offset !== undefined) search.set("offset", params.offset.toString())
+
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<OrphanScanRunWithFiles>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}${suffix}`
+    )
+  }
+
+  async confirmOrphanScanDeletion(
+    instanceId: number,
+    runId: number
+  ): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}/confirm`,
+      { method: "POST" }
+    )
+  }
+
+  async cancelOrphanScanRun(
+    instanceId: number,
+    runId: number
+  ): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/instances/${instanceId}/orphan-scan/runs/${runId}`,
+      { method: "DELETE" }
+    )
+  }
+
+  async listArrInstances(): Promise<ArrInstance[]> {
+    return this.request<ArrInstance[]>("/arr/instances")
+  }
+
+  async createArrInstance(data: ArrInstanceFormData): Promise<ArrInstance> {
+    return this.request<ArrInstance>("/arr/instances", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateArrInstance(id: number, data: ArrInstanceUpdateData): Promise<ArrInstance> {
+    return this.request<ArrInstance>(`/arr/instances/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteArrInstance(id: number): Promise<void> {
+    return this.request(`/arr/instances/${id}`, { method: "DELETE" })
+  }
+
+  async testArrInstance(id: number): Promise<ArrTestResponse> {
+    return this.request<ArrTestResponse>(`/arr/instances/${id}/test`, {
+      method: "POST",
+    })
+  }
+
+  async testArrConnection(data: ArrTestConnectionRequest): Promise<ArrTestResponse> {
+    return this.request<ArrTestResponse>("/arr/test", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getLogSettings(): Promise<LogSettings> {
+    return this.request<LogSettings>("/log-settings")
+  }
+
+  async updateLogSettings(settings: LogSettingsUpdate): Promise<LogSettings> {
+    return this.request<LogSettings>("/log-settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    })
+  }
+
+  getLogStreamUrl(limit = 1000): string {
+    return `${API_BASE}/logs/stream?limit=${limit}`
+  }
+
+  async getLogFiles(): Promise<LogFile[]> {
+    return this.request<LogFile[]>("/logs/files")
+  }
+
+  async downloadLogFile(filename: string): Promise<void> {
+    const response = await ssoSafeFetch(`${API_BASE}/logs/files/${encodeURIComponent(filename)}`, { method: "GET" })
+
+    if (!response.ok) {
+      throw new Error(`Failed to download log file: ${response.statusText}`)
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
+  async getDirScanSettings(): Promise<DirScanSettings> {
+    return this.request<DirScanSettings>("/dir-scan/settings")
+  }
+
+  async updateDirScanSettings(data: DirScanSettingsUpdate): Promise<DirScanSettings> {
+    return this.request<DirScanSettings>("/dir-scan/settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async listDirScanDirectories(): Promise<DirScanDirectory[]> {
+    return this.request<DirScanDirectory[]>("/dir-scan/directories")
+  }
+
+  async createDirScanDirectory(data: DirScanDirectoryCreate): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>("/dir-scan/directories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateDirScanDirectory(
+    directoryId: number,
+    data: DirScanDirectoryUpdate
+  ): Promise<DirScanDirectory> {
+    return this.request<DirScanDirectory>(`/dir-scan/directories/${directoryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteDirScanDirectory(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}`, { method: "DELETE" })
+  }
+
+  async resetDirScanFiles(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
+  }
+
+  async requeueDirScanNoMatch(directoryId: number): Promise<DirScanRequeueResponse> {
+    return this.request<DirScanRequeueResponse>(`/dir-scan/directories/${directoryId}/requeue-no-match`, {
+      method: "POST",
+    })
+  }
+
+  async triggerDirScan(directoryId: number): Promise<DirScanTriggerResponse> {
+    return this.request<DirScanTriggerResponse>(`/dir-scan/directories/${directoryId}/scan`, {
+      method: "POST",
+    })
+  }
+
+  async cancelDirScan(directoryId: number): Promise<void> {
+    return this.request(`/dir-scan/directories/${directoryId}/scan`, { method: "DELETE" })
+  }
+
+  async getDirScanStatus(directoryId: number): Promise<DirScanStatus> {
+    return this.request<DirScanStatus>(`/dir-scan/directories/${directoryId}/status`)
+  }
+
+  async listDirScanRuns(
+    directoryId: number,
+    options?: { limit?: number }
+  ): Promise<DirScanRun[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRun[]>(`/dir-scan/directories/${directoryId}/runs${suffix}`)
+  }
+
+  async listDirScanRunInjections(
+    directoryId: number,
+    runId: number,
+    options?: { limit?: number; offset?: number }
+  ): Promise<DirScanRunInjection[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) {
+      params.set("limit", String(options.limit))
+    }
+    if (options?.offset) {
+      params.set("offset", String(options.offset))
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : ""
+    return this.request<DirScanRunInjection[]>(
+      `/dir-scan/directories/${directoryId}/runs/${runId}/injections${suffix}`
+    )
+  }
+
+  async getRSSItems(instanceId: number, withData = true): Promise<RSSItems> {
+    return this.request<RSSItems>(`/instances/${instanceId}/rss/items?withData=${withData}`)
+  }
+
+  async addRSSFolder(instanceId: number, data: AddRSSFolderRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/folders`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async addRSSFeed(instanceId: number, data: AddRSSFeedRequest): Promise<WarningResponse | undefined> {
+    return this.request<WarningResponse | undefined>(`/instances/${instanceId}/rss/feeds`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async setRSSFeedURL(instanceId: number, data: SetRSSFeedURLRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/feeds/url`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async moveRSSItem(instanceId: number, data: MoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/move`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSItem(instanceId: number, data: RemoveRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items`, {
+      method: "DELETE",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async refreshRSSItem(instanceId: number, data: RefreshRSSItemRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/items/refresh`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async markRSSAsRead(instanceId: number, data: MarkRSSAsReadRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/articles/read`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getRSSRules(instanceId: number): Promise<RSSRules> {
+    return this.request<RSSRules>(`/instances/${instanceId}/rss/rules`)
+  }
+
+  async setRSSRule(instanceId: number, data: SetRSSRuleRequest): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async removeRSSRule(instanceId: number, ruleName: string): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}`, {
+      method: "DELETE",
+    })
+  }
+
+  async getRSSMatchingArticles(instanceId: number, ruleName: string): Promise<RSSMatchingArticles> {
+    return this.request<RSSMatchingArticles>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/preview`)
+  }
+
+  async reprocessRSSRules(instanceId: number): Promise<void> {
+    return this.request<void>(`/instances/${instanceId}/rss/rules/reprocess`, {
+      method: "POST",
+    })
+  }
+}
+
+export function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return api.request<T>(endpoint, options)
+}
+
+export const api = new ApiClient()
+
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) {
+    return null
+  }
+
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1])
+    } catch {
+      return utf8Match[1]
+    }
+  }
+
+  const quotedMatch = header.match(/filename="?([^";]+)"?/i)
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1]
+  }
+
+  return null
+}

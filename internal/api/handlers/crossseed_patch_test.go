@@ -1,0 +1,211 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
+)
+
+func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		Enabled:                false,
+		RunIntervalMinutes:     120,
+		RSSAutomationTags:      []string{"old"},
+		SeededSearchTags:       []string{"old"},
+		CompletionSearchTags:   []string{"old"},
+		WebhookTags:            []string{"old"},
+		TargetInstanceIDs:      []int{1},
+		TargetIndexerIDs:       []int{2},
+		MaxResultsPerRun:       10,
+		FindIndividualEpisodes: false,
+		UseCategoryFromIndexer: false,
+		RunExternalProgramID:   new(42),
+		GazelleEnabled:         false,
+		RedactedAPIKey:         "",
+		OrpheusAPIKey:          "",
+	}
+
+	patch := automationSettingsPatchRequest{
+		Enabled:                new(true),
+		RunIntervalMinutes:     new(45),
+		RSSAutomationTags:      &[]string{"new"},
+		SeededSearchTags:       &[]string{"new-seeded"},
+		TargetInstanceIDs:      &[]int{3, 4},
+		TargetIndexerIDs:       &[]int{7},
+		MaxResultsPerRun:       new(25),
+		FindIndividualEpisodes: new(true),
+		UseCategoryFromIndexer: new(true),
+		RescueTitleMismatches:  new(true),
+		RunExternalProgramID:   optionalInt{Set: true, Value: nil},
+		GazelleEnabled:         new(true),
+		RedactedAPIKey:         new("red-key"),
+		OrpheusAPIKey:          new("ops-key"),
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if !existing.Enabled {
+		t.Fatalf("expected enabled to be true")
+	}
+	if existing.RunIntervalMinutes != 45 {
+		t.Fatalf("expected run interval 45, got %d", existing.RunIntervalMinutes)
+	}
+	if len(existing.RSSAutomationTags) != 1 || existing.RSSAutomationTags[0] != "new" {
+		t.Fatalf("unexpected rss automation tags: %#v", existing.RSSAutomationTags)
+	}
+	if len(existing.SeededSearchTags) != 1 || existing.SeededSearchTags[0] != "new-seeded" {
+		t.Fatalf("unexpected seeded search tags: %#v", existing.SeededSearchTags)
+	}
+	if len(existing.CompletionSearchTags) != 1 || existing.CompletionSearchTags[0] != "old" {
+		t.Fatalf("unexpected completion search tags: %#v", existing.CompletionSearchTags)
+	}
+	if len(existing.WebhookTags) != 1 || existing.WebhookTags[0] != "old" {
+		t.Fatalf("unexpected webhook tags: %#v", existing.WebhookTags)
+	}
+	if len(existing.TargetInstanceIDs) != 2 || existing.TargetInstanceIDs[0] != 3 || existing.TargetInstanceIDs[1] != 4 {
+		t.Fatalf("unexpected target instance ids: %#v", existing.TargetInstanceIDs)
+	}
+	if len(existing.TargetIndexerIDs) != 1 || existing.TargetIndexerIDs[0] != 7 {
+		t.Fatalf("unexpected target indexer ids: %#v", existing.TargetIndexerIDs)
+	}
+	if existing.MaxResultsPerRun != 25 {
+		t.Fatalf("expected maxResultsPerRun 25, got %d", existing.MaxResultsPerRun)
+	}
+	if !existing.FindIndividualEpisodes {
+		t.Fatalf("expected findIndividualEpisodes to be true")
+	}
+	if !existing.UseCategoryFromIndexer {
+		t.Fatalf("expected useCategoryFromIndexer to be true")
+	}
+	if !existing.RescueTitleMismatches {
+		t.Fatalf("expected rescueTitleMismatches to be true")
+	}
+	if existing.RunExternalProgramID != nil {
+		t.Fatalf("expected runExternalProgramID to be nil")
+	}
+	if !existing.GazelleEnabled {
+		t.Fatalf("expected gazelleEnabled to be true")
+	}
+	if existing.RedactedAPIKey != "red-key" {
+		t.Fatalf("expected redacted api key to be set")
+	}
+	if existing.OrpheusAPIKey != "ops-key" {
+		t.Fatalf("expected orpheus api key to be set")
+	}
+}
+
+func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		Enabled:              true,
+		RunIntervalMinutes:   60,
+		RunExternalProgramID: new(42),
+		RSSAutomationTags:    []string{"keep"},
+		SeededSearchTags:     []string{"keep-seeded"},
+		CompletionSearchTags: []string{"keep-completion"},
+		WebhookTags:          []string{"keep-webhook"},
+	}
+
+	patch := automationSettingsPatchRequest{
+		RunExternalProgramID: optionalInt{Set: true, Value: nil},
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if existing.Enabled != true {
+		t.Fatalf("expected enabled to remain true")
+	}
+	if existing.RunIntervalMinutes != 60 {
+		t.Fatalf("expected runIntervalMinutes to remain 60")
+	}
+	if existing.RunExternalProgramID != nil {
+		t.Fatalf("expected runExternalProgramID to be cleared")
+	}
+	if len(existing.RSSAutomationTags) != 1 || existing.RSSAutomationTags[0] != "keep" {
+		t.Fatalf("expected rss automation tags to stay unchanged, got %#v", existing.RSSAutomationTags)
+	}
+	if len(existing.SeededSearchTags) != 1 || existing.SeededSearchTags[0] != "keep-seeded" {
+		t.Fatalf("expected seeded search tags to stay unchanged, got %#v", existing.SeededSearchTags)
+	}
+}
+
+func TestApplyAutomationSettingsPatch_CategoryAffix(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		UseCrossCategoryAffix:  true,
+		CategoryAffixMode:      models.CategoryAffixModeSuffix,
+		CategoryAffix:          ".cross",
+		UseCategoryFromIndexer: false,
+		UseCustomCategory:      false,
+		CustomCategory:         "",
+	}
+
+	newAffixMode := models.CategoryAffixModePrefix
+	newAffix := "cross/"
+	patch := automationSettingsPatchRequest{
+		UseCrossCategoryAffix: new(true),
+		CategoryAffixMode:     &newAffixMode,
+		CategoryAffix:         &newAffix,
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if !existing.UseCrossCategoryAffix {
+		t.Fatalf("expected useCrossCategoryAffix to be true")
+	}
+	if existing.CategoryAffixMode != models.CategoryAffixModePrefix {
+		t.Fatalf("expected categoryAffixMode to be 'prefix', got %q", existing.CategoryAffixMode)
+	}
+	if existing.CategoryAffix != "cross/" {
+		t.Fatalf("expected categoryAffix to be 'cross/', got %q", existing.CategoryAffix)
+	}
+}
+
+func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		UseCrossCategoryAffix:  true,
+		CategoryAffixMode:      models.CategoryAffixModeSuffix,
+		CategoryAffix:          ".cross",
+		UseCategoryFromIndexer: false,
+		UseCustomCategory:      false,
+		CustomCategory:         "",
+	}
+
+	customCat := "cross-seed"
+	patch := automationSettingsPatchRequest{
+		UseCrossCategoryAffix: new(false),
+		UseCustomCategory:     new(true),
+		CustomCategory:        &customCat,
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if existing.UseCrossCategoryAffix {
+		t.Fatalf("expected useCrossCategoryAffix to be false")
+	}
+	if !existing.UseCustomCategory {
+		t.Fatalf("expected useCustomCategory to be true")
+	}
+	if existing.CustomCategory != "cross-seed" {
+		t.Fatalf("expected customCategory to be 'cross-seed', got %q", existing.CustomCategory)
+	}
+}
+
+func TestApplyAutomationSettingsPatch_KeepsStoredSecretsUnlessNamed(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{}
+	patch := automationSettingsPatchRequest{
+		Enabled:       new(true),
+		OrpheusAPIKey: new(""),
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	require.Equal(t, domain.RedactedStr, existing.RedactedAPIKey)
+	require.Empty(t, existing.OrpheusAPIKey)
+	require.Equal(t, domain.RedactedStr, existing.SeasonPackTVDBAPIKey)
+	require.Equal(t, domain.RedactedStr, existing.SeasonPackTVDBPIN)
+}

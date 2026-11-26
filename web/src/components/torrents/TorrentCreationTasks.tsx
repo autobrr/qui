@@ -1,0 +1,268 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
+import { api } from "@/lib/api"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import type { TorrentCreationStatus } from "@/types"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { CheckCircle2, Clock, Download, Loader2, Trash2, XCircle } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+interface TorrentCreationTasksProps {
+  instanceId: number
+}
+
+const STATUS_COLORS: Record<TorrentCreationStatus, string> = {
+  Queued: "bg-warning text-background p-1",
+  Running: "bg-info text-background p-1",
+  Finished: "bg-success text-background p-1",
+  Failed: "bg-destructive text-background p-1",
+}
+
+const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
+  Queued: <Clock className="h-4 w-4" />,
+  Running: <Loader2 className="h-4 w-4 animate-spin" />,
+  Finished: <CheckCircle2 className="h-4 w-4" />,
+  Failed: <XCircle className="h-4 w-4" />,
+}
+
+const STATUS_LABEL_KEYS: Record<TorrentCreationStatus, string> = {
+  Queued: "creationTasks.statusLabels.Queued",
+  Running: "creationTasks.statusLabels.Running",
+  Finished: "creationTasks.statusLabels.Finished",
+  Failed: "creationTasks.statusLabels.Failed",
+}
+
+function statusLabelKey(status: TorrentCreationStatus): string {
+  return Object.hasOwn(STATUS_LABEL_KEYS, status) ? STATUS_LABEL_KEYS[status] : "common:status.unknown"
+}
+
+export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) {
+  const { t } = useTranslation("torrents")
+  const queryClient = useQueryClient()
+  const { formatDate } = useDateTimeFormatters()
+
+  const { data: tasks, isLoading } = useQuery({
+    queryKey: ["torrent-creation-tasks", instanceId],
+    queryFn: () => api.getTorrentCreationTasks(instanceId),
+    refetchInterval: (query) =>
+      query.state.data?.some((task) => task.status === "Running" || task.status === "Queued") ? 2000 : 30000,
+    refetchIntervalInBackground: true,
+  })
+
+  const downloadMutation = useMutation({
+    mutationFn: (taskID: string) => api.downloadTorrentFile(instanceId, taskID),
+    onSuccess: () => {
+      toast.success(t("creationTasks.toast.downloadStarted"))
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t("creationTasks.toast.downloadFailed"))
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (taskID: string) => api.deleteTorrentCreationTask(instanceId, taskID),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["torrent-creation-tasks", instanceId] })
+      queryClient.invalidateQueries({ queryKey: ["active-task-count", instanceId] })
+      toast.success(t("creationTasks.toast.taskDeleted"))
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t("creationTasks.toast.taskDeleteFailed"))
+    },
+  })
+
+  if (isLoading) {
+    return (
+      <div className="p-4 text-center text-muted-foreground">
+        {t("creationTasks.loadingTasks")}
+      </div>
+    )
+  }
+
+  if (!tasks || tasks.length === 0) {
+    return (
+      <div className="p-4 text-center text-muted-foreground">
+        {t("creationTasks.noTasks")}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="lg:hidden space-y-3 p-4">
+        {tasks.map((task) => (
+          <div
+            key={task.taskID}
+            className="border rounded-lg p-4 space-y-3 bg-card"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0 space-y-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="font-medium text-sm break-words">
+                      {task.sourcePath.split("/").pop() || task.sourcePath}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>{task.sourcePath}</TooltipContent>
+                </Tooltip>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Badge variant="outline" className={STATUS_COLORS[task.status]}>
+                    <span className="flex items-center gap-1">
+                      {STATUS_ICONS[task.status]}
+                      {t(statusLabelKey(task.status))}
+                    </span>
+                  </Badge>
+                  {task.private && (
+                    <Badge variant="outline">
+                      {t("creationTasks.private")}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {task.status === "Running" && task.progress !== undefined && (
+              <div className="space-y-1.5">
+                <Progress value={task.progress} className="h-2" />
+                <div className="text-xs text-muted-foreground">
+                  {Math.round(task.progress)}%
+                </div>
+              </div>
+            )}
+
+            {task.errorMessage && (
+              <div className="text-xs text-destructive break-words">
+                {task.errorMessage}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3 pt-2 border-t">
+              <div className="text-xs text-muted-foreground">
+                {formatDate(new Date(task.timeAdded))}
+              </div>
+              <div className="flex gap-2">
+                {task.status === "Finished" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => downloadMutation.mutate(task.taskID)}
+                    disabled={downloadMutation.isPending}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => deleteMutation.mutate(task.taskID)}
+                  disabled={deleteMutation.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden lg:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("creationTasks.tableHeaders.source")}</TableHead>
+              <TableHead>{t("creationTasks.tableHeaders.status")}</TableHead>
+              <TableHead>{t("creationTasks.tableHeaders.progress")}</TableHead>
+              <TableHead>{t("creationTasks.tableHeaders.added")}</TableHead>
+              <TableHead className="text-right">{t("creationTasks.tableHeaders.actions")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {tasks.map((task) => (
+              <TableRow key={task.taskID}>
+                <TableCell>
+                  <div className="space-y-1">
+                    <TruncatedText className="block font-medium max-w-sm lg:max-w-md xl:max-w-lg 2xl:max-w-lg" tooltipContent={task.sourcePath}>
+                      {task.sourcePath.split("/").pop() || task.sourcePath}
+                    </TruncatedText>
+                    {task.private && (
+                      <Badge variant="outline">
+                        {t("creationTasks.private")}
+                      </Badge>
+                    )}
+                    {task.errorMessage && (
+                      <div className="text-xs text-destructive">{task.errorMessage}</div>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={STATUS_COLORS[task.status]}>
+                    <span className="flex items-center gap-1">
+                      {STATUS_ICONS[task.status]}
+                      {t(statusLabelKey(task.status))}
+                    </span>
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {task.status === "Running" && task.progress !== undefined ? (
+                    <div className="space-y-1">
+                      <Progress value={task.progress} className="w-32" />
+                      <div className="text-xs text-muted-foreground">
+                        {Math.round(task.progress)}%
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="text-sm">
+                    {formatDate(new Date(task.timeAdded))}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-2">
+                    {task.status === "Finished" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => downloadMutation.mutate(task.taskID)}
+                        disabled={downloadMutation.isPending}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => deleteMutation.mutate(task.taskID)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  )
+}

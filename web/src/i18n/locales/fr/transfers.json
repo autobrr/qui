@@ -1,0 +1,219 @@
+{
+  "page": {
+    "title": "Transferts",
+    "description": "Suivez ce que qui déplace entre les instances et ce que vous partagez avec d'autres personnes."
+  },
+  "tabs": {
+    "transfers": "Transferts",
+    "shares": "Partages"
+  },
+  "chips": {
+    "label": "Afficher",
+    "all": "Tous",
+    "active": "Actifs",
+    "waiting": "En attente",
+    "finished": "Terminés",
+    "failed": "En échec"
+  },
+  "columns": {
+    "torrent": "Torrent",
+    "size": "Taille",
+    "progress": "Progression",
+    "state": "État",
+    "started": "Démarré",
+    "actions": "Actions"
+  },
+  "row": {
+    "crossSeeds_one": "+{{count}} cross-seed",
+    "crossSeeds_other": "+{{count}} cross-seeds",
+    "export": "Export",
+    "route": "{{source}} → {{target}}",
+    "byUser": "Par vous",
+    "byRule": "Par la règle {{name}}",
+    "byDeletedRule": "Par une règle supprimée",
+    "retryAt": "Nouvel essai {{time}}",
+    "timeLeft": "Encore {{time}}",
+    "unknownInstance": "Instance {{id}}"
+  },
+  "ways": {
+    "sftp": "Copie par SFTP",
+    "local": "Copie sur le disque de qui",
+    "none": "Aucune copie",
+    "bittorrent": "BitTorrent",
+    "fallback": "Méthode inconnue"
+  },
+  "states": {
+    "waiting": "En attente",
+    "copying": "Copie",
+    "checking": "Vérification",
+    "finishing": "Finalisation",
+    "done": "Terminé",
+    "failed": "En échec",
+    "cancelled": "Annulé",
+    "fallback": "État inconnu"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} utilise le réglage par défaut de qBittorrent « TCP et μTP ». Dans les tests de qui, « TCP uniquement » était environ trois fois plus rapide. Modifiez-le dans les paramètres BitTorrent de {{instance}}."
+  },
+  "actions": {
+    "details": "Détails",
+    "retry": "Réessayer",
+    "cancel": "Annuler",
+    "remove": "Retirer",
+    "retried": "Le transfert reprend.",
+    "cancelled": "qui annule le transfert et défait ce qu'il a fait.",
+    "removed": "La ligne est retirée.",
+    "failed": "Échec : {{message}}"
+  },
+  "cancelDialog": {
+    "title": "Annuler ce transfert ?",
+    "description": "qui arrête le transfert de {{name}}, supprime les fichiers qu'il a écrits et les torrents qu'il a ajoutés sur la cible, puis redémarre le torrent sur la source.",
+    "keep": "Continuer",
+    "confirm": "Annuler le transfert"
+  },
+  "list": {
+    "description": "Les torrents que qui déplace vers une autre instance, et les exécutions des règles « Exporter vers l'instance ».",
+    "empty": "Aucun transfert pour l'instant.",
+    "pages": "Pages de la liste",
+    "range": "{{from}}–{{to}} sur {{total}}",
+    "previous": "Précédent",
+    "next": "Suivant"
+  },
+  "bulk": {
+    "label": "Lignes sélectionnées",
+    "pickPage": "Sélectionner les lignes de cette page",
+    "picked_one": "{{count}} sélectionnée",
+    "picked_other": "{{count}} sélectionnées",
+    "wholeChip_one": "{{count}} sélectionnée sur toutes les pages",
+    "wholeChip_other": "{{count}} sélectionnées sur toutes les pages",
+    "pickAll_one": "Tout sélectionner ({{count}})",
+    "pickAll_other": "Tout sélectionner ({{count}})",
+    "done": {
+      "retry_one": "{{count}} ligne reprend.",
+      "retry_other": "{{count}} lignes reprennent.",
+      "cancel_one": "qui annule {{count}} ligne.",
+      "cancel_other": "qui annule {{count}} lignes.",
+      "remove_one": "{{count}} ligne est retirée.",
+      "remove_other": "{{count}} lignes sont retirées."
+    },
+    "skipped_one": "{{count}} ligne ne convient pas à cette action et reste inchangée.",
+    "skipped_other": "{{count}} lignes ne conviennent pas à cette action et restent inchangées.",
+    "failed_one": "{{count}} ligne a échoué. Le journal de qui en donne la raison.",
+    "failed_other": "{{count}} lignes ont échoué. Le journal de qui en donne la raison.",
+    "failedBecause_one": "{{count}} ligne a échoué. {{reasons}}",
+    "failedBecause_other": "{{count}} lignes ont échoué. {{reasons}}",
+    "nothing": "Aucune ligne sélectionnée ne convient à cette action.",
+    "cancelDialog": {
+      "title": "Annuler les lignes sélectionnées ?",
+      "description_one": "{{count}} ligne est sélectionnée. Si elle n'est pas terminée, qui l'annule et défait ce qu'il a fait : il supprime les fichiers et les torrents qu'il a ajoutés sur la cible, puis redémarre le torrent sur la source.",
+      "description_other": "{{count}} lignes sont sélectionnées. qui annule chaque ligne non terminée et défait ce qu'il a fait : il supprime les fichiers et les torrents qu'il a ajoutés sur la cible, puis redémarre le torrent sur la source.",
+      "confirm": "Annuler les lignes",
+      "keep": "Continuer"
+    },
+    "removeDialog": {
+      "title": "Retirer les lignes sélectionnées ?",
+      "description_one": "{{count}} ligne est sélectionnée. Si elle est terminée, qui la retire de la liste. Les torrents et leurs fichiers restent où ils sont.",
+      "description_other": "{{count}} lignes sont sélectionnées. qui retire de la liste chaque ligne terminée. Les torrents et leurs fichiers restent où ils sont.",
+      "confirm": "Retirer les lignes",
+      "keep": "Garder les lignes"
+    }
+  },
+  "details": {
+    "title": "Détails du transfert",
+    "exportTitle": "Détails de l'exécution d'export",
+    "overview": "Aperçu",
+    "sections": "Sections des détails",
+    "finished": "Terminé",
+    "leftStopped": "Laissé à l'arrêt sur la cible",
+    "instance": "Instance",
+    "failure": "Cause de l'échec",
+    "torrents": "Torrents",
+    "steps": "Étapes",
+    "log": "Journal",
+    "noLog": "Aucune ligne de journal pour l'instant.",
+    "loading": "Chargement du transfert…",
+    "error": "qui ne peut pas charger le transfert : {{message}}",
+    "stale": "qui ne peut pas actualiser les détails, ils peuvent donc être obsolètes : {{message}}"
+  },
+  "steps": {
+    "start": "Démarré",
+    "prepare": "Les deux côtés sont prêts",
+    "passByBitTorrent": "Passage par un torrent de transfert",
+    "passedByBitTorrent": "Passé par un torrent de transfert",
+    "fallBackToSftp": "Repli sur une copie par SFTP",
+    "copyHardlink": "Lien physique copié",
+    "check": "Vérifié sur la cible",
+    "checkFiles": "Fichiers vérifiés sur la cible",
+    "copyMissing": "Copie des fichiers manquants",
+    "checkPartials": "Fichiers partiels vérifiés sur la cible",
+    "copyFailedPieces": "Copie des pièces qui ont échoué à la vérification",
+    "place": "Fichiers placés",
+    "add": "Ajout à la cible",
+    "added": "Ajouté à la cible",
+    "rename": "Renommage des fichiers sur la cible",
+    "after": "Source traitée",
+    "removeFromSource": "Retrait de la source",
+    "cleanUp": "Nettoyage",
+    "removePlaced": "Fichiers placés supprimés"
+  },
+  "stepFallback": "Autre étape",
+  "incognitoHidden": "Masqué en mode incognito",
+  "form": {
+    "target": "Instance cible",
+    "targetPlaceholder": "Sélectionner une instance",
+    "noTargets": "Ajoutez une autre instance pour y transférer des torrents.",
+    "savePath": "Chemin de sauvegarde",
+    "savePathHelp": "Le dossier sur la cible. qui garde en dessous les dossiers du torrent et de ses cross-seeds. Vide utilise le chemin de sauvegarde de la catégorie sur la cible, ou le chemin de sauvegarde par défaut de la cible sans catégorie. Avec un chemin vide, le torrent reçoit aussi la Gestion Automatique des Torrents, si c'est le mode par défaut de la cible.",
+    "savePathPlaceholder": "Chemin de sauvegarde par défaut de la cible",
+    "savePathPlaceholderCategory": "Chemin de sauvegarde de la catégorie",
+    "category": "Catégorie",
+    "noCategory": "Aucune catégorie",
+    "tags": "Étiquettes",
+    "tagsPlaceholder": "tag1, tag2",
+    "after": "Après le transfert",
+    "afterHelp": "Ce que qui fait du torrent sur la source une fois qu'il est en seed sur la cible.",
+    "afterOptions": {
+      "removeWithFiles": "Retirer le torrent et ses fichiers de la source",
+      "keepFiles": "Retirer le torrent de la source et garder ses fichiers",
+      "keepSeeding": "Continuer le seed sur la source"
+    },
+    "leaveStopped": "Laisser le torrent arrêté sur la cible",
+    "way": "Méthode",
+    "wayHelp": "Auto copie via qui quand qui atteint les fichiers d'un côté sur son propre disque, et sinon passe les fichiers par un torrent de transfert entre les deux qBittorrent.",
+    "wayOptions": {
+      "auto": "Auto",
+      "copy": "Copier via qui",
+      "bittorrent": "Torrent de transfert"
+    }
+  },
+  "dialog": {
+    "title": "Transférer vers une autre instance",
+    "verified": "qui vérifie chaque pièce sur la cible avant de modifier la source.",
+    "warningsMore": "Afficher les avertissements en entier",
+    "warningsLess": "Afficher une ligne par avertissement",
+    "start": "Démarrer le transfert",
+    "starting": "Démarrage…",
+    "started": "Le transfert de {{name}} attend son tour.",
+    "cancel": "Fermer"
+  },
+  "summary": {
+    "title": "Résumé",
+    "pickTarget": "Sélectionnez une instance cible pour voir le résumé.",
+    "loading": "Planification du transfert…",
+    "refused": "qui ne démarre pas ce transfert : {{message}}",
+    "torrents": "Torrents",
+    "size": "Taille",
+    "way": "Méthode",
+    "free": "Libre sur la cible",
+    "unknown": "Inconnu",
+    "freeUnknown": "Espace libre inconnu : avant qBittorrent 5.3, qBittorrent ne l'indique que pour son chemin de sauvegarde par défaut.",
+    "notEnoughSpace": "La cible a moins d'espace libre que le transfert n'en demande.",
+    "noFileAccess": "qui ne voit pas les fichiers sur {{instance}}, donc un fichier au contenu différent au même chemin peut être remplacé.",
+    "crossSeedsStay_one": "{{count}} cross-seed reste sur {{source}}. Il lit ces fichiers via des liens physiques, et qui ne peut pas créer de liens physiques sur {{target}} sans accès aux fichiers. Pour le déplacer aussi, donnez à qui l'accès aux fichiers de {{target}}, sur le disque de qui ou via SSH, ou relancez le cross-seed sur {{target}}.",
+    "crossSeedsStay_other": "{{count}} cross-seeds restent sur {{source}}. Ils lisent ces fichiers via des liens physiques, et qui ne peut pas créer de liens physiques sur {{target}} sans accès aux fichiers. Pour les déplacer aussi, donnez à qui l'accès aux fichiers de {{target}}, sur le disque de qui ou via SSH, ou relancez le cross-seed sur {{target}}.",
+    "crossSeedsStayForced_one": "{{count}} cross-seed reste sur {{source}}. Il lit ces fichiers via des liens physiques, et un torrent de transfert ne peut pas créer de liens physiques. Pour le déplacer aussi, sélectionnez la méthode « Auto » ou « Copier via qui ».",
+    "crossSeedsStayForced_other": "{{count}} cross-seeds restent sur {{source}}. Ils lisent ces fichiers via des liens physiques, et un torrent de transfert ne peut pas créer de liens physiques. Pour les déplacer aussi, sélectionnez la méthode « Auto » ou « Copier via qui ».",
+    "crossSeed": "Cross-seed",
+    "crossSeedInstance": "Sur {{instance}}"
+  }
+}

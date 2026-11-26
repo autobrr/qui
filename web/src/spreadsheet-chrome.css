@@ -1,0 +1,324 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+/* Structural chrome for the Spreadsheet theme family. Bundled for everyone but
+ * inert unless <html data-theme> starts with "spreadsheet" (built-in theme
+ * files only contribute CSS vars, so structural rules must live here). Class
+ * contract: components in web/src/components/spreadsheet/ and the table gutter
+ * render the ss-* hooks. The classic (2003-era) overrides live at the bottom. */
+
+html[data-theme^="spreadsheet"] {
+  --ss-grid-line: oklch(0.9 0.002 90);
+  --ss-gutter-bg: oklch(0.965 0.002 90);
+  --ss-gutter-fg: oklch(0.45 0.005 260);
+}
+html[data-theme^="spreadsheet"].dark {
+  --ss-grid-line: oklch(0.33 0.002 260);
+  --ss-gutter-bg: oklch(0.27 0.002 260);
+  --ss-gutter-fg: oklch(0.7 0.005 260);
+}
+
+/* ---- Cell grid: every cell gets spreadsheet gridlines ---- */
+html[data-theme^="spreadsheet"] [role="grid"] [data-torrent-column-measure] {
+  border-right: 1px solid var(--ss-grid-line);
+  border-bottom: 1px solid var(--ss-grid-line);
+}
+
+/* ---- Column letters: CSS counters over the header cells. DOM order follows
+ * the visual (drag) order, so letters stay correct after reorder. The gutter
+ * corner (ss-corner) is child 1 and the select column child 2; letters start
+ * at the first data column. ---- */
+html[data-theme^="spreadsheet"] [role="grid"] .sticky .flex {
+  counter-reset: ss-col;
+}
+html[data-theme^="spreadsheet"] [role="grid"] .sticky .flex > div.group {
+  counter-increment: ss-col;
+}
+html[data-theme^="spreadsheet"] [role="grid"] .sticky .flex > div.group::before {
+  content: counter(ss-col, upper-alpha);
+  display: block;
+  text-align: center;
+  font-size: 10px;
+  line-height: 18px;
+  height: 18px;
+  color: var(--ss-gutter-fg);
+  background: var(--ss-gutter-bg);
+  border-right: 1px solid var(--ss-grid-line);
+  border-bottom: 1px solid var(--ss-grid-line);
+  user-select: none;
+}
+/* Select-checkbox column plays the blank corner: no letter. */
+html[data-theme^="spreadsheet"] [role="grid"] .sticky .flex > div.group:nth-child(2) {
+  counter-increment: none;
+}
+html[data-theme^="spreadsheet"] [role="grid"] .sticky .flex > div.group:nth-child(2)::before {
+  content: "";
+}
+html[data-theme^="spreadsheet"] [role="grid"] .sticky {
+  border-bottom: 1px solid var(--ss-grid-line);
+}
+
+/* ---- Row-number gutter (markup rendered by TorrentTableRow / TableColumnHeader) ---- */
+html[data-theme^="spreadsheet"] .ss-row-gutter,
+html[data-theme^="spreadsheet"] .ss-corner {
+  width: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ss-gutter-fg);
+  background: var(--ss-gutter-bg);
+  border-right: 1px solid var(--ss-grid-line);
+  border-bottom: 1px solid var(--ss-grid-line);
+  user-select: none;
+}
+html[data-theme^="spreadsheet"] .ss-corner {
+  align-self: stretch;
+}
+
+/* ---- Ribbon tab strip (SpreadsheetRibbonTabs) ---- */
+html[data-theme^="spreadsheet"] .ss-ribbon-tabs {
+  align-items: flex-end;
+  gap: 2px;
+  padding: 4px 8px 0 8px;
+  background: var(--secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1;
+}
+html[data-theme^="spreadsheet"] .ss-ribbon-tab {
+  padding: 7px 14px 8px 14px;
+  border-radius: 4px 4px 0 0;
+  color: var(--secondary-foreground);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+}
+html[data-theme^="spreadsheet"] .ss-ribbon-tab:hover {
+  background: color-mix(in oklch, var(--secondary), var(--foreground) 6%);
+}
+html[data-theme^="spreadsheet"] .ss-ribbon-tab-active {
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--primary);
+  font-weight: 600;
+}
+html[data-theme^="spreadsheet"] .ss-ribbon-tab-file {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+  padding-left: 18px;
+  padding-right: 18px;
+  border-radius: 4px 4px 0 0;
+}
+html[data-theme^="spreadsheet"] .ss-ribbon-tab-file:hover {
+  background: color-mix(in oklch, var(--primary), black 10%);
+}
+
+/* ---- Formula bar (SpreadsheetFormulaBar) ---- */
+html[data-theme^="spreadsheet"] .ss-formula-bar {
+  align-items: stretch;
+  gap: 0;
+  height: 28px;
+  margin: 0 0 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--background);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+html[data-theme^="spreadsheet"] .ss-name-box {
+  width: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--border);
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+html[data-theme^="spreadsheet"] .ss-fx {
+  width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: italic;
+  font-family: var(--font-serif);
+  color: var(--muted-foreground);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+html[data-theme^="spreadsheet"] .ss-formula-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--foreground);
+}
+
+/* ---- Sheet tabs (SpreadsheetSheetTabs) ---- */
+html[data-theme^="spreadsheet"] .ss-sheet-tabs {
+  align-items: stretch;
+  gap: 0;
+  height: 28px;
+  border-top: 1px solid var(--border);
+  background: var(--secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+html[data-theme^="spreadsheet"] .ss-sheet-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-right: 1px solid var(--border);
+  color: var(--secondary-foreground);
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html[data-theme^="spreadsheet"] .ss-sheet-tab:hover {
+  background: color-mix(in oklch, var(--secondary), var(--foreground) 6%);
+}
+html[data-theme^="spreadsheet"] .ss-sheet-tab-active {
+  background: var(--background);
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+html[data-theme^="spreadsheet"] .ss-sheet-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+html[data-theme^="spreadsheet"] .ss-sheet-tab-add:hover {
+  color: var(--primary);
+}
+
+/* ---- General office chrome touches ---- */
+html[data-theme^="spreadsheet"] header {
+  background: var(--secondary);
+}
+html[data-theme^="spreadsheet"] [role="grid"] {
+  background: var(--background);
+}
+/* Flatten row hover to a subtle cell tint instead of the default accent wash */
+html[data-theme^="spreadsheet"] [role="grid"] .cursor-pointer:hover {
+  background: color-mix(in oklch, var(--background), var(--primary) 4%);
+}
+
+/* ==== Classic (2003-era) overrides: XP-blue gradient chrome, orange hover
+ * highlights, menu bar instead of ribbon, Tahoma. Light-only by metadata. ==== */
+html[data-theme="spreadsheet-classic"] {
+  --ss-grid-line: #c9d5e6;
+  --ss-gutter-bg: #dde7f3;
+  --ss-gutter-fg: #000000;
+  --ss-bevel-dark: #9eb6ce;
+  --ss-chrome-grad: linear-gradient(180deg, #fdfeff 0%, #d6e5f5 100%);
+  --ss-chrome-deep: #d6e5f5;
+  --ss-hover-orange: #ffe39e;
+  --ss-pressed-orange: #ffb85e;
+  --ss-chrome-font: 11px Tahoma, "Segoe UI", Verdana, Arial, sans-serif;
+}
+
+/* Gutter cells get the raised 3D button look of the era. */
+html[data-theme="spreadsheet-classic"] .ss-row-gutter,
+html[data-theme="spreadsheet-classic"] .ss-corner,
+html[data-theme="spreadsheet-classic"] [role="grid"] .sticky .flex > div.group::before {
+  border-right: 1px solid var(--ss-bevel-dark);
+  border-bottom: 1px solid var(--ss-bevel-dark);
+  box-shadow: inset 1px 1px 0 #ffffff;
+  font-family: Tahoma, "Segoe UI", Verdana, Arial, sans-serif;
+}
+
+/* Menu bar, not a ribbon: blue gradient strip, orange hover. */
+html[data-theme="spreadsheet-classic"] .ss-ribbon-tabs {
+  align-items: stretch;
+  gap: 0;
+  padding: 0 2px;
+  background: var(--ss-chrome-grad);
+  border-bottom: 1px solid var(--ss-bevel-dark);
+  font: var(--ss-chrome-font);
+}
+html[data-theme="spreadsheet-classic"] .ss-ribbon-tab,
+html[data-theme="spreadsheet-classic"] .ss-ribbon-tab-file {
+  display: flex;
+  align-items: center;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #000000;
+  font-weight: 400;
+}
+html[data-theme="spreadsheet-classic"] .ss-ribbon-tab:hover,
+html[data-theme="spreadsheet-classic"] .ss-ribbon-tab-file:hover {
+  background: var(--ss-hover-orange);
+  border-color: #c96712;
+  color: #000000;
+}
+html[data-theme="spreadsheet-classic"] .ss-ribbon-tab-active {
+  background: var(--ss-pressed-orange);
+  border-color: #c96712;
+  color: #000000;
+}
+
+/* Formula bar: a sunken white field on the blue toolbar. */
+html[data-theme="spreadsheet-classic"] .ss-formula-bar {
+  height: 24px;
+  margin: 0 0 2px 0;
+  border: 1px solid var(--ss-bevel-dark);
+  border-radius: 0;
+  background: #ffffff;
+  font: var(--ss-chrome-font);
+}
+html[data-theme="spreadsheet-classic"] .ss-name-box,
+html[data-theme="spreadsheet-classic"] .ss-fx {
+  border-right: 1px solid var(--ss-bevel-dark);
+}
+
+/* Sheet tabs: blue strip, active tab pops to white with plain bold black. */
+html[data-theme="spreadsheet-classic"] .ss-sheet-tabs {
+  height: 24px;
+  border-top: 1px solid var(--ss-bevel-dark);
+  background: var(--ss-chrome-deep);
+  font: var(--ss-chrome-font);
+}
+html[data-theme="spreadsheet-classic"] .ss-sheet-tab {
+  border-right: 1px solid var(--ss-bevel-dark);
+  border-radius: 0;
+}
+html[data-theme="spreadsheet-classic"] .ss-sheet-tab:hover {
+  background: var(--ss-hover-orange);
+}
+html[data-theme="spreadsheet-classic"] .ss-sheet-tab-active {
+  background: #ffffff;
+  color: #000000;
+  font-weight: 700;
+  box-shadow: none;
+}
+html[data-theme="spreadsheet-classic"] .ss-sheet-tab-add:hover {
+  color: #c96712;
+}
+
+/* Chrome strips share the gradient, row hover tints selection blue. */
+html[data-theme="spreadsheet-classic"] header {
+  background: var(--ss-chrome-grad);
+}
+html[data-theme="spreadsheet-classic"] [role="grid"] .cursor-pointer:hover {
+  background: color-mix(in oklch, #ffffff, #316ac5 8%);
+}

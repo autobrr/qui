@@ -1,0 +1,2042 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package automations
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/transfer"
+)
+
+func TestNormalizeShareLimitEnum(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: ""},
+		{in: "  ", want: ""},
+		{in: "Default", want: ""},
+		{in: "default", want: ""},
+		{in: "Stop", want: "Stop"},
+		{in: " MatchAny ", want: "MatchAny"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, normalizeShareLimitEnum(tc.in))
+		})
+	}
+}
+
+func TestRuleUsesCondition_IncludesSortingConfig(t *testing.T) {
+	tests := []struct {
+		name  string
+		rule  *models.Automation
+		field ConditionField
+		want  bool
+	}{
+		{
+			name: "simple sort field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "score conditional field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeConditional,
+							Conditional: &models.ConditionalScoreRule{
+								Condition: &models.RuleCondition{
+									Field:    models.FieldHasMissingFiles,
+									Operator: models.OperatorEqual,
+									Value:    "true",
+								},
+								Score: 10,
+							},
+						},
+					},
+				},
+			},
+			field: FieldHasMissingFiles,
+			want:  true,
+		},
+		{
+			name: "score field multiplier field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeFieldMultiplier,
+							FieldMultiplier: &models.FieldMultiplierScoreRule{
+								Field:      models.FieldFreeSpace,
+								Multiplier: 1,
+							},
+						},
+					},
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "disabled preview rule still counts",
+			rule: &models.Automation{
+				Enabled: false,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ruleUsesCondition(tt.rule, tt.field))
+		})
+	}
+}
+
+func TestActionConditionsUseField_IgnoresDisabledActions(t *testing.T) {
+	ac := &models.ActionConditions{
+		Pause: &models.PauseAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldFreeSpace,
+				Operator: models.OperatorLessThan,
+				Value:    "100",
+			},
+		},
+		Tag: &models.TagAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldHasMissingFiles,
+				Operator: models.OperatorEqual,
+				Value:    "true",
+			},
+		},
+	}
+
+	require.False(t, actionConditionsUseField(ac, FieldFreeSpace))
+	require.False(t, actionConditionsUseField(ac, FieldHasMissingFiles))
+}
+
+func TestNeedsForTrackerEntries(t *testing.T) {
+	deleteRule := func(cond *models.RuleCondition) *models.Automation {
+		return &models.Automation{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Delete: &models.DeleteAction{Enabled: true, Condition: cond},
+			},
+		}
+	}
+
+	statusRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackerStatus, Operator: models.OperatorEqual, Value: "error"})
+	trackerRule := deleteRule(&models.RuleCondition{Field: models.FieldTracker, Operator: models.OperatorEqual, Value: "dead"})
+	trackersRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackers, Operator: models.OperatorContains, Value: "tracker.example"})
+	nestedMessageRule := deleteRule(&models.RuleCondition{
+		Operator: models.OperatorOr,
+		Conditions: []*models.RuleCondition{
+			{Field: models.FieldName, Operator: models.OperatorContains, Value: "pack"},
+			{Field: models.FieldTrackerMessage, Operator: models.OperatorEqual, Value: "nil"},
+		},
+	})
+	unrelatedRule := deleteRule(&models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "pack"})
+
+	tests := []struct {
+		name  string
+		rules []*models.Automation
+		want  bool
+	}{
+		{name: "status field", rules: []*models.Automation{statusRule}, want: true},
+		{name: "tracker field reads URLs only", rules: []*models.Automation{trackerRule}, want: false},
+		{name: "trackers field reads URLs only", rules: []*models.Automation{trackersRule}, want: false},
+		{name: "message field nested in group", rules: []*models.Automation{nestedMessageRule}, want: true},
+		{name: "no tracker entry fields", rules: []*models.Automation{unrelatedRule}, want: false},
+		{name: "mixed rules detect tracker field", rules: []*models.Automation{unrelatedRule, statusRule}, want: true},
+		{name: "no rules", rules: nil, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, NeedsFor(tt.rules).TrackerEntries)
+		})
+	}
+}
+
+func TestNeedsForTrackerNames(t *testing.T) {
+	rule := func(ac *models.ActionConditions) *models.Automation {
+		return &models.Automation{Enabled: true, Conditions: ac}
+	}
+
+	tests := []struct {
+		name string
+		rule *models.Automation
+		want bool
+	}{
+		{
+			name: "display-name tag action",
+			rule: rule(&models.ActionConditions{Tag: &models.TagAction{Enabled: true, UseTrackerAsTag: true, UseDisplayName: true}}),
+			want: true,
+		},
+		{
+			name: "move path uses Tracker",
+			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Tracker}}"}}),
+			want: true,
+		},
+		{
+			name: "export save path uses Tracker",
+			rule: rule(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}/{{ .IsolationFolderName }}"}}),
+			want: true,
+		},
+		{
+			name: "transfer save path uses Tracker",
+			rule: rule(&models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{Enabled: true, SavePath: "/data/{{ .Tracker }}"}}),
+			want: true,
+		},
+		{
+			name: "move path uses index Tracker",
+			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: `/data/{{ index . "Tracker" }}`}}),
+			want: true,
+		},
+		{
+			name: "disabled move path uses Tracker",
+			rule: rule(&models.ActionConditions{Move: &models.MoveAction{Path: "/data/{{.Tracker}}"}}),
+			want: false,
+		},
+		{
+			name: "disabled export save path uses Tracker",
+			rule: rule(&models.ActionConditions{ExportToInstance: &models.ExportToInstanceAction{SavePath: "/data/{{.Tracker}}"}}),
+			want: false,
+		},
+		{
+			name: "paths without Tracker",
+			rule: rule(&models.ActionConditions{
+				Move:             &models.MoveAction{Enabled: true, Path: "/data/{{.Category}}"},
+				ExportToInstance: &models.ExportToInstanceAction{Enabled: true, SavePath: "/data/{{.IsolationFolderName}}"},
+			}),
+			want: false,
+		},
+		{
+			name: "disabled rule",
+			rule: &models.Automation{Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, Path: "/data/{{.Tracker}}"}}},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, NeedsFor([]*models.Automation{tt.rule}).TrackerNames)
+		})
+	}
+}
+
+func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
+	rule := &models.Automation{
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeFieldMultiplier,
+					FieldMultiplier: &models.FieldMultiplierScoreRule{
+						Field:      models.FieldFreeSpace,
+						Multiplier: 1,
+					},
+				},
+			},
+		},
+	}
+	torrents := []qbt.Torrent{{Hash: "a"}}
+	evalCtx := &EvalContext{activeFreeSpace: testFreeSpaceLedger(100, 0)}
+
+	scoreByHash := buildPreviewScoreMap(torrentRefs(torrents), rule, evalCtx)
+	evalCtx.activeFreeSpace = testFreeSpaceLedger(25, 0)
+
+	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
+	require.NotNil(t, score)
+	require.InDelta(t, 100, *score, 0.001)
+}
+
+func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
+	rule := &models.Automation{
+		ID:             7,
+		Name:           "grouped sort",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Grouping: &models.GroupingConfig{},
+		},
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeConditional,
+					Conditional: &models.ConditionalScoreRule{
+						Condition: &models.RuleCondition{
+							Field:    models.FieldIsGrouped,
+							Operator: models.OperatorEqual,
+							Value:    "true",
+						},
+						Score: 100,
+					},
+				},
+			},
+		},
+	}
+
+	torrents := []*qbt.Torrent{
+		{Hash: "a", ContentPath: "/data/solo", SavePath: "/data"},
+		{Hash: "z", ContentPath: "/data/group", SavePath: "/data"},
+		{Hash: "y", ContentPath: "/data/group", SavePath: "/data"},
+	}
+
+	executeBatch(
+		1,
+		[]*models.Automation{rule},
+		torrents,
+		&EvalContext{},
+		nil,
+		noSkipWindow(rule),
+		map[int]*ruleRunStats{},
+		map[string]*torrentDesiredState{},
+	)
+
+	require.ElementsMatch(t, []string{"y", "z"}, []string{torrents[0].Hash, torrents[1].Hash})
+	require.Equal(t, "a", torrents[2].Hash)
+}
+
+func TestRulesCanShareSortingBatch_RejectsRuleScopedSortingContext(t *testing.T) {
+	scoreSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeScore,
+		Direction:     models.SortDirectionDESC,
+		ScoreRules: []models.ScoreRule{
+			{
+				Type: models.ScoreRuleTypeConditional,
+				Conditional: &models.ConditionalScoreRule{
+					Condition: &models.RuleCondition{
+						Field:    models.FieldIsGrouped,
+						Operator: models.OperatorEqual,
+						Value:    "true",
+					},
+					Score: 100,
+				},
+			},
+		},
+	}
+
+	freeSpaceSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeSimple,
+		Field:         models.FieldFreeSpace,
+		Direction:     models.SortDirectionDESC,
+	}
+
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: scoreSort},
+		&models.Automation{SortingConfig: scoreSort},
+	))
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: freeSpaceSort},
+		&models.Automation{SortingConfig: freeSpaceSort},
+	))
+}
+
+func TestPrepareRuleForDryRun(t *testing.T) {
+	interval := 900
+	rule := &models.Automation{
+		ID:         42,
+		InstanceID: 99,
+		Name:       "Test Rule",
+		Enabled:    false,
+		DryRun:     false,
+		Conditions: &models.ActionConditions{
+			Pause: &models.PauseAction{Enabled: true},
+		},
+		IntervalSeconds: &interval,
+	}
+
+	got := prepareRuleForDryRun(rule, 7)
+	require.NotNil(t, got)
+
+	assert.Equal(t, 42, got.ID)
+	assert.Equal(t, 7, got.InstanceID)
+	assert.Equal(t, "Test Rule", got.Name)
+	assert.True(t, got.Enabled)
+	assert.True(t, got.DryRun)
+	assert.Equal(t, rule.Conditions, got.Conditions)
+	assert.Equal(t, rule.IntervalSeconds, got.IntervalSeconds)
+
+	assert.Equal(t, 99, rule.InstanceID)
+	assert.False(t, rule.Enabled)
+	assert.False(t, rule.DryRun)
+}
+
+func TestPrepareRuleForDryRun_AssignsEphemeralRuleIDForUnsavedRules(t *testing.T) {
+	rule := &models.Automation{
+		ID:         0,
+		InstanceID: 10,
+		Name:       "Unsaved Rule",
+		Enabled:    false,
+		DryRun:     false,
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{Enabled: true, Path: "/data"},
+		},
+	}
+
+	got := prepareRuleForDryRun(rule, 7)
+	require.NotNil(t, got)
+	require.Positive(t, got.ID)
+	assert.Equal(t, dryRunEphemeralRuleIDBase+7, got.ID)
+	assert.Equal(t, 7, got.InstanceID)
+	assert.True(t, got.Enabled)
+	assert.True(t, got.DryRun)
+
+	assert.Equal(t, 0, rule.ID)
+	assert.Equal(t, 10, rule.InstanceID)
+	assert.False(t, rule.Enabled)
+	assert.False(t, rule.DryRun)
+}
+
+func TestPrepareRuleForPreview_AssignsEphemeralRuleIDForUnsavedRules(t *testing.T) {
+	rule := &models.Automation{
+		ID:         0,
+		InstanceID: 10,
+		Name:       "Unsaved Rule",
+		Conditions: &models.ActionConditions{},
+	}
+
+	got := prepareRuleForPreview(rule, 11)
+	require.NotNil(t, got)
+	require.Positive(t, got.ID)
+	assert.Equal(t, dryRunEphemeralRuleIDBase+11, got.ID)
+
+	assert.Equal(t, 0, rule.ID)
+}
+
+func TestApplyRuleDryRun_NoServiceOrRule(t *testing.T) {
+	ctx := context.Background()
+	activities, err := (*Service)(nil).ApplyRuleDryRun(ctx, 1, nil)
+	require.NoError(t, err)
+	require.Nil(t, activities)
+
+	svc := &Service{}
+	activities, err = svc.ApplyRuleDryRun(ctx, 1, nil)
+	require.NoError(t, err)
+	require.Nil(t, activities)
+}
+
+func TestCollectManagedTagsForClientReset(t *testing.T) {
+	rules := []*models.Automation{
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled: true,
+					Mode:    models.TagModeFull,
+					Tags:    []string{"managed", " stale "},
+				},
+			},
+		},
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					UseTrackerAsTag:  true,
+					Tags:             []string{"ignored"},
+				},
+			},
+		},
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          false,
+					DeleteFromClient: true,
+					Tags:             []string{"disabled"},
+				},
+			},
+		},
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled: true,
+					Mode:    models.TagModeAdd,
+					Tags:    []string{"add-only"},
+				},
+			},
+		},
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					Tags:             []string{"managed"},
+				},
+			},
+		},
+		{
+			Enabled: false,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					Tags:             []string{"disabled-rule"},
+				},
+			},
+		},
+	}
+
+	got := collectManagedTagsForClientReset(rules)
+	require.Equal(t, []string{"managed"}, got)
+}
+
+func TestNormalizePath(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "lowercase conversion",
+			input: "/Data/Movie",
+			want:  "/data/movie",
+		},
+		{
+			name:  "backslash to forward slash",
+			input: "D:\\Data\\Movie",
+			want:  "d:/data/movie",
+		},
+		{
+			name:  "trailing slash removed",
+			input: "/data/movie/",
+			want:  "/data/movie",
+		},
+		{
+			name:  "all transformations",
+			input: "D:\\Data\\Movie\\",
+			want:  "d:/data/movie",
+		},
+		{
+			name:  "already normalized",
+			input: "/data/movie",
+			want:  "/data/movie",
+		},
+		{name: "posix double slash", input: "/a//b", want: "/a/b"},
+		{name: "posix triple slash and trailing slash", input: "/a///b/", want: "/a/b"},
+		{name: "posix triple leading slash", input: "///data///done", want: "/data/done"},
+		{name: "windows double backslash", input: `C:\a\\b`, want: "c:/a/b"},
+		{name: "windows drive root keeps its slash", input: `C:\`, want: "c:/"},
+		{name: "filesystem root", input: "/", want: "/"},
+		{name: "dot segment", input: "/a/./b", want: "/a/b"},
+		{name: "parent segment", input: "/a/b/../c", want: "/a/c"},
+		{name: "unc share", input: `\\server\share\\x`, want: "/server/share/x"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizePath(tc.input)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestCrossSeedRuleRefsByKey(t *testing.T) {
+	t.Parallel()
+
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": {Hash: "h1", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+		"h2": {Hash: "h2", ContentPath: "/downloads/group-b", SavePath: "/downloads"},
+		"h3": {Hash: "h3", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+	}
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 20, name: "Rule B"},
+		"h3": {id: 30, name: "Rule A Override"},
+	}
+
+	crossSeeds := testCrossSeedGroups([]qbt.Torrent{torrentByHash["h1"], torrentByHash["h2"], torrentByHash["h3"]})
+	got := crossSeedRuleRefsByKey([]string{"h1", "h3", "h2"}, torrentRefMap(torrentByHash), ruleByHash, crossSeeds)
+	gotShuffled := crossSeedRuleRefsByKey([]string{"h3", "h2", "h1"}, torrentRefMap(torrentByHash), ruleByHash, crossSeeds)
+	require.Len(t, got, 2)
+	require.Len(t, gotShuffled, 2)
+
+	keyA := crossSeeds.key(torrentByHash["h1"])
+	keyB := crossSeeds.key(torrentByHash["h2"])
+
+	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, got[keyA])
+	require.Equal(t, ruleRef{id: 20, name: "Rule B"}, got[keyB])
+	require.Equal(t, got[keyA], gotShuffled[keyA])
+	require.Equal(t, got[keyB], gotShuffled[keyB])
+}
+
+func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
+	t.Parallel()
+
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": {Hash: "h1", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+		"h2": {Hash: "h2", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+	}
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Non expanding rule"},
+		"h2": {id: 20, name: "Expanding rule"},
+	}
+	expandableHashes := []string{"h2"}
+	crossSeeds := testCrossSeedGroups([]qbt.Torrent{torrentByHash["h1"], torrentByHash["h2"]})
+	got := crossSeedRuleRefsByKey(expandableHashes, torrentRefMap(torrentByHash), ruleByHash, crossSeeds)
+
+	key := crossSeeds.key(torrentByHash["h1"])
+	require.Len(t, got, 1)
+	require.Equal(t, ruleRef{id: 20, name: "Expanding rule"}, got[key])
+}
+
+func TestBuildRuleCountsFromHashMaps(t *testing.T) {
+	t.Parallel()
+
+	hashes := []string{"h1", "h2"}
+	ratioRuleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 10, name: "Rule A"},
+	}
+	seedingRuleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 20, name: "Rule B"},
+	}
+
+	counts := buildRuleCountsFromHashMaps(hashes, ratioRuleByHash, seedingRuleByHash)
+	require.Equal(t, 2, counts[ruleRef{id: 10, name: "Rule A"}])
+	require.Equal(t, 1, counts[ruleRef{id: 20, name: "Rule B"}])
+}
+
+func TestInheritRuleRefForCrossSeed(t *testing.T) {
+	t.Parallel()
+
+	const key = "h1"
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+	}
+	ruleByCrossSeedKey := map[string]ruleRef{
+		key: {id: 10, name: "Rule A"},
+	}
+
+	inheritRuleRefForCrossSeed("x1", key, ruleByHash, ruleByCrossSeedKey)
+	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, ruleByHash["x1"])
+
+	ruleByHash["x1"] = ruleRef{id: 99, name: "Explicit Rule"}
+	inheritRuleRefForCrossSeed("x1", key, ruleByHash, ruleByCrossSeedKey)
+	require.Equal(t, ruleRef{id: 99, name: "Explicit Rule"}, ruleByHash["x1"])
+
+	counts := buildRuleCountsFromHashes([]string{"h1", "x1"}, ruleByHash)
+	require.Equal(t, 1, counts[ruleRef{id: 10, name: "Rule A"}])
+	require.Equal(t, 1, counts[ruleRef{id: 99, name: "Explicit Rule"}])
+}
+
+func TestLimitHashBatch(t *testing.T) {
+	tests := []struct {
+		name   string
+		hashes []string
+		max    int
+		want   [][]string
+	}{
+		{
+			name:   "empty input",
+			hashes: []string{},
+			max:    10,
+			want:   [][]string{{}},
+		},
+		{
+			name:   "under limit single batch",
+			hashes: []string{"a", "b", "c"},
+			max:    10,
+			want:   [][]string{{"a", "b", "c"}},
+		},
+		{
+			name:   "exactly at limit",
+			hashes: []string{"a", "b", "c"},
+			max:    3,
+			want:   [][]string{{"a", "b", "c"}},
+		},
+		{
+			name:   "over limit splits evenly",
+			hashes: []string{"a", "b", "c", "d"},
+			max:    2,
+			want:   [][]string{{"a", "b"}, {"c", "d"}},
+		},
+		{
+			name:   "over limit with remainder",
+			hashes: []string{"a", "b", "c", "d", "e"},
+			max:    2,
+			want:   [][]string{{"a", "b"}, {"c", "d"}, {"e"}},
+		},
+		{
+			name:   "zero max returns single batch",
+			hashes: []string{"a", "b", "c"},
+			max:    0,
+			want:   [][]string{{"a", "b", "c"}},
+		},
+		{
+			name:   "negative max returns single batch",
+			hashes: []string{"a", "b", "c"},
+			max:    -1,
+			want:   [][]string{{"a", "b", "c"}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := limitHashBatch(tc.hashes, tc.max)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestProcessTorrents_RunsTheMatchingRules(t *testing.T) {
+	tests := []struct {
+		name        string
+		torrent     qbt.Torrent
+		rules       []*models.Automation
+		wantFirstID int
+		wantCount   int
+		wantIDs     []int
+	}{
+		{
+			name:        "no rules returns empty",
+			torrent:     qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
+			rules:       []*models.Automation{},
+			wantFirstID: 0,
+			wantCount:   0,
+		},
+		{
+			name:    "disabled rule skipped",
+			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
+			rules: []*models.Automation{
+				{ID: 1, Enabled: false, TrackerPattern: "tracker.example.com"},
+			},
+			wantFirstID: 0,
+			wantCount:   0,
+		},
+		{
+			name:    "enabled rule matches",
+			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
+			rules: []*models.Automation{
+				{ID: 1, Enabled: true, TrackerPattern: "tracker.example.com"},
+			},
+			wantFirstID: 1,
+			wantCount:   1,
+		},
+		{
+			name:    "multiple matching rules returned in order",
+			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
+			rules: []*models.Automation{
+				{ID: 1, Enabled: true, TrackerPattern: "tracker.example.com"},
+				{ID: 2, Enabled: true, TrackerPattern: "*"},
+			},
+			wantFirstID: 1,
+			wantCount:   2,
+			wantIDs:     []int{1, 2},
+		},
+		{
+			name:    "wildcard matches all",
+			torrent: qbt.Torrent{Hash: "abc", Tracker: "http://tracker.example.com/announce"},
+			rules: []*models.Automation{
+				{ID: 1, Enabled: true, TrackerPattern: "*"},
+			},
+			wantFirstID: 1,
+			wantCount:   1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, rule := range tc.rules {
+				rule.Conditions = &models.ActionConditions{Category: &models.CategoryAction{Enabled: true, Category: fmt.Sprintf("rule-%d", rule.ID)}}
+			}
+			stats := make(map[int]*ruleRunStats)
+			states := processTorrents(torrentRefs([]qbt.Torrent{tc.torrent}), tc.rules, nil, nil, noSkipWindow(tc.rules...), stats, nil)
+			var got []int
+			for _, rule := range tc.rules {
+				if stats[rule.ID] != nil {
+					got = append(got, rule.ID)
+				}
+			}
+			if tc.wantFirstID == 0 {
+				assert.Empty(t, got)
+				assert.Empty(t, states)
+			} else {
+				require.NotEmpty(t, got)
+				assert.Equal(t, tc.wantFirstID, got[0])
+				assert.Equal(t, got[len(got)-1], states[tc.torrent.Hash].categoryRule.id)
+			}
+			assert.Len(t, got, tc.wantCount)
+			if len(tc.wantIDs) > 0 {
+				assert.Equal(t, tc.wantIDs, got)
+			}
+		})
+	}
+}
+
+func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "movies",
+	}
+
+	rule1 := &models.Automation{
+		ID:      1,
+		Enabled: true,
+		Name:    "Archive Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{Enabled: true, Category: "archive"},
+		},
+	}
+
+	rule2 := &models.Automation{
+		ID:      2,
+		Enabled: true,
+		Name:    "Movies Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{Enabled: true, Category: "movies"},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
+
+	require.NotNil(t, state.category)
+	assert.Equal(t, "movies", *state.category)
+}
+
+func TestCategoryWithCondition(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "default",
+		Ratio:    2.5,
+	}
+
+	rule := &models.Automation{
+		ID:      1,
+		Enabled: true,
+		Name:    "High Ratio Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{
+				Enabled:  true,
+				Category: "archive",
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThan,
+					Value:    "2.0",
+				},
+			},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+
+	require.NotNil(t, state.category)
+	assert.Equal(t, "archive", *state.category)
+}
+
+func TestCategoryConditionNotMet(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "default",
+		Ratio:    1.0,
+	}
+
+	rule := &models.Automation{
+		ID:      1,
+		Enabled: true,
+		Name:    "High Ratio Rule",
+		Conditions: &models.ActionConditions{
+			Category: &models.CategoryAction{
+				Enabled:  true,
+				Category: "archive",
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThan,
+					Value:    "2.0",
+				},
+			},
+		},
+	}
+
+	state := &torrentDesiredState{
+		hash:        torrent.Hash,
+		name:        torrent.Name,
+		currentTags: make(map[string]struct{}),
+		tagActions:  make(map[string]string),
+	}
+
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+
+	assert.Nil(t, state.category)
+}
+
+func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "first",
+			Tags:        "delete-me",
+			SavePath:    "/downloads",
+			ContentPath: "/downloads/shared",
+		},
+		{
+			Hash:        "second",
+			Tags:        "delete-me",
+			SavePath:    "/downloads",
+			ContentPath: "/downloads/shared",
+		},
+	}
+	rule := &models.Automation{
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    DeleteModeWithFilesIncludeCrossSeeds,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldTags,
+					Operator: models.OperatorContains,
+					Value:    "delete-me",
+				},
+			},
+		},
+	}
+	filesByHash := map[string]qbt.TorrentFiles{
+		"first":  {{Name: "shared/first.mkv", Size: 1_000}},
+		"second": {{Name: "shared/second.mkv", Size: 1_000}},
+	}
+
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents), CrossSeedFilesByHash: filesByHash}
+	selection := selectTestDeletions(t, []*models.Automation{rule}, torrents, evalCtx)
+	result := buildDeletePreviewResult(torrentRefs(torrents), selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
+	assert.Equal(t, 2, result.TotalMatches)
+	assert.Zero(t, result.CrossSeedCount)
+}
+
+func TestPreviewDeleteIncludeCrossSeeds_MixedHardlinkAndContentGroups(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "source", Tags: "delete-me", SavePath: "/a", ContentPath: "/a/01.mkv"},
+		{Hash: "copy", SavePath: "/b", ContentPath: "/b/01.mkv"},
+		{Hash: "pack", SavePath: "/b", ContentPath: "/b"},
+		{Hash: "episode2", SavePath: "/b", ContentPath: "/b/02.mkv"},
+		{Hash: "copy2", SavePath: "/c", ContentPath: "/c/02.mkv"},
+		{Hash: "pack2", SavePath: "/c", ContentPath: "/c"},
+	}
+	files := map[string]qbt.TorrentFiles{
+		"source":   {{Name: "01.mkv", Size: 1000}},
+		"copy":     {{Name: "01.mkv", Size: 1000}},
+		"pack":     {{Name: "01.mkv", Size: 1000}, {Name: "02.mkv", Size: 1000}},
+		"episode2": {{Name: "02.mkv", Size: 1000}},
+		"copy2":    {{Name: "02.mkv", Size: 1000}},
+		"pack2":    {{Name: "02.mkv", Size: 1000}, {Name: "03.mkv", Size: 1000}},
+	}
+	refs := torrentRefs(torrents)
+	groups := &crossSeedGroups{byHash: map[string][]*qbt.Torrent{
+		"copy": refs[1:4], "pack": refs[1:4], "episode2": refs[1:4],
+		"copy2": refs[4:], "pack2": refs[4:],
+	}}
+	hardlinks := &HardlinkIndex{
+		DeleteSafeSignatureByHash:  map[string]string{"source": "one", "copy": "one", "episode2": "two", "copy2": "two"},
+		DeleteSafeGroupBySignature: map[string][]string{"one": {"source", "copy"}, "two": {"episode2", "copy2"}},
+	}
+	svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil)}
+	rule := &models.Automation{
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{Delete: &models.DeleteAction{
+			Enabled: true, Mode: DeleteModeWithFilesIncludeCrossSeeds, IncludeHardlinks: true,
+			Condition: &models.RuleCondition{Field: models.FieldTags, Operator: models.OperatorContains, Value: "delete-me"},
+		}},
+	}
+	for _, unread := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unread=%t", unread), func(t *testing.T) {
+			evalCtx := &EvalContext{CrossSeedFilesByHash: files, hardlinkIndex: hardlinks}
+			if unread {
+				evalCtx.CrossSeedFilesByHash = nil
+			}
+			selection := svc.selectDeletions(t.Context(), 1, deletionSelectionInput{
+				rules: []*models.Automation{rule}, torrents: torrentRefs(torrents), evalCtx: evalCtx, crossSeeds: groups, scope: noSkipWindow(rule),
+			})
+			result := buildDeletePreviewResult(torrentRefs(torrents), selection, evalCtx, previewConfig{limit: 10}, rule, nil, noSkipWindow(rule))
+			if unread {
+				require.Zero(t, result.TotalMatches, "a failed expansion must also keep the trigger")
+				require.True(t, selection.isClaimed("source"), "a trigger whose expansion failed gets no other action")
+			} else {
+				require.Equal(t, 6, result.TotalMatches, "follow Content to Hardlink and Hardlink to Content until no member joins")
+				require.Equal(t, 3, result.CrossSeedCount)
+			}
+		})
+	}
+}
+
+func TestSharedSidecarKeepsFilesAndBlocksGroupDeletion(t *testing.T) {
+	first := qbt.Torrent{Hash: "first", SavePath: "/data", ContentPath: "/data"}
+	second := qbt.Torrent{Hash: "second", SavePath: "/data", ContentPath: "/data"}
+	group := []qbt.Torrent{first, second}
+	files := map[string]qbt.TorrentFiles{
+		first.Hash:  {{Name: "first.mkv", Size: 1000}, {Name: "English.srt", Size: 10}},
+		second.Hash: {{Name: "second.mkv", Size: 2000}, {Name: "English.srt", Size: 10}},
+	}
+	require.True(t, shouldPreserveCrossSeedFiles(first, &crossSeedGroups{byHash: map[string][]*qbt.Torrent{first.Hash: torrentRefs(group), second.Hash: torrentRefs(group)}}, files))
+	_, ok := crossSeedGroupMembers(first, torrentRefs(group), nil, cachedTorrentFilesFetcher(files))
+	require.False(t, ok, "partial overlap must keep both torrents and their files")
+}
+
+func TestCrossSeedGroupMembers(t *testing.T) {
+	trigger := qbt.Torrent{
+		Hash:        "trigger",
+		Name:        "[Subs] Silver Lantern Chronicle S2 (BD 1080p)",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+	stranger := qbt.Torrent{
+		Hash:        "stranger",
+		Name:        "[Subs] Paper Crane Detective S2 (BD 1080p)",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+	crossSeed := qbt.Torrent{
+		Hash:        "crossseed",
+		Name:        "Silver.Lantern.Chronicle.S02.1080p.BluRay-GRPB",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+
+	episodes := func(title string, shared int) qbt.TorrentFiles {
+		files := make(qbt.TorrentFiles, 0, 10)
+		for i := 1; i <= 10; i++ {
+			name := fmt.Sprintf("Season 2/%s - %02d.mkv", title, i)
+			if i > shared {
+				name = fmt.Sprintf("Season 2/%s - %02d (v2).mkv", title, i)
+			}
+			files = append(files, qbt.TorrentFile{Name: name, Size: 1_000_000_000})
+		}
+		return files
+	}
+	triggerFiles := episodes("Silver Lantern Chronicle", 10)
+	strangerFiles := episodes("Paper Crane Detective", 10)
+	thresholdFiles := episodes("Silver Lantern Chronicle", 9)
+	partialFiles := episodes("Silver Lantern Chronicle", 5)
+
+	tests := []struct {
+		scenario string
+		group    []qbt.Torrent
+		skip     map[string]struct{}
+		files    map[string]qbt.TorrentFiles
+		filesErr error
+		want     []string
+		wantOK   bool
+	}{
+		{
+			scenario: "torrent sharing only the directory is dropped, trigger still deleted",
+			group:    []qbt.Torrent{trigger, stranger},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "stranger": strangerFiles},
+			want:     []string{"trigger"},
+			wantOK:   true,
+		},
+		{
+			scenario: "real cross-seed is deleted with the trigger",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": triggerFiles},
+			want:     []string{"trigger", "crossseed"},
+			wantOK:   true,
+		},
+		{
+			scenario: "cross-seed on the overlap threshold is still deleted",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": thresholdFiles},
+			want:     []string{"trigger", "crossseed"},
+			wantOK:   true,
+		},
+		{
+			scenario: "partial overlap skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": partialFiles},
+			wantOK:   false,
+		},
+		{
+			scenario: "missing file list skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles},
+			wantOK:   false,
+		},
+		{
+			scenario: "fetch error skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			filesErr: assert.AnError,
+			wantOK:   false,
+		},
+		{
+			scenario: "members already queued elsewhere are ignored",
+			group:    []qbt.Torrent{trigger, stranger},
+			skip:     map[string]struct{}{"stranger": {}},
+			files:    map[string]qbt.TorrentFiles{},
+			want:     []string{"trigger"},
+			wantOK:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.scenario, func(t *testing.T) {
+			got, ok := crossSeedGroupMembers(trigger, torrentRefs(tc.group), tc.skip, func(_ []string) (map[string]qbt.TorrentFiles, error) {
+				if tc.filesErr != nil {
+					return nil, tc.filesErr
+				}
+				return tc.files, nil
+			})
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+
+	t.Run("different layouts resolving to the same file are grouped", func(t *testing.T) {
+		layoutTrigger := qbt.Torrent{
+			Hash:        "layout-trigger",
+			ContentPath: "/downloads/Season 2",
+			SavePath:    "/downloads",
+		}
+		layoutCrossSeed := qbt.Torrent{
+			Hash:        "layout-crossseed",
+			ContentPath: "/downloads/Season 2",
+			SavePath:    "/downloads/Season 2",
+		}
+		filesByHash := map[string]qbt.TorrentFiles{
+			layoutTrigger.Hash:   {{Name: "Season 2/01.mkv", Size: 1_000_000_000}},
+			layoutCrossSeed.Hash: {{Name: "01.mkv", Size: 1_000_000_000}},
+		}
+
+		got, ok := crossSeedGroupMembers(
+			layoutTrigger,
+			torrentRefs([]qbt.Torrent{layoutTrigger, layoutCrossSeed}),
+			nil,
+			func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
+		)
+
+		assert.True(t, ok)
+		assert.Equal(t, []string{layoutTrigger.Hash, layoutCrossSeed.Hash}, got)
+	})
+
+	t.Run("a member that shares files only through another member is deleted too", func(t *testing.T) {
+		episode1 := qbt.Torrent{Hash: "ep1", ContentPath: "/data/Pack/01.mkv", SavePath: "/data/Pack"}
+		pack := qbt.Torrent{Hash: "pack", ContentPath: "/data/Pack", SavePath: "/data"}
+		episode2 := qbt.Torrent{Hash: "ep2", ContentPath: "/data/Pack/02.mkv", SavePath: "/data/Pack"}
+		filesByHash := map[string]qbt.TorrentFiles{
+			episode1.Hash: {{Name: "01.mkv", Size: 1000}},
+			pack.Hash:     {{Name: "Pack/01.mkv", Size: 1000}, {Name: "Pack/02.mkv", Size: 1000}},
+			episode2.Hash: {{Name: "02.mkv", Size: 1000}},
+		}
+
+		got, ok := crossSeedGroupMembers(
+			episode1,
+			torrentRefs([]qbt.Torrent{episode1, episode2, pack}),
+			nil,
+			func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
+		)
+
+		assert.True(t, ok)
+		assert.Equal(t, []string{"ep1", "pack", "ep2"}, got, "deleting the pack breaks the second episode")
+	})
+}
+
+func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
+	tests := []struct {
+		name string
+		rule *models.Automation
+		want bool
+	}{
+		{
+			name: "nil rule",
+			rule: nil,
+			want: false,
+		},
+		{
+			name: "disabled preview rule still detects hardlink_signature condition usage",
+			rule: &models.Automation{
+				Enabled: false,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "default group is hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Grouping: &models.GroupingConfig{
+						DefaultGroupID: "hardlink_signature",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "delete action GroupID is hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Grouping: &models.GroupingConfig{},
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						GroupID: "hardlink_signature",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition uses GROUP_SIZE with hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldGroupSize,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "nested condition uses hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Operator: "AND",
+								Conditions: []*models.RuleCondition{
+									{
+										Field:   models.FieldIsGrouped,
+										GroupID: "hardlink_signature",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition with unrelated groupId",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "cross_seed_content_path",
+							},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "no grouping references at all",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						Mode:    "delete",
+					},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ruleUsesHardlinkSignatureGrouping(tc.rule)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
+	tests := []struct {
+		name                      string
+		triggerHash               string
+		deleteSafeSignatureByHash map[string]string
+		deleteSafeGroupBySig      map[string][]string
+		wantCopies                []string
+	}{
+		{
+			name:        "trigger hash not in any group",
+			triggerHash: "not-found",
+			deleteSafeSignatureByHash: map[string]string{
+				"abc123": "sig1",
+				"def456": "sig1",
+			},
+			deleteSafeGroupBySig: map[string][]string{
+				"sig1": {"abc123", "def456"},
+			},
+			wantCopies: nil,
+		},
+		{
+			name:        "trigger has one hardlink copy",
+			triggerHash: "abc123",
+			deleteSafeSignatureByHash: map[string]string{
+				"abc123": "sig1",
+				"def456": "sig1",
+			},
+			deleteSafeGroupBySig: map[string][]string{
+				"sig1": {"abc123", "def456"},
+			},
+			wantCopies: []string{"def456"},
+		},
+		{
+			name:        "trigger has multiple hardlink copies",
+			triggerHash: "abc123",
+			deleteSafeSignatureByHash: map[string]string{
+				"abc123": "sig1",
+				"def456": "sig1",
+				"ghi789": "sig1",
+			},
+			deleteSafeGroupBySig: map[string][]string{
+				"sig1": {"abc123", "def456", "ghi789"},
+			},
+			wantCopies: []string{"def456", "ghi789"},
+		},
+		{
+			name:                      "nil index returns nil",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: nil,
+			deleteSafeGroupBySig:      nil,
+			wantCopies:                nil,
+		},
+		{
+			name:                      "grouping-only signatures do not expand deletes",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{},
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var idx *HardlinkIndex
+			if tc.deleteSafeSignatureByHash != nil || tc.deleteSafeGroupBySig != nil {
+				idx = &HardlinkIndex{
+					SignatureByHash:            map[string]string{"abc123": "sig1", "def456": "sig1"},
+					GroupBySignature:           map[string][]string{"sig1": {"abc123", "def456"}},
+					DeleteSafeSignatureByHash:  tc.deleteSafeSignatureByHash,
+					DeleteSafeGroupBySignature: tc.deleteSafeGroupBySig,
+				}
+			}
+			got := idx.GetHardlinkCopies(tc.triggerHash)
+			if tc.wantCopies == nil {
+				assert.Nil(t, got)
+			} else {
+				assert.ElementsMatch(t, tc.wantCopies, got)
+			}
+		})
+	}
+}
+
+func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
+	allTorrents := []qbt.Torrent{
+		{Hash: "abc123", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
+		{Hash: "xyz789", Name: "My.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/My.Movie.2024.1080p.BluRay.x264-GRP"},
+		{Hash: "def456", Name: "Other.Movie.2024.1080p.BluRay.x264-GRP", ContentPath: "/downloads/movies/Other.Movie.2024.1080p.BluRay.x264-GRP"},
+	}
+
+	target := allTorrents[0]
+	filesByHash := map[string]qbt.TorrentFiles{
+		"abc123": {{Name: "My.Movie.2024.1080p.BluRay.x264-GRP/movie.mkv", Size: 100}},
+		"xyz789": {{Name: "My.Movie.2024.1080p.BluRay.x264-GRP/movie.mkv", Size: 100}},
+	}
+
+	tests := []struct {
+		scenario string
+		mode     string
+		want     bool
+	}{
+		{
+			scenario: "include cross-seeds mode => frees space (deletes all copies)",
+			mode:     DeleteModeWithFilesIncludeCrossSeeds,
+			want:     true,
+		},
+	}
+
+	crossSeeds := testCrossSeedGroups(allTorrents)
+	for _, tc := range tests {
+		t.Run(tc.scenario, func(t *testing.T) {
+			got := deleteFreesSpace(tc.mode, target, crossSeeds, filesByHash)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestExecuteExternalProgramsFromAutomation_NilExternalProgramService(_ *testing.T) {
+	s := &Service{
+		externalProgramService: nil,
+		activityStore:          nil,
+	}
+
+	executions := []pendingProgramExec{
+		{
+			hash:      "abc123",
+			torrent:   qbt.Torrent{Hash: "abc123", Name: "Test Torrent"},
+			programID: 1,
+			ruleID:    1,
+			ruleName:  "Test Rule",
+		},
+	}
+
+	s.executeExternalProgramsFromAutomation(context.Background(), 1, executions)
+}
+
+func TestExecuteExternalProgramsFromAutomation_NilServiceWithActivityStore(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	s := &Service{
+		externalProgramService: nil,
+		activityStore:          activityStore,
+	}
+
+	executions := []pendingProgramExec{
+		{
+			hash:      "abc123",
+			torrent:   qbt.Torrent{Hash: "abc123", Name: "Test Torrent 1"},
+			programID: 1,
+			ruleID:    1,
+			ruleName:  "Test Rule",
+		},
+		{
+			hash:      "def456",
+			torrent:   qbt.Torrent{Hash: "def456", Name: "Test Torrent 2"},
+			programID: 2,
+			ruleID:    2,
+			ruleName:  "Another Rule",
+		},
+	}
+
+	s.executeExternalProgramsFromAutomation(context.Background(), 1, executions)
+
+	require.Len(t, mockDB.activities, 2, "Expected 2 activity entries for 2 executions")
+
+	assert.Equal(t, "abc123", mockDB.activities[0].Hash)
+	assert.Equal(t, "Test Torrent 1", mockDB.activities[0].TorrentName)
+	assert.Equal(t, "external_program", mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeFailed, mockDB.activities[0].Outcome)
+	assert.Contains(t, mockDB.activities[0].Reason, "not configured")
+
+	assert.Equal(t, "def456", mockDB.activities[1].Hash)
+	assert.Equal(t, "Test Torrent 2", mockDB.activities[1].TorrentName)
+}
+
+func dryRunTestPlan(t *testing.T, s *Service, torrents []qbt.Torrent, states map[string]*torrentDesiredState, ruleByID map[int]*models.Automation, evalCtx *EvalContext) (runPlan, map[string]qbt.Torrent) {
+	t.Helper()
+	if evalCtx == nil {
+		evalCtx = &EvalContext{}
+	}
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentByHash[torrent.Hash] = torrent
+	}
+	plan := s.buildRunPlan(t.Context(), runPlanInput{
+		states:        states,
+		deletions:     &deletionSelection{},
+		torrents:      torrentRefs(torrents),
+		torrentByHash: torrentRefMap(torrentByHash),
+		ruleByID:      ruleByID,
+		crossSeeds:    buildCrossSeedGroups(torrentRefs(torrents), evalCtx),
+		evalCtx:       evalCtx,
+		scope:         noSkipWindow(slices.Collect(maps.Values(ruleByID))...),
+	})
+	return plan, torrentByHash
+}
+
+func TestRecordDryRunActivities_Resumes(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	torrent := qbt.Torrent{
+		Hash:    "abc123",
+		Name:    "Test Torrent",
+		Tracker: "https://tracker.example.com/announce",
+	}
+
+	_ = s.recordDryRunActivities(
+		context.Background(),
+		1,
+		runPlan{resume: plannedTorrents{hashes: []string{"abc123", "abc123"}}, deletions: &deletionSelection{}},
+		torrentRefMap(map[string]qbt.Torrent{"abc123": torrent}),
+		noSkipWindow(),
+		true,
+	)
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Empty(t, mockDB.activities[0].Hash)
+	assert.Equal(t, models.ActivityActionResumed, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+}
+
+func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireConditionForAllMembers(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		syncManager:   sm,
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "h1",
+			Name:        "Tagged",
+			Category:    "old",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+			Tags:        "abcd",
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "h2",
+			Name:        "Untagged",
+			Category:    "old",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+			Tags:        "",
+			Tracker:     "https://tracker.example.com/announce",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Category: &models.CategoryAction{
+				Enabled:           true,
+				Category:          "new-category",
+				IncludeCrossSeeds: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldTags,
+					Operator: models.OperatorContains,
+					Value:    "abcd",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrentRefs(torrents), []*models.Automation{rule}, nil, nil, noSkipWindow(rule), nil, nil)
+	require.Contains(t, states, "h1")
+	require.NotContains(t, states, "h2")
+
+	evalCtx := &EvalContext{SameInstanceContentByHash: sharingByContentPath(torrents)}
+	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, map[int]*models.Automation{1: rule}, evalCtx)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentRefMap(torrentByHash), noSkipWindow(), true)
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+
+	var details struct {
+		Categories map[string]int `json:"categories"`
+	}
+	require.NoError(t, json.Unmarshal(mockDB.activities[0].Details, &details))
+	assert.Equal(t, 2, details.Categories["new-category"])
+}
+
+func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	activities := s.recordDryRunActivities(
+		context.Background(),
+		1,
+		runPlan{deletions: &deletionSelection{}},
+		nil,
+		noSkipWindow(),
+		true,
+	)
+
+	require.Len(t, activities, 1)
+	require.Len(t, mockDB.activities, 1)
+	assert.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+}
+
+func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	targetCategory := "movies"
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "tv",
+		Tracker:  "https://tracker.example.com/announce",
+	}
+
+	states := map[string]*torrentDesiredState{
+		"abc123": {
+			category:        &targetCategory,
+			categoryGroupID: "unknown-group-id",
+			categoryRuleID:  42,
+		},
+	}
+	ruleByID := map[int]*models.Automation{
+		42: {
+			ID:         42,
+			Name:       "Category Rule",
+			Enabled:    true,
+			Conditions: &models.ActionConditions{},
+		},
+	}
+
+	require.NotPanics(t, func() {
+		plan, torrentByHash := dryRunTestPlan(t, s, []qbt.Torrent{torrent}, states, ruleByID, nil)
+		_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentRefMap(torrentByHash), noSkipWindow(), true)
+	})
+
+	require.Len(t, mockDB.activities, 1)
+	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+}
+
+func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "a",
+			Name:        "Group Member A",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    4,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "b",
+			Name:        "Group Member B",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    2,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "c",
+			Name:        "Group Member C",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    1,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+	}
+
+	states := map[string]*torrentDesiredState{
+		"a": {
+			shouldMove:  true,
+			movePath:    "/data/moved",
+			moveGroupID: GroupCrossSeedContentPath,
+			moveRuleID:  77,
+		},
+	}
+
+	ruleByID := map[int]*models.Automation{
+		77: {
+			ID:   77,
+			Name: "Strict grouped move",
+			Conditions: &models.ActionConditions{
+				Move: &models.MoveAction{
+					Enabled: true,
+					Condition: &models.RuleCondition{
+						Field:    models.FieldNumSeeds,
+						Operator: models.OperatorGreaterThan,
+						Value:    "3",
+					},
+				},
+			},
+		},
+	}
+
+	plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, nil)
+	_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentRefMap(torrentByHash), noSkipWindow(), true)
+
+	require.Len(t, mockDB.activities, 1)
+	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+}
+
+func TestRecordDryRunActivities_MoveGroupSkipsGroupMissingSharedFilePeer(t *testing.T) {
+	const movie = "Quiet.Coast.2020.1080p.BluRay.x264-GRP"
+	for _, tc := range []struct {
+		name            string
+		peerContentPath string
+		wantMove        bool
+	}{
+		{name: "peer in the group", peerContentPath: "/data/movies/" + movie + ".mkv", wantMove: true},
+		{name: "folder peer outside the group", peerContentPath: "/data/movies/" + movie, wantMove: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockDB := &mockQuerier{activities: make([]*models.AutomationActivity, 0)}
+			s := &Service{
+				activityStore: models.NewAutomationActivityStore(mockDB),
+				activityRuns:  newActivityRunStore(24*time.Hour, 10),
+				syncManager:   qbittorrent.NewSyncManager(nil, nil),
+			}
+			torrents := []qbt.Torrent{
+				{Hash: "a", Name: movie, SavePath: "/data/movies", ContentPath: "/data/movies/" + movie + ".mkv"},
+				{Hash: "b", Name: movie, SavePath: "/data/movies", ContentPath: tc.peerContentPath},
+			}
+			states := map[string]*torrentDesiredState{
+				"a": {shouldMove: true, movePath: "/data/moved", moveGroupID: GroupCrossSeedContentPath, moveRuleID: 77},
+			}
+			ruleByID := map[int]*models.Automation{77: {
+				ID:         77,
+				Name:       "Grouped move",
+				Conditions: &models.ActionConditions{Move: &models.MoveAction{Enabled: true, GroupID: GroupCrossSeedContentPath}},
+			}}
+			evalCtx := &EvalContext{SameInstanceContentByHash: map[string][]string{"a": {"b"}, "b": {"a"}}}
+
+			plan, torrentByHash := dryRunTestPlan(t, s, torrents, states, ruleByID, evalCtx)
+			_ = s.recordDryRunActivities(t.Context(), 1, plan, torrentRefMap(torrentByHash), noSkipWindow(), true)
+
+			require.Len(t, mockDB.activities, 1)
+			if tc.wantMove {
+				require.NotEqual(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+			} else {
+				require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action,
+					"moving the bare mkv would take the file from the folder torrent")
+			}
+		})
+	}
+}
+
+func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	activities := s.recordDryRunActivities(
+		context.Background(),
+		1,
+		runPlan{deletions: &deletionSelection{}},
+		nil,
+		noSkipWindow(),
+		false,
+	)
+
+	require.Empty(t, activities)
+	require.Empty(t, mockDB.activities)
+}
+
+func TestNotifyAutomationSummaryFiltersSuppressedRules(t *testing.T) {
+	t.Parallel()
+
+	notifier := &automationRecordingNotifier{}
+	s := &Service{notifier: notifier}
+
+	summary := newAutomationSummary()
+	notifyRuleID := 42
+	suppressedRuleID := 43
+
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:      &notifyRuleID,
+		RuleName:    "Notify me",
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeSuccess,
+		TorrentName: "Notify.Release.2026",
+	}, 1)
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:      &suppressedRuleID,
+		RuleName:    "Suppress me",
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeFailed,
+		TorrentName: "Suppressed.Release.2026",
+		Reason:      "permission denied",
+	}, 1)
+
+	s.notifyAutomationSummary(context.Background(), 1, summary, []*models.Automation{
+		{ID: notifyRuleID, Notify: true},
+		{ID: suppressedRuleID, Notify: false},
+	})
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+
+	event := events[0]
+	require.Equal(t, notifications.EventAutomationsActionsApplied, event.Type)
+	require.Equal(t, 1, event.Automations.Applied)
+	require.Equal(t, 0, event.Automations.Failed)
+	require.Len(t, event.Automations.Rules, 1)
+	require.Equal(t, notifyRuleID, event.Automations.Rules[0].RuleID)
+	require.Equal(t, "Notify me", event.Automations.Rules[0].RuleName)
+	require.NotContains(t, event.Message, "Suppress me")
+	require.NotContains(t, event.Message, "permission denied")
+	require.NotContains(t, event.Message, "Suppressed.Release.2026")
+}
+
+type mockQuerier struct {
+	activities []*models.AutomationActivity
+}
+
+func (m *mockQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
+	return nil
+}
+
+func (m *mockQuerier) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
+	if len(args) >= 10 && strings.Contains(query, "automation_activity") {
+		activity := &models.AutomationActivity{
+			InstanceID:  args[0].(int),
+			Hash:        args[1].(string),
+			TorrentName: args[2].(string),
+			Action:      args[4].(string),
+			RuleName:    args[6].(string),
+			Outcome:     args[7].(string),
+			Reason:      args[8].(string),
+		}
+		if details, ok := args[9].(sql.NullString); ok && details.Valid {
+			activity.Details = json.RawMessage(details.String)
+		}
+		m.activities = append(m.activities, activity)
+	}
+	return mockResult{}, nil
+}
+
+func (m *mockQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
+	return nil, nil
+}
+
+func (m *mockQuerier) BeginTx(_ context.Context, _ *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	return nil, nil
+}
+
+type mockResult struct{}
+
+func (m mockResult) LastInsertId() (int64, error) { return 0, nil }
+func (m mockResult) RowsAffected() (int64, error) { return 1, nil }
+
+type automationRecordingNotifier struct {
+	events []notifications.Event
+}
+
+func (r *automationRecordingNotifier) Notify(_ context.Context, event notifications.Event) {
+	r.events = append(r.events, event)
+}
+
+func (r *automationRecordingNotifier) Events() []notifications.Event {
+	out := make([]notifications.Event, len(r.events))
+	copy(out, r.events)
+	return out
+}
+
+func TestTrackerDataMissing(t *testing.T) {
+	withTrackers := qbt.Torrent{Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example/announce"}}}
+	withoutTrackers := qbt.Torrent{Tracker: "https://tracker.example/announce"}
+
+	withoutTrackers.Hash = "without"
+
+	tests := []struct {
+		name     string
+		torrents []qbt.Torrent
+		want     bool
+	}{
+		{name: "no torrents at all says nothing about hydration", torrents: nil, want: false},
+		{name: "hydration returned no tracker entries", torrents: []qbt.Torrent{withoutTrackers, withoutTrackers}, want: true},
+		{name: "one torrent with entries is enough", torrents: []qbt.Torrent{withoutTrackers, withTrackers}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := trackerDataMissing(torrentRefs(tt.torrents), trackerLookupOf(tt.torrents...)); got != tt.want {
+				t.Errorf("trackerDataMissing() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReserveExports(t *testing.T) {
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
+	export := func(hash string, mark exportMark) pendingExportToInstance {
+		return pendingExportToInstance{hash: hash, action: action, mark: mark}
+	}
+	s := &Service{inFlightExports: map[string]struct{}{"2:busy": {}}}
+
+	reserved := s.reserveExports([]pendingExportToInstance{
+		export("ready", exportReady),
+		export("busy", exportReady),
+		export("on-target", exportAlreadyOnTarget),
+		export("check-failed", exportCheckFailed),
+		export("unresolved", exportSavePathUnresolved),
+	})
+
+	hashes := make([]string, 0, len(reserved))
+	for _, r := range reserved {
+		hashes = append(hashes, r.hash)
+	}
+	require.Equal(t, []string{"ready", "check-failed", "unresolved"}, hashes)
+	require.Equal(t, map[string]struct{}{"2:busy": {}, "2:ready": {}}, s.inFlightExports)
+}
+
+func TestExecuteExportToInstance_SkipsTorrentThatReachedTarget(t *testing.T) {
+	s := &Service{
+		targetLookup:    fakeTargetLookup{onTarget: map[string]bool{"done": true}},
+		inFlightExports: map[string]struct{}{"2:done": {}},
+	}
+	s.SetExportRunner(noExports{t})
+	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2}
+
+	results := s.executeExportToInstance(t.Context(), 1, []pendingExportToInstance{{hash: "done", action: action, mark: exportReady}})
+
+	for activity := range results {
+		t.Fatalf("unexpected activity: %s %s", activity.Outcome, activity.Reason)
+	}
+	require.Empty(t, s.inFlightExports)
+}
+
+type noExports struct{ t *testing.T }
+
+func (n noExports) Export(context.Context, transfer.ExportRequest) (int64, <-chan transfer.ExportResult, error) {
+	n.t.Error("an Export run started")
+	return 0, nil, errors.New("no Export runs")
+}

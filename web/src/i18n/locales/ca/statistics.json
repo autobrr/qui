@@ -1,0 +1,201 @@
+{
+  "title": "Estadístiques",
+  "recordingSince": "Enregistrant des del {{date}}",
+  "notRecording": "qui encara no ha enregistrat cap transferència.",
+  "partial": "Període parcial",
+  "periods": {
+    "24h": "24 hores",
+    "7d": "7 dies",
+    "30d": "30 dies",
+    "1y": "Any",
+    "all": "Des de l’inici",
+    "custom": "Personalitzat"
+  },
+  "customRange": {
+    "from": "Primer dia",
+    "to": "Últim dia",
+    "pick": "Tria un dia",
+    "apply": "Aplica",
+    "range": "{{from}} – {{to}}"
+  },
+  "instances": {
+    "all": "Totes les instàncies",
+    "count_one": "{{count}} instància",
+    "count_many": "{{count}} instàncies",
+    "count_other": "{{count}} instàncies",
+    "removed": "eliminada"
+  },
+  "seriesColors": {
+    "label": "Colors de les sèries",
+    "distinct": "Colors diferenciats",
+    "theme": "Colors del tema"
+  },
+  "tiles": {
+    "uploaded": "Pujat",
+    "downloaded": "Baixat",
+    "ratio": "Ràtio",
+    "buffer": "Marge {{buffer}}",
+    "crossSeed": "De cross-seeds",
+    "crossSeedShare": "{{percent}} % de la pujada",
+    "change": "{{change}} respecte al període anterior",
+    "unique": "Mida única",
+    "uniqueTotal": "{{size}} amb cada còpia sencera",
+    "uniqueNone": "Cap càlcul de grups de còpies en aquest període"
+  },
+  "chart": {
+    "title": "Transferència al llarg del temps",
+    "descriptionHour": "Per tracker, per hora",
+    "descriptionDay": "Per tracker, per dia",
+    "upload": "Pujada",
+    "download": "Baixada",
+    "other": "Altres",
+    "otherCount": "Altres ({{groups}})",
+    "total": "Total",
+    "gap": "Inclou un buit d’enregistrament de {{duration}}",
+    "gapLabel": "buit {{duration}}",
+    "foldedDay": "(dia sencer, UTC)",
+    "weekOf": "Setmana del {{date}}",
+    "empty": "No hi ha transferència en aquest període."
+  },
+  "yearView": {
+    "title": "Pujada del període",
+    "description": "Només pujada, per dia de les últimes 53 setmanes i per mes per tracker",
+    "calendar": "Pujada per dia, últimes 53 setmanes",
+    "less": "Menys",
+    "more": "Més",
+    "day": "{{date}}: {{uploaded}} pujats",
+    "dayNotRecorded": "{{date}}: no enregistrat",
+    "dayGap": "{{day}}. {{gap}}",
+    "bestDay": "Millor dia",
+    "bestMonth": "Millor mes",
+    "weekends": "Caps de setmana",
+    "weekendsDetail": "de la pujada es va moure un dissabte o un diumenge",
+    "months": "Pujada per mes, per tracker"
+  },
+  "groups": {
+    "public": "Públic",
+    "noTracker": "Sense tracker"
+  },
+  "errors": {
+    "load": "No s’han pogut carregar les estadístiques: {{message}}"
+  },
+  "events": {
+    "title": "Afegits i suprimits",
+    "description": "Els torrents que es van afegir, que es van completar i que es van suprimir cada dia UTC.",
+    "added": "Afegits",
+    "completed": "Completats",
+    "deleted": "Suprimits",
+    "empty": "Cap torrent afegit, completat ni suprimit en aquest període."
+  },
+  "deletes": {
+    "title": "Torrents suprimits",
+    "description": "Qui va suprimir cada torrent i els valors finals que tenia. La supressió més recent és la primera.",
+    "filters": {
+      "all": "Tots",
+      "automation": "Automatitzacions",
+      "user": "Tu",
+      "other": "Altres"
+    },
+    "causes": {
+      "automation": "Automatització",
+      "user": "Tu",
+      "backupRestore": "Restauració de còpia",
+      "clientProxy": "Clau del Client Proxy",
+      "outside": "Fora de qui"
+    },
+    "columns": {
+      "time": "Suprimit",
+      "cause": "Suprimit per",
+      "uploaded": "Pujada final",
+      "ratio": "Ràtio final",
+      "seeded": "Temps de sembra"
+    },
+    "empty": "Cap torrent suprimit en aquest període.",
+    "shown": "{{shown}} de {{total}}",
+    "more": "Mostra'n més",
+    "final": "Ràtio {{ratio}} · Temps de sembra {{seeded}}"
+  },
+  "allTimeNote": "Des de l’inici inclou la base inicial: els bytes que tenien els torrents quan qui els va enregistrar per primera vegada. El gràfic no mostra la base inicial, perquè no té data.",
+  "table": {
+    "title": "Per grup",
+    "descriptionTracker": "La transferència del període per a cada tracker. Seleccioneu una fila per obrir-ne el detall.",
+    "descriptionCategory": "La transferència del període per a cada categoria, sota la categoria que tenia cada torrent quan es van moure els bytes. Seleccioneu una fila per obrir-ne el detall.",
+    "descriptionRelease": "La transferència del període per a cada valor que qui llegeix dels noms dels torrents. Seleccioneu una fila per obrir-ne el detall.",
+    "groupBy": "Agrupa per",
+    "groupings": {
+      "tracker": "Tracker",
+      "category": "Categoria",
+      "releaseGroup": "Grup de llançament",
+      "resolution": "Resolució",
+      "source": "Font",
+      "contentType": "Tipus de contingut"
+    },
+    "columns": {
+      "tracker": "Tracker",
+      "uploaded": "Pujat",
+      "downloaded": "Baixat",
+      "ratio": "Ràtio",
+      "buffer": "Buffer",
+      "torrents": "Torrents",
+      "size": "Mida",
+      "seeded": "Sembrat"
+    },
+    "seededValue": "{{value}}x",
+    "total": "Total",
+    "shown": "{{shown}} de {{total}}",
+    "range": "{{from}}–{{to}} de {{total}}",
+    "previousPage": "Pàgina anterior",
+    "nextPage": "Pàgina següent",
+    "showMore": "Mostra'n més",
+    "showAll": "Mostra-ho tot",
+    "showFewer": "Mostra'n menys",
+    "noCategory": "Cap categoria",
+    "none": "Cap",
+    "liveError": "No s’han pogut carregar els torrents que ara són a qBittorrent: {{message}}",
+    "liveNote": "Torrents, Mida i Sembrat descriuen els torrents que ara són a qBittorrent, no el període. Sembrat és la seva pujada total dividida per la seva mida.",
+    "categoryNote": "qui desa els totals de les categories per a cada dia UTC. Un període que comença o acaba dins d’un dia UTC compta aquest dia sencer, de manera que el total de les categories pot diferir dels números de dalt.",
+    "releaseNote": "qui llegeix aquests valors dels noms dels torrents i desa els bytes de cada torrent per a cada dia UTC. Un període que comença o acaba dins d'un dia UTC compta tot el dia, de manera que el total de les files pot diferir dels números de dalt.",
+    "baselineNote": "Des de l’inici, cada fila inclou la base inicial dels seus torrents."
+  },
+  "detail": {
+    "share": "Part de la pujada",
+    "shareOf": "de {{total}}",
+    "crossSeed": "De cross-seeds",
+    "crossSeedShare": "{{percent}} de la seva pujada",
+    "bestHour": "Millor hora",
+    "bestDay": "Millor dia",
+    "averageHour": "Mitjana per hora",
+    "averageDay": "Mitjana per dia",
+    "chartHour": "{{group}} per hora",
+    "chartDay": "{{group}} per dia",
+    "chartWeek": "{{group}} per setmana",
+    "chartLegend": "Pujada damunt de la línia, baixada a sota",
+    "topTorrents": "Torrents principals de {{group}}",
+    "topTorrentsCategoryNote": "Els torrents principals d'una categoria segueixen la categoria actual de cada torrent."
+  },
+  "topTorrents": {
+    "title": "Torrents principals",
+    "description": "Els torrents amb més pujada del període. Seleccioneu una fila per veure'n la pujada de cada dia.",
+    "columns": {
+      "torrent": "Torrent",
+      "first24h": "Primeres 24 hores"
+    },
+    "deleted": "Suprimit",
+    "crossSeed": "Cross-seed",
+    "note": "Un torrent suprimit conserva el seu lloc amb el seu nom. Un torrent compta per al tracker que té ara. Primeres 24 hores és la pujada de les 24 hores després d'afegir-lo. El valor és buit quan qui va veure el torrent per primer cop després.",
+    "seededNote": "Sembrat és la pujada del període dividida per la mida del torrent. 1,00x és una còpia completa.",
+    "utcNote": "Cada barra és un dia UTC.",
+    "yearNote": "Cada barra és un dia UTC, llevat de la barra d'un any: després de la retenció del detall, qui conserva un sol nombre per torrent i any."
+  },
+  "growth": {
+    "title": "Creixement de la biblioteca",
+    "description": "Torrents: {{torrents}}. Mida total i mida única per a cada dia UTC.",
+    "descriptionEmpty": "Mida total i mida única per a cada dia UTC.",
+    "totalSize": "Mida total",
+    "uniqueSize": "Mida única",
+    "torrents": "Torrents",
+    "noValue": "Sense valor",
+    "empty": "qui no ha desat cap mida de biblioteca en aquest període.",
+    "gapNote": "Un buit a la línia de la mida única és un dia sense cap càlcul complet dels grups de còpies."
+  }
+}

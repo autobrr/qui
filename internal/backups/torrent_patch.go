@@ -1,0 +1,218 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package backups
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
+	"github.com/rs/zerolog/log"
+)
+
+type backupTrackerSource interface {
+	GetTorrentTrackers(ctx context.Context, instanceID int, hash string) ([]qbt.TorrentTracker, error)
+}
+
+func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) {
+	if len(trackers) == 0 {
+		return data, false, nil
+	}
+
+	var root map[string]bencode.Bytes
+	if err := bencode.Unmarshal(data, &root); err != nil {
+		return data, false, fmt.Errorf("decode torrent: %w", err)
+	}
+
+	announce := firstTracker(trackers)
+	changed := false
+
+	if announce != "" && !trackerMatches(decodeRawValue(root["announce"]), trackers) {
+		raw, err := bencode.Marshal(announce)
+		if err != nil {
+			return data, false, fmt.Errorf("encode announce: %w", err)
+		}
+		root["announce"] = raw
+		changed = true
+	}
+
+	if needAnnounceListUpdate(decodeRawValue(root["announce-list"]), trackers) {
+		raw, err := bencode.Marshal(buildAnnounceList(trackers))
+		if err != nil {
+			return data, false, fmt.Errorf("encode announce-list: %w", err)
+		}
+		root["announce-list"] = raw
+		changed = true
+	}
+
+	if !changed {
+		return data, false, nil
+	}
+
+	var buf bytes.Buffer
+	if err := bencode.NewEncoder(&buf).Encode(root); err != nil {
+		return data, false, fmt.Errorf("encode torrent: %w", err)
+	}
+
+	return buf.Bytes(), true, nil
+}
+
+func decodeRawValue(raw bencode.Bytes) any {
+	var v any
+	if err := bencode.Unmarshal(raw, &v); err != nil {
+		return nil
+	}
+	return v
+}
+
+func announceDomain(data []byte) string {
+	var meta struct {
+		Announce     string                `bencode:"announce"`
+		AnnounceList metainfo.AnnounceList `bencode:"announce-list"`
+	}
+	if err := bencode.Unmarshal(data, &meta); err != nil {
+		return ""
+	}
+
+	for _, tier := range meta.AnnounceList {
+		domain := ""
+		for _, raw := range tier {
+			if host := hostFromURL(raw); host != "" && (domain == "" || host < domain) {
+				domain = host
+			}
+		}
+		if domain != "" {
+			return domain
+		}
+	}
+
+	return hostFromURL(meta.Announce)
+}
+
+func needAnnounceListUpdate(existing any, trackers []string) bool {
+	if len(trackers) == 0 {
+		return false
+	}
+
+	current := flattenAnnounceList(existing)
+	if len(current) != len(trackers) {
+		return true
+	}
+
+	for i, tr := range trackers {
+		if strings.TrimSpace(current[i]) != strings.TrimSpace(tr) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func firstTracker(trackers []string) string {
+	for _, tr := range trackers {
+		if tr != "" {
+			return tr
+		}
+	}
+	return ""
+}
+
+func gatherTrackerURLs(ctx context.Context, sm backupTrackerSource, instanceID int, torrent qbt.Torrent) []string {
+	seen := make(map[string]struct{})
+	var trackers []string
+
+	appendTracker := func(url string) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		if _, ok := seen[url]; ok {
+			return
+		}
+		seen[url] = struct{}{}
+		trackers = append(trackers, url)
+	}
+
+	for _, tr := range torrent.Trackers {
+		appendTracker(tr.Url)
+	}
+
+	if len(trackers) == 0 && sm != nil {
+		extra, err := sm.GetTorrentTrackers(ctx, instanceID, torrent.Hash)
+		if err == nil {
+			for _, tr := range extra {
+				appendTracker(tr.Url)
+			}
+		} else if !errors.Is(err, qbt.ErrTorrentNotFound) {
+			log.Debug().Err(err).Str("hash", torrent.Hash).Int("instanceID", instanceID).Msg("Failed to fetch trackers for patching export")
+		}
+	}
+
+	if len(trackers) == 0 {
+		appendTracker(torrent.Tracker)
+	}
+
+	return trackers
+}
+
+func trackerMatches(value any, trackers []string) bool {
+	s := ""
+	switch v := value.(type) {
+	case string:
+		s = v
+	case []byte:
+		s = string(v)
+	default:
+		return false
+	}
+
+	for _, tr := range trackers {
+		if strings.TrimSpace(tr) == strings.TrimSpace(s) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildAnnounceList(trackers []string) []any {
+	result := make([]any, 0, len(trackers))
+	for _, tr := range trackers {
+		result = append(result, []any{tr})
+	}
+	return result
+}
+
+func flattenAnnounceList(v any) []string {
+	switch val := v.(type) {
+	case nil:
+		return nil
+	case string:
+		return []string{val}
+	case []byte:
+		return []string{string(val)}
+	case []any:
+		var out []string
+		for _, entry := range val {
+			switch inner := entry.(type) {
+			case string:
+				out = append(out, inner)
+			case []byte:
+				out = append(out, string(inner))
+			case []any:
+				flattened := flattenAnnounceList(inner)
+				if len(flattened) > 0 {
+					out = append(out, flattened[0])
+				}
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}

@@ -1,0 +1,510 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { CopyButton } from "@/components/ui/copy-button"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { ReannounceEnableWarningDialog } from "@/components/instances/preferences/ReannounceEnableWarning"
+import { SettingsSummary } from "@/components/instances/preferences/SettingsSummary"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useInstances } from "@/hooks/useInstances"
+import { api } from "@/lib/api"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import { cn, formatErrorReason } from "@/lib/utils"
+import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
+import { useQueries, useQueryClient } from "@tanstack/react-query"
+import { ChevronDown, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
+import { useMemo, useState, type ComponentProps } from "react"
+import { Trans, useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+interface ReannounceOverviewProps {
+  onConfigureInstance?: (instanceId: number) => void
+}
+
+interface InstanceStats {
+  successToday: number
+  failedToday: number
+  lastActivity?: Date
+}
+
+function computeStats(events: InstanceReannounceActivity[]): InstanceStats {
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  let successToday = 0
+  let failedToday = 0
+  let lastActivity: Date | undefined
+
+  for (const event of events) {
+    const eventDate = new Date(event.timestamp)
+    if (!lastActivity || eventDate > lastActivity) {
+      lastActivity = eventDate
+    }
+    if (eventDate >= startOfToday) {
+      if (event.outcome === "succeeded") {
+        successToday++
+      } else if (event.outcome === "failed") {
+        failedToday++
+      }
+    }
+  }
+
+  return { successToday, failedToday, lastActivity }
+}
+
+export function ReannounceOverview({
+  onConfigureInstance,
+}: ReannounceOverviewProps) {
+  const { t } = useTranslation("instances")
+  const { instances, updateInstance, isUpdating } = useInstances()
+  const queryClient = useQueryClient()
+  const { formatISOTimestamp } = useDateTimeFormatters()
+
+  const translateReason = (reason: string | undefined) => {
+    if (!reason) return ""
+    if (reason === "debounced during cooldown window") return t("preferences.reannounceOverview.reasons.debouncedCooldown")
+    if (reason === "debounced during retry interval window") return t("preferences.reannounceOverview.reasons.debouncedRetry")
+    if (reason === "service not started") return t("preferences.reannounceOverview.reasons.serviceNotStarted")
+    if (reason === "tracker healthy") return t("preferences.reannounceOverview.reasons.trackerHealthy")
+    if (reason === "reannounce job succeeded") return t("preferences.reannounceOverview.reasons.jobSucceeded")
+
+    const startedMatch = reason.match(/^reannounce job started \(max (\d+) retries\)$/)
+    if (startedMatch) {
+      return t("preferences.reannounceOverview.reasons.jobStarted", { count: parseInt(startedMatch[1], 10) })
+    }
+
+    return reason
+  }
+
+  const [expandedInstances, setExpandedInstances] = useState<string[]>([])
+  const [hideSkippedMap, setHideSkippedMap] = useState<Record<number, boolean>>({})
+  const [searchMap, setSearchMap] = useState<Record<number, string>>({})
+  const [pendingEnableInstance, setPendingEnableInstance] = useState<Instance | null>(null)
+
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter((inst) => inst.isActive),
+    [instances]
+  )
+
+  useActivityStream()
+
+  const activityQueries = useQueries({
+    queries: activeInstances.map((instance) => ({
+      queryKey: ["instance-reannounce-activity", instance.id],
+      queryFn: () => api.getInstanceReannounceActivity(instance.id, 0),
+      enabled: instance.reannounceSettings?.enabled ?? false,
+      staleTime: 5000,
+    })),
+  })
+
+  const saveEnabledState = (instance: Instance, enabled: boolean) => {
+    const payload: Partial<InstanceFormData> = {
+      name: instance.name,
+      host: instance.host,
+      username: instance.username,
+      tlsSkipVerify: instance.tlsSkipVerify,
+      reannounceSettings: {
+        ...instance.reannounceSettings,
+        enabled,
+      },
+    }
+
+    if (instance.basicUsername !== undefined) {
+      payload.basicUsername = instance.basicUsername
+    }
+
+    updateInstance(
+      { id: instance.id, data: payload },
+      {
+        onSuccess: () => {
+          toast.success(enabled ? t("preferences.reannounceOverview.toast.monitoringEnabled") : t("preferences.reannounceOverview.toast.monitoringDisabled"), {
+            description: instance.name,
+          })
+        },
+        onError: (error) => {
+          toast.error(t("preferences.reannounceOverview.toast.updateFailed"), {
+            description: error instanceof Error ? error.message : t("preferences.reannounceOverview.toast.updateFailedDescription"),
+          })
+        },
+      }
+    )
+  }
+
+  const handleToggleEnabled = (instance: Instance, enabled: boolean) => {
+    if (enabled) {
+      setPendingEnableInstance(instance)
+      return
+    }
+
+    saveEnabledState(instance, false)
+  }
+
+  const confirmEnable = () => {
+    if (!pendingEnableInstance) return
+    saveEnabledState(pendingEnableInstance, true)
+    setPendingEnableInstance(null)
+  }
+
+  const outcomeBadges: Record<InstanceReannounceActivity["outcome"], Pick<ComponentProps<typeof Badge>, "variant" | "className">> = {
+    succeeded: { variant: "success" },
+    failed: { variant: "outline", className: "bg-destructive/10 text-destructive border-destructive/30" },
+    skipped: { variant: "outline", className: "bg-muted text-muted-foreground border-border/60" },
+    started: { variant: "info" },
+  }
+
+  const getSettingsSummaryParts = (settings: InstanceReannounceSettings): string[] => {
+    const parts: string[] = []
+    parts.push(t("preferences.reannounceOverview.summaryWait", { seconds: settings.initialWaitSeconds }))
+    parts.push(t("preferences.reannounceOverview.summaryRetry", { seconds: settings.reannounceIntervalSeconds }))
+    parts.push(t("preferences.reannounceOverview.summaryMax", { count: settings.maxRetries }))
+    if (settings.aggressive) parts.push(t("preferences.reannounceOverview.summaryQuick"))
+    return parts
+  }
+
+  if (!instances || instances.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("preferences.reannounceOverview.title")}</CardTitle>
+          <CardDescription>
+            {t("preferences.reannounceOverview.noInstancesDescription")}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <CardTitle>{t("preferences.reannounceOverview.title")}</CardTitle>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[300px]">
+                <p>
+                  {t("preferences.reannounceOverview.tooltip")}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <CardDescription>
+            <Trans
+              ns="instances"
+              i18nKey="preferences.reannounceOverview.description"
+              components={{ strong: <strong /> }}
+            />
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          <Accordion
+            type="multiple"
+            value={expandedInstances}
+            onValueChange={setExpandedInstances}
+            className="border-t"
+          >
+            {activeInstances.map((instance, index) => {
+              const activityQuery = activityQueries[index]
+              const events = activityQuery?.data ?? []
+              const stats = computeStats(events)
+              const settings = instance.reannounceSettings
+              const isEnabled = settings?.enabled ?? false
+              const hideSkipped = hideSkippedMap[instance.id] ?? true
+              const searchTerm = (searchMap[instance.id] ?? "").toLowerCase().trim()
+              const filteredEvents = events
+                .filter((e) => {
+                  if (hideSkipped && e.outcome === "skipped") return false
+                  if (searchTerm) {
+                    const nameMatch = e.torrentName?.toLowerCase().includes(searchTerm)
+                    const hashMatch = e.hash.toLowerCase().includes(searchTerm)
+                    if (!nameMatch && !hashMatch) return false
+                  }
+                  return true
+                })
+                .slice(-50)
+                .reverse()
+
+              return (
+                <AccordionItem key={instance.id} value={String(instance.id)} className="group/item">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center px-6">
+                    <AccordionTrigger className="min-w-0 py-4 pr-4 hover:no-underline [&>svg]:hidden">
+                      <div className="flex items-center justify-between gap-3 w-full min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                          <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
+                          {isEnabled && stats.successToday > 0 && (
+                            <Badge variant="success">
+                              {t("preferences.reannounceOverview.today", { count: stats.successToday })}
+                            </Badge>
+                          )}
+                          {isEnabled && stats.failedToday > 0 && (
+                            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                              {t("preferences.reannounceOverview.failed", { count: stats.failedToday })}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {isEnabled && stats.lastActivity && (
+                          <span className="text-xs text-muted-foreground hidden sm:block shrink-0 whitespace-nowrap">
+                            {formatRelativeTime(stats.lastActivity)}
+                          </span>
+                        )}
+                      </div>
+                    </AccordionTrigger>
+                    <div className="flex items-center gap-4 py-4">
+                      <div
+                        className="flex items-center gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className={cn(
+                          "text-xs font-medium",
+                          isEnabled ? "text-success" : "text-muted-foreground"
+                        )}>
+                          {isEnabled ? t("preferences.reannounceOverview.on") : t("preferences.reannounceOverview.off")}
+                        </span>
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(enabled) => handleToggleEnabled(instance, enabled)}
+                          disabled={isUpdating}
+                          className="scale-90"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const itemValue = String(instance.id)
+                          if (expandedInstances.includes(itemValue)) {
+                            setExpandedInstances(expandedInstances.filter((v) => v !== itemValue))
+                          } else {
+                            setExpandedInstances([...expandedInstances, itemValue])
+                          }
+                        }}
+                        aria-expanded={expandedInstances.includes(String(instance.id))}
+                        aria-label={expandedInstances.includes(String(instance.id)) ? t("preferences.reannounceOverview.collapse") : t("preferences.reannounceOverview.expand")}
+                      >
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <AccordionContent className="px-6 pb-4">
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-y-3 p-3 rounded-lg bg-muted/40 border">
+                        <div className="space-y-0.5 flex-1">
+                          <p className="text-sm text-muted-foreground">
+                            {settings ? <SettingsSummary parts={getSettingsSummaryParts(settings)} /> : t("preferences.reannounceOverview.notConfigured")}
+                          </p>
+                          {settings?.monitorAll ? (
+                            <p className="text-xs text-muted-foreground/70">{t("preferences.reannounceOverview.monitoringAllStalled")}</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground/70">
+                              {settings?.categories.length || settings?.tags.length || settings?.trackers.length? t("preferences.reannounceOverview.filteredByCategoriesTagsTrackers"): t("preferences.reannounceOverview.noFiltersConfigured")}
+                            </p>
+                          )}
+                        </div>
+                        {onConfigureInstance && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onConfigureInstance(instance.id)}
+                            className="h-8"
+                          >
+                            <Settings2 className="h-4 w-4 mr-2" />
+                            {t("preferences.reannounceOverview.configure")}
+                          </Button>
+                        )}
+                      </div>
+
+                      {isEnabled && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-medium">{t("preferences.reannounceOverview.recentActivity")}</h4>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-xs text-muted-foreground cursor-help">
+                                    {filteredEvents.length === events.length ? t("preferences.reannounceOverview.eventCount", { count: events.length }) : t("preferences.reannounceOverview.eventCountFiltered", { filtered: filteredEvents.length, total: events.length })}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{t("preferences.reannounceOverview.retentionTooltip")}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className={cn(
+                                  "text-xs px-2 py-1 rounded transition-colors",
+                                  hideSkipped? "bg-muted text-foreground": "text-muted-foreground hover:text-foreground"
+                                )}
+                                onClick={() => setHideSkippedMap((prev) => ({
+                                  ...prev,
+                                  [instance.id]: !hideSkipped,
+                                }))}
+                              >
+                                {hideSkipped ? t("preferences.reannounceOverview.showSkipped") : t("preferences.reannounceOverview.hideSkipped")}
+                              </button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={activityQuery?.isFetching}
+                                onClick={() => queryClient.invalidateQueries({
+                                  queryKey: ["instance-reannounce-activity", instance.id],
+                                })}
+                                className="h-7 px-2"
+                              >
+                                <RefreshCcw className={cn(
+                                  "h-3.5 w-3.5",
+                                  activityQuery?.isFetching && "animate-spin"
+                                )} />
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              type="text"
+                              placeholder={t("preferences.reannounceOverview.filterPlaceholder")}
+                              value={searchMap[instance.id] ?? ""}
+                              onChange={(e) => setSearchMap((prev) => ({
+                                ...prev,
+                                [instance.id]: e.target.value,
+                              }))}
+                              className="pl-9 h-8 text-sm"
+                            />
+                          </div>
+
+                          {activityQuery?.isError ? (
+                            <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
+                              <p className="text-sm text-destructive">{t("preferences.reannounceOverview.failedToLoadActivity")}</p>
+                              <p className="text-xs text-destructive/70 mt-1">
+                                {t("preferences.reannounceOverview.checkConnectionToInstance")}
+                              </p>
+                            </div>
+                          ) : activityQuery?.isLoading ? (
+                            <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
+                              <p className="text-sm text-muted-foreground">{t("preferences.reannounceOverview.loadingActivity")}</p>
+                            </div>
+                          ) : filteredEvents.length === 0 ? (
+                            <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
+                              <p className="text-sm text-muted-foreground">
+                                {searchTerm ? t("preferences.reannounceOverview.noMatchingEventsFound") : t("preferences.reannounceOverview.noActivityRecordedYet")}
+                              </p>
+                              <p className="text-xs text-muted-foreground/60 mt-1">
+                                {searchTerm? t("preferences.reannounceOverview.tryDifferentSearch"): t("preferences.reannounceOverview.eventsWillAppear")}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
+                              <div className="divide-y divide-border">
+                                {filteredEvents.map((event, eventIndex) => {
+                                  const reason = translateReason(event.reason)
+                                  return (
+                                    <div
+                                      key={`${event.hash}-${eventIndex}-${event.timestamp}`}
+                                      className="p-3 hover:bg-muted/30 transition-colors"
+                                    >
+                                      <div className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="font-medium text-sm truncate max-w-[250px] cursor-help">
+                                                {event.torrentName || event.hash}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p className="font-semibold">{event.torrentName || "N/A"}</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                          <Badge
+                                            variant={outcomeBadges[event.outcome].variant}
+                                            className={cn(
+                                              "capitalize text-10 px-1.5 py-0 h-5",
+                                              outcomeBadges[event.outcome].className
+                                            )}
+                                          >
+                                            {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
+                                          </Badge>
+                                        </div>
+
+                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                          <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+                                            <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                                            <CopyButton value={event.hash} label={t("preferences.activityRunDialog.hash")} className="size-5 text-muted-foreground hover:text-foreground" iconClassName="h-3 w-3" />
+                                          </div>
+                                          <span className="text-muted-foreground/40">·</span>
+                                          <span>{formatISOTimestamp(event.timestamp)}</span>
+                                        </div>
+
+                                        {reason && (
+                                          <div className="text-xs bg-muted/40 p-2 rounded">
+                                            {formatErrorReason(reason) !== reason ? (
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <span className="cursor-help">{formatErrorReason(reason)}</span>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="max-w-md">
+                                                  <p className="break-all">{reason}</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            ) : (
+                                              <span>{reason}</span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!isEnabled && (
+                        <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
+                          <div className="p-2 rounded-full bg-muted/50">
+                            <RefreshCcw className="h-5 w-5 text-muted-foreground/50" />
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {t("preferences.reannounceOverview.enableMonitoring")}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
+        </CardContent>
+      </Card>
+      <ReannounceEnableWarningDialog
+        open={pendingEnableInstance !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingEnableInstance(null)
+          }
+        }}
+        onConfirm={confirmEnable}
+        confirming={isUpdating}
+      />
+    </>
+  )
+}

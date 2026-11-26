@@ -1,0 +1,525 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package sshpool
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/pkg/sftp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/sshtest"
+)
+
+var testClientKey = sshtest.PrivateKey("")
+
+type fakeCreds struct {
+	key    string
+	keyErr error
+	pin    []byte
+	pinErr error
+	inst   *models.Instance
+	getErr error
+}
+
+func (f fakeCreds) Get(_ context.Context, id int) (*models.Instance, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if f.inst == nil || f.inst.ID != id {
+		return nil, models.ErrInstanceNotFound
+	}
+	return f.inst, nil
+}
+
+func (f fakeCreds) GetDecryptedSSHKey(*models.Instance) (string, error) {
+	if f.keyErr != nil {
+		return "", f.keyErr
+	}
+	return f.key, nil
+}
+
+func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error) {
+	switch {
+	case f.pinErr != nil:
+		return nil, f.pinErr
+	case f.pin == nil:
+		return nil, models.ErrSSHHostKeyNotPinned
+	}
+	return f.pin, nil
+}
+
+func (f fakeCreds) SetSSHProbe(ctx context.Context, probed *models.Instance, tier models.SSHTier, hardlink bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if f.inst == nil || f.inst.ID != probed.ID {
+		return models.ErrInstanceNotFound
+	}
+	if tier != "" {
+		f.inst.SSHTier = tier
+	}
+	f.inst.SSHHardlink = &hardlink
+	return nil
+}
+
+func instanceAt(t *testing.T, addr string) *models.Instance {
+	t.Helper()
+
+	host, portText, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	return &models.Instance{ID: 1, SSHHost: host, SSHPort: port, SSHUsername: "qui"}
+}
+
+func dialerFor(pin []byte) *Dialer {
+	return NewDialer(fakeCreds{key: testClientKey, pin: pin})
+}
+
+func TestFirstContactReportsKeyAndCapabilities(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+
+	report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err)
+	assert.Equal(t, StatusUnpinned, report.Status)
+	assert.Equal(t, server.HostKey.Marshal(), report.HostKey.Marshal())
+	assert.Nil(t, report.PinnedKey)
+	require.NotNil(t, report.Capabilities)
+	assert.True(t, report.Capabilities.SFTP)
+	assert.True(t, report.Capabilities.Statvfs)
+	assert.True(t, report.Capabilities.Hardlink)
+	assert.False(t, report.Capabilities.Limits)
+}
+
+type legacyHostKeySigner struct{ signer ssh.Signer }
+
+func (s legacyHostKeySigner) PublicKey() ssh.PublicKey { return s.signer.PublicKey() }
+
+func (s legacyHostKeySigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
+	return s.signer.Sign(rand, data)
+}
+
+func TestFirstContactRefusesSHA1RSAHostKey(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, legacyHostKeySigner{sshtest.NewRSASigner()}, sshtest.ExecGNU)
+
+	report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+	require.ErrorIs(t, err, ErrConnect, "first contact must not pin a key negotiated under SHA-1 ssh-rsa")
+	assert.Nil(t, report)
+	assert.Zero(t, server.Accepts(), "negotiation fails before the host key is exchanged")
+	assert.Zero(t, server.Auths())
+	assert.Zero(t, server.Channels())
+}
+
+func TestFirstContactOffersOnlySupportedHostKeyAlgorithms(t *testing.T) {
+	t.Parallel()
+
+	algorithms := hostKeyAlgorithms(nil)
+
+	require.NotEmpty(t, algorithms)
+	assert.Equal(t, ssh.KeyAlgoED25519, algorithms[0], "a host holding several keys should pin its ed25519 one")
+	assert.ElementsMatch(t, ssh.SupportedAlgorithms().HostKeys, algorithms,
+		"first contact offers the supported set and nothing else, which excludes ssh-rsa, ssh-dss and their certificate forms")
+}
+
+func TestPinnedMatchReportsCapabilities(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+
+	report, err := dialerFor(hostKey.PublicKey().Marshal()).Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err)
+	assert.Equal(t, StatusPinned, report.Status)
+	assert.Equal(t, server.HostKey.Marshal(), report.HostKey.Marshal())
+	require.NotNil(t, report.Capabilities)
+	assert.True(t, report.Capabilities.SFTP)
+	assert.False(t, report.Capabilities.Limits)
+}
+
+func TestMismatchReportsBothKeysAndOpensNoSession(t *testing.T) {
+	t.Parallel()
+
+	otherKey := sshtest.NewSigner().PublicKey()
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+
+	report, err := dialerFor(otherKey.Marshal()).Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err, "a mismatch is a reportable outcome, not a failure")
+	assert.Equal(t, StatusMismatch, report.Status)
+	assert.Equal(t, server.HostKey.Marshal(), report.HostKey.Marshal())
+	require.NotNil(t, report.PinnedKey)
+	assert.Equal(t, otherKey.Marshal(), report.PinnedKey.Marshal())
+	assert.Nil(t, report.Capabilities)
+	assert.Zero(t, server.Auths(), "a refused host key must not be offered the client key")
+	assert.Zero(t, server.Channels(), "a refused host key must not open a session")
+}
+
+func TestMismatchOnHostKeyTypeChange(t *testing.T) {
+	t.Parallel()
+
+	pinned := sshtest.NewSigner().PublicKey()
+	server := sshtest.NewServer(t, sshtest.NewRSASigner(), sshtest.ExecGNU)
+
+	report, err := dialerFor(pinned.Marshal()).Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err, "a re-keyed host must report as a mismatch, not as a handshake failure")
+	assert.Equal(t, StatusMismatch, report.Status)
+	assert.Equal(t, ssh.KeyAlgoRSA, report.HostKey.Type())
+	assert.Equal(t, pinned.Marshal(), report.PinnedKey.Marshal())
+	assert.Zero(t, server.Channels())
+}
+
+func TestUnreadablePinShowsKeyAndOpensNoSession(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	dialer := NewDialer(fakeCreds{key: testClientKey, pinErr: errors.New("decrypt host key pin: message authentication failed")})
+
+	report, err := dialer.Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err)
+	assert.Equal(t, StatusPinUnreadable, report.Status, "a pin that will not decrypt must never degrade to first contact")
+	assert.Equal(t, hostKey.PublicKey().Marshal(), report.HostKey.Marshal())
+	assert.Nil(t, report.Capabilities)
+	assert.Zero(t, server.Auths(), "the handshake stops before authenticating to a host whose pin cannot be checked")
+	assert.Zero(t, server.Channels(), "nothing runs over a connection whose pin cannot be checked")
+}
+
+func TestConfirmAcceptsPresentedKey(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+
+	capabilities, err := dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), hostKey.PublicKey().Marshal())
+	require.NoError(t, err)
+	assert.Equal(t, models.SSHTierExec, capabilities.Tier())
+}
+
+func TestConfirmRejectsOtherKey(t *testing.T) {
+	t.Parallel()
+
+	other := sshtest.NewSigner().PublicKey()
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+
+	_, err := dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), other.Marshal())
+	mismatch, ok := errors.AsType[*MismatchError](err)
+	require.True(t, ok, "expected a mismatch error, got %v", err)
+	assert.Equal(t, server.HostKey.Marshal(), mismatch.Presented.Marshal())
+	assert.Equal(t, other.Marshal(), mismatch.Pinned.Marshal())
+	assert.Zero(t, server.Channels())
+}
+
+func TestConfirmRejectsMalformedKeyWithoutDialing(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+
+	_, err := dialerFor(nil).Confirm(t.Context(), instanceAt(t, server.Addr), []byte("ssh-ed25519 AAAAC3Nz"))
+	require.Error(t, err)
+	assert.Zero(t, server.Accepts())
+}
+
+func TestExecCapabilities(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		mode        sshtest.ExecMode
+		exec        bool
+		posixShell  bool
+		gnuUserland bool
+	}{
+		{name: "sftp only key", mode: sshtest.ExecSFTPOnly},
+		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, posixShell: true, gnuUserland: true},
+		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true, posixShell: true},
+		{name: "uutils stat", mode: sshtest.ExecUutils, exec: true, posixShell: true, gnuUserland: true},
+		{name: "fish login shell", mode: sshtest.ExecNonPOSIX, exec: true, posixShell: true, gnuUserland: true},
+		{name: "nushell login shell", mode: sshtest.ExecSplitQuote, exec: true, posixShell: true, gnuUserland: true},
+		{name: "csh login shell", mode: sshtest.ExecCsh, exec: true, posixShell: true, gnuUserland: true},
+		{name: "restricted bash login shell", mode: sshtest.ExecRestrictedBash, exec: true, posixShell: true, gnuUserland: true},
+		{name: "login shell that prints a banner", mode: sshtest.ExecLoginBanner, exec: true},
+		{name: "login shell with no sh", mode: sshtest.ExecNoSh},
+		{name: "one session at a time", mode: sshtest.ExecOneSession},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := sshtest.NewServer(t, sshtest.NewSigner(), tt.mode)
+
+			report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+			require.NoError(t, err)
+			require.NotNil(t, report.Capabilities)
+			assert.True(t, report.Capabilities.SFTP)
+			assert.True(t, report.Capabilities.Statvfs)
+			assert.True(t, report.Capabilities.Hardlink)
+			assert.Equal(t, tt.exec, report.Capabilities.Exec)
+			assert.Equal(t, tt.posixShell, report.Capabilities.POSIXShell)
+			assert.Equal(t, tt.gnuUserland, report.Capabilities.GNUUserland)
+			wantTier := models.SSHTierSFTP
+			if tt.posixShell && tt.gnuUserland {
+				wantTier = models.SSHTierExec
+			}
+			assert.Equal(t, wantTier, report.Capabilities.Tier())
+		})
+	}
+}
+
+func TestExecTierNeedsSFTP(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+	server.SetSFTP(sshtest.SFTPRefuse)
+
+	report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err)
+	require.NotNil(t, report.Capabilities)
+	assert.False(t, report.Capabilities.SFTP)
+	assert.True(t, report.Capabilities.GNUUserland)
+	assert.Equal(t, models.SSHTierSFTP, report.Capabilities.Tier())
+}
+
+func TestMissingSFTPExtensions(t *testing.T) {
+	require.NoError(t, sftp.SetSFTPExtensions("posix-rename@openssh.com"))
+	t.Cleanup(func() {
+		require.NoError(t, sftp.SetSFTPExtensions("hardlink@openssh.com", "posix-rename@openssh.com", "statvfs@openssh.com"))
+	})
+
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+
+	report, err := dialerFor(nil).Test(t.Context(), instanceAt(t, server.Addr))
+	require.NoError(t, err)
+	require.NotNil(t, report.Capabilities)
+	assert.True(t, report.Capabilities.SFTP)
+	assert.False(t, report.Capabilities.Statvfs)
+	assert.False(t, report.Capabilities.Hardlink)
+}
+
+func TestPoolWritesTheHardlinkFlagFromTheExtensionList(t *testing.T) {
+	require.NoError(t, sftp.SetSFTPExtensions("posix-rename@openssh.com"))
+	t.Cleanup(func() {
+		require.NoError(t, sftp.SetSFTPExtensions("hardlink@openssh.com", "posix-rename@openssh.com", "statvfs@openssh.com"))
+	})
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecSFTPOnly)
+	inst := pinnedInstanceAt(t, server.Addr)
+	pool := poolFor(hostKey.PublicKey().Marshal(), inst)
+	t.Cleanup(pool.Close)
+
+	_, err := pool.SFTP(t.Context(), inst)
+	require.NoError(t, err)
+	require.NotNil(t, inst.SSHHardlink)
+	assert.False(t, *inst.SSHHardlink)
+}
+
+func TestCancelledContextUnblocksHandshake(t *testing.T) {
+	t.Parallel()
+
+	listener := sshtest.NewHangingListener(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() {
+		select {
+		case <-listener.Accepted:
+		case <-ctx.Done():
+		}
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := dialerFor(nil).Test(ctx, instanceAt(t, listener.Addr))
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Less(t, time.Since(start), dialTimeout, "cancellation must not wait out the dial timeout")
+}
+
+func TestMissingCredentials(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecGNU)
+	dialer := NewDialer(fakeCreds{keyErr: models.ErrSSHKeyNotConfigured})
+
+	_, err := dialer.Test(t.Context(), instanceAt(t, server.Addr))
+	require.ErrorIs(t, err, models.ErrSSHKeyNotConfigured)
+}
+
+func TestPinnedRSAHostKeyMatches(t *testing.T) {
+	t.Parallel()
+
+	for name, signing := range map[string][]string{
+		"any":          nil,
+		"sha-2 only":   {ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256},
+		"ssh-rsa only": {ssh.KeyAlgoRSA},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			hostKey := rsaSignerFor(t, signing)
+			server := sshtest.NewServer(t, hostKey, sshtest.ExecGNU)
+
+			report, err := dialerFor(hostKey.PublicKey().Marshal()).Test(t.Context(), instanceAt(t, server.Addr))
+			require.NoError(t, err)
+			assert.Equal(t, StatusPinned, report.Status)
+			assert.Equal(t, ssh.KeyAlgoRSA, report.HostKey.Type())
+		})
+	}
+}
+
+func rsaSignerFor(t *testing.T, algorithms []string) ssh.Signer {
+	t.Helper()
+
+	signer := sshtest.NewRSASigner()
+	if algorithms == nil {
+		return signer
+	}
+
+	restricted, err := ssh.NewSignerWithAlgorithms(signer.(ssh.AlgorithmSigner), algorithms)
+	require.NoError(t, err)
+	return restricted
+}
+
+func TestCancellationUnblocksProbe(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecHang)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() {
+		select {
+		case <-server.Stalled():
+		case <-ctx.Done():
+		}
+		cancel()
+	}()
+
+	start := time.Now()
+	report, err := dialerWithTimeout(10*time.Second).Test(ctx, instanceAt(t, server.Addr))
+	require.ErrorIs(t, err, context.Canceled, "a probe cut short is not a report")
+	assert.Nil(t, report, "a command interrupted by the cancel must not read as a host that cannot run it")
+	assert.Less(t, time.Since(start), 5*time.Second)
+}
+
+func TestUnreadablePinOutranksUnreachableHost(t *testing.T) {
+	t.Parallel()
+
+	dialer := NewDialer(fakeCreds{key: testClientKey, pinErr: errors.New("decrypt host key pin: message authentication failed")})
+
+	report, err := dialer.Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
+	require.NoError(t, err)
+	assert.Equal(t, StatusPinUnreadable, report.Status)
+	assert.Nil(t, report.HostKey)
+}
+
+func TestMissingCredentialsOutrankUnreadablePin(t *testing.T) {
+	t.Parallel()
+
+	dialer := NewDialer(fakeCreds{keyErr: models.ErrSSHKeyNotConfigured, pinErr: errors.New("decrypt host key pin: message authentication failed")})
+
+	_, err := dialer.Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
+	require.ErrorIs(t, err, models.ErrSSHKeyNotConfigured, "nothing to dial with is a request error, not a tampering report")
+}
+
+func testWithin(t *testing.T, dialer *Dialer, inst *models.Instance, limit time.Duration) (*Report, error) {
+	t.Helper()
+
+	type outcome struct {
+		report *Report
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		report, err := dialer.Test(context.WithoutCancel(t.Context()), inst)
+		done <- outcome{report, err}
+	}()
+
+	select {
+	case result := <-done:
+		return result.report, result.err
+	case <-time.After(limit):
+		t.Fatalf("Test did not return within %s", limit)
+		return nil, nil
+	}
+}
+
+func dialerWithTimeout(timeout time.Duration) *Dialer {
+	dialer := dialerFor(nil)
+	dialer.timeout = timeout
+	return dialer
+}
+
+func TestTimeoutBoundsHandshake(t *testing.T) {
+	t.Parallel()
+
+	listener := sshtest.NewHangingListener(t)
+
+	start := time.Now()
+	_, err := testWithin(t, dialerWithTimeout(time.Second), instanceAt(t, listener.Addr), 10*time.Second)
+	require.Error(t, err, "a stalled handshake must fail rather than wait for the caller to give up")
+	assert.Less(t, time.Since(start), 5*time.Second)
+	select {
+	case <-listener.Accepted:
+	default:
+		t.Fatal("the connection did not reach the SSH handshake")
+	}
+}
+
+func TestTimeoutBoundsProbe(t *testing.T) {
+	t.Parallel()
+
+	server := sshtest.NewServer(t, sshtest.NewSigner(), sshtest.ExecHang)
+
+	report, err := testWithin(t, dialerWithTimeout(time.Second), instanceAt(t, server.Addr), 10*time.Second)
+	require.ErrorIs(t, err, ErrConnect, "a host that stops answering mid-probe is a connection failure, not a credential fault")
+	assert.Nil(t, report, "a command the host never answered must not read as a host that cannot run it")
+}
+
+func TestUnparseableKeyOutranksUnreadablePin(t *testing.T) {
+	t.Parallel()
+
+	dialer := NewDialer(fakeCreds{key: "not a key", pinErr: errors.New("decrypt host key pin: message authentication failed")})
+
+	report, err := dialer.Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrConnect)
+	assert.Nil(t, report)
+}
+
+func TestUnreachableHostIsErrConnect(t *testing.T) {
+	t.Parallel()
+
+	_, err := dialerFor(nil).Test(t.Context(), instanceAt(t, sshtest.DeadAddr(t)))
+	require.ErrorIs(t, err, ErrConnect)
+}
+
+func TestProbeWithoutAnAnswerPinsButReportsNothing(t *testing.T) {
+	t.Parallel()
+
+	hostKey := sshtest.NewSigner()
+	server := sshtest.NewServer(t, hostKey, sshtest.ExecStallOpen)
+	dialer := dialerFor(nil)
+	dialer.timeout = 300 * time.Millisecond
+
+	capabilities, err := dialer.Confirm(t.Context(), instanceAt(t, server.Addr), hostKey.PublicKey().Marshal())
+	require.NoError(t, err, "the key was verified, so the pin may go ahead")
+	assert.Nil(t, capabilities, "no tier is reported from a probe that got no answer")
+
+	_, err = dialer.Test(t.Context(), instanceAt(t, server.Addr))
+	require.ErrorIs(t, err, ErrConnect)
+}

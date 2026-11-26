@@ -1,0 +1,146 @@
+// Copyright (c) 2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package themes
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestRegistryIDsPinned(t *testing.T) {
+	want := map[string]struct{}{
+		"minimal":         {},
+		"autobrr":         {},
+		"the-kyle":        {},
+		"nightwalker":     {},
+		"napster":         {},
+		"swizzin":         {},
+		"kanagawa-dragon": {},
+		"kanagawa-wave":   {},
+		"meridian":        {},
+	}
+
+	for _, theme := range All() {
+		if theme.Premium {
+			continue
+		}
+		_, ok := want[theme.ID]
+		require.True(t, ok, "unexpected free theme id %q (new theme? add it here)", theme.ID)
+		delete(want, theme.ID)
+	}
+	require.Empty(t, want, "missing free themes")
+
+	t.Run("licensed", func(t *testing.T) {
+		for _, id := range []string{
+			"amber-minimal", "amethyst-haze", "bubblegum", "catppuccin", "catppuccin-latte",
+			"claude", "cs-office", "cyberpunk", "darcula", "dracula", "ethereal", "everforest", //nolint:misspell // Darcula is a theme name
+			"flexoki-light", "gruvbox", "hackerman", "jade-horse", "kanagawa", "kanagawa-lotus",
+			"kitsune", "last-horizon", "lumon", "lupine", "matte-black", "miasma", "monokai",
+			"nord", "one-dark", "osaka-jade", "perpetuity", "retro-82", "ristretto", "rose-pine",
+			"solitude", "spreadsheet", "spreadsheet-classic", "synthwave", "tangerine",
+			"the-matrix", "tokyo-night", "vantablack", "white",
+		} {
+			require.True(t, Exists(id), "missing licensed theme id %q", id)
+		}
+	})
+}
+
+func TestRegistryOrder(t *testing.T) {
+	all := All()
+	require.Equal(t, "minimal", all[0].ID)
+	for i := 2; i < len(all); i++ {
+		require.LessOrEqual(t,
+			strings.ToLower(all[i-1].Name), strings.ToLower(all[i].Name),
+			"themes %q and %q out of order", all[i-1].Name, all[i].Name)
+	}
+}
+
+func TestParsePremiumFromDir(t *testing.T) {
+	noHeader := ":root {\n  --primary: red;\n}\n"
+	require.True(t, parse(noHeader, "mystery", true).Premium, "premium dir must classify premium without a header")
+	require.False(t, parse(noHeader, "mystery", false).Premium)
+	require.True(t, parse("/* @premium: true */\n"+noHeader, "mystery", false).Premium, "header alone still classifies premium")
+}
+
+func TestParseIDHeader(t *testing.T) {
+	renamed := parse("/* @name: Terracotta\n * @id: claude\n */\n", "terracotta", true)
+	require.Equal(t, "claude", renamed.ID)
+	require.Equal(t, "Terracotta", renamed.Name)
+
+	require.Equal(t, "tokyo-night", parse("/* @name: Tokyo Night\n */\n", "tokyo_night", true).ID)
+	require.Equal(t, "nord", parse("/* @id: nord */\n", "x", true).ID)
+
+	require.Equal(t, "nord", parse("/* @name: Nord\n * @id:\n * @description: Cold\n */\n", "x", true).ID)
+	require.Equal(t, "nord", parse("/* @name: Nord\n * @description: Use @id: other\n */\n", "x", true).ID)
+}
+
+func TestGenerateID(t *testing.T) {
+	require.Equal(t, "the-kyle", GenerateID("The Kyle"))
+	require.Equal(t, "amber-minimal", GenerateID("Amber Minimal"))
+	require.Equal(t, "tokyo-night", GenerateID("Tokyo Night"))
+	require.Equal(t, "a-b-c", GenerateID("  A/B & C!  "))
+}
+
+func TestRegistryParse(t *testing.T) {
+	minimalFound := false
+	for _, theme := range All() {
+		require.NotEmpty(t, theme.ID)
+		require.NotEmpty(t, theme.Name)
+		require.NotEmpty(t, theme.CSS)
+		require.NotEmpty(t, theme.Preview.Light, "theme %s has no light preview vars", theme.ID)
+		require.NotEmpty(t, theme.Preview.Dark, "theme %s has no dark preview vars", theme.ID)
+		if theme.ID == "minimal" {
+			minimalFound = true
+			require.False(t, theme.Premium)
+			require.Equal(t, "Minimal", theme.Name)
+			require.Contains(t, theme.Preview.Light, "--primary")
+		}
+	}
+	require.True(t, minimalFound)
+	require.Equal(t, "minimal", All()[0].ID, "default theme must sort first")
+	require.True(t, Exists("minimal"))
+	require.False(t, Exists("nope"))
+}
+
+func TestPreviewVarsAreConcrete(t *testing.T) {
+	for _, theme := range All() {
+		for mode, vars := range map[string]map[string]string{"light": theme.Preview.Light, "dark": theme.Preview.Dark} {
+			for name, value := range vars {
+				require.NotContains(t, value, "var(", "theme %s %s preview %s is unresolved", theme.ID, mode, name)
+			}
+		}
+	}
+}
+
+func TestExtractPreviewVars(t *testing.T) {
+	css := `:root {
+  --variation-mauve: oklch(0.55 0.25 297);
+  --variation-color: var(--variation-mauve);
+  --primary: var(--variation-color);
+  --secondary: blue;
+  --cycle-a: var(--cycle-b);
+  --cycle-b: var(--cycle-a);
+  --accent: var(--cycle-a);
+}
+
+.dark {
+  --primary: var(--variation-color);
+  --secondary: navy;
+  --accent: var(--missing);
+}
+`
+	light := extractPreviewVars(css, ":root")
+	require.Equal(t, "oklch(0.55 0.25 297)", light["--primary"])
+	require.Equal(t, "blue", light["--secondary"])
+	require.NotContains(t, light, "--accent", "cyclic reference must drop the swatch")
+
+	dark := extractPreviewVars(css, ".dark")
+	require.Equal(t, "oklch(0.55 0.25 297)", dark["--primary"])
+	require.Equal(t, "navy", dark["--secondary"])
+	require.NotContains(t, dark, "--accent", "unresolvable reference must drop the swatch")
+
+	require.Nil(t, extractPreviewVars(css, ".missing"))
+}

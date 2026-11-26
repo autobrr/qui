@@ -1,0 +1,141 @@
+{
+  "title": "Dashboard",
+  "description": "Übersicht über all deine qBittorrent-Instanzen",
+  "incognito": {
+    "turnOn": "Incognito-Modus einschalten",
+    "turnOff": "Incognito-Modus ausschalten"
+  },
+  "stream": {
+    "day": "24 Std.",
+    "live": "Live",
+    "noHistory": "Keine Instanz hat in den letzten 24 Stunden einen Transfer aufgezeichnet. Live zeigt die Geschwindigkeit, solange diese Seite geöffnet ist.",
+    "uploadSpeed": "Upload-Geschwindigkeit",
+    "downloadSpeed": "Download-Geschwindigkeit",
+    "dayUploaded": "{{size}} in 24 Stunden hochgeladen, {{percent}} von Cross-Seeds",
+    "dayDownloaded": "{{size}} in 24 Stunden heruntergeladen",
+    "liveSeeding": "Seeding: {{seeding}} · Peers: {{peers}}",
+    "liveDownloading": "Download: {{downloading}} · Verbleibend: {{size}}",
+    "peakHour": "Stärkste Stunde: {{size}}",
+    "peakSpeed": "Spitze: {{speed}}",
+    "dayLabel": "Upload und Download aller Instanzen in jeder der letzten 24 Stunden",
+    "liveLabel": "Upload- und Download-Geschwindigkeit aller Instanzen in den letzten 3 Minuten",
+    "liveStart": "vor 3 Min.",
+    "now": "Jetzt",
+    "loadError": "Der Verlauf konnte nicht geladen werden: {{message}}"
+  },
+  "instances": {
+    "title": "Instanzen",
+    "instance": "Instanz",
+    "uploaded24h": "Hochgeladen, 24 Std.",
+    "upload": "Upload",
+    "download": "Download",
+    "torrents": "Torrents",
+    "issues": "Probleme",
+    "noIssues": "Keine",
+    "loading": "Wird geladen",
+    "expandAll": "Alle ausklappen",
+    "collapseAll": "Alle einklappen",
+    "altSpeedOff": "Alternative Geschwindigkeitsbegrenzungen sind nicht aktiv",
+    "altSpeedTurnOn": "Alternative Geschwindigkeitsbegrenzungen aktivieren",
+    "altSpeedTurnOff": "Alternative Geschwindigkeitsbegrenzungen deaktivieren",
+    "streamStatus": {
+      "cached": "Zwischengespeicherter Dashboard-Snapshot wird während der Aktualisierung angezeigt",
+      "fallback": "Dashboard-Statistiken werden aktualisiert",
+      "error": "Stream-Problem; Fallback-Aktualisierung wird verwendet"
+    }
+  },
+  "offline": {
+    "password": "Offline: qui braucht erneut das Passwort der Instanz",
+    "cause": "Offline: {{cause}}",
+    "noAnswer": "Offline: qBittorrent antwortet nicht",
+    "hidden": "Offline. Der Incognito-Modus verbirgt die Ursache."
+  },
+  "issues": {
+    "unregistered_one": "{{count}} unregistriert",
+    "unregistered_other": "{{count}} unregistriert",
+    "tracker_down_one": "{{count}} mit Tracker offline",
+    "tracker_down_other": "{{count}} mit Tracker offline",
+    "tracker_error_one": "{{count}} Tracker-Fehler",
+    "tracker_error_other": "{{count}} Tracker-Fehler",
+    "errored_one": "{{count}} Fehler",
+    "errored_other": "{{count}} Fehler"
+  },
+  "details": {
+    "host": "Host",
+    "torrents": "Torrents",
+    "active": "Aktiv",
+    "downloading": "Wird heruntergeladen",
+    "seeding": "Seeding",
+    "size": "Größe",
+    "freeSpace": "Freier Speicher (Standardpfad)",
+    "peers": "Peers",
+    "uptime": "Uptime",
+    "version": "qBittorrent",
+    "libtorrent": "libtorrent",
+    "connection": "Verbindung",
+    "externalAddresses": "Externe Adressen",
+    "unknown": "Unbekannt",
+    "last24h": "Letzte 24 Std.",
+    "allTime": "Gesamt",
+    "uploaded": "Hochgeladen",
+    "downloaded": "Heruntergeladen",
+    "ratio": "Ratio {{ratio}}",
+    "uploadSpeed": "Upload-Geschwindigkeit",
+    "downloadSpeed": "Download-Geschwindigkeit",
+    "chartLabel": "Upload und Download von {{name}} in jeder der letzten 24 Stunden",
+    "altSpeed": "Alternative Geschwindigkeitsbegrenzungen",
+    "altSpeedOn": "Alternative Geschwindigkeitsbegrenzungen sind aktiv",
+    "addTorrent": "Torrent hinzufügen",
+    "openTorrents": "Torrents öffnen",
+    "openSettings": "Instanzeinstellungen öffnen"
+  },
+  "connection": {
+    "connected": "Verbindbar",
+    "firewalled": "Hinter Firewall",
+    "disconnected": "Getrennt",
+    "other": "Andere"
+  },
+  "trackers": {
+    "title": "Top-Tracker, letzte 24 Std.",
+    "statistics": "Statistiken",
+    "empty": "Kein Upload in den letzten 24 Stunden."
+  },
+  "attention": {
+    "title": "Braucht Aufmerksamkeit",
+    "offline": "{{name}} ist offline",
+    "lowDisk": "{{name}}: {{free}} frei",
+    "firewalled": "{{name}} ist hinter einer Firewall"
+  },
+  "storage": {
+    "title": "Speicher",
+    "help": "Ein oder mehrere Balken hier sind Schätzwerte. Wenn qui den Datenträger einer Instanz nicht auslesen kann, zeigt der gefüllte Teil ihre Torrents und der leere Teil den freien Speicherplatz. Um die tatsächliche Datenträgerbelegung zu sehen, aktiviere in den Instanzeinstellungen „Lokaler Dateisystemzugriff“ oder richte dort SSH-Zugriff ein.",
+    "free": "{{size}} frei"
+  },
+  "library": {
+    "title": "Bibliothek",
+    "torrents": "Torrents",
+    "totalSize": "Gesamtgröße",
+    "seedingSize": "Seeding-Größe",
+    "instances": "Verbundene Instanzen",
+    "allTime": "Gesamt",
+    "uploaded": "Hochgeladen",
+    "downloaded": "Heruntergeladen",
+    "ratio": "Ratio"
+  },
+  "uniqueSize": {
+    "calculating": "wird berechnet",
+    "calculatingTooltip": "qui liest die Dateilisten, um die Kopien jedes Releases zu finden. Bis dahin zählt diese Größe jeden verlinkten Cross-Seed vollständig."
+  },
+  "quickActions": {
+    "addTorrent": "Torrent hinzufügen",
+    "addTo": "Zu {{name}} hinzufügen"
+  },
+  "addInstance": "Instanz hinzufügen",
+  "emptyState": {
+    "noInstances": "Keine Instanzen konfiguriert",
+    "getStarted": "Lege los, indem du deine erste qBittorrent-Instanz hinzufügst",
+    "allDisabled": "Alle Instanzen sind deaktiviert",
+    "enableInstance": "Aktiviere eine Instanz unter Einstellungen → Instanzen, um Dashboard-Statistiken zu sehen.",
+    "manageInstances": "Instanzen verwalten"
+  }
+}

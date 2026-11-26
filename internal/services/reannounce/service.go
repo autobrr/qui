@@ -1,0 +1,969 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package reannounce
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
+)
+
+type Config struct {
+	ScanInterval   time.Duration
+	DebounceWindow time.Duration
+	HistorySize    int
+}
+
+type Service struct {
+	cfg              Config
+	instanceStore    *models.InstanceStore
+	settingsStore    *models.InstanceReannounceStore
+	settingsCache    *SettingsCache
+	clientPool       *qbittorrent.ClientPool
+	syncManager      *qbittorrent.SyncManager
+	j                map[int]map[string]*reannounceJob
+	queues           map[int]*reannounceQueue
+	jobsMu           sync.Mutex
+	ctxMu            sync.RWMutex
+	baseCtx          context.Context
+	now              func() time.Time
+	runJob           func(context.Context, int, string, string, string)
+	spawn            func(func())
+	historySucceeded map[int][]ActivityEvent
+	historyFailed    map[int][]ActivityEvent
+	historySkipped   map[int][]ActivityEvent
+	historyMu        sync.RWMutex
+	historyCap       int
+
+	activityPublisher activity.Publisher
+	helpers           helperTorrents
+}
+
+type helperTorrents interface {
+	IsHelper(instanceID int, hash string) bool
+}
+
+type reannounceJob struct {
+	lastRequested time.Time
+	isRunning     bool
+	lastCompleted time.Time
+}
+
+type reannounceQueue struct {
+	active  int
+	pending []func()
+}
+
+type ActivityOutcome string
+
+const (
+	ActivityOutcomeSkipped   ActivityOutcome = "skipped"
+	ActivityOutcomeFailed    ActivityOutcome = "failed"
+	ActivityOutcomeSucceeded ActivityOutcome = "succeeded"
+	ActivityOutcomeStarted   ActivityOutcome = "started"
+)
+
+type ActivityEvent struct {
+	InstanceID  int             `json:"instanceId"`
+	Hash        string          `json:"hash"`
+	TorrentName string          `json:"torrentName"`
+	Trackers    string          `json:"trackers"`
+	Outcome     ActivityOutcome `json:"outcome"`
+	Reason      string          `json:"reason"`
+	Timestamp   time.Time       `json:"timestamp"`
+}
+
+const defaultHistorySize = 50
+
+const maxConcurrentJobsPerInstance = 4
+
+const trackerFetchBatchSize = 100
+
+type MonitoredTorrentState string
+
+const (
+	MonitoredTorrentStateWatching     MonitoredTorrentState = "watching"
+	MonitoredTorrentStateReannouncing MonitoredTorrentState = "reannouncing"
+	MonitoredTorrentStateCooldown     MonitoredTorrentState = "cooldown"
+)
+
+type MonitoredTorrent struct {
+	InstanceID        int                   `json:"instanceId"`
+	Hash              string                `json:"hash"`
+	TorrentName       string                `json:"torrentName"`
+	Trackers          string                `json:"trackers"`
+	TimeActiveSeconds int64                 `json:"timeActiveSeconds"`
+	Category          string                `json:"category"`
+	Tags              string                `json:"tags"`
+	State             MonitoredTorrentState `json:"state"`
+	HasTrackerProblem bool                  `json:"hasTrackerProblem"`
+	WaitingForInitial bool                  `json:"waitingForInitial"`
+}
+
+func DefaultConfig() Config {
+	return Config{
+		ScanInterval:   7 * time.Second,
+		DebounceWindow: 2 * time.Minute,
+		HistorySize:    defaultHistorySize,
+	}
+}
+
+func NewService(cfg Config, instanceStore *models.InstanceStore, settingsStore *models.InstanceReannounceStore, cache *SettingsCache, clientPool *qbittorrent.ClientPool, syncManager *qbittorrent.SyncManager) *Service {
+	if cfg.ScanInterval <= 0 {
+		cfg.ScanInterval = DefaultConfig().ScanInterval
+	}
+	if cfg.DebounceWindow <= 0 {
+		cfg.DebounceWindow = DefaultConfig().DebounceWindow
+	}
+	if cfg.HistorySize <= 0 {
+		cfg.HistorySize = DefaultConfig().HistorySize
+	}
+	svc := &Service{
+		cfg:               cfg,
+		instanceStore:     instanceStore,
+		settingsStore:     settingsStore,
+		settingsCache:     cache,
+		clientPool:        clientPool,
+		syncManager:       syncManager,
+		j:                 make(map[int]map[string]*reannounceJob),
+		queues:            make(map[int]*reannounceQueue),
+		historySucceeded:  make(map[int][]ActivityEvent),
+		historyFailed:     make(map[int][]ActivityEvent),
+		historySkipped:    make(map[int][]ActivityEvent),
+		historyCap:        cfg.HistorySize,
+		activityPublisher: activity.NopPublisher{},
+	}
+	svc.now = time.Now
+	svc.runJob = svc.executeJob
+	svc.spawn = func(fn func()) { go fn() }
+	return svc
+}
+
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+}
+
+func (s *Service) SetHelperTorrents(helpers helperTorrents) {
+	s.helpers = helpers
+}
+
+func (s *Service) isHelper(instanceID int, hash string) bool {
+	return s.helpers != nil && s.helpers.IsHelper(instanceID, hash)
+}
+
+func (s *Service) Start(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.setBaseContext(ctx)
+	if s.settingsCache != nil {
+		s.settingsCache.StartAutoRefresh(ctx, 2*time.Minute)
+	}
+	go func() {
+		s.scanInstances(ctx)
+		s.loop(ctx)
+	}()
+}
+
+func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes []string) []string {
+	if s == nil || len(hashes) == 0 {
+		return nil
+	}
+	settings := s.getSettings(ctx, instanceID)
+	if !settings.CanMatchTorrents() {
+		return nil
+	}
+	upperHashes := normalizeHashes(hashes)
+	torrents := s.lookupTorrents(ctx, instanceID, upperHashes)
+	var handled []string
+	for hash, torrent := range torrents {
+		if !s.torrentMeetsCriteria(*torrent, settings) {
+			continue
+		}
+		if s.hasHealthyTracker(torrent.Trackers) {
+			continue
+		}
+		trackers := s.getProblematicTrackers(torrent.Trackers)
+		if s.enqueue(instanceID, hash, torrent.Name, trackers) {
+			handled = append(handled, hash)
+		}
+	}
+	return handled
+}
+
+func (s *Service) loop(ctx context.Context) {
+	ticker := time.NewTicker(s.cfg.ScanInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.scanInstances(ctx)
+		}
+	}
+}
+
+func (s *Service) scanInstances(ctx context.Context) {
+	if s == nil || s.syncManager == nil {
+		return
+	}
+
+	instances, err := s.instanceStore.List(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("reannounce: failed to list instances")
+		return
+	}
+
+	for _, instance := range instances {
+		if instance == nil || !instance.IsActive {
+			continue
+		}
+		s.scanInstance(ctx, instance.ID, s.getSettings(ctx, instance.ID))
+	}
+}
+
+func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *models.InstanceReannounceSettings) {
+	if !settings.CanMatchTorrents() {
+		return
+	}
+
+	client, err := s.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: client unavailable for scan")
+		return
+	}
+
+	torrents, err := s.cachedTorrents(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch cached torrents")
+		return
+	}
+
+	if client.Supports(qbittorrent.CapTrackerHealth) {
+		prefilter := *settings
+		prefilter.Trackers = nil
+		prefilter.MonitorAll = settings.MonitorAll || (!settings.ExcludeTrackers && len(settings.Trackers) > 0)
+		var hashes []string
+		for _, torrent := range torrents {
+			if s.torrentMeetsCriteria(*torrent, &prefilter) {
+				hashes = append(hashes, torrent.Hash)
+			}
+		}
+		if len(hashes) == 0 {
+			return
+		}
+		torrents = nil
+		for batch := range slices.Chunk(hashes, trackerFetchBatchSize) {
+			fresh, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{
+				Filter:          qbt.TorrentFilterStalled,
+				Hashes:          batch,
+				IncludeTrackers: true,
+			})
+			if err != nil {
+				log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch trackers for candidates")
+				return
+			}
+			for i := range fresh {
+				torrents = append(torrents, &fresh[i])
+			}
+		}
+	}
+
+	for _, torrent := range torrents {
+		if !s.torrentMeetsCriteria(*torrent, settings) {
+			continue
+		}
+		if len(torrent.Trackers) > 0 && s.hasHealthyTracker(torrent.Trackers) {
+			continue
+		}
+		trackers := s.getProblematicTrackers(torrent.Trackers)
+		s.enqueue(instanceID, strings.ToUpper(torrent.Hash), torrent.Name, trackers)
+	}
+}
+
+func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []MonitoredTorrent {
+	if s == nil || instanceID == 0 {
+		return nil
+	}
+	if s.syncManager == nil {
+		return nil
+	}
+
+	settings := s.getSettings(ctx, instanceID)
+	if !settings.CanMatchTorrents() {
+		return nil
+	}
+
+	torrents, err := s.cachedTorrents(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents for snapshot")
+		return nil
+	}
+
+	s.jobsMu.Lock()
+	defer s.jobsMu.Unlock()
+
+	now := s.currentTime()
+	instJobs := s.j[instanceID]
+	debounceWindow := s.effectiveDebounceWindow(settings)
+
+	var result []MonitoredTorrent
+	for _, torrent := range torrents {
+		if !s.torrentMatchesFilters(*torrent, settings) {
+			continue
+		}
+
+		age := now.Unix() - torrent.AddedOn
+		inInitialWait := settings.InitialWaitSeconds > 0 && age < int64(settings.InitialWaitSeconds)
+
+		healthy := s.hasHealthyTracker(torrent.Trackers)
+		updating := s.trackersUpdating(torrent.Trackers)
+		hasProblem := !healthy && !updating
+		waitingForTrackers := updating && !healthy
+
+		if !hasProblem && !waitingForTrackers && !inInitialWait {
+			continue
+		}
+
+		hashUpper := strings.ToUpper(strings.TrimSpace(torrent.Hash))
+		if hashUpper == "" {
+			continue
+		}
+
+		state := MonitoredTorrentStateWatching
+		if instJobs != nil {
+			if job, ok := instJobs[hashUpper]; ok {
+				if job.isRunning {
+					state = MonitoredTorrentStateReannouncing
+				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < debounceWindow {
+					state = MonitoredTorrentStateCooldown
+				}
+			}
+		}
+
+		trackers := s.getProblematicTrackers(torrent.Trackers)
+
+		result = append(result, MonitoredTorrent{
+			InstanceID:        instanceID,
+			Hash:              hashUpper,
+			TorrentName:       torrent.Name,
+			Trackers:          trackers,
+			TimeActiveSeconds: torrent.TimeActive,
+			Category:          torrent.Category,
+			Tags:              torrent.Tags,
+			State:             state,
+			HasTrackerProblem: hasProblem,
+			WaitingForInitial: inInitialWait || waitingForTrackers,
+		})
+	}
+
+	return result
+}
+
+func (s *Service) enqueue(instanceID int, hash string, torrentName string, trackers string) bool {
+	if hash == "" {
+		return false
+	}
+
+	baseCtx := s.baseContext()
+	if baseCtx == nil {
+		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "service not started")
+		return false
+	}
+	if baseCtx.Err() != nil {
+		return false
+	}
+
+	s.jobsMu.Lock()
+	instJobs, ok := s.j[instanceID]
+	if !ok {
+		instJobs = make(map[string]*reannounceJob)
+		s.j[instanceID] = instJobs
+	}
+	job, exists := instJobs[hash]
+	if !exists {
+		job = &reannounceJob{}
+		instJobs[hash] = job
+	}
+	now := s.currentTime()
+	job.lastRequested = now
+
+	settings := s.getSettings(baseCtx, instanceID)
+	isAggressive := settings != nil && settings.Aggressive
+	debounceWindow := s.effectiveDebounceWindow(settings)
+
+	if job.isRunning {
+		s.jobsMu.Unlock()
+		return true
+	}
+
+	if !job.lastCompleted.IsZero() && debounceWindow > 0 {
+		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
+			var reason string
+			if isAggressive {
+				reason = "debounced during retry interval window"
+			} else {
+				reason = "debounced during cooldown window"
+			}
+			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, reason)
+			s.jobsMu.Unlock()
+			return true
+		}
+	}
+
+	job.isRunning = true
+
+	runner := s.runJob
+	if runner == nil {
+		runner = s.executeJob
+	}
+	queue := s.queues[instanceID]
+	if queue == nil {
+		queue = &reannounceQueue{}
+		s.queues[instanceID] = queue
+	}
+	queue.pending = append(queue.pending, func() {
+		s.jobsMu.Lock()
+		if baseCtx.Err() != nil {
+			delete(instJobs, hash)
+			if len(instJobs) == 0 {
+				delete(s.j, instanceID)
+			}
+			s.jobsMu.Unlock()
+			return
+		}
+		job.lastRequested = s.currentTime()
+		s.jobsMu.Unlock()
+		defer s.finishJob(instanceID, hash)
+		runner(baseCtx, instanceID, hash, torrentName, trackers)
+	})
+	if queue.active >= maxConcurrentJobsPerInstance {
+		s.jobsMu.Unlock()
+		return true
+	}
+	queue.active++
+	s.jobsMu.Unlock()
+
+	spawn := s.spawn
+	if spawn == nil {
+		spawn = func(fn func()) { go fn() }
+	}
+	spawn(func() {
+		for {
+			s.jobsMu.Lock()
+			if len(queue.pending) == 0 {
+				queue.active--
+				if queue.active == 0 {
+					delete(s.queues, instanceID)
+				}
+				s.jobsMu.Unlock()
+				return
+			}
+			next := queue.pending[0]
+			queue.pending[0] = nil
+			queue.pending = queue.pending[1:]
+			s.jobsMu.Unlock()
+			next()
+		}
+	})
+	return true
+}
+
+func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash string, torrentName string, initialTrackers string) {
+	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
+	defer cancel()
+	settings := s.getSettings(ctx, instanceID)
+	if settings == nil {
+		settings = models.DefaultInstanceReannounceSettings(instanceID)
+	}
+	if !settings.CanMatchTorrents() {
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeSkipped, "monitoring disabled or no matching scope")
+		return
+	}
+	client, err := s.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: client unavailable")
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("client unavailable: %v", err))
+		return
+	}
+	trackerList, err := client.GetTorrentTrackersCtx(ctx, hash)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: failed to load trackers")
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
+		return
+	}
+	torrent, ok, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
+	if err != nil {
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load torrent: %v", err))
+		return
+	}
+	if ok {
+		torrent.Trackers = trackerList
+	}
+	if !ok || !s.torrentMeetsCriteria(*torrent, settings) {
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeSkipped, "torrent no longer matches monitoring scope")
+		return
+	}
+	if s.hasHealthyTracker(trackerList) {
+		healthyTrackers := s.getHealthyTrackers(trackerList)
+		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy")
+		return
+	}
+	freshTrackers := s.getProblematicTrackers(trackerList)
+	if freshTrackers == "" {
+		freshTrackers = initialTrackers
+	}
+	opts := &qbt.ReannounceOptions{
+		Interval:        settings.ReannounceIntervalSeconds,
+		MaxAttempts:     settings.MaxRetries,
+		DeleteOnFailure: false,
+	}
+
+	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeStarted, fmt.Sprintf("reannounce job started (max %d retries)", opts.MaxAttempts))
+
+	if err := client.ReannounceTorrentWithRetry(ctx, hash, opts); err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: retry failed")
+		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
+		return
+	}
+	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "reannounce job succeeded")
+	s.syncManager.KickTrackerHealthRefresh(instanceID)
+}
+
+func (s *Service) finishJob(instanceID int, hash string) {
+	s.jobsMu.Lock()
+	defer s.jobsMu.Unlock()
+	instJobs, ok := s.j[instanceID]
+	if !ok {
+		return
+	}
+	if job, exists := instJobs[hash]; exists {
+		job.isRunning = false
+		now := s.currentTime()
+		job.lastCompleted = now
+		if job.lastRequested.IsZero() {
+			job.lastRequested = job.lastCompleted
+		}
+		if now.Sub(job.lastRequested) > s.cfg.DebounceWindow {
+			delete(instJobs, hash)
+		}
+	}
+	if len(instJobs) == 0 {
+		delete(s.j, instanceID)
+	}
+}
+
+func (s *Service) setBaseContext(ctx context.Context) {
+	s.ctxMu.Lock()
+	defer s.ctxMu.Unlock()
+	s.baseCtx = ctx
+}
+
+func (s *Service) baseContext() context.Context {
+	s.ctxMu.RLock()
+	defer s.ctxMu.RUnlock()
+	return s.baseCtx
+}
+
+func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []string) map[string]*qbt.Torrent {
+	result := make(map[string]*qbt.Torrent)
+	if len(hashes) == 0 {
+		return result
+	}
+	if s.syncManager == nil {
+		return result
+	}
+	sync, err := s.syncManager.GetSyncOwner(ctx, instanceID)
+	if err != nil || sync == nil {
+		return result
+	}
+	snapshot := sync.Snapshot()
+	if snapshot == nil {
+		return result
+	}
+	for _, hash := range hashes {
+		if torrent, ok := snapshot.Torrent(hash); ok && !s.isHelper(instanceID, torrent.Hash) {
+			result[strings.ToUpper(torrent.Hash)] = torrent
+		}
+	}
+	return result
+}
+
+func (s *Service) cachedTorrents(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
+	sync, err := s.syncManager.GetSyncOwner(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := sync.Snapshot()
+	if snapshot == nil {
+		return nil, nil
+	}
+	return s.syncManager.ListSnapshot(instanceID, snapshot), nil
+}
+
+func (s *Service) getSettings(ctx context.Context, instanceID int) *models.InstanceReannounceSettings {
+	if s.settingsCache != nil {
+		if cached := s.settingsCache.Get(instanceID); cached != nil {
+			return cached
+		}
+	}
+	if s.settingsStore != nil {
+		settings, err := s.settingsStore.Get(ctx, instanceID)
+		if err == nil {
+			if s.settingsCache != nil {
+				s.settingsCache.Replace(settings)
+			}
+			return settings
+		}
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("reannounce: database error loading settings, using defaults")
+	}
+	return models.DefaultInstanceReannounceSettings(instanceID)
+}
+
+func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
+	if !s.torrentMatchesFilters(torrent, settings) {
+		return false
+	}
+	age := s.currentTime().Unix() - torrent.AddedOn
+	if settings.InitialWaitSeconds > 0 && age < int64(settings.InitialWaitSeconds) {
+		return false
+	}
+	return true
+}
+
+func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
+	if !settings.CanMatchTorrents() {
+		return false
+	}
+
+	if torrent.State != qbt.TorrentStateStalledDl && torrent.State != qbt.TorrentStateStalledUp {
+		return false
+	}
+
+	if settings.MaxAgeSeconds > 0 {
+		age := s.currentTime().Unix() - torrent.AddedOn
+		if age > int64(settings.MaxAgeSeconds) {
+			return false
+		}
+	}
+
+	if settings.ExcludeCategories && len(settings.Categories) > 0 {
+		for _, category := range settings.Categories {
+			if strings.EqualFold(category, torrent.Category) {
+				return false
+			}
+		}
+	}
+
+	if settings.ExcludeTags && len(settings.Tags) > 0 {
+		torrentTags := splitTags(torrent.Tags)
+		for _, tag := range torrentTags {
+			for _, excluded := range settings.Tags {
+				if strings.EqualFold(excluded, tag) {
+					return false
+				}
+			}
+		}
+	}
+
+	if settings.ExcludeTrackers && len(settings.Trackers) > 0 {
+		for _, tracker := range torrent.Trackers {
+			domain := s.extractTrackerDomain(tracker.Url)
+			for _, excluded := range settings.Trackers {
+				if strings.EqualFold(domain, excluded) {
+					return false
+				}
+			}
+		}
+	}
+
+	if settings.MonitorAll {
+		return true
+	}
+
+	if !settings.ExcludeCategories && len(settings.Categories) > 0 {
+		for _, category := range settings.Categories {
+			if strings.EqualFold(category, torrent.Category) {
+				return true
+			}
+		}
+	}
+
+	if !settings.ExcludeTags && len(settings.Tags) > 0 {
+		torrentTags := splitTags(torrent.Tags)
+		for _, tag := range torrentTags {
+			for _, configured := range settings.Tags {
+				if strings.EqualFold(configured, tag) {
+					return true
+				}
+			}
+		}
+	}
+
+	if !settings.ExcludeTrackers && len(settings.Trackers) > 0 {
+		for _, tracker := range torrent.Trackers {
+			domain := s.extractTrackerDomain(tracker.Url)
+			for _, expected := range settings.Trackers {
+				if strings.EqualFold(domain, expected) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func (s *Service) hasHealthyTracker(trackers []qbt.TorrentTracker) bool {
+	for _, tracker := range trackers {
+		if tracker.Status == qbt.TrackerStatusDisabled {
+			continue
+		}
+		if qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message) {
+			continue
+		}
+		if tracker.Status == qbt.TrackerStatusOK {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) getProblematicTrackers(trackers []qbt.TorrentTracker) string {
+	if len(trackers) == 0 {
+		return ""
+	}
+	var problematicDomains []string
+	seenDomains := make(map[string]struct{})
+	for _, tracker := range trackers {
+		if tracker.Status == qbt.TrackerStatusDisabled {
+			continue
+		}
+		isHealthy := tracker.Status == qbt.TrackerStatusOK &&
+			!qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
+		if !isHealthy {
+			domain := s.extractTrackerDomain(tracker.Url)
+			if domain != "" {
+				domainLower := strings.ToLower(domain)
+				if _, exists := seenDomains[domainLower]; !exists {
+					seenDomains[domainLower] = struct{}{}
+					problematicDomains = append(problematicDomains, domain)
+				}
+			}
+		}
+	}
+	return strings.Join(problematicDomains, ", ")
+}
+
+func (s *Service) getHealthyTrackers(trackers []qbt.TorrentTracker) string {
+	if len(trackers) == 0 {
+		return ""
+	}
+	var healthyDomains []string
+	seenDomains := make(map[string]struct{})
+	for _, tracker := range trackers {
+		if tracker.Status == qbt.TrackerStatusDisabled {
+			continue
+		}
+		isHealthy := tracker.Status == qbt.TrackerStatusOK &&
+			!qbittorrent.TrackerMessageMatchesUnregistered(tracker.Message)
+		if isHealthy {
+			domain := s.extractTrackerDomain(tracker.Url)
+			if domain != "" {
+				domainLower := strings.ToLower(domain)
+				if _, exists := seenDomains[domainLower]; !exists {
+					seenDomains[domainLower] = struct{}{}
+					healthyDomains = append(healthyDomains, domain)
+				}
+			}
+		}
+	}
+	return strings.Join(healthyDomains, ", ")
+}
+
+func (s *Service) trackersUpdating(trackers []qbt.TorrentTracker) bool {
+	if len(trackers) == 0 {
+		return false
+	}
+
+	var activeCount int
+	for _, tracker := range trackers {
+		switch tracker.Status {
+		case qbt.TrackerStatusDisabled:
+			continue
+		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotContacted:
+			activeCount++
+		default:
+			return false
+		}
+	}
+	return activeCount > 0
+}
+
+func splitTags(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	var cleaned []string
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	return cleaned
+}
+
+func normalizeHashes(hashes []string) []string {
+	result := make([]string, 0, len(hashes))
+	seen := make(map[string]struct{}, len(hashes))
+	for _, hash := range hashes {
+		norm := strings.ToUpper(strings.TrimSpace(hash))
+		if norm == "" {
+			continue
+		}
+		if _, exists := seen[norm]; exists {
+			continue
+		}
+		seen[norm] = struct{}{}
+		result = append(result, norm)
+	}
+	return result
+}
+
+func (s *Service) recordActivity(instanceID int, hash string, torrentName string, trackers string, outcome ActivityOutcome, reason string) {
+	if s == nil || instanceID == 0 {
+		return
+	}
+	s.historyMu.Lock()
+
+	if s.historySucceeded == nil {
+		s.historySucceeded = make(map[int][]ActivityEvent)
+	}
+	if s.historyFailed == nil {
+		s.historyFailed = make(map[int][]ActivityEvent)
+	}
+	if s.historySkipped == nil {
+		s.historySkipped = make(map[int][]ActivityEvent)
+	}
+
+	limit := s.historyCap
+	if limit <= 0 {
+		limit = defaultHistorySize
+	}
+
+	event := ActivityEvent{
+		InstanceID:  instanceID,
+		Hash:        strings.ToUpper(strings.TrimSpace(hash)),
+		TorrentName: torrentName,
+		Trackers:    strings.TrimSpace(trackers),
+		Outcome:     outcome,
+		Reason:      strings.TrimSpace(reason),
+		Timestamp:   s.currentTime(),
+	}
+
+	switch outcome {
+	case ActivityOutcomeSucceeded:
+		s.historySucceeded[instanceID] = append(s.historySucceeded[instanceID], event)
+		if len(s.historySucceeded[instanceID]) > limit*2 {
+			s.historySucceeded[instanceID] = s.historySucceeded[instanceID][len(s.historySucceeded[instanceID])-limit*2:]
+		}
+	case ActivityOutcomeFailed:
+		s.historyFailed[instanceID] = append(s.historyFailed[instanceID], event)
+		if len(s.historyFailed[instanceID]) > limit*2 {
+			s.historyFailed[instanceID] = s.historyFailed[instanceID][len(s.historyFailed[instanceID])-limit*2:]
+		}
+	case ActivityOutcomeSkipped, ActivityOutcomeStarted:
+		s.historySkipped[instanceID] = append(s.historySkipped[instanceID], event)
+		if len(s.historySkipped[instanceID]) > limit {
+			s.historySkipped[instanceID] = s.historySkipped[instanceID][len(s.historySkipped[instanceID])-limit:]
+		}
+	}
+	s.historyMu.Unlock()
+
+	if s.activityPublisher != nil {
+		s.activityPublisher.Publish(activity.Event{
+			Kind:       activity.KindReannounceActivity,
+			InstanceID: instanceID,
+		})
+	}
+}
+
+func (s *Service) GetActivity(instanceID int, limit int) []ActivityEvent {
+	if s == nil || instanceID == 0 {
+		return nil
+	}
+	s.historyMu.RLock()
+	defer s.historyMu.RUnlock()
+
+	var all []ActivityEvent
+	all = append(all, s.historySucceeded[instanceID]...)
+	all = append(all, s.historyFailed[instanceID]...)
+	all = append(all, s.historySkipped[instanceID]...)
+
+	if len(all) == 0 {
+		return nil
+	}
+
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Timestamp.Before(all[j].Timestamp)
+	})
+
+	if limit > 0 && len(all) > limit {
+		all = all[len(all)-limit:]
+	}
+
+	out := make([]ActivityEvent, len(all))
+	copy(out, all)
+	return out
+}
+
+func (s *Service) currentTime() time.Time {
+	if s != nil && s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
+func (s *Service) effectiveDebounceWindow(settings *models.InstanceReannounceSettings) time.Duration {
+	if settings != nil && settings.Aggressive {
+		if interval := time.Duration(settings.ReannounceIntervalSeconds) * time.Second; interval > 0 {
+			return interval
+		}
+	}
+	return s.cfg.DebounceWindow
+}
+
+func (s *Service) extractTrackerDomain(trackerURL string) string {
+	if trackerURL == "" {
+		return ""
+	}
+	if s != nil && s.syncManager != nil {
+		if domain := s.syncManager.ExtractDomainFromURL(trackerURL); domain != "" {
+			return domain
+		}
+	}
+	if u, err := url.Parse(trackerURL); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return strings.TrimSpace(trackerURL)
+}

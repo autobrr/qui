@@ -1,0 +1,1345 @@
+{
+  "title": "Settings",
+  "description": "Manage your application preferences and security",
+  "tabs": {
+    "application": "Application",
+    "instances": "Instances",
+    "indexers": "Indexers",
+    "searchCache": "Search cache",
+    "integrations": "Integrations",
+    "clientProxy": "Client proxy",
+    "apiKeys": "API keys",
+    "externalPrograms": "External programs",
+    "shares": "Shares",
+    "notifications": "Notifications",
+    "dateTime": "Time & language",
+    "displayProfiles": "Display profiles",
+    "statistics": "Statistics",
+    "trackers": "Tracker customizations",
+    "premiumThemes": "Themes",
+    "security": "Security",
+    "logs": "Logs"
+  },
+  "nav": {
+    "general": "General",
+    "connections": "Connections",
+    "access": "Access"
+  },
+  "language": {
+    "cardTitle": "Language",
+    "cardDescription": "Choose your preferred display language"
+  },
+  "changePassword": {
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "submit": "Change password",
+    "toasts": {
+      "success": "Password changed successfully",
+      "error": "Failed to change password. Please check your current password."
+    },
+    "validation": {
+      "currentRequired": "Current password is required",
+      "newRequired": "New password is required",
+      "minLength": "Password must be at least 8 characters",
+      "confirmRequired": "Please confirm your password",
+      "mismatch": "Passwords do not match"
+    },
+    "newPasswordHint": "At least 8 characters."
+  },
+  "instances": {
+    "title": "Instances",
+    "description": "Manage your qBittorrent connection settings",
+    "addButton": "Add instance",
+    "titleBarSpeeds": {
+      "label": "Show transfer speeds in the tab title"
+    },
+    "browserTab": {
+      "title": "Browser tab"
+    },
+    "icons": {
+      "title": "Instance icons",
+      "description": "Choose how instances appear in the sidebar and menus."
+    }
+  },
+  "integrations": {
+    "title": "Sonarr and Radarr",
+    "description": "Cross-seed looks up IMDb, TMDb, and TVDb IDs here for more exact matches."
+  },
+  "clientApiKeys": {
+    "cardTitle": "Client proxy keys",
+    "cardDescription": "Keys that let apps such as autobrr reach qBittorrent through qui.",
+    "createButton": "Create key",
+    "unknownError": "An error occurred",
+    "instanceDeleted": "Instance deleted",
+    "idLabel": "ID: {{id}}",
+    "labels": {
+      "created": "Created:",
+      "lastUsed": "Last used:",
+      "showHost": "Show host",
+      "hideHost": "Hide host"
+    },
+    "createDialog": {
+      "title": "New proxy key",
+      "description": "The key reaches only the qBittorrent instance that you pick.",
+      "clientNameLabel": "Client name",
+      "clientNamePlaceholder": "e.g., autobrr, tqm, sonarr, radarr, cross-seed",
+      "instanceLabel": "qBittorrent instance",
+      "instancePlaceholder": "Select an instance"
+    },
+    "newKey": {
+      "title": "Key created for {{name}}",
+      "warning": "Copy the proxy URL now. qui shows it only once.",
+      "proxyUrl": "Proxy URL",
+      "showProxyUrl": "Show proxy URL",
+      "hideProxyUrl": "Hide proxy URL",
+      "done": "Done"
+    },
+    "deleteDialog": {
+      "title": "Delete key?",
+      "description": "{{name}} loses access to qBittorrent through qui. You cannot undo this.",
+      "delete": "Delete"
+    },
+    "toasts": {
+      "created": "Client API key created successfully",
+      "createFailed": "Failed to create client API key",
+      "deleted": "Client API key deleted successfully",
+      "deleteFailed": "Failed to delete client API key: {{error}}"
+    },
+    "emptyTitle": "No keys yet",
+    "emptyDescription": "Create one key for each app that talks to qBittorrent.",
+    "lastUsed": "Last used {{date}}",
+    "neverUsed": "Never used",
+    "validation": {
+      "clientNameRequired": "Client name is required",
+      "selectInstance": "Select a qBittorrent instance"
+    },
+    "created": "Created {{date}}"
+  },
+  "apiKeys": {
+    "cardTitle": "API Keys",
+    "loadingAuthMode": "Loading authentication mode...",
+    "authDisabledTitle": "API keys are unavailable while built-in auth is disabled",
+    "authDisabledDescription": "Requests that pass your reverse proxy and CIDR allowlist can use the qui API directly.",
+    "cardDescription": "Manage API keys for external access",
+    "apiDocs": "API Docs",
+    "description": "API keys allow external applications to access your qBittorrent instances.",
+    "createButton": "Create API Key",
+    "editButton": "Edit {{name}}",
+    "deleteButton": "Delete {{name}}",
+    "loading": "Loading API keys...",
+    "empty": "No API keys created yet",
+    "createDialog": {
+      "title": "Create API Key",
+      "description": "Give the key a name, and pick only the access that it needs.",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g., Automation Script",
+      "nameRequired": "Name is required",
+      "submit": "Create API Key",
+      "creating": "Creating..."
+    },
+    "editDialog": {
+      "title": "Edit API Key",
+      "description": "Changes apply on the next request of this key. qui never shows the key itself again.",
+      "submit": "Save changes",
+      "saving": "Saving..."
+    },
+    "templates": {
+      "title": "Template",
+      "help": "Replaces the permissions below with what a tool needs, and clears the instance limit when needed. You can change any box afterwards.",
+      "pick": "Pick a template",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Cross-seed and season-pack webhooks (not download client)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "Instance list and transfer totals (dashbrr 0.5.0 or later)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "qui widget. Limit the key to an instance only when the widget sets instance"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "Dir Scan webhook only. The download client uses a Client proxy key."
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "Browser extension to add torrents"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (cross-seed)",
+          "description": "Add torrents, manual match, and season-pack assembly"
+        }
+      }
+    },
+    "permissions": {
+      "title": "Permissions",
+      "help": "Write includes read and run. Run does not include read, because settings hold credentials.",
+      "required": "Pick at least one permission.",
+      "access": "Access",
+      "allAreas": "All areas",
+      "allAreasExcept": "All areas except {{areas}}",
+      "refusedByLimit": "Cross-seed and Dir Scan refuse a key with an instance limit, so qui does not save those permissions.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Show access by area for {{name}}",
+      "partialArea": "{{area}} ({{levels}} only)",
+      "legend": {
+        "title": "One block per permission area:",
+        "none": "no access"
+      },
+      "levels": {
+        "read": "read",
+        "run": "run",
+        "write": "write"
+      },
+      "areas": {
+        "instances": "Instances",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-seed",
+        "dirScan": "Dir Scan",
+        "automations": "Automations",
+        "rss": "RSS",
+        "backups": "Backups",
+        "orphanScan": "Orphan scan",
+        "externalPrograms": "External programs",
+        "indexers": "Indexers",
+        "arr": "Arr",
+        "notifications": "Notifications",
+        "settings": "Settings",
+        "logs": "Logs",
+        "system": "System"
+      }
+    },
+    "instanceLimit": {
+      "title": "Instance limit",
+      "help": "Pick the instances that this key can reach. No pick means all instances, also the ones that you add later.",
+      "reaches": "Reaches",
+      "all": "All instances",
+      "only": "Only {{instances}}",
+      "none": "No instances. The limit holds only deleted instances.",
+      "deleted": "Deleted instance {{id}}"
+    },
+    "newKey": {
+      "label": "Your new API key",
+      "warning": "Save this key now. You won't be able to see it again.",
+      "done": "Done",
+      "apiKey": "API key"
+    },
+    "deleteDialog": {
+      "title": "Delete API Key?",
+      "description": "This action cannot be undone. Any applications using this key will lose access.",
+      "cancel": "Cancel",
+      "delete": "Delete"
+    },
+    "toasts": {
+      "created": "API key created successfully",
+      "createFailed": "Failed to create API key",
+      "deleted": "API key deleted successfully",
+      "deleteFailed": "Failed to delete API key",
+      "updated": "API key updated successfully",
+      "updateFailed": "Failed to update API key"
+    }
+  },
+  "externalPrograms": {
+    "cardTitle": "External programs",
+    "cardDescription": "Programs and scripts that you can run from the torrent context menu.",
+    "createButton": "Add program",
+    "createTitle": "Add external program",
+    "createDescription": "Set up a program or script to run from the torrent context menu.",
+    "unknownError": "Unknown error",
+    "editTitle": "Edit external program",
+    "deleteTitle": "Delete external program",
+    "delete": "Delete",
+    "deleteConflictIntro": "This program is used by the following automation rules:",
+    "deleteConflictDescription": "If you proceed, the external program action will be removed from these automation rules.",
+    "deleteDescription": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+    "deleteAnyway": "Delete anyway",
+    "nameLabel": "Name",
+    "namePlaceholder": "My External Program",
+    "pathLabel": "Program path",
+    "pathPlaceholder": "/usr/bin/my-script.sh or C:\\Scripts\\my-script.bat",
+    "argumentsLabel": "Arguments",
+    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
+    "availablePlaceholders": "Available placeholders",
+    "pathMappings": "Path mappings",
+    "remotePathPlaceholder": "/mnt/remote-storage",
+    "localPathPlaceholder": "/home/user/mounts/remote",
+    "removePathMapping": "Remove path mapping",
+    "addPathMapping": "Add path mapping",
+    "pathMappingsDescription": "Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote. Paths are matched by longest prefix first. Use the same path separator style as the remote qBittorrent instance (/ for Linux, \\ for Windows).",
+    "launchInTerminal": "Open in a terminal",
+    "launchInTerminalDescription": "When enabled, the program will open in a new terminal window. Disable for GUI applications or programs that don't need terminal output.",
+    "enableProgram": "Enabled",
+    "toasts": {
+      "created": "External program created successfully",
+      "createFailed": "Failed to create external program: {{error}}",
+      "updated": "External program updated successfully",
+      "updateFailed": "Failed to update external program: {{error}}",
+      "deleted": "External program deleted successfully",
+      "deleteFailed": "Failed to delete external program: {{error}}"
+    },
+    "validation": {
+      "nameRequired": "Program name is required",
+      "pathRequired": "Program path is required"
+    },
+    "placeholders": {
+      "hash": "Torrent hash",
+      "name": "Torrent name",
+      "savePath": "Save path",
+      "contentPath": "Content path",
+      "category": "Category",
+      "tags": "Tags (comma-separated)",
+      "state": "Torrent state",
+      "size": "Size in bytes",
+      "progress": "Progress (0-1)",
+      "comment": "Torrent comment"
+    },
+    "remotePath": "Remote path",
+    "localPath": "Local path",
+    "save": "Save",
+    "emptyTitle": "No external programs",
+    "emptyDescription": "Add a program or script to run it from the torrent context menu.",
+    "pathMappingsCount_one": "{{count}} path mapping",
+    "pathMappingsCount_other": "{{count}} path mappings"
+  },
+  "notifications": {
+    "cardTitle": "Notifications",
+    "cardDescription": "Send alerts and status updates via any Shoutrrr-supported service",
+    "addButton": "Add target",
+    "emptyTitle": "No notification targets yet",
+    "emptyDescription": "Add one to get alerts on Discord, Telegram, Notifiarr, or another Shoutrrr service.",
+    "allEvents": "All events except System notice",
+    "eventSummary": "{{selected}} of {{total}} events",
+    "groups": {
+      "torrent": "Torrent",
+      "maintenance": "Maintenance",
+      "crossSeed": "Cross-seed",
+      "automations": "Automations",
+      "other": "Other"
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "My Discord",
+      "url": "Shoutrrr URL",
+      "urlPlaceholder": "discord://token@id or notifiarrapi://apikey",
+      "urlDescriptionPrefix": "Use any Shoutrrr-supported URL scheme. Notifiarr API uses",
+      "urlDescriptionSuffix": "Discord webhook URLs auto-convert to",
+      "examples": {
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
+      },
+      "enabled": "Enabled",
+      "events": "Events",
+      "allEvents": "All events",
+      "selectGroup": "All {{group}} events"
+    },
+    "dialog": {
+      "newTitle": "New notification target",
+      "newDescription": "Configure where qui should send alerts and status updates.",
+      "editTitle": "Edit notification target",
+      "editDescription": "Update delivery settings for this target.",
+      "deleteTitle": "Delete notification target?",
+      "deleteDescription": "This will remove {{name}}. You can re-add it later if needed.",
+      "save": "Save",
+      "delete": "Delete"
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "urlRequired": "Notification URL is required",
+      "selectEvent": "Select at least one event"
+    },
+    "toasts": {
+      "created": "Notification target created successfully",
+      "createFailed": "Failed to create notification target",
+      "updated": "Notification target updated successfully",
+      "updateFailed": "Failed to update notification target",
+      "deleted": "Notification target deleted successfully",
+      "deleteFailed": "Failed to delete notification target",
+      "testSent": "Test notification sent successfully",
+      "testFailed": "Failed to send test notification"
+    },
+    "actions": {
+      "sendTest": "Send test"
+    }
+  },
+  "dateTime": {
+    "cardTitle": "Date and time",
+    "cardDescription": "Configure timezone, date format, and time display preferences",
+    "timezone": "Timezone",
+    "detected": "detected",
+    "regions": {
+      "UTC": "UTC",
+      "Americas": "Americas",
+      "Europe": "Europe",
+      "Asia": "Asia",
+      "Africa": "Africa",
+      "Oceania": "Oceania"
+    },
+    "use12Hour": "Use 12-hour format (AM/PM)",
+    "dateFormat": "Date format",
+    "isoFormat": "ISO 8601 (YYYY-MM-DD)",
+    "usFormat": "US Format (MM/DD/YYYY)",
+    "euFormat": "European Format (DD/MM/YYYY)",
+    "relativeFormat": "Relative (e.g., \"2 hours ago\")",
+    "preview": "Preview",
+    "previewDescription": "This is how dates and times will appear in the application"
+  },
+  "statistics": {
+    "cardTitle": "Statistics",
+    "cardDescription": "qui records the upload and download of each torrent in its database. These settings apply to all instances.",
+    "recording": {
+      "label": "Record transfer history",
+      "description": "While this is off, qui records nothing and keeps the stored history. The time while it is off becomes a recording gap."
+    },
+    "retention": {
+      "label": "Keep daily detail for",
+      "description": "After this time, qui folds the hourly totals into days, and the daily bytes of each torrent into one row for each year. The totals stay the same. When you select a shorter time, qui folds the older detail at the next reading, and you cannot get it back.",
+      "days90": "90 days",
+      "days400": "400 days",
+      "forever": "Forever"
+    },
+    "size": {
+      "label": "History size"
+    },
+    "deleteHistory": {
+      "label": "Delete history",
+      "description": "Delete the transfer history of one instance or of all instances. You cannot get it back.",
+      "instance": "Instance",
+      "allInstances": "All instances",
+      "unnamedInstance": "Instance {{id}}",
+      "everything": "Everything",
+      "before": "Everything before a date",
+      "date": "Date",
+      "button": "Delete history",
+      "confirmTitle": "Delete history?",
+      "confirmEverything": "qui deletes all the history of {{name}}. Recording starts again with a new baseline. You cannot undo this.",
+      "confirmBefore": "qui deletes the history of {{name}} before {{date}}. If recording started before that date, the bytes from before the first recording go too, and \"Recording since\" moves to that date. You cannot undo this.",
+      "sqliteSpace": "The database file keeps its size. SQLite uses the free space again for new history.",
+      "postgresSpace": "A delete of everything of all instances gives the space back to the disk at once. After another delete, Postgres uses the free space again for new history.",
+      "confirm": "Delete",
+      "deleted": "History deleted",
+      "failed": "Failed to delete the history",
+      "shrink": {
+        "label": "Also shrink the database file",
+        "restart": "qui restarts and makes the file smaller, so you get the disk space back. qui is unavailable for a short time.",
+        "nextStart": "qui cannot restart itself on this install. The shrink runs at the next start of qui.",
+        "tooLittleSpace": "The disk has {{free}} free, and a shrink needs up to {{need}}. It is safe to leave this off: SQLite uses the free space again for new history.",
+        "manualDocs": "Shrink the file by hand"
+      }
+    },
+    "toasts": {
+      "saved": "Statistics settings saved",
+      "saveFailed": "Failed to save the Statistics settings"
+    }
+  },
+  "security": {
+    "changePassword": {
+      "title": "Change password",
+      "description": "Update your account password"
+    },
+    "browserIntegration": {
+      "title": "Browser integration",
+      "registerDescription": "Register qui as your browser's handler for magnet links. This allows you to open magnet links directly in qui.",
+      "registerButton": "Register as handler",
+      "toasts": {
+        "requested": "Magnet handler registration requested",
+        "failed": "Failed to register magnet handler"
+      }
+    }
+  },
+  "logs": {
+    "description": "View live logs and configure log settings",
+    "configuration": {
+      "title": "Log settings",
+      "description": "Adjust log level, output path, and rotation settings.",
+      "level": "Log level",
+      "levelPlaceholder": "Select log level",
+      "path": "Log file path",
+      "pathPlaceholder": "Leave empty for stdout only",
+      "maxSize": "Max size (MB)",
+      "maxBackups": "Max backups",
+      "saveSettings": "Save settings",
+      "lockedByEnv": "Set by an environment variable",
+      "lockedByEmptyEnv": "Set by an empty environment variable",
+      "configFile": "Config file"
+    },
+    "viewer": {
+      "connected": "Connected",
+      "searchPlaceholder": "Search logs...",
+      "allLevels": "All levels",
+      "all": "All",
+      "none": "None",
+      "levelCount_one": "{{count}} level",
+      "levelCount_other": "{{count}} levels",
+      "mutedCount_one": "{{count}} muted",
+      "mutedCount_other": "{{count}} muted",
+      "mutedMessages": "Muted messages",
+      "clearAll": "Clear all",
+      "clear": "Clear",
+      "noEntriesMatch": "No entries match the current filter",
+      "waiting": "Waiting for log entries...",
+      "showing": "Showing {{shown}} of {{total}} entries ({{max}} {{mode}})",
+      "maxLive": "max",
+      "maxPaused": "max while paused",
+      "oldestEntriesDropped": "• oldest entries dropped",
+      "muteSimilarEntries": "Mute similar entries",
+      "title": "Live log",
+      "description": "New entries appear as qui writes them.",
+      "pause": "Pause",
+      "follow": "Follow",
+      "connecting": "Connecting…",
+      "reconnecting": "Connection lost. Reconnecting…",
+      "levels": "Levels",
+      "unmute": "Unmute {{message}}"
+    },
+    "entryDialog": {
+      "title": "Log entry",
+      "rawLine": "Raw log line",
+      "copyRaw": "Copy raw",
+      "copyJson": "Copy JSON",
+      "mute": "Mute similar"
+    },
+    "toasts": {
+      "settingsUpdated": "Log settings updated",
+      "settingsFailed": "Failed to update log settings",
+      "jsonCopied": "JSON log entry copied",
+      "rawCopied": "Raw log entry copied",
+      "copyFailed": "Failed to copy log entry"
+    },
+    "files": {
+      "title": "Log files",
+      "toasts": {
+        "downloadFailed": "Failed to download {{filename}}"
+      },
+      "description": "The current log file and its rotated copies.",
+      "emptyTitle": "No log files",
+      "emptyDescription": "Set a log file path to keep the log on disk.",
+      "download": "Download"
+    },
+    "validation": {
+      "maxSize": "Enter 1 or more",
+      "maxBackups": "Enter 0 or more"
+    }
+  },
+  "themes": {
+    "selector": {
+      "title": "Themes",
+      "loadingDescription": "Loading available themes...",
+      "description": "Click a theme to use it.",
+      "verificationUnavailable": "License verification unavailable. Switching to a licensed theme is temporarily disabled.",
+      "notLoaded": "Licensed themes not loaded",
+      "notLoadedDescription": "Run",
+      "defaultThemeVisit": "qui shows the default theme for this visit, because the address has ?theme=default. Select a theme to end it.",
+      "search": "Search themes",
+      "filterLabel": "Filter themes",
+      "noMatch": "No theme matches “{{query}}”.",
+      "needsLicense": "Needs a license",
+      "lockedCount_one": "{{count}} theme needs a license.",
+      "lockedCount_other": "{{count}} themes need a license.",
+      "showAll_one": "Show {{count}} theme",
+      "showAll_other": "Show all {{count}} themes",
+      "showFewer": "Show fewer themes",
+      "variationCount_one": "{{count}} color variation",
+      "variationCount_other": "{{count}} color variations"
+    },
+    "current": {
+      "label": "In use",
+      "colors": "Color variations"
+    },
+    "groups": {
+      "all": "All",
+      "free": "Free",
+      "licensed": "Licensed",
+      "custom": "Custom"
+    },
+    "menu": {
+      "button": "Choose menu themes",
+      "title": "Choose menu themes",
+      "description": "Choose the themes that the theme menu lists, in the top bar and in the phone footer. The theme in use is always in the menu.",
+      "groupCount": "{{shown}} of {{total}}",
+      "groupsLocked": "Clear the search to use the group check boxes.",
+      "inUse": "In use",
+      "summary": "{{shown}} of {{total}} themes in the menu",
+      "reset": "Reset to defaults",
+      "undo": "Undo reset",
+      "done": "Done"
+    },
+    "toasts": {
+      "premiumRequired": "License required",
+      "premiumRequiredDescription": "Add a valid license to unlock all themes."
+    },
+    "license": {
+      "loadingTitle": "License Management",
+      "loadingDescription": "Loading theme licenses...",
+      "managementTitle": "License Management",
+      "managementDescription": "Manage your theme license",
+      "providers": {
+        "licensePortal": "license portal"
+      },
+      "status": {
+        "unlockTitle": "Unlock all themes",
+        "unlockDescription": "Pay what you want (min $9.99) • Lifetime license • All themes",
+        "activeTitle": "License Active",
+        "activeDescription": "You have access to all current and future themes",
+        "supporterTitle": "Themes unlocked",
+        "supporterDescription": "Your support unlocks all current and future themes. It includes a theme license for life. To keep the themes after your support ends, add the license key from the license portal.",
+        "supportEndedDescription": "Your support included a theme license for life. Find its key in the license portal, and add it here.",
+        "activationRequiredTitle": "License Activation Required",
+        "activationRequiredDescription": "Your license needs to be activated on this machine",
+        "offlineTitle": "License Service Unreachable",
+        "offlineDescription": "qui could not reach the license service for 7 days, so the licensed themes are locked. qui checks at startup and one time each day. The themes unlock when the service answers. You do not have to re-activate the license."
+      },
+      "portalHelp": {
+        "prefix": "Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the",
+        "suffix": "."
+      },
+      "discord": {
+        "title": "Discord perk",
+        "prefix": "Claim the",
+        "afterRole": "role for access to a private channel.",
+        "openDiscord": "Open qui Discord",
+        "opensInNewTab": "(opens in new tab)",
+        "afterLink": ", run",
+        "copyVerifyAriaLabel": "Copy /verify command",
+        "copyVerifyTitle": "Click to copy",
+        "verifyCommand": "/verify",
+        "afterVerify": "in",
+        "channel": "#qui",
+        "suffix": ", and sign in with your license email."
+      },
+      "details": {
+        "productAdded": "{{productName}} • Added {{date}}",
+        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Added {{date}}",
+        "statusLabels": {
+          "invalid": "Invalid",
+          "offline": "Offline",
+          "unknown": "Unknown"
+        }
+      },
+      "invalid": {
+        "dodo": "This license is not active on this machine. Click re-activate to use it here. If you hit the activation limit, go to <portal>licenses.getqui.com</portal>, sign up or sign in with the email you used to buy the license, and deactivate a machine you no longer use under Machine Instances."
+      },
+      "errors": {
+        "expired": "Your license key has expired.",
+        "notActive": "This license key is no longer active.",
+        "invalid": "This license key is invalid.",
+        "notFound": "The license key you entered is not valid.",
+        "databaseCopied": "This license was activated on a different machine. The database appears to have been copied.",
+        "conditionsMismatch": "License key does not match required conditions.",
+        "activationLimit": "License activation limit has been reached. Go to <portal>licenses.getqui.com</portal> and sign up or sign in with the email you used to buy the license. Open Machine Instances, deactivate a machine you no longer use, then try again.",
+        "limitReached": "License activation limit has been reached.",
+        "usageLimit": "License usage limit exceeded.",
+        "unreachable": "Unable to reach the license service. Please try again shortly.",
+        "tooManyAttempts": "Too many attempts. Please wait a moment and try again.",
+        "rateLimited": "Please wait before trying again.",
+        "generic": "Failed to validate license key. Please try again.",
+        "deleteFailed": "Failed to remove the license. Please try again."
+      },
+      "actions": {
+        "addLicense": "Add License",
+        "remove": "Remove",
+        "getPremium": "Get a license",
+        "reactivate": "Re-activate License",
+        "activating": "Activating...",
+        "copyLicenseKey": "Copy License Key",
+        "activate": "Activate License",
+        "openDodoCheckout": "Open DodoPayments checkout",
+        "openLicensePortal": "Open license portal"
+      },
+      "deleteDialog": {
+        "title": "Remove license?",
+        "description": "Are you sure you want to remove this license from this machine? qui will try to free the remote activation slot too, but local removal will still finish if that request fails.",
+        "keyLabel": "License Key to Remove:",
+        "recoverPrefix": "If needed, you can recover it later from your"
+      },
+      "addDialog": {
+        "title": "Add License",
+        "description": "Enter your license key to unlock all themes.",
+        "label": "License Key",
+        "placeholder": "Enter your license key",
+        "recoverKey": "Recover key?",
+        "validation": {
+          "required": "License key is required"
+        }
+      },
+      "paymentDialog": {
+        "title": "Get a License",
+        "description": "Pay what you want (min $9.99) • Lifetime license • All themes",
+        "steps": {
+          "choosePaymentMethod": {
+            "title": "Choose payment method",
+            "cardTitle": "Card or local methods",
+            "cardDescription": "Pay directly in DodoPayments. You will return to qui after payment.",
+            "cryptoTitle": "Crypto",
+            "cryptoDescription": "Crypto payment still completes in DodoPayments checkout.",
+            "xmrHelp": "XMR is manual: reach out on Discord or email s0up4200@pm.me.",
+            "cryptoSteps": {
+              "readmePrefix": "Donate using the addresses in the",
+              "readmeSuffix": ".",
+              "verifyPrefix": "Verify at",
+              "verifySuffix": "to get your discount code.",
+              "applyCode": "Open DodoPayments checkout, paste the code in Discount code, then click Apply.",
+              "completeCheckout": "Confirm total is $0.00, then complete checkout."
+            }
+          },
+          "findLicenseKey": {
+            "title": "Find your license key",
+            "description": "Your license key is shown after checkout. You can also recover it later from the license portal."
+          },
+          "activateLicense": {
+            "title": "Activate your license",
+            "description": "After checkout returns here, use Add License to activate your key."
+          }
+        }
+      },
+      "copiedVerify": "Verification command copied",
+      "failedCopyVerify": "Failed to copy verification command",
+      "toasts": {
+        "activationSuccessPremium": "License activated! Thank you!",
+        "activationSuccessSupporter": "Supporter key added. Thank you!",
+        "paymentCompleted": "Payment completed. Add your license key to finish setup.",
+        "paymentNotCompleted": "Payment did not complete successfully.",
+        "returnedFromCheckout": "Returned from checkout. Add your license key when ready.",
+        "keyCopied": "License key copied to clipboard",
+        "copyFailed": "Failed to copy license key",
+        "removedFromMachine": "License removed from this machine"
+      }
+    },
+    "custom": {
+      "title": "Custom themes",
+      "description": "Write or paste a theme in the theme editor, or put theme CSS files into the theme folder on the server.",
+      "lockedDescription": "Get a license to add your own themes: write or paste a theme in the theme editor, or put theme CSS files into the theme folder on the server.",
+      "unlockCta": "Get a license",
+      "refresh": "Refresh",
+      "themeCount_one": "{{count}} theme",
+      "themeCount_other": "{{count}} themes",
+      "folderLabel": "Theme folder",
+      "actionsFor": "Actions for {{theme}}",
+      "parseErrorsTitle": "Not valid themes:",
+      "parseErrorsHint": "Edit a file to fix it, or remove it.",
+      "noneFound": "No custom themes yet. Click New theme, or put a .css file in the theme folder and click Refresh.",
+      "loadError": "Couldn't load custom themes. Check the server logs and the permissions of the theme folder.",
+      "newTheme": "New theme",
+      "copyPrompt": "Copy prompt for your AI",
+      "promptCopied": "Prompt copied. Paste it into your AI assistant and describe the look that you want.",
+      "promptCopyFailed": "Could not copy the prompt",
+      "edit": "Edit",
+      "remove": "Remove",
+      "removeTitle": "Remove {{theme}}?",
+      "removeDescription": "qui deletes the file of this theme from the theme folder. You cannot undo this. A device that uses this theme shows the default theme.",
+      "removeConfirm": "Remove",
+      "removed": "Theme removed",
+      "removeFailed": "Could not remove the theme: {{message}}",
+      "editLoadFailed": "Could not read the theme file: {{message}}",
+      "editor": {
+        "newTitle": "New theme",
+        "editTitle": "Edit theme",
+        "description": "Preview changes in this browser. Save stores the theme on the server.",
+        "name": "Name",
+        "namePlaceholder": "Theme name",
+        "savedAs": "File name: {{filename}}",
+        "css": "CSS",
+        "cssHelp": "Paste or write the CSS of a theme. It needs a :root block for light mode and a .dark block for dark mode, each with at least one design token. Copy prompt for your AI gives an AI assistant the full rules.",
+        "cssPlaceholder": "/* @name: My theme */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "Enter a name with a letter or a digit.",
+        "nameRequired": "Enter a name, or add an @name line to the CSS.",
+        "save": "Save",
+        "saveFailed": "Could not save the theme.",
+        "saved": "Theme saved",
+        "savedNotLoaded": "The theme is saved, but qui could not load the theme list. Click Refresh next to the theme folder.",
+        "replaceTitle": "Replace the theme?",
+        "replaceDescription": "A custom theme with the file name {{filename}} exists. Replace it with this theme?",
+        "replace": "Replace",
+        "problems": {
+          "missingRoot": "qui cannot use this CSS: it has no :root block with a design token. The preview shows the last CSS that qui could use.",
+          "missingDark": "qui cannot use this CSS: it has no .dark block with a design token. The preview shows the last CSS that qui could use.",
+          "outsideFile": "Line {{line}} can load a file from another website. The preview keeps the last valid CSS, and Save refuses this CSS.",
+          "unreadable": "qui cannot read line {{line}}: a quoted string or a url() is not closed. The preview shows the last CSS that qui could use."
+        },
+        "previewing": "Previewing in this browser",
+        "previewWaits": "The preview starts when you change the CSS.",
+        "emptyStatus": "Paste or write the CSS of a theme to see a preview."
+      }
+    },
+    "layout": {
+      "title": "Theme sync",
+      "mobileSplit": "Separate theme for mobile layout",
+      "mobileSplitHelp": "The mobile layout (a window less than 768 px wide) and the desktop layout each keep their own theme, mode, and variation. This setting applies to every browser.",
+      "localOnly": "Keep this browser's theme local",
+      "localOnlyHelp": "This browser does not take the theme from the server and does not send its theme changes to the server. This setting applies only to this browser.",
+      "changesMobile": "Changes the mobile theme",
+      "changesDesktop": "Changes the desktop theme",
+      "changesLocal": "Changes the theme of this browser only.",
+      "splitNeedsSync": "To change the mobile layout setting, turn off the local setting.",
+      "saveError": "Failed to save the theme setting",
+      "mobileSplitOffWarning": "Turning this off deletes the mobile theme."
+    }
+  },
+  "arrInstances": {
+    "addButton": "Add instance",
+    "addDialog": {
+      "title": "New instance",
+      "description": "A Sonarr or Radarr server that cross-seed asks for IDs."
+    },
+    "editDialog": {
+      "title": "Edit instance"
+    },
+    "deleteDialog": {
+      "title": "Delete instance?",
+      "description": "qui stops using {{name}} for ID lookups. You cannot undo this."
+    },
+    "unknownError": "Unknown error",
+    "actions": {
+      "testConnection": "Test connection",
+      "delete": "Delete",
+      "save": "Save"
+    },
+    "form": {
+      "type": "Type",
+      "name": "Name",
+      "namePlaceholder": "My {{type}}",
+      "baseUrl": "Base URL",
+      "apiKey": "API key",
+      "apiKeyPlaceholder": "Enter API key",
+      "apiKeyPlaceholderEdit": "••••••••",
+      "apiKeyDescription": "Found in Settings > General in {{type}}",
+      "basicAuth": "Basic auth",
+      "basicAuthDescription": "Use HTTP basic authentication for ARR behind a reverse proxy.",
+      "basicUsername": "Username",
+      "basicPassword": "Password",
+      "basicPasswordKeep": "Leave it as it is to keep the current password.",
+      "priority": "Priority",
+      "priorityDescription": "Higher priority instances are queried first",
+      "timeoutSeconds": "Timeout (seconds)",
+      "enabled": "Enable this instance",
+      "types": {
+        "sonarr": "Sonarr (TV shows)",
+        "radarr": "Radarr (Movies)",
+        "sonarrShort": "Sonarr",
+        "radarrShort": "Radarr"
+      },
+      "apiKeyKeep": "Leave empty to keep the current key."
+    },
+    "validation": {
+      "nameRequired": "Name is required",
+      "baseUrlRequired": "Base URL is required",
+      "apiKeyRequired": "API key is required",
+      "baseUrlAndApiKeyRequired": "Base URL and API key are required to test the connection",
+      "basicUsernameRequired": "Basic auth username is required",
+      "basicPasswordRequired": "Basic auth password is required to test the connection",
+      "basicPasswordRequiredSubmit": "Basic auth password is required",
+      "basicPasswordKeepOrEnter": "Enter a new basic auth password or keep the existing one"
+    },
+    "toasts": {
+      "created": "ARR instance created successfully",
+      "createFailed": "Failed to create ARR instance: {{error}}",
+      "updated": "ARR instance updated successfully",
+      "updateFailed": "Failed to update ARR instance: {{error}}",
+      "deleted": "ARR instance deleted successfully",
+      "deleteFailed": "Failed to delete ARR instance: {{error}}",
+      "connectionSuccess": "Connection successful",
+      "connectionFailed": "Connection failed: {{error}}",
+      "testFailed": "Failed to test connection: {{error}}"
+    },
+    "status": {
+      "connected": "Connected",
+      "failed": "Test failed"
+    },
+    "tested": "Tested {{date}}",
+    "emptyTitle": "No Sonarr or Radarr yet",
+    "emptyDescription": "Add one so cross-seed can search by ID."
+  },
+  "indexers": {
+    "title": "Torznab indexers",
+    "deleteIndexer": "Delete indexer",
+    "deleteIndexerDescription": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+    "deleteAllIndexers": "Delete all indexers",
+    "deleteAllDescription": "Are you sure you want to delete all {{count}} indexers? This action cannot be undone.",
+    "toast": {
+      "deletedSuccess": "Indexer deleted",
+      "deleteFailed": "Failed to delete indexer",
+      "deleteAllSuccess": "Deleted all {{count}} indexers",
+      "deleteAllPartial": "Deleted {{success}} indexers, {{failed}} failed: {{names}}",
+      "testSuccess": "Connection test successful",
+      "noIndexersToTest": "No indexers to test",
+      "testing": "Testing {{count}} indexers...",
+      "testAllSuccess": "All {{count}} indexers tested successfully",
+      "testAllPartial": "{{success}} passed, {{failed}} failed",
+      "failedIndexers": "Failed indexers: {{names}}",
+      "capsSynced": "Capabilities synced from backend",
+      "failedToSyncCaps": "Failed to sync caps",
+      "testFailed": "Connection test failed"
+    },
+    "priorityLabels": {
+      "interactive": "Interactive",
+      "rss": "RSS",
+      "completion": "Completion",
+      "background": "Background"
+    },
+    "contentTypeLabels": {
+      "movie": "Movie",
+      "tv": "TV",
+      "tv_daily": "TV (Daily)",
+      "xxx": "XXX",
+      "music": "Music",
+      "audiobook": "Audiobook",
+      "book": "Book",
+      "comic": "Comic",
+      "magazine": "Magazine",
+      "education": "Education",
+      "app": "App",
+      "game": "Game",
+      "unknown": "Unknown"
+    },
+    "page": {
+      "summary": "{{enabled}} enabled, {{capabilities}} with capabilities",
+      "description": "Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints",
+      "deleteAll": "Delete all",
+      "addMenu": {
+        "discover": "Discover in Jackett or Prowlarr",
+        "manual": "Add one by URL"
+      }
+    },
+    "dialog": {
+      "addTitle": "Add indexer",
+      "editTitle": "Edit indexer",
+      "addDescription": "Add a new Torznab indexer for cross-seed discovery",
+      "editDescription": "Update indexer settings",
+      "labels": {
+        "name": "Name",
+        "backend": "Backend",
+        "baseUrl": "Base URL",
+        "indexerId": "Indexer ID",
+        "apiKey": "API key",
+        "priority": "Priority",
+        "timeout": "Timeout (seconds)",
+        "enabled": "Enabled",
+        "basicAuth": "Basic auth",
+        "basicAuthDescription": "Use HTTP basic authentication for Torznab behind a reverse proxy.",
+        "basicUsername": "Basic username",
+        "basicPassword": "Basic password"
+      },
+      "placeholders": {
+        "name": "My Indexer",
+        "selectBackend": "Select backend",
+        "apiKeyEdit": "Leave blank to keep existing",
+        "apiKeyCreate": "Your API key",
+        "indexerIdProwlarr": "Prowlarr indexer ID (e.g., 1)",
+        "indexerIdJackett": "Optional Jackett indexer ID (e.g., aither)",
+        "username": "Username",
+        "password": "Password"
+      },
+      "hints": {
+        "indexerIdProwlarr": "Enter the numeric ID from the indexer details page in Prowlarr.",
+        "indexerIdJackett": "Optional for Jackett. Leave blank to let qui derive it automatically.",
+        "basicPasswordKeep": "Leave as <redacted> to keep existing password."
+      },
+      "backends": {
+        "jackett": "Jackett",
+        "prowlarr": "Prowlarr",
+        "native": "Native Torznab"
+      },
+      "buttons": {
+        "save": "Save"
+      },
+      "toast": {
+        "createdSuccess": "Indexer created successfully",
+        "createdWithWarnings": "Indexer created with warnings: {{warnings}}",
+        "updatedSuccess": "Indexer updated successfully",
+        "updatedWithWarnings": "Indexer updated with warnings: {{warnings}}",
+        "failedCreate": "Failed to create indexer",
+        "failedEdit": "Failed to edit indexer",
+        "basicUsernameRequired": "Basic auth username is required",
+        "basicPasswordRequired": "Basic auth password is required",
+        "basicPasswordRequiredOrKeep": "Basic auth password is required (or keep <redacted>)"
+      },
+      "validation": {
+        "nameRequired": "Enter a name.",
+        "baseUrlRequired": "Enter the base URL.",
+        "baseUrlInvalid": "Enter a full URL, for example {{example}}.",
+        "indexerIdRequired": "Enter the Prowlarr indexer ID.",
+        "apiKeyRequired": "Enter the API key.",
+        "priorityInvalid": "Enter a whole number, 0 or more.",
+        "timeoutInvalid": "Enter a whole number from 5 to 120."
+      }
+    },
+    "autodiscovery": {
+      "title": "Discover indexers",
+      "descriptionInput": "Connect to Jackett or Prowlarr to discover configured indexers",
+      "descriptionSelect": "Select indexers to import",
+      "labels": {
+        "indexerUrl": "Indexer URL",
+        "apiKey": "API key",
+        "basicAuth": "Basic auth",
+        "basicAuthDescription": "Use HTTP basic authentication for Jackett/Prowlarr behind a reverse proxy.",
+        "basicUsername": "Basic username",
+        "basicPassword": "Basic password"
+      },
+      "placeholders": {
+        "indexerUrl": "http://localhost:9696",
+        "apiKey": "Your indexer API key",
+        "username": "Username",
+        "password": "Password"
+      },
+      "hints": {
+        "indexerUrl": "Prowlarr defaults to http://localhost:9696, Jackett to http://localhost:9117."
+      },
+      "buttons": {
+        "discover": "Discover",
+        "back": "Back",
+        "import": "Import {{count}} indexer",
+        "importPlural": "Import {{count}} indexers",
+        "selectAll": "Select all",
+        "deselectAll": "Deselect all"
+      },
+      "selectionCount": "{{selected}} of {{total}} selected",
+      "noIndexersFound": "No indexers found",
+      "willUpdate": "Will update",
+      "typeLabel": "Type:",
+      "notConfigured": "Not configured",
+      "unknownError": "Unknown error",
+      "toast": {
+        "urlRequired": "Indexer URL is required",
+        "basicAuthRequired": "Basic auth requires username and password",
+        "discoveredWithExisting": "Found {{total}} indexers ({{existing}} already exist)",
+        "discovered": "Found {{count}} indexers",
+        "discoverFailed": "Failed to discover indexers: {{error}}",
+        "importSuccess": "Success: {{details}}",
+        "importWithWarnings": "{{details}} ({{warningCount}} with warnings)",
+        "moreWarnings": "...and {{count}} more warnings",
+        "moreErrors": "...and {{count}} more errors",
+        "created": "{{count}} created",
+        "updated": "{{count}} updated",
+        "failed": "{{count}} failed"
+      },
+      "savedConnections": {
+        "title": "Saved connections",
+        "description": "Use a server you imported from before. The API key stays on the server.",
+        "manual": "Enter manually",
+        "storedKey": "The stored API key for this server is used.",
+        "indexerCount_one": "{{count}} indexer",
+        "indexerCount_other": "{{count}} indexers"
+      }
+    },
+    "table": {
+      "name": "Name",
+      "backend": "Backend",
+      "priority": "Priority",
+      "status": "Status",
+      "capabilities": "Capabilities",
+      "working": "Working",
+      "failed": "Failed",
+      "untested": "Untested",
+      "testAll": "Test all",
+      "clearFilters": "Clear filters",
+      "showingCount": "Showing {{shown}} of {{total}} indexers",
+      "noMatch": "No indexers match the current filters",
+      "noCapabilities": "No capabilities",
+      "filterStatus": "Status",
+      "filterTestStatus": "Test status",
+      "filterBackend": "Backend",
+      "filterAll": "All",
+      "filterJackett": "Jackett",
+      "filterProwlarr": "Prowlarr",
+      "filterNative": "Native",
+      "tooltipTest": "Test connection",
+      "tooltipSyncCaps": "Sync capabilities",
+      "tooltipDelete": "Delete",
+      "sortBy": "Sort by",
+      "sortAscending": "Ascending",
+      "sortDescending": "Descending",
+      "sortAndFilter": "Sort & filter",
+      "order": "Order",
+      "filterEnabled": "Enabled",
+      "filterDisabled": "Disabled"
+    },
+    "activity": {
+      "title": "Scheduler activity",
+      "running": "Running",
+      "queued": "Queued",
+      "rateLimited": "Rate limited",
+      "noActiveTasks": "No active tasks or rate limits",
+      "andMore": "...and {{count}} more",
+      "workersStatus": "{{used}}/{{total}} workers",
+      "ready": "Ready",
+      "left": "{{time}} left",
+      "description": "Searches that run now, wait in the queue, or wait out a rate limit."
+    },
+    "searchHistory": {
+      "title": "Search history",
+      "searches": "{{count}} searches",
+      "noSearchesYet": "No searches yet",
+      "successful": "{{count}} successful",
+      "failed": "{{count}} failed",
+      "source": "Source: {{source}}",
+      "results": "{{count}} results",
+      "detail": {
+        "release": "Release",
+        "results": "Results",
+        "duration": "Duration",
+        "priority": "Priority",
+        "crossSeed": "Cross-seed",
+        "added": "Added {{count}}",
+        "error": "Error",
+        "searchParameters": "Search parameters",
+        "mode": "Mode",
+        "type": "Type",
+        "job": "Job {{id}}",
+        "statusSuccess": "Success",
+        "statusFailed": "Failed",
+        "statusSkipped": "Skipped",
+        "statusRateLimited": "Rate limited",
+        "season": "Season",
+        "episode": "Episode",
+        "query": "Query",
+        "finished": "Finished"
+      },
+      "description": "The latest searches that qui sent to your indexers.",
+      "showAll": "Show all {{count}}",
+      "showFewer": "Show fewer"
+    },
+    "list": {
+      "testing": "Testing",
+      "priority": "Priority {{priority}}",
+      "emptyTitle": "No indexers yet",
+      "emptyDescription": "Discover them in Jackett or Prowlarr, or add one by hand.",
+      "capabilities_one": "{{count}} capability",
+      "capabilities_other": "{{count}} capabilities"
+    }
+  },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Enable direct API matching against Orpheus and Redacted. This runs alongside Torznab; OPS/RED Torznab indexers are ignored.",
+    "enableMatching": "Enable Gazelle matching",
+    "enableDescription": "Applies to all source torrents. If possible, qui also checks RED/OPS via Gazelle.",
+    "redactedApiKey": "Redacted API key",
+    "orpheusApiKey": "Orpheus API key",
+    "pasteRedKey": "Paste RED API key",
+    "pasteOpsKey": "Paste OPS API key",
+    "enableToConfigure": "Enable to configure",
+    "redDescription": "Used for redacted.sh lookups. Paste to replace; clear to remove.",
+    "opsDescription": "Used for orpheus.network lookups. Paste to replace; clear to remove.",
+    "save": "Save"
+  },
+  "searchCache": {
+    "title": "Search cache",
+    "description": "Cached search results from Torznab indexers.",
+    "refreshStats": "Refresh",
+    "configTitle": "Cache settings",
+    "configDescription": "Adjust how long search results are cached.",
+    "cacheTTL": "Cache TTL (minutes)",
+    "saveTTL": "Save",
+    "ttlHelper": "Minimum {{min}} minutes. Higher values reduce indexer load.",
+    "entries": "Entries",
+    "hitCount": "Hits",
+    "approxSize": "Approximate size",
+    "newestEntry": "Newest entry",
+    "lastUsed": "Last used",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "toasts": {
+      "ttlUpdated": "Cache TTL updated to {{minutes}} minutes",
+      "ttlUpdateFailed": "Failed to update cache TTL"
+    },
+    "validation": {
+      "invalidNumber": "Enter a valid number",
+      "ttlMinimum": "TTL must be at least {{min}} minutes"
+    },
+    "status": "Status"
+  },
+  "application": {
+    "build": {
+      "title": "Build",
+      "description": "Version and build details.",
+      "refresh": "Refresh",
+      "version": "Version",
+      "commit": "Commit",
+      "buildDate": "Build date",
+      "updateStatus": "Update status",
+      "statuses": {
+        "disabled": "Disabled",
+        "disabledDetail": "Update checking is disabled",
+        "devBuild": "Dev build",
+        "checking": "Checking…",
+        "checkingDetail": "Checking for updates",
+        "updateAvailable": "Update available",
+        "upToDate": "Up to date",
+        "upToDateDetail": "Running the latest version",
+        "notCheckedYet": "Not checked yet",
+        "lastChecked": "Last checked {{date}}"
+      }
+    },
+    "support": {
+      "description": "qui is free. Supporters and theme licenses pay for the work on it.",
+      "open": "Ways to support qui",
+      "openSupporter": "Your support",
+      "shortcut": "Show the support shortcut",
+      "shortcutHelp": "The heart in the header, and Support qui in the menu on a phone.",
+      "reminder": "Remind me once a year",
+      "reminderDescription": "One reminder a year, never more. Off while the support shortcut is hidden.",
+      "reminderSupporter": "qui does not remind a supporter."
+    },
+    "restart": {
+      "button": "Restart",
+      "confirmTitle": "Restart qui?",
+      "confirmDescription": "qui shuts down the same way as on a normal stop, then starts again. Running work, such as cross-seed searches, automations, backups, and orphan scans, stops. The page reloads when qui is back.",
+      "confirm": "Restart",
+      "overlay": {
+        "restartingTitle": "Restarting qui…",
+        "restartingDetail": "The page reloads when qui answers again.",
+        "slowTitle": "qui has not answered yet",
+        "slowDetail": "qui may still be starting, and this page keeps waiting. Check the qui logs. If you changed the port or the base URL, open qui at the new address."
+      }
+    },
+    "update": {
+      "support": {
+        "checkingTitle": "Checking support",
+        "checkingDescription": "Checking whether qui can install this update.",
+        "failedTitle": "Could not check update support",
+        "failedDescription": "Could not check whether self-update is available.",
+        "retryDescription": "Retry the support check before you install the update.",
+        "retry": "Retry"
+      },
+      "unavailable": {
+        "description": "Automatic installation is unavailable for this setup.",
+        "nextStep": "How to update",
+        "guide": "Update guide",
+        "container": {
+          "reason": "qui runs in a container. Updates come from the container image.",
+          "step": "Pull the new qui image, then recreate the container with your existing configuration and data volumes."
+        },
+        "disabled": {
+          "reason": "Self-update is disabled in the qui configuration.",
+          "step": "Update qui with the package manager or installation method that you used to install it."
+        },
+        "development": {
+          "reason": "This qui build is not a release build. Automatic installation requires a release build.",
+          "step": "Stop qui, replace the binary with an official release or a new build, then start qui again."
+        },
+        "directory": {
+          "reason": "qui cannot access or write to its binary directory.",
+          "step": "Stop qui, replace the binary with the new release using an account with write access, then start qui again."
+        }
+      },
+      "button": "Install update",
+      "confirmTitle": "Install update?",
+      "confirmDescription": "qui downloads the new version, checks its signature, and keeps the current binary as a backup. Then qui restarts. The page reloads when qui is back.",
+      "runningWork": "Running work, such as cross-seed searches, automations, backups, and orphan scans, stops.",
+      "currentVersion": "Current version",
+      "targetVersion": "New version",
+      "releaseNotes": "Release notes",
+      "confirm": "Install update",
+      "overlay": {
+        "notAppliedTitle": "Update did not apply",
+        "notAppliedDetail": "qui is back, but on a different version. Check the qui logs.",
+        "installedTitle": "qui updated",
+        "installedDetail": "Reload the page to open the new version.",
+        "reload": "Reload page",
+        "noBackup": "qui updated, but kept no backup: {{error}}. To roll back, download the old version by hand.",
+        "rollbackIntro": "If the new version does not start, run this command, then start qui again:",
+        "rollbackLabel": "Rollback command",
+        "rollbackDocs": "Rollback steps"
+      }
+    },
+    "runtime": {
+      "title": "Runtime",
+      "description": "Server runtime information.",
+      "uptime": "Uptime",
+      "runtime": "Runtime",
+      "bindAddress": "Bind address"
+    },
+    "auth": {
+      "title": "Authentication",
+      "description": "Authentication configuration.",
+      "currentSessionAuth": "Current session",
+      "yes": "Yes",
+      "no": "No",
+      "oidcEnabled": "OIDC enabled",
+      "builtInLoginEnabled": "Built-in login",
+      "oidcIssuerHost": "OIDC issuer"
+    },
+    "storage": {
+      "title": "Storage",
+      "description": "Database and file system paths.",
+      "database": "Database",
+      "configDir": "Config directory",
+      "dataDir": "Data directory"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker customizations",
+    "cardDescription": "Rename trackers and merge the domains of one tracker into one entry. Select trackers to rename or merge them.",
+    "loading": "Loading trackers…",
+    "mergedFrom": "Merged from: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Merge selected trackers into this group",
+    "mergeIntoGroup": "Merge into group",
+    "addToMerge": "Add to merge",
+    "rename": "Rename",
+    "delete": "Delete",
+    "customizeDialog": {
+      "editTitle": "Edit tracker name",
+      "renameTitle": "Rename tracker",
+      "mergeTitle": "Merge trackers",
+      "editDescription": "Update the display name for this tracker.",
+      "renameDescription": "Give this tracker a custom display name.",
+      "mergeDescription": "Combine these trackers into a single entry with a custom name.",
+      "displayName": "Display name",
+      "displayNamePlaceholder": "e.g., TorrentLeech",
+      "domains": "Domains",
+      "selectedTrackers": "Selected trackers",
+      "primary": "Primary",
+      "removeDomain": "Remove {{domain}}",
+      "save": "Save",
+      "renameAction": "Rename",
+      "mergeAction": "Merge"
+    },
+    "importDialog": {
+      "title": "Import tracker customizations",
+      "description": "Paste JSON to import tracker customizations (renames and merges).",
+      "jsonData": "JSON data",
+      "invalidFormat": "Invalid format: expected trackerCustomizations array",
+      "missingDisplayName": "Invalid entry: missing displayName",
+      "invalidDomains": "Invalid entry: domains must be a non-empty array",
+      "invalidJson": "Invalid JSON",
+      "newCount": "{{count}} new",
+      "conflictCount_one": "{{count}} conflict",
+      "conflictCount_other": "{{count}} conflicts",
+      "unchangedCount": "{{count}} unchanged",
+      "resolveConflicts": "Resolve conflicts",
+      "conflictsWith": "Conflicts with: {{name}}",
+      "skip": "Skip",
+      "overwrite": "Overwrite",
+      "importing": "Importing...",
+      "import": "Import"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "No customizations to export",
+      "copiedToClipboard": "Copied to clipboard",
+      "failedToCopy": "Failed to copy to clipboard",
+      "createFailed": "Failed to create tracker customization",
+      "updateFailed": "Failed to update tracker customization",
+      "deleteFailed": "Failed to delete tracker customization",
+      "failedToImport": "Failed to import: {{names}}",
+      "importedAndSkipped": "Imported {{imported}}, skipped {{skipped}}",
+      "importedCount_one": "Imported {{count}} customization",
+      "importedCount_other": "Imported {{count}} customizations",
+      "noCustomizationsImported": "No customizations imported"
+    },
+    "cardHelp": "qui shows the display name everywhere it shows the tracker.",
+    "emptyTitle": "No trackers yet",
+    "emptyDescription": "Trackers show here when an instance has torrents.",
+    "importButton": "Import",
+    "exportButton": "Export",
+    "selectionLabel": "Selected trackers",
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "deleteDialog": {
+      "title": "Delete customization?",
+      "description": "The trackers of {{name}} show their own domains again. You cannot undo this."
+    }
+  }
+}

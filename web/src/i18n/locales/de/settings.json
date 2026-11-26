@@ -1,0 +1,1345 @@
+{
+  "title": "Einstellungen",
+  "description": "Verwalte deine App-Einstellungen und Sicherheit",
+  "tabs": {
+    "application": "Anwendung",
+    "instances": "Instanzen",
+    "indexers": "Indexer",
+    "searchCache": "Such-Cache",
+    "integrations": "Integrationen",
+    "clientProxy": "Client-Proxy",
+    "apiKeys": "API-Keys",
+    "externalPrograms": "Externe Programme",
+    "shares": "Freigaben",
+    "notifications": "Benachrichtigungen",
+    "dateTime": "Zeit & Sprache",
+    "displayProfiles": "Anzeigeprofile",
+    "statistics": "Statistik",
+    "trackers": "Tracker-Anpassungen",
+    "premiumThemes": "Designs",
+    "security": "Sicherheit",
+    "logs": "Protokolle"
+  },
+  "nav": {
+    "general": "Allgemein",
+    "connections": "Verbindungen",
+    "access": "Zugriff"
+  },
+  "language": {
+    "cardTitle": "Sprache",
+    "cardDescription": "Wähle deine bevorzugte Anzeigesprache"
+  },
+  "changePassword": {
+    "currentPassword": "Aktuelles Passwort",
+    "newPassword": "Neues Passwort",
+    "confirmPassword": "Neues Passwort bestätigen",
+    "submit": "Passwort ändern",
+    "toasts": {
+      "success": "Passwort erfolgreich geändert",
+      "error": "Passwort konnte nicht geändert werden. Bitte überprüfe dein aktuelles Passwort."
+    },
+    "validation": {
+      "currentRequired": "Aktuelles Passwort ist erforderlich",
+      "newRequired": "Neues Passwort ist erforderlich",
+      "minLength": "Das Passwort muss mindestens 8 Zeichen lang sein",
+      "confirmRequired": "Bitte bestätige dein Passwort",
+      "mismatch": "Die Passwörter stimmen nicht überein"
+    },
+    "newPasswordHint": "Mindestens 8 Zeichen."
+  },
+  "instances": {
+    "title": "Instanzen",
+    "description": "Verwalte deine qBittorrent-Verbindungseinstellungen",
+    "addButton": "Instanz hinzufügen",
+    "titleBarSpeeds": {
+      "label": "Übertragungsraten im Tab-Titel anzeigen"
+    },
+    "browserTab": {
+      "title": "Browser-Tab"
+    },
+    "icons": {
+      "title": "Instanzsymbole",
+      "description": "Lege fest, wie Instanzen in der Seitenleiste und in Menüs erscheinen."
+    }
+  },
+  "integrations": {
+    "title": "Sonarr und Radarr",
+    "description": "Cross-Seed schlägt hier IMDb-, TMDb- und TVDb-IDs nach, für genauere Treffer."
+  },
+  "clientApiKeys": {
+    "cardTitle": "Client-Proxy-Keys",
+    "cardDescription": "Keys, mit denen Apps wie autobrr über qui auf qBittorrent zugreifen.",
+    "createButton": "Key erstellen",
+    "unknownError": "Ein Fehler ist aufgetreten",
+    "instanceDeleted": "Instanz gelöscht",
+    "idLabel": "ID: {{id}}",
+    "labels": {
+      "created": "Erstellt:",
+      "lastUsed": "Zuletzt verwendet:",
+      "showHost": "Host anzeigen",
+      "hideHost": "Host ausblenden"
+    },
+    "createDialog": {
+      "title": "Neuer Proxy-Key",
+      "description": "Der Key erreicht nur die qBittorrent-Instanz, die du auswählst.",
+      "clientNameLabel": "Client-Name",
+      "clientNamePlaceholder": "z. B. autobrr, tqm, sonarr, radarr, cross-seed",
+      "instanceLabel": "qBittorrent-Instanz",
+      "instancePlaceholder": "Instanz auswählen"
+    },
+    "newKey": {
+      "title": "Key für {{name}} erstellt",
+      "warning": "Kopiere die Proxy-URL jetzt. qui zeigt sie nur einmal an.",
+      "proxyUrl": "Proxy-URL",
+      "showProxyUrl": "Proxy-URL anzeigen",
+      "hideProxyUrl": "Proxy-URL ausblenden",
+      "done": "Fertig"
+    },
+    "deleteDialog": {
+      "title": "Key löschen?",
+      "description": "{{name}} verliert den Zugriff auf qBittorrent über qui. Das kann nicht rückgängig gemacht werden.",
+      "delete": "Löschen"
+    },
+    "toasts": {
+      "created": "Client-API-Key erfolgreich erstellt",
+      "createFailed": "Client-API-Key konnte nicht erstellt werden",
+      "deleted": "Client-API-Key erfolgreich gelöscht",
+      "deleteFailed": "Client-API-Key konnte nicht gelöscht werden: {{error}}"
+    },
+    "emptyTitle": "Noch keine Keys",
+    "emptyDescription": "Erstelle einen Key für jede App, die mit qBittorrent spricht.",
+    "lastUsed": "Zuletzt verwendet {{date}}",
+    "neverUsed": "Nie verwendet",
+    "validation": {
+      "clientNameRequired": "Client-Name ist erforderlich",
+      "selectInstance": "Bitte wähle eine qBittorrent-Instanz aus"
+    },
+    "created": "Erstellt {{date}}"
+  },
+  "apiKeys": {
+    "cardTitle": "API-Keys",
+    "loadingAuthMode": "Authentifizierungsmodus wird geladen...",
+    "authDisabledTitle": "API-Keys sind nicht verfügbar, solange die integrierte Authentifizierung deaktiviert ist",
+    "authDisabledDescription": "Anfragen, die deinen Reverse-Proxy und die CIDR-Allowlist passieren, können die qui-API direkt nutzen.",
+    "cardDescription": "Verwalte API-Keys für externen Zugriff",
+    "apiDocs": "API-Dokumentation",
+    "description": "Mit API-Keys können externe Anwendungen auf deine qBittorrent-Instanzen zugreifen.",
+    "createButton": "API-Key erstellen",
+    "editButton": "{{name}} bearbeiten",
+    "deleteButton": "{{name}} löschen",
+    "loading": "API-Keys werden geladen...",
+    "empty": "Noch keine API-Keys erstellt",
+    "createDialog": {
+      "title": "API-Key erstellen",
+      "description": "Gib dem Key einen Namen und wähle nur den Zugriff aus, den er braucht.",
+      "nameLabel": "Name",
+      "namePlaceholder": "z. B. Automatisierungsskript",
+      "nameRequired": "Name ist erforderlich",
+      "submit": "API-Key erstellen",
+      "creating": "Wird erstellt..."
+    },
+    "editDialog": {
+      "title": "API-Key bearbeiten",
+      "description": "Änderungen gelten ab der nächsten Anfrage dieses Keys. qui zeigt den Key selbst nie wieder an.",
+      "submit": "Änderungen speichern",
+      "saving": "Wird gespeichert..."
+    },
+    "templates": {
+      "title": "Vorlage",
+      "help": "Ersetzt die Berechtigungen unten durch das, was ein Tool braucht, und hebt das Instanzlimit bei Bedarf auf. Danach kannst du jedes Feld anpassen.",
+      "pick": "Vorlage wählen",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Cross-Seed- und Staffelpaket-Webhooks (nicht Download-Client)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "Instanzliste und Transfer-Summen (ab dashbrr 0.5.0)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "qui-Widget. Begrenze den Schlüssel nur, wenn das Widget instance setzt"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "Nur Verzeichnis-Scanner-Webhook; Download-Clients nutzen Client-Proxy"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "Browser-Erweiterung zum Hinzufügen von Torrents"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (Cross-Seed)",
+          "description": "Torrents hinzufügen, manueller Abgleich und Staffelpakete"
+        }
+      }
+    },
+    "permissions": {
+      "title": "Berechtigungen",
+      "help": "Schreiben umfasst Lesen und Ausführen. Ausführen umfasst nicht Lesen, weil Einstellungen Zugangsdaten enthalten.",
+      "required": "Wähle mindestens eine Berechtigung aus.",
+      "access": "Zugriff",
+      "allAreas": "Alle Bereiche",
+      "allAreasExcept": "Alle Bereiche außer {{areas}}",
+      "refusedByLimit": "Cross-Seed und Verzeichnis-Scanner lehnen einen Key mit Instanzlimit ab, daher speichert qui diese Berechtigungen nicht.",
+      "entry": "{{area}}: {{level}}",
+      "showByArea": "Zugriff nach Bereich für {{name}} anzeigen",
+      "partialArea": "{{area}} (nur {{levels}})",
+      "legend": {
+        "title": "Ein Block pro Berechtigungsbereich:",
+        "none": "kein Zugriff"
+      },
+      "levels": {
+        "read": "lesen",
+        "run": "ausführen",
+        "write": "schreiben"
+      },
+      "areas": {
+        "instances": "Instanzen",
+        "torrents": "Torrents",
+        "crossSeed": "Cross-Seed",
+        "dirScan": "Verzeichnis-Scanner",
+        "automations": "Automatisierungen",
+        "rss": "RSS",
+        "backups": "Backups",
+        "orphanScan": "Orphan-Scan",
+        "externalPrograms": "Externe Programme",
+        "indexers": "Indexer",
+        "arr": "Arr",
+        "notifications": "Benachrichtigungen",
+        "settings": "Einstellungen",
+        "logs": "Protokolle",
+        "system": "System"
+      }
+    },
+    "instanceLimit": {
+      "title": "Instanzlimit",
+      "help": "Wähle die Instanzen aus, die dieser Key erreichen kann. Ohne Auswahl gilt der Key für alle Instanzen, auch für später hinzugefügte.",
+      "reaches": "Reichweite",
+      "all": "Alle Instanzen",
+      "only": "Nur {{instances}}",
+      "none": "Keine Instanzen. Das Limit enthält nur gelöschte Instanzen.",
+      "deleted": "Gelöschte Instanz {{id}}"
+    },
+    "newKey": {
+      "label": "Dein neuer API-Key",
+      "warning": "Speichere diesen Key jetzt. Du kannst ihn später nicht erneut einsehen.",
+      "done": "Fertig",
+      "apiKey": "API-Key"
+    },
+    "deleteDialog": {
+      "title": "API-Key löschen?",
+      "description": "Diese Aktion kann nicht rückgängig gemacht werden. Anwendungen, die diesen Key nutzen, verlieren den Zugriff.",
+      "cancel": "Abbrechen",
+      "delete": "Löschen"
+    },
+    "toasts": {
+      "created": "API-Key erfolgreich erstellt",
+      "createFailed": "API-Key konnte nicht erstellt werden",
+      "deleted": "API-Key erfolgreich gelöscht",
+      "deleteFailed": "API-Key konnte nicht gelöscht werden",
+      "updated": "API-Key erfolgreich aktualisiert",
+      "updateFailed": "API-Key konnte nicht aktualisiert werden"
+    }
+  },
+  "externalPrograms": {
+    "cardTitle": "Externe Programme",
+    "cardDescription": "Externe Programme oder Skripte konfigurieren, die aus dem Torrent-Kontextmenü ausgeführt werden können",
+    "createButton": "Programm hinzufügen",
+    "createTitle": "Externes Programm hinzufügen",
+    "createDescription": "Konfiguriere ein externes Programm oder Skript, das aus dem Torrent-Kontextmenü ausgeführt werden kann.",
+    "unknownError": "Unbekannter Fehler",
+    "editTitle": "Externes Programm bearbeiten",
+    "deleteTitle": "Externes Programm löschen",
+    "delete": "Löschen",
+    "deleteConflictIntro": "Dieses Programm wird von den folgenden Automatisierungsregeln verwendet:",
+    "deleteConflictDescription": "Wenn du fortfährst, wird die Aktion für das externe Programm aus diesen Automatisierungsregeln entfernt.",
+    "deleteDescription": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "deleteAnyway": "Trotzdem löschen",
+    "nameLabel": "Name",
+    "namePlaceholder": "Mein externes Programm",
+    "pathLabel": "Programmpfad",
+    "pathPlaceholder": "/usr/bin/my-script.sh oder C:\\Scripts\\my-script.bat",
+    "argumentsLabel": "Argumentvorlage",
+    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
+    "availablePlaceholders": "Verfügbare Platzhalter",
+    "pathMappings": "Pfad-Zuordnungen",
+    "remotePathPlaceholder": "/mnt/remote-storage",
+    "localPathPlaceholder": "/home/user/mounts/remote",
+    "removePathMapping": "Pfad-Zuordnung entfernen",
+    "addPathMapping": "Pfad-Zuordnung hinzufügen",
+    "pathMappingsDescription": "Pfad-Zuordnungen wandeln Remote-Pfade in lokale Mount-Punkte um. Nützlich, wenn externe Programme auf einem lokalen qui-Server laufen, während qBittorrent remote ist. Pfade werden nach dem längsten Präfix zuerst abgeglichen. Verwende denselben Pfadtrennzeichen-Stil wie die Remote-qBittorrent-Instanz (/ für Linux, \\ für Windows).",
+    "launchInTerminal": "In Terminalfenster starten",
+    "launchInTerminalDescription": "Wenn aktiviert, wird das Programm in einem neuen Terminalfenster geöffnet. Deaktiviere dies für GUI-Anwendungen oder Programme, die keine Terminalausgabe benötigen.",
+    "enableProgram": "Aktiviert",
+    "toasts": {
+      "created": "Externes Programm erfolgreich erstellt",
+      "createFailed": "Externes Programm konnte nicht erstellt werden: {{error}}",
+      "updated": "Externes Programm erfolgreich aktualisiert",
+      "updateFailed": "Externes Programm konnte nicht aktualisiert werden: {{error}}",
+      "deleted": "Externes Programm erfolgreich gelöscht",
+      "deleteFailed": "Externes Programm konnte nicht gelöscht werden: {{error}}"
+    },
+    "validation": {
+      "nameRequired": "Programmname ist erforderlich",
+      "pathRequired": "Programmpfad ist erforderlich"
+    },
+    "placeholders": {
+      "hash": "Torrent-Hash",
+      "name": "Torrent-Name",
+      "savePath": "Speicherpfad",
+      "contentPath": "Inhaltspfad",
+      "category": "Kategorie",
+      "tags": "Tags (kommagetrennt)",
+      "state": "Torrent-Status",
+      "size": "Größe in Bytes",
+      "progress": "Fortschritt (0-1)",
+      "comment": "Torrent-Kommentar"
+    },
+    "remotePath": "Remote-Pfad",
+    "localPath": "Lokaler Pfad",
+    "save": "Speichern",
+    "emptyTitle": "Keine externen Programme",
+    "emptyDescription": "Füge ein Programm oder Skript hinzu, um es aus dem Kontextmenü eines Torrents zu starten.",
+    "pathMappingsCount_one": "{{count}} Pfad-Zuordnung",
+    "pathMappingsCount_other": "{{count}} Pfad-Zuordnungen"
+  },
+  "notifications": {
+    "cardTitle": "Benachrichtigungen",
+    "cardDescription": "Sende Warnungen und Statusupdates über jeden von Shoutrrr unterstützten Dienst",
+    "addButton": "Ziel hinzufügen",
+    "allEvents": "Alle Ereignisse außer Systemhinweis",
+    "groups": {
+      "torrent": "Torrent",
+      "maintenance": "Wartung",
+      "crossSeed": "Cross-Seed",
+      "automations": "Automatisierungen",
+      "other": "Sonstiges"
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "Mein Discord",
+      "url": "Shoutrrr-URL",
+      "urlPlaceholder": "discord://token@id oder notifiarrapi://apikey",
+      "urlDescriptionPrefix": "Verwende ein beliebiges von Shoutrrr unterstütztes URL-Schema. Die Notifiarr-API nutzt",
+      "urlDescriptionSuffix": "Discord-Webhook-URLs werden automatisch umgewandelt in",
+      "examples": {
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
+      },
+      "enabled": "Aktiviert",
+      "events": "Ereignisse",
+      "allEvents": "Alle Ereignisse",
+      "selectGroup": "Alle Ereignisse: {{group}}"
+    },
+    "dialog": {
+      "newTitle": "Neues Benachrichtigungsziel",
+      "newDescription": "Konfiguriere, wohin qui Warnungen und Statusupdates senden soll.",
+      "editTitle": "Benachrichtigungsziel bearbeiten",
+      "editDescription": "Zustellungseinstellungen für dieses Ziel aktualisieren.",
+      "deleteTitle": "Benachrichtigungsziel löschen?",
+      "deleteDescription": "Dadurch wird {{name}} entfernt. Du kannst es bei Bedarf später wieder hinzufügen.",
+      "save": "Speichern",
+      "delete": "Löschen"
+    },
+    "validation": {
+      "nameRequired": "Name ist erforderlich",
+      "urlRequired": "Benachrichtigungs-URL ist erforderlich",
+      "selectEvent": "Wähle mindestens ein Ereignis aus"
+    },
+    "toasts": {
+      "created": "Benachrichtigungsziel erfolgreich erstellt",
+      "createFailed": "Benachrichtigungsziel konnte nicht erstellt werden",
+      "updated": "Benachrichtigungsziel erfolgreich aktualisiert",
+      "updateFailed": "Benachrichtigungsziel konnte nicht aktualisiert werden",
+      "deleted": "Benachrichtigungsziel erfolgreich gelöscht",
+      "deleteFailed": "Benachrichtigungsziel konnte nicht gelöscht werden",
+      "testSent": "Testbenachrichtigung erfolgreich gesendet",
+      "testFailed": "Testbenachrichtigung konnte nicht gesendet werden"
+    },
+    "emptyTitle": "Noch keine Benachrichtigungsziele",
+    "emptyDescription": "Füge eines hinzu, um Meldungen über Discord, Telegram, Notifiarr oder einen anderen Shoutrrr-Dienst zu erhalten.",
+    "eventSummary": "{{selected}} von {{total}} Ereignissen",
+    "actions": {
+      "sendTest": "Test senden"
+    }
+  },
+  "dateTime": {
+    "cardTitle": "Datum und Uhrzeit",
+    "cardDescription": "Konfiguriere Zeitzone, Datumsformat und Zeitanzeige",
+    "timezone": "Zeitzone",
+    "detected": "erkannt",
+    "regions": {
+      "UTC": "UTC",
+      "Americas": "Amerika",
+      "Europe": "Europa",
+      "Asia": "Asien",
+      "Africa": "Afrika",
+      "Oceania": "Ozeanien"
+    },
+    "use12Hour": "12-Stunden-Format verwenden (AM/PM)",
+    "dateFormat": "Datumsformat",
+    "isoFormat": "ISO 8601 (JJJJ-MM-TT)",
+    "usFormat": "US-Format (MM/TT/JJJJ)",
+    "euFormat": "Europäisches Format (TT/MM/JJJJ)",
+    "relativeFormat": "Relativ (z. B. \"vor 2 Stunden\")",
+    "preview": "Vorschau",
+    "previewDescription": "So werden Datum und Uhrzeit in der Anwendung angezeigt"
+  },
+  "statistics": {
+    "cardTitle": "Statistik",
+    "cardDescription": "qui speichert den Upload und Download jedes Torrents in seiner Datenbank. Diese Einstellungen gelten für alle Instanzen.",
+    "recording": {
+      "label": "Übertragungsverlauf aufzeichnen",
+      "description": "Solange dies aus ist, zeichnet qui nichts auf und behält den gespeicherten Verlauf. Die Zeit, in der es aus ist, wird zu einer Aufzeichnungslücke."
+    },
+    "retention": {
+      "label": "Tägliche Details behalten für",
+      "description": "Nach dieser Zeit fasst qui die stündlichen Summen zu Tagen zusammen und die täglichen Bytes jedes Torrents zu einer Zeile pro Jahr. Die Summen bleiben gleich. Wenn du eine kürzere Zeit wählst, fasst qui die älteren Details bei der nächsten Abfrage zusammen, und du kannst sie nicht zurückholen.",
+      "days90": "90 Tage",
+      "days400": "400 Tage",
+      "forever": "Immer"
+    },
+    "size": {
+      "label": "Größe des Verlaufs"
+    },
+    "deleteHistory": {
+      "label": "Verlauf löschen",
+      "description": "Löscht den Übertragungsverlauf einer Instanz oder aller Instanzen. Du kannst ihn nicht wiederherstellen.",
+      "instance": "Instanz",
+      "allInstances": "Alle Instanzen",
+      "unnamedInstance": "Instanz {{id}}",
+      "everything": "Alles",
+      "before": "Alles vor einem Datum",
+      "date": "Datum",
+      "button": "Verlauf löschen",
+      "confirmTitle": "Verlauf löschen?",
+      "confirmEverything": "qui löscht den gesamten Verlauf von {{name}}. Die Aufzeichnung beginnt neu mit einer neuen Basislinie. Das kann nicht rückgängig gemacht werden.",
+      "confirmBefore": "qui löscht den Verlauf von {{name}} vor dem {{date}}. Wenn die Aufzeichnung vor diesem Datum begann, werden auch die Bytes von vor der ersten Aufzeichnung gelöscht, und „Aufzeichnung seit“ wechselt auf dieses Datum. Das kann nicht rückgängig gemacht werden.",
+      "sqliteSpace": "Die Datenbankdatei behält ihre Größe. SQLite nutzt den freien Platz wieder für neuen Verlauf.",
+      "postgresSpace": "Wenn du alles von allen Instanzen löschst, gibt Postgres den Platz sofort an die Festplatte zurück. Nach einem anderen Löschen nutzt Postgres den freien Platz wieder für neuen Verlauf.",
+      "confirm": "Löschen",
+      "deleted": "Verlauf gelöscht",
+      "failed": "Verlauf konnte nicht gelöscht werden",
+      "shrink": {
+        "label": "Auch die Datenbankdatei verkleinern",
+        "restart": "qui startet neu und verkleinert die Datei, sodass du den Speicherplatz zurückbekommst. qui ist kurz nicht erreichbar.",
+        "nextStart": "qui kann sich in dieser Installation nicht selbst neu starten. Das Verkleinern läuft beim nächsten Start von qui.",
+        "tooLittleSpace": "Auf dem Datenträger sind {{free}} frei, das Verkleinern braucht bis zu {{need}}. Du kannst das gefahrlos auslassen: SQLite nutzt den freien Platz wieder für neuen Verlauf.",
+        "manualDocs": "Datei von Hand verkleinern"
+      }
+    },
+    "toasts": {
+      "saved": "Statistik-Einstellungen gespeichert",
+      "saveFailed": "Statistik-Einstellungen konnten nicht gespeichert werden"
+    }
+  },
+  "security": {
+    "changePassword": {
+      "title": "Passwort ändern",
+      "description": "Aktualisiere das Passwort deines Kontos"
+    },
+    "browserIntegration": {
+      "title": "Browser-Integration",
+      "registerDescription": "Registriere qui als Handler deines Browsers für Magnet-Links. So kannst du Magnet-Links direkt in qui öffnen.",
+      "registerButton": "Als Handler registrieren",
+      "toasts": {
+        "requested": "Registrierung als Magnet-Handler angefordert",
+        "failed": "Registrierung als Magnet-Handler fehlgeschlagen"
+      }
+    }
+  },
+  "logs": {
+    "description": "Live-Protokolle ansehen und Protokolleinstellungen konfigurieren",
+    "configuration": {
+      "title": "Protokolleinstellungen",
+      "description": "Log-Level, Ausgabepfad und Rotationseinstellungen anpassen.",
+      "level": "Log-Level",
+      "levelPlaceholder": "Log-Level auswählen",
+      "path": "Pfad zur Protokolldatei",
+      "pathPlaceholder": "Leer lassen für ausschließlich stdout",
+      "maxSize": "Max. Größe (MB)",
+      "maxBackups": "Max. Backups",
+      "saveSettings": "Einstellungen speichern",
+      "lockedByEnv": "Durch eine Umgebungsvariable festgelegt",
+      "lockedByEmptyEnv": "Durch eine leere Umgebungsvariable festgelegt",
+      "configFile": "Konfigurationsdatei"
+    },
+    "viewer": {
+      "connected": "Verbunden",
+      "searchPlaceholder": "Protokolle durchsuchen...",
+      "allLevels": "Alle Level",
+      "all": "Alle",
+      "none": "Keine",
+      "levelCount_one": "{{count}} Level",
+      "levelCount_other": "{{count}} Level",
+      "mutedCount_one": "{{count}} stummgeschaltet",
+      "mutedCount_other": "{{count}} stummgeschaltet",
+      "mutedMessages": "Stummgeschaltete Nachrichten",
+      "clearAll": "Alle löschen",
+      "clear": "Löschen",
+      "noEntriesMatch": "Keine Einträge passen zum aktuellen Filter",
+      "waiting": "Warte auf Protokolleinträge...",
+      "showing": "Zeige {{shown}} von {{total}} Einträgen ({{max}} {{mode}})",
+      "maxLive": "max.",
+      "maxPaused": "max. bei Pause",
+      "oldestEntriesDropped": "• älteste Einträge verworfen",
+      "muteSimilarEntries": "Ähnliche Einträge stummschalten",
+      "title": "Live-Protokoll",
+      "description": "Neue Einträge erscheinen, sobald qui sie schreibt.",
+      "pause": "Pausieren",
+      "follow": "Folgen",
+      "connecting": "Verbinde…",
+      "reconnecting": "Verbindung verloren. Verbinde erneut…",
+      "levels": "Level",
+      "unmute": "Stummschaltung aufheben: {{message}}"
+    },
+    "entryDialog": {
+      "title": "Protokolleintrag",
+      "rawLine": "Rohe Protokollzeile",
+      "copyRaw": "Roh kopieren",
+      "copyJson": "JSON kopieren",
+      "mute": "Ähnliche stummschalten"
+    },
+    "toasts": {
+      "settingsUpdated": "Protokolleinstellungen aktualisiert",
+      "settingsFailed": "Protokolleinstellungen konnten nicht aktualisiert werden",
+      "jsonCopied": "JSON-Protokolleintrag kopiert",
+      "rawCopied": "Roher Protokolleintrag kopiert",
+      "copyFailed": "Protokolleintrag konnte nicht kopiert werden"
+    },
+    "files": {
+      "title": "Protokolldateien",
+      "toasts": {
+        "downloadFailed": "Download von {{filename}} fehlgeschlagen"
+      },
+      "description": "Die aktuelle Protokolldatei und ihre rotierten Kopien.",
+      "emptyTitle": "Keine Protokolldateien",
+      "emptyDescription": "Lege einen Pfad zur Protokolldatei fest, um das Protokoll auf der Festplatte zu speichern.",
+      "download": "Herunterladen"
+    },
+    "validation": {
+      "maxSize": "Gib 1 oder mehr ein",
+      "maxBackups": "Gib 0 oder mehr ein"
+    }
+  },
+  "themes": {
+    "selector": {
+      "title": "Themes",
+      "loadingDescription": "Verfügbare Designs werden geladen...",
+      "description": "Klicke auf ein Theme, um es zu verwenden.",
+      "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu lizenzierten Designs ist vorübergehend deaktiviert.",
+      "notLoaded": "Lizenzierte Designs nicht geladen",
+      "notLoadedDescription": "Führe aus:",
+      "defaultThemeVisit": "qui zeigt für diesen Besuch das Standard-Theme, weil die Adresse ?theme=default enthält. Wähle ein Theme, um das zu beenden.",
+      "search": "Themes suchen",
+      "filterLabel": "Themes filtern",
+      "noMatch": "Kein Theme passt zu „{{query}}“.",
+      "needsLicense": "Benötigt eine Lizenz",
+      "lockedCount_one": "{{count}} Theme benötigt eine Lizenz.",
+      "lockedCount_other": "{{count}} Themes benötigen eine Lizenz.",
+      "showAll_one": "{{count}} Theme anzeigen",
+      "showAll_other": "Alle {{count}} Themes anzeigen",
+      "showFewer": "Weniger Themes anzeigen",
+      "variationCount_one": "{{count}} Farbvariante",
+      "variationCount_other": "{{count}} Farbvarianten"
+    },
+    "current": {
+      "label": "Aktiv",
+      "colors": "Farbvarianten"
+    },
+    "groups": {
+      "all": "Alle",
+      "free": "Kostenlos",
+      "licensed": "Lizenziert",
+      "custom": "Eigene"
+    },
+    "menu": {
+      "button": "Themes fürs Menü wählen",
+      "title": "Themes fürs Menü wählen",
+      "description": "Wähle die Themes, die das Theme-Menü in der oberen Leiste und in der Fußleiste auf dem Handy zeigt. Das aktive Theme ist immer im Menü.",
+      "groupCount": "{{shown}} von {{total}}",
+      "groupsLocked": "Leere die Suche, um die Kontrollkästchen der Gruppen zu verwenden.",
+      "inUse": "Aktiv",
+      "summary": "{{shown}} von {{total}} Themes im Menü",
+      "reset": "Auf Standard zurücksetzen",
+      "undo": "Zurücksetzen rückgängig machen",
+      "done": "Fertig"
+    },
+    "toasts": {
+      "premiumRequired": "Lizenz erforderlich",
+      "premiumRequiredDescription": "Füge eine gültige Lizenz hinzu, um alle Designs freizuschalten."
+    },
+    "license": {
+      "loadingTitle": "Lizenzverwaltung",
+      "loadingDescription": "Design-Lizenzen werden geladen...",
+      "managementTitle": "Lizenzverwaltung",
+      "managementDescription": "Verwalte deine Design-Lizenz",
+      "providers": {
+        "licensePortal": "Lizenzportal"
+      },
+      "status": {
+        "unlockTitle": "Alle Designs freischalten",
+        "unlockDescription": "Zahle, was du möchtest (min. 9,99 $) • Lebenslange Lizenz • Alle Designs",
+        "activeTitle": "Lizenz aktiv",
+        "activeDescription": "Du hast Zugriff auf alle aktuellen und zukünftigen Designs",
+        "supporterTitle": "Designs freigeschaltet",
+        "supporterDescription": "Deine Unterstützung schaltet alle aktuellen und zukünftigen Designs frei. Sie enthält eine lebenslange Design-Lizenz. Damit du die Designs auch nach dem Ende deiner Unterstützung behältst, füge den Lizenzschlüssel aus dem Lizenzportal hinzu.",
+        "supportEndedDescription": "Deine Unterstützung enthielt eine lebenslange Design-Lizenz. Ihren Schlüssel findest du im Lizenzportal. Füge ihn hier hinzu.",
+        "activationRequiredTitle": "Lizenzaktivierung erforderlich",
+        "activationRequiredDescription": "Deine Lizenz muss auf diesem Gerät aktiviert werden",
+        "offlineTitle": "Lizenzdienst nicht erreichbar",
+        "offlineDescription": "qui konnte den Lizenzdienst 7 Tage lang nicht erreichen, daher sind die lizenzierten Designs gesperrt. qui prüft beim Start und einmal am Tag. Die Designs werden wieder freigeschaltet, sobald der Dienst antwortet. Du musst die Lizenz nicht neu aktivieren."
+      },
+      "portalHelp": {
+        "prefix": "Kaufe über DodoPayments und gib hier deinen Lizenzschlüssel ein. Falls du den Schlüssel verlierst, kannst du ihn wiederherstellen über das",
+        "suffix": "."
+      },
+      "discord": {
+        "title": "Discord-Vorteil",
+        "prefix": "Hol dir die",
+        "afterRole": "Rolle für Zugang zu einem privaten Channel.",
+        "openDiscord": "qui Discord öffnen",
+        "opensInNewTab": "(öffnet in neuem Tab)",
+        "afterLink": ", führe aus",
+        "copyVerifyAriaLabel": "/verify-Befehl kopieren",
+        "copyVerifyTitle": "Zum Kopieren klicken",
+        "verifyCommand": "/verify",
+        "afterVerify": "in",
+        "channel": "#qui",
+        "suffix": ", und melde dich mit deiner Lizenz-E-Mail-Adresse an."
+      },
+      "details": {
+        "productAdded": "{{productName}} • Hinzugefügt {{date}}",
+        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}",
+        "statusLabels": {
+          "invalid": "Ungültig",
+          "offline": "Offline",
+          "unknown": "Unbekannt"
+        }
+      },
+      "invalid": {
+        "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du das Aktivierungslimit erreichst, gehe zu <portal>licenses.getqui.com</portal>, registriere dich oder melde dich mit der E-Mail-Adresse an, mit der du die Lizenz gekauft hast, und deaktiviere unter Machine Instances ein Gerät, das du nicht mehr nutzt."
+      },
+      "errors": {
+        "expired": "Dein Lizenzschlüssel ist abgelaufen.",
+        "notActive": "Dieser Lizenzschlüssel ist nicht mehr aktiv.",
+        "invalid": "Dieser Lizenzschlüssel ist ungültig.",
+        "notFound": "Der eingegebene Lizenzschlüssel ist ungültig.",
+        "databaseCopied": "Diese Lizenz wurde auf einem anderen Gerät aktiviert. Die Datenbank wurde anscheinend kopiert.",
+        "conditionsMismatch": "Der Lizenzschlüssel erfüllt die erforderlichen Bedingungen nicht.",
+        "activationLimit": "Das Aktivierungslimit der Lizenz ist erreicht. Gehe zu <portal>licenses.getqui.com</portal> und registriere dich oder melde dich mit der E-Mail-Adresse an, mit der du die Lizenz gekauft hast. Öffne Machine Instances, deaktiviere ein Gerät, das du nicht mehr nutzt, und versuche es dann erneut.",
+        "limitReached": "Das Aktivierungslimit der Lizenz ist erreicht.",
+        "usageLimit": "Das Nutzungslimit der Lizenz ist überschritten.",
+        "unreachable": "Der Lizenzdienst ist nicht erreichbar. Bitte versuche es gleich noch einmal.",
+        "tooManyAttempts": "Zu viele Versuche. Bitte warte einen Moment und versuche es erneut.",
+        "rateLimited": "Bitte warte, bevor du es erneut versuchst.",
+        "generic": "Der Lizenzschlüssel konnte nicht überprüft werden. Bitte versuche es erneut.",
+        "deleteFailed": "Die Lizenz konnte nicht entfernt werden. Bitte versuche es erneut."
+      },
+      "actions": {
+        "addLicense": "Lizenz hinzufügen",
+        "remove": "Entfernen",
+        "getPremium": "Lizenz holen",
+        "reactivate": "Lizenz reaktivieren",
+        "activating": "Wird aktiviert...",
+        "copyLicenseKey": "Lizenzschlüssel kopieren",
+        "activate": "Lizenz aktivieren",
+        "openDodoCheckout": "DodoPayments-Checkout öffnen",
+        "openLicensePortal": "Lizenzportal öffnen"
+      },
+      "deleteDialog": {
+        "title": "Lizenz entfernen?",
+        "description": "Bist du sicher, dass du diese Lizenz von diesem Gerät entfernen möchtest? qui versucht, auch den Remote-Aktivierungsslot freizugeben, aber die lokale Entfernung wird trotzdem abgeschlossen, falls diese Anfrage fehlschlägt.",
+        "keyLabel": "Zu entfernender Lizenzschlüssel:",
+        "recoverPrefix": "Bei Bedarf kannst du ihn später wiederherstellen über dein"
+      },
+      "addDialog": {
+        "title": "Lizenz hinzufügen",
+        "description": "Gib deinen Lizenzschlüssel ein, um alle Designs freizuschalten.",
+        "label": "Lizenzschlüssel",
+        "placeholder": "Gib deinen Lizenzschlüssel ein",
+        "recoverKey": "Schlüssel wiederherstellen?",
+        "validation": {
+          "required": "Lizenzschlüssel ist erforderlich"
+        }
+      },
+      "paymentDialog": {
+        "title": "Lizenz holen",
+        "description": "Zahle, was du möchtest (min. 9,99 $) • Lebenslange Lizenz • Alle Designs",
+        "steps": {
+          "choosePaymentMethod": {
+            "title": "Zahlungsmethode wählen",
+            "cardTitle": "Karte oder lokale Methoden",
+            "cardDescription": "Zahle direkt in DodoPayments. Nach der Zahlung kehrst du zu qui zurück.",
+            "cryptoTitle": "Krypto",
+            "cryptoDescription": "Die Krypto-Zahlung wird ebenfalls im DodoPayments-Checkout abgeschlossen.",
+            "xmrHelp": "XMR läuft manuell: Melde dich über Discord oder per E-Mail an s0up4200@pm.me.",
+            "cryptoSteps": {
+              "readmePrefix": "Spende über die Adressen in der",
+              "readmeSuffix": ".",
+              "verifyPrefix": "Verifiziere unter",
+              "verifySuffix": "um deinen Rabattcode zu erhalten.",
+              "applyCode": "Öffne den DodoPayments-Checkout, füge den Code im Feld „Discount code“ ein und klicke auf „Apply“.",
+              "completeCheckout": "Bestätige, dass die Summe 0,00 $ beträgt, und schließe dann den Checkout ab."
+            }
+          },
+          "findLicenseKey": {
+            "title": "Finde deinen Lizenzschlüssel",
+            "description": "Dein Lizenzschlüssel wird nach dem Checkout angezeigt. Du kannst ihn auch später über das Lizenzportal wiederherstellen."
+          },
+          "activateLicense": {
+            "title": "Aktiviere deine Lizenz",
+            "description": "Sobald du nach dem Checkout hierher zurückkehrst, verwende „Lizenz hinzufügen“, um deinen Schlüssel zu aktivieren."
+          }
+        }
+      },
+      "copiedVerify": "Verifizierungsbefehl kopiert",
+      "failedCopyVerify": "Verifizierungsbefehl konnte nicht kopiert werden",
+      "toasts": {
+        "activationSuccessPremium": "Lizenz aktiviert! Vielen Dank!",
+        "activationSuccessSupporter": "Supporter-Schlüssel hinzugefügt. Vielen Dank!",
+        "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
+        "paymentNotCompleted": "Die Zahlung wurde nicht erfolgreich abgeschlossen.",
+        "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Lizenzschlüssel hinzu, sobald du bereit bist.",
+        "keyCopied": "Lizenzschlüssel in die Zwischenablage kopiert",
+        "copyFailed": "Lizenzschlüssel konnte nicht kopiert werden",
+        "removedFromMachine": "Lizenz von diesem Gerät entfernt"
+      }
+    },
+    "custom": {
+      "title": "Eigene Themes",
+      "description": "Schreibe oder füge ein Theme im Theme-Editor ein, oder lege Theme-CSS-Dateien in den Theme-Ordner auf dem Server.",
+      "lockedDescription": "Hol dir eine Lizenz, um eigene Themes hinzuzufügen: Schreibe oder füge ein Theme im Theme-Editor ein, oder lege Theme-CSS-Dateien in den Theme-Ordner auf dem Server.",
+      "unlockCta": "Lizenz holen",
+      "refresh": "Aktualisieren",
+      "themeCount_one": "{{count}} Theme",
+      "themeCount_other": "{{count}} Themes",
+      "folderLabel": "Theme-Ordner",
+      "actionsFor": "Aktionen für {{theme}}",
+      "parseErrorsTitle": "Ungültige Themes:",
+      "parseErrorsHint": "Bearbeite eine Datei, um sie zu korrigieren, oder entferne sie.",
+      "noneFound": "Noch keine eigenen Themes. Klicke auf Neues Theme, oder lege eine .css-Datei in den Theme-Ordner und klicke auf Aktualisieren.",
+      "loadError": "Eigene Themes konnten nicht geladen werden. Prüfe die Serverprotokolle und die Berechtigungen des Theme-Ordners.",
+      "newTheme": "Neues Theme",
+      "copyPrompt": "Prompt für deine KI kopieren",
+      "promptCopied": "Prompt kopiert. Füge ihn in deinen KI-Assistenten ein und beschreibe den gewünschten Look.",
+      "promptCopyFailed": "Prompt konnte nicht kopiert werden",
+      "edit": "Bearbeiten",
+      "remove": "Entfernen",
+      "removeTitle": "{{theme}} entfernen?",
+      "removeDescription": "qui löscht die Datei dieses Themes aus dem Theme-Ordner. Das kann nicht rückgängig gemacht werden. Ein Gerät, das dieses Theme nutzt, zeigt dann das Standard-Theme.",
+      "removeConfirm": "Entfernen",
+      "removed": "Theme entfernt",
+      "removeFailed": "Theme konnte nicht entfernt werden: {{message}}",
+      "editLoadFailed": "Die Theme-Datei konnte nicht gelesen werden: {{message}}",
+      "editor": {
+        "newTitle": "Neues Theme",
+        "editTitle": "Theme bearbeiten",
+        "description": "Die Vorschau zeigt Änderungen in diesem Browser. Speichern legt das Theme auf dem Server ab.",
+        "name": "Name",
+        "namePlaceholder": "Theme-Name",
+        "savedAs": "Dateiname: {{filename}}",
+        "css": "CSS",
+        "cssHelp": "Füge das CSS eines Themes ein oder schreibe es selbst. Es braucht einen :root-Block für den hellen Modus und einen .dark-Block für den dunklen Modus, jeweils mit mindestens einem Design-Token. Prompt für deine KI kopieren gibt einem KI-Assistenten alle Regeln.",
+        "cssPlaceholder": "/* @name: Mein Theme */\n:root {\n  --background: oklch(0.98 0.01 90);\n}\n.dark {\n  --background: oklch(0.2 0.02 240);\n}",
+        "nameInvalid": "Gib einen Namen mit einem Buchstaben oder einer Ziffer ein.",
+        "nameRequired": "Gib einen Namen ein, oder füge dem CSS eine @name-Zeile hinzu.",
+        "save": "Speichern",
+        "saveFailed": "Theme konnte nicht gespeichert werden.",
+        "saved": "Theme gespeichert",
+        "savedNotLoaded": "Das Theme ist gespeichert, aber qui konnte die Theme-Liste nicht laden. Klicke neben dem Theme-Ordner auf Aktualisieren.",
+        "replaceTitle": "Theme ersetzen?",
+        "replaceDescription": "Ein eigenes Theme mit dem Dateinamen {{filename}} existiert bereits. Durch dieses Theme ersetzen?",
+        "replace": "Ersetzen",
+        "problems": {
+          "missingRoot": "qui kann dieses CSS nicht verwenden: Es hat keinen :root-Block mit einem Design-Token. Die Vorschau zeigt das letzte CSS, das qui verwenden konnte.",
+          "missingDark": "qui kann dieses CSS nicht verwenden: Es hat keinen .dark-Block mit einem Design-Token. Die Vorschau zeigt das letzte CSS, das qui verwenden konnte.",
+          "outsideFile": "Zeile {{line}} kann eine Datei von einer anderen Website laden. Die Vorschau behält das letzte gültige CSS, und Speichern lehnt dieses CSS ab.",
+          "unreadable": "qui kann Zeile {{line}} nicht lesen: Ein String in Anführungszeichen oder ein url() ist nicht geschlossen. Die Vorschau zeigt das letzte CSS, das qui verwenden konnte."
+        },
+        "previewing": "Vorschau in diesem Browser",
+        "previewWaits": "Die Vorschau startet, sobald du das CSS änderst.",
+        "emptyStatus": "Füge das CSS eines Themes ein oder schreibe es, um eine Vorschau zu sehen."
+      }
+    },
+    "layout": {
+      "title": "Theme-Synchronisierung",
+      "mobileSplit": "Eigenes Theme für das mobile Layout",
+      "mobileSplitHelp": "Das mobile Layout (ein Fenster unter 768 px Breite) und das Desktop-Layout behalten jeweils ihr eigenes Theme, ihren Modus und ihre Variante. Diese Einstellung gilt für jeden Browser.",
+      "localOnly": "Theme dieses Browsers lokal halten",
+      "localOnlyHelp": "Dieser Browser übernimmt das Theme nicht vom Server und sendet seine Theme-Änderungen nicht an den Server. Diese Einstellung gilt nur für diesen Browser.",
+      "changesMobile": "Ändert das mobile Theme",
+      "changesDesktop": "Ändert das Desktop-Theme",
+      "changesLocal": "Ändert nur das Theme dieses Browsers.",
+      "splitNeedsSync": "Um die Einstellung für das mobile Layout zu ändern, schalte die lokale Einstellung aus.",
+      "saveError": "Theme-Einstellung konnte nicht gespeichert werden",
+      "mobileSplitOffWarning": "Beim Ausschalten wird das mobile Theme gelöscht."
+    }
+  },
+  "arrInstances": {
+    "addButton": "Instanz hinzufügen",
+    "addDialog": {
+      "title": "Neue Instanz",
+      "description": "Ein Sonarr- oder Radarr-Server, bei dem Cross-Seed IDs abfragt."
+    },
+    "editDialog": {
+      "title": "Instanz bearbeiten"
+    },
+    "deleteDialog": {
+      "title": "Instanz löschen?",
+      "description": "qui nutzt {{name}} nicht mehr für ID-Abfragen. Das kann nicht rückgängig gemacht werden."
+    },
+    "unknownError": "Unbekannter Fehler",
+    "actions": {
+      "testConnection": "Verbindung testen",
+      "delete": "Löschen",
+      "save": "Speichern"
+    },
+    "form": {
+      "type": "Typ",
+      "name": "Name",
+      "namePlaceholder": "Mein {{type}}",
+      "baseUrl": "Basis-URL",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "API Key eingeben",
+      "apiKeyPlaceholderEdit": "••••••••",
+      "apiKeyDescription": "Zu finden unter Einstellungen > Allgemein in {{type}}",
+      "basicAuth": "Basic Auth",
+      "basicAuthDescription": "Verwende HTTP Basic Authentication für ARR hinter einem Reverse Proxy.",
+      "basicUsername": "Benutzername",
+      "basicPassword": "Passwort",
+      "basicPasswordKeep": "Unverändert lassen, um das aktuelle Passwort zu behalten.",
+      "priority": "Priorität",
+      "priorityDescription": "Instanzen mit höherer Priorität werden zuerst abgefragt",
+      "timeoutSeconds": "Timeout (Sekunden)",
+      "enabled": "Diese Instanz aktivieren",
+      "types": {
+        "sonarr": "Sonarr (Serien)",
+        "radarr": "Radarr (Filme)",
+        "sonarrShort": "Sonarr",
+        "radarrShort": "Radarr"
+      },
+      "apiKeyKeep": "Leer lassen, um den aktuellen Key zu behalten."
+    },
+    "validation": {
+      "nameRequired": "Name ist erforderlich",
+      "baseUrlRequired": "Basis-URL ist erforderlich",
+      "apiKeyRequired": "API Key ist erforderlich",
+      "baseUrlAndApiKeyRequired": "Basis-URL und API Key sind erforderlich, um die Verbindung zu testen",
+      "basicUsernameRequired": "Basic-Auth-Benutzername ist erforderlich",
+      "basicPasswordRequired": "Basic-Auth-Passwort ist erforderlich, um die Verbindung zu testen",
+      "basicPasswordRequiredSubmit": "Basic-Auth-Passwort ist erforderlich",
+      "basicPasswordKeepOrEnter": "Gib ein neues Basic-Auth-Passwort ein oder behalte das bestehende"
+    },
+    "toasts": {
+      "created": "ARR-Instanz erfolgreich erstellt",
+      "createFailed": "ARR-Instanz konnte nicht erstellt werden: {{error}}",
+      "updated": "ARR-Instanz erfolgreich aktualisiert",
+      "updateFailed": "ARR-Instanz konnte nicht aktualisiert werden: {{error}}",
+      "deleted": "ARR-Instanz erfolgreich gelöscht",
+      "deleteFailed": "ARR-Instanz konnte nicht gelöscht werden: {{error}}",
+      "connectionSuccess": "Verbindung erfolgreich",
+      "connectionFailed": "Verbindung fehlgeschlagen: {{error}}",
+      "testFailed": "Verbindungstest fehlgeschlagen: {{error}}"
+    },
+    "status": {
+      "connected": "Verbunden",
+      "failed": "Test fehlgeschlagen"
+    },
+    "tested": "Zuletzt getestet: {{date}}",
+    "emptyTitle": "Noch kein Sonarr oder Radarr",
+    "emptyDescription": "Füge einen hinzu, damit Cross-Seed nach ID suchen kann."
+  },
+  "indexers": {
+    "title": "Torznab Indexer",
+    "deleteIndexer": "Indexer löschen",
+    "deleteIndexerDescription": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "deleteAllIndexers": "Alle Indexer löschen",
+    "deleteAllDescription": "Bist du sicher, dass du alle {{count}} Indexer löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "toast": {
+      "deletedSuccess": "Indexer gelöscht",
+      "deleteFailed": "Indexer konnte nicht gelöscht werden",
+      "deleteAllSuccess": "Alle {{count}} Indexer gelöscht",
+      "deleteAllPartial": "{{success}} Indexer gelöscht, {{failed}} fehlgeschlagen: {{names}}",
+      "testSuccess": "Verbindungstest erfolgreich",
+      "noIndexersToTest": "Keine Indexer zum Testen",
+      "testing": "{{count}} Indexer werden getestet...",
+      "testAllSuccess": "Alle {{count}} Indexer erfolgreich getestet",
+      "testAllPartial": "{{success}} bestanden, {{failed}} fehlgeschlagen",
+      "failedIndexers": "Fehlgeschlagene Indexer: {{names}}",
+      "capsSynced": "Capabilities vom Backend synchronisiert",
+      "failedToSyncCaps": "Caps konnten nicht synchronisiert werden",
+      "testFailed": "Verbindungstest fehlgeschlagen"
+    },
+    "priorityLabels": {
+      "interactive": "Interaktiv",
+      "rss": "RSS",
+      "completion": "Vervollständigung",
+      "background": "Hintergrund"
+    },
+    "contentTypeLabels": {
+      "movie": "Film",
+      "tv": "Serie",
+      "tv_daily": "Serie (täglich)",
+      "xxx": "XXX",
+      "music": "Musik",
+      "audiobook": "Hörbuch",
+      "book": "Buch",
+      "comic": "Comic",
+      "magazine": "Magazin",
+      "education": "Bildung",
+      "app": "App",
+      "game": "Spiel",
+      "unknown": "Unbekannt"
+    },
+    "page": {
+      "summary": "{{enabled}} aktiviert, {{capabilities}} mit Capabilities",
+      "description": "Verwalte Torznab-Indexer über Jackett, Prowlarr oder native Tracker-Endpunkte",
+      "deleteAll": "Alle löschen",
+      "addMenu": {
+        "discover": "In Jackett oder Prowlarr finden",
+        "manual": "Einen per URL hinzufügen"
+      }
+    },
+    "dialog": {
+      "addTitle": "Indexer hinzufügen",
+      "editTitle": "Indexer bearbeiten",
+      "addDescription": "Füge einen neuen Torznab-Indexer für die Cross-Seed-Erkennung hinzu",
+      "editDescription": "Indexer-Einstellungen aktualisieren",
+      "labels": {
+        "name": "Name",
+        "backend": "Backend",
+        "baseUrl": "Basis-URL",
+        "indexerId": "Indexer-ID",
+        "apiKey": "API-Key",
+        "priority": "Priorität",
+        "timeout": "Timeout (Sekunden)",
+        "enabled": "Aktiviert",
+        "basicAuth": "Basic Auth",
+        "basicAuthDescription": "Verwende HTTP-Basic-Authentifizierung für Torznab hinter einem Reverse Proxy.",
+        "basicUsername": "Basic-Benutzername",
+        "basicPassword": "Basic-Passwort"
+      },
+      "placeholders": {
+        "name": "Mein Indexer",
+        "selectBackend": "Backend auswählen",
+        "apiKeyEdit": "Leer lassen, um den bestehenden zu behalten",
+        "apiKeyCreate": "Dein API-Key",
+        "indexerIdProwlarr": "Prowlarr-Indexer-ID (z. B. 1)",
+        "indexerIdJackett": "Optionale Jackett-Indexer-ID (z. B. aither)",
+        "username": "Benutzername",
+        "password": "Passwort"
+      },
+      "hints": {
+        "indexerIdProwlarr": "Gib die numerische ID von der Indexer-Detailseite in Prowlarr ein.",
+        "indexerIdJackett": "Optional für Jackett. Leer lassen, damit qui sie automatisch ableitet.",
+        "basicPasswordKeep": "Auf <redacted> lassen, um das bestehende Passwort zu behalten."
+      },
+      "backends": {
+        "jackett": "Jackett",
+        "prowlarr": "Prowlarr",
+        "native": "Native Torznab"
+      },
+      "buttons": {
+        "save": "Speichern"
+      },
+      "toast": {
+        "createdSuccess": "Indexer erfolgreich erstellt",
+        "createdWithWarnings": "Indexer mit Warnungen erstellt: {{warnings}}",
+        "updatedSuccess": "Indexer erfolgreich aktualisiert",
+        "updatedWithWarnings": "Indexer mit Warnungen aktualisiert: {{warnings}}",
+        "failedCreate": "Indexer konnte nicht erstellt werden",
+        "failedEdit": "Indexer konnte nicht bearbeitet werden",
+        "basicUsernameRequired": "Basic-Auth-Benutzername ist erforderlich",
+        "basicPasswordRequired": "Basic-Auth-Passwort ist erforderlich",
+        "basicPasswordRequiredOrKeep": "Basic-Auth-Passwort ist erforderlich (oder <redacted> behalten)"
+      },
+      "validation": {
+        "nameRequired": "Gib einen Namen ein.",
+        "baseUrlRequired": "Gib die Basis-URL ein.",
+        "baseUrlInvalid": "Gib eine vollständige URL ein, zum Beispiel {{example}}.",
+        "indexerIdRequired": "Gib die Indexer-ID aus Prowlarr ein.",
+        "apiKeyRequired": "Gib den API-Schlüssel ein.",
+        "priorityInvalid": "Gib eine ganze Zahl ab 0 ein.",
+        "timeoutInvalid": "Gib eine ganze Zahl von 5 bis 120 ein."
+      }
+    },
+    "autodiscovery": {
+      "title": "Indexer erkennen",
+      "descriptionInput": "Mit Jackett oder Prowlarr verbinden, um konfigurierte Indexer zu erkennen",
+      "descriptionSelect": "Indexer zum Importieren auswählen",
+      "labels": {
+        "indexerUrl": "Indexer-URL",
+        "apiKey": "API-Key",
+        "basicAuth": "Basic Auth",
+        "basicAuthDescription": "Verwende HTTP-Basic-Authentifizierung für Jackett/Prowlarr hinter einem Reverse Proxy.",
+        "basicUsername": "Basic-Benutzername",
+        "basicPassword": "Basic-Passwort"
+      },
+      "placeholders": {
+        "indexerUrl": "http://localhost:9696",
+        "apiKey": "Dein Indexer-API-Key",
+        "username": "Benutzername",
+        "password": "Passwort"
+      },
+      "hints": {
+        "indexerUrl": "Prowlarr verwendet standardmäßig http://localhost:9696, Jackett http://localhost:9117."
+      },
+      "buttons": {
+        "discover": "Erkennen",
+        "back": "Zurück",
+        "import": "{{count}} Indexer importieren",
+        "importPlural": "{{count}} Indexer importieren",
+        "selectAll": "Alle auswählen",
+        "deselectAll": "Alle abwählen"
+      },
+      "selectionCount": "{{selected}} von {{total}} ausgewählt",
+      "noIndexersFound": "Keine Indexer gefunden",
+      "willUpdate": "Wird aktualisiert",
+      "typeLabel": "Typ:",
+      "notConfigured": "Nicht konfiguriert",
+      "unknownError": "Unbekannter Fehler",
+      "toast": {
+        "urlRequired": "Indexer-URL ist erforderlich",
+        "basicAuthRequired": "Basic Auth erfordert Benutzername und Passwort",
+        "discoveredWithExisting": "{{total}} Indexer gefunden ({{existing}} existieren bereits)",
+        "discovered": "{{count}} Indexer gefunden",
+        "discoverFailed": "Indexer konnten nicht erkannt werden: {{error}}",
+        "importSuccess": "Erfolg: {{details}}",
+        "importWithWarnings": "{{details}} ({{warningCount}} mit Warnungen)",
+        "moreWarnings": "...und {{count}} weitere Warnungen",
+        "moreErrors": "...und {{count}} weitere Fehler",
+        "created": "{{count}} erstellt",
+        "updated": "{{count}} aktualisiert",
+        "failed": "{{count}} fehlgeschlagen"
+      },
+      "savedConnections": {
+        "title": "Gespeicherte Verbindungen",
+        "description": "Einen bereits importierten Server verwenden. Der API-Key bleibt auf dem Server.",
+        "manual": "Manuell eingeben",
+        "storedKey": "Der gespeicherte API-Key für diesen Server wird verwendet.",
+        "indexerCount_one": "{{count}} Indexer",
+        "indexerCount_other": "{{count}} Indexer"
+      }
+    },
+    "table": {
+      "name": "Name",
+      "backend": "Backend",
+      "priority": "Priorität",
+      "status": "Status",
+      "capabilities": "Capabilities",
+      "working": "Funktioniert",
+      "failed": "Fehlgeschlagen",
+      "untested": "Ungetestet",
+      "testAll": "Alle testen",
+      "clearFilters": "Filter zurücksetzen",
+      "showingCount": "{{shown}} von {{total}} Indexern angezeigt",
+      "noMatch": "Keine Indexer entsprechen den aktuellen Filtern",
+      "noCapabilities": "Keine Capabilities",
+      "filterStatus": "Status",
+      "filterTestStatus": "Teststatus",
+      "filterBackend": "Backend",
+      "filterAll": "Alle",
+      "filterJackett": "Jackett",
+      "filterProwlarr": "Prowlarr",
+      "filterNative": "Native",
+      "tooltipTest": "Verbindung testen",
+      "tooltipSyncCaps": "Capabilities synchronisieren",
+      "tooltipDelete": "Löschen",
+      "sortBy": "Sortieren nach",
+      "sortAscending": "Aufsteigend",
+      "sortDescending": "Absteigend",
+      "sortAndFilter": "Sortieren & filtern",
+      "order": "Reihenfolge",
+      "filterEnabled": "Aktiviert",
+      "filterDisabled": "Deaktiviert"
+    },
+    "activity": {
+      "title": "Scheduler-Aktivität",
+      "running": "Läuft",
+      "queued": "In Warteschlange",
+      "rateLimited": "Rate-limitiert",
+      "noActiveTasks": "Keine aktiven Aufgaben oder Rate-Limits",
+      "andMore": "...und {{count}} weitere",
+      "workersStatus": "{{used}}/{{total}} Worker",
+      "ready": "Bereit",
+      "left": "{{time}} verbleibend",
+      "description": "Suchen, die gerade laufen, in der Warteschlange warten oder ein Ratenlimit abwarten."
+    },
+    "searchHistory": {
+      "title": "Suchverlauf",
+      "searches": "{{count}} Suchen",
+      "noSearchesYet": "Noch keine Suchen",
+      "successful": "{{count}} erfolgreich",
+      "failed": "{{count}} fehlgeschlagen",
+      "source": "Quelle: {{source}}",
+      "results": "{{count}} Ergebnisse",
+      "detail": {
+        "release": "Release",
+        "results": "Ergebnisse",
+        "duration": "Dauer",
+        "priority": "Priorität",
+        "crossSeed": "Cross-Seed",
+        "added": "{{count}} hinzugefügt",
+        "error": "Fehler",
+        "searchParameters": "Suchparameter",
+        "mode": "Modus",
+        "type": "Typ",
+        "job": "Job {{id}}",
+        "statusSuccess": "Erfolg",
+        "statusFailed": "Fehlgeschlagen",
+        "statusSkipped": "Übersprungen",
+        "statusRateLimited": "Rate-limitiert",
+        "season": "Staffel",
+        "episode": "Episode",
+        "query": "Suchbegriff",
+        "finished": "Beendet"
+      },
+      "description": "Die letzten Suchen, die qui an deine Indexer gesendet hat.",
+      "showAll": "Alle {{count}} anzeigen",
+      "showFewer": "Weniger anzeigen"
+    },
+    "list": {
+      "testing": "Wird getestet",
+      "priority": "Priorität {{priority}}",
+      "emptyTitle": "Noch keine Indexer",
+      "emptyDescription": "Finde sie in Jackett oder Prowlarr, oder füge einen von Hand hinzu.",
+      "capabilities_one": "{{count}} Capability",
+      "capabilities_other": "{{count}} Capabilities"
+    }
+  },
+  "gazelle": {
+    "title": "Gazelle (OPS/RED)",
+    "description": "Aktiviere direktes API-Matching gegen Orpheus und Redacted. Dies läuft parallel zu Torznab; OPS-/RED-Torznab-Indexer werden ignoriert.",
+    "enableMatching": "Gazelle-Matching aktivieren",
+    "enableDescription": "Gilt für alle Quell-Torrents. Wenn möglich, prüft qui auch RED/OPS über Gazelle.",
+    "redactedApiKey": "Redacted API Key",
+    "orpheusApiKey": "Orpheus API Key",
+    "pasteRedKey": "RED API Key einfügen",
+    "pasteOpsKey": "OPS API Key einfügen",
+    "enableToConfigure": "Zum Konfigurieren aktivieren",
+    "redDescription": "Wird für redacted.sh-Abfragen verwendet. Einfügen zum Ersetzen; leeren zum Entfernen.",
+    "opsDescription": "Wird für orpheus.network-Abfragen verwendet. Einfügen zum Ersetzen; leeren zum Entfernen.",
+    "save": "Speichern"
+  },
+  "searchCache": {
+    "title": "Such-Cache",
+    "description": "Zwischengespeicherte Suchergebnisse von Torznab-Indexern.",
+    "refreshStats": "Aktualisieren",
+    "configTitle": "Cache-Konfiguration",
+    "configDescription": "Lege fest, wie lange Suchergebnisse zwischengespeichert werden.",
+    "cacheTTL": "Cache-TTL (Minuten)",
+    "saveTTL": "Speichern",
+    "ttlHelper": "Mindestens {{min}} Minuten. Höhere Werte reduzieren die Indexer-Last.",
+    "entries": "Einträge",
+    "hitCount": "Treffer",
+    "approxSize": "Ungefähre Größe",
+    "newestEntry": "Neuester Eintrag",
+    "lastUsed": "Zuletzt verwendet",
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert",
+    "toasts": {
+      "ttlUpdated": "Cache-TTL auf {{minutes}} Minuten aktualisiert",
+      "ttlUpdateFailed": "Cache-TTL konnte nicht aktualisiert werden"
+    },
+    "validation": {
+      "invalidNumber": "Bitte gib eine gültige Zahl ein",
+      "ttlMinimum": "TTL muss mindestens {{min}} Minuten betragen"
+    },
+    "status": "Status"
+  },
+  "application": {
+    "build": {
+      "title": "Build",
+      "description": "Versions- und Build-Details.",
+      "refresh": "Aktualisieren",
+      "version": "Version",
+      "commit": "Commit",
+      "buildDate": "Build-Datum",
+      "updateStatus": "Update-Status",
+      "statuses": {
+        "disabled": "Deaktiviert",
+        "disabledDetail": "Update-Prüfung ist deaktiviert",
+        "devBuild": "Dev-Build",
+        "checking": "Wird geprüft...",
+        "checkingDetail": "Suche nach Updates",
+        "updateAvailable": "Update verfügbar",
+        "upToDate": "Aktuell",
+        "upToDateDetail": "Neueste Version läuft",
+        "notCheckedYet": "Noch nicht geprüft",
+        "lastChecked": "Zuletzt geprüft {{date}}"
+      }
+    },
+    "support": {
+      "description": "qui ist kostenlos. Supporter und Design-Lizenzen bezahlen die Arbeit daran.",
+      "open": "Wege, qui zu unterstützen",
+      "openSupporter": "Deine Unterstützung",
+      "shortcut": "Verknüpfung zum Unterstützen anzeigen",
+      "shortcutHelp": "Das Herz in der Kopfzeile und „qui unterstützen“ im Menü auf dem Handy.",
+      "reminder": "Einmal im Jahr erinnern",
+      "reminderDescription": "Eine Erinnerung im Jahr, nie mehr. Aus, solange die Verknüpfung zum Unterstützen ausgeblendet ist.",
+      "reminderSupporter": "qui erinnert Supporter nicht."
+    },
+    "restart": {
+      "button": "Neu starten",
+      "confirmTitle": "qui neu starten?",
+      "confirmDescription": "qui fährt wie bei einem normalen Stopp herunter und startet dann erneut. Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet. Die Seite lädt neu, sobald qui wieder da ist.",
+      "confirm": "Neu starten",
+      "overlay": {
+        "restartingTitle": "qui wird neu gestartet…",
+        "restartingDetail": "Die Seite lädt neu, sobald qui wieder antwortet.",
+        "slowTitle": "qui hat noch nicht geantwortet",
+        "slowDetail": "qui startet möglicherweise noch, und diese Seite wartet weiter. Prüfe die Logs von qui. Wenn du den Port oder die Base-URL geändert hast, öffne qui unter der neuen Adresse."
+      }
+    },
+    "update": {
+      "support": {
+        "checkingTitle": "Unterstützung wird geprüft",
+        "checkingDescription": "Es wird geprüft, ob qui dieses Update installieren kann.",
+        "failedTitle": "Update-Unterstützung konnte nicht geprüft werden",
+        "failedDescription": "Es konnte nicht geprüft werden, ob die Selbstaktualisierung verfügbar ist.",
+        "retryDescription": "Wiederholen Sie die Prüfung, bevor Sie das Update installieren.",
+        "retry": "Erneut versuchen"
+      },
+      "unavailable": {
+        "description": "Die automatische Installation ist für diese Einrichtung nicht verfügbar.",
+        "nextStep": "So aktualisieren Sie qui",
+        "guide": "Update-Anleitung",
+        "container": {
+          "reason": "qui läuft in einem Container. Updates erfolgen über das Container-Image.",
+          "step": "Laden Sie das neue qui-Image herunter und erstellen Sie den Container mit Ihrer vorhandenen Konfiguration und Ihren Datenvolumes neu."
+        },
+        "disabled": {
+          "reason": "Die Selbstaktualisierung ist in der qui-Konfiguration deaktiviert.",
+          "step": "Aktualisieren Sie qui mit dem Paketmanager oder der Installationsmethode, die Sie für die Installation verwendet haben."
+        },
+        "development": {
+          "reason": "Dieser qui-Build ist kein Release-Build. Die automatische Installation erfordert einen Release-Build.",
+          "step": "Stoppen Sie qui, ersetzen Sie die Binärdatei durch ein offizielles Release oder einen neuen Build und starten Sie qui erneut."
+        },
+        "directory": {
+          "reason": "qui kann nicht auf das Verzeichnis seiner Binärdatei zugreifen oder darin schreiben.",
+          "step": "Stoppen Sie qui, ersetzen Sie die Binärdatei durch das neue Release mit einem Konto mit Schreibzugriff und starten Sie qui erneut."
+        }
+      },
+      "button": "Update installieren",
+      "confirmTitle": "Update installieren?",
+      "confirmDescription": "qui lädt die neue Version herunter, prüft ihre Signatur und behält die aktuelle Binärdatei als Backup. Danach startet qui neu. Die Seite lädt neu, sobald qui wieder da ist.",
+      "runningWork": "Laufende Arbeit wie Cross-Seed-Suchen, Automatisierungen, Backups und Orphan-Scans wird beendet.",
+      "currentVersion": "Aktuelle Version",
+      "targetVersion": "Neue Version",
+      "releaseNotes": "Release Notes",
+      "confirm": "Update installieren",
+      "overlay": {
+        "notAppliedTitle": "Update wurde nicht angewendet",
+        "notAppliedDetail": "qui ist wieder da, aber mit einer anderen Version. Prüfe die Logs von qui.",
+        "installedTitle": "qui wurde aktualisiert",
+        "installedDetail": "Lade die Seite neu, um die neue Version zu öffnen.",
+        "reload": "Seite neu laden",
+        "noBackup": "qui wurde aktualisiert, hat aber kein Backup behalten: {{error}}. Für ein Rollback lade die alte Version manuell herunter.",
+        "rollbackIntro": "Wenn die neue Version nicht startet, führe diesen Befehl aus und starte qui dann erneut:",
+        "rollbackLabel": "Rollback-Befehl",
+        "rollbackDocs": "Schritte für das Rollback"
+      }
+    },
+    "runtime": {
+      "title": "Laufzeit",
+      "description": "Informationen zur Server-Laufzeit.",
+      "uptime": "Uptime",
+      "runtime": "Laufzeit",
+      "bindAddress": "Bind-Adresse"
+    },
+    "auth": {
+      "title": "Authentifizierung",
+      "description": "Authentifizierungskonfiguration.",
+      "currentSessionAuth": "Aktuelle Sitzung",
+      "yes": "Ja",
+      "no": "Nein",
+      "oidcEnabled": "OIDC aktiviert",
+      "builtInLoginEnabled": "Integrierter Login",
+      "oidcIssuerHost": "OIDC-Issuer"
+    },
+    "storage": {
+      "title": "Speicher",
+      "description": "Datenbank- und Dateisystempfade.",
+      "database": "Datenbank",
+      "configDir": "Konfigurationsverzeichnis",
+      "dataDir": "Datenverzeichnis"
+    }
+  },
+  "trackerCustomizations": {
+    "cardTitle": "Tracker-Anpassungen",
+    "cardDescription": "Benenne Tracker um und fasse die Domains eines Trackers zu einem Eintrag zusammen. Wähle Tracker aus, um sie umzubenennen oder zusammenzuführen.",
+    "loading": "Tracker werden geladen…",
+    "mergedFrom": "Zusammengeführt aus: {{domains}}",
+    "original": "Original: {{domain}}",
+    "mergeTooltip": "Ausgewählte Tracker zu dieser Gruppe zusammenführen",
+    "mergeIntoGroup": "Zu Gruppe zusammenführen",
+    "addToMerge": "Zum Zusammenführen hinzufügen",
+    "rename": "Umbenennen",
+    "delete": "Löschen",
+    "customizeDialog": {
+      "editTitle": "Tracker-Name bearbeiten",
+      "renameTitle": "Tracker umbenennen",
+      "mergeTitle": "Tracker zusammenführen",
+      "editDescription": "Aktualisiere den Anzeigenamen für diesen Tracker.",
+      "renameDescription": "Gib diesem Tracker einen eigenen Anzeigenamen.",
+      "mergeDescription": "Fasse diese Tracker zu einem einzigen Eintrag mit eigenem Namen zusammen.",
+      "displayName": "Anzeigename",
+      "displayNamePlaceholder": "z. B. TorrentLeech",
+      "domains": "Domains",
+      "selectedTrackers": "Ausgewählte Tracker",
+      "primary": "Primär",
+      "removeDomain": "{{domain}} entfernen",
+      "save": "Speichern",
+      "renameAction": "Umbenennen",
+      "mergeAction": "Zusammenführen"
+    },
+    "importDialog": {
+      "title": "Tracker-Anpassungen importieren",
+      "description": "Füge JSON ein, um Tracker-Anpassungen (Umbenennungen und Zusammenführungen) zu importieren.",
+      "jsonData": "JSON-Daten",
+      "invalidFormat": "Ungültiges Format: trackerCustomizations-Array erwartet",
+      "missingDisplayName": "Ungültiger Eintrag: displayName fehlt",
+      "invalidDomains": "Ungültiger Eintrag: domains muss ein nicht-leeres Array sein",
+      "invalidJson": "Ungültiges JSON",
+      "newCount": "{{count}} neu",
+      "conflictCount_one": "{{count}} Konflikt",
+      "conflictCount_other": "{{count}} Konflikte",
+      "unchangedCount": "{{count}} unverändert",
+      "resolveConflicts": "Konflikte auflösen",
+      "conflictsWith": "Konflikt mit: {{name}}",
+      "skip": "Überspringen",
+      "overwrite": "Überschreiben",
+      "importing": "Wird importiert...",
+      "import": "Importieren"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "Keine Anpassungen zum Exportieren",
+      "copiedToClipboard": "In die Zwischenablage kopiert",
+      "failedToCopy": "Kopieren in die Zwischenablage fehlgeschlagen",
+      "createFailed": "Tracker-Anpassung konnte nicht erstellt werden",
+      "updateFailed": "Tracker-Anpassung konnte nicht aktualisiert werden",
+      "deleteFailed": "Tracker-Anpassung konnte nicht gelöscht werden",
+      "failedToImport": "Import fehlgeschlagen: {{names}}",
+      "importedAndSkipped": "{{imported}} importiert, {{skipped}} übersprungen",
+      "importedCount_one": "{{count}} Anpassung importiert",
+      "importedCount_other": "{{count}} Anpassungen importiert",
+      "noCustomizationsImported": "Keine Anpassungen importiert"
+    },
+    "cardHelp": "qui zeigt den Anzeigenamen überall, wo es den Tracker zeigt.",
+    "emptyTitle": "Noch keine Tracker",
+    "emptyDescription": "Tracker erscheinen hier, sobald eine Instanz Torrents hat.",
+    "importButton": "Importieren",
+    "exportButton": "Exportieren",
+    "selectionLabel": "Ausgewählte Tracker",
+    "selectedCount_one": "{{count}} ausgewählt",
+    "selectedCount_other": "{{count}} ausgewählt",
+    "deleteDialog": {
+      "title": "Anpassung löschen?",
+      "description": "Die Tracker von {{name}} zeigen wieder ihre eigenen Domains. Das kann nicht rückgängig gemacht werden."
+    }
+  }
+}

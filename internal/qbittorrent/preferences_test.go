@@ -1,0 +1,89 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package qbittorrent
+
+import (
+	"context"
+	"encoding/json/v2"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGetAppPreferencesServesStaleCacheWhenRefreshFails(t *testing.T) {
+	c := &Client{
+		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
+		instanceID: 1,
+	}
+	c.preferencesCache = &qbt.AppPreferences{AnnounceIP: "203.0.113.7"}
+	c.preferencesFetchedAt = time.Now().Add(-2 * appPreferencesCacheTTL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	prefs, err := c.GetAppPreferences(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, prefs)
+	require.Equal(t, "203.0.113.7", prefs.AnnounceIP)
+}
+
+func TestGetLastAppPreferencesAsksOnlyWithoutACache(t *testing.T) {
+	var asked atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/app/preferences") {
+			asked.Add(1)
+			_, _ = w.Write([]byte(`{"listen_port":6881}`))
+			return
+		}
+		_, _ = w.Write([]byte("Ok."))
+	}))
+	defer server.Close()
+	c := &Client{Client: qbt.NewClient(qbt.Config{Host: server.URL}), instanceID: 1}
+
+	prefs, err := c.GetLastAppPreferences(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 6881, prefs.ListenPort)
+	require.EqualValues(t, 1, asked.Load())
+
+	c.preferencesFetchedAt = time.Now().Add(-2 * appPreferencesCacheTTL)
+	prefs, err = c.GetLastAppPreferences(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 6881, prefs.ListenPort)
+	require.EqualValues(t, 1, asked.Load(), "an old cache answers with no request")
+}
+
+func TestGetAppPreferencesReturnsErrorWhenNoCacheAndRefreshFails(t *testing.T) {
+	c := &Client{
+		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
+		instanceID: 1,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	prefs, err := c.GetAppPreferences(ctx)
+	require.Error(t, err)
+	require.Nil(t, prefs)
+}
+
+func TestCloneAppPreferencesKeepsSentKeysOfOriginal(t *testing.T) {
+	t.Parallel()
+
+	var original qbt.AppPreferences
+	require.NoError(t, json.Unmarshal([]byte(`{"add_stopped_enabled":true}`), &original))
+
+	clone := cloneAppPreferences(&original)
+	require.NoError(t, json.Unmarshal([]byte(`{"listen_port":6881}`), clone))
+
+	require.True(t, clone.Has("add_stopped_enabled"))
+	require.True(t, clone.Has("listen_port"))
+	require.True(t, original.Has("add_stopped_enabled"))
+	require.False(t, original.Has("listen_port"), "a decode into the clone must not change the sent keys of the original")
+}

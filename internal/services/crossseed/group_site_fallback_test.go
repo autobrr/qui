@@ -1,0 +1,1184 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/rls"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/releases"
+	"github.com/autobrr/qui/pkg/stringutils"
+)
+
+const (
+	fansubBracketPack    = "Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
+	fansubTaggedPack     = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+	otherFansubBracket   = "Azure Compass S01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (EMBER)][Batch][EMBER]"
+	otherFansubTagged    = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-EMBER"
+	labelledLeftoverOne  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.FoV[eztv]"
+	labelledLeftoverTwo  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.KILLERS[eztv]"
+	labelledTaggedOne    = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-FoV[eztv]"
+	labelledTaggedTwo    = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KILLERS[eztv]"
+	bareFansubEpisode    = "[KIRI] Azure Compass - 01 (1080p)"
+	fansubRepeatedTag    = "[KIRI] Azure Compass S01 [Web][MKV][h265][1080p][AAC 2.0][Softsubs (KIRI)]"
+	labelAsTaggedGroup   = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-eztv"
+	labelAsGroupAndSite  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-eztv[eztv]"
+	labelAsLeftoverGroup = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.eztv"
+	labelWithoutGroup    = "[eztv] Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"
+	fansubPackSize       = int64(71_052_546_722)
+)
+
+func newGroupFallbackService() *Service {
+	return &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+}
+
+func releaseHasGroupTag(release *rls.Release, group string) bool {
+	for _, tag := range release.Tags() {
+		if tag.Is(rls.TagTypeGroup) && strings.EqualFold(tag.Normalize(), group) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestGroupFallbackUsesRawSiteWhenSelectedEpisodeHasNoGroup(t *testing.T) {
+	const (
+		split  = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
+		tagged = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+	)
+	svc := newGroupFallbackService()
+	rawSplit := svc.releaseCache.Parse(split)
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: svc.releaseCache.Parse(tagged), rawName: tagged},
+		Candidate:     namedRelease{release: rawSplit, rawName: split},
+		SourceSize:    2_000,
+		CandidateSize: 2_000,
+	})
+	require.True(t, decision.Accepted)
+	require.Equal(t, groupMismatchReason, decision.StrictMismatchReason)
+
+	view := svc.readApplyTarget(split, qbt.TorrentFiles{
+		{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264.mkv", Size: 2_000},
+	}, true)
+	require.Empty(t, view.release.Site, "the selected-file view does not carry the raw Site field")
+	require.True(t, svc.matcher().explicitGroupsFitFallbackIdentity(view, decision.GroupFallbackIdentity),
+		"a selected file without a group must not contradict the raw split identity")
+}
+
+func TestGroupFallbackUsesRawSiteForExistingEpisode(t *testing.T) {
+	const (
+		split  = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
+		tagged = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+	)
+	svc := newGroupFallbackService()
+	files := qbt.TorrentFiles{{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264.mkv", Size: 2_000}}
+	torrent := &qbt.Torrent{Name: split}
+	view, _ := svc.readSearchSource(context.Background(), torrent, files)
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:        view,
+		Candidate:     namedRelease{release: svc.releaseCache.Parse(tagged), rawName: tagged},
+		SourceSize:    2_000,
+		CandidateSize: 2_000,
+	})
+	require.True(t, decision.Accepted,
+		"the raw split identity must remain available when selected files supply no group")
+}
+
+func classifyGroupPair(svc *Service, sourceName, candidateName string, sourceSize, candidateSize int64) searchCandidateDecision {
+	return svc.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: svc.releaseCache.Parse(sourceName), rawName: sourceName},
+		Candidate:     namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:    sourceSize,
+		CandidateSize: candidateSize,
+	})
+}
+
+func TestGroupSiteFallback_ParsePreconditions(t *testing.T) {
+	t.Parallel()
+
+	svc := newGroupFallbackService()
+
+	t.Run("the bracket pack splits one fansub name across Group and Site", func(t *testing.T) {
+		release := svc.releaseCache.Parse(fansubBracketPack)
+		require.Equal(t, "Batch", release.Group, "Group must still be the leftover word, not the fansub tag")
+		require.Equal(t, "KIRI", release.Site)
+		require.False(t, releaseHasGroupTag(release, release.Group), "rls only guessed this group")
+	})
+
+	t.Run("the scene pack carries a real group tag and no site", func(t *testing.T) {
+		release := svc.releaseCache.Parse(fansubTaggedPack)
+		require.Equal(t, "KIRI", release.Group)
+		require.Empty(t, release.Site)
+		require.True(t, releaseHasGroupTag(release, release.Group))
+	})
+
+	for _, name := range []string{labelledLeftoverOne, labelledLeftoverTwo, labelledTaggedOne, labelledTaggedTwo} {
+		t.Run("the indexer label never becomes the group in "+name, func(t *testing.T) {
+			release := svc.releaseCache.Parse(name)
+			require.Equal(t, "eztv", release.Site)
+			require.NotEqual(t, "eztv", release.Group, "the label must stay out of Group")
+			require.NotEmpty(t, release.Group)
+		})
+	}
+}
+
+func TestGroupSiteFallback_AdmitsSplitFansubIdentity(t *testing.T) {
+	t.Parallel()
+
+	svc := newGroupFallbackService()
+
+	for _, tt := range []struct {
+		name   string
+		source string
+		target string
+	}{
+		{name: "bracket source", source: fansubBracketPack, target: fansubTaggedPack},
+		{name: "tagged source", source: fansubTaggedPack, target: fansubBracketPack},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			strict := svc.matcher().compareReleases(
+				namedRelease{release: svc.releaseCache.Parse(tt.source), rawName: tt.source},
+				namedRelease{release: svc.releaseCache.Parse(tt.target), rawName: tt.target},
+				nil, nil, false, true,
+			)
+			require.False(t, strict.matched(), "strict matching must still reject this pairing")
+			require.Equal(t, groupMismatchReason, strict.reason())
+
+			decision := classifyGroupPair(svc, tt.source, tt.target, fansubPackSize, fansubPackSize)
+			require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
+			require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+			require.Equal(t, groupMismatchReason, decision.StrictMismatchReason)
+			require.Contains(t, decision.RelaxedDifferences, "group")
+			require.True(t, decision.Relaxed.needsVerification(),
+				"a relaxed group must be hashed before it seeds")
+		})
+	}
+}
+
+func TestGroupSiteFallback_RejectsWithoutCrossFieldEvidence(t *testing.T) {
+	t.Parallel()
+
+	svc := newGroupFallbackService()
+
+	for _, tt := range []struct {
+		name   string
+		source string
+		target string
+	}{
+		{name: "the tagged group names a different fansub", source: fansubBracketPack, target: otherFansubTagged},
+		{name: "two bracket packs agree only on the leftover word", source: fansubBracketPack, target: otherFansubBracket},
+		{name: "two leftover groups share an indexer label", source: labelledLeftoverOne, target: labelledLeftoverTwo},
+		{name: "two tagged groups share an indexer label", source: labelledTaggedOne, target: labelledTaggedTwo},
+		{name: "a tagged group meets a leftover group under one label", source: labelledTaggedOne, target: labelledLeftoverTwo},
+		{name: "a properly tagged group is not up for reinterpretation", source: labelledTaggedTwo, target: labelAsTaggedGroup},
+		{name: "the tagged side carries a label of its own", source: labelledLeftoverTwo, target: labelAsGroupAndSite},
+		{name: "the tagged side only guessed its group too", source: labelledLeftoverTwo, target: labelAsLeftoverGroup},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			source := svc.releaseCache.Parse(tt.source)
+			target := svc.releaseCache.Parse(tt.target)
+			sourceSide := namedRelease{release: source, rawName: tt.source}
+			targetSide := namedRelease{release: target, rawName: tt.target}
+			require.False(t, svc.matcher().crossFieldGroupSiteFallback(sourceSide, targetSide))
+			require.False(t, svc.matcher().exactSizeRelaxes(differenceGroup, sourceSide, targetSide, matchEvidence{}))
+
+			decision := classifyGroupPair(svc, tt.source, tt.target, fansubPackSize, fansubPackSize)
+			require.False(t, decision.Accepted, "class: %s", decision.Class)
+		})
+	}
+}
+
+func TestGroupSiteFallback_RejectsImpossiblePublicFieldsCheaply(t *testing.T) {
+	svc := newGroupFallbackService()
+	source := namedRelease{release: svc.releaseCache.Parse(fansubBracketPack), rawName: fansubBracketPack}
+	target := namedRelease{release: svc.releaseCache.Parse(otherFansubTagged), rawName: otherFansubTagged}
+
+	var matched bool
+	allocations := testing.AllocsPerRun(100, func() {
+		matched = svc.matcher().crossFieldGroupSiteFallback(source, target)
+	})
+
+	require.False(t, matched)
+	require.Less(t, allocations, 40.0)
+}
+
+func TestGroupSiteFallback_RequiresFallbackGroupProvenance(t *testing.T) {
+	t.Parallel()
+
+	svc := newGroupFallbackService()
+	source := *svc.releaseCache.Parse(fansubBracketPack)
+	source.Group = "Unexplained"
+	require.False(t, releaseHasGroupTag(&source, source.Group))
+
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: &source, rawName: fansubBracketPack},
+		Candidate:     namedRelease{release: svc.releaseCache.Parse(fansubTaggedPack), rawName: fansubTaggedPack},
+		SourceSize:    fansubPackSize,
+		CandidateSize: fansubPackSize,
+	})
+
+	require.False(t, decision.Accepted, "class: %s", decision.Class)
+	require.Equal(t, "group/site mismatch", decision.RejectReason)
+}
+
+func TestGroupSiteFallback_LeavesMissingIdentityAlone(t *testing.T) {
+	t.Parallel()
+
+	svc := newGroupFallbackService()
+	siteOnly := svc.releaseCache.Parse(bareFansubEpisode)
+	require.NotEmpty(t, siteOnly.Site)
+	require.Equal(t, siteOnly.Site, siteOnly.Group, "fixture must carry no group but its site")
+
+	bare := svc.releaseCache.Parse("Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264")
+	require.Empty(t, bare.Group)
+	require.Empty(t, bare.Site)
+
+	require.False(t, svc.matcher().crossFieldGroupSiteFallback(
+		namedRelease{release: siteOnly, rawName: bareFansubEpisode},
+		namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
+	))
+
+	labelled := svc.releaseCache.Parse(labelWithoutGroup)
+	require.Equal(t, "eztv", labelled.Site)
+	require.Equal(t, "eztv", labelled.Group, "fixture must carry no group but its site")
+	require.False(t, svc.matcher().crossFieldGroupSiteFallback(
+		namedRelease{release: labelled, rawName: labelWithoutGroup},
+		namedRelease{release: svc.releaseCache.Parse(labelAsTaggedGroup), rawName: labelAsTaggedGroup},
+	))
+
+	var comparison releaseComparison
+	svc.matcher().compareGroupSiteAndChecksum(&comparison, namedRelease{release: siteOnly}, namedRelease{release: bare})
+	require.True(t, comparison.matched(), "unexpected rejection: %s", comparison.reason())
+
+	ok, reason := svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
+		Source:        namedRelease{release: siteOnly, rawName: bareFansubEpisode},
+		Candidate:     namedRelease{release: bare, rawName: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264"},
+		SourceSize:    fansubPackSize,
+		CandidateSize: fansubPackSize,
+	})
+	require.False(t, ok)
+	require.Equal(t, "group/site mismatch", reason)
+}
+
+func TestExactSizeIdentity_AcceptsSpaceJoinedGroupSite(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bracket     = "Azure Compass (2020) (1080p AMZN Webrip x265 10bit EAC3 5.1 - Kyo) [Mura]"
+		spaceJoined = "Azure Compass (2020) (1080p AMZN WEB-DL x265 SDR DDP 5.1 English - Kyo Mura)"
+	)
+	svc := newGroupFallbackService()
+	bracketRelease := svc.releaseCache.Parse(bracket)
+	spaceJoinedRelease := svc.releaseCache.Parse(spaceJoined)
+	require.Equal(t, "Kyo", bracketRelease.Group, "fixture must split group and collective")
+	require.Equal(t, "Mura", bracketRelease.Site)
+	require.Equal(t, "Kyo Mura", spaceJoinedRelease.Group, "fixture must join group and collective")
+	require.Empty(t, spaceJoinedRelease.Site)
+
+	bracketSide := namedRelease{release: bracketRelease, rawName: bracket}
+	spaceJoinedSide := namedRelease{release: spaceJoinedRelease, rawName: spaceJoined}
+	strict := svc.matcher().compareReleases(bracketSide, spaceJoinedSide, nil, nil, false, true)
+	require.False(t, strict.matched())
+	require.Equal(t, sourceMismatchReason, strict.reason())
+
+	for _, pair := range [][2]namedRelease{{bracketSide, spaceJoinedSide}, {spaceJoinedSide, bracketSide}} {
+		ok, reason := svc.matcher().validateExactSizeSearchIdentity(searchCandidateInput{
+			Source:        pair[0],
+			Candidate:     pair[1],
+			SourceSize:    fansubPackSize,
+			CandidateSize: fansubPackSize,
+		})
+		require.True(t, ok, "%s against %s: %s", pair[0].rawName, pair[1].rawName, reason)
+	}
+}
+
+func TestGroupSiteFallback_IgnoresRepeatedFansubTag(t *testing.T) {
+	t.Parallel()
+
+	svc := newGroupFallbackService()
+	repeated := svc.releaseCache.Parse(fansubRepeatedTag)
+	require.Equal(t, "KIRI", repeated.Group, "fixture must repeat the tag into Group")
+	require.Equal(t, "KIRI", repeated.Site)
+
+	tagged := svc.releaseCache.Parse(fansubTaggedPack)
+	repeatedSide := namedRelease{release: repeated, rawName: fansubRepeatedTag}
+	taggedSide := namedRelease{release: tagged, rawName: fansubTaggedPack}
+	require.False(t, svc.matcher().crossFieldGroupSiteFallback(repeatedSide, taggedSide))
+	require.False(t, svc.matcher().exactSizeRelaxes(differenceGroup, repeatedSide, taggedSide, matchEvidence{}))
+
+	decision := classifyGroupPair(svc, fansubRepeatedTag, fansubTaggedPack, fansubPackSize, fansubPackSize)
+	require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
+	require.NotEqual(t, groupMismatchReason, decision.StrictMismatchReason)
+}
+
+func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		sourceHash = "existing"
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: fansubBracketPack, Size: fansubPackSize, Progress: 1}
+	files := map[string]qbt.TorrentFiles{
+		sourceHash: {
+			{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize/2 + 1},
+			{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+		},
+	}
+
+	newRequest := func() *FindCandidatesRequest {
+		return &FindCandidatesRequest{
+			TorrentName:       fansubTaggedPack,
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:                 searchCandidateClassExactSizeFallback,
+				SearchCandidateName:   fansubTaggedPack,
+				SourceInstanceID:      instanceID,
+				SourceHash:            sourceHash,
+				Relaxed:               differencesOf(differenceGroup),
+				GroupFallbackIdentity: "kiri",
+			},
+		}
+	}
+
+	run := func(t *testing.T, req *FindCandidatesRequest) *FindCandidatesResponse {
+		t.Helper()
+		svc := &Service{
+			instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+			syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, files),
+			releaseCache:     NewReleaseCache(),
+			stringNormalizer: stringutils.NewDefaultNormalizer(),
+		}
+		response, err := svc.FindCandidates(context.Background(), req)
+		require.NoError(t, err)
+		return response
+	}
+
+	t.Run("the bound source torrent reaches file validation", func(t *testing.T) {
+		response := run(t, newRequest())
+		require.Len(t, response.Candidates, 1, "the split fansub identity must survive the apply prefilter")
+		require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
+	})
+
+	for _, tt := range []struct {
+		name   string
+		mutate func(*FindCandidatesRequest)
+	}{
+		{
+			name:   "another torrent supplied the size evidence",
+			mutate: func(req *FindCandidatesRequest) { req.SearchDecision.SourceHash = "someotherhash" },
+		},
+		{
+			name:   "another instance supplied the size evidence",
+			mutate: func(req *FindCandidatesRequest) { req.SearchDecision.SourceInstanceID = instanceID + 1 },
+		},
+		{
+			name:   "the search never admitted this pairing",
+			mutate: func(req *FindCandidatesRequest) { req.SearchDecision.Class = searchCandidateClassRejected },
+		},
+		{
+			name: "a download whose group the listing does not name",
+			mutate: func(req *FindCandidatesRequest) {
+				req.TorrentName = otherFansubTagged
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := newRequest()
+			tt.mutate(req)
+			require.Empty(t, run(t, req).Candidates)
+		})
+	}
+}
+
+func TestFindCandidatesKeepsStoredRelaxations(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID  = 1
+		sourceHash  = "existing"
+		otherSeason = "[KIRI] Azure Compass S02 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch]"
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	run := func(t *testing.T, existingName string, req *FindCandidatesRequest) *FindCandidatesResponse {
+		t.Helper()
+		existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: fansubPackSize, Progress: 1}
+		series := 1
+		if strings.Contains(existingName, "S02") {
+			series = 2
+		}
+		files := map[string]qbt.TorrentFiles{
+			sourceHash: {
+				{Name: fmt.Sprintf("Azure.Compass.S%02dE01.1080p.WEB-DL.H.264-KIRI.mkv", series), Size: fansubPackSize/2 + 1},
+				{Name: fmt.Sprintf("Azure.Compass.S%02dE02.1080p.WEB-DL.H.264-KIRI.mkv", series), Size: fansubPackSize - (fansubPackSize/2 + 1)},
+			},
+		}
+		svc := &Service{
+			instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+			syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, files),
+			releaseCache:     NewReleaseCache(),
+			stringNormalizer: stringutils.NewDefaultNormalizer(),
+		}
+		response, err := svc.FindCandidates(context.Background(), req)
+		require.NoError(t, err)
+		return response
+	}
+
+	newRequest := func(relaxed ...matchDifference) *FindCandidatesRequest {
+		return &FindCandidatesRequest{
+			TorrentName:       fansubTaggedPack,
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:                 searchCandidateClassExactSizeFallback,
+				SearchCandidateName:   fansubTaggedPack,
+				SourceInstanceID:      instanceID,
+				SourceHash:            sourceHash,
+				Relaxed:               differencesOf(relaxed...),
+				GroupFallbackIdentity: "kiri",
+			},
+		}
+	}
+
+	t.Run("a stored group and codec relaxation", func(t *testing.T) {
+		req := newRequest(differenceGroup, differenceCodec)
+		existingName := strings.Replace(fansubTaggedPack, "H.264", "H.265", 1)
+
+		require.Len(t, run(t, existingName, req).Candidates, 1)
+	})
+
+	t.Run("a stored season and group relaxation", func(t *testing.T) {
+		response := run(t, fansubBracketPack, newRequest(differenceSeason, differenceGroup))
+		require.Len(t, response.Candidates, 1)
+	})
+
+	t.Run("a stored season relaxation passes the file keys of another season", func(t *testing.T) {
+		response := run(t, otherSeason, newRequest(differenceGroup, differenceSeason))
+		require.Len(t, response.Candidates, 1,
+			"the stored season relaxation must carry its own match-type bypass")
+	})
+}
+
+func TestFindCandidates_KeepsFileDerivedStrictEpisodeIdentity(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-episode"
+		bracketEpisode = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
+		taggedEpisode  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: bracketEpisode, Size: fansubPackSize, Progress: 1}
+	files := map[string]qbt.TorrentFiles{
+		sourceHash: {
+			{Name: taggedEpisode + ".mkv", Size: fansubPackSize},
+		},
+	}
+	svc := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       taggedEpisode,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision: searchDecisionProvenance{
+			Class:               searchCandidateClassStrict,
+			SearchCandidateName: taggedEpisode,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1)
+	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
+}
+
+func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		sourceHash = "raw-episode-pack"
+		rawEpisode = "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI"
+		packName   = "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI"
+		size       = int64(2000)
+	)
+	files := qbt.TorrentFiles{
+		{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI.mkv", Size: 1001},
+		{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-KIRI.mkv", Size: 999},
+	}
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	torrent := qbt.Torrent{Hash: sourceHash, Name: rawEpisode, Size: size, TotalSize: size, Progress: 1}
+	svc := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{torrent}, map[string]qbt.TorrentFiles{sourceHash: files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	raw := svc.releaseCache.Parse(rawEpisode)
+	require.True(t, isTVEpisode(raw), "the raw fixture must reach the episode shape gate")
+	view, _ := svc.readSearchSource(context.Background(), &torrent, files)
+	require.True(t, isTVSeasonPack(view.release), "search must derive the pack from its files")
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:                 view,
+		Candidate:              namedRelease{release: svc.releaseCache.Parse(packName), rawName: packName},
+		SourceSize:             size,
+		CandidateSize:          size,
+		FindIndividualEpisodes: true,
+	})
+	require.True(t, decision.Accepted)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+
+	response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:            packName,
+		TargetInstanceIDs:      []int{instanceID},
+		FindIndividualEpisodes: true,
+		SearchDecision:         decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1,
+		"apply must derive the bound pack before it rejects pack-from-episode pairings")
+	require.False(t, response.seasonPackEpisodeCandidates,
+		"the derived pack must not trigger the episode-based assembly diversion")
+
+	withAdder(svc)
+	result := svc.processCrossSeedCandidate(
+		context.Background(),
+		response.Candidates[0],
+		nil,
+		"incoming",
+		"",
+		packName,
+		&CrossSeedRequest{SearchDecision: decision.provenance().bindSource(instanceID, sourceHash)},
+		svc.releaseCache.Parse(packName),
+		files,
+		nil, nil,
+	)
+	require.NotEqual(t, "no_match", result.Status,
+		"the add-plan gate must use the same derived pack identity as candidate discovery")
+	require.Contains(t, result.Message, "torrent properties",
+		"the fixture must pass plan selection and stop at its unimplemented property lookup")
+}
+
+func TestFindCandidates_KeepsFileStructureWithoutReplacingExplicitGroup(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID   = 1
+		sourceHash   = "explicit-group-source"
+		sourceName   = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+		incomingName = "Azure.Compass.S02.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+	)
+	files := qbt.TorrentFiles{
+		{Name: "Azure.Compass.S02E01.1080p.WEB-DL.AAC2.0.H.264-KIRI.mkv", Size: 5001},
+		{Name: "Azure.Compass.S02E02.1080p.WEB-DL.AAC2.0.H.264-KIRI.mkv", Size: 5002},
+	}
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
+			Hash: sourceHash, Name: sourceName, Progress: 1,
+		}}, map[string]qbt.TorrentFiles{sourceHash: files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	raw := svc.releaseCache.Parse(sourceName)
+	require.True(t, releaseHasExplicitGroupTag(raw))
+	view, _ := svc.readSearchSource(context.Background(), &qbt.Torrent{Name: sourceName}, files)
+	require.Equal(t, 2, view.release.Series)
+	require.Equal(t, "KIRI", view.release.Group)
+
+	response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       incomingName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision: searchDecisionProvenance{
+			Class:               searchCandidateClassStrict,
+			SearchCandidateName: incomingName,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1)
+}
+
+func TestFindCandidates_KeepsRelaxedStructureWhenRawNamesMatch(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		sourceHash = "retitled-season-source"
+		rawS01     = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+		size       = int64(10_003)
+	)
+	files := qbt.TorrentFiles{
+		{Name: "Azure.Compass.S02E01.1080p.WEB-DL.AAC2.0.H.264-KIRI.mkv", Size: 5001},
+		{Name: "Azure.Compass.S02E02.1080p.WEB-DL.AAC2.0.H.264-KIRI.mkv", Size: 5002},
+	}
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	torrent := qbt.Torrent{Hash: sourceHash, Name: rawS01, Size: size, TotalSize: size, Progress: 1}
+	svc := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{torrent}, map[string]qbt.TorrentFiles{sourceHash: files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	searchSource, _ := svc.readSearchSource(context.Background(), &torrent, files)
+	require.Equal(t, 2, searchSource.release.Series)
+	decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:        searchSource,
+		Candidate:     namedRelease{release: svc.releaseCache.Parse(rawS01), rawName: rawS01},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, seasonMismatchReason, decision.StrictMismatchReason)
+
+	response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       rawS01,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision: searchDecisionProvenance{
+			Class:               decision.Class,
+			SearchCandidateName: rawS01,
+			SourceInstanceID:    instanceID,
+			SourceHash:          sourceHash,
+			Relaxed:             decision.Relaxed,
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1,
+		"raw S01 equality must not hide the bound source's file-derived S02 relaxation")
+}
+
+func TestGroupSiteFallback_ReadsProvenanceThroughEnrichment(t *testing.T) {
+	t.Parallel()
+
+	svc := newGroupFallbackService()
+	enrich := func(torrentName, fileName string) *rls.Release {
+		enriched := enrichReleaseFromTorrent(
+			svc.releaseCache.Parse(fileName),
+			svc.releaseCache.Parse(torrentName),
+		)
+		require.False(t, releaseHasGroupTag(enriched, enriched.Group),
+			"fixture must lose the group tag: the enriched release keeps the file's tags")
+		return enriched
+	}
+
+	t.Run("an enriched scene group is not up for reinterpretation", func(t *testing.T) {
+		const torrentName = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		enriched := enrich(torrentName, "[eztv] Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.mkv")
+		require.Equal(t, "FoV", enriched.Group, "the group comes from the torrent name")
+		require.Equal(t, "eztv", enriched.Site, "the site comes from the file name")
+
+		require.False(t, svc.matcher().crossFieldGroupSiteFallback(
+			namedRelease{release: enriched, rawName: torrentName},
+			namedRelease{release: svc.releaseCache.Parse(labelAsTaggedGroup), rawName: labelAsTaggedGroup}),
+			"FoV must not be reinterpreted as the eztv label")
+	})
+
+	t.Run("an enriched scene group still rescues the bracket spelling", func(t *testing.T) {
+		const torrentName = fansubTaggedPack
+		enriched := enrich(torrentName, "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264.mkv")
+		require.Equal(t, "KIRI", enriched.Group)
+
+		require.True(t, svc.matcher().crossFieldGroupSiteFallback(
+			namedRelease{release: enriched, rawName: torrentName},
+			namedRelease{release: svc.releaseCache.Parse(fansubBracketPack), rawName: fansubBracketPack}),
+			"losing the tag to enrichment must not lose the rescue")
+	})
+}
+
+func TestGroupSiteFallback_KeepsFileGroupProvenance(t *testing.T) {
+	t.Parallel()
+
+	svc := newGroupFallbackService()
+	const torrentName = labelWithoutGroup
+	enriched := enrichReleaseFromTorrent(
+		svc.releaseCache.Parse("[eztv] Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI.mkv"),
+		svc.releaseCache.Parse(torrentName),
+	)
+	require.Equal(t, "KIRI", enriched.Group, "the file's own group tag survives enrichment")
+	require.Equal(t, "eztv", enriched.Site)
+	require.False(t, releaseHasGroupTag(releases.DefaultParser.Parse(torrentName), enriched.Group),
+		"fixture must give the torrent name no say: it never mentions this group")
+
+	require.False(t, svc.matcher().crossFieldGroupSiteFallback(
+		namedRelease{release: enriched, rawName: torrentName},
+		namedRelease{release: svc.releaseCache.Parse(labelAsTaggedGroup), rawName: labelAsTaggedGroup}),
+		"a group the file tagged properly is not a word rls guessed at")
+}
+
+func TestGroupSiteFallback_RejectsConflictingEnrichmentProvenance(t *testing.T) {
+	t.Parallel()
+
+	const (
+		rawFoV         = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		rawKIRI        = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+		bracketEpisode = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
+		taggedEpisode  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
+	)
+
+	svc := newGroupFallbackService()
+	splitFrom := func(rawName string) *rls.Release {
+		return enrichReleaseFromTorrent(
+			svc.releaseCache.Parse(bracketEpisode+".mkv"),
+			svc.releaseCache.Parse(rawName),
+		)
+	}
+	taggedFrom := func(rawName string) *rls.Release {
+		return enrichReleaseFromTorrent(
+			svc.releaseCache.Parse(taggedEpisode+".mkv"),
+			svc.releaseCache.Parse(rawName),
+		)
+	}
+
+	splitWithConflict := splitFrom(rawFoV)
+	require.Equal(t, "Batch", splitWithConflict.Group)
+	require.Equal(t, "KIRI", splitWithConflict.Site)
+	require.True(t, releaseHasGroupTag(svc.releaseCache.Parse(rawFoV), "FoV"),
+		"fixture must carry an explicit conflicting raw group")
+
+	taggedWithConflict := taggedFrom(rawFoV)
+	require.Equal(t, "KIRI", taggedWithConflict.Group)
+	require.Empty(t, taggedWithConflict.Site)
+	require.True(t, releaseHasGroupTag(taggedWithConflict, "KIRI"),
+		"fixture must keep its file-level explicit group")
+
+	for _, tt := range []struct {
+		name             string
+		sourceRelease    *rls.Release
+		sourceName       string
+		candidateRelease *rls.Release
+		candidateName    string
+		wantAccepted     bool
+	}{
+		{
+			name:             "the split side raw name conflicts",
+			sourceRelease:    splitWithConflict,
+			sourceName:       rawFoV,
+			candidateRelease: svc.releaseCache.Parse(taggedEpisode),
+			candidateName:    taggedEpisode,
+		},
+		{
+			name:             "the tagged side raw name conflicts",
+			sourceRelease:    taggedWithConflict,
+			sourceName:       rawFoV,
+			candidateRelease: svc.releaseCache.Parse(bracketEpisode),
+			candidateName:    bracketEpisode,
+		},
+		{
+			name:             "the split side raw group corroborates its site",
+			sourceRelease:    splitFrom(rawKIRI),
+			sourceName:       rawKIRI,
+			candidateRelease: svc.releaseCache.Parse(taggedEpisode),
+			candidateName:    taggedEpisode,
+			wantAccepted:     true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			decision := svc.matcher().classifySearchCandidate(searchCandidateInput{
+				Source:        namedRelease{release: tt.sourceRelease, rawName: tt.sourceName},
+				Candidate:     namedRelease{release: tt.candidateRelease, rawName: tt.candidateName},
+				SourceSize:    fansubPackSize,
+				CandidateSize: fansubPackSize,
+			})
+
+			if tt.wantAccepted {
+				require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
+				require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+				require.Equal(t, groupMismatchReason, decision.StrictMismatchReason)
+				require.Contains(t, decision.RelaxedDifferences, "group")
+				return
+			}
+
+			require.False(t, decision.Accepted, "class: %s", decision.Class)
+			require.Equal(t, "group/site mismatch", decision.RejectReason)
+			require.NotContains(t, decision.RelaxedDifferences, "group")
+		})
+	}
+}
+
+func TestSearchTorrentMatches_GroupFallbackPreservesSelectedFileProvenance(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "0123456789abcdef0123456789abcdef01234567"
+	)
+
+	for _, tt := range []struct {
+		name         string
+		fileGroup    string
+		wantResults  int
+		wantDecision searchCandidateClass
+	}{
+		{name: "conflicting file group vetoes rescue", fileGroup: "FoV"},
+		{
+			name:         "corroborating file group keeps rescue",
+			fileGroup:    "KIRI",
+			wantResults:  1,
+			wantDecision: searchCandidateClassExactSizeFallback,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var server *httptest.Server
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/rss+xml")
+				_, err := fmt.Fprintf(w, `<rss version="2.0"><channel><title>Anime Indexer</title><item>
+					<title>%s</title><guid>group-provenance</guid><size>%d</size>
+					<enclosure url="%s/candidate.torrent" length="%d" type="application/x-bittorrent" />
+				</item></channel></rss>`, fansubTaggedPack, fansubPackSize, server.URL, fansubPackSize)
+				if err != nil {
+					t.Errorf("write Torznab response: %v", err)
+				}
+			}))
+			t.Cleanup(server.Close)
+
+			firstSize := fansubPackSize/2 + 1
+			sourceFiles := qbt.TorrentFiles{
+				{
+					Name: "[KIRI] Azure Compass S01E01 1080p WEB-DL H.264-" + tt.fileGroup + ".mkv",
+					Size: firstSize,
+				},
+				{
+					Name: "[KIRI] Azure Compass S01E02 1080p WEB-DL H.264-" + tt.fileGroup + ".mkv",
+					Size: fansubPackSize - firstSize,
+				},
+			}
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			source := qbt.Torrent{
+				Hash:      sourceHash,
+				Name:      fansubBracketPack,
+				Size:      fansubPackSize,
+				TotalSize: fansubPackSize,
+				Progress:  1,
+			}
+			svc := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+					{
+						ID:             1,
+						Name:           "Anime Indexer",
+						BaseURL:        server.URL,
+						Backend:        models.TorznabBackendNative,
+						TimeoutSeconds: 5,
+						Enabled:        true,
+					},
+				}),
+				syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{sourceHash: sourceFiles}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+
+			selected, usedFile := svc.selectContentDetectionRelease(source.Name, svc.releaseCache.Parse(source.Name), sourceFiles)
+			require.True(t, usedFile, "fixture must select the largest file")
+			require.Equal(t, tt.fileGroup, selected.Group)
+			require.True(t, releaseHasGroupTag(selected, tt.fileGroup), "fixture must carry an explicit selected-file group")
+
+			response, err := svc.searchTorrentMatches(
+				context.Background(),
+				instanceID,
+				sourceHash,
+				TorrentSearchOptions{},
+				searchScope{torznabIndexerIDs: []int{1}},
+				nil,
+			)
+			require.NoError(t, err)
+			require.Len(t, response.Results, tt.wantResults)
+			if tt.wantResults == 0 {
+				return
+			}
+			require.Equal(t, tt.wantDecision, response.Results[0].SearchDecision.Class)
+			require.True(t, response.Results[0].SearchDecision.Relaxed.has(differenceGroup))
+			require.Equal(t, "kiri", response.Results[0].SearchDecision.GroupFallbackIdentity)
+		})
+	}
+}
+
+func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		sourceHash = "bound-source"
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	t.Run("incoming selected-file conflict vetoes rescue", func(t *testing.T) {
+		for _, tt := range []struct {
+			name        string
+			fileGroup   string
+			wantMatches int
+		}{
+			{name: "conflicting group", fileGroup: "FoV"},
+			{name: "corroborating group", fileGroup: "KIRI", wantMatches: 1},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				targetFiles := qbt.TorrentFiles{
+					{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize/2 + 1},
+					{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+				}
+				existingFiles := qbt.TorrentFiles{
+					{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize/2 + 1},
+					{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+				}
+				svc := &Service{
+					instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+					syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
+						Hash: sourceHash, Name: fansubTaggedPack, Size: fansubPackSize, Progress: 1,
+					}}, map[string]qbt.TorrentFiles{sourceHash: existingFiles}),
+					releaseCache:     NewReleaseCache(),
+					stringNormalizer: stringutils.NewDefaultNormalizer(),
+				}
+
+				target := svc.readApplyTarget(
+					fansubBracketPack,
+					targetFiles,
+					true,
+				)
+				require.NotNil(t, target.release)
+				require.NotNil(t, target.tagOrigin)
+				require.True(t, releaseHasGroupTag(target.tagOrigin, tt.fileGroup))
+
+				response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+					TorrentName:       fansubBracketPack,
+					TargetRelease:     target,
+					TargetInstanceIDs: []int{instanceID},
+					SearchDecision: searchDecisionProvenance{
+						SearchCandidateName:   fansubBracketPack,
+						Class:                 searchCandidateClassExactSizeFallback,
+						SourceInstanceID:      instanceID,
+						SourceHash:            sourceHash,
+						Relaxed:               differencesOf(differenceGroup),
+						GroupFallbackIdentity: "kiri",
+					},
+				})
+				require.NoError(t, err)
+				require.Len(t, response.Candidates, tt.wantMatches)
+			})
+		}
+	})
+
+	t.Run("the split download name still checks selected-file conflicts", func(t *testing.T) {
+		existingFiles := qbt.TorrentFiles{
+			{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize/2 + 1},
+			{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+		}
+		for _, tt := range []struct {
+			name        string
+			fileGroup   string
+			wantMatches int
+		}{
+			{name: "conflicting incoming group", fileGroup: "FoV"},
+			{name: "fallback word cannot become the explicit group", fileGroup: "Batch"},
+			{name: "corroborating incoming group", fileGroup: "KIRI", wantMatches: 1},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				targetFiles := qbt.TorrentFiles{
+					{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize/2 + 1},
+					{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+				}
+				svc := &Service{
+					instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+					syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
+						Hash: sourceHash, Name: fansubBracketPack, Size: fansubPackSize, Progress: 1,
+					}}, map[string]qbt.TorrentFiles{sourceHash: existingFiles}),
+					releaseCache:     NewReleaseCache(),
+					stringNormalizer: stringutils.NewDefaultNormalizer(),
+				}
+				target := svc.readApplyTarget(
+					fansubBracketPack,
+					targetFiles,
+					true,
+				)
+
+				response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+					TorrentName:       fansubBracketPack,
+					TargetRelease:     target,
+					TargetInstanceIDs: []int{instanceID},
+					SearchDecision: searchDecisionProvenance{
+						SearchCandidateName:   fansubBracketPack,
+						Class:                 searchCandidateClassExactSizeFallback,
+						SourceInstanceID:      instanceID,
+						SourceHash:            sourceHash,
+						Relaxed:               differencesOf(differenceGroup),
+						GroupFallbackIdentity: "kiri",
+					},
+				})
+				require.NoError(t, err)
+				require.Len(t, response.Candidates, tt.wantMatches)
+			})
+		}
+	})
+
+	t.Run("non-group fallback still checks selected-file conflicts", func(t *testing.T) {
+		const targetName = "Azure.Compass.S01.1080p.WEBRip.AAC2.0.H.264-KIRI"
+		existingFiles := qbt.TorrentFiles{
+			{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize/2 + 1},
+			{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+		}
+		for _, tt := range []struct {
+			fileGroup   string
+			wantMatches int
+		}{
+			{fileGroup: "FoV"},
+			{fileGroup: "KIRI", wantMatches: 1},
+		} {
+			t.Run(tt.fileGroup, func(t *testing.T) {
+				targetFiles := qbt.TorrentFiles{
+					{Name: "Azure.Compass.S01E01.1080p.WEBRip.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize/2 + 1},
+					{Name: "Azure.Compass.S01E02.1080p.WEBRip.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+				}
+				svc := &Service{
+					instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+					syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
+						Hash: sourceHash, Name: fansubTaggedPack, Size: fansubPackSize, Progress: 1,
+					}}, map[string]qbt.TorrentFiles{sourceHash: existingFiles}),
+					releaseCache:     NewReleaseCache(),
+					stringNormalizer: stringutils.NewDefaultNormalizer(),
+				}
+				target := svc.readApplyTarget(
+					targetName,
+					targetFiles,
+					true,
+				)
+				require.Equal(t, "KIRI", target.release.Group)
+				require.True(t, releaseHasGroupTag(target.tagOrigin, tt.fileGroup))
+
+				response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+					TorrentName:       targetName,
+					TargetRelease:     target,
+					TargetInstanceIDs: []int{instanceID},
+					SearchDecision: searchDecisionProvenance{
+						SearchCandidateName: targetName,
+						Class:               searchCandidateClassExactSizeFallback,
+						SourceInstanceID:    instanceID,
+						SourceHash:          sourceHash,
+						Relaxed:             differencesOf(differenceSource),
+					},
+				})
+				require.NoError(t, err)
+				require.Len(t, response.Candidates, tt.wantMatches)
+			})
+		}
+	})
+}
+
+func TestExactSizeIdentityAcceptsHyphenatedDashSuffixGroup(t *testing.T) {
+	const (
+		bracket = "[Moe-Fansub] Example Knight S01 [BD HEVC 1080p FLAC]"
+		suffix  = "Example Knight S01 1080p WEB-DL FLAC 2.0 x265-Moe-Fansub"
+		other   = "Example Knight S01 1080p WEB-DL FLAC 2.0 x265-Fansub"
+	)
+	svc := newGroupFallbackService()
+	side := func(name string) namedRelease {
+		return namedRelease{release: svc.releaseCache.Parse(name), rawName: name}
+	}
+	input := func(source, candidate string) searchCandidateInput {
+		return searchCandidateInput{
+			Source:        side(source),
+			Candidate:     side(candidate),
+			SourceSize:    fansubPackSize,
+			CandidateSize: fansubPackSize,
+		}
+	}
+
+	for _, pair := range [][2]string{{bracket, suffix}, {suffix, bracket}} {
+		pairInput := input(pair[0], pair[1])
+		strict := svc.matcher().compareReleases(
+			namedRelease{release: pairInput.Source.release, rawName: pair[0]},
+			namedRelease{release: pairInput.Candidate.release, rawName: pair[1]}, nil, nil, false, true)
+		require.False(t, strict.matched())
+		require.Equal(t, sourceMismatchReason, strict.reason())
+
+		ok, reason := svc.matcher().validateExactSizeSearchIdentity(pairInput)
+		require.True(t, ok, "%s against %s: %s", pair[0], pair[1], reason)
+	}
+
+	ok, reason := svc.matcher().validateExactSizeSearchIdentity(input(bracket, other))
+	require.False(t, ok)
+	require.Equal(t, "group/site mismatch", reason)
+}
+
+func TestStrictMatchReadsSelectedFileForHyphenatedDashSuffixGroup(t *testing.T) {
+	const (
+		bracket    = "[Moe-Fansub] Kaiju Squad S02E05 [BD HEVC 1080p FLAC]"
+		suffix     = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Moe-Fansub"
+		bare       = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265"
+		longerFile = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Big-Moe-Fansub.mkv"
+		otherFile  = "Kaiju.Squad.S02E05.1080p.BluRay.FLAC.2.0.x265-Other.mkv"
+	)
+	svc := newGroupFallbackService()
+	m := svc.matcher()
+	sited := namedRelease{release: svc.releaseCache.Parse(bracket), rawName: bracket}
+	strictPair := func(source, candidate namedRelease) (bool, string) {
+		comparison := m.compareReleases(source, candidate, nil, nil, false, true)
+		return comparison.matched(), comparison.reason()
+	}
+	strict := func(grouped namedRelease) (bool, string) { return strictPair(grouped, sited) }
+
+	fileGroup := *svc.releaseCache.Parse(bare)
+	fileGroup.Group = "Fansub"
+	fileOnly := namedRelease{
+		release:   &fileGroup,
+		rawName:   bare,
+		tagOrigin: svc.releaseCache.Parse(suffix + ".mkv"),
+	}
+	ok, reason := strict(fileOnly)
+	require.True(t, ok, "selected-file spelling: %s", reason)
+	fileOnly.tagOrigin = nil
+	ok, reason = strict(fileOnly)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+
+	conflicting := namedRelease{
+		release:   svc.releaseCache.Parse(suffix),
+		rawName:   suffix,
+		tagOrigin: svc.releaseCache.Parse(longerFile),
+	}
+	ok, reason = strict(conflicting)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+	require.False(t, m.dashSuffixGroupSpellsSite(sited, conflicting))
+	conflicting.tagOrigin = svc.releaseCache.Parse(otherFile)
+	ok, reason = strict(conflicting)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+	require.False(t, m.dashSuffixGroupSpellsSite(sited, conflicting))
+	conflicting.tagOrigin = nil
+	ok, reason = strict(conflicting)
+	require.True(t, ok, "torrent-name spelling: %s", reason)
+
+	grouped := conflicting
+	sited.tagOrigin = svc.releaseCache.Parse(otherFile)
+	ok, reason = strict(grouped)
+	require.False(t, ok)
+	require.Equal(t, groupMismatchReason, reason)
+	ok, reason = strictPair(sited, grouped)
+	require.False(t, ok)
+	require.Equal(t, "site mismatch", reason)
+	sited.tagOrigin = svc.releaseCache.Parse(suffix + ".mkv")
+	ok, reason = strict(grouped)
+	require.True(t, ok, "bracket side file spelling: %s", reason)
+}

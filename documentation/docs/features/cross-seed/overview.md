@@ -1,0 +1,226 @@
+---
+sidebar_position: 1
+title: How to Cross-Seed qBittorrent Automatically
+sidebar_label: Cross-Seed
+description: Learn how to cross-seed qBittorrent with qui. It finds matching torrents on other trackers and adds them against your existing files — no separate cross-seed tool required.
+---
+
+# Cross-Seed Overview
+
+qui finds torrents on other trackers that match content you already seed. It adds them to your qBittorrent instances, so you seed the same content on more than one tracker.
+
+qui cross-seed is a complete setup on its own. It needs no other cross-seeding tool. If you move from one, the torrents it added stay in the client, and qui skips any infohash that is already in the instance. See [Move from standalone cross-seed](./standalone-cross-seed.md).
+
+## How It Works
+
+When you cross-seed a torrent, qui:
+
+1. Finds a matching torrent in your library (same content, different tracker)
+2. Adds the new torrent and points it to your existing files
+3. Applies the correct category and save path
+
+qui supports three modes for file handling:
+
+- **Default mode**: qui reuses the existing files directly. It creates no new files or links. If the incoming torrent has a different folder or file layout, qui must align the names first.
+- **Hardlink mode** (optional): qui creates a hardlinked copy of the matched files in the layout that the incoming torrent expects. It then adds the torrent against that tree. This avoids rename alignment.
+- **Reflink mode** (optional): qui creates copy-on-write clones (reflinks) of the matched files. qBittorrent can write to or repair the clones without changes to the originals. This makes torrents with extra or missing files safe to cross-seed.
+
+Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshooting](./troubleshooting.md#blu-ray-or-dvd-cross-seed-left-paused).
+
+## Prerequisites
+
+You need at least one enabled Torznab indexer. Add indexers in **Settings → Indexers**. Click **Add indexer**. Then click **Discover in Jackett or Prowlarr** to import them, or **Add one by URL** to add a native tracker endpoint by hand. See [Add indexers](../search.md#add-indexers).
+
+Library Scan also runs without Torznab if you configure Gazelle keys for OPS/RED. See [OPS/RED (Gazelle)](./gazelle-ops-red.md).
+
+:::note Prowlarr filters also apply here
+A Prowlarr indexer's own search filters, such as freeleech only, also apply to cross-seed searches. See [troubleshooting](./troubleshooting.md#prowlarr-filters-remove-expected-results).
+:::
+
+Optional: qui can query OPS/RED directly through tracker Gazelle JSON APIs. This complements Torznab and handles OPS/RED searches even when no Torznab backend is available. qui removes the Torznab indexer of each OPS/RED site that has a Gazelle key from per-torrent searches. See [OPS/RED (Gazelle)](./gazelle-ops-red.md).
+
+**Optional but recommended:** Configure [Sonarr and Radarr integrations](../search.md#sonarr-and-radarr-integrations) for external ID lookups (IMDb, TMDb, TVDb, TVMaze). ID-based queries return more exact matches, most of all when names differ by locale ("AKA" content).
+
+Without *arr IDs, qui uses a fallback. Some release groups embed IMDb/TMDb/TVDb tags in their MKV files. When a search finds no usable results, qui reads these tags from the torrent's largest `.mkv` file. It then retries indexers that support ID-based search. This fallback requires [Local Filesystem Access](../instance-settings.md#local-filesystem-access) on the instance. qui caches each successful scan per torrent, so it reads the file only once. If a read fails, a later search tries again.
+
+## Discovery Methods
+
+qui provides several ways to find cross-seed opportunities:
+
+### RSS Automation
+
+qui polls tracker RSS feeds on a schedule. Configure this in the **RSS** tab on the Cross-Seed page. The tab holds every RSS setting: the schedule, the instances to search, the indexers, the source filters, the tags for added torrents, the auto-resume switch, and the recent runs.
+
+- **Run interval**: How often qui polls the feeds (minimum 30 minutes)
+- **Instances to search**: The qBittorrent instances whose torrents qui searches for matches. qui adds each cross-seed to the instance that holds the match. If that instance has a Cross-seed instance, qui adds the cross-seed to the Cross-seed instance.
+- **Target indexers**: Limit to specific indexers, or use all enabled ones
+
+RSS automation processes the full feed from each selected target indexer on each run. If you select no target indexers, qui uses all enabled indexers.
+
+qui compares each feed title and byte count with eligible local torrents.
+
+qui makes this comparison before it downloads the intended torrent file. RSS does not fetch extra torrent files to measure candidates.
+
+### Library Scan
+
+Library Scan searches other trackers for torrents you already seed. Configure it in the **Library** tab. **Save** stores the settings of the card. **Start** starts a manual run with the values on the card now, also values that you did not save.
+
+- **Source instance**: The qBittorrent instance to scan.
+- **Include categories/tags**: qui scans only torrents that match these filters. Leave them empty to scan all torrents.
+- **Exclude categories/tags**: qui never searches a torrent that matches these filters, in a manual run or in a scheduled run. For example, exclude a `no-cross-seed` category or a `no-cs` tag. These are the same pickers that RSS, webhook, and completion use.
+- **Interval**: The delay between torrents. If Torznab is on, the minimum is 60 seconds. If Torznab is off, the minimum is 5 seconds. Set 10 seconds or more for Gazelle-only runs.
+- **Torznab**: The switch beside the indexers. If you turn it off, qui asks only the OPS/RED APIs. qui saves the switch with the other settings, and the switch applies to manual runs and to scheduled runs.
+- **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records a Torznab cooldown after an indexer completes its search. If you enable Gazelle, qui records a cooldown when it sends a lookup or local checks find nothing to look up. If the search fails before a lookup, qui can try the torrent in the next run.
+- **Max age for repeat searches**: An indexer that already searched a torrent does not search it again after this many days. 0 turns off this rule.
+- **Skip individual episodes**: The run does not search single TV episodes. If [automatic assembly](./season-packs.md#automatic-assembly) is on, groups of episodes still start season pack searches.
+
+The run details show a Skipped row with no cooldown if qBittorrent moves or checks a torrent at its turn. The same applies to a torrent that is not complete at its turn, and to a torrent with an error or missing files when error recovery is off.
+
+#### Library Scan schedule
+
+The schedule searches your recent torrents again every few hours. It finds a cross-seed that qui missed because a tracker was down, or because qui was offline when the download completed. The schedule is off by default. To turn it on, set **Run on a schedule** on the **Library** card, then click **Save**.
+
+- **Run every (hours)**: The time from the start of one scheduled run to the start of the next. Default: 24. qui saves the start time of the last scheduled run, so a restart of qui does not start a run at once.
+- **Max searches per run**: A scheduled run stops after this many torrents sent a search. Default: 400. A torrent counts when it sent at least one request to a Torznab indexer or to RED/OPS. A torrent that the Cooldown or the filters skip does not count.
+- **Only torrents added in the last (days)**: A scheduled run searches only torrents that you added in this many last days. Default: 14. qui uses the day that the torrent was added to qBittorrent. This limit applies also to an indexer that never searched the torrent, so a new indexer does not make the schedule search your full library. A season group stays in the run when one of its episodes, or a copy of an episode, is inside the window. When you seed the same content more than one time, qui searches it one time, and it stays in the run when one of the copies is inside the window.
+
+A scheduled run uses the saved settings of the card, not the values on the card that you did not save. It searches first the torrents that an indexer or RED/OPS never searched, newest first. Then it searches the other torrents, newest first. It skips torrents that each indexer searched within the Cooldown. A manual run keeps its own order and age rule: it can search a torrent of any age for an indexer that never searched it.
+
+When you turn the schedule on and click **Save**, the first scheduled run starts at once. This is also true when you turn the schedule off and on again. The card shows the time of the next scheduled run beside **Start**. **Run schedule now** starts a scheduled run with the saved settings at once and restarts the schedule clock. Only one Library Scan run can be active at a time. If a scheduled run comes due during a manual run, it starts when the manual run ends.
+
+When a scheduled run stops at the limit, the run history shows a message such as "Stopped at the limit of 400 searches. 200 torrents wait for the next run." Each row in the run history shows **Scheduled** or **Manual**, and the include and exclude filters of the run.
+
+#### How a down tracker gets a second chance
+
+qui marks a torrent as searched for an indexer only when that indexer answered. If an indexer fails, times out, or is rate limited, qui does not mark the torrent. The next scheduled run then asks that indexer again. This is how qui later finds a cross-seed on a tracker that was down.
+
+A completion search also records which indexers answered. The next scheduled run then asks only the indexers that failed at completion. The tracker that the torrent came from, and a tracker where you already seed the same content, stay skipped.
+
+#### When a scheduled run cannot start
+
+If a scheduled run cannot start, qui tries again every hour. It sends one failure notification for each outage, not one for each try. A scheduled run notifies only when it added a cross-seed, when a torrent failed, or when the run recorded an error, for example when qui could not load the Torznab indexers. A manual run notifies after each run.
+
+If the saved settings make a run impossible, qui also opens the System notice "Library Scan schedule cannot run". These settings cause the notice:
+
+- Torznab is off, and no RED or OPS API key is set.
+- No indexer is enabled.
+- The instance in the saved settings does not exist.
+
+The notice gives the fix, and its button opens the **Library** tab. The notice closes when a scheduled run starts, or when you turn off the schedule. qui opens no notice when qBittorrent is offline or a tracker is down, because these faults clear without an action from you.
+
+#### What the scan card counts
+
+The unit of a run is a search candidate: one source torrent, or one season group that season pack automation formed from episodes you seed.
+
+- **Progress**: Processed candidates out of the due candidates. A due candidate still needs a search. Cooldown and per-indexer search history retire candidates, so the same filters give a smaller total on each later run. The total is not the size of your library.
+- **Results**: Each processed candidate lands in one bucket: with cross-seeds, skipped, or failed. The three buckets add up to the processed count when the run completes. A candidate with one added cross-seed and one failed apply counts as with cross-seeds. The failed apply stays in the run details.
+- **Cross-seeds added**: Successful adds into the client. One candidate can add several cross-seeds, so this number can be larger than the candidate count.
+
+:::warning
+Start a manual run sparingly. A manual run touches every matching torrent and queries Torznab and Gazelle for each one. Use RSS automation or autobrr for routine coverage. The schedule keeps each run small with the age window and the search limit.
+:::
+
+### Auto-Search on Completion
+
+When a torrent finishes downloading, qui starts a cross-seed search. Configure this in the **Completion** tab. The **On completion** card holds the tags and the auto-resume switch. The per-instance card below it turns the search on and sets its filters.
+
+- **Categories/Tags**: Filter which completed torrents trigger searches
+- **Target indexers**: Limit completion searches to specific indexers (empty means all enabled)
+- **Exclude categories/tags**: Skip torrents that match these filters
+- **Bypass Torznab cache**: If you enable this setting for an instance, completion searches for that instance always run a fresh Torznab search instead of using cached indexer results. Default: off. This setting does not affect Gazelle (OPS/RED) searches, because Gazelle searches do not use the Torznab cache.
+- **Search delay**: qui waits 0 to 600 seconds after completion before it searches. Default: 0. If post-completion file moves or sister-torrent injection tools need a head start before qui searches trackers, use this setting.
+
+If a torrent is still **checking** or **moving**, qui waits and runs the completion search afterward. This avoids a search against an unstable path or state.
+
+Completion searches use the same Torznab result classifier as interactive and scheduled searches. An equal positive reported size can activate the same controlled fallback.
+
+### Manual Search
+
+Right-click any torrent in the list to open the cross-seed actions:
+
+- **Search Cross-Seeds**: Query indexers for matching torrents on other trackers
+- **Filter Cross-Seeds**: Shows the torrents in your library that hold the same data as the selected torrent. qui compares the files of each torrent and leaves out the files that search ignores, such as `.nfo` and `.srt` files. A torrent on the same instance that uses one of the same files on disk gets the Content badge. A hardlinked or reflinked copy gets the Hardlink or Reflink badge. A torrent with the same name or release gets the Name or Release badge when its file sizes pair one to one. That torrent is a separate copy, so it stays when you delete the selected torrent with its files. qui does not show other torrents. If qui cannot read a file list or check a link, Filter Cross-Seeds shows an error and does not filter the list.
+
+The search dialog refuses a torrent that qBittorrent moves or checks, and a torrent with an error or missing files when error recovery is off. A message tells you what to do, and qui searches no indexer.
+
+Interactive searches, scheduled or on-demand Library Scans, and completion searches use one reported-size rule. Strict release matching always runs first.
+
+An exact positive byte count can relax approved name differences. Reported size is evidence, not proof that the torrent has the same bytes.
+
+qui still checks the downloaded torrent metadata, files, layout, and piece boundaries. Title, season, episode, and split release-group fallbacks require a full recheck.
+
+RSS uses the same classifier with its feed title and byte count. The [autobrr integration](./autobrr.md) uses passive announcement data during `/check`.
+
+Announce matching over alternate titles, such as an anime announced under its English or romaji name, needs a [Sonarr or Radarr integration](../search.md#sonarr-and-radarr-integrations). Without one, qui matches announces on the release name only.
+
+Sonarr also maps a single anime episode between numbering schemes. When Sonarr names exactly one episode for a release, qui reads its season, episode, and absolute number, and stores the map with the cached IDs. A search for an absolute-numbered episode (`Show - 81`) then asks ID-capable indexers for the mapped `S04E15`, and a `S04E15` announce or search result matches a local `Show - 81` file as a strict match, in both directions. The map only adds matches: when a tracker numbers the episode differently from Sonarr, qui treats the pair as an episode mismatch, as before. Season packs are not mapped. See [Season Packs](./season-packs.md#anime-absolute-numbering).
+
+If autobrr has no positive size, qui uses a narrow name-only preflight. This preflight can approve one download, but it cannot approve an add.
+
+### Manual Match
+
+A Manual match is a cross-seed apply where you choose the target torrent yourself. Use it when automatic matching fails, for example when the release name parses as the wrong content type, or when the tracker has no searchable indexer.
+
+Two entry points open the same flow:
+
+- **Add Torrent dialog**: select exactly one `.torrent` file, then click **Match manually**. Magnets, URLs, and multi-file adds cannot use this option.
+- **Right-click a torrent** and select **Add Cross-Seed Manually**. The flow opens with that torrent preselected as the target.
+
+qui ranks torrents from the same instance by file-size overlap with the uploaded file. You can also pick any other torrent. A pick with no file overlap shows a warning, but you can proceed.
+
+When the upload parses as a season pack, you can select several episode torrents from the same instance. One selected target uses the existing manual match. If the upload does not parse as a season pack, the dialog permits only one target.
+
+Multiple targets require a configured link base directory, and one of these: local filesystem access with hardlink or reflink mode, or a [remote instance](../ssh-access.md) with hardlink mode. The dialog shows why assembly is unavailable. Manual assembly works even when season pack automation is off.
+
+The check first selects a complete matching pack alone, if one exists. Otherwise, it suggests the episodes that automatic discovery pairs. You can change the selection or use search to add targets that the proposal list omits. The proposal limit grows with the pack episode count, up to 60 torrents. The dialog reports this limit when it truncates the list.
+
+Before you add the pack, the check shows matched episodes, coverage, missing bytes, rejected targets, and the resolved destination. Coverage uses the episode files in your upload. No coverage threshold applies to manual assembly. Each selected torrent must be complete and provide one playable episode file with an exact size match. Manual selection bypasses title, source-filter, and numbering-scheme checks, but each file still needs a parsed episode identity.
+
+Piece boundary protection also applies to manual assembly in hardlink mode. It blocks the pack when selected and missing files share a data block. Downloading that block can change the original files through hardlinks. The warning links to Cross-Seed > Matching rules, where you can review this protection under Safety & validation.
+
+qui adds the assembled pack paused and rechecks it. It resumes when verified progress reaches the linked byte fraction, with the assembly margin for piece boundaries. If a file moves between check and apply, qui drops that target, reports its name, and assembles the remaining files. Season pack run history records the matched count, coverage, and link mode.
+
+A manual selection bypasses candidate discovery and the category and content-type gates. Link mode per instance settings and tag and category treatment stay the same as the automatic pipeline. Every manual match runs a full recheck before it seeds; you cannot skip it, and it decides a wrong pick. A failed recheck leaves the torrent paused for manual review.
+
+qui refuses a target with an error or missing files when error recovery is off, and a target that qBittorrent moves or checks. The recheck rule above applies to each target that qui accepts.
+
+For one selected target, the dialog prefills the category from that torrent and the tags from the cross-seed tag settings. You can edit both. If **Use Custom Category** is on, every cross-seed goes to that one category. The dialog then shows the category and locks it. The save path shows the effective destination and is read-only. With **By Tracker** directory organization, the tracker folder comes from the announce URL in the uploaded file. The tracker does not need a configured indexer.
+
+For multiple targets, season pack category routing supplies the initial category. Your category and tag choices control the add. qui does not append the automatic season pack tags. The destination uses the selected episode files and the instance link directory preset.
+
+### Season Pack Assembly
+
+qui can assemble season-pack torrents from individual episodes you already seed. To use automatic assembly, first enable **Assemble season packs automatically** in the settings; it is disabled by default. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes. RSS automation, a cross-seed apply, and Library Scan can also start this flow when you seed only episodes of a pack. qui links the episodes that exist locally. When coverage passes the configured threshold (default 75%), qui adds the pack and qBittorrent downloads the remainder after a recheck. When available, Sonarr, TVDB, and TVMaze improve the threshold decision. This feature requires a link mode on the target instance: local filesystem access with hardlink or reflink mode, or a remote instance with hardlink mode. See [Season Packs](./season-packs.md) for setup.
+
+## Blocklist
+
+Use the per-instance blocklist to stop qui from injecting specific infohashes again.
+
+- **Manage**: Cross-Seed page → Blocklist tab
+- **Quick add**: Delete dialog checkbox (appears only for torrents tagged `cross-seed`)
+
+The blocklist applies to these add paths:
+
+- Cross-seed applies from search, RSS, completion, autobrr, and a manual match with one target
+- [Dir Scan](./dir-scan.md)
+- Season pack assembly from the [apply webhook](./season-packs.md#4-configure-the-apply-action) and from [automatic assembly](./season-packs.md#automatic-assembly)
+
+An entry blocks the infohash only on its own instance. Season pack assembly can still use another eligible instance that has no entry.
+
+A [manual assembly](#manual-match) from several selected episodes ignores the blocklist, because you select that pack yourself.
+
+The delete dialog also detects cross-seeds that the deletion affects. This includes [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.
+
+### Shared files on other instances
+
+Two qBittorrent instances can save into one folder on one disk. A torrent on the second instance then reads the same files as a torrent on the first. A delete with files on the first instance removes the files of both.
+
+The delete dialog lists such a torrent with its instance name. qui finds it when both instances have [Local Filesystem Access](../instance-settings.md#local-filesystem-access). Two files are one file on disk when their folders have the same file identity on disk and their names are equal. The folders can have different paths, for example two mounts of one folder. If you select **Also delete these cross-seeded torrents**, qui deletes the torrent on the other instance too. A hardlinked or reflinked copy, or a separate copy with the same name, on another instance keeps its own files. The dialog does not list it.
+
+qui does not compare every file of every torrent. It checks a torrent on another instance when it has the same save path or content path, the same name, the same release, or the same total size. Known limit: qui does not find a torrent that reads a file inside the folder of the selected torrent through a mount with another path, and that has another name, release, and total size. An example is a single episode that reads a file in a season pack through a second mount.
+
+qui does not check [remote instances](../ssh-access.md), also when two of them are on one host. qui cannot make sure that the file identity that a remote host reports is correct.
+
+If qui cannot read the torrent list of an instance with local filesystem access, the dialog shows the matches that it found and adds a line that it could not check that instance. If an instance with local filesystem access is turned off in qui, the dialog adds a line that it did not check that instance.
+
+Automations do not delete torrents on other instances. See [Delete](../automations.md#delete) for how the modes that preserve or include cross-seeds keep the files.

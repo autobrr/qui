@@ -1,0 +1,2944 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package dirscan
+
+import (
+	"cmp"
+	"context"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"math/big"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/rls"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
+)
+
+type Config struct {
+	SchedulerInterval time.Duration
+
+	MaxJitter time.Duration
+
+	MaxConcurrentRuns int
+}
+
+func DefaultConfig() Config {
+	return Config{
+		SchedulerInterval: 1 * time.Minute,
+		MaxJitter:         30 * time.Second,
+		MaxConcurrentRuns: 1,
+	}
+}
+
+const triggeredByWebhook = "webhook"
+
+type directoryMuKey struct {
+	directoryID int
+	webhook     bool
+}
+
+type Service struct {
+	cfg                       Config
+	store                     *models.DirScanStore
+	crossSeedStore            *models.CrossSeedStore
+	torrentFiles              torrentFilesReader
+	jackettService            *jackett.Service
+	arrService                *arr.Service
+	trackerCustomizationStore *models.TrackerCustomizationStore
+	notifier                  notifications.Notifier
+	backendPool               *fsops.Pool
+	adder                     *crossseed.Adder
+	transfers                 transfers
+
+	parser   *Parser
+	searcher *Searcher
+	injector *Injector
+
+	directoryMu      map[directoryMuKey]*sync.Mutex
+	directoryWriteMu sync.Mutex
+	mu               sync.Mutex
+
+	cancelFuncs map[int64]context.CancelFunc
+	cancelMu    sync.Mutex
+
+	runMu sync.Mutex
+
+	runProgress map[int64]*runProgress
+	progressMu  sync.Mutex
+
+	schedulerCtx    context.Context
+	schedulerCancel context.CancelFunc
+	schedulerWg     sync.WaitGroup
+
+	runSem chan struct{}
+
+	searchGate searchGate
+
+	activityPublisher activity.Publisher
+	crossSeedRoutes   *crossseedroute.Service
+}
+
+type syncManagerTorrentChecker struct{ sm *qbittorrent.SyncManager }
+
+func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+	if c == nil || c.sm == nil {
+		return nil, false, nil
+	}
+	torrent, exists, err := c.sm.HasTorrentByAnyHash(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, false, fmt.Errorf("check torrent by hash: %w", err)
+	}
+	return torrent, exists, nil
+}
+
+type syncManagerTorrentFiles struct{ *qbittorrent.SyncManager }
+
+func (f syncManagerTorrentFiles) SeedingReady(ctx context.Context, instanceID int) error {
+	client, err := f.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("get client: %w", err)
+	}
+	if client.GetLastSyncUpdate().IsZero() {
+		f.HintMainDataRefresh(instanceID, "dir scan seeding index") //nolint:contextcheck // the first sync must outlive this scan
+		return errors.New("instance not ready: waiting for first sync")
+	}
+	return nil
+}
+
+func NewService(
+	cfg Config,
+	store *models.DirScanStore,
+	crossSeedStore *models.CrossSeedStore,
+	syncManager *qbittorrent.SyncManager,
+	jackettService *jackett.Service,
+	arrService *arr.Service,
+	trackerCustomizationStore *models.TrackerCustomizationStore,
+	notifier notifications.Notifier,
+	backendPool *fsops.Pool,
+	adder *crossseed.Adder,
+) *Service {
+	if cfg.SchedulerInterval <= 0 {
+		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
+	}
+	if cfg.MaxJitter <= 0 {
+		cfg.MaxJitter = DefaultConfig().MaxJitter
+	}
+	if cfg.MaxConcurrentRuns <= 0 {
+		cfg.MaxConcurrentRuns = DefaultConfig().MaxConcurrentRuns
+	}
+
+	parser := NewParser(nil)
+	searcher := NewSearcher(jackettService, parser)
+	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
+	injector := NewInjector(jackettService, crossseed.NewAligner(syncManager), adder, torrentChecker, trackerCustomizationStore, backendPool)
+
+	return &Service{
+		cfg:                       cfg,
+		store:                     store,
+		crossSeedStore:            crossSeedStore,
+		torrentFiles:              syncManagerTorrentFiles{syncManager},
+		jackettService:            jackettService,
+		arrService:                arrService,
+		trackerCustomizationStore: trackerCustomizationStore,
+		notifier:                  notifier,
+		backendPool:               backendPool,
+		adder:                     adder,
+		parser:                    parser,
+		searcher:                  searcher,
+		injector:                  injector,
+		directoryMu:               make(map[directoryMuKey]*sync.Mutex),
+		cancelFuncs:               make(map[int64]context.CancelFunc),
+		runProgress:               make(map[int64]*runProgress),
+		runSem:                    make(chan struct{}, cfg.MaxConcurrentRuns),
+		activityPublisher:         activity.NopPublisher{},
+	}
+}
+
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+}
+
+func (s *Service) SetCrossSeedRoutes(routes *crossseedroute.Service) {
+	s.crossSeedRoutes = routes
+}
+
+func (s *Service) emitRunActivity(directoryID, instanceID int) {
+	if s == nil || s.activityPublisher == nil || directoryID <= 0 {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindDirScanRun,
+		InstanceID: instanceID,
+		ResourceID: strconv.Itoa(directoryID),
+	})
+}
+
+func (s *Service) emitRunActivityForRun(ctx context.Context, runID int64, instanceID int) {
+	if s == nil || s.activityPublisher == nil || s.store == nil || runID <= 0 {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		return
+	}
+	s.emitRunActivity(run.DirectoryID, instanceID)
+}
+
+func (s *Service) Start(ctx context.Context) error {
+	if err := s.recoverStuckRuns(); err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to recover stuck runs")
+	}
+	if err := s.pruneLegacyRunHistory(); err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to prune legacy run history")
+	}
+
+	s.schedulerCtx, s.schedulerCancel = context.WithCancel(ctx)
+	s.schedulerWg.Add(1)
+	go s.runScheduler()
+	log.Info().Msg("dirscan: scheduler started")
+	return nil
+}
+
+func (s *Service) Stop() {
+	if s.schedulerCancel != nil {
+		s.schedulerCancel()
+	}
+	s.schedulerWg.Wait()
+	log.Info().Msg("dirscan: scheduler stopped")
+}
+
+func (s *Service) runScheduler() {
+	defer s.schedulerWg.Done()
+
+	ticker := time.NewTicker(s.cfg.SchedulerInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.schedulerCtx.Done():
+			return
+		case <-ticker.C:
+			s.checkScheduledScans()
+		}
+	}
+}
+
+func (s *Service) checkScheduledScans() {
+	ctx := s.schedulerCtx
+
+	settings, err := s.store.GetSettings(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to get settings")
+		return
+	}
+	if settings == nil || !settings.Enabled {
+		return
+	}
+
+	directories, err := s.store.ListEnabledDirectories(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to list enabled directories")
+		return
+	}
+
+	for _, dir := range directories {
+		if s.isDueForScan(dir) {
+			go s.triggerScheduledScan(dir.ID)
+		}
+	}
+}
+
+func (s *Service) isDueForScan(dir *models.DirScanDirectory) bool {
+	if dir.LastScanAt == nil {
+		return true
+	}
+
+	nextScan := dir.LastScanAt.Add(time.Duration(dir.ScanIntervalMinutes) * time.Minute)
+	return time.Now().After(nextScan)
+}
+
+func (s *Service) triggerScheduledScan(directoryID int) {
+	ctx := s.schedulerCtx
+
+	runID, err := s.createScheduledRun(ctx, directoryID)
+	if err != nil {
+		if !errors.Is(err, models.ErrDirScanRunAlreadyActive) {
+			log.Error().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to create scheduled run")
+		}
+		return
+	}
+	if runID == 0 {
+		return
+	}
+
+	l := log.With().Int("directoryID", directoryID).Int64("runID", runID).Logger()
+
+	s.emitRunActivity(directoryID, 0)
+
+	if s.cfg.MaxJitter > 0 {
+		jitter, jitterErr := randomDuration(s.cfg.MaxJitter)
+		if jitterErr != nil {
+			l.Debug().Err(jitterErr).Msg("dirscan: failed to generate jitter")
+		} else if jitter > 0 {
+			timer := time.NewTimer(jitter)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+	}
+
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to get run before start")
+		return
+	}
+	if run == nil || run.Status != models.DirScanRunStatusQueued {
+		return
+	}
+
+	s.startRun(ctx, directoryID, runID)
+}
+
+func (s *Service) createScheduledRun(ctx context.Context, directoryID int) (int64, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	dir, err := s.store.GetDirectory(ctx, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("get directory: %w", err)
+	}
+	if !s.isDueForScan(dir) {
+		return 0, nil
+	}
+	return s.store.CreateRunIfNoActive(ctx, directoryID, "scheduled", "")
+}
+
+func randomDuration(maxDuration time.Duration) (time.Duration, error) {
+	if maxDuration <= 0 {
+		return 0, nil
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(maxDuration)))
+	if err != nil {
+		return 0, fmt.Errorf("generate random duration: %w", err)
+	}
+	return time.Duration(n.Int64()), nil
+}
+
+func (s *Service) startRun(parent context.Context, directoryID int, runID int64) {
+	if s == nil || directoryID <= 0 || runID <= 0 {
+		return
+	}
+
+	if parent == nil {
+		parent = context.Background()
+	}
+
+	runCtx, cancel := context.WithCancel(parent)
+	s.cancelMu.Lock()
+	s.cancelFuncs[runID] = cancel
+	s.cancelMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.cancelMu.Lock()
+			delete(s.cancelFuncs, runID)
+			s.cancelMu.Unlock()
+		}()
+		s.executeScan(runCtx, directoryID, runID)
+	}()
+}
+
+func (s *Service) StartManualScan(ctx context.Context, directoryID int) (int64, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	runID, err := s.store.CreateRunIfNoActive(ctx, directoryID, "manual", "")
+	if err != nil {
+		return 0, fmt.Errorf("create run: %w", err)
+	}
+
+	s.emitRunActivity(directoryID, 0)
+
+	s.startRun(context.Background(), directoryID, runID)
+
+	return runID, nil
+}
+
+func (s *Service) DirectoryPaths(ctx context.Context, dir *models.DirScanDirectory) fsops.PathDialect {
+	if s.backendPool == nil {
+		return fsops.HostPaths
+	}
+	backend, _, err := s.backendPool.Require(ctx, dir.TargetInstanceID, models.CapabilityRead)
+	if err != nil {
+		return fsops.HostPaths
+	}
+	return backend.Paths()
+}
+
+func (s *Service) WebhookScanRoot(ctx context.Context, dir *models.DirScanDirectory, cleanPath string) string {
+	if s.backendPool == nil {
+		return cleanPath
+	}
+	backend, _, err := s.backendPool.Require(ctx, dir.TargetInstanceID, models.CapabilityRead)
+	if err != nil {
+		return cleanPath
+	}
+	info, err := backend.Stat(ctx, cleanPath)
+	if err != nil || info.IsDir {
+		return cleanPath
+	}
+	return backend.Paths().Dir(cleanPath)
+}
+
+func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoot string) (int64, error) {
+	if s == nil || s.store == nil {
+		return 0, errors.New("dirscan service is not initialized")
+	}
+
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	dir, err := s.store.GetDirectory(ctx, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("get directory: %w", err)
+	}
+
+	active, err := s.store.ListActiveRuns(ctx, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("list active runs: %w", err)
+	}
+	for _, run := range active {
+		if run.TriggeredBy != triggeredByWebhook || run.Status != models.DirScanRunStatusQueued {
+			continue
+		}
+		if mergedRoot := mergeWebhookScanRoots(s.DirectoryPaths(ctx, dir), dir.Path, run.ScanRoot, scanRoot); mergedRoot != run.ScanRoot {
+			if err := s.store.UpdateRunScanRoot(ctx, run.ID, mergedRoot); err != nil {
+				return 0, fmt.Errorf("merge queued webhook scan root: %w", err)
+			}
+		}
+		return run.ID, nil
+	}
+
+	runID, err := s.store.CreateRun(ctx, directoryID, triggeredByWebhook, scanRoot)
+	if err != nil {
+		return 0, fmt.Errorf("create webhook run: %w", err)
+	}
+
+	s.emitRunActivity(directoryID, 0)
+
+	s.startRun(context.Background(), directoryID, runID)
+	return runID, nil
+}
+
+func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	runs, err := s.store.ListActiveRuns(ctx, directoryID)
+	if err != nil {
+		return fmt.Errorf("list active runs: %w", err)
+	}
+	if len(runs) == 0 {
+		return nil
+	}
+
+	for _, run := range runs {
+		s.cancelMu.Lock()
+		cancel, ok := s.cancelFuncs[run.ID]
+		s.cancelMu.Unlock()
+
+		if ok {
+			cancel()
+		}
+
+		if err := s.store.UpdateRunCanceled(context.Background(), run.ID); err != nil {
+			return fmt.Errorf("update run canceled: %w", err)
+		}
+	}
+
+	if err := s.store.UpdateDirectoryLastScan(context.Background(), directoryID); err != nil {
+		log.Debug().Err(err).Int("directoryID", directoryID).Msg("dirscan: failed to bump last scan after cancel")
+	}
+
+	s.emitRunActivity(directoryID, 0)
+	return nil
+}
+
+func (s *Service) GetActiveRun(ctx context.Context, directoryID int) (*models.DirScanRun, error) {
+	run, err := s.store.GetActiveRun(ctx, directoryID)
+	if err != nil {
+		return nil, fmt.Errorf("get active run: %w", err)
+	}
+	return run, nil
+}
+
+func (s *Service) GetStatus(ctx context.Context, directoryID int) ([]*models.DirScanRun, error) {
+	runs, err := s.store.ListActiveRuns(ctx, directoryID)
+	if err != nil {
+		return nil, fmt.Errorf("list active runs: %w", err)
+	}
+	if len(runs) == 0 {
+		runs, err = s.store.ListRuns(ctx, directoryID, 1)
+		if err != nil {
+			return nil, fmt.Errorf("list runs: %w", err)
+		}
+		return runs, nil
+	}
+
+	for _, run := range runs {
+		if progress, ok := s.getRunProgress(run.ID); ok {
+			run.MatchesFound = progress.matchesFound
+			run.TorrentsAdded = progress.torrentsAdded
+		}
+	}
+	return runs, nil
+}
+
+func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64) {
+	defer s.clearRunProgress(runID)
+
+	l := log.With().
+		Int("directoryID", directoryID).
+		Int64("runID", runID).
+		Logger()
+
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to get run")
+		return
+	}
+	if run == nil || run.Status != models.DirScanRunStatusQueued {
+		return
+	}
+
+	webhook := run.TriggeredBy == triggeredByWebhook
+	if webhook {
+		ctx = withWebhookRun(ctx)
+	} else {
+		if !s.acquireRunSlot(ctx, runID, &l) {
+			s.markRunCanceled(context.Background(), runID, &l, "while waiting for run slot")
+			return
+		}
+		defer s.releaseRunSlot()
+	}
+
+	dirMu := s.getDirectoryMutex(directoryID, webhook)
+	dirMu.Lock()
+	defer dirMu.Unlock()
+
+	advanced, err := s.store.UpdateRunStatusIfCurrent(ctx, runID, models.DirScanRunStatusQueued, models.DirScanRunStatusScanning)
+	if err != nil {
+		l.Debug().Err(err).Msg("dirscan: failed to update run status to scanning")
+		return
+	}
+	if !advanced {
+		return
+	}
+
+	s.emitRunActivity(directoryID, 0)
+
+	run, err = s.store.GetRun(ctx, runID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to reload run")
+		return
+	}
+	if run == nil {
+		return
+	}
+
+	s.updateDirectoryLastScan(ctx, directoryID, &l)
+
+	if s.handleCancellation(ctx, runID, &l, "before start") {
+		return
+	}
+
+	dir, target, ok := s.validateDirectory(ctx, directoryID, runID, &l)
+	if !ok {
+		return
+	}
+
+	scanRoot := dir.Path
+	if run.ScanRoot != "" {
+		scanRoot = run.ScanRoot
+	}
+
+	l.Info().
+		Str("path", scanRoot).
+		Str("directoryPath", dir.Path).
+		Msg("dirscan: starting scan")
+
+	settings, matcher, ok := s.loadSettingsAndMatcher(ctx, runID, dir.TargetInstanceID, &l)
+	if !ok {
+		return
+	}
+
+	scanResult, fileIDIndex, ok := s.runScanPhase(ctx, dir, target, scanRoot, runID, &l)
+	if !ok {
+		return
+	}
+
+	trackedFiles, err := s.refreshTrackedFilesFromScan(ctx, directoryID, target.instance, scanResult, fileIDIndex, &l)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to persist scan progress")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("persist scan progress: %v", err), dir.TargetInstanceID, &l)
+		return
+	}
+
+	enabledIndexerIDs := s.enabledIndexerIDSet(ctx, &l)
+
+	workSelection := selectEligibleRootWork(
+		target.backend.Paths(),
+		scanResult,
+		trackedFiles,
+		s.parser,
+		effectiveMaxSearcheeAgeDays(settings, run.TriggeredBy),
+		time.Now(),
+		enabledIndexerIDs,
+		dir.SkipIndividualEpisodes,
+		&l,
+	)
+
+	if err := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusSearching); err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to update run status")
+	}
+	if err := s.store.UpdateRunStats(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, 0, 0); err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to update run stats")
+	}
+
+	s.emitRunActivity(directoryID, dir.TargetInstanceID)
+
+	l.Info().
+		Int("searchees", len(scanResult.Searchees)).
+		Int("searcheesEligible", len(workSelection.roots)).
+		Int("filesDiscovered", workSelection.discoveredFiles).
+		Int("filesEligible", workSelection.eligibleFiles).
+		Int("filesSkipped", workSelection.skippedFiles).
+		Int("episodesSkipped", workSelection.skippedEpisodes).
+		Int64("totalSize", scanResult.TotalSize).
+		Msg("dirscan: scan phase complete")
+
+	if s.handleCancellation(ctx, runID, &l, "before search phase") {
+		return
+	}
+
+	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, target, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, enabledIndexerIDs, &l)
+	completed := s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l)
+	if completed && scanRoot == dir.Path {
+		s.pruneMissingFilesBestEffort(dir.ID, &l)
+	}
+}
+
+func (s *Service) enabledIndexerIDSet(ctx context.Context, l *zerolog.Logger) map[int]struct{} {
+	if s == nil || s.jackettService == nil {
+		return nil
+	}
+	enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+	if err != nil {
+		if l != nil {
+			l.Warn().Err(err).Msg("dirscan: failed to list enabled indexers")
+		}
+		return nil
+	}
+	ids := make(map[int]struct{}, len(enabledInfo))
+	for id := range enabledInfo {
+		ids[id] = struct{}{}
+	}
+	return ids
+}
+
+func (s *Service) updateDirectoryLastScan(ctx context.Context, directoryID int, l *zerolog.Logger) {
+	if s == nil || s.store == nil || directoryID <= 0 {
+		return
+	}
+	if err := s.store.UpdateDirectoryLastScan(ctx, directoryID); err != nil && l != nil {
+		l.Error().Err(err).Msg("dirscan: failed to update last scan timestamp")
+	}
+}
+
+func (s *Service) markRunCanceled(ctx context.Context, runID int64, l *zerolog.Logger, reason string) {
+	if s == nil || s.store == nil || runID <= 0 {
+		return
+	}
+	if err := s.store.UpdateRunCanceled(ctx, runID); err != nil {
+		if l != nil {
+			l.Debug().Err(err).Str("reason", reason).Msg("dirscan: failed to mark run canceled")
+		}
+		return
+	}
+
+	s.emitRunActivityForRun(context.Background(), runID, 0)
+}
+
+func (s *Service) loadSettingsAndMatcher(ctx context.Context, runID int64, instanceID int, l *zerolog.Logger) (*models.DirScanSettings, *Matcher, bool) {
+	settings, err := s.store.GetSettings(ctx)
+	if err != nil {
+		if l != nil {
+			l.Error().Err(err).Msg("dirscan: failed to get settings")
+		}
+		s.markRunFailed(ctx, runID, fmt.Sprintf("get settings: %v", err), instanceID, l)
+		return nil, nil, false
+	}
+	if settings == nil {
+		settings = &models.DirScanSettings{
+			MatchMode:            models.MatchModeStrict,
+			SizeTolerancePercent: 5.0,
+		}
+	}
+
+	matcher := NewMatcher(matchModeFromSettings(settings), settings.SizeTolerancePercent)
+	return settings, matcher, true
+}
+
+func matchModeFromSettings(settings *models.DirScanSettings) MatchMode {
+	if settings != nil && settings.MatchMode == models.MatchModeFlexible {
+		return MatchModeFlexible
+	}
+	return MatchModeStrict
+}
+
+func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, filesSkipped, matchesFound, torrentsAdded int, instanceID int, l *zerolog.Logger) bool {
+	if s == nil || s.store == nil || runID <= 0 {
+		return false
+	}
+
+	if ctx.Err() != nil {
+		if err := s.store.UpdateRunStats(context.Background(), runID, filesFound, filesSkipped, matchesFound, torrentsAdded); err != nil && l != nil {
+			l.Debug().Err(err).Msg("dirscan: failed to persist run stats before cancel")
+		}
+
+		if l != nil {
+			l.Info().Msg("dirscan: scan canceled during search/inject")
+		}
+		s.markRunCanceled(context.Background(), runID, l, "canceled during search/inject")
+		return false
+	}
+
+	if err := s.store.UpdateRunCompleted(context.Background(), runID, matchesFound, torrentsAdded); err != nil {
+		if l != nil {
+			l.Error().Err(err).Msg("dirscan: failed to mark run as completed")
+		}
+		return false
+	}
+
+	s.emitRunActivityForRun(ctx, runID, instanceID)
+
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
+	s.notify(ctx, notifications.Event{
+		Type:                 notifications.EventDirScanCompleted,
+		InstanceID:           instanceID,
+		DirScanRunID:         runID,
+		DirScanMatchesFound:  matchesFound,
+		DirScanTorrentsAdded: torrentsAdded,
+		StartedAt:            startedAt,
+		CompletedAt:          completedAt,
+	})
+
+	if l != nil {
+		l.Info().
+			Int("matchesFound", matchesFound).
+			Int("torrentsAdded", torrentsAdded).
+			Msg("dirscan: scan completed")
+	}
+
+	return true
+}
+
+func (s *Service) pruneMissingFilesBestEffort(directoryID int, l *zerolog.Logger) {
+	if s == nil || s.store == nil || directoryID <= 0 {
+		return
+	}
+
+	removed, err := s.store.PruneMissingFiles(context.Background(), directoryID)
+	if err != nil {
+		if l != nil {
+			l.Warn().Err(err).Msg("dirscan: failed to prune tracked files that no longer exist")
+		}
+		return
+	}
+
+	if removed > 0 && l != nil {
+		l.Info().Int64("removed", removed).Msg("dirscan: pruned tracked files that no longer exist")
+	}
+}
+
+func (s *Service) acquireRunSlot(ctx context.Context, runID int64, l *zerolog.Logger) bool {
+	if s == nil || s.runSem == nil {
+		return true
+	}
+
+	select {
+	case s.runSem <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		if l != nil {
+			l.Debug().Int64("runID", runID).Msg("dirscan: canceled while waiting for run slot")
+		}
+		return false
+	}
+}
+
+func (s *Service) releaseRunSlot() {
+	if s == nil || s.runSem == nil {
+		return
+	}
+	select {
+	case <-s.runSem:
+	default:
+	}
+}
+
+func (s *Service) handleCancellation(ctx context.Context, runID int64, l *zerolog.Logger, phase string) bool {
+	if ctx.Err() == nil {
+		return false
+	}
+	l.Info().Msgf("dirscan: scan canceled %s", phase)
+	if err := s.store.UpdateRunCanceled(context.Background(), runID); err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to mark run as canceled")
+	}
+
+	s.emitRunActivityForRun(context.Background(), runID, 0)
+	return true
+}
+
+type scanTarget struct {
+	backend  fsops.Backend
+	instance *models.Instance
+}
+
+func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID int64, l *zerolog.Logger) (*models.DirScanDirectory, *scanTarget, bool) {
+	dir, err := s.store.GetDirectory(ctx, directoryID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to get directory")
+		s.markRunFailed(ctx, runID, err.Error(), 0, l)
+		return nil, nil, false
+	}
+
+	if s.backendPool == nil {
+		l.Error().Msg("dirscan: backend pool not configured")
+		s.markRunFailed(ctx, runID, "backend pool not configured", dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
+	backend, instance, err := s.backendPool.Require(ctx, dir.TargetInstanceID, models.CapabilityRead)
+	if err != nil && !errors.Is(err, fsops.ErrNotCapable) {
+		l.Error().Err(err).Msg("dirscan: failed to get target instance")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("failed to get target instance: %v", err), dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
+	if err != nil {
+		errMsg := "target instance does not have local filesystem access"
+		l.Error().Msg("dirscan: " + errMsg)
+		s.markRunFailed(ctx, runID, errMsg, dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
+	return dir, &scanTarget{backend: backend, instance: instance}, true
+}
+
+func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, target *scanTarget, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, *seedingIndex, bool) {
+	scanner := NewScanner(target.backend)
+
+	fileIDIndex := &seedingIndex{}
+	hasIdentity := models.FilesystemCapabilitiesOf(target.instance).Identity
+	if hasIdentity {
+		index, err := s.buildFileIDIndex(ctx, target.instance, target.backend, l)
+		switch {
+		case errors.Is(err, fsops.ErrConnectionLost):
+			l.Warn().Err(err).Msg("dirscan: lost the connection while building the FileID index")
+			s.markRunFailed(ctx, runID, fmt.Sprintf("seeding index failed: %v", err), dir.TargetInstanceID, l)
+			return nil, nil, false
+		case err != nil:
+			l.Debug().Err(err).Msg("dirscan: failed to build FileID index, continuing without seeding detection")
+		default:
+			fileIDIndex = index
+			scanner.SetFileIDIndex(index)
+		}
+	}
+
+	transferFolders, err := s.runningTransferFolders(ctx, target.instance.ID, target.backend.Paths())
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to read the folders of running Transfers")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+	scanner.ignorePaths = transferFolders
+
+	scanResult, err := scanner.ScanDirectory(ctx, scanRoot)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to scan directory")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
+	if err := s.checkWalkedEndpoint(ctx, target.instance); err != nil {
+		l.Error().Err(err).Msg("dirscan: failing scan, the remote instance changed while it ran")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("scan failed: %v", err), dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
+	if hasIdentity {
+		if missing := countFilesWithoutIdentity(scanResult); missing > 0 {
+			l.Info().Int("files", missing).Msg("dirscan: scanned files have no identity, so they cannot be seen as already seeding or renamed")
+		}
+	}
+
+	return scanResult, fileIDIndex, true
+}
+
+func (s *Service) checkWalkedEndpoint(ctx context.Context, walked *models.Instance) error {
+	endpoint := fsops.WalkedEndpoint(walked)
+	if endpoint == "" {
+		return nil
+	}
+	_, current, err := s.backendPool.Require(ctx, walked.ID, models.CapabilityRead)
+	if err != nil && !errors.Is(err, fsops.ErrNotCapable) {
+		return fmt.Errorf("reload instance after the walk: %w", err)
+	}
+	if err != nil || fsops.WalkedEndpoint(current) != endpoint {
+		return errRemoteTargetChanged
+	}
+	return nil
+}
+
+func countFilesWithoutIdentity(result *ScanResult) int {
+	missing := 0
+	for _, searchee := range result.Searchees {
+		for _, f := range searchee.Files {
+			if f.FileID.IsZero() {
+				missing++
+			}
+		}
+	}
+	return missing
+}
+
+func maxSearcheeAgeDaysFromSettings(settings *models.DirScanSettings) int {
+	if settings == nil || settings.MaxSearcheeAgeDays <= 0 {
+		return 0
+	}
+	return settings.MaxSearcheeAgeDays
+}
+
+func effectiveMaxSearcheeAgeDays(settings *models.DirScanSettings, triggeredBy string) int {
+	if triggeredBy == triggeredByWebhook {
+		return 0
+	}
+
+	return maxSearcheeAgeDaysFromSettings(settings)
+}
+
+func (s *Service) runSearchAndInjectPhase(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	target *scanTarget,
+	workSelection scanWorkSelection,
+	fileIDIndex *seedingIndex,
+	trackedFiles *trackedFilesIndex,
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	runID int64,
+	enabledIndexerIDs map[int]struct{},
+	l *zerolog.Logger,
+) (matchesFound, torrentsAdded int) {
+	if len(workSelection.roots) == 0 {
+		return 0, 0
+	}
+
+	sort.SliceStable(workSelection.roots, func(i, j int) bool {
+		if workSelection.roots[i].root == nil {
+			return false
+		}
+		if workSelection.roots[j].root == nil {
+			return true
+		}
+		return workSelection.roots[i].root.Path < workSelection.roots[j].root.Path
+	})
+
+	processed := workSelection.roots
+	maxPerRun := 0
+	if settings != nil {
+		maxPerRun = settings.MaxSearcheesPerRun
+	}
+	if maxPerRun > 0 && len(processed) > maxPerRun {
+		processed = processed[:maxPerRun]
+	}
+
+	if l != nil {
+		l.Info().
+			Int("searcheesEligible", len(workSelection.roots)).
+			Int("searcheesProcessed", len(processed)).
+			Int("maxSearcheesPerRun", maxPerRun).
+			Msg("dirscan: searchee selection")
+	}
+
+	injectedTVGroups := make(map[tvGroupKey]struct{})
+
+	for _, selected := range processed {
+		if ctx.Err() != nil {
+			if l != nil {
+				l.Info().Msg("dirscan: search phase canceled")
+			}
+			return matchesFound, torrentsAdded
+		}
+
+		matchesFound, torrentsAdded = s.processRootSearchee(
+			ctx,
+			dir,
+			target,
+			selected.root,
+			selected.items,
+			fileIDIndex,
+			trackedFiles,
+			injectedTVGroups,
+			settings,
+			matcher,
+			runID,
+			matchesFound,
+			torrentsAdded,
+			enabledIndexerIDs,
+			l,
+		)
+	}
+
+	return matchesFound, torrentsAdded
+}
+
+type dirScanFileUpdate struct {
+	status             models.DirScanFileStatus
+	matchedTorrentHash string
+	matchedIndexerID   *int
+	searchedIndexerIDs []int
+}
+
+func (s *Service) processRootSearchee(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	target *scanTarget,
+	searchee *Searchee,
+	workItems []searcheeWorkItem,
+	fileIDIndex *seedingIndex,
+	trackedFiles *trackedFilesIndex,
+	injectedTVGroups map[tvGroupKey]struct{},
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	runID int64,
+	matchesFoundIn int,
+	torrentsAddedIn int,
+	enabledIndexerIDs map[int]struct{},
+	l *zerolog.Logger,
+) (matchesFoundOut, torrentsAddedOut int) {
+	matchesFoundOut = matchesFoundIn
+	torrentsAddedOut = torrentsAddedIn
+
+	if searchee == nil || dir == nil {
+		return matchesFoundOut, torrentsAddedOut
+	}
+
+	if isAlreadySeedingByFileID(searchee, fileIDIndex) {
+		reports := []workItemReport{{files: searcheeFilePaths(searchee), search: itemSeedsAlready}}
+		if err := s.persistSearcheeOutcome(ctx, dir.ID, searchee, trackedFiles, enabledIndexerIDs, false, reports, l); err != nil && l != nil {
+			l.Debug().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to persist already-seeding searchee file statuses")
+		}
+		return matchesFoundOut, torrentsAddedOut
+	}
+
+	reports := make([]workItemReport, 0, len(workItems))
+	canceled := false
+	for _, item := range workItems {
+		if ctx.Err() != nil {
+			canceled = true
+			break
+		}
+		if shouldSkipWorkItemTVGroup(item, injectedTVGroups) {
+			continue
+		}
+		if item.searchee == nil {
+			continue
+		}
+
+		report := workItemReport{search: itemSeedsAlready}
+		if !isAlreadySeedingByFileID(item.searchee, fileIDIndex) {
+			stillPending := func() bool {
+				return !s.itemFinishedByAnotherRun(ctx, dir.ID, item, trackedFiles, enabledIndexerIDs, l)
+			}
+			report = s.processSearchee(ctx, dir, target, item.searchee, settings, matcher, runID, enabledIndexerIDs, stillPending, l)
+		}
+		report.files = searcheeFilePaths(item.searchee)
+		report.episode = item.isEpisode
+		reports = append(reports, report)
+
+		matches := 0
+		anyInjected := false
+		for _, c := range report.candidates {
+			if !c.isMatch() {
+				continue
+			}
+			matches++
+			matchesFoundOut++
+			if c.added() {
+				torrentsAddedOut++
+				anyInjected = true
+			}
+		}
+		if matches == 0 {
+			continue
+		}
+
+		if anyInjected && !item.isEpisode {
+			markTVGroupInjected(injectedTVGroups, item.tvGroup)
+		}
+
+		s.setRunProgress(runID, matchesFoundOut, torrentsAddedOut)
+	}
+
+	persistCtx := ctx
+	if ctx.Err() != nil {
+		detached, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		persistCtx = detached
+	}
+
+	if err := s.persistSearcheeOutcome(persistCtx, dir.ID, searchee, trackedFiles, enabledIndexerIDs, canceled, reports, l); err != nil && l != nil {
+		l.Debug().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to persist searchee file statuses")
+	}
+
+	return matchesFoundOut, torrentsAddedOut
+}
+
+func searcheeFilePaths(searchee *Searchee) []string {
+	paths := make([]string, 0, len(searchee.Files))
+	for _, f := range searchee.Files {
+		if f != nil {
+			paths = append(paths, f.Path)
+		}
+	}
+	return paths
+}
+
+func (s *Service) itemFinishedByAnotherRun(
+	ctx context.Context,
+	directoryID int,
+	item searcheeWorkItem,
+	trackedFiles *trackedFilesIndex,
+	enabledIndexerIDs map[int]struct{},
+	l *zerolog.Logger,
+) bool {
+	if s.store == nil || trackedFiles == nil {
+		return false
+	}
+
+	paths := make([]string, 0, len(item.searchee.Files))
+	for _, f := range item.searchee.Files {
+		if f != nil {
+			paths = append(paths, f.Path)
+		}
+	}
+	files, err := s.store.GetFilesByPath(ctx, directoryID, paths)
+	if err != nil {
+		if l != nil {
+			l.Debug().Err(err).Str("name", item.searchee.Name).Msg("dirscan: failed to reread item files, searching it")
+		}
+		return false
+	}
+	for _, f := range files {
+		trackedFiles.byPath[f.FilePath] = f
+	}
+
+	if workItemHasPendingFiles(item, trackedFiles, enabledIndexerIDs) {
+		return false
+	}
+	if l != nil {
+		l.Debug().Str("name", item.searchee.Name).Msg("dirscan: another run finished this item, skipping it")
+	}
+	return true
+}
+
+func shouldSkipWorkItemTVGroup(item searcheeWorkItem, injectedTVGroups map[tvGroupKey]struct{}) bool {
+	if item.searchee == nil || item.tvGroup == nil || injectedTVGroups == nil {
+		return false
+	}
+	_, alreadyInjected := injectedTVGroups[*item.tvGroup]
+	return alreadyInjected
+}
+
+func (s *Service) persistSearcheeOutcome(
+	ctx context.Context,
+	directoryID int,
+	root *Searchee,
+	trackedFiles *trackedFilesIndex,
+	enabledIndexerIDs map[int]struct{},
+	canceled bool,
+	reports []workItemReport,
+	l *zerolog.Logger,
+) error {
+	if s.store == nil {
+		return nil
+	}
+
+	files := make([]searcheeFile, 0, len(root.Files))
+	for _, f := range root.Files {
+		if f == nil {
+			continue
+		}
+		var tracked *models.DirScanFile
+		if trackedFiles != nil {
+			tracked = trackedFiles.byPath[f.Path]
+		}
+		files = append(files, searcheeFile{path: f.Path, video: isVideoPath(f.Path), final: isFinalTrackedFile(tracked, enabledIndexerIDs)})
+	}
+
+	decisions := decideSearcheeOutcome(files, sortedIndexerIDs(enabledIndexerIDs), canceled, reports)
+	for _, f := range root.Files {
+		if f == nil {
+			continue
+		}
+		update, ok := decisions[f.Path]
+		if !ok {
+			continue
+		}
+		if err := s.upsertDirScanFileStatus(ctx, directoryID, f, trackedFiles, update); err != nil {
+			return err
+		}
+	}
+
+	if l != nil {
+		l.Debug().
+			Str("name", root.Name).
+			Int("files", len(files)).
+			Int("written", len(decisions)).
+			Bool("canceled", canceled).
+			Msg("dirscan: persisted searchee file statuses")
+	}
+
+	return nil
+}
+
+func (s *Service) upsertDirScanFileStatus(ctx context.Context, directoryID int, scanned *ScannedFile, trackedFiles *trackedFilesIndex, update dirScanFileUpdate) error {
+	if s == nil || s.store == nil || scanned == nil || directoryID <= 0 {
+		return nil
+	}
+
+	file := &models.DirScanFile{
+		DirectoryID:        directoryID,
+		FilePath:           scanned.Path,
+		FileSize:           scanned.Size,
+		FileModTime:        scanned.ModTime,
+		FileID:             trackedFiles.storedFileID(scanned.FileID),
+		Status:             update.status,
+		MatchedTorrentHash: update.matchedTorrentHash,
+		MatchedIndexerID:   update.matchedIndexerID,
+		SearchedIndexerIDs: update.searchedIndexerIDs,
+	}
+	return s.store.UpsertFile(ctx, file)
+}
+
+func markTVGroupInjected(injectedTVGroups map[tvGroupKey]struct{}, key *tvGroupKey) {
+	if key == nil {
+		return
+	}
+	injectedTVGroups[*key] = struct{}{}
+}
+
+type runProgress struct {
+	matchesFound     int
+	torrentsAdded    int
+	updatedAt        time.Time
+	injectingEmitted bool
+}
+
+func (s *Service) markInjectingEmitted(runID int64) bool {
+	if s == nil || runID <= 0 {
+		return false
+	}
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	entry, ok := s.runProgress[runID]
+	if !ok {
+		entry = &runProgress{}
+		s.runProgress[runID] = entry
+	}
+	if entry.injectingEmitted {
+		return false
+	}
+	entry.injectingEmitted = true
+	return true
+}
+
+func (s *Service) setRunProgress(runID int64, matchesFound, torrentsAdded int) {
+	if s == nil || runID <= 0 {
+		return
+	}
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	entry, ok := s.runProgress[runID]
+	if !ok {
+		entry = &runProgress{}
+		s.runProgress[runID] = entry
+	}
+	entry.matchesFound = matchesFound
+	entry.torrentsAdded = torrentsAdded
+	entry.updatedAt = time.Now()
+}
+
+func (s *Service) getRunProgress(runID int64) (*runProgress, bool) {
+	if s == nil || runID <= 0 {
+		return nil, false
+	}
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	entry, ok := s.runProgress[runID]
+	if !ok || entry == nil {
+		return nil, false
+	}
+	cp := *entry
+	return &cp, true
+}
+
+func (s *Service) clearRunProgress(runID int64) {
+	if s == nil || runID <= 0 {
+		return
+	}
+
+	s.progressMu.Lock()
+	delete(s.runProgress, runID)
+	s.progressMu.Unlock()
+}
+
+func (s *Service) pruneLegacyRunHistory() error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+
+	pruneCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := s.store.PruneRunHistory(pruneCtx); err != nil {
+		return fmt.Errorf("prune run history: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) recoverStuckRuns() error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+
+	recoveryCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	affected, err := s.store.MarkActiveRunsFailed(recoveryCtx, "Scan interrupted by restart")
+	if err != nil {
+		return fmt.Errorf("mark active runs failed: %w", err)
+	}
+	if affected > 0 {
+		log.Info().Int64("runs", affected).Msg("dirscan: marked interrupted runs as failed")
+
+		if directoryIDs, listErr := s.store.ListDirectoryIDs(recoveryCtx); listErr != nil {
+			log.Debug().Err(listErr).Msg("dirscan: failed to list directories for crash-recovery activity")
+		} else {
+			for _, directoryID := range directoryIDs {
+				s.emitRunActivity(directoryID, 0)
+			}
+		}
+	}
+
+	return nil
+}
+
+func isAlreadySeedingByFileID(searchee *Searchee, index *seedingIndex) bool {
+	if searchee == nil || len(searchee.Files) == 0 || index.len() == 0 {
+		return false
+	}
+	for _, f := range searchee.Files {
+		if f == nil {
+			return false
+		}
+		if _, ok := index.hash(f.FileID); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+type tryMatchResultsStats struct {
+	skippedTooSmall         int
+	skippedTooLarge         int
+	skippedExists           int
+	skippedIndexerSatisfied int
+	attemptedMatches        int
+}
+
+func tryMatchResultsPerIndexer(
+	results []jackett.SearchResult,
+	minSize, maxSize int64,
+	shouldSkipExists func(result *jackett.SearchResult) bool,
+	attempt func(result *jackett.SearchResult) candidateReport,
+) ([]candidateReport, tryMatchResultsStats) {
+	stats := tryMatchResultsStats{}
+	var candidates []candidateReport
+	satisfiedIndexers := make(map[int]struct{})
+
+	for i := range results {
+		result := &results[i]
+
+		if result.IndexerID > 0 {
+			if _, ok := satisfiedIndexers[result.IndexerID]; ok {
+				stats.skippedIndexerSatisfied++
+				continue
+			}
+		}
+
+		if minSize > 0 && result.Size < minSize {
+			stats.skippedTooSmall++
+			continue
+		}
+		if maxSize > 0 && result.Size > maxSize {
+			stats.skippedTooLarge++
+			continue
+		}
+
+		if shouldSkipExists != nil && shouldSkipExists(result) {
+			stats.skippedExists++
+			continue
+		}
+
+		stats.attemptedMatches++
+		candidate := attempt(result)
+		candidates = append(candidates, candidate)
+		if result.IndexerID > 0 && (candidate.added() || candidate.inQBittorrent()) {
+			satisfiedIndexers[result.IndexerID] = struct{}{}
+		}
+	}
+
+	return candidates, stats
+}
+
+func (s *Service) processSearchee(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	target *scanTarget,
+	searchee *Searchee,
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	runID int64,
+	enabledIndexerIDs map[int]struct{},
+	stillPending func() bool,
+	l *zerolog.Logger,
+) workItemReport {
+	if searchee == nil || settings == nil || matcher == nil {
+		return workItemReport{}
+	}
+
+	searcheeSize := CalculateTotalSize(searchee)
+	minSize, maxSize := CalculateSizeRange(searcheeSize, settings.SizeTolerancePercent)
+
+	meta, arrLookupName := s.buildSearcheeMetadata(target.backend.Paths(), searchee)
+	contentInfo := determineContentInfo(meta, searchee)
+
+	l.Debug().
+		Str("name", searchee.Name).
+		Int64("size", searcheeSize).
+		Int("files", len(searchee.Files)).
+		Int64("minResultSize", minSize).
+		Int64("maxResultSize", maxSize).
+		Str("matchMode", string(settings.MatchMode)).
+		Bool("allowPartial", settings.AllowPartial).
+		Float64("minPieceRatio", settings.MinPieceRatio).
+		Bool("skipPieceBoundarySafetyCheck", settings.SkipPieceBoundarySafetyCheck).
+		Str("contentType", contentInfo.ContentType).
+		Msg("dirscan: searching for searchee")
+
+	contentType := normalizeContentType(contentInfo.ContentType)
+
+	filteredIndexers := s.filterIndexersForContent(ctx, &contentInfo, l)
+	if len(filteredIndexers) == 0 {
+		filteredIndexers = sortedIndexerIDs(enabledIndexerIDs)
+	}
+	if len(filteredIndexers) == 0 {
+		if l != nil {
+			l.Debug().Msg("dirscan: no eligible indexers")
+		}
+		return workItemReport{search: itemNoIndexers}
+	}
+
+	tagSourcedIDs := meta.HasExternalIDs()
+	arrTitles := s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
+
+	in := s.searchInput(meta, filteredIndexers, contentInfo.Categories, arrTitles, tagSourcedIDs)
+	in.TVSourceYear = s.searcheeTVYear(target.backend.Paths(), searchee, meta)
+	response, covered, err := s.searchSearchee(ctx, searchee, in, minSize, maxSize, stillPending, l)
+	if err != nil {
+		if ctx.Err() != nil {
+			return workItemReport{search: itemSearchCanceled}
+		}
+		return workItemReport{search: itemSearchFailed}
+	}
+	if response == nil {
+		return workItemReport{search: itemSearchCanceled}
+	}
+
+	report := workItemReport{search: itemSearched, requested: response.RequestedIndexerIDs, answered: covered}
+	if !report.searchCovered() && l != nil {
+		l.Debug().
+			Str("name", searchee.Name).
+			Ints("requestedIndexers", response.RequestedIndexerIDs).
+			Ints("coveredIndexers", covered).
+			Msg("dirscan: search did not cover all indexers; searchee stays pending")
+	}
+
+	if len(response.Results) == 0 {
+		return report
+	}
+
+	l.Debug().
+		Str("name", searchee.Name).
+		Int("results", len(response.Results)).
+		Msg("dirscan: got search results")
+
+	report.candidates = s.tryMatchResults(ctx, dir, target, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
+	return report
+}
+
+func sortedIndexerIDs(ids map[int]struct{}) []int {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	sort.Ints(out)
+	return out
+}
+
+func (s *Service) buildSearcheeMetadata(d fsops.PathDialect, searchee *Searchee) (meta *SearcheeMetadata, arrLookupName string) {
+	parsedMeta := s.parser.Parse(searchee.Name)
+	arrLookupName = searchee.Name
+
+	contentFile := selectLargestVideoFile(searchee.Files)
+	if contentFile == nil {
+		return parsedMeta, arrLookupName
+	}
+
+	base := d.Base(contentFile.Path)
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+	if name == "" {
+		return parsedMeta, arrLookupName
+	}
+
+	arrLookupName = name
+	fileMeta := s.parser.Parse(name)
+	if shouldPreferFileMetadata(parsedMeta, fileMeta) {
+		applyFileMetadata(parsedMeta, fileMeta)
+	}
+
+	return parsedMeta, arrLookupName
+}
+
+func determineContentInfo(meta *SearcheeMetadata, searchee *Searchee) crossseed.ContentTypeInfo {
+	contentInfo := crossseed.DetermineContentType(meta.Release)
+	if !contentInfo.IsMusic || meta.Release == nil || !hasAnyVideoFile(searchee.Files) {
+		return contentInfo
+	}
+
+	forced := *meta.Release
+	if forced.Series > 0 || forced.Episode > 0 {
+		forced.Type = rls.Episode
+	} else {
+		forced.Type = rls.Movie
+	}
+
+	contentInfo = crossseed.DetermineContentType(&forced)
+	meta.IsMusic = false
+	meta.IsTV = contentInfo.ContentType == "tv"
+	meta.IsMovie = contentInfo.ContentType == "movie"
+	return contentInfo
+}
+
+func normalizeContentType(contentType string) string {
+	if contentType == "" {
+		return "unknown"
+	}
+	return contentType
+}
+
+func (s *Service) filterIndexersForContent(ctx context.Context, contentInfo *crossseed.ContentTypeInfo, l *zerolog.Logger) []int {
+	if s.jackettService == nil || contentInfo == nil || len(contentInfo.RequiredCaps) == 0 {
+		return nil
+	}
+
+	filteredIndexers, err := s.jackettService.FilterIndexersForCapabilities(
+		ctx, nil, contentInfo.RequiredCaps, contentInfo.Categories,
+	)
+	if err != nil {
+		if l != nil {
+			l.Debug().Err(err).Msg("dirscan: failed to filter indexers by capabilities, using all")
+		}
+		return nil
+	}
+
+	if l != nil {
+		l.Debug().Int("indexers", len(filteredIndexers)).Msg("dirscan: filtered indexers by capabilities")
+	}
+	return filteredIndexers
+}
+
+func (s *Service) searchInput(meta *SearcheeMetadata, indexerIDs, categories []int, arrTitles []string, tagSourcedIDs bool) crossseed.GatherInput {
+	req := s.searcher.buildSearchRequest(meta, indexerIDs, categories)
+	in := crossseed.GatherInput{Req: req, TagSourcedIDs: tagSourcedIDs, TorrentName: meta.OriginalName, LogPrefix: "dirscan:"}
+	if alt, season, ok := crossseed.AlternateTitleQuery(req.Query, meta.Release, arrTitles, meta.CleanedName); ok {
+		in.AltTitle = alt
+		if season > 0 {
+			in.AltTitleSeason = new(season)
+		}
+	}
+	return in
+}
+
+func (s *Service) searcheeTVYear(d fsops.PathDialect, searchee *Searchee, meta *SearcheeMetadata) int {
+	if !meta.IsTV {
+		return 0
+	}
+	if meta.Year > 0 {
+		return meta.Year
+	}
+	contentFile := selectLargestVideoFile(searchee.Files)
+	if contentFile == nil {
+		return 0
+	}
+	base := d.Base(contentFile.Path)
+	return s.parser.Parse(strings.TrimSuffix(base, filepath.Ext(base))).Year
+}
+
+func (s *Service) searchSearchee(
+	ctx context.Context,
+	searchee *Searchee,
+	in crossseed.GatherInput,
+	minSize, maxSize int64,
+	stillPending func() bool,
+	l *zerolog.Logger,
+) (*jackett.SearchResponse, []int, error) {
+	if err := s.searchGate.acquire(ctx, isWebhookRun(ctx)); err != nil {
+		return nil, nil, err
+	}
+	if stillPending != nil && !stillPending() {
+		s.searchGate.releaseUnused()
+		return nil, nil, nil
+	}
+	defer s.searchGate.release()
+
+	if l != nil {
+		l.Debug().
+			Str("name", searchee.Name).
+			Str("query", in.Req.Query).
+			Ints("indexers", in.Req.IndexerIDs).
+			Ints("categories", in.Req.Categories).
+			Str("imdb", in.Req.IMDbID).
+			Int("tmdb", in.Req.TMDbID).
+			Str("tvdb", in.Req.TVDbID).
+			Msg("dirscan: search request")
+	}
+
+	response, covered, _, err := s.searcher.gatherer(inSizeBand(minSize, maxSize)).Gather(ctx, ctx, in)
+	if err != nil {
+		if l != nil {
+			l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: search failed")
+		}
+		return nil, nil, err
+	}
+	return response, covered, nil
+}
+
+type searchGate struct {
+	mu             sync.Mutex
+	busy           bool
+	lastSearchAt   time.Time
+	webhookWaiting int
+	interval       time.Duration
+	changed        chan struct{}
+}
+
+func (g *searchGate) acquire(ctx context.Context, webhook bool) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if webhook {
+		g.webhookWaiting++
+		defer func() {
+			g.webhookWaiting--
+			if g.webhookWaiting == 0 {
+				g.broadcast()
+			}
+		}()
+	}
+
+	interval := cmp.Or(g.interval, crossseed.MinTorznabSearchInterval)
+	for {
+		wait := time.Until(g.lastSearchAt.Add(interval))
+		if !g.busy && wait <= 0 && (webhook || g.webhookWaiting == 0) {
+			g.busy = true
+			return nil
+		}
+
+		var intervalDone <-chan time.Time
+		if !g.busy && wait > 0 {
+			intervalDone = time.After(wait)
+		}
+		if g.changed == nil {
+			g.changed = make(chan struct{})
+		}
+		changed := g.changed
+
+		g.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			g.mu.Lock()
+			return ctx.Err()
+		case <-changed:
+		case <-intervalDone:
+		}
+		g.mu.Lock()
+	}
+}
+
+func (g *searchGate) release() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.busy = false
+	g.lastSearchAt = time.Now()
+	g.broadcast()
+}
+
+func (g *searchGate) releaseUnused() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.busy = false
+	g.broadcast()
+}
+
+func (g *searchGate) broadcast() {
+	if g.changed != nil {
+		close(g.changed)
+		g.changed = nil
+	}
+}
+
+type webhookRunKey struct{}
+
+func withWebhookRun(ctx context.Context) context.Context {
+	return context.WithValue(ctx, webhookRunKey{}, true)
+}
+
+func isWebhookRun(ctx context.Context) bool {
+	webhook, _ := ctx.Value(webhookRunKey{}).(bool)
+	return webhook
+}
+
+func inSizeBand(minSize, maxSize int64) func(jackett.SearchResult) bool {
+	return func(result jackett.SearchResult) bool {
+		return (minSize <= 0 || result.Size >= minSize) && (maxSize <= 0 || result.Size <= maxSize)
+	}
+}
+
+func (s *Service) tryMatchResults(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	target *scanTarget,
+	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
+	response *jackett.SearchResponse,
+	minSize, maxSize int64,
+	contentType string,
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	runID int64,
+	l *zerolog.Logger,
+) []candidateReport {
+	candidates, stats := tryMatchResultsPerIndexer(
+		response.Results,
+		minSize,
+		maxSize,
+		func(result *jackett.SearchResult) bool {
+			if exists, ok := s.searchResultAlreadyExists(ctx, dir.TargetInstanceID, result, l); ok && exists {
+				return true
+			}
+			return false
+		},
+		func(result *jackett.SearchResult) candidateReport {
+			return s.tryMatchAndInject(ctx, dir, target, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
+		},
+	)
+
+	if l != nil {
+		matches := 0
+		for _, c := range candidates {
+			if c.isMatch() {
+				matches++
+			}
+		}
+		ev := l.Debug().
+			Str("name", searchee.Name).
+			Int("results", len(response.Results)).
+			Int("matches", matches).
+			Int("attemptedMatches", stats.attemptedMatches).
+			Int("skippedTooSmall", stats.skippedTooSmall).
+			Int("skippedTooLarge", stats.skippedTooLarge).
+			Int("skippedExists", stats.skippedExists).
+			Int("skippedIndexerSatisfied", stats.skippedIndexerSatisfied).
+			Int64("minResultSize", minSize).
+			Int64("maxResultSize", maxSize).
+			Str("contentType", contentType)
+		if matches == 0 {
+			ev.Msg("dirscan: no matching search results")
+		} else {
+			ev.Msg("dirscan: matched search results")
+		}
+	}
+	return candidates
+}
+
+func (s *Service) searchResultAlreadyExists(ctx context.Context, instanceID int, result *jackett.SearchResult, l *zerolog.Logger) (exists, checked bool) {
+	if s == nil || s.injector == nil || result == nil {
+		return false, false
+	}
+
+	var hashes []string
+	if result.InfoHashV1 != "" {
+		hashes = append(hashes, result.InfoHashV1)
+	}
+	if result.InfoHashV2 != "" {
+		hashes = append(hashes, result.InfoHashV2)
+	}
+	if len(hashes) == 0 {
+		return false, false
+	}
+
+	found, err := s.injector.TorrentExistsAny(ctx, instanceID, hashes)
+	if err != nil {
+		if l != nil {
+			l.Debug().Err(err).Msg("dirscan: failed to check torrent exists from search result hashes")
+		}
+		return false, true
+	}
+	if found && l != nil {
+		l.Debug().
+			Str("title", result.Title).
+			Strs("hashes", hashes).
+			Msg("dirscan: search result already in qBittorrent")
+	}
+	return found, true
+}
+
+func (s *Service) tryMatchAndInject(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	target *scanTarget,
+	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
+	result *jackett.SearchResult,
+	contentType string,
+	settings *models.DirScanSettings,
+	matcher *Matcher,
+	runID int64,
+	l *zerolog.Logger,
+) candidateReport {
+	torrentData, parsed := s.downloadAndParseTorrent(ctx, result, l)
+	if parsed == nil {
+		return candidateReport{event: candidateDownloadFailed}
+	}
+
+	matchResult := matcher.Match(searchee, parsed.Files)
+	decision := shouldAcceptDirScanMatch(matchResult, parsed, settings)
+	decision = refineDirScanMatchDecision(searchee, searcheeMeta, parsed, result, settings, matchResult, decision)
+	if !decision.Accept {
+		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
+		return candidateReport{event: candidateRejected}
+	}
+
+	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, parsed.InfoHash, parsed.InfoHashV2)
+	if refusal != nil {
+		candidate := matchedCandidate(candidateRefused, refusal.Class(), parsed, matchResult, result)
+		switch candidate.class {
+		case crossseed.ClassExists:
+			l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: already in qBittorrent")
+		case crossseed.ClassFailed:
+			l.Warn().Err(refusal.Err).Str("hash", parsed.InfoHash).Str("reason", refusal.Message).Msg("dirscan: pre-add check failed, skipping match")
+			candidate.routeUnavailable = errors.Is(refusal.Err, crossseedroute.ErrUnavailable)
+		default:
+			l.Debug().Str("name", searchee.Name).Str("hash", parsed.InfoHash).Msg("dirscan: blocked by cross-seed blocklist")
+		}
+		return candidate
+	}
+
+	logDirScanAcceptedMatch(l, searchee, parsed, matchResult, decision)
+
+	category := settings.Category
+	if dir.Category != "" {
+		category = dir.Category
+	}
+
+	tags := mergeStringLists(settings.Tags, dir.Tags)
+
+	injectReq := &InjectRequest{
+		InstanceID:           dir.TargetInstanceID,
+		ScanInstance:         target.instance,
+		Check:                check,
+		TorrentBytes:         torrentData,
+		ParsedTorrent:        parsed,
+		Searchee:             searchee,
+		MatchResult:          matchResult,
+		SearchResult:         result,
+		QbitPathPrefix:       dir.QbitPathPrefix,
+		Category:             category,
+		Tags:                 tags,
+		StartPaused:          settings.StartPaused,
+		DownloadMissingFiles: settings.DownloadMissingFiles,
+	}
+
+	trackerDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)
+
+	if updateErr := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusInjecting); updateErr != nil {
+		l.Debug().Err(updateErr).Msg("dirscan: failed to update run status to injecting")
+	}
+
+	if s.markInjectingEmitted(runID) {
+		s.emitRunActivity(dir.ID, dir.TargetInstanceID)
+	}
+
+	injectResult, err := s.injector.Inject(ctx, injectReq)
+	if err != nil {
+		l.Warn().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to inject torrent")
+	} else {
+		l.Info().Str("name", searchee.Name).Bool("success", injectResult.Success).Msg("dirscan: injected torrent")
+	}
+
+	s.recordRunInjection(ctx, dir, runID, searchee, parsed, contentType, result, injectReq.Category, injectReq.Tags, trackerDomain, injectResult, err)
+
+	candidate := matchedCandidate(candidateAddRan, injectResult.Class, parsed, matchResult, result)
+	candidate.settleQueueFull = injectResult.SettleQueueFull
+	return candidate
+}
+
+func matchedCandidate(event candidateEvent, class crossseed.ResultClass, parsed *ParsedTorrent, match *MatchResult, result *jackett.SearchResult) candidateReport {
+	candidate := candidateReport{event: event, class: class, hash: parsed.InfoHash, indexerID: result.IndexerID}
+	for _, pair := range match.MatchedFiles {
+		if pair.SearcheeFile != nil {
+			candidate.matchedFiles = append(candidate.matchedFiles, pair.SearcheeFile.Path)
+		}
+	}
+	return candidate
+}
+
+func logDirScanMatchRejection(
+	l *zerolog.Logger,
+	searchee *Searchee,
+	result *jackett.SearchResult,
+	parsed *ParsedTorrent,
+	contentType string,
+	settings *models.DirScanSettings,
+	matchResult *MatchResult,
+	decision dirScanMatchDecision,
+	matcher *Matcher,
+) {
+	if l == nil || searchee == nil || result == nil || parsed == nil || settings == nil || matchResult == nil || matcher == nil {
+		return
+	}
+
+	hint, hints := describeDirScanMatchHints(searchee, parsed, matchResult, matcher, settings, decision)
+	l.Debug().
+		Str("name", searchee.Name).
+		Str("title", result.Title).
+		Str("torrentName", parsed.Name).
+		Int64("torrentSize", parsed.TotalSize).
+		Str("contentType", contentType).
+		Str("matchMode", string(settings.MatchMode)).
+		Float64("sizeTolerancePercent", settings.SizeTolerancePercent).
+		Bool("allowPartial", settings.AllowPartial).
+		Float64("minPieceRatio", settings.MinPieceRatio).
+		Bool("skipPieceBoundarySafetyCheck", settings.SkipPieceBoundarySafetyCheck).
+		Bool("perfect", matchResult.IsPerfectMatch).
+		Bool("partial", matchResult.IsPartialMatch).
+		Float64("matchRatio", matchResult.MatchRatio).
+		Float64("sizeMatchRatio", matchResult.SizeMatchRatio).
+		Int("searcheeFiles", len(searchee.Files)).
+		Int("torrentFiles", len(parsed.Files)).
+		Int("matchedFiles", len(matchResult.MatchedFiles)).
+		Int("unmatchedSearcheeFiles", len(matchResult.UnmatchedSearcheeFiles)).
+		Int("unmatchedTorrentFiles", len(matchResult.UnmatchedTorrentFiles)).
+		Strs("unmatchedSearcheeSample", sampleDirScanSearcheeFiles(matchResult.UnmatchedSearcheeFiles, 3)).
+		Strs("unmatchedTorrentSample", sampleDirScanTorrentFiles(matchResult.UnmatchedTorrentFiles, 3)).
+		Strs("unmatchedSearcheeExts", summarizeDirScanExtensions(matchResult.UnmatchedSearcheeFiles, 5)).
+		Float64("pieceMatchPercent", decision.PieceMatchPercent).
+		Bool("pieceBoundaryUnsafe", decision.PieceBoundaryUnsafe).
+		Bool("nameCorroborated", decision.NameCorroborated).
+		Bool("titleCorroborated", decision.TitleCorroborated).
+		Bool("idCorroborated", decision.IDCorroborated).
+		Str("reason", decision.Reason).
+		Str("hint", hint).
+		Strs("hints", hints).
+		Msg("dirscan: match rejected")
+}
+
+func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTrackerDomain, indexerName string) string {
+	var customizations []*models.TrackerCustomization
+	if s.trackerCustomizationStore != nil {
+		if customs, err := s.trackerCustomizationStore.List(ctx); err == nil {
+			customizations = customs
+		}
+	}
+	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
+}
+
+func (s *Service) recordRunInjection(
+	ctx context.Context,
+	dir *models.DirScanDirectory,
+	runID int64,
+	searchee *Searchee,
+	parsed *ParsedTorrent,
+	contentType string,
+	result *jackett.SearchResult,
+	category string,
+	tags []string,
+	trackerDomain string,
+	injectResult *InjectResult,
+	injectErr error,
+) {
+	if s == nil || s.store == nil || runID <= 0 || dir == nil || parsed == nil || searchee == nil || result == nil {
+		return
+	}
+
+	status := models.DirScanRunInjectionStatusAdded
+	errorMessage := ""
+	success := injectResult != nil && injectResult.Success
+	if injectErr != nil || !success {
+		status = models.DirScanRunInjectionStatusFailed
+		switch {
+		case injectResult != nil && injectResult.ErrorMessage != "":
+			errorMessage = injectResult.ErrorMessage
+		case injectErr != nil:
+			errorMessage = injectErr.Error()
+		default:
+			errorMessage = "unknown injection failure"
+		}
+	}
+
+	indexerName := result.Indexer
+	trackerDisplayName := s.resolveTrackerDisplayName(ctx, trackerDomain, indexerName)
+
+	inj := &models.DirScanRunInjection{
+		RunID:              runID,
+		DirectoryID:        dir.ID,
+		Status:             status,
+		SearcheeName:       searchee.Name,
+		TorrentName:        parsed.Name,
+		InfoHash:           parsed.InfoHash,
+		ContentType:        contentType,
+		IndexerName:        indexerName,
+		TrackerDomain:      trackerDomain,
+		TrackerDisplayName: trackerDisplayName,
+		LinkMode:           "",
+		SavePath:           "",
+		Category:           category,
+		Tags:               tags,
+		ErrorMessage:       errorMessage,
+	}
+	if injectResult != nil {
+		inj.LinkMode = injectResult.Mode
+		inj.SavePath = injectResult.SavePath
+	}
+
+	if err := s.store.CreateRunInjection(ctx, inj); err != nil {
+		log.Debug().Err(err).Int("directoryID", dir.ID).Int64("runID", runID).Msg("dirscan: failed to record injection event")
+	}
+}
+
+func mergeStringLists(values ...[]string) []string {
+	out := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, list := range values {
+		for _, v := range list {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			if _, ok := seen[v]; ok {
+				continue
+			}
+			seen[v] = struct{}{}
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+type dirScanMatchDecision struct {
+	Accept              bool
+	Reason              string
+	PieceMatchPercent   float64
+	PieceBoundaryUnsafe bool
+	NameCorroborated    bool
+	TitleCorroborated   bool
+	IDCorroborated      bool
+}
+
+func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, settings *models.DirScanSettings) dirScanMatchDecision {
+	if match == nil || parsed == nil || settings == nil {
+		return dirScanMatchDecision{Accept: false, Reason: "missing match context"}
+	}
+
+	if !match.IsMatch {
+		return dirScanMatchDecision{Accept: false, Reason: "no files matched"}
+	}
+
+	if match.IsPerfectMatch {
+		return dirScanMatchDecision{Accept: true, Reason: "perfect match", PieceMatchPercent: 100}
+	}
+
+	if !settings.AllowPartial {
+		return dirScanMatchDecision{Accept: false, Reason: "partial matches disabled"}
+	}
+
+	decision := dirScanMatchDecision{}
+
+	piecePercent, ok := matchedTorrentPiecePercent(match, parsed)
+	if !ok {
+		decision.Reason = "invalid torrent piece sizing"
+		return decision
+	}
+	decision.PieceMatchPercent = piecePercent
+
+	if piecePercent < settings.MinPieceRatio {
+		decision.Reason = fmt.Sprintf("matched ratio %.2f%% below minimum %.2f%%", piecePercent, settings.MinPieceRatio)
+		return decision
+	}
+
+	if len(match.UnmatchedTorrentFiles) > 0 && !settings.SkipPieceBoundarySafetyCheck {
+		unsafe, res := hasUnsafeUnmatchedTorrentFiles(parsed, match)
+		if unsafe {
+			decision.PieceBoundaryUnsafe = true
+			decision.Reason = res.Reason
+			return decision
+		}
+	}
+
+	decision.Accept = true
+	decision.Reason = "partial match accepted"
+	return decision
+}
+
+func refineDirScanMatchDecision(
+	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
+	parsed *ParsedTorrent,
+	result *jackett.SearchResult,
+	settings *models.DirScanSettings,
+	match *MatchResult,
+	decision dirScanMatchDecision,
+) dirScanMatchDecision {
+	if !decision.Accept || searchee == nil || parsed == nil || settings == nil || match == nil {
+		return decision
+	}
+
+	if settings.MatchMode != models.MatchModeFlexible || !match.IsPerfectMatch {
+		return decision
+	}
+
+	if len(searchee.Files) != 1 || len(parsed.Files) != 1 {
+		return decision
+	}
+
+	if hasMatchedNameEvidence(match) {
+		decision.NameCorroborated = true
+		return decision
+	}
+
+	candidateMetas := candidateMetadataVariants(parsed, result)
+
+	if hasCorroboratingExternalID(searcheeMeta, result) {
+		decision.IDCorroborated = true
+		return decision
+	}
+
+	for _, candidateMeta := range candidateMetas {
+		if titlesCorroborate(searcheeMeta, candidateMeta) {
+			decision.TitleCorroborated = true
+			return decision
+		}
+	}
+
+	decision.Accept = false
+	decision.Reason = "flexible size-only match lacks title or ID corroboration"
+	return decision
+}
+
+func hasMatchedNameEvidence(match *MatchResult) bool {
+	if match == nil {
+		return false
+	}
+
+	for _, pair := range match.MatchedFiles {
+		if pair.SearcheeFile == nil {
+			continue
+		}
+		if normalizeFileName(pair.SearcheeFile.RelPath) == normalizeFileName(pair.TorrentFile.Path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasCorroboratingExternalID(searcheeMeta *SearcheeMetadata, result *jackett.SearchResult) bool {
+	if searcheeMeta == nil || result == nil {
+		return false
+	}
+
+	if imdbIDsMatch(searcheeMeta.GetIMDbID(), result.IMDbID, result.SearchIMDbID) {
+		return true
+	}
+
+	if numericIDsMatch(strconv.Itoa(searcheeMeta.GetTVDbID()), result.TVDbID, result.SearchTVDbID) {
+		return true
+	}
+
+	if searcheeMeta.GetTMDbID() > 0 {
+		if numericIDsMatch(strconv.Itoa(searcheeMeta.GetTMDbID()), result.TMDbID, strconv.Itoa(result.SearchTMDbID)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func imdbIDsMatch(expected string, candidates ...string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return false
+	}
+	expected = normalizeIMDbIDForComparison(expected)
+
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || candidate == "0" {
+			continue
+		}
+		if normalizeIMDbIDForComparison(candidate) == expected {
+			return true
+		}
+	}
+
+	return false
+}
+
+func numericIDsMatch(expected string, candidates ...string) bool {
+	expected = normalizeNumericIDForComparison(expected)
+	if expected == "" {
+		return false
+	}
+
+	for _, candidate := range candidates {
+		if normalizeNumericIDForComparison(candidate) == expected {
+			return true
+		}
+	}
+
+	return false
+}
+
+func normalizeIMDbIDForComparison(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if digitsOnly(value) {
+		return "tt" + value
+	}
+	return strings.ToLower(value)
+}
+
+func normalizeNumericIDForComparison(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "0" {
+		return ""
+	}
+	if !digitsOnly(value) {
+		return ""
+	}
+	return value
+}
+
+func digitsOnly(value string) bool {
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return value != ""
+}
+
+func candidateMetadataVariants(parsed *ParsedTorrent, result *jackett.SearchResult) []*SearcheeMetadata {
+	parser := NewParser(nil)
+	metas := make([]*SearcheeMetadata, 0, 2)
+	if parsed != nil && strings.TrimSpace(parsed.Name) != "" {
+		metas = append(metas, parser.Parse(parsed.Name))
+	}
+	if result != nil && strings.TrimSpace(result.Title) != "" && (parsed == nil || result.Title != parsed.Name) {
+		metas = append(metas, parser.Parse(result.Title))
+	}
+	return metas
+}
+
+func titlesCorroborate(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
+	if searcheeMeta == nil || candidateMeta == nil {
+		return false
+	}
+
+	if searcheeMeta.Year > 0 && candidateMeta.Year > 0 && searcheeMeta.Year != candidateMeta.Year {
+		return false
+	}
+
+	if episodicMarkersConflict(searcheeMeta, candidateMeta) {
+		return false
+	}
+
+	return crossseed.TitlesMatch(searcheeMeta.Release, searcheeMeta.CleanedName, candidateMeta.Release, candidateMeta.CleanedName)
+}
+
+func episodicMarkersConflict(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
+	if !hasEpisodicMarkers(searcheeMeta) || !hasEpisodicMarkers(candidateMeta) {
+		return false
+	}
+
+	if searcheeMeta.Season != nil && candidateMeta.Season != nil && *searcheeMeta.Season != *candidateMeta.Season {
+		return true
+	}
+
+	if searcheeMeta.Episode != nil && candidateMeta.Episode != nil && *searcheeMeta.Episode != *candidateMeta.Episode {
+		return true
+	}
+
+	return false
+}
+
+func hasEpisodicMarkers(meta *SearcheeMetadata) bool {
+	if meta == nil {
+		return false
+	}
+
+	return meta.Season != nil || meta.Episode != nil
+}
+
+func sampleDirScanSearcheeFiles(files []*ScannedFile, limit int) []string {
+	if limit <= 0 || len(files) == 0 {
+		return nil
+	}
+	if len(files) < limit {
+		limit = len(files)
+	}
+	out := make([]string, 0, limit)
+	for i := range limit {
+		f := files[i]
+		if f == nil {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s (%d bytes)", f.RelPath, f.Size))
+	}
+	return out
+}
+
+func sampleDirScanTorrentFiles(files []TorrentFile, limit int) []string {
+	if limit <= 0 || len(files) == 0 {
+		return nil
+	}
+	if len(files) < limit {
+		limit = len(files)
+	}
+	out := make([]string, 0, limit)
+	for i := range limit {
+		f := files[i]
+		out = append(out, fmt.Sprintf("%s (%d bytes)", f.Path, f.Size))
+	}
+	return out
+}
+
+func logDirScanAcceptedMatch(
+	l *zerolog.Logger,
+	searchee *Searchee,
+	parsed *ParsedTorrent,
+	matchResult *MatchResult,
+	decision dirScanMatchDecision,
+) {
+	if l == nil || searchee == nil || parsed == nil || matchResult == nil {
+		return
+	}
+
+	ev := l.Info().
+		Str("name", searchee.Name).
+		Str("torrent", parsed.Name).
+		Str("hash", parsed.InfoHash).
+		Bool("perfect", matchResult.IsPerfectMatch).
+		Bool("partial", matchResult.IsPartialMatch).
+		Float64("matchRatio", matchResult.MatchRatio).
+		Float64("pieceMatchPercent", decision.PieceMatchPercent)
+
+	if matchResult.IsPartialMatch {
+		ev = ev.
+			Int("matchedFiles", len(matchResult.MatchedFiles)).
+			Int("unmatchedSearcheeFiles", len(matchResult.UnmatchedSearcheeFiles)).
+			Int("unmatchedTorrentFiles", len(matchResult.UnmatchedTorrentFiles)).
+			Strs("unmatchedSearcheeSample", sampleDirScanSearcheeFiles(matchResult.UnmatchedSearcheeFiles, 3)).
+			Strs("unmatchedTorrentSample", sampleDirScanTorrentFiles(matchResult.UnmatchedTorrentFiles, 3))
+	}
+
+	ev.Msg("dirscan: found match")
+}
+
+func summarizeDirScanExtensions(files []*ScannedFile, limit int) []string {
+	if limit <= 0 || len(files) == 0 {
+		return nil
+	}
+	extCounts := make(map[string]int)
+	for _, f := range files {
+		if f == nil {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(f.RelPath))
+		if ext == "" {
+			ext = "<none>"
+		}
+		extCounts[ext]++
+	}
+
+	type pair struct {
+		ext   string
+		count int
+	}
+	pairs := make([]pair, 0, len(extCounts))
+	for ext, count := range extCounts {
+		pairs = append(pairs, pair{ext: ext, count: count})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].count == pairs[j].count {
+			return pairs[i].ext < pairs[j].ext
+		}
+		return pairs[i].count > pairs[j].count
+	})
+
+	if len(pairs) < limit {
+		limit = len(pairs)
+	}
+	out := make([]string, 0, limit)
+	for i := range limit {
+		out = append(out, fmt.Sprintf("%s:%d", pairs[i].ext, pairs[i].count))
+	}
+	return out
+}
+
+func describeDirScanMatchHints(
+	searchee *Searchee,
+	parsed *ParsedTorrent,
+	match *MatchResult,
+	matcher *Matcher,
+	settings *models.DirScanSettings,
+	decision dirScanMatchDecision,
+) (hint string, hints []string) {
+	if searchee == nil || parsed == nil || match == nil || matcher == nil || settings == nil {
+		return "", nil
+	}
+
+	if match.IsPartialMatch && !settings.AllowPartial {
+		return describeDirScanPartialDisabledHints(match)
+	}
+
+	if !match.IsMatch {
+		return describeDirScanNoMatchHints(searchee, parsed, matcher, settings)
+	}
+
+	return describeDirScanDecisionHints(decision)
+}
+
+func describeDirScanPartialDisabledHints(match *MatchResult) (hint string, hints []string) {
+	if match == nil {
+		return "", nil
+	}
+	hints = append(hints, "partial matches disabled; allow partial or ensure torrent and disk contain the same set of files")
+	if len(match.UnmatchedSearcheeFiles) > 0 && len(match.UnmatchedTorrentFiles) == 0 {
+		hints = append(hints, "disk has extra files not present in torrent")
+	}
+	if len(match.UnmatchedTorrentFiles) > 0 {
+		hints = append(hints, "torrent has extra files not present on disk")
+	}
+	return "partial match rejected", hints
+}
+
+type dirScanMatchSignals struct {
+	HasAnySizeMatch        bool
+	HasAnyNameMatch        bool
+	HasAnyNameAndSizeMatch bool
+}
+
+func computeDirScanMatchSignals(searchee *Searchee, parsed *ParsedTorrent, matcher *Matcher) dirScanMatchSignals {
+	signals := dirScanMatchSignals{}
+	if searchee == nil || parsed == nil || matcher == nil {
+		return signals
+	}
+
+	for _, sf := range searchee.Files {
+		if sf == nil {
+			continue
+		}
+		sfKey := normalizeFileName(sf.RelPath)
+		for _, tf := range parsed.Files {
+			updateDirScanMatchSignals(&signals, sfKey, sf.Size, tf, matcher)
+			if signals.HasAnyNameAndSizeMatch {
+				return signals
+			}
+		}
+	}
+
+	return signals
+}
+
+func updateDirScanMatchSignals(
+	signals *dirScanMatchSignals,
+	searcheeKey string,
+	searcheeSize int64,
+	torrentFile TorrentFile,
+	matcher *Matcher,
+) {
+	if signals == nil || matcher == nil {
+		return
+	}
+
+	sizeMatch := sizesMatchExactly(searcheeSize, torrentFile.Size)
+	if sizeMatch {
+		signals.HasAnySizeMatch = true
+	}
+
+	if searcheeKey != normalizeFileName(torrentFile.Path) {
+		return
+	}
+
+	signals.HasAnyNameMatch = true
+	if sizeMatch {
+		signals.HasAnyNameAndSizeMatch = true
+	}
+}
+
+func describeDirScanNoMatchHints(
+	searchee *Searchee,
+	parsed *ParsedTorrent,
+	matcher *Matcher,
+	settings *models.DirScanSettings,
+) (hint string, hints []string) {
+	signals := computeDirScanMatchSignals(searchee, parsed, matcher)
+	if signals.HasAnyNameAndSizeMatch {
+		hints = append(hints, "a filename+size match exists, but overall match still failed; check file counts and size filtering")
+		return "unexpected match rejection", hints
+	}
+
+	if settings != nil && settings.MatchMode == models.MatchModeStrict && signals.HasAnySizeMatch && !signals.HasAnyNameMatch {
+		hints = append(hints, "sizes match but filenames differ; strict mode requires filename+size match (try flexible mode or avoid post-download renames)")
+		return "possible rename/filename mismatch", hints
+	}
+
+	if signals.HasAnyNameMatch && !signals.HasAnySizeMatch {
+		hints = append(hints, "filenames match but sizes differ; likely different encode/edition")
+		return "name match but size mismatch", hints
+	}
+
+	hints = append(hints, "no file-level matches found")
+	return "no file-level matches", hints
+}
+
+func describeDirScanDecisionHints(decision dirScanMatchDecision) (hint string, hints []string) {
+	if decision.Reason == "flexible size-only match lacks title or ID corroboration" {
+		hints = append(hints, "size matched, but the candidate release title/ID did not corroborate the searchee")
+		hints = append(hints, "this often happens when an indexer falls back from IMDb/TMDb/TVDb lookup to plain title search")
+		hints = append(hints, "tighten total size tolerance or use strict mode when scanning renamed library folders")
+		return "size-only match rejected", hints
+	}
+
+	if strings.Contains(decision.Reason, "below minimum") {
+		hints = append(hints, "matched pieces below threshold; lower minPieceRatio or disable partial matching")
+		return "piece ratio too low", hints
+	}
+
+	if decision.PieceBoundaryUnsafe {
+		hints = append(hints, "piece-boundary safety check rejected; enable skipPieceBoundarySafetyCheck to allow downloading extra files (risk: overwriting existing data)")
+		return "unsafe piece boundary", hints
+	}
+
+	return "", nil
+}
+
+func matchedTorrentPiecePercent(match *MatchResult, parsed *ParsedTorrent) (percent float64, ok bool) {
+	if match == nil || parsed == nil || parsed.PieceLength <= 0 {
+		return 0, false
+	}
+
+	var totalBytes int64
+	if parsed.TotalSize > 0 {
+		totalBytes = parsed.TotalSize
+	} else {
+		for _, f := range parsed.Files {
+			totalBytes += f.Size
+		}
+	}
+	if totalBytes <= 0 {
+		return 0, false
+	}
+
+	var matchedBytes int64
+	for _, p := range match.MatchedFiles {
+		if p.TorrentFile.Size <= 0 {
+			continue
+		}
+		matchedBytes += p.TorrentFile.Size
+	}
+	if matchedBytes <= 0 {
+		return 0, true
+	}
+
+	pieceLength := parsed.PieceLength
+	totalPieces := (totalBytes + pieceLength - 1) / pieceLength
+	if totalPieces <= 0 {
+		return 0, false
+	}
+	availablePieces := matchedBytes / pieceLength
+	return (float64(availablePieces) / float64(totalPieces)) * 100, true
+}
+
+func hasUnsafeUnmatchedTorrentFiles(parsed *ParsedTorrent, match *MatchResult) (unsafe bool, result crossseed.PieceBoundarySafetyResult) {
+	if parsed == nil || match == nil {
+		return false, crossseed.PieceBoundarySafetyResult{Safe: true, Reason: "missing context"}
+	}
+	if parsed.PieceLength <= 0 {
+		return true, crossseed.PieceBoundarySafetyResult{Safe: false, Reason: "invalid piece length"}
+	}
+
+	if len(match.UnmatchedTorrentFiles) == 0 {
+		return false, crossseed.PieceBoundarySafetyResult{Safe: true, Reason: "no unmatched torrent files"}
+	}
+
+	contentPaths := make(map[string]struct{}, len(match.MatchedFiles))
+	for _, p := range match.MatchedFiles {
+		contentPaths[p.TorrentFile.Path] = struct{}{}
+	}
+
+	files := make([]crossseed.TorrentFileForBoundaryCheck, 0, len(parsed.Files))
+	for _, f := range parsed.Files {
+		_, isContent := contentPaths[f.Path]
+		files = append(files, crossseed.TorrentFileForBoundaryCheck{
+			Path:      f.Path,
+			Size:      f.Size,
+			IsContent: isContent,
+		})
+	}
+
+	res := crossseed.CheckPieceBoundarySafety(files, parsed.PieceLength)
+	return !res.Safe, res
+}
+
+func (s *Service) downloadAndParseTorrent(ctx context.Context, result *jackett.SearchResult, l *zerolog.Logger) ([]byte, *ParsedTorrent) {
+	downloadCtx := jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityBackground)
+	torrentData, err := s.jackettService.DownloadTorrent(downloadCtx, jackett.TorrentDownloadRequest{
+		IndexerID:   result.IndexerID,
+		DownloadURL: result.DownloadURL,
+		GUID:        result.GUID,
+		Pace:        true,
+	})
+	if err != nil {
+		l.Debug().Err(err).Str("title", result.Title).Msg("dirscan: failed to download torrent")
+		return nil, nil
+	}
+
+	parsed, err := ParseTorrentBytes(torrentData)
+	if err != nil {
+		l.Debug().Err(err).Str("title", result.Title).Msg("dirscan: failed to parse torrent")
+		return nil, nil
+	}
+	return torrentData, parsed
+}
+
+func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, instanceID int, l *zerolog.Logger) {
+	if err := s.store.UpdateRunFailed(context.Background(), runID, errMsg); err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to mark run as failed")
+		return
+	}
+
+	s.emitRunActivityForRun(context.Background(), runID, instanceID)
+
+	startedAt, completedAt := s.getRunTimes(context.Background(), runID)
+	s.notify(context.Background(), notifications.Event{
+		Type:         notifications.EventDirScanFailed,
+		InstanceID:   instanceID,
+		DirScanRunID: runID,
+		ErrorMessage: errMsg,
+		StartedAt:    startedAt,
+		CompletedAt:  completedAt,
+	})
+}
+
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
+	if s == nil || s.notifier == nil {
+		return
+	}
+	s.notifier.Notify(ctx, event)
+}
+
+func (s *Service) getRunTimes(ctx context.Context, runID int64) (*time.Time, *time.Time) {
+	if s == nil || s.store == nil || runID <= 0 {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		return nil, nil
+	}
+	var startedAt *time.Time
+	if !run.StartedAt.IsZero() {
+		started := run.StartedAt
+		startedAt = &started
+	}
+	return startedAt, run.CompletedAt
+}
+
+func (s *Service) getDirectoryMutex(directoryID int, webhook bool) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := directoryMuKey{directoryID: directoryID, webhook: webhook}
+	mu, ok := s.directoryMu[key]
+	if !ok {
+		mu = &sync.Mutex{}
+		s.directoryMu[key] = mu
+	}
+	return mu
+}
+
+func (s *Service) GetSettings(ctx context.Context) (*models.DirScanSettings, error) {
+	settings, err := s.store.GetSettings(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get settings: %w", err)
+	}
+	return settings, nil
+}
+
+func (s *Service) UpdateSettings(ctx context.Context, settings *models.DirScanSettings) (*models.DirScanSettings, error) {
+	updated, err := s.store.UpdateSettings(ctx, settings)
+	if err != nil {
+		return nil, fmt.Errorf("update settings: %w", err)
+	}
+	return updated, nil
+}
+
+func (s *Service) ListDirectories(ctx context.Context) ([]*models.DirScanDirectory, error) {
+	dirs, err := s.store.ListDirectories(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list directories: %w", err)
+	}
+	return dirs, nil
+}
+
+func (s *Service) CreateDirectory(ctx context.Context, dir *models.DirScanDirectory) (*models.DirScanDirectory, error) {
+	s.directoryWriteMu.Lock()
+	defer s.directoryWriteMu.Unlock()
+	if err := s.ensureUniqueDirectoryPath(ctx, dir); err != nil {
+		return nil, fmt.Errorf("create directory: %w", err)
+	}
+	created, err := s.store.CreateDirectory(ctx, dir)
+	if err != nil {
+		return nil, fmt.Errorf("create directory: %w", err)
+	}
+	return created, nil
+}
+
+func (s *Service) GetDirectory(ctx context.Context, id int) (*models.DirScanDirectory, error) {
+	dir, err := s.store.GetDirectory(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get directory: %w", err)
+	}
+	return dir, nil
+}
+
+func (s *Service) UpdateDirectory(ctx context.Context, id int, params *models.DirScanDirectoryUpdateParams) (*models.DirScanDirectory, error) {
+	s.directoryWriteMu.Lock()
+	defer s.directoryWriteMu.Unlock()
+	if params != nil && (params.Path != nil || params.TargetInstanceID != nil) {
+		existing, err := s.store.GetDirectory(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("get directory: %w", err)
+		}
+		candidate := &models.DirScanDirectory{ID: id, Path: existing.Path, TargetInstanceID: existing.TargetInstanceID}
+		if params.Path != nil {
+			candidate.Path = *params.Path
+		}
+		if params.TargetInstanceID != nil {
+			candidate.TargetInstanceID = *params.TargetInstanceID
+		}
+		if err := s.ensureUniqueDirectoryPath(ctx, candidate); err != nil {
+			return nil, fmt.Errorf("update directory: %w", err)
+		}
+	}
+	updated, err := s.store.UpdateDirectory(ctx, id, params)
+	if err != nil {
+		return nil, fmt.Errorf("update directory: %w", err)
+	}
+	return updated, nil
+}
+
+func (s *Service) DeleteDirectory(ctx context.Context, id int) error {
+	if err := s.store.DeleteDirectory(ctx, id); err != nil {
+		return fmt.Errorf("delete directory: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) ListRuns(ctx context.Context, directoryID, limit int) ([]*models.DirScanRun, error) {
+	runs, err := s.store.ListRuns(ctx, directoryID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list runs: %w", err)
+	}
+
+	for i, run := range runs {
+		if run == nil {
+			continue
+		}
+		if run.Status != models.DirScanRunStatusQueued &&
+			run.Status != models.DirScanRunStatusScanning &&
+			run.Status != models.DirScanRunStatusSearching &&
+			run.Status != models.DirScanRunStatusInjecting {
+			continue
+		}
+		if progress, ok := s.getRunProgress(run.ID); ok {
+			runCopy := *run
+			runCopy.MatchesFound = progress.matchesFound
+			runCopy.TorrentsAdded = progress.torrentsAdded
+			runs[i] = &runCopy
+		}
+	}
+
+	return runs, nil
+}
+
+func (s *Service) ListRunInjections(ctx context.Context, directoryID int, runID int64, limit, offset int) ([]*models.DirScanRunInjection, error) {
+	injections, err := s.store.ListRunInjections(ctx, directoryID, runID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list run injections: %w", err)
+	}
+	return injections, nil
+}
+
+func (s *Service) ListFiles(ctx context.Context, directoryID int, status *models.DirScanFileStatus, limit, offset int) ([]*models.DirScanFile, error) {
+	files, err := s.store.ListFiles(ctx, directoryID, status, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list files: %w", err)
+	}
+	return files, nil
+}
+
+func (s *Service) ResetFilesForDirectory(ctx context.Context, directoryID int) error {
+	if err := s.store.DeleteFilesForDirectory(ctx, directoryID); err != nil {
+		return fmt.Errorf("reset tracked files: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) RequeueNoMatchFiles(ctx context.Context, directoryID int) (int64, error) {
+	affected, err := s.store.RequeueNoMatchFiles(ctx, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("requeue no-match files: %w", err)
+	}
+	return affected, nil
+}
+
+func mapContentTypeToARR(contentType string) arr.ContentType {
+	switch contentType {
+	case "movie":
+		return arr.ContentTypeMovie
+	case "tv":
+		return arr.ContentTypeTV
+	default:
+		return ""
+	}
+}
+
+func (s *Service) lookupExternalIDs(
+	ctx context.Context,
+	meta *SearcheeMetadata,
+	contentType string,
+	name string,
+	l *zerolog.Logger,
+) []string {
+	if meta.HasExternalIDs() || s.arrService == nil {
+		return nil
+	}
+
+	arrType := mapContentTypeToARR(contentType)
+	if arrType == "" {
+		return nil
+	}
+
+	result, err := s.arrService.LookupExternalIDs(ctx, name, arrType)
+	if err != nil {
+		l.Debug().Err(err).Msg("dirscan: arr ID lookup failed, continuing without IDs")
+		return nil
+	}
+
+	if result == nil {
+		return nil
+	}
+
+	if ids := result.IDs; ids != nil && !ids.IsEmpty() {
+		meta.SetExternalIDs(ids.IMDbID, ids.TMDbID, ids.TVDbID)
+		l.Debug().
+			Str("imdb", ids.IMDbID).
+			Int("tmdb", ids.TMDbID).
+			Int("tvdb", ids.TVDbID).
+			Bool("fromCache", result.FromCache).
+			Msg("dirscan: got external IDs from arr")
+	}
+	return result.Titles
+}

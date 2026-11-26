@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>qui API Documentation</title>
+    <link rel="icon" type="image/png" href="{{FAVICON_URL}}" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui.css">
+    <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            margin: 0;
+            background: #fafafa;
+        }
+        .swagger-ui .topbar {
+            display: none;
+        }
+        .swagger-ui .wrapper {
+            max-width: 1460px;
+            margin: 0 auto;
+        }
+        .swagger-ui .opblock-tag {
+            font-size: 24px !important;
+            margin: 20px 0 10px 0;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        .swagger-ui .scheme-container {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
+            padding: 10px 0;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .swagger-ui .opblock {
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .swagger-ui .filter-container {
+            position: sticky;
+            top: 60px;
+            background: white;
+            z-index: 9;
+            padding: 10px 0;
+            margin-bottom: 20px;
+        }
+        .swagger-ui .filter-container input[type=text] {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #4990e2;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.0/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            window.ui = SwaggerUIBundle({
+                url: "{{OPENAPI_URL}}",
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                persistAuthorization: true,
+                tryItOutEnabled: true,
+                filter: true,
+                docExpansion: "list",  // Show operations as a list
+                defaultModelsExpandDepth: 1,  // Expand models by default
+                defaultModelExpandDepth: 1,
+                displayOperationId: false,
+                displayRequestDuration: true,
+                showExtensions: true,
+                showCommonExtensions: true,
+                tagsSorter: "alpha",  // Sort tags alphabetically
+                operationsSorter: "alpha",  // Sort operations alphabetically within tags
+                requestInterceptor: (request) => {
+                    // Cookie-authenticated writes must carry this header.
+                    request.headers['X-Requested-With'] = 'XMLHttpRequest';
+                    // Add API key from authorization if present
+                    if (window.ui && window.ui.authSelectors) {
+                        const apiKey = window.ui.authSelectors.authorized()?.ApiKeyAuth?.value;
+                        if (apiKey) {
+                            request.headers['X-API-Key'] = apiKey;
+                        }
+                    }
+                    return request;
+                }
+            });
+        };
+    </script>
+</body>
+</html>

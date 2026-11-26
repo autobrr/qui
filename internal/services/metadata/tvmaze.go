@@ -1,0 +1,222 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package metadata
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/rs/zerolog/log"
+)
+
+const tvmazeBaseURL = "https://api.tvmaze.com"
+
+var ErrShowNotFound = errors.New("show not found")
+
+type tvmazeProvider struct {
+	client *http.Client
+}
+
+func newTVMazeProvider() *tvmazeProvider {
+	return &tvmazeProvider{
+		client: &http.Client{Timeout: 15 * time.Second},
+	}
+}
+
+type tvmazeShow struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type tvmazeEpisode struct {
+	Season  int `json:"season"`
+	Number  int `json:"number"`
+	Runtime int `json:"runtime"`
+}
+
+func (p *tvmazeProvider) EpisodesInSeason(ctx context.Context, title string, seasonNumber int) (int, error) {
+	showID, err := p.searchShow(ctx, title)
+	if err != nil {
+		if !errors.Is(err, ErrShowNotFound) {
+			return 0, fmt.Errorf("tvmaze search failed for %q: %w", title, err)
+		}
+
+		normalized := normalizeTitle(title)
+		if normalized != title {
+			log.Debug().Str("original", title).Str("normalized", normalized).Msg("tvmaze: retrying with normalized title")
+
+			showID, err = p.searchShow(ctx, normalized)
+			if err != nil {
+				return 0, fmt.Errorf("tvmaze search failed for %q: %w", title, err)
+			}
+		} else {
+			return 0, fmt.Errorf("tvmaze search failed for %q: %w", title, err)
+		}
+	}
+
+	return p.countEpisodes(ctx, showID, seasonNumber)
+}
+
+func (p *tvmazeProvider) searchShow(ctx context.Context, title string) (int, error) {
+	u := fmt.Sprintf("%s/singlesearch/shows?q=%s", tvmazeBaseURL, url.QueryEscape(title))
+
+	body, err := p.doGet(ctx, u)
+	if err != nil {
+		return 0, err
+	}
+
+	var show tvmazeShow
+	if err := json.Unmarshal(body, &show); err != nil {
+		return 0, fmt.Errorf("tvmaze: decode show response: %w", err)
+	}
+
+	return show.ID, nil
+}
+
+func (p *tvmazeProvider) countEpisodes(ctx context.Context, showID, seasonNumber int) (int, error) {
+	u := fmt.Sprintf("%s/shows/%d/episodes", tvmazeBaseURL, showID)
+
+	resp, err := p.doGetResponse(ctx, u)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	const maxBody = 2 << 20
+	bounded := io.LimitReader(resp.Body, maxBody)
+
+	count, err := streamCountSeasonEpisodes(bounded, seasonNumber)
+	if err != nil {
+		return 0, fmt.Errorf("tvmaze: decode episodes: %w", err)
+	}
+
+	if count == 0 {
+		return 0, fmt.Errorf("tvmaze: no episodes found for season %d", seasonNumber)
+	}
+
+	return count, nil
+}
+
+func (p *tvmazeProvider) doGetResponse(ctx context.Context, rawURL string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("tvmaze: create request: %w", err)
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("tvmaze: request failed: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		resp.Body.Close()
+		retryAfter := resp.Header.Get("Retry-After")
+		return nil, fmt.Errorf("tvmaze: rate limited (retry-after: %s)", retryAfter)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, fmt.Errorf("tvmaze: %w", ErrShowNotFound)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("tvmaze: unexpected status %d", resp.StatusCode)
+	}
+
+	return resp, nil
+}
+
+func (p *tvmazeProvider) doGet(ctx context.Context, rawURL string) ([]byte, error) {
+	resp, err := p.doGetResponse(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := readBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("tvmaze: read response: %w", err)
+	}
+
+	return body, nil
+}
+
+var titleCleanupPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\s*\(\d{4}\)\s*$`),
+	regexp.MustCompile(`(?i)\s+(720|1080|2160)p.*$`),
+	regexp.MustCompile(`(?i)\s+(hdtv|webrip|bluray|web-dl|webdl).*$`),
+}
+
+func normalizeTitle(title string) string {
+	result := strings.TrimSpace(title)
+	for {
+		prev := result
+		for _, re := range titleCleanupPatterns {
+			result = strings.TrimSpace(re.ReplaceAllString(result, ""))
+		}
+		if result == prev {
+			break
+		}
+	}
+	return result
+}
+
+func streamCountSeasonEpisodes(r io.Reader, seasonNumber int) (int, error) {
+	dec := json.NewDecoder(r)
+
+	t, err := dec.Token()
+	if err != nil {
+		return 0, fmt.Errorf("expected array start: %w", err)
+	}
+	if delim, ok := t.(json.Delim); !ok || delim != '[' {
+		return 0, fmt.Errorf("expected '[', got %v", t)
+	}
+
+	type episodeKey struct {
+		Season int `json:"season"`
+	}
+
+	count := 0
+	for dec.More() {
+		var ep episodeKey
+		if err := dec.Decode(&ep); err != nil {
+			return 0, fmt.Errorf("decode element: %w", err)
+		}
+		if ep.Season == seasonNumber {
+			count++
+		}
+	}
+
+	t, err = dec.Token()
+	if err != nil {
+		return 0, fmt.Errorf("expected array end: %w", err)
+	}
+	if delim, ok := t.(json.Delim); !ok || delim != ']' {
+		return 0, fmt.Errorf("expected ']', got %v", t)
+	}
+
+	return count, nil
+}
+
+func readBody(resp *http.Response) ([]byte, error) {
+	const maxBody = 2 << 20
+
+	limited := http.MaxBytesReader(nil, resp.Body, maxBody)
+
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+
+	return body, nil
+}

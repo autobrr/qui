@@ -1,0 +1,28 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { createFileRoute, Navigate } from "@tanstack/react-router"
+import { useAuth } from "@/hooks/useAuth"
+import { useTranslation } from "react-i18next"
+
+export const Route = createFileRoute("/")({
+  staticData: { title: null },
+  component: IndexComponent,
+})
+
+function IndexComponent() {
+  const { t } = useTranslation("common")
+  const { isAuthenticated, isLoading } = useAuth()
+
+  if (isLoading) {
+    return <div>{t("mobileNav.loading")}</div>
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />
+  }
+
+  return <Navigate to="/dashboard" />
+}

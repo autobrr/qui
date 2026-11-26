@@ -1,0 +1,600 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"cmp"
+	"context"
+	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/stringutils"
+)
+
+type announcementLookupCountingSyncManager struct {
+	*fakeSyncManager
+	lookups int
+}
+
+func (m *announcementLookupCountingSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	m.lookups++
+	return m.fakeSyncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+}
+
+func TestClassifyAnnouncementSourceKnownSize(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "announcement-source"
+		sourceName = "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI"
+		size       = int64(1_000_000)
+	)
+
+	source := qbt.Torrent{
+		Hash:      sourceHash,
+		Name:      sourceName,
+		Size:      size - 100_000,
+		TotalSize: size,
+		Progress:  1,
+	}
+	files := qbt.TorrentFiles{{Name: sourceName + ".mkv", Size: size}}
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	svc := &Service{
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{sourceHash: files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	expectedSourceView, _ := svc.readSearchSource(
+		context.Background(), &source, files,
+	)
+
+	tests := []struct {
+		name          string
+		candidateName string
+		candidateSize int64
+		policy        announcementMatchPolicy
+	}{
+		{name: "strict", candidateName: sourceName, candidateSize: size},
+		{name: "codec", candidateName: "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI", candidateSize: size},
+		{name: "season", candidateName: "Azure.Compass.S02E05.1080p.WEB-DL.H.264-KIRI", candidateSize: size},
+		{name: "episode", candidateName: "Azure.Compass.S01E06.1080p.WEB-DL.H.264-KIRI", candidateSize: size},
+		{name: "split group", candidateName: "[KIRI] Azure Compass S01E05 [Web][MKV][h264][1080p][Softsubs (KIRI)]", candidateSize: size},
+		{
+			name:          "title rescue",
+			candidateName: "Different.Voyage.S01E05.1080p.WEB-DL.H.264-KIRI",
+			candidateSize: size,
+			policy:        announcementMatchPolicy{rescueTitleMismatches: true},
+		},
+		{name: "nonexact size", candidateName: sourceName, candidateSize: size - 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidateName), rawName: tt.candidateName}
+			want := svc.matcher().classifySearchCandidate(searchCandidateInput{
+				Source:                 expectedSourceView,
+				Candidate:              candidate,
+				SourceSize:             searchSourceSize(&source),
+				CandidateSize:          tt.candidateSize,
+				TolerancePercent:       defaultSizeMismatchTolerancePercent,
+				FindIndividualEpisodes: tt.policy.findIndividualEpisodes,
+				RescueTitleMismatches:  tt.policy.rescueTitleMismatches,
+			})
+
+			got := svc.classifyAnnouncementSource(context.Background(), instanceID, &source, candidate, tt.candidateSize, tt.policy)
+
+			require.True(t, got.replayable)
+			require.Equal(t, want.Class, got.decision.Class)
+			require.Equal(t, want.StrictMismatchReason, got.decision.StrictMismatchReason)
+			require.Equal(t, want.RelaxedDifferences, got.decision.RelaxedDifferences)
+		})
+	}
+}
+
+func TestClassifyAnnouncementSourceKnownSizeUsesFileDerivedTVStructure(t *testing.T) {
+	const (
+		instanceID    = 1
+		sourceHash    = "ambiguous-anime-pack"
+		sourceName    = "[smol] Sakura Trick (BD 1080p HEVC Opus)"
+		candidateName = "Sakura Trick S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol"
+		size          = int64(28_408_496_978)
+	)
+
+	source := qbt.Torrent{Hash: sourceHash, Name: sourceName, Size: size, TotalSize: size, Progress: 1}
+	files := qbt.TorrentFiles{
+		{Name: sourceName + "/[smol] Sakura Trick - S01E01 (BD 1080p HEVC Opus) [DF06DEC0].mkv", Size: 2_367_374_748},
+		{Name: sourceName + "/[smol] Sakura Trick - S01E02 (BD 1080p HEVC Opus) [DF06DEC1].mkv", Size: 2_367_374_748},
+	}
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	svc := &Service{
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{sourceHash: files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	candidate := namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName}
+	expectedSourceView, _ := svc.readSearchSource(
+		context.Background(), &source, files,
+	)
+	want := svc.matcher().classifySearchCandidate(searchCandidateInput{
+		Source:           expectedSourceView,
+		Candidate:        candidate,
+		SourceSize:       searchSourceSize(&source),
+		CandidateSize:    size,
+		TolerancePercent: defaultSizeMismatchTolerancePercent,
+	})
+	got := svc.classifyAnnouncementSource(context.Background(), instanceID, &source, candidate, size, announcementMatchPolicy{})
+
+	require.True(t, want.Accepted, want.RejectReason)
+	require.True(t, got.decision.Accepted, got.decision.RejectReason)
+	require.True(t, got.replayable)
+	require.Equal(t, want.Class, got.decision.Class)
+	require.Equal(t, want.StrictMismatchReason, got.decision.StrictMismatchReason)
+	require.Equal(t, want.RelaxedDifferences, got.decision.RelaxedDifferences)
+}
+
+func TestClassifyAnnouncementSourceRejectsNegativeCandidateSize(t *testing.T) {
+	const sourceName = "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI"
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	source := qbt.Torrent{Name: sourceName, Size: 1_000_000, Progress: 1}
+	candidate := namedRelease{release: svc.releaseCache.Parse(sourceName), rawName: sourceName}
+
+	for _, policy := range []announcementMatchPolicy{
+		{allowUnknownSize: false},
+		{allowUnknownSize: true},
+	} {
+		got := svc.classifyAnnouncementSource(context.Background(), 1, &source, candidate, -1, policy)
+
+		require.False(t, got.decision.Accepted)
+		require.False(t, got.replayable)
+	}
+}
+
+func TestClassifyAnnouncementSourceUnknownSizePreflight(t *testing.T) {
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	tests := []struct {
+		name        string
+		source      string
+		candidate   string
+		skipRecheck bool
+		want        bool
+	}{
+		{"strict", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", false, true},
+		{"codec", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI", false, true},
+		{"title", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Different.Voyage.S01E05.1080p.WEB-DL.H.264-KIRI", false, false},
+		{"season", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S02E05.1080p.WEB-DL.H.264-KIRI", false, false},
+		{"episode", "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", "Azure.Compass.S01E06.1080p.WEB-DL.H.264-KIRI", false, false},
+		{"missing announcement group", "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb", "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264", false, true},
+		{"missing announcement group without resolution", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.264", false, true},
+		{"missing announcement group with web relabel", "Sample.Show.S08E11.WEBRip.H.264-NTb", "Sample Show S08E11 WEB-DL H.264", false, true},
+		{"missing announcement group with codec", "Sample.Show.S08E11.WEB-DL.H.264-NTb", "Sample Show S08E11 WEB-DL H.265", false, false},
+		{"missing announcement group with codec and resolution", "Sample.Show.S08E11.1080p.WEB-DL.H.264-NTb", "Sample Show S08E11 1080p WEB-DL H.265", false, true},
+		{"conflicting announcement group", "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb", "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264-KIRI", false, false},
+		{"split group", "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", false, true},
+		{"split group with skip recheck", "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI", true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := qbt.Torrent{Name: tt.source, Size: 1_000_000, Progress: 1}
+			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidate), rawName: tt.candidate}
+
+			got := svc.classifyAnnouncementSource(context.Background(), 1, &source, candidate, 0, announcementMatchPolicy{
+				allowUnknownSize: true,
+				skipRecheck:      tt.skipRecheck,
+			})
+
+			require.Equal(t, tt.want, got.decision.Accepted, got.decision.RejectReason)
+			require.False(t, got.replayable)
+		})
+	}
+}
+
+func TestClassifyWebhookAnnouncementSourceUnknownSizeRejectsUnrelatedTitleCheaply(t *testing.T) {
+	const sourceName = "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI"
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	source := qbt.Torrent{Name: sourceName, Size: 1_000_000, TotalSize: 1_000_000, Progress: 1}
+	candidateName := "Different.Voyage.S01E05.1080p.WEB-DL.H.264-KIRI"
+	candidate := namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName}
+	ctx := context.Background()
+	policy := announcementMatchPolicy{allowUnknownSize: true}
+
+	var got announcementCandidateDecision
+	controlAllocations := testing.AllocsPerRun(100, func() {
+		svc.classifyWebhookAnnouncementSource(ctx, 1, &source, candidate, source.TotalSize-1, policy)
+	})
+	allocations := testing.AllocsPerRun(100, func() {
+		got = svc.classifyWebhookAnnouncementSource(ctx, 1, &source, candidate, 0, policy)
+	})
+
+	require.False(t, got.decision.Accepted)
+	require.False(t, got.replayable)
+	require.LessOrEqual(t, allocations, controlAllocations+6)
+}
+
+func TestClassifyWebhookAnnouncementSourceNonexactRequiresStrictMatch(t *testing.T) {
+	const sourceName = "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI"
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	source := qbt.Torrent{Name: sourceName, Size: 1_000_000, TotalSize: 1_000_000, Progress: 1}
+	candidateName := "Azure.Compass.S01E05.1080p.WEBRip.H.264-KIRI"
+	candidate := namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName}
+
+	got := svc.classifyWebhookAnnouncementSource(
+		context.Background(),
+		1,
+		&source,
+		candidate,
+		source.TotalSize+500,
+		announcementMatchPolicy{},
+	)
+
+	require.False(t, got.decision.Accepted)
+	require.True(t, got.replayable)
+}
+
+func TestClassifyWebhookAnnouncementSourceCandidateTitles(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "alias-announce-source"
+		sourceName = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
+		size       = int64(1_500_000_000)
+
+		englishAnnounce = "Frieren: Beyond Journey's End S02E10 1080p CR WEB-DL AAC 2.0 H.264-KiraSubs"
+		romajiAnnounce  = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+		bracketAnnounce = "[KiraSubs] Frieren: Beyond Journey's End Season 2 - 10 [2026][Web][MKV][h264][1080p][AAC 2.0][Softsubs (KiraSubs)]"
+	)
+	aliasTitles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"}
+
+	tests := []struct {
+		name            string
+		sourceName      string
+		candidateName   string
+		candidateSize   int64
+		candidateTitles []string
+		wantAccepted    bool
+	}{
+		{
+			name:          "english title exact size with aliases",
+			candidateName: englishAnnounce, candidateSize: size,
+			candidateTitles: aliasTitles, wantAccepted: true,
+		},
+		{
+			name:          "english title exact size without aliases",
+			candidateName: englishAnnounce, candidateSize: size,
+		},
+		{
+			name:          "romaji title exact size with aliases",
+			candidateName: romajiAnnounce, candidateSize: size,
+			candidateTitles: aliasTitles, wantAccepted: true,
+		},
+		{
+			name:          "romaji title exact size without aliases",
+			candidateName: romajiAnnounce, candidateSize: size,
+		},
+		{
+			name:          "bracket title unknown size with aliases",
+			candidateName: bracketAnnounce, candidateSize: 0,
+			candidateTitles: aliasTitles, wantAccepted: true,
+		},
+		{
+			name:          "bracket title unknown size without aliases",
+			candidateName: bracketAnnounce, candidateSize: 0,
+		},
+		{
+			name:          "aliases never widen an unrelated source torrent",
+			sourceName:    "[KiraSubs] Different Voyage S2 - 10 (1080p) [ABCD1234].mkv",
+			candidateName: englishAnnounce, candidateSize: size,
+			candidateTitles: aliasTitles,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name := cmp.Or(tt.sourceName, sourceName)
+			source := qbt.Torrent{Hash: sourceHash, Name: name, Size: size, TotalSize: size, Progress: 1}
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			svc := &Service{
+				syncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+					sourceHash: {{Name: name, Size: size}},
+				}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidateName), rawName: tt.candidateName}
+
+			got := svc.classifyWebhookAnnouncementSource(context.Background(), instanceID, &source, candidate, tt.candidateSize, announcementMatchPolicy{
+				allowUnknownSize: tt.candidateSize == 0,
+				candidateTitles:  tt.candidateTitles,
+			})
+
+			require.Equal(t, tt.wantAccepted, got.decision.Accepted, got.decision.RejectReason)
+			if tt.wantAccepted {
+				require.Equal(t, searchCandidateClassStrict, got.decision.Class)
+			}
+		})
+	}
+}
+
+func TestClassifyWebhookAnnouncementSourceIgnoresOneSidedChecksum(t *testing.T) {
+	const (
+		sourceName   = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
+		announceName = "Frieren: Beyond Journey's End S02E10 1080p CR WEB-DL AAC 2.0 H.264-KiraSubs"
+		size         = int64(1_468_228_504)
+		roundedSize  = int64(1_471_026_298)
+	)
+	aliasTitles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"}
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	tests := []struct {
+		name          string
+		sourceName    string
+		candidateName string
+		candidateSize int64
+		wantAccepted  bool
+	}{
+		{
+			name:       "CRC tag on the source only",
+			sourceName: sourceName, candidateName: announceName, candidateSize: roundedSize,
+			wantAccepted: true,
+		},
+		{
+			name:       "CRC tag on the announce only",
+			sourceName: "[KiraSubs] Frieren S2 - 10 (1080p).mkv", candidateName: "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv", candidateSize: roundedSize,
+			wantAccepted: true,
+		},
+		{
+			name:       "conflicting checksums stay rejected",
+			sourceName: sourceName, candidateName: "[KiraSubs] Frieren S2 - 10 (1080p) [DEADBEEF].mkv", candidateSize: roundedSize,
+		},
+		{
+			name:       "other strict failures stay rejected",
+			sourceName: sourceName, candidateName: "Frieren: Beyond Journey's End S02E10 720p CR WEB-DL AAC 2.0 H.264-KiraSubs", candidateSize: roundedSize,
+		},
+		{
+			name:       "out-of-tolerance size stays rejected",
+			sourceName: sourceName, candidateName: announceName, candidateSize: size * 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := qbt.Torrent{Name: tt.sourceName, Size: size, TotalSize: size, Progress: 1}
+			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidateName), rawName: tt.candidateName}
+
+			got := svc.classifyWebhookAnnouncementSource(t.Context(), 1, &source, candidate, tt.candidateSize, announcementMatchPolicy{
+				candidateTitles: aliasTitles,
+			})
+
+			require.Equal(t, tt.wantAccepted, got.decision.Accepted, got.decision.RejectReason)
+			require.True(t, got.replayable)
+			if tt.wantAccepted {
+				require.Equal(t, searchCandidateClassStrict, got.decision.Class)
+			}
+		})
+	}
+}
+
+func TestUnknownSizePreflightDecisionAllowlist(t *testing.T) {
+	tests := []struct {
+		name        string
+		decision    searchCandidateDecision
+		skipRecheck bool
+		want        bool
+	}{
+		{
+			name:     "strict",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassStrict},
+			want:     true,
+		},
+		{
+			name:     "web source relabel",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassWebSourceRelabel},
+			want:     true,
+		},
+		{
+			name:     "approved descriptive fallback",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceCodec, differenceSource)},
+			want:     true,
+		},
+		{
+			name:     "group fallback permits recheck",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceGroup)},
+			want:     true,
+		},
+		{
+			name:        "group fallback rejects skip recheck",
+			decision:    searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceGroup)},
+			skipRecheck: true,
+		},
+		{
+			name:     "relaxed episode rejects",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback, Relaxed: differencesOf(differenceCodec, differenceEpisode)},
+		},
+		{
+			name:     "empty fallback rejects by default",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassExactSizeFallback},
+		},
+		{
+			name:     "title rescue rejects",
+			decision: searchCandidateDecision{Accepted: true, Class: searchCandidateClassTitleRescue},
+		},
+		{
+			name:     "rejected class rejects",
+			decision: searchCandidateDecision{Class: searchCandidateClassRejected},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, allowsUnknownSizePreflight(tt.decision, tt.skipRecheck))
+		})
+	}
+}
+
+func TestClassifyAnnouncementSourceAvoidsUnnecessaryFileLookups(t *testing.T) {
+	const (
+		instanceID = 1
+		size       = int64(1_000_000)
+	)
+
+	tests := []struct {
+		name        string
+		sourceName  string
+		candidate   string
+		candidateSz int64
+		policy      announcementMatchPolicy
+		wantLookups int
+	}{
+		{
+			name:        "unknown size title mismatch",
+			sourceName:  "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI",
+			candidate:   "Different.Voyage.S01E05.1080p.WEB-DL.H.264-KIRI",
+			policy:      announcementMatchPolicy{allowUnknownSize: true},
+			wantLookups: 0,
+		},
+		{
+			name:        "nonexact soft mismatch still derives source view",
+			sourceName:  "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI",
+			candidate:   "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI",
+			candidateSz: size - 1,
+			wantLookups: 1,
+		},
+		{
+			name:        "plausible split group exact source",
+			sourceName:  "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]",
+			candidate:   "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI",
+			candidateSz: size,
+			wantLookups: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := qbt.Torrent{Hash: "announcement-source", Name: tt.sourceName, Size: size, TotalSize: size, Progress: 1}
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			sync := &announcementLookupCountingSyncManager{fakeSyncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+				source.Hash: {{Name: source.Name + ".mkv", Size: size}},
+			})}
+			svc := &Service{
+				syncManager:      sync,
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidate), rawName: tt.candidate}
+
+			svc.classifyAnnouncementSource(context.Background(), instanceID, &source, candidate, tt.candidateSz, tt.policy)
+
+			require.Equal(t, tt.wantLookups, sync.lookups)
+		})
+	}
+}
+
+func TestAnnounceAliasTitlesBoundsLookup(t *testing.T) {
+	t.Parallel()
+
+	spy := &spyARRLookupService{}
+	svc := &Service{arrService: spy}
+
+	svc.announceAliasTitles(context.Background(), "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs", "tv")
+
+	require.True(t, spy.hasDeadline)
+	require.LessOrEqual(t, time.Until(spy.deadline), announceAliasLookupTimeout)
+}
+
+func TestClassifyWebhookAnnouncementSourceColonTitleAbsoluteEpisode(t *testing.T) {
+	const (
+		sourceHash   = "colon-absolute-source"
+		sourceName   = "[KiraSubs] Re Start Isekai Life - 81 (1080p) [ABCD1234].mkv"
+		announceName = "Re:Start Isekai Life S04E15 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+		size         = int64(1_449_551_462)
+	)
+	source := qbt.Torrent{Hash: sourceHash, Name: sourceName, Size: size, TotalSize: size, Progress: 1}
+	instance := &models.Instance{ID: 1, Name: "main"}
+	svc := &Service{
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			sourceHash: {{Name: sourceName, Size: size}},
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	candidate := namedRelease{release: svc.releaseCache.Parse(announceName), rawName: announceName}
+
+	got := svc.classifyWebhookAnnouncementSource(context.Background(), 1, &source, candidate, size, announcementMatchPolicy{
+		findIndividualEpisodes: true,
+	})
+
+	require.True(t, got.decision.Accepted, got.decision.RejectReason)
+	require.Equal(t, searchCandidateClassExactSizeFallback, got.decision.Class)
+	require.Contains(t, got.decision.RelaxedDifferences, "episode")
+}
+
+func TestWebhookDecision(t *testing.T) {
+	const (
+		movie   = "The.Squad.of.Madame.K.1953.1080p.BluRay.x264-GRP"
+		episode = "Kaiju.Squad.S01E01.1080p.WEB.H264-GRP"
+		pack    = "Kaiju.Squad.S01.1080p.WEB.H264-GRP"
+		size    = int64(1_449_551_462)
+	)
+	tests := []struct {
+		name        string
+		source      string
+		announce    string
+		skipRecheck bool
+		unknownSize bool
+		wantClass   searchCandidateClass
+		wantReason  string
+	}{
+		{name: "match", source: movie, announce: "The Squad of Madame K... 1953 1080p BluRay x264-GRP", wantClass: searchCandidateClassStrict},
+		{name: "classifier reject", source: movie, announce: "Other Title 1953 1080p BluRay x264-GRP", wantClass: searchCandidateClassRejected, wantReason: "title mismatch"},
+		{name: "skip recheck", source: episode, announce: "Kaiju Squad S01E02 1080p WEB H264-GRP", skipRecheck: true, wantClass: searchCandidateClassRejected, wantReason: webhookSkipRecheckReason},
+		{name: "unknown local size", source: pack, announce: "Kaiju Squad S01E02 1080p WEB H264-GRP", unknownSize: true, wantClass: searchCandidateClassRejected, wantReason: "unknown local size"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			row := corpusRow{source: tt.source, sourceSize: size}
+			if tt.unknownSize {
+				row.sourceSize = 0
+			}
+			svc := row.corpusService(false)
+			torrent := row.sourceTorrent()
+			announced := namedRelease{release: svc.releaseCache.Parse(tt.announce), rawName: tt.announce}
+
+			decision := svc.webhookDecision(t.Context(), webhookCheckInput{announced: announced, size: uint64(size), policy: announcementMatchPolicy{
+				findIndividualEpisodes: true,
+				skipRecheck:            tt.skipRecheck,
+			}}, corpusInstance.ID, &torrent, nil)
+
+			require.Equal(t, tt.wantReason == "", decision.Accepted)
+			require.Equal(t, tt.wantReason, decision.RejectReason)
+			require.Equal(t, tt.wantClass, decision.Class)
+			if decision.Accepted {
+				match := svc.webhookMatch(corpusInstance, &torrent, announced, uint64(size))
+				require.Equal(t, corpusSourceHash, match.TorrentHash)
+				require.Equal(t, "exact", match.MatchType)
+			}
+		})
+	}
+}

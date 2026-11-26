@@ -1,0 +1,231 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"testing"
+
+	"github.com/autobrr/rls"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
+)
+
+func TestVariantOverridesReleaseVariants(t *testing.T) {
+	release := rls.Release{
+		Collection: "IMAX",
+		Other:      []string{"HYBRiD REMUX"},
+	}
+
+	variants := strictVariantOverrides.releaseVariants(&release)
+	_, hasIMAX := variants["IMAX"]
+	require.True(t, hasIMAX, "expected IMAX variant to be detected: %#v", variants)
+	_, hasHYBRID := variants["HYBRID"]
+	require.True(t, hasHYBRID, "expected HYBRID variant to be detected: %#v", variants)
+
+	multiVariant := rls.Release{
+		Collection: "IMAX",
+		Other:      []string{"HYBRiD"},
+	}
+	multiVariants := strictVariantOverrides.releaseVariants(&multiVariant)
+	require.Len(t, multiVariants, 2, "expected both IMAX and HYBRID variants")
+	_, hasIMAX = multiVariants["IMAX"]
+	require.True(t, hasIMAX, "expected IMAX variant to be detected for multiVariant: %#v", multiVariants)
+	_, hasHYBRID = multiVariants["HYBRID"]
+	require.True(t, hasHYBRID, "expected HYBRID variant to be detected for multiVariant: %#v", multiVariants)
+
+	compositeVariant := rls.Release{
+		Other: []string{"IMAX.HYBRiD.REMUX"},
+	}
+	compositeVariants := strictVariantOverrides.releaseVariants(&compositeVariant)
+	require.Len(t, compositeVariants, 1, "expected only HYBRID variant from composite entry")
+	_, hasHYBRID = compositeVariants["HYBRID"]
+	require.True(t, hasHYBRID, "expected HYBRID token to be extracted from composite entry: %#v", compositeVariants)
+
+	tokenEdge := rls.Release{
+		Other: []string{"IMAX..HYBRID", ""},
+	}
+	tokenEdgeVariants := strictVariantOverrides.releaseVariants(&tokenEdge)
+	require.Len(t, tokenEdgeVariants, 1, "expected only valid HYBRID token from edge case")
+	_, hasHYBRID = tokenEdgeVariants["HYBRID"]
+	require.True(t, hasHYBRID, "expected HYBRID token to survive edge tokenization: %#v", tokenEdgeVariants)
+
+	plain := rls.Release{Collection: "", Other: []string{"READNFO"}}
+	plainVariants := strictVariantOverrides.releaseVariants(&plain)
+	require.Empty(t, plainVariants, "expected no variants")
+}
+
+func TestReleasesMatch_StrictVariantsMustMatch(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	base := rls.Release{
+		Title:      "The Conjuring Last Rites",
+		Year:       2025,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Collection: "IMAX",
+	}
+
+	nonVariant := rls.Release{
+		Title:      base.Title,
+		Year:       base.Year,
+		Source:     base.Source,
+		Resolution: base.Resolution,
+	}
+
+	require.False(t, s.strictCompare(&base, &nonVariant, false).matched(), "IMAX should not match vanilla release")
+
+	imaxCandidate := nonVariant
+	imaxCandidate.Collection = "IMAX"
+	require.True(t, s.strictCompare(&base, &imaxCandidate, false).matched(), "matching IMAX releases should be compatible")
+
+	hybridCandidate := nonVariant
+	hybridCandidate.Other = []string{"HYBRiD"}
+	require.False(t, s.strictCompare(&nonVariant, &hybridCandidate, false).matched(), "HYBRID variant should not match vanilla release")
+	require.False(t, s.strictCompare(&hybridCandidate, &nonVariant, false).matched(), "HYBRID mismatch must be symmetric")
+}
+
+func TestReleasesMatch_IMAXVsHybridMismatch(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	imaxRelease := rls.Release{
+		Title:      "The Conjuring Last Rites",
+		Year:       2025,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Collection: "IMAX",
+	}
+	hybridRelease := rls.Release{
+		Title:      imaxRelease.Title,
+		Year:       imaxRelease.Year,
+		Source:     imaxRelease.Source,
+		Resolution: imaxRelease.Resolution,
+		Other:      []string{"HYBRiD"},
+	}
+
+	require.False(t, s.strictCompare(&imaxRelease, &hybridRelease, false).matched(), "IMAX should not match HYBRID")
+	require.False(t, s.strictCompare(&hybridRelease, &imaxRelease, false).matched(), "HYBRID vs IMAX mismatch must be symmetric")
+}
+
+func TestReleasesMatch_REPACKAllowedForSeasonPacks(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	seasonPack := rls.Release{
+		Title:      "The Show",
+		Series:     1,
+		Episode:    0,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Group:      "GROUP",
+	}
+
+	seasonPackRepack := rls.Release{
+		Title:      "The Show",
+		Series:     1,
+		Episode:    0,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Group:      "GROUP",
+		Other:      []string{"REPACK"},
+	}
+
+	require.True(t, s.strictCompare(&seasonPack, &seasonPackRepack, false).matched(),
+		"season pack should match REPACK season pack")
+	require.True(t, s.strictCompare(&seasonPackRepack, &seasonPack, false).matched(),
+		"REPACK season pack should match vanilla season pack")
+}
+
+func TestReleasesMatch_REPACKBlockedForEpisodes(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	episode := rls.Release{
+		Title:      "The Show",
+		Series:     1,
+		Episode:    5,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Group:      "GROUP",
+	}
+
+	episodeRepack := rls.Release{
+		Title:      "The Show",
+		Series:     1,
+		Episode:    5,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Group:      "GROUP",
+		Other:      []string{"REPACK"},
+	}
+
+	require.False(t, s.strictCompare(&episode, &episodeRepack, false).matched(),
+		"vanilla episode should NOT match REPACK episode")
+	require.False(t, s.strictCompare(&episodeRepack, &episode, false).matched(),
+		"REPACK episode should NOT match vanilla episode")
+
+	require.True(t, s.strictCompare(&episodeRepack, &episodeRepack, false).matched(),
+		"REPACK episodes should match each other")
+}
+
+func TestReleasesMatch_PROPERBlockedForMovies(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	movie := rls.Release{
+		Title:      "The Movie",
+		Year:       2025,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Group:      "GROUP",
+	}
+
+	movieProper := rls.Release{
+		Title:      "The Movie",
+		Year:       2025,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Group:      "GROUP",
+		Other:      []string{"PROPER"},
+	}
+
+	require.False(t, s.strictCompare(&movie, &movieProper, false).matched(),
+		"vanilla movie should NOT match PROPER movie")
+	require.False(t, s.strictCompare(&movieProper, &movie, false).matched(),
+		"PROPER movie should NOT match vanilla movie")
+}
+
+func TestVariantMismatchReasonIsDeterministic(t *testing.T) {
+	source := &rls.Release{Collection: "IMAX", Other: []string{"HYBRID"}}
+	candidate := &rls.Release{}
+
+	for range 100 {
+		require.Equal(t, "HYBRID", strictVariantOverrides.findMismatch(source, candidate))
+	}
+}
+
+func TestReleasesMatch_IMAXBlockedEvenForSeasonPacks(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	seasonPack := rls.Release{
+		Title:      "The Show",
+		Series:     1,
+		Episode:    0,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Group:      "GROUP",
+	}
+
+	seasonPackIMAX := rls.Release{
+		Title:      "The Show",
+		Series:     1,
+		Episode:    0,
+		Source:     "BLURAY",
+		Resolution: "1080P",
+		Group:      "GROUP",
+		Collection: "IMAX",
+	}
+
+	require.False(t, s.strictCompare(&seasonPack, &seasonPackIMAX, false).matched(),
+		"vanilla season pack should NOT match IMAX season pack")
+	require.False(t, s.strictCompare(&seasonPackIMAX, &seasonPack, false).matched(),
+		"IMAX season pack should NOT match vanilla season pack")
+}

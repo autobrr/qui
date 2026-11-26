@@ -1,0 +1,110 @@
+{
+  "options": {
+    "days": "Giorni prima che una Condivisione termini",
+    "daysInvalid": "Inserisci un numero intero di giorni, 1 o più.",
+    "endAtFirstDownload": "Termina al primo download completo",
+    "endAtFirstDownloadDescription": "La Condivisione termina appena un client ha tutti i file.",
+    "firstDownloaderOnly": "Solo il primo che scarica",
+    "firstDownloaderOnlyDescription": "Il tracker dà il tuo indirizzo al primo client che scarica, e a nessun altro. Questo controlla chi scopre il tuo indirizzo dal tracker, non chi può connettersi.",
+    "firstDownloaderOnlyUnavailable": "Non disponibile con un tracker esterno: qui non vede gli annunci."
+  },
+  "settings": {
+    "title": "Condivisioni",
+    "description": "Una Condivisione dà i file di un torrent a qualcuno il cui client non è gestito da qui. Il tracker di Condivisione permette al suo client di trovare il tuo.",
+    "loadFailed": "Impossibile caricare le impostazioni delle Condivisioni",
+    "save": "Salva",
+    "saved": "Impostazioni delle Condivisioni salvate",
+    "saveFailed": "Impossibile salvare le impostazioni delle Condivisioni",
+    "inUse": {
+      "own": "Le nuove Condivisioni usano il tracker di qui.",
+      "outside": "Le nuove Condivisioni usano il tracker esterno.",
+      "none": "Nessun tracker impostato, quindi nessuna Condivisione può iniziare."
+    },
+    "tracker": {
+      "heading": "Tracker di Condivisione",
+      "own": "Il tracker integrato di qui",
+      "ownDescription": "qui ascolta sulla propria porta solo mentre una Condivisione è in corso, e risponde solo per le Condivisioni attive.",
+      "outside": "Un tracker esterno",
+      "outsideDescription": "Per un qui senza indirizzo pubblico. In questo caso qui non vede gli annunci: l'elenco degli indirizzi e la fine al primo download funzionano al meglio delle possibilità, e il blocco non è disponibile.",
+      "port": "Porta",
+      "publicAddress": "Indirizzo pubblico",
+      "publicAddressDescription": "L'URL con cui Internet raggiunge questa porta, con un proxy davanti per l'HTTPS. Il .torrent di ogni Condivisione lo contiene, quindi una modifica attende che le Condivisioni sul tracker di qui terminino.",
+      "trustedProxies": "Proxy attendibili",
+      "trustedProxiesDescription": "Inserisci solo gli indirizzi o gli intervalli CIDR dei tuoi proxy, uno per riga, non le reti dei client. qui legge l'indirizzo client inoltrato solo da questi proxy.",
+      "trackerUrl": "URL del tracker",
+      "trackerUrlDescription": "Un URL di annuncio http, https o udp.",
+      "publicAddressPlaceholder": "https://share.example.com",
+      "trackerUrlPlaceholder": "udp://tracker.example.org:1337/announce"
+    },
+    "limits": {
+      "heading": "Limiti",
+      "maxActive": "Condivisioni attive",
+      "peersPerShare": "Peer per Condivisione"
+    },
+    "defaults": {
+      "heading": "Valori predefiniti per una nuova Condivisione",
+      "description": "La finestra di Condivisione si apre con questi valori."
+    }
+  },
+  "dialog": {
+    "title": "Condividi con qualcuno",
+    "description_one": "Dai i file di {{name}} a qualcuno il cui client non è gestito da qui.",
+    "description_other": "Dai i file di {{count}} torrent a qualcuno il cui client non è gestito da qui. Ogni torrent riceve la propria Condivisione.",
+    "cancel": "Annulla",
+    "create": "Crea",
+    "done": "Fatto",
+    "warning": "Il tuo amico vede l'indirizzo IP del tuo client. Chiunque abbia il .torrent può scaricare finché la Condivisione non termina.",
+    "refused": "Non condiviso",
+    "refusedEntry": "{{name}}: {{reason}}",
+    "tracker": {
+      "label": "Tracker di Condivisione",
+      "settings": "Impostazioni di condivisione",
+      "own": "Tracker di qui su {{address}}",
+      "outside": "Tracker esterno {{url}}"
+    },
+    "result": {
+      "description_one": "Invia il .torrent e il messaggio al tuo amico nella tua chat. qui non ospita alcun link di download.",
+      "description_other": "Invia ogni .torrent e il relativo messaggio al tuo amico nella tua chat. qui non ospita alcun link di download.",
+      "torrent": ".torrent",
+      "copyMessage": "Copia messaggio",
+      "copied": "Messaggio copiato",
+      "copyFailed": "Impossibile copiare il messaggio"
+    }
+  },
+  "message": {
+    "intro": "Condivido con te «{{name}}» ({{size}}). Apri il file .torrent allegato in un client BitTorrent, come qBittorrent, Transmission o Deluge, per scaricarlo direttamente da me. Smette di funzionare il {{date}}.",
+    "endAtFirstDownload": "Smette di funzionare anche quando un download è completo, quindi tieni aperto il client finché non ha finito."
+  },
+  "tab": {
+    "description": "I torrent che dai a qualcuno il cui client non è gestito da qui.",
+    "empty": "Ancora nessuna Condivisione.",
+    "endedStay": "Le Condivisioni terminate restano nell'elenco per 30 giorni.",
+    "unknownInstance": "Istanza {{id}}",
+    "endsAt": "Termina il {{date}}",
+    "endedAt": "Terminata il {{date}}",
+    "progress": "Scaricato {{percent}}",
+    "progressLabel": "Avanzamento del download",
+    "sent": "Inviato {{size}}",
+    "announced": "Indirizzi che hanno annunciato",
+    "connectedPeers": "Peer connessi",
+    "noPeers": "Ancora nessuno",
+    "unlock": "Sblocca",
+    "stop": "Ferma",
+    "remove": "Rimuovi",
+    "state": {
+      "active": "Attiva",
+      "ending": "In chiusura",
+      "ended": "Terminata",
+      "unknown": "Sconosciuta"
+    },
+    "endReason": {
+      "downloaded": "Il destinatario ha i file.",
+      "expired": "La Condivisione è scaduta.",
+      "stopped": "Fermata dall'utente.",
+      "torrent_deleted": "Il torrent è stato eliminato.",
+      "torrent_moved": "Il torrent è stato spostato.",
+      "files_renamed": "I file del torrent sono stati rinominati.",
+      "share_torrent_gone": "Il torrent della Condivisione non è più nel client."
+    }
+  }
+}

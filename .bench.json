@@ -1,0 +1,61 @@
+{
+  "limits": {
+    "sec/op": {
+      "percent": 10,
+      "min": 0.0001,
+      "any": 0.05
+    },
+    "B/op": {
+      "percent": 10,
+      "min": 1048576,
+      "any": 20971520
+    },
+    "cpu-sec/op": {
+      "percent": 10,
+      "min": 0.0001,
+      "any": 0.05
+    },
+    "kept-B": {
+      "percent": 10,
+      "min": 1048576,
+      "any": 20971520
+    }
+  },
+  "workload_dirs": [
+    "internal/testutil"
+  ],
+  "starts": {
+    "internal/api/sse.BenchmarkBuildUpdatePayload": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/api/sse.BenchmarkComputeRowDeltaPage": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/api/sse.BenchmarkSingleRowFingerprint": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/dbinterface.BenchmarkInternStringsBatch": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/dbinterface.BenchmarkInternStringsIndividual": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/metrics.BenchmarkTorrentCollector_CollectWithNilDeps": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/metrics.BenchmarkTorrentCollector_Describe": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkFilteredList": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkHotCounts": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkHotCountsWithTrackers": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkHotListRules": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkHotResponseEncode": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkHotSearch": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkHotSort": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkHotSortCrossInstance": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkHotStats": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkNormalizeForSearch": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkSyncManager_CalculateStats": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/qbittorrent.BenchmarkSyncManager_FilterTorrentsBySearch": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/automations.BenchmarkEvaluateRule": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/automations.BenchmarkRunSessionCategoryAndTag": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/automations.BenchmarkRunSessionCrossSeedFacts": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/automations.BenchmarkRunSessionDeletionSelection": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/automations.BenchmarkRunSessionMove": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/crossseed.BenchmarkBuildCrossMatchSets": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/crossseed.BenchmarkCompareTitles": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/crossseed.BenchmarkFindCopyGroups": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/filesmanager.BenchmarkBatchReads": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/filesmanager.BenchmarkCacheFilesBatch": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/services/orphanscan.BenchmarkScanRootsOverlap": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/testutil/testdb.BenchmarkClonedMigratedTestDB": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015",
+    "internal/testutil/testdb.BenchmarkFullMigrationTestDB": "7a75489a3c7915d75fd7ff9f43f8c69ec108f015"
+  }
+}

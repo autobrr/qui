@@ -1,0 +1,219 @@
+{
+  "page": {
+    "title": "Transfers",
+    "description": "Follow what qui moves between instances and what you share with other people."
+  },
+  "tabs": {
+    "transfers": "Transfers",
+    "shares": "Shares"
+  },
+  "chips": {
+    "label": "Show",
+    "all": "All",
+    "active": "Active",
+    "waiting": "Waiting",
+    "finished": "Finished",
+    "failed": "Failed"
+  },
+  "columns": {
+    "torrent": "Torrent",
+    "size": "Size",
+    "progress": "Progress",
+    "state": "State",
+    "started": "Started",
+    "actions": "Actions"
+  },
+  "row": {
+    "crossSeeds_one": "+{{count}} cross-seed",
+    "crossSeeds_other": "+{{count}} cross-seeds",
+    "export": "Export",
+    "route": "{{source}} → {{target}}",
+    "byUser": "By you",
+    "byRule": "By rule {{name}}",
+    "byDeletedRule": "By a rule that is gone",
+    "retryAt": "Retry {{time}}",
+    "timeLeft": "{{time}} left",
+    "unknownInstance": "Instance {{id}}"
+  },
+  "ways": {
+    "sftp": "Copy over SFTP",
+    "local": "Copy on qui's disk",
+    "none": "No copy",
+    "bittorrent": "BitTorrent",
+    "fallback": "Unknown way"
+  },
+  "states": {
+    "waiting": "Waiting",
+    "copying": "Copying",
+    "checking": "Checking",
+    "finishing": "Finishing",
+    "done": "Done",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "fallback": "Unknown state"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} uses qBittorrent's default \"TCP and μTP\". In qui's tests, \"TCP only\" was about three times faster. Change it in the BitTorrent settings of {{instance}}."
+  },
+  "actions": {
+    "details": "Details",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "retried": "The Transfer runs again.",
+    "cancelled": "qui cancels the Transfer and takes back what it did.",
+    "removed": "The row is removed.",
+    "failed": "Failed: {{message}}"
+  },
+  "cancelDialog": {
+    "title": "Cancel this Transfer?",
+    "description": "qui stops the Transfer of {{name}}, removes the files that it wrote and the torrents that it added on the target, and starts the torrent on the source again.",
+    "keep": "Keep running",
+    "confirm": "Cancel the Transfer"
+  },
+  "list": {
+    "description": "Torrents that qui moves to another instance, and the runs of Export to Instance rules.",
+    "empty": "No Transfer here yet.",
+    "pages": "Pages of the list",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "bulk": {
+    "label": "Selected rows",
+    "pickPage": "Select the rows of this page",
+    "picked_one": "{{count}} selected",
+    "picked_other": "{{count}} selected",
+    "wholeChip_one": "All {{count}} selected",
+    "wholeChip_other": "All {{count}} selected",
+    "pickAll_one": "Select all {{count}}",
+    "pickAll_other": "Select all {{count}}",
+    "done": {
+      "retry_one": "{{count}} row runs again.",
+      "retry_other": "{{count}} rows run again.",
+      "cancel_one": "qui cancels {{count}} row.",
+      "cancel_other": "qui cancels {{count}} rows.",
+      "remove_one": "{{count}} row is removed.",
+      "remove_other": "{{count}} rows are removed."
+    },
+    "skipped_one": "{{count}} row stays as it was: the action does not apply to it.",
+    "skipped_other": "{{count}} rows stay as they were: the action does not apply to them.",
+    "failed_one": "{{count}} row failed. The log of qui gives the reason.",
+    "failed_other": "{{count}} rows failed. The log of qui gives the reason.",
+    "failedBecause_one": "{{count}} row failed. {{reasons}}",
+    "failedBecause_other": "{{count}} rows failed. {{reasons}}",
+    "nothing": "The action does not apply to any selected row.",
+    "cancelDialog": {
+      "title": "Cancel the selected rows?",
+      "description_one": "{{count}} row is selected. If it has not ended, qui cancels it and takes back what it did: it removes the files and torrents that it added on the target, and starts the torrent on the source again.",
+      "description_other": "{{count}} rows are selected. qui cancels each one that has not ended and takes back what it did: it removes the files and torrents that it added on the target, and starts the torrent on the source again.",
+      "confirm": "Cancel the rows",
+      "keep": "Keep running"
+    },
+    "removeDialog": {
+      "title": "Remove the selected rows?",
+      "description_one": "{{count}} row is selected. If it ended, qui removes it from the list. The torrents and their files stay where they are.",
+      "description_other": "{{count}} rows are selected. qui removes each one that ended from the list. The torrents and their files stay where they are.",
+      "confirm": "Remove the rows",
+      "keep": "Keep the rows"
+    }
+  },
+  "details": {
+    "title": "Transfer details",
+    "exportTitle": "Export run details",
+    "overview": "Overview",
+    "sections": "Sections of the details",
+    "finished": "Finished",
+    "leftStopped": "Left stopped on the target",
+    "instance": "Instance",
+    "failure": "Why it failed",
+    "torrents": "Torrents",
+    "steps": "Steps",
+    "log": "Log",
+    "noLog": "No log lines yet.",
+    "loading": "Loading the Transfer…",
+    "error": "qui cannot load the Transfer: {{message}}",
+    "stale": "qui cannot refresh the details, so they can be out of date: {{message}}"
+  },
+  "steps": {
+    "start": "Started",
+    "prepare": "Prepared both sides",
+    "passByBitTorrent": "Passing by a Transfer torrent",
+    "passedByBitTorrent": "Passed by a Transfer torrent",
+    "fallBackToSftp": "Fell back to a copy over SFTP",
+    "copyHardlink": "Copied a hardlink",
+    "check": "Checked on the target",
+    "checkFiles": "Checked the files on the target",
+    "copyMissing": "Copying the missing files",
+    "checkPartials": "Checked the partial files on the target",
+    "copyFailedPieces": "Copying the pieces that failed the check",
+    "place": "Placed the files",
+    "add": "Adding to the target",
+    "added": "Added to the target",
+    "rename": "Renaming the files on the target",
+    "after": "Handled the source",
+    "removeFromSource": "Removing from the source",
+    "cleanUp": "Cleaning up",
+    "removePlaced": "Removed the placed files"
+  },
+  "stepFallback": "Another step",
+  "incognitoHidden": "Hidden in incognito mode",
+  "form": {
+    "target": "Target instance",
+    "targetPlaceholder": "Select an instance",
+    "noTargets": "Add another instance to transfer torrents to it.",
+    "savePath": "Save path",
+    "savePathHelp": "The folder on the target. qui keeps the folders of the torrent and its cross-seeds below it. Empty uses the save path of the category on the target, or the default save path of the target when no category is set. With an empty save path, the torrent also gets Automatic Torrent Management when that is the default mode of the target.",
+    "savePathPlaceholder": "Default save path of the target",
+    "savePathPlaceholderCategory": "Save path of the category",
+    "category": "Category",
+    "noCategory": "No category",
+    "tags": "Tags",
+    "tagsPlaceholder": "tag1, tag2",
+    "after": "After the Transfer",
+    "afterHelp": "What qui does with the torrent on the source once the target seeds it.",
+    "afterOptions": {
+      "removeWithFiles": "Remove the torrent and its files from the source",
+      "keepFiles": "Remove the torrent from the source and keep its files",
+      "keepSeeding": "Keep seeding on the source"
+    },
+    "leaveStopped": "Leave the torrent stopped on the target",
+    "way": "Way",
+    "wayHelp": "Auto copies through qui when qui reaches the files of a side on its own disk, and else passes the files by a Transfer torrent between the two qBittorrents.",
+    "wayOptions": {
+      "auto": "Auto",
+      "copy": "Copy through qui",
+      "bittorrent": "Transfer torrent"
+    }
+  },
+  "dialog": {
+    "title": "Transfer to another instance",
+    "verified": "qui checks every piece on the target before it changes the source.",
+    "warningsMore": "Show the full warnings",
+    "warningsLess": "Show one line of each warning",
+    "start": "Start Transfer",
+    "starting": "Starting…",
+    "started": "The Transfer of {{name}} waits for its turn.",
+    "cancel": "Close"
+  },
+  "summary": {
+    "title": "Summary",
+    "pickTarget": "Select a target instance to see the summary.",
+    "loading": "Planning the Transfer…",
+    "refused": "qui does not start this Transfer: {{message}}",
+    "torrents": "Torrents",
+    "size": "Size",
+    "way": "Way",
+    "free": "Free on the target",
+    "unknown": "Unknown",
+    "freeUnknown": "Free space unknown: before qBittorrent 5.3, qBittorrent reports it only at its default save path.",
+    "notEnoughSpace": "The target has less free space than the Transfer needs.",
+    "noFileAccess": "qui cannot see the files on {{instance}}, so a file with other content at the same path can be replaced.",
+    "crossSeedsStay_one": "{{count}} cross-seed stays on {{source}}. It reads these files through hardlinks, and qui cannot make hardlinks on {{target}} without file access. To move it too, give qui file access to {{target}}, on qui's own disk or over SSH, or cross-seed again on {{target}}.",
+    "crossSeedsStay_other": "{{count}} cross-seeds stay on {{source}}. They read these files through hardlinks, and qui cannot make hardlinks on {{target}} without file access. To move them too, give qui file access to {{target}}, on qui's own disk or over SSH, or cross-seed again on {{target}}.",
+    "crossSeedsStayForced_one": "{{count}} cross-seed stays on {{source}}. It reads these files through hardlinks, and a Transfer torrent cannot make hardlinks. To move it too, select the way \"Auto\" or \"Copy through qui\".",
+    "crossSeedsStayForced_other": "{{count}} cross-seeds stay on {{source}}. They read these files through hardlinks, and a Transfer torrent cannot make hardlinks. To move them too, select the way \"Auto\" or \"Copy through qui\".",
+    "crossSeed": "Cross-seed",
+    "crossSeedInstance": "On {{instance}}"
+  }
+}

@@ -1,0 +1,67 @@
+name: Release notes
+
+# Writes the release notes page for one release and opens a PR to main.
+# GoReleaser leaves a draft. The maintainer adds the Highlights and publishes
+# it, so "published" runs when the text is final. "edited" fires when the
+# published text changes, and updates the open PR. GitHub starts no workflow
+# for an edit of a draft.
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag. Leave empty for the latest release."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-notes-${{ github.event.release.tag_name || inputs.tag || 'latest' }}
+
+jobs:
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+
+      - name: Write the page
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z $TAG ]]; then
+            TAG=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          fi
+          echo "TAG=$TAG" >>"$GITHUB_ENV"
+          documentation/scripts/release-notes.sh "$TAG"
+
+      - name: Open or update the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add documentation/blog
+          if git diff --cached --quiet; then
+            echo "The page for $TAG on main is up to date."
+            exit 0
+          fi
+          branch="docs/release-notes-$TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "docs(release-notes): add $TAG"
+          # The branch is made from main on each run, so a rerun replaces it.
+          git push --force origin "$branch"
+          if [[ -z $(gh pr list --head "$branch" --state open --json number --jq '.[].number') ]]; then
+            gh pr create --base main --head "$branch" \
+              --title "docs(release-notes): add $TAG" --label documentation \
+              --body "Adds the release notes page for $TAG from the GitHub release. After the merge, merge main into develop."
+          fi

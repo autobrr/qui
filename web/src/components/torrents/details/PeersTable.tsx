@@ -1,0 +1,303 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { Progress } from "@/components/ui/progress"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
+import { matchPeerClient } from "@/lib/peer-client-icons"
+import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
+import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
+import type { SortedPeer } from "@/types"
+import {
+  createColumnHelper,
+  flexRender,
+  type SortFn,
+  type SortingState,
+  useTable
+} from "@tanstack/react-table"
+import { sortableDetailsTableFeatures } from "../tanstackTableFeatures"
+import { PeerClientIcon } from "./PeerClientIcon"
+import { SortIcon } from "@/components/ui/sort-icon"
+import { Ban, Copy, Loader2 } from "lucide-react"
+import { memo, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+interface PeersTableProps {
+  peers: SortedPeer[] | undefined
+  loading: boolean
+  speedUnit: SpeedUnit
+  showFlags: boolean
+  incognitoMode: boolean
+  onBanPeer?: (peer: SortedPeer) => void
+}
+
+const columnHelper = createColumnHelper<typeof sortableDetailsTableFeatures, SortedPeer>()
+
+const zeroLastSortingFn: SortFn<typeof sortableDetailsTableFeatures, SortedPeer> = (rowA, rowB, columnId) => {
+  const a = (rowA.getValue(columnId) as number | undefined | null) ?? 0
+  const b = (rowB.getValue(columnId) as number | undefined | null) ?? 0
+  if (a === 0 && b !== 0) return 1
+  if (b === 0 && a !== 0) return -1
+  return a - b
+}
+
+export const PeersTable = memo(function PeersTable({
+  peers,
+  loading,
+  speedUnit,
+  showFlags,
+  incognitoMode,
+  onBanPeer,
+}: PeersTableProps) {
+  const { t } = useTranslation("torrents")
+  const [sorting, setSorting] = useState<SortingState>([{ id: "progress", desc: true }])
+
+  const columns = useMemo(() => columnHelper.columns([
+    columnHelper.accessor("country_code", {
+      header: "",
+      cell: (info) => {
+        const code = info.getValue()?.toLowerCase()
+        if (!code) return null
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={cn("fi", `fi-${code}`, "rounded-sm")} />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">{info.row.original.country || code.toUpperCase()}</p>
+            </TooltipContent>
+          </Tooltip>
+        )
+      },
+      size: 30,
+      enableSorting: false,
+    }),
+    columnHelper.accessor((row) => row.key, {
+      id: "address",
+      header: t("peersTable.address"),
+      cell: (info) => (
+        <span className="font-mono text-xs">
+          {getPeerDisplayAddress(info.row.original, incognitoMode)}
+        </span>
+      ),
+      size: 150,
+    }),
+    columnHelper.accessor((row) => matchPeerClient(row.client, row.peer_id_client).name, {
+      id: "client",
+      header: t("peersTable.client"),
+      cell: (info) => {
+        const { client, peer_id_client: peerIdClient } = info.row.original
+        const { name, version } = matchPeerClient(client, peerIdClient)
+        return (
+          <div className="flex max-w-[150px] items-center gap-1.5">
+            <PeerClientIcon client={client} peerIdClient={peerIdClient} />
+            <span className="truncate">
+              <span className="font-medium">{name || "-"}</span>
+              {version && <span className="tabular-nums text-muted-foreground"> {version}</span>}
+            </span>
+          </div>
+        )
+      },
+      size: 150,
+    }),
+    columnHelper.accessor("progress", {
+      header: t("peersTable.progress"),
+      cell: (info) => {
+        const progress = info.getValue() * 100
+        return (
+          <div className="flex items-center gap-2">
+            <Progress value={progress} className="h-1.5 w-16" />
+            <span className="tabular-nums text-10 w-10">
+              {progress.toFixed(1)}%
+            </span>
+          </div>
+        )
+      },
+      size: 110,
+    }),
+    columnHelper.accessor("dl_speed", {
+      header: t("peersTable.downSpeed"),
+      cell: (info) => (
+        <span className="tabular-nums text-green-500">
+          {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
+        </span>
+      ),
+      size: 90,
+      sortUndefined: "last",
+      sortFn: zeroLastSortingFn,
+    }),
+    columnHelper.accessor("up_speed", {
+      header: t("peersTable.upSpeed"),
+      cell: (info) => (
+        <span className="tabular-nums text-blue-500">
+          {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
+        </span>
+      ),
+      size: 90,
+      sortUndefined: "last",
+      sortFn: zeroLastSortingFn,
+    }),
+    columnHelper.accessor("downloaded", {
+      header: t("peersTable.downloaded"),
+      cell: (info) => (
+        <span className="tabular-nums">
+          {formatBytes(info.getValue() || 0)}
+        </span>
+      ),
+      size: 90,
+      sortUndefined: "last",
+      sortFn: zeroLastSortingFn,
+    }),
+    columnHelper.accessor("uploaded", {
+      header: t("peersTable.uploaded"),
+      cell: (info) => (
+        <span className="tabular-nums">
+          {formatBytes(info.getValue() || 0)}
+        </span>
+      ),
+      size: 90,
+      sortUndefined: "last",
+      sortFn: zeroLastSortingFn,
+    }),
+    ...(showFlags ? [
+      columnHelper.accessor("flags", {
+        header: t("peersTable.flags"),
+        cell: (info) => {
+          const flags = info.getValue()
+          if (!flags) return <span className="text-muted-foreground">-</span>
+          const details = getPeerFlagDetails(flags, info.row.original.flags_desc)
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="font-mono text-10 text-muted-foreground cursor-help">
+                  {flags}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-[300px]">
+                <div className="space-y-1 text-xs">
+                  {details.map((d, i) => (
+                    <div key={i}>
+                      <span className="font-mono font-bold">{d.flag}</span>: {d.description}
+                    </div>
+                  ))}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )
+        },
+        size: 60,
+      }),
+    ] : []),
+  ]), [speedUnit, showFlags, incognitoMode, t])
+
+  const data = useMemo(() => peers || [], [peers])
+
+  const table = useTable({
+    features: sortableDetailsTableFeatures,
+    data,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+  })
+
+  const handleCopyAddress = (peer: SortedPeer) => {
+    if (incognitoMode) return
+    copyTextToClipboard(peer.key)
+    toast.success(t("peersTable.toast.ipCopied"))
+  }
+
+  if (loading && !peers) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-5 w-5 animate-spin" />
+      </div>
+    )
+  }
+
+  if (!peers || peers.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+        {t("peersTable.noPeersConnected")}
+      </div>
+    )
+  }
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="min-w-[700px]">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 z-10 bg-background border-b">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th
+                    key={header.id}
+                    className={cn(
+                      "px-2 py-2 text-left font-medium text-muted-foreground select-none",
+                      header.column.getCanSort() && "cursor-pointer hover:bg-muted/50"
+                    )}
+                    style={{ width: header.getSize() }}
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    <div className="flex items-center gap-1">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getCanSort() && (
+                        <SortIcon sorted={header.column.getIsSorted()} />
+                      )}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => (
+              <ContextMenu key={row.id}>
+                <ContextMenuTrigger asChild>
+                  <tr className="border-b border-border/50 hover:bg-muted/30 cursor-default">
+                    {row.getAllCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className="px-2 py-1.5"
+                        style={{ width: cell.column.getSize() }}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem
+                    onClick={() => handleCopyAddress(row.original)}
+                    disabled={incognitoMode}
+                  >
+                    <Copy className="h-3.5 w-3.5 mr-2" />
+                    {t("peersTable.copyIpAddress")}
+                  </ContextMenuItem>
+                  {onBanPeer && canBanPeer(row.original) && (
+                    <>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        onClick={() => onBanPeer(row.original)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Ban className="h-3.5 w-3.5 mr-2" />
+                        {t("peersTable.banPeer")}
+                      </ContextMenuItem>
+                    </>
+                  )}
+                </ContextMenuContent>
+              </ContextMenu>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </ScrollArea>
+  )
+})

@@ -1,0 +1,546 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package proxy
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
+)
+
+func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
+	t.Helper()
+
+	const (
+		apiKey     = "abc123"
+		instanceID = 7
+		clientName = "autobrr"
+	)
+
+	baseCases := []struct {
+		name        string
+		baseURL     string
+		requestPath string
+	}{
+		{
+			name:        "root base",
+			baseURL:     "/",
+			requestPath: "/proxy/" + apiKey + "/api/v2/app/webapiVersion",
+		},
+		{
+			name:        "custom base",
+			baseURL:     "/qui/",
+			requestPath: "/qui/proxy/" + apiKey + "/api/v2/app/webapiVersion",
+		},
+	}
+
+	instanceCases := []struct {
+		name         string
+		instanceHost string
+		expectedPath string
+	}{
+		{
+			name:         "with sub-path",
+			instanceHost: "https://example.com/qbittorrent",
+			expectedPath: "/qbittorrent/api/v2/app/webapiVersion",
+		},
+		{
+			name:         "with sub-path and port",
+			instanceHost: "http://192.0.2.10:8080/qbittorrent",
+			expectedPath: "/qbittorrent/api/v2/app/webapiVersion",
+		},
+		{
+			name:         "root host",
+			instanceHost: "https://example.com",
+			expectedPath: "/api/v2/app/webapiVersion",
+		},
+	}
+
+	for _, baseCase := range baseCases {
+		t.Run(baseCase.name, func(t *testing.T) {
+			h := NewHandler(nil, nil, nil, nil, nil, nil, baseCase.baseURL)
+			require.NotNil(t, h)
+
+			for _, tc := range instanceCases {
+				t.Run(tc.name, func(t *testing.T) {
+					req := httptest.NewRequest("GET", baseCase.requestPath, nil)
+
+					routeCtx := chi.NewRouteContext()
+					routeCtx.URLParams.Add("api-key", apiKey)
+					ctx := context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx)
+
+					instanceURL, err := url.Parse(tc.instanceHost)
+					require.NoError(t, err)
+
+					proxyCtx := &proxyContext{
+						instanceID:  instanceID,
+						instanceURL: instanceURL,
+					}
+
+					ctx = context.WithValue(ctx, ClientAPIKeyContextKey, &models.ClientAPIKey{
+						ClientName: clientName,
+						InstanceID: instanceID,
+					})
+					ctx = context.WithValue(ctx, InstanceIDContextKey, instanceID)
+					ctx = context.WithValue(ctx, proxyContextKey, proxyCtx)
+
+					req = req.WithContext(ctx)
+					outReq := req.Clone(ctx)
+
+					pr := &httputil.ProxyRequest{
+						In:  req,
+						Out: outReq,
+					}
+
+					h.rewriteRequest(pr)
+
+					require.Equal(t, tc.expectedPath, pr.Out.URL.Path)
+					require.Equal(t, tc.expectedPath, pr.Out.URL.RawPath)
+					require.Equal(t, instanceURL.Host, pr.Out.URL.Host)
+				})
+			}
+		})
+	}
+}
+
+func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
+	t.Helper()
+
+	handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+	require.NotNil(t, handler)
+
+	payload := []byte(`{"rid":1,"full_update":false}`)
+
+	handler.proxy.Transport = testutil.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		resp := &http.Response{
+			StatusCode:    http.StatusOK,
+			ContentLength: int64(len(payload)),
+			Body:          io.NopCloser(bytes.NewReader(payload)),
+			Header:        make(http.Header),
+			Request:       req,
+		}
+		resp.Header.Set("Content-Type", "application/json")
+		return resp, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/abc123/sync/maindata", nil)
+
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("api-key", "abc123")
+
+	ctx := context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx)
+	ctx = context.WithValue(ctx, ClientAPIKeyContextKey, &models.ClientAPIKey{
+		ClientName: "test-client",
+		InstanceID: 1,
+	})
+	ctx = context.WithValue(ctx, InstanceIDContextKey, 1)
+
+	instanceURL, err := url.Parse("http://qbittorrent.example")
+	require.NoError(t, err)
+
+	ctx = context.WithValue(ctx, proxyContextKey, &proxyContext{
+		instanceID:  1,
+		instanceURL: instanceURL,
+	})
+
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+
+	var parseErrorLogged atomic.Bool
+
+	origLogger := log.Logger
+	log.Logger = log.Logger.Hook(zerolog.HookFunc(func(e *zerolog.Event, level zerolog.Level, msg string) {
+		if level == zerolog.ErrorLevel && msg == "Failed to parse sync/maindata response" {
+			parseErrorLogged.Store(true)
+		}
+	}))
+	defer func() {
+		log.Logger = origLogger
+	}()
+
+	handler.handleSyncMainData(rec, req)
+
+	require.False(t, parseErrorLogged.Load(), "expected sync/maindata response to parse successfully")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, payload, rec.Body.Bytes())
+}
+
+func TestProxyTorrentPeersPassesThroughWithoutCacheWarming(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"full update", http.StatusOK, `{"rid":7,"full_update":true,"peers":{"127.0.0.1:6881":{"client":"test"}}}`},
+		{"zero rid", http.StatusOK, `{"rid":0,"peers":{}}`},
+		{"incremental update", http.StatusOK, `{"rid":8,"full_update":false,"peers_removed":["127.0.0.1:6881"]}`},
+		{"upstream error", http.StatusNotFound, "torrent not found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int64
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v2/sync/torrentPeers" || r.URL.RawQuery != "hash=abc123&rid=6" {
+					t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Peer-Response", "unchanged")
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer upstream.Close()
+
+			handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+			instanceURL, err := url.Parse(upstream.URL)
+			require.NoError(t, err)
+			routeCtx := chi.NewRouteContext()
+			routeCtx.URLParams.Add("api-key", "test-key")
+			ctx := context.WithValue(t.Context(), chi.RouteCtxKey, routeCtx)
+			ctx = context.WithValue(ctx, ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "test", InstanceID: 1})
+			ctx = context.WithValue(ctx, InstanceIDContextKey, 1)
+			ctx = context.WithValue(ctx, proxyContextKey, &proxyContext{instanceID: 1, instanceURL: instanceURL, httpClient: upstream.Client()})
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/proxy/test-key/api/v2/sync/torrentPeers?hash=abc123&rid=6", nil)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			require.Equal(t, int64(1), requests.Load())
+			require.Equal(t, tc.status, rec.Code)
+			require.Equal(t, tc.body, rec.Body.String())
+			require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+			require.Equal(t, "unchanged", rec.Header().Get("X-Peer-Response"))
+		})
+	}
+}
+
+func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
+	t.Helper()
+
+	handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+	require.NotNil(t, handler)
+
+	rt, ok := handler.proxy.Transport.(*RetryTransport)
+	require.True(t, ok, "expected handler to configure RetryTransport")
+	require.NotNil(t, rt.baseSelector, "expected RetryTransport selector to be configured")
+
+	var selectedCalled atomic.Bool
+	selected := testutil.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		selectedCalled.Store(true)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/api/v2/torrents/add", strings.NewReader("x"))
+	ctx := context.WithValue(req.Context(), proxyContextKey, &proxyContext{
+		httpClient: &http.Client{Transport: selected},
+	})
+	req = req.WithContext(ctx)
+
+	resp, err := handler.proxy.Transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.True(t, selectedCalled.Load(), "expected instance transport to be used")
+	require.NoError(t, resp.Body.Close())
+}
+
+func TestProxyContextApplyAuthHeaders_APIKey(t *testing.T) {
+	t.Helper()
+
+	cases := []struct {
+		name              string
+		pc                *proxyContext
+		incomingAuth      string
+		wantAuthorization string
+	}{
+		{
+			name:              "api key sets bearer header",
+			pc:                &proxyContext{apiKey: "secret-key"},
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "api key overrides incoming authorization",
+			pc:                &proxyContext{apiKey: "secret-key"},
+			incomingAuth:      "Basic ZGFuZ2VyOnp1bw==",
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "api key overrides basic auth",
+			pc:                &proxyContext{apiKey: "secret-key", basicAuth: &basicAuthCredentials{username: "u", password: "p"}},
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "no api key and no basic auth strips authorization",
+			pc:                &proxyContext{},
+			incomingAuth:      "Bearer should-be-removed",
+			wantAuthorization: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/api/v2/torrents/info", nil)
+			if tc.incomingAuth != "" {
+				req.Header.Set("Authorization", tc.incomingAuth)
+			}
+
+			tc.pc.applyAuthHeaders(req)
+
+			require.Equal(t, tc.wantAuthorization, req.Header.Get("Authorization"))
+		})
+	}
+}
+
+func TestParseCSVQueryValues(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("filter", "unregistered, tracker_down")
+	queryParams.Add("filter", "downloading")
+	queryParams.Add("filter", "tracker_down")
+	queryParams.Add("filter", "")
+
+	parsed := parseCSVQueryValues(queryParams, "filter")
+	require.True(t, slices.Equal([]string{"unregistered", "tracker_down", "downloading"}, parsed))
+}
+
+func TestParseCSVQueryValues_PreservesCategoryCasing(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("category", "TV, Movies")
+	queryParams.Add("category", "Movies")
+
+	parsed := parseCSVQueryValues(queryParams, "category")
+	require.True(t, slices.Equal([]string{"TV", "Movies"}, parsed))
+}
+
+func TestSplitStatusFilters(t *testing.T) {
+	t.Helper()
+
+	status, excludeStatus := splitStatusFilters([]string{"Unregistered", "downloading", "tracker_down", "active", "TRACKER_DOWN", "active"})
+	require.True(t, slices.Equal([]string{"downloading", "active"}, status))
+	require.True(t, slices.Equal([]string{"unregistered", "tracker_down"}, excludeStatus))
+}
+
+func TestParseHashesQueryValues(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("hashes", "abc|def, ghi")
+	queryParams.Add("hashes", "all")
+	queryParams.Add("hashes", "DEF|jkl")
+
+	hashes := parseHashesQueryValues(queryParams)
+	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI", "JKL"}, hashes))
+}
+
+func TestBuildTorrentSearchFilters_EnhancedAndLegacyCompatibility(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("status", "active, downloading")
+	queryParams.Add("excludeStatus", "paused")
+	queryParams.Add("excludestatus", "stalledDL")
+	queryParams.Add("filter", "unregistered,tracker_down,seeding")
+	queryParams.Add("category", "Anime")
+	queryParams.Add("categories", "TV, Movies")
+	queryParams.Add("excludeCategories", "archive")
+	queryParams.Add("excludecategories", "temp")
+	queryParams.Add("tag", "manual")
+	queryParams.Add("tags", "autobrr")
+	queryParams.Add("excludeTags", "skip")
+	queryParams.Add("excludetags", "hold")
+	queryParams.Add("trackers", "tracker-a,tracker-b")
+	queryParams.Add("excludeTrackers", "tracker-c")
+	queryParams.Add("excludetrackers", "tracker-d")
+	queryParams.Add("hashes", "abc|def")
+	queryParams.Add("hashes", "DEF|ghi")
+	queryParams.Set("expr", " ratio > 1 ")
+
+	filters := buildTorrentSearchFilters(queryParams)
+
+	require.True(t, slices.Equal([]string{"active", "downloading", "seeding"}, filters.Status))
+	require.True(t, slices.Equal([]string{"paused", "stalleddl", "unregistered", "tracker_down"}, filters.ExcludeStatus))
+	require.True(t, slices.Equal([]string{"Anime", "TV", "Movies"}, filters.Categories))
+	require.True(t, slices.Equal([]string{"archive", "temp"}, filters.ExcludeCategories))
+	require.True(t, slices.Equal([]string{"manual", "autobrr"}, filters.Tags))
+	require.True(t, slices.Equal([]string{"skip", "hold"}, filters.ExcludeTags))
+	require.True(t, slices.Equal([]string{"tracker-a", "tracker-b"}, filters.Trackers))
+	require.True(t, slices.Equal([]string{"tracker-c", "tracker-d"}, filters.ExcludeTrackers))
+	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI"}, filters.Hashes))
+	require.Equal(t, "ratio > 1", filters.Expr)
+}
+
+func TestNormalizeContentPathRelativeInput(t *testing.T) {
+	t.Helper()
+
+	testCases := []struct {
+		name      string
+		input     string
+		wantError bool
+	}{
+		{name: "valid", input: "folder/file.mkv", wantError: false},
+		{name: "empty", input: "", wantError: true},
+		{name: "traversal", input: "../escape.mkv", wantError: true},
+		{name: "windows-traversal", input: "..\\escape.mkv", wantError: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			normalized, err := normalizeContentPathRelativeInput(tc.input)
+			if tc.wantError {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, filepath.FromSlash(tc.input), normalized)
+		})
+	}
+}
+
+func TestParseProxyMediaInfoContentPath_JSON(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{"contentPath": "folder/file.mkv"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestParseProxyMediaInfoContentPath_JSON_LegacyAlias(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{"content_path": "folder/file.mkv"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestParseProxyMediaInfoContentPath_JSON_PrefersCanonicalWhenBothPresent(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{
+		"contentPath":  "folder/canonical.mkv",
+		"content_path": "folder/legacy.mkv",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/canonical.mkv"), contentPath)
+}
+
+func TestParseProxyMediaInfoContentPath_Form(t *testing.T) {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", strings.NewReader("content_path=folder%2Ffile.mkv"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestFindExistingProxyContentFile(t *testing.T) {
+	t.Helper()
+
+	root := t.TempDir()
+	goodPath := filepath.Join(root, "good.mkv")
+	require.NoError(t, os.WriteFile(goodPath, []byte("ok"), 0o600))
+
+	found, ok := findExistingProxyContentFile([]string{filepath.Join(root, "missing.mkv"), goodPath})
+	require.True(t, ok)
+	require.Equal(t, goodPath, found)
+}
+
+func TestProxyDropsClientRefererAndOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		header  string
+		value   string
+		relogin bool
+	}{
+		{"referer", "Referer", "foo", false},
+		{"origin", "Origin", "http://other-app.example:6767", false},
+		{"no header", "", "", false},
+		{"referer replayed after re-login", "Referer", "foo", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int64
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if requests.Add(1) == 1 && tc.relogin {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				if r.Header.Get("Referer") != "" || r.Header.Get("Origin") != "" {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				_, _ = io.WriteString(w, "v5.1.0")
+			}))
+			defer upstream.Close()
+
+			handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+			instanceURL, err := url.Parse(upstream.URL)
+			require.NoError(t, err)
+			routeCtx := chi.NewRouteContext()
+			routeCtx.URLParams.Add("api-key", "test-key")
+			ctx := context.WithValue(t.Context(), chi.RouteCtxKey, routeCtx)
+			ctx = context.WithValue(ctx, ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "test", InstanceID: 1})
+			ctx = context.WithValue(ctx, InstanceIDContextKey, 1)
+			ctx = context.WithValue(ctx, proxyContextKey, &proxyContext{instanceID: 1, instanceURL: instanceURL, httpClient: upstream.Client(), session: &stubSessionRefresher{}})
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/proxy/test-key/api/v2/app/version", nil)
+			if tc.header != "" {
+				req.Header.Set(tc.header, tc.value)
+			}
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "v5.1.0", rec.Body.String())
+			if tc.relogin {
+				require.Equal(t, int64(2), requests.Load())
+			}
+		})
+	}
+}

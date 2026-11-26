@@ -1,0 +1,816 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package models
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/domain"
+)
+
+var ErrInstanceNotFound = errors.New("instance not found")
+
+type Instance struct {
+	ID                       int     `json:"id"`
+	Name                     string  `json:"name"`
+	Host                     string  `json:"host"`
+	Username                 string  `json:"username"`
+	PasswordEncrypted        string  `json:"-"`
+	APIKeyEncrypted          string  `json:"-"`
+	BasicUsername            *string `json:"basic_username,omitempty"`
+	BasicPasswordEncrypted   *string `json:"-"`
+	TLSSkipVerify            bool    `json:"tlsSkipVerify"`
+	SortOrder                int     `json:"sortOrder"`
+	IsActive                 bool    `json:"isActive"`
+	HasLocalFilesystemAccess bool    `json:"hasLocalFilesystemAccess"`
+	UseHardlinks             bool    `json:"useHardlinks"`
+	HardlinkBaseDir          string  `json:"hardlinkBaseDir"`
+	HardlinkDirPreset        string  `json:"hardlinkDirPreset"`
+	UseReflinks              bool    `json:"useReflinks"`
+	FallbackToRegularMode    bool    `json:"fallbackToRegularMode"`
+
+	SSHHost             string  `json:"-"`
+	SSHPort             int     `json:"-"`
+	SSHUsername         string  `json:"-"`
+	SSHKeyEncrypted     string  `json:"-"`
+	SSHHostKeyEncrypted string  `json:"-"`
+	SSHTier             SSHTier `json:"-"`
+	SSHHardlink         *bool   `json:"-"`
+
+	PublicPeerAddress string `json:"-"`
+}
+
+func (i Instance) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		ID                       int        `json:"id"`
+		Name                     string     `json:"name"`
+		Host                     string     `json:"host"`
+		Username                 string     `json:"username"`
+		Password                 string     `json:"password,omitempty"`
+		APIKey                   string     `json:"apiKey,omitempty"`
+		BasicUsername            *string    `json:"basic_username,omitempty"`
+		BasicPassword            string     `json:"basic_password,omitempty"`
+		TLSSkipVerify            bool       `json:"tlsSkipVerify"`
+		IsActive                 bool       `json:"isActive"`
+		HasLocalFilesystemAccess bool       `json:"hasLocalFilesystemAccess"`
+		UseHardlinks             bool       `json:"useHardlinks"`
+		HardlinkBaseDir          string     `json:"hardlinkBaseDir"`
+		HardlinkDirPreset        string     `json:"hardlinkDirPreset"`
+		UseReflinks              bool       `json:"useReflinks"`
+		FallbackToRegularMode    bool       `json:"fallbackToRegularMode"`
+		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt                time.Time  `json:"created_at"`
+		UpdatedAt                time.Time  `json:"updated_at"`
+		SortOrder                int        `json:"sortOrder"`
+	}{
+		ID:            i.ID,
+		Name:          i.Name,
+		Host:          i.Host,
+		Username:      i.Username,
+		Password:      domain.RedactString(i.PasswordEncrypted),
+		APIKey:        domain.RedactString(i.APIKeyEncrypted),
+		BasicUsername: i.BasicUsername,
+		BasicPassword: func() string {
+			if i.BasicPasswordEncrypted != nil {
+				return domain.RedactString(*i.BasicPasswordEncrypted)
+			}
+			return ""
+		}(),
+		TLSSkipVerify:            i.TLSSkipVerify,
+		SortOrder:                i.SortOrder,
+		IsActive:                 i.IsActive,
+		HasLocalFilesystemAccess: i.HasLocalFilesystemAccess,
+		UseHardlinks:             i.UseHardlinks,
+		HardlinkBaseDir:          i.HardlinkBaseDir,
+		HardlinkDirPreset:        i.HardlinkDirPreset,
+		UseReflinks:              i.UseReflinks,
+		FallbackToRegularMode:    i.FallbackToRegularMode,
+	})
+}
+
+func (i *Instance) UnmarshalJSON(data []byte) error {
+	var temp struct {
+		ID                       int        `json:"id"`
+		Name                     string     `json:"name"`
+		Host                     string     `json:"host"`
+		Username                 string     `json:"username"`
+		Password                 string     `json:"password,omitempty"`
+		APIKey                   string     `json:"apiKey,omitempty"`
+		BasicUsername            *string    `json:"basic_username,omitempty"`
+		BasicPassword            string     `json:"basic_password,omitempty"`
+		TLSSkipVerify            *bool      `json:"tlsSkipVerify,omitempty"`
+		IsActive                 bool       `json:"isActive"`
+		HasLocalFilesystemAccess *bool      `json:"hasLocalFilesystemAccess,omitempty"`
+		UseHardlinks             *bool      `json:"useHardlinks,omitempty"`
+		HardlinkBaseDir          *string    `json:"hardlinkBaseDir,omitempty"`
+		HardlinkDirPreset        *string    `json:"hardlinkDirPreset,omitempty"`
+		UseReflinks              *bool      `json:"useReflinks,omitempty"`
+		FallbackToRegularMode    *bool      `json:"fallbackToRegularMode,omitempty"`
+		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
+		CreatedAt                time.Time  `json:"created_at"`
+		UpdatedAt                time.Time  `json:"updated_at"`
+		SortOrder                *int       `json:"sortOrder,omitempty"`
+	}
+
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	i.ID = temp.ID
+	i.Name = temp.Name
+	i.Host = temp.Host
+	i.Username = temp.Username
+	i.BasicUsername = temp.BasicUsername
+
+	if temp.TLSSkipVerify != nil {
+		i.TLSSkipVerify = *temp.TLSSkipVerify
+	}
+
+	if temp.SortOrder != nil {
+		i.SortOrder = *temp.SortOrder
+	}
+
+	i.IsActive = temp.IsActive
+
+	if temp.HasLocalFilesystemAccess != nil {
+		i.HasLocalFilesystemAccess = *temp.HasLocalFilesystemAccess
+	}
+
+	if temp.UseHardlinks != nil {
+		i.UseHardlinks = *temp.UseHardlinks
+	}
+	if temp.HardlinkBaseDir != nil {
+		i.HardlinkBaseDir = *temp.HardlinkBaseDir
+	}
+	if temp.HardlinkDirPreset != nil {
+		i.HardlinkDirPreset = *temp.HardlinkDirPreset
+	}
+	if temp.UseReflinks != nil {
+		i.UseReflinks = *temp.UseReflinks
+	}
+	if temp.FallbackToRegularMode != nil {
+		i.FallbackToRegularMode = *temp.FallbackToRegularMode
+	}
+
+	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
+		i.PasswordEncrypted = temp.Password
+	}
+
+	if temp.APIKey != "" && !domain.IsRedactedString(temp.APIKey) {
+		i.APIKeyEncrypted = temp.APIKey
+	}
+
+	if temp.BasicPassword != "" && !domain.IsRedactedString(temp.BasicPassword) {
+		i.BasicPasswordEncrypted = &temp.BasicPassword
+	}
+
+	return nil
+}
+
+type InstanceStore struct {
+	db     dbinterface.Querier
+	cipher *CredentialCipher
+}
+
+func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte, opts ...CredentialCipherOption) (*InstanceStore, error) {
+	credentialCipher, err := NewCredentialCipher(encryptionKey, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &InstanceStore{db: db, cipher: credentialCipher}, nil
+}
+
+func (s *InstanceStore) encrypt(plaintext string) (string, error) {
+	return s.cipher.Encrypt(plaintext, nil)
+}
+
+func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
+	return s.cipher.Decrypt(ciphertext, nil)
+}
+
+func (s *InstanceStore) RewriteLegacyCredentials(ctx context.Context) (int, error) {
+	return s.cipher.rewriteLegacyRows(ctx, s.db, legacyCredentialTable{
+		table: "instances",
+		columns: []string{
+			"password_encrypted",
+			"api_key_encrypted",
+			"basic_password_encrypted",
+		},
+	})
+}
+
+func validateAndNormalizeHost(rawHost string) (string, error) {
+	rawHost = strings.TrimSpace(rawHost)
+
+	if rawHost == "" {
+		return "", errors.New("host cannot be empty")
+	}
+
+	if !strings.Contains(rawHost, "://") {
+		rawHost = "http://" + rawHost
+	}
+
+	u, err := url.Parse(rawHost)
+	if err != nil {
+		return "", fmt.Errorf("invalid URL format: %w", err)
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("unsupported scheme %q: must be http or https", u.Scheme)
+	}
+
+	if u.Host == "" {
+		return "", errors.New("URL must include a host")
+	}
+
+	return u.String(), nil
+}
+
+func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool, apiKey ...string) (*Instance, error) {
+	if len(apiKey) > 0 {
+		apiKey = apiKey[:1]
+	} else {
+		apiKey = []string{""}
+	}
+	normalizedHost, err := validateAndNormalizeHost(rawHost)
+	if err != nil {
+		return nil, err
+	}
+
+	if apiKey[0] != "" {
+		username = ""
+		password = ""
+	}
+
+	if username == "" {
+		password = ""
+	}
+
+	encryptedPassword, err := s.encrypt(password)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt password: %w", err)
+	}
+
+	encryptedAPIKey := ""
+	if apiKey[0] != "" {
+		encryptedAPIKey, err = s.encrypt(apiKey[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+		}
+	}
+
+	var encryptedBasicPassword *string
+	if basicPassword != nil && *basicPassword != "" {
+		encrypted, err := s.encrypt(*basicPassword)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+		}
+		encryptedBasicPassword = &encrypted
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	nameID := allIDs[0].Int64
+	hostID := allIDs[1].Int64
+
+	var usernameID int64
+	if allIDs[2].Valid {
+		usernameID = allIDs[2].Int64
+	} else {
+		usernameID, err = dbinterface.InternEmptyString(ctx, tx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to intern empty username: %w", err)
+		}
+	}
+
+	var instanceID int
+	var passwordEncrypted sql.NullString
+	var basicPasswordEncrypted sql.NullString
+	var tlsSkipVerifyResult int
+	var hasLocalFilesystemAccessResult int
+	var sortOrder int
+	var isActive int
+
+	localAccess := false
+	if hasLocalFilesystemAccess != nil {
+		localAccess = *hasLocalFilesystemAccess
+	}
+
+	err = tx.QueryRowContext(ctx, `
+		WITH next_sort AS (
+			SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM instances
+		)
+		INSERT INTO instances (
+			name_id,
+			host_id,
+			username_id,
+			password_encrypted,
+			api_key_encrypted,
+			basic_username_id,
+			basic_password_encrypted,
+			tls_skip_verify,
+			has_local_filesystem_access,
+			sort_order
+		)
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
+		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access
+		`,
+		nameID,
+		hostID,
+		usernameID,
+		encryptedPassword,
+		encryptedAPIKey,
+		allIDs[3],
+		encryptedBasicPassword,
+		BoolToSQLite(tlsSkipVerify),
+		BoolToSQLite(localAccess),
+	).Scan(
+		&instanceID,
+		&passwordEncrypted,
+		&basicPasswordEncrypted,
+		&tlsSkipVerifyResult,
+		&sortOrder,
+		&isActive,
+		&hasLocalFilesystemAccessResult,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	instance := &Instance{
+		ID:                       instanceID,
+		Name:                     name,
+		Host:                     normalizedHost,
+		Username:                 username,
+		PasswordEncrypted:        passwordEncrypted.String,
+		APIKeyEncrypted:          encryptedAPIKey,
+		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerifyResult),
+		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccessResult),
+		SortOrder:                sortOrder,
+		IsActive:                 SQLiteIntToBool(isActive),
+	}
+
+	if basicUsername != nil {
+		instance.BasicUsername = basicUsername
+	}
+	if basicPasswordEncrypted.Valid {
+		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return instance, nil
+}
+
+const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_key_encrypted, ssh_host_key_encrypted, ssh_tier, ssh_hardlink, public_peer_address`
+
+func scanInstance(scan func(dest ...any) error) (*Instance, error) {
+	var instanceID int
+	var name, host, username, passwordEncrypted, apiKeyEncrypted string
+	var basicUsername, basicPasswordEncrypted sql.NullString
+	var tlsSkipVerify, sortOrder, isActive, hasLocalFilesystemAccess int
+	var useHardlinks int
+	var hardlinkBaseDir, hardlinkDirPreset string
+	var useReflinks, fallbackToRegularMode int
+	var sshHost, sshUsername string
+	var sshPort int
+	var sshKeyEncrypted, sshHostKeyEncrypted, sshTier string
+	var sshHardlink sql.NullBool
+	var publicPeerAddress string
+
+	err := scan(
+		&instanceID, &name, &host, &username,
+		&passwordEncrypted, &apiKeyEncrypted,
+		&basicUsername, &basicPasswordEncrypted,
+		&tlsSkipVerify, &sortOrder, &isActive,
+		&hasLocalFilesystemAccess,
+		&useHardlinks, &hardlinkBaseDir, &hardlinkDirPreset,
+		&useReflinks, &fallbackToRegularMode,
+		&sshHost, &sshPort, &sshUsername,
+		&sshKeyEncrypted, &sshHostKeyEncrypted, &sshTier, &sshHardlink,
+		&publicPeerAddress,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	instance := &Instance{
+		ID:                       instanceID,
+		Name:                     name,
+		Host:                     host,
+		Username:                 username,
+		PasswordEncrypted:        passwordEncrypted,
+		APIKeyEncrypted:          apiKeyEncrypted,
+		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
+		SortOrder:                sortOrder,
+		IsActive:                 SQLiteIntToBool(isActive),
+		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccess),
+		UseHardlinks:             SQLiteIntToBool(useHardlinks),
+		HardlinkBaseDir:          hardlinkBaseDir,
+		HardlinkDirPreset:        hardlinkDirPreset,
+		UseReflinks:              SQLiteIntToBool(useReflinks),
+		FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
+		SSHHost:                  sshHost,
+		SSHPort:                  sshPort,
+		SSHUsername:              sshUsername,
+		SSHKeyEncrypted:          sshKeyEncrypted,
+		SSHHostKeyEncrypted:      sshHostKeyEncrypted,
+		SSHTier:                  SSHTier(sshTier),
+		PublicPeerAddress:        publicPeerAddress,
+	}
+	if sshHardlink.Valid {
+		instance.SSHHardlink = &sshHardlink.Bool
+	}
+
+	if basicUsername.Valid {
+		instance.BasicUsername = &basicUsername.String
+	}
+	if basicPasswordEncrypted.Valid {
+		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+	}
+	return instance, nil
+}
+
+func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
+	query := `SELECT ` + instanceViewColumns + ` FROM instances_view WHERE id = ?`
+
+	instance, err := scanInstance(func(dest ...any) error {
+		return s.db.QueryRowContext(ctx, query, id).Scan(dest...)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrInstanceNotFound
+		}
+		return nil, err
+	}
+
+	return instance, nil
+}
+
+func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
+	orderByName := "name COLLATE NOCASE"
+	if dbinterface.DialectOf(s.db) == "postgres" {
+		orderByName = "LOWER(name)"
+	}
+
+	query := fmt.Sprintf(`SELECT %s FROM instances_view ORDER BY sort_order ASC, %s ASC, id ASC`, instanceViewColumns, orderByName)
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var instances []*Instance
+	for rows.Next() {
+		instance, err := scanInstance(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		instances = append(instances, instance)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return instances, nil
+}
+
+type InstanceUpdateParams struct {
+	TLSSkipVerify            *bool
+	HasLocalFilesystemAccess *bool
+	UseHardlinks             *bool
+	HardlinkBaseDir          *string
+	HardlinkDirPreset        *string
+	UseReflinks              *bool
+	FallbackToRegularMode    *bool
+	PublicPeerAddress        *string
+}
+
+func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams, apiKey ...*string) (*Instance, error) {
+	var apiKeyUpdate *string
+	if len(apiKey) > 0 {
+		apiKeyUpdate = apiKey[0]
+	}
+	normalizedHost, err := validateAndNormalizeHost(rawHost)
+	if err != nil {
+		return nil, err
+	}
+
+	if apiKeyUpdate != nil && *apiKeyUpdate != "" {
+		username = ""
+		password = ""
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q, err := startInstanceUpdate(ctx, tx, name, normalizedHost, username, basicUsername)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.setSecrets(q, username, password, apiKeyUpdate, basicPassword); err != nil {
+		return nil, err
+	}
+
+	params.setColumns(q)
+
+	q.query += " WHERE id = ?"
+	q.args = append(q.args, id)
+
+	result, err := tx.ExecContext(ctx, q.query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	if rows == 0 {
+		return nil, ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return s.Get(ctx, id)
+}
+
+type instanceUpdateQuery struct {
+	query string
+	args  []any
+}
+
+func (q *instanceUpdateQuery) set(column string, value any) {
+	q.query += ", " + column + " = ?"
+	q.args = append(q.args, value)
+}
+
+func startInstanceUpdate(ctx context.Context, tx dbinterface.TxQuerier, name, normalizedHost, username string, basicUsername *string) (*instanceUpdateQuery, error) {
+	var basicUsernameToIntern *string
+	if basicUsername != nil && *basicUsername != "" {
+		basicUsernameToIntern = basicUsername
+	}
+
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsernameToIntern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intern strings: %w", err)
+	}
+
+	nameID := allIDs[0].Int64
+	hostID := allIDs[1].Int64
+
+	var usernameID int64
+	if allIDs[2].Valid {
+		usernameID = allIDs[2].Int64
+	} else {
+		usernameID, err = dbinterface.InternEmptyString(ctx, tx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to intern empty username: %w", err)
+		}
+	}
+
+	q := &instanceUpdateQuery{
+		query: "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?",
+		args:  []any{nameID, hostID, usernameID},
+	}
+
+	if basicUsername != nil {
+		if *basicUsername == "" {
+			q.query += ", basic_username_id = NULL"
+		} else {
+			q.set("basic_username_id", allIDs[3])
+		}
+	}
+
+	return q, nil
+}
+
+func (s *InstanceStore) setSecrets(q *instanceUpdateQuery, username, password string, apiKeyUpdate, basicPassword *string) error {
+	passwordToStore := password
+	if username == "" {
+		passwordToStore = ""
+	}
+	if passwordToStore != "" || username == "" {
+		encryptedPassword, err := s.encrypt(passwordToStore)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt password: %w", err)
+		}
+		q.set("password_encrypted", encryptedPassword)
+	}
+
+	if apiKeyUpdate != nil {
+		encryptedAPIKey := ""
+		if *apiKeyUpdate != "" {
+			var err error
+			encryptedAPIKey, err = s.encrypt(*apiKeyUpdate)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt api key: %w", err)
+			}
+		}
+		q.set("api_key_encrypted", encryptedAPIKey)
+	}
+
+	if basicPassword != nil {
+		if *basicPassword == "" {
+			q.query += ", basic_password_encrypted = NULL"
+		} else {
+			encryptedBasicPassword, err := s.encrypt(*basicPassword)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt basic auth password: %w", err)
+			}
+			q.set("basic_password_encrypted", encryptedBasicPassword)
+		}
+	}
+
+	return nil
+}
+
+func (params *InstanceUpdateParams) setColumns(q *instanceUpdateQuery) {
+	if params == nil {
+		return
+	}
+	if params.TLSSkipVerify != nil {
+		q.set("tls_skip_verify", BoolToSQLite(*params.TLSSkipVerify))
+	}
+	if params.HasLocalFilesystemAccess != nil {
+		q.set("has_local_filesystem_access", BoolToSQLite(*params.HasLocalFilesystemAccess))
+	}
+	if params.UseHardlinks != nil {
+		q.set("use_hardlinks", BoolToSQLite(*params.UseHardlinks))
+	}
+	if params.HardlinkBaseDir != nil {
+		q.set("hardlink_base_dir", *params.HardlinkBaseDir)
+	}
+	if params.HardlinkDirPreset != nil {
+		q.set("hardlink_dir_preset", *params.HardlinkDirPreset)
+	}
+	if params.UseReflinks != nil {
+		q.set("use_reflinks", BoolToSQLite(*params.UseReflinks))
+	}
+	if params.FallbackToRegularMode != nil {
+		q.set("fallback_to_regular_mode", BoolToSQLite(*params.FallbackToRegularMode))
+	}
+	if params.PublicPeerAddress != nil {
+		q.set("public_peer_address", *params.PublicPeerAddress)
+	}
+}
+
+func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool) (*Instance, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, BoolToSQLite(active), id)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	if rows == 0 {
+		return nil, ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return s.Get(ctx, id)
+}
+
+func (s *InstanceStore) UpdateOrder(ctx context.Context, instanceIDs []int) error {
+	if len(instanceIDs) == 0 {
+		return errors.New("instance ids cannot be empty")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var totalInstances int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM instances").Scan(&totalInstances); err != nil {
+		return fmt.Errorf("failed to validate instance list: %w", err)
+	}
+	if len(instanceIDs) != totalInstances {
+		return fmt.Errorf("partial reordering not allowed: expected %d instances, got %d", totalInstances, len(instanceIDs))
+	}
+
+	seen := make(map[int]struct{}, len(instanceIDs))
+	updateQuery := `UPDATE instances SET sort_order = ? WHERE id = ?`
+	for order, id := range instanceIDs {
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("duplicate instance id %d in reorder payload", id)
+		}
+		seen[id] = struct{}{}
+
+		result, err := tx.ExecContext(ctx, updateQuery, order, id)
+		if err != nil {
+			return err
+		}
+
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if rows != 1 {
+			return ErrInstanceNotFound
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *InstanceStore) Delete(ctx context.Context, id int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	query := `DELETE FROM instances WHERE id = ?`
+
+	result, err := tx.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *InstanceStore) GetDecryptedPassword(instance *Instance) (string, error) {
+	return s.decrypt(instance.PasswordEncrypted)
+}
+
+func (s *InstanceStore) GetDecryptedAPIKey(instance *Instance) (string, error) {
+	if instance.APIKeyEncrypted == "" {
+		return "", nil
+	}
+
+	return s.decrypt(instance.APIKeyEncrypted)
+}
+
+func (s *InstanceStore) GetDecryptedBasicPassword(instance *Instance) (*string, error) {
+	if instance.BasicPasswordEncrypted == nil {
+		return nil, nil
+	}
+	decrypted, err := s.decrypt(*instance.BasicPasswordEncrypted)
+	if err != nil {
+		return nil, err
+	}
+	return &decrypted, nil
+}

@@ -1,0 +1,746 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/stringutils"
+)
+
+func manualMatchTestService(instance *models.Instance, torrents []qbt.Torrent, files map[string]qbt.TorrentFiles) *Service {
+	svc := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager:      &applyFakeSyncManager{newFakeSyncManager(instance, torrents, files)},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	svc.settler = idleSettler(svc.syncManager)
+	return svc
+}
+
+func TestManualMatchPackProposalLimit(t *testing.T) {
+	for _, count := range []int{14, manualMatchCoarseLimit + 1} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			const packName = "Cedar.Harbor.S01.1080p.WEB.x264-PINE"
+			names := make([]string, 0, count)
+			for i := 1; i <= count; i++ {
+				names = append(names, fmt.Sprintf("Cedar.Harbor.S01E%02d.1080p.WEB.x264-PINE.mkv", i))
+			}
+			data := createTestTorrent(t, packName, names, 256*1024)
+			meta, err := ParseTorrentMetadataWithInfo(data)
+			require.NoError(t, err)
+			torrents := make([]qbt.Torrent, 0, len(meta.Files))
+			files := make(map[string]qbt.TorrentFiles)
+			for i, file := range meta.Files {
+				hash := fmt.Sprintf("episode-%d", i)
+				torrents = append(torrents, qbt.Torrent{Hash: hash, Name: names[i], Progress: 1, Size: file.Size})
+				files[hash] = qbt.TorrentFiles{{Name: names[i], Size: file.Size}}
+			}
+			svc := manualMatchTestService(&models.Instance{ID: 1, Name: "local"}, torrents, files)
+			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, "")
+			require.NoError(t, err)
+			require.True(t, resp.PackMode)
+			require.Equal(t, count, resp.PackEpisodeCount)
+			require.Len(t, resp.Proposals, min(count, manualMatchCoarseLimit))
+			require.Equal(t, count > manualMatchCoarseLimit, resp.ProposalsTruncated)
+			require.Equal(t, "no_filesystem_access", resp.AssemblyUnavailableReason)
+		})
+	}
+}
+
+func TestManualMatchSeasonNumeralPackMode(t *testing.T) {
+	tests := []struct {
+		name         string
+		torrentName  string
+		files        []string
+		wantPackMode bool
+	}{
+		{
+			name:         "numeral pack",
+			torrentName:  "[PINE] Cedar Harbor II [BD 1080p]",
+			files:        []string{"[PINE] Cedar Harbor II - 01 [BD 1080p].mkv", "[PINE] Cedar Harbor II - 02 [BD 1080p].mkv"},
+			wantPackMode: true,
+		},
+		{
+			name:         "movie sequel",
+			torrentName:  "Cedar Harbor II 1080p BluRay x264-PINE",
+			files:        []string{"Cedar.Harbor.II.1080p.BluRay.x264-PINE.mkv"},
+			wantPackMode: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := createTestTorrent(t, tt.torrentName, tt.files, 256*1024)
+			svc := manualMatchTestService(&models.Instance{ID: 1, Name: "local"}, nil, nil)
+			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, "")
+			require.NoError(t, err)
+			require.Equal(t, tt.wantPackMode, resp.PackMode)
+		})
+	}
+}
+
+func TestFindCandidatesManualTarget(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		targetHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	target := qbt.Torrent{Hash: targetHash, Name: "Totally.Different.Show.S01.1080p.WEB-DL.x264-AAA", Progress: 1}
+
+	t.Run("pinned target bypasses release matching", func(t *testing.T) {
+		svc := manualMatchTestService(instance, []qbt.Torrent{target}, nil)
+		resp, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+			TorrentName:       "Unrelated.Concert.2024.720p.WEB.x265-BBB",
+			TargetInstanceIDs: []int{instanceID},
+			ManualTargetHash:  targetHash,
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Candidates, 1)
+		require.Equal(t, "manual", resp.Candidates[0].MatchType)
+		require.Len(t, resp.Candidates[0].Torrents, 1)
+		require.Equal(t, targetHash, resp.Candidates[0].Torrents[0].Hash)
+	})
+
+	t.Run("unknown hash errors", func(t *testing.T) {
+		svc := manualMatchTestService(instance, []qbt.Torrent{target}, nil)
+		_, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+			TorrentName:       "Whatever.2024.1080p.WEB.x264-GRP",
+			TargetInstanceIDs: []int{instanceID},
+			ManualTargetHash:  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		})
+		require.ErrorContains(t, err, "not found")
+	})
+
+	t.Run("incomplete target errors", func(t *testing.T) {
+		incomplete := target
+		incomplete.Progress = 0.5
+		svc := manualMatchTestService(instance, []qbt.Torrent{incomplete}, nil)
+		_, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+			TorrentName:       "Whatever.2024.1080p.WEB.x264-GRP",
+			TargetInstanceIDs: []int{instanceID},
+			ManualTargetHash:  targetHash,
+		})
+		require.ErrorContains(t, err, "complete")
+	})
+
+	t.Run("requires exactly one instance", func(t *testing.T) {
+		svc := manualMatchTestService(instance, []qbt.Torrent{target}, nil)
+		_, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+			TorrentName:      "Whatever.2024.1080p.WEB.x264-GRP",
+			ManualTargetHash: targetHash,
+		})
+		require.ErrorContains(t, err, "instance")
+	})
+}
+
+func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID   = 1
+		targetHash   = "cccccccccccccccccccccccccccccccccccccccc"
+		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	target := qbt.Torrent{Hash: targetHash, Name: "Renamed by user long ago", SavePath: "/downloads", Progress: 1, Size: size}
+	svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
+		targetHash: {{Name: incomingName + "/" + fileName, Size: size}},
+	})
+
+	auto, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
+		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
+		TargetInstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.False(t, auto.Success)
+
+	withAdder(svc)
+	resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
+		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
+		TargetInstanceIDs: []int{instanceID},
+		ManualTargetHash:  targetHash,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Success, "manual match rejected: %+v", resp.Results)
+	require.Len(t, resp.Results, 1)
+	require.Equal(t, "added", resp.Results[0].Status)
+	require.NotNil(t, resp.Results[0].MatchedTorrent)
+	require.Equal(t, targetHash, resp.Results[0].MatchedTorrent.Hash)
+}
+
+func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID   = 1
+		targetHash   = "dddddddddddddddddddddddddddddddddddddddd"
+		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+	)
+
+	tests := []struct {
+		name         string
+		useHardlinks bool
+	}{
+		{name: "regular instance"},
+		{name: "hardlink instance skips link mode", useHardlinks: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			torrentBytes := createNamedFileTestTorrent(t, incomingName, incomingName+".mkv", 4<<20)
+
+			instance := &models.Instance{ID: instanceID, Name: "main", UseHardlinks: tt.useHardlinks}
+			target := qbt.Torrent{Hash: targetHash, Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
+			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
+				targetHash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
+			})
+
+			withAdder(svc)
+			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
+				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
+				TargetInstanceIDs: []int{instanceID},
+				ManualTargetHash:  targetHash,
+			})
+			require.NoError(t, err)
+			require.True(t, resp.Success, "zero-overlap manual match rejected: %+v", resp.Results)
+			require.Len(t, resp.Results, 1)
+			require.Equal(t, "added", resp.Results[0].Status)
+		})
+	}
+}
+
+type recordingApplySyncManager struct {
+	*applyFakeSyncManager
+	addOptions  []map[string]string
+	bulkActions []string
+}
+
+func (r *recordingApplySyncManager) AddTorrent(ctx context.Context, instanceID int, data []byte, opts map[string]string) (*qbt.TorrentAddResponse, error) {
+	r.addOptions = append(r.addOptions, opts)
+	return r.applyFakeSyncManager.AddTorrent(ctx, instanceID, data, opts)
+}
+
+func (r *recordingApplySyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+	r.bulkActions = append(r.bulkActions, action)
+	return r.applyFakeSyncManager.BulkAction(ctx, instanceID, hashes, action)
+}
+
+func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID   = 1
+		targetHash   = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	target := qbt.Torrent{Hash: targetHash, Name: incomingName, SavePath: "/downloads", Progress: 1, Size: size}
+	recorder := &recordingApplySyncManager{
+		applyFakeSyncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
+			targetHash: {{Name: incomingName + "/" + fileName, Size: size}},
+		})},
+	}
+	svc := manualMatchTestService(instance, nil, nil)
+	svc.syncManager = recorder
+	svc.settler = idleSettler(recorder)
+
+	startPaused := false
+	withAdder(svc)
+	resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
+		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
+		TargetInstanceIDs: []int{instanceID},
+		ManualTargetHash:  targetHash,
+		StartPaused:       &startPaused,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Success, "manual match rejected: %+v", resp.Results)
+	require.Len(t, recorder.addOptions, 1)
+	require.Contains(t, recorder.bulkActions, "recheck", "manual match must always recheck")
+}
+
+func TestManualMatchProposals(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	incomingName := "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-FoV"
+	torrentBytes := createTestTorrent(t, incomingName, []string{
+		"Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv",
+		"Azure.Compass.S01E02.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv",
+	}, 256*1024)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	require.NoError(t, err)
+
+	require.Len(t, meta.Files, 2)
+	fileSizes := []int64{meta.Files[0].Size, meta.Files[1].Size}
+
+	fullOverlap := qbt.Torrent{Hash: "1111111111111111111111111111111111111111", Name: "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI", SavePath: "/downloads", Category: "tv", Progress: 1, Size: meta.Info.TotalLength()}
+	partialOverlap := qbt.Torrent{Hash: "2222222222222222222222222222222222222222", Name: "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI", SavePath: "/downloads", Progress: 1, Size: fileSizes[0]}
+	noOverlap := qbt.Torrent{Hash: "3333333333333333333333333333333333333333", Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 999_999}
+	incomplete := qbt.Torrent{Hash: "4444444444444444444444444444444444444444", Name: "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-AAA", SavePath: "/downloads", Progress: 0.4, Size: meta.Info.TotalLength()}
+	moving := qbt.Torrent{Hash: "5555555555555555555555555555555555555555", Name: "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-BBB", SavePath: "/downloads", Progress: 1, State: qbt.TorrentStateMoving, Size: meta.Info.TotalLength()}
+
+	files := map[string]qbt.TorrentFiles{
+		fullOverlap.Hash: {
+			{Name: "pack/E01.mkv", Size: fileSizes[0]},
+			{Name: "pack/E02.mkv", Size: fileSizes[1]},
+		},
+		partialOverlap.Hash: {{Name: "E01.mkv", Size: fileSizes[0]}},
+		noOverlap.Hash:      {{Name: "other.mkv", Size: 999_999}},
+		moving.Hash: {
+			{Name: "pack/E01.mkv", Size: fileSizes[0]},
+			{Name: "pack/E02.mkv", Size: fileSizes[1]},
+		},
+	}
+
+	svc := manualMatchTestService(instance, []qbt.Torrent{fullOverlap, partialOverlap, noOverlap, incomplete, moving}, files)
+
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, "")
+	require.NoError(t, err)
+	require.Equal(t, meta.Name, resp.SourceName)
+	require.Equal(t, []string{"cross-seed"}, resp.DefaultTags, "the cross-seed tag is the default, matching the search dialog")
+	require.NotEmpty(t, resp.Proposals)
+	require.Equal(t, fullOverlap.Hash, resp.Proposals[0].Hash)
+	require.Equal(t, meta.Info.TotalLength(), resp.Proposals[0].OverlapBytes)
+	require.InDelta(t, 1.0, resp.Proposals[0].OverlapFraction, 0.001)
+	for _, p := range resp.Proposals {
+		require.NotEqual(t, incomplete.Hash, p.Hash, "incomplete torrents are not proposable")
+		require.NotEqual(t, moving.Hash, p.Hash, "moving torrents are not proposable")
+		require.NotEqual(t, noOverlap.Hash, p.Hash, "zero-overlap torrents are not proposed")
+	}
+	require.Equal(t, "/downloads", resp.Proposals[0].EffectiveSavePath)
+	require.Equal(t, "tv", resp.Proposals[0].Category)
+
+	resp, err = svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, noOverlap.Hash)
+	require.NoError(t, err)
+	found := false
+	for _, p := range resp.Proposals {
+		if p.Hash == noOverlap.Hash {
+			found = true
+			require.Zero(t, p.OverlapBytes)
+		}
+	}
+	require.True(t, found, "requested target must be included")
+}
+
+func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	root := t.TempDir()
+	downloads, links := filepath.Join(root, "downloads"), filepath.Join(root, "links")
+	instance := &models.Instance{ID: instanceID, Name: "main", HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: links}
+
+	const (
+		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+	require.NoError(t, os.MkdirAll(filepath.Join(downloads, incomingName), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloads, incomingName, fileName), make([]byte, size), 0o600))
+
+	validated := qbt.Torrent{Hash: "6666666666666666666666666666666666666666", Name: incomingName, SavePath: downloads, Progress: 1, Size: size}
+	zeroOverlap := qbt.Torrent{Hash: "7777777777777777777777777777777777777777", Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
+	svc := manualMatchTestService(instance, []qbt.Torrent{validated, zeroOverlap}, map[string]qbt.TorrentFiles{
+		validated.Hash:   {{Name: incomingName + "/" + fileName, Size: size}},
+		zeroOverlap.Hash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
+	})
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, zeroOverlap.Hash)
+	require.NoError(t, err)
+	byHash := make(map[string]ManualMatchProposal, len(resp.Proposals))
+	for _, p := range resp.Proposals {
+		byHash[p.Hash] = p
+	}
+	require.Contains(t, byHash, validated.Hash)
+	require.Contains(t, byHash, zeroOverlap.Hash)
+	require.Equal(t, links, byHash[validated.Hash].EffectiveSavePath, "validated pick previews the link destination")
+	require.Equal(t, "/downloads", byHash[zeroOverlap.Hash].EffectiveSavePath,
+		"zero-overlap pick previews the target save path (regular add)")
+}
+
+func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	incomingName := "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-FoV"
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, incomingName+".mkv", 4<<20)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	require.NoError(t, err)
+	sourceTotal := meta.Info.TotalLength()
+
+	requested := qbt.Torrent{
+		Hash:     "5555555555555555555555555555555555555555",
+		Name:     "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI",
+		SavePath: "/downloads",
+		Progress: 1,
+		Size:     1,
+	}
+	torrents := make([]qbt.Torrent, 0, manualMatchCoarseLimit+11)
+	torrents = append(torrents, requested)
+	for i := range manualMatchCoarseLimit + 10 {
+		torrents = append(torrents, qbt.Torrent{
+			Hash:     fmt.Sprintf("%040x", i+1),
+			Name:     fmt.Sprintf("Azure.Compass.S01E%02d.1080p.WEB-DL.AAC2.0.H.264-KIRI", i+1),
+			SavePath: "/downloads",
+			Progress: 1,
+			Size:     sourceTotal,
+		})
+	}
+
+	svc := manualMatchTestService(instance, torrents, nil)
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, requested.Hash)
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(resp.Proposals, func(p ManualMatchProposal) bool {
+		return p.Hash == requested.Hash
+	}), "requested target must be included even when title keeps fill the coarse pass")
+}
+
+func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	const (
+		incomingName = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+
+	rootless := qbt.Torrent{
+		Hash:        "8888888888888888888888888888888888888888",
+		Name:        incomingName,
+		SavePath:    "/downloads",
+		ContentPath: "/downloads/movies/" + fileName,
+		Progress:    1,
+		Size:        size,
+	}
+	svc := manualMatchTestService(instance, []qbt.Torrent{rootless}, map[string]qbt.TorrentFiles{
+		rootless.Hash: {{Name: fileName, Size: size}},
+	})
+
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, rootless.Hash)
+	require.NoError(t, err)
+	require.Len(t, resp.Proposals, 1)
+	require.Equal(t, "/downloads/movies", resp.Proposals[0].EffectiveSavePath,
+		"rootless target previews its content dir, not its save path")
+}
+
+func TestManualMatchProposalsPinnedCategory(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		settings *models.CrossSeedAutomationSettings
+		want     string
+	}{
+		{
+			name:     "custom category in use pins the dialog",
+			settings: &models.CrossSeedAutomationSettings{UseCustomCategory: true, CustomCategory: "xseed"},
+			want:     "xseed",
+		},
+		{
+			name:     "custom category set but switched off leaves the pick free",
+			settings: &models.CrossSeedAutomationSettings{UseCustomCategory: false, CustomCategory: "xseed"},
+			want:     "",
+		},
+	}
+
+	const (
+		instanceID   = 1
+		incomingName = "Cobalt.Harbour.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Cobalt.Harbour.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+	target := qbt.Torrent{Hash: "9999999999999999999999999999999999999999", Name: incomingName, SavePath: "/downloads", Progress: 1, Size: size}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := manualMatchTestService(&models.Instance{ID: instanceID, Name: "main"}, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
+				target.Hash: {{Name: incomingName + "/" + fileName, Size: size}},
+			})
+			svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				return tt.settings, nil
+			}
+
+			resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, target.Hash)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, resp.PinnedCategory)
+		})
+	}
+}
+
+func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		targetHash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+		name       = "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
+		size       = int64(4 << 20)
+	)
+	tests := []struct {
+		name     string
+		state    qbt.TorrentState
+		progress float64
+		want     error
+	}{
+		{"moving", qbt.TorrentStateMoving, 1, ErrSourceNotSettled},
+		{"checked below 100%", qbt.TorrentStateCheckingUp, 0.4, ErrSourceNotSettled},
+		{"errored", qbt.TorrentStateError, 1, ErrSourceErrored},
+		{"missing files below 100%", qbt.TorrentStateMissingFiles, 0.4, ErrSourceErrored},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			target := qbt.Torrent{
+				Hash: targetHash, Name: name, Size: size, Progress: tt.progress, State: tt.state,
+				SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + name + ".mkv",
+			}
+			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{targetHash: {{Name: name + ".mkv", Size: size}}})
+			sync := &recordingApplySyncManager{applyFakeSyncManager: svc.syncManager.(*applyFakeSyncManager)}
+			svc.syncManager = sync
+			withAdder(svc)
+
+			_, err := svc.CrossSeed(t.Context(), &CrossSeedRequest{
+				TorrentData:       base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, name, name+".mkv", size)),
+				TargetInstanceIDs: []int{instanceID},
+				ManualTargetHash:  targetHash,
+			})
+			require.EqualError(t, err, tt.want.Error())
+			require.Empty(t, sync.addOptions)
+		})
+	}
+}
+
+func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
+	const name = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+	tests := []struct {
+		name  string
+		files []string
+	}{
+		{name: "root folder", files: []string{name + ".mkv", name + ".nfo"}},
+		{name: "rootless", files: []string{name + ".mkv"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			downloads := filepath.Join(root, "downloads")
+			linksParent := filepath.Join(root, "links")
+			torrentBytes := createTestTorrent(t, name, tt.files, 16384)
+			meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+			require.NoError(t, err)
+			for _, f := range meta.Files {
+				p := filepath.Join(downloads, filepath.FromSlash(f.Name))
+				require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+				require.NoError(t, os.WriteFile(p, make([]byte, f.Size), 0o600))
+			}
+
+			existingBase := filepath.Join(root, "existing")
+			require.NoError(t, os.Mkdir(existingBase, 0o755))
+			instance := &models.Instance{
+				ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
+				HardlinkBaseDir: filepath.Join(linksParent, "cross-seed") + "," + existingBase, HardlinkDirPreset: "by-tracker",
+			}
+			target := qbt.Torrent{Hash: "9999999999999999999999999999999999999999", Name: name, SavePath: downloads, Progress: 1, Size: meta.Info.TotalLength()}
+			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{target.Hash: meta.Files})
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+
+			resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, target.Hash)
+			require.NoError(t, err)
+			require.Len(t, resp.Proposals, 1)
+			preview := resp.Proposals[0].EffectiveSavePath
+			require.NoDirExists(t, linksParent, "the preview writes nothing")
+
+			adds := withLinkAdder(svc)
+			result := svc.processHardlinkMode(t.Context(), linkCheck(instance.ID, meta.HashV1),
+				CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name},
+				torrentBytes, meta.HashV1, meta.Name, &CrossSeedRequest{},
+				&target, "exact", meta.Files, meta.Files, &qbt.TorrentProperties{SavePath: downloads}, "", "")
+			require.True(t, result.Success, "result: %+v", result)
+			require.Len(t, adds.added, 1)
+			require.Equal(t, adds.added[0]["savepath"], preview)
+		})
+	}
+}
+
+type diskTableBackend struct {
+	*slashBackend
+	disks map[string]string
+}
+
+func (b *diskTableBackend) disk(p string) string {
+	for prefix, disk := range b.disks {
+		if p == prefix || strings.HasPrefix(p, prefix+"/") {
+			return disk
+		}
+	}
+	return ""
+}
+
+func (b *diskTableBackend) SameFilesystem(_ context.Context, p1, p2 string) (bool, error) {
+	return b.disk(p1) != "" && b.disk(p1) == b.disk(p2), nil
+}
+
+func TestManualMatchPreviewKeepsTheDiskOfEachTarget(t *testing.T) {
+	t.Parallel()
+
+	const name = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+	torrentBytes := createTestTorrent(t, name, []string{name + ".mkv", name + ".nfo"}, 16384)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	require.NoError(t, err)
+
+	targets := []qbt.Torrent{
+		{Hash: "1111111111111111111111111111111111111111", SavePath: "/src/a"},
+		{Hash: "2222222222222222222222222222222222222222", SavePath: "/src/b"},
+		{Hash: "3333333333333333333333333333333333333333", SavePath: "/src/a"},
+	}
+	paths := make([]string, 0, 2+len(meta.Files)*len(targets))
+	paths = append(paths, "/links/one/x", "/links/two/x")
+	files := make(map[string]qbt.TorrentFiles, len(targets))
+	for i := range targets {
+		targets[i].Name, targets[i].Progress, targets[i].Size = name, 1, meta.Info.TotalLength()
+		files[targets[i].Hash] = meta.Files
+		for _, f := range meta.Files {
+			paths = append(paths, targets[i].SavePath+"/"+f.Name)
+		}
+	}
+	backend := &diskTableBackend{
+		slashBackend: newSlashBackend(nil, paths...),
+		disks:        map[string]string{"/src/a": "1", "/links/one": "1", "/src/b": "2", "/links/two": "2"},
+	}
+	instance := &models.Instance{
+		ID: 1, Name: "qbt1", HasLocalFilesystemAccess: true, UseHardlinks: true,
+		HardlinkBaseDir: "/links/two,/links/one", HardlinkDirPreset: "flat",
+	}
+	svc := manualMatchTestService(instance, targets, files)
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, backend))
+
+	resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, "")
+	require.NoError(t, err)
+	got := make(map[string]string, len(resp.Proposals))
+	for _, p := range resp.Proposals {
+		got[p.Hash] = p.EffectiveSavePath
+	}
+	require.Equal(t, map[string]string{
+		targets[0].Hash: "/links/one",
+		targets[1].Hash: "/links/two",
+		targets[2].Hash: "/links/one",
+	}, got)
+}
+
+type countingChecks struct {
+	fsops.Backend
+	sameCalls, statCalls int
+	sameErr, statErr     error
+}
+
+func (c *countingChecks) SameFilesystem(context.Context, string, string) (bool, error) {
+	c.sameCalls++
+	return true, c.sameErr
+}
+
+func (c *countingChecks) Stat(context.Context, string) (*fsops.LstatInfo, error) {
+	c.statCalls++
+	return nil, c.statErr
+}
+
+func (c *countingChecks) Paths() fsops.PathDialect { return fsops.SlashPaths }
+
+func TestCachedFilesystemChecks(t *testing.T) {
+	t.Parallel()
+
+	sameOn := func(files ...string) func(*testing.T, *cachedFilesystemChecks) {
+		return func(t *testing.T, checks *cachedFilesystemChecks) {
+			for _, file := range files {
+				_, _ = checks.SameFilesystem(t.Context(), file, "/links")
+			}
+		}
+	}
+	tests := []struct {
+		name               string
+		sameErr, statErr   error
+		ask                func(*testing.T, *cachedFilesystemChecks)
+		wantSame, wantStat int
+	}{
+		{name: "a file in a folder that was checked reuses the answer", ask: sameOn("/src/a/e1.mkv", "/src/a/e2.mkv", "/src/b/e1.mkv"), wantSame: 2},
+		{name: "a failed check is asked again", sameErr: fs.ErrNotExist, ask: sameOn("/src/a/e1.mkv", "/src/a/e1.mkv"), wantSame: 2},
+		{
+			name: "a folder known to be missing fails without a check", sameErr: fs.ErrNotExist, statErr: fs.ErrNotExist,
+			ask: func(t *testing.T, checks *cachedFilesystemChecks) {
+				_, err := checks.Stat(t.Context(), "/links")
+				require.ErrorIs(t, err, fs.ErrNotExist)
+				_, err = checks.SameFilesystem(t.Context(), "/src/a/e1.mkv", "/links")
+				require.ErrorIs(t, err, fs.ErrNotExist)
+			},
+			wantStat: 1,
+		},
+		{
+			name: "a missing folder is looked up once", statErr: fs.ErrNotExist,
+			ask: func(t *testing.T, checks *cachedFilesystemChecks) {
+				for range 2 {
+					_, err := checks.Stat(t.Context(), "/links")
+					require.ErrorIs(t, err, fs.ErrNotExist)
+				}
+			},
+			wantStat: 1,
+		},
+		{
+			name: "a lookup after a lost connection is asked again", statErr: fsops.ErrConnectionLost,
+			ask: func(t *testing.T, checks *cachedFilesystemChecks) {
+				for range 2 {
+					_, err := checks.Stat(t.Context(), "/links")
+					require.ErrorIs(t, err, fsops.ErrConnectionLost)
+				}
+			},
+			wantStat: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			inner := &countingChecks{sameErr: tt.sameErr, statErr: tt.statErr}
+			tt.ask(t, newCachedFilesystemChecks(inner))
+			require.Equal(t, tt.wantSame, inner.sameCalls, "same-filesystem checks")
+			require.Equal(t, tt.wantStat, inner.statCalls, "folder lookups")
+		})
+	}
+}

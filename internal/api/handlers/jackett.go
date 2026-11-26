@@ -1,0 +1,1014 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"cmp"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/redact"
+)
+
+const (
+	defaultRecentSearchLimit = 10
+	maxRecentSearchLimit     = 50
+
+	testStatusUpdateTimeout      = 5 * time.Second
+	defaultIndexerTestTimeout    = 30 * time.Second
+	nativeIndexerPacingAllowance = time.Minute
+)
+
+type IndexerResponse struct {
+	*models.TorznabIndexer
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+type JackettHandler struct {
+	service      *jackett.Service
+	indexerStore *models.TorznabIndexerStore
+}
+
+func NewJackettHandler(service *jackett.Service, indexerStore *models.TorznabIndexerStore) *JackettHandler {
+	return &JackettHandler{
+		service:      service,
+		indexerStore: indexerStore,
+	}
+}
+
+func (h *JackettHandler) Routes(r chi.Router) {
+	indexers := middleware.Permissions(models.AreaIndexers)
+
+	r.Route("/torznab", func(r chi.Router) {
+		r.Route("/indexers", func(r chi.Router) {
+			r.With(indexers.Read).Get("/", h.ListIndexers)
+			r.With(indexers.Write).Post("/", h.CreateIndexer)
+			r.With(indexers.Write).Post("/discover", h.DiscoverIndexers)
+			r.With(indexers.Read).Get("/health", h.GetAllHealth)
+			r.With(indexers.Read).Get("/tracker-domains", h.GetIndexerTrackerDomains)
+			r.With(indexers.Read).Get("/{indexerID}", h.GetIndexer)
+			r.With(indexers.Write).Put("/{indexerID}", h.UpdateIndexer)
+			r.With(indexers.Write).Delete("/{indexerID}", h.DeleteIndexer)
+			r.With(indexers.Write).Post("/{indexerID}/test", h.TestIndexer)
+			r.With(indexers.Write).Post("/{indexerID}/caps/sync", h.SyncIndexerCaps)
+			r.With(indexers.Read).Get("/{indexerID}/health", h.GetIndexerHealth)
+			r.With(indexers.Read).Get("/{indexerID}/errors", h.GetIndexerErrors)
+			r.With(indexers.Read).Get("/{indexerID}/stats", h.GetIndexerStats)
+		})
+
+		r.With(indexers.Read).Post("/cross-seed/search", h.CrossSeedSearch)
+
+		r.With(indexers.Read).Get("/search/recent", h.ListRecentSearches)
+		r.With(indexers.Read).Post("/search", h.Search)
+
+		r.Route("/search/cache", func(r chi.Router) {
+			r.With(indexers.Read).Get("/", h.GetSearchCacheStats)
+			r.With(indexers.Write).Put("/settings", h.UpdateSearchCacheSettings)
+		})
+
+		r.With(indexers.Read).Get("/search/history", h.GetSearchHistory)
+
+		r.With(indexers.Read).Get("/activity", h.GetActivityStatus)
+	})
+}
+
+func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request) {
+	var req jackett.TorznabSearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode cross-seed search request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0 ||
+		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
+
+	if req.Query == "" && !hasAdvancedParams {
+		RespondError(w, http.StatusBadRequest, "query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
+		return
+	}
+
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}
+	err := h.service.Search(r.Context(), &req)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett for cross-seeds")
+		if !respondRateLimitError(w, err, "Cross-seed search rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		}
+		return
+	}
+
+	var response *jackett.SearchResponse
+	select {
+	case response = <-respCh:
+	case err := <-errCh:
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett for cross-seeds")
+		if !respondRateLimitError(w, err, "Cross-seed search rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		}
+		return
+	case <-time.After(5 * time.Minute):
+		log.Error().
+			Str("query", req.Query).
+			Msg("Cross-seed search timed out")
+		RespondError(w, http.StatusInternalServerError, "Search timed out")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, searchResponseFor(r, response))
+}
+
+func respondRateLimitError(w http.ResponseWriter, err error, message string) bool {
+	var rateLimitErr *jackett.RateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		return false
+	}
+
+	retryAfter := time.Until(rateLimitErr.RetryAt)
+	seconds := int64(0)
+	if retryAfter > 0 {
+		seconds = int64(retryAfter / time.Second)
+		if retryAfter%time.Second != 0 {
+			seconds++
+		}
+	}
+	w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+	RespondError(w, http.StatusTooManyRequests, message)
+	return true
+}
+
+func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
+	var req jackett.TorznabSearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode search request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	hasAdvancedParams := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0 ||
+		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
+
+	if req.Query == "" && !hasAdvancedParams {
+		RespondError(w, http.StatusBadRequest, "query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
+		return
+	}
+
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}
+	err := h.service.SearchGeneric(r.Context(), &req)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett")
+		if !respondRateLimitError(w, err, "Search rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to search")
+		}
+		return
+	}
+
+	var response *jackett.SearchResponse
+	select {
+	case response = <-respCh:
+	case err := <-errCh:
+		log.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("Failed to search Jackett")
+		if !respondRateLimitError(w, err, "Search rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to search")
+		}
+		return
+	case <-time.After(5 * time.Minute):
+		log.Error().
+			Str("query", req.Query).
+			Msg("Search timed out")
+		RespondError(w, http.StatusInternalServerError, "Search timed out")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, searchResponseFor(r, response))
+}
+
+func (h *JackettHandler) ListRecentSearches(w http.ResponseWriter, r *http.Request) {
+	limit := defaultRecentSearchLimit
+	if limitParam := strings.TrimSpace(r.URL.Query().Get("limit")); limitParam != "" {
+		if parsed, err := strconv.Atoi(limitParam); err == nil {
+			switch {
+			case parsed <= 0:
+			case parsed > maxRecentSearchLimit:
+				limit = maxRecentSearchLimit
+			default:
+				limit = parsed
+			}
+		}
+	}
+
+	scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+	searches, err := h.service.GetRecentSearches(r.Context(), scope, limit)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load recent torznab searches")
+		RespondError(w, http.StatusInternalServerError, "Failed to load recent searches")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, searches)
+}
+
+func (h *JackettHandler) GetSearchCacheStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.service.GetSearchCacheStats(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load torznab search cache stats")
+		RespondError(w, http.StatusInternalServerError, "Failed to load cache stats")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, stats)
+}
+
+func (h *JackettHandler) UpdateSearchCacheSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TTLMinutes int `json:"ttlMinutes"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.TTLMinutes < jackett.MinSearchCacheTTLMinutes {
+		RespondError(w, http.StatusBadRequest, fmt.Sprintf("ttlMinutes must be at least %d", jackett.MinSearchCacheTTLMinutes))
+		return
+	}
+
+	if _, err := h.service.UpdateSearchCacheSettings(r.Context(), req.TTLMinutes); err != nil {
+		log.Error().Err(err).Msg("Failed to update torznab search cache settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to update cache settings")
+		return
+	}
+
+	stats, err := h.service.GetSearchCacheStats(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Cache settings updated but failed to reload stats")
+		RespondError(w, http.StatusInternalServerError, "Updated settings but failed to reload stats")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, stats)
+}
+
+func (h *JackettHandler) ListIndexers(w http.ResponseWriter, r *http.Request) {
+	indexers, err := h.indexerStore.List(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list indexers")
+		RespondError(w, http.StatusInternalServerError, "Failed to list indexers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, indexers)
+}
+
+func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name            string                          `json:"name"`
+		BaseURL         string                          `json:"base_url"`
+		IndexerID       string                          `json:"indexer_id"`
+		APIKey          string                          `json:"api_key"`
+		BasicUsername   *string                         `json:"basic_username,omitempty"`
+		BasicPassword   *string                         `json:"basic_password,omitempty"`
+		Backend         string                          `json:"backend"`
+		Enabled         *bool                           `json:"enabled"`
+		Priority        *int                            `json:"priority"`
+		TimeoutSeconds  *int                            `json:"timeout_seconds"`
+		Capabilities    []string                        `json:"capabilities,omitempty"`
+		Categories      []models.TorznabIndexerCategory `json:"categories,omitempty"`
+		SourceIndexerID *int                            `json:"source_indexer_id,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode create indexer request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	baseURL := strings.TrimSpace(req.BaseURL)
+	apiKey := strings.TrimSpace(req.APIKey)
+	indexerID := strings.TrimSpace(req.IndexerID)
+	baseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(baseURL, req.BasicUsername, req.BasicPassword)
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
+
+	if name == "" {
+		RespondError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if baseURL == "" {
+		RespondError(w, http.StatusBadRequest, "base_url is required")
+		return
+	}
+	if apiKey == "" && req.SourceIndexerID != nil {
+		creds, ok := h.sourceCredsOrRespond(r.Context(), w, *req.SourceIndexerID)
+		if !ok {
+			return
+		}
+		baseURL = creds.baseURL
+		apiKey = creds.apiKey
+		req.BasicUsername = creds.basicUsername
+		req.BasicPassword = creds.basicPassword
+	}
+	if apiKey == "" {
+		RespondError(w, http.StatusBadRequest, "api_key is required")
+		return
+	}
+
+	backend, err := models.ParseTorznabBackend(req.Backend)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if backend == models.TorznabBackendProwlarr && indexerID == "" {
+		RespondError(w, http.StatusBadRequest, "indexer_id is required when backend is prowlarr")
+		return
+	}
+
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	priority := 0
+	if req.Priority != nil {
+		priority = *req.Priority
+	}
+	timeoutSeconds := 30
+	if req.TimeoutSeconds != nil {
+		timeoutSeconds = *req.TimeoutSeconds
+		if timeoutSeconds <= 0 {
+			RespondError(w, http.StatusBadRequest, "timeout_seconds must be greater than 0")
+			return
+		}
+	}
+
+	indexer, err := h.indexerStore.CreateWithIndexerID(r.Context(), name, baseURL, indexerID, apiKey, req.BasicUsername, req.BasicPassword, enabled, priority, timeoutSeconds, backend)
+	if err != nil {
+		if errors.Is(err, models.ErrTorznabIndexerIDRequired) {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, models.ErrBasicAuthPasswordRequired) {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		log.Error().Err(err).Msg("Failed to create indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to create indexer")
+		return
+	}
+
+	var warnings []string
+
+	if len(req.Capabilities) > 0 || len(req.Categories) > 0 {
+		if len(req.Capabilities) > 0 {
+			if err := h.indexerStore.SetCapabilities(r.Context(), indexer.ID, req.Capabilities); err != nil {
+				log.Warn().
+					Err(err).
+					Int("indexer_id", indexer.ID).
+					Str("indexer", indexer.Name).
+					Msg("Failed to store provided capabilities")
+				warnings = append(warnings, "Failed to store capabilities - sync manually later")
+			}
+		}
+		if len(req.Categories) > 0 {
+			if err := h.indexerStore.SetCategories(r.Context(), indexer.ID, req.Categories); err != nil {
+				log.Warn().
+					Err(err).
+					Int("indexer_id", indexer.ID).
+					Str("indexer", indexer.Name).
+					Msg("Failed to store provided categories")
+				warnings = append(warnings, "Failed to store categories - sync manually later")
+			}
+		}
+		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Msg("Failed to reload indexer after storing capabilities")
+		} else {
+			indexer = updated
+		}
+	} else if h.service != nil && indexer.Enabled {
+		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Msg("Failed to sync torznab caps after creation")
+			warnings = append(warnings, "Failed to fetch capabilities - sync manually later")
+		} else if updated != nil {
+			indexer = updated
+		}
+	}
+
+	RespondJSON(w, http.StatusCreated, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
+}
+
+func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	indexer, err := h.indexerStore.Get(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to get indexer")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, indexer)
+}
+
+func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	var req struct {
+		Name            string                          `json:"name"`
+		BaseURL         string                          `json:"base_url"`
+		IndexerID       *string                         `json:"indexer_id"`
+		APIKey          string                          `json:"api_key"`
+		BasicUsername   *string                         `json:"basic_username,omitempty"`
+		BasicPassword   *string                         `json:"basic_password,omitempty"`
+		Backend         *string                         `json:"backend"`
+		Enabled         *bool                           `json:"enabled"`
+		Priority        *int                            `json:"priority"`
+		TimeoutSeconds  *int                            `json:"timeout_seconds"`
+		Capabilities    []string                        `json:"capabilities,omitempty"`
+		Categories      []models.TorznabIndexerCategory `json:"categories,omitempty"`
+		SourceIndexerID *int                            `json:"source_indexer_id,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode update indexer request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	trimmedName := strings.TrimSpace(req.Name)
+	trimmedBaseURL := strings.TrimSpace(req.BaseURL)
+	trimmedAPIKey := strings.TrimSpace(req.APIKey)
+	trimmedBaseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(trimmedBaseURL, req.BasicUsername, req.BasicPassword)
+
+	params := models.TorznabIndexerUpdateParams{
+		Name:     trimmedName,
+		BaseURL:  trimmedBaseURL,
+		APIKey:   trimmedAPIKey,
+		Enabled:  req.Enabled,
+		Priority: req.Priority,
+	}
+
+	if req.TimeoutSeconds != nil {
+		if *req.TimeoutSeconds <= 0 {
+			RespondError(w, http.StatusBadRequest, "timeout_seconds must be greater than 0")
+			return
+		}
+		params.TimeoutSeconds = req.TimeoutSeconds
+	}
+
+	if req.IndexerID != nil {
+		trimmedIndexerID := strings.TrimSpace(*req.IndexerID)
+		params.IndexerID = &trimmedIndexerID
+	}
+
+	if req.Backend != nil {
+		backend, err := models.ParseTorznabBackend(*req.Backend)
+		if err != nil {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		params.Backend = &backend
+	}
+
+	if req.BasicPassword != nil && domain.IsRedactedString(strings.TrimSpace(*req.BasicPassword)) {
+		req.BasicPassword = nil
+	}
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForUpdate(req.BasicUsername, req.BasicPassword)
+	params.BasicUsername = req.BasicUsername
+	params.BasicPassword = req.BasicPassword
+
+	if params.APIKey == "" && req.SourceIndexerID != nil {
+		creds, ok := h.sourceCredsOrRespond(r.Context(), w, *req.SourceIndexerID)
+		if !ok {
+			return
+		}
+		empty := ""
+		params.BaseURL = creds.baseURL
+		params.APIKey = creds.apiKey
+		params.BasicUsername = cmp.Or(creds.basicUsername, &empty)
+		params.BasicPassword = cmp.Or(creds.basicPassword, &empty)
+	}
+
+	indexer, err := h.indexerStore.Update(r.Context(), id, params)
+	if err != nil {
+		switch {
+		case errors.Is(err, models.ErrTorznabIndexerNotFound):
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		case errors.Is(err, models.ErrTorznabIndexerIDRequired):
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		case errors.Is(err, models.ErrBasicAuthPasswordRequired):
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		default:
+			log.Error().Err(err).Int("indexer_id", id).Msg("Failed to update indexer")
+			RespondError(w, http.StatusInternalServerError, "Failed to update indexer")
+			return
+		}
+	}
+
+	var warnings []string
+
+	if len(req.Capabilities) > 0 || len(req.Categories) > 0 {
+		if len(req.Capabilities) > 0 {
+			if err := h.indexerStore.SetCapabilities(r.Context(), indexer.ID, req.Capabilities); err != nil {
+				log.Warn().
+					Err(err).
+					Int("indexer_id", indexer.ID).
+					Str("indexer", indexer.Name).
+					Msg("Failed to store provided capabilities")
+				warnings = append(warnings, "Failed to store capabilities - sync manually later")
+			}
+		}
+		if len(req.Categories) > 0 {
+			if err := h.indexerStore.SetCategories(r.Context(), indexer.ID, req.Categories); err != nil {
+				log.Warn().
+					Err(err).
+					Int("indexer_id", indexer.ID).
+					Str("indexer", indexer.Name).
+					Msg("Failed to store provided categories")
+				warnings = append(warnings, "Failed to store categories - sync manually later")
+			}
+		}
+		if updated, err := h.indexerStore.Get(r.Context(), indexer.ID); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Msg("Failed to reload indexer after storing capabilities")
+		} else {
+			indexer = updated
+		}
+	} else if h.service != nil && indexer.Enabled {
+		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Str("indexer", indexer.Name).
+				Msg("Failed to sync torznab caps after update")
+			warnings = append(warnings, "Failed to fetch capabilities - sync manually later")
+		} else if updated != nil {
+			indexer = updated
+		}
+	}
+
+	if h.service != nil {
+		if _, err := h.service.InvalidateSearchCache(r.Context(), []int{indexer.ID}); err != nil {
+			log.Warn().
+				Err(err).
+				Int("indexer_id", indexer.ID).
+				Msg("Failed to invalidate search cache after indexer update")
+		}
+	}
+
+	RespondJSON(w, http.StatusOK, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
+}
+
+func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	err = h.indexerStore.Delete(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to delete indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete indexer")
+		return
+	}
+
+	if h.service != nil {
+		if _, err := h.service.InvalidateSearchCache(r.Context(), []int{id}); err != nil {
+			log.Debug().
+				Err(err).
+				Int("indexer_id", id).
+				Msg("Failed to invalidate search cache after indexer deletion")
+		}
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	indexer, err := h.indexerStore.Get(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer")
+		RespondError(w, http.StatusInternalServerError, "Failed to get indexer")
+		return
+	}
+
+	log.Debug().
+		Int("indexer_id", id).
+		Str("indexer_name", indexer.Name).
+		Msg("Testing torznab indexer connectivity")
+
+	testCtx, cancelTest := context.WithTimeout(r.Context(), indexerTestRequestTimeout(indexer))
+	defer cancelTest()
+	resultCh := make(chan error, 1)
+
+	testReq := &jackett.TorznabSearchRequest{
+		Query:                   "test",
+		Limit:                   1,
+		IndexerIDs:              []int{id},
+		CacheMode:               jackett.CacheModeBypass,
+		SkipHistory:             true,
+		SkipCachePersist:        true,
+		MinimumExecutionTimeout: indexerTestExecutionTimeout(indexer),
+		OnAllComplete: func(_ *jackett.SearchResponse, err error) {
+			resultCh <- err
+		},
+	}
+
+	err = h.service.SearchGeneric(testCtx, testReq)
+	if err == nil {
+		select {
+		case err = <-resultCh:
+		case <-testCtx.Done():
+			err = testCtx.Err()
+		}
+	}
+
+	if err != nil {
+		errorMsg := err.Error()
+		if updateErr := h.updateTestStatusWithTimeout(id, "error", &errorMsg); updateErr != nil {
+			h.logTestStatusUpdateError(updateErr, id, "error")
+		}
+
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to test indexer connection")
+		if !respondRateLimitError(w, err, "Indexer test rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to connect to indexer")
+		}
+		return
+	}
+
+	if updateErr := h.updateTestStatusWithTimeout(id, "ok", nil); updateErr != nil {
+		h.logTestStatusUpdateError(updateErr, id, "ok")
+	}
+
+	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func indexerTestRequestTimeout(indexer *models.TorznabIndexer) time.Duration {
+	timeout := indexerTestExecutionTimeout(indexer)
+	if indexer.Backend == models.TorznabBackendNative {
+		timeout += nativeIndexerPacingAllowance
+	}
+	return timeout
+}
+
+func indexerTestExecutionTimeout(indexer *models.TorznabIndexer) time.Duration {
+	timeout := defaultIndexerTestTimeout
+	if indexer.TimeoutSeconds > 0 {
+		timeout = max(timeout, time.Duration(indexer.TimeoutSeconds)*time.Second)
+	}
+	return timeout
+}
+
+func (h *JackettHandler) updateTestStatusWithTimeout(id int, status string, errorMsg *string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), testStatusUpdateTimeout)
+	defer cancel()
+	return h.indexerStore.UpdateTestStatus(ctx, id, status, errorMsg)
+}
+
+func (h *JackettHandler) logTestStatusUpdateError(err error, id int, status string) {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		log.Debug().
+			Err(err).
+			Int("indexer_id", id).
+			Str("status", status).
+			Msg("Test status update canceled/timed out")
+		return
+	}
+
+	log.Error().Err(err).Int("indexer_id", id).Msg("Failed to update test status")
+}
+
+func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request) {
+	if h.service == nil {
+		RespondError(w, http.StatusServiceUnavailable, "Jackett service not configured")
+		return
+	}
+
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	indexer, err := h.service.SyncIndexerCaps(r.Context(), id)
+	if err != nil {
+		if respondRateLimitError(w, err, "Caps sync rate limited") {
+			return
+		}
+		switch {
+		case errors.Is(err, models.ErrTorznabIndexerNotFound):
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		case errors.Is(err, jackett.ErrMissingIndexerIdentifier):
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		default:
+			log.Error().Err(err).Int("indexer_id", id).Msg("Failed to sync torznab caps")
+			RespondError(w, http.StatusInternalServerError, "Failed to sync caps")
+			return
+		}
+	}
+
+	if _, err := h.service.InvalidateSearchCache(r.Context(), []int{indexer.ID}); err != nil {
+		log.Debug().
+			Err(err).
+			Int("indexer_id", indexer.ID).
+			Msg("Failed to invalidate search cache after caps sync")
+	}
+
+	RespondJSON(w, http.StatusOK, indexer)
+}
+
+type sourceCredentials struct {
+	baseURL       string
+	apiKey        string
+	basicUsername *string
+	basicPassword *string
+}
+
+func resolveSourceIndexerCredentials(ctx context.Context, store *models.TorznabIndexerStore, id int) (*sourceCredentials, error) {
+	indexer, err := store.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	apiKey, err := store.GetDecryptedAPIKey(indexer)
+	if err != nil {
+		return nil, err
+	}
+
+	creds := &sourceCredentials{
+		baseURL:       indexer.BaseURL,
+		apiKey:        apiKey,
+		basicUsername: indexer.BasicUsername,
+	}
+	if indexer.BasicPasswordEncrypted != nil {
+		password, err := store.GetDecryptedBasicPassword(indexer)
+		if err != nil {
+			return nil, err
+		}
+		creds.basicPassword = &password
+	}
+	return creds, nil
+}
+
+func (h *JackettHandler) sourceCredsOrRespond(ctx context.Context, w http.ResponseWriter, id int) (*sourceCredentials, bool) {
+	creds, err := resolveSourceIndexerCredentials(ctx, h.indexerStore, id)
+	if err != nil {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
+			RespondError(w, http.StatusBadRequest, "source indexer not found")
+			return nil, false
+		}
+		log.Error().Err(err).Int("source_indexer_id", id).Msg("Failed to load source indexer credentials")
+		RespondError(w, http.StatusInternalServerError, "Failed to load source indexer credentials")
+		return nil, false
+	}
+	return creds, true
+}
+
+func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BaseURL         string  `json:"base_url"`
+		APIKey          string  `json:"api_key"`
+		BasicUsername   *string `json:"basic_username,omitempty"`
+		BasicPassword   *string `json:"basic_password,omitempty"`
+		SourceIndexerID *int    `json:"source_indexer_id,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to decode discover request")
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.SourceIndexerID != nil {
+		creds, ok := h.sourceCredsOrRespond(r.Context(), w, *req.SourceIndexerID)
+		if !ok {
+			return
+		}
+		req.BaseURL = creds.baseURL
+		req.APIKey = creds.apiKey
+		req.BasicUsername = creds.basicUsername
+		req.BasicPassword = creds.basicPassword
+	}
+
+	if req.BaseURL == "" {
+		RespondError(w, http.StatusBadRequest, "base_url is required")
+		return
+	}
+	if req.APIKey == "" {
+		RespondError(w, http.StatusBadRequest, "api_key is required")
+		return
+	}
+
+	req.BaseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(req.BaseURL, req.BasicUsername, req.BasicPassword)
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
+
+	result, err := jackett.DiscoverJackettIndexers(r.Context(), req.BaseURL, req.APIKey, req.BasicUsername, req.BasicPassword)
+	if err != nil {
+		log.Error().Str("base_url", redact.URLString(req.BaseURL)).Str("error", redact.String(err.Error())).Msg("Failed to discover indexers")
+		RespondError(w, http.StatusInternalServerError, "Failed to discover indexers")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, result)
+}
+
+func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
+	health, err := h.indexerStore.GetAllHealth(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get all indexer health")
+		RespondError(w, http.StatusInternalServerError, "Failed to get health status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, health)
+}
+
+func (h *JackettHandler) GetIndexerTrackerDomains(w http.ResponseWriter, r *http.Request) {
+	domains, err := h.service.GetConfiguredTrackerDomains(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get indexer tracker domains")
+		RespondError(w, http.StatusInternalServerError, "Failed to get indexer tracker domains")
+		return
+	}
+
+	if domains == nil {
+		domains = []string{}
+	}
+
+	RespondJSON(w, http.StatusOK, domains)
+}
+
+func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	health, err := h.indexerStore.GetHealth(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
+			RespondError(w, http.StatusNotFound, "Indexer not found")
+			return
+		}
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer health")
+		RespondError(w, http.StatusInternalServerError, "Failed to get health status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, health)
+}
+
+func (h *JackettHandler) GetIndexerErrors(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	errors, err := h.indexerStore.GetRecentErrors(r.Context(), id, limit)
+	if err != nil {
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer errors")
+		RespondError(w, http.StatusInternalServerError, "Failed to get errors")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, errors)
+}
+
+func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid indexer ID")
+		return
+	}
+
+	stats, err := h.indexerStore.GetLatencyStats(r.Context(), id)
+	if err != nil {
+		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to get indexer stats")
+		RespondError(w, http.StatusInternalServerError, "Failed to get statistics")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, stats)
+}
+
+func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			limit = min(parsed, 500)
+		}
+	}
+
+	history, err := h.service.GetSearchHistory(r.Context(), limit)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get search history")
+		RespondError(w, http.StatusInternalServerError, "Failed to get search history")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, history)
+}
+
+func (h *JackettHandler) GetActivityStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.service.GetActivityStatus(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get activity status")
+		RespondError(w, http.StatusInternalServerError, "Failed to get activity status")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, status)
+}

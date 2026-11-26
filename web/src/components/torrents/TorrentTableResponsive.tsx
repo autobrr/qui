@@ -1,0 +1,94 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
+import { useIsMobile } from "@/hooks/useMediaQuery"
+import { isAllInstancesScope } from "@/lib/instances"
+import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import { useCallback, useState } from "react"
+import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
+import { TorrentCardsMobile } from "./TorrentCardsMobile"
+import { TorrentTableOptimized } from "./TorrentTableOptimized"
+
+interface TorrentTableResponsiveProps {
+  instanceId: number
+  instanceIds?: number[]
+  readOnly?: boolean
+  filters: TorrentFilters
+  selectedTorrent?: Torrent | null
+  onTorrentSelect?: (torrent: Torrent | null) => void
+  revealTorrent?: Torrent | null
+  onRevealDone?: () => void
+  addTorrentModalOpen?: boolean
+  onAddTorrentModalChange?: (open: boolean) => void
+  onFilteredDataUpdate?: (
+    torrents: Torrent[],
+    total: number,
+    counts?: TorrentCounts,
+    categories?: Record<string, Category>,
+    tags?: string[],
+    useSubcategories?: boolean,
+    supportsTrackerHealth?: boolean
+  ) => void
+  onFilterChange?: (filters: TorrentFilters) => void
+}
+
+export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
+  const isMobile = useIsMobile()
+  const readOnly = props.readOnly ?? false
+  const isAllInstancesView = isAllInstancesScope(props.instanceId)
+  const crossSeed = useCrossSeedSearch(props.instanceId)
+  const allowCrossSeedSearch = !readOnly && !isAllInstancesView
+
+  const [manualCrossSeedTarget, setManualCrossSeedTarget] = useState<{ hash: string; name: string } | null>(null)
+  const openManualCrossSeed = useCallback((torrent: Torrent) => {
+    setManualCrossSeedTarget({ hash: torrent.hash, name: torrent.name })
+  }, [])
+
+  const memoizedProps = props
+
+  const manualCrossSeedDialog = allowCrossSeedSearch ? (
+    <ManualCrossSeedDialog
+      instanceId={props.instanceId}
+      open={manualCrossSeedTarget !== null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setManualCrossSeedTarget(null)
+        }
+      }}
+      preselectedTarget={manualCrossSeedTarget}
+    />
+  ) : null
+
+  if (isMobile && !readOnly) {
+    return (
+      <>
+        <TorrentCardsMobile
+          {...memoizedProps}
+          canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
+          onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
+          isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}
+          onManualCrossSeed={allowCrossSeedSearch ? openManualCrossSeed : undefined}
+        />
+        {allowCrossSeedSearch && crossSeed.crossSeedDialog}
+        {manualCrossSeedDialog}
+      </>
+    )
+  }
+  return (
+    <>
+      <TorrentTableOptimized
+        {...memoizedProps}
+        readOnly={readOnly}
+        canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
+        onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
+        isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}
+        onManualCrossSeed={allowCrossSeedSearch ? openManualCrossSeed : undefined}
+      />
+      {allowCrossSeedSearch && crossSeed.crossSeedDialog}
+      {manualCrossSeedDialog}
+    </>
+  )
+}

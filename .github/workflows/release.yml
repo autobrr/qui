@@ -1,0 +1,543 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - "main"
+      - "develop"
+    tags:
+      - "v*"
+    paths-ignore:
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/images/**"
+      - "config.toml"
+      - "distrib/docker/docker-compose.yml"
+      - "Makefile"
+      - "**.md"
+      - "documentation/**"
+  # A pull request starts the workflow for every change. The "changes" job
+  # skips the build and test jobs when only ignored files change. A skipped
+  # job reports success, so "Run tests" can be a required check.
+  pull_request:
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+  NODE_VERSION: "24.15.0"
+
+permissions:
+  contents: write
+  packages: write
+  actions: write
+
+jobs:
+  changes:
+    name: Find code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          CHANGED: ${{ github.event.pull_request.changed_files }}
+        run: |
+          # Keep this list the same as paths-ignore above.
+          ignored='^(\.github/ISSUE_TEMPLATE/|\.github/images/|documentation/)|^(config\.toml|distrib/docker/docker-compose\.yml|Makefile)$|\.md$'
+          # A push already skips these files with paths-ignore above. If the
+          # file list cannot be read, run everything, because a skipped
+          # "Run tests" counts as a pass. The API returns at most 3000
+          # files, so a larger PR also runs everything.
+          code=true
+          if [[ $GITHUB_EVENT_NAME == pull_request ]] && ((CHANGED < 3000)) &&
+            files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename') &&
+            ! grep -qvE "$ignored" <<<"$files"; then
+            code=false
+          fi
+          echo "code=$code" >>"$GITHUB_OUTPUT"
+
+  web:
+    name: Build web
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6.1.1
+        with:
+          package_json_file: web/package.json
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check and build frontend
+        working-directory: web
+        run: CI= pnpm run build
+
+      - name: Upload web production build
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      # This job has node_modules, and the notices list the npm packages.
+      - name: Write the notices file
+        run: go run ./scripts/notices
+
+      - name: Upload the notices file
+        uses: actions/upload-artifact@v7
+        with:
+          name: notices
+          path: THIRD_PARTY_NOTICES
+          if-no-files-found: error
+
+  # A separate job, so the Docker builds do not wait for the frontend tests.
+  web-test:
+    name: Run frontend tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6.1.1
+        with:
+          package_json_file: web/package.json
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend tests
+        working-directory: web
+        run: pnpm test
+
+  # A tag publishes the release, so it waits for every test. A develop
+  # snapshot publishes nothing and builds alongside the tests.
+  goreleaserbuild:
+    name: Build distribution binaries
+    if: startsWith(github.ref, 'refs/tags/')
+    # The MSI needs wixl 0.105 or later for Environment. Ubuntu 24.04 ships 0.103.
+    runs-on: ubuntu-26.04
+    needs: [test, web, web-test]
+    # The release environment holds the signing keys and allows develop and v* tags.
+    environment: release
+    steps: &goreleaser-steps
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Download web production build
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Download the notices file
+        uses: actions/download-artifact@v8
+        with:
+          name: notices
+
+      - name: Create web dist tarball
+        run: tar -czf web-dist.tar.gz -C . web/dist
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      # Ubuntu ships wixl in its own package, not in msitools.
+      - name: Install wixl
+        run: sudo apt-get update && sudo apt-get install -y wixl
+
+      # Installed qui updates only to published releases that are not
+      # prereleases, and it checks each one with the cert that it embeds. So
+      # sign with the key for the cert of the highest such release. The two
+      # secrets are interchangeable: during a key change, one holds the old
+      # key and the other the new key. One of them must also match the cert
+      # of this release, or the release after it could not be signed.
+      - name: Pick the release signing key for the updater cert of the previous release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
+          RELEASE_SIGNING_PRIVATE_KEY_NEXT: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY_NEXT }}
+        run: |
+          set -o pipefail
+          # The updater picks the highest version, and gh lists by creation date.
+          previous_tag="$(gh release list --exclude-drafts --exclude-pre-releases --limit 20 --json tagName \
+            --jq ".[].tagName | select(. != \"$GITHUB_REF_NAME\")" | sort -V | tail -n 1)"
+          if [[ -z $previous_tag ]]; then
+            echo "::error::No earlier published release found"
+            exit 1
+          fi
+          previous_cert="$(git show "$previous_tag:internal/update/release_signing_cert.pem" | openssl x509 -pubkey -noout)"
+          current_cert="$(openssl x509 -in internal/update/release_signing_cert.pem -pubkey -noout)"
+
+          signing_key=
+          current_cert_has_key=false
+          for key in "$RELEASE_SIGNING_PRIVATE_KEY" "$RELEASE_SIGNING_PRIVATE_KEY_NEXT"; do
+            [[ -n $key ]] || continue
+            public_key="$(printf '%s' "$key" | openssl pkey -pubout)"
+            [[ $public_key == "$previous_cert" ]] && signing_key=$key
+            [[ $public_key == "$current_cert" ]] && current_cert_has_key=true
+          done
+
+          if [[ -z $signing_key ]]; then
+            echo "::error::No release signing key matches internal/update/release_signing_cert.pem of $previous_tag"
+            exit 1
+          fi
+          if [[ $current_cert_has_key != true ]]; then
+            echo "::error::No release signing key matches internal/update/release_signing_cert.pem of this release"
+            exit 1
+          fi
+
+          umask 077
+          key_file="$RUNNER_TEMP/release-signing-key.pem"
+          printf '%s' "$signing_key" > "$key_file"
+          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
+
+      - name: Prepare ephemeral release signing key
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: |
+          key_file="$RUNNER_TEMP/release-signing-key.pem"
+          openssl ecparam -name prime256v1 -genkey -noout -out "$key_file"
+          chmod 600 "$key_file"
+          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
+
+      - name: Run GoReleaser build and publish tags
+        uses: goreleaser/goreleaser-action@v7.3.0
+        with:
+          distribution: goreleaser-pro
+          version: "~> v2"
+          args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean --config .goreleaser.release.yml' || 'release --skip=publish --snapshot --clean --config .goreleaser.release.yml' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          BUILDER: ${{ github.actor }}@github-actions
+          RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
+
+      - name: Verify signed checksum signature
+        run: |
+          public_key_file="$RUNNER_TEMP/release-signing-key.pub.pem"
+          openssl pkey -in "$RELEASE_SIGNING_KEY_FILE" -pubout -out "$public_key_file"
+          openssl dgst -sha256 \
+            -verify "$public_key_file" \
+            -signature dist/checksums.txt.sig \
+            dist/checksums.txt
+
+      - name: Upload assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: qui
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+            dist/msi/*/*.msi
+          if-no-files-found: error
+
+  goreleaser-snapshot:
+    name: Build distribution binaries (snapshot)
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-26.04
+    needs: web
+    environment: release
+    steps: *goreleaser-steps
+
+  docker-matrix:
+    name: Determine Docker platforms
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.set.outputs.platforms }}
+    steps:
+      - id: set
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo 'platforms=["linux/amd64","linux/arm64"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'platforms=["linux/amd64","linux/amd64/v2","linux/amd64/v3","linux/arm/v6","linux/arm/v7","linux/arm64"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  docker:
+    name: Build Docker images
+    runs-on: ubuntu-latest
+    needs: [web, docker-matrix]
+    strategy:
+      fail-fast: true
+      matrix:
+        platform: ${{ fromJSON(needs.docker-matrix.outputs.platforms) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download web production build
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Download the notices file
+        uses: actions/download-artifact@v8
+        with:
+          name: notices
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},prefix=v
+            type=semver,pattern={{major}}.{{minor}},prefix=v
+            type=ref,event=branch
+            type=ref,event=pr
+          flavor: |
+            latest=auto
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Build and publish image
+        id: docker_build
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          file: ./distrib/docker/ci.Dockerfile
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request') && 'true' || 'false' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+            REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+            BUILDER=${{ github.actor }}@github-actions
+          provenance: false
+
+      - name: Export image digest
+        id: digest-prep
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.docker_build.outputs.digest }}"
+          echo "manifest-hash=${digest#sha256:}" >> "$GITHUB_OUTPUT"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload image digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-digests-${{ steps.digest-prep.outputs.manifest-hash }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-merge:
+    name: Publish Docker multi-arch manifest
+    # On a tag, the image tags go out only after GoReleaser succeeds. A failed
+    # release then pushes no image, and a retag gives no image tag a new digest.
+    if: >-
+      !cancelled() &&
+      needs.docker.result == 'success' && needs.test.result == 'success' &&
+      needs.web-test.result == 'success' &&
+      (!startsWith(github.ref, 'refs/tags/') || needs.goreleaserbuild.result == 'success') &&
+      (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request')
+    runs-on: ubuntu-latest
+    needs: [docker, test, web-test, goreleaserbuild]
+    steps:
+      - name: Download image digests
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: docker-digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},prefix=v
+            type=semver,pattern={{major}}.{{minor}},prefix=v
+            type=ref,event=branch
+            type=ref,event=pr
+          flavor: |
+            latest=auto
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+
+  test-shard:
+    name: Go tests (${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [crossseed, api, rest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Create placeholder web dist for embed
+        run: mkdir -p web/dist && touch web/dist/.gitkeep
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          crossseed=(./internal/services/crossseed)
+          api=(./internal/api ./internal/api/handlers ./internal/database)
+          case "$SHARD" in
+            crossseed) packages=("${crossseed[@]}") ;;
+            api) packages=("${api[@]}") ;;
+            rest)
+              all=$(go list ./...)
+              sharded=$(go list "${crossseed[@]}" "${api[@]}")
+              mapfile -t packages < <(grep -vxF "$sharded" <<<"$all")
+              ;;
+          esac
+          go test -v -race -timeout 20m -coverprofile="coverage-$SHARD.out" "${packages[@]}"
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-shard-${{ matrix.shard }}
+          path: coverage-${{ matrix.shard }}.out
+
+  test:
+    name: Run tests
+    needs: [changes, test-shard]
+    if: ${{ !cancelled() && needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the test shards
+        if: needs.test-shard.result != 'success'
+        run: |
+          echo "A Go test shard ended with: ${{ needs.test-shard.result }}"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download coverage profiles
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-shard-*
+          merge-multiple: true
+
+      - name: Merge coverage profiles
+        run: |
+          { echo "mode: atomic"; tail -qn +2 coverage-*.out; } > coverage.out
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html

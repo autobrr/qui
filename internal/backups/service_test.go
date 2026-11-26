@@ -1,0 +1,1554 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package backups
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
+	"slices"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
+
+	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+)
+
+func insertTestInstance(t *testing.T, db *database.DB, name string) int {
+	t.Helper()
+	ctx := context.Background()
+
+	var nameID, hostID, usernameID int64
+	err := db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", name).Scan(&nameID)
+	require.NoError(t, err)
+	err = db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", "http://localhost").Scan(&hostID)
+	require.NoError(t, err)
+	err = db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", "user").Scan(&usernameID)
+	require.NoError(t, err)
+
+	result, err := db.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, 'pass')", nameID, hostID, usernameID)
+	require.NoError(t, err)
+	instanceID64, err := result.LastInsertId()
+	require.NoError(t, err)
+	return int(instanceID64)
+}
+
+func setupTestBackupDB(t *testing.T) *database.DB {
+	t.Helper()
+
+	db := testdb.NewMigratedSQLite(t, "backups-service")
+
+	db.Conn().SetMaxOpenConns(5)
+	db.Conn().SetMaxIdleConns(2)
+
+	return db
+}
+
+func TestQueueRunCleansPendingRunOnContextCancel(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	svc.jobs = make(chan job)
+	svc.now = func() time.Time { return time.Unix(0, 0) }
+
+	runCtx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	errCh := make(chan error, 1)
+
+	go func() {
+		_, err := svc.QueueRun(runCtx, instanceID, models.BackupRunKindManual, "tester")
+		errCh <- err
+	}()
+
+	var runID int64
+	deadline := time.After(1 * time.Second)
+
+	for {
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for backup run to be created")
+		default:
+		}
+
+		err := db.QueryRowContext(context.Background(), "SELECT id FROM instance_backup_runs LIMIT 1").Scan(&runID)
+		if err == nil {
+			break
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		require.NoError(t, err)
+	}
+
+	cancel()
+
+	var queueErr error
+	select {
+	case queueErr = <-errCh:
+	case <-time.After(time.Second):
+		t.Fatal("QueueRun did not return after context cancellation")
+	}
+	require.ErrorIs(t, queueErr, context.Canceled)
+
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), time.Second)
+	defer checkCancel()
+	var count int
+	require.NoError(t, db.QueryRowContext(checkCtx, "SELECT COUNT(*) FROM instance_backup_runs WHERE id = ?", runID).Scan(&count))
+	require.Equal(t, 0, count, "pending run should be removed once context is canceled")
+
+	svc.inflightMu.Lock()
+	_, exists := svc.inflight[instanceID]
+	svc.inflightMu.Unlock()
+	require.False(t, exists, "instance inflight marker should be cleared")
+}
+
+func TestStartBlocksWhileRecoveringMissedBackups(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	t.Cleanup(svc.Stop)
+
+	instanceNames := []string{"instance-a", "instance-b", "instance-c"}
+	for _, name := range instanceNames {
+		instanceID := insertTestInstance(t, db, name)
+
+		settings := &models.BackupSettings{
+			InstanceID:    instanceID,
+			Enabled:       true,
+			HourlyEnabled: true,
+			KeepHourly:    1,
+		}
+		require.NoError(t, store.UpsertSettings(context.Background(), settings))
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := make(chan struct{})
+	go func() {
+		svc.Start(ctx)
+		close(started)
+	}()
+
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+
+	select {
+	case <-started:
+	case <-timer.C:
+		drained := make(chan struct{})
+		go func() {
+			defer close(drained)
+			for range instanceNames {
+				select {
+				case <-svc.jobs:
+				case <-time.After(100 * time.Millisecond):
+					return
+				}
+			}
+		}()
+		<-drained
+		cancel()
+		<-started
+		t.Fatal("Start blocked while recovering missed backups; workers never launched")
+	}
+
+	cancel()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("Start did not exit after shutdown")
+	}
+}
+
+func TestUpdateSettingsNormalizesRetention(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "retention-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	svc.jobs = make(chan job)
+	svc.now = func() time.Time { return time.Unix(0, 0).UTC() }
+
+	settings := &models.BackupSettings{
+		InstanceID:        instanceID,
+		Enabled:           true,
+		HourlyEnabled:     true,
+		DailyEnabled:      true,
+		WeeklyEnabled:     false,
+		MonthlyEnabled:    true,
+		KeepHourly:        0,
+		KeepDaily:         -2,
+		KeepWeekly:        0,
+		KeepMonthly:       0,
+		IncludeCategories: true,
+		IncludeTags:       true,
+	}
+
+	require.NoError(t, svc.UpdateSettings(ctx, settings))
+
+	saved, err := svc.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, saved.KeepHourly)
+	require.Equal(t, 1, saved.KeepDaily)
+	require.Equal(t, 0, saved.KeepWeekly)
+	require.Equal(t, 1, saved.KeepMonthly)
+
+	_, err = db.ExecContext(ctx, `
+		UPDATE instance_backup_settings
+		SET keep_hourly = 0, keep_daily = 0, keep_monthly = 0
+		WHERE instance_id = ?
+	`, instanceID)
+	require.NoError(t, err)
+
+	reloaded, err := svc.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, reloaded.KeepHourly)
+	require.Equal(t, 1, reloaded.KeepDaily)
+	require.Equal(t, 1, reloaded.KeepMonthly)
+}
+
+func TestShouldSkipLiveExportForBackup(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		torrent       qbt.Torrent
+		cacheErr      error
+		hasCachedBlob bool
+		want          bool
+	}{
+		{
+			name: "skip uncached hybrid torrent",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			want: true,
+		},
+		{
+			name: "allow cached hybrid torrent",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			hasCachedBlob: true,
+			want:          false,
+		},
+		{
+			name: "allow legacy torrent",
+			torrent: qbt.Torrent{
+				Hash:       "v1-hash",
+				InfohashV1: "v1-hash",
+			},
+			want: false,
+		},
+		{
+			name: "allow v2-only torrent",
+			torrent: qbt.Torrent{
+				Hash:       "v2-id",
+				InfohashV2: "full-v2-hash",
+			},
+			want: false,
+		},
+		{
+			name: "allow hybrid torrent when cache lookup failed",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			cacheErr: errors.New("db unavailable"),
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, shouldSkipLiveExportForBackup(tt.torrent, tt.hasCachedBlob, tt.cacheErr))
+		})
+	}
+}
+
+func TestExecuteBackupFailsWhenTheVersionIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := t.Context()
+	instanceID := insertTestInstance(t, db, "version-unknown")
+	store := models.NewBackupStore(db)
+	sm := &stubBackupSyncManager{
+		torrents:   []qbt.Torrent{{Hash: "abc", Name: "Show.S01E01-GRP", TotalSize: 123}},
+		versionErr: errors.New("read the qBittorrent version: 502"),
+	}
+	svc := NewService(store, sm, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+
+	_, err := svc.executeBackup(ctx, job{runID: 44, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.ErrorContains(t, err, "502")
+	require.Zero(t, sm.exportCalls.Load())
+}
+
+func TestExecuteBackupSkipsUncachedHybridBeforeExport(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "hybrid-skip")
+	store := models.NewBackupStore(db)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    1,
+	}))
+
+	sm := &stubBackupSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       "hybrid-id",
+			Name:       "Hybrid Torrent",
+			InfohashV1: "v1-hash",
+			InfohashV2: "v2-hash",
+			TotalSize:  123,
+		}},
+	}
+
+	svc := NewService(store, sm, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+	svc.now = func() time.Time { return time.Unix(0, 0).UTC() }
+
+	result, err := svc.executeBackup(ctx, job{runID: 42, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 0, result.torrentCount)
+	require.Empty(t, result.items)
+	require.Zero(t, sm.exportCalls.Load())
+
+	svc.progressMu.RLock()
+	progress := svc.progress[42]
+	svc.progressMu.RUnlock()
+	require.NotNil(t, progress)
+	require.Equal(t, 1, progress.Current)
+	require.Equal(t, 1, progress.Total)
+}
+
+func TestExecuteBackupUsesCachedBlobForHybridTorrent(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "hybrid-cache")
+	store := models.NewBackupStore(db)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    1,
+	}))
+
+	dataDir := t.TempDir()
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "cc", "cached.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("cached"), 0o600))
+
+	now := time.Unix(0, 0).UTC()
+	run := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hybrid-id",
+		Name:            "Hybrid Torrent",
+		SizeBytes:       123,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	sm := &stubBackupSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       "hybrid-id",
+			Name:       "Hybrid Torrent",
+			InfohashV1: "v1-hash",
+			InfohashV2: "v2-hash",
+			TotalSize:  123,
+		}},
+	}
+
+	svc := NewService(store, sm, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+	svc.now = func() time.Time { return now }
+
+	result, err := svc.executeBackup(ctx, job{runID: 43, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.torrentCount)
+	require.Len(t, result.items, 1)
+	require.Zero(t, sm.exportCalls.Load())
+	require.NotNil(t, result.items[0].TorrentBlobPath)
+	require.Equal(t, blobRelPath, *result.items[0].TorrentBlobPath)
+}
+
+func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "legacy-retention")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+
+	legacy := &models.BackupSettings{
+		InstanceID:     instanceID,
+		Enabled:        true,
+		HourlyEnabled:  true,
+		DailyEnabled:   true,
+		MonthlyEnabled: true,
+		KeepHourly:     0,
+		KeepDaily:      0,
+		KeepMonthly:    0,
+	}
+	require.NoError(t, store.UpsertSettings(ctx, legacy))
+
+	loaded, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 0, loaded.KeepHourly)
+	require.Equal(t, 0, loaded.KeepDaily)
+	require.Equal(t, 0, loaded.KeepMonthly)
+
+	changed := svc.normalizeAndPersistSettings(ctx, loaded)
+	require.True(t, changed)
+	require.Equal(t, 1, loaded.KeepHourly)
+	require.Equal(t, 1, loaded.KeepDaily)
+	require.Equal(t, 1, loaded.KeepMonthly)
+
+	saved, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, saved.KeepHourly)
+	require.Equal(t, 1, saved.KeepDaily)
+	require.Equal(t, 1, saved.KeepMonthly)
+}
+
+func TestUpdateSettingsClearsCustomPath(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "custom-path")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+
+	custom := "snapshots/daily"
+	settings := &models.BackupSettings{
+		InstanceID: instanceID,
+		Enabled:    true,
+		CustomPath: &custom,
+	}
+
+	require.NoError(t, svc.UpdateSettings(ctx, settings))
+
+	saved, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Nil(t, saved.CustomPath)
+
+	view, err := svc.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Nil(t, view.CustomPath)
+}
+
+func TestRecoverIncompleteRuns(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	pendingRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusPending,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-5 * time.Minute),
+	}
+	require.NoError(t, store.CreateRun(ctx, pendingRun))
+
+	runningRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindDaily,
+		Status:      models.BackupRunStatusRunning,
+		RequestedBy: "manual",
+		RequestedAt: fixedTime.Add(-10 * time.Minute),
+	}
+	startedAt := fixedTime.Add(-9 * time.Minute)
+	runningRun.StartedAt = &startedAt
+	require.NoError(t, store.CreateRun(ctx, runningRun))
+
+	successRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindWeekly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-1 * time.Hour),
+	}
+	completedAt := fixedTime.Add(-55 * time.Minute)
+	successRun.CompletedAt = &completedAt
+	require.NoError(t, store.CreateRun(ctx, successRun))
+
+	incompleteRuns, err := store.FindIncompleteRuns(ctx)
+	require.NoError(t, err)
+	require.Len(t, incompleteRuns, 2, "should find 2 incomplete runs")
+
+	err = svc.recoverIncompleteRuns(ctx)
+	require.NoError(t, err)
+
+	recoveredPending, err := store.GetRun(ctx, pendingRun.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.BackupRunStatusFailed, recoveredPending.Status)
+	require.NotNil(t, recoveredPending.CompletedAt)
+	require.Equal(t, fixedTime, *recoveredPending.CompletedAt)
+	require.NotNil(t, recoveredPending.ErrorMessage)
+	require.Equal(t, "Backup interrupted by application restart", *recoveredPending.ErrorMessage)
+
+	recoveredRunning, err := store.GetRun(ctx, runningRun.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.BackupRunStatusFailed, recoveredRunning.Status)
+	require.NotNil(t, recoveredRunning.CompletedAt)
+	require.Equal(t, fixedTime, *recoveredRunning.CompletedAt)
+	require.NotNil(t, recoveredRunning.ErrorMessage)
+	require.Equal(t, "Backup interrupted by application restart", *recoveredRunning.ErrorMessage)
+
+	unchangedSuccess, err := store.GetRun(ctx, successRun.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.BackupRunStatusSuccess, unchangedSuccess.Status)
+
+	remainingIncomplete, err := store.FindIncompleteRuns(ctx)
+	require.NoError(t, err)
+	require.Empty(t, remainingIncomplete, "should have no incomplete runs after recovery")
+}
+
+func TestCheckMissedBackups(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	settings := &models.BackupSettings{
+		InstanceID:     instanceID,
+		Enabled:        true,
+		HourlyEnabled:  true,
+		DailyEnabled:   true,
+		WeeklyEnabled:  true,
+		MonthlyEnabled: true,
+		KeepHourly:     1,
+		KeepDaily:      1,
+		KeepWeekly:     1,
+		KeepMonthly:    1,
+	}
+	require.NoError(t, store.UpsertSettings(ctx, settings))
+
+	hourlyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	hourlyCompletedAt := fixedTime.Add(-2 * time.Hour)
+	hourlyRun.CompletedAt = &hourlyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, hourlyRun))
+
+	dailyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindDaily,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-23 * time.Hour),
+	}
+	dailyCompletedAt := fixedTime.Add(-23 * time.Hour)
+	dailyRun.CompletedAt = &dailyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, dailyRun))
+
+	weeklyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindWeekly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-6 * 24 * time.Hour),
+	}
+	weeklyCompletedAt := fixedTime.Add(-6 * 24 * time.Hour)
+	weeklyRun.CompletedAt = &weeklyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, weeklyRun))
+
+	monthlyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindMonthly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.AddDate(0, 0, -20),
+	}
+	monthlyCompletedAt := fixedTime.AddDate(0, 0, -20)
+	monthlyRun.CompletedAt = &monthlyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, monthlyRun))
+
+	err := svc.checkMissedBackups(ctx)
+	require.NoError(t, err)
+
+	var count int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	var kind string
+	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&kind)
+	require.NoError(t, err)
+	require.Equal(t, string(models.BackupRunKindHourly), kind)
+}
+
+func TestCheckMissedBackupsNoneMissed(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	settings := &models.BackupSettings{
+		InstanceID:     instanceID,
+		Enabled:        true,
+		HourlyEnabled:  true,
+		DailyEnabled:   true,
+		WeeklyEnabled:  true,
+		MonthlyEnabled: true,
+		KeepHourly:     1,
+		KeepDaily:      1,
+		KeepWeekly:     1,
+		KeepMonthly:    1,
+	}
+	require.NoError(t, store.UpsertSettings(ctx, settings))
+
+	hourlyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-30 * time.Minute),
+	}
+	hourlyCompletedAt := fixedTime.Add(-30 * time.Minute)
+	hourlyRun.CompletedAt = &hourlyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, hourlyRun))
+
+	dailyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindDaily,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	dailyCompletedAt := fixedTime.Add(-2 * time.Hour)
+	dailyRun.CompletedAt = &dailyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, dailyRun))
+
+	weeklyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindWeekly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-3 * 24 * time.Hour),
+	}
+	weeklyCompletedAt := fixedTime.Add(-3 * 24 * time.Hour)
+	weeklyRun.CompletedAt = &weeklyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, weeklyRun))
+
+	monthlyRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindMonthly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.AddDate(0, 0, -10),
+	}
+	monthlyCompletedAt := fixedTime.AddDate(0, 0, -10)
+	monthlyRun.CompletedAt = &monthlyCompletedAt
+	require.NoError(t, store.CreateRun(ctx, monthlyRun))
+
+	err := svc.checkMissedBackups(ctx)
+	require.NoError(t, err)
+
+	var count int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+}
+
+func TestCheckMissedBackupsFirstRun(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	settings := &models.BackupSettings{
+		InstanceID:     instanceID,
+		Enabled:        true,
+		HourlyEnabled:  true,
+		DailyEnabled:   true,
+		WeeklyEnabled:  true,
+		MonthlyEnabled: true,
+		KeepHourly:     1,
+		KeepDaily:      1,
+		KeepWeekly:     1,
+		KeepMonthly:    1,
+	}
+	require.NoError(t, store.UpsertSettings(ctx, settings))
+
+	err := svc.checkMissedBackups(ctx)
+	require.NoError(t, err)
+
+	var count int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	var kind string
+	err = db.QueryRowContext(ctx, "SELECT kind FROM instance_backup_runs_view WHERE requested_by = 'startup-recovery'").Scan(&kind)
+	require.NoError(t, err)
+	require.Equal(t, string(models.BackupRunKindHourly), kind)
+}
+
+func TestSchedulerSkipsDisabledInstanceUntilEnabled(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := t.Context()
+	instanceID := insertTestInstance(t, db, "disabled-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    0,
+	}))
+
+	_, err := db.ExecContext(ctx, "UPDATE instances SET is_active = 0 WHERE id = ?", instanceID)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.scheduleDueBackups(ctx))
+	require.NoError(t, svc.checkMissedBackups(ctx))
+
+	runs, err := store.ListRunsByKind(ctx, instanceID, models.BackupRunKindHourly, 10)
+	require.NoError(t, err)
+	require.Empty(t, runs)
+
+	saved, err := store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.True(t, saved.Enabled)
+	require.True(t, saved.HourlyEnabled)
+	require.Equal(t, 0, saved.KeepHourly)
+
+	_, err = db.ExecContext(ctx, "UPDATE instances SET is_active = 1 WHERE id = ?", instanceID)
+	require.NoError(t, err)
+
+	require.NoError(t, svc.scheduleDueBackups(ctx))
+
+	runs, err = store.ListRunsByKind(ctx, instanceID, models.BackupRunKindHourly, 10)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Equal(t, "scheduler", runs[0].RequestedBy)
+
+	saved, err = store.GetSettings(ctx, instanceID)
+	require.NoError(t, err)
+	require.Equal(t, 1, saved.KeepHourly)
+}
+
+func TestIsBackupMissedIgnoresFailedRuns(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	successRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-30 * time.Minute),
+	}
+	successCompletedAt := fixedTime.Add(-30 * time.Minute)
+	successRun.CompletedAt = &successCompletedAt
+	require.NoError(t, store.CreateRun(ctx, successRun))
+
+	failedRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusFailed,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-10 * time.Minute),
+	}
+	failedCompletedAt := fixedTime.Add(-10 * time.Minute)
+	failedRun.CompletedAt = &failedCompletedAt
+	require.NoError(t, store.CreateRun(ctx, failedRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedFailedRunsOnly(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	failedRun1 := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusFailed,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	failedCompletedAt1 := fixedTime.Add(-2 * time.Hour)
+	failedRun1.CompletedAt = &failedCompletedAt1
+	require.NoError(t, store.CreateRun(ctx, failedRun1))
+
+	failedRun2 := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusFailed,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-1 * time.Hour),
+	}
+	failedCompletedAt2 := fixedTime.Add(-1 * time.Hour)
+	failedRun2.CompletedAt = &failedCompletedAt2
+	require.NoError(t, store.CreateRun(ctx, failedRun2))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.True(t, missed)
+}
+
+func TestIsBackupMissedOverdueWithFailedRunsAfterSuccess(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	successRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	successCompletedAt := fixedTime.Add(-2 * time.Hour)
+	successRun.CompletedAt = &successCompletedAt
+	require.NoError(t, store.CreateRun(ctx, successRun))
+
+	failedRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusFailed,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-30 * time.Minute),
+	}
+	failedCompletedAt := fixedTime.Add(-30 * time.Minute)
+	failedRun.CompletedAt = &failedCompletedAt
+	require.NoError(t, store.CreateRun(ctx, failedRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.True(t, missed)
+}
+
+func TestIsBackupMissedPendingRunBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	pendingRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusPending,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	require.NoError(t, store.CreateRun(ctx, pendingRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedRunningRunBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	runningRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusRunning,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-2 * time.Hour),
+	}
+	startedAt := fixedTime.Add(-2 * time.Hour)
+	runningRun.StartedAt = &startedAt
+	require.NoError(t, store.CreateRun(ctx, runningRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedCanceledRunWithinCooldownBlocksScheduling(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	canceledRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusCanceled,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-5 * time.Minute),
+	}
+	require.NoError(t, store.CreateRun(ctx, canceledRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.False(t, missed)
+}
+
+func TestIsBackupMissedFailedRunOutsideCooldownIsMissed(t *testing.T) {
+	db := setupTestBackupDB(t)
+
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "test-instance")
+
+	store := models.NewBackupStore(db)
+	svc := NewService(store, nil, Config{WorkerCount: 1, FailureCooldown: 10 * time.Minute}, nil)
+	fixedTime := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedTime }
+
+	failedRun := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusFailed,
+		RequestedBy: "scheduler",
+		RequestedAt: fixedTime.Add(-30 * time.Minute),
+	}
+	failedCompletedAt := fixedTime.Add(-30 * time.Minute)
+	failedRun.CompletedAt = &failedCompletedAt
+	require.NoError(t, store.CreateRun(ctx, failedRun))
+
+	missed := svc.isBackupMissed(ctx, instanceID, models.BackupRunKindHourly, true, fixedTime)
+	require.True(t, missed)
+}
+
+func TestAdaptiveExportDelayNoopWithoutMinDelay(t *testing.T) {
+	require.NoError(t, adaptiveExportDelay(context.Background(), 0, 0))
+	require.NoError(t, adaptiveExportDelay(context.Background(), -1, 0))
+}
+
+func TestAdaptiveExportDelayUsesMinDelay(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		start := time.Now()
+		require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
+}
+
+func TestAdaptiveExportDelayExtendsWhenExportSlow(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		start := time.Now()
+		require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
+		require.Equal(t, 200*time.Millisecond, time.Since(start))
+	})
+}
+
+func TestAdaptiveExportDelayRespectsContextCancellation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		start := time.Now()
+		err := adaptiveExportDelay(ctx, time.Second, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+	})
+}
+
+func TestDeleteFilesParallelStopsWhenContextCanceled(t *testing.T) {
+	svc := &Service{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var (
+		mu      sync.Mutex
+		removed []string
+	)
+
+	originalRemoveFile := removeFile
+	removeFile = func(path string) error {
+		mu.Lock()
+		removed = append(removed, path)
+		callCount := len(removed)
+		mu.Unlock()
+
+		if callCount == 1 {
+			cancel()
+		}
+
+		return nil
+	}
+	t.Cleanup(func() { removeFile = originalRemoveFile })
+
+	svc.deleteFilesParallel(ctx, []string{"one", "two", "three"})
+
+	require.Equal(t, []string{"one"}, removed)
+}
+
+func TestDeleteRunRemovesFilesAndCleansState(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "delete-run")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	manifestRelPath := filepath.ToSlash(filepath.Join("backups", "runs", "manifest.json"))
+	archiveRelPath := filepath.ToSlash(filepath.Join("backups", "runs", "archive.zip"))
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "blob.torrent"))
+
+	for _, rel := range []string{manifestRelPath, archiveRelPath, blobRelPath} {
+		abs := filepath.Join(dataDir, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(rel), 0o600))
+	}
+
+	now := time.Unix(0, 0).UTC()
+	run := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindManual,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestRelPath,
+		ArchivePath:  &archiveRelPath,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hash-a",
+		Name:            "Torrent A",
+		SizeBytes:       123,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	require.NoError(t, svc.DeleteRun(ctx, run.ID))
+
+	for _, rel := range []string{manifestRelPath, archiveRelPath, blobRelPath} {
+		_, err := os.Stat(filepath.Join(dataDir, rel))
+		require.ErrorIs(t, err, os.ErrNotExist)
+	}
+
+	_, err := store.GetRun(ctx, run.ID)
+	require.ErrorIs(t, err, sql.ErrNoRows)
+
+	items, err := store.ListItems(ctx, run.ID)
+	require.NoError(t, err)
+	require.Empty(t, items)
+}
+
+func TestDeleteAllRunsRemovesFilesAndToleratesMissingOnes(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "delete-all")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	now := time.Unix(0, 0).UTC()
+	manifestA := filepath.ToSlash(filepath.Join("backups", "runs", "run-a-manifest.json"))
+	archiveA := filepath.ToSlash(filepath.Join("backups", "runs", "run-a.zip"))
+	manifestB := filepath.ToSlash(filepath.Join("backups", "runs", "run-b-manifest.json"))
+	archiveB := filepath.ToSlash(filepath.Join("backups", "runs", "run-b.zip"))
+
+	runA := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindManual,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestA,
+		ArchivePath:  &archiveA,
+	}
+	runB := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindHourly,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestB,
+		ArchivePath:  &archiveB,
+	}
+	require.NoError(t, store.CreateRun(ctx, runA))
+	require.NoError(t, store.CreateRun(ctx, runB))
+
+	for _, rel := range []string{manifestA, archiveA, manifestB} {
+		abs := filepath.Join(dataDir, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(rel), 0o600))
+	}
+
+	require.NoError(t, svc.DeleteAllRuns(ctx, instanceID))
+
+	for _, rel := range []string{manifestA, archiveA, manifestB, archiveB} {
+		_, err := os.Stat(filepath.Join(dataDir, rel))
+		require.ErrorIs(t, err, os.ErrNotExist)
+	}
+
+	runIDs, err := store.ListRunIDs(ctx, instanceID)
+	require.NoError(t, err)
+	require.Empty(t, runIDs)
+}
+
+func TestCleanupTorrentBlobsDefersWhileRunActive(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-active")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "live.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
+
+	now := time.Unix(0, 0).UTC()
+	active := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusRunning,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, active))
+
+	svc.cleanupTorrentBlobs(ctx, []string{blobRelPath})
+
+	require.FileExists(t, blobAbsPath, "blob deletion must wait while a backup run is active")
+}
+
+func TestCleanupTorrentBlobsKeepsBlobWhenCountsUnavailable(t *testing.T) {
+	db := setupTestBackupDB(t)
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "unknown.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
+
+	require.NoError(t, db.Close())
+	svc.cleanupTorrentBlobs(context.Background(), []string{blobRelPath})
+
+	require.FileExists(t, blobAbsPath)
+}
+
+func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-refs")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	now := time.Unix(0, 0).UTC()
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "shared.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
+
+	runA := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	runB := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, runA))
+	require.NoError(t, store.CreateRun(ctx, runB))
+	require.NoError(t, store.InsertItems(ctx, runA.ID, []models.BackupItem{{
+		RunID:           runA.ID,
+		TorrentHash:     "hash-a",
+		Name:            "Torrent A",
+		SizeBytes:       1,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+	require.NoError(t, store.InsertItems(ctx, runB.ID, []models.BackupItem{{
+		RunID:           runB.ID,
+		TorrentHash:     "hash-b",
+		Name:            "Torrent B",
+		SizeBytes:       1,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	require.NoError(t, store.CleanupRun(ctx, runA.ID))
+	svc.cleanupTorrentBlobs(ctx, []string{blobRelPath})
+
+	_, err := os.Stat(blobAbsPath)
+	require.NoError(t, err)
+}
+
+func TestDeleteRunKeepsBlobsWhileARunReferencesThemSQLite(t *testing.T) {
+	t.Parallel()
+	checkDeleteRunKeepsBlobsWhileARunReferencesThem(t, setupTestBackupDB(t))
+}
+
+func TestDeleteRunKeepsBlobsWhileARunReferencesThemPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	checkDeleteRunKeepsBlobsWhileARunReferencesThem(t, testdb.NewMigratedPostgres(t, "backups-blob-refs"))
+}
+
+func checkDeleteRunKeepsBlobsWhileARunReferencesThem(t *testing.T, db *database.DB) {
+	ctx := t.Context()
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "blob-refs", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	blobs := map[string]string{}
+	blob := func(name string) *string {
+		rel := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", name))
+		abs := filepath.Join(dataDir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte("blob"), 0o600))
+		blobs[name] = abs
+		return &rel
+	}
+	unchanged, xOld, xNew, dropped := blob("unchanged.torrent"), blob("x-old.torrent"), blob("x-new.torrent"), blob("dropped.torrent")
+
+	now := time.Unix(0, 0).UTC()
+	commit := func(items ...models.BackupItem) int64 {
+		run := &models.BackupRun{InstanceID: instance.ID, Kind: models.BackupRunKindManual, Status: models.BackupRunStatusSuccess,
+			RequestedBy: "tester", RequestedAt: now, CompletedAt: &now}
+		require.NoError(t, store.CreateRun(ctx, run))
+		require.NoError(t, store.InsertItems(ctx, run.ID, items))
+		return run.ID
+	}
+	item := func(hash string, blobPath *string) models.BackupItem {
+		return models.BackupItem{TorrentHash: hash, Name: hash, SizeBytes: 1, TorrentBlobPath: blobPath}
+	}
+	runA := commit(item("unchanged", unchanged), item("x", xOld), item("dropped", dropped))
+	runB := commit(item("unchanged", unchanged), item("x", xNew), item("dropped", dropped))
+	runC := commit(item("unchanged", unchanged), item("x", xNew))
+
+	requireBlobs := func(step string, kept ...string) {
+		t.Helper()
+		for name, abs := range blobs {
+			if slices.Contains(kept, name) {
+				require.FileExists(t, abs, "%s: %s is still referenced", step, name)
+			} else {
+				require.NoFileExists(t, abs, "%s: %s is no longer referenced", step, name)
+			}
+		}
+	}
+
+	require.NoError(t, svc.DeleteRun(ctx, runA))
+	requireBlobs("after deleting A", "unchanged.torrent", "x-new.torrent", "dropped.torrent")
+
+	require.NoError(t, svc.DeleteRun(ctx, runB))
+	requireBlobs("after deleting B", "unchanged.torrent", "x-new.torrent")
+
+	require.NoError(t, svc.DeleteRun(ctx, runC))
+	requireBlobs("after deleting C")
+}
+
+func TestApplyRetentionRemovesFilesOnlyDeletedRunsUsedSQLite(t *testing.T) {
+	t.Parallel()
+	checkApplyRetentionRemovesFilesOnlyDeletedRunsUsed(t, setupTestBackupDB(t))
+}
+
+func TestApplyRetentionRemovesFilesOnlyDeletedRunsUsedPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	checkApplyRetentionRemovesFilesOnlyDeletedRunsUsed(t, testdb.NewMigratedPostgres(t, "backups-retention-files"))
+}
+
+func checkApplyRetentionRemovesFilesOnlyDeletedRunsUsed(t *testing.T, db *database.DB) {
+	ctx := t.Context()
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(ctx, "retention-files", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	files := map[string]string{}
+	file := func(dir, name string) *string {
+		rel := filepath.ToSlash(filepath.Join("backups", dir, name))
+		abs := filepath.Join(dataDir, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(name), 0o600))
+		files[name] = abs
+		return &rel
+	}
+	blob := func(name string) *string { return file(filepath.Join("torrents", "aa", "bb"), name) }
+	a, b1, b2, b3, c, d := blob("a.torrent"), blob("b1.torrent"), blob("b2.torrent"), blob("b3.torrent"), blob("c.torrent"), blob("d.torrent")
+
+	base := time.Unix(0, 0).UTC()
+	commit := func(n int, items ...models.BackupItem) int64 {
+		at := base.Add(time.Duration(n) * time.Hour)
+		run := &models.BackupRun{InstanceID: instance.ID, Kind: models.BackupRunKindHourly, Status: models.BackupRunStatusSuccess,
+			RequestedBy: "tester", RequestedAt: at, CompletedAt: &at,
+			ManifestPath: file("runs", fmt.Sprintf("run-%d.json", n)), ArchivePath: file("runs", fmt.Sprintf("run-%d.zip", n))}
+		require.NoError(t, store.CreateRun(ctx, run))
+		require.NoError(t, store.InsertItems(ctx, run.ID, items))
+		return run.ID
+	}
+	item := func(hash string, blobPath *string) models.BackupItem {
+		return models.BackupItem{TorrentHash: hash, Name: hash, SizeBytes: 1, TorrentBlobPath: blobPath}
+	}
+	commit(1, item("a", a), item("b", b1), item("c", c))
+	commit(2, item("a", a), item("b", b2), item("c", c))
+	commit(3, item("a", a), item("b", b2), item("d", d))
+	kept := commit(4, item("a", a), item("b", b3), item("d", d))
+
+	settings := models.DefaultBackupSettings(instance.ID)
+	settings.KeepHourly = 1
+	require.NoError(t, svc.applyRetention(ctx, instance.ID, settings))
+
+	runIDs, err := store.ListRunIDs(ctx, instance.ID)
+	require.NoError(t, err)
+	require.Equal(t, []int64{kept}, runIDs)
+
+	keptFiles := []string{"a.torrent", "b3.torrent", "d.torrent", "run-4.json", "run-4.zip"}
+	for name, abs := range files {
+		if slices.Contains(keptFiles, name) {
+			require.FileExists(t, abs, "%s is used by the remaining run", name)
+		} else {
+			require.NoFileExists(t, abs, "%s is used only by deleted runs", name)
+		}
+	}
+}
+
+func TestCleanupOrphanedBlobs(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-gc")
+	store := models.NewBackupStore(db)
+
+	dataDir := t.TempDir()
+	cacheDir := filepath.Join(dataDir, "backups", "torrents", "aa", "bb", "cc")
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+
+	referencedRel := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "cc", "referenced.torrent"))
+	referencedAbs := filepath.Join(dataDir, filepath.FromSlash(referencedRel))
+	orphanAbs := filepath.Join(cacheDir, "orphan.torrent")
+	freshOrphanAbs := filepath.Join(cacheDir, "fresh.torrent")
+	for _, p := range []string{referencedAbs, orphanAbs, freshOrphanAbs} {
+		require.NoError(t, os.WriteFile(p, []byte("blob"), 0o600))
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	require.NoError(t, os.Chtimes(referencedAbs, old, old))
+	require.NoError(t, os.Chtimes(orphanAbs, old, old))
+
+	now := time.Now().UTC()
+	run := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hash-1",
+		Name:            "Referenced",
+		TorrentBlobPath: &referencedRel,
+	}}))
+
+	svc := NewService(store, &stubBackupSyncManager{}, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+	svc.cleanupOrphanedBlobs(ctx)
+
+	_, err := os.Stat(referencedAbs)
+	require.NoError(t, err, "referenced blobs must survive")
+	_, err = os.Stat(orphanAbs)
+	require.ErrorIs(t, err, os.ErrNotExist, "aged orphan blobs must be removed")
+	_, err = os.Stat(freshOrphanAbs)
+	require.NoError(t, err, "fresh files stay inside the age guard")
+
+	lateOrphanAbs := filepath.Join(cacheDir, "late-orphan.torrent")
+	require.NoError(t, os.WriteFile(lateOrphanAbs, []byte("blob"), 0o600))
+	require.NoError(t, os.Chtimes(lateOrphanAbs, old, old))
+
+	svc.cleanupOrphanedBlobs(walkCanceledCtx{})
+
+	_, err = os.Stat(lateOrphanAbs)
+	require.NoError(t, err, "cleanup must not remove files once the context is canceled")
+}
+
+type walkCanceledCtx struct{}
+
+func (walkCanceledCtx) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (walkCanceledCtx) Done() <-chan struct{}       { return nil }
+func (walkCanceledCtx) Err() error                  { return context.Canceled }
+func (walkCanceledCtx) Value(any) any               { return nil }
+
+type stubBackupSyncManager struct {
+	torrents    []qbt.Torrent
+	categories  map[string]qbt.Category
+	tags        []string
+	exportData  []byte
+	exportName  string
+	exportTrack string
+	exportErr   error
+	exportCalls atomic.Int32
+	versionErr  error
+}
+
+func (s *stubBackupSyncManager) GetAllTorrentRefs(context.Context, int) ([]*qbt.Torrent, error) {
+	refs := make([]*qbt.Torrent, len(s.torrents))
+	for i := range s.torrents {
+		refs[i] = &s.torrents[i]
+	}
+	return refs, nil
+}
+
+func (s *stubBackupSyncManager) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
+	if s.categories == nil {
+		return nil, nil
+	}
+
+	out := make(map[string]qbt.Category, len(s.categories))
+	maps.Copy(out, s.categories)
+	return out, nil
+}
+
+func (s *stubBackupSyncManager) GetTags(context.Context, int) ([]string, error) {
+	return append([]string(nil), s.tags...), nil
+}
+
+func (s *stubBackupSyncManager) OmitsTrackersOnExport(context.Context, int) (bool, error) {
+	return false, s.versionErr
+}
+
+func (s *stubBackupSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	s.exportCalls.Add(1)
+	return append([]byte(nil), s.exportData...), s.exportName, s.exportTrack, s.exportErr
+}

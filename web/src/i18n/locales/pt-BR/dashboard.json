@@ -1,0 +1,141 @@
+{
+  "title": "Painel",
+  "description": "Visão geral de todas as suas instâncias do qBittorrent",
+  "incognito": {
+    "turnOn": "Ligar o modo anônimo",
+    "turnOff": "Desligar o modo anônimo"
+  },
+  "stream": {
+    "day": "24 h",
+    "live": "Ao vivo",
+    "noHistory": "Nenhuma instância registrou nenhuma transferência nas últimas 24 horas. Ao vivo mostra a velocidade enquanto esta página está aberta.",
+    "uploadSpeed": "Velocidade de upload",
+    "downloadSpeed": "Velocidade de download",
+    "dayUploaded": "{{size}} enviados em 24 h, {{percent}} de cross-seeds",
+    "dayDownloaded": "{{size}} baixados em 24 h",
+    "liveSeeding": "Semeando: {{seeding}} · Peers: {{peers}}",
+    "liveDownloading": "Baixando: {{downloading}} · Restante: {{size}}",
+    "peakHour": "Hora mais movimentada: {{size}}",
+    "peakSpeed": "Pico: {{speed}}",
+    "dayLabel": "Envio e download de todas as instâncias em cada uma das últimas 24 horas",
+    "liveLabel": "Velocidade de envio e download de todas as instâncias nos últimos 3 minutos",
+    "liveStart": "há 3 min",
+    "now": "Agora",
+    "loadError": "Não foi possível carregar o histórico: {{message}}"
+  },
+  "instances": {
+    "title": "Instâncias",
+    "instance": "Instância",
+    "uploaded24h": "Enviado, 24 h",
+    "upload": "Upload",
+    "download": "Download",
+    "torrents": "Torrents",
+    "issues": "Problemas",
+    "noIssues": "Nenhum",
+    "loading": "Carregando",
+    "expandAll": "Expandir tudo",
+    "collapseAll": "Recolher tudo",
+    "altSpeedOff": "Os limites de velocidade alternativos estão inativos",
+    "altSpeedTurnOn": "Ativar os limites de velocidade alternativos",
+    "altSpeedTurnOff": "Desativar os limites de velocidade alternativos",
+    "streamStatus": {
+      "cached": "Mostrando snapshot em cache enquanto atualiza",
+      "fallback": "Atualizando estatísticas do painel",
+      "error": "Erro na transmissão; usando atualização reserva"
+    }
+  },
+  "offline": {
+    "password": "Offline: o qui precisa da senha da instância de novo",
+    "cause": "Offline: {{cause}}",
+    "noAnswer": "Offline: o qBittorrent não responde",
+    "hidden": "Offline. O modo anônimo oculta a causa."
+  },
+  "issues": {
+    "unregistered_one": "{{count}} não registrado",
+    "unregistered_other": "{{count}} não registrados",
+    "tracker_down_one": "{{count}} com tracker offline",
+    "tracker_down_other": "{{count}} com tracker offline",
+    "tracker_error_one": "{{count}} erro de tracker",
+    "tracker_error_other": "{{count}} erros de tracker",
+    "errored_one": "{{count}} erro",
+    "errored_other": "{{count}} erros"
+  },
+  "details": {
+    "host": "Host",
+    "torrents": "Torrents",
+    "active": "Ativo",
+    "downloading": "Baixando",
+    "seeding": "Semeando",
+    "size": "Tamanho",
+    "freeSpace": "Espaço livre (caminho padrão)",
+    "peers": "Peers",
+    "uptime": "Tempo Ativo",
+    "version": "qBittorrent",
+    "libtorrent": "libtorrent",
+    "connection": "Conexão",
+    "externalAddresses": "Endereços externos",
+    "unknown": "Desconhecido",
+    "last24h": "Últimas 24 h",
+    "allTime": "Desde o início",
+    "uploaded": "Enviado",
+    "downloaded": "Baixado",
+    "ratio": "ratio {{ratio}}",
+    "uploadSpeed": "Velocidade de upload",
+    "downloadSpeed": "Velocidade de download",
+    "chartLabel": "Envio e download de {{name}} em cada uma das últimas 24 horas",
+    "altSpeed": "Limites de velocidade alternativos",
+    "altSpeedOn": "Os limites de velocidade alternativos estão ativos",
+    "addTorrent": "Adicionar torrent",
+    "openTorrents": "Abrir torrents",
+    "openSettings": "Abrir configurações da instância"
+  },
+  "connection": {
+    "connected": "Conectável",
+    "firewalled": "Atrás de firewall",
+    "disconnected": "Desconectado",
+    "other": "Outro"
+  },
+  "trackers": {
+    "title": "Principais trackers, últimas 24 h",
+    "statistics": "Estatísticas",
+    "empty": "Nenhum envio nas últimas 24 horas."
+  },
+  "attention": {
+    "title": "Requer atenção",
+    "offline": "{{name}} está offline",
+    "lowDisk": "{{name}}: {{free}} livres",
+    "firewalled": "{{name}} está atrás de um firewall"
+  },
+  "storage": {
+    "title": "Armazenamento",
+    "help": "Uma ou mais barras aqui são estimativas. Quando o qui não consegue ler o disco de uma instância, a parte preenchida mostra os torrents dela e a parte vazia mostra o espaço livre. Para ver o uso real do disco, ative \"Acesso ao Sistema de Arquivos Local\" ou configure o acesso SSH nas configurações da instância.",
+    "free": "{{size}} livres"
+  },
+  "library": {
+    "title": "Biblioteca",
+    "torrents": "Torrents",
+    "totalSize": "Tamanho total",
+    "seedingSize": "Tamanho semeando",
+    "instances": "Instâncias conectadas",
+    "allTime": "Desde o início",
+    "uploaded": "Enviado",
+    "downloaded": "Baixado",
+    "ratio": "Ratio"
+  },
+  "uniqueSize": {
+    "calculating": "calculando",
+    "calculatingTooltip": "O qui está lendo as listas de arquivos para encontrar as cópias de cada release. Até terminar, este tamanho conta cada cross-seed vinculado por inteiro."
+  },
+  "quickActions": {
+    "addTorrent": "Adicionar Torrent",
+    "addTo": "Adicionar a {{name}}"
+  },
+  "addInstance": "Adicionar Instância",
+  "emptyState": {
+    "noInstances": "Nenhuma instância configurada",
+    "getStarted": "Comece adicionando sua primeira instância do qBittorrent",
+    "allDisabled": "Todas as instâncias estão desativadas",
+    "enableInstance": "Ative uma instância em Configurações → Instâncias para ver as estatísticas do painel.",
+    "manageInstances": "Gerenciar Instâncias"
+  }
+}

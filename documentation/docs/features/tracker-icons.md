@@ -1,0 +1,59 @@
+---
+sidebar_position: 11
+title: Tracker icons for qBittorrent torrents in qui
+sidebar_label: Tracker Icons
+description: How qui fetches and caches tracker favicons, where it stores them, and how to add icons manually or preload a bundle.
+---
+
+# Tracker icons
+
+qui shows the icon next to the tracker domain, or next to its [display name](./tracker-customizations.md) if you configured one. qui stores cached icons in your data directory under `tracker-icons/`. If you use the default SQLite engine, this directory sits next to `qui.db`. If you use Postgres, qui uses the same data directory. qui stores icons as 16×16 PNGs and rejects source images larger than 1024×1024.
+
+qui downloads a favicon the first time it sees a tracker host and caches it for future sessions. If a download fails, qui waits 30 minutes before it tries that host again. Each failure after that doubles the wait, up to 24 hours. qui records these failures in `tracker-icons/fetch-failures.json`, so a restart does not probe every failed host again. If the host name does not resolve, qui does not try the parent domains or the `www.` alias for that host.
+
+qui downloads icons only from addresses on the public internet. It does not connect to private, loopback, link-local, or carrier-grade NAT addresses (`100.64.0.0/10`, which Tailscale also uses). It also does not connect to the other address ranges that IANA reserves for special use, for example `198.18.0.0/15`. This stops a torrent from making qui send requests into your network. If a tracker runs on your local network, qui cannot download its icon, so [add that icon manually](#add-icons-manually). If you set `HTTP_PROXY` or `HTTPS_PROXY`, qui connects to that proxy even when it is on your local network. The proxy connects to the icon address, so qui looks up that address first and refuses a private one. A DNS server that gives qui and the proxy different answers can get past this check.
+
+If you want to disable these network fetches, set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`). The same setting stops the peer client logo downloads for the Peers tab. qui applies a change at once, with no restart.
+
+## Peer client logos
+
+The Peers tab shows a logo next to the client of each peer. qui does not ship the logo files. The first time a peer of a client shows, the qui server downloads that logo from the upstream repository of the client. It keeps the file in the `peer-client-icons/` directory. Each address points to one fixed commit, and qui discards a file whose SHA-256 hash is not the expected hash. If a download fails, qui tries again after 30 minutes. It doubles the wait after each failure, up to 24 hours. If no logo is available, the row shows the first letter of the client name. A logo shows the client that the peer says it runs, and a peer can send any client name.
+
+## Add icons manually
+
+Copy PNGs named after each tracker host (for example, `tracker.example.com.png`) into the `tracker-icons/` directory. qui serves the files as-is, so trim and resize them yourself. If icons match the built-in size (16×16), they stay crisp and avoid extra scaling.
+
+## Preload a bundle of icons
+
+If you have a library of icons, preload them with a mapping file in `tracker-icons/`. qui accepts the first of these file names that it finds: `preload.json`, `preload.js`, `tracker-icons.json`, `tracker-icons.js`, `tracker-icons.txt`.
+
+### Format
+
+Use a plain JSON object or export a snippet as `const trackerIcons = { ... };`.
+
+- Keys must be the real tracker hostnames (for example, `tracker.example.org`)
+- If you include a `www.*` host and the bare hostname lacks an icon, qui mirrors the icon to the bare hostname
+- On startup, qui decodes each data URL, normalizes the image to 16×16, and writes the PNG to `<host>.png`
+- qui skips a host that already has a `<host>.png`. To make the preload write it again, delete the old file
+
+### JSON example
+
+```json
+{
+  "tracker.example.org": "data:image/png;base64,AAA...",
+  "www.tracker.org": "data:image/png;base64,BBB..."
+}
+```
+
+### JavaScript example
+
+```js
+const trackerIcons = {
+  "tracker.example.org": "data:image/png;base64,CCC...",
+  "www.tracker.org": "data:image/png;base64,DDD..."
+};
+```
+
+### Community resources
+
+See [Audionut/add-trackers](https://github.com/Audionut/add-trackers/blob/8db05c0e822f9b3afa46ca784644c4e7e400c92b/ptp-add-filter-all-releases-anut.js#L768) for an example icon bundle.

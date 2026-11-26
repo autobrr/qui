@@ -1,0 +1,202 @@
+/* Landing page. The live demo is the page; everything else stays quiet. */
+
+.main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 5rem;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding: 2rem 0 1.25rem;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.tagline {
+  font-size: 1.125rem;
+  font-weight: 400;
+  color: var(--ifm-color-content-secondary);
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.buttonPrimary,
+.buttonSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.buttonPrimary {
+  background-color: var(--ifm-color-primary);
+  color: var(--ifm-background-color);
+}
+
+.buttonPrimary:hover {
+  background-color: var(--ifm-color-primary-dark);
+  color: var(--ifm-background-color);
+  text-decoration: none;
+}
+
+.buttonSecondary {
+  border-color: var(--ifm-toc-border-color);
+  color: var(--ifm-color-content);
+}
+
+.buttonSecondary:hover {
+  background-color: var(--ifm-hover-overlay);
+  color: var(--ifm-color-content);
+  text-decoration: none;
+}
+
+/* ---- Live demo ---- */
+
+/* Breaks out of the text column to 80% of the viewport, never narrower than the column. */
+.demo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: max(100%, 80vw);
+  margin-left: min(0px, calc(50% - 40vw));
+}
+
+.demoFrame {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-height: 88vh;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 0.75rem;
+  background: #1a1a1a;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.16);
+}
+
+:global([data-theme="dark"]) .demoFrame {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.55);
+}
+
+.demoPoster {
+  position: relative;
+  display: block;
+}
+
+/* Whole screenshot, scaled to the phone width; its own ratio, not the frame's. */
+.demoPoster img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 0.75rem;
+  filter: brightness(0.65);
+}
+
+.demoPosterButton {
+  composes: buttonPrimary;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.demoNote {
+  margin: 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--ifm-color-content-secondary);
+}
+
+/* ---- Features list ---- */
+
+.features {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem 3rem;
+  margin: 4rem 0 0;
+  padding: 0;
+}
+
+.features a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+  color: var(--ifm-color-content);
+}
+
+.features a svg {
+  width: 14px;
+  height: 14px;
+  color: var(--ifm-color-content-secondary);
+}
+
+.features p {
+  margin: 0.25rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--ifm-color-content-secondary);
+}
+
+.about {
+  max-width: 65ch;
+  margin: 3rem 0 0;
+}
+
+/* ---- Responsive ---- */
+
+/* Desktop server-renders the poster too, until hydration swaps in the iframe.
+   Show it as a plain placeholder there: no dim, no button. */
+@media (min-width: 1024px) {
+  .demoPoster img {
+    filter: none;
+  }
+
+  .demoPosterButton {
+    display: none;
+  }
+}
+
+@media (max-width: 800px) {
+  .features {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 576px) {
+  .actions {
+    width: 100%;
+  }
+
+  .buttonPrimary,
+  .buttonSecondary {
+    flex: 1;
+  }
+}

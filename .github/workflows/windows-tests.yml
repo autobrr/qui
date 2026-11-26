@@ -1,0 +1,37 @@
+name: Windows tests
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Test all packages natively on Windows
+    runs-on: windows-2025
+    timeout-minutes: 10
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Create placeholder web dist for embed
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force web/dist | Out-Null
+          New-Item -ItemType File -Force web/dist/.gitkeep | Out-Null
+
+      - name: Test all packages natively on Windows
+        run: go test -count=1 -timeout=2m ./...

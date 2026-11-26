@@ -1,0 +1,436 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package filesmanager
+
+import (
+	"context"
+	"fmt"
+	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+)
+
+type testDBOpener func(testing.TB, string) *database.DB
+
+func TestFilesmanagerSQLite(t *testing.T) {
+	t.Parallel()
+	runFilesmanagerTests(t, testdb.NewMigratedSQLite)
+}
+
+func TestFilesmanagerPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	runFilesmanagerTests(t, testdb.NewMigratedPostgres)
+}
+
+func runFilesmanagerTests(t *testing.T, open testDBOpener) {
+	t.Helper()
+
+	tests := []struct {
+		name string
+		run  func(*testing.T, testDBOpener)
+	}{
+		{"UpsertFilesSkipsUnchangedRows", testUpsertFilesSkipsUnchangedRows},
+		{"UpsertFilesWritesChangedRows", testUpsertFilesWritesChangedRows},
+		{"UpsertFilesGuardIsNullSafe", testUpsertFilesGuardIsNullSafe},
+		{"UpsertFilesGuardIsPerRowAcrossBatches", testUpsertFilesGuardIsPerRowAcrossBatches},
+		{"UpsertFilesUnchangedRowsTakeNoRowLocks", testUpsertFilesUnchangedRowsTakeNoRowLocks},
+		{"UpsertFilesComparesWithinInstance", testUpsertFilesComparesWithinInstance},
+		{"UpsertFileRowsGuardSkipsRowsAlreadyStored", testUpsertFileRowsGuardSkipsRowsAlreadyStored},
+		{"CacheFilesBatchAcrossQueryBatches", testCacheFilesBatchAcrossQueryBatches},
+		{"CacheFilesBatchConcurrentOverlap", testCacheFilesBatchConcurrentOverlap},
+		{"UpsertSyncInfoBatchConcurrentOverlap", testUpsertSyncInfoBatchConcurrentOverlap},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.run(t, open)
+		})
+	}
+}
+
+func withTestDB(t *testing.T, open testDBOpener, run func(context.Context, *testing.T, *database.DB)) {
+	t.Helper()
+
+	db := open(t, "filesmanager")
+	ctx := t.Context()
+	seedInstance(ctx, t, db)
+	run(ctx, t, db)
+}
+
+func seedInstance(ctx context.Context, t *testing.T, db *database.DB) {
+	t.Helper()
+
+	var nameID, hostID, usernameID int64
+	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-name").Scan(&nameID))
+	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-host").Scan(&hostID))
+	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-username").Scan(&usernameID))
+
+	_, err := db.ExecContext(ctx, "INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, ?)", 1, nameID, hostID, usernameID, "enc")
+	require.NoError(t, err)
+}
+
+var sentinel = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+func markCachedAt(ctx context.Context, t *testing.T, db *database.DB) {
+	t.Helper()
+	_, err := db.ExecContext(ctx, `UPDATE torrent_files_cache SET cached_at = ?`, sentinel)
+	require.NoError(t, err)
+}
+
+func countAtSentinel(ctx context.Context, t *testing.T, db *database.DB) int {
+	t.Helper()
+	var n int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache WHERE cached_at = ?`, sentinel).Scan(&n))
+	return n
+}
+
+func baseFile() CachedFile {
+	return CachedFile{
+		InstanceID:      1,
+		TorrentHash:     "guard-hash",
+		FileIndex:       0,
+		Name:            "season.pack/episode.mkv",
+		Size:            1 << 30,
+		Progress:        1.0,
+		Priority:        1,
+		IsSeed:          new(true),
+		PieceRangeStart: 0,
+		PieceRangeEnd:   511,
+		Availability:    1.0,
+	}
+}
+
+func testUpsertFilesSkipsUnchangedRows(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		files := []CachedFile{baseFile()}
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
+
+		markCachedAt(ctx, t, db)
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
+		require.Equal(t, 1, countAtSentinel(ctx, t, db), "unchanged row should not have been rewritten")
+	})
+}
+
+func testUpsertFilesWritesChangedRows(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(*CachedFile)
+	}{
+		{"name", func(f *CachedFile) { f.Name = "season.pack/episode.renamed.mkv" }},
+		{"size", func(f *CachedFile) { f.Size = 1<<30 + 1 }},
+		{"progress", func(f *CachedFile) { f.Progress = 0.5 }},
+		{"priority", func(f *CachedFile) { f.Priority = 7 }},
+		{"is_seed", func(f *CachedFile) { f.IsSeed = new(false) }},
+		{"piece_range_start", func(f *CachedFile) { f.PieceRangeStart = 1 }},
+		{"piece_range_end", func(f *CachedFile) { f.PieceRangeEnd = 512 }},
+		{"availability", func(f *CachedFile) { f.Availability = 0.25 }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+				repo := NewRepository(db)
+
+				require.NoError(t, repo.UpsertCache(ctx, []CachedFile{baseFile()}, nil))
+				markCachedAt(ctx, t, db)
+
+				changed := baseFile()
+				tt.mutate(&changed)
+				require.NoError(t, repo.UpsertCache(ctx, []CachedFile{changed}, nil))
+
+				require.Zero(t, countAtSentinel(ctx, t, db), "changed %s should have been written", tt.name)
+
+				batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+				require.NoError(t, err)
+				stored := batch["guard-hash"]
+				require.Len(t, stored, 1)
+				require.Equal(t, changed.Name, stored[0].Name)
+				require.Equal(t, changed.Size, stored[0].Size)
+				require.InDelta(t, changed.Progress, stored[0].Progress, 1e-9)
+				require.Equal(t, changed.Priority, stored[0].Priority)
+				require.Equal(t, changed.IsSeed, stored[0].IsSeed)
+				require.Equal(t, changed.PieceRangeStart, stored[0].PieceRangeStart)
+				require.Equal(t, changed.PieceRangeEnd, stored[0].PieceRangeEnd)
+				require.InDelta(t, changed.Availability, stored[0].Availability, 1e-9)
+			})
+		})
+	}
+}
+
+func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	t.Run("null stays null", func(t *testing.T) {
+		t.Parallel()
+
+		withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+			repo := NewRepository(db)
+
+			nullSeed := baseFile()
+			nullSeed.IsSeed = nil
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
+
+			markCachedAt(ctx, t, db)
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
+			require.Equal(t, 1, countAtSentinel(ctx, t, db), "null-to-null should not have been rewritten")
+		})
+	})
+
+	t.Run("null to value", func(t *testing.T) {
+		t.Parallel()
+
+		withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+			repo := NewRepository(db)
+
+			nullSeed := baseFile()
+			nullSeed.IsSeed = nil
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
+			markCachedAt(ctx, t, db)
+
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{baseFile()}, nil))
+			require.Zero(t, countAtSentinel(ctx, t, db), "null-to-value should have been written")
+
+			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+			require.NoError(t, err)
+			stored := batch["guard-hash"]
+			require.Len(t, stored, 1)
+			require.Equal(t, new(true), stored[0].IsSeed)
+		})
+	})
+
+	t.Run("value to null", func(t *testing.T) {
+		t.Parallel()
+
+		withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+			repo := NewRepository(db)
+
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{baseFile()}, nil))
+			markCachedAt(ctx, t, db)
+
+			nullSeed := baseFile()
+			nullSeed.IsSeed = nil
+			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
+			require.Zero(t, countAtSentinel(ctx, t, db), "value-to-null should have been written")
+
+			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+			require.NoError(t, err)
+			stored := batch["guard-hash"]
+			require.Len(t, stored, 1)
+			require.Nil(t, stored[0].IsSeed)
+		})
+	})
+}
+
+func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		const total = fileBatchSize*2 + 5
+		files := make([]CachedFile, total)
+		for i := range files {
+			f := baseFile()
+			f.FileIndex = i
+			files[i] = f
+		}
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
+
+		markCachedAt(ctx, t, db)
+
+		changed := make([]CachedFile, total)
+		copy(changed, files)
+		for _, i := range []int{0, fileBatchSize, total - 1} {
+			changed[i].Progress = 0.5
+		}
+		require.NoError(t, repo.UpsertCache(ctx, changed, nil))
+
+		require.Equal(t, total-3, countAtSentinel(ctx, t, db), "only the three changed rows should have been written")
+	})
+}
+
+func testUpsertFilesUnchangedRowsTakeNoRowLocks(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		if db.Dialect() != "postgres" {
+			t.Skip("row locks that write WAL are a Postgres cost")
+		}
+		repo := NewRepository(db)
+
+		files := make([]CachedFile, fileBatchSize*2+5)
+		for i := range files {
+			f := baseFile()
+			f.FileIndex = i
+			files[i] = f
+		}
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
+		require.NoError(t, repo.UpsertCache(ctx, files, nil))
+
+		var stored int
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache`).Scan(&stored))
+		require.Equal(t, len(files), stored)
+
+		var locked int
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache WHERE xmax::text <> '0'`).Scan(&locked))
+		require.Zero(t, locked, "an unchanged sync should not lock any row")
+	})
+}
+
+func testUpsertFileRowsGuardSkipsRowsAlreadyStored(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		unchanged := baseFile()
+		changed := baseFile()
+		changed.FileIndex = 1
+		require.NoError(t, repo.UpsertCache(ctx, []CachedFile{unchanged, changed}, nil))
+		markCachedAt(ctx, t, db)
+
+		tx, err := db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback() }()
+		ids, err := dbinterface.InternStrings(ctx, tx, unchanged.TorrentHash, unchanged.Name)
+		require.NoError(t, err)
+
+		row := fileRow{
+			instanceID:      unchanged.InstanceID,
+			hashID:          ids[0],
+			nameID:          ids[1],
+			size:            unchanged.Size,
+			progress:        unchanged.Progress,
+			priority:        unchanged.Priority,
+			isSeed:          encodeNullableBoolAsInt(unchanged.IsSeed),
+			pieceRangeStart: unchanged.PieceRangeStart,
+			pieceRangeEnd:   unchanged.PieceRangeEnd,
+			availability:    unchanged.Availability,
+		}
+		moved := row
+		moved.fileIndex = 1
+		moved.progress = 0.5
+		require.NoError(t, upsertFileRows(ctx, tx, []fileRow{row, moved}))
+		require.NoError(t, tx.Commit())
+
+		require.Equal(t, 1, countAtSentinel(ctx, t, db), "only the changed row should have been written")
+	})
+}
+
+func testUpsertFilesComparesWithinInstance(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		var nameID, hostID, usernameID int64
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-name").Scan(&nameID))
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-host").Scan(&hostID))
+		require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "second-instance-username").Scan(&usernameID))
+		_, err := db.ExecContext(ctx, "INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, ?)", 2, nameID, hostID, usernameID, "enc")
+		require.NoError(t, err)
+
+		first := baseFile()
+		second := baseFile()
+		second.InstanceID = 2
+		second.Progress = 0.5
+		require.NoError(t, repo.UpsertCache(ctx, []CachedFile{first, second}, nil))
+		markCachedAt(ctx, t, db)
+
+		require.NoError(t, repo.UpsertCache(ctx, []CachedFile{first}, nil))
+		require.Equal(t, 2, countAtSentinel(ctx, t, db), "unchanged row should not have been rewritten")
+
+		first.Progress = 0.5
+		require.NoError(t, repo.UpsertCache(ctx, []CachedFile{first}, nil))
+		require.Equal(t, 1, countAtSentinel(ctx, t, db), "only the first instance's row should have been written")
+	})
+}
+
+func testCacheFilesBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		svc := NewService(db)
+
+		const (
+			workers  = 4
+			rounds   = 5
+			torrents = 20
+			perTorr  = 20
+		)
+
+		batches := [2]map[string]qbt.TorrentFiles{}
+		for v := range batches {
+			batches[v] = make(map[string]qbt.TorrentFiles, torrents)
+			for h := range torrents {
+				files := make(qbt.TorrentFiles, perTorr)
+				for i := range files {
+					files[i] = qbt.TorrentFile{
+						Index:        i,
+						Name:         fmt.Sprintf("overlap-%d/file-%d.mkv", h, i),
+						Size:         int64(i + 1),
+						Progress:     1,
+						Availability: float32(v + 1),
+					}
+				}
+				batches[v][fmt.Sprintf("overlap-hash-%d", h)] = files
+			}
+		}
+
+		require.NoError(t, runOverlapping(ctx, workers, rounds, func(ctx context.Context, w, r int) error {
+			return svc.CacheFilesBatch(ctx, 1, unprinted(batches[(w+r)%2]))
+		}))
+	})
+}
+
+func testUpsertSyncInfoBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		hashes := make(map[string]struct{}, 20)
+		for h := range 20 {
+			hashes[fmt.Sprintf("overlap-hash-%d", h)] = struct{}{}
+		}
+
+		require.NoError(t, runOverlapping(ctx, 4, 10, func(ctx context.Context, _, _ int) error {
+			infos := make([]SyncInfo, 0, len(hashes))
+			for h := range hashes {
+				infos = append(infos, SyncInfo{InstanceID: 1, TorrentHash: h, LastSyncedAt: time.Now(), FileCount: 1})
+			}
+			return repo.UpsertCache(ctx, nil, infos)
+		}))
+	})
+}
+
+func runOverlapping(ctx context.Context, workers, rounds int, call func(ctx context.Context, worker, round int) error) error {
+	g, gctx := errgroup.WithContext(ctx)
+	for w := range workers {
+		g.Go(func() error {
+			for r := range rounds {
+				if err := call(gctx, w, r); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+	return g.Wait()
+}

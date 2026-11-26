@@ -1,0 +1,933 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { RunFooter } from "@/components/cross-seed/RunFooter"
+import { AutoResumeSwitch, SourceFilterFields, SourceTagsField } from "@/components/cross-seed/SourceCardFields"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { FieldHelp } from "@/components/ui/field-help"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { MultiSelect } from "@/components/ui/multi-select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
+import { TruncatedText } from "@/components/ui/truncated-text"
+import {
+  CROSS_SEED_SEARCH_SETTINGS_KEY,
+  CROSS_SEED_SETTINGS_KEY,
+  CROSS_SEED_STATUS_KEY,
+  useActiveInstances,
+  useAggregatedInstanceMetadata,
+  useCrossSeedSearchSettings,
+  useCrossSeedSearchStatus,
+  useEnabledIndexers,
+  useFormatDateValue,
+  useMissingIndexersToast
+} from "@/hooks/useCrossSeedSettings"
+import { APIError, api } from "@/lib/api"
+import { crossSeedRouteText, normalizeNumberList, normalizeStringList, parseNonNegativeInt } from "@/lib/cross-seed-utils"
+import { libraryRunState } from "@/lib/run-state"
+import type {
+  CrossSeedGazelleLookupReason,
+  CrossSeedGazelleSiteSummary,
+  CrossSeedAutomationSettings,
+  CrossSeedSearchFilters,
+  CrossSeedSearchResult,
+  CrossSeedSearchSettings,
+  Instance
+} from "@/types"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
+import { AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, Clock, History, Loader2, Rocket, XCircle } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+
+const MIN_SEEDED_SEARCH_INTERVAL_SECONDS = 60
+const MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS = 5
+const MIN_SEEDED_SEARCH_COOLDOWN_MINUTES = 720
+const MIN_SCHEDULE_VALUE = 1
+
+const gazelleReasonKeys: Partial<Record<CrossSeedGazelleLookupReason, string>> = {
+  cooldown: "scan.gazelleSummary.reasons.cooldown",
+  source_site: "scan.gazelleSummary.reasons.sourceSite",
+  already_seeded: "scan.gazelleSummary.reasons.alreadySeeded",
+  not_music: "scan.gazelleSummary.reasons.notMusic",
+}
+
+function GazelleRunSummary({ summary }: { summary: CrossSeedGazelleSiteSummary[] }) {
+  const { t } = useTranslation("crossseed")
+  const sites = summary.map(site => {
+    const notAsked = Object.entries(site.notAsked ?? {}) as Array<[CrossSeedGazelleLookupReason, number]>
+    const notAskedTotal = notAsked.reduce((total, [, count]) => total + count, 0)
+    const reasons = notAsked
+      .map(([reason, count]) => t("scan.gazelleSummary.reasonCount", { count, reason: t(gazelleReasonKeys[reason] ?? "scan.gazelleSummary.reasons.other") }))
+      .join(", ")
+    const counts = t("scan.gazelleSummary.site", { name: site.name, asked: site.asked, matched: site.matched, failed: site.failed })
+    return notAskedTotal > 0 ? t("scan.gazelleSummary.siteWithNotAsked", { counts, notAsked: notAskedTotal, reasons }) : counts
+  })
+  return <p className="px-2 pt-0.5 text-[11px] text-muted-foreground">{t("scan.gazelleSummary.line", { sites: sites.join("; ") })}</p>
+}
+
+function RunFiltersLine({ filters }: { filters: CrossSeedSearchFilters }) {
+  const { t } = useTranslation("crossseed")
+  const describe = (categories?: string[] | null, tags?: string[] | null) => [
+    ...(categories?.length ? [t("scan.runFilters.categories", { list: categories.join(", ") })] : []),
+    ...(tags?.length ? [t("scan.runFilters.tags", { list: tags.join(", ") })] : []),
+  ].join("; ")
+  const include = describe(filters.categories, filters.tags)
+  const exclude = describe(filters.excludeCategories, filters.excludeTags)
+  if (!include && !exclude) return null
+  return (
+    <p className="flex flex-wrap gap-x-4 px-2 pt-0.5 text-[11px] text-muted-foreground">
+      {include && <span>{t("scan.runFilters.include", { filters: include })}</span>}
+      {exclude && <span>{t("scan.runFilters.exclude", { filters: exclude })}</span>}
+    </p>
+  )
+}
+
+function NextScheduledRun({ at, running }: { at: string; running: boolean }) {
+  const { t } = useTranslation("crossseed")
+  const formatDateValue = useFormatDateValue()
+  let text = running ? t("scan.schedule.dueAfterCurrentRun") : t("scan.schedule.dueNow")
+  if (Date.parse(at) > Date.now()) text = t("scan.schedule.nextRun", { time: formatDateValue(at) })
+  return <span className="text-xs text-muted-foreground">{text}</span>
+}
+
+export function LibraryTab({ settings }: { settings: CrossSeedAutomationSettings }) {
+  const { data: searchSettings } = useCrossSeedSearchSettings()
+  const { instances } = useActiveInstances()
+  if (!searchSettings || !instances) {
+    return null
+  }
+  return (
+    <LibraryCard
+      settings={settings}
+      searchSettings={searchSettings}
+      instances={instances}
+    />
+  )
+}
+
+interface LibraryCardProps {
+  settings: CrossSeedAutomationSettings
+  searchSettings: CrossSeedSearchSettings
+  instances: Instance[]
+}
+
+function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) {
+  const { t } = useTranslation("crossseed")
+  const queryClient = useQueryClient()
+  const formatDateValue = useFormatDateValue()
+  const enabledIndexers = useEnabledIndexers()
+  const hasEnabledIndexers = enabledIndexers.length > 0
+  const { handleIndexerError } = useMissingIndexersToast()
+
+  const [searchInstanceId, setSearchInstanceId] = useState<number | null>(searchSettings.instanceId ?? instances[0]?.id ?? null)
+  const [searchFilters, setSearchFilters] = useState(() => ({
+    categories: normalizeStringList(searchSettings.categories ?? []),
+    tags: normalizeStringList(searchSettings.tags ?? []),
+    excludeCategories: normalizeStringList(searchSettings.excludeCategories ?? []),
+    excludeTags: normalizeStringList(searchSettings.excludeTags ?? []),
+  }))
+  const [searchIndexerIds, setSearchIndexerIds] = useState<number[]>(searchSettings.indexerIds ?? [])
+  const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(searchSettings.intervalSeconds ?? MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
+  const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(searchSettings.cooldownMinutes ?? MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
+  const [seededSearchTags, setSeededSearchTags] = useState<string[]>(settings.seededSearchTags)
+  const [skipAutoResume, setSkipAutoResume] = useState(settings.skipAutoResumeSeededSearch)
+  const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(searchSettings.torznabEnabled)
+  const [skipIndividualEpisodes, setSkipIndividualEpisodes] = useState(searchSettings.skipIndividualEpisodes)
+  const [maxAddedAgeDays, setMaxAddedAgeDays] = useState(searchSettings.maxAddedAgeDays)
+  const [scheduleEnabled, setScheduleEnabled] = useState(searchSettings.scheduleEnabled)
+  const [scheduleIntervalHours, setScheduleIntervalHours] = useState(searchSettings.scheduleIntervalHours)
+  const [scheduleMaxSearches, setScheduleMaxSearches] = useState(searchSettings.scheduleMaxSearches)
+  const [scheduleMaxAgeDays, setScheduleMaxAgeDays] = useState(searchSettings.scheduleMaxAgeDays)
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  const [searchResultsOpen, setSearchResultsOpen] = useState(false)
+
+  const { data: searchStatus, refetch: refetchSearchStatus } = useCrossSeedSearchStatus()
+
+  const searchRunsRefetchInterval =
+    searchStatus?.running && searchStatus.run?.instanceId === searchInstanceId ? 5_000 : false
+
+  const { data: searchRuns, refetch: refetchSearchRuns } = useQuery({
+    queryKey: ["cross-seed", "search-runs", searchInstanceId],
+    queryFn: () => searchInstanceId ? api.listCrossSeedSearchRuns(searchInstanceId, { limit: 10 }) : Promise.resolve([]),
+    enabled: !!searchInstanceId,
+    refetchInterval: searchRunsRefetchInterval,
+  })
+
+  const activeSearchInstanceIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const isRunning = searchStatus?.running ?? false
+    const activeInstanceId = searchStatus?.run?.instanceId
+
+    if (isRunning && activeInstanceId != null) {
+      activeSearchInstanceIdRef.current = activeInstanceId
+      return
+    }
+
+    if (activeSearchInstanceIdRef.current != null && activeSearchInstanceIdRef.current === searchInstanceId) {
+      void refetchSearchRuns()
+    }
+    activeSearchInstanceIdRef.current = null
+  }, [refetchSearchRuns, searchInstanceId, searchStatus?.running, searchStatus?.run?.instanceId])
+
+  const searchInstanceIds = useMemo(() => searchInstanceId ? [searchInstanceId] : [], [searchInstanceId])
+  const { data: searchMetadata } = useAggregatedInstanceMetadata(searchInstanceIds)
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const global = await api.patchCrossSeedSettings({
+        seededSearchTags,
+        skipAutoResumeSeededSearch: skipAutoResume,
+      })
+      const search = await api.patchCrossSeedSearchSettings({
+        instanceId: searchInstanceId,
+        ...searchFilters,
+        indexerIds: seededSearchEffectiveIndexerIds,
+        intervalSeconds: searchIntervalSeconds,
+        cooldownMinutes: searchCooldownMinutes,
+        maxAddedAgeDays,
+        skipIndividualEpisodes,
+        torznabEnabled: seededSearchTorznabEnabled,
+        scheduleEnabled,
+        scheduleIntervalHours,
+        scheduleMaxSearches,
+        scheduleMaxAgeDays,
+      })
+      return { search, global }
+    },
+    onSuccess: ({ search, global }) => {
+      toast.success(t("toast.settingsUpdated"))
+      queryClient.setQueryData(CROSS_SEED_SEARCH_SETTINGS_KEY, search)
+      queryClient.setQueryData(CROSS_SEED_SETTINGS_KEY, global)
+      void queryClient.refetchQueries({ queryKey: CROSS_SEED_STATUS_KEY })
+      void refetchSearchStatus()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+      void queryClient.invalidateQueries({ queryKey: CROSS_SEED_SEARCH_SETTINGS_KEY })
+      void queryClient.invalidateQueries({ queryKey: CROSS_SEED_SETTINGS_KEY })
+    },
+  })
+
+  const startSearchRunMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof api.startCrossSeedSearchRun>[0]) => api.startCrossSeedSearchRun(payload),
+    onSuccess: () => {
+      toast.success(t("toast.searchRunStarted"))
+      refetchSearchStatus()
+      refetchSearchRuns()
+    },
+    onError: (error: Error) => {
+      if (handleIndexerError(error, t("scan.searchNeedsTorznabUnlessGazelle"))) {
+        return
+      }
+      toast.error(error.message)
+    },
+  })
+
+  const runScheduleNowMutation = useMutation({
+    mutationFn: () => api.runCrossSeedSearchScheduleNow(),
+    onSuccess: () => {
+      toast.success(t("scan.schedule.runStarted"))
+      void refetchSearchStatus()
+      void refetchSearchRuns()
+    },
+    onError: (error: Error) => {
+      if (error instanceof APIError && error.status === 409) {
+        toast.error(t("scan.schedule.runAlreadyActive"))
+        void refetchSearchStatus()
+        return
+      }
+      toast.error(error.message)
+    },
+  })
+
+  const cancelSearchRunMutation = useMutation({
+    mutationFn: () => api.cancelCrossSeedSearchRun(),
+    onSuccess: () => {
+      toast.success(t("toast.searchRunCanceled"))
+      refetchSearchStatus()
+      refetchSearchRuns()
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  const searchRunning = searchStatus?.running ?? false
+  const activeSearchRun = searchStatus?.run
+
+  const gazelleSavedEnabled = settings.gazelleEnabled ?? false
+  const gazelleSavedHasOpsKey = Boolean((settings.orpheusApiKey ?? "").trim())
+  const gazelleSavedHasRedKey = Boolean((settings.redactedApiKey ?? "").trim())
+  const gazelleSavedConfigured = gazelleSavedEnabled && (gazelleSavedHasOpsKey || gazelleSavedHasRedKey)
+  const { data: gazelleSites } = useQuery({
+    queryKey: ["cross-seed", "gazelle-sites", gazelleSavedEnabled, gazelleSavedHasOpsKey, gazelleSavedHasRedKey],
+    queryFn: () => api.getCrossSeedGazelleSites(),
+    staleTime: 60 * 1000,
+  })
+  const gazelleSavedFullyConfigured = (gazelleSites ?? []).length > 0 && (gazelleSites ?? []).every(site => site.active)
+
+  const seededSearchNeedsGazelle = !seededSearchTorznabEnabled && !gazelleSavedConfigured
+  const seededSearchGazelleOnlyRun = !seededSearchTorznabEnabled && gazelleSavedConfigured
+
+  const runState = libraryRunState({
+    hasInstance: Boolean(searchInstanceId),
+    startPending: startSearchRunMutation.isPending,
+    running: searchRunning,
+    cancelPending: cancelSearchRunMutation.isPending,
+    needsGazelle: seededSearchNeedsGazelle,
+    hasSearchSource: hasEnabledIndexers || gazelleSavedConfigured,
+    scheduledRun: activeSearchRun?.kind === "scheduled",
+  }, t)
+  const seededSearchIntervalMinimum = seededSearchTorznabEnabled ? MIN_SEEDED_SEARCH_INTERVAL_SECONDS : MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
+
+  useEffect(() => {
+    setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
+  }, [seededSearchIntervalMinimum])
+
+  const seededSearchIndexerExclusions = useMemo(
+    () => new Set((gazelleSites ?? []).flatMap(site => site.replacedIndexerIds)),
+    [gazelleSites]
+  )
+
+  const seededSearchIndexerOptions = useMemo(
+    () => enabledIndexers
+      .filter(idx => !seededSearchIndexerExclusions.has(idx.id))
+      .map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
+    [enabledIndexers, seededSearchIndexerExclusions]
+  )
+
+  const seededSearchHasOnlyOpsRedIndexers = useMemo(() => (
+    enabledIndexers.length > 0 &&
+    seededSearchIndexerOptions.length === 0 &&
+    seededSearchIndexerExclusions.size > 0
+  ), [enabledIndexers.length, seededSearchIndexerOptions.length, seededSearchIndexerExclusions.size])
+
+  const seededSearchIndexerPlaceholder = useMemo(() => {
+    if (!seededSearchTorznabEnabled) {
+      return gazelleSavedConfigured ? t("scan.indexers.placeholderTorznabDisabledGazelleOnly") : t("scan.indexers.placeholderTorznabDisabledEnableGazelle")
+    }
+    if (seededSearchIndexerOptions.length > 0) {
+      return seededSearchIndexerExclusions.size > 0 ? t("scan.indexers.placeholderAllEnabledNonOpsRed") : t("scan.indexers.placeholderAllEnabled")
+    }
+    if (seededSearchHasOnlyOpsRedIndexers) {
+      return t("scan.indexers.placeholderOnlyOpsRedEnabled")
+    }
+    return t("scan.indexers.placeholderNoTorznabConfigured")
+  }, [gazelleSavedConfigured, seededSearchIndexerExclusions.size, seededSearchHasOnlyOpsRedIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled, t])
+
+  const seededSearchEffectiveIndexerIds = searchIndexerIds.filter(id => !seededSearchIndexerExclusions.has(id))
+
+  const seededSearchIndexerHelpText = useMemo(() => {
+    if (!seededSearchTorznabEnabled) {
+      if (gazelleSavedConfigured) {
+        return t("scan.indexers.helpTorznabDisabledGazelleCheck")
+      }
+      return t("scan.indexers.helpTorznabDisabledEnableGazelle")
+    }
+
+    if (seededSearchIndexerOptions.length === 0) {
+      if (seededSearchHasOnlyOpsRedIndexers) {
+        return t("scan.indexers.helpOnlyOpsRedEnabled")
+      }
+
+      if (gazelleSavedConfigured) {
+        return t("scan.indexers.helpNoNonOpsRedTorznab")
+      }
+      return t("scan.indexers.helpNoTorznabConfigured")
+    }
+
+    if (seededSearchEffectiveIndexerIds.length === 0) {
+      if (gazelleSavedConfigured) {
+        return t("scan.indexers.helpAllEnabledNonOpsRedQueried")
+      }
+      return t("scan.indexers.helpAllEnabledTorznabQueried")
+    }
+    if (gazelleSavedConfigured) {
+      return t("scan.indexers.helpSelectedTorznabQueriedGazelle", { count: seededSearchEffectiveIndexerIds.length })
+    }
+    return t("scan.indexers.helpSelectedQueried", { count: seededSearchEffectiveIndexerIds.length })
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchHasOnlyOpsRedIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEnabled, t])
+
+  const seededSearchGazelleStatus = useMemo(() => {
+    if (!settings.gazelleEnabled) {
+      return t("scan.gazelleStatus.disabled")
+    }
+    const ops = (settings.orpheusApiKey ?? "").trim() !== ""
+    const red = (settings.redactedApiKey ?? "").trim() !== ""
+    if (ops && red) return t("scan.gazelleStatus.enabledOpsRed")
+    if (ops) return t("scan.gazelleStatus.enabledOpsMissingRed")
+    if (red) return t("scan.gazelleStatus.enabledRedMissingOps")
+    return t("scan.gazelleStatus.enabledKeysMissing")
+  }, [settings, t])
+  const seededSearchIntervalPresets = seededSearchGazelleOnlyRun ? [10, 30, 60] : [60, 120, 300]
+
+  const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? t("overview.seededSearch.gazelleFullDescription") : t("overview.seededSearch.gazellePartialDescription")) : t("overview.seededSearch.noGazelleDescription")
+
+  const validate = (withSchedule: boolean): boolean => {
+    const errors: Record<string, string> = {}
+    if (searchIntervalSeconds < seededSearchIntervalMinimum) {
+      errors.searchIntervalSeconds = t("validation.minIntervalSeconds", { min: seededSearchIntervalMinimum })
+    }
+    if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
+      errors.searchCooldownMinutes = t("validation.minCooldown", { min: MIN_SEEDED_SEARCH_COOLDOWN_MINUTES })
+    }
+    if (withSchedule) {
+      const scheduleFields = { scheduleIntervalHours, scheduleMaxSearches, scheduleMaxAgeDays }
+      for (const [field, value] of Object.entries(scheduleFields)) {
+        if (value < MIN_SCHEDULE_VALUE) errors[field] = t("validation.atLeast", { min: MIN_SCHEDULE_VALUE })
+      }
+    }
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleSave = () => {
+    if (!validate(true)) return
+    saveMutation.mutate()
+  }
+
+  const handleStartSearchRun = () => {
+    setValidationErrors({})
+
+    if (seededSearchNeedsGazelle) {
+      toast.error(t("toast.seededSearchNeedsGazelle"), {
+        description: t("toast.enableGazelleDescription"),
+      })
+      return
+    }
+
+    if (!hasEnabledIndexers && !gazelleSavedConfigured) {
+      toast.error(t("toast.seededSearchNeedsTorznabOrGazelle"), {
+        description: t("toast.configureTorznabOrGazelle"),
+      })
+      return
+    }
+
+    if (!searchInstanceId) {
+      toast.error(t("toast.selectInstanceToRun"))
+      return
+    }
+
+    if (!validate(false)) return
+
+    startSearchRunMutation.mutate({
+      instanceId: searchInstanceId,
+      ...searchFilters,
+      intervalSeconds: searchIntervalSeconds,
+      indexerIds: seededSearchTorznabEnabled ? seededSearchEffectiveIndexerIds : [],
+      disableTorznab: !seededSearchTorznabEnabled,
+      cooldownMinutes: searchCooldownMinutes,
+      skipIndividualEpisodes,
+      maxAddedAgeDays,
+    })
+  }
+
+  const estimatedCompletionInfo = useMemo(() => {
+    if (!activeSearchRun || (activeSearchRun.searchLimit ?? 0) > 0) {
+      return null
+    }
+    const total = activeSearchRun.totalTorrents ?? 0
+    const interval = searchStatus?.effectiveIntervalSeconds ?? activeSearchRun.intervalSeconds ?? 0
+    if (total === 0 || interval <= 0) {
+      return null
+    }
+    const remaining = Math.max(total - activeSearchRun.processed, 0)
+    if (remaining === 0) {
+      return null
+    }
+    const eta = new Date(Date.now() + remaining * interval * 1000)
+    return { eta, remaining, interval }
+  }, [activeSearchRun, searchStatus?.effectiveIntervalSeconds])
+
+  const searchRunStats = useMemo(() => {
+    if (!searchRuns || searchRuns.length === 0) {
+      return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
+    }
+    return {
+      totalAdded: searchRuns.reduce((sum, run) => sum + run.crossSeedsAdded, 0),
+      totalFailed: searchRuns.reduce((sum, run) => sum + run.torrentsFailed, 0),
+      totalRuns: searchRuns.length,
+    }
+  }, [searchRuns])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("scan.title")}</CardTitle>
+        <CardDescription>{t("scan.description")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <Alert className="border-destructive/20 bg-destructive/10 text-destructive mb-8">
+          <AlertTriangle className="h-4 w-4 !text-destructive" />
+          <AlertTitle>{t("scan.runSparingly")}</AlertTitle>
+          <AlertDescription>
+            {t("scan.runSparinglyDescription")}
+          </AlertDescription>
+        </Alert>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="search-interval">{t("scan.intervalLabel")}</Label>
+              <FieldHelp>
+                {t("scan.waitTimeDescription", { min: seededSearchIntervalMinimum })}
+                {seededSearchGazelleOnlyRun && t("scan.gazelleOnlyNote")}
+              </FieldHelp>
+            </div>
+            <Input
+              id="search-interval"
+              type="number"
+              min={seededSearchIntervalMinimum}
+              value={searchIntervalSeconds}
+              onChange={event => {
+                setSearchIntervalSeconds(Number(event.target.value) || seededSearchIntervalMinimum)
+                if (validationErrors.searchIntervalSeconds) {
+                  setValidationErrors(prev => ({ ...prev, searchIntervalSeconds: "" }))
+                }
+              }}
+              className={validationErrors.searchIntervalSeconds ? "border-destructive" : ""}
+            />
+            {validationErrors.searchIntervalSeconds && (
+              <p className="text-sm text-destructive">{validationErrors.searchIntervalSeconds}</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {seededSearchIntervalPresets.map(seconds => (
+                <Button
+                  key={seconds}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSearchIntervalSeconds(seconds)}
+                  disabled={seconds < seededSearchIntervalMinimum}
+                >
+                  {seconds}s
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="search-cooldown">{t("scan.cooldownLabel")}</Label>
+              <FieldHelp>{t("scan.cooldownDescription", { min: MIN_SEEDED_SEARCH_COOLDOWN_MINUTES })}</FieldHelp>
+            </div>
+            <Input
+              id="search-cooldown"
+              type="number"
+              min={MIN_SEEDED_SEARCH_COOLDOWN_MINUTES}
+              value={searchCooldownMinutes}
+              onChange={event => {
+                setSearchCooldownMinutes(Number(event.target.value) || MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
+                if (validationErrors.searchCooldownMinutes) {
+                  setValidationErrors(prev => ({ ...prev, searchCooldownMinutes: "" }))
+                }
+              }}
+              className={validationErrors.searchCooldownMinutes ? "border-destructive" : ""}
+            />
+            {validationErrors.searchCooldownMinutes && (
+              <p className="text-sm text-destructive">{validationErrors.searchCooldownMinutes}</p>
+            )}
+          </div>
+        </div>
+
+        <SourceFilterFields
+          filters={searchFilters}
+          onChange={setSearchFilters}
+          metadata={searchMetadata}
+          disabled={!searchInstanceId}
+        />
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3">
+            <Label>{t("scan.sourceInstance")}</Label>
+            <Select
+              value={searchInstanceId ? String(searchInstanceId) : ""}
+              onValueChange={(value) => setSearchInstanceId(Number(value))}
+              disabled={!instances.length}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t("scan.selectAnInstance")} />
+              </SelectTrigger>
+              <SelectContent>
+                {instances.map(instance => (
+                  <SelectItem key={instance.id} value={String(instance.id)}>
+                    {instance.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!instances.length && (
+              <p className="text-xs text-muted-foreground">{t("scan.addInstanceToSearch")}</p>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label>
+                {gazelleSavedConfigured ? t("scan.torznabIndexersNonOpsRed") : t("scan.torznabIndexers")}
+              </Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="library-torznab-enabled" className="text-xs font-normal text-muted-foreground">{t("scan.torznab")}</Label>
+                <Switch id="library-torznab-enabled" checked={seededSearchTorznabEnabled} onCheckedChange={value => setSeededSearchTorznabEnabled(!!value)} />
+              </div>
+            </div>
+            <MultiSelect
+              options={seededSearchIndexerOptions}
+              selected={seededSearchEffectiveIndexerIds.map(String)}
+              onChange={values => setSearchIndexerIds(normalizeNumberList(values))}
+              placeholder={seededSearchIndexerPlaceholder}
+              disabled={!seededSearchIndexerOptions.length || !seededSearchTorznabEnabled}
+            />
+            <p className="text-xs text-muted-foreground">
+              {seededSearchIndexerHelpText}
+            </p>
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>{seededSearchFlowSummary}</span>
+              <Link to="/settings" search={{ tab: "indexers" }} className="underline underline-offset-2 hover:text-foreground">
+                {seededSearchGazelleStatus}
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1.5">
+                <Label htmlFor="skip-individual-episodes">{t("scan.skipIndividualEpisodesLabel")}</Label>
+                <FieldHelp>{t("scan.skipIndividualEpisodesDescription")}</FieldHelp>
+              </div>
+              {skipIndividualEpisodes && settings.seasonPackAutomationEnabled === false && (
+                <p className="text-xs text-muted-foreground">{t("scan.skipIndividualEpisodesAutomationOff")}</p>
+              )}
+            </div>
+            <Switch
+              id="skip-individual-episodes"
+              checked={skipIndividualEpisodes}
+              onCheckedChange={value => setSkipIndividualEpisodes(!!value)}
+            />
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="max-added-age-days">{t("scan.maxAddedAgeLabel")}</Label>
+              <FieldHelp>{t("scan.maxAddedAgeDescription")}</FieldHelp>
+            </div>
+            <Input
+              id="max-added-age-days"
+              type="number"
+              min={0}
+              value={maxAddedAgeDays}
+              onChange={event => setMaxAddedAgeDays(parseNonNegativeInt(event.target.value))}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <SourceTagsField
+            id="seeded-search-tags"
+            suggestions={[{ label: t("rules.tagging.tagSeededSearch"), value: "seeded-search" }]}
+            selected={seededSearchTags}
+            onChange={setSeededSearchTags}
+            placeholder={t("rules.tagging.selectSeededTags")}
+            help={t("rules.tagging.seededTagsDescription")}
+          />
+          <AutoResumeSwitch
+            id="auto-resume-seeded-search"
+            skip={skipAutoResume}
+            onSkipChange={setSkipAutoResume}
+            help={t("rules.postInjection.seededSearchDescription")}
+          />
+        </div>
+
+        <Separator />
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="library-schedule-enabled">{t("scan.schedule.enableLabel")}</Label>
+              <FieldHelp>{t("scan.schedule.enableHelp")}</FieldHelp>
+            </div>
+            <Switch id="library-schedule-enabled" checked={scheduleEnabled} onCheckedChange={value => setScheduleEnabled(!!value)} />
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <ScheduleNumberField
+              id="library-schedule-interval-hours"
+              label={t("scan.schedule.intervalLabel")}
+              help={t("scan.schedule.intervalHelp")}
+              value={scheduleIntervalHours}
+              onChange={setScheduleIntervalHours}
+              error={validationErrors.scheduleIntervalHours}
+            />
+            <ScheduleNumberField
+              id="library-schedule-max-searches"
+              label={t("scan.schedule.maxSearchesLabel")}
+              help={t("scan.schedule.maxSearchesHelp")}
+              value={scheduleMaxSearches}
+              onChange={setScheduleMaxSearches}
+              error={validationErrors.scheduleMaxSearches}
+            />
+            <ScheduleNumberField
+              id="library-schedule-max-age-days"
+              label={t("scan.schedule.maxAgeLabel")}
+              help={t("scan.schedule.maxAgeHelp")}
+              value={scheduleMaxAgeDays}
+              onChange={setScheduleMaxAgeDays}
+              error={validationErrors.scheduleMaxAgeDays}
+            />
+          </div>
+        </div>
+
+        <Separator />
+
+        {activeSearchRun && (
+          <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">{t("scan.status")}</p>
+              <Badge variant={searchRunning ? "default" : "secondary"}>{searchRunning ? t("scan.runningUpper") : t("scan.idleUpper")}</Badge>
+            </div>
+            {searchStatus?.currentTorrent && (
+              <div className="text-xs">
+                <span className="text-muted-foreground">{t("scan.currentlyProcessing")}</span>{" "}
+                <span className="font-medium">{searchStatus.currentTorrent.torrentName}</span>
+              </div>
+            )}
+            <div className="grid gap-2 text-xs">
+              <div className="flex items-center gap-4">
+                <span className="text-muted-foreground flex items-center gap-1">
+                  {t("scan.progress")}
+                  <FieldHelp>{t("scan.dueCandidatesHelp")}</FieldHelp>
+                </span>
+                <span className="font-medium">{t("scan.torrentsProgress", { processed: activeSearchRun.processed, total: activeSearchRun.totalTorrents || "?" })}</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-muted-foreground">{t("scan.results")}</span>
+                <span className="font-medium">
+                  {t("scan.resultsDetail", { added: activeSearchRun.torrentsWithCrossSeeds, skipped: activeSearchRun.torrentsSkipped, failed: activeSearchRun.torrentsFailed })}
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-muted-foreground">{t("scan.crossSeedsAdded")}</span>
+                <span className="font-medium">{activeSearchRun.crossSeedsAdded}</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-muted-foreground">{t("scan.started")}</span>
+                <span className="font-medium">{formatDateValue(activeSearchRun.startedAt)}</span>
+              </div>
+              {estimatedCompletionInfo && (
+                <div className="flex items-center gap-4">
+                  <span className="text-muted-foreground">{t("scan.estCompletion")}</span>
+                  <span className="font-medium">
+                    {formatDateValue(estimatedCompletionInfo.eta)}
+                    <span className="text-xs text-muted-foreground font-normal ml-2">
+                      {t("scan.etaDetail", { remaining: estimatedCompletionInfo.remaining, interval: estimatedCompletionInfo.interval })}
+                    </span>
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <Collapsible open={searchResultsOpen} onOpenChange={setSearchResultsOpen}>
+          <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+            <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">{t("scan.recentRuns")}</span>
+                {searchRunStats.totalRuns > 0 ? (
+                  <Badge variant="secondary">
+                    {searchRunStats.totalFailed > 0? t("scan.runSummaryWithFailures", { runs: searchRunStats.totalRuns, added: searchRunStats.totalAdded, failed: searchRunStats.totalFailed }): t("scan.runSummary", { runs: searchRunStats.totalRuns, added: searchRunStats.totalAdded })}
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{t("scan.noRunsYet")}</span>
+                )}
+              </div>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${searchResultsOpen ? "rotate-180" : ""}`} />
+            </CollapsibleTrigger>
+
+            <CollapsibleContent>
+              <div className="px-4 pb-3 space-y-2">
+                {searchRuns && searchRuns.length > 0 ? (
+                  <div className="space-y-1">
+                    {searchRuns.map(run => {
+                      const sourceName = instances.find(instance => instance.id === run.instanceId)?.name ?? String(run.instanceId)
+                      const routeLabel = (result: CrossSeedSearchResult) => {
+                        if (!result.crossSeedInstanceName) return null
+                        const text = crossSeedRouteText(t, sourceName, result.crossSeedInstanceName, result.status === "added")
+                        return <TruncatedText className="min-w-0 text-muted-foreground/80">{text}</TruncatedText>
+                      }
+                      const successResults = run.results?.filter(r => r.status === "added") ?? []
+                      const failedResults = run.results?.filter(r => r.status === "failed") ?? []
+                      const skippedResults = run.results?.filter(r => r.status === "skipped") ?? []
+                      const hasResults = (run.results?.length ?? 0) > 0
+                      return (
+                        <Collapsible key={run.id}>
+                          <CollapsibleTrigger asChild disabled={!hasResults}>
+                            <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+                              <div className="flex items-center gap-2 min-w-0">
+                                {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+                                {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-info shrink-0" />}
+                                {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+                                {run.status === "canceled" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+                                <Badge variant="outline" size="sm" className="shrink-0">
+                                  {run.kind === "scheduled" ? t("scan.runKind.scheduled") : t("scan.runKind.manual")}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {t("scan.torrentsCount", { count: run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents })}
+                                </span>
+                                {run.errorMessage && (
+                                  <TruncatedText className="min-w-0 text-xs text-muted-foreground">
+                                    {t("scan.runError", { message: run.errorMessage })}
+                                  </TruncatedText>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <Badge variant="secondary">{t("scan.crossSeedsAddedBadge", { count: run.crossSeedsAdded })}</Badge>
+                                {run.torrentsFailed > 0 && (
+                                  <Badge variant="destructive">{t("scan.failedCount", { count: run.torrentsFailed })}</Badge>
+                                )}
+                                <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+                                {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                              </div>
+                            </div>
+                          </CollapsibleTrigger>
+                          {(run.waitingTorrents ?? 0) > 0 && (
+                            <p className="px-2 pt-0.5 text-[11px] text-muted-foreground">
+                              {t("scan.stoppedAtLimit", { limit: run.searchLimit, count: run.waitingTorrents })}
+                            </p>
+                          )}
+                          <RunFiltersLine filters={run.filters} />
+                          {run.gazelleSummary && run.gazelleSummary.length > 0 && <GazelleRunSummary summary={run.gazelleSummary} />}
+                          {hasResults && (
+                            <CollapsibleContent>
+                              <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+                                {successResults.map((result, i) => (
+                                  <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
+                                    <Badge variant="default" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                    <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                    {routeLabel(result)}
+                                  </div>
+                                ))}
+                                {successResults.length === 0 && failedResults.length === 0 && skippedResults.length === 0 && run.results && run.results.length > 0 && (
+                                  <span className="text-xs text-muted-foreground">{t("scan.noResultsWithDetails")}</span>
+                                )}
+                                {skippedResults.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                                    <span className="text-10 text-muted-foreground font-medium">{t("scan.skippedLabel")}</span>
+                                    {skippedResults.map((result, i) => (
+                                      <div key={`skipped-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant="secondary" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                          <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                          {routeLabel(result)}
+                                        </div>
+                                        {result.message && (
+                                          <span className="text-muted-foreground/70 pl-[104px] text-10">{result.message}</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {failedResults.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                                    <span className="text-10 text-muted-foreground font-medium">{t("scan.failed")}</span>
+                                    {failedResults.map((result, i) => (
+                                      <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant="destructive" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                          <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                          {routeLabel(result)}
+                                        </div>
+                                        <span className="text-muted-foreground/70 pl-[104px] text-10">{result.message || t("scan.noMessageProvided")}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </CollapsibleContent>
+                          )}
+                        </Collapsible>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-2 text-xs text-muted-foreground">
+                    {t("scan.noSearchRunsRecorded")}
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+      </CardContent>
+      <RunFooter
+        state={runState}
+        runLabel={t("scan.startRun")}
+        runIcon={startSearchRunMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
+        onRun={handleStartSearchRun}
+        onCancel={() => cancelSearchRunMutation.mutate()}
+        cancelDialog={{ title: t("scan.cancelDialog.title"), description: t("scan.cancelDialog.description") }}
+        options={
+          <>
+            {searchSettings.scheduleEnabled && (
+              <Button
+                variant="outline"
+                className="min-h-11 md:min-h-9"
+                onClick={() => runScheduleNowMutation.mutate()}
+                disabled={searchRunning || runScheduleNowMutation.isPending}
+              >
+                {runScheduleNowMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-2 h-4 w-4" />}
+                {t("scan.schedule.runNow")}
+              </Button>
+            )}
+            {searchStatus?.nextScheduledRunAt && <NextScheduledRun at={searchStatus.nextScheduledRunAt} running={searchRunning} />}
+          </>
+        }
+      >
+        <Button className="min-h-11 md:min-h-9" onClick={handleSave} disabled={saveMutation.isPending}>
+          {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {t("rules.saveChanges")}
+        </Button>
+      </RunFooter>
+    </Card>
+  )
+}
+
+interface ScheduleNumberFieldProps {
+  id: string
+  label: string
+  help: string
+  value: number
+  onChange: (value: number) => void
+  error?: string
+}
+
+function ScheduleNumberField({ id, label, help, value, onChange, error }: ScheduleNumberFieldProps) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-1.5">
+        <Label htmlFor={id}>{label}</Label>
+        <FieldHelp>{help}</FieldHelp>
+      </div>
+      <Input
+        id={id}
+        type="number"
+        min={MIN_SCHEDULE_VALUE}
+        value={value}
+        onChange={event => onChange(parseNonNegativeInt(event.target.value))}
+        className={error ? "border-destructive" : ""}
+      />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  )
+}

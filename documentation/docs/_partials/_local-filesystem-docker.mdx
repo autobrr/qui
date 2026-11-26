@@ -1,0 +1,13 @@
+:::warning[Docker: Local Filesystem Access]
+Orphan scan, hardlinks, reflinks, and path-based automation rules require access to the same filesystem paths that qBittorrent uses.
+
+Mount the same paths that qBittorrent uses. The paths must match exactly:
+
+```yaml
+volumes:
+  - ./qui:/config
+  - /data/torrents:/data/torrents  # Must match qBittorrent's path
+```
+
+After you mount the paths, enable **Local Filesystem Access** on each instance in qui's Instance Settings.
+:::

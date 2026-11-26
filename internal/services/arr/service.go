@@ -1,0 +1,655 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package arr
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/autobrr/rls"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
+)
+
+const (
+	DefaultPositiveCacheTTL = 30 * 24 * time.Hour
+
+	cacheWriteTimeout = 5 * time.Second
+
+	DefaultNegativeCacheTTL = 1 * time.Hour
+
+	incompleteCacheTTL = 10 * time.Minute
+
+	cacheCleanupInterval = 30 * time.Minute
+)
+
+var ErrTitleUnanswered = errors.New("arr lookup: an instance answered but could not look up this title")
+
+type ContentType string
+
+const (
+	ContentTypeMovie   ContentType = "movie"
+	ContentTypeTV      ContentType = "tv"
+	ContentTypeAnime   ContentType = "anime"
+	ContentTypeUnknown ContentType = "unknown"
+)
+
+type ExternalIDsResult struct {
+	IDs             *models.ExternalIDs `json:"ids,omitempty"`
+	Titles          []string            `json:"titles,omitempty"`
+	TitlesKnown     bool                `json:"-"`
+	EpisodeMap      *models.EpisodeMap  `json:"episode_map,omitempty"`
+	EpisodeMapKnown bool                `json:"-"`
+	Incomplete      bool                `json:"-"`
+	FromCache       bool                `json:"from_cache"`
+	ArrInstanceID   *int                `json:"arr_instance_id,omitempty"`
+	ContentType     ContentType         `json:"content_type"`
+	Source          string              `json:"source,omitempty"`
+}
+
+type SeasonEpisodeTotalResult struct {
+	TotalEpisodes int      `json:"total_episodes"`
+	ArrInstanceID *int     `json:"arr_instance_id,omitempty"`
+	Titles        []string `json:"titles,omitempty"`
+}
+
+type Service struct {
+	instanceStore *models.ArrInstanceStore
+	cacheStore    *models.ArrIDCacheStore
+	positiveTTL   time.Duration
+	negativeTTL   time.Duration
+
+	cleanupMu        sync.Mutex
+	nextCacheCleanup time.Time
+}
+
+type askedInstance struct {
+	instance      *models.ArrInstance
+	client        *Client
+	parseAnswered bool
+}
+
+func NewService(instanceStore *models.ArrInstanceStore, cacheStore *models.ArrIDCacheStore) *Service {
+	return &Service{
+		instanceStore: instanceStore,
+		cacheStore:    cacheStore,
+		positiveTTL:   DefaultPositiveCacheTTL,
+		negativeTTL:   DefaultNegativeCacheTTL,
+	}
+}
+
+func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentType ContentType) (*ExternalIDsResult, error) {
+	if title == "" {
+		return nil, errors.New("title cannot be empty")
+	}
+
+	if contentType == ContentTypeUnknown || contentType == "" {
+		return nil, nil
+	}
+
+	defer s.maybeScheduleCacheCleanup()
+
+	titleHash := models.ComputeTitleHash(title)
+
+	cacheResult, err := s.lookupCache(ctx, titleHash, title, contentType)
+	if err != nil {
+		return nil, err
+	}
+	if cacheResult != nil && (cacheResult.IDs == nil || cacheResult.IDs.IsEmpty() || (cacheResult.TitlesKnown && cacheResult.EpisodeMapKnown)) {
+		return cacheResult, nil
+	}
+
+	instances, err := s.enabledInstancesForContent(ctx, title, contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(instances) == 0 {
+		if cacheResult != nil {
+			return cacheResult, nil
+		}
+		return nil, nil
+	}
+
+	result, err := s.lookupExternalIDsFromParse(ctx, titleHash, title, contentType, instances, cacheResult == nil)
+	if err != nil {
+		if cacheResult != nil {
+			cacheResult.Incomplete = true
+			return cacheResult, nil
+		}
+		return nil, err
+	}
+	if result.IDs == nil || result.IDs.IsEmpty() {
+		if cacheResult != nil {
+			cacheResult.Incomplete = result.Incomplete
+			return cacheResult, nil
+		}
+		return result, nil
+	}
+	return result, nil
+}
+
+func (s *Service) enabledInstancesForContent(ctx context.Context, title string, contentType ContentType) ([]*models.ArrInstance, error) {
+	arrType := s.getArrTypeForContent(contentType)
+	if arrType == "" {
+		return nil, nil
+	}
+
+	instances, err := s.instanceStore.ListEnabledByType(ctx, arrType)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(instances) == 0 {
+		log.Trace().
+			Str("title", title).
+			Str("contentType", string(contentType)).
+			Str("arrType", string(arrType)).
+			Msg("[ARR-LOOKUP] No enabled ARR instances found")
+	}
+
+	return instances, nil
+}
+
+func (s *Service) lookupCache(ctx context.Context, titleHash, title string, contentType ContentType) (*ExternalIDsResult, error) {
+	cacheEntry, err := s.cacheStore.Get(ctx, titleHash, string(contentType))
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		log.Warn().Err(err).
+			Str("title", title).
+			Str("contentType", string(contentType)).
+			Msg("[ARR-LOOKUP] Cache read error, proceeding as cache miss")
+	}
+	if err != nil || cacheEntry == nil {
+		return nil, nil //nolint:nilerr // cache read errors are logged above and treated as a cache miss
+	}
+	if cacheEntry.IsNegative {
+		log.Trace().
+			Str("title", title).
+			Str("contentType", string(contentType)).
+			Msg("[ARR-LOOKUP] Cache hit (negative)")
+		return &ExternalIDsResult{
+			IDs:           nil,
+			Incomplete:    cacheEntry.IsIncomplete,
+			FromCache:     true,
+			ArrInstanceID: cacheEntry.ArrInstanceID,
+			ContentType:   contentType,
+			Source:        "cache",
+		}, nil
+	}
+	log.Trace().
+		Str("title", title).
+		Str("contentType", string(contentType)).
+		Str("imdbId", cacheEntry.ExternalIDs.IMDbID).
+		Int("tmdbId", cacheEntry.ExternalIDs.TMDbID).
+		Int("tvdbId", cacheEntry.ExternalIDs.TVDbID).
+		Int("tvmazeId", cacheEntry.ExternalIDs.TVMazeID).
+		Int("titles", len(cacheEntry.Titles)).
+		Strs("arrTitles", cacheEntry.Titles).
+		Interface("episodeMap", cacheEntry.EpisodeMap).
+		Msg("[ARR-LOOKUP] Cache hit (positive)")
+
+	return &ExternalIDsResult{
+		IDs:             &cacheEntry.ExternalIDs,
+		Titles:          cacheEntry.Titles,
+		TitlesKnown:     cacheEntry.HasTitles,
+		EpisodeMap:      cacheEntry.EpisodeMap,
+		EpisodeMapKnown: cacheEntry.HasEpisodeMap,
+		Incomplete:      cacheEntry.IsIncomplete,
+		FromCache:       true,
+		ArrInstanceID:   cacheEntry.ArrInstanceID,
+		ContentType:     contentType,
+		Source:          "cache",
+	}, nil
+}
+
+func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance, cacheNegative bool) (*ExternalIDsResult, error) {
+	anyQueried := false
+	parsedRelease := rls.ParseString(title)
+	lookupTerm := strings.TrimSpace(parsedRelease.Title)
+	lookupYear := parsedRelease.Year
+	var asked []askedInstance
+	incomplete := false
+	for _, instance := range instances {
+		client := s.clientForInstance(instance)
+		if client == nil {
+			continue
+		}
+		result, err := parseWithinShare(ctx, client, title, len(asked) > 0)
+		if err != nil {
+			incomplete = true
+			log.Debug().Err(err).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("title", title).
+				Msg("[ARR-LOOKUP] Parse request failed")
+			result = nil
+		}
+
+		incomplete = incomplete || (result != nil && result.Incomplete)
+		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
+			result.Incomplete = incomplete
+			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse", true), nil
+		}
+		asked = append(asked, askedInstance{instance: instance, client: client, parseAnswered: err == nil})
+	}
+
+	for _, a := range asked {
+		if lookupTerm != "" {
+			lookupResult, lookupErr := a.client.LookupByTerm(ctx, lookupTerm, lookupYear)
+			if lookupErr != nil {
+				incomplete = true
+				log.Debug().Err(lookupErr).
+					Int("instanceId", a.instance.ID).
+					Str("instanceName", a.instance.Name).
+					Str("term", lookupTerm).
+					Msg("[ARR-LOOKUP] Title lookup failed")
+				continue
+			}
+			anyQueried = true
+			incomplete = incomplete || (lookupResult != nil && lookupResult.Incomplete)
+			if lookupResult != nil && lookupResult.IDs != nil && !lookupResult.IDs.IsEmpty() {
+				lookupResult.Incomplete = incomplete
+				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, a.instance, lookupResult, "lookup", a.parseAnswered), nil
+			}
+		} else if a.parseAnswered {
+			anyQueried = true
+		}
+
+		log.Trace().
+			Int("instanceId", a.instance.ID).
+			Str("instanceName", a.instance.Name).
+			Str("title", title).
+			Msg("[ARR-LOOKUP] No IDs returned from instance")
+	}
+
+	if !anyQueried {
+		if slices.ContainsFunc(asked, func(a askedInstance) bool { return a.parseAnswered }) {
+			return nil, ErrTitleUnanswered
+		}
+		return nil, fmt.Errorf("arr lookup: all %d instance(s) failed to answer", len(instances))
+	}
+
+	if cacheNegative {
+		writeCtx, cancel := detachedCacheWriteContext(ctx)
+		defer cancel()
+		if err := s.cacheStore.SetEntry(writeCtx, models.ArrIDCacheWrite{
+			TitleHash:    titleHash,
+			ContentType:  string(contentType),
+			IsNegative:   true,
+			IsIncomplete: incomplete,
+			TTL:          cacheTTL(s.negativeTTL, incomplete),
+		}); err != nil {
+			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
+		}
+	}
+	log.Trace().
+		Str("title", title).
+		Str("contentType", string(contentType)).
+		Int("instancesQueried", len(instances)).
+		Msg("[ARR-LOOKUP] No IDs found from any instance")
+
+	return &ExternalIDsResult{
+		IDs:         nil,
+		Incomplete:  incomplete,
+		FromCache:   false,
+		ContentType: contentType,
+		Source:      "none",
+	}, nil
+}
+
+func parseWithinShare(ctx context.Context, client *Client, title string, catalogueWaits bool) (*ExternalIDsLookupResult, error) {
+	if deadline, ok := ctx.Deadline(); ok && catalogueWaits {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Until(deadline)/2)
+		defer cancel()
+	}
+	return client.ParseTitleLookupResult(ctx, title)
+}
+
+func cacheTTL(ttl time.Duration, incomplete bool) time.Duration {
+	if incomplete {
+		return min(ttl, incompleteCacheTTL)
+	}
+	return ttl
+}
+
+func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, result *ExternalIDsLookupResult, source string, episodeMapKnown bool) *ExternalIDsResult {
+	instanceID := instance.ID
+	titles := append([]string{}, result.Titles...)
+	writeCtx, cancel := detachedCacheWriteContext(ctx)
+	defer cancel()
+	if err := s.cacheStore.SetEntry(writeCtx, models.ArrIDCacheWrite{
+		TitleHash:       titleHash,
+		ContentType:     string(contentType),
+		ArrInstanceID:   &instanceID,
+		IDs:             result.IDs,
+		Titles:          titles,
+		EpisodeMap:      result.EpisodeMap,
+		EpisodeMapKnown: episodeMapKnown,
+		IsIncomplete:    result.Incomplete,
+		TTL:             cacheTTL(s.positiveTTL, result.Incomplete),
+	}); err != nil {
+		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
+	}
+
+	log.Trace().
+		Str("title", title).
+		Int("instanceId", instance.ID).
+		Str("instanceName", instance.Name).
+		Str("source", source).
+		Str("imdbId", result.IDs.IMDbID).
+		Int("tmdbId", result.IDs.TMDbID).
+		Int("tvdbId", result.IDs.TVDbID).
+		Int("tvmazeId", result.IDs.TVMazeID).
+		Int("titles", len(result.Titles)).
+		Strs("arrTitles", result.Titles).
+		Interface("episodeMap", result.EpisodeMap).
+		Msg("[ARR-LOOKUP] IDs found")
+
+	return &ExternalIDsResult{
+		IDs:             result.IDs,
+		Titles:          result.Titles,
+		TitlesKnown:     true,
+		EpisodeMap:      result.EpisodeMap,
+		EpisodeMapKnown: episodeMapKnown,
+		Incomplete:      result.Incomplete,
+		FromCache:       false,
+		ArrInstanceID:   &instanceID,
+		ContentType:     contentType,
+		Source:          source,
+	}
+}
+
+func (s *Service) clientForInstance(instance *models.ArrInstance) *Client {
+	apiKey, err := s.instanceStore.GetDecryptedAPIKey(instance)
+	if err != nil {
+		log.Warn().Err(err).
+			Int("instanceId", instance.ID).
+			Str("instanceName", instance.Name).
+			Msg("[ARR-LOOKUP] Failed to decrypt API key")
+		return nil
+	}
+
+	var basicPass string
+	if instance.BasicUsername != nil && *instance.BasicUsername != "" {
+		basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
+		if err != nil {
+			log.Warn().Err(err).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Msg("[ARR-LOOKUP] Failed to decrypt basic auth password")
+			return nil
+		}
+	}
+	basicPassPtr := &basicPass
+	if basicPass == "" {
+		basicPassPtr = nil
+	}
+
+	return NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
+}
+
+func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, seasonNumber int) (*SeasonEpisodeTotalResult, error) {
+	if title == "" {
+		return nil, errors.New("title cannot be empty")
+	}
+	if seasonNumber <= 0 {
+		return nil, nil
+	}
+	if s == nil || s.instanceStore == nil {
+		return nil, nil
+	}
+
+	instances, err := s.instanceStore.ListEnabledByType(ctx, models.ArrInstanceTypeSonarr)
+	if err != nil {
+		return nil, err
+	}
+	if len(instances) == 0 {
+		return nil, nil
+	}
+
+	var partial *SeasonEpisodeTotalResult
+	for _, instance := range instances {
+		client := s.clientForInstance(instance)
+		if client == nil {
+			continue
+		}
+
+		parseResp, err := client.ParseSonarrTitle(ctx, title)
+		if err != nil {
+			log.Debug().Err(err).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("title", title).
+				Msg("[ARR-LOOKUP] Sonarr parse request failed for season total")
+			continue
+		}
+		if parseResp == nil || parseResp.Series == nil || parseResp.Series.ID <= 0 {
+			continue
+		}
+
+		series := parseResp.Series
+		if full, hydrateErr := client.sonarrSeriesByID(ctx, series.ID); hydrateErr == nil && full != nil && full.ID > 0 {
+			series = full
+		} else if hydrateErr != nil {
+			log.Debug().Err(hydrateErr).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("title", title).
+				Msg("[ARR-LOOKUP] Sonarr series hydration failed; alias matching limited to canonical title")
+		}
+		titles := seasonLookupTitles(series, title, seasonNumber)
+
+		episodes, err := client.GetSonarrSeasonEpisodes(ctx, series.ID, seasonNumber)
+		if err != nil {
+			log.Debug().Err(err).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("title", title).
+				Int("seasonNumber", seasonNumber).
+				Msg("[ARR-LOOKUP] Sonarr season episode lookup failed")
+		}
+		if err != nil || len(episodes) == 0 {
+			if partial == nil {
+				instanceID := instance.ID
+				partial = &SeasonEpisodeTotalResult{
+					ArrInstanceID: &instanceID,
+					Titles:        titles,
+				}
+			}
+			continue
+		}
+
+		instanceID := instance.ID
+		return &SeasonEpisodeTotalResult{
+			TotalEpisodes: len(episodes),
+			ArrInstanceID: &instanceID,
+			Titles:        titles,
+		}, nil
+	}
+
+	return partial, nil
+}
+
+func (s *Service) TestConnection(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, instanceType models.ArrInstanceType) error {
+	client := NewClient(baseURL, apiKey, basicUsername, basicPassword, instanceType, 15)
+	return client.Ping(ctx)
+}
+
+func (s *Service) TestInstance(ctx context.Context, instanceID int) error {
+	instance, err := s.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	apiKey, err := s.instanceStore.GetDecryptedAPIKey(instance)
+	if err != nil {
+		return err
+	}
+
+	var basicPass string
+	if instance.BasicUsername != nil && *instance.BasicUsername != "" {
+		basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
+		if err != nil {
+			return err
+		}
+	}
+	basicPassPtr := &basicPass
+	if basicPass == "" {
+		basicPassPtr = nil
+	}
+
+	client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
+	err = client.Ping(ctx)
+
+	status := "ok"
+	var errorMsg *string
+	if err != nil {
+		status = "error"
+		errStr := err.Error()
+		errorMsg = &errStr
+	}
+
+	if updateErr := s.instanceStore.UpdateTestStatus(ctx, instanceID, status, errorMsg); updateErr != nil {
+		log.Warn().Err(updateErr).Int("instanceId", instanceID).Msg("Failed to update test status")
+	}
+
+	return err
+}
+
+func (s *Service) DebugResolve(ctx context.Context, title string, contentType ContentType) (*DebugResolveResult, error) {
+	result := &DebugResolveResult{
+		Title:       title,
+		ContentType: contentType,
+	}
+
+	titleHash := models.ComputeTitleHash(title)
+	result.TitleHash = titleHash
+
+	cacheEntry, err := s.cacheStore.Get(ctx, titleHash, string(contentType))
+	if err == nil && cacheEntry != nil {
+		result.CacheHit = true
+		result.CacheEntry = cacheEntry
+	} else if !errors.Is(err, sql.ErrNoRows) && err != nil {
+		result.Error = err.Error()
+	}
+
+	arrType := s.getArrTypeForContent(contentType)
+	if arrType != "" {
+		instances, err := s.instanceStore.ListEnabledByType(ctx, arrType)
+		if err == nil {
+			result.InstancesAvailable = len(instances)
+
+			for _, instance := range instances {
+				instanceResult := DebugInstanceResult{
+					InstanceID:   instance.ID,
+					InstanceName: instance.Name,
+					InstanceType: string(instance.Type),
+				}
+
+				apiKey, err := s.instanceStore.GetDecryptedAPIKey(instance)
+				if err != nil {
+					instanceResult.Error = "failed to decrypt API key: " + err.Error()
+					result.InstanceResults = append(result.InstanceResults, instanceResult)
+					continue
+				}
+
+				var basicPass string
+				if instance.BasicUsername != nil && *instance.BasicUsername != "" {
+					basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
+					if err != nil {
+						instanceResult.Error = "failed to decrypt basic auth password: " + err.Error()
+						result.InstanceResults = append(result.InstanceResults, instanceResult)
+						continue
+					}
+				}
+				basicPassPtr := &basicPass
+				if basicPass == "" {
+					basicPassPtr = nil
+				}
+
+				client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
+				ids, err := client.ParseTitle(ctx, title)
+				if err != nil {
+					instanceResult.Error = err.Error()
+				} else {
+					instanceResult.IDs = ids
+				}
+
+				result.InstanceResults = append(result.InstanceResults, instanceResult)
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (s *Service) getArrTypeForContent(contentType ContentType) models.ArrInstanceType {
+	switch contentType {
+	case ContentTypeMovie:
+		return models.ArrInstanceTypeRadarr
+	case ContentTypeTV, ContentTypeAnime:
+		return models.ArrInstanceTypeSonarr
+	default:
+		return ""
+	}
+}
+
+type DebugResolveResult struct {
+	Title              string                  `json:"title"`
+	TitleHash          string                  `json:"title_hash"`
+	ContentType        ContentType             `json:"content_type"`
+	CacheHit           bool                    `json:"cache_hit"`
+	CacheEntry         *models.ArrIDCacheEntry `json:"cache_entry,omitempty"`
+	InstancesAvailable int                     `json:"instances_available"`
+	InstanceResults    []DebugInstanceResult   `json:"instance_results,omitempty"`
+	Error              string                  `json:"error,omitempty"`
+}
+
+type DebugInstanceResult struct {
+	InstanceID   int                 `json:"instance_id"`
+	InstanceName string              `json:"instance_name"`
+	InstanceType string              `json:"instance_type"`
+	IDs          *models.ExternalIDs `json:"ids,omitempty"`
+	Error        string              `json:"error,omitempty"`
+}
+
+func (s *Service) maybeScheduleCacheCleanup() {
+	if s == nil || s.cacheStore == nil {
+		return
+	}
+
+	s.cleanupMu.Lock()
+	if time.Now().Before(s.nextCacheCleanup) {
+		s.cleanupMu.Unlock()
+		return
+	}
+	s.nextCacheCleanup = time.Now().Add(cacheCleanupInterval)
+	s.cleanupMu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if deleted, err := s.cacheStore.CleanupExpired(ctx); err != nil {
+			log.Debug().Err(err).Msg("[ARR-LOOKUP] Failed to cleanup expired cache entries")
+		} else if deleted > 0 {
+			log.Debug().Int64("deleted", deleted).Msg("[ARR-LOOKUP] Cleaned up expired cache entries")
+		}
+	}()
+}
+
+func detachedCacheWriteContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), cacheWriteTimeout)
+}

@@ -1,0 +1,199 @@
+{
+  "pageTitle": "Cerca als indexadors",
+  "pageDescription": "Cerca als teus indexadors i afegeix una release a qBittorrent.",
+  "indexerSheet": {
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Natiu",
+      "jackett": "Jackett"
+    }
+  },
+  "instanceSelector": {
+    "offline": "Fora de línia"
+  },
+  "picker": {
+    "indexersTitle": "Indexadors on cercar",
+    "filter": "Filtra",
+    "all": "Tots",
+    "none": "Cap",
+    "done": "Fet",
+    "noMatch": "Res no coincideix amb el filtre"
+  },
+  "form": {
+    "indexers": "Indexadors",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Elimina {{label}}",
+    "clearFields": "Neteja els camps",
+    "clearQuery": "Neteja la consulta",
+    "recentSearches": "Cerques recents",
+    "noIndexersTitle": "Encara no hi ha indexadors",
+    "noIndexersBody": "Afegeix un indexador per cercar-hi des d'aquesta pàgina.",
+    "noIndexersAction": "Afegeix indexadors",
+    "indexersFailed": "No s'han pogut carregar els indexadors"
+  },
+  "searchForm": {
+    "advanced": "Avançat",
+    "searching": "S'està cercant...",
+    "search": "Cerca",
+    "advancedNote": "Els ID i els números fan que la cerca sigui exacta als indexadors que els admeten.",
+    "searchType": "Tipus de cerca",
+    "searchQuery": "Consulta de cerca"
+  },
+  "searchTypes": {
+    "movies": {
+      "label": "Pel·lícules",
+      "placeholder": "p. ex., \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "p. ex., \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Música",
+      "placeholder": "p. ex., \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "Llibres i còmics",
+      "placeholder": "p. ex., \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "Aplicacions i jocs",
+      "placeholder": "p. ex., \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Adults",
+      "placeholder": "Introdueix el nom d'una release per a adults concreta"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "ID d'IMDb",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "ID de TVDb",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Any",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Temporada",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Episodi",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Artista",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Àlbum",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Límit",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Desplaçament",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "count_one": "{{count}} resultat",
+    "count_other": "{{count}} resultats",
+    "filteredCount_one": "{{shown}} de {{count}} resultat",
+    "filteredCount_other": "{{shown}} de {{count}} resultats",
+    "searching_one": "S'està cercant a {{count}} indexador...",
+    "searching_other": "S'està cercant a {{count}} indexadors...",
+    "filterPlaceholder": "Filtra els resultats...",
+    "clearFilters": "Neteja els filtres",
+    "noMatches": "Cap resultat no coincideix amb els filtres.",
+    "cachedSummary": "A la memòria cau {{cached}} · Caduca {{expires}}",
+    "cachedAgo": "A la memòria cau · {{age}}",
+    "live": "En directe",
+    "partial": "Incomplet",
+    "partialHint": "Alguns indexadors no han respost. Actualitza per tornar-los a consultar.",
+    "refresh": "Actualitza",
+    "refreshFromIndexers": "Actualitza des dels indexadors",
+    "refreshCooldown": "Podràs tornar a actualitzar d'aquí a un moment",
+    "showMore": "Mostra'n més",
+    "shownOf": "Es mostren {{shown}} de {{total}}",
+    "categoryFallback": "Categoria {{id}}",
+    "noResults": "No s'ha trobat cap resultat",
+    "noResultsFor": "No s'ha trobat cap resultat per a \"{{query}}\"",
+    "noResultsHint": "Comprova l'ortografia, tria un altre tipus de cerca o cerca a més indexadors.",
+    "searchAllIndexers": "Cerca a tots els indexadors",
+    "failed": "La cerca ha fallat",
+    "retry": "Torna-ho a provar",
+    "idleTitle": "Cerca als teus indexadors",
+    "idleHint": "Introdueix un títol, un ID d'IMDb com tt1234567 o un ID de TVDb com tvdb 123456.",
+    "free": "Gratuït"
+  },
+  "facets": {
+    "collection": "Servei",
+    "normal": "Normal"
+  },
+  "sort": {
+    "label": "Ordena",
+    "seeders": "Més llavors",
+    "newest": "Més recents",
+    "oldest": "Més antics",
+    "largest": "Més grans",
+    "smallest": "Més petits",
+    "title": "Títol A–Z",
+    "indexer": "Indexador A–Z"
+  },
+  "columns": {
+    "age": "Antiguitat"
+  },
+  "row": {
+    "add": "Afegeix",
+    "addTo": "Afegeix a",
+    "more": "Més accions",
+    "openIndexer": "Obre a l'indexador",
+    "copyTitle": "Copia el títol",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× pujada"
+  },
+  "bulk": {
+    "label": "Resultats seleccionats",
+    "selected_one": "{{count}} seleccionat",
+    "selected_other": "{{count}} seleccionats",
+    "selectShown": "Selecciona tots els mostrats"
+  },
+  "historyMeta": "{{type}} · {{count}} resultats · {{timestamp}}",
+  "table": {
+    "title": "Títol",
+    "indexer": "Indexador",
+    "size": "Mida",
+    "seeders": "Llavors",
+    "leechers": "Sangoneres",
+    "category": "Categoria",
+    "source": "Origen",
+    "group": "Grup",
+    "freeleech": "Freeleech",
+    "actions": "Accions",
+    "downloadTorrent": "Baixa el .torrent"
+  },
+  "refreshDialog": {
+    "title": "Vols ometre la memòria cau?",
+    "description": "Això enviarà la petició directament a cada indexador seleccionat. Fes-ho servir amb moderació per evitar els límits de freqüència. Podràs tornar a actualitzar després d'una breu espera.",
+    "refreshNow": "Actualitza ara"
+  },
+  "cache": {
+    "cacheAndLive": "Memòria cau + en directe"
+  },
+  "card": {
+    "addToNamed": "Afegeix a {{name}}"
+  },
+  "toast": {
+    "noDownloadUrl": "Aquest resultat no té cap URL de baixada disponible",
+    "invalidProtocol": "El protocol de l'URL no és vàlid",
+    "invalidUrl": "El format de l'URL no és vàlid"
+  }
+}

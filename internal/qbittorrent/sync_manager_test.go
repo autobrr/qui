@@ -1,0 +1,3684 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package qbittorrent
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	jsonv2 "encoding/json/v2"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"runtime"
+	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"testing/synctest"
+	"time"
+	"unicode/utf8"
+
+	"github.com/Masterminds/semver/v3"
+
+	"github.com/autobrr/go-cache/ttlcache"
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/internal/testutil/qbtstub"
+)
+
+func TestNormalizeConnectionStatus(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "connected", NormalizeConnectionStatus(" Connected "))
+	require.Equal(t, "firewalled", NormalizeConnectionStatus("FIREWALLED"))
+	require.Empty(t, NormalizeConnectionStatus(" \t"))
+}
+
+func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
+	t.Parallel()
+
+	urls := []string{
+		"https://tracker.example/download?passkey=secret-token",
+		"magnet:?xt=urn:btih:abcdef&dn=private-release",
+	}
+
+	summary := addTorrentURLsErrorSummary(urls)
+
+	require.Equal(t, "2 URL(s)", summary)
+	require.NotContains(t, summary, "secret-token")
+	require.NotContains(t, summary, "private-release")
+	require.NotContains(t, summary, "tracker.example")
+	require.NotContains(t, summary, urls[0])
+	require.NotContains(t, summary, urls[1])
+}
+
+func TestNewCacheMetadata(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name           string
+		lastSuccessful time.Time
+		wantNil        bool
+		wantAge        int
+		wantSource     string
+		wantStale      bool
+	}{
+		{
+			name:    "unknown successful sync omits metadata",
+			wantNil: true,
+		},
+		{
+			name:           "fresh within response window",
+			lastSuccessful: now.Add(-500 * time.Millisecond),
+			wantAge:        0,
+			wantSource:     "fresh",
+			wantStale:      false,
+		},
+		{
+			name:           "fractional age after one second is still fresh",
+			lastSuccessful: now.Add(-1500 * time.Millisecond),
+			wantAge:        1,
+			wantSource:     "fresh",
+			wantStale:      false,
+		},
+		{
+			name:           "exactly response window is still fresh",
+			lastSuccessful: now.Add(-torrentResponseFreshWindow),
+			wantAge:        2,
+			wantSource:     "fresh",
+			wantStale:      false,
+		},
+		{
+			name:           "nanosecond over response window is stale",
+			lastSuccessful: now.Add(-(torrentResponseFreshWindow + time.Nanosecond)),
+			wantAge:        2,
+			wantSource:     "cache",
+			wantStale:      true,
+		},
+		{
+			name:           "future successful sync clamps to fresh zero age",
+			lastSuccessful: now.Add(time.Minute),
+			wantAge:        0,
+			wantSource:     "fresh",
+			wantStale:      false,
+		},
+		{
+			name:           "older than response window is cached and stale",
+			lastSuccessful: now.Add(-5 * time.Second),
+			wantAge:        5,
+			wantSource:     "cache",
+			wantStale:      true,
+		},
+		{
+			name:           "long-stale successful sync stays stale",
+			lastSuccessful: now.Add(-2 * time.Minute),
+			wantAge:        120,
+			wantSource:     "cache",
+			wantStale:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			meta := NewCacheMetadata(tt.lastSuccessful, now)
+			if tt.wantNil {
+				require.Nil(t, meta)
+				return
+			}
+
+			require.Equal(t, tt.wantAge, meta.Age)
+			require.Equal(t, tt.wantSource, meta.Source)
+			require.Equal(t, tt.wantStale, meta.IsStale)
+			require.Equal(t, tt.lastSuccessful.Add(torrentResponseFreshWindow).Format(time.RFC3339), meta.NextRefresh)
+		})
+	}
+}
+
+func TestTrackerMappingFromMainData(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker-a.example/announce"},
+		{Hash: "hash-multi", Tracker: "https://multi-one.example/announce"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://tracker-a.example/announce":  {"hash-a", "hash-missing"},
+			"** [DHT] **":                         {"hash-a"},
+			"https://multi-one.example/announce":  {"hash-multi"},
+			"udp://multi-two.example:80/announce": {"hash-multi"},
+		},
+	}
+
+	mapping := sm.trackerMappingFromMainData(torrentRefs(torrents), mainData)
+	require.Equal(t, map[string]map[string]struct{}{
+		"hash-a":     {"tracker-a.example": {}},
+		"hash-multi": {"multi-one.example": {}, "multi-two.example": {}},
+	}, mapping.HashToDomains, "a torrent counts under each tracker, not only the one that answered last")
+	require.Equal(t, map[string]map[string]struct{}{
+		"tracker-a.example": {"hash-a": {}},
+		"multi-one.example": {"hash-multi": {}},
+		"multi-two.example": {"hash-multi": {}},
+	}, mapping.DomainToHashes)
+}
+
+func TestStoreTrackerMappingKeepsGenerationWhenUnchanged(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains:  map[string]map[string]struct{}{"old-hash": {"stale.example": {}}},
+				DomainToHashes: map[string]map[string]struct{}{"stale.example": {"old-hash": {}}},
+			},
+		},
+	}
+	mainData := &qbt.MainData{Trackers: map[string][]string{"https://current.example/announce": {"current-hash"}}}
+	torrents := []qbt.Torrent{{Hash: "current-hash"}}
+
+	require.True(t, sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrentRefs(torrents), mainData)))
+	require.Equal(t, map[string]map[string]struct{}{"current.example": {"current-hash": {}}}, sm.getValidatedTrackerMapping(7).DomainToHashes)
+
+	gen := sm.trackerMappingGen.Load()
+	require.False(t, sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrentRefs(torrents), mainData)))
+	require.Equal(t, gen, sm.trackerMappingGen.Load(), "an unchanged mapping keeps cached counts valid")
+}
+
+func TestTrackerMappingFromMainDataDropsStaleDomainsFromCountsAndFilters(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"old-hash": {"stale.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"stale.example": {"old-hash": {}},
+				},
+				UpdatedAt: time.Now().Add(-time.Hour),
+			},
+		},
+	}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "current-hash",
+			Tracker:     "https://current.example/announce",
+			ContentPath: "/data/current",
+			Size:        100,
+			Uploaded:    20,
+			Downloaded:  30,
+		},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://current.example/announce": {"current-hash"},
+			"https://stale.example/announce":   {"old-hash"},
+		},
+	}
+
+	sm.storeTrackerMapping(7, sm.trackerMappingFromMainData(torrentRefs(torrents), mainData))
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.Contains(t, mapping.DomainToHashes, "current.example")
+	require.NotContains(t, mapping.DomainToHashes, "stale.example")
+	require.NotContains(t, mapping.HashToDomains, "old-hash")
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
+	require.Equal(t, 1, counts.Trackers["current.example"])
+	require.NotContains(t, counts.Trackers, "stale.example")
+
+	staleFiltered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, false, nil)
+	require.Empty(t, staleFiltered)
+
+	currentFiltered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"current.example"}}, mainData, false, nil)
+	require.Len(t, currentFiltered, 1)
+	require.Equal(t, "current-hash", currentFiltered[0].Hash)
+}
+
+func trackerHealthSnapshotOf(unregistered, down, errored int) *TrackerHealthSnapshot {
+	byHash := make(map[string]TrackerHealth)
+	for health, n := range map[TrackerHealth]int{TrackerHealthUnregistered: unregistered, TrackerHealthDown: down, TrackerHealthError: errored} {
+		for i := range n {
+			byHash[fmt.Sprintf("%s-%d", health, i)] = health
+		}
+	}
+	return NewTrackerHealthSnapshot(byHash)
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersIgnoresHealthCacheWhenUnsupported(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		trackerHealthCache: map[int]*TrackerHealthSnapshot{7: trackerHealthSnapshotOf(1, 2, 3)},
+	}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker.example/announce"},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
+
+	require.Zero(t, counts.Status["unregistered"])
+	require.Zero(t, counts.Status["tracker_down"])
+	require.Zero(t, counts.Status["tracker_error"])
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedValidatedDomain(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"hash-a": {"stale.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"stale.example": {"hash-a": {}},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	client := &Client{
+		instanceID: 7,
+		trackerExclusions: map[string]map[string]struct{}{
+			"stale.example": {"hash-a": {}},
+		},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://new.example/announce"},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
+
+	require.NotContains(t, counts.Trackers, "stale.example")
+	require.Nil(t, client.getTrackerExclusionsCopy())
+
+	filtered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, nil, false, nil)
+	require.Empty(t, filtered)
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersPreservesPartiallyLiveValidatedDomain(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"hash-a": {"tracker.example": {}},
+					"hash-b": {"tracker.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"tracker.example": {"hash-a": {}, "hash-b": {}},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	client := &Client{
+		instanceID: 7,
+		trackerExclusions: map[string]map[string]struct{}{
+			"tracker.example": {"hash-a": {}},
+		},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker.example/announce", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "a"},
+		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300, ContentPath: "b"},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
+
+	require.Equal(t, 1, counts.Trackers["tracker.example"])
+	exclusions := client.getTrackerExclusionsCopy()
+	require.Contains(t, exclusions, "tracker.example")
+	require.Contains(t, exclusions["tracker.example"], "hash-a")
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersPreservesValidatedCountsWithoutExclusions(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"hash-a": {"tracker.example": {}},
+					"hash-b": {"tracker.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"tracker.example": {"hash-a": {}, "hash-b": {}},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	client := &Client{
+		instanceID:        7,
+		trackerExclusions: make(map[string]map[string]struct{}),
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker.example/announce", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "same-path"},
+		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300, ContentPath: "same-path"},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
+
+	require.Equal(t, 2, counts.Trackers["tracker.example"])
+	require.Nil(t, client.getTrackerExclusionsCopy())
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedFallbackDomain(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	client := &Client{
+		instanceID: 7,
+		trackerExclusions: map[string]map[string]struct{}{
+			"stale.example": {"hash-a": {}},
+		},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://new.example/announce"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://stale.example/announce": {"hash-a"},
+		},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
+
+	require.NotContains(t, counts.Trackers, "stale.example")
+	require.Nil(t, client.getTrackerExclusionsCopy())
+
+	filtered := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, false, nil)
+	require.Empty(t, filtered)
+}
+
+func TestFallbackTrackerCountsOmitPseudoTrackersAndPreserveUnknown(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-pseudo", Tracker: "** [DHT] **", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "pseudo"},
+		{Hash: "hash-unknown", Tracker: "/not-a-tracker", Uploaded: 100, Downloaded: 200, Size: 300, ContentPath: "unknown"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"** [DHT] **":    {"hash-pseudo"},
+			"/not-a-tracker": {"hash-unknown"},
+		},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
+
+	require.Equal(t, 1, counts.Trackers[""], "a pseudo tracker with a tracker count of 0 is in No tracker")
+	require.Equal(t, 1, counts.Trackers["Unknown"])
+}
+
+func TestTrackerFiltersDoNotTreatPseudoTrackersAsUnknown(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-pseudo", Tracker: "** [DHT] **"},
+		{Hash: "hash-unknown", Tracker: "/not-a-tracker"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"** [DHT] **":    {"hash-pseudo"},
+			"/not-a-tracker": {"hash-unknown"},
+		},
+	}
+
+	includeUnknown := listRows(sm, client, torrents, FilterOptions{Trackers: []string{"Unknown"}}, mainData, false, nil)
+	require.Equal(t, []qbt.Torrent{{Hash: "hash-unknown", Tracker: "/not-a-tracker"}}, includeUnknown)
+
+	excludeUnknown := listRows(sm, client, torrents, FilterOptions{ExcludeTrackers: []string{"Unknown"}}, mainData, false, nil)
+	require.Equal(t, []qbt.Torrent{{Hash: "hash-pseudo", Tracker: "** [DHT] **"}}, excludeUnknown)
+}
+
+func TestTrackerFiltersFallbackOmitPseudoPrimaryTracker(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-pseudo", Tracker: "** [DHT] **"},
+		{Hash: "hash-unknown", Tracker: "/not-a-tracker"},
+	}
+
+	includeUnknown := listRows(sm, nil, torrents, FilterOptions{Trackers: []string{"Unknown"}}, nil, false, nil)
+	require.Equal(t, []qbt.Torrent{{Hash: "hash-unknown", Tracker: "/not-a-tracker"}}, includeUnknown)
+
+	excludeUnknown := listRows(sm, nil, torrents, FilterOptions{ExcludeTrackers: []string{"Unknown"}}, nil, false, nil)
+	require.Equal(t, []qbt.Torrent{{Hash: "hash-pseudo", Tracker: "** [DHT] **"}}, excludeUnknown)
+}
+
+func TestNormalizeHashes(t *testing.T) {
+	t.Parallel()
+
+	normalized := normalizeHashes([]string{" ABC123 ", "abc123", "Def456", "def456", ""})
+
+	require.Equal(t, []string{"abc123", "def456"}, normalized.canonical)
+	require.Equal(t, map[string]struct{}{
+		"abc123": {},
+		"def456": {},
+	}, normalized.canonicalSet)
+	require.Equal(t, "ABC123", normalized.canonicalToPreferred["abc123"])
+	require.Equal(t, []string{"ABC123", "abc123", "Def456", "def456", "DEF456"}, normalized.lookup)
+}
+
+func TestBulkActionRetryAttempts(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 0, 1))
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 1, 2))
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 0, 1))
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 2, 2))
+	retryCtx := context.WithoutCancel(WithPostAddBulkActionRetry(ctx))
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(retryCtx, 1, 2))
+	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
+}
+
+func TestBulkActionSyncRetryStopsAfterAttemptLimit(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		3,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 3, syncer.syncCalls)
+	require.Equal(t, 3, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryStopsWhenHashesResolve(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{},
+			{"abc": {Hash: "abc"}},
+		},
+	}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"abc"},
+		1,
+		"recheck",
+		3,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"abc"}),
+	)
+
+	require.Equal(t, 1, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryMixedVisibility(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"a": {Hash: "a"}},
+			{"a": {Hash: "a"}, "b": {Hash: "b"}},
+		},
+	}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"a", "b"},
+		1,
+		"recheck",
+		2,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"a", "b"}),
+	)
+
+	require.Equal(t, 2, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryStopsAfterAttemptLimitOnSyncFailure(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{syncErr: errors.New("sync failed")}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		2,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryKeepsCriticalBudgetWithDecoupledContext(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	syncer := &bulkActionRetrySyncer{}
+	retryCtx := context.WithoutCancel(ctx)
+	resolved, variants := bulkActionSyncRetry(
+		retryCtx,
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		bulkActionAddRetryAttempts,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, bulkActionAddRetryAttempts, syncer.syncCalls)
+	require.Equal(t, bulkActionAddRetryAttempts, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyWaitsForResumeDataCheck(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+			{"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyFreshCheckingAllowsRequestedRecheck(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range []qbt.TorrentState{qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl} {
+		t.Run(string(state), func(t *testing.T) {
+			syncer := &bulkActionRetrySyncer{
+				currentMap: map[string]qbt.Torrent{
+					"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl},
+				},
+				mapsAfterSync: []map[string]qbt.Torrent{
+					{"abc": {Hash: "abc", State: state}},
+				},
+			}
+
+			err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, time.Second)
+
+			require.NoError(t, err)
+			require.Equal(t, 1, syncer.syncCalls)
+			require.Equal(t, 1, syncer.mapCalls)
+		})
+	}
+}
+
+func TestWaitForPostAddRecheckReadyFreshStoppedNeedsRecheck(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		currentMap: map[string]qbt.Torrent{
+			"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl},
+		},
+		mapsAfterSync: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, time.Second)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, syncer.syncCalls)
+	require.Equal(t, 1, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyStopsAfterAttemptLimit(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 2, time.Nanosecond, time.Second)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyNamesFailedSync(t *testing.T) {
+	t.Parallel()
+
+	syncErr := errors.New("could not get main data")
+	syncer := &bulkActionRetrySyncer{syncErr: syncErr}
+
+	err := waitForPostAddRecheckReady(t.Context(), syncer, []string{"abc"}, 1, 2, time.Nanosecond, time.Second)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.ErrorContains(t, err, "last sync failed: could not get main data")
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 0, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(ctx, syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 0, syncer.syncCalls)
+	require.Equal(t, 0, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+		blockSyncUntilDone: true,
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Hour, time.Nanosecond)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.NotErrorIs(t, err, context.DeadlineExceeded, "a sync deadline must not read as caller cancellation")
+	require.ErrorContains(t, err, "last sync failed: context deadline exceeded")
+	require.Equal(t, 1, syncer.syncCalls)
+	require.Equal(t, 0, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyBoundsOverallWait(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		syncer := &bulkActionRetrySyncer{
+			maps: []map[string]qbt.Torrent{
+				{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+			},
+			blockSyncUntilDone: true,
+		}
+
+		err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, 10*time.Millisecond, 50*time.Millisecond)
+
+		require.ErrorIs(t, err, errPostAddRecheckNotReady)
+		require.Equal(t, 1, syncer.syncCalls)
+		require.LessOrEqual(t, syncer.mapCalls, 2)
+	})
+}
+
+func TestWaitForPostAddRecheckReadyChecksSyncThatEndsAtTheDeadline(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		syncer := &bulkActionRetrySyncer{
+			maps:               []map[string]qbt.Torrent{{"abc": {Hash: "abc", State: qbt.TorrentStateStoppedUp}}},
+			syncDoneAtDeadline: true,
+		}
+
+		err := waitForPostAddRecheckReady(t.Context(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, 50*time.Millisecond)
+
+		require.NoError(t, err)
+		require.Equal(t, 1, syncer.mapCalls)
+	})
+}
+
+func TestPostAddRecheckReadyRejectsMissingTorrent(t *testing.T) {
+	t.Parallel()
+
+	ready := postAddRecheckReady(torrentMapIndex{}, []string{"abc"})
+
+	require.False(t, ready)
+}
+
+func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	client := &stubTorrentFilesClient{
+		torrents: []qbt.Torrent{
+			{Hash: "ABC123", Progress: 1.0},
+			{Hash: "def456", Progress: 0.5},
+		},
+		filesByHash: map[string]qbt.TorrentFiles{
+			"ABC123": {
+				{
+					Name: "cached-a.mkv",
+					Size: 1,
+				},
+			},
+			"Def456": {
+				{
+					Name: "def-file.mkv",
+					Size: 2,
+				},
+			},
+		},
+	}
+
+	fm := &stubFilesManager{
+		cached: map[string]qbt.TorrentFiles{
+			"abc123": {
+				{
+					Name: "cached-a.mkv",
+					Size: 1,
+				},
+			},
+		},
+	}
+
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"  ABC123 ", "abc123", "Def456"})
+	require.NoError(t, err)
+
+	require.Len(t, filesByHash, 2)
+	require.Contains(t, filesByHash, "abc123")
+	require.Contains(t, filesByHash, "def456")
+	require.Equal(t, "cached-a.mkv", filesByHash["abc123"][0].Name)
+	require.Equal(t, "def-file.mkv", filesByHash["def456"][0].Name)
+
+	require.ElementsMatch(t, []string{"abc123", "def456"}, fm.lastHashes)
+	require.Len(t, fm.cacheCalls, 1)
+	require.Equal(t, cacheCall{hash: "def456", progress: 0.0, print: barePrint}, fm.cacheCalls[0])
+
+	require.Equal(t, []string{"Def456"}, client.fileRequests)
+}
+
+func TestGetTorrentFilesBatch_DefaultOmitsPerHashFailure(t *testing.T) {
+	t.Parallel()
+
+	fetchErr := errors.New("files unavailable")
+	goodFiles := qbt.TorrentFiles{{Name: "good.mkv", Size: 1}}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{
+			"GoodHash": {{files: &goodFiles}},
+			"BadHash":  {{err: fetchErr}},
+		},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+		fileFetchMaxConcurrent: 1,
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{" GoodHash ", "BadHash"})
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]qbt.TorrentFiles{"goodhash": goodFiles}, filesByHash)
+	require.Equal(t, 1, client.callCount("GoodHash"))
+	require.Equal(t, 1, client.callCount("BadHash"))
+	require.Equal(t, []cacheCall{{hash: "goodhash", print: barePrint}}, fm.cacheCalls)
+}
+
+func TestGetTorrentFilesBatch_CacheReadErrorFailsBatchWithoutFetching(t *testing.T) {
+	t.Parallel()
+
+	cacheErr := errors.New("sqlite: connection setup timed out")
+	client := &scriptedTorrentFilesClient{responses: map[string][]torrentFilesResponse{}}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles), batchErr: cacheErr}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{"HashA", "HashB"})
+
+	require.ErrorIs(t, err, cacheErr)
+	require.Nil(t, filesByHash)
+	require.Empty(t, client.calls)
+}
+
+func TestGetTorrentFilesBatch_CacheReadErrorSingleHashFetchesFromClient(t *testing.T) {
+	t.Parallel()
+
+	files := qbt.TorrentFiles{{Name: "single.mkv", Size: 1}}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{"HashA": {{files: &files}}},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles), batchErr: errors.New("cache read failed")}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{"HashA"})
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]qbt.TorrentFiles{"hasha": files}, filesByHash)
+	require.Equal(t, 1, client.callCount("HashA"))
+}
+
+func TestGetTorrentFilesBatch_DefaultReturnsAndCachesEmptyFileList(t *testing.T) {
+	t.Parallel()
+
+	emptyFiles := qbt.TorrentFiles{}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{
+			"EmptyHash": {{files: &emptyFiles}},
+		},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{"EmptyHash"})
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]qbt.TorrentFiles{"emptyhash": {}}, filesByHash)
+	require.Equal(t, 1, client.callCount("EmptyHash"))
+	require.Equal(t, []cacheCall{{hash: "emptyhash", print: barePrint}}, fm.cacheCalls)
+	require.Contains(t, fm.cached, "emptyhash")
+	require.Empty(t, fm.cached["emptyhash"])
+}
+
+func TestGetTorrentFilesBatch_PostAddRetriesAndReturnsTerminalErrors(t *testing.T) {
+	t.Parallel()
+
+	transientErr := errors.New("not visible yet")
+	terminalErr := errors.New("still unavailable")
+	emptyFiles := qbt.TorrentFiles{}
+	readyFiles := qbt.TorrentFiles{{Name: "ready.mkv", Size: 1}}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{
+			"AbC": {
+				{err: transientErr},
+				{},
+				{files: &emptyFiles},
+				{files: &readyFiles},
+			},
+			"Fail": {{err: terminalErr}},
+		},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+		fileFetchMaxConcurrent: 1,
+	}
+	sm.SetFilesManager(fm)
+
+	ctx := WithPostAddFileFetchRetry(context.Background())
+	filesByHash, err := sm.getTorrentFilesBatch(ctx, 1, []string{" AbC ", "Fail"}, bulkActionAddRetryAttempts, 0)
+
+	require.ErrorIs(t, err, terminalErr)
+	require.Equal(t, map[string]qbt.TorrentFiles{"abc": readyFiles}, filesByHash)
+	require.Equal(t, 4, client.callCount("AbC"))
+	require.Equal(t, bulkActionAddRetryAttempts, client.callCount("Fail"))
+	require.Equal(t, []cacheCall{{hash: "abc", print: barePrint}}, fm.cacheCalls)
+}
+
+func TestFetchTorrentFilesWithRetry_Exhaustion(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("api failure")
+	emptyFiles := qbt.TorrentFiles{}
+	tests := []struct {
+		name      string
+		response  torrentFilesResponse
+		postAdd   bool
+		wantError string
+		wantIs    error
+	}{
+		{name: "API error", response: torrentFilesResponse{err: sentinel}, wantError: "fetch torrent files abc: api failure", wantIs: sentinel},
+		{name: "nil response", response: torrentFilesResponse{}, wantError: "fetch torrent files abc: empty response"},
+		{name: "post-add empty file list", response: torrentFilesResponse{files: &emptyFiles}, postAdd: true, wantError: "fetch torrent files abc: empty file list"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &scriptedTorrentFilesClient{responses: map[string][]torrentFilesResponse{"abc": {tt.response}}}
+			ctx := context.Background()
+			if tt.postAdd {
+				ctx = WithPostAddFileFetchRetry(ctx)
+			}
+
+			files, err := fetchTorrentFilesWithRetry(ctx, client, "abc", 3, 0)
+
+			require.Nil(t, files)
+			require.EqualError(t, err, tt.wantError)
+			if tt.wantIs != nil {
+				require.ErrorIs(t, err, tt.wantIs)
+			}
+			require.Equal(t, 3, client.callCount("abc"))
+		})
+	}
+}
+
+func TestFetchTorrentFilesWithRetry_CancellationStopsRequests(t *testing.T) {
+	t.Parallel()
+
+	t.Run("already canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		client := &scriptedTorrentFilesClient{}
+
+		_, err := fetchTorrentFilesWithRetry(ctx, client, "abc", 3, time.Hour)
+
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, client.callCount("abc"))
+	})
+
+	t.Run("deadline expired", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+		client := &scriptedTorrentFilesClient{}
+
+		_, err := fetchTorrentFilesWithRetry(ctx, client, "abc", 3, time.Hour)
+
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Zero(t, client.callCount("abc"))
+	})
+
+	t.Run("canceled after first failure", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &scriptedTorrentFilesClient{
+			responses: map[string][]torrentFilesResponse{
+				"abc": {{err: errors.New("not ready"), after: cancel}},
+			},
+		}
+
+		_, err := fetchTorrentFilesWithRetry(ctx, client, "abc", 3, time.Hour)
+
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, 1, client.callCount("abc"))
+	})
+}
+
+func TestGetTorrentFilesBatch_PartialFailureLogCapsErrorSample(t *testing.T) {
+	var buf bytes.Buffer
+	originalLogger := log.Logger
+	log.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	t.Cleanup(func() { log.Logger = originalLogger })
+
+	responses := make(map[string][]torrentFilesResponse, 5)
+	hashes := make([]string, 0, 5)
+	for i := range 5 {
+		hash := fmt.Sprintf("hash-%d", i)
+		hashes = append(hashes, hash)
+		responses[hash] = []torrentFilesResponse{{err: fmt.Errorf("sentinel-%d", i)}}
+	}
+	client := &scriptedTorrentFilesClient{responses: responses}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+		fileFetchMaxConcurrent: 1,
+	}
+
+	_, err := sm.GetTorrentFilesBatch(context.Background(), 7, hashes)
+	require.NoError(t, err)
+
+	var partialFailureLog map[string]any
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &entry))
+		if entry[zerolog.MessageFieldName] == "Completed batch torrent file fetch with partial failures" {
+			partialFailureLog = entry
+		}
+	}
+	require.NotNil(t, partialFailureLog)
+	require.InDelta(t, 5, partialFailureLog["missing"], 0)
+	require.InDelta(t, 5, partialFailureLog["requested"], 0)
+	errorSample, ok := partialFailureLog[zerolog.ErrorFieldName].(string)
+	require.True(t, ok)
+	require.Equal(t, 3, strings.Count(errorSample, "fetch torrent files"))
+	require.Equal(t, 3, strings.Count(errorSample, "sentinel-"))
+}
+
+func TestGetTorrentFilesBatch_SanitizesInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	client := &stubTorrentFilesClient{
+		torrents: []qbt.Torrent{{Hash: "abc123", Progress: 1.0}},
+		filesByHash: map[string]qbt.TorrentFiles{
+			"abc123": {{Name: "Movie.\xe1.2024.1080p-GROUP.mkv", Size: 1}},
+		},
+	}
+
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"abc123"})
+	require.NoError(t, err)
+	require.Len(t, filesByHash["abc123"], 1)
+	require.True(t, utf8.ValidString(filesByHash["abc123"][0].Name), "file name should be valid UTF-8")
+}
+
+func TestHasTorrentByAnyHash(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	lookup := &stubTorrentLookup{
+		torrents: map[string]qbt.Torrent{
+			"ABC123": {Hash: "ABC123", Name: "first"},
+			"DEF456": {Hash: "zzz", InfohashV2: "def456", Name: "second"},
+		},
+	}
+
+	sm := &SyncManager{
+		torrentLookupProvider: func(context.Context, int) (torrentLookup, error) {
+			return lookup, nil
+		},
+	}
+
+	torrent, found, err := sm.HasTorrentByAnyHash(ctx, 1, []string{"  abc123 "})
+	require.NoError(t, err)
+	require.True(t, found)
+	require.NotNil(t, torrent)
+	require.Equal(t, "ABC123", torrent.Hash)
+
+	torrent, found, err = sm.HasTorrentByAnyHash(ctx, 1, []string{"def456"})
+	require.NoError(t, err)
+	require.True(t, found)
+	require.NotNil(t, torrent)
+	require.Equal(t, "zzz", torrent.Hash)
+	require.Equal(t, "second", torrent.Name)
+}
+
+func TestResolveTorrentByVariantHash(t *testing.T) {
+	t.Parallel()
+
+	torrentMap := map[string]qbt.Torrent{
+		"abc123":    {Hash: "abc123", Name: "exact-match", InfohashV1: "", InfohashV2: ""},
+		"v2hash456": {Hash: "v2hash456", Name: "hybrid-v2-indexed", InfohashV1: "v1hash456", InfohashV2: "v2hash456"},
+		"v1hash789": {Hash: "v1hash789", Name: "hybrid-v1-indexed", InfohashV1: "v1hash789", InfohashV2: "v2hash789"},
+	}
+
+	tests := []struct {
+		name        string
+		inputHash   string
+		expectFound bool
+		expectHash  string
+		expectName  string
+	}{
+		{
+			name:        "exact match - primary hash",
+			inputHash:   "abc123",
+			expectFound: true,
+			expectHash:  "abc123",
+			expectName:  "exact-match",
+		},
+		{
+			name:        "exact match - case insensitive",
+			inputHash:   "ABC123",
+			expectFound: true,
+			expectHash:  "abc123",
+			expectName:  "exact-match",
+		},
+		{
+			name:        "variant match - v1 hash provided, indexed by v2",
+			inputHash:   "v1hash456",
+			expectFound: true,
+			expectHash:  "v2hash456",
+			expectName:  "hybrid-v2-indexed",
+		},
+		{
+			name:        "variant match - v2 hash provided, indexed by v1",
+			inputHash:   "v2hash789",
+			expectFound: true,
+			expectHash:  "v1hash789",
+			expectName:  "hybrid-v1-indexed",
+		},
+		{
+			name:        "variant match - case insensitive v1 lookup",
+			inputHash:   "V1HASH456",
+			expectFound: true,
+			expectHash:  "v2hash456",
+			expectName:  "hybrid-v2-indexed",
+		},
+		{
+			name:        "not found - unknown hash",
+			inputHash:   "unknown",
+			expectFound: false,
+		},
+		{
+			name:        "empty hash - returns not found",
+			inputHash:   "",
+			expectFound: false,
+		},
+		{
+			name:        "whitespace only - returns not found",
+			inputHash:   "   ",
+			expectFound: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			torrent, found := resolveTorrentByVariantHash(torrentMapIndex(torrentMap), tc.inputHash)
+
+			require.Equal(t, tc.expectFound, found, "found mismatch")
+
+			if tc.expectFound {
+				require.Equal(t, tc.expectHash, torrent.Hash, "hash mismatch")
+				require.Equal(t, tc.expectName, torrent.Name, "name mismatch")
+			}
+		})
+	}
+}
+
+func TestGetTorrentFilesBatch_IsolatesClientSliceReuse(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	client := &sliceReusingTorrentFilesClient{
+		shared: qbt.TorrentFiles{
+			{
+				Name: "initial.mkv",
+				Size: 1,
+			},
+		},
+		labels: map[string]string{
+			"hash-a": "file-a.mkv",
+			"hash-b": "file-b.mkv",
+		},
+	}
+
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+		fileFetchMaxConcurrent: 1,
+	}
+
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"hash-a", "hash-b"})
+	require.NoError(t, err)
+
+	require.Len(t, filesByHash, 2)
+	require.Contains(t, filesByHash, "hash-a")
+	require.Contains(t, filesByHash, "hash-b")
+
+	require.Equal(t, "file-a.mkv", filesByHash["hash-a"][0].Name)
+	require.Equal(t, "file-b.mkv", filesByHash["hash-b"][0].Name)
+
+	client.mu.Lock()
+	client.shared[0].Name = "mutated.mkv"
+	client.mu.Unlock()
+
+	require.Equal(t, "file-a.mkv", filesByHash["hash-a"][0].Name)
+	require.Equal(t, "file-b.mkv", filesByHash["hash-b"][0].Name)
+}
+
+func TestGetTorrentFilesBatch_IsolatesCacheSliceReuse(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	shared := qbt.TorrentFiles{
+		{
+			Name: "cached-a.mkv",
+			Size: 1,
+		},
+	}
+
+	fm := &aliasingFilesManager{
+		cached: map[string]qbt.TorrentFiles{
+			"abc123": shared,
+		},
+	}
+
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return &stubTorrentFilesClient{}, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"abc123"})
+	require.NoError(t, err)
+
+	files, ok := filesByHash["abc123"]
+	require.True(t, ok)
+	require.Len(t, files, 1)
+	require.Equal(t, "cached-a.mkv", files[0].Name)
+
+	fm.cached["abc123"][0].Name = "mutated.mkv"
+
+	require.Equal(t, "cached-a.mkv", files[0].Name)
+}
+
+type stubTorrentFilesClient struct {
+	torrents        []qbt.Torrent
+	filesByHash     map[string]qbt.TorrentFiles
+	requestedHashes [][]string
+	fileRequests    []string
+}
+
+type torrentFilesResponse struct {
+	files *qbt.TorrentFiles
+	err   error
+	after func()
+}
+
+type scriptedTorrentFilesClient struct {
+	mu        sync.Mutex
+	responses map[string][]torrentFilesResponse
+	calls     map[string]int
+}
+
+func (*scriptedTorrentFilesClient) getTorrentsByHashes([]string) []*qbt.Torrent {
+	return nil
+}
+
+func (c *scriptedTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return maindataEntries(hashes, c.responses)
+}
+
+func maindataEntries[V any](hashes []string, served map[string]V) []*qbt.Torrent {
+	lower := make(map[string]struct{}, len(served))
+	for hash := range served {
+		lower[canonicalizeHash(hash)] = struct{}{}
+	}
+	var torrents []*qbt.Torrent
+	for _, hash := range hashes {
+		if _, ok := lower[hash]; ok {
+			torrents = append(torrents, &qbt.Torrent{Hash: hash})
+		}
+	}
+	return torrents
+}
+
+var barePrint = new(FilesPrint(qbt.Torrent{}))
+
+func (c *scriptedTorrentFilesClient) GetFilesInformationCtx(_ context.Context, hash string) (*qbt.TorrentFiles, error) {
+	c.mu.Lock()
+	if c.calls == nil {
+		c.calls = make(map[string]int)
+	}
+	call := c.calls[hash]
+	c.calls[hash]++
+	responses := c.responses[hash]
+	if len(responses) == 0 {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("no response for hash %s", hash)
+	}
+	response := responses[min(call, len(responses)-1)]
+	var files *qbt.TorrentFiles
+	if response.files != nil {
+		copied := slices.Clone(*response.files)
+		files = &copied
+	}
+	c.mu.Unlock()
+
+	if response.after != nil {
+		response.after()
+	}
+	return files, response.err
+}
+
+func (c *scriptedTorrentFilesClient) callCount(hash string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls[hash]
+}
+
+func (c *stubTorrentFilesClient) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+	copied := append([]string(nil), hashes...)
+	c.requestedHashes = append(c.requestedHashes, copied)
+	refs := make([]*qbt.Torrent, len(c.torrents))
+	for i := range c.torrents {
+		refs[i] = &c.torrents[i]
+	}
+	return refs
+}
+
+func (c *stubTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
+	return maindataEntries(hashes, c.filesByHash)
+}
+
+func (c *stubTorrentFilesClient) GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error) {
+	c.fileRequests = append(c.fileRequests, hash)
+	files, ok := c.filesByHash[hash]
+	if !ok {
+		return nil, fmt.Errorf("no files for hash %s", hash)
+	}
+	copied := make(qbt.TorrentFiles, len(files))
+	copy(copied, files)
+	return &copied, nil
+}
+
+type sliceReusingTorrentFilesClient struct {
+	mu              sync.Mutex
+	shared          qbt.TorrentFiles
+	labels          map[string]string
+	requestedHashes [][]string
+	fileRequests    []string
+}
+
+func (c *sliceReusingTorrentFilesClient) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	copied := append([]string(nil), hashes...)
+	c.requestedHashes = append(c.requestedHashes, copied)
+	return nil
+}
+
+func (c *sliceReusingTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return maindataEntries(hashes, c.labels)
+}
+
+func (c *sliceReusingTorrentFilesClient) GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	label, ok := c.labels[hash]
+	if !ok {
+		return nil, fmt.Errorf("no files for hash %s", hash)
+	}
+
+	c.fileRequests = append(c.fileRequests, hash)
+
+	if len(c.shared) == 0 {
+		c.shared = qbt.TorrentFiles{
+			{
+				Name: label,
+				Size: 1,
+			},
+		}
+	} else {
+		c.shared[0].Name = label
+	}
+
+	return &c.shared, nil
+}
+
+type cacheCall struct {
+	hash     string
+	progress float64
+	print    *int64
+}
+
+type stubFilesManager struct {
+	cached     map[string]qbt.TorrentFiles
+	prints     map[string]*int64
+	syncedAt   map[string]time.Time
+	lastHashes []string
+	cacheCalls []cacheCall
+	batchErr   error
+}
+
+func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
+	fm.lastHashes = append([]string(nil), hashes...)
+	if fm.batchErr != nil {
+		return nil, nil, fm.batchErr
+	}
+
+	cached := make(map[string]qbt.TorrentFiles, len(hashes))
+	missing := make([]string, 0, len(hashes))
+
+	for _, hash := range hashes {
+		if files, ok := fm.cached[hash]; ok {
+			copied := make(qbt.TorrentFiles, len(files))
+			copy(copied, files)
+			cached[hash] = copied
+		} else {
+			missing = append(missing, hash)
+		}
+	}
+
+	return cached, missing, nil
+}
+
+func (fm *stubFilesManager) GetCachedFilesBatchWithMeta(_ context.Context, _ int, hashes []string) (map[string]CachedFilesEntry, error) {
+	fm.lastHashes = append([]string(nil), hashes...)
+	if fm.batchErr != nil {
+		return nil, fm.batchErr
+	}
+	entries := make(map[string]CachedFilesEntry, len(hashes))
+	for _, hash := range hashes {
+		if files, ok := fm.cached[hash]; ok {
+			entries[hash] = CachedFilesEntry{Files: slices.Clone(files), Print: fm.prints[hash], SyncedAt: fm.syncedAt[hash]}
+		}
+	}
+	return entries, nil
+}
+
+func (fm *stubFilesManager) CacheFilesBatch(_ context.Context, _ int, writes map[string]CachedFilesWrite) error {
+	if fm.prints == nil {
+		fm.prints = make(map[string]*int64)
+		fm.syncedAt = make(map[string]time.Time)
+	}
+	for hash, write := range writes {
+		fm.cacheCalls = append(fm.cacheCalls, cacheCall{hash: hash, progress: 0.0, print: write.Print})
+		fm.cached[hash] = write.Files
+		fm.prints[hash] = write.Print
+		fm.syncedAt[hash] = time.Now()
+	}
+	return nil
+}
+
+func (fm *stubFilesManager) InvalidateCache(_ context.Context, _ int, hash string) error {
+	delete(fm.cached, hash)
+	return nil
+}
+
+type aliasingFilesManager struct {
+	cached     map[string]qbt.TorrentFiles
+	lastHashes []string
+}
+
+func (fm *aliasingFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
+	fm.lastHashes = append([]string(nil), hashes...)
+
+	cached := make(map[string]qbt.TorrentFiles, len(hashes))
+	missing := make([]string, 0, len(hashes))
+
+	for _, hash := range hashes {
+		if files, ok := fm.cached[hash]; ok {
+			cached[hash] = files
+		} else {
+			missing = append(missing, hash)
+		}
+	}
+
+	return cached, missing, nil
+}
+
+func (fm *aliasingFilesManager) GetCachedFilesBatchWithMeta(_ context.Context, _ int, hashes []string) (map[string]CachedFilesEntry, error) {
+	fm.lastHashes = append([]string(nil), hashes...)
+	entries := make(map[string]CachedFilesEntry, len(hashes))
+	for _, hash := range hashes {
+		if files, ok := fm.cached[hash]; ok {
+			entries[hash] = CachedFilesEntry{Files: files}
+		}
+	}
+	return entries, nil
+}
+
+func (fm *aliasingFilesManager) CacheFilesBatch(_ context.Context, _ int, writes map[string]CachedFilesWrite) error {
+	for hash, write := range writes {
+		fm.cached[hash] = write.Files
+	}
+	return nil
+}
+
+func (*aliasingFilesManager) InvalidateCache(context.Context, int, string) error {
+	return nil
+}
+
+type stubTorrentLookup struct {
+	torrents map[string]qbt.Torrent
+}
+
+func (s *stubTorrentLookup) Torrent(hash string) (*qbt.Torrent, bool) {
+	torrent, ok := s.torrents[hash]
+	return &torrent, ok
+}
+
+type bulkActionRetrySyncer struct {
+	maps               []map[string]qbt.Torrent
+	currentMap         map[string]qbt.Torrent
+	mapsAfterSync      []map[string]qbt.Torrent
+	syncErr            error
+	syncCalls          int
+	mapCalls           int
+	blockSyncUntilDone bool
+	syncDoneAtDeadline bool
+}
+
+func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
+	s.syncCalls++
+	if s.blockSyncUntilDone {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	if s.syncDoneAtDeadline {
+		<-ctx.Done()
+		synctest.Wait()
+		return nil
+	}
+	if len(s.mapsAfterSync) > 0 {
+		index := min(s.syncCalls-1, len(s.mapsAfterSync)-1)
+		s.currentMap = s.mapsAfterSync[index]
+	}
+	return s.syncErr
+}
+
+func (s *bulkActionRetrySyncer) snapshot() torrentIndex {
+	s.mapCalls++
+	if s.currentMap != nil || s.mapsAfterSync != nil {
+		return torrentMapIndex(s.currentMap)
+	}
+	if len(s.maps) == 0 {
+		return torrentMapIndex(nil)
+	}
+	index := s.mapCalls - 1
+	if index >= len(s.maps) {
+		index = len(s.maps) - 1
+	}
+	return torrentMapIndex(s.maps[index])
+}
+
+type torrentMapIndex map[string]qbt.Torrent
+
+func (m torrentMapIndex) Torrent(hash string) (*qbt.Torrent, bool) {
+	t, ok := m[hash]
+	return &t, ok
+}
+
+func (m torrentMapIndex) Matching(match func(*qbt.Torrent) bool) []*qbt.Torrent {
+	var refs []*qbt.Torrent
+	for _, t := range m {
+		if match(&t) {
+			refs = append(refs, &t)
+		}
+	}
+	return refs
+}
+
+func (m torrentMapIndex) Len() int { return len(m) }
+
+func resolveBulkActionRetryTestHashes(hashes []string) func(torrentIndex) (int, int) {
+	return func(torrents torrentIndex) (int, int) {
+		resolved := 0
+		for _, hash := range hashes {
+			if _, ok := torrents.Torrent(hash); ok {
+				resolved++
+			}
+		}
+		return resolved, 0
+	}
+}
+
+type stubTrackerCustomizationLister struct {
+	customizations []*models.TrackerCustomization
+}
+
+func (s *stubTrackerCustomizationLister) List(context.Context) ([]*models.TrackerCustomization, error) {
+	return s.customizations, nil
+}
+
+func TestSortTorrentsByTracker_WithCustomDisplayNames(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, &stubTrackerCustomizationLister{
+		customizations: []*models.TrackerCustomization{
+			{
+				DisplayName: "My Tracker",
+				Domains:     []string{"tracker1.example.com", "tracker2.example.com"},
+			},
+			{
+				DisplayName: "Another Tracker",
+				Domains:     []string{"another.tracker.org"},
+			},
+		},
+	})
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Tracker: "https://tracker1.example.com/announce", Name: "Torrent A"},
+		{Hash: "hash2", Tracker: "https://unknown.tracker.net/announce", Name: "Torrent B"},
+		{Hash: "hash3", Tracker: "https://tracker2.example.com/announce", Name: "Torrent C"},
+		{Hash: "hash4", Tracker: "https://another.tracker.org/announce", Name: "Torrent D"},
+		{Hash: "hash5", Tracker: "", Name: "Torrent E"},
+	}
+
+	sortTorrentValues(sm, torrents, "tracker", false, false, nil)
+
+	require.Equal(t, "hash4", torrents[0].Hash, "Another Tracker should come first (alphabetically)")
+	require.Equal(t, "hash1", torrents[1].Hash, "My Tracker (tracker1) should be second")
+	require.Equal(t, "hash3", torrents[2].Hash, "My Tracker (tracker2) should be third (same display name, different domain)")
+	require.Equal(t, "hash2", torrents[3].Hash, "Unknown tracker should be fourth")
+	require.Equal(t, "hash5", torrents[4].Hash, "Empty tracker should be last")
+
+	sortTorrentValues(sm, torrents, "tracker", true, false, nil)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "Unknown tracker should be first in desc (z > u > m > a)")
+	require.Equal(t, "hash3", torrents[1].Hash, "My Tracker (tracker2) should be second in desc")
+	require.Equal(t, "hash1", torrents[2].Hash, "My Tracker (tracker1) should be third in desc")
+	require.Equal(t, "hash4", torrents[3].Hash, "Another Tracker should be fourth in desc")
+	require.Equal(t, "hash5", torrents[4].Hash, "Empty tracker still at end in desc (no tracker = sorted last)")
+}
+
+func TestSortTorrentsByTracker_MergedDomainsStayTogether(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, &stubTrackerCustomizationLister{
+		customizations: []*models.TrackerCustomization{
+			{
+				DisplayName: "Private Tracker",
+				Domains:     []string{"old.domain.com", "new.domain.com", "backup.domain.org"},
+			},
+		},
+	})
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Tracker: "https://old.domain.com/announce", Name: "From Old"},
+		{Hash: "hash2", Tracker: "https://new.domain.com/announce", Name: "From New"},
+		{Hash: "hash3", Tracker: "https://backup.domain.org/announce", Name: "From Backup"},
+		{Hash: "hash4", Tracker: "https://other.site.net/announce", Name: "From Other"},
+	}
+
+	sortTorrentValues(sm, torrents, "tracker", false, false, nil)
+
+	require.Equal(t, "hash4", torrents[0].Hash, "other.site.net first (o < p)")
+	require.Equal(t, "hash3", torrents[1].Hash, "backup.domain.org second (private tracker group, backup < new < old)")
+	require.Equal(t, "hash2", torrents[2].Hash, "new.domain.com third")
+	require.Equal(t, "hash1", torrents[3].Hash, "old.domain.com fourth")
+}
+
+func TestSortTorrentsByTracker_NoCustomizations(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Tracker: "https://zebra.com/announce", Name: "Torrent A"},
+		{Hash: "hash2", Tracker: "https://apple.com/announce", Name: "Torrent B"},
+		{Hash: "hash3", Tracker: "https://mango.com/announce", Name: "Torrent C"},
+	}
+
+	sortTorrentValues(sm, torrents, "tracker", false, false, nil)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "apple.com should be first")
+	require.Equal(t, "hash3", torrents[1].Hash, "mango.com should be second")
+	require.Equal(t, "hash1", torrents[2].Hash, "zebra.com should be third")
+}
+
+func TestSortTorrentsByTracker_EqualKeysKeepInputOrder(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	const pending = 40
+	torrents := make([]qbt.Torrent, 0, pending+1)
+	for i := range pending {
+		torrents = append(torrents, qbt.Torrent{Name: fmt.Sprintf("pending-%02d", i)})
+	}
+	torrents = append(torrents, qbt.Torrent{Hash: "hash1", Tracker: "https://apple.com/announce", Name: "has-tracker"})
+
+	sortTorrentValues(sm, torrents, "tracker", false, false, nil)
+
+	require.Equal(t, "has-tracker", torrents[0].Name, "the row with a tracker sorts ahead of the pending ones")
+	for i := range pending {
+		require.Equal(t, fmt.Sprintf("pending-%02d", i), torrents[i+1].Name,
+			"rows whose keys all compare equal must keep their input order")
+	}
+}
+
+func TestSortCrossInstanceTorrentsByTracker_EmptyTrackersGoToEnd(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []CrossInstanceTorrentView{
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash1", Tracker: "", Name: "No Tracker"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash2", Tracker: "https://zebra.com/announce", Name: "Zebra"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash3", Tracker: "https://apple.com/announce", Name: "Apple"}}, InstanceName: "Instance2"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash4", Tracker: "", Name: "Also No Tracker"}}, InstanceName: "Instance2"},
+	}
+
+	sm.sortCrossInstanceTorrents(torrents, "tracker", false)
+
+	require.Equal(t, "hash3", torrents[0].Hash, "apple.com should be first")
+	require.Equal(t, "hash2", torrents[1].Hash, "zebra.com should be second")
+	require.Equal(t, "hash1", torrents[2].Hash, "empty tracker should be third (sorted by hash)")
+	require.Equal(t, "hash4", torrents[3].Hash, "empty tracker should be fourth")
+
+	sm.sortCrossInstanceTorrents(torrents, "tracker", true)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "zebra.com should be first in desc")
+	require.Equal(t, "hash3", torrents[1].Hash, "apple.com should be second in desc")
+	require.Equal(t, "hash4", torrents[2].Hash, "empty tracker hash4 should be third")
+	require.Equal(t, "hash1", torrents[3].Hash, "empty tracker hash1 should be fourth")
+}
+
+func TestSortCrossInstanceTorrentsByTracker_WithCustomNames(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, &stubTrackerCustomizationLister{
+		customizations: []*models.TrackerCustomization{
+			{ID: 1, DisplayName: "ABC Tracker", Domains: []string{"zebra.com"}},
+			{ID: 2, DisplayName: "XYZ Tracker", Domains: []string{"apple.com"}},
+		},
+	})
+
+	torrents := []CrossInstanceTorrentView{
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash1", Tracker: "https://zebra.com/announce", Name: "Torrent A"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash2", Tracker: "https://apple.com/announce", Name: "Torrent B"}}, InstanceName: "Instance2"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash3", Tracker: "https://mango.com/announce", Name: "Torrent C"}}, InstanceName: "Instance1"},
+	}
+
+	sm.sortCrossInstanceTorrents(torrents, "tracker", false)
+
+	require.Equal(t, "hash1", torrents[0].Hash, "ABC Tracker (zebra.com) should be first")
+	require.Equal(t, "hash3", torrents[1].Hash, "mango.com should be second")
+	require.Equal(t, "hash2", torrents[2].Hash, "XYZ Tracker (apple.com) should be third")
+}
+
+func TestSortCrossInstanceTorrentsByTracker_UnknownTrackersGoToEnd(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []CrossInstanceTorrentView{
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash1", Tracker: "unknown", Name: "Unknown Tracker"}}, InstanceName: "Instance1"},
+		{TorrentView: &TorrentView{Torrent: &qbt.Torrent{Hash: "hash2", Tracker: "https://valid.com/announce", Name: "Valid"}}, InstanceName: "Instance1"},
+	}
+
+	sm.sortCrossInstanceTorrents(torrents, "tracker", false)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "valid tracker should come first")
+	require.Equal(t, "hash1", torrents[1].Hash, "unknown tracker should go to end")
+}
+
+func TestSortCrossInstanceTorrents_CommonFields(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	build := func() []CrossInstanceTorrentView {
+		return []CrossInstanceTorrentView{
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-alpha",
+						Name:        "Alpha",
+						State:       qbt.TorrentStatePausedUp,
+						AddedOn:     100,
+						DlSpeed:     50,
+						NumComplete: 10,
+						Priority:    1,
+						ETA:         60,
+						Private:     false,
+					},
+				},
+				InstanceID:   1,
+				InstanceName: "One",
+			},
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-beta",
+						Name:        "beta",
+						State:       qbt.TorrentStateDownloading,
+						AddedOn:     200,
+						DlSpeed:     10,
+						NumComplete: 5,
+						Priority:    0,
+						ETA:         8640000,
+						Private:     true,
+					},
+				},
+				InstanceID:   2,
+				InstanceName: "Two",
+			},
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-gamma",
+						Name:        "Gamma",
+						State:       qbt.TorrentStateUploading,
+						AddedOn:     150,
+						DlSpeed:     100,
+						NumComplete: 20,
+						Priority:    2,
+						ETA:         120,
+						Private:     false,
+					},
+				},
+				InstanceID:   3,
+				InstanceName: "Three",
+			},
+		}
+	}
+
+	testCases := []struct {
+		name      string
+		sort      string
+		desc      bool
+		firstHash string
+		lastHash  string
+	}{
+		{name: "state asc", sort: "state", desc: false, firstHash: "hash-beta", lastHash: "hash-alpha"},
+		{name: "added_on desc", sort: "added_on", desc: true, firstHash: "hash-beta", lastHash: "hash-alpha"},
+		{name: "dlspeed desc", sort: "dlspeed", desc: true, firstHash: "hash-gamma", lastHash: "hash-beta"},
+		{name: "num_complete asc", sort: "num_complete", desc: false, firstHash: "hash-beta", lastHash: "hash-gamma"},
+		{name: "priority asc keeps zero last", sort: "priority", desc: false, firstHash: "hash-gamma", lastHash: "hash-beta"},
+		{name: "eta asc keeps infinity last", sort: "eta", desc: false, firstHash: "hash-alpha", lastHash: "hash-beta"},
+		{name: "private desc flips the hash tiebreak", sort: "private", desc: true, firstHash: "hash-beta", lastHash: "hash-alpha"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			torrents := build()
+			sm.sortCrossInstanceTorrents(torrents, tc.sort, tc.desc)
+			require.Equal(t, tc.firstHash, torrents[0].Hash)
+			require.Equal(t, tc.lastHash, torrents[len(torrents)-1].Hash)
+		})
+	}
+}
+
+func TestSortCrossInstanceTorrentsStateUsesTrackerHealthPriority(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+	torrents := []CrossInstanceTorrentView{
+		{
+			TorrentView: &TorrentView{
+				Torrent: &qbt.Torrent{
+					Hash:  "hash-normal",
+					Name:  "Normal",
+					State: qbt.TorrentStateDownloading,
+				},
+			},
+			InstanceID:   1,
+			InstanceName: "One",
+		},
+		{
+			TorrentView: &TorrentView{
+				Torrent: &qbt.Torrent{
+					Hash:  "hash-error",
+					Name:  "Tracker Error",
+					State: qbt.TorrentStatePausedUp,
+				},
+			},
+			InstanceID:   2,
+			InstanceName: "Two",
+		},
+		{
+			TorrentView: &TorrentView{
+				Torrent: &qbt.Torrent{
+					Hash:  "hash-unregistered",
+					Name:  "Unregistered",
+					State: qbt.TorrentStatePausedUp,
+				},
+			},
+			InstanceID:   3,
+			InstanceName: "Three",
+		},
+	}
+	sm.trackerHealthCache[2] = NewTrackerHealthSnapshot(map[string]TrackerHealth{"hash-error": TrackerHealthError})
+	sm.trackerHealthCache[3] = NewTrackerHealthSnapshot(map[string]TrackerHealth{"hash-unregistered": TrackerHealthUnregistered})
+
+	sm.sortCrossInstanceTorrents(torrents, "state", false)
+
+	require.Equal(t, "hash-unregistered", torrents[0].Hash)
+	require.Equal(t, "hash-error", torrents[1].Hash)
+	require.Equal(t, "hash-normal", torrents[2].Hash)
+}
+
+func TestSortTorrentsByTimestamp_Tiebreaker(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Name: "Zebra", LastActivity: 1000, State: qbt.TorrentStatePausedUp},
+		{Hash: "hash2", Name: "Apple", LastActivity: 1000, State: qbt.TorrentStateDownloading},
+		{Hash: "hash3", Name: "Mango", LastActivity: 1000, State: qbt.TorrentStateUploading},
+		{Hash: "hash4", Name: "Apple", LastActivity: 1000, State: qbt.TorrentStateDownloading},
+	}
+
+	sortTorrentValues(sm, torrents, "last_activity", false, false, nil)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "first downloading 'Apple' by hash")
+	require.Equal(t, "hash4", torrents[1].Hash, "second downloading 'Apple' by hash")
+	require.Equal(t, "hash3", torrents[2].Hash, "uploading 'Mango'")
+	require.Equal(t, "hash1", torrents[3].Hash, "paused 'Zebra'")
+
+	sortTorrentValues(sm, torrents, "last_activity", true, false, nil)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "downloading 'Apple' first by state")
+	require.Equal(t, "hash4", torrents[1].Hash, "downloading 'Apple' second by hash")
+	require.Equal(t, "hash3", torrents[2].Hash, "uploading 'Mango'")
+	require.Equal(t, "hash1", torrents[3].Hash, "paused 'Zebra' last")
+}
+
+func TestSortTorrentsByTimestamp_ZeroSortsNaturally(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Name: "Active", LastActivity: 1000, State: qbt.TorrentStateDownloading},
+		{Hash: "hash2", Name: "No Activity", LastActivity: 0, State: qbt.TorrentStateDownloading},
+		{Hash: "hash3", Name: "Recent", LastActivity: 2000, State: qbt.TorrentStateDownloading},
+	}
+
+	sortTorrentValues(sm, torrents, "last_activity", false, false, nil)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "0 (no activity) should be at start for ascending")
+	require.Equal(t, "hash1", torrents[1].Hash, "1000 should be second")
+	require.Equal(t, "hash3", torrents[2].Hash, "2000 should be last")
+
+	sortTorrentValues(sm, torrents, "last_activity", true, false, nil)
+
+	require.Equal(t, "hash3", torrents[0].Hash, "2000 should be first for descending")
+	require.Equal(t, "hash1", torrents[1].Hash, "1000 should be second")
+	require.Equal(t, "hash2", torrents[2].Hash, "0 (no activity) should be at end for descending")
+}
+
+func TestSortTorrentsByTimestamp_NegativeOneSortsNaturally(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Name: "Completed Early", CompletionOn: 1_700_000_000, State: qbt.TorrentStateUploading},
+		{Hash: "hash2", Name: "Never Completed", CompletionOn: -1, State: qbt.TorrentStateDownloading},
+		{Hash: "hash3", Name: "Completed Late", CompletionOn: 1_700_001_000, State: qbt.TorrentStateUploading},
+	}
+
+	sortTorrentValues(sm, torrents, "completion_on", false, false, nil)
+
+	require.Equal(t, "hash2", torrents[0].Hash, "-1 (never completed) should be at start for ascending")
+	require.Equal(t, "hash1", torrents[1].Hash, "the early completion should be second")
+	require.Equal(t, "hash3", torrents[2].Hash, "the late completion should be last")
+
+	sortTorrentValues(sm, torrents, "completion_on", true, false, nil)
+
+	require.Equal(t, "hash3", torrents[0].Hash, "the late completion should be first for descending")
+	require.Equal(t, "hash1", torrents[1].Hash, "the early completion should be second")
+	require.Equal(t, "hash2", torrents[2].Hash, "-1 (never completed) should be at end for descending")
+}
+
+func TestSortTorrentsByTimestamp_TruncationGroupsSameInterval(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash1", Name: "Zebra", LastActivity: 120, State: qbt.TorrentStatePausedUp},
+		{Hash: "hash2", Name: "Apple", LastActivity: 61, State: qbt.TorrentStateUploading},
+		{Hash: "hash3", Name: "Mango", LastActivity: 119, State: qbt.TorrentStateDownloading},
+	}
+
+	sortTorrentValues(sm, torrents, "last_activity", false, false, nil)
+
+	require.Equal(t, "hash3", torrents[0].Hash, "bucket 1: downloading 'Mango' first by state")
+	require.Equal(t, "hash2", torrents[1].Hash, "bucket 1: uploading 'Apple' second by state")
+	require.Equal(t, "hash1", torrents[2].Hash, "bucket 2: paused 'Zebra' last")
+
+	sortTorrentValues(sm, torrents, "last_activity", true, false, nil)
+
+	require.Equal(t, "hash1", torrents[0].Hash, "bucket 2: paused 'Zebra' first")
+	require.Equal(t, "hash3", torrents[1].Hash, "bucket 1: downloading 'Mango' by state")
+	require.Equal(t, "hash2", torrents[2].Hash, "bucket 1: uploading 'Apple' by state")
+}
+
+func TestSortTorrentsByTimestampTiebreak(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		a        qbt.Torrent
+		b        qbt.Torrent
+		expected int
+	}{
+		{
+			name:     "different states - downloading before uploading",
+			a:        qbt.Torrent{Hash: "zzz", Name: "Test", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "aaa", Name: "Test", State: qbt.TorrentStateUploading},
+			expected: -1,
+		},
+		{
+			name:     "same state different names - alphabetical order",
+			a:        qbt.Torrent{Hash: "zzz", Name: "Apple", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "aaa", Name: "Zebra", State: qbt.TorrentStateDownloading},
+			expected: -1,
+		},
+		{
+			name:     "same state same name different hash",
+			a:        qbt.Torrent{Hash: "aaa", Name: "Test", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "zzz", Name: "Test", State: qbt.TorrentStateDownloading},
+			expected: -1,
+		},
+		{
+			name:     "names equal once folded fall through to the hash",
+			a:        qbt.Torrent{Hash: "a", Name: "APPLE", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "b", Name: "apple", State: qbt.TorrentStateDownloading},
+			expected: -1,
+		},
+		{
+			name:     "folded names order below case sensitive ones",
+			a:        qbt.Torrent{Hash: "zzz", Name: "apple", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "aaa", Name: "BANANA", State: qbt.TorrentStateDownloading},
+			expected: -1,
+		},
+	}
+
+	sm := &SyncManager{}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, torrents := range [][]qbt.Torrent{{tt.a, tt.b}, {tt.b, tt.a}} {
+				sortTorrentValues(sm, torrents, "added_on", false, false, nil)
+
+				first := tt.a.Hash
+				if tt.expected > 0 {
+					first = tt.b.Hash
+				}
+				require.Equal(t, first, torrents[0].Hash, "expected %q first", first)
+			}
+		})
+	}
+}
+
+func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial(t *testing.T) {
+	var arrived atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/app/webapiVersion" {
+			http.NotFound(w, r)
+			return
+		}
+		arrived.Store(true)
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+
+	root := t.TempDir()
+	stub := qbtstub.New(t, root)
+	stub.Add(qbtstub.Torrent{Hash: hashA, Name: "Test video", SavePath: root, Files: []string{"video.mkv"}})
+
+	pool := setupTestPool(t)
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+
+	ctx := t.Context()
+	reachable, err := pool.instanceStore.Create(ctx, "reachable", stub.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	unreachable, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	_, err = pool.instanceStore.Create(ctx, "later", stub.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	pool.mu.Lock()
+	pool.clients[unreachable.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: unreachable.ID}
+	pool.mu.Unlock()
+	sm := NewSyncManager(pool, nil)
+
+	seed, err := sm.GetTorrentRefsFresh(ctx, reachable.ID, TorrentRefFilter{})
+	require.NoError(t, err)
+	require.Len(t, seed, 1)
+	require.Equal(t, hashA, seed[0].Hash)
+
+	callCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	resp, err := sm.ListTorrents(callCtx, TorrentListView{Unified: true, CacheOnly: true})
+
+	require.NoError(t, err, "unreachable instance must not fail the whole aggregate")
+	require.NotNil(t, resp)
+	require.True(t, resp.PartialResults, "expected partial results when one instance is unreachable")
+	require.Len(t, resp.CrossInstanceTorrents, 1)
+	assert.Equal(t, reachable.ID, resp.CrossInstanceTorrents[0].InstanceID)
+	assert.Equal(t, hashA, resp.CrossInstanceTorrents[0].Hash)
+	require.True(t, arrived.Load(), "the slow instance did not receive the health probe")
+}
+
+func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
+	arrived := make(chan struct{})
+	closeArrived := sync.OnceFunc(func() { close(arrived) })
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		closeArrived()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst1, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	_, err = pool.instanceStore.Create(ctx, "other", "http://192.0.2.2:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	pool.mu.Lock()
+	pool.clients[inst1.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst1.ID}
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		<-arrived
+		cancel()
+	}()
+
+	resp, err := sm.ListTorrents(callCtx, TorrentListView{Unified: true, CacheOnly: true})
+
+	require.ErrorIs(t, err, context.Canceled, "caller cancellation must surface as an error, not a partial success")
+	assert.Nil(t, resp)
+}
+
+func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *testing.T) {
+	arrived := make(chan struct{})
+	closeArrived := sync.OnceFunc(func() { close(arrived) })
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		closeArrived()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst.ID}
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		<-arrived
+		cancel()
+	}()
+
+	resp, err := sm.ListTorrents(callCtx, TorrentListView{Unified: true, CacheOnly: true})
+
+	require.ErrorIs(t, err, context.Canceled, "cancellation during the only instance's fetch must surface, not become a partial success")
+	assert.Nil(t, resp)
+}
+
+func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing.T) {
+	t.Parallel()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	qbtSync := syncowner.New(qbtClient, qbt.DefaultSyncOptions())
+
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		firstSyncStarted := make(chan struct{})
+		releaseFirstSync := make(chan struct{})
+
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				if maindataCalls.Add(1) == 1 {
+					close(firstSyncStarted)
+					<-releaseFirstSync
+				}
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		client := &Client{
+			Client:      qbtClient,
+			syncManager: qbtSync,
+		}
+
+		sm := &SyncManager{
+			syncDebounceDelay:     time.Millisecond,
+			syncDebounceMinJitter: time.Millisecond,
+		}
+
+		leaderDone := make(chan struct{})
+		go func() {
+			defer close(leaderDone)
+			_ = client.SyncOwner().Sync(context.Background())
+		}()
+
+		<-firstSyncStarted
+
+		sm.syncAfterModification(1, client, "test")
+
+		time.Sleep(100 * time.Millisecond)
+		close(releaseFirstSync)
+		<-leaderDone
+
+		synctest.Wait()
+		require.GreaterOrEqual(t, maindataCalls.Load(), int32(2),
+			"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
+	})
+}
+
+func debouncedSyncTimes(t *testing.T) func() []time.Time {
+	t.Helper()
+	var mu sync.Mutex
+	var times []time.Time
+	originalLogger := log.Logger
+	log.Logger = log.Logger.Hook(zerolog.HookFunc(func(_ *zerolog.Event, _ zerolog.Level, msg string) {
+		if msg == "Client pool is nil, skipping sync" {
+			mu.Lock()
+			times = append(times, time.Now())
+			mu.Unlock()
+		}
+	}))
+	t.Cleanup(func() { log.Logger = originalLogger })
+	return func() []time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(times)
+	}
+}
+
+func TestDebouncedSyncHasAMaximumWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		var hints []time.Time
+		for start := time.Now(); time.Since(start) < 4*time.Second; {
+			hints = append(hints, time.Now())
+			sm.syncAfterModification(1, nil, "storm")
+			time.Sleep(150 * time.Millisecond)
+		}
+		synctest.Wait()
+		syncs := syncTimes()
+		require.Len(t, syncs, 3, "the storm synced at %v", syncs)
+
+		var previous time.Time
+		for _, synced := range syncs {
+			i := slices.IndexFunc(hints, func(hint time.Time) bool { return hint.After(previous) })
+			require.NotEqual(t, -1, i, "a sync ran with no hint pending")
+			first := hints[i]
+			require.LessOrEqual(t, synced.Sub(first), syncDebounceMaxWait,
+				"a sync started %v after the first pending hint", synced.Sub(first))
+			previous = synced
+		}
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+		require.Len(t, syncTimes(), len(syncs)+1, "the last hints still get one sync")
+	})
+}
+
+func TestDebouncedSyncWaitsTheDelayForASingleHint(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		start := time.Now()
+		sm.syncAfterModification(1, nil, "single")
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		syncs := syncTimes()
+		require.Len(t, syncs, 1)
+		require.Equal(t, 200*time.Millisecond, syncs[0].Sub(start))
+	})
+}
+
+func TestDebouncedSyncKeepsTheWindowWhenAReplacedTimerFires(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		syncTimes := debouncedSyncTimes(t)
+		sm := &SyncManager{syncDebounceDelay: 200 * time.Millisecond}
+
+		sm.syncAfterModification(1, nil, "first")
+		replacement := time.NewTimer(time.Hour)
+		t.Cleanup(func() { replacement.Stop() })
+		sm.syncDebounceMu.Lock()
+		sm.debouncedSyncTimers[1] = replacement
+		sm.syncDebounceMu.Unlock()
+
+		time.Sleep(100 * time.Millisecond)
+		stormStart := time.Now()
+		for range 9 {
+			sm.syncAfterModification(1, nil, "storm")
+			time.Sleep(140 * time.Millisecond)
+		}
+		synctest.Wait()
+
+		syncs := syncTimes()
+		require.GreaterOrEqual(t, len(syncs), 2)
+		require.LessOrEqual(t, syncs[1].Sub(stormStart), syncDebounceMaxWait,
+			"the first storm hint waited %v for the sync after the replaced timer's", syncs[1].Sub(stormStart))
+	})
+}
+
+func TestListTorrentsCarriesNoPreferences(t *testing.T) {
+	t.Parallel()
+
+	var preferenceRequests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{
+				"aa11": {"name":"Alpha.One", "state":"uploading", "added_on": 200, "size": 100, "progress": 1, "category": "alpha"}
+			}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/app/preferences":
+			preferenceRequests.Add(1)
+			_, _ = w.Write([]byte(`{"listen_port":6881}`))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/v2/torrents/tags":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 100, Sort: "added_on", Order: "asc"})
+	require.NoError(t, err)
+	require.Equal(t, 1, resp.Total)
+
+	body, err := json.Marshal(resp)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), `"preferences"`)
+	assert.Zero(t, preferenceRequests.Load(), "a list request must not fetch preferences")
+}
+
+func TestListTorrentsSearchKeepsWholeLibraryCounts(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{
+				"aa11": {"name":"Alpha.One",   "state":"uploading", "added_on": 200, "size": 100, "progress": 1, "category": "alpha"},
+				"bb22": {"name":"Beta.Two",    "state":"uploading", "added_on": 300, "size": 100, "progress": 1, "category": "beta"},
+				"cc33": {"name":"Beta.Three",  "state":"uploading", "added_on": 100, "size": 100, "progress": 1, "category": "beta"}
+			}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/v2/torrents/tags":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 100, Sort: "added_on", Order: "asc", Search: "beta", SidebarCounts: true, CacheOnly: true})
+	require.NoError(t, err)
+
+	require.Equal(t, 2, resp.Total, "the search narrows the page")
+	require.NotNil(t, resp.Counts)
+	require.Equal(t, 3, resp.Counts.Status["all"],
+		"sidebar counts must cover the whole library, not the searched subset")
+	require.Equal(t, 1, resp.Counts.Categories["alpha"],
+		"the torrent the search dropped must still be counted")
+	require.Equal(t, 2, resp.Counts.Categories["beta"])
+
+	require.Len(t, resp.Torrents, 2)
+	require.Equal(t, "Beta.Three", resp.Torrents[0].Name)
+	require.Equal(t, "Beta.Two", resp.Torrents[1].Name)
+}
+
+func TestListTorrentsSummaryOmitsRows(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{
+				"aa11": {"name":"Alpha.One",  "state":"uploading",   "size": 100, "progress": 1, "upspeed": 5},
+				"bb22": {"name":"Beta.Two",   "state":"downloading", "size": 200, "progress": 0.5, "dlspeed": 7}
+			}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/v2/torrents/tags":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 1, Sort: "added_on", Order: "desc", NoRows: true, SidebarCounts: true, CacheOnly: true})
+	require.NoError(t, err)
+	require.Empty(t, resp.Torrents)
+	require.False(t, resp.HasMore)
+	require.Equal(t, 2, resp.Total)
+	require.NotNil(t, resp.Stats)
+	require.Equal(t, 5, resp.Stats.TotalUploadSpeed)
+	require.Equal(t, 7, resp.Stats.TotalDownloadSpeed)
+	require.NotNil(t, resp.Counts)
+	require.Equal(t, 2, resp.Counts.Status["all"])
+}
+
+func TestTrackerDomainCountsKeepDomainsSeparate(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			9: {
+				DomainToHashes: map[string]map[string]struct{}{
+					"one.example": {"hash-a": {}, "hash-b": {}},
+					"two.example": {"hash-c": {}},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	client := &Client{instanceID: 9}
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", ContentPath: "/data/a", Size: 100, Uploaded: 10, Downloaded: 5},
+		{Hash: "hash-b", ContentPath: "/data/b", Size: 60, Uploaded: 7, Downloaded: 1},
+		{Hash: "hash-c", ContentPath: "/data/c", Size: 20, Uploaded: 1, Downloaded: 1},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), nil, false, false)
+
+	require.Equal(t, map[string]int{"one.example": 2, "two.example": 1}, counts.Trackers)
+}
+
+func TestTrackerDomainCountsDedupeSharedDomainFromMainData(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	client := &Client{instanceID: 11}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://dupe.example/announce", ContentPath: "/data/a", Size: 50, Uploaded: 9},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://dupe.example/announce":      {"hash-a"},
+			"https://dupe.example:443/announce2": {"hash-a"},
+		},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
+
+	require.Equal(t, 1, counts.Trackers["dupe.example"])
+}
+
+func TestCategoryAndTagCountsFromTorrents(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		torrents         []qbt.Torrent
+		useSubcategories bool
+		wantCategories   map[string]int
+		wantCategorySize map[string]int64
+		wantTags         map[string]int
+		wantTagSizes     map[string]int64
+	}{
+		{
+			name:             "empty library counts nothing",
+			torrents:         nil,
+			wantCategories:   map[string]int{},
+			wantCategorySize: map[string]int64{},
+			wantTags:         map[string]int{},
+			wantTagSizes:     map[string]int64{},
+		},
+		{
+			name: "cross seeds sharing a content path count once for size",
+			torrents: []qbt.Torrent{
+				{Hash: "a", Category: "tv", ContentPath: "/data/x", Size: 30},
+				{Hash: "b", Category: "tv", ContentPath: "/data/x", Size: 300},
+				{Hash: "c", Category: "tv", ContentPath: "/data/y", Size: 7},
+			},
+			wantCategories:   map[string]int{"tv": 3},
+			wantCategorySize: map[string]int64{"tv": 307},
+			wantTags:         map[string]int{"": 3},
+			wantTagSizes:     map[string]int64{"": 307},
+		},
+		{
+			name: "empty content paths dedupe too, unlike tracker sizes",
+			torrents: []qbt.Torrent{
+				{Hash: "a", Category: "tv", Size: 30},
+				{Hash: "b", Category: "tv", Size: 300},
+			},
+			wantCategories:   map[string]int{"tv": 2},
+			wantCategorySize: map[string]int64{"tv": 300},
+			wantTags:         map[string]int{"": 2},
+			wantTagSizes:     map[string]int64{"": 300},
+		},
+		{
+			name: "a zero size still creates the size entry",
+			torrents: []qbt.Torrent{
+				{Hash: "a", Category: "tv", ContentPath: "/data/x"},
+			},
+			wantCategories:   map[string]int{"tv": 1},
+			wantCategorySize: map[string]int64{"tv": 0},
+			wantTags:         map[string]int{"": 1},
+			wantTagSizes:     map[string]int64{"": 0},
+		},
+		{
+			name: "empty tag segments and padding are ignored",
+			torrents: []qbt.Torrent{
+				{Hash: "a", ContentPath: "/data/x", Size: 5, Tags: "alpha,,beta "},
+				{Hash: "b", ContentPath: "/data/y", Size: 9, Tags: " beta"},
+			},
+			wantCategories:   map[string]int{"": 2},
+			wantCategorySize: map[string]int64{"": 14},
+			wantTags:         map[string]int{"alpha": 1, "beta": 2},
+			wantTagSizes:     map[string]int64{"alpha": 5, "beta": 14},
+		},
+		{
+			name: "a whitespace only tag string lands in no tag bucket",
+			torrents: []qbt.Torrent{
+				{Hash: "a", ContentPath: "/data/x", Size: 5, Tags: " "},
+			},
+			wantCategories:   map[string]int{"": 1},
+			wantCategorySize: map[string]int64{"": 5},
+			wantTags:         map[string]int{"": 1},
+			wantTagSizes:     map[string]int64{"": 5},
+		},
+		{
+			name: "subcategories roll counts and sizes up to the parent",
+			torrents: []qbt.Torrent{
+				{Hash: "a", Category: "tv/anime", ContentPath: "/data/x", Size: 40},
+				{Hash: "b", Category: "tv", ContentPath: "/data/y", Size: 2},
+			},
+			useSubcategories: true,
+			wantCategories:   map[string]int{"tv/anime": 1, "tv": 2},
+			wantCategorySize: map[string]int64{"tv/anime": 40, "tv": 42},
+			wantTags:         map[string]int{"": 2},
+			wantTagSizes:     map[string]int64{"": 42},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sm := &SyncManager{}
+			counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrentRefs(tt.torrents), nil, false, tt.useSubcategories)
+
+			require.Equal(t, tt.wantCategories, counts.Categories)
+			require.Equal(t, tt.wantCategorySize, counts.CategorySizes)
+			require.Equal(t, tt.wantTags, counts.Tags)
+			require.Equal(t, tt.wantTagSizes, counts.TagSizes)
+		})
+	}
+}
+
+func TestSizeTotalsDoNotDependOnTorrentOrder(t *testing.T) {
+	t.Parallel()
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Category: "tv", Tags: "cross-seed", ContentPath: "/data/x", Size: 30, State: qbt.TorrentStateUploading},
+		{Hash: "b", Category: "tv", Tags: "cross-seed", ContentPath: "/data/x", Size: 300, State: qbt.TorrentStateUploading},
+		{Hash: "c", Category: "tv", Tags: "cross-seed", ContentPath: "/data/y", Size: 7, State: qbt.TorrentStateUploading},
+	}
+	reversed := []qbt.Torrent{torrents[2], torrents[1], torrents[0]}
+
+	sm := &SyncManager{}
+	forward := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrentRefs(torrents), nil, false, false)
+	backward := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrentRefs(reversed), nil, false, false)
+
+	require.Equal(t, forward.CategorySizes, backward.CategorySizes)
+	require.Equal(t, forward.TagSizes, backward.TagSizes)
+
+	forwardStats := sm.calculateStats(torrentRefs(torrents), nil)
+	backwardStats := sm.calculateStats(torrentRefs(reversed), nil)
+
+	require.Equal(t, forwardStats.TotalSize, backwardStats.TotalSize)
+	require.Equal(t, forwardStats.TotalSeedingSize, backwardStats.TotalSeedingSize)
+}
+
+func TestFindSharedContentPaths(t *testing.T) {
+	t.Parallel()
+
+	torrents := []qbt.Torrent{
+		{ContentPath: "/data/x"},
+		{ContentPath: "/data/alone"},
+		{ContentPath: "/data/x"},
+		{ContentPath: ""},
+		{ContentPath: "/data/x"},
+		{ContentPath: ""},
+	}
+
+	require.Equal(t, []bool{true, false, true, true, true, true}, findSharedContentPaths(torrentRefs(torrents)))
+	require.Empty(t, findSharedContentPaths(nil))
+}
+
+func TestStatusCountsExpandFromStates(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	torrents := []qbt.Torrent{
+		{Hash: "a", State: qbt.TorrentStateUploading, Progress: 1},
+		{Hash: "b", State: qbt.TorrentStateStalledUp, Progress: 1},
+		{Hash: "c", State: qbt.TorrentStateStalledUp, Progress: 1},
+		{Hash: "d", State: qbt.TorrentStateStoppedDl, Progress: 0.5},
+		{Hash: "e", State: qbt.TorrentStatePausedUp, Progress: 1},
+		{Hash: "f", State: qbt.TorrentStateDownloading, Progress: 0.25},
+		{Hash: "g", State: qbt.TorrentStateCheckingUp, Progress: 1},
+	}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrentRefs(torrents), nil, false, false)
+
+	require.Equal(t, map[string]int{
+		"all": 7, "completed": 5,
+		"active": 2, "inactive": 5,
+		"running": 5, "resumed": 5, "stopped": 2, "paused": 2,
+		"downloading": 1, "uploading": 4, "seeding": 4, "stalled": 2,
+		"stalled_uploading": 2, "stalled_downloading": 0,
+		"errored": 0, "checking": 1, "moving": 0,
+		"unregistered": 0, "tracker_down": 0, "tracker_error": 0,
+	}, counts.Status)
+}
+
+func staticTorrents(torrents []qbt.Torrent) func() []*qbt.Torrent {
+	return func() []*qbt.Torrent { return torrentRefs(torrents) }
+}
+
+func TestCachedCountsHitSkipsLibraryMaterialization(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+	}
+	client := &Client{instanceID: 1}
+
+	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
+	calls := 0
+	materialize := func() []*qbt.Torrent {
+		calls++
+		return torrentRefs(torrents)
+	}
+
+	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, false, false)
+	require.Equal(t, 1, calls, "a miss must materialize the library once")
+
+	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, false, false)
+	require.Equal(t, 1, calls, "a hit must not materialize the library")
+
+	client.countsGen.Add(1)
+	sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), materialize, nil, false, false)
+	require.Equal(t, 2, calls, "an invalidated entry must materialize again")
+}
+
+func TestCachedCountsServedWhileGenerationsHold(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	mapping.DomainToHashes["tracker.example.invalid"] = map[string]struct{}{"aaa": {}}
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+	}
+	client := &Client{instanceID: 1}
+
+	torrents := []qbt.Torrent{
+		{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Category: "movies", Size: 100, ContentPath: "/data/one"},
+		{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Category: "tv", Size: 200, ContentPath: "/data/two"},
+	}
+
+	counts := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, false, false)
+	require.Equal(t, 2, counts.Total)
+	require.Equal(t, 1, counts.Trackers["tracker.example.invalid"])
+
+	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "ccc", Name: "Three", State: qbt.TorrentStateUploading, Size: 300, ContentPath: "/data/three"})
+
+	cached := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, false, false)
+	require.Equal(t, 2, cached.Total, "expected the cached result, not a recount")
+
+	client.countsGen.Add(1)
+	fresh := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, false, false)
+	require.Equal(t, 3, fresh.Total, "a sync tick must invalidate the cache")
+
+	sm.trackerMappingGen.Add(1)
+	fresh = sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, false, false)
+	require.Equal(t, 2, fresh.Total, "a tracker mapping write must invalidate the cache")
+
+	subcats := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(grown), nil, false, true)
+	require.Equal(t, 3, subcats.Total)
+}
+
+func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+		trackerHealthCache:      map[int]*TrackerHealthSnapshot{},
+	}
+	client := &Client{instanceID: 1, version: semver.MustParse("2.11.4")}
+
+	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
+	stored := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)
+	require.Equal(t, 0, stored.Status["unregistered"])
+
+	sm.trackerHealthMu.Lock()
+	sm.trackerHealthCache[1] = trackerHealthSnapshotOf(4, 2, 1)
+	sm.trackerHealthMu.Unlock()
+
+	layered := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)
+	require.Equal(t, 4, layered.Status["unregistered"])
+	require.Equal(t, 2, layered.Status["tracker_down"])
+	require.Equal(t, 1, layered.Status["tracker_error"])
+	require.Equal(t, 0, stored.Status["unregistered"], "the stored entry must not be mutated")
+}
+
+func TestCachedCountsBypassWhenGenerationMoved(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+	}
+	client := &Client{instanceID: 1}
+
+	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
+	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Size: 200})
+
+	moved := client.countsGen.Load()
+	client.countsGen.Add(1)
+	stale := sm.cachedCountsForRequest(context.Background(), client, moved, staticTorrents(grown), nil, false, false)
+	require.Equal(t, 2, stale.Total)
+	require.Nil(t, client.countsCache.Load(), "a request whose generation moved must not store a cache entry")
+
+	held := client.countsGen.Load()
+	stored := sm.cachedCountsForRequest(context.Background(), client, held, staticTorrents(torrents), nil, false, false)
+	require.Equal(t, 1, stored.Total)
+	require.NotNil(t, client.countsCache.Load())
+
+	client.countsGen.Add(1)
+	fresh := sm.cachedCountsForRequest(context.Background(), client, held, staticTorrents(grown), nil, false, false)
+	require.Equal(t, 2, fresh.Total, "a request whose generation moved must not read the cache")
+}
+
+func TestCachedCountsDoNotCrossTrackerHealthSupport(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+		trackerHealthCache:      map[int]*TrackerHealthSnapshot{1: trackerHealthSnapshotOf(4, 2, 1)},
+	}
+	client := &Client{instanceID: 1, version: semver.MustParse("2.11.4")}
+
+	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
+	supported := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, true, false)
+	require.Equal(t, 4, supported.Status["unregistered"], "health support bakes the cached counts in")
+
+	unsupported := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, false, false)
+	require.Equal(t, 0, unsupported.Status["unregistered"], "a request without health support must not read baked-in health counts")
+	require.Equal(t, 0, unsupported.Status["tracker_down"])
+	require.Equal(t, 0, unsupported.Status["tracker_error"])
+}
+
+func TestEmptyAuthoritativeMappingPlacesTorrentsByTheLaterSteps(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			3: {
+				HashToDomains:  map[string]map[string]struct{}{},
+				DomainToHashes: map[string]map[string]struct{}{},
+				UpdatedAt:      time.Now(),
+			},
+		},
+	}
+	client := &Client{instanceID: 3}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker.example/announce", ContentPath: "/data/a", Size: 10},
+	}
+	mainData := &qbt.MainData{Trackers: map[string][]string{
+		"https://tracker.example/announce": {"hash-a"},
+	}}
+
+	counts := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrentRefs(torrents), mainData, false, false)
+
+	require.Equal(t, map[string]int{"tracker.example": 1}, counts.Trackers)
+}
+
+func TestGetAuthoritativeDomainToHashesMemoizesPerGeneration(t *testing.T) {
+	sm := NewSyncManager(nil, nil)
+	sm.setValidatedTrackerMapping(1, &ValidatedTrackerMapping{
+		HashToDomains:  map[string]map[string]struct{}{"h1": {"tracker.example.invalid": {}}},
+		DomainToHashes: map[string]map[string]struct{}{"tracker.example.invalid": {"h1": {}}},
+	})
+
+	first := sm.getAuthoritativeDomainToHashes(1)
+	require.Contains(t, first["tracker.example.invalid"], "h1")
+
+	second := sm.getAuthoritativeDomainToHashes(1)
+	require.Equal(t, reflect.ValueOf(first).Pointer(), reflect.ValueOf(second).Pointer(),
+		"the same generation must share one snapshot instead of re-copying")
+
+	sm.removeHashFromTrackerMapping(1, "h1", "tracker.example.invalid")
+	third := sm.getAuthoritativeDomainToHashes(1)
+	require.NotEqual(t, reflect.ValueOf(first).Pointer(), reflect.ValueOf(third).Pointer(),
+		"a mapping write must invalidate the snapshot")
+	require.NotContains(t, third, "tracker.example.invalid",
+		"the fresh snapshot must reflect the removal")
+}
+
+func TestListTorrentsSingleHashSkipsLibraryCopy(t *testing.T) {
+	const librarySize = 500
+
+	var maindata bytes.Buffer
+	maindata.WriteString(`{"rid":1,"full_update":true,"torrents":{`)
+	for i := range librarySize {
+		if i > 0 {
+			maindata.WriteByte(',')
+		}
+		fmt.Fprintf(&maindata, `"%040x": {"name":"Some.Release.Title.%d.S01E01.1080p.WEB-GRPA","infohash_v1":"%040x","state":"uploading","added_on":%d,"size":100,"progress":1,"category":"tv"}`, i+1, i+1, i+1, i)
+	}
+	maindata.WriteString(`,"aa11": {"name":"Hybrid.Release.S02E03.2160p.WEB-GRPB","infohash_v1":"aa11","infohash_v2":"bb22bb22","state":"uploading","added_on":1,"size":100,"progress":1,"category":"tv"}`)
+	maindata.WriteString(`}}`)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write(maindata.Bytes())
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/v2/torrents/tags":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	byHash := func(hash string) FilterOptions { return FilterOptions{Hashes: []string{hash}} }
+	byExpr := func(hash string) FilterOptions { return FilterOptions{Expr: fmt.Sprintf("Hash == %q", hash)} }
+	target := fmt.Sprintf("%040x", 7)
+
+	for _, tc := range []struct {
+		name    string
+		filters FilterOptions
+		want    string
+	}{
+		{"exact key", byHash(target), "Some.Release.Title.7.S01E01.1080p.WEB-GRPA"},
+		{"upper-case key", byHash(strings.ToUpper(target)), "Some.Release.Title.7.S01E01.1080p.WEB-GRPA"},
+		{"v2 variant of a hybrid torrent", byHash("BB22BB22"), "Hybrid.Release.S02E03.2160p.WEB-GRPB"},
+		{"removed torrent", byHash(fmt.Sprintf("%040x", 999999)), ""},
+		{"hash plus a status the row fails", FilterOptions{Hashes: []string{target}, Status: []string{"downloading"}}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 1, Sort: "added_on", Order: "desc", Filters: tc.filters, SidebarCounts: true, CacheOnly: true})
+			require.NoError(t, err)
+			if tc.want == "" {
+				require.Equal(t, 0, resp.Total, "a miss reports total 0 so the panel drops its stale row")
+				require.Empty(t, resp.Torrents)
+			} else {
+				require.Equal(t, 1, resp.Total)
+				require.Len(t, resp.Torrents, 1)
+				require.Equal(t, tc.want, resp.Torrents[0].Name)
+			}
+			require.NotNil(t, resp.Counts)
+			require.Equal(t, librarySize+1, resp.Counts.Status["all"], "sidebar counts still cover the whole library")
+		})
+	}
+
+	measure := func(filters FilterOptions) uint64 {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for range 20 {
+			_, err := sm.ListTorrents(ctx, TorrentListView{InstanceID: inst.ID, Limit: 1, Sort: "added_on", Order: "desc", Filters: filters, CacheOnly: true, FullPasskeyAccess: true})
+			require.NoError(t, err)
+		}
+		runtime.ReadMemStats(&after)
+		return after.TotalAlloc - before.TotalAlloc
+	}
+	exprBytes := measure(byExpr(target))
+	hashBytes := measure(byHash(target))
+	t.Logf("20 requests: expr filter %d bytes, hash filter %d bytes", exprBytes, hashBytes)
+	require.Less(t, hashBytes*10, exprBytes, "a single-hash request must allocate far less than the library scan")
+}
+
+func TestGetTorrentRefsFreshSeesTorrentAddedDuringInFlightSync(t *testing.T) {
+	t.Parallel()
+
+	for name, filter := range map[string]TorrentRefFilter{
+		"all":     {},
+		"by hash": {Hashes: []string{"aa11", "bb22"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			testFreshReadSeesTorrentAddedDuringInFlightSync(t, func(ctx context.Context, sm *SyncManager) ([]string, error) {
+				torrents, err := sm.GetTorrentRefsFresh(ctx, 1, filter)
+				hashes := make([]string, 0, len(torrents))
+				for _, torrent := range torrents {
+					hashes = append(hashes, torrent.Hash)
+				}
+				return hashes, err
+			})
+		})
+	}
+}
+
+func testFreshReadSeesTorrentAddedDuringInFlightSync(t *testing.T, read func(ctx context.Context, sm *SyncManager) ([]string, error)) {
+	t.Helper()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  1,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		leaderReceived := make(chan struct{})
+		releaseLeader := make(chan struct{})
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				switch maindataCalls.Add(1) {
+				case 1:
+					_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent"}}}`))
+				case 2:
+					close(leaderReceived)
+					<-releaseLeader
+					_, _ = w.Write([]byte(`{"rid":2}`))
+				default:
+					_, _ = w.Write([]byte(`{"rid":3,"torrents":{"bb22":{"added_on":1700000000,"name":"New.Torrent"}}}`))
+				}
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		ctx := t.Context()
+		require.NoError(t, client.syncManager.Sync(ctx))
+
+		leaderDone := make(chan error, 1)
+		go func() { leaderDone <- client.syncManager.Sync(ctx) }()
+		<-leaderReceived
+
+		type result struct {
+			hashes []string
+			err    error
+		}
+		readDone := make(chan result, 1)
+		go func() {
+			hashes, err := read(ctx, sm)
+			readDone <- result{hashes, err}
+		}()
+		synctest.Wait()
+		close(releaseLeader)
+
+		require.NoError(t, <-leaderDone)
+		res := <-readDone
+		require.NoError(t, res.err)
+		require.ElementsMatch(t, []string{"aa11", "bb22"}, res.hashes)
+	})
+}
+
+func TestGetTorrentRefsWithinSyncsOnlyAnOlderSnapshot(t *testing.T) {
+	t.Parallel()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  1,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				n := maindataCalls.Add(1)
+				_, _ = fmt.Fprintf(w, `{"rid":%d,"full_update":%t,"torrents":{"aa11":{"progress":0.%d}}}`, n, n == 1, n)
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		for _, step := range []struct {
+			wait      time.Duration
+			wantCalls int32
+			want      float64
+		}{
+			{0, 1, 0.1},
+			{2 * time.Second, 1, 0.1},
+			{2 * time.Second, 2, 0.2},
+		} {
+			time.Sleep(step.wait)
+			torrents, err := sm.GetTorrentRefsWithin(t.Context(), 1, TorrentRefFilter{Hashes: []string{"aa11"}}, 3*time.Second)
+			require.NoError(t, err)
+			require.Len(t, torrents, 1)
+			require.Equal(t, step.wantCalls, maindataCalls.Load())
+			require.InDelta(t, step.want, torrents[0].Progress, 0.001)
+		}
+	})
+}
+
+func TestHasTorrentByAnyHashReturnsPrivateCopy(t *testing.T) {
+	t.Parallel()
+
+	client, _, sm, _ := newSyncedStubClient(t, "2.15.1")
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
+
+	found, ok, err := sm.HasTorrentByAnyHash(t.Context(), 1, []string{hashA})
+	require.NoError(t, err)
+	require.True(t, ok)
+	found.Name = "Changed"
+
+	shared, ok := client.SyncOwner().SnapshotUnchecked().Torrent(hashA)
+	require.True(t, ok)
+	require.Equal(t, "Show.S01E01-GRP", shared.Name)
+}
+
+func TestGetAllTorrentRefsRefreshesOnlyPastTheFreshWindow(t *testing.T) {
+	t.Parallel()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	client := &Client{
+		Client:            qbtClient,
+		instanceID:        1,
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
+	}
+	client.updateHealthStatus(true)
+	syncManager := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+
+	synctest.Test(t, func(t *testing.T) {
+		var maindataCalls atomic.Int32
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				if maindataCalls.Add(1) == 1 {
+					_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":"keep"}}}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":""}}}`))
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		ctx := t.Context()
+		require.NoError(t, client.syncManager.Sync(ctx))
+
+		torrents, err := syncManager.GetAllTorrentRefs(ctx, 1)
+		require.NoError(t, err)
+		require.Len(t, torrents, 1)
+		require.Equal(t, "keep", torrents[0].Tags)
+		require.Equal(t, int32(1), maindataCalls.Load(), "a warm cache must not cost a request")
+
+		time.Sleep(torrentResponseFreshWindow + 100*time.Millisecond)
+
+		torrents, err = syncManager.GetAllTorrentRefs(ctx, 1)
+		require.NoError(t, err)
+		require.Len(t, torrents, 1)
+		require.Empty(t, torrents[0].Tags, "a stale cache must be refreshed before the rule reads it")
+		require.Equal(t, int32(2), maindataCalls.Load())
+	})
+}
+
+func TestAddTagsSyncsWhenTheHashIsMissingFromTheCache(t *testing.T) {
+	t.Parallel()
+
+	var maindataCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			if maindataCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent"}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":2,"torrents":{"bb22":{"added_on":1700000000,"name":"New.Torrent"}}}`))
+		case "/api/v2/torrents/addTags":
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:            qbtClient,
+		instanceID:        inst.ID,
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	require.NoError(t, NewSyncManager(pool, nil).AddTags(ctx, inst.ID, []string{"bb22"}, "fresh"))
+}
+
+func TestSetTagsFallbackRemovesTagsAddedSinceTheLastSync(t *testing.T) {
+	t.Parallel()
+
+	var maindataCalls atomic.Int32
+	removed := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			if maindataCalls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aa11":{"name":"Old.Torrent","tags":"old"}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":2,"torrents":{"aa11":{"tags":"old, outside"}}}`))
+		case "/api/v2/torrents/removeTags":
+			removed <- r.PostFormValue("tags")
+		case "/api/v2/torrents/addTags":
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.11.3"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := t.Context()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:            qbtClient,
+		instanceID:        inst.ID,
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	require.NoError(t, NewSyncManager(pool, nil).SetTags(ctx, inst.ID, []string{"aa11"}, "new"))
+	select {
+	case tags := <-removed:
+		require.ElementsMatch(t, []string{"old", "outside"}, strings.Split(tags, ","))
+	default:
+		t.Fatal("Set Tags removed no tags")
+	}
+}
+
+func TestResumeWhenCompletePollersShareSync(t *testing.T) {
+	t.Parallel()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  1,
+		syncManager: syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+
+	synctest.Test(t, func(t *testing.T) {
+		const (
+			pollers  = 20
+			interval = 50 * time.Millisecond
+			timeout  = 500 * time.Millisecond
+		)
+
+		torrents := make([]string, 0, pollers)
+		hashes := make([]string, 0, pollers)
+		for i := range pollers {
+			hash := fmt.Sprintf("%040x", i+1)
+			hashes = append(hashes, hash)
+			torrents = append(torrents, fmt.Sprintf(`%q: {"name":"t%d", "state":"checkingUP", "amount_left": 0}`, hash, i))
+		}
+		maindata := `{"rid":1,"full_update":true,"torrents":{` + strings.Join(torrents, ",") + `}}`
+
+		var maindataCalls atomic.Int32
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				maindataCalls.Add(1)
+				_, _ = w.Write([]byte(maindata))
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		for _, hash := range hashes {
+			sm.ResumeWhenComplete(1, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: interval, Timeout: timeout})
+			time.Sleep(interval / pollers)
+		}
+
+		time.Sleep(timeout + 100*time.Millisecond)
+
+		require.LessOrEqual(t, int(maindataCalls.Load()), 3*int(timeout/interval))
+		require.GreaterOrEqual(t, int(maindataCalls.Load()), 3)
+	})
+}
+
+func TestResumeWhenCompleteNeedsTwoSyncs(t *testing.T) {
+	t.Parallel()
+
+	const hash = "0000000000000000000000000000000000000001"
+	maindata := `{"rid":1,"full_update":true,"torrents":{"` + hash + `": {"name":"t", "state":"stoppedUP", "amount_left": 0}}}`
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
+	client := &Client{
+		Client:            qbtClient,
+		instanceID:        1,
+		syncManager:       syncowner.New(qbtClient, qbt.DefaultSyncOptions()),
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](ttlcache.SetDefaultTTL(30 * time.Second)),
+	}
+	client.updateHealthStatus(true)
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+
+	synctest.Test(t, func(t *testing.T) {
+		const timeout = 2 * time.Second
+		var maindataCalls atomic.Int32
+		var callsAtResume atomic.Int32
+		callsAtResume.Store(-1)
+		resumed := make(chan struct{})
+		serveInProcess(qbtClient, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				time.Sleep(30 * time.Millisecond)
+				maindataCalls.Add(1)
+				_, _ = w.Write([]byte(maindata))
+			case "/api/v2/torrents/start", "/api/v2/torrents/resume":
+				if callsAtResume.CompareAndSwap(-1, maindataCalls.Load()) {
+					close(resumed)
+				}
+			case "/api/v2/app/webapiVersion":
+				_, _ = w.Write([]byte("2.16.0"))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+
+		require.NoError(t, client.syncManager.Sync(t.Context()))
+		callsBefore := int(maindataCalls.Load())
+
+		sm.ResumeWhenComplete(1, []string{hash}, ResumeWhenCompleteOptions{CheckInterval: 100 * time.Millisecond, Timeout: timeout})
+		t.Cleanup(func() { time.Sleep(timeout) })
+
+		<-resumed
+		require.GreaterOrEqual(t, int(callsAtResume.Load())-callsBefore, resumeWhenCompleteStablePolls, "each ready poll needs its own sync")
+	})
+}
+
+type blockingTorrentFilesClient struct {
+	done  string
+	files qbt.TorrentFiles
+	after func()
+}
+
+func (*blockingTorrentFilesClient) getTorrentsByHashes([]string) []*qbt.Torrent { return nil }
+
+func (c *blockingTorrentFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
+	return maindataEntries(hashes, map[string]struct{}{c.done: {}})
+}
+
+func (c *blockingTorrentFilesClient) GetFilesInformationCtx(ctx context.Context, hash string) (*qbt.TorrentFiles, error) {
+	if hash != c.done {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	files := slices.Clone(c.files)
+	c.after()
+	return &files, nil
+}
+
+func TestGetTorrentFilesBatch_CancelSavesFinishedLists(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	files := qbt.TorrentFiles{{Name: "done.mkv", Size: 1}}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return &blockingTorrentFilesClient{done: "done", files: files, after: cancel}, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	_, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"slow", "done"})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, files, fm.cached["done"], "the list that came back before the cancel is in the file cache")
+}
+
+func TestInvalidateFileCacheNotifiesFilesChanged(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		hash string
+		want string
+	}{
+		{name: "a proxy rename drops the remembered cross-seed read", hash: "abc", want: "3|abc"},
+		{name: "subscribers key on the lowercase hash, like the file cache", hash: "ABC", want: "3|abc"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sm := &SyncManager{}
+			var got []string
+			sm.SetFilesChangedHandler(func(instanceID int, hash string) {
+				got = append(got, fmt.Sprintf("%d|%s", instanceID, hash))
+			})
+
+			require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, tt.hash))
+
+			require.Equal(t, []string{tt.want}, got)
+		})
+	}
+}
+
+func TestInvalidateFileCacheNotifiesAfterFilesAreGone(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	fm := &stubFilesManager{cached: map[string]qbt.TorrentFiles{"abc": {{Name: "Show.S01E01.mkv"}}}}
+	sm.SetFilesManager(fm)
+	var cachedAtNotify bool
+	sm.SetFilesChangedHandler(func(int, string) {
+		_, cachedAtNotify = fm.cached["abc"]
+	})
+
+	require.NoError(t, sm.InvalidateFileCache(t.Context(), 3, "abc"))
+
+	require.False(t, cachedAtNotify, "a read that starts after the notify must not find the old file list")
+}
+
+func TestSetRSSRuleMirrorsTorrentParamsOntoLegacyFields(t *testing.T) {
+	tests := []struct {
+		name string
+		rule qbt.RSSAutoDownloadRule
+		want map[string]any
+	}{
+		{
+			name: "new values replace stale legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				TorrentParams: &qbt.RSSRuleTorrentParams{
+					Category:      "tv-new",
+					SavePath:      "/data/new",
+					ContentLayout: "NoSubfolder",
+					Stopped:       new(true),
+				},
+				AssignedCategory:     "tv-old",
+				SavePath:             "/data/old",
+				TorrentContentLayout: "Subfolder",
+				AddPaused:            new(false),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv-new",
+				"savePath":             "/data/new",
+				"torrentContentLayout": "NoSubfolder",
+				"addPaused":            true,
+			},
+		},
+		{
+			name: "cleared values clear stale legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				TorrentParams:        &qbt.RSSRuleTorrentParams{},
+				AssignedCategory:     "tv-old",
+				SavePath:             "/data/old",
+				TorrentContentLayout: "Subfolder",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{},
+		},
+		{
+			name: "unchanged values stay",
+			rule: qbt.RSSAutoDownloadRule{
+				MustContain: "edited",
+				TorrentParams: &qbt.RSSRuleTorrentParams{
+					Category:      "tv",
+					SavePath:      "/data/tv",
+					ContentLayout: "Original",
+					Stopped:       new(true),
+				},
+				AssignedCategory:     "tv",
+				SavePath:             "/data/tv",
+				TorrentContentLayout: "Original",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv",
+				"savePath":             "/data/tv",
+				"torrentContentLayout": "Original",
+				"addPaused":            true,
+			},
+		},
+		{
+			name: "legacy-only rule keeps its legacy values",
+			rule: qbt.RSSAutoDownloadRule{
+				AssignedCategory:     "tv",
+				SavePath:             "/data/tv",
+				TorrentContentLayout: "Original",
+				AddPaused:            new(true),
+			},
+			want: map[string]any{
+				"assignedCategory":     "tv",
+				"savePath":             "/data/tv",
+				"torrentContentLayout": "Original",
+				"addPaused":            true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ruleDef string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v2/rss/setRule" {
+					t.Errorf("unexpected request: %s", r.URL)
+					http.NotFound(w, r)
+					return
+				}
+				ruleDef = r.FormValue("ruleDef")
+			}))
+			defer srv.Close()
+
+			client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, APIKey: "test-key"}), isHealthy: true}
+			sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
+
+			require.NoError(t, sm.SetRSSRule(t.Context(), 1, "rule", tt.rule))
+
+			var sent map[string]any
+			require.NoError(t, jsonv2.Unmarshal([]byte(ruleDef), &sent))
+			got := map[string]any{}
+			for _, key := range []string{"assignedCategory", "savePath", "torrentContentLayout", "addPaused"} {
+				if v, ok := sent[key]; ok {
+					got[key] = v
+				}
+			}
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

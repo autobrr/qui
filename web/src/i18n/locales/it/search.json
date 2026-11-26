@@ -1,0 +1,199 @@
+{
+  "pageTitle": "Cerca negli indexer",
+  "pageDescription": "Cerca nei tuoi indexer e aggiungi una release a qBittorrent.",
+  "indexerSheet": {
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Nativo",
+      "jackett": "Jackett"
+    }
+  },
+  "instanceSelector": {
+    "offline": "Offline"
+  },
+  "picker": {
+    "indexersTitle": "Indexer da interrogare",
+    "filter": "Filtra",
+    "all": "Tutti",
+    "none": "Nessuno",
+    "done": "Fatto",
+    "noMatch": "Nessun elemento corrisponde al filtro"
+  },
+  "form": {
+    "indexers": "Indexer",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Rimuovi {{label}}",
+    "clearFields": "Svuota campi",
+    "clearQuery": "Svuota la query",
+    "recentSearches": "Ricerche recenti",
+    "noIndexersTitle": "Ancora nessun indexer",
+    "noIndexersBody": "Aggiungi un indexer per interrogarlo da questa pagina.",
+    "noIndexersAction": "Aggiungi indexer",
+    "indexersFailed": "Caricamento degli indexer non riuscito"
+  },
+  "searchForm": {
+    "advanced": "Avanzate",
+    "searching": "Ricerca in corso...",
+    "search": "Cerca",
+    "advancedNote": "ID e numeri rendono la ricerca esatta sugli indexer che li supportano.",
+    "searchType": "Tipo di ricerca",
+    "searchQuery": "Query di ricerca"
+  },
+  "searchTypes": {
+    "movies": {
+      "label": "Film",
+      "placeholder": "es. \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "es. \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Musica",
+      "placeholder": "es. \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "Libri e fumetti",
+      "placeholder": "es. \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "App e giochi",
+      "placeholder": "es. \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Adulti",
+      "placeholder": "Inserisci il nome di una release per adulti specifica"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "ID IMDb",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "ID TVDb",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Anno",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Stagione",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Episodio",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Artista",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Album",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Limite",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Offset",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "count_one": "{{count}} risultato",
+    "count_other": "{{count}} risultati",
+    "filteredCount_one": "{{shown}} di {{count}} risultato",
+    "filteredCount_other": "{{shown}} di {{count}} risultati",
+    "searching_one": "Ricerca su {{count}} indexer...",
+    "searching_other": "Ricerca su {{count}} indexer...",
+    "filterPlaceholder": "Filtra i risultati...",
+    "clearFilters": "Svuota filtri",
+    "noMatches": "Nessun risultato corrisponde ai filtri.",
+    "cachedSummary": "In cache {{cached}} · Scade {{expires}}",
+    "cachedAgo": "In cache · {{age}}",
+    "live": "Live",
+    "partial": "Incompleto",
+    "partialHint": "Alcuni indexer non hanno risposto. Aggiorna per interrogarli di nuovo.",
+    "refresh": "Aggiorna",
+    "refreshFromIndexers": "Aggiorna dagli indexer",
+    "refreshCooldown": "Potrai aggiornare di nuovo tra poco",
+    "showMore": "Mostra altro",
+    "shownOf": "{{shown}} di {{total}} mostrati",
+    "categoryFallback": "Categoria {{id}}",
+    "noResults": "Nessun risultato trovato",
+    "noResultsFor": "Nessun risultato trovato per \"{{query}}\"",
+    "noResultsHint": "Controlla l'ortografia, scegli un altro tipo di ricerca o interroga più indexer.",
+    "searchAllIndexers": "Interroga tutti gli indexer",
+    "failed": "La ricerca non è riuscita",
+    "retry": "Riprova",
+    "idleTitle": "Cerca nei tuoi indexer",
+    "idleHint": "Inserisci un titolo, un ID IMDb come tt1234567 o un ID TVDb come tvdb 123456.",
+    "free": "Gratuito"
+  },
+  "facets": {
+    "collection": "Servizio",
+    "normal": "Normale"
+  },
+  "sort": {
+    "label": "Ordina",
+    "seeders": "Più seeder",
+    "newest": "Più recenti",
+    "oldest": "Meno recenti",
+    "largest": "Più grandi",
+    "smallest": "Più piccoli",
+    "title": "Titolo A–Z",
+    "indexer": "Indexer A–Z"
+  },
+  "columns": {
+    "age": "Età"
+  },
+  "row": {
+    "add": "Aggiungi",
+    "addTo": "Aggiungi a",
+    "more": "Altre azioni",
+    "openIndexer": "Apri sull'indexer",
+    "copyTitle": "Copia il titolo",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× upload"
+  },
+  "bulk": {
+    "label": "Risultati selezionati",
+    "selected_one": "{{count}} selezionato",
+    "selected_other": "{{count}} selezionati",
+    "selectShown": "Seleziona tutti quelli mostrati"
+  },
+  "historyMeta": "{{type}} · {{count}} risultati · {{timestamp}}",
+  "table": {
+    "title": "Titolo",
+    "indexer": "Indexer",
+    "size": "Dimensione",
+    "seeders": "Seeder",
+    "leechers": "Leecher",
+    "category": "Categoria",
+    "source": "Origine",
+    "group": "Gruppo",
+    "freeleech": "Freeleech",
+    "actions": "Azioni",
+    "downloadTorrent": "Scarica .torrent"
+  },
+  "refreshDialog": {
+    "title": "Ignorare la cache?",
+    "description": "Questo invierà la richiesta direttamente a ogni indexer selezionato. Usalo con parsimonia per evitare i limiti di frequenza. Potrai aggiornare di nuovo dopo una breve attesa.",
+    "refreshNow": "Aggiorna ora"
+  },
+  "cache": {
+    "cacheAndLive": "Cache + live"
+  },
+  "card": {
+    "addToNamed": "Aggiungi a {{name}}"
+  },
+  "toast": {
+    "noDownloadUrl": "Nessun URL di download disponibile per questo risultato",
+    "invalidProtocol": "Protocollo URL non valido",
+    "invalidUrl": "Formato URL non valido"
+  }
+}

@@ -1,0 +1,1436 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TapMenu } from "@/components/ui/tap-menu"
+import { Textarea } from "@/components/ui/textarea"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useDiscScans } from "@/hooks/useDiscScans"
+import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { usePersistedTabState } from "@/hooks/usePersistedTabState"
+import { useTorrentDetailTab } from "@/hooks/useTorrentDetailTab"
+import { useQueueLimits } from "@/hooks/usePreferenceValues"
+import { api } from "@/lib/api"
+import { getMatchTypeLabel, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
+import { DEFAULT_FILE_SORT } from "@/lib/file-tree"
+import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxRatio, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
+import { renderTextWithLinks } from "@/lib/linkUtils"
+import { matchPeerClient } from "@/lib/peer-client-icons"
+import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
+import { getStatusBadgeProps } from "@/lib/torrent-table/row-display"
+import { themeArea } from "@/lib/theme-areas"
+import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { formatReannounceIn } from "@/lib/torrent-state-utils"
+import { breakableName, cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
+import type { SortedPeer, Torrent, TorrentFile, TorrentTracker } from "@/types"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Ban, ChevronRight, Copy, FolderTree, Info, Link2, Loader2, RadioTower, Trash2, UserPlus, Users, X } from "lucide-react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+import { scheduleTorrentListRefetches } from "./bulk-actions/bulk-action-requests"
+import { CategoryTagBadges } from "./details/CategoryTagBadges"
+import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
+import { PeerClientIcon } from "./details/PeerClientIcon"
+import { MobileDetailsHeader, MobileInfoBlock, MobileInfoGroup, MobileInfoRow, MobilePane, MobilePeerRow, MobileSectionTitle, MobileTrackerList, MobileWebSeedList } from "./details/MobileDetails"
+import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
+import { TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
+import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
+import { TorrentFileSortBar, TorrentFileTree } from "./TorrentFileTree"
+
+interface TorrentDetailsPanelProps {
+  instanceId: number;
+  torrent: Torrent | null;
+  initialTab?: string;
+  onInitialTabConsumed?: () => void;
+  layout: "horizontal" | "mobile";
+  onClose?: () => void;
+  onNavigateToTorrent?: (instanceId: number, torrentHash: string) => void;
+}
+
+const TAB_VALUES = ["general", "trackers", "peers", "webseeds", "content", "crossseed"] as const
+type TabValue = typeof TAB_VALUES[number]
+const DEFAULT_TAB: TabValue = "general"
+const TAB_STORAGE_KEY = "torrent-details-last-tab"
+
+function isTabValue(value: string): value is TabValue {
+  return TAB_VALUES.includes(value as TabValue)
+}
+
+const MOBILE_SECTIONS = [
+  { value: "general", icon: Info, labelKey: "detailsPanel.tabs.general" },
+  { value: "trackers", icon: RadioTower, labelKey: "detailsPanel.tabs.trackers" },
+  { value: "peers", icon: Users, labelKey: "detailsPanel.tabs.peers" },
+  { value: "content", icon: FolderTree, labelKey: "detailsPanel.tabs.content" },
+  { value: "crossseed", icon: Link2, labelKey: "detailsPanel.tabs.crossSeed" },
+] as const
+
+const MOBILE_SECTION = "m-0 flex min-h-0 flex-1 flex-col"
+
+
+
+export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout, onClose, onNavigateToTorrent }: TorrentDetailsPanelProps) {
+  const { t } = useTranslation("torrents")
+  const [storedTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
+  const isMobile = layout === "mobile"
+  const activeTab = isMobile && storedTab === "webseeds" ? "trackers" : storedTab
+
+  useEffect(() => {
+    if (initialTab && isTabValue(initialTab)) {
+      setActiveTab(initialTab)
+      onInitialTabConsumed?.()
+    }
+  }, [initialTab, onInitialTabConsumed, setActiveTab])
+
+  const [showAddPeersDialog, setShowAddPeersDialog] = useState(false)
+  const { formatTimestamp } = useDateTimeFormatters()
+  const [showBanPeerDialog, setShowBanPeerDialog] = useState(false)
+  const [peersToAdd, setPeersToAdd] = useState("")
+  const [peerToBan, setPeerToBan] = useState<SortedPeer | null>(null)
+  const [isReady, setIsReady] = useState(false)
+  const queueLimits = useQueueLimits(instanceId)
+  const { data: capabilities } = useInstanceCapabilities(instanceId)
+  const queryClient = useQueryClient()
+  const [speedUnit] = useSpeedUnits()
+  const [incognitoMode] = useIncognitoMode()
+  const displayName = incognitoMode ? getLinuxIsoName(torrent?.hash ?? "") : torrent?.name
+  const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
+  const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
+  const [fileSort, setFileSort] = useState(DEFAULT_FILE_SORT)
+  const supportsFilePriority = capabilities?.supportsFilePriority ?? false
+  const { data: instances } = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), staleTime: 60000 })
+  const canReadContent = instances?.find(i => i.id === instanceId)?.capabilities.content ?? false
+  const [selectedCrossSeedTorrents, setSelectedCrossSeedTorrents] = useState<Set<string>>(() => new Set())
+  const [showDeleteCrossSeedDialog, setShowDeleteCrossSeedDialog] = useState(false)
+  const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
+  const [showDeleteCurrentDialog, setShowDeleteCurrentDialog] = useState(false)
+  const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(false)
+  const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
+  const [trackerToEdit, setTrackerToEdit] = useState<TorrentTracker | null>(null)
+  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
+  useEffect(() => {
+    setIsReady(false)
+    const timer = setTimeout(() => setIsReady(true), 150)
+    return () => clearTimeout(timer)
+  }, [torrent?.hash])
+
+  useEffect(() => {
+    setSelectedCrossSeedTorrents(new Set())
+  }, [torrent?.hash])
+
+  const handleTabChange = useCallback((value: string) => {
+    const nextTab = isTabValue(value) ? value : DEFAULT_TAB
+    setActiveTab(nextTab)
+  }, [setActiveTab])
+
+  const isContentTabActive = activeTab === "content"
+  const isCrossSeedTabActive = activeTab === "crossseed"
+  const readyHash = torrent && isReady ? torrent.hash : null
+  const general = useTorrentDetailTab(instanceId, readyHash, "general", torrent?.hash ?? null)
+  const properties = general.data?.properties
+  const loadingProperties = general.isLoading
+
+  const { infohashV1: resolvedInfohashV1, infohashV2: resolvedInfohashV2 } = resolveTorrentHashes(properties as { hash?: string; infohash_v1?: string; infohash_v2?: string } | undefined, torrent ?? undefined)
+
+
+
+  const { matchingTorrents, matchesError, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+
+  const instanceById = useMemo(
+    () => new Map(allInstances.map(i => [i.id, i])),
+    [allInstances]
+  )
+
+  const matchingTorrentsKeys = useMemo(() => {
+    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(",")
+  }, [matchingTorrents])
+
+  useEffect(() => {
+    const validKeysArray = matchingTorrentsKeys.split(",").filter(k => k)
+
+    setSelectedCrossSeedTorrents(prev => {
+      if (validKeysArray.length === 0 && prev.size === 0) {
+        return prev
+      }
+
+      if (validKeysArray.length === 0) {
+        return new Set()
+      }
+
+      const validKeys = new Set(validKeysArray)
+      const updated = new Set(Array.from(prev).filter(key => validKeys.has(key)))
+
+      return updated.size !== prev.size ? updated : prev
+    })
+  }, [matchingTorrentsKeys])
+
+  const { data: trackers, isLoading: loadingTrackers } = useTorrentDetailTab(instanceId, readyHash, "trackers", torrent?.hash ?? null)
+
+  const liveTorrent = general.data?.row ?? null
+  const displayTorrent = useMemo(() => {
+    if (!torrent) return null
+    if (!liveTorrent) return torrent
+    return { ...torrent, ...liveTorrent }
+  }, [torrent, liveTorrent])
+  const reannounceIn = displayTorrent?.reannounce !== undefined
+    ? formatReannounceIn(displayTorrent.state, displayTorrent.reannounce, t)
+    : undefined
+
+  const { data: files, isLoading: loadingFiles } = useTorrentDetailTab(instanceId, isContentTabActive ? readyHash : null, "content")
+
+  const setFilePriorityMutation = useMutation<void, unknown, { indices: number[]; priority: number; hash: string }>({
+    mutationFn: async ({ indices, priority, hash }) => {
+      await api.setTorrentFilePriority(instanceId, hash, indices, priority)
+    },
+    onMutate: ({ indices }) => {
+      setPendingFileIndices(prev => {
+        const next = new Set(prev)
+        indices.forEach(index => next.add(index))
+        return next
+      })
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : t("details.failedToUpdatePriorities")
+      toast.error(message)
+    },
+    onSettled: (_, __, variables) => {
+      if (!variables) {
+        setPendingFileIndices(() => new Set())
+        return
+      }
+
+      setPendingFileIndices(prev => {
+        const next = new Set(prev)
+        variables.indices.forEach(index => next.delete(index))
+        return next
+      })
+    },
+  })
+
+  const fileSelectionStats = useMemo(() => {
+    if (!files) {
+      return { totalFiles: 0, selectedFiles: 0 }
+    }
+
+    let selected = 0
+    for (const file of files) {
+      if (file.priority !== 0) {
+        selected += 1
+      }
+    }
+
+    return { totalFiles: files.length, selectedFiles: selected }
+  }, [files])
+
+  const totalFiles = fileSelectionStats.totalFiles
+  const selectedFileCount = fileSelectionStats.selectedFiles
+  const canSelectAll = supportsFilePriority && (files?.some(file => file.priority === 0) ?? false)
+  const canDeselectAll = supportsFilePriority && (files?.some(file => file.priority !== 0) ?? false)
+
+  const handleToggleFileDownload = useCallback((file: TorrentFile, nextSelected: boolean) => {
+    if (!torrent || !supportsFilePriority) {
+      return
+    }
+
+    const desiredPriority = nextSelected ? Math.max(file.priority, 1) : 0
+    if (file.priority === desiredPriority) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices: [file.index], priority: desiredPriority, hash: torrent.hash })
+  }, [setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleToggleFileRange = useCallback((indices: number[], selected: boolean) => {
+    if (!torrent || !supportsFilePriority || !files || indices.length === 0) {
+      return
+    }
+
+    const rangeSet = new Set(indices)
+    const targetIndices = files
+      .filter(file => rangeSet.has(file.index))
+      .filter(file => !pendingFileIndices.has(file.index))
+      .filter(file => selected ? file.priority === 0 : file.priority !== 0)
+      .map(file => file.index)
+
+    if (targetIndices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices: targetIndices, priority: selected ? 1 : 0, hash: torrent.hash })
+  }, [files, pendingFileIndices, setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleSelectAllFiles = useCallback(() => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    const indices = files.filter(file => file.priority === 0).map(file => file.index)
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices, priority: 1, hash: torrent.hash })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleDeselectAllFiles = useCallback(() => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    const indices = files.filter(file => file.priority !== 0).map(file => file.index)
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices, priority: 0, hash: torrent.hash })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleToggleFolderDownload = useCallback((folderPath: string, selected: boolean) => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    const folderPrefix = folderPath + "/"
+    const indices = files
+      .filter(f => f.name.startsWith(folderPrefix))
+      .filter(f => selected ? f.priority === 0 : f.priority !== 0)
+      .map(f => f.index)
+
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({
+      indices,
+      priority: selected ? 1 : 0,
+      hash: torrent.hash,
+    })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleSetFilePriority = useCallback((file: TorrentFile, priority: number) => {
+    if (!torrent || !supportsFilePriority || file.priority === priority) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices: [file.index], priority, hash: torrent.hash })
+  }, [setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleSetFolderPriority = useCallback((folderPath: string, priority: number) => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    const folderPrefix = folderPath + "/"
+    const indices = files
+      .filter(f => f.name.startsWith(folderPrefix))
+      .filter(f => f.priority !== priority)
+      .map(f => f.index)
+
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices, priority, hash: torrent.hash })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const isPeersTabActive = activeTab === "peers"
+
+  useEffect(() => {
+    if (isPeersTabActive) void import("flag-icons/css/flag-icons.min.css").catch(() => {})
+  }, [isPeersTabActive])
+
+  const { data: peersData, isLoading: loadingPeers } = useTorrentDetailTab(instanceId, isPeersTabActive ? readyHash : null, "peers")
+  const { data: webseedsData, isLoading: loadingWebseeds } = useTorrentDetailTab(instanceId, readyHash, "webseeds")
+  const hasWebseeds = (webseedsData?.length ?? 0) > 0
+
+  useEffect(() => {
+    if (isReady && activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
+      setActiveTab("general")
+    }
+  }, [isReady, activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
+
+  const addPeersMutation = useMutation({
+    mutationFn: async (peers: string[]) => {
+      if (!torrent) throw new Error("No torrent selected")
+      await api.addPeersToTorrents(instanceId, [torrent.hash], peers)
+    },
+    onSuccess: () => {
+      toast.success(t("detailsPanel.toast.peersAdded"))
+      setShowAddPeersDialog(false)
+      setPeersToAdd("")
+      queryClient.invalidateQueries({ queryKey: ["torrent-peers", instanceId, torrent?.hash] })
+    },
+    onError: (error) => {
+      toast.error(t("detailsPanel.toast.peersFailed", { error: error.message }))
+    },
+  })
+
+  const banPeerMutation = useMutation({
+    mutationFn: async (peer: string) => {
+      await api.banPeers(instanceId, [peer])
+    },
+    onSuccess: () => {
+      toast.success(t("detailsPanel.toast.peerBanned"))
+      setShowBanPeerDialog(false)
+      setPeerToBan(null)
+      queryClient.invalidateQueries({ queryKey: ["torrent-peers", instanceId, torrent?.hash] })
+    },
+    onError: (error) => {
+      toast.error(t("detailsPanel.toast.peerBanFailed", { error: error.message }))
+    },
+  })
+
+  const editTrackerMutation = useMutation({
+    mutationFn: async ({ oldURL, newURL }: { oldURL: string; newURL: string }) => {
+      if (!torrent) throw new Error("No torrent selected")
+      await api.bulkAction(instanceId, {
+        hashes: [torrent.hash],
+        action: "editTrackers",
+        trackerOldURL: oldURL,
+        trackerNewURL: newURL,
+      })
+    },
+    onSuccess: () => {
+      toast.success(t("detailsPanel.toast.trackerUpdated"))
+      setShowEditTrackerDialog(false)
+      setTrackerToEdit(null)
+      queryClient.invalidateQueries({ queryKey: ["torrent-trackers", instanceId, torrent?.hash] })
+    },
+    onError: (error: Error) => {
+      toast.error(t("detailsPanel.toast.trackerUpdateFailed"), {
+        description: error.message,
+      })
+    },
+  })
+
+  const handleEditTrackerClick = useCallback((tracker: TorrentTracker) => {
+    setTrackerToEdit(tracker)
+    setShowEditTrackerDialog(true)
+  }, [])
+
+  const getTrackerDomain = useCallback((url: string): string => {
+    try {
+      return new URL(url).hostname
+    } catch {
+      return url
+    }
+  }, [])
+
+  const [showRenameFileDialog, setShowRenameFileDialog] = useState(false)
+  const [renameFilePath, setRenameFilePath] = useState<string | null>(null)
+
+  const renameFileMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
+    mutationFn: async ({ hash, oldPath, newPath }) => {
+      await api.renameTorrentFile(instanceId, hash, oldPath, newPath)
+    },
+    onSuccess: async (_data, variables) => {
+      toast.success(t("detailsPanel.toast.fileRenamed"))
+      setShowRenameFileDialog(false)
+      setRenameFilePath(null)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : t("details.failedToRenameFile")
+      toast.error(message)
+    },
+  })
+
+  const [showRenameFolderDialog, setShowRenameFolderDialog] = useState(false)
+  const [renameFolderPath, setRenameFolderPath] = useState<string | null>(null)
+
+  const renameFolderMutation = useMutation<void, unknown, { hash: string; oldPath: string; newPath: string }>({
+    mutationFn: async ({ hash, oldPath, newPath }) => {
+      await api.renameTorrentFolder(instanceId, hash, oldPath, newPath)
+    },
+    onSuccess: async (_data, variables) => {
+      toast.success(t("detailsPanel.toast.folderRenamed"))
+      setShowRenameFolderDialog(false)
+      setRenameFolderPath(null)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : t("details.failedToRenameFolder")
+      toast.error(message)
+    },
+  })
+
+  const refreshTorrentFiles = useCallback(async () => {
+    if (!torrent) return
+    await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, torrent.hash] })
+  }, [instanceId, queryClient, torrent])
+
+  const handleCopyPeer = useCallback(async (peer: SortedPeer) => {
+    if (incognitoMode) return
+    try {
+      await copyTextToClipboard(peer.key)
+      toast.success(t("peersTable.toast.ipCopied"))
+    } catch (err) {
+      console.error("Failed to copy to clipboard:", err)
+      toast.error(t("detailsPanel.toast.copyFailed"))
+    }
+  }, [incognitoMode, t])
+
+  const handleBanPeerClick = useCallback((peer: SortedPeer) => {
+    setPeerToBan(peer)
+    setShowBanPeerDialog(true)
+  }, [])
+
+  const handleBanPeerConfirm = useCallback(() => {
+    if (peerToBan && canBanPeer(peerToBan)) {
+      banPeerMutation.mutate(peerToBan.key)
+    }
+  }, [peerToBan, banPeerMutation])
+
+  const handleAddPeersSubmit = useCallback(() => {
+    const peers = peersToAdd.split(/[\n,]/).map(p => p.trim()).filter(p => p)
+    if (peers.length > 0) {
+      addPeersMutation.mutate(peers)
+    }
+  }, [peersToAdd, addPeersMutation])
+
+  const handleToggleCrossSeedSelection = useCallback((key: string) => {
+    setSelectedCrossSeedTorrents(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSelectAllCrossSeed = useCallback(() => {
+    const allKeys = matchingTorrents.map(m => `${m.instanceId}-${m.hash}`)
+    setSelectedCrossSeedTorrents(new Set(allKeys))
+  }, [matchingTorrents])
+
+  const handleDeselectAllCrossSeed = useCallback(() => {
+    setSelectedCrossSeedTorrents(new Set())
+  }, [])
+
+  const handleDeleteCrossSeed = useCallback(async () => {
+    const torrentsToDelete = matchingTorrents.filter(m =>
+      selectedCrossSeedTorrents.has(`${m.instanceId}-${m.hash}`)
+    )
+
+    if (torrentsToDelete.length === 0) return
+
+    try {
+      const byInstance = new Map<number, string[]>()
+      for (const t of torrentsToDelete) {
+        const hashes = byInstance.get(t.instanceId) || []
+        hashes.push(t.hash)
+        byInstance.set(t.instanceId, hashes)
+      }
+
+      await Promise.all(
+        Array.from(byInstance.entries()).map(([instId, hashes]) =>
+          api.bulkAction(instId, {
+            hashes,
+            action: "delete",
+            deleteFiles: deleteCrossSeedFiles,
+          })
+        )
+      )
+
+      toast.success(t("detailsPanel.toast.deletedTorrents", {
+        count: torrentsToDelete.length,
+      }))
+
+      scheduleTorrentListRefetches(queryClient, deleteCrossSeedFiles ? 5000 : 2000)
+
+      setSelectedCrossSeedTorrents(new Set())
+      setShowDeleteCrossSeedDialog(false)
+    } catch (error) {
+      toast.error(t("detailsPanel.toast.deleteFailed", {
+        error: error instanceof Error ? error.message : t("detailsPanel.unknownError"),
+      }))
+    }
+  }, [selectedCrossSeedTorrents, matchingTorrents, deleteCrossSeedFiles, queryClient, t])
+
+  const handleDeleteCurrent = useCallback(async () => {
+    if (!torrent) return
+
+    try {
+      await api.bulkAction(instanceId, {
+        hashes: [torrent.hash],
+        action: "delete",
+        deleteFiles: deleteCurrentFiles,
+      })
+
+      toast.success(t("detailsPanel.toast.deletedTorrent", { name: torrent.name }))
+      scheduleTorrentListRefetches(queryClient, deleteCurrentFiles ? 5000 : 2000)
+      setShowDeleteCurrentDialog(false)
+    } catch (error) {
+      toast.error(t("detailsPanel.toast.deleteFailed", {
+        error: error instanceof Error ? error.message : t("detailsPanel.unknownError"),
+      }))
+    }
+  }, [torrent, instanceId, deleteCurrentFiles, queryClient, t])
+
+  const handleRenameFileDialogOpenChange = useCallback((open: boolean) => {
+    setShowRenameFileDialog(open)
+    if (!open) {
+      setRenameFilePath(null)
+    }
+  }, [])
+
+  const handleRenameFileClick = useCallback(async (filePath: string) => {
+    await refreshTorrentFiles()
+    setRenameFilePath(filePath)
+    setShowRenameFileDialog(true)
+  }, [refreshTorrentFiles])
+
+  const handleRenameFileConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
+    if (!torrent) return
+    renameFileMutation.mutate({ hash: torrent.hash, oldPath, newPath })
+  }, [renameFileMutation, torrent])
+
+  const handleDownloadFile = useCallback((file: TorrentFile) => {
+    if (!torrent || incognitoMode) return
+    api.downloadContentFile(instanceId, torrent.hash, file.index)
+  }, [instanceId, torrent, incognitoMode])
+
+  const [showMediaInfoDialog, setShowMediaInfoDialog] = useState(false)
+  const [mediaInfoFile, setMediaInfoFile] = useState<TorrentFile | null>(null)
+  const [mediaInfoTorrentHash, setMediaInfoTorrentHash] = useState<string | null>(null)
+
+  const handleShowMediaInfo = useCallback((file: TorrentFile) => {
+    if (!torrent) return
+    setMediaInfoFile(file)
+    setMediaInfoTorrentHash(torrent.hash)
+    setShowMediaInfoDialog(true)
+  }, [torrent])
+
+  const handleMediaInfoDialogOpenChange = useCallback((open: boolean) => {
+    setShowMediaInfoDialog(open)
+    if (!open) {
+      setMediaInfoFile(null)
+      setMediaInfoTorrentHash(null)
+    }
+  }, [])
+
+  const discScans = useDiscScans(instanceId, torrent?.hash ?? "", files, canReadContent)
+  const [discReportPath, setDiscReportPath] = useState<string | null>(null)
+  const { runsByPath: discRuns, start: { mutate: startDiscScan, reset: resetDiscScan } } = discScans
+  const handleShowDiscReport = useCallback((discPath: string) => {
+    resetDiscScan()
+    const status = discRuns.get(discPath)?.status
+    if (status === undefined || status === "canceled") startDiscScan({ discPath, force: false })
+    setDiscReportPath(discPath)
+  }, [discRuns, startDiscScan, resetDiscScan])
+
+  const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
+    if (!torrent) return
+    renameFolderMutation.mutate({ hash: torrent.hash, oldPath, newPath })
+  }, [renameFolderMutation, torrent])
+
+  const handleRenameFolderDialogOpen = useCallback(async (folderPath?: string) => {
+    await refreshTorrentFiles()
+    setRenameFolderPath(folderPath ?? null)
+    setShowRenameFolderDialog(true)
+  }, [refreshTorrentFiles])
+
+  const folders = useMemo(() => {
+    const folderSet = new Set<string>()
+    if (files) {
+      files.forEach(file => {
+        const parts = file.name.split("/").filter(Boolean)
+        if (parts.length <= 1) return
+
+        let current = ""
+        for (let i = 0; i < parts.length - 1; i++) {
+          current = current ? `${current}/${parts[i]}` : parts[i]
+          folderSet.add(current)
+        }
+      })
+    }
+    return Array.from(folderSet)
+      .sort((a, b) => a.localeCompare(b))
+      .map(name => ({ name }))
+  }, [files])
+
+  if (!torrent) return null
+
+  const displayCreatedBy = incognitoMode && properties?.created_by ? getLinuxCreatedBy(torrent.hash) : properties?.created_by
+  const displayComment = incognitoMode && properties?.comment ? getLinuxComment(torrent.hash) : properties?.comment
+  const displayInfohashV1 = incognitoMode && resolvedInfohashV1 ? incognitoHash : resolvedInfohashV1
+  const displayInfohashV2 = incognitoMode && resolvedInfohashV2 ? incognitoHash : resolvedInfohashV2
+  const displaySavePath = incognitoMode && properties?.save_path ? getLinuxSavePath(torrent.hash) : properties?.save_path
+  const tempPathEnabled = Boolean(properties?.download_path)
+  const displayTempPath = incognitoMode && properties?.download_path ? getLinuxSavePath(torrent.hash) : properties?.download_path
+
+  const formatLimitLabel = (limit: number | null | undefined) => {
+    if (limit == null || !Number.isFinite(limit) || limit <= 0) {
+      return "∞"
+    }
+    return formatSpeedWithUnit(limit, speedUnit)
+  }
+
+  const downloadLimitLabel = formatLimitLabel(properties?.dl_limit ?? torrent.dl_limit)
+  const uploadLimitLabel = formatLimitLabel(properties?.up_limit ?? torrent.up_limit)
+
+  const isInitialLoad = !isReady || (loadingProperties && !properties)
+  if (isInitialLoad) {
+    return (
+      <div {...themeArea("details-panel")} className="h-full flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    )
+  }
+
+  const dialogs = (
+    <>
+      <Dialog open={showAddPeersDialog} onOpenChange={setShowAddPeersDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("detailsPanel.addPeers.title")}</DialogTitle>
+            <DialogDescription>
+              {t("detailsPanel.addPeers.description")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="peers">{t("detailsPanel.addPeers.label")}</Label>
+              <Textarea
+                id="peers"
+                className="min-h-[100px]"
+                placeholder={t("detailsPanel.addPeers.placeholder")}
+                value={peersToAdd}
+                onChange={(e) => setPeersToAdd(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddPeersDialog(false)}>
+              {t("common:actions.cancel")}
+            </Button>
+            <Button
+              onClick={handleAddPeersSubmit}
+              disabled={!peersToAdd.trim() || addPeersMutation.isPending}
+            >
+              {addPeersMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t("detailsPanel.addPeers.title")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showBanPeerDialog} onOpenChange={setShowBanPeerDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("detailsPanel.banPeerPermanent.title")}</DialogTitle>
+            <DialogDescription>
+              {t("detailsPanel.banPeerPermanent.description")}
+            </DialogDescription>
+          </DialogHeader>
+          {peerToBan && (
+            <div className="space-y-2 text-sm">
+              <div>
+                <span className="text-muted-foreground">{t("detailsPanel.banPeerPermanent.ipAddress")}</span>
+                <span className="ml-2 font-mono">{getPeerDisplayAddress(peerToBan, incognitoMode)}</span>
+              </div>
+              {peerToBan.client && (
+                <div>
+                  <span className="text-muted-foreground">{t("peersTable.client")}:</span>
+                  <span className="ml-2">{peerToBan.client}</span>
+                </div>
+              )}
+              {peerToBan.country && (
+                <div>
+                  <span className="text-muted-foreground">{t("detailsPanel.banPeerPermanent.country")}</span>
+                  <span className="ml-2">{peerToBan.country}</span>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowBanPeerDialog(false)
+                setPeerToBan(null)
+              }}
+            >
+              {t("common:actions.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBanPeerConfirm}
+              disabled={banPeerMutation.isPending}
+            >
+              {banPeerMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t("peersTable.banPeer")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeleteCrossSeedDialog} onOpenChange={setShowDeleteCrossSeedDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("detailsPanel.deleteSelected.title")}</DialogTitle>
+            <DialogDescription>
+              {t("detailsPanel.deleteSelected.description", { count: selectedCrossSeedTorrents.size })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="delete-files"
+                checked={deleteCrossSeedFiles}
+                onCheckedChange={(checked) => setDeleteCrossSeedFiles(checked === true)}
+              />
+              <Label
+                htmlFor="delete-files"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                {t("deleteFilesPreference.label")}
+              </Label>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {deleteCrossSeedFiles ? (
+                <p className="text-destructive">{t("detailsPanel.deleteWarnings.deleteFiles")}</p>
+              ) : (
+                <p>{t("detailsPanel.deleteWarnings.keepFilesPlural")}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteCrossSeedDialog(false)}
+            >
+              {t("common:actions.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCrossSeed}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {t("detailsPanel.deleteSelected.confirm", { count: selectedCrossSeedTorrents.size })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeleteCurrentDialog} onOpenChange={setShowDeleteCurrentDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("detailsPanel.crossSeed.deleteThisTorrent")}</DialogTitle>
+            <DialogDescription className="wrap-anywhere">
+              {t("detailsPanel.deleteCurrent.description", { name: incognitoMode ? getLinuxFileName(torrent?.hash ?? "", 0) : torrent?.name })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="delete-current-files"
+                checked={deleteCurrentFiles}
+                onCheckedChange={(checked) => setDeleteCurrentFiles(checked === true)}
+              />
+              <Label
+                htmlFor="delete-current-files"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                {t("deleteFilesPreference.label")}
+              </Label>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {deleteCurrentFiles ? (
+                <p className="text-destructive">{t("detailsPanel.deleteWarnings.deleteFiles")}</p>
+              ) : (
+                <p>{t("detailsPanel.deleteWarnings.keepFilesSingle")}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteCurrentDialog(false)}
+            >
+              {t("common:actions.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteCurrent}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {t("detailsPanel.deleteCurrent.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <RenameTorrentFileDialog
+        open={showRenameFileDialog}
+        onOpenChange={handleRenameFileDialogOpenChange}
+        files={files || []}
+        isLoading={loadingFiles}
+        onConfirm={handleRenameFileConfirm}
+        isPending={renameFileMutation.isPending}
+        initialPath={renameFilePath ?? undefined}
+      />
+
+      <RenameTorrentFolderDialog
+        open={showRenameFolderDialog}
+        onOpenChange={setShowRenameFolderDialog}
+        folders={folders}
+        isLoading={loadingFiles}
+        onConfirm={handleRenameFolderConfirm}
+        isPending={renameFolderMutation.isPending}
+        initialPath={renameFolderPath ?? undefined}
+      />
+
+      <EditTrackerDialog
+        open={showEditTrackerDialog}
+        onOpenChange={setShowEditTrackerDialog}
+        instanceId={instanceId}
+        tracker={trackerToEdit ? getTrackerDomain(trackerToEdit.url) : ""}
+        trackerURLs={trackerToEdit ? [trackerToEdit.url] : []}
+        selectedHashes={torrent ? [torrent.hash] : []}
+        onConfirm={(oldURL, newURL) => editTrackerMutation.mutate({ oldURL, newURL })}
+        isPending={editTrackerMutation.isPending}
+      />
+
+      <TorrentFileMediaInfoDialog
+        open={showMediaInfoDialog}
+        onOpenChange={handleMediaInfoDialogOpenChange}
+        instanceId={instanceId}
+        torrentHash={mediaInfoTorrentHash ?? ""}
+        file={mediaInfoFile}
+      />
+
+      <TorrentDiscReportDialog
+        discPath={discReportPath}
+        onClose={() => setDiscReportPath(null)}
+        scans={discScans}
+      />
+    </>
+  )
+
+  if (isMobile) {
+    const peerList = peersData?.sorted_peers ?? Object.entries(peersData?.peers ?? {}).map(([key, peer]) => ({ key, ...peer }))
+    const spinner = (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    )
+    const empty = (text: string) => <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">{text}</div>
+
+    return (
+      <div {...themeArea("details-panel")} className="h-full flex flex-col">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
+          <MobileDetailsHeader
+            name={displayName ?? ""}
+            status={getStatusBadgeProps(displayTorrent!, capabilities?.supportsTrackerHealth ?? false, t)}
+            progress={displayTorrent!.progress}
+            size={formatBytes(displayTorrent!.size)}
+            ratio={incognitoMode ? getLinuxRatio(torrent.hash) : displayTorrent!.ratio}
+            onBack={onClose}
+          />
+          <CategoryTagBadges torrent={displayTorrent!} className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-b px-4 py-2.5" />
+
+          <TabsContent value="general" className={MOBILE_SECTION}>
+            <MobilePane>
+              {loadingProperties && !properties ? spinner : properties ? (
+                <div className="space-y-5 p-4">
+                  <MobileInfoGroup title={t("detailsPanel.sections.generalInformation")}>
+                    <MobileInfoBlock label={t("detailsPanel.labels.torrentName")} copyValue={displayName}>
+                      {displayName || t("generalTab.na")}
+                    </MobileInfoBlock>
+                    <MobileInfoBlock label={t("detailsPanel.labels.infoHashV1")} mono copyValue={displayInfohashV1}>
+                      {displayInfohashV1 || t("generalTab.na")}
+                    </MobileInfoBlock>
+                    {displayInfohashV2 && (
+                      <MobileInfoBlock label={t("detailsPanel.labels.infoHashV2")} mono copyValue={displayInfohashV2}>
+                        {displayInfohashV2}
+                      </MobileInfoBlock>
+                    )}
+                    <MobileInfoBlock label={t("detailsPanel.labels.savePath")} mono copyValue={displaySavePath}>
+                      {displaySavePath || t("generalTab.na")}
+                    </MobileInfoBlock>
+                    {tempPathEnabled && displayTempPath && (
+                      <MobileInfoBlock label={t("detailsPanel.labels.downloadPath")} mono copyValue={displayTempPath}>
+                        {displayTempPath}
+                      </MobileInfoBlock>
+                    )}
+                    {displayCreatedBy && <MobileInfoBlock label={t("detailsPanel.labels.createdBy")}>{renderTextWithLinks(displayCreatedBy)}</MobileInfoBlock>}
+                    {displayComment && (
+                      <MobileInfoBlock label={t("detailsPanel.labels.comment")}>
+                        <span className="whitespace-pre-wrap break-words">{renderTextWithLinks(displayComment)}</span>
+                      </MobileInfoBlock>
+                    )}
+                  </MobileInfoGroup>
+
+                  <MobileInfoGroup title={t("detailsPanel.sections.transferStatistics")}>
+                    <MobileInfoRow label={t("detailsPanel.labels.totalSize")}>{formatBytes(properties.total_size || torrent.size)}</MobileInfoRow>
+                    <MobileInfoRow label={t("generalTab.downloaded")}>{formatBytes(properties.total_downloaded || 0)}</MobileInfoRow>
+                    <MobileInfoRow label={t("generalTab.uploaded")}>{formatBytes(properties.total_uploaded || 0)}</MobileInfoRow>
+                    <MobileInfoRow label={t("detailsPanel.labels.shareRatio")}>{(properties.share_ratio || 0).toFixed(2)}</MobileInfoRow>
+                    <MobileInfoRow label={t("generalTab.pieces")} sub={t("detailsPanel.labels.pieceSizeEach", { size: formatBytes(properties.piece_size || 0) })}>
+                      {properties.pieces_have || 0} / {properties.pieces_num || 0}
+                    </MobileInfoRow>
+                    <MobileInfoRow label={t("generalTab.wasted")}>{formatBytes(properties.total_wasted || 0)}</MobileInfoRow>
+                  </MobileInfoGroup>
+
+                  <MobileInfoGroup title={t("generalTab.network")}>
+                    <MobileInfoRow
+                      label={t("detailsPanel.labels.downloadSpeed")}
+                      valueClassName="text-green-500"
+                      sub={`${t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit) })} · ${t("detailsPanel.labels.limit", { value: downloadLimitLabel })}`}
+                    >
+                      {formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}
+                    </MobileInfoRow>
+                    <MobileInfoRow
+                      label={t("detailsPanel.labels.uploadSpeed")}
+                      valueClassName="text-blue-500"
+                      sub={`${t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit) })} · ${t("detailsPanel.labels.limit", { value: uploadLimitLabel })}`}
+                    >
+                      {formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}
+                    </MobileInfoRow>
+                    <MobileInfoRow label={t("generalTab.seeds")}>{properties.seeds || 0} <span className="text-muted-foreground">/ {properties.seeds_total || 0}</span></MobileInfoRow>
+                    <MobileInfoRow label={t("generalTab.peers")}>{properties.peers || 0} <span className="text-muted-foreground">/ {properties.peers_total || 0}</span></MobileInfoRow>
+                  </MobileInfoGroup>
+
+                  {queueLimits.enabled && (
+                    <MobileInfoGroup title={t("detailsPanel.sections.queueManagement")}>
+                      <MobileInfoRow label={t("detailsPanel.labels.priority")}>
+                        {displayTorrent?.priority && displayTorrent.priority > 0 ? displayTorrent.priority : t("detailsPanel.values.normal")}
+                        {(displayTorrent?.state === "queuedDL" || displayTorrent?.state === "queuedUP") && (
+                          <Badge variant="secondary" className="ml-2 h-5 px-1.5">
+                            {t("detailsPanel.values.queued", { state: displayTorrent.state === "queuedDL" ? "DL" : "UP" })}
+                          </Badge>
+                        )}
+                      </MobileInfoRow>
+                      {queueLimits.maxActiveDownloads > 0 && <MobileInfoRow label={t("detailsPanel.labels.maxDownloads")}>{queueLimits.maxActiveDownloads}</MobileInfoRow>}
+                      {queueLimits.maxActiveUploads > 0 && <MobileInfoRow label={t("detailsPanel.labels.maxUploads")}>{queueLimits.maxActiveUploads}</MobileInfoRow>}
+                      {queueLimits.maxActiveTorrents > 0 && <MobileInfoRow label={t("detailsPanel.labels.maxActive")}>{queueLimits.maxActiveTorrents}</MobileInfoRow>}
+                    </MobileInfoGroup>
+                  )}
+
+                  <MobileInfoGroup title={t("detailsPanel.sections.timeInformation")}>
+                    <MobileInfoRow label={t("generalTab.timeActive")}>{formatDuration(properties.time_elapsed || 0)}</MobileInfoRow>
+                    <MobileInfoRow label={t("generalTab.seedingTime")}>{formatDuration(properties.seeding_time || 0)}</MobileInfoRow>
+                    {reannounceIn !== undefined && <MobileInfoRow label={t("tableColumns.reannounce")}>{reannounceIn}</MobileInfoRow>}
+                    <MobileInfoRow label={t("detailsPanel.labels.added")}>{formatTimestamp(properties.addition_date, true)}</MobileInfoRow>
+                    {properties.completion_date && properties.completion_date !== -1 && (
+                      <MobileInfoRow label={t("detailsPanel.labels.completed")}>{formatTimestamp(properties.completion_date, true)}</MobileInfoRow>
+                    )}
+                    {properties.creation_date && properties.creation_date !== -1 && (
+                      <MobileInfoRow label={t("detailsPanel.labels.created")}>{formatTimestamp(properties.creation_date, true)}</MobileInfoRow>
+                    )}
+                  </MobileInfoGroup>
+                </div>
+              ) : null}
+            </MobilePane>
+          </TabsContent>
+
+          <TabsContent value="trackers" className={MOBILE_SECTION}>
+            <MobilePane
+              header={trackers && trackers.length > 0 && (
+                <MobileSectionTitle title={t("detailsPanel.sections.activeTrackers")} summary={t("detailsPanel.counts.trackers", { count: trackers.length })} />
+              )}
+            >
+              {trackers && trackers.length > 0 ? (
+                <MobileTrackerList
+                  trackers={trackers}
+                  torrentHash={torrent.hash}
+                  incognitoMode={incognitoMode}
+                  onEditTracker={handleEditTrackerClick}
+                  supportsTrackerEditing={supportsTrackerEditing}
+                />
+              ) : loadingTrackers ? spinner : empty(t("trackersTable.noTrackersFound"))}
+              {hasWebseeds && <MobileWebSeedList urls={webseedsData!.map(webseed => webseed.url)} incognitoMode={incognitoMode} />}
+            </MobilePane>
+          </TabsContent>
+
+          <TabsContent value="peers" className={MOBILE_SECTION}>
+            <MobilePane
+              header={
+                <div className="flex items-center justify-between gap-3">
+                  <MobileSectionTitle title={t("detailsPanel.sections.connectedPeers")} summary={t("detailsPanel.counts.connectedPeers", { count: peerList.length })} />
+                  <Button variant="outline" size="sm" className="h-9 shrink-0" onClick={() => setShowAddPeersDialog(true)}>
+                    <UserPlus className="mr-2 size-4" />
+                    {t("detailsPanel.addPeers.title")}
+                  </Button>
+                </div>
+              }
+            >
+              {loadingPeers && !peersData ? spinner : peerList.length > 0 ? (
+                <div className="p-4">
+                  <div className="divide-y rounded-lg border bg-card/50">
+                    {peerList.map((peer) => {
+                      const progressValue = peer.progress || 0
+                      let progressPercent = Math.round(progressValue * 1000) / 10
+                      if (progressPercent === 100 && progressValue !== 1) {
+                        progressPercent = 99.9
+                      }
+                      return (
+                        <TapMenu
+                          key={peer.key}
+                          content={
+                            <>
+                              <DropdownMenuItem onClick={() => handleCopyPeer(peer)} disabled={incognitoMode}>
+                                <Copy className="h-4 w-4 mr-2" />
+                                {t("detailsPanel.actions.copyIpPort")}
+                              </DropdownMenuItem>
+                              {canBanPeer(peer) && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => handleBanPeerClick(peer)} className="text-destructive focus:text-destructive">
+                                    <Ban className="h-4 w-4 mr-2" />
+                                    {t("detailsPanel.actions.banPeerPermanently")}
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </>
+                          }
+                        >
+                          <MobilePeerRow
+                            address={getPeerDisplayAddress(peer, incognitoMode)}
+                            countryCode={peer.country_code}
+                            country={peer.country}
+                            client={peer.client?.trim() || matchPeerClient(peer.client, peer.peer_id_client).name || t("detailsPanel.values.unknownClient")}
+                            clientIcon={<PeerClientIcon client={peer.client} peerIdClient={peer.peer_id_client} />}
+                            connection={peer.connection}
+                            flags={peer.flags}
+                            progressPercent={progressPercent}
+                            isSeeder={progressValue === 1}
+                            downSpeed={(peer.dl_speed ?? 0) > 0 ? formatSpeedWithUnit(peer.dl_speed ?? 0, speedUnit) : ""}
+                            upSpeed={(peer.up_speed ?? 0) > 0 ? formatSpeedWithUnit(peer.up_speed ?? 0, speedUnit) : ""}
+                          />
+                        </TapMenu>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : empty(t("peersTable.noPeersConnected"))}
+            </MobilePane>
+          </TabsContent>
+
+          <TabsContent value="content" className={MOBILE_SECTION}>
+            {loadingFiles && !files ? spinner : files && files.length > 0 ? (
+              <>
+                <div className="flex shrink-0 items-start justify-between gap-3 border-b px-4 py-3">
+                  <MobileSectionTitle
+                    title={t("detailsPanel.sections.fileContents")}
+                    summary={supportsFilePriority ? t("detailsPanel.counts.selectedFiles", { selected: selectedFileCount, total: totalFiles }) : t("detailsPanel.counts.files", { count: files.length })}
+                  />
+                  {supportsFilePriority && (
+                    <div className="flex items-center gap-1">
+                      <Button variant="outline" size="sm" className="h-9 px-3" onClick={handleSelectAllFiles} disabled={!canSelectAll || setFilePriorityMutation.isPending}>
+                        {t("detailsPanel.actions.selectAll")}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-9 px-3" onClick={handleDeselectAllFiles} disabled={!canDeselectAll || setFilePriorityMutation.isPending}>
+                        {t("detailsPanel.actions.selectNone")}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <TorrentFileSortBar sort={fileSort} supportsFilePriority={supportsFilePriority} onSortChange={setFileSort} />
+                <div className="min-h-0 flex-1 px-2">
+                  <TorrentFileTree
+                    key={torrent.hash}
+                    files={files}
+                    sort={fileSort}
+                    supportsFilePriority={supportsFilePriority}
+                    pendingFileIndices={pendingFileIndices}
+                    incognitoMode={incognitoMode}
+                    torrentHash={torrent.hash}
+                    savePath={properties?.save_path}
+                    onToggleFile={handleToggleFileDownload}
+                    onToggleFileRange={handleToggleFileRange}
+                    onToggleFolder={handleToggleFolderDownload}
+                    onSetFilePriority={handleSetFilePriority}
+                    onSetFolderPriority={handleSetFolderPriority}
+                    onRenameFile={handleRenameFileClick}
+                    onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+                    onDownloadFile={canReadContent ? handleDownloadFile : undefined}
+                    onShowMediaInfo={canReadContent ? handleShowMediaInfo : undefined}
+                    discScans={discScans.runsByPath}
+                    onShowDiscReport={canReadContent ? handleShowDiscReport : undefined}
+                  />
+                </div>
+              </>
+            ) : empty(t("detailsPanel.emptyStates.noFilesFound"))}
+          </TabsContent>
+
+          <TabsContent value="crossseed" className={MOBILE_SECTION}>
+            <MobilePane
+              header={
+                <div className="flex items-center gap-2">
+                  <MobileSectionTitle
+                    title={t("detailsPanel.crossSeed.title")}
+                    summary={selectedCrossSeedTorrents.size > 0 ? t("detailsPanel.crossSeed.selectedSummary", { selected: selectedCrossSeedTorrents.size, total: matchingTorrents.length }) : isLoadingMatches ? t("detailsPanel.crossSeed.loadingSummary", { count: matchingTorrents.length }) : t("detailsPanel.crossSeed.loadedSummary", { count: matchingTorrents.length })}
+                  />
+                  {isLoadingMatches && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+                </div>
+              }
+              footer={!matchesError && matchingTorrents.length > 0 && (
+                <div className="flex gap-2">
+                  <Button variant="outline" className="h-11 flex-1" onClick={selectedCrossSeedTorrents.size > 0 ? handleDeselectAllCrossSeed : handleSelectAllCrossSeed}>
+                    {selectedCrossSeedTorrents.size > 0 ? t("detailsPanel.deselectAll") : t("detailsPanel.selectAll")}
+                  </Button>
+                  <Button variant="destructive" className="h-11 flex-1" disabled={selectedCrossSeedTorrents.size === 0} onClick={() => setShowDeleteCrossSeedDialog(true)}>
+                    <Trash2 className="mr-2 size-4" />
+                    {t("detailsPanel.crossSeed.deleteMatches", { count: selectedCrossSeedTorrents.size })}
+                  </Button>
+                </div>
+              )}
+            >
+              {matchesError ? (
+                <div className="flex h-32 items-center justify-center text-sm text-destructive">{t("crossSeedTable.loadFailed")}</div>
+              ) : matchingTorrents.length > 0 ? (
+                <div className="p-4">
+                  <div className="divide-y rounded-lg border bg-card/50">
+                    {matchingTorrents.map((match) => {
+                      const matchName = incognitoMode ? getLinuxFileName(match.hash, 0) : match.name
+                      const progressPercent = match.progress * 100
+                      const torrentKey = `${match.instanceId}-${match.hash}`
+                      const isSelected = selectedCrossSeedTorrents.has(torrentKey)
+                      const status = getStatusBadgeProps(match, true, t)
+                      let trackerHostname: string
+                      try {
+                        trackerHostname = new URL(match.tracker).hostname
+                      } catch {
+                        trackerHostname = match.tracker
+                      }
+                      return (
+                        <div
+                          key={torrentKey}
+                          className={cn("flex cursor-pointer select-none items-center gap-3 py-2.5 pl-3 pr-1", isSelected && "bg-primary/5")}
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest("[role=\"checkbox\"]")) return
+                            handleToggleCrossSeedSelection(torrentKey)
+                          }}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => handleToggleCrossSeedSelection(torrentKey)}
+                            aria-label={t("detailsPanel.crossSeed.selectTorrent", { name: matchName })}
+                          />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex items-start gap-2">
+                              <p className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium leading-snug">{breakableName(matchName)}</p>
+                              <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5", status.className)}>{status.label}</Badge>
+                            </div>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {[match.instanceName, getMatchTypeLabel(match.matchType, t).label, incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname].filter(Boolean).join(" · ")}
+                            </p>
+                            <p className={cn("text-xs tabular-nums", progressPercent === 100 ? "text-success" : "text-muted-foreground")}>
+                              {Math.floor(progressPercent * 10) / 10}% · {formatBytes(match.size)}
+                            </p>
+                          </div>
+                          {onNavigateToTorrent && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-11 shrink-0 text-muted-foreground"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onNavigateToTorrent(match.instanceId, match.hash)
+                              }}
+                              aria-label={t("detailsPanel.crossSeed.openTorrent", { name: matchName })}
+                            >
+                              <ChevronRight className="size-5" />
+                            </Button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : isLoadingMatches ? spinner : empty(t("crossSeedTable.noMatches"))}
+            </MobilePane>
+          </TabsContent>
+
+          <TabsList className="grid h-auto w-full shrink-0 grid-cols-5 rounded-none border-t bg-background p-0 pb-[env(safe-area-inset-bottom)] [&>.absolute]:hidden">
+            {MOBILE_SECTIONS.map(({ value, icon: Icon, labelKey }) => (
+              <TabsTrigger
+                key={value}
+                value={value}
+                className="h-14 flex-col gap-1 rounded-none border-0 px-0 text-xs text-muted-foreground shadow-none focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-0 data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-transparent"
+              >
+                <Icon className="size-5" />
+                <span className="w-full truncate">{t(labelKey)}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        {dialogs}
+      </div>
+    )
+  }
+
+  return (
+    <div {...themeArea("details-panel")} className="h-full flex flex-col">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
+        <div className="border-b flex items-center">
+          <div className="flex-1 overflow-x-auto scroll-smooth">
+            <TabsList className="w-full justify-start rounded-none h-8 bg-background px-4 sm:px-2 flex-nowrap overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <TabsTrigger value="general" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.general")}
+              </TabsTrigger>
+              <TabsTrigger value="trackers" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.trackers")}
+              </TabsTrigger>
+              <TabsTrigger value="peers" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.peers")}
+              </TabsTrigger>
+              {hasWebseeds && (
+                <TabsTrigger value="webseeds" className="text-xs shrink-0">
+                  {t("detailsPanel.tabs.httpSources")}
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="content" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.content")}
+              </TabsTrigger>
+              <TabsTrigger value="crossseed" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.crossSeed")}
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          {onClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-10 shrink-0 rounded-none"
+              onClick={onClose}
+              aria-label={t("detailsPanel.closePanel")}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <TabsContent value="general" className="m-0 h-full">
+            <GeneralTabHorizontal
+              instanceId={instanceId}
+              torrent={displayTorrent!}
+              properties={properties}
+              loading={loadingProperties}
+              speedUnit={speedUnit}
+              downloadLimit={properties?.dl_limit ?? displayTorrent!.dl_limit ?? 0}
+              uploadLimit={properties?.up_limit ?? displayTorrent!.up_limit ?? 0}
+              displayName={displayName}
+              displaySavePath={displaySavePath || ""}
+              displayTempPath={displayTempPath}
+              tempPathEnabled={tempPathEnabled}
+              displayInfohashV1={displayInfohashV1 || ""}
+              displayInfohashV2={displayInfohashV2}
+              displayComment={displayComment}
+              displayCreatedBy={displayCreatedBy}
+              queueingEnabled={queueLimits.enabled}
+              reannounceIn={reannounceIn}
+            />
+          </TabsContent>
+
+          <TabsContent value="trackers" className="m-0 h-full">
+            <TrackersTable
+              trackers={trackers}
+              loading={loadingTrackers}
+              incognitoMode={incognitoMode}
+              onEditTracker={handleEditTrackerClick}
+              supportsTrackerEditing={supportsTrackerEditing}
+            />
+          </TabsContent>
+
+          <TabsContent value="peers" className="m-0 h-full">
+            <div className="h-full flex flex-col">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs">
+                <span className="text-muted-foreground">
+                  {t("detailsPanel.counts.connectedPeers", { count: peersData?.sorted_peers?.length ?? 0 })}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-xs"
+                  onClick={() => setShowAddPeersDialog(true)}
+                >
+                  <UserPlus className="h-3 w-3 mr-1.5" />
+                  {t("detailsPanel.addPeers.title")}
+                </Button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <PeersTable
+                  peers={peersData?.sorted_peers}
+                  loading={loadingPeers}
+                  speedUnit={speedUnit}
+                  showFlags={true}
+                  incognitoMode={incognitoMode}
+                  onBanPeer={handleBanPeerClick}
+                />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="webseeds" className="m-0 h-full">
+            <WebSeedsTable
+              webseeds={webseedsData}
+              loading={loadingWebseeds}
+              incognitoMode={incognitoMode}
+            />
+          </TabsContent>
+
+          <TabsContent value="content" className="m-0 h-full flex flex-col overflow-hidden">
+            <TorrentFileTable
+              files={files}
+              loading={loadingFiles}
+              supportsFilePriority={supportsFilePriority}
+              pendingFileIndices={pendingFileIndices}
+              incognitoMode={incognitoMode}
+              torrentHash={torrent.hash}
+              savePath={properties?.save_path}
+              onToggleFile={handleToggleFileDownload}
+              onToggleFileRange={handleToggleFileRange}
+              onToggleFolder={handleToggleFolderDownload}
+              onSetFilePriority={handleSetFilePriority}
+              onSetFolderPriority={handleSetFolderPriority}
+              onRenameFile={handleRenameFileClick}
+              onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+              onDownloadFile={canReadContent ? handleDownloadFile : undefined}
+              onShowMediaInfo={canReadContent ? handleShowMediaInfo : undefined}
+              discScans={discScans.runsByPath}
+              onShowDiscReport={canReadContent ? handleShowDiscReport : undefined}
+            />
+          </TabsContent>
+
+          <TabsContent value="crossseed" className="m-0 h-full">
+            <CrossSeedTable
+              matches={matchingTorrents}
+              loading={isLoadingMatches}
+              loadFailed={!!matchesError}
+              incognitoMode={incognitoMode}
+              selectedTorrents={selectedCrossSeedTorrents}
+              onToggleSelection={handleToggleCrossSeedSelection}
+              onSelectAll={handleSelectAllCrossSeed}
+              onDeselectAll={handleDeselectAllCrossSeed}
+              onDeleteMatches={() => setShowDeleteCrossSeedDialog(true)}
+              onDeleteCurrent={() => setShowDeleteCurrentDialog(true)}
+              instanceById={instanceById}
+              onNavigateToTorrent={onNavigateToTorrent}
+            />
+          </TabsContent>
+        </div>
+      </Tabs>
+      {dialogs}
+    </div>
+  )
+});

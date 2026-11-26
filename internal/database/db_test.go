@@ -1,0 +1,1126 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package database
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
+)
+
+func TestMigrationNumbering(t *testing.T) {
+	files := listMigrationFiles(t)
+
+	seen := make(map[string]struct{})
+	prev := -1
+
+	for _, name := range files {
+		parts := strings.SplitN(name, "_", 2)
+		require.Lenf(t, parts, 2, "migration file %s must follow <number>_<description>.sql", name)
+
+		number := parts[0]
+		require.NotContainsf(t, seen, number, "Duplicate migration number found: %s", number)
+		seen[number] = struct{}{}
+
+		n, err := strconv.Atoi(number)
+		require.NoErrorf(t, err, "migration prefix %s must be numeric", number)
+		require.Greaterf(t, n, prev, "migration numbers must be strictly increasing (saw %d then %d)", prev, n)
+		prev = n
+	}
+}
+
+func TestPostgresMigrationNumbering(t *testing.T) {
+	files := listPostgresMigrationFiles(t)
+
+	seen := make(map[string]struct{})
+	prev := -1
+
+	for _, name := range files {
+		parts := strings.SplitN(name, "_", 2)
+		require.Lenf(t, parts, 2, "migration file %s must follow <number>_<description>.sql", name)
+
+		number := parts[0]
+		require.NotContainsf(t, seen, number, "Duplicate postgres migration number found: %s", number)
+		seen[number] = struct{}{}
+
+		n, err := strconv.Atoi(number)
+		require.NoErrorf(t, err, "migration prefix %s must be numeric", number)
+		require.Greaterf(t, n, prev, "postgres migration numbers must be strictly increasing (saw %d then %d)", prev, n)
+		prev = n
+	}
+}
+
+func TestMigrationIdempotency(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	db1, err := New(dbPath)
+	require.NoError(t, err, "Failed to initialize database first time")
+	var count1 int
+	require.NoError(t, db1.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count1))
+	require.NoError(t, db1.Close())
+
+	db2, err := New(dbPath)
+	require.NoError(t, err, "Failed to initialize database second time")
+	t.Cleanup(func() {
+		require.NoError(t, db2.Close())
+	})
+
+	var count2 int
+	require.NoError(t, db2.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count2))
+	require.Equal(t, count1, count2, "Migration count should be the same after re-initialization")
+	require.Positive(t, count2, "Should have at least one migration applied")
+
+	files := listMigrationFiles(t)
+	require.Equal(t, len(files), count2, "Applied migration count should match number of migration files")
+
+	var duplicates int
+	require.NoError(t, db2.Conn().QueryRowContext(ctx, "SELECT COUNT(*) - COUNT(DISTINCT filename) FROM migrations").Scan(&duplicates))
+	require.Zero(t, duplicates, "Should not have duplicate migration entries")
+}
+
+func TestMigrationsApplyFullSchema(t *testing.T) {
+	log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	conn := db.Conn()
+
+	files := listMigrationFiles(t)
+	var applied int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&applied))
+	require.Equal(t, len(files), applied, "All migrations should be recorded as applied")
+
+	t.Run("pragma settings", func(t *testing.T) {
+		verifyPragmas(t.Context(), t, conn)
+	})
+
+	t.Run("schema", func(t *testing.T) {
+		verifySchema(t.Context(), t, conn)
+	})
+
+	t.Run("indexes", func(t *testing.T) {
+		verifyIndexes(t.Context(), t, conn)
+	})
+
+	t.Run("triggers", func(t *testing.T) {
+		verifyTriggers(t.Context(), t, conn)
+	})
+}
+
+func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
+	log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	sqlDB := db.Conn()
+
+	sqlDB.SetMaxOpenConns(4)
+	sqlDB.SetMaxIdleConns(3)
+
+	conn1, err := sqlDB.Conn(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn1.Close())
+	})
+
+	conn2, err := sqlDB.Conn(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn2.Close())
+	})
+
+	verifyPragmas(ctx, t, conn1)
+	verifyPragmas(ctx, t, conn2)
+}
+
+func TestConnectionPragmasApplyWithoutNew(t *testing.T) {
+	sqlDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, sqlDB.Close())
+	})
+
+	verifyPragmas(t.Context(), t, sqlDB)
+}
+
+func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
+	log.Output(io.Discard)
+	ctx := t.Context()
+	statementsRW := make([]string, 0, 8)
+	require.NoError(t, applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		statementsRW = append(statementsRW, stmt)
+		return nil
+	}, false))
+	require.Contains(t, statementsRW, "PRAGMA journal_mode = WAL", "write connections must set journal_mode")
+
+	statementsRO := make([]string, 0, 8)
+	require.NoError(t, applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		statementsRO = append(statementsRO, stmt)
+		return nil
+	}, true))
+	require.NotContains(t, statementsRO, "PRAGMA journal_mode = WAL", "read-only connections must not attempt to set journal_mode")
+}
+
+type columnSpec struct {
+	Name       string
+	Type       string
+	PrimaryKey bool
+}
+
+var expectedSchema = map[string][]columnSpec{
+	"migrations": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "filename", Type: "TEXT"},
+		{Name: "applied_at", Type: "TIMESTAMP"},
+	},
+	"user": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "username", Type: "TEXT"},
+		{Name: "password_hash", Type: "TEXT"},
+		{Name: "created_at", Type: "TIMESTAMP"},
+		{Name: "updated_at", Type: "TIMESTAMP"},
+	},
+	"api_keys": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "key_hash", Type: "TEXT"},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "created_at", Type: "TIMESTAMP"},
+		{Name: "last_used_at", Type: "TIMESTAMP"},
+		{Name: "permissions", Type: "TEXT"},
+		{Name: "instance_ids", Type: "TEXT"},
+	},
+	"instances": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "host_id", Type: "INTEGER"},
+		{Name: "username_id", Type: "INTEGER"},
+		{Name: "password_encrypted", Type: "TEXT"},
+		{Name: "api_key_encrypted", Type: "TEXT"},
+		{Name: "basic_username_id", Type: "INTEGER"},
+		{Name: "basic_password_encrypted", Type: "TEXT"},
+		{Name: "tls_skip_verify", Type: "BOOLEAN"},
+		{Name: "sort_order", Type: "INTEGER"},
+		{Name: "is_active", Type: "BOOLEAN"},
+		{Name: "has_local_filesystem_access", Type: "BOOLEAN"},
+		{Name: "use_hardlinks", Type: "BOOLEAN"},
+		{Name: "hardlink_base_dir", Type: "TEXT"},
+		{Name: "hardlink_dir_preset", Type: "TEXT"},
+		{Name: "use_reflinks", Type: "BOOLEAN"},
+		{Name: "fallback_to_regular_mode", Type: "BOOLEAN"},
+		{Name: "ssh_host", Type: "TEXT"},
+		{Name: "ssh_port", Type: "INTEGER"},
+		{Name: "ssh_username", Type: "TEXT"},
+		{Name: "ssh_key_encrypted", Type: "TEXT"},
+		{Name: "ssh_host_key_encrypted", Type: "TEXT"},
+		{Name: "ssh_tier", Type: "TEXT"},
+		{Name: "ssh_hardlink", Type: "BOOLEAN"},
+		{Name: "public_peer_address", Type: "TEXT"},
+	},
+	"licenses": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "license_key", Type: "TEXT"},
+		{Name: "product_name", Type: "TEXT"},
+		{Name: "status", Type: "TEXT"},
+		{Name: "activated_at", Type: "DATETIME"},
+		{Name: "expires_at", Type: "DATETIME"},
+		{Name: "last_validated", Type: "DATETIME"},
+		{Name: "provider", Type: "TEXT"},
+		{Name: "dodo_instance_id", Type: "TEXT"},
+		{Name: "username", Type: "TEXT"},
+		{Name: "created_at", Type: "DATETIME"},
+		{Name: "updated_at", Type: "DATETIME"},
+	},
+	"client_api_keys": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "key_hash", Type: "TEXT"},
+		{Name: "client_name_id", Type: "INTEGER"},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "created_at", Type: "TIMESTAMP"},
+		{Name: "last_used_at", Type: "TIMESTAMP"},
+	},
+	"instance_errors": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "error_type_id", Type: "INTEGER"},
+		{Name: "error_message_id", Type: "INTEGER"},
+		{Name: "occurred_at", Type: "TIMESTAMP"},
+	},
+	"sessions": {
+		{Name: "token", Type: "TEXT", PrimaryKey: true},
+		{Name: "data", Type: "BLOB"},
+		{Name: "expiry", Type: "REAL"},
+	},
+	"torrent_files_cache": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "torrent_hash_id", Type: "INTEGER"},
+		{Name: "file_index", Type: "INTEGER"},
+		{Name: "name_id", Type: "INTEGER"},
+		{Name: "size", Type: "INTEGER"},
+		{Name: "progress", Type: "REAL"},
+		{Name: "priority", Type: "INTEGER"},
+		{Name: "is_seed", Type: "INTEGER"},
+		{Name: "piece_range_start", Type: "INTEGER"},
+		{Name: "piece_range_end", Type: "INTEGER"},
+		{Name: "availability", Type: "REAL"},
+		{Name: "cached_at", Type: "TIMESTAMP"},
+	},
+	"torrent_files_sync": {
+		{Name: "instance_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "torrent_hash_id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "last_synced_at", Type: "TIMESTAMP"},
+		{Name: "torrent_progress", Type: "REAL"},
+		{Name: "file_count", Type: "INTEGER"},
+		{Name: "maindata_print", Type: "BIGINT"},
+		{Name: "print_synced_at", Type: "TIMESTAMP"},
+	},
+	"automations": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "name", Type: "TEXT"},
+		{Name: "tracker_pattern", Type: "TEXT"},
+		{Name: "conditions", Type: "TEXT"},
+		{Name: "enabled", Type: "INTEGER"},
+		{Name: "dry_run", Type: "INTEGER"},
+		{Name: "sort_order", Type: "INTEGER"},
+		{Name: "interval_seconds", Type: "INTEGER"},
+		{Name: "free_space_source", Type: "TEXT"},
+		{Name: "created_at", Type: "DATETIME"},
+		{Name: "updated_at", Type: "DATETIME"},
+		{Name: "sorting_config", Type: "TEXT"},
+		{Name: "notify", Type: "INTEGER"},
+	},
+	"automation_activity": {
+		{Name: "id", Type: "INTEGER", PrimaryKey: true},
+		{Name: "instance_id", Type: "INTEGER"},
+		{Name: "hash", Type: "TEXT"},
+		{Name: "torrent_name", Type: "TEXT"},
+		{Name: "tracker_domain", Type: "TEXT"},
+		{Name: "action", Type: "TEXT"},
+		{Name: "rule_id", Type: "INTEGER"},
+		{Name: "rule_name", Type: "TEXT"},
+		{Name: "outcome", Type: "TEXT"},
+		{Name: "reason", Type: "TEXT"},
+		{Name: "details", Type: "TEXT"},
+		{Name: "created_at", Type: "DATETIME"},
+	},
+}
+
+var expectedIndexes = map[string][]string{
+	"instances":           {"idx_instances_sort_order", "idx_instances_is_active"},
+	"licenses":            {"idx_licenses_status", "idx_licenses_theme", "idx_licenses_key"},
+	"client_api_keys":     {"idx_client_api_keys_instance_id"},
+	"instance_errors":     {"idx_instance_errors_lookup"},
+	"sessions":            {"sessions_expiry_idx"},
+	"torrent_files_cache": {"idx_torrent_files_cache_lookup"},
+	"automations":         {"idx_automations_instance"},
+	"automation_activity": {"idx_automation_activity_instance_created"},
+}
+
+var expectedTriggers = []string{
+	"update_user_updated_at",
+	"cleanup_old_instance_errors",
+	"trg_automations_updated",
+}
+
+func listMigrationFiles(t *testing.T) []string {
+	entries, err := migrationsFS.ReadDir("migrations")
+	require.NoError(t, err, "Failed to read migrations directory")
+
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+			continue
+		}
+		files = append(files, entry.Name())
+	}
+
+	sort.Strings(files)
+	return files
+}
+
+func listPostgresMigrationFiles(t *testing.T) []string {
+	entries, err := postgresMigrationsFS.ReadDir("postgres_migrations")
+	require.NoError(t, err, "Failed to read postgres migrations directory")
+
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+			continue
+		}
+		files = append(files, entry.Name())
+	}
+
+	sort.Strings(files)
+	return files
+}
+
+var (
+	testTemplatePath      string
+	buildTestTemplateOnce = sync.OnceValue(func() error { return buildTestTemplate(testTemplatePath) })
+)
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "qui-database-test-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "create test template dir:", err)
+		os.Exit(1)
+	}
+	testTemplatePath = filepath.Join(dir, "template.db")
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+func openTestDatabase(t *testing.T) *DB {
+	t.Helper()
+	require.NoError(t, buildTestTemplateOnce())
+
+	data, err := os.ReadFile(testTemplatePath)
+	require.NoError(t, err)
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	require.NoError(t, os.WriteFile(dbPath, data, 0o600))
+
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	return db
+}
+
+func buildTestTemplate(path string) error {
+	db, err := New(path)
+	if err != nil {
+		return err
+	}
+	if _, err := db.Conn().ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		return errors.Join(err, db.Close())
+	}
+	return db.Close()
+}
+
+type pragmaQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func verifyPragmas(ctx context.Context, t *testing.T, q pragmaQuerier) {
+	t.Helper()
+
+	var journalMode string
+	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&journalMode))
+	require.Equal(t, "wal", strings.ToLower(journalMode))
+
+	var foreignKeys int
+	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&foreignKeys))
+	require.Equal(t, 1, foreignKeys)
+
+	var busyTimeout int
+	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout))
+	require.Equal(t, defaultBusyTimeoutMillis, busyTimeout)
+
+	rows, err := q.QueryContext(ctx, "PRAGMA foreign_key_check")
+	require.NoError(t, err)
+	defer rows.Close()
+	if rows.Next() {
+		t.Fatal("PRAGMA foreign_key_check reported violations")
+	}
+	require.NoError(t, rows.Err())
+
+	var integrity string
+	require.NoError(t, q.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity))
+	require.Equal(t, "ok", strings.ToLower(integrity))
+}
+
+func verifySchema(ctx context.Context, t *testing.T, conn *sql.DB) {
+	t.Helper()
+
+	actualTables := make(map[string]struct{})
+	rows, err := conn.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+	require.NoError(t, err)
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		actualTables[name] = struct{}{}
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	for table := range expectedSchema {
+		require.Containsf(t, actualTables, table, "expected table %s to exist", table)
+	}
+
+	for table, expectedCols := range expectedSchema {
+		pragma := fmt.Sprintf("PRAGMA table_info(%q)", table)
+		colRows, err := conn.QueryContext(ctx, pragma)
+		require.NoErrorf(t, err, "failed to inspect columns for table %s", table)
+
+		columns := make(map[string]struct {
+			Type       string
+			PrimaryKey bool
+		})
+		for colRows.Next() {
+			var (
+				cid       int
+				name      string
+				typ       string
+				notNull   int
+				dfltValue sql.NullString
+				pk        int
+			)
+			require.NoError(t, colRows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk))
+			columns[name] = struct {
+				Type       string
+				PrimaryKey bool
+			}{
+				Type:       typ,
+				PrimaryKey: pk > 0,
+			}
+		}
+		require.NoError(t, colRows.Err())
+		require.NoError(t, colRows.Close())
+
+		require.Lenf(t, columns, len(expectedCols), "table %s column count mismatch", table)
+		for _, spec := range expectedCols {
+			actual, ok := columns[spec.Name]
+			require.Truef(t, ok, "table %s missing column %s", table, spec.Name)
+			require.Truef(t, strings.EqualFold(actual.Type, spec.Type), "table %s column %s type mismatch: expected %s got %s", table, spec.Name, spec.Type, actual.Type)
+			require.Equalf(t, spec.PrimaryKey, actual.PrimaryKey, "table %s column %s primary key expectation mismatch", table, spec.Name)
+		}
+	}
+}
+
+func verifyIndexes(ctx context.Context, t *testing.T, conn *sql.DB) {
+	t.Helper()
+
+	for table, indexes := range expectedIndexes {
+		for _, index := range indexes {
+			var name string
+			err := conn.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name = ? AND name = ?", table, index).Scan(&name)
+			require.NoErrorf(t, err, "expected index %s on table %s", index, table)
+			require.Equal(t, index, name)
+		}
+	}
+}
+
+func verifyTriggers(ctx context.Context, t *testing.T, conn *sql.DB) {
+	t.Helper()
+
+	for _, trigger := range expectedTriggers {
+		var name string
+		err := conn.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type='trigger' AND name = ?", trigger).Scan(&name)
+		require.NoErrorf(t, err, "expected trigger %s to exist", trigger)
+		require.Equal(t, trigger, name)
+	}
+}
+
+func TestCleanupUnusedStrings(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	conn := db.Conn()
+
+	var initialCount int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&initialCount))
+
+	var id1, id2, id3 int64
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "referenced_string").Scan(&id1))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "orphaned_string").Scan(&id2))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "another_orphaned").Scan(&id3))
+
+	_, err := conn.ExecContext(ctx, "INSERT INTO instances (name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?)", id1, id1, id1, "dummy_password")
+	require.NoError(t, err)
+
+	var count int
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&count))
+	require.Equal(t, initialCount+3, count)
+
+	deleted, err := db.CleanupUnusedStrings(ctx)
+	require.NoError(t, err)
+	require.Positive(t, deleted)
+
+	var exists bool
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
+	require.True(t, exists)
+
+	deleted2, err := db.CleanupUnusedStrings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), deleted2)
+
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", id1).Scan(&exists))
+	require.True(t, exists)
+}
+
+func TestCleanupUnusedStrings_BasicAuthStringRefs(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	conn := db.Conn()
+
+	insertString := func(value string) int64 {
+		t.Helper()
+		var id int64
+		require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", value).Scan(&id))
+		return id
+	}
+
+	arrNameID := insertString("arr_name")
+	arrBaseURLID := insertString("http://arr.local")
+	arrBasicUserID := insertString("arr_basic_user")
+	torNameID := insertString("tor_name")
+	torBaseURLID := insertString("http://tor.local")
+	torBasicUserID := insertString("tor_basic_user")
+	orphanID := insertString("orphan_to_cleanup")
+
+	_, err := conn.ExecContext(ctx, `
+		INSERT INTO arr_instances (type, name_id, base_url_id, basic_username_id, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "sonarr", arrNameID, arrBaseURLID, arrBasicUserID, "enc-basic", "enc-api", true, 0, 15)
+	require.NoError(t, err)
+
+	_, err = conn.ExecContext(ctx, `
+		INSERT INTO torznab_indexers (name_id, base_url_id, basic_username_id, basic_password_encrypted, backend, api_key_encrypted, enabled, priority, timeout_seconds, limit_default, limit_max)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, torNameID, torBaseURLID, torBasicUserID, "enc-basic", "jackett", "enc-api", true, 0, 30, 100, 100)
+	require.NoError(t, err)
+
+	deleted, err := db.CleanupUnusedStrings(ctx)
+	require.NoError(t, err)
+	require.Positive(t, deleted)
+
+	var exists bool
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", arrBasicUserID).Scan(&exists))
+	require.True(t, exists, "arr basic username string must remain referenced")
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", torBasicUserID).Scan(&exists))
+	require.True(t, exists, "torznab basic username string must remain referenced")
+	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", orphanID).Scan(&exists))
+	require.False(t, exists, "orphan string should be cleaned up")
+}
+
+func TestStringPoolFKColumnsAreIndexed(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	conn := db.Conn()
+
+	var tables []string
+	rows, err := conn.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+	require.NoError(t, err)
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		tables = append(tables, name)
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	type fkCol struct{ table, column string }
+	var fkCols []fkCol
+	for _, table := range tables {
+		fkRows, err := conn.QueryContext(ctx, fmt.Sprintf("PRAGMA foreign_key_list(%q)", table))
+		require.NoError(t, err)
+		for fkRows.Next() {
+			var (
+				id, seq                   int
+				refTable, from, to        sql.NullString
+				onUpdate, onDelete, match sql.NullString
+			)
+			require.NoError(t, fkRows.Scan(&id, &seq, &refTable, &from, &to, &onUpdate, &onDelete, &match))
+			if refTable.String == "string_pool" {
+				fkCols = append(fkCols, fkCol{table: table, column: from.String})
+			}
+		}
+		require.NoError(t, fkRows.Err())
+		require.NoError(t, fkRows.Close())
+	}
+
+	require.NotEmpty(t, fkCols, "expected to discover string_pool foreign-key columns")
+
+	for _, fc := range fkCols {
+		planRows, err := conn.QueryContext(ctx, fmt.Sprintf("EXPLAIN QUERY PLAN SELECT 1 FROM %q WHERE %q = 1", fc.table, fc.column))
+		require.NoError(t, err)
+		var plan strings.Builder
+		for planRows.Next() {
+			var id, parent, notused int
+			var detail string
+			require.NoError(t, planRows.Scan(&id, &parent, &notused, &detail))
+			plan.WriteString(detail)
+			plan.WriteByte('\n')
+		}
+		require.NoError(t, planRows.Err())
+		require.NoError(t, planRows.Close())
+
+		require.NotContainsf(t, plan.String(), "SCAN",
+			"%s.%s references string_pool but lacks a leading index; FK enforcement will "+
+				"full-scan it during string_pool GC. Add an index (see migration 078). Plan:\n%s",
+			fc.table, fc.column, plan.String())
+
+		require.Containsf(t, referencedStringsInsertQuery,
+			fmt.Sprintf("SELECT %s AS string_id FROM %s", fc.column, fc.table),
+			"%s.%s references string_pool but is not collected by referencedStringsInsertQuery; "+
+				"the string_pool GC would fail trying to delete strings it still references.",
+			fc.table, fc.column)
+	}
+}
+
+func TestTxTempTableQueriesBypassStatementCache(t *testing.T) {
+	t.Parallel()
+
+	tx := &Tx{}
+	const (
+		createTemp = "CREATE TEMP TABLE current_hashes (hash TEXT PRIMARY KEY)"
+		insertTemp = "INSERT INTO current_hashes (hash) VALUES (?)"
+		deleteTemp = `
+			DELETE FROM torrent_files_cache
+			WHERE torrent_hash_id NOT IN (
+				SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
+			)
+		`
+		dropTemp   = "DROP TABLE current_hashes"
+		normalStmt = "INSERT INTO string_pool (value) VALUES (?)"
+	)
+
+	require.True(t, tx.shouldBypassStatementCache(createTemp))
+	require.Empty(t, tx.tempTables)
+
+	tx.markQueryForCaching(createTemp)
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(insertTemp)
+	tx.markQueryForCaching(deleteTemp)
+	require.Empty(t, tx.txStmts)
+
+	tx.markQueryForCaching(normalStmt)
+	require.Contains(t, tx.txStmts, normalStmt)
+
+	require.True(t, tx.shouldBypassStatementCache(dropTemp))
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(dropTemp)
+	require.NotContains(t, tx.txStmts, dropTemp)
+	require.NotContains(t, tx.tempTables, "current_hashes")
+}
+
+func TestTempTableNameParsingUsesFinalIdentifierSegment(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE "pg_temp"."current_hashes" (hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
+
+	dropName, ok := tableNameFromDrop("DROP TABLE IF EXISTS [pg_temp].[current_hashes];")
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", dropName)
+}
+
+func TestTempTableNameParsingWithoutSpaceBeforeColumns(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE current_hashes(hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
+}
+
+func TestTransactionCommitSuccessMutexRelease(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx2)
+
+	require.NoError(t, tx2.Rollback())
+}
+
+func TestTransactionRollbackReleasesMutex(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	err = tx.Rollback()
+	require.NoError(t, err)
+
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err, "Should be able to start new transaction after rollback")
+	require.NotNil(t, tx2)
+	require.NoError(t, tx2.Rollback())
+}
+
+func TestTransactionDoubleRollbackSafe(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	err = tx.Rollback()
+	require.NoError(t, err)
+
+	err = tx.Rollback()
+	require.Error(t, err)
+
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, tx2.Rollback())
+}
+
+func TestTransactionCommitThenRollbackSafe(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "test_string")
+	require.NoError(t, err)
+
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	err = tx.Rollback()
+	require.Error(t, err)
+
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, tx2.Rollback())
+}
+
+func TestTransactionSerialization(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	started := make(chan bool, 1)
+	release := make(chan struct{})
+	committed := make(chan bool, 1)
+
+	go func() {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Errorf("Failed to begin first transaction: %v", err)
+			return
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		started <- true
+		<-release
+
+		_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "serialization_test")
+		if err != nil {
+			t.Errorf("Failed to insert in first transaction: %v", err)
+			return
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			t.Errorf("Failed to commit first transaction: %v", err)
+			return
+		}
+
+		committed <- true
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(1 * time.Second):
+		t.Fatal("First transaction didn't start")
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+	_, err := db.BeginTx(waitCtx, nil)
+	cancel()
+	require.ErrorIs(t, err, context.DeadlineExceeded, "Second transaction should wait while the first is open")
+	close(release)
+
+	tx2, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, tx2)
+
+	var count int
+	require.NoError(t, tx2.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool WHERE value = ?", "serialization_test").Scan(&count))
+	require.Equal(t, 1, count, "Second transaction should have been blocked until the first committed")
+
+	require.NoError(t, tx2.Rollback())
+
+	select {
+	case <-committed:
+	case <-time.After(1 * time.Second):
+		t.Fatal("First transaction didn't commit")
+	}
+}
+
+func TestReadOnlyTransactionConcurrency(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	txWrite, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NotNil(t, txWrite)
+
+	_, err = txWrite.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES (?)", "concurrency_test")
+	require.NoError(t, err)
+
+	txRead, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	require.NoError(t, err)
+	require.NotNil(t, txRead)
+
+	var count int
+	err = txRead.QueryRowContext(ctx, "SELECT COUNT(*) FROM string_pool").Scan(&count)
+	require.NoError(t, err)
+
+	require.NoError(t, txRead.Rollback())
+
+	require.NoError(t, txWrite.Commit())
+}
+
+func TestSQLiteReaderPoolSizeFollowsCPUsWithinBounds(t *testing.T) {
+	for _, tc := range []struct{ procs, want int }{{2, 8}, {12, 12}, {32, 16}} {
+		prev := runtime.GOMAXPROCS(tc.procs)
+		got := sqliteReaderPoolSize()
+		runtime.GOMAXPROCS(prev)
+		require.Equal(t, tc.want, got, "GOMAXPROCS=%d", tc.procs)
+	}
+}
+
+func TestReaderPoolCapsOpenConnections(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	db := openTestDatabase(t)
+	ctx := t.Context()
+	limit := sqliteReaderPoolSize()
+	readers := limit * 2
+
+	release := make(chan struct{})
+	releaseReaders := sync.OnceFunc(func() { close(release) })
+	var acquired atomic.Int32
+	errs := make([]error, readers)
+	var wg sync.WaitGroup
+	t.Cleanup(func() {
+		releaseReaders()
+		wg.Wait()
+	})
+	for i := range readers {
+		wg.Go(func() {
+			rows, err := db.QueryContext(ctx, "SELECT 1")
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			defer rows.Close()
+			acquired.Add(1)
+			<-release
+			for rows.Next() {
+			}
+			errs[i] = rows.Err()
+		})
+	}
+
+	require.Eventually(t, func() bool {
+		return int(acquired.Load()) == limit && db.readerPool.Stats().WaitCount >= int64(readers-limit)
+	}, 5*time.Second, 5*time.Millisecond, "the reads past the limit must wait for a connection")
+	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
+
+	releaseReaders()
+	wg.Wait()
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, int32(readers), acquired.Load())
+	require.LessOrEqual(t, db.readerPool.Stats().OpenConnections, limit)
+}
+
+func TestReadOnlyTransactionsFillingPoolRunUnpreparedQueries(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	db := openTestDatabase(t)
+	limit := sqliteReaderPoolSize()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	var begun sync.WaitGroup
+	begun.Add(limit)
+	errs := make([]error, limit)
+	var wg sync.WaitGroup
+	for i := range limit {
+		wg.Go(func() {
+			tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+			begun.Done()
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			begun.Wait()
+
+			var n int
+			if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT %d", i)).Scan(&n); err != nil {
+				_ = tx.Rollback()
+				errs[i] = err
+				return
+			}
+			errs[i] = tx.Commit()
+		})
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		require.NoErrorf(t, err, "transaction %d", i)
+		_, found := db.readerStmts.Get(db.bindQuery(fmt.Sprintf("SELECT %d", i)))
+		require.Truef(t, found, "commit must cache the statement of transaction %d", i)
+	}
+}
+
+func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := t.Context()
+	const query = "SELECT 1"
+
+	stmts := make([]*sql.Stmt, 32)
+	errs := make([]error, len(stmts))
+	var wg sync.WaitGroup
+	for i := range stmts {
+		wg.Go(func() {
+			stmts[i], errs[i] = db.getStmt(ctx, query, nil)
+		})
+	}
+	wg.Wait()
+
+	cached, found := db.readerStmts.Get(query)
+	require.True(t, found)
+	for i, s := range stmts {
+		require.NoError(t, errs[i])
+		require.Same(t, cached, s)
+		var n int
+		require.NoError(t, s.QueryRowContext(ctx).Scan(&n))
+	}
+}
+
+func TestWriterLockWaitHonorsContext(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	other, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.Close()) })
+	holder, err := other.Conn(t.Context())
+	require.NoError(t, err)
+	_, err = holder.ExecContext(t.Context(), "BEGIN EXCLUSIVE")
+	require.NoError(t, err)
+
+	blockerDone := make(chan error, 1)
+	go func() {
+		_, err := db.ExecContext(t.Context(), "INSERT INTO string_pool (value) VALUES (?)", "blocker")
+		blockerDone <- err
+	}()
+	require.Eventually(t, func() bool { return len(db.writerSem) == 1 }, time.Second, 5*time.Millisecond)
+
+	const insert = "INSERT INTO string_pool (value) VALUES (?)"
+	for name, write := range map[string]func(context.Context) error{
+		"ExecContext": func(ctx context.Context) error {
+			_, err := db.ExecContext(ctx, insert, "exec")
+			return err
+		},
+		"QueryContext": func(ctx context.Context) error {
+			rows, err := db.QueryContext(ctx, insert+" RETURNING id", "query")
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			return rows.Err()
+		},
+		"QueryRowContext": func(ctx context.Context) error {
+			var id int64
+			return db.QueryRowContext(ctx, insert+" RETURNING id", "row").Scan(&id)
+		},
+		"BeginTx": func(ctx context.Context) error {
+			tx, err := db.BeginTx(ctx, nil)
+			if err == nil {
+				_ = tx.Rollback()
+			}
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+			defer cancel()
+			start := time.Now()
+			err := write(ctx)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Less(t, time.Since(start), time.Second, "waited for the lock holder instead of the context")
+		})
+	}
+
+	_, err = holder.ExecContext(t.Context(), "ROLLBACK")
+	require.NoError(t, err)
+	require.NoError(t, holder.Close())
+	require.NoError(t, <-blockerDone)
+}
+
+func TestNewStartsWhileAnotherConnectionReadsTheWAL(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := New(dbPath)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	other, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, other.Close()) })
+	holder, err := other.Conn(t.Context())
+	require.NoError(t, err)
+	for _, stmt := range []string{
+		"PRAGMA wal_autocheckpoint = 0",
+		"INSERT INTO string_pool (value) VALUES ('held')",
+		"BEGIN",
+	} {
+		_, err = holder.ExecContext(t.Context(), stmt)
+		require.NoError(t, err)
+	}
+	var held int
+	require.NoError(t, holder.QueryRowContext(t.Context(), "SELECT count(*) FROM string_pool").Scan(&held))
+
+	db, err = New(dbPath)
+	require.NoError(t, err)
+
+	_, err = holder.ExecContext(t.Context(), "ROLLBACK")
+	require.NoError(t, err)
+	require.NoError(t, holder.Close())
+	require.NoError(t, db.Close())
+}

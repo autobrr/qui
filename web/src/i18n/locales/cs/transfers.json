@@ -1,0 +1,233 @@
+{
+  "page": {
+    "title": "Přenosy",
+    "description": "Sledujte, co qui přesouvá mezi instancemi a co sdílíte s ostatními."
+  },
+  "tabs": {
+    "transfers": "Přenosy",
+    "shares": "Sdílení"
+  },
+  "chips": {
+    "label": "Zobrazit",
+    "all": "Vše",
+    "active": "Aktivní",
+    "waiting": "Čekající",
+    "finished": "Dokončené",
+    "failed": "Selhané"
+  },
+  "columns": {
+    "torrent": "Torrent",
+    "size": "Velikost",
+    "progress": "Postup",
+    "state": "Stav",
+    "started": "Spuštěno",
+    "actions": "Akce"
+  },
+  "row": {
+    "crossSeeds_one": "+{{count}} křížové sdílení",
+    "crossSeeds_few": "+{{count}} křížová sdílení",
+    "crossSeeds_other": "+{{count}} křížových sdílení",
+    "export": "Export",
+    "route": "{{source}} → {{target}}",
+    "byUser": "Vámi",
+    "byRule": "Pravidlem {{name}}",
+    "byDeletedRule": "Pravidlem, které už neexistuje",
+    "retryAt": "Další pokus {{time}}",
+    "timeLeft": "Zbývá {{time}}",
+    "unknownInstance": "Instance {{id}}"
+  },
+  "ways": {
+    "sftp": "Kopie přes SFTP",
+    "local": "Kopie na disku qui",
+    "none": "Bez kopie",
+    "bittorrent": "BitTorrent",
+    "fallback": "Neznámý způsob"
+  },
+  "states": {
+    "waiting": "Čeká",
+    "copying": "Kopíruje se",
+    "checking": "Kontrola",
+    "finishing": "Dokončuje se",
+    "done": "Hotovo",
+    "failed": "Selhalo",
+    "cancelled": "Zrušeno",
+    "fallback": "Neznámý stav"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} používá výchozí volbu qBittorrentu „TCP a μTP“. V testech qui bylo „jen TCP“ asi třikrát rychlejší. Změňte to v nastavení BitTorrent instance {{instance}}."
+  },
+  "actions": {
+    "details": "Podrobnosti",
+    "retry": "Zkusit znovu",
+    "cancel": "Zrušit",
+    "remove": "Odstranit",
+    "retried": "Přenos běží znovu.",
+    "cancelled": "qui ruší přenos a vrací zpět, co udělal.",
+    "removed": "Řádek je odstraněn.",
+    "failed": "Selhalo: {{message}}"
+  },
+  "cancelDialog": {
+    "title": "Zrušit tento přenos?",
+    "description": "qui zastaví přenos {{name}}, odstraní soubory, které zapsal, a torrenty, které přidal v cíli, a znovu spustí torrent ve zdroji.",
+    "keep": "Nechat běžet",
+    "confirm": "Zrušit přenos"
+  },
+  "list": {
+    "description": "Torrenty, které qui přesouvá do jiné instance, a běhy pravidel s akcí Exportovat do instance.",
+    "empty": "Zatím tu není žádný přenos.",
+    "pages": "Stránky seznamu",
+    "range": "{{from}}–{{to}} z {{total}}",
+    "previous": "Předchozí",
+    "next": "Další"
+  },
+  "bulk": {
+    "label": "Vybrané řádky",
+    "pickPage": "Vybrat řádky této stránky",
+    "picked_one": "{{count}} vybrán",
+    "picked_few": "{{count}} vybrány",
+    "picked_other": "{{count}} vybráno",
+    "wholeChip_one": "Vybráno vše: {{count}}",
+    "wholeChip_few": "Vybráno vše: {{count}}",
+    "wholeChip_other": "Vybráno vše: {{count}}",
+    "pickAll_one": "Vybrat vše ({{count}})",
+    "pickAll_few": "Vybrat vše ({{count}})",
+    "pickAll_other": "Vybrat vše ({{count}})",
+    "done": {
+      "retry_one": "{{count}} řádek běží znovu.",
+      "retry_few": "{{count}} řádky běží znovu.",
+      "retry_other": "{{count}} řádků běží znovu.",
+      "cancel_one": "qui ruší {{count}} řádek.",
+      "cancel_few": "qui ruší {{count}} řádky.",
+      "cancel_other": "qui ruší {{count}} řádků.",
+      "remove_one": "{{count}} řádek je odstraněn.",
+      "remove_few": "{{count}} řádky jsou odstraněny.",
+      "remove_other": "{{count}} řádků je odstraněno."
+    },
+    "skipped_one": "{{count}} řádek zůstává beze změny: akce se na něj nevztahuje.",
+    "skipped_few": "{{count}} řádky zůstávají beze změny: akce se na ně nevztahuje.",
+    "skipped_other": "{{count}} řádků zůstává beze změny: akce se na ně nevztahuje.",
+    "failed_one": "{{count}} řádek selhal. Důvod je v logu qui.",
+    "failed_few": "{{count}} řádky selhaly. Důvod je v logu qui.",
+    "failed_other": "{{count}} řádků selhalo. Důvod je v logu qui.",
+    "failedBecause_one": "{{count}} řádek selhal. {{reasons}}",
+    "failedBecause_few": "{{count}} řádky selhaly. {{reasons}}",
+    "failedBecause_other": "{{count}} řádků selhalo. {{reasons}}",
+    "nothing": "Akce se nevztahuje na žádný vybraný řádek.",
+    "cancelDialog": {
+      "title": "Zrušit vybrané řádky?",
+      "description_one": "Je vybrán {{count}} řádek. Pokud neskončil, qui ho zruší a vrátí zpět, co udělal: odstraní soubory a torrenty, které přidal v cíli, a znovu spustí torrent ve zdroji.",
+      "description_few": "Jsou vybrány {{count}} řádky. qui zruší každý, který neskončil, a vrátí zpět, co udělal: odstraní soubory a torrenty, které přidal v cíli, a znovu spustí torrent ve zdroji.",
+      "description_other": "Je vybráno {{count}} řádků. qui zruší každý, který neskončil, a vrátí zpět, co udělal: odstraní soubory a torrenty, které přidal v cíli, a znovu spustí torrent ve zdroji.",
+      "confirm": "Zrušit řádky",
+      "keep": "Nechat běžet"
+    },
+    "removeDialog": {
+      "title": "Odstranit vybrané řádky?",
+      "description_one": "Je vybrán {{count}} řádek. Pokud skončil, qui ho odstraní ze seznamu. Torrenty a jejich soubory zůstanou, kde jsou.",
+      "description_few": "Jsou vybrány {{count}} řádky. qui odstraní ze seznamu každý, který skončil. Torrenty a jejich soubory zůstanou, kde jsou.",
+      "description_other": "Je vybráno {{count}} řádků. qui odstraní ze seznamu každý, který skončil. Torrenty a jejich soubory zůstanou, kde jsou.",
+      "confirm": "Odstranit řádky",
+      "keep": "Ponechat řádky"
+    }
+  },
+  "details": {
+    "title": "Podrobnosti přenosu",
+    "exportTitle": "Podrobnosti běhu exportu",
+    "overview": "Přehled",
+    "sections": "Části podrobností",
+    "finished": "Dokončeno",
+    "leftStopped": "Na cíli zůstane zastavený",
+    "instance": "Instance",
+    "failure": "Proč selhal",
+    "torrents": "Torrenty",
+    "steps": "Kroky",
+    "log": "Log",
+    "noLog": "Zatím žádné řádky logu.",
+    "loading": "Načítání přenosu…",
+    "error": "qui nemůže načíst přenos: {{message}}",
+    "stale": "qui nemůže obnovit podrobnosti, takže mohou být zastaralé: {{message}}"
+  },
+  "steps": {
+    "start": "Spuštěno",
+    "prepare": "Obě strany připraveny",
+    "passByBitTorrent": "Předávání přenosovým torrentem",
+    "passedByBitTorrent": "Předáno přenosovým torrentem",
+    "fallBackToSftp": "Přechod na kopii přes SFTP",
+    "copyHardlink": "Zkopírován hardlink",
+    "check": "Zkontrolováno v cíli",
+    "checkFiles": "Soubory na cíli zkontrolovány",
+    "copyMissing": "Kopírování chybějících souborů",
+    "checkPartials": "Částečné soubory na cíli zkontrolovány",
+    "copyFailedPieces": "Kopírování částí, které neprošly kontrolou",
+    "place": "Soubory umístěny",
+    "add": "Přidávání do cíle",
+    "added": "Přidáno do cíle",
+    "rename": "Přejmenovávání souborů v cíli",
+    "after": "Zdroj vyřízen",
+    "removeFromSource": "Odstraňování ze zdroje",
+    "cleanUp": "Úklid",
+    "removePlaced": "Umístěné soubory odstraněny"
+  },
+  "stepFallback": "Jiný krok",
+  "incognitoHidden": "V režimu Incognito skryto",
+  "form": {
+    "target": "Cílová instance",
+    "targetPlaceholder": "Vyberte instanci",
+    "noTargets": "Přidejte další instanci, abyste do ní mohli přenášet torrenty.",
+    "savePath": "Cesta uložení",
+    "savePathHelp": "Složka v cíli. qui pod ní zachová složky torrentu a jeho křížových sdílení. Prázdné pole použije cestu uložení kategorie v cíli, nebo výchozí cestu uložení cíle, když není nastavena žádná kategorie. S prázdnou cestou torrent navíc dostane Automatickou správu torrentů, pokud je to výchozí režim cíle.",
+    "savePathPlaceholder": "Výchozí cesta uložení cíle",
+    "savePathPlaceholderCategory": "Cesta uložení kategorie",
+    "category": "Kategorie",
+    "noCategory": "Žádná kategorie",
+    "tags": "Tagy",
+    "tagsPlaceholder": "tag1, tag2",
+    "after": "Po přenosu",
+    "afterHelp": "Co qui udělá s torrentem ve zdroji, jakmile ho cíl seeduje.",
+    "afterOptions": {
+      "removeWithFiles": "Odstranit torrent i jeho soubory ze zdroje",
+      "keepFiles": "Odstranit torrent ze zdroje a ponechat jeho soubory",
+      "keepSeeding": "Dál seedovat ve zdroji"
+    },
+    "leaveStopped": "Nechat torrent v cíli zastavený",
+    "way": "Způsob",
+    "wayHelp": "Auto kopíruje přes qui, když qui vidí soubory jedné strany na vlastním disku. Jinak předá soubory přenosovým torrentem mezi oběma qBittorrenty.",
+    "wayOptions": {
+      "auto": "Auto",
+      "copy": "Kopírovat přes qui",
+      "bittorrent": "Přenosový torrent"
+    }
+  },
+  "dialog": {
+    "title": "Přenést do jiné instance",
+    "verified": "qui zkontroluje v cíli každý kus, než změní zdroj.",
+    "warningsMore": "Zobrazit celá varování",
+    "warningsLess": "Zobrazit jeden řádek každého varování",
+    "start": "Spustit přenos",
+    "starting": "Spouštění…",
+    "started": "Přenos {{name}} čeká, až na něj přijde řada.",
+    "cancel": "Zavřít"
+  },
+  "summary": {
+    "title": "Souhrn",
+    "pickTarget": "Vyberte cílovou instanci, abyste viděli souhrn.",
+    "loading": "Plánování přenosu…",
+    "refused": "qui tento přenos nespustí: {{message}}",
+    "torrents": "Torrenty",
+    "size": "Velikost",
+    "way": "Způsob",
+    "free": "Volné místo v cíli",
+    "unknown": "Neznámé",
+    "freeUnknown": "Volné místo není známé: qBittorrent před verzí 5.3 ho hlásí jen pro svou výchozí cestu uložení.",
+    "notEnoughSpace": "Cíl má méně volného místa, než přenos potřebuje.",
+    "noFileAccess": "qui nevidí soubory na instanci {{instance}}, takže soubor s jiným obsahem na stejné cestě může být nahrazen.",
+    "crossSeedsStay_one": "{{count}} křížové sdílení zůstává na instanci {{source}}. Čte tyto soubory přes hardlinky, a qui nemůže na instanci {{target}} vytvářet hardlinky bez přístupu k souborům. Chcete-li ho přenést také, dejte qui přístup k souborům instance {{target}}, na vlastním disku qui nebo přes SSH, nebo na instanci {{target}} spusťte křížové sdílení znovu.",
+    "crossSeedsStay_few": "{{count}} křížová sdílení zůstávají na instanci {{source}}. Čtou tyto soubory přes hardlinky, a qui nemůže na instanci {{target}} vytvářet hardlinky bez přístupu k souborům. Chcete-li je přenést také, dejte qui přístup k souborům instance {{target}}, na vlastním disku qui nebo přes SSH, nebo na instanci {{target}} spusťte křížové sdílení znovu.",
+    "crossSeedsStay_other": "{{count}} křížových sdílení zůstává na instanci {{source}}. Čtou tyto soubory přes hardlinky, a qui nemůže na instanci {{target}} vytvářet hardlinky bez přístupu k souborům. Chcete-li je přenést také, dejte qui přístup k souborům instance {{target}}, na vlastním disku qui nebo přes SSH, nebo na instanci {{target}} spusťte křížové sdílení znovu.",
+    "crossSeedsStayForced_one": "{{count}} křížové sdílení zůstává na instanci {{source}}. Čte tyto soubory přes hardlinky, a přenosový torrent hardlinky vytvářet nemůže. Chcete-li ho přenést také, vyberte způsob „Auto“ nebo „Kopírovat přes qui“.",
+    "crossSeedsStayForced_few": "{{count}} křížová sdílení zůstávají na instanci {{source}}. Čtou tyto soubory přes hardlinky, a přenosový torrent hardlinky vytvářet nemůže. Chcete-li je přenést také, vyberte způsob „Auto“ nebo „Kopírovat přes qui“.",
+    "crossSeedsStayForced_other": "{{count}} křížových sdílení zůstává na instanci {{source}}. Čtou tyto soubory přes hardlinky, a přenosový torrent hardlinky vytvářet nemůže. Chcete-li je přenést také, vyberte způsob „Auto“ nebo „Kopírovat přes qui“.",
+    "crossSeed": "Křížové sdílení",
+    "crossSeedInstance": "Na instanci {{instance}}"
+  }
+}

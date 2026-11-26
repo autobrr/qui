@@ -1,0 +1,206 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { afterEach, describe, expect, it } from "vitest"
+import { http, HttpResponse } from "msw"
+import { server } from "@/test/msw/server"
+import "@/i18n"
+import { api, APIError } from "@/lib/api"
+
+describe("api instances group — contract", () => {
+  afterEach(() => {
+    server.resetHandlers()
+  })
+
+  describe("getInstances", () => {
+    it("issues GET /instances with no query/body and returns the JSON array AS-IS", async () => {
+      let captured: Request | undefined
+      const payload = [
+        { id: 1, name: "alpha", connected: true },
+        { id: 2, name: "beta", connected: false },
+      ]
+
+      server.use(
+        http.get("*/api/instances", ({ request }) => {
+          captured = request.clone()
+          return HttpResponse.json(payload)
+        })
+      )
+
+      const result = await api.getInstances()
+
+      expect(captured).toBeDefined()
+      expect(captured!.method).toBe("GET")
+      const url = new URL(captured!.url)
+      expect(url.pathname).toBe("/api/instances")
+      expect(url.search).toBe("")
+      expect(captured!.headers.get("content-type")).toBe("application/json")
+      expect(captured!.body).toBeNull()
+
+      expect(result).toEqual(payload)
+    })
+
+    it("resolves undefined when the response is 204 No Content (documented edge, not [])", async () => {
+      server.use(
+        http.get("*/api/instances", () => new HttpResponse(null, { status: 204 }))
+      )
+
+      const result = await api.getInstances()
+      expect(result).toBeUndefined()
+    })
+
+    it("resolves undefined when the response has content-length 0", async () => {
+      server.use(
+        http.get("*/api/instances", () =>
+          new HttpResponse(null, { status: 200, headers: { "content-length": "0" } })
+        )
+      )
+
+      const result = await api.getInstances()
+      expect(result).toBeUndefined()
+    })
+
+    it("throws APIError with status + data and the JSON error message on non-2xx", async () => {
+      const body = { error: "instances are unavailable", code: "down" }
+      server.use(
+        http.get("*/api/instances", () => HttpResponse.json(body, { status: 503 }))
+      )
+
+      const error = await api.getInstances().catch((e) => e)
+      expect(error).toBeInstanceOf(APIError)
+      expect((error as APIError).name).toBe("APIError")
+      expect((error as APIError).message).toBe("instances are unavailable")
+      expect((error as APIError).status).toBe(503)
+      expect((error as APIError).data).toEqual(body)
+    })
+
+    it("falls back to `message` field when no `error` field is present", async () => {
+      const body = { message: "boom from message" }
+      server.use(
+        http.get("*/api/instances", () => HttpResponse.json(body, { status: 500 }))
+      )
+
+      const error = await api.getInstances().catch((e) => e)
+      expect(error).toBeInstanceOf(APIError)
+      expect((error as APIError).message).toBe("boom from message")
+      expect((error as APIError).status).toBe(500)
+      expect((error as APIError).data).toEqual(body)
+    })
+
+    it("falls back to `HTTP error! status: <status>` when JSON carries no usable message", async () => {
+      const body = { something: "else" }
+      server.use(
+        http.get("*/api/instances", () => HttpResponse.json(body, { status: 418 }))
+      )
+
+      const error = await api.getInstances().catch((e) => e)
+      expect(error).toBeInstanceOf(APIError)
+      expect((error as APIError).message).toBe("HTTP error! status: 418")
+      expect((error as APIError).status).toBe(418)
+      expect((error as APIError).data).toEqual(body)
+    })
+  })
+
+  describe("getLocalCrossSeedMatches", () => {
+    const rawMatch = {
+      instance_id: 7,
+      instance_name: "seedbox",
+      hash: "abc123",
+      name: "Some.Release.2024",
+      size: 1234,
+      progress: 1,
+      save_path: "/data/downloads",
+      content_path: "/data/downloads/Some.Release.2024",
+      category: "movies",
+      tags: "hd,remux",
+      state: "uploading",
+      tracker: "tracker.example",
+      tracker_health: "healthy",
+      match_type: "content_path",
+    }
+
+    it("issues GET with NO query string", async () => {
+      let captured: Request | undefined
+      server.use(
+        http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", ({ request }) => {
+          captured = request.clone()
+          return HttpResponse.json({ matches: [] })
+        })
+      )
+
+      await api.getLocalCrossSeedMatches(42, "deadbeef")
+
+      expect(captured).toBeDefined()
+      expect(captured!.method).toBe("GET")
+      const url = new URL(captured!.url)
+      expect(url.pathname).toBe("/api/cross-seed/torrents/42/deadbeef/local-matches")
+      expect(url.search).toBe("")
+      expect(captured!.headers.get("content-type")).toBe("application/json")
+    })
+
+    it("maps snake_case RawLocalMatch to camelCase LocalCrossSeedMatch", async () => {
+      server.use(
+        http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
+          HttpResponse.json({ matches: [rawMatch] })
+        )
+      )
+
+      const result = await api.getLocalCrossSeedMatches(7, "abc123")
+
+      expect(result).toEqual([
+        {
+          instanceId: 7,
+          instanceName: "seedbox",
+          hash: "abc123",
+          name: "Some.Release.2024",
+          size: 1234,
+          progress: 1,
+          savePath: "/data/downloads",
+          contentPath: "/data/downloads/Some.Release.2024",
+          category: "movies",
+          tags: "hd,remux",
+          state: "uploading",
+          tracker: "tracker.example",
+          trackerHealth: "healthy",
+          matchType: "content_path",
+        },
+      ])
+    })
+
+    it("returns [] when matches is empty", async () => {
+      server.use(
+        http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
+          HttpResponse.json({ matches: [] })
+        )
+      )
+
+      const result = await api.getLocalCrossSeedMatches(7, "abc123")
+      expect(result).toEqual([])
+    })
+
+    it("returns [] when matches is missing from the body", async () => {
+      server.use(
+        http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
+          HttpResponse.json({})
+        )
+      )
+
+      const result = await api.getLocalCrossSeedMatches(7, "abc123")
+      expect(result).toEqual([])
+    })
+
+    it("preserves an undefined tracker_health as undefined trackerHealth", async () => {
+      const withoutHealth = { ...rawMatch, tracker_health: undefined }
+      server.use(
+        http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
+          HttpResponse.json({ matches: [withoutHealth] })
+        )
+      )
+
+      const result = await api.getLocalCrossSeedMatches(7, "abc123")
+      expect(result[0].trackerHealth).toBeUndefined()
+    })
+  })
+})

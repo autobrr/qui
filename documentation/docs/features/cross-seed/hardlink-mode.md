@@ -1,0 +1,305 @@
+---
+sidebar_position: 3
+title: Cross-seed with hardlinks or reflinks
+sidebar_label: Hardlink Mode
+description: "Cross-seed without renaming files: qui builds a hardlink or reflink tree that matches the incoming torrent layout."
+---
+
+import LocalFilesystemDocker from "../../_partials/_local-filesystem-docker.mdx";
+
+# Hardlink Mode
+
+Hardlink mode is an opt-in cross-seeding strategy. qui creates a hardlinked copy of the matched files in the layout that the incoming torrent expects. qui then adds the torrent and points it to that hardlink tree. qBittorrent starts seeding immediately without file rename alignment, and complete link trees skip hash rechecks.
+
+## When to use
+
+- You want cross-seeds to have their own on-disk directory structure (per tracker, per instance, or flat) while they share data blocks with the original download.
+- You want to avoid qBittorrent rename alignment and hash rechecks for layout differences.
+
+## Requirements
+
+- The target qBittorrent instance must have **Local filesystem access** enabled, or be a [remote instance](../ssh-access.md). On a remote instance, the SSH server must be able to create hardlinks. The connection test on the SSH tab shows this.
+- A link target that already holds a different file stops the add on every instance, local or remote, instead of falling back to a regular add. A regular add would put the torrent inside the matched torrent's own path and leave the half-built link tree behind, so qui refuses and leaves the target for you to clean up. A target that is already qui's own link to the same file is reused instead of stopping the add. This applies on an instance with local filesystem access, and on a remote instance where qui can run commands on the host. On a remote instance where qui only has SFTP, qui cannot tell its own link from another file, so any existing target stops the add there.
+- The hardlink base directory must reside on the **same filesystem/volume** as the instance download paths. Hardlinks cannot cross filesystems.
+- qui must have permission to read the instance content paths and write to the hardlink base directory.
+
+:::tip Multi-filesystem setups
+If your downloads span multiple filesystems (for example `/mnt/disk1` and `/mnt/disk2`), set **multiple base directories** separated by commas. qui selects a directory that is on the same filesystem as the source files. When several directories match, qui tries first the directory that shares the longest path prefix with the source files. Some hosts, such as OrbStack on macOS, report one device for several disks. On such a host, if a link fails with a cross-device error, qui tries the next directory.
+
+Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
+:::
+
+<LocalFilesystemDocker />
+
+## Behavior
+
+- Hardlink mode is a **per-instance setting**, not a per-request setting. Each qBittorrent instance has its own hardlink configuration.
+- Torrents added in hardlink or reflink mode always use an explicit `savepath` (the link-tree root), which turns **AutoTMM off**. If you enable AutoTMM after the add, qBittorrent can move files out of the link tree.
+- If qui cannot create a hardlink (due to missing filesystem access, an SSH server that cannot create hardlinks, a filesystem mismatch, or an invalid base directory), the cross-seed **fails** by default.
+- If you want failed hardlink operations to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode on error"**. A link target that already holds a different file is the exception: it fails the cross-seed even with fallback on. Filesystem fallback uses a full recheck, except for a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) when **Skip recheck** is on. See [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
+- If qBittorrent returns an unsafe file path, qui rejects the cross-seed without regular-mode fallback. This applies to hardlink and reflink modes.
+- When fallback handles a partial or non-perfect match, qui runs a piece-boundary safety check before it adds the torrent to qBittorrent. qui always enforces this fallback check, even when the **Piece boundary safety check** in **Cross-Seed > Matching rules > Safety & validation** is off (the default).
+- qui categorizes hardlinked torrents with your existing cross-seed category rules (category affix, indexer name, or custom category). The hardlink preset only affects the on-disk folder layout.
+
+## Directory layout
+
+Configure in **Cross-Seed > After injection > Hardlink / Reflink Mode**, then expand the instance:
+
+- **Base directories**: paths where qui creates link trees, on the host that holds the instance's files. For an instance with local filesystem access that is the qui host; for a remote instance it is the remote host, so enter the paths as that host sees them. For multi-filesystem setups, set multiple paths separated by commas (for example `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`).
+- **Directory organization** preset:
+  - `flat`: `base/TorrentName/...`
+  - `by-tracker`: `base/<tracker>/TorrentName/...`
+  - `by-instance`: `base/<instance>/TorrentName/...`
+
+### Isolation folders
+
+An isolation folder keeps the files of one torrent apart from the files of other torrents. For each preset, qui reads the file structure of the torrent to decide whether it needs one:
+
+- **Torrents with a root folder** (for example `Movie/video.mkv` and `Movie/subs.srt`): the files already share a top-level folder, so qui adds no isolation folder.
+- **Rootless torrents** (for example `video.mkv` and `subs.srt` at the top level): qui adds an isolation folder with the torrent name, for example `My.Movie.2024.1080p.BluRay`.
+
+The folder that qui adds to the preset directory must be new. If a folder with that name already exists, qui uses an isolation folder with the format `<TorrentName--shortHash>` (for example `My.Movie.2024.1080p.BluRay--abcdef12`). The short hash is the first 8 characters of the info hash.
+
+## How to enable
+
+1. For a qBittorrent instance on the same machine as qui, enable "Local filesystem access" in Instance Settings. For a remote instance, leave it off: turning it on makes qui treat the instance as local and link against paths on the qui host instead of the remote one.
+2. In **Cross-Seed > After injection > Hardlink / Reflink Mode**, expand the instance you want to configure.
+3. Set the **Cross-seed mode** to **Hardlink**.
+4. Set **Base directories**:
+   - Single filesystem: `/mnt/data/cross-seed`
+   - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
+5. Choose a **Directory organization** preset (`flat`, `by-tracker`, `by-instance`).
+6. If you want failed hardlinks to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode"**.
+
+## Pause behavior
+
+By default, hardlink-added torrents start seeding immediately because `skip_checking=true` sets them to 100%. If you want hardlink-added torrents to stay paused, disable the "Auto-resume after injection" toggle for your cross-seed source on the source's tab (**RSS**, **Webhook**, **Completion**, or **Library**).
+
+When hardlink or reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](./troubleshooting.md#hardlinkreflink-cross-seed-shows-missing-files).
+
+When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused and triggers a recheck. If the recheck confirms that the missing data fits within the **Max auto-start download** limit, qui resumes the torrent. When only ignorable files are missing (samples, `.nfo`, subtitles), qui resumes anyway, up to 200 MiB (see [After injection](./rules.md#max-auto-start-download)).
+
+### Linked files that fail a recheck
+
+A **linked file** is a file in the added torrent that qui hardlinked from local data before the add. A **pending file** is a file that was absent at add time, which qBittorrent downloads after the resume.
+
+A hardlink shares its data with the source file. If qBittorrent downloads into a linked file, the torrent that already seeds that file gets the new data too. To protect the source, qui checks the recheck result before every automatic resume in hardlink mode. This covers cross-seeds with extra files and season packs. If a linked file is below 100% and one of its failed pieces lies outside every pending file, qui leaves the torrent paused. The season pack history on the Cross-seed page and the log name the file: `Linked file <name> does not match the torrent, left paused to protect the source`.
+
+A piece that spans a linked file and a pending file always fails the recheck, because the pending part is absent. qui allows that piece, so a pack with such pieces stays eligible for the normal resume rules. The **Piece boundary safety check** setting decides before the add whether such pieces are accepted at all.
+
+Reflink mode does not use this check. A reflink clone is copy-on-write, so a download into the clone never reaches the source.
+
+To seed the torrent after this message, remove the torrent and its link tree, and download the torrent normally. Do not resume it as it is. A resume downloads into the linked file and changes the local file.
+
+If hardlink or reflink mode falls back to regular mode for a partial or non-perfect match, the fallback add is stricter. qui checks piece boundaries first. If the check passes, qui adds the torrent in a paused state. Safe fallback adds require a full 100% recheck before auto-resume. With **Skip recheck** on, a [byte-complete match](./rules.md#skip-cross-seeds-with-extra-files) gets no recheck. If **Auto-resume after injection** is on, qui renames the paths if necessary and then resumes it.
+
+### Pooled Partial Completion
+
+Enable **Automatically pool torrents with extra data** under Cross-Seed → After injection → Hardlink / Reflink Mode. The checkbox controls one global setting, remains available regardless of the per-instance mode selections, is off by default, and applies only to new partial hardlink or reflink additions; qui does not import existing partial torrents into pools.
+
+qui groups related members persistently by their original source torrent identity, not category, release name, save path, or the latest match. Each member keeps the managed link-tree root chosen when it was added, and unfinished work resumes after a qui restart.
+
+After each recheck, **Max auto-start download** under Cross-Seed → After injection determines whether a member may acquire missing data. Over-budget members remain paused and can be reconsidered when another member supplies files or the limit changes. The existing sidecar allowance for samples, `.nfo` files, and subtitles still applies.
+
+Only one member downloads in a pool at a time. When a whole wanted file completes, qui can link or clone it into stopped related members, recheck each target, and resume only targets that qBittorrent verifies as complete. Exact file evidence is required; ambiguous names, moved roots, changed priorities, conflicting targets, and unsafe paths remain paused for review.
+
+Pool path validation rejects dangling symbolic links, even when their missing destinations are inside the pool root. This applies on every platform. Ordinary missing files and directories remain valid, as do existing symbolic links that resolve inside the root.
+
+If the active member's downloaded-byte counter makes no progress for 15 minutes, qui pauses it, retains all partial data, and gives it a 30-minute cooldown before retry. Another eligible member may run during that cooldown. Disabling pooled completion pauses only a downloader qui started; persisted pool state remains available if the setting is enabled again.
+
+Hardlink members require every originally linked file to verify completely before acquisition because repair could modify the source through the shared inode. A propagated hardlink that fails verification is removed only when the current qui process can prove it created that exact link; otherwise the member stays paused for manual recovery. Reflink members can safely repair incomplete clones through copy-on-write, so failed target verification keeps the clone and can return the member to normal pooled acquisition.
+
+Pooled completion needs local filesystem access on the instance. An instance can lose this access, for example when you change it to SSH access. Then qui pauses each pool member on that instance that is not complete and moves it to manual review. qui does not change the files of that member. The member stays in manual review when the instance gets local filesystem access again.
+
+## Notes
+
+- Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not free space until you remove all remaining links.
+- Windows support: qui sanitizes folder names to remove characters that Windows forbids. The torrent file paths must remain valid for your qBittorrent setup.
+- If extra files are piece-boundary safe, hardlink mode supports them. If the incoming torrent contains extra files that the matched torrent lacks (for example `.nfo` or `.srt` sidecars), hardlink mode links the content files and triggers a recheck so qBittorrent downloads the extras. If the extras share pieces with content (unsafe) and the **Piece boundary safety check** is enabled, qui skips the cross-seed.
+- In Dir Scan, partial matches (for example season packs where only some episodes exist on disk) require the **Download missing files** setting in [Dir Scan settings](./dir-scan.md#settings-global). Without it, Dir Scan rejects partial link tree injections. Other sources add partial season packs paused and recheck them.
+
+## Deleting Hardlinked Cross-Seeds
+
+The delete dialog cross-seed check detects hardlinked copies by verifying filesystem identity, even when copies live in a different save path. Detected copies appear in the affected list with a **Hardlink** badge. You can delete them together with the selection with **Also delete these cross-seeded torrents**.
+
+Because hardlinked copies keep their own links to the data, deleting the original torrent files does not break the copies and does not free disk space. The filesystem reclaims disk space only after you remove all remaining links. The dialog warning text reflects this.
+
+Detection requires:
+
+- **Local filesystem access** enabled on the instances. qui must run in an environment where qBittorrent save paths are valid, identical to the requirements above. Without local access, qui detects only same-path cross-seeds.
+- The copy torrent must have the same name as the original, or the same release title and metadata. A copy with a different title also counts when it has the same total size and the other release details match. A copy that numbers its episodes in another way, for example `Show - 25` and `Show S02E01`, counts under the same condition. If such a copy has an extra file, its total size is different, and qui does not detect it.
+
+If qui cannot verify a copy (for example when its file list is temporarily unavailable), the check fails visibly instead of reporting "no cross-seeds found".
+
+The check also fails when qui cannot read a torrent's files. A common cause is a permission error: qui runs as a different user (PUID) than qBittorrent. The check fails in the same way when qui cannot map a torrent file name to a path under the save path. These failures stay until you fix the permissions or rename the file.
+
+On Windows, the same delete check also detects ReFS block-cloned files and displays a **Reflink** badge. This is a bounded verification step, not a disk scan:
+
+- qui considers only torrents that match by exact name or release metadata.
+- qui examines only the files that qBittorrent lists for those torrents. qui does not enumerate the volume, scan unrelated directories, query block reference counts, or calculate reclaimable space.
+- Source and candidate files must reside on the same ReFS volume and report block-cloning support.
+- qui pairs files by exact case-insensitive normalized relative path and qBittorrent-reported size. If layouts differ and the basename-and-size key is unique in both torrents, qui uses an exact basename-and-size fallback.
+- qui skips zero-length files, missing files, symbolic and reparse-point links, directories, and unsafe traversal paths.
+
+The ReFS check compares current allocated disk extents. It proves that the files share at least one allocated cluster at the time of the check. It does not prove clone history, and it does not prove that the files still share every byte. Copy-on-write modifications can leave only part of a file shared. If a process rewrites all formerly shared clusters, qui cannot detect the clone.
+
+Files smaller than one ReFS allocation cluster have no cloned extent, because qui's Windows reflink implementation copies the non-cluster-aligned tail. Those files cannot provide ReFS shared-extent evidence.
+
+## Cross-seed instance
+
+Some setups use two qBittorrent instances on the same disk. Sonarr and Radarr manage the first instance. The second instance holds only cross-seeds, so Sonarr and Radarr never see them. A **route** tells qui to add the cross-seeds that it finds for the first instance to the second instance.
+
+- The **Source instance** holds the matched torrents and names a Cross-seed instance. In this example, it is the instance that Sonarr and Radarr manage.
+- The **Cross-seed instance** receives the cross-seeds that qui finds on the Source instance.
+
+When the Source instance has a route, qui adds no cross-seed to it from a search or a match. RSS, webhook, Library Scan, completion search, manual search, manual match, and season pack apply and assembly all add to the Cross-seed instance. [Dir Scan](./dir-scan.md) keeps its own target instance and does not follow the route.
+
+### Requirements for a route
+
+- The Source instance uses hardlink or reflink mode and has at least one base directory. A routed add never uses regular mode, and it ignores the **Fallback to regular mode on error** setting. If a link fails, the add fails.
+- The Source instance has [Local Filesystem Access](../instance-settings.md#local-filesystem-access). Link mode alone does not need it, but a route does.
+- The Cross-seed instance is online and runs qBittorrent 5.0 or later. It needs no Local Filesystem Access.
+- The Cross-seed instance is not a remote instance. qui refuses a route to a remote instance, and the route form does not list one.
+- The qBittorrent of the Cross-seed instance can read and write the folders that the route maps. It reads the linked files there, and it downloads files that the matched torrent does not have (pending files) into the same folders.
+- A route has one step. The Cross-seed instance cannot have a route of its own, and no other instance can route to the Source instance. Several Source instances can route to one Cross-seed instance.
+
+### Example setup
+
+| Instance | Role | Base directory as the instance sees it |
+|----------|------|----------------------------------------|
+| `qbit-arr` | Source instance. Sonarr and Radarr manage it. | `/data/cross-seed` |
+| `qbit-cross` | Cross-seed instance, in a container that mounts the same disk at `/mnt/data` | `/mnt/data/cross-seed` |
+
+1. On `qbit-arr`, enable Local Filesystem Access in Instance Settings.
+2. In **Cross-Seed > After injection > Hardlink / Reflink Mode**, expand `qbit-arr`. Set the mode to **Hardlink** or **Reflink**, set the base directory `/data/cross-seed`, and save.
+3. In the **Cross-seed instance** field of `qbit-arr`, select `qbit-cross`.
+4. In the row for `/data/cross-seed`, type `/mnt/data/cross-seed`. That is the path where `qbit-cross` sees the folder.
+5. Click **Test route**. Each row must show that the Cross-seed instance sees it.
+6. Click **Save route**.
+
+qui builds the link tree on the disk of the Source instance, with the link settings of the Source instance. qui then adds the torrent to the Cross-seed instance with the mapped path. The `by-instance` preset uses the name of the Cross-seed instance. The category, the tags, the recheck, the resume, and the External Program run on the Cross-seed instance.
+
+### Path rows
+
+The route has one row for each base directory of the Source instance. In each row, type the path where the Cross-seed instance sees that folder. An empty row means that both instances see the folder at the same path. Each row suggests folders from the Cross-seed instance as you type. A new base directory shows as a new empty row.
+
+qui refuses two rows that map to the same folder, or to folders inside each other. If the Cross-seed instance has Local Filesystem Access, every row must keep the same path.
+
+### Test route
+
+**Test route** tests the rows in the form, also before you save them. For each base directory, qui creates a marker folder on the Source instance. qui then asks the qBittorrent of the Cross-seed instance to list the mapped folder, and looks for the marker. qui removes the marker after the test, also after an error. Each row shows one of these results:
+
+- The Cross-seed instance sees the folder. The row is correct.
+- The Cross-seed instance sees the folder but not the marker. The mapped path names another folder, or a cache on the mount of the Cross-seed instance hides the new marker. An NFS mount can show an old folder listing for up to 60 seconds. Wait a minute and test again. If the result stays, make sure that the row names the same folder on the same disk.
+- The Cross-seed instance cannot see the folder. The path is wrong, or the Cross-seed instance does not mount the folder.
+- qui cannot write to the folder on the Source instance. Give qui write access to the base directory.
+
+Test route lists each folder one time and does not try again. If the Cross-seed instance is unavailable, the test shows "Cross-seed instance unavailable" one time, for all rows.
+
+### Check before each routed add
+
+Before each routed add, qui makes sure that the Cross-seed instance sees the linked files. qui asks the qBittorrent of the Cross-seed instance to list the folder that holds one linked file. If the file is not there, qui lists the folder 3 more times over about 15 seconds. If the file is still not there, qui removes the link tree, adds nothing, and reports "Cross-seed instance cannot see the data at `<path>`". RSS tries the item again on its next run. In one run, after the check fails for a base directory, later adds under that base directory list one time and do not try again.
+
+If the Cross-seed instance uses an NFS mount and this check fails often, lower the folder cache time of the mount. NFS can keep a folder listing for up to 60 seconds. The `acdirmax` mount option sets this time.
+
+Before the add, qui also skips a torrent that the Source instance or the Cross-seed instance already has. qui applies the [blocklist](./overview.md#blocklist) of the Cross-seed instance to a routed add. A [manual assembly](./overview.md#manual-match) from selected episodes ignores the blocklist, as it does without a route. The blocklist of the Source instance does not apply.
+
+### Files of routed cross-seeds
+
+A routed cross-seed is a hardlinked or reflinked copy of the files of the Source instance. The delete dialog does not list it as a cross-seed on another instance. See [Shared files on other instances](./overview.md#shared-files-on-other-instances).
+
+The route protects these files on the Source instance:
+
+- [Orphan scan](../orphan-scan.md) on the Source instance keeps the files that routed torrents use, also pending files that the Cross-seed instance downloaded.
+- [Hardlink scope](../automations.md#hardlink-detection) on the Source instance counts routed torrents as "Only other torrents".
+
+Before a change removes this protection, qui asks you to confirm, and shows the number of routed torrents. Such changes are a route change, a route clear, a removed base directory, and an edited row. The delete dialog of a Cross-seed instance shows the same count for each Source instance that routes to it, and says that the Source instance adds cross-seeds to itself again after the delete.
+
+### When an instance is unavailable
+
+A Cross-seed instance is unavailable when it is offline or turned off in qui. Then:
+
+- Routed adds and season pack apply stop with "Cross-seed instance unavailable". qui does not add to the Source instance instead.
+- A Library Scan on the Source instance does not start.
+- The orphan scan of the Source instance fails.
+- Hardlink scope rules on the Source instance read unknown, and their deletes wait.
+- If the target of a Dir Scan is a Source instance, Dir Scan skips the match and logs a warning. The next scan tries again.
+
+To end this, enable the Cross-seed instance or clear the route.
+
+If the qBittorrent of the Cross-seed instance is older than 5.0, routed adds, Test route, and the start of a Library Scan also stop with "Cross-seed instance unavailable". Upgrade it to 5.0 or later, or clear the route.
+
+An add to a Cross-seed instance also looks for the torrent on each of its Source instances. If a Source instance is offline, adds to the Cross-seed instance fail and name the Source instance. To end this, enable the Source instance or clear its route. qui skips a Source instance that is turned off in qui.
+
+### Move from the export and delete automations
+
+Some users moved cross-seeds with two automations: an [Export to Instance](../automations.md#export-to-instance) to the instance that holds the cross-seeds, and a delete on the instance that Sonarr and Radarr manage. With a route, qui adds new cross-seeds to the Cross-seed instance directly. You can turn those two automations off. The route does not move cross-seeds that the Source instance already holds.
+
+### Swap the roles of two instances
+
+A route has one step, so the Cross-seed instance cannot get a route while the Source instance routes to it. To swap the roles, you must click **Clear route** first. After you clear a route, the routed torrents stay on the Cross-seed instance, and their files stay in the base directories of the Source instance. The orphan scan of the Source instance then no longer keeps their reflinked files and their pending files. A hardlinked file stays kept while a torrent on the Source instance uses the same file. Move or delete the old routed torrents before you clear the route.
+
+:::warning
+After a route clear, do not set up SSH access on the old Cross-seed instance while it still holds routed torrents. Their files are in the base directories of the Source instance, next to the linked cross-seeds of the Source instance itself. The orphan scan of a remote instance counts only the torrents of [instances on the same SSH server](../orphan-scan.md#other-instances-on-the-same-server), so it does not count the torrents of the Source instance. The orphan scan of the old Cross-seed instance can then delete the linked cross-seeds of the Source instance. Move or delete the routed torrents first.
+:::
+
+## Reflink Mode (Alternative)
+
+Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks, reflinks allow qBittorrent to modify the cloned files (download missing pieces, repair corrupted data) without any effect on the original seeded files.
+
+**Key advantage:** reflink mode **bypasses piece-boundary safety checks**. You can cross-seed torrents with extra or missing files even when those files share pieces with existing content, because qBittorrent can modify the clones safely.
+
+### When to use reflink mode
+
+- You want to cross-seed torrents that hardlink mode skips with "extra files share pieces with content"
+- Your filesystem supports copy-on-write clones (BTRFS or XFS on Linux, APFS on macOS, ReFS on Windows)
+- You prefer the safety of copy-on-write over hardlinks
+
+### Reflink Requirements
+
+- You must enable **Local filesystem access** on the target qBittorrent instance.
+- The base directory must reside on the **same filesystem/volume** as the instance download paths. For multi-filesystem setups, set multiple paths separated by commas.
+- The base directory must be a **real filesystem mount**, not a pooled or virtual mount (common examples: `mergerfs`, other FUSE mounts, `overlayfs`).
+- The filesystem must support reflinks:
+  - **Linux**: BTRFS, XFS (with reflink=1), and similar copy-on-write filesystems
+  - **macOS**: APFS
+  - **Windows**: ReFS on the same volume as the source files and reflink base directory
+  - **FreeBSD**: not supported
+
+:::note
+Windows reflink mode uses ReFS block cloning and requires a ReFS filesystem. qui does not support NTFS. Before cloning, qui makes the new destination file use the source file's Integrity Streams setting, even when the destination folder has a different setting. The source file's setting stays unchanged. If the matched source path is a symlink, qui resolves it before cloning. The resolved source and the reflink base directory must reside on the same ReFS volume. For cross-seeds based on an existing torrent, the "Fallback to regular mode" setting can allow fallback when the support probe fails; a reflink creation error fails the add without fallback. Dir Scan can also fall back after a creation error when that setting is enabled, but a lost filesystem connection still fails the add.
+:::
+
+:::tip
+On Linux, verify the filesystem type with `df -T /path`. You want `xfs` or `btrfs`, not `fuseblk`, `fuse.mergerfs`, or `overlayfs`.
+:::
+
+### Behavior differences
+
+| Aspect | Hardlink mode | Reflink mode |
+|--------|--------------|--------------|
+| Piece-boundary check | Skips if unsafe when the **Piece boundary safety check** is enabled | Never skips (clones are safe to modify) |
+| Recheck | Only when extras or disc layouts require verification | Only when extras or disc layouts require verification |
+| Disk usage | Zero (shared blocks) | Starts near zero, grows as modified |
+
+### Disk usage implications
+
+Reflinks use copy-on-write semantics:
+- Cloned files initially share disk blocks with the originals, so they require near-zero extra space.
+- When qBittorrent writes to a clone (downloads extras, repairs pieces), the filesystem copies only the modified blocks.
+- If qBittorrent rewrites the entire file in the worst case, disk usage approaches the full file size.
+
+### How to enable reflink mode
+
+1. Enable "Local filesystem access" on the qBittorrent instance in Instance Settings.
+2. In **Cross-Seed > After injection > Hardlink / Reflink Mode**, expand the instance you want to configure.
+3. Set the **Cross-seed mode** to **Reflink (copy-on-write)**.
+4. Set **Base directories**:
+   - Single filesystem: `/mnt/data/cross-seed`
+   - Multiple filesystems: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed`
+5. Choose a **Directory organization** preset (`flat`, `by-tracker`, `by-instance`).
+6. Enable **"Fallback to regular mode"** if you want regular mode when the filesystem support probe fails. For behavior after creation errors, see [Reflink Requirements](#reflink-requirements).
+
+:::note
+Hardlink and reflink modes are mutually exclusive. You can enable only one per instance.
+:::

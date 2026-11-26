@@ -1,0 +1,110 @@
+{
+  "options": {
+    "days": "Dias até um Compartilhamento terminar",
+    "daysInvalid": "Digite um número inteiro de dias, 1 ou mais.",
+    "endAtFirstDownload": "Terminar no primeiro download completo",
+    "endAtFirstDownloadDescription": "O Compartilhamento termina assim que um cliente tiver todos os arquivos.",
+    "firstDownloaderOnly": "Somente o primeiro a baixar",
+    "firstDownloaderOnlyDescription": "O tracker passa seu endereço para o primeiro cliente que baixar, e para nenhum outro. Isso controla quem descobre seu endereço pelo tracker, não quem pode se conectar.",
+    "firstDownloaderOnlyUnavailable": "Indisponível com um tracker externo: o qui não vê nenhum anúncio."
+  },
+  "settings": {
+    "title": "Compartilhamentos",
+    "description": "Um Compartilhamento entrega os arquivos de um torrent a alguém cujo cliente o qui não gerencia. O tracker de Compartilhamento permite que o cliente dessa pessoa encontre o seu.",
+    "loadFailed": "Falha ao carregar as configurações de Compartilhamento",
+    "save": "Salvar",
+    "saved": "Configurações de Compartilhamento salvas",
+    "saveFailed": "Falha ao salvar as configurações de Compartilhamento",
+    "inUse": {
+      "own": "Novos Compartilhamentos usam o tracker do qui.",
+      "outside": "Novos Compartilhamentos usam o tracker externo.",
+      "none": "Nenhum tracker definido, então nenhum Compartilhamento pode começar."
+    },
+    "tracker": {
+      "heading": "Tracker de Compartilhamento",
+      "own": "O tracker próprio do qui",
+      "ownDescription": "O qui escuta na própria porta somente enquanto um Compartilhamento está em andamento, e responde somente para Compartilhamentos ativos.",
+      "outside": "Um tracker externo",
+      "outsideDescription": "Para um qui sem endereço público. Nesse caso o qui não vê anúncios: a lista de endereços e o término no primeiro download funcionam como melhor esforço, e o bloqueio não está disponível.",
+      "port": "Porta",
+      "publicAddress": "Endereço público",
+      "publicAddressDescription": "A URL pela qual a internet alcança esta porta, com um proxy na frente para HTTPS. O .torrent de cada Compartilhamento contém essa URL, então uma alteração aguarda até que os Compartilhamentos no tracker do qui terminem.",
+      "trustedProxies": "Proxies confiáveis",
+      "trustedProxiesDescription": "Liste somente os endereços ou faixas CIDR dos seus proxies, um por linha, e não as redes dos clientes. O qui lê o endereço de cliente encaminhado somente desses proxies.",
+      "trackerUrl": "URL do tracker",
+      "trackerUrlDescription": "Uma URL de anúncio http, https ou udp.",
+      "publicAddressPlaceholder": "https://share.example.com",
+      "trackerUrlPlaceholder": "udp://tracker.example.org:1337/announce"
+    },
+    "limits": {
+      "heading": "Limites",
+      "maxActive": "Compartilhamentos ativos",
+      "peersPerShare": "Peers por Compartilhamento"
+    },
+    "defaults": {
+      "heading": "Padrões para um novo Compartilhamento",
+      "description": "A janela de Compartilhamento começa com estes valores."
+    }
+  },
+  "dialog": {
+    "title": "Compartilhar com alguém",
+    "description_one": "Entregue os arquivos de {{name}} a alguém cujo cliente o qui não gerencia.",
+    "description_other": "Entregue os arquivos de {{count}} torrents a alguém cujo cliente o qui não gerencia. Cada torrent ganha seu próprio Compartilhamento.",
+    "cancel": "Cancelar",
+    "create": "Criar",
+    "done": "Concluído",
+    "warning": "Seu amigo vê o endereço IP do seu cliente. Qualquer pessoa com o .torrent pode baixar até o Compartilhamento terminar.",
+    "refused": "Não compartilhado",
+    "refusedEntry": "{{name}}: {{reason}}",
+    "tracker": {
+      "label": "Tracker de Compartilhamento",
+      "settings": "Configurações de compartilhamento",
+      "own": "Tracker do qui em {{address}}",
+      "outside": "Tracker externo {{url}}"
+    },
+    "result": {
+      "description_one": "Envie o .torrent e a mensagem ao seu amigo pelo seu próprio chat. O qui não hospeda nenhum link de download.",
+      "description_other": "Envie cada .torrent e sua mensagem ao seu amigo pelo seu próprio chat. O qui não hospeda nenhum link de download.",
+      "torrent": ".torrent",
+      "copyMessage": "Copiar mensagem",
+      "copied": "Mensagem copiada",
+      "copyFailed": "Falha ao copiar a mensagem"
+    }
+  },
+  "message": {
+    "intro": "Estou compartilhando \"{{name}}\" ({{size}}) com você. Abra o arquivo .torrent anexo em um cliente BitTorrent, como qBittorrent, Transmission ou Deluge, para baixar direto de mim. Ele para de funcionar em {{date}}.",
+    "endAtFirstDownload": "Ele também para de funcionar quando um download for concluído, então deixe seu cliente aberto até terminar."
+  },
+  "tab": {
+    "description": "Torrents que você entrega a alguém cujo cliente o qui não gerencia.",
+    "empty": "Nenhum Compartilhamento ainda.",
+    "endedStay": "Compartilhamentos encerrados ficam na lista por 30 dias.",
+    "unknownInstance": "Instância {{id}}",
+    "endsAt": "Termina em {{date}}",
+    "endedAt": "Encerrado em {{date}}",
+    "progress": "Baixado {{percent}}",
+    "progressLabel": "Progresso do download",
+    "sent": "Enviado {{size}}",
+    "announced": "Endereços que anunciaram",
+    "connectedPeers": "Peers conectados",
+    "noPeers": "Nenhum ainda",
+    "unlock": "Desbloquear",
+    "stop": "Parar",
+    "remove": "Remover",
+    "state": {
+      "active": "Ativo",
+      "ending": "Encerrando",
+      "ended": "Encerrado",
+      "unknown": "Desconhecido"
+    },
+    "endReason": {
+      "downloaded": "O destinatário tem os arquivos.",
+      "expired": "O Compartilhamento expirou.",
+      "stopped": "Parado pelo usuário.",
+      "torrent_deleted": "O torrent foi excluído.",
+      "torrent_moved": "O torrent foi movido.",
+      "files_renamed": "Os arquivos do torrent foram renomeados.",
+      "share_torrent_gone": "O torrent do Compartilhamento não está mais no cliente."
+    }
+  }
+}

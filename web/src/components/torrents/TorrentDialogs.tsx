@@ -1,0 +1,2360 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { TruncatedText } from "@/components/ui/truncated-text"
+import { api } from "@/lib/api"
+import {
+  buildTagEditorItems,
+  buildTagUpdatePlan,
+  cycleTagSelectionState,
+  hasTagUpdatePlan,
+  sortTags,
+  type TagEditorItem,
+  type TagUpdatePlan
+} from "@/lib/tag-editor"
+import { cn } from "@/lib/utils"
+import { useIsMobile } from "@/hooks/useMediaQuery"
+import { useInstancesSupport } from "@/hooks/useInstanceCapabilities"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
+import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import { AlertTriangle, Loader2, Plus } from "lucide-react"
+import type { ChangeEvent, KeyboardEvent, ReactNode } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
+import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
+import {
+  buildShareLimitFormState,
+  buildSpeedLimitFormState,
+  isUnresolvedMixed,
+  shareLimitsUnresolved,
+  shareLimitValues,
+  speedLimitsUnresolved,
+  speedLimitValues,
+  type ShareLimitFormState,
+  type ShareLimitMode,
+  type SpeedLimitField,
+  type SpeedLimitFormState,
+  type TorrentLimitSnapshot
+} from "./torrentLimitDialogHelpers"
+
+export type { TorrentLimitSnapshot } from "./torrentLimitDialogHelpers"
+
+interface TagEditorDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  availableTags: string[] | null
+  selectedTorrents: Torrent[]
+  hashCount: number
+  selectionRequest?: {
+    instanceId: number
+    instanceIds?: number[]
+    hashes?: string[]
+    targets?: Array<{ instanceId: number; hash: string }>
+    selectAll?: boolean
+    filters?: TorrentFilters
+    search?: string
+    excludeHashes?: string[]
+    excludeTargets?: Array<{ instanceId: number; hash: string }>
+  }
+  onConfirm: (plan: TagUpdatePlan) => void
+  isPending?: boolean
+  isLoadingTags?: boolean
+}
+
+export const TagEditorDialog = memo(function TagEditorDialog({
+  open,
+  onOpenChange,
+  availableTags,
+  selectedTorrents,
+  hashCount,
+  selectionRequest,
+  onConfirm,
+  isPending = false,
+  isLoadingTags = false,
+}: TagEditorDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [items, setItems] = useState<TagEditorItem[]>([])
+  const [newTag, setNewTag] = useState("")
+  const [selectionTagValues, setSelectionTagValues] = useState<string[]>([])
+  const [isLoadingSelectionTags, setIsLoadingSelectionTags] = useState(false)
+  const [selectionBaselineError, setSelectionBaselineError] = useState<string | null>(null)
+  const hasEditedRef = useRef(false)
+  const previousOpenRef = useRef(false)
+  const previousSelectionRequestKeyRef = useRef<string | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const selectionRequestKey = useMemo(() => JSON.stringify({
+    instanceId: selectionRequest?.instanceId,
+    instanceIds: selectionRequest?.instanceIds ?? [],
+    hashes: selectionRequest?.hashes ?? [],
+    targets: selectionRequest?.targets ?? [],
+    selectAll: selectionRequest?.selectAll ?? false,
+    filters: selectionRequest?.filters ?? null,
+    search: selectionRequest?.search ?? "",
+    excludeHashes: selectionRequest?.excludeHashes ?? [],
+    excludeTargets: selectionRequest?.excludeTargets ?? [],
+  }), [selectionRequest])
+  const selectionRequestSnapshot = useMemo(() => ({
+    instanceId: selectionRequest?.instanceId ?? -1,
+    instanceIds: selectionRequest?.instanceIds,
+    hashes: selectionRequest?.hashes,
+    targets: selectionRequest?.targets,
+    selectAll: selectionRequest?.selectAll,
+    filters: selectionRequest?.filters,
+    search: selectionRequest?.search,
+    excludeHashes: selectionRequest?.excludeHashes,
+    excludeTargets: selectionRequest?.excludeTargets,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [selectionRequestKey])
+  const requiresRemoteBaseline = hashCount > selectedTorrents.length
+  const selectedTorrentTagsKey = useMemo(
+    () => JSON.stringify(requiresRemoteBaseline ? [] : selectedTorrents.map(torrent => torrent.tags)),
+    [requiresRemoteBaseline, selectedTorrents]
+  )
+  const selectedTorrentTagValues = useMemo(
+    () => JSON.parse(selectedTorrentTagsKey) as string[],
+    [selectedTorrentTagsKey]
+  )
+  const hasValidInstance = selectionRequestSnapshot.instanceId >= 0
+  const hasExplicitSelection = (selectionRequestSnapshot.targets?.length ?? 0) > 0 || (selectionRequestSnapshot.hashes?.length ?? 0) > 0
+  const canFetchRemoteBaseline = hasValidInstance && (selectionRequestSnapshot.selectAll === true || hasExplicitSelection)
+
+  useEffect(() => {
+    if (!open) {
+      setItems([])
+      setNewTag("")
+      setSelectionTagValues([])
+      setIsLoadingSelectionTags(false)
+      setSelectionBaselineError(null)
+      hasEditedRef.current = false
+      previousOpenRef.current = false
+      previousSelectionRequestKeyRef.current = null
+      return
+    }
+
+    const didOpen = !previousOpenRef.current
+    const selectionRequestChanged = previousSelectionRequestKeyRef.current !== selectionRequestKey
+    if (didOpen || selectionRequestChanged) {
+      setNewTag("")
+      hasEditedRef.current = false
+      setItems([])
+    }
+    previousOpenRef.current = true
+    previousSelectionRequestKeyRef.current = selectionRequestKey
+    setSelectionBaselineError(null)
+
+    if (!requiresRemoteBaseline) {
+      setSelectionTagValues(selectedTorrentTagValues)
+      setIsLoadingSelectionTags(false)
+      return
+    }
+
+    let cancelled = false
+
+    if (!canFetchRemoteBaseline) {
+      setIsLoadingSelectionTags(true)
+      setSelectionBaselineError(t("dialogs.tagEditor.baselineError"))
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setIsLoadingSelectionTags(true)
+
+    void api.getTorrentField(selectionRequestSnapshot.instanceId, "tags", {
+      hashes: selectionRequestSnapshot.hashes,
+      targets: selectionRequestSnapshot.targets,
+      selectAll: selectionRequestSnapshot.selectAll,
+      filters: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.filters : undefined,
+      search: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.search : undefined,
+      excludeHashes: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.excludeHashes : undefined,
+      excludeTargets: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.excludeTargets : undefined,
+      instanceIds: selectionRequestSnapshot.instanceIds,
+    }).then((response) => {
+      if (cancelled) {
+        return
+      }
+
+      setSelectionTagValues(response.values)
+      setSelectionBaselineError(null)
+      setIsLoadingSelectionTags(false)
+    }).catch((error: Error) => {
+      if (cancelled) {
+        return
+      }
+
+      setSelectionBaselineError(error.message || t("dialogs.tagEditor.baselineError"))
+      setIsLoadingSelectionTags(false)
+      onOpenChange(false)
+      toast.error(t("dialogs.tagEditor.loadFailed"), {
+        description: error.message || t("dialogs.tagEditor.baselineError"),
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [canFetchRemoteBaseline, hashCount, onOpenChange, open, requiresRemoteBaseline, selectedTorrentTagValues, selectionRequestKey, selectionRequestSnapshot, t])
+
+  useEffect(() => {
+    if (!open || isLoadingTags || isLoadingSelectionTags || hasEditedRef.current || selectionBaselineError) {
+      return
+    }
+
+    setItems(buildTagEditorItems(availableTags, selectionTagValues, hashCount))
+  }, [availableTags, hashCount, isLoadingSelectionTags, isLoadingTags, open, selectionBaselineError, selectionTagValues])
+
+  const knownTagSet = useMemo(() => new Set(availableTags ?? []), [availableTags])
+  const updatePlan = useMemo(() => buildTagUpdatePlan(items), [items])
+  const hasChanges = hasTagUpdatePlan(updatePlan)
+  const isLoadingState = isLoadingTags || isLoadingSelectionTags
+  const shouldUseVirtualization = items.length > 50
+
+  const virtualizer = useVirtualizer({
+    count: shouldUseVirtualization ? items.length : 0,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 40,
+    overscan: 5,
+  })
+
+  const resetItems = useCallback(() => {
+    hasEditedRef.current = false
+    setItems(buildTagEditorItems(availableTags, selectionTagValues, hashCount))
+    setNewTag("")
+  }, [availableTags, hashCount, selectionTagValues])
+
+  const handleConfirm = useCallback((): void => {
+    if (!hasChanges) {
+      onOpenChange(false)
+      return
+    }
+
+    onConfirm(updatePlan)
+    setNewTag("")
+  }, [hasChanges, onConfirm, onOpenChange, updatePlan])
+
+  const handleCancel = useCallback((): void => {
+    setNewTag("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  const toggleTag = useCallback((tag: string): void => {
+    if (!isLoadingTags && !isLoadingSelectionTags) {
+      hasEditedRef.current = true
+    }
+    setItems(prev => prev.map((item) => {
+      if (item.tag !== tag) {
+        return item
+      }
+
+      return {
+        ...item,
+        state: cycleTagSelectionState(item.state),
+      }
+    }))
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const clearAll = useCallback((): void => {
+    if (!isLoadingTags && !isLoadingSelectionTags) {
+      hasEditedRef.current = true
+    }
+    setItems(prev => prev.map(item => item.state === "off" ? item : { ...item, state: "off" }))
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const addNewTag = useCallback((tagToAdd: string): void => {
+    if (isLoadingTags || isLoadingSelectionTags) {
+      return
+    }
+
+    const trimmedTag = tagToAdd.trim()
+    if (!trimmedTag) {
+      return
+    }
+
+    hasEditedRef.current = true
+    setItems((prev) => {
+      const existing = prev.find(item => item.tag === trimmedTag)
+      if (existing) {
+        return prev.map(item => item.tag === trimmedTag ? { ...item, state: "on" } : item)
+      }
+
+      return sortTags([...prev.map(item => item.tag), trimmedTag]).map((tag) => {
+        if (tag !== trimmedTag) {
+          return prev.find(item => item.tag === tag) as TagEditorItem
+        }
+
+        return {
+          tag,
+          initialState: "off",
+          state: "on",
+        }
+      })
+    })
+    setNewTag("")
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const renderTagRow = useCallback((item: TagEditorItem) => {
+    const isNew = !knownTagSet.has(item.tag)
+
+    return (
+      <button
+        key={item.tag}
+        type="button"
+        onClick={() => toggleTag(item.tag)}
+        className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted/60"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <Checkbox
+            checked={item.state === "mixed" ? "indeterminate" : item.state === "on"}
+            className="pointer-events-none"
+          />
+          <span className={cn("truncate text-sm font-medium", isNew && "text-primary italic")}>
+            {item.tag}
+          </span>
+          {isNew && <span className="text-xs text-muted-foreground">{t("dialogs.tagEditor.new")}</span>}
+        </div>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {item.state === "mixed" ? t("dialogs.tagEditor.mixed") : item.state === "on" ? t("dialogs.tagEditor.on") : t("dialogs.tagEditor.off")}
+        </span>
+      </button>
+    )
+  }, [knownTagSet, toggleTag, t])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.tagEditor.title", { count: hashCount })}</DialogTitle>
+          <DialogDescription>
+            {t("dialogs.tagEditor.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          {selectionBaselineError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              {selectionBaselineError}
+            </div>
+          ) : isLoadingState ? (
+            <div className="space-y-2">
+              <Label>{t("dialogs.tagEditor.availableTags")}</Label>
+              <div className="h-48 border rounded-md p-3 flex items-center justify-center">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">{t("dialogs.tagEditor.loadingTags")}</span>
+                </div>
+              </div>
+            </div>
+          ) : items.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>{t("dialogs.tagEditor.availableTags")}</Label>
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={resetItems} disabled={!hasChanges}>
+                    {t("dialogs.tagEditor.reset")}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={clearAll}>
+                    {t("dialogs.tagEditor.clearAll")}
+                  </Button>
+                </div>
+              </div>
+              <div
+                ref={scrollContainerRef}
+                className="h-48 border rounded-md p-3 overflow-y-auto"
+              >
+                {shouldUseVirtualization ? (
+                  <div
+                    style={{
+                      height: `${virtualizer.getTotalSize()}px`,
+                      width: "100%",
+                      position: "relative",
+                    }}
+                  >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                      const item = items[virtualRow.index]
+                      return (
+                        <div
+                          key={item.tag}
+                          data-index={virtualRow.index}
+                          ref={virtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
+                          {renderTagRow(item)}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {items.map(renderTagRow)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              {t("dialogs.tagEditor.noTags")}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="newTag">{t("dialogs.tagEditor.addNewTag")}</Label>
+            <div className="flex gap-2">
+              <Input
+                id="newTag"
+                value={newTag}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTag(e.target.value)}
+                placeholder={t("dialogs.tagEditor.enterNewTag")}
+                disabled={isLoadingState}
+                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === "Enter" && newTag.trim()) {
+                    e.preventDefault()
+                    addNewTag(newTag)
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => addNewTag(newTag)}
+                disabled={isLoadingState || !newTag.trim()}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {hasChanges ? (
+            <div className="text-sm text-muted-foreground wrap-anywhere">
+              {updatePlan.add.length > 0 && (
+                <div>{t("dialogs.tagEditor.addEverywhere", { tags: updatePlan.add.join(", ") })}</div>
+              )}
+              {updatePlan.remove.length > 0 && (
+                <div>{t("dialogs.tagEditor.removeEverywhere", { tags: updatePlan.remove.join(", ") })}</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              {t("dialogs.tagEditor.noTagChanges")}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>{t("dialogs.tagEditor.cancel")}</Button>
+          <Button onClick={handleConfirm} disabled={isPending || !hasChanges || isLoadingState || Boolean(selectionBaselineError)}>{t("dialogs.tagEditor.apply")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface SetCategoryDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  availableCategories: Record<string, Category>
+  hashCount: number
+  onConfirm: (category: string) => void
+  isPending?: boolean
+  initialCategory?: string
+  isLoadingCategories?: boolean
+  useSubcategories?: boolean
+}
+
+interface SetLocationDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  onConfirm: (location: string) => void
+  isPending?: boolean
+  initialLocation?: string
+  instanceId?: number
+  capabilities?: InstanceCapabilities | null
+}
+
+export const SetLocationDialog = memo(function SetLocationDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  onConfirm,
+  isPending = false,
+  initialLocation = "",
+  instanceId = 0,
+  capabilities,
+}: SetLocationDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [location, setLocation] = useState("")
+  const wasOpen = useRef(false)
+
+  const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
+
+  const {
+    suggestions,
+    handleInputChange: handleAutocompleteChange,
+    handleSelect,
+    handleKeyDown: handleAutocompleteKeyDown,
+    handleBlur: handleAutocompleteBlur,
+    highlightedIndex,
+    showSuggestions,
+    inputRef: autocompleteInputRef,
+    listRef: suggestionListRef,
+  } = usePathAutocomplete(setLocation, instanceId)
+
+  const inputRef = useRef<HTMLInputElement>(null)
+  const effectiveInputRef = supportsPathAutocomplete ? autocompleteInputRef : inputRef
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setLocation(initialLocation)
+      if (supportsPathAutocomplete) {
+        handleAutocompleteChange(initialLocation)
+      }
+      setTimeout(() => effectiveInputRef.current?.focus(), 0)
+    }
+    wasOpen.current = open
+  }, [open, initialLocation, supportsPathAutocomplete, handleAutocompleteChange, effectiveInputRef])
+
+  const handleConfirm = useCallback(() => {
+    if (location.trim()) {
+      onConfirm(location.trim())
+      setLocation("")
+    }
+  }, [location, onConfirm])
+
+  const handleCancel = useCallback(() => {
+    setLocation("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
+    if (supportsPathAutocomplete) {
+      handleAutocompleteKeyDown(e)
+    }
+    if (e.key === "Enter" && !e.defaultPrevented && !isPending && location.trim()) {
+      e.preventDefault()
+      handleConfirm()
+    }
+  }, [isPending, location, handleConfirm, supportsPathAutocomplete, handleAutocompleteKeyDown])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.setLocation.title", { count: hashCount })}</DialogTitle>
+          <DialogDescription>
+            {t("dialogs.setLocation.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="location">{t("dialogs.setLocation.location")}</Label>
+            <Input
+              ref={effectiveInputRef}
+              id="location"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={location}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                setLocation(e.target.value)
+                if (supportsPathAutocomplete) {
+                  handleAutocompleteChange(e.target.value)
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              onBlur={supportsPathAutocomplete ? handleAutocompleteBlur : undefined}
+              placeholder={t("dialogs.setLocation.placeholder")}
+              disabled={isPending}
+            />
+            {supportsPathAutocomplete && showSuggestions && suggestions.length > 0 && (
+              <div className="relative">
+                <div ref={suggestionListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                  <div className="max-h-55 overflow-y-auto py-1">
+                    {suggestions.map((entry, idx) => (
+                      <button
+                        key={entry}
+                        type="button"
+                        className={cn(
+                          "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                          (highlightedIndex === idx) ? "bg-accent text-accent-foreground" : "hover:bg-accent/70"
+                        )}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleSelect(entry)}
+                      >
+                        <TruncatedText className="block text-left" openOnTap={false}>{entry}</TruncatedText>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel} disabled={isPending}>
+            {t("dialogs.setLocation.cancel")}
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !location.trim()}
+          >
+            {t("dialogs.setLocation.confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface RenameTorrentDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  currentName?: string
+  onConfirm: (name: string) => void | Promise<void>
+  isPending?: boolean
+}
+
+interface SetCommentDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  instanceId: number
+  torrentHash?: string
+  onConfirm: (comment: string) => void | Promise<void>
+  isPending?: boolean
+}
+
+export const SetCommentDialog = memo(function SetCommentDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  instanceId,
+  torrentHash,
+  onConfirm,
+  isPending = false,
+}: SetCommentDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [comment, setComment] = useState("")
+  const [isLoadingComment, setIsLoadingComment] = useState(false)
+  const wasOpen = useRef(false)
+
+  const focusCommentField = useCallback(() => {
+    setTimeout(() => document.getElementById("torrentComment")?.focus({ preventScroll: true }), 0)
+  }, [])
+
+  useEffect(() => {
+    if (!open) {
+      setComment("")
+      setIsLoadingComment(false)
+      wasOpen.current = false
+      return
+    }
+
+    const didOpen = !wasOpen.current
+    wasOpen.current = true
+
+    if (!didOpen || hashCount !== 1 || !torrentHash) {
+      setComment("")
+      setIsLoadingComment(false)
+      if (didOpen) {
+        focusCommentField()
+      }
+      return
+    }
+
+    let cancelled = false
+    setIsLoadingComment(true)
+
+    void api.getTorrentProperties(instanceId, torrentHash).then((properties) => {
+      if (cancelled) {
+        return
+      }
+      setComment(properties.comment ?? "")
+      setIsLoadingComment(false)
+      focusCommentField()
+    }).catch(() => {
+      if (cancelled) {
+        return
+      }
+      setComment("")
+      setIsLoadingComment(false)
+      focusCommentField()
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, hashCount, instanceId, torrentHash, focusCommentField])
+
+  const handleConfirm = useCallback(() => {
+    onConfirm(comment)
+  }, [comment, onConfirm])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setComment("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  const countLabel = hashCount > 1 ? ` (${hashCount})` : ""
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("commentDialog.title")}{countLabel}</DialogTitle>
+          <DialogDescription>
+            {hashCount > 1? t("commentDialog.descriptionMultiple"): t("commentDialog.descriptionSingle")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-2">
+          <Label htmlFor="torrentComment">{t("commentDialog.label")}</Label>
+          <Textarea
+            id="torrentComment"
+            value={comment}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setComment(e.target.value)}
+            placeholder={isLoadingComment ? t("commentDialog.loadingPlaceholder") : t("commentDialog.placeholder")}
+            disabled={isPending || isLoadingComment}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            {t("commentDialog.cancel")}
+          </Button>
+          <Button onClick={handleConfirm} disabled={isPending || isLoadingComment}>
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t("commentDialog.saving")}
+              </>
+            ) : (
+              t("commentDialog.save")
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+export const RenameTorrentDialog = memo(function RenameTorrentDialog({
+  open,
+  onOpenChange,
+  currentName = "",
+  onConfirm,
+  isPending = false,
+}: RenameTorrentDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [name, setName] = useState("")
+  const wasOpen = useRef(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setName(currentName)
+      setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 0)
+    }
+    wasOpen.current = open
+  }, [open, currentName])
+
+  const handleConfirm = useCallback(() => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    onConfirm(trimmed)
+  }, [name, onConfirm])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.renameTorrent.title")}</DialogTitle>
+          <DialogDescription>
+            {t("dialogs.renameTorrent.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="torrentName">{t("dialogs.renameTorrent.nameLabel")}</Label>
+            <Input
+              ref={inputRef}
+              id="torrentName"
+              value={name}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+              placeholder={t("dialogs.renameTorrent.placeholder")}
+              disabled={isPending}
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter" && !isPending && name.trim()) {
+                  e.preventDefault()
+                  handleConfirm()
+                }
+              }}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            {t("dialogs.renameTorrent.cancel")}
+          </Button>
+          <Button onClick={handleConfirm} disabled={isPending || !name.trim()}>
+            {t("dialogs.renameTorrent.confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface RenameTorrentFileDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  files?: { name: string }[]
+  isLoading?: boolean
+  onConfirm: (payload: { oldPath: string; newPath: string }) => void | Promise<void>
+  isPending?: boolean
+  initialPath?: string
+}
+
+export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
+  open,
+  onOpenChange,
+  files = [],
+  isLoading = false,
+  onConfirm,
+  isPending = false,
+  initialPath,
+}: RenameTorrentFileDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [newName, setNewName] = useState("")
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const { folderPath, fileName } = useMemo(() => {
+    if (!initialPath) return { folderPath: "", fileName: "" }
+    const lastSlash = initialPath.lastIndexOf("/")
+    if (lastSlash === -1) return { folderPath: "", fileName: initialPath }
+    return {
+      folderPath: initialPath.slice(0, lastSlash),
+      fileName: initialPath.slice(lastSlash + 1),
+    }
+  }, [initialPath])
+
+  const fileExists = useMemo(() => {
+    return initialPath ? files.some(f => f.name === initialPath) : false
+  }, [files, initialPath])
+
+  useEffect(() => {
+    if (open && fileName) {
+      setNewName(fileName)
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus()
+          const dotIndex = fileName.lastIndexOf(".")
+          if (dotIndex > 0) {
+            inputRef.current.setSelectionRange(0, dotIndex, "backward")
+          } else {
+            inputRef.current.select()
+          }
+          inputRef.current.scrollLeft = 0
+        }
+      }, 50)
+    }
+    if (!open) {
+      setNewName("")
+    }
+  }, [open, fileName])
+
+  const newPath = useMemo(() => {
+    const trimmed = newName.trim()
+    if (!trimmed) return ""
+    return folderPath ? `${folderPath}/${trimmed}` : trimmed
+  }, [folderPath, newName])
+
+  const hasChanges = newName.trim() !== fileName
+
+  const handleConfirm = useCallback(() => {
+    if (!initialPath || !newName.trim()) return
+    onConfirm({ oldPath: initialPath, newPath })
+  }, [initialPath, newName, newPath, onConfirm])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setNewName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-md sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.renameFile.title")}</DialogTitle>
+        </DialogHeader>
+        <div className="py-2 space-y-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              {t("dialogs.renameFile.loading")}
+            </div>
+          ) : !initialPath || !fileExists ? (
+            <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+              {t("dialogs.renameFile.noFileSelected")}
+            </div>
+          ) : (
+            <>
+              {folderPath && (
+                <div className="space-y-1.5">
+                  <Label size="sm" className="text-muted-foreground">{t("dialogs.renameFile.location")}</Label>
+                  <div className="text-xs font-mono text-muted-foreground bg-muted/50 rounded px-2.5 py-1.5 break-all">
+                    {folderPath}/
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="fileName">{t("dialogs.renameFile.fileName")}</Label>
+                <Input
+                  ref={inputRef}
+                  id="fileName"
+                  value={newName}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
+                  placeholder={t("dialogs.renameFile.placeholder")}
+                  disabled={isPending}
+                  className="font-mono"
+                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter" && !isPending && newName.trim() && hasChanges) {
+                      e.preventDefault()
+                      handleConfirm()
+                    }
+                  }}
+                />
+              </div>
+
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            {t("dialogs.renameFile.cancel")}
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !initialPath || !newName.trim() || !hasChanges || !fileExists}
+          >
+            {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {t("dialogs.renameFile.confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface RenameTorrentFolderDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  folders?: { name: string }[]
+  isLoading?: boolean
+  onConfirm: (payload: { oldPath: string; newPath: string }) => void | Promise<void>
+  isPending?: boolean
+  initialPath?: string
+}
+
+export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog({
+  open,
+  onOpenChange,
+  folders = [],
+  isLoading = false,
+  onConfirm,
+  isPending = false,
+  initialPath,
+}: RenameTorrentFolderDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [selectedPath, setSelectedPath] = useState("")
+  const [newName, setNewName] = useState("")
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const sortedFolders = useMemo(() => {
+    return folders.slice().sort((a, b) => a.name.localeCompare(b.name))
+  }, [folders])
+
+  const { parentPath, folderName } = useMemo(() => {
+    const path = selectedPath || initialPath || ""
+    if (!path) return { parentPath: "", folderName: "" }
+    const lastSlash = path.lastIndexOf("/")
+    if (lastSlash === -1) return { parentPath: "", folderName: path }
+    return {
+      parentPath: path.slice(0, lastSlash),
+      folderName: path.slice(lastSlash + 1),
+    }
+  }, [selectedPath, initialPath])
+
+  const folderExists = useMemo(() => {
+    const path = selectedPath || initialPath
+    return path ? folders.some(f => f.name === path) : false
+  }, [folders, selectedPath, initialPath])
+
+  useEffect(() => {
+    if (open) {
+      const path = initialPath || sortedFolders[0]?.name || ""
+      setSelectedPath(path)
+      if (path) {
+        const segments = path.split("/")
+        const name = segments[segments.length - 1] || path
+        setNewName(name)
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus()
+            inputRef.current.select()
+          }
+        }, 50)
+      }
+    }
+    if (!open) {
+      setSelectedPath("")
+      setNewName("")
+    }
+  }, [open, initialPath, sortedFolders])
+
+  const newPath = useMemo(() => {
+    const trimmed = newName.trim()
+    if (!trimmed) return ""
+    return parentPath ? `${parentPath}/${trimmed}` : trimmed
+  }, [parentPath, newName])
+
+  const hasChanges = newName.trim() !== folderName
+
+  const handleConfirm = useCallback(() => {
+    const path = selectedPath || initialPath
+    if (!path || !newName.trim()) return
+    onConfirm({ oldPath: path, newPath })
+  }, [selectedPath, initialPath, newName, newPath, onConfirm])
+
+  const handleFolderSelect = useCallback((value: string) => {
+    setSelectedPath(value)
+    const segments = value.split("/")
+    setNewName(segments[segments.length - 1] || value)
+  }, [])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setSelectedPath("")
+      setNewName("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  const showFolderSelector = !initialPath && sortedFolders.length > 1
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="w-[calc(100vw-2.5rem)] max-w-md sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.renameFolder.title")}</DialogTitle>
+        </DialogHeader>
+        <div className="py-2 space-y-4 overflow-hidden">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              {t("dialogs.renameFolder.loading")}
+            </div>
+          ) : sortedFolders.length === 0 ? (
+            <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+              {t("dialogs.renameFolder.noFoldersAvailable")}
+            </div>
+          ) : (
+            <>
+              {showFolderSelector && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="folderSelect">{t("dialogs.renameFolder.selectFolder")}</Label>
+                  <Select value={selectedPath} onValueChange={handleFolderSelect}>
+                    <SelectTrigger id="folderSelect" className="font-mono text-xs">
+                      <SelectValue placeholder={t("dialogs.renameFolder.chooseFolder")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sortedFolders.map((folder) => (
+                        <SelectItem key={folder.name} value={folder.name} className="font-mono text-xs">
+                          {folder.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {parentPath && (
+                <div className="space-y-1.5">
+                  <Label size="sm" className="text-muted-foreground">{t("dialogs.renameFolder.location")}</Label>
+                  <div className="text-xs font-mono text-muted-foreground bg-muted/50 rounded px-2.5 py-1.5 break-all">
+                    {parentPath}/
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="folderName">{t("dialogs.renameFolder.folderName")}</Label>
+                <Input
+                  ref={inputRef}
+                  id="folderName"
+                  value={newName}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setNewName(e.target.value)}
+                  placeholder={t("dialogs.renameFolder.placeholder")}
+                  disabled={isPending}
+                  className="font-mono"
+                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter" && !isPending && newName.trim() && hasChanges) {
+                      e.preventDefault()
+                      handleConfirm()
+                    }
+                  }}
+                />
+              </div>
+
+
+              <p className="text-xs text-muted-foreground">
+                {t("dialogs.renameFolder.moveWarning")}
+              </p>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            {t("dialogs.renameFolder.cancel")}
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !folderExists || !newName.trim() || !hasChanges}
+          >
+            {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {t("dialogs.renameFolder.confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+export const SetCategoryDialog = memo(function SetCategoryDialog({
+  open,
+  onOpenChange,
+  availableCategories,
+  hashCount,
+  onConfirm,
+  isPending = false,
+  initialCategory = "",
+  isLoadingCategories = false,
+  useSubcategories = false,
+}: SetCategoryDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [choice, setChoice] = useState<{ source: "list" | "typed"; category: string }>({ source: "list", category: "" })
+  const [searchQuery, setSearchQuery] = useState("")
+  const [dialogCategories, setDialogCategories] = useState<Record<string, Category>>({})
+  const [dialogUseSubcategories, setDialogUseSubcategories] = useState(useSubcategories)
+  const wasOpen = useRef(false)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const availableCategoryCount = Object.keys(availableCategories || {}).length
+  const dialogCategoryCount = Object.keys(dialogCategories).length
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setChoice({ source: "list", category: initialCategory })
+      setSearchQuery("")
+      setDialogCategories(availableCategories || {})
+      setDialogUseSubcategories(useSubcategories)
+    } else if (open && dialogCategoryCount === 0 && availableCategoryCount > 0) {
+      setDialogCategories(availableCategories || {})
+      setDialogUseSubcategories(useSubcategories)
+    } else if (!open && wasOpen.current) {
+      setDialogCategories({})
+      setDialogUseSubcategories(useSubcategories)
+    }
+    wasOpen.current = open
+  }, [availableCategories, availableCategoryCount, dialogCategoryCount, initialCategory, open, useSubcategories])
+
+  const handleConfirm = useCallback(() => {
+    onConfirm(choice.category)
+    setChoice({ source: "list", category: "" })
+    setSearchQuery("")
+  }, [choice.category, onConfirm])
+
+  const handleCancel = useCallback(() => {
+    setChoice({ source: "list", category: "" })
+    setSearchQuery("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  const categoryList = useMemo(() => Object.keys(dialogCategories).sort(), [dialogCategories])
+
+  const filteredCategories = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    if (dialogUseSubcategories) {
+      const tree = buildCategoryTree(dialogCategories, {})
+      const shouldIncludeCache = new Map<CategoryNode, boolean>()
+
+      const shouldIncludeNode = (node: CategoryNode): boolean => {
+        const cached = shouldIncludeCache.get(node)
+        if (cached !== undefined) {
+          return cached
+        }
+
+        const nodeMatches = query === "" || node.name.toLowerCase().includes(query)
+        if (nodeMatches) {
+          shouldIncludeCache.set(node, true)
+          return true
+        }
+
+        for (const child of node.children) {
+          if (shouldIncludeNode(child)) {
+            shouldIncludeCache.set(node, true)
+            return true
+          }
+        }
+
+        shouldIncludeCache.set(node, false)
+        return false
+      }
+
+      const flattened: Array<{ name: string; displayName: string; level: number }> = []
+
+      const visitNodes = (nodes: CategoryNode[]) => {
+        for (const node of nodes) {
+          if (shouldIncludeNode(node)) {
+            flattened.push({
+              name: node.name,
+              displayName: node.displayName,
+              level: node.level,
+            })
+            visitNodes(node.children)
+          }
+        }
+      }
+
+      visitNodes(tree)
+      return flattened
+    }
+
+    const names = categoryList
+    const namesFiltered = query ? names.filter(cat => cat.toLowerCase().includes(query)) : names
+
+    return namesFiltered.map((name) => ({
+      name,
+      displayName: name,
+      level: 0,
+    }))
+  }, [categoryList, dialogCategories, dialogUseSubcategories, searchQuery])
+
+  const showLoadingCategories = isLoadingCategories && dialogCategoryCount === 0
+  const showSearch = !showLoadingCategories && categoryList.length > 10
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.setCategory.title", { count: hashCount })}</DialogTitle>
+          <DialogDescription>
+            {t("dialogs.setCategory.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className={showSearch ? "space-y-2" : "hidden"} aria-hidden={!showSearch}>
+            {showSearch && (
+              <>
+                <Label htmlFor="categorySearch">{t("dialogs.setCategory.searchCategories")}</Label>
+                <Input
+                  id="categorySearch"
+                  placeholder={t("dialogs.setCategory.searchPlaceholder")}
+                  value={searchQuery}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                />
+              </>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>{t("dialogs.setCategory.selectCategory")}</Label>
+            <div
+              ref={scrollContainerRef}
+              className="max-h-64 border rounded-md overflow-y-auto"
+            >
+              {showLoadingCategories ? (
+                <div className="p-3 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">{t("dialogs.setCategory.loadingCategories")}</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setChoice({ source: "list", category: "" })}
+                    className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                      choice.source === "list" && choice.category === "" ? "bg-accent" : ""
+                    }`}
+                  >
+                    <span className="text-sm text-muted-foreground italic">{t("dialogs.setCategory.noCategory")}</span>
+                  </button>
+
+                  <div>
+                    {filteredCategories.map((category) => (
+                      <Tooltip key={category.name} disabled={category.name === category.displayName}>
+                        <TooltipTrigger asChild openOnTap>
+                          <button
+                            type="button"
+                            onClick={() => setChoice({ source: "list", category: category.name })}
+                            className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                              choice.source === "list" && choice.category === category.name ? "bg-accent" : ""
+                            }`}
+                          >
+                            <span
+                              className="text-sm"
+                              style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                            >
+                              {category.displayName}
+                            </span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>{category.name}</TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+
+                  {filteredCategories.length === 0 && searchQuery && (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      {t("dialogs.setCategory.noCategoriesFound", { query: searchQuery })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="newCategory">{t("dialogs.setCategory.createNew")}</Label>
+            <Input
+              id="newCategory"
+              placeholder={t("dialogs.setCategory.createPlaceholder")}
+              value={choice.source === "typed" || !Object.hasOwn(dialogCategories, choice.category) ? choice.category : ""}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setChoice({ source: e.target.value ? "typed" : "list", category: e.target.value })}
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter") {
+                  handleConfirm()
+                }
+              }}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>{t("dialogs.tagEditor.cancel")}</Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending}
+          >
+            {t("dialogs.setCategory.setCategory")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface CreateAndAssignCategoryDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  onConfirm: (category: string) => void
+  isPending?: boolean
+}
+
+export const CreateAndAssignCategoryDialog = memo(function CreateAndAssignCategoryDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  onConfirm,
+  isPending = false,
+}: CreateAndAssignCategoryDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [categoryName, setCategoryName] = useState("")
+  const wasOpen = useRef(false)
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setCategoryName("")
+    }
+    wasOpen.current = open
+  }, [open])
+
+  const handleConfirm = useCallback(() => {
+    if (categoryName.trim()) {
+      onConfirm(categoryName.trim())
+      setCategoryName("")
+    }
+  }, [categoryName, onConfirm])
+
+  const handleCancel = useCallback(() => {
+    setCategoryName("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.createAndAssignCategory.title")}</DialogTitle>
+          <DialogDescription>
+            {t("dialogs.createAndAssignCategory.description", { count: hashCount })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-2">
+          <Label htmlFor="categoryName">{t("dialogs.createAndAssignCategory.categoryName")}</Label>
+          <Input
+            id="categoryName"
+            placeholder={t("dialogs.createAndAssignCategory.placeholder")}
+            value={categoryName}
+            onChange={(e: ChangeEvent<HTMLInputElement>) => setCategoryName(e.target.value)}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === "Enter" && categoryName.trim()) {
+                handleConfirm()
+              }
+            }}
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancel}>{t("dialogs.createAndAssignCategory.cancel")}</Button>
+          <Button
+            onClick={handleConfirm}
+            disabled={isPending || !categoryName.trim()}
+          >
+            {t("dialogs.createAndAssignCategory.confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+
+function isHttpsVersionOf(candidateURL: string, url: string): boolean {
+  if (!candidateURL.startsWith("https://")) return false
+  try {
+    const candidate = new URL(candidateURL)
+    const parsed = new URL(url)
+    return (
+      candidate.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+      candidate.pathname === parsed.pathname &&
+      candidate.search === parsed.search
+    )
+  } catch {
+    return false
+  }
+}
+
+interface EditTrackerDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  instanceId: number
+  tracker: string
+  trackerURLs?: string[]
+  loadingURLs?: boolean
+  selectedHashes: string[]
+  onConfirm: (oldURL: string, newURL: string) => void
+  isPending?: boolean
+  onConvertHttpToHttps?: () => void
+  isConverting?: boolean
+}
+
+export const EditTrackerDialog = memo(function EditTrackerDialog({
+  open,
+  onOpenChange,
+  instanceId: _instanceId, // eslint-disable-line @typescript-eslint/no-unused-vars
+  tracker,
+  trackerURLs = [],
+  loadingURLs = false,
+  selectedHashes,
+  onConfirm,
+  isPending = false,
+  onConvertHttpToHttps,
+  isConverting = false,
+}: EditTrackerDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [oldURL, setOldURL] = useState("")
+  const [newURL, setNewURL] = useState("")
+  const wasOpen = useRef(false)
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      if (trackerURLs && trackerURLs.length > 0) {
+        setOldURL(trackerURLs[0])
+      } else {
+        setOldURL("")
+      }
+      setNewURL("")
+    }
+    wasOpen.current = open
+  }, [open, tracker, trackerURLs])
+
+  useEffect(() => {
+    if (!open || !oldURL) return
+    if (trackerURLs.includes(oldURL)) return
+    if (oldURL.startsWith("http://")) {
+      const httpsMatch = trackerURLs.find((url) => isHttpsVersionOf(url, oldURL))
+      if (httpsMatch) {
+        setOldURL(httpsMatch)
+        return
+      }
+    }
+    if (trackerURLs.length > 0) {
+      setOldURL(trackerURLs[0])
+    }
+  }, [open, oldURL, trackerURLs])
+
+  const handleConfirm = useCallback((): void => {
+    if (oldURL.trim() && newURL.trim()) {
+      onConfirm(oldURL.trim(), newURL.trim())
+      setOldURL("")
+      setNewURL("")
+    }
+  }, [oldURL, newURL, onConfirm])
+
+  const handleCancel = useCallback((): void => {
+    setOldURL("")
+    setNewURL("")
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  const hashCount = selectedHashes.length
+  const isFilteredMode = hashCount === 0
+
+  const hasHttpUrls = useMemo(
+    () => trackerURLs.some((url) => url.startsWith("http://")),
+    [trackerURLs]
+  )
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="max-w-xl">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("dialogs.editTracker.title")} - {tracker}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t("dialogs.editTracker.description", { tracker })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="oldURL">{t("dialogs.editTracker.currentUrl")}</Label>
+            {loadingURLs ? (
+              <div className="flex items-center justify-center py-3 text-sm text-muted-foreground">
+                <span className="animate-pulse">{t("dialogs.editTracker.loadingUrls")}</span>
+              </div>
+            ) : trackerURLs && trackerURLs.length > 1 ? (
+              <div className="space-y-2">
+                <select
+                  className="w-full px-3 py-2 text-sm font-mono border rounded-md bg-background"
+                  value={oldURL}
+                  onChange={(e) => setOldURL(e.target.value)}
+                >
+                  <option value="">{t("dialogs.editTracker.selectTrackerUrl")}</option>
+                  {trackerURLs.map((url) => (
+                    <option key={url} value={url}>
+                      {url}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {t("dialogs.editTracker.multipleUrlsHelp")}
+                </p>
+              </div>
+            ) : (
+              <>
+                <Input
+                  id="oldURL"
+                  value={oldURL}
+                  onChange={(e) => setOldURL(e.target.value)}
+                  placeholder={trackerURLs.length === 0 ? t("dialogs.editTracker.currentUrlPlaceholder", { tracker }) : ""}
+                  className="font-mono text-sm"
+                />
+                {trackerURLs.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("dialogs.editTracker.currentUrlNoDetectedHelp")}
+                  </p>
+                )}
+                {trackerURLs.length === 1 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("dialogs.editTracker.currentUrlDetectedHelp")}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="newURL">{t("dialogs.editTracker.newUrl")}</Label>
+            <Input
+              id="newURL"
+              value={newURL}
+              onChange={(e) => setNewURL(e.target.value)}
+              placeholder={t("dialogs.editTracker.newUrlPlaceholder", { tracker })}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("dialogs.editTracker.newUrlHelp")}
+            </p>
+          </div>
+          {isFilteredMode && (
+            <div className="bg-muted p-3 rounded-md">
+              <p className="text-sm text-muted-foreground">
+                <strong>{t("dialogs.editTracker.noteLabel")}</strong> {t("dialogs.editTracker.filteredModeNote")}
+              </p>
+            </div>
+          )}
+          {hasHttpUrls && onConvertHttpToHttps && (
+            <div className="pt-2 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onConvertHttpToHttps}
+                disabled={isConverting || loadingURLs || isPending}
+                className="w-full"
+              >
+                {isConverting ? t("dialogs.editTracker.converting") : t("dialogs.editTracker.convertHttpToHttps")}
+              </Button>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("dialogs.editTracker.convertHttpToHttpsHelp")}
+              </p>
+            </div>
+          )}
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleCancel}>{t("dialogs.editTracker.cancel")}</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirm}
+            disabled={!oldURL.trim() || !newURL.trim() || oldURL === newURL || isPending || loadingURLs || isConverting}
+          >
+            {t("dialogs.editTracker.confirm")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+})
+
+const SHARE_LIMIT_FIELDS = [
+  { key: "ratio", labelKey: "dialogs.shareLimit.ratioLimit", placeholderKey: "dialogs.shareLimit.ratioPlaceholder", descriptionKey: "dialogs.shareLimit.ratioCustomHelp", step: "0.01" },
+  { key: "seedTime", labelKey: "dialogs.shareLimit.seedingTimeLimit", placeholderKey: "dialogs.shareLimit.seedTimePlaceholder", descriptionKey: "dialogs.shareLimit.seedTimeCustomHelp", step: "1" },
+  { key: "inactiveTime", labelKey: "dialogs.shareLimit.inactiveSeedingLimit", placeholderKey: "dialogs.shareLimit.inactivePlaceholder", descriptionKey: "dialogs.shareLimit.inactiveCustomHelp", step: "1" },
+] as const
+
+const SPEED_LIMIT_FIELDS = [
+  { key: "upload", labelKey: "dialogs.speedLimits.uploadLimit" },
+  { key: "download", labelKey: "dialogs.speedLimits.downloadLimit" },
+] as const
+
+interface LimitSheetProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  description: string
+  headerAction?: ReactNode
+  unresolvedMessage?: string
+  cancelLabel: string
+  confirmLabel: string
+  confirmDisabled: boolean
+  onConfirm: () => void
+  children: ReactNode
+}
+
+function LimitSheet({ open, onOpenChange, title, description, headerAction, unresolvedMessage, cancelLabel, confirmLabel, confirmDisabled, onConfirm, children }: LimitSheetProps) {
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent className="max-h-[92dvh]">
+        <DrawerHeader className="flex items-start justify-between gap-3 text-left">
+          <div className="space-y-1">
+            <DrawerTitle className="text-base">{title}</DrawerTitle>
+            <DrawerDescription>{description}</DrawerDescription>
+          </div>
+          {headerAction}
+        </DrawerHeader>
+        <div className="min-h-0 flex-1 divide-y overflow-y-auto px-4">{children}</div>
+        <div className="shrink-0 space-y-2 border-t px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {unresolvedMessage && <p className="text-xs text-warning">{unresolvedMessage}</p>}
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>{cancelLabel}</Button>
+            <Button className="h-11" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</Button>
+          </div>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  )
+}
+
+interface ShareLimitDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  torrents?: TorrentLimitSnapshot[]
+  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
+  isPending?: boolean
+  instanceIds: number[] | undefined
+}
+
+export const ShareLimitDialog = memo(function ShareLimitDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  torrents,
+  onConfirm,
+  isPending = false,
+  instanceIds,
+}: ShareLimitDialogProps) {
+  const { t } = useTranslation("torrents")
+  const capabilityInstanceIds = open ? instanceIds : []
+  const supportsShareLimitsAction = useInstancesSupport(capabilityInstanceIds, "supportsShareLimitsAction")
+  const supportsShareLimitsMode = useInstancesSupport(capabilityInstanceIds, "supportsShareLimitsMode")
+  const [form, setForm] = useState(() => buildShareLimitFormState(torrents))
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setForm(buildShareLimitFormState(torrents))
+  }
+
+  const updateField = useCallback(<K extends keyof ShareLimitFormState>(key: K, patch: Partial<ShareLimitFormState[K]>) => {
+    setForm(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+  }, [])
+
+  const hasUnresolvedMixed = shareLimitsUnresolved(form, supportsShareLimitsAction, supportsShareLimitsMode)
+
+  const handleConfirm = useCallback((): void => {
+    const values = shareLimitValues(form, supportsShareLimitsAction, supportsShareLimitsMode)
+    onConfirm(
+      values.ratioLimit,
+      values.seedingTimeLimit,
+      values.inactiveSeedingTimeLimit,
+      values.shareLimitAction,
+      values.shareLimitsMode
+    )
+    onOpenChange(false)
+  }, [form, onConfirm, onOpenChange, supportsShareLimitsAction, supportsShareLimitsMode])
+
+  const setAllGlobal = useCallback(() => {
+    setForm(prev => ({
+      ratio: { ...prev.ratio, mode: "global", touched: true },
+      seedTime: { ...prev.seedTime, mode: "global", touched: true },
+      inactiveTime: { ...prev.inactiveTime, mode: "global", touched: true },
+      action: supportsShareLimitsAction ? { ...prev.action, value: "default", touched: true } : prev.action,
+      matchingMode: supportsShareLimitsMode ? { ...prev.matchingMode, value: "default", touched: true } : prev.matchingMode,
+    }))
+  }, [supportsShareLimitsAction, supportsShareLimitsMode])
+
+  const isMobile = useIsMobile()
+  const modeItems = (
+    <>
+      <SelectItem value="global">{t("dialogs.shareLimit.useGlobal")}</SelectItem>
+      <SelectItem value="unlimited">{t("dialogs.shareLimit.unlimited")}</SelectItem>
+      <SelectItem value="custom">{t("dialogs.shareLimit.custom")}</SelectItem>
+    </>
+  )
+  const actionItems = (
+    <>
+      <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
+      <SelectItem value="Stop">{t("shareLimits.stopTorrent")}</SelectItem>
+      <SelectItem value="Remove">{t("shareLimits.removeTorrent")}</SelectItem>
+      <SelectItem value="RemoveWithContent">{t("shareLimits.removeWithContent")}</SelectItem>
+      <SelectItem value="EnableSuperSeeding">{t("shareLimits.enableSuperSeeding")}</SelectItem>
+    </>
+  )
+  const matchingModeItems = (
+    <>
+      <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
+      <SelectItem value="MatchAny">{t("shareLimits.matchAnyLimit")}</SelectItem>
+      <SelectItem value="MatchAll">{t("shareLimits.matchAllLimits")}</SelectItem>
+    </>
+  )
+
+  if (isMobile) {
+    const choiceRow = (key: "action" | "matchingMode", labelKey: string, items: ReactNode) => (
+      <div className="space-y-2 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <Label className="text-sm font-medium">{t(labelKey)}</Label>
+          {form[key].isMixed && form[key].touched && (
+            <span className="text-xs text-muted-foreground">{t("shareLimits.wasMixed")}</span>
+          )}
+        </div>
+        <Select
+          value={isUnresolvedMixed(form[key]) ? "" : form[key].value}
+          onValueChange={(value: string) => updateField(key, { value, touched: true })}
+        >
+          <SelectTrigger className={cn("h-10 w-full", isUnresolvedMixed(form[key]) && "border-warning")}>
+            <SelectValue placeholder={t("shareLimits.selectValue")} />
+          </SelectTrigger>
+          <SelectContent>{items}</SelectContent>
+        </Select>
+      </div>
+    )
+
+    return (
+      <LimitSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={t("dialogs.shareLimit.title", { count: hashCount })}
+        description={t("dialogs.shareLimit.description")}
+        headerAction={
+          <Button variant="outline" size="sm" className="shrink-0" onClick={setAllGlobal}>
+            {t("dialogs.shareLimit.setAllGlobal")}
+          </Button>
+        }
+        unresolvedMessage={hasUnresolvedMixed ? t("dialogs.shareLimit.unresolvedMixed") : undefined}
+        cancelLabel={t("dialogs.shareLimit.cancel")}
+        confirmLabel={isPending ? t("dialogs.shareLimit.setting") : t("dialogs.shareLimit.confirm")}
+        confirmDisabled={isPending || hasUnresolvedMixed}
+        onConfirm={handleConfirm}
+      >
+        {SHARE_LIMIT_FIELDS.map(({ key, labelKey, placeholderKey, descriptionKey, step }) => {
+          const field = form[key]
+          const unresolved = isUnresolvedMixed(field)
+          return (
+            <div key={key} className="space-y-2 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Label className="text-sm font-medium">{t(labelKey)}</Label>
+                  {field.isMixed && field.touched && (
+                    <p className="text-xs text-muted-foreground">{t("dialogs.shareLimit.wasMixed")}</p>
+                  )}
+                </div>
+                <Select
+                  value={unresolved ? "" : field.mode}
+                  onValueChange={(value: ShareLimitMode) => updateField(key, { mode: value, touched: true })}
+                >
+                  <SelectTrigger className={cn("h-10 w-[150px] shrink-0", unresolved && "border-warning")}>
+                    <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
+                  </SelectTrigger>
+                  <SelectContent>{modeItems}</SelectContent>
+                </Select>
+              </div>
+              {field.mode === "custom" && !unresolved && (
+                <>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step={step}
+                    className="h-10"
+                    value={field.customValue}
+                    onChange={(e) => {
+                      const val = key === "ratio" ? parseFloat(e.target.value) : parseInt(e.target.value, 10)
+                      if (Number.isFinite(val)) updateField(key, { customValue: val })
+                    }}
+                    placeholder={t(placeholderKey)}
+                  />
+                  <p className="text-xs text-muted-foreground">{t(descriptionKey)}</p>
+                </>
+              )}
+            </div>
+          )
+        })}
+        {supportsShareLimitsAction && choiceRow("action", "shareLimits.whenLimitsReached", actionItems)}
+        {supportsShareLimitsMode && choiceRow("matchingMode", "shareLimits.limitsMatchingMode", matchingModeItems)}
+      </LimitSheet>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.shareLimit.title", { count: hashCount })}</DialogTitle>
+          <DialogDescription>
+            {t("dialogs.shareLimit.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2 space-y-4">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={setAllGlobal}>
+              {t("dialogs.shareLimit.setAllGlobal")}
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">{t("dialogs.shareLimit.ratioLimit")}</Label>
+              {form.ratio.isMixed && form.ratio.touched && (
+                <span className="text-xs text-muted-foreground">{t("dialogs.shareLimit.wasMixed")}</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Select
+                value={isUnresolvedMixed(form.ratio) ? "" : form.ratio.mode}
+                onValueChange={(value: ShareLimitMode) => updateField("ratio", { mode: value, touched: true })}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
+                </SelectTrigger>
+                <SelectContent>{modeItems}</SelectContent>
+              </Select>
+              {form.ratio.mode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="flex-1"
+                  value={form.ratio.customValue}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value)
+                    if (Number.isFinite(val)) updateField("ratio", { customValue: val })
+                  }}
+                  placeholder={t("dialogs.shareLimit.ratioPlaceholder")}
+                />
+              )}
+            </div>
+            {!isUnresolvedMixed(form.ratio) && (
+              <p className="text-xs text-muted-foreground">
+                {form.ratio.mode === "global" ? t("dialogs.shareLimit.ratioGlobalHelp") : form.ratio.mode === "unlimited" ? t("dialogs.shareLimit.ratioUnlimitedHelp") : t("dialogs.shareLimit.ratioCustomHelp")}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">{t("dialogs.shareLimit.seedingTimeLimit")}</Label>
+              {form.seedTime.isMixed && form.seedTime.touched && (
+                <span className="text-xs text-muted-foreground">{t("dialogs.shareLimit.wasMixed")}</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Select
+                value={isUnresolvedMixed(form.seedTime) ? "" : form.seedTime.mode}
+                onValueChange={(value: ShareLimitMode) => updateField("seedTime", { mode: value, touched: true })}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
+                </SelectTrigger>
+                <SelectContent>{modeItems}</SelectContent>
+              </Select>
+              {form.seedTime.mode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  className="flex-1"
+                  value={form.seedTime.customValue}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (Number.isFinite(val)) updateField("seedTime", { customValue: val })
+                  }}
+                  placeholder={t("dialogs.shareLimit.seedTimePlaceholder")}
+                />
+              )}
+            </div>
+            {!isUnresolvedMixed(form.seedTime) && (
+              <p className="text-xs text-muted-foreground">
+                {form.seedTime.mode === "global" ? t("dialogs.shareLimit.seedTimeGlobalHelp") : form.seedTime.mode === "unlimited" ? t("dialogs.shareLimit.seedTimeUnlimitedHelp") : t("dialogs.shareLimit.seedTimeCustomHelp")}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">{t("dialogs.shareLimit.inactiveSeedingLimit")}</Label>
+              {form.inactiveTime.isMixed && form.inactiveTime.touched && (
+                <span className="text-xs text-muted-foreground">{t("dialogs.shareLimit.wasMixed")}</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Select
+                value={isUnresolvedMixed(form.inactiveTime) ? "" : form.inactiveTime.mode}
+                onValueChange={(value: ShareLimitMode) => updateField("inactiveTime", { mode: value, touched: true })}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
+                </SelectTrigger>
+                <SelectContent>{modeItems}</SelectContent>
+              </Select>
+              {form.inactiveTime.mode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  className="flex-1"
+                  value={form.inactiveTime.customValue}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (Number.isFinite(val)) updateField("inactiveTime", { customValue: val })
+                  }}
+                  placeholder={t("dialogs.shareLimit.inactivePlaceholder")}
+                />
+              )}
+            </div>
+            {!isUnresolvedMixed(form.inactiveTime) && (
+              <p className="text-xs text-muted-foreground">
+                {form.inactiveTime.mode === "global" ? t("dialogs.shareLimit.inactiveGlobalHelp") : form.inactiveTime.mode === "unlimited" ? t("dialogs.shareLimit.inactiveUnlimitedHelp") : t("dialogs.shareLimit.inactiveCustomHelp")}
+              </p>
+            )}
+          </div>
+
+          {supportsShareLimitsAction && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">{t("shareLimits.whenLimitsReached")}</Label>
+                {form.action.isMixed && form.action.touched && (
+                  <span className="text-xs text-muted-foreground">{t("shareLimits.wasMixed")}</span>
+                )}
+              </div>
+              <Select
+                value={isUnresolvedMixed(form.action) ? "" : form.action.value}
+                onValueChange={(value: string) => updateField("action", { value, touched: true })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("shareLimits.selectValue")} />
+                </SelectTrigger>
+                <SelectContent>{actionItems}</SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t("shareLimits.actionWhenReached")}
+              </p>
+            </div>
+          )}
+
+          {supportsShareLimitsMode && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">{t("shareLimits.limitsMatchingMode")}</Label>
+                {form.matchingMode.isMixed && form.matchingMode.touched && (
+                  <span className="text-xs text-muted-foreground">{t("shareLimits.wasMixed")}</span>
+                )}
+              </div>
+              <Select
+                value={isUnresolvedMixed(form.matchingMode) ? "" : form.matchingMode.value}
+                onValueChange={(value: string) => updateField("matchingMode", { value, touched: true })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("shareLimits.selectValue")} />
+                </SelectTrigger>
+                <SelectContent>{matchingModeItems}</SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t("shareLimits.matchingModeHelp")}
+              </p>
+            </div>
+          )}
+        </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          {hasUnresolvedMixed && (
+            <p className="text-xs text-warning text-left sm:flex-1">
+              {t("dialogs.shareLimit.unresolvedMixed")}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              {t("dialogs.shareLimit.cancel")}
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={isPending || hasUnresolvedMixed}
+            >
+              {isPending ? t("dialogs.shareLimit.setting") : t("dialogs.shareLimit.confirm")}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface SpeedLimitsDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  torrents?: TorrentLimitSnapshot[]
+  onConfirm: (uploadLimit: number, downloadLimit: number) => void
+  isPending?: boolean
+}
+
+export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  torrents,
+  onConfirm,
+  isPending = false,
+}: SpeedLimitsDialogProps) {
+  const { t } = useTranslation("torrents")
+  const [form, setForm] = useState(() => buildSpeedLimitFormState(torrents))
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setForm(buildSpeedLimitFormState(torrents))
+  }
+
+  const updateField = useCallback((key: keyof SpeedLimitFormState, patch: Partial<SpeedLimitField>) => {
+    setForm(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+  }, [])
+
+  const hasUnresolvedMixed = speedLimitsUnresolved(form)
+
+  const handleConfirm = useCallback((): void => {
+    const values = speedLimitValues(form)
+    onConfirm(values.uploadLimit, values.downloadLimit)
+  }, [form, onConfirm])
+
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return (
+      <LimitSheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={t("dialogs.speedLimits.title", { count: hashCount })}
+        description={t("dialogs.speedLimits.description")}
+        unresolvedMessage={hasUnresolvedMixed ? t("dialogs.speedLimits.unresolvedMixed") : undefined}
+        cancelLabel={t("dialogs.speedLimits.cancel")}
+        confirmLabel={isPending ? t("dialogs.speedLimits.setting") : t("dialogs.speedLimits.confirm")}
+        confirmDisabled={isPending || hasUnresolvedMixed}
+        onConfirm={handleConfirm}
+      >
+        {SPEED_LIMIT_FIELDS.map(({ key, labelKey }) => {
+          const field = form[key]
+          return (
+            <div key={key} className="space-y-2 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Label htmlFor={`${key}EnabledSheet`} className="text-sm font-medium">{t(labelKey)}</Label>
+                  {isUnresolvedMixed(field) && (
+                    <p className="text-xs text-warning">{t("dialogs.speedLimits.selectValue")}</p>
+                  )}
+                  {field.isMixed && field.touched && (
+                    <p className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</p>
+                  )}
+                </div>
+                <Switch
+                  id={`${key}EnabledSheet`}
+                  checked={field.enabled}
+                  onCheckedChange={(enabled) => updateField(key, { enabled, touched: true })}
+                />
+              </div>
+              {field.enabled && (
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min="0"
+                  className="h-10"
+                  value={field.limit}
+                  onChange={(e) => updateField(key, { limit: parseInt(e.target.value) || 0, touched: true })}
+                  placeholder="0"
+                />
+              )}
+            </div>
+          )
+        })}
+      </LimitSheet>
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t("dialogs.speedLimits.title", { count: hashCount })}</DialogTitle>
+          <DialogDescription>
+            {t("dialogs.speedLimits.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2 space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="uploadEnabled"
+                  checked={form.upload.enabled}
+                  onCheckedChange={(enabled) => updateField("upload", { enabled, touched: true })}
+                />
+                <Label htmlFor="uploadEnabled">{t("dialogs.speedLimits.uploadLimit")}</Label>
+              </div>
+              {isUnresolvedMixed(form.upload) && (
+                <span className="text-xs text-warning">{t("dialogs.speedLimits.selectValue")}</span>
+              )}
+              {form.upload.isMixed && form.upload.touched && (
+                <span className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</span>
+              )}
+            </div>
+            <Input
+              type="number"
+              min="0"
+              value={form.upload.limit}
+              disabled={!form.upload.enabled}
+              onChange={(e) => updateField("upload", { limit: parseInt(e.target.value) || 0, touched: true })}
+              placeholder="0"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="downloadEnabled"
+                  checked={form.download.enabled}
+                  onCheckedChange={(enabled) => updateField("download", { enabled, touched: true })}
+                />
+                <Label htmlFor="downloadEnabled">{t("dialogs.speedLimits.downloadLimit")}</Label>
+              </div>
+              {isUnresolvedMixed(form.download) && (
+                <span className="text-xs text-warning">{t("dialogs.speedLimits.selectValue")}</span>
+              )}
+              {form.download.isMixed && form.download.touched && (
+                <span className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</span>
+              )}
+            </div>
+            <Input
+              type="number"
+              min="0"
+              value={form.download.limit}
+              disabled={!form.download.enabled}
+              onChange={(e) => updateField("download", { limit: parseInt(e.target.value) || 0, touched: true })}
+              placeholder="0"
+            />
+          </div>
+        </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          {hasUnresolvedMixed && (
+            <p className="text-xs text-warning text-left sm:flex-1">
+              {t("dialogs.speedLimits.unresolvedMixed")}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              {t("dialogs.speedLimits.cancel")}
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={isPending || hasUnresolvedMixed}
+            >
+              {isPending ? t("dialogs.speedLimits.setting") : t("dialogs.speedLimits.confirm")}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface TmmConfirmDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  count: number
+  enable: boolean
+  onConfirm: () => void
+  isPending?: boolean
+}
+
+export const TmmConfirmDialog = memo(function TmmConfirmDialog({
+  open,
+  onOpenChange,
+  count,
+  enable,
+  onConfirm,
+  isPending = false,
+}: TmmConfirmDialogProps) {
+  const { t } = useTranslation("torrents")
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            {enable ? t("dialogs.tmm.enableTitle", { count }) : t("dialogs.tmm.disableTitle", { count })}
+          </DialogTitle>
+          <DialogDescription>
+            {enable ? t("dialogs.tmm.enableDescription") : t("dialogs.tmm.disableDescription")}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t("dialogs.tmm.cancel")}
+          </Button>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={isPending}>
+            {enable ? t("dialogs.tmm.enable") : t("dialogs.tmm.disable")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
+
+interface LocationWarningDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  count: number
+  onConfirm: () => void
+  isPending?: boolean
+}
+
+export const LocationWarningDialog = memo(function LocationWarningDialog({
+  open,
+  onOpenChange,
+  count,
+  onConfirm,
+  isPending = false,
+}: LocationWarningDialogProps) {
+  const { t } = useTranslation("torrents")
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            {t("dialogs.locationWarning.title", { count })}
+          </DialogTitle>
+          <DialogDescription>
+            {t("dialogs.locationWarning.description")}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t("dialogs.tmm.cancel")}
+          </Button>
+          <Button className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={onConfirm} disabled={isPending}>
+            {t("dialogs.locationWarning.continue")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})

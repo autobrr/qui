@@ -1,0 +1,690 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"cmp"
+	"testing"
+
+	"github.com/autobrr/rls"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
+)
+
+func (m matcher) strictCompare(source, candidate *rls.Release, findIndividualEpisodes bool) releaseComparison {
+	return m.compareReleases(namedRelease{release: source}, namedRelease{release: candidate}, nil, nil, findIndividualEpisodes, true)
+}
+
+func TestReleasesMatch_NonTVRequiresExactTitle(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	base := rls.Release{
+		Title: "Test Movie",
+		Year:  2025,
+	}
+
+	same := rls.Release{
+		Title: "Test Movie",
+		Year:  2025,
+	}
+
+	variantTitle := rls.Release{
+		Title: "Test Movie Extended",
+		Year:  2025,
+	}
+
+	require.True(t, s.strictCompare(&base, &same, false).matched(), "identical non-TV titles should match")
+	require.False(t, s.strictCompare(&base, &variantTitle, false).matched(), "non-TV titles must match exactly after normalization")
+}
+
+func TestReleasesMatch_NonTVRequiresCompatibleType(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	movie := rls.Release{
+		Type:  rls.Movie,
+		Title: "Shared Title",
+		Year:  2025,
+	}
+
+	music := rls.Release{
+		Type:  rls.Music,
+		Title: "Shared Title",
+		Year:  2025,
+	}
+
+	unknown := rls.Release{
+		Type:  rls.Unknown,
+		Title: "Shared Title",
+		Year:  2025,
+	}
+
+	require.False(t, s.strictCompare(&movie, &music, false).matched(), "movie and music with same title/year should not match")
+	require.True(t, s.strictCompare(&movie, &unknown, false).matched(), "unknown type should not block matching when other metadata agrees")
+	require.True(t, s.strictCompare(&unknown, &music, false).matched(), "unknown type should not block matching when other metadata agrees")
+}
+
+func TestReleasesMatch_ArtistMustMatch(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	adamBeyer := rls.Release{
+		Type:   rls.Music,
+		Artist: "Adam Beyer",
+		Title:  "Dance Department",
+		Year:   2025,
+		Month:  10,
+		Day:    4,
+		Source: "CABLE",
+		Group:  "TALiON",
+	}
+
+	arminVanBuuren := rls.Release{
+		Type:   rls.Music,
+		Artist: "Armin van Buuren",
+		Title:  "Dance Department",
+		Year:   2025,
+		Month:  11,
+		Day:    29,
+		Source: "CABLE",
+		Group:  "TALiON",
+	}
+
+	sameArtist := rls.Release{
+		Type:   rls.Music,
+		Artist: "Adam Beyer",
+		Title:  "Dance Department",
+		Year:   2025,
+		Month:  10,
+		Day:    4,
+		Source: "CABLE",
+		Group:  "TALiON",
+	}
+
+	require.False(t, s.strictCompare(&adamBeyer, &arminVanBuuren, false).matched(),
+		"different artists with same title should NOT match")
+	require.True(t, s.strictCompare(&adamBeyer, &sameArtist, false).matched(),
+		"same artist with same title should match")
+}
+
+func TestReleasesMatch_DateBasedReleasesRequireExactDate(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	oct4 := rls.Release{
+		Type:   rls.Music,
+		Artist: "Artist",
+		Title:  "Show",
+		Year:   2025,
+		Month:  10,
+		Day:    4,
+		Group:  "GROUP",
+	}
+
+	nov29 := rls.Release{
+		Type:   rls.Music,
+		Artist: "Artist",
+		Title:  "Show",
+		Year:   2025,
+		Month:  11,
+		Day:    29,
+		Group:  "GROUP",
+	}
+
+	sameDate := rls.Release{
+		Type:   rls.Music,
+		Artist: "Artist",
+		Title:  "Show",
+		Year:   2025,
+		Month:  10,
+		Day:    4,
+		Group:  "GROUP",
+	}
+
+	yearOnly := rls.Release{
+		Type:   rls.Music,
+		Artist: "Artist",
+		Title:  "Album",
+		Year:   2025,
+		Group:  "GROUP",
+	}
+
+	require.False(t, s.strictCompare(&oct4, &nov29, false).matched(),
+		"same year but different month/day should NOT match")
+	require.True(t, s.strictCompare(&oct4, &sameDate, false).matched(),
+		"same year/month/day should match")
+
+	anotherYearOnly := rls.Release{
+		Type:   rls.Music,
+		Artist: "Artist",
+		Title:  "Album",
+		Year:   2025,
+		Group:  "GROUP",
+	}
+	require.True(t, s.strictCompare(&yearOnly, &anotherYearOnly, false).matched(),
+		"year-only releases should match when year is same")
+}
+
+func TestNormalizeForMatching(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"lowercase", "MIKE'S TACOS", "mikes tacos"},
+		{"apostrophe", "Mike's Tacos", "mikes tacos"},
+		{"curly apostrophe right", "Don't Stop", "dont stop"},
+		{"curly apostrophe left", "It's Fine", "its fine"},
+		{"backtick", "Rock`n Roll", "rockn roll"},
+		{"colon", "City: Downtown", "city downtown"},
+		{"comma", "Signal, Bloom", "signal bloom"},
+		{"hyphen to space", "Laser-Cat", "laser cat"},
+		{"multiple hyphens", "Up-And-Away", "up and away"},
+		{"anime star separator", "Classic★Stars", "classic stars"},
+		{"anime middle dot separator", "Kaguya・Sama", "kaguya sama"},
+		{"mixed punctuation", "Jake's Place: Season 1", "jakes place season 1"},
+		{"extra spaces collapsed", "The   Show", "the show"},
+		{"trim whitespace", "  Trimmed  ", "trimmed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stringutils.NormalizeForMatching(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestReleasesMatch_PunctuationVariations(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	tests := []struct {
+		name        string
+		source      rls.Release
+		candidate   rls.Release
+		wantMatch   bool
+		description string
+	}{
+		{
+			name: "apostrophe vs no apostrophe TV",
+			source: rls.Release{
+				Title:  "Mike's Tacos",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Mikes Tacos",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "apostrophe should be stripped - 'Mike's' matches 'Mikes'",
+		},
+		{
+			name: "colon vs no colon TV",
+			source: rls.Release{
+				Title:  "City: Downtown",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "City Downtown",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "colon should read as a space - 'City: Downtown' matches 'City Downtown'",
+		},
+		{
+			name: "hyphen vs space TV",
+			source: rls.Release{
+				Title:  "Laser-Cat",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Laser Cat",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "hyphen should become space - 'Laser-Cat' matches 'Laser Cat'",
+		},
+		{
+			name: "comma vs no comma TV",
+			source: rls.Release{
+				Title:  "Signal Bloom",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Signal, Bloom",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "comma should be stripped - 'Signal, Bloom' matches 'Signal Bloom'",
+		},
+		{
+			name: "unicode curly apostrophe TV",
+			source: rls.Release{
+				Title:  "Can't Stop Now",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Cant Stop Now",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "curly apostrophe should be stripped",
+		},
+		{
+			name: "anime symbol separator TV",
+			source: rls.Release{
+				Title:      "Classic Stars",
+				Series:     1,
+				Resolution: "1080p",
+				Source:     "WEB-DL",
+			},
+			candidate: rls.Release{
+				Title:      "Classic★Stars",
+				Series:     1,
+				Resolution: "1080p",
+				Source:     "WEB-DL",
+			},
+			wantMatch:   true,
+			description: "decorative anime symbols should separate title words",
+		},
+		{
+			name: "apostrophe vs no apostrophe non-TV movie",
+			source: rls.Release{
+				Title: "Jake's Adventure",
+				Year:  2024,
+				Type:  rls.Movie,
+				Group: "GROUP",
+			},
+			candidate: rls.Release{
+				Title: "Jakes Adventure",
+				Year:  2024,
+				Type:  rls.Movie,
+				Group: "GROUP",
+			},
+			wantMatch:   true,
+			description: "non-TV should also match with punctuation normalization",
+		},
+		{
+			name: "completely different titles should not match",
+			source: rls.Release{
+				Title:  "Space Adventures",
+				Series: 1,
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Ocean Mysteries",
+				Series: 1,
+				Group:  "GROUP",
+			},
+			wantMatch:   false,
+			description: "different titles should still not match",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s.strictCompare(&tt.source, &tt.candidate, false).matched()
+			if tt.wantMatch {
+				require.True(t, result, tt.description)
+			} else {
+				require.False(t, result, tt.description)
+			}
+		})
+	}
+}
+
+func TestReleasesMatch_TVTitleMustNotUseSubstringMatching(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	fbi := rls.ParseString("FBI.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb")
+	fbiMostWanted := rls.ParseString("FBI.Most.Wanted.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb")
+	require.False(t, s.strictCompare(&fbi, &fbiMostWanted, false).matched())
+	require.False(t, s.strictCompare(&fbiMostWanted, &fbi, false).matched(), "match should be symmetric")
+
+	sao := rls.ParseString("Sword.Art.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
+	ggo := rls.ParseString("Sword.Art.Online.Alternative.Gun.Gale.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
+	require.False(t, s.strictCompare(&sao, &ggo, false).matched())
+	require.False(t, s.strictCompare(&ggo, &sao, false).matched(), "match should be symmetric")
+}
+
+func TestReleasesMatch_AKAVariants(t *testing.T) {
+	tests := []struct {
+		name           string
+		source         rls.Release
+		candidate      rls.Release
+		candidateName  string
+		expectedMatch  bool
+		expectedReason string
+	}{
+		{
+			name: "parsed title alternatives match exactly",
+			source: rls.Release{
+				Type:   rls.Series,
+				Title:  "Kuro Gear no Meiro Tansaku",
+				Series: 2,
+				Source: "WEB-DL",
+			},
+			candidate: rls.Release{
+				Type:   rls.Series,
+				Title:  "Black Gear, Maze Patrol",
+				Alt:    []string{"Kuro Gear no Meiro Tansaku"},
+				Series: 2,
+				Source: "WEB-DL",
+			},
+			expectedMatch: true,
+		},
+		{
+			name: "raw AKA fallback matches exact normalized title",
+			source: rls.Release{
+				Type:   rls.Series,
+				Title:  "Aoi Clockwork no Vault Run",
+				Series: 2,
+				Source: "WEB-DL",
+			},
+			candidate: rls.Release{
+				Type:   rls.Series,
+				Title:  "Blue Clockwork Vault Run",
+				Series: 2,
+				Source: "WEB-DL",
+			},
+			candidateName: "Blue Clockwork Vault Run AKA Aoi Clockwork no Vault Run S02 720p WEB-DL-GRP",
+			expectedMatch: true,
+		},
+		{
+			name: "AKA matching does not use substrings",
+			source: rls.Release{
+				Type:   rls.Series,
+				Title:  "Kuro Gear",
+				Series: 1,
+			},
+			candidate: rls.Release{
+				Type:   rls.Series,
+				Title:  "Kuro Gear Outer Ring",
+				Alt:    []string{"Kuro Gear Outer Ring"},
+				Series: 1,
+			},
+			expectedMatch:  false,
+			expectedReason: "title mismatch",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+			var match bool
+			var reason string
+			if tt.candidateName == "" {
+				comparison := s.strictCompare(&tt.source, &tt.candidate, false)
+				match, reason = comparison.matched(), comparison.reason()
+			} else {
+				comparison := s.compareReleases(namedRelease{release: &tt.source}, namedRelease{release: &tt.candidate, rawName: tt.candidateName}, nil, nil, false, true)
+				match, reason = comparison.matched(), comparison.reason()
+			}
+
+			if tt.expectedMatch {
+				require.True(t, match, "got reason %q", reason)
+			} else {
+				require.False(t, match, "got reason %q", reason)
+			}
+			require.Equal(t, tt.expectedReason, reason)
+		})
+	}
+}
+
+func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
+	tests := []struct {
+		name       string
+		sourceName string
+		candidate  string
+		wantMatch  bool
+		wantReason string
+	}{
+		{
+			name:       "forward slash in candidate title",
+			sourceName: "Fate.strange.Fake.S01.1080p.BluRay.Dual-Audio.Opus2.0.x265-Headpatter",
+			candidate:  "Fate/strange Fake S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
+			wantMatch:  true,
+		},
+		{
+			name:       "back slash in candidate title",
+			sourceName: "Fate.strange.Fake.S01.1080p.BluRay.Dual-Audio.Opus2.0.x265-Headpatter",
+			candidate:  `Fate\strange Fake S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter`,
+			wantMatch:  true,
+		},
+		{
+			name:       "slash does not move the artist into the title",
+			sourceName: "Whitesnake-Back.In.Black-1980-FLAC",
+			candidate:  "AC/DC - Back In Black 1980 FLAC",
+			wantMatch:  false,
+			wantReason: "artist mismatch",
+		},
+		{
+			name:       "slash does not join unrelated shows",
+			sourceName: "Fate.strange.Fake.S01.1080p.BluRay.Dual-Audio.Opus2.0.x265-Headpatter",
+			candidate:  "Fate/Zero S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
+			wantMatch:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
+			source := rls.ParseString(tt.sourceName)
+			candidate := rls.ParseString(tt.candidate)
+
+			comparison := s.compareReleases(namedRelease{release: &source, rawName: tt.sourceName}, namedRelease{release: &candidate, rawName: tt.candidate}, nil, nil, false, true)
+			match, reason := comparison.matched(), comparison.reason()
+
+			if tt.wantMatch {
+				require.True(t, match, "got reason %q", reason)
+				return
+			}
+			require.False(t, match)
+			require.Equal(t, cmp.Or(tt.wantReason, "title mismatch"), reason)
+		})
+	}
+}
+
+func TestReleasesMatch_SeasonNumeral(t *testing.T) {
+	tests := []struct {
+		name          string
+		sourceName    string
+		sourceSeason  int
+		candidateName string
+		wantReason    string
+	}{
+		{
+			name:          "numeral source matches S03 candidate",
+			sourceName:    "[GRP] Kaiju Squad 100 III (BD 1080p HEVC FLAC) [Dual-Audio]",
+			sourceSeason:  3,
+			candidateName: "Kaiju Squad 100 S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+		},
+		{
+			name:          "S03 source matches numeral candidate",
+			sourceName:    "Kaiju.Squad.100.S03.1080p.BluRay.Dual-Audio.FLAC.2.0.x265-GRP",
+			candidateName: "Kaiju Squad 100 III S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+		},
+		{
+			name:          "candidate with both forms still matches",
+			sourceName:    "Kaiju.Squad.100.S03.1080p.BluRay.Dual-Audio.FLAC.2.0.x265-GRP",
+			candidateName: "Kaiju Squad 100 AKA Kaiju Squad 100 III S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+		},
+		{
+			name:          "different group is still rejected",
+			sourceName:    "Kaiju.Squad.100.III.S03.1080p.BluRay.Dual-Audio.FLAC.2.0.x265-GRP",
+			candidateName: "Kaiju Squad 100 S03 1080p BluRay Dual-Audio FLAC 2.0 x265-OTHER",
+			wantReason:    groupMismatchReason,
+		},
+		{
+			name:          "movie sequel numeral is kept",
+			sourceName:    "Rocky.III.1982.1080p.BluRay.x264-GRP",
+			candidateName: "Rocky 1982 1080p BluRay x264-GRP",
+			wantReason:    titleMismatchReason,
+		},
+		{
+			name:          "numeral that differs from the season is kept",
+			sourceName:    "Title.II.S01.1080p.BluRay.x265-GRP",
+			candidateName: "Title S01 1080p BluRay x265-GRP",
+			wantReason:    titleMismatchReason,
+		},
+		{
+			name:          "numeral that differs from the season still matches itself",
+			sourceName:    "Title.II.S01.1080p.BluRay.x265-GRP",
+			candidateName: "Title II S01 1080p BluRay x265-GRP",
+		},
+		{
+			name:          "subtractive numeral matches its season",
+			sourceName:    "Title.XIV.S14.1080p.BluRay.x265-GRP",
+			candidateName: "Title S14 1080p BluRay x265-GRP",
+		},
+		{
+			name:          "numeral in a non-standard spelling is kept",
+			sourceName:    "Title.IIII.S04.1080p.BluRay.x265-GRP",
+			candidateName: "Title S04 1080p BluRay x265-GRP",
+			wantReason:    titleMismatchReason,
+		},
+		{
+			name:          "arabic number is not a season numeral",
+			sourceName:    "Kaiju.Squad.3.S03.1080p.BluRay.x265-GRP",
+			candidateName: "Kaiju Squad S03 1080p BluRay x265-GRP",
+			wantReason:    titleMismatchReason,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
+			source := rls.ParseString(tt.sourceName)
+			if tt.sourceSeason > 0 {
+				source.Type = rls.Series
+				source.Series = tt.sourceSeason
+			}
+			candidate := rls.ParseString(tt.candidateName)
+
+			comparison := s.compareReleases(namedRelease{release: &source, rawName: tt.sourceName}, namedRelease{release: &candidate, rawName: tt.candidateName}, nil, nil, false, true)
+			match, reason := comparison.matched(), comparison.reason()
+
+			require.Equal(t, tt.wantReason, reason)
+			require.Equal(t, tt.wantReason == "", match)
+		})
+	}
+}
+
+func TestReleasesMatch_ARRTitleAliasesOnlyWidenTitleCheck(t *testing.T) {
+	s := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	source := rls.Release{
+		Type:       rls.Episode,
+		Title:      "Haibara kun no Tsuyokute Seishun New Game",
+		Series:     1,
+		Episode:    1,
+		Site:       "SubsPlease",
+		Sum:        "1D28F62C",
+		Resolution: "720p",
+	}
+	candidate := rls.Release{
+		Type:       rls.Episode,
+		Title:      "Haibara's Teenage New Game+",
+		Series:     1,
+		Episode:    1,
+		Site:       "SubsPlease",
+		Sum:        "1D28F62C",
+		Resolution: "720p",
+	}
+
+	comparison := s.strictCompare(&source, &candidate, false)
+	require.False(t, comparison.matched())
+	require.Equal(t, "title mismatch", comparison.reason())
+
+	aliases := []string{"Haibara's Teenage New Game+"}
+	withAliases := func(candidate *rls.Release) releaseComparison {
+		return s.compareReleases(namedRelease{release: &source}, namedRelease{release: candidate}, aliases, nil, false, true)
+	}
+	comparison = withAliases(&candidate)
+	require.True(t, comparison.matched(), "got reason %q", comparison.reason())
+
+	checksumMismatch := candidate
+	checksumMismatch.Sum = "52D759EF"
+	comparison = withAliases(&checksumMismatch)
+	require.False(t, comparison.matched())
+	require.Equal(t, "checksum mismatch", comparison.reason())
+
+	episodeMismatch := candidate
+	episodeMismatch.Episode = 2
+	comparison = withAliases(&episodeMismatch)
+	require.False(t, comparison.matched())
+	require.Equal(t, "episode mismatch", comparison.reason())
+}
+
+func TestRawAKATitleParts(t *testing.T) {
+	tests := []struct {
+		name     string
+		rawName  string
+		expected []string
+	}{
+		{
+			name:     "valid AKA titles",
+			rawName:  "Blue Clockwork Vault Run AKA Aoi Clockwork no Vault Run S02 720p WEB-DL-GRP",
+			expected: []string{"Blue Clockwork Vault Run", "Aoi Clockwork no Vault Run S02 720p WEB-DL-GRP"},
+		},
+		{
+			name:     "filters short noisy fragments",
+			rawName:  "Blue Clockwork Vault Run AKA S01 AKA Aoi Clockwork no Vault Run",
+			expected: []string{"Blue Clockwork Vault Run", "Aoi Clockwork no Vault Run"},
+		},
+		{
+			name:    "stops at an episode title after the episode number",
+			rawName: "Alpha Show S01E01 AKA Beta Show 1080p WEB H264-GRP",
+		},
+		{
+			name:    "requires at least two valid fragments",
+			rawName: "AKA Aoi",
+		},
+		{
+			name:    "ignores names without AKA delimiter",
+			rawName: "Aoi Clockwork no Vault Run",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, matcher{}.rawAKATitleParts(tt.rawName))
+		})
+	}
+}
+
+func TestAppendNormalizedReleaseTitles_NoReleaseCacheReadsLikeCache(t *testing.T) {
+	for _, name := range []string{
+		"Fate/strange Fake S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
+		"Kaiju Squad 100 AKA Kaiju Squad 100 III S03 1080p BluRay Dual-Audio FLAC 2.0 x265-GRP",
+	} {
+		t.Run(name, func(t *testing.T) {
+			release := rls.ParseString(name)
+			bare := matcher{}
+			cached := matcher{releaseCache: NewReleaseCache()}
+
+			want := cached.appendNormalizedReleaseTitles(nil, &release, name)
+			require.Greater(t, len(want), 1, "the name must yield more than its main title")
+			require.Equal(t, want, bare.appendNormalizedReleaseTitles(nil, &release, name))
+		})
+	}
+}

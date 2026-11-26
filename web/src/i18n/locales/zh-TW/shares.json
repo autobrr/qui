@@ -1,0 +1,108 @@
+{
+  "options": {
+    "days": "分享結束前的天數",
+    "daysInvalid": "請輸入不小於 1 的整數天數。",
+    "endAtFirstDownload": "首次完整下載後結束",
+    "endAtFirstDownloadDescription": "一旦有用戶端取得全部檔案，分享即結束。",
+    "firstDownloaderOnly": "僅限第一個下載者",
+    "firstDownloaderOnlyDescription": "Tracker 只會把您的位址提供給第一個下載的用戶端，不會提供給其他用戶端。這控制的是誰能從 Tracker 得知您的位址，而不是誰能連線。",
+    "firstDownloaderOnlyUnavailable": "使用外部 Tracker 時無法使用：qui 看不到通報。"
+  },
+  "settings": {
+    "title": "分享",
+    "description": "分享會把一個種子的檔案交給用戶端不由 qui 管理的人。分享 Tracker 讓對方的用戶端找到您的用戶端。",
+    "loadFailed": "載入分享設定失敗",
+    "save": "儲存",
+    "saved": "分享設定已儲存",
+    "saveFailed": "儲存分享設定失敗",
+    "inUse": {
+      "own": "新的分享使用 qui 的 Tracker。",
+      "outside": "新的分享使用外部 Tracker。",
+      "none": "未設定 Tracker，因此無法開始分享。"
+    },
+    "tracker": {
+      "heading": "分享 Tracker",
+      "own": "qui 內建的 Tracker",
+      "ownDescription": "qui 只在有分享執行時監聽自己的連接埠，且只回應進行中的分享。",
+      "outside": "外部 Tracker",
+      "outsideDescription": "適用於沒有公開位址的 qui。此時 qui 看不到通報：位址清單與首次下載後結束只能盡力而為，且無法使用鎖定。",
+      "port": "連接埠",
+      "publicAddress": "公開位址",
+      "publicAddressDescription": "網際網路連到此連接埠所用的 URL，使用 HTTPS 時需在前方加上代理。每個分享的 .torrent 都包含它，因此變更會等到 qui Tracker 上的分享結束後才生效。",
+      "trustedProxies": "受信任的代理",
+      "trustedProxiesDescription": "僅填寫代理的位址或 CIDR 範圍，每行一個，不要填寫用戶端所在的網路。qui 只從這些代理讀取轉送的用戶端位址。",
+      "trackerUrl": "Tracker 網址",
+      "trackerUrlDescription": "http、https 或 udp 通報 URL。",
+      "publicAddressPlaceholder": "https://share.example.com",
+      "trackerUrlPlaceholder": "udp://tracker.example.org:1337/announce"
+    },
+    "limits": {
+      "heading": "限制",
+      "maxActive": "進行中的分享",
+      "peersPerShare": "每個分享的節點數"
+    },
+    "defaults": {
+      "heading": "新分享的預設值",
+      "description": "分享對話框會以這些值開始。"
+    }
+  },
+  "dialog": {
+    "title": "與他人分享",
+    "description_other": "把 {{count}} 個種子的檔案交給用戶端不由 qui 管理的人。每個種子都有自己的分享。",
+    "cancel": "取消",
+    "create": "建立",
+    "done": "完成",
+    "warning": "您的朋友會看到您用戶端的 IP 位址。在分享結束前，任何擁有該 .torrent 的人都能下載。",
+    "refused": "未分享",
+    "refusedEntry": "{{name}}：{{reason}}",
+    "tracker": {
+      "label": "分享 Tracker",
+      "settings": "分享設定",
+      "own": "qui 的 Tracker，位於 {{address}}",
+      "outside": "外部 Tracker {{url}}"
+    },
+    "result": {
+      "description_other": "透過您自己的聊天工具，把 .torrent 和訊息傳給您的朋友。qui 不代管任何下載連結。",
+      "torrent": ".torrent",
+      "copyMessage": "複製訊息",
+      "copied": "訊息已複製",
+      "copyFailed": "複製訊息失敗"
+    }
+  },
+  "message": {
+    "intro": "我正在和你分享「{{name}}」（{{size}}）。用 BitTorrent 用戶端（例如 qBittorrent、Transmission 或 Deluge）開啟附加的 .torrent 檔案，就能直接從我這裡下載。它會在 {{date}} 失效。",
+    "endAtFirstDownload": "只要有一次下載完成，它也會失效，所以請讓用戶端保持開啟，直到下載完成。"
+  },
+  "tab": {
+    "description": "您交給用戶端不由 qui 管理的人的種子。",
+    "empty": "尚無分享。",
+    "endedStay": "已結束的分享會在清單中保留 30 天。",
+    "unknownInstance": "實例 {{id}}",
+    "endsAt": "{{date}} 結束",
+    "endedAt": "已於 {{date}} 結束",
+    "progress": "已下載 {{percent}}",
+    "progressLabel": "下載進度",
+    "sent": "已傳送 {{size}}",
+    "announced": "已通報的位址",
+    "connectedPeers": "已連線的節點",
+    "noPeers": "尚無",
+    "unlock": "解鎖",
+    "stop": "停止",
+    "remove": "移除",
+    "state": {
+      "active": "進行中",
+      "ending": "正在結束",
+      "ended": "已結束",
+      "unknown": "未知"
+    },
+    "endReason": {
+      "downloaded": "接收者已取得檔案。",
+      "expired": "分享已過期。",
+      "stopped": "已被使用者停止。",
+      "torrent_deleted": "種子已被刪除。",
+      "torrent_moved": "種子已被移動。",
+      "files_renamed": "種子的檔案已被重新命名。",
+      "share_torrent_gone": "分享種子已不在用戶端中。"
+    }
+  }
+}

@@ -1,0 +1,889 @@
+{
+  "routes": {
+    "/": {
+      "url": "/",
+      "source": "web/src/routes/index.tsx",
+      "search": {},
+      "steps": [
+        "Open / while signed in. qui opens /dashboard.",
+        "Open / while signed out. qui opens /login.",
+        "Open / on an install that has no user yet. qui opens /setup."
+      ]
+    },
+    "/_authenticated": {
+      "url": "",
+      "source": "web/src/routes/_authenticated.tsx",
+      "search": {},
+      "steps": [
+        "Open a page that needs a session, such as /dashboard. This route draws the sidebar and the top bar around the page.",
+        "Open such a page while signed out. qui opens /login.",
+        "Click a link in the sidebar to open its page: Dashboard, Statistics, Search, Cross-Seed, Automations, Transfers, Backups, RSS, Settings, Logs, Unified, or the name of an instance.",
+        "Click \"Change theme\" in the top bar to choose the mode and the theme.",
+        "Click \"Logout\" at the bottom of the sidebar. qui signs you out and opens /login.",
+        "In a window as narrow as a phone, use the bar at the bottom in place of the sidebar: Dashboard, Statistics, \"Clients\" for the instances, and \"Settings\" for the other pages and Logout."
+      ]
+    },
+    "/_authenticated/automations": {
+      "url": "/automations",
+      "source": "web/src/routes/_authenticated/automations.tsx",
+      "search": {
+        "tab": [
+          "orphan-scan",
+          "reannounce",
+          "workflows"
+        ]
+      },
+      "steps": [
+        "Click \"Automations\" in the sidebar, or open /automations. The page opens on Workflows.",
+        "Click \"Workflows\", \"Reannounce\", or \"Orphan Scan\". The address gets ?tab=workflows, ?tab=reannounce, or ?tab=orphan-scan.",
+        "On Workflows, click the name of an instance to show its rules and its activity. An instance with no rule shows \"Add your first rule\" and \"Import\"."
+      ]
+    },
+    "/_authenticated/backups": {
+      "url": "/backups",
+      "source": "web/src/routes/_authenticated/backups.tsx",
+      "search": {},
+      "steps": [
+        "Click \"Backups\" in the sidebar, or open /backups.",
+        "Choose an instance in \"Select an instance\". The page shows the backup settings of that instance, with the switch \"Enable backups\".",
+        "Click \"Back to Torrents\". qui opens /instances/<id>."
+      ]
+    },
+    "/_authenticated/cross-seed": {
+      "url": "/cross-seed",
+      "source": "web/src/routes/_authenticated/cross-seed.tsx",
+      "search": {
+        "tab": [
+          "after-injection",
+          "blocklist",
+          "categories",
+          "completion",
+          "directories",
+          "library",
+          "matching",
+          "rss",
+          "season-packs",
+          "webhook"
+        ]
+      },
+      "steps": [
+        "Click \"Cross-Seed\" in the sidebar, or open /cross-seed. The page opens on the section RSS.",
+        "Click a section in the list of sections. Each has its own address: RSS ?tab=rss, Webhook ?tab=webhook, Completion ?tab=completion, Library ?tab=library, Directories ?tab=directories, Season packs ?tab=season-packs, Matching rules ?tab=matching, Categories and tags ?tab=categories, After injection ?tab=after-injection, Blocklist ?tab=blocklist.",
+        "With no Torznab indexer, the page shows the notice \"Torznab indexers missing\". Click \"Manage indexers in Settings\" to open /settings?tab=indexers."
+      ]
+    },
+    "/_authenticated/dashboard": {
+      "url": "/dashboard",
+      "source": "web/src/routes/_authenticated/dashboard.tsx",
+      "search": {},
+      "steps": [
+        "Click \"Dashboard\" in the sidebar, or open /dashboard. qui opens this page after a sign-in.",
+        "Read the speeds, \"Storage\", \"Library\", and the \"Instances\" table.",
+        "Click the name of an instance in the \"Instances\" table. qui opens its torrents at /instances/<id>.",
+        "Click \"Add Torrent\", then \"Add to <instance>\". qui opens /instances/<id>?modal=add-torrent.",
+        "Click \"Add Instance\". qui opens /settings?tab=instances&modal=add-instance.",
+        "With no instance, the page says \"No instances configured\" and shows only \"Add Instance\"."
+      ]
+    },
+    "/_authenticated/instances": {
+      "url": "/instances",
+      "source": "web/src/routes/_authenticated/instances.tsx",
+      "search": {},
+      "steps": [
+        "Open /instances or /instances/<id>. This route draws nothing itself: the two torrent pages render inside it."
+      ]
+    },
+    "/_authenticated/instances/": {
+      "url": "/instances/",
+      "source": "web/src/routes/_authenticated/instances.index.tsx",
+      "search": {
+        "instance": "number",
+        "modal": [
+          "add-torrent",
+          "create-torrent",
+          "tasks"
+        ],
+        "tab": "string",
+        "torrent": "string"
+      },
+      "steps": [
+        "Click \"Unified\" under \"Instances\" in the sidebar, or open /instances. The page lists the torrents of all instances.",
+        "Tick a box under \"Status\", \"Categories\", or \"Tags\" in the \"Filters\" panel to filter the list.",
+        "Type in \"Search torrents...\" in the top bar. The address gets ?q=<text>.",
+        "Click a torrent. Its details open with the tabs General, Trackers, Peers, Content, and Cross-Seed.",
+        "Right-click a torrent for its actions, such as Pause, Force Recheck, Set Category, and Set Location.",
+        "Click \"Add torrent\" in the top bar. A menu lists the instances.",
+        "Open /instances?torrent=<hash>&instance=<id>&tab=peers to open the details of one torrent on one tab. qui removes the three parameters from the address after it opens them.",
+        "The values of modal open nothing on this page. Use /instances/<id>?modal=<value> for them."
+      ]
+    },
+    "/_authenticated/instances/$instanceId": {
+      "url": "/instances/$instanceId",
+      "source": "web/src/routes/_authenticated/instances.$instanceId.tsx",
+      "search": {
+        "modal": [
+          "add-torrent",
+          "create-torrent",
+          "tasks"
+        ],
+        "tab": "string",
+        "torrent": "string"
+      },
+      "steps": [
+        "Click the name of an instance under \"Instances\" in the sidebar, or open /instances/<id>.",
+        "Open /instances/<id> with an id that no instance has. qui opens /settings?tab=instances.",
+        "Tick a box under \"Status\", \"Categories\", or \"Tags\" in the \"Filters\" panel to filter the list.",
+        "Type in \"Search torrents...\" in the top bar. The address gets ?q=<text>.",
+        "Click a torrent. Its details open with the tabs General, Trackers, Peers, Content, and Cross-Seed.",
+        "Right-click a torrent for its actions, such as Pause, Force Recheck, Set Category, and Set Location.",
+        "Click \"Add torrent\" in the top bar, or open /instances/<id>?modal=add-torrent. The dialog \"Add New Torrent\" opens.",
+        "Click \"Create torrent\" in the top bar, or open /instances/<id>?modal=create-torrent. The dialog \"Create Torrent\" opens.",
+        "Click \"Torrent creation tasks\" in the top bar, or open /instances/<id>?modal=tasks. The dialog \"Torrent Creation Tasks\" opens.",
+        "Click \"Instance settings\" in the top bar. The dialog \"Instance Settings\" opens.",
+        "Open /instances/<id>?torrent=<hash>&tab=trackers to open the details of one torrent on one tab. qui removes the two parameters from the address after it opens them.",
+        "In a window as narrow as a phone, tap a torrent. Its details open as a sheet, and the address keeps ?torrent=<hash>."
+      ]
+    },
+    "/_authenticated/rss": {
+      "url": "/rss",
+      "source": "web/src/routes/_authenticated/rss.tsx",
+      "search": {
+        "feedPath": "string",
+        "ruleName": "string",
+        "tab": [
+          "feeds",
+          "rules"
+        ]
+      },
+      "steps": [
+        "Click \"RSS\" in the sidebar, or open /rss. The page opens on Feeds, for the first instance.",
+        "Click \"Feeds\" or \"Rules\". Rules has the address /rss?tab=rules.",
+        "On Feeds, click \"Add Feed\". The dialog \"Add RSS Feed\" asks for the feed URL and a folder."
+      ]
+    },
+    "/_authenticated/search": {
+      "url": "/search",
+      "source": "web/src/routes/_authenticated/search.tsx",
+      "search": {},
+      "steps": [
+        "Click \"Search\" in the sidebar, or open /search.",
+        "With no indexer, the page says \"No indexers yet\". Click \"Add indexers\" to open /settings?tab=indexers.",
+        "Type a title in \"Search Query\" and click \"Search\". The results show in a table.",
+        "Click \"Add\" on a result. A menu lists the instances."
+      ]
+    },
+    "/_authenticated/settings": {
+      "url": "/settings",
+      "source": "web/src/routes/_authenticated/settings.tsx",
+      "search": {
+        "checkout": [
+          "success"
+        ],
+        "modal": [
+          "add-instance",
+          "install-update",
+          "theme-menu"
+        ],
+        "payment_id": "string",
+        "status": "string",
+        "tab": [
+          "api",
+          "application",
+          "client-api",
+          "datetime",
+          "display-profiles",
+          "external-programs",
+          "indexers",
+          "instances",
+          "integrations",
+          "logs",
+          "notifications",
+          "search-cache",
+          "security",
+          "shares",
+          "statistics",
+          "themes",
+          "trackers"
+        ]
+      },
+      "steps": [
+        "Click \"Settings\" in the sidebar, or open /settings. The page opens on the section Application.",
+        "Click a section in the list of sections. Each has its own address: Application ?tab=application, Time & language ?tab=datetime, Display profiles ?tab=display-profiles, Statistics ?tab=statistics, Tracker customizations ?tab=trackers, Themes ?tab=themes, Instances ?tab=instances, Indexers ?tab=indexers, Search cache ?tab=search-cache, Integrations ?tab=integrations, Notifications ?tab=notifications, External programs ?tab=external-programs, Shares ?tab=shares, Client proxy ?tab=client-api, API keys ?tab=api, Security ?tab=security, Logs ?tab=logs.",
+        "Open /settings?tab=instances&modal=add-instance. The dialog \"Add instance\" opens.",
+        "Open /settings?tab=themes&modal=theme-menu. The dialog \"Choose menu themes\" opens, and qui removes modal from the address.",
+        "On Instances, each instance has the switch \"Enabled\" and the buttons \"Edit\", \"Test connection\", and \"Delete\"."
+      ]
+    },
+    "/_authenticated/statistics": {
+      "url": "/statistics",
+      "source": "web/src/routes/_authenticated/statistics.tsx",
+      "search": {
+        "period": [
+          "1y",
+          "24h",
+          "30d",
+          "7d",
+          "all"
+        ]
+      },
+      "steps": [
+        "Click \"Statistics\" in the sidebar, or open /statistics.",
+        "Click \"24 hours\", \"7 days\", \"30 days\", \"Year\", or \"All time\" to set the period. qui saves the choice, and the address stays /statistics.",
+        "Open /statistics?period=7d to open on one period. qui saves the period and removes it from the address.",
+        "Under \"Group by\", click Tracker, Category, Release group, Resolution, Source, or Content type to group the table.",
+        "Click a name in the first column of that table. Its detail opens under the row."
+      ]
+    },
+    "/_authenticated/transfers": {
+      "url": "/transfers",
+      "source": "web/src/routes/_authenticated/transfers.tsx",
+      "search": {
+        "tab": [
+          "shares",
+          "transfers"
+        ]
+      },
+      "steps": [
+        "Click \"Transfers\" in the sidebar, or open /transfers. The page opens on Transfers.",
+        "Click \"Transfers\" or \"Shares\". The address gets ?tab=transfers or ?tab=shares."
+      ]
+    },
+    "/add": {
+      "url": "/add",
+      "source": "web/src/routes/add.tsx",
+      "search": {
+        "expectingFiles": [
+          "false",
+          "true"
+        ],
+        "instance": "number",
+        "magnet": "string",
+        "url": "string"
+      },
+      "steps": [
+        "Open /add?magnet=<magnet link, URL-encoded>.",
+        "With more than one instance, click an instance under \"Select Instance\". The dialog \"Add New Torrent\" opens with the magnet link filled in.",
+        "Add &instance=<id> to the address to skip the choice of instance.",
+        "Click \"Cancel\" under \"Select Instance\". qui opens /dashboard.",
+        "Open /add with no magnet link, or with one that is not valid. qui opens /dashboard."
+      ]
+    },
+    "/login": {
+      "url": "/login",
+      "source": "web/src/routes/login.tsx",
+      "search": {},
+      "steps": [
+        "Open /login while signed out, or click \"Logout\" at the bottom of the sidebar.",
+        "Type the username and the password.",
+        "Click \"Sign in\". qui opens /dashboard.",
+        "Open /login while signed in. qui opens /dashboard.",
+        "Open /login on an install that has no user yet. qui opens /setup."
+      ]
+    },
+    "/setup": {
+      "url": "/setup",
+      "source": "web/src/routes/setup.tsx",
+      "search": {},
+      "steps": [
+        "Open any address on an install that has no user yet. qui opens /setup.",
+        "Type a username, a password, and the password again under \"Confirm Password\".",
+        "Click \"Create Account\". qui signs you in and opens /dashboard.",
+        "Open /setup while signed in. qui opens /dashboard."
+      ]
+    },
+    "__root__": {
+      "url": "/",
+      "source": "web/src/routes/__root.tsx",
+      "search": {},
+      "steps": [
+        "Open any page. This route draws nothing itself: each page of qui renders inside it.",
+        "Open an address that no route has, such as /no-such-page. qui shows the page \"Oops! Lost in the swarm?\".",
+        "Click \"Return to dashboard\" on that page. Signed in, qui opens /dashboard.",
+        "Open /index.html. Signed in, qui opens /dashboard in its place."
+      ]
+    }
+  },
+  "dialogs": {
+    "web/src/components/command-palette/CommandPaletteContent.tsx#CommandPaletteContent": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/cross-seed/DirScanTab.tsx#DeleteDirectoryDialog": {
+      "routes": [
+        "/_authenticated/cross-seed"
+      ],
+      "steps": []
+    },
+    "web/src/components/cross-seed/DirScanTab.tsx#DirectoryDetails": {
+      "routes": [
+        "/_authenticated/cross-seed"
+      ],
+      "steps": []
+    },
+    "web/src/components/cross-seed/DirScanTab.tsx#DirectoryDialog": {
+      "routes": [
+        "/_authenticated/cross-seed"
+      ],
+      "steps": []
+    },
+    "web/src/components/cross-seed/DirScanTab.tsx#SettingsDialog": {
+      "routes": [
+        "/_authenticated/cross-seed"
+      ],
+      "steps": []
+    },
+    "web/src/components/cross-seed/RouteProtectionConfirm.tsx#RouteProtectionConfirmDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/cross-seed",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId",
+        "/_authenticated/rss",
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/cross-seed/RunFooter.tsx#RunFooter": {
+      "routes": [
+        "/_authenticated/cross-seed"
+      ],
+      "steps": []
+    },
+    "web/src/components/dashboard/InstanceList.tsx#InstanceSheet": {
+      "routes": [
+        "/_authenticated/dashboard"
+      ],
+      "steps": []
+    },
+    "web/src/components/display-profiles/DisplayProfileSheet.tsx#DisplayProfileSheet": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/display-profiles/NewDisplayProfileDialog.tsx#NewDisplayProfileDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId",
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/AutomationActivityRunDialog.tsx#AutomationActivityRunDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/InstancePreferencesDialog.tsx#InstancePreferencesDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId",
+        "/_authenticated/rss",
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/InstanceSSHPanel.tsx#SSHCredentialsForm": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId",
+        "/_authenticated/rss",
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/OrphanScanPreviewDialog.tsx#OrphanScanPreviewDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/OrphanScanSettingsDialog.tsx#OrphanScanSettingsDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/ReannounceEnableWarning.tsx#ReannounceEnableWarningDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/ReannounceSettingsDialog.tsx#ReannounceSettingsDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/RunWorkflowNowDialog.tsx#RunWorkflowNowDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/WorkflowDialog.tsx#WorkflowDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/WorkflowJsonEditDialog.tsx#WorkflowJsonEditDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/WorkflowPreviewDialog.tsx#WorkflowPreviewDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/instances/preferences/WorkflowsOverview.tsx#WorkflowsOverview": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": []
+    },
+    "web/src/components/kit/ConfirmDialog.tsx#ConfirmDialog": {
+      "routes": [
+        "/_authenticated/search",
+        "/_authenticated/settings",
+        "/_authenticated/transfers"
+      ],
+      "steps": []
+    },
+    "web/src/components/kit/Editor.tsx#Editor": {
+      "routes": [
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/layout/Header.tsx#Header": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/layout/MobileFooterNav.tsx#MobileFooterNav": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/problem-reports/ProblemReportDialog.tsx#ProblemReportDialogRoot": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/search/ChecklistPicker.tsx#ChecklistPicker": {
+      "routes": [
+        "/_authenticated/search"
+      ],
+      "steps": []
+    },
+    "web/src/components/settings/ApiKeysManager.tsx#ApiKeysManager": {
+      "routes": [
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/settings/ApiKeysManager.tsx#TemplatePicker": {
+      "routes": [
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/settings/InstallUpdateButton.tsx#InstallUpdateButton": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/settings/RestartButton.tsx#RestartButton": {
+      "routes": [
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/settings/RestartOverlay.tsx#RestartOverlay": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/shares/ShareDialog.tsx#ShareDialog": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/support/SupportDialog.tsx#SupportDialog": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/themes/CustomThemeEditor.tsx#CustomThemeEditor": {
+      "routes": [
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/themes/ThemeMenuDialog.tsx#ThemeMenuDialog": {
+      "routes": [
+        "/_authenticated/settings"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/AddTorrentDialog.tsx#AddTorrentDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId",
+        "/_authenticated/rss",
+        "/_authenticated/search",
+        "/add"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/CrossSeedDialog.tsx#CrossSeedDialogComponent": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/DeleteTorrentDialog.tsx#DeleteTorrentDialog": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/FilterViewsSection.tsx#FilterViewsSection": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/ManualCrossSeedDialog.tsx#ManualCrossSeedDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId",
+        "/_authenticated/rss",
+        "/_authenticated/search",
+        "/add"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TagCategoryManagement.tsx#CreateCategoryDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TagCategoryManagement.tsx#CreateTagDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TagCategoryManagement.tsx#DeleteCategoryDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TagCategoryManagement.tsx#DeleteEmptyCategoriesDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TagCategoryManagement.tsx#DeleteTagDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TagCategoryManagement.tsx#DeleteUnusedTagsDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TagCategoryManagement.tsx#EditCategoryDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentCardsMobile.tsx#TorrentCardsMobile": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentCreatorDialog.tsx#TorrentCreatorDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDetailsPanel.tsx#TorrentDetailsPanel": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#CreateAndAssignCategoryDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#EditTrackerDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#LimitSheet": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#LocationWarningDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#RenameTorrentDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#RenameTorrentFileDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#RenameTorrentFolderDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#SetCategoryDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#SetCommentDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#SetLocationDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#ShareLimitDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#SpeedLimitsDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#TagEditorDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDialogs.tsx#TmmConfirmDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentDiscReportDialog.tsx#TorrentDiscReportDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/TorrentFileMediaInfoDialog.tsx#TorrentFileMediaInfoDialog": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/torrents/bulk-actions/BulkActionProvider.tsx#BulkActionProvider": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/transfers/TransferDetailsDialog.tsx#TransferDetailsDialog": {
+      "routes": [
+        "/_authenticated/transfers"
+      ],
+      "steps": []
+    },
+    "web/src/components/transfers/TransferDialog.tsx#TransferDialog": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/ui/SystemNotice.tsx#SystemNoticeDialog": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/components/ui/command.tsx#CommandDialog": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    },
+    "web/src/components/ui/responsive-command-popover.tsx#ResponsiveCommandPopover": {
+      "routes": [
+        "/_authenticated",
+        "/_authenticated/automations",
+        "/_authenticated/cross-seed",
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId",
+        "/_authenticated/rss",
+        "/_authenticated/search",
+        "/add"
+      ],
+      "steps": []
+    },
+    "web/src/layouts/AppLayout.tsx#AppLayoutContent": {
+      "routes": [
+        "/_authenticated"
+      ],
+      "steps": []
+    },
+    "web/src/pages/InstanceBackups.tsx#InstanceBackups": {
+      "routes": [
+        "/_authenticated/backups"
+      ],
+      "steps": []
+    },
+    "web/src/pages/RSSPage.tsx#AddFeedDialog": {
+      "routes": [
+        "/_authenticated/rss"
+      ],
+      "steps": []
+    },
+    "web/src/pages/RSSPage.tsx#AddFolderDialog": {
+      "routes": [
+        "/_authenticated/rss"
+      ],
+      "steps": []
+    },
+    "web/src/pages/RSSPage.tsx#AddRuleDialog": {
+      "routes": [
+        "/_authenticated/rss"
+      ],
+      "steps": []
+    },
+    "web/src/pages/RSSPage.tsx#EditRuleDialog": {
+      "routes": [
+        "/_authenticated/rss"
+      ],
+      "steps": []
+    },
+    "web/src/pages/RSSPage.tsx#FeedsTab": {
+      "routes": [
+        "/_authenticated/rss"
+      ],
+      "steps": []
+    },
+    "web/src/pages/RSSPage.tsx#RulePreviewSheet": {
+      "routes": [
+        "/_authenticated/rss"
+      ],
+      "steps": []
+    },
+    "web/src/pages/Torrents.tsx#Torrents": {
+      "routes": [
+        "/_authenticated/instances/",
+        "/_authenticated/instances/$instanceId"
+      ],
+      "steps": []
+    }
+  }
+}

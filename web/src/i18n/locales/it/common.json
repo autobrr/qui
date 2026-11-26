@@ -1,0 +1,577 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "statistics": "Statistiche",
+    "search": "Ricerca",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automazioni",
+    "transfers": "Trasferimenti",
+    "transfersQueued_one": "{{count}} elemento in corso o in attesa",
+    "transfersQueued_other": "{{count}} elementi in corso o in attesa",
+    "backups": "Backup",
+    "rss": "RSS",
+    "settings": "Impostazioni",
+    "logs": "Log",
+    "instances": "Istanze",
+    "generalSettings": "Impostazioni generali",
+    "manageInstances": "Gestisci istanze",
+    "appearance": "Aspetto",
+    "instanceBackups": "Backup delle istanze",
+    "backToSite": "Torna a getqui.com",
+    "docs": "Documentazione"
+  },
+  "sidebar": {
+    "instances": "Istanze",
+    "allInstancesDisabled": "Tutte le istanze sono disabilitate",
+    "noInstancesConfigured": "Nessuna istanza configurata",
+    "logout": "Esci",
+    "version": "Versione {{version}}",
+    "language": "Lingua",
+    "viewOnGitHub": "Visualizza su GitHub",
+    "rssRunning": "RSS cross-seed in esecuzione",
+    "rssEnabled": "RSS cross-seed abilitato",
+    "scanRunning": "Scansione in esecuzione",
+    "collapseToIcons": "Riduci a icone",
+    "expandSidebar": "Espandi barra laterale",
+    "hideSidebar": "Nascondi barra laterale",
+    "showSidebar": "Mostra barra laterale",
+    "keepOpen": "Mantieni aperta la barra laterale",
+    "menu": "Menu"
+  },
+  "problemReports": {
+    "reportProblem": "Segnala un problema",
+    "subtitle": "La tua segnalazione va ai maintainer di qui.",
+    "textLabel": "La tua segnalazione",
+    "placeholders": {
+      "menu": "Cosa è successo e cosa ti aspettavi?",
+      "notice": "Cosa stavi facendo quando è successo?",
+      "search": "Quale corrispondenza ti aspettavi e su quale indexer?"
+    },
+    "sentWithIt": "Incluso nella segnalazione",
+    "summary_one": "qui {{version}} e {{count}} istanza",
+    "summary_other": "qui {{version}} e {{count}} istanze",
+    "details": "Dettagli",
+    "view": "Visualizza",
+    "whatGetsSent": "Cosa viene inviato",
+    "whatGetsSentNote": "qui compila questi dati. Nulla lascia qui finché non invii la segnalazione.",
+    "loadingFacts": "Caricamento dei dettagli...",
+    "factsFailed": "Impossibile caricare i dettagli: {{message}}",
+    "facts": {
+      "version": "Versione",
+      "system": "Sistema",
+      "appContainer": "In un container",
+      "database": "Database",
+      "logLevel": "Livello di log",
+      "started": "Avviato",
+      "experimentalFeatures": "Sperimentali",
+      "instance": "Istanza {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "sconosciuta",
+      "states": {
+        "connected": "Connesso",
+        "offline": "Offline",
+        "disabled": "Disabilitato"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrent",
+      "notices": "Avvisi di sistema",
+      "openCount_one": "{{count}} aperto",
+      "openCount_other": "{{count}} aperti",
+      "page": "Pagina",
+      "browser": "Browser",
+      "screen": "{{width}} × {{height}}, rapporto pixel {{ratio}}",
+      "failedRequests": "Richieste non riuscite",
+      "failedCount_one": "{{count}} in questa sessione",
+      "failedCount_other": "{{count}} in questa sessione",
+      "noAnswer": "nessuna risposta",
+      "none": "Nessuno"
+    },
+    "logs": {
+      "title": "Log",
+      "scopeLabel": "Righe di log da includere",
+      "scopes": {
+        "warnings": "Avvisi ed errori",
+        "all": "Tutto ciò che è recente",
+        "none": "Escludi"
+      },
+      "notes": {
+        "warnings_one": "{{count}} avviso o errore recente. qui rimuove chiavi e segreti.",
+        "warnings_other": "{{count}} avvisi ed errori recenti. qui rimuove chiavi e segreti.",
+        "all_one": "{{count}} riga recente al livello di log {{level}}. qui rimuove chiavi e segreti.",
+        "all_other": "{{count}} righe recenti al livello di log {{level}}. qui rimuove chiavi e segreti.",
+        "none": "Nessuna riga di log accompagna la tua segnalazione."
+      },
+      "empty": "Nessuna riga di log.",
+      "debugMissing": "Il livello di log è {{level}}, quindi qui non registra le righe di debug. Per includerle, imposta Livello di log su DEBUG in Impostazioni > Log, riproduci il problema e invia di nuovo."
+    },
+    "privacy": {
+      "anonymous": "Anonimo: nessun nome, nessun account. brrbin non conserva alcun indirizzo IP.",
+      "signedIn": "I maintainer vedono il tuo nome {{provider}} ({{name}}) e possono contattarti.",
+      "link": "Informativa sulla privacy"
+    },
+    "sender": {
+      "label": "Invia come",
+      "anonymous": "Anonimo",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Accedi con {{provider}}",
+      "signOut": "Esci",
+      "waiting": "In attesa di {{provider}}",
+      "errors": {
+        "discordNotMember": "Il tuo account Discord non è nel server Discord di autobrr. Unisciti al server e accedi di nuovo, accedi con GitHub oppure invia in modo anonimo.",
+        "refused": "Accesso rifiutato: {{reason}}",
+        "expired": "Accesso scaduto. Accedi di nuovo.",
+        "popupBlocked": "Il tuo browser ha bloccato la finestra di accesso. Consenti i pop-up per qui, poi accedi di nuovo.",
+        "unavailable": "brrbin non può farti accedere in questo momento. Riprova più tardi.",
+        "startFailed": "Impossibile avviare l'accesso: {{message}}",
+        "signOutFailed": "Impossibile uscire: {{message}}"
+      }
+    },
+    "newerRelease": "Stai usando {{running}}. È disponibile <release>{{newer}}</release>.",
+    "send": "Invia",
+    "sendAnyway": "Invia comunque",
+    "sending": "Invio in corso",
+    "sent": "Segnalazione inviata",
+    "errors": {
+      "anonymousFull": {
+        "title": "Le segnalazioni anonime di oggi sono esaurite",
+        "body": "Accedi per inviarla ora, o riprova domani. Il tuo testo resta qui come bozza."
+      },
+      "signInRequired": "Accedi per inviare questa segnalazione. Il tuo testo resta qui come bozza.",
+      "accountLimit": "Hai inviato molte segnalazioni nell'ultima ora. Riprova più tardi.",
+      "reporterFull": "Le tue segnalazioni occupano tutto lo spazio che brrbin dà a una persona. Elimina una vecchia segnalazione in Segnalazioni inviate, poi invia di nuovo.",
+      "tooLarge": "La segnalazione è troppo grande. Scegli meno righe di log o un'immagine più piccola.",
+      "tokenRejected": "Il tuo accesso è scaduto. Accedi di nuovo, poi invia.",
+      "unavailable": "brrbin non può ricevere segnalazioni in questo momento. Riprova più tardi.",
+      "sendFailed": "Impossibile inviare la segnalazione: {{message}}"
+    },
+    "sentReports": {
+      "title": "Segnalazioni inviate",
+      "subtitle": "qui controlla lo stato delle segnalazioni ogni volta che apri questo elenco.",
+      "changed_one": "{{count}} stato cambiato",
+      "changed_other": "{{count}} stati cambiati",
+      "status": {
+        "received": "Ricevuta",
+        "issue": "Diventata issue #{{number}}",
+        "issueClosed": "Issue #{{number}} chiusa",
+        "closed": "Chiusa: {{reason}}",
+        "closedNoReason": "Chiusa",
+        "notSent": "Non inviato"
+      },
+      "delete": "Elimina segnalazione",
+      "deleteUnavailable": "brrbin non può eliminare segnalazioni in questo momento. Riprova più tardi.",
+      "deleteFailed": "Impossibile eliminare la segnalazione: {{message}}",
+      "empty": "Nessuna segnalazione inviata.",
+      "back": "Torna alla segnalazione"
+    }
+  },
+  "header": {
+    "currentInstance": "Istanza attuale: {{name}}. Clicca per cambiare istanza.",
+    "connected": "Connesso",
+    "disconnected": "Disconnesso",
+    "showFilters": "Mostra filtri",
+    "hideFilters": "Nascondi filtri",
+    "addTorrent": "Aggiungi torrent",
+    "createTorrent": "Crea torrent",
+    "torrentCreationTasks": "Attività di creazione torrent",
+    "instanceSettings": "Impostazioni istanza",
+    "addToInstance": "Aggiungi all'istanza",
+    "createForInstance": "Crea per l'istanza",
+    "tasksForInstance": "Attività per l'istanza",
+    "settingsForInstance": "Impostazioni per l'istanza",
+    "clearSearch": "Svuota ricerca",
+    "searchTorrents": "Cerca torrent...",
+    "globPattern": "Pattern glob...",
+    "smartSearchTitle": "Funzionalità di ricerca intelligente:",
+    "smartSearchGlob": "Pattern glob:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "Corrispondenza approssimativa:",
+    "smartSearchFuzzyExample": "\"breaking bad\" trova \"Breaking.Bad\"",
+    "smartSearchDots": "Gestisce punti, trattini bassi e parentesi quadre",
+    "smartSearchFields": "Cerca nel nome, nella categoria e nei tag",
+    "smartSearchEnter": "Premi Invio per la ricerca istantanea",
+    "smartSearchAuto": "Ricerca automatica dopo una pausa di 500ms",
+    "smartSearchShortcut": "Premi {{shortcutKey}} per andare alla ricerca",
+    "smartSearchPalette": "Premi {{shortcutKey}} per aprire la tavolozza dei comandi",
+    "torrentCreationTasksTitle": "Attività di creazione torrent",
+    "allScope": "TUTTI",
+    "unified": "Unificato"
+  },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
+  },
+  "unifiedScope": {
+    "unified": "Unificato",
+    "collapseScope": "Comprimi ambito unificato",
+    "expandScope": "Espandi ambito unificato",
+    "allActive": "Tutti gli attivi ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Tavolozza dei comandi",
+    "placeholder": "Cerca pagine, impostazioni e torrent...",
+    "placeholderIn": "Cerca in {{name}}...",
+    "groups": {
+      "pages": "Pagine",
+      "actions": "Azioni"
+    },
+    "current": "Attuale",
+    "statisticsNote": "Cronologia di upload e download delle tue istanze",
+    "searchTorrentsFor": "Cerca \"{{query}}\" nei torrent",
+    "torrentMatches_one": "{{count}} torrent corrisponde",
+    "torrentMatches_other": "{{count}} torrent corrispondono",
+    "noTorrentMatches": "Nessun torrent corrisponde",
+    "searching": "Ricerca in corso...",
+    "searchFailed": "La ricerca dei torrent non è riuscita",
+    "listFiltersApply": "Si applicano i filtri dell'elenco",
+    "noMatchIn": "Nessun risultato in {{name}}",
+    "moreOf": "Altre opzioni per {{name}}",
+    "hints": {
+      "navigate": "Naviga",
+      "open": "Apri",
+      "more": "Altro",
+      "searchTorrents": "Cerca torrent",
+      "back": "Indietro"
+    }
+  },
+  "mobileNav": {
+    "dashboard": "Dashboard",
+    "statistics": "Statistiche",
+    "clients": "Client",
+    "settings": "Impostazioni",
+    "qbittorrentClients": "Client qBittorrent",
+    "instances": "Istanze",
+    "loading": "Caricamento...",
+    "noActiveClients": "Nessun client attivo",
+    "updateAvailable": "Aggiornamento disponibile",
+    "updateVersion": "Versione {{version}}",
+    "rssRunning": "RSS cross-seed in esecuzione",
+    "rssEnabled": "RSS cross-seed abilitato",
+    "scanRunning": "Scansione in esecuzione",
+    "logout": "Esci",
+    "version": "Versione {{version}}",
+    "viewOnGitHub": "Visualizza su GitHub"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Annulla",
+    "close": "Chiudi",
+    "create": "Crea",
+    "scrollToTop": "Scorri in alto",
+    "search": "Cerca",
+    "select": "Seleziona",
+    "copyValue": "Copia {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Ho capito"
+  },
+  "placeholders": {
+    "search": "Cerca...",
+    "selectItems": "Seleziona elementi..."
+  },
+  "feedback": {
+    "noResultsFound": "Nessun risultato trovato.",
+    "copied": "{{label}} copiato negli appunti",
+    "copyFailed": "Impossibile copiare negli appunti"
+  },
+  "errors": {
+    "unknown": "Errore sconosciuto",
+    "httpStatus": "Errore HTTP! Stato: {{status}}",
+    "httpStatusHtml": "Errore HTTP! Stato: {{status}} (il server ha restituito una pagina di errore HTML)",
+    "ssoHtmlResponse": "L'API ha restituito una risposta HTML invece di JSON. Se sei dietro un proxy SSO (Cloudflare Access, Pangolin, ecc.), prova ad aggiornare la pagina o a riaprire l'URL in una nuova scheda.",
+    "torrentFileDownloadFailed": "Impossibile scaricare il file torrent: {{status}}",
+    "altSpeedToggle": "Impossibile modificare i limiti di velocità alternativi: {{message}}",
+    "altSpeedToggleHidden": "Impossibile modificare i limiti di velocità alternativi. La modalità incognito nasconde la causa."
+  },
+  "status": {
+    "disabled": "Disabilitato",
+    "notContacted": "Non contattato",
+    "working": "Funzionante",
+    "updating": "Aggiornamento in corso",
+    "error": "Errore",
+    "unknown": "Sconosciuto",
+    "unavailable": "Non disponibile",
+    "trackerError": "Errore del tracker",
+    "unreachable": "Irraggiungibile"
+  },
+  "contentTypeLabels": {
+    "movie": "Film",
+    "tv": "Serie TV",
+    "music": "Musica",
+    "audiobook": "Audiolibro",
+    "book": "Libro",
+    "comic": "Fumetto",
+    "game": "Gioco",
+    "app": "App",
+    "adult": "Adulti",
+    "unknown": "Sconosciuto"
+  },
+  "themeToggle": {
+    "changeTheme": "Cambia tema",
+    "appearance": "Aspetto",
+    "mode": "Modalità",
+    "light": "Chiaro",
+    "dark": "Scuro",
+    "system": "Sistema",
+    "theme": "Tema",
+    "switchedToMode": "Passato alla modalità {{mode}}",
+    "switchedToTheme": "Passato al tema {{theme}}",
+    "switchedToThemeVariation": "Passato al tema {{theme}} ({{variation}})",
+    "premiumThemeError": "Questo tema richiede una licenza. Apri Impostazioni → Temi per attivare una licenza."
+  },
+  "updateBanner": {
+    "updateAvailable": "Aggiornamento disponibile",
+    "versionAvailable": "La versione {{version}} è ora disponibile",
+    "dismiss": "Ignora"
+  },
+  "systemNotice": {
+    "needsAttention": "Richiede attenzione",
+    "since": "Da {{time}}, {{age}}",
+    "causeLabel": "Causa",
+    "actionFallback": "Vai alla soluzione",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Registrazione interrotta",
+        "title": "Registrazione interrotta",
+        "effect": "qui non può scrivere lo storico dei trasferimenti. Riprova alla prossima scrittura.",
+        "fix": "Verifica che il disco abbia spazio libero e che qui possa scrivere il file del database.",
+        "menuFix": "Libera spazio su disco per il database"
+      },
+      "shrink_failed": {
+        "short": "Riduzione non riuscita",
+        "title": "Riduzione non riuscita",
+        "effect": "qui non è riuscito a ridurre il file del database. Il database non è cambiato e qui funziona normalmente.",
+        "fix": "Il log di qui contiene i dettagli.",
+        "menuFix": "Leggi il log di qui",
+        "reasons": {
+          "disk_full": {
+            "fix": "Il disco ha troppo poco spazio libero. Una riduzione richiede fino a due volte la dimensione del file del database. Libera spazio sul disco, poi riprova.",
+            "menuFix": "Libera spazio, poi riprova"
+          },
+          "locked": {
+            "fix": "Un altro programma teneva aperto il file del database. Chiudi quel programma, ad esempio uno strumento di backup o un visualizzatore di database, poi riprova.",
+            "menuFix": "Chiudi l'altro programma, poi riprova"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Disco quasi pieno",
+        "title": "Disco quasi pieno",
+        "effect": "Il disco del database di qui ha poco spazio libero. Quando il disco è pieno, ogni scrittura di qui fallisce.",
+        "fix": "Libera spazio sul disco, riduci «Mantieni il dettaglio giornaliero per» o elimina la cronologia più vecchia nelle impostazioni Statistiche.",
+        "menuFix": "Libera spazio su disco per il database",
+        "action": "Apri le impostazioni Statistiche"
+      },
+      "redacted_key_rejected": {
+        "short": "Chiave Redacted rifiutata",
+        "title": "Redacted ha rifiutato la chiave API",
+        "effect": "Redacted ha rifiutato l'ultima ricerca. qui lo interroga di nuovo alla prossima ricerca.",
+        "fix": "Se la chiave è errata, crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Redacted e incollala nelle impostazioni Gazelle (OPS/RED) di qui. Se Redacted ha bannato l'IP di qui, una nuova chiave non basta: contatta lo staff di Redacted.",
+        "menuFix": "Incolla una nuova chiave nelle impostazioni",
+        "action": "Apri le impostazioni Gazelle (OPS/RED)"
+      },
+      "orpheus_key_rejected": {
+        "short": "Chiave Orpheus rifiutata",
+        "title": "Orpheus ha rifiutato la chiave API",
+        "effect": "Orpheus ha rifiutato l'ultima ricerca. qui lo interroga di nuovo alla prossima ricerca.",
+        "fix": "Se la chiave è errata, crea una chiave API con il permesso \"Torrents\" nelle impostazioni del tuo profilo Orpheus e incollala nelle impostazioni Gazelle (OPS/RED) di qui. Se Orpheus ha bannato l'IP di qui, una nuova chiave non basta: contatta lo staff di Orpheus.",
+        "menuFix": "Incolla una nuova chiave nelle impostazioni",
+        "action": "Apri le impostazioni Gazelle (OPS/RED)"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Pianificazione della scansione bloccata",
+        "title": "La pianificazione della scansione della libreria non può partire",
+        "effect": "qui non può avviare l'esecuzione pianificata della scansione della libreria. Riprova ogni ora.",
+        "fix": "Controlla le impostazioni della scansione della libreria. qui riprova ogni ora.",
+        "menuFix": "Controlla le impostazioni della scansione",
+        "action": "Apri le impostazioni della scansione della libreria",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab è disattivato nelle impostazioni della scansione della libreria, e nessuna chiave API RED o OPS è impostata. Attiva Torznab, oppure aggiungi una chiave RED o OPS nelle impostazioni Gazelle (OPS/RED). qui riprova ogni ora.",
+            "menuFix": "Attiva Torznab, o aggiungi una chiave RED o OPS"
+          },
+          "no_indexer": {
+            "fix": "Nessun indexer è attivo. Attiva un indexer Torznab, oppure aggiungi una chiave RED o OPS nelle impostazioni Gazelle (OPS/RED). qui riprova ogni ora.",
+            "menuFix": "Attiva un indexer"
+          },
+          "instance_missing": {
+            "fix": "L'istanza nelle impostazioni salvate della scansione della libreria non esiste. Scegli un'istanza nelle impostazioni della scansione della libreria, poi salva. qui riprova ogni ora.",
+            "menuFix": "Scegli un'istanza, poi salva"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "Riprova",
+      "dismiss": "Ignora",
+      "openLog": "Apri il log"
+    },
+    "unknown": {
+      "short": "Avviso di sistema",
+      "title": "Avviso di sistema",
+      "effect": "qui ha trovato un errore che richiede un tuo intervento.",
+      "fix": "Il log di qui contiene i dettagli.",
+      "menuFix": "Leggi il log di qui"
+    }
+  },
+  "databaseShrink": {
+    "done": "File del database ridotto da {{before}} a {{after}}",
+    "nextStart": "La riduzione verrà eseguita al prossimo avvio di qui",
+    "failed": "Impossibile richiedere la riduzione"
+  },
+  "pwaUpdate": {
+    "reload": "Ricarica",
+    "waitingDescription": "Ricarica per applicare l'ultima versione di qui.",
+    "activatedTitle": "qui è stato aggiornato",
+    "activatedDescription": "Ricarica quando preferisci per completare l'installazione dell'ultima versione."
+  },
+  "notFound": {
+    "title": "Ops! Persi nello sciame?",
+    "subtitle": "Sembra che ti sia avventurato nell'ignoto.",
+    "bugReport": "Se pensi che si tratti di un bug piuttosto che di un collegamento mancante,",
+    "reportTo": "non esitare a segnalarlo al nostro",
+    "githubRepository": "repository GitHub",
+    "getBackOnTrack": "Altrimenti, lascia che ti rimettiamo sulla giusta strada!",
+    "returnToDashboard": "Torna alla dashboard"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Registra qui come gestore dei link magnet",
+    "register": "Registra",
+    "dismiss": "Ignora",
+    "registrationRequested": "Registrazione del gestore magnet richiesta",
+    "registrationFailed": "Registrazione del gestore magnet non riuscita",
+    "guidance": {
+      "standalone": "Apri qui in una normale scheda del browser per effettuare la registrazione (l'invito può comparire nella barra degli indirizzi, che le PWA non mostrano).",
+      "chromium": "Chrome spesso lo mostra come una piccola icona di gestore di protocollo nella barra degli indirizzi; se non appare nulla, abilita i gestori di protocollo in chrome://settings/handlers.",
+      "default": "Se il browser te lo chiede, accetta per completare la registrazione."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "Maggiori informazioni"
+  },
+  "numberInput": {
+    "unlimited": "Illimitato"
+  },
+  "dateTime": {
+    "na": "N/D",
+    "justNow": "Proprio ora",
+    "today": "Oggi",
+    "yesterday": "Ieri",
+    "past": "{{value}} fa",
+    "future": "tra {{value}}",
+    "units": {
+      "second_one": "{{count}} secondo",
+      "second_other": "{{count}} secondi",
+      "minute_one": "{{count}} minuto",
+      "minute_other": "{{count}} minuti",
+      "hour_one": "{{count}} ora",
+      "hour_other": "{{count}} ore",
+      "day_one": "{{count}} giorno",
+      "day_other": "{{count}} giorni",
+      "week_one": "{{count}} settimana",
+      "week_other": "{{count}} settimane",
+      "month_one": "{{count}} mese",
+      "month_other": "{{count}} mesi",
+      "year_one": "{{count}} anno",
+      "year_other": "{{count}} anni"
+    }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "bit",
+      "Kb": "kbit",
+      "Mb": "Mbit",
+      "Gb": "Gbit",
+      "Tb": "Tbit"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
+  "support": {
+    "title": "Sostieni qui",
+    "description": "I modi per sostenere qui e i loro prezzi.",
+    "heading": "Aiuta a mantenere qui",
+    "intro": "qui è gratuito e funziona allo stesso modo, che tu paghi o no. Il sostegno paga il tempo e gli strumenti che servono a qui.",
+    "licensed": "Grazie per la tua licenza dei temi.",
+    "releases_one": "qui ha pubblicato {{count}} versione negli ultimi 12 mesi.",
+    "releases_other": "qui ha pubblicato {{count}} versioni negli ultimi 12 mesi.",
+    "releaseMap": "Le ultime 52 settimane, un quadrato per ogni giorno. Un quadrato luminoso è un giorno con una nuova versione.",
+    "releaseDay": "Un giorno con una nuova versione",
+    "plans": {
+      "yearly": "{{price}} all'anno",
+      "yearlyNote": "{{price}} al mese, pagati annualmente",
+      "yearlyNoteWithLicense": "{{price}} al mese, pagati annualmente. Include la licenza dei temi.",
+      "license": "Licenza dei temi, da {{price}}",
+      "licenseNote": "Tutti i temi premium attuali e futuri, a vita",
+      "onePayment": "pagamento unico"
+    },
+    "checkout": "Procedi al pagamento",
+    "fromPrice": "da {{price}}",
+    "terms": {
+      "yearly": "Paghi {{price}} oggi, poi {{price}} ogni anno finché non annulli.",
+      "license": "Un pagamento unico di {{price}} o più, importo scelto al pagamento. Nessun abbonamento."
+    },
+    "perks": {
+      "yearly": "I sostenitori ricevono il badge Sostenitore in qui e il ruolo di sostenitore su Discord. Dopo il pagamento, aggiungi la tua chiave da sostenitore a questo server.",
+      "license": "La licenza sblocca i temi premium. Dopo il pagamento, aggiungi la tua chiave di licenza a questo server."
+    },
+    "existing": "Sei già un sostenitore?",
+    "addKey": "Aggiungi la chiave da sostenitore",
+    "key": {
+      "help": "La tua chiave da sostenitore si trova nella pagina di pagamento e nell'email con la ricevuta.",
+      "label": "Chiave da sostenitore",
+      "submit": "Aggiungi chiave",
+      "back": "Indietro"
+    },
+    "ended": "La chiave da sostenitore su questo server non è più valida. qui la ricontrolla ogni giorno. Se il tuo sostegno è terminato, la licenza dei temi resta tua. Trova la sua chiave nel <portal>portale delle licenze</portal> e aggiungila in Impostazioni, sotto Temi.",
+    "removeKey": "Rimuovi la chiave da sostenitore da questo server",
+    "supporter": {
+      "badge": "Sostenitore",
+      "title": "Stai sostenendo qui",
+      "thanks": "Grazie. Il tuo sostegno paga il tempo e gli strumenti che servono a qui.",
+      "detail": "Hai il badge Sostenitore in qui e il ruolo di sostenitore su Discord. Il tuo sostegno sblocca anche i temi premium e include una licenza dei temi a vita. Trova la chiave di licenza nel <portal>portale delle licenze</portal>.",
+      "manage": "Gestisci o annulla il sostegno"
+    },
+    "reminder": {
+      "title_one": "{{count}} giorno di qui su questo server",
+      "title_other": "{{count}} giorni di qui su questo server",
+      "tooltip": "Contati su questo server e mai inviati. qui lo chiede una volta all'anno.",
+      "subtitle": "Sostieni qui. qui lo chiede una volta all'anno.",
+      "notNow": "Non ora",
+      "serverDays_one": "Questo server usa qui da {{count}} giorno. qui lo conta su questo server e non lo invia mai.",
+      "serverDays_other": "Questo server usa qui da {{count}} giorni. qui lo conta su questo server e non lo invia mai.",
+      "notNowToast": "qui lo chiederà di nuovo tra un anno",
+      "dontAskAgain": "Non chiedere più",
+      "offToast": "qui non lo chiederà più",
+      "offToastDescription": "La scorciatoia per il sostegno resta. Riattiva il promemoria in Impostazioni, sotto Applicazione.",
+      "undo": "Annulla",
+      "hiddenToast": "La scorciatoia per il sostegno è nascosta",
+      "hiddenToastDescription": "qui non lo chiederà più. Ripristina la scorciatoia in Impostazioni, sotto Applicazione.",
+      "notForYou": "Non fa per te? <reminder>Disattiva il promemoria annuale</reminder> o <heart>nascondi il cuore</heart>. Le impostazioni li ripristinano entrambi.",
+      "notForYouHeart": "Non fa per te? <heart>Nascondi il cuore</heart>. Le impostazioni lo ripristinano."
+    }
+  },
+  "labels": {
+    "path": "Percorso",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "Impossibile caricare questa sezione.",
+    "retry": "Riprova",
+    "edit": "Modifica",
+    "moreActions": "Altre azioni",
+    "enabled": "Abilitato",
+    "clearSelection": "Annulla selezione"
+  }
+}

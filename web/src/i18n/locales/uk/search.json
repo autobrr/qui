@@ -1,0 +1,207 @@
+{
+  "pageTitle": "Пошук індексаторів",
+  "pageDescription": "Шукайте у своїх індексаторах і додавайте реліз до qBittorrent.",
+  "indexerSheet": {
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Вбудований",
+      "jackett": "Jackett"
+    }
+  },
+  "instanceSelector": {
+    "offline": "Не в мережі"
+  },
+  "picker": {
+    "indexersTitle": "Індексатори для пошуку",
+    "filter": "Фільтр",
+    "all": "Усі",
+    "none": "Жодного",
+    "done": "Готово",
+    "noMatch": "Нічого не відповідає фільтру"
+  },
+  "form": {
+    "indexers": "Індексатори",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Прибрати {{label}}",
+    "clearFields": "Очистити поля",
+    "clearQuery": "Очистити запит",
+    "recentSearches": "Нещодавні пошуки",
+    "noIndexersTitle": "Ще немає індексаторів",
+    "noIndexersBody": "Додайте індексатор, щоб шукати в ньому з цієї сторінки.",
+    "noIndexersAction": "Додати індексатори",
+    "indexersFailed": "Не вдалося завантажити індексатори"
+  },
+  "searchForm": {
+    "advanced": "Розширено",
+    "searching": "Пошук...",
+    "search": "Шукати",
+    "advancedNote": "ID та номери роблять пошук точним в індексаторах, які їх підтримують.",
+    "searchType": "Тип пошуку",
+    "searchQuery": "Пошуковий запит"
+  },
+  "searchTypes": {
+    "movies": {
+      "label": "Фільми",
+      "placeholder": "наприклад: «Приклад Фільм 2024», «Інший Фільм 1999», «tt1234567»"
+    },
+    "tv": {
+      "label": "Серіали",
+      "placeholder": "наприклад: «Приклад Серіал S01E01», «tvdb 123456», «Серіал S02»"
+    },
+    "music": {
+      "label": "Музика",
+      "placeholder": "наприклад: «Виконавець – Альбом», «Гурт – Дебютний EP»"
+    },
+    "books": {
+      "label": "Книги та комікси",
+      "placeholder": "наприклад: «Назва книги», «Серія Книга 1»"
+    },
+    "apps": {
+      "label": "Програми та ігри",
+      "placeholder": "наприклад: «Зразок ОС ISO», «Приклад Програми 2025»"
+    },
+    "xxx": {
+      "label": "Для дорослих",
+      "placeholder": "Введіть точну назву релізу"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Рік",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Сезон",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Епізод",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Виконавець",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Альбом",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Ліміт",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Зміщення",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "count_one": "{{count}} результат",
+    "count_few": "{{count}} результати",
+    "count_many": "{{count}} результатів",
+    "count_other": "{{count}} результату",
+    "filteredCount_one": "{{shown}} із {{count}} результату",
+    "filteredCount_few": "{{shown}} із {{count}} результатів",
+    "filteredCount_many": "{{shown}} із {{count}} результатів",
+    "filteredCount_other": "{{shown}} із {{count}} результату",
+    "searching_one": "Пошук у {{count}} індексаторі...",
+    "searching_few": "Пошук у {{count}} індексаторах...",
+    "searching_many": "Пошук у {{count}} індексаторах...",
+    "searching_other": "Пошук у {{count}} індексатора...",
+    "filterPlaceholder": "Фільтр результатів...",
+    "clearFilters": "Очистити фільтри",
+    "noMatches": "Жоден результат не відповідає фільтрам.",
+    "cachedSummary": "Кешовано {{cached}} · Закінчується {{expires}}",
+    "cachedAgo": "Кешовано · {{age}}",
+    "live": "Напряму",
+    "partial": "Неповні",
+    "partialHint": "Деякі індексатори не відповіли. Оновіть, щоб опитати їх знову.",
+    "refresh": "Оновити",
+    "refreshFromIndexers": "Оновити з індексаторів",
+    "refreshCooldown": "Оновити знову можна буде за мить",
+    "showMore": "Показати більше",
+    "shownOf": "Показано {{shown}} із {{total}}",
+    "categoryFallback": "Категорія {{id}}",
+    "noResults": "Нічого не знайдено",
+    "noResultsFor": "Нічого не знайдено за запитом «{{query}}»",
+    "noResultsHint": "Перевірте написання, виберіть інший тип пошуку або шукайте в більшій кількості індексаторів.",
+    "searchAllIndexers": "Шукати в усіх індексаторах",
+    "failed": "Пошук не вдався",
+    "retry": "Повторити",
+    "idleTitle": "Шукайте у своїх індексаторах",
+    "idleHint": "Введіть назву, IMDb ID, наприклад tt1234567, або TVDb ID, наприклад tvdb 123456.",
+    "free": "Безкоштовно"
+  },
+  "facets": {
+    "collection": "Сервіс",
+    "normal": "Звичайний"
+  },
+  "sort": {
+    "label": "Сортування",
+    "seeders": "Найбільше роздавачів",
+    "newest": "Найновіші",
+    "oldest": "Найстаріші",
+    "largest": "Найбільші",
+    "smallest": "Найменші",
+    "title": "Назва A–Z",
+    "indexer": "Індексатор A–Z"
+  },
+  "columns": {
+    "age": "Вік"
+  },
+  "row": {
+    "add": "Додати",
+    "addTo": "Додати до",
+    "more": "Інші дії",
+    "openIndexer": "Відкрити на індексаторі",
+    "copyTitle": "Копіювати назву",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× віддача"
+  },
+  "bulk": {
+    "label": "Вибрані результати",
+    "selected_one": "Вибрано: {{count}}",
+    "selected_few": "Вибрано: {{count}}",
+    "selected_many": "Вибрано: {{count}}",
+    "selected_other": "Вибрано: {{count}}",
+    "selectShown": "Вибрати всі показані"
+  },
+  "historyMeta": "{{type}} · {{count}} результатів · {{timestamp}}",
+  "table": {
+    "title": "Назва",
+    "indexer": "Індексатор",
+    "size": "Розмір",
+    "seeders": "Роздавачі",
+    "leechers": "Лічі",
+    "category": "Категорія",
+    "source": "Джерело",
+    "group": "Група",
+    "freeleech": "Freeleech",
+    "actions": "Дії",
+    "downloadTorrent": "Завантажити .torrent"
+  },
+  "refreshDialog": {
+    "title": "Обійти кеш?",
+    "description": "Запит буде відправлено напряму до кожного вибраного індексатора. Використовуйте обережно, щоб уникнути лімітів. Повторне оновлення стане доступне після короткої затримки.",
+    "refreshNow": "Оновити зараз"
+  },
+  "cache": {
+    "cacheAndLive": "Кеш + напряму"
+  },
+  "card": {
+    "addToNamed": "Додати до {{name}}"
+  },
+  "toast": {
+    "noDownloadUrl": "Для цього результату немає URL завантаження",
+    "invalidProtocol": "Неправильний протокол URL",
+    "invalidUrl": "Неправильний формат URL"
+  }
+}

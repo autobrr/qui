@@ -1,0 +1,318 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package filesmanager
+
+import (
+	"cmp"
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/qbittorrent"
+)
+
+type InstanceLister interface {
+	ListInstanceIDs(ctx context.Context) ([]int, error)
+}
+
+type TorrentHashProvider interface {
+	GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error)
+}
+
+type Service struct {
+	repo *Repository
+}
+
+func NewService(db dbinterface.Querier) *Service {
+	return &Service{
+		repo: NewRepository(db),
+	}
+}
+
+func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error) {
+	results, missing, err := s.GetCachedFilesBatch(ctx, instanceID, []string{hash}, 0)
+	if err != nil {
+		return nil, err
+	}
+	if _, found := lookupMissing(hash, missing); found {
+		return nil, nil
+	}
+	files, ok := results[hash]
+	if !ok {
+		return nil, nil
+	}
+	return files, nil
+}
+
+func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, maxAge time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
+	unique := dedupeHashes(hashes)
+	if len(unique) == 0 {
+		return map[string]qbt.TorrentFiles{}, nil, nil
+	}
+
+	syncInfoMap, err := s.repo.GetSyncInfoBatch(ctx, instanceID, unique)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, fmt.Errorf("failed to get sync info batch: %w", err)
+	}
+
+	freshHashes := make([]string, 0, len(unique))
+	missing := make([]string, 0, len(unique))
+
+	for _, hash := range unique {
+		info := syncInfoMap[hash]
+		if info == nil {
+			missing = append(missing, hash)
+			continue
+		}
+
+		if !cacheIsFresh(info, maxAge) {
+			missing = append(missing, hash)
+			continue
+		}
+
+		freshHashes = append(freshHashes, hash)
+	}
+
+	results := make(map[string]qbt.TorrentFiles, len(freshHashes))
+	if len(freshHashes) > 0 {
+		cachedFiles, err := s.repo.GetFilesBatch(ctx, instanceID, freshHashes)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get cached files batch: %w", err)
+		}
+
+		for hash, files := range cachedFiles {
+			if len(files) == 0 {
+				missing = append(missing, hash)
+				continue
+			}
+			results[hash] = convertCachedFiles(files)
+		}
+
+		for _, hash := range freshHashes {
+			if _, ok := results[hash]; !ok {
+				missing = append(missing, hash)
+			}
+		}
+	}
+
+	return results, missing, nil
+}
+
+func (s *Service) GetCachedFilesBatchWithMeta(ctx context.Context, instanceID int, hashes []string) (map[string]qbittorrent.CachedFilesEntry, error) {
+	rows, err := s.repo.getEntriesBatch(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cached files batch: %w", err)
+	}
+	entries := make(map[string]qbittorrent.CachedFilesEntry, len(rows))
+	for hash, row := range rows {
+		entries[hash] = qbittorrent.CachedFilesEntry{Files: convertCachedFiles(row.files), Print: row.print, SyncedAt: row.syncedAt}
+	}
+	return entries, nil
+}
+
+func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, writes map[string]qbittorrent.CachedFilesWrite) error {
+	fileCount := 0
+	for _, write := range writes {
+		fileCount += len(write.Files)
+	}
+	allCachedFiles := make([]CachedFile, 0, fileCount)
+	allSyncInfos := make([]SyncInfo, 0, len(writes))
+	seed, notSeed := true, false
+	syncedAt := time.Now().UTC()
+
+	for hash, write := range writes {
+		if len(write.Files) == 0 {
+			continue
+		}
+
+		for _, f := range write.Files {
+			pieceStart, pieceEnd := int64(0), int64(0)
+			if len(f.PieceRange) >= 2 {
+				pieceStart = int64(f.PieceRange[0])
+				pieceEnd = int64(f.PieceRange[1])
+			}
+
+			isSeed := &notSeed
+			if f.IsSeed {
+				isSeed = &seed
+			}
+			allCachedFiles = append(allCachedFiles, CachedFile{
+				InstanceID:      instanceID,
+				TorrentHash:     hash,
+				FileIndex:       f.Index,
+				Name:            f.Name,
+				Size:            f.Size,
+				Progress:        float64(f.Progress),
+				Priority:        f.Priority,
+				IsSeed:          isSeed,
+				PieceRangeStart: pieceStart,
+				PieceRangeEnd:   pieceEnd,
+				Availability:    float64(f.Availability),
+			})
+		}
+
+		allSyncInfos = append(allSyncInfos, SyncInfo{
+			InstanceID:    instanceID,
+			TorrentHash:   hash,
+			LastSyncedAt:  syncedAt,
+			FileCount:     len(write.Files),
+			MaindataPrint: write.Print,
+		})
+	}
+
+	if err := s.repo.UpsertCache(ctx, allCachedFiles, allSyncInfos); err != nil {
+		return fmt.Errorf("failed to cache files: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) CacheFiles(ctx context.Context, instanceID int, hash string, write qbittorrent.CachedFilesWrite) error {
+	return s.CacheFilesBatch(ctx, instanceID, map[string]qbittorrent.CachedFilesWrite{hash: write})
+}
+
+func (s *Service) InvalidateCache(ctx context.Context, instanceID int, hash string) error {
+	if err := s.repo.DeleteTorrentCache(ctx, instanceID, []string{hash}); err != nil {
+		return fmt.Errorf("failed to invalidate torrent cache: %w", err)
+	}
+
+	log.Trace().
+		Int("instanceID", instanceID).
+		Str("hash", hash).
+		Msg("Invalidated torrent files cache")
+
+	return nil
+}
+
+func (s *Service) CleanupRemovedTorrentsCache(ctx context.Context, instanceID int, currentHashes []string) (int, error) {
+	deleted, err := s.repo.DeleteCacheForRemovedTorrents(ctx, instanceID, currentHashes)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup cache for removed torrents: %w", err)
+	}
+
+	if deleted > 0 {
+		log.Info().
+			Int("instanceID", instanceID).
+			Int("deleted", deleted).
+			Msg("Cleaned up cache for removed torrents")
+	}
+
+	return deleted, nil
+}
+
+func (s *Service) StartOrphanCleanup(ctx context.Context, instances InstanceLister, hashes TorrentHashProvider) {
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(30 * time.Second):
+		}
+
+		s.runOrphanCleanup(ctx, instances, hashes)
+
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.runOrphanCleanup(ctx, instances, hashes)
+			}
+		}
+	}()
+}
+
+func (s *Service) runOrphanCleanup(ctx context.Context, instances InstanceLister, hashes TorrentHashProvider) {
+	instanceIDs, err := instances.ListInstanceIDs(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("filesmanager: cache maintenance skipped, failed to list instances")
+		return
+	}
+
+	var totalDeleted int
+	for _, instanceID := range instanceIDs {
+		currentHashes, err := hashes.GetAllTorrentHashes(ctx, instanceID)
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).
+				Msg("filesmanager: cache maintenance skipped for instance")
+			continue
+		}
+
+		deleted, err := s.CleanupRemovedTorrentsCache(ctx, instanceID, currentHashes)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).
+				Msg("filesmanager: cache maintenance failed for instance")
+			continue
+		}
+		totalDeleted += deleted
+	}
+
+	if totalDeleted > 0 {
+		log.Info().Int("totalDeleted", totalDeleted).Msg("filesmanager: pruned stale cache entries")
+	}
+}
+
+func (s *Service) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
+	return s.repo.GetCacheStats(ctx, instanceID)
+}
+
+const defaultCacheFreshness = 5 * time.Minute
+
+func cacheIsFresh(info *SyncInfo, maxAge time.Duration) bool {
+	if info == nil {
+		return false
+	}
+	return time.Since(info.LastSyncedAt) <= cmp.Or(maxAge, defaultCacheFreshness)
+}
+
+func convertCachedFiles(cached []CachedFile) qbt.TorrentFiles {
+	if len(cached) == 0 {
+		return nil
+	}
+
+	files := make(qbt.TorrentFiles, len(cached))
+	for i, cf := range cached {
+		isSeed := false
+		if cf.IsSeed != nil {
+			isSeed = *cf.IsSeed
+		}
+
+		files[i] = struct {
+			Availability float32 `json:"availability"`
+			Index        int     `json:"index"`
+			IsSeed       bool    `json:"is_seed,omitempty"`
+			Name         string  `json:"name"`
+			PieceRange   []int   `json:"piece_range"`
+			Priority     int     `json:"priority"`
+			Progress     float32 `json:"progress"`
+			Size         int64   `json:"size"`
+		}{
+			Availability: float32(cf.Availability),
+			Index:        cf.FileIndex,
+			IsSeed:       isSeed,
+			Name:         cf.Name,
+			PieceRange:   []int{int(cf.PieceRangeStart), int(cf.PieceRangeEnd)},
+			Priority:     cf.Priority,
+			Progress:     float32(cf.Progress),
+			Size:         cf.Size,
+		}
+	}
+	return files
+}
+
+func lookupMissing(hash string, missing []string) (string, bool) {
+	for _, m := range missing {
+		if m == hash {
+			return m, true
+		}
+	}
+	return "", false
+}

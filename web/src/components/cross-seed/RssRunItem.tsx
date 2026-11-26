@@ -1,0 +1,94 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { TruncatedText } from "@/components/ui/truncated-text"
+import { crossSeedRouteStatusKeys, crossSeedRouteText } from "@/lib/cross-seed-utils"
+import type { CrossSeedRun, CrossSeedRunResult } from "@/types"
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, Loader2, XCircle } from "lucide-react"
+import { useTranslation } from "react-i18next"
+
+interface RSSRunItemProps {
+  run: CrossSeedRun
+  formatDateValue: (date: string | undefined) => string
+}
+
+export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
+  const { t } = useTranslation("crossseed")
+  const instanceLabel = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? crossSeedRouteText(t, result.instanceName, result.crossSeedInstanceName, result.success) : result.instanceName
+  const instanceBadgeSize = (result: CrossSeedRunResult) => result.crossSeedInstanceName ? "shrink min-w-0 max-w-64" : "shrink-0 w-20"
+  const hasResults = run.results && run.results.length > 0
+  const successResults = run.results?.filter(r => r.success) ?? []
+  const failedResults = run.results?.filter(r => !r.success && r.message) ?? []
+
+  return (
+    <Collapsible>
+      <CollapsibleTrigger asChild disabled={!hasResults}>
+        <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
+            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-info shrink-0" />}
+            {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
+            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-warning shrink-0" />}
+            {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
+            <span className="text-xs text-muted-foreground">{t("automation.items", { count: run.totalFeedItems })}</span>
+            {run.errorMessage && (
+              <TruncatedText className="min-w-0 text-xs text-muted-foreground">
+                {t("automation.runError", { message: run.errorMessage })}
+              </TruncatedText>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant="secondary">{t("scan.crossSeedsAddedBadge", { count: run.crossSeedsAdded })}</Badge>
+            {run.candidatesFailed > 0 && (
+              <Badge variant="destructive">{t("automation.failedCount", { count: run.candidatesFailed })}</Badge>
+            )}
+            <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
+            {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+          </div>
+        </div>
+      </CollapsibleTrigger>
+      {hasResults && (
+        <CollapsibleContent>
+          <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
+            {successResults.map((result, i) => (
+              <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
+                <Badge variant="default" size="sm" className={`${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                {result.indexerName && (
+                  <Badge variant="secondary" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
+                )}
+                <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
+              </div>
+            ))}
+            {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+              <span className="text-xs text-muted-foreground">{t("scan.noResultsWithDetails")}</span>
+            )}
+            {failedResults.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                <span className="text-10 text-muted-foreground font-medium">{t("scan.failed")}</span>
+                {failedResults.map((result, i) => {
+                  const routeStatusKey = crossSeedRouteStatusKeys[result.status]
+                  return (
+                    <div key={`failed-${result.instanceId}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="destructive" size="sm" className={`${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                        {result.indexerName && (
+                          <Badge variant="secondary" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
+                        )}
+                      </div>
+                      {routeStatusKey && <span className="font-medium pl-1">{t(routeStatusKey)}</span>}
+                      <span className="text-muted-foreground pl-1">{result.message}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
+  )
+}

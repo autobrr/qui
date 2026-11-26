@@ -1,0 +1,301 @@
+// Copyright (c) 2025, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package sse
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/qbittorrent"
+)
+
+func TestInitPhaseWritesDirectlyToSocket(t *testing.T) {
+	rec := httptest.NewRecorder()
+	rc := http.NewResponseController(rec)
+	bw := newBufferedSessionWriter(rec, rc, streamWriteTimeout, func() {})
+	t.Cleanup(bw.Close)
+
+	_, err := bw.Write([]byte("init-snapshot"))
+	require.NoError(t, err)
+	require.Equal(t, "init-snapshot", rec.Body.String(),
+		"init-phase Write must reach the socket synchronously, before any Flush")
+}
+
+func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
+	store := newTestInstanceStore(t)
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+	srv := startStreamServer(t, manager)
+
+	subscriptions := maxQueuedMessages + 4
+
+	for c := range 3 {
+		payload := make([]map[string]any, 0, subscriptions)
+		for i := range subscriptions {
+			payload = append(payload, map[string]any{
+				"key":        fmt.Sprintf("conn%d-view%d", c, i),
+				"instanceId": instanceID,
+				"page":       i,
+				"limit":      50,
+				"sort":       "added_on",
+				"order":      "desc",
+				"search":     "",
+				"filters":    nil,
+			})
+		}
+
+		reader, _ := connectStream(t, srv, payload)
+
+		inits := 0
+		deadline := time.After(5 * time.Second)
+		for inits < subscriptions {
+			select {
+			case ev := <-reader.events:
+				if ev.event == streamEventInit {
+					inits++
+				}
+			case err := <-reader.errc:
+				t.Fatalf("conn %d: stream closed after %d/%d init snapshots: %v", c, inits, subscriptions, err)
+			case <-deadline:
+				t.Fatalf("conn %d: received only %d/%d init snapshots before timeout", c, inits, subscriptions)
+			}
+		}
+	}
+}
+
+func sessionContext(t *testing.T, manager *StreamManager, key string) context.Context {
+	t.Helper()
+	conn := manager.openConnection(false, 0)
+	sub, err := manager.registerSubscription(StreamOptions{View: qbittorrent.TorrentListView{InstanceID: 1, Limit: 50}}, key, conn, false)
+	require.NoError(t, err)
+	ctx := context.WithValue(t.Context(), connectionContextKey, conn)
+	return context.WithValue(ctx, subscriptionIDsContextKey, []string{sub.id})
+}
+
+func TestOnSessionAbortsWhenInitWriteFails(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	ctx := sessionContext(t, manager, "failing-init")
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(&erroringResponseWriter{okFlushes: 1}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
+}
+
+func TestOnSessionAbortsWhenConnectionWriteFails(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	ctx := sessionContext(t, manager, "failing-connection")
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(&erroringResponseWriter{}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.Zero(t, manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load(), "no init write follows the failed connection event")
+}
+
+func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	logs := captureSSELogs(t)
+
+	ctx := sessionContext(t, manager, "failing-flush")
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(&flushErrorResponseWriter{okFlushes: 1}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load())
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
+}
+
+func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	logs := captureSSELogs(t)
+
+	ctx := sessionContext(t, manager, "failing-buffered-flush")
+
+	rw := &flushErrorResponseWriter{okFlushes: 1}
+	bw := newBufferedSessionWriter(rw, http.NewResponseController(rw), streamWriteTimeout, func() {})
+	t.Cleanup(bw.Close)
+
+	ctx = context.WithValue(ctx, sessionWriterContextKey, bw)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(bw, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.False(t, bw.buffered.Load())
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load())
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
+}
+
+func TestOnSessionAbortsWhenKeepaliveFlushFails(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	logs := captureSSELogs(t)
+
+	ctx := context.WithValue(t.Context(), connectionContextKey, manager.openConnection(true, 0))
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(&flushErrorResponseWriter{okFlushes: 1}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load())
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventHeartbeat)
+}
+
+func TestWritePayloadToSessionFlushesHTTPFlusher(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	rec := httptest.NewRecorder()
+
+	ok := manager.writePayloadToSession(rec, &StreamPayload{
+		Type: streamEventHeartbeat,
+		Meta: &StreamMeta{Timestamp: time.Now()},
+	})
+
+	require.True(t, ok)
+	require.True(t, rec.Flushed)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Contains(t, rec.Body.String(), "event: heartbeat")
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
+	require.Equal(t, uint64(0), manager.eventsDropped.Load())
+}
+
+func captureSSELogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buf bytes.Buffer
+	origLogger := log.Logger
+	origLevel := zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&buf).Level(zerolog.TraceLevel)
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() {
+		log.Logger = origLogger
+		zerolog.SetGlobalLevel(origLevel)
+	})
+
+	return &buf
+}
+
+func requireSSEPayloadFlushLog(t *testing.T, logOutput, payloadType string) {
+	t.Helper()
+
+	require.Contains(t, logOutput, `"message":"Failed to flush SSE payload"`)
+	require.Contains(t, logOutput, `"type":`+quoteJSONString(payloadType))
+	require.NotContains(t, logOutput, "Failed to flush SSE init payload")
+	require.NotContains(t, logOutput, "timestamp")
+	require.NotContains(t, strings.ToLower(logOutput), "torrent")
+}
+
+func quoteJSONString(s string) string {
+	return fmt.Sprintf("%q", s)
+}
+
+type erroringResponseWriter struct {
+	header    http.Header
+	okFlushes int
+}
+
+func (w *erroringResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *erroringResponseWriter) Write(p []byte) (int, error) {
+	if w.okFlushes > 0 {
+		return len(p), nil
+	}
+	return 0, errors.New("socket write failed")
+}
+
+func (w *erroringResponseWriter) WriteHeader(int) {}
+
+func (w *erroringResponseWriter) Flush() { w.okFlushes-- }
+
+type flushErrorResponseWriter struct {
+	header    http.Header
+	okFlushes int
+}
+
+func (w *flushErrorResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *flushErrorResponseWriter) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func (w *flushErrorResponseWriter) WriteHeader(int) {}
+
+func (w *flushErrorResponseWriter) Flush() error {
+	if w.okFlushes > 0 {
+		w.okFlushes--
+		return nil
+	}
+	return errors.New("socket flush failed")
+}
+
+func (w *flushErrorResponseWriter) FlushError() error { return w.Flush() }
+
+func TestDrainDropsOnWriteError(t *testing.T) {
+	rw := &erroringResponseWriter{}
+	rc := http.NewResponseController(rw)
+	var cancelCalls atomic.Int32
+	bw := newBufferedSessionWriter(rw, rc, streamWriteTimeout, func() { cancelCalls.Add(1) })
+	bw.enableBuffering()
+
+	_, err := bw.Write([]byte("x"))
+	require.NoError(t, err)
+	bw.Flush()
+
+	receive(t, bw.done, "the drain goroutine to exit")
+	require.Equal(t, int32(1), cancelCalls.Load(), "drain must drop the session when the socket write errors")
+	require.True(t, bw.failed.Load(), "drain must mark the session failed when the socket write errors")
+
+	bw.Close()
+	require.Equal(t, int32(1), cancelCalls.Load(), "cancel must fire exactly once")
+}

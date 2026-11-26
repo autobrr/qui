@@ -1,0 +1,577 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "statistics": "Statistics",
+    "search": "Search",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automations",
+    "transfers": "Transfers",
+    "transfersQueued_one": "{{count}} item running or waiting",
+    "transfersQueued_other": "{{count}} items running or waiting",
+    "backups": "Backups",
+    "rss": "RSS",
+    "settings": "Settings",
+    "logs": "Logs",
+    "instances": "Instances",
+    "generalSettings": "General Settings",
+    "manageInstances": "Manage Instances",
+    "appearance": "Appearance",
+    "instanceBackups": "Instance Backups",
+    "backToSite": "Back to getqui.com",
+    "docs": "Docs"
+  },
+  "sidebar": {
+    "instances": "Instances",
+    "allInstancesDisabled": "All instances are disabled",
+    "noInstancesConfigured": "No instances configured",
+    "logout": "Logout",
+    "version": "Version {{version}}",
+    "language": "Language",
+    "viewOnGitHub": "View on GitHub",
+    "rssRunning": "Cross-seed RSS running",
+    "rssEnabled": "Cross-seed RSS enabled",
+    "scanRunning": "Scan running",
+    "collapseToIcons": "Collapse to icons",
+    "expandSidebar": "Expand sidebar",
+    "hideSidebar": "Hide sidebar",
+    "showSidebar": "Show sidebar",
+    "keepOpen": "Keep sidebar open",
+    "menu": "Menu"
+  },
+  "problemReports": {
+    "reportProblem": "Report a problem",
+    "subtitle": "Your report goes to the qui maintainers.",
+    "textLabel": "Your report",
+    "placeholders": {
+      "menu": "What happened, and what did you expect?",
+      "notice": "What were you doing when this happened?",
+      "search": "Which match did you expect, and on which indexer?"
+    },
+    "sentWithIt": "Included with your report",
+    "summary_one": "qui {{version}} and {{count}} instance",
+    "summary_other": "qui {{version}} and {{count}} instances",
+    "details": "Details",
+    "view": "View",
+    "whatGetsSent": "What gets sent",
+    "whatGetsSentNote": "qui fills this in. Nothing leaves qui until you send the report.",
+    "loadingFacts": "Loading report details...",
+    "factsFailed": "Could not load report details: {{message}}",
+    "facts": {
+      "version": "Version",
+      "system": "System",
+      "appContainer": "In a container",
+      "database": "Database",
+      "logLevel": "Log level",
+      "started": "Started",
+      "experimentalFeatures": "Experimental",
+      "instance": "Instance {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "unknown",
+      "states": {
+        "connected": "Connected",
+        "offline": "Offline",
+        "disabled": "Disabled"
+      },
+      "torrentCount_one": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrents",
+      "notices": "System notices",
+      "openCount_one": "{{count}} open",
+      "openCount_other": "{{count}} open",
+      "page": "Page",
+      "browser": "Browser",
+      "screen": "{{width}} × {{height}}, pixel ratio {{ratio}}",
+      "failedRequests": "Failed requests",
+      "failedCount_one": "{{count}} in this session",
+      "failedCount_other": "{{count}} in this session",
+      "noAnswer": "no response",
+      "none": "None"
+    },
+    "logs": {
+      "title": "Logs",
+      "scopeLabel": "Log lines to include",
+      "scopes": {
+        "warnings": "Warnings and errors",
+        "all": "Everything recent",
+        "none": "Leave out"
+      },
+      "notes": {
+        "warnings_one": "{{count}} recent warning or error. qui removes keys and secrets.",
+        "warnings_other": "{{count}} recent warnings and errors. qui removes keys and secrets.",
+        "all_one": "{{count}} recent line at log level {{level}}. qui removes keys and secrets.",
+        "all_other": "{{count}} recent lines at log level {{level}}. qui removes keys and secrets.",
+        "none": "No log lines go with your report."
+      },
+      "empty": "No log lines.",
+      "debugMissing": "Log level is {{level}}, so qui does not record debug lines. To include them, set Log level to DEBUG in Settings > Logs, reproduce the problem, then report again."
+    },
+    "privacy": {
+      "anonymous": "Anonymous: no name, no account. brrbin keeps no IP address.",
+      "signedIn": "The maintainers see your {{provider}} name ({{name}}) and may contact you.",
+      "link": "Privacy policy"
+    },
+    "sender": {
+      "label": "Send as",
+      "anonymous": "Anonymous",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Sign in with {{provider}}",
+      "signOut": "Sign out",
+      "waiting": "Waiting for {{provider}}",
+      "errors": {
+        "discordNotMember": "Your Discord account is not in the autobrr Discord server. Join the server and sign in again, sign in with GitHub, or send anonymously.",
+        "refused": "Sign-in refused: {{reason}}",
+        "expired": "Sign-in expired. Sign in again.",
+        "popupBlocked": "Your browser blocked the sign-in window. Allow pop-ups for qui, then sign in again.",
+        "unavailable": "brrbin cannot sign you in right now. Try again later.",
+        "startFailed": "Could not start sign-in: {{message}}",
+        "signOutFailed": "Could not sign out: {{message}}"
+      }
+    },
+    "newerRelease": "You run {{running}}. <release>{{newer}}</release> is out.",
+    "send": "Send",
+    "sendAnyway": "Send anyway",
+    "sending": "Sending",
+    "sent": "Report sent",
+    "errors": {
+      "anonymousFull": {
+        "title": "Anonymous reports are full for today",
+        "body": "Sign in to send now, or try again tomorrow. Your text stays here as a draft."
+      },
+      "signInRequired": "Sign in to send this report. Your text stays here as a draft.",
+      "accountLimit": "You sent many reports in the last hour. Try again later.",
+      "reporterFull": "Your reports use all the room brrbin gives one person. Delete an old report in Sent reports, then send again.",
+      "tooLarge": "The report is too large. Pick fewer log lines or a smaller image.",
+      "tokenRejected": "Your sign-in ended. Sign in again, then send.",
+      "unavailable": "brrbin cannot take reports right now. Try again later.",
+      "sendFailed": "Could not send the report: {{message}}"
+    },
+    "sentReports": {
+      "title": "Sent reports",
+      "subtitle": "qui checks report statuses each time you open this list.",
+      "changed_one": "{{count}} status changed",
+      "changed_other": "{{count}} statuses changed",
+      "status": {
+        "received": "Received",
+        "issue": "Became issue #{{number}}",
+        "issueClosed": "Issue #{{number}} closed",
+        "closed": "Closed: {{reason}}",
+        "closedNoReason": "Closed",
+        "notSent": "Not sent"
+      },
+      "delete": "Delete report",
+      "deleteUnavailable": "brrbin cannot delete reports right now. Try again later.",
+      "deleteFailed": "Could not delete the report: {{message}}",
+      "empty": "No sent reports.",
+      "back": "Back to report"
+    }
+  },
+  "header": {
+    "currentInstance": "Current instance: {{name}}. Click to switch instances.",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "showFilters": "Show filters",
+    "hideFilters": "Hide filters",
+    "addTorrent": "Add torrent",
+    "createTorrent": "Create torrent",
+    "torrentCreationTasks": "Torrent creation tasks",
+    "instanceSettings": "Instance settings",
+    "addToInstance": "Add to instance",
+    "createForInstance": "Create for instance",
+    "tasksForInstance": "Tasks for instance",
+    "settingsForInstance": "Settings for instance",
+    "clearSearch": "Clear search",
+    "searchTorrents": "Search torrents...",
+    "globPattern": "Glob pattern...",
+    "smartSearchTitle": "Smart Search Features:",
+    "smartSearchGlob": "Glob patterns:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "Fuzzy matching:",
+    "smartSearchFuzzyExample": "\"breaking bad\" finds \"Breaking.Bad\"",
+    "smartSearchDots": "Handles dots, underscores, and brackets",
+    "smartSearchFields": "Searches name, category, and tags",
+    "smartSearchEnter": "Press Enter for instant search",
+    "smartSearchAuto": "Auto-searches after 500ms pause",
+    "smartSearchShortcut": "Press {{shortcutKey}} to focus search",
+    "smartSearchPalette": "Press {{shortcutKey}} to open the command palette",
+    "torrentCreationTasksTitle": "Torrent Creation Tasks",
+    "allScope": "ALL",
+    "unified": "Unified"
+  },
+  "titleBar": {
+    "speeds": "D: {{download}} U: {{upload}}"
+  },
+  "unifiedScope": {
+    "unified": "Unified",
+    "collapseScope": "Collapse unified scope",
+    "expandScope": "Expand unified scope",
+    "allActive": "All active ({{count}})"
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "placeholder": "Search pages, settings and torrents...",
+    "placeholderIn": "Search {{name}}...",
+    "groups": {
+      "pages": "Pages",
+      "actions": "Actions"
+    },
+    "current": "Current",
+    "statisticsNote": "Upload and download history of your instances",
+    "searchTorrentsFor": "Search torrents for \"{{query}}\"",
+    "torrentMatches_one": "{{count}} torrent matches",
+    "torrentMatches_other": "{{count}} torrents match",
+    "noTorrentMatches": "No torrent matches",
+    "searching": "Searching...",
+    "searchFailed": "The torrent search failed",
+    "listFiltersApply": "List filters apply",
+    "noMatchIn": "Nothing in {{name}} matches",
+    "moreOf": "More for {{name}}",
+    "hints": {
+      "navigate": "Navigate",
+      "open": "Open",
+      "more": "More",
+      "searchTorrents": "Search torrents",
+      "back": "Back"
+    }
+  },
+  "mobileNav": {
+    "dashboard": "Dashboard",
+    "statistics": "Statistics",
+    "clients": "Clients",
+    "settings": "Settings",
+    "qbittorrentClients": "qBittorrent Clients",
+    "instances": "Instances",
+    "loading": "Loading...",
+    "noActiveClients": "No active clients",
+    "updateAvailable": "Update Available",
+    "updateVersion": "Version {{version}}",
+    "rssRunning": "Cross-seed RSS running",
+    "rssEnabled": "Cross-seed RSS enabled",
+    "scanRunning": "Scan running",
+    "logout": "Logout",
+    "version": "Version {{version}}",
+    "viewOnGitHub": "View on GitHub"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "create": "Create",
+    "scrollToTop": "Scroll to top",
+    "search": "Search",
+    "select": "Select",
+    "copyValue": "Copy {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "Got it"
+  },
+  "placeholders": {
+    "search": "Search...",
+    "selectItems": "Select items..."
+  },
+  "feedback": {
+    "noResultsFound": "No results found.",
+    "copied": "{{label}} copied to clipboard",
+    "copyFailed": "Failed to copy to clipboard"
+  },
+  "errors": {
+    "unknown": "Unknown error",
+    "httpStatus": "HTTP error! status: {{status}}",
+    "httpStatusHtml": "HTTP error! status: {{status}} (server returned HTML error page)",
+    "ssoHtmlResponse": "Received an HTML response instead of JSON from the API. If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), try refreshing the page or re-opening the URL in a new tab.",
+    "torrentFileDownloadFailed": "Failed to download torrent file: {{status}}",
+    "altSpeedToggle": "Could not change the alternative speed limits: {{message}}",
+    "altSpeedToggleHidden": "Could not change the alternative speed limits. Incognito mode hides the cause."
+  },
+  "status": {
+    "disabled": "Disabled",
+    "notContacted": "Not contacted",
+    "working": "Working",
+    "updating": "Updating",
+    "error": "Error",
+    "unknown": "Unknown",
+    "unavailable": "Unavailable",
+    "trackerError": "Tracker error",
+    "unreachable": "Unreachable"
+  },
+  "contentTypeLabels": {
+    "movie": "Movie",
+    "tv": "TV",
+    "music": "Music",
+    "audiobook": "Audiobook",
+    "book": "Book",
+    "comic": "Comic",
+    "game": "Game",
+    "app": "App",
+    "adult": "Adult",
+    "unknown": "Unknown"
+  },
+  "themeToggle": {
+    "changeTheme": "Change theme",
+    "appearance": "Appearance",
+    "mode": "Mode",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "theme": "Theme",
+    "switchedToMode": "Switched to {{mode}} mode",
+    "switchedToTheme": "Switched to {{theme}} theme",
+    "switchedToThemeVariation": "Switched to {{theme}} theme ({{variation}})",
+    "premiumThemeError": "This theme needs a license. Open Settings → Themes to activate one."
+  },
+  "updateBanner": {
+    "updateAvailable": "Update Available",
+    "versionAvailable": "Version {{version}} is now available",
+    "dismiss": "Dismiss"
+  },
+  "systemNotice": {
+    "needsAttention": "Needs attention",
+    "since": "Since {{time}}, {{age}}",
+    "causeLabel": "Cause",
+    "actionFallback": "Go to the fix",
+    "kinds": {
+      "recording_stopped": {
+        "short": "Recording stopped",
+        "title": "Recording stopped",
+        "effect": "qui cannot write the transfer history. It tries again at the next write.",
+        "fix": "Make sure that the disk has free space and that qui can write its database file.",
+        "menuFix": "Free disk space for the database"
+      },
+      "shrink_failed": {
+        "short": "Shrink failed",
+        "title": "Shrink failed",
+        "effect": "qui could not make the database file smaller. The database did not change, and qui runs as usual.",
+        "fix": "The qui log has the details.",
+        "menuFix": "Read the qui log",
+        "reasons": {
+          "disk_full": {
+            "fix": "The disk has too little free space. A shrink needs up to two times the size of the database file. Free space on the disk, then try again.",
+            "menuFix": "Free disk space, then try again"
+          },
+          "locked": {
+            "fix": "Another program held the database file. Stop that program, for example a backup tool or a database viewer, then try again.",
+            "menuFix": "Stop the other program, then try again"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "Low disk",
+        "title": "Low disk",
+        "effect": "The disk of the qui database has little free space. When the disk is full, each write of qui fails.",
+        "fix": "Free space on the disk, lower \"Keep daily detail for\", or delete older history in the Statistics settings.",
+        "menuFix": "Free disk space for the database",
+        "action": "Open the Statistics settings"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted key rejected",
+        "title": "Redacted rejected the API key",
+        "effect": "Redacted rejected the last search. qui asks it again at the next search.",
+        "fix": "If the key is wrong, make an API key with the Torrents permission in your Redacted profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If Redacted banned the IP of qui, a new key does not help: contact the staff of Redacted.",
+        "menuFix": "Paste a new key in settings",
+        "action": "Open Gazelle (OPS/RED) settings"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus key rejected",
+        "title": "Orpheus rejected the API key",
+        "effect": "Orpheus rejected the last search. qui asks it again at the next search.",
+        "fix": "If the key is wrong, make an API key with the Torrents permission in your Orpheus profile settings, and paste it in the Gazelle (OPS/RED) settings of qui. If Orpheus banned the IP of qui, a new key does not help: contact the staff of Orpheus.",
+        "menuFix": "Paste a new key in settings",
+        "action": "Open Gazelle (OPS/RED) settings"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "Library Scan schedule blocked",
+        "title": "Library Scan schedule cannot run",
+        "effect": "qui cannot start the scheduled Library Scan run. It tries again every hour.",
+        "fix": "Check the Library Scan settings. qui tries again every hour.",
+        "menuFix": "Check the Library Scan settings",
+        "action": "Open the Library Scan settings",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "Torznab is off in the Library Scan settings, and no RED or OPS API key is set. Turn Torznab on, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+            "menuFix": "Turn Torznab on, or add a RED or OPS key"
+          },
+          "no_indexer": {
+            "fix": "No indexer is enabled. Enable a Torznab indexer, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+            "menuFix": "Enable an indexer"
+          },
+          "instance_missing": {
+            "fix": "The instance in the saved Library Scan settings does not exist. Pick an instance in the Library Scan settings, then save. qui tries again every hour.",
+            "menuFix": "Pick an instance, then save"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "Try again",
+      "dismiss": "Dismiss",
+      "openLog": "Open the log"
+    },
+    "unknown": {
+      "short": "System notice",
+      "title": "System notice",
+      "effect": "qui found a fault that needs an action from you.",
+      "fix": "The qui log has the details.",
+      "menuFix": "Read the qui log"
+    }
+  },
+  "databaseShrink": {
+    "done": "Database file shrunk from {{before}} to {{after}}",
+    "nextStart": "The shrink runs at the next start of qui",
+    "failed": "Failed to request the shrink"
+  },
+  "pwaUpdate": {
+    "reload": "Reload",
+    "waitingDescription": "Reload to apply the latest qui release.",
+    "activatedTitle": "qui updated",
+    "activatedDescription": "Reload when convenient to finish installing the latest release."
+  },
+  "notFound": {
+    "title": "Oops! Lost in the swarm?",
+    "subtitle": "Looks like you've ventured into the unknown.",
+    "bugReport": "In case you think this is a bug rather than a missing link,",
+    "reportTo": "feel free to report this to our",
+    "githubRepository": "GitHub repository",
+    "getBackOnTrack": "Otherwise, let us help you get back on track!",
+    "returnToDashboard": "Return to dashboard"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Register qui as your magnet link handler",
+    "register": "Register",
+    "dismiss": "Dismiss",
+    "registrationRequested": "Magnet handler registration requested",
+    "registrationFailed": "Failed to register magnet handler",
+    "guidance": {
+      "standalone": "Open qui in a regular browser tab to register (the prompt may appear in the address bar, which PWAs don’t show).",
+      "chromium": "Chrome often shows this as a small protocol-handler icon in the address bar; if nothing appears, enable protocol handlers at chrome://settings/handlers.",
+      "default": "If prompted by your browser, please accept to complete registration."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "More information"
+  },
+  "numberInput": {
+    "unlimited": "Unlimited"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "Just now",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "past": "{{value}} ago",
+    "future": "in {{value}}",
+    "units": {
+      "second_one": "{{count}} second",
+      "second_other": "{{count}} seconds",
+      "minute_one": "{{count}} minute",
+      "minute_other": "{{count}} minutes",
+      "hour_one": "{{count}} hour",
+      "hour_other": "{{count}} hours",
+      "day_one": "{{count}} day",
+      "day_other": "{{count}} days",
+      "week_one": "{{count}} week",
+      "week_other": "{{count}} weeks",
+      "month_one": "{{count}} month",
+      "month_other": "{{count}} months",
+      "year_one": "{{count}} year",
+      "year_other": "{{count}} years"
+    }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
+  "support": {
+    "title": "Support qui",
+    "description": "The ways to support qui, and their prices.",
+    "heading": "Help keep qui maintained",
+    "intro": "qui is free, and it works the same whether you pay or not. Support pays for the time and the tools that go into it.",
+    "licensed": "Thank you for your theme license.",
+    "releases_one": "qui had {{count}} release in the last 12 months.",
+    "releases_other": "qui had {{count}} releases in the last 12 months.",
+    "releaseMap": "The last 52 weeks, one square for each day. A bright square is a day with a release.",
+    "releaseDay": "A day with a release",
+    "plans": {
+      "yearly": "{{price}} a year",
+      "yearlyNote": "{{price}} a month, paid yearly",
+      "yearlyNoteWithLicense": "{{price}} a month, paid yearly. Includes the theme license.",
+      "license": "Theme license, from {{price}}",
+      "licenseNote": "All current and future premium themes, for life",
+      "onePayment": "one payment"
+    },
+    "checkout": "Continue to checkout",
+    "fromPrice": "from {{price}}",
+    "terms": {
+      "yearly": "You pay {{price}} today, then {{price}} each year until you cancel.",
+      "license": "One payment of {{price}} or more, set at checkout. No subscription."
+    },
+    "perks": {
+      "yearly": "Supporters get the Supporter badge in qui and the supporter role in Discord. After checkout, add your supporter key to this server.",
+      "license": "The license unlocks the premium themes. After checkout, add your license key to this server."
+    },
+    "existing": "Already a supporter?",
+    "addKey": "Add your supporter key",
+    "key": {
+      "help": "Your supporter key is on the checkout page and in the email with your receipt.",
+      "label": "Supporter key",
+      "submit": "Add key",
+      "back": "Back"
+    },
+    "ended": "The supporter key on this server is not valid any more. qui checks it again each day. If your support ended, your theme license stays. Find its key in the <portal>license portal</portal>, and add it in Settings, under Themes.",
+    "removeKey": "Remove the supporter key from this server",
+    "supporter": {
+      "badge": "Supporter",
+      "title": "You support qui",
+      "thanks": "Thank you. Your support pays for the time and the tools that go into qui.",
+      "detail": "You have the Supporter badge in qui and the supporter role in Discord. Your support also unlocks the premium themes, and it includes a theme license for life. Find the license key in the <portal>license portal</portal>.",
+      "manage": "Manage or cancel your support"
+    },
+    "reminder": {
+      "title_one": "{{count}} day of qui on this server",
+      "title_other": "{{count}} days of qui on this server",
+      "tooltip": "Counted on this server and never sent. qui asks once a year.",
+      "subtitle": "Support qui. qui asks once a year.",
+      "notNow": "Not now",
+      "serverDays_one": "This server has run qui for {{count}} day. qui counts that on this server and never sends it.",
+      "serverDays_other": "This server has run qui for {{count}} days. qui counts that on this server and never sends it.",
+      "notNowToast": "qui asks again in a year",
+      "dontAskAgain": "Don't ask again",
+      "offToast": "qui will not ask again",
+      "offToastDescription": "The support shortcut stays. Turn the reminder back on in Settings, under Application.",
+      "undo": "Undo",
+      "hiddenToast": "The support shortcut is hidden",
+      "hiddenToastDescription": "qui will not ask again. Bring the shortcut back in Settings, under Application.",
+      "notForYou": "Not for you? <reminder>Turn off the yearly reminder</reminder>, or <heart>hide the heart</heart>. Settings brings both back.",
+      "notForYouHeart": "Not for you? <heart>Hide the heart</heart>. Settings brings it back."
+    }
+  },
+  "labels": {
+    "path": "Path",
+    "beta": "Beta"
+  },
+  "kit": {
+    "loadFailed": "This section did not load.",
+    "retry": "Try again",
+    "edit": "Edit",
+    "moreActions": "More actions",
+    "enabled": "Enabled",
+    "clearSelection": "Clear selection"
+  }
+}

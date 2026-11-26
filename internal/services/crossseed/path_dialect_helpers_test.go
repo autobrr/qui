@@ -1,0 +1,140 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/linktree"
+)
+
+func eachDialect(t *testing.T, hostToo bool, fn func(t *testing.T, d fsops.PathDialect, conv func(string) string)) {
+	t.Helper()
+	t.Run("slash", func(t *testing.T) { fn(t, fsops.SlashPaths, func(p string) string { return p }) })
+	if hostToo {
+		t.Run("host", func(t *testing.T) { fn(t, fsops.HostPaths, filepath.FromSlash) })
+	}
+}
+
+func TestPathDialect_CategoryAndSeasonPackDirs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		preset       string
+		baseDir      string
+		wantCategory string
+		hostToo      bool
+	}{
+		{name: "by-tracker", preset: "by-tracker", baseDir: "/data/hl", wantCategory: "/data/hl/Tracker", hostToo: true},
+		{name: "by-instance", preset: "by-instance", baseDir: "/data/hl", wantCategory: "/data/hl/qbt1", hostToo: true},
+		{name: "flat", preset: "flat", baseDir: "/data/hl", wantCategory: "/data/hl", hostToo: true},
+		{name: "flat backslash base", preset: "flat", baseDir: `/data/hl\x`, wantCategory: `/data/hl\x`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			eachDialect(t, tt.hostToo, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
+				s := &Service{}
+				instance := &models.Instance{Name: "qbt1", HardlinkDirPreset: tt.preset}
+				presetDir := conv(tt.wantCategory)
+
+				wantCategory := normalizePath(tt.wantCategory)
+				if tt.preset == "flat" {
+					wantCategory = conv(tt.wantCategory)
+				}
+				require.Equal(t, wantCategory, linkCategorySavePath(d, &linktree.Tree{BaseDir: conv(tt.baseDir), PresetDir: presetDir}, nil))
+
+				require.Equal(t, conv(tt.wantCategory), s.seasonPackDestDir(t.Context(), d, instance, instance.Name, conv(tt.baseDir), nil, "Tracker"))
+			})
+		})
+	}
+}
+
+func TestPathDialect_SharedPathComponents(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		a, b    string
+		want    int
+		hostToo bool
+	}{
+		{a: "/data/a/b", b: "/data/a/b/x", want: 4, hostToo: true},
+		{a: "/data/a", b: "/data/b/x", want: 2, hostToo: true},
+		{a: `/data/a\b`, b: "/data/a/b/x", want: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.a, func(t *testing.T) {
+			t.Parallel()
+			eachDialect(t, tt.hostToo, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
+				require.Equal(t, tt.want, sharedPathComponents(d, conv(tt.a), conv(tt.b)))
+			})
+		})
+	}
+}
+
+func TestPathDialect_ResolveLocalTorrentFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "Show/ep.mkv", want: "/data/tv/Show/ep.mkv"},
+		{name: "sub/../ep.mkv", want: "/data/tv/ep.mkv"},
+		{name: "../x"},
+		{name: "a/../../x"},
+		{name: "C:/x"},
+		{name: "/x"},
+		{name: `a\b`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			eachDialect(t, true, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
+				got, ok := resolveLocalTorrentFile(d, conv("/data/tv"), tt.name)
+				require.Equal(t, tt.want != "", ok)
+				if ok {
+					require.Equal(t, conv(tt.want), got)
+				}
+			})
+		})
+	}
+}
+
+func TestPathDialect_SafeSeasonPackJoin(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		root, name string
+		want       string
+		hostToo    bool
+	}{
+		{root: "/data/tv", name: "ep.mkv", want: "/data/tv/ep.mkv", hostToo: true},
+		{root: "/data/tv", name: `Show\ep.mkv`, want: "/data/tv/Show/ep.mkv", hostToo: true},
+		{root: "//data/tv", name: "ep.mkv", want: "/data/tv/ep.mkv"},
+		{root: "/data/tv", name: "../x", hostToo: true},
+		{root: "/data/tv", name: "a/../../x", hostToo: true},
+		{root: "/data/tv", name: "/x", hostToo: true},
+		{root: "/data/tv", name: ".", hostToo: true},
+		{root: "/data/tv", name: "C:/x", hostToo: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.root+" "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			eachDialect(t, tt.hostToo, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
+				got, ok := safeSeasonPackJoin(d, conv(tt.root), tt.name)
+				require.Equal(t, tt.want != "", ok, got)
+				if ok {
+					require.Equal(t, conv(tt.want), got)
+				}
+			})
+		})
+	}
+}

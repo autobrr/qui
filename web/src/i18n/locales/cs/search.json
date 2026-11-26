@@ -1,0 +1,203 @@
+{
+  "pageTitle": "Prohledat indexery",
+  "pageDescription": "Prohledávejte své indexery a přidejte release do qBittorrentu.",
+  "indexerSheet": {
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Nativní",
+      "jackett": "Jackett"
+    }
+  },
+  "instanceSelector": {
+    "offline": "Nedostupné"
+  },
+  "picker": {
+    "indexersTitle": "Indexery k prohledání",
+    "filter": "Filtrovat",
+    "all": "Vše",
+    "none": "Nic",
+    "done": "Hotovo",
+    "noMatch": "Filtru nic neodpovídá"
+  },
+  "form": {
+    "indexers": "Indexery",
+    "indexerCount": "{{selected}}/{{total}}",
+    "removeParam": "Odebrat {{label}}",
+    "clearFields": "Vymazat pole",
+    "clearQuery": "Vymazat dotaz",
+    "recentSearches": "Nedávná hledání",
+    "noIndexersTitle": "Zatím žádné indexery",
+    "noIndexersBody": "Přidejte indexer, abyste ho mohli prohledávat z této stránky.",
+    "noIndexersAction": "Přidat indexery",
+    "indexersFailed": "Nepodařilo se načíst indexery"
+  },
+  "searchForm": {
+    "advanced": "Pokročilé",
+    "searching": "Hledá se...",
+    "search": "Hledat",
+    "advancedNote": "ID a čísla zpřesní hledání u indexerů, které je podporují.",
+    "searchType": "Typ hledání",
+    "searchQuery": "Hledaný dotaz"
+  },
+  "searchTypes": {
+    "movies": {
+      "label": "Filmy",
+      "placeholder": "např. \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "např. \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Hudba",
+      "placeholder": "např. \"Example Artist - Example Album\", \"Sample Band - Debut EP\""
+    },
+    "books": {
+      "label": "Knihy & komiksy",
+      "placeholder": "např. \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "Aplikace & hry",
+      "placeholder": "např. \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Dospělé",
+      "placeholder": "Zadejte specifický název releasu pro dospělé"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Rok",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Série",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Epizoda",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Umělec",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Album",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Limit",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Posun",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "count_one": "{{count}} výsledek",
+    "count_few": "{{count}} výsledky",
+    "count_other": "{{count}} výsledků",
+    "filteredCount_one": "{{shown}} z {{count}} výsledku",
+    "filteredCount_few": "{{shown}} z {{count}} výsledků",
+    "filteredCount_other": "{{shown}} z {{count}} výsledků",
+    "searching_one": "Prohledávání {{count}} indexeru...",
+    "searching_few": "Prohledávání {{count}} indexerů...",
+    "searching_other": "Prohledávání {{count}} indexerů...",
+    "filterPlaceholder": "Filtrovat výsledky...",
+    "clearFilters": "Vymazat filtry",
+    "noMatches": "Filtrům neodpovídá žádný výsledek.",
+    "cachedSummary": "V cache {{cached}} · Vyprší {{expires}}",
+    "cachedAgo": "V cache · {{age}}",
+    "live": "Živě",
+    "partial": "Neúplné",
+    "partialHint": "Některé indexery neodpověděly. Obnovením se jich zeptáte znovu.",
+    "refresh": "Obnovit",
+    "refreshFromIndexers": "Obnovit z indexerů",
+    "refreshCooldown": "Znovu obnovit můžete za chvíli",
+    "showMore": "Zobrazit více",
+    "shownOf": "Zobrazeno {{shown}} z {{total}}",
+    "categoryFallback": "Kategorie {{id}}",
+    "noResults": "Nebyly nalezeny žádné výsledky",
+    "noResultsFor": "Žádné výsledky pro \"{{query}}\"",
+    "noResultsHint": "Zkontrolujte pravopis, zvolte jiný typ hledání nebo prohledejte více indexerů.",
+    "searchAllIndexers": "Prohledat všechny indexery",
+    "failed": "Hledání selhalo",
+    "retry": "Zkusit znovu",
+    "idleTitle": "Prohledejte své indexery",
+    "idleHint": "Zadejte název, IMDb ID jako tt1234567 nebo TVDb ID jako tvdb 123456.",
+    "free": "Free"
+  },
+  "facets": {
+    "collection": "Služba",
+    "normal": "Normální"
+  },
+  "sort": {
+    "label": "Řadit",
+    "seeders": "Nejvíce seederů",
+    "newest": "Nejnovější",
+    "oldest": "Nejstarší",
+    "largest": "Největší",
+    "smallest": "Nejmenší",
+    "title": "Název A–Z",
+    "indexer": "Indexer A–Z"
+  },
+  "columns": {
+    "age": "Stáří"
+  },
+  "row": {
+    "add": "Přidat",
+    "addTo": "Přidat do",
+    "more": "Další akce",
+    "openIndexer": "Otevřít na indexeru",
+    "copyTitle": "Kopírovat název",
+    "discount": "{{percent}}%",
+    "upload": "{{factor}}× upload"
+  },
+  "bulk": {
+    "label": "Vybrané výsledky",
+    "selected_one": "Vybráno: {{count}}",
+    "selected_few": "Vybráno: {{count}}",
+    "selected_other": "Vybráno: {{count}}",
+    "selectShown": "Vybrat vše zobrazené"
+  },
+  "historyMeta": "{{type}} · {{count}} výsledků · {{timestamp}}",
+  "table": {
+    "title": "Název",
+    "indexer": "Indexerů",
+    "size": "Velikost",
+    "seeders": "Seeders",
+    "leechers": "Stahovatelé",
+    "category": "Kategorie",
+    "source": "Zdroj",
+    "group": "Skupina",
+    "freeleech": "Freeleech",
+    "actions": "Akce",
+    "downloadTorrent": "Stáhnout .torrent"
+  },
+  "refreshDialog": {
+    "title": "Obejít cache?",
+    "description": "Toto bude poslat požadavek přímo každému vybranému indexeru. Používejte opatrně, aby jste se vyhnuli limitům rychlosti. Můžete obnovit znovu po krátké odezvě.",
+    "refreshNow": "Obnovit nyní"
+  },
+  "cache": {
+    "cacheAndLive": "Cache + živé"
+  },
+  "card": {
+    "addToNamed": "Přidat do {{name}}"
+  },
+  "toast": {
+    "noDownloadUrl": "Žádné stahovací URL pro tento výsledek",
+    "invalidProtocol": "Neplatný URL protokol",
+    "invalidUrl": "Neplatný formát URL"
+  }
+}

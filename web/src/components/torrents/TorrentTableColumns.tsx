@@ -1,0 +1,1001 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Progress } from "@/components/ui/progress"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
+import {
+  getLinuxCategory,
+  getLinuxHash,
+  getLinuxIsoName,
+  getLinuxRatio,
+  getLinuxSavePath,
+  getLinuxTags,
+  getLinuxTracker
+} from "@/lib/incognito"
+import { formatTimestamp as formatStoredTimestamp, isNeverCompletedTimestamp } from "@/lib/dateTimeUtils"
+import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
+import { formatReannounceIn, getStateLabel } from "@/lib/torrent-state-utils"
+import {
+  extractTrackerHost,
+  resolveTrackerDisplay,
+  type TrackerCustomizationLookup
+} from "@/lib/tracker-customizations"
+import { getStatusBadgeProps, SELECT_COLUMN_WIDTH, TRACKER_HEALTH_DISPLAY, type TrackerHealth } from "@/lib/torrent-table/row-display"
+import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
+import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import type { CrossInstanceTorrent, Torrent } from "@/types"
+import type { CellContext } from "@tanstack/react-table"
+import type { TorrentTableColumnDef, TorrentTableFeatures } from "./tanstackTableFeatures"
+import { CellText } from "./table/CellText"
+import {
+  AlertCircle,
+  ArrowDownAZ,
+  ArrowDownZA,
+  CheckCircle2,
+  Download,
+  Globe,
+  ListOrdered,
+  MoveRight,
+  PlayCircle,
+  RotateCw,
+  StopCircle,
+  Upload,
+  XCircle
+} from "lucide-react"
+import type { TFunction } from "i18next"
+import { memo, useEffect, useState } from "react"
+
+function formatEta(seconds: number): string {
+  if (seconds === 8640000) return "∞"
+  if (seconds < 0) return "-"
+
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = Math.floor(seconds % 60)
+
+  if (hours > 24) {
+    const days = Math.floor(hours / 24)
+    return `${days}d ${hours % 24}h`
+  }
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m ${secs}s`
+  }
+
+  return `${secs}s`
+}
+
+function calculateMinWidth(text: string, padding: number = 48): number {
+  const charWidth = 7.5
+  const extraPadding = 20
+  return Math.max(60, Math.ceil(text.length * charWidth) + padding + extraPadding)
+}
+
+interface TrackerIconCellProps {
+  title: string
+  fallback: string
+  src: string | null
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) => {
+  const [hasError, setHasError] = useState(false)
+
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <div className="flex h-full w-full items-center justify-center" role={title ? "img" : undefined} aria-label={title || undefined}>
+      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-10 font-medium uppercase leading-none">
+        {src && !hasError ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full rounded-[2px] object-cover"
+            draggable={false}
+            decoding="async"
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <span aria-hidden="true">{fallback}</span>
+        )}
+      </div>
+    </div>
+  )
+})
+
+const getTrackerDisplayMeta = (tracker?: string) => {
+  const host = extractTrackerHost(tracker)
+  if (!host) {
+    return {
+      host: "",
+      fallback: "#",
+      title: "",
+    }
+  }
+
+  const fallbackLetter = host.charAt(0).toUpperCase()
+
+  return {
+    host,
+    fallback: fallbackLetter,
+    title: host,
+  }
+}
+
+TrackerIconCell.displayName = "TrackerIconCell"
+
+const STATUS_SORT_ORDER: Record<string, number> = {
+  downloading: 20,
+  metaDL: 21,
+  forcedDL: 22,
+  allocating: 23,
+  checkingDL: 24,
+  queuedDL: 25,
+  stalledDL: 30,
+  uploading: 40,
+  forcedUP: 41,
+  stoppedDL: 42,
+  stoppedUP: 43,
+  queuedUP: 44,
+  stalledUP: 45,
+  pausedDL: 50,
+  pausedUP: 51,
+  checkingUP: 60,
+  checkingResumeData: 61,
+  moving: 70,
+  error: 80,
+  missingFiles: 81,
+}
+
+const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction) => {
+  if (supportsTrackerHealth) {
+    if (torrent.tracker_health === "unregistered") {
+      return {
+        priority: 0,
+        statePriority: -1,
+        label: t("tableColumns.unregistered"),
+      }
+    }
+    if (torrent.tracker_health === "tracker_down") {
+      return {
+        priority: 1,
+        statePriority: -1,
+        label: t("tableColumns.trackerDown"),
+      }
+    }
+    if (torrent.tracker_health === "tracker_error") {
+      return {
+        priority: 2,
+        statePriority: -1,
+        label: t("tableColumns.trackerError"),
+      }
+    }
+  }
+
+  const statePriority = STATUS_SORT_ORDER[torrent.state] ?? 1000
+
+  return {
+    priority: 10,
+    statePriority,
+    label: getStateLabel(torrent.state, t),
+  }
+}
+
+const getStatusIcon = (state: string, trackerHealth?: TrackerHealth | null, supportsTrackerHealth: boolean = true) => {
+  if (supportsTrackerHealth && trackerHealth) {
+    return TRACKER_HEALTH_DISPLAY[trackerHealth].icon
+  }
+
+  switch (state) {
+    case "downloading":
+    case "metaDL":
+    case "forcedDL":
+    case "queuedDL":
+    case "stalledDL":
+    case "stalled_downloading":
+      return Download
+    case "uploading":
+    case "forcedUP":
+    case "queuedUP":
+    case "stalledUP":
+    case "stalled_uploading":
+      return Upload
+    case "pausedUP":
+    case "stoppedUP":
+      return CheckCircle2
+    case "pausedDL":
+    case "stopped":
+    case "stoppedDL":
+    case "inactive":
+      return StopCircle
+    case "checkingDL":
+    case "checkingUP":
+    case "checkingResumeData":
+    case "checking":
+      return RotateCw
+    case "allocating":
+    case "moving":
+      return MoveRight
+    case "error":
+    case "missingFiles":
+      return XCircle
+    case "active":
+    case "running":
+      return PlayCircle
+    case "stalled":
+      return AlertCircle
+    default:
+      if (state.includes("complet")) {
+        return CheckCircle2
+      }
+      return CheckCircle2
+  }
+}
+
+const compareTrackerAwareStatus = (torrentA: Torrent, torrentB: Torrent, supportsTrackerHealth: boolean, t: TFunction): number => {
+  const metaA = getTrackerAwareStatusSortMeta(torrentA, supportsTrackerHealth, t)
+  const metaB = getTrackerAwareStatusSortMeta(torrentB, supportsTrackerHealth, t)
+
+  if (metaA.priority !== metaB.priority) {
+    return metaA.priority - metaB.priority
+  }
+
+  if (metaA.statePriority !== metaB.statePriority) {
+    return metaA.statePriority - metaB.statePriority
+  }
+
+  const labelComparison = metaA.label.localeCompare(metaB.label, undefined, { sensitivity: "accent", numeric: false })
+  if (labelComparison !== 0) {
+    return labelComparison
+  }
+
+  const stateA = torrentA.state || ""
+  const stateB = torrentB.state || ""
+
+  const stateComparison = stateA.localeCompare(stateB, undefined, { sensitivity: "accent", numeric: false })
+  if (stateComparison !== 0) {
+    return stateComparison
+  }
+
+  const nameA = torrentA.name || ""
+  const nameB = torrentB.name || ""
+
+  return nameA.localeCompare(nameB, undefined, { sensitivity: "accent", numeric: false })
+}
+
+export type TableViewMode = "normal" | "dense" | "compact"
+
+interface CreateColumnsParams {
+  incognitoMode: boolean
+  selection?: {
+    onSelectAll: () => void
+    isAllChecked: boolean
+    isIndeterminate: boolean
+    isSelected: (torrent: Torrent) => boolean
+    onCheckboxPointerDown: (event: React.PointerEvent<HTMLElement>) => void
+    onCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
+  }
+  speedUnit?: SpeedUnit
+  trackerIcons?: Record<string, string>
+  formatTimestamp?: (timestamp: number) => string
+  instanceMaxRatio?: number
+  supportsTrackerHealth?: boolean
+  showInstanceColumn?: boolean
+  viewMode?: TableViewMode
+  trackerCustomizationLookup?: TrackerCustomizationLookup
+}
+
+export const createColumns = ({
+  incognitoMode,
+  selection,
+  speedUnit = "bytes",
+  trackerIcons,
+  formatTimestamp = formatStoredTimestamp,
+  instanceMaxRatio,
+  supportsTrackerHealth = true,
+  showInstanceColumn = false,
+  viewMode = "normal",
+  trackerCustomizationLookup,
+}: CreateColumnsParams, t: TFunction): TorrentTableColumnDef[] => {
+  const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
+  const iconColumnWidth = 16 + 2 * (viewMode === "dense" ? 8 : 12)
+  const instanceLabel = t("tableColumns.instance")
+  const selectionLabel = t("tableColumns.selection")
+  const selectAllRowsLabel = t("tableColumns.selectAllRows")
+  const selectRowLabel = t("tableColumns.selectRow")
+  const priorityLabel = t("tableColumns.priority")
+  const statusIconLabel = t("tableColumns.statusIcon")
+  const trackerIconLabel = t("tableColumns.trackerIcon")
+  const helperTransferLabel = t("tableColumns.helperTransfer")
+  const helperShareLabel = t("tableColumns.helperShare")
+  const helperHint = t("tableColumns.helperHint")
+
+  const instanceColumn: TorrentTableColumnDef = {
+    id: "instance",
+    accessorKey: "instanceName",
+    header: instanceLabel,
+    cell: ({ row }) => {
+      const instanceName = (row.original as CrossInstanceTorrent).instanceName ?? ""
+      return (
+        <div className="overflow-hidden whitespace-nowrap text-sm font-medium">
+          <Badge variant="outline">
+            {instanceName}
+          </Badge>
+        </div>
+      )
+    },
+    size: calculateMinWidth(instanceLabel),
+  }
+
+  return [
+    ...(selection ? [{
+      id: "select",
+      header: () => (
+        <div className="flex items-center justify-center p-1 -m-1">
+          <Checkbox
+            checked={selection.isIndeterminate ? "indeterminate" : selection.isAllChecked}
+            onCheckedChange={() => selection.onSelectAll()}
+            aria-label={selectAllRowsLabel}
+            className="hover:border-ring cursor-pointer transition-colors"
+          />
+        </div>
+      ),
+      cell: ({ row }: CellContext<TorrentTableFeatures, Torrent, unknown>) => (
+        <div className="flex items-center justify-center p-1 -m-1">
+          <Checkbox
+            checked={selection.isSelected(row.original)}
+            onPointerDown={selection.onCheckboxPointerDown}
+            onCheckedChange={(checked) => selection.onCheckboxChange(row.original, row.id, !!checked)}
+            aria-label={selectRowLabel}
+            className="hover:border-ring cursor-pointer transition-colors"
+          />
+        </div>
+      ),
+      size: SELECT_COLUMN_WIDTH,
+      enableResizing: false,
+      meta: {
+        headerString: selectionLabel,
+      },
+    }] : []),
+    {
+      accessorKey: "priority",
+      header: () => (
+        <Tooltip>
+          <TooltipTrigger asChild openOnTap>
+            <div className="flex items-center justify-center">
+              <ListOrdered className="h-4 w-4" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>{priorityLabel}</TooltipContent>
+        </Tooltip>
+      ),
+      meta: {
+        headerString: priorityLabel,
+      },
+      cell: ({ row }) => {
+        const priority = row.original.priority
+        const state = row.original.state
+        const isQueued = state === "queuedDL" || state === "queuedUP"
+
+        if (priority === 0 && !isQueued) {
+          return <span className="text-sm text-muted-foreground text-center block">-</span>
+        }
+
+        if (isQueued) {
+          const queueType = state === "queuedDL" ? "DL" : "UP"
+          const badgeVariant = state === "queuedDL" ? "secondary" : "outline"
+          return (
+            <div className="flex items-center justify-center gap-1">
+              <Badge variant={badgeVariant} className="px-1 py-0">
+                Q{priority || "?"}
+              </Badge>
+              <span className="text-xs text-muted-foreground">{queueType}</span>
+            </div>
+          )
+        }
+
+        return <span className="text-sm font-medium text-center block">{priority}</span>
+      },
+      size: 65,
+    },
+    {
+      accessorKey: "name",
+      header: t("tableColumns.name"),
+      cell: ({ row }) => {
+        const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
+        const helper = row.original.qui_helper
+        return (
+          <div className="flex min-w-0 items-center text-sm">
+            {helper && (
+              <Tooltip>
+                <TooltipTrigger asChild openOnTap="only">
+                  <Badge variant="outline" className={cn("mr-1.5 shrink-0", badgePadding)}>
+                    {helper === "share" ? helperShareLabel : helperTransferLabel}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>{helperHint}</TooltipContent>
+              </Tooltip>
+            )}
+            <CellText>{displayName}</CellText>
+          </div>
+        )
+      },
+      size: 200,
+    },
+    ...(showInstanceColumn ? [instanceColumn] : []),
+    {
+      accessorKey: "size",
+      header: t("tableColumns.size"),
+      cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.size)}</span>,
+      size: 85,
+    },
+    {
+      accessorKey: "total_size",
+      header: t("tableColumns.totalSize"),
+      cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatBytes(row.original.total_size)}</span>,
+      size: 115,
+    },
+    {
+      accessorKey: "progress",
+      header: t("tableColumns.progress"),
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <Progress value={row.original.progress * 100} className="w-20" />
+          <span className="text-xs text-muted-foreground">
+            {row.original.progress >= 0.99 && row.original.progress < 1 ? (
+              (Math.floor(row.original.progress * 1000) / 10).toFixed(1)
+            ) : (
+              Math.round(row.original.progress * 100)
+            )}%
+          </span>
+        </div>
+      ),
+      size: 120,
+    },
+    {
+      id: "status_icon",
+      accessorFn: (torrent) => torrent.state,
+      header: () => (
+        <Tooltip>
+          <TooltipTrigger asChild openOnTap>
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={statusIconLabel}>
+              <PlayCircle className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>{statusIconLabel}</TooltipContent>
+        </Tooltip>
+      ),
+      meta: {
+        headerString: statusIconLabel,
+      },
+      sortFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth, t),
+      cell: ({ row }) => {
+        const torrent = row.original
+        const StatusIcon = getStatusIcon(torrent.state, torrent.tracker_health ?? null, supportsTrackerHealth)
+        const { label: statusLabel, iconClass } = getStatusBadgeProps(torrent, supportsTrackerHealth, t)
+
+        return (
+          <div
+            className="flex h-full w-full items-center justify-center"
+            role="img"
+            aria-label={statusLabel}
+          >
+            <StatusIcon className={cn("h-4 w-4", iconClass)} aria-hidden="true" />
+          </div>
+        )
+      },
+      size: iconColumnWidth,
+      minSize: iconColumnWidth,
+      maxSize: iconColumnWidth,
+      enableResizing: false,
+      enableSorting: true,
+    },
+    {
+      accessorKey: "state",
+      header: t("tableColumns.status"),
+      sortFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth, t),
+      cell: ({ row }) => {
+        const torrent = row.original
+        const state = torrent.state
+        const priority = torrent.priority
+        const isQueued = state === "queuedDL" || state === "queuedUP"
+        const { label: displayLabel, variant: badgeVariant, className: badgeClass } = getStatusBadgeProps(torrent, supportsTrackerHealth, t)
+
+        if (isQueued && priority > 0) {
+          return (
+            <div className="flex items-center gap-1">
+              <Badge variant={badgeVariant} className={cn(badgePadding, badgeClass)}>
+                {displayLabel}
+              </Badge>
+              <span className="text-xs text-muted-foreground">#{priority}</span>
+            </div>
+          )
+        }
+
+        return (
+          <Badge variant={badgeVariant} className={cn(badgePadding, badgeClass)}>
+            {displayLabel}
+          </Badge>
+        )
+      },
+      size: 130,
+    },
+    {
+      accessorKey: "num_seeds",
+      header: t("tableColumns.seeds"),
+      cell: ({ row }) => {
+        const connected = row.original.num_seeds >= 0 ? row.original.num_seeds : 0
+        const total = row.original.num_complete >= 0 ? row.original.num_complete : 0
+        if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
+        return (
+          <span className="text-sm overflow-hidden whitespace-nowrap">
+            {connected} ({total})
+          </span>
+        )
+      },
+      size: 85,
+    },
+    {
+      accessorKey: "num_leechs",
+      header: t("tableColumns.peers"),
+      cell: ({ row }) => {
+        const connected = row.original.num_leechs >= 0 ? row.original.num_leechs : 0
+        const total = row.original.num_incomplete >= 0 ? row.original.num_incomplete : 0
+        if (total < 0 && connected < 0) return <span className="text-sm overflow-hidden whitespace-nowrap">-</span>
+        return (
+          <span className="text-sm overflow-hidden whitespace-nowrap">
+            {connected} ({total})
+          </span>
+        )
+      },
+      size: 85,
+    },
+    {
+      accessorKey: "dlspeed",
+      header: t("tableColumns.downSpeed"),
+      cell: ({ row }) => {
+        const speed = row.original.dlspeed
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
+      },
+      size: calculateMinWidth("Down Speed"),
+    },
+    {
+      accessorKey: "upspeed",
+      header: t("tableColumns.upSpeed"),
+      cell: ({ row }) => {
+        const speed = row.original.upspeed
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{speed === 0 ? "-" : formatSpeedWithUnit(speed, speedUnit)}</span>
+      },
+      size: calculateMinWidth("Up Speed"),
+    },
+    {
+      accessorKey: "eta",
+      header: t("tableColumns.eta"),
+      cell: ({ row }) => <span className="text-sm overflow-hidden whitespace-nowrap">{formatEta(row.original.eta)}</span>,
+      size: 80,
+    },
+    {
+      accessorKey: "ratio",
+      header: t("tableColumns.ratio"),
+      cell: ({ row }) => {
+        const ratio = incognitoMode ? getLinuxRatio(row.original.hash) : row.original.ratio
+        const displayRatio = ratio === -1 ? "∞" : ratio.toFixed(2)
+        const colorVar = getRatioColor(ratio)
+
+        return (
+          <span
+            className="text-sm font-medium overflow-hidden whitespace-nowrap"
+            style={{ color: colorVar }}
+          >
+            {displayRatio}
+          </span>
+        )
+      },
+      sortFn: (rowA, rowB) => {
+        const ratioA = incognitoMode ? getLinuxRatio(rowA.original.hash) : rowA.original.ratio
+        const ratioB = incognitoMode ? getLinuxRatio(rowB.original.hash) : rowB.original.ratio
+
+        if (ratioA === -1 && ratioB === -1) return 0
+        if (ratioA === -1) return 1
+        if (ratioB === -1) return -1
+
+        return ratioA - ratioB
+      },
+      size: 90,
+    },
+    {
+      accessorKey: "popularity",
+      header: t("tableColumns.popularity"),
+      cell: ({ row }) => {
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {row.original.popularity?.toFixed(2) ?? "—"}
+          </div>
+        )
+      },
+      size: 120,
+    },
+    {
+      accessorKey: "category",
+      header: t("tableColumns.category"),
+      cell: ({ row }) => {
+        const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
+        return <CellText className="text-sm">{displayCategory}</CellText>
+      },
+      size: 150,
+    },
+    {
+      accessorKey: "tags",
+      header: t("tableColumns.tags"),
+      cell: ({ row }) => {
+        const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
+        const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
+        return <CellText className="text-sm">{displayTags}</CellText>
+      },
+      size: 200,
+    },
+    {
+      accessorKey: "added_on",
+      header: t("tableColumns.addedOn"),
+      cell: ({ row }) => {
+        const addedOn = row.original.added_on
+        if (!addedOn || addedOn === 0) {
+          return "-"
+        }
+
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp(addedOn)}</div>
+        )
+      },
+      size: 200,
+    },
+    {
+      accessorKey: "completion_on",
+      header: t("tableColumns.completedOn"),
+      cell: ({ row }) => {
+        const completionOn = row.original.completion_on
+        if (isNeverCompletedTimestamp(completionOn)) {
+          return "-"
+        }
+
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp(completionOn)}</div>
+        )
+      },
+      size: 200,
+    },
+    {
+      id: "tracker_icon",
+      header: ({ table }) => {
+        const trackerColumn = table.getColumn("tracker")
+        const sortState = trackerColumn?.getIsSorted()
+        const Icon = sortState === "asc" ? ArrowDownAZ : sortState === "desc" ? ArrowDownZA : Globe
+
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild openOnTap>
+              <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={trackerIconLabel}>
+                <Icon className="h-4 w-4" aria-hidden="true" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>{trackerIconLabel}</TooltipContent>
+          </Tooltip>
+        )
+      },
+      meta: {
+        headerString: trackerIconLabel,
+      },
+      cell: ({ row }) => {
+        const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+        const { host, fallback, title } = getTrackerDisplayMeta(tracker)
+        const trackerDisplayInfo = trackerCustomizationLookup ? resolveTrackerDisplay(host, trackerCustomizationLookup) : null
+        const iconDomain = trackerDisplayInfo?.primaryDomain || host
+        const iconSrc = resolveTrackerIconSrc(trackerIcons, iconDomain, host)
+
+        return (
+          <TrackerIconCell
+            title={title}
+            fallback={fallback}
+            src={iconSrc}
+          />
+        )
+      },
+      size: iconColumnWidth,
+      minSize: iconColumnWidth,
+      maxSize: iconColumnWidth,
+      enableResizing: false,
+      enableSorting: false,
+    },
+    {
+      accessorKey: "tracker",
+      header: t("tableColumns.trackerUrl"),
+      accessorFn: trackerCustomizationLookup ? (torrent) => {
+        const tracker = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
+        const host = extractTrackerHost(tracker)
+        if (!host || host === "unknown") {
+          return undefined
+        }
+        const displayInfo = resolveTrackerDisplay(host, trackerCustomizationLookup)
+        return displayInfo.displayName || undefined
+      } : undefined,
+      sortUndefined: "last",
+      cell: ({ row }) => {
+        const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
+        const host = extractTrackerHost(tracker)
+        const displayInfo = trackerCustomizationLookup ? resolveTrackerDisplay(host, trackerCustomizationLookup) : { displayName: host, primaryDomain: host, isCustomized: false }
+
+        const tooltipParts: string[] = []
+        if (displayInfo.isCustomized) {
+          tooltipParts.push(`Name: ${displayInfo.displayName}`)
+          tooltipParts.push(`Host: ${host}`)
+        }
+        if (tracker && tracker !== host) {
+          tooltipParts.push(`URL: ${tracker}`)
+        }
+        const tooltipText = tooltipParts.length > 0 ? tooltipParts.join("\n") : (tracker || "")
+
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="overflow-hidden whitespace-nowrap text-sm cursor-default">
+                {displayInfo.displayName || "-"}
+              </div>
+            </TooltipTrigger>
+            {tooltipText && (
+              <TooltipContent className="max-w-xs">
+                <p className="whitespace-pre-line text-xs">{tooltipText}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        )
+      },
+      size: 150,
+    },
+    {
+      accessorKey: "dl_limit",
+      header: t("tableColumns.downLimit"),
+      cell: ({ row }) => {
+        const downLimit = row.original.dl_limit
+        const displayDownLimit = downLimit === 0 ? "∞" : formatSpeedWithUnit(downLimit, speedUnit)
+
+        return (
+          <span
+            className="text-sm font-medium overflow-hidden whitespace-nowrap"
+          >
+            {displayDownLimit}
+          </span>
+        )
+      },
+      size: calculateMinWidth("Down Limit", 30),
+    },
+    {
+      accessorKey: "up_limit",
+      header: t("tableColumns.upLimit"),
+      cell: ({ row }) => {
+        const upLimit = row.original.up_limit
+        const displayUpLimit = upLimit === 0 ? "∞" : formatSpeedWithUnit(upLimit, speedUnit)
+
+        return (
+          <span
+            className="text-sm font-medium overflow-hidden whitespace-nowrap"
+          >
+            {displayUpLimit}
+          </span>
+        )
+      },
+      size: calculateMinWidth("Up Limit", 30),
+    },
+    {
+      accessorKey: "downloaded",
+      header: t("tableColumns.downloaded"),
+      cell: ({ row }) => {
+        const downloaded = row.original.downloaded
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{downloaded === 0 ? "-" : formatBytes(downloaded)}</span>
+      },
+      size: calculateMinWidth("Downloaded"),
+    },
+    {
+      accessorKey: "uploaded",
+      header: t("tableColumns.uploaded"),
+      cell: ({ row }) => {
+        const uploaded = row.original.uploaded
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{uploaded === 0 ? "-" : formatBytes(uploaded)}</span>
+      },
+      size: calculateMinWidth("Uploaded"),
+    },
+    {
+      accessorKey: "downloaded_session",
+      header: t("tableColumns.downloadedSession"),
+      cell: ({ row }) => {
+        const sessionDownloaded = row.original.downloaded_session
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionDownloaded === 0 ? "-" : formatBytes(sessionDownloaded)}</span>
+      },
+      size: calculateMinWidth("Session Downloaded"),
+    },
+    {
+      accessorKey: "uploaded_session",
+      header: t("tableColumns.uploadedSession"),
+      cell: ({ row }) => {
+        const sessionUploaded = row.original.uploaded_session
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{sessionUploaded === 0 ? "-" : formatBytes(sessionUploaded)}</span>
+      },
+      size: calculateMinWidth("Session Uploaded"),
+    },
+    {
+      accessorKey: "amount_left",
+      header: t("tableColumns.amountLeft"),
+      cell: ({ row }) => {
+        const amountLeft = row.original.amount_left
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{amountLeft === 0 ? "-" : formatBytes(amountLeft)}</span>
+      },
+      size: calculateMinWidth("Remaining"),
+    },
+    {
+      accessorKey: "time_active",
+      header: t("tableColumns.timeActive"),
+      cell: ({ row }) => {
+        const timeActive = row.original.time_active
+        return (
+          <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeActive)}</span>
+        )
+      },
+      size: 250,
+    },
+    {
+      accessorKey: "seeding_time",
+      header: t("tableColumns.seedingTime"),
+      cell: ({ row }) => {
+        const timeSeeded = row.original.seeding_time
+        return (
+          <span className="text-sm overflow-hidden whitespace-nowrap">{formatDuration(timeSeeded)}</span>
+        )
+      },
+      size: 250,
+    },
+    {
+      accessorKey: "save_path",
+      header: t("tableColumns.savePath"),
+      cell: ({ row }) => {
+        const displayPath = incognitoMode ? getLinuxSavePath(row.original.hash) : row.original.save_path
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {displayPath}
+          </div>
+        )
+      },
+      size: 250,
+    },
+    {
+      accessorKey: "completed",
+      header: t("tableColumns.completed"),
+      cell: ({ row }) => {
+        const completed = row.original.completed
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{completed === 0 ? "-" : formatBytes(completed)}</span>
+      },
+      size: calculateMinWidth("Completed"),
+    },
+    {
+      accessorKey: "ratio_limit",
+      header: t("tableColumns.ratioLimit"),
+      cell: ({ row }) => {
+        const ratioLimit = row.original.ratio_limit
+        const displayRatioLimit = ratioLimit === -2 ? (instanceMaxRatio === -1 ? "∞" : instanceMaxRatio?.toFixed(2) || "∞") :ratioLimit === -1 ? "∞" :ratioLimit.toFixed(2)
+
+        return (
+          <span
+            className="text-sm font-medium overflow-hidden whitespace-nowrap"
+          >
+            {displayRatioLimit}
+          </span>
+        )
+      },
+      size: calculateMinWidth("Ratio Limit", 24),
+    },
+    {
+      accessorKey: "seen_complete",
+      header: t("tableColumns.seenComplete"),
+      cell: ({ row }) => {
+        const lastSeenComplete = row.original.seen_complete
+        if (isNeverCompletedTimestamp(lastSeenComplete)) {
+          return "-"
+        }
+
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp(lastSeenComplete)}</div>
+        )
+      },
+      size: 200,
+    },
+    {
+      accessorKey: "last_activity",
+      header: t("tableColumns.lastActivity"),
+      cell: ({ row }) => {
+        const lastActivity = row.original.last_activity
+        if (!lastActivity || lastActivity === 0) {
+          return "-"
+        }
+
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">{formatTimestamp(lastActivity)}</div>
+        )
+      },
+      size: 200,
+    },
+    {
+      accessorKey: "availability",
+      header: t("tableColumns.availability"),
+      cell: ({ row }) => {
+        const availability = row.original.availability
+        return <span className="text-sm overflow-hidden whitespace-nowrap">{availability.toFixed(3)}</span>
+      },
+      size: calculateMinWidth("Availability"),
+    },
+    {
+      accessorKey: "infohash_v1",
+      header: t("tableColumns.infohashV1"),
+      cell: ({ row }) => {
+        const original = row.original.infohash_v1
+        const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+        const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {infoHash || "-"}
+          </div>
+        )
+      },
+      size: 370,
+    },
+    {
+      accessorKey: "infohash_v2",
+      header: t("tableColumns.infohashV2"),
+      cell: ({ row }) => {
+        const original = row.original.infohash_v2
+        const maskBase = row.original.hash || row.original.infohash_v1 || row.original.infohash_v2 || row.id
+        const infoHash = incognitoMode && original ? getLinuxHash(maskBase || "") : original
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {infoHash || "-"}
+          </div>
+        )
+      },
+      size: 370,
+    },
+    {
+      accessorKey: "reannounce",
+      header: t("tableColumns.reannounce"),
+      cell: ({ row }) => {
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {formatReannounceIn(row.original.state, row.original.reannounce, t)}
+          </div>
+        )
+      },
+      size: calculateMinWidth("Reannounce In"),
+    },
+    {
+      accessorKey: "private",
+      header: t("tableColumns.private"),
+      cell: ({ row }) => {
+        return (
+          <div className="overflow-hidden whitespace-nowrap text-sm">
+            {row.original.private === undefined ? "—" : row.original.private ? t("tableColumns.yes") : t("tableColumns.no")}
+          </div>
+        )
+      },
+      size: calculateMinWidth("Private"),
+    },
+  ]}

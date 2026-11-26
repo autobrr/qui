@@ -1,0 +1,219 @@
+{
+  "page": {
+    "title": "Transferències",
+    "description": "Segueix el que qui mou entre instàncies i el que comparteixes amb altres persones."
+  },
+  "tabs": {
+    "transfers": "Transferències",
+    "shares": "Comparticions"
+  },
+  "chips": {
+    "label": "Mostra",
+    "all": "Totes",
+    "active": "Actives",
+    "waiting": "En espera",
+    "finished": "Acabades",
+    "failed": "Fallides"
+  },
+  "columns": {
+    "torrent": "Torrent",
+    "size": "Mida",
+    "progress": "Progrés",
+    "state": "Estat",
+    "started": "Iniciada",
+    "actions": "Accions"
+  },
+  "row": {
+    "crossSeeds_one": "+{{count}} cross-seed",
+    "crossSeeds_other": "+{{count}} cross-seeds",
+    "export": "Exportació",
+    "route": "{{source}} → {{target}}",
+    "byUser": "Per tu",
+    "byRule": "Per la regla {{name}}",
+    "byDeletedRule": "Per una regla suprimida",
+    "retryAt": "Nou intent {{time}}",
+    "timeLeft": "Falten {{time}}",
+    "unknownInstance": "Instància {{id}}"
+  },
+  "ways": {
+    "sftp": "Còpia per SFTP",
+    "local": "Còpia al disc de qui",
+    "none": "Sense còpia",
+    "bittorrent": "BitTorrent",
+    "fallback": "Mètode desconegut"
+  },
+  "states": {
+    "waiting": "En espera",
+    "copying": "Copiant",
+    "checking": "Comprovant",
+    "finishing": "Acabant",
+    "done": "Feta",
+    "failed": "Fallida",
+    "cancelled": "Cancel·lada",
+    "fallback": "Estat desconegut"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} fa servir el valor predeterminat de qBittorrent «TCP i μTP». A les proves de qui, «Només TCP» era unes tres vegades més ràpid. Canvia-ho a la configuració de BitTorrent de {{instance}}."
+  },
+  "actions": {
+    "details": "Detalls",
+    "retry": "Torna-ho a provar",
+    "cancel": "Cancel·la",
+    "remove": "Elimina",
+    "retried": "La transferència torna a començar.",
+    "cancelled": "qui cancel·la la transferència i desfà el que ha fet.",
+    "removed": "S'ha eliminat la fila.",
+    "failed": "Error: {{message}}"
+  },
+  "cancelDialog": {
+    "title": "Vols cancel·lar aquesta transferència?",
+    "description": "qui atura la transferència de {{name}}, elimina els fitxers que ha escrit i els torrents que ha afegit a la destinació, i torna a iniciar el torrent a l'origen.",
+    "keep": "Continua",
+    "confirm": "Cancel·la la transferència"
+  },
+  "list": {
+    "description": "Els torrents que qui mou a una altra instància, i les execucions de les regles «Exporta a una instància».",
+    "empty": "Encara no hi ha cap transferència.",
+    "pages": "Pàgines de la llista",
+    "range": "{{from}}–{{to}} de {{total}}",
+    "previous": "Anterior",
+    "next": "Següent"
+  },
+  "bulk": {
+    "label": "Files seleccionades",
+    "pickPage": "Selecciona les files d'aquesta pàgina",
+    "picked_one": "{{count}} seleccionada",
+    "picked_other": "{{count}} seleccionades",
+    "wholeChip_one": "{{count}} seleccionada a totes les pàgines",
+    "wholeChip_other": "{{count}} seleccionades a totes les pàgines",
+    "pickAll_one": "Selecciona-les totes ({{count}})",
+    "pickAll_other": "Selecciona-les totes ({{count}})",
+    "done": {
+      "retry_one": "{{count}} fila torna a començar.",
+      "retry_other": "{{count}} files tornen a començar.",
+      "cancel_one": "qui cancel·la {{count}} fila.",
+      "cancel_other": "qui cancel·la {{count}} files.",
+      "remove_one": "S'ha eliminat {{count}} fila.",
+      "remove_other": "S'han eliminat {{count}} files."
+    },
+    "skipped_one": "{{count}} fila es queda com estava: l'acció no s'hi aplica.",
+    "skipped_other": "{{count}} files es queden com estaven: l'acció no s'hi aplica.",
+    "failed_one": "{{count}} fila ha fallat. El registre de qui en dona el motiu.",
+    "failed_other": "{{count}} files han fallat. El registre de qui en dona el motiu.",
+    "failedBecause_one": "{{count}} fila ha fallat. {{reasons}}",
+    "failedBecause_other": "{{count}} files han fallat. {{reasons}}",
+    "nothing": "L'acció no s'aplica a cap fila seleccionada.",
+    "cancelDialog": {
+      "title": "Vols cancel·lar les files seleccionades?",
+      "description_one": "Hi ha {{count}} fila seleccionada. Si no ha acabat, qui la cancel·la i desfà el que ha fet: elimina els fitxers i els torrents que ha afegit a la destinació, i torna a iniciar el torrent a l'origen.",
+      "description_other": "Hi ha {{count}} files seleccionades. qui cancel·la cada fila que no ha acabat i desfà el que ha fet: elimina els fitxers i els torrents que ha afegit a la destinació, i torna a iniciar el torrent a l'origen.",
+      "confirm": "Cancel·la les files",
+      "keep": "Continua"
+    },
+    "removeDialog": {
+      "title": "Vols eliminar les files seleccionades?",
+      "description_one": "Hi ha {{count}} fila seleccionada. Si ha acabat, qui l'elimina de la llista. Els torrents i els seus fitxers es queden on són.",
+      "description_other": "Hi ha {{count}} files seleccionades. qui elimina de la llista cada fila que ha acabat. Els torrents i els seus fitxers es queden on són.",
+      "confirm": "Elimina les files",
+      "keep": "Conserva les files"
+    }
+  },
+  "details": {
+    "title": "Detalls de la transferència",
+    "exportTitle": "Detalls de l'execució d'exportació",
+    "overview": "Resum",
+    "sections": "Seccions dels detalls",
+    "finished": "Acabada",
+    "leftStopped": "Es deixa aturat a la destinació",
+    "instance": "Instància",
+    "failure": "Per què ha fallat",
+    "torrents": "Torrents",
+    "steps": "Passos",
+    "log": "Registre",
+    "noLog": "Encara no hi ha línies de registre.",
+    "loading": "S'està carregant la transferència…",
+    "error": "qui no pot carregar la transferència: {{message}}",
+    "stale": "qui no pot actualitzar els detalls, així que poden estar desactualitzats: {{message}}"
+  },
+  "steps": {
+    "start": "Iniciada",
+    "prepare": "Tots dos costats preparats",
+    "passByBitTorrent": "Passant per un torrent de transferència",
+    "passedByBitTorrent": "Passat per un torrent de transferència",
+    "fallBackToSftp": "S'ha recorregut a una còpia per SFTP",
+    "copyHardlink": "Hardlink copiat",
+    "check": "Comprovat a la destinació",
+    "checkFiles": "Fitxers comprovats a la destinació",
+    "copyMissing": "S'estan copiant els fitxers que falten",
+    "checkPartials": "Fitxers parcials comprovats a la destinació",
+    "copyFailedPieces": "S'estan copiant les peces que han fallat la comprovació",
+    "place": "Fitxers col·locats",
+    "add": "Afegint a la destinació",
+    "added": "Afegit a la destinació",
+    "rename": "Canviant el nom dels fitxers a la destinació",
+    "after": "Origen gestionat",
+    "removeFromSource": "Eliminant de l'origen",
+    "cleanUp": "Netejant",
+    "removePlaced": "Fitxers col·locats eliminats"
+  },
+  "stepFallback": "Un altre pas",
+  "incognitoHidden": "Ocult en mode incògnit",
+  "form": {
+    "target": "Instància de destinació",
+    "targetPlaceholder": "Selecciona una instància",
+    "noTargets": "Afegeix una altra instància per transferir-hi torrents.",
+    "savePath": "Camí de desada",
+    "savePathHelp": "La carpeta a la destinació. qui hi manté a sota les carpetes del torrent i dels seus cross-seeds. Si és buit, fa servir el camí de desada de la categoria a la destinació, o el camí de desada predeterminat de la destinació si no hi ha cap categoria. Amb el camí buit, el torrent també rep la Gestió automàtica dels torrents, si és el mode predeterminat de la destinació.",
+    "savePathPlaceholder": "Camí de desada predeterminat de la destinació",
+    "savePathPlaceholderCategory": "Camí de desada de la categoria",
+    "category": "Categoria",
+    "noCategory": "Cap categoria",
+    "tags": "Etiquetes",
+    "tagsPlaceholder": "tag1, tag2",
+    "after": "Després de la transferència",
+    "afterHelp": "Què fa qui amb el torrent a l'origen un cop la destinació el sembra.",
+    "afterOptions": {
+      "removeWithFiles": "Elimina el torrent i els seus fitxers de l'origen",
+      "keepFiles": "Elimina el torrent de l'origen i conserva'n els fitxers",
+      "keepSeeding": "Continua sembrant a l'origen"
+    },
+    "leaveStopped": "Deixa el torrent aturat a la destinació",
+    "way": "Mètode",
+    "wayHelp": "Auto copia a través de qui quan qui arriba als fitxers d'un costat al seu propi disc, i si no, passa els fitxers per un torrent de transferència entre els dos qBittorrent.",
+    "wayOptions": {
+      "auto": "Auto",
+      "copy": "Copia a través de qui",
+      "bittorrent": "Torrent de transferència"
+    }
+  },
+  "dialog": {
+    "title": "Transfereix a una altra instància",
+    "verified": "qui comprova cada peça a la destinació abans de canviar l'origen.",
+    "warningsMore": "Mostra els avisos sencers",
+    "warningsLess": "Mostra una línia de cada avís",
+    "start": "Inicia la transferència",
+    "starting": "S'està iniciant…",
+    "started": "La transferència de {{name}} espera el seu torn.",
+    "cancel": "Tanca"
+  },
+  "summary": {
+    "title": "Resum",
+    "pickTarget": "Selecciona una instància de destinació per veure el resum.",
+    "loading": "S'està planificant la transferència…",
+    "refused": "qui no inicia aquesta transferència: {{message}}",
+    "torrents": "Torrents",
+    "size": "Mida",
+    "way": "Mètode",
+    "free": "Lliure a la destinació",
+    "unknown": "Desconegut",
+    "freeUnknown": "Espai lliure desconegut: abans de qBittorrent 5.3, qBittorrent només l'informa al seu camí de desada predeterminat.",
+    "notEnoughSpace": "La destinació té menys espai lliure del que necessita la transferència.",
+    "noFileAccess": "qui no veu els fitxers a {{instance}}, de manera que un fitxer amb un altre contingut al mateix camí es pot substituir.",
+    "crossSeedsStay_one": "{{count}} cross-seed es queda a {{source}}. Llegeix aquests fitxers a través de hardlinks, i qui no pot crear hardlinks a {{target}} sense accés als fitxers. Per moure'l també, dona a qui accés als fitxers de {{target}}, al disc propi de qui o per SSH, o torna a fer cross-seed a {{target}}.",
+    "crossSeedsStay_other": "{{count}} cross-seeds es queden a {{source}}. Llegeixen aquests fitxers a través de hardlinks, i qui no pot crear hardlinks a {{target}} sense accés als fitxers. Per moure'ls també, dona a qui accés als fitxers de {{target}}, al disc propi de qui o per SSH, o torna a fer cross-seed a {{target}}.",
+    "crossSeedsStayForced_one": "{{count}} cross-seed es queda a {{source}}. Llegeix aquests fitxers a través de hardlinks, i un torrent de transferència no pot crear hardlinks. Per moure'l també, selecciona el mètode «Auto» o «Copia a través de qui».",
+    "crossSeedsStayForced_other": "{{count}} cross-seeds es queden a {{source}}. Llegeixen aquests fitxers a través de hardlinks, i un torrent de transferència no pot crear hardlinks. Per moure'ls també, selecciona el mètode «Auto» o «Copia a través de qui».",
+    "crossSeed": "Cross-seed",
+    "crossSeedInstance": "A {{instance}}"
+  }
+}

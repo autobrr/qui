@@ -1,0 +1,205 @@
+{
+  "page": {
+    "title": "传输",
+    "description": "查看 qui 在实例之间移动的内容，以及你与他人分享的内容。"
+  },
+  "tabs": {
+    "transfers": "传输",
+    "shares": "共享"
+  },
+  "chips": {
+    "label": "显示",
+    "all": "全部",
+    "active": "进行中",
+    "waiting": "等待中",
+    "finished": "已完成",
+    "failed": "失败"
+  },
+  "columns": {
+    "torrent": "种子",
+    "size": "大小",
+    "progress": "进度",
+    "state": "状态",
+    "started": "开始时间",
+    "actions": "操作"
+  },
+  "row": {
+    "crossSeeds_other": "+{{count}} 个辅种",
+    "export": "导出",
+    "route": "{{source}} → {{target}}",
+    "byUser": "由你启动",
+    "byRule": "由规则 {{name}} 启动",
+    "byDeletedRule": "由已删除的规则启动",
+    "retryAt": "{{time}}重试",
+    "timeLeft": "剩余 {{time}}",
+    "unknownInstance": "实例 {{id}}"
+  },
+  "ways": {
+    "sftp": "通过 SFTP 复制",
+    "local": "在 qui 的磁盘上复制",
+    "none": "不复制",
+    "bittorrent": "BitTorrent",
+    "fallback": "未知方式"
+  },
+  "states": {
+    "waiting": "等待中",
+    "copying": "复制中",
+    "checking": "校验中",
+    "finishing": "收尾中",
+    "done": "完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "fallback": "未知状态"
+  },
+  "hints": {
+    "tcpAndUtp": "{{instance}} 使用 qBittorrent 的默认设置“TCP 和 μTP”。在 qui 的测试中，“仅 TCP”快约三倍。请在 {{instance}} 的 BitTorrent 设置中更改。"
+  },
+  "actions": {
+    "details": "详情",
+    "retry": "重试",
+    "cancel": "取消",
+    "remove": "移除",
+    "retried": "传输将重新运行。",
+    "cancelled": "qui 取消此传输并撤销已完成的操作。",
+    "removed": "该行已移除。",
+    "failed": "失败：{{message}}"
+  },
+  "cancelDialog": {
+    "title": "取消此传输？",
+    "description": "qui 将停止 {{name}} 的传输，移除它在目标上写入的文件和添加的种子，并在来源上重新启动该种子。",
+    "keep": "继续运行",
+    "confirm": "取消传输"
+  },
+  "list": {
+    "description": "qui 移到其他实例的种子，以及“导出到实例”规则的运行记录。",
+    "empty": "暂无传输。",
+    "pages": "列表分页",
+    "range": "第 {{from}}–{{to}} 项，共 {{total}} 项",
+    "previous": "上一页",
+    "next": "下一页"
+  },
+  "bulk": {
+    "label": "已选行",
+    "pickPage": "选择此页的行",
+    "picked_other": "已选 {{count}} 项",
+    "wholeChip_other": "已选全部 {{count}} 项",
+    "pickAll_other": "全选 {{count}} 项",
+    "done": {
+      "retry_other": "{{count}} 行将重新运行。",
+      "cancel_other": "qui 将取消 {{count}} 行。",
+      "remove_other": "已移除 {{count}} 行。"
+    },
+    "skipped_other": "{{count}} 行不适用此操作，保持不变。",
+    "failed_other": "{{count}} 行失败。qui 日志中有原因。",
+    "failedBecause_other": "{{count}} 行失败。{{reasons}}",
+    "nothing": "没有已选行适用此操作。",
+    "cancelDialog": {
+      "title": "取消已选行？",
+      "description_other": "已选 {{count}} 行。qui 将取消每个尚未结束的行并撤销已完成的操作：移除它在目标上添加的文件和种子，并在来源上重新启动该种子。",
+      "confirm": "取消这些行",
+      "keep": "继续运行"
+    },
+    "removeDialog": {
+      "title": "移除已选行？",
+      "description_other": "已选 {{count}} 行。qui 将从列表中移除每个已结束的行。种子及其文件保持原位。",
+      "confirm": "移除这些行",
+      "keep": "保留这些行"
+    }
+  },
+  "details": {
+    "title": "传输详情",
+    "exportTitle": "导出运行详情",
+    "overview": "概览",
+    "sections": "详情分区",
+    "finished": "完成时间",
+    "leftStopped": "在目标上保持停止",
+    "instance": "实例",
+    "failure": "失败原因",
+    "torrents": "种子",
+    "steps": "步骤",
+    "log": "日志",
+    "noLog": "暂无日志。",
+    "loading": "正在加载传输…",
+    "error": "qui 无法加载此传输：{{message}}",
+    "stale": "qui 无法刷新详情，内容可能已过时：{{message}}"
+  },
+  "steps": {
+    "start": "已开始",
+    "prepare": "已准备两端",
+    "passByBitTorrent": "正在通过传输种子传递",
+    "passedByBitTorrent": "已通过传输种子传递",
+    "fallBackToSftp": "已改为通过 SFTP 复制",
+    "copyHardlink": "已复制硬链接",
+    "check": "已在目标上校验",
+    "checkFiles": "已在目标上检查文件",
+    "copyMissing": "正在复制缺失的文件",
+    "checkPartials": "已在目标上检查不完整的文件",
+    "copyFailedPieces": "正在复制未通过检查的分块",
+    "place": "已放置文件",
+    "add": "正在添加到目标",
+    "added": "已添加到目标",
+    "rename": "正在重命名目标上的文件",
+    "after": "已处理来源",
+    "removeFromSource": "正在从来源移除",
+    "cleanUp": "正在清理",
+    "removePlaced": "已移除放置的文件"
+  },
+  "stepFallback": "其他步骤",
+  "incognitoHidden": "隐身模式下已隐藏",
+  "form": {
+    "target": "目标实例",
+    "targetPlaceholder": "选择实例",
+    "noTargets": "添加另一个实例后才能将种子传输过去。",
+    "savePath": "保存路径",
+    "savePathHelp": "目标上的文件夹。qui 会在其下保留种子及其辅种的文件夹结构。留空则使用目标上该分类的保存路径，未设置分类时则使用目标的默认保存路径。保存路径留空时，如果自动种子管理是目标的默认模式，种子也会启用自动种子管理。",
+    "savePathPlaceholder": "目标的默认保存路径",
+    "savePathPlaceholderCategory": "分类的保存路径",
+    "category": "分类",
+    "noCategory": "无分类",
+    "tags": "标签",
+    "tagsPlaceholder": "标签1, 标签2",
+    "after": "传输完成后",
+    "afterHelp": "目标开始做种后，qui 如何处理来源上的种子。",
+    "afterOptions": {
+      "removeWithFiles": "从来源移除种子及其文件",
+      "keepFiles": "从来源移除种子但保留文件",
+      "keepSeeding": "在来源上继续做种"
+    },
+    "leaveStopped": "在目标上保持种子停止",
+    "way": "方式",
+    "wayHelp": "自动：当 qui 能在自己的磁盘上访问某一端的文件时，通过 qui 复制；否则通过两个 qBittorrent 之间的传输种子传递文件。",
+    "wayOptions": {
+      "auto": "自动",
+      "copy": "通过 qui 复制",
+      "bittorrent": "传输种子"
+    }
+  },
+  "dialog": {
+    "title": "传输到另一个实例",
+    "verified": "qui 会在更改来源之前校验目标上的每个分块。",
+    "warningsMore": "显示完整警告",
+    "warningsLess": "每条警告只显示一行",
+    "start": "开始传输",
+    "starting": "正在开始…",
+    "started": "{{name}} 的传输正在排队等待。",
+    "cancel": "关闭"
+  },
+  "summary": {
+    "title": "摘要",
+    "pickTarget": "选择目标实例以查看摘要。",
+    "loading": "正在规划传输…",
+    "refused": "qui 不会启动此传输：{{message}}",
+    "torrents": "种子",
+    "size": "大小",
+    "way": "方式",
+    "free": "目标可用空间",
+    "unknown": "未知",
+    "freeUnknown": "可用空间未知：在 qBittorrent 5.3 之前，qBittorrent 仅报告其默认保存路径的可用空间。",
+    "notEnoughSpace": "目标的可用空间少于此传输所需的空间。",
+    "noFileAccess": "qui 无法查看 {{instance}} 上的文件，因此同一路径下内容不同的文件可能会被替换。",
+    "crossSeedsStay_other": "{{count}} 个辅种会留在 {{source}}。它们通过硬链接读取这些文件，而 qui 在没有文件访问权限时无法在 {{target}} 上创建硬链接。若要一并传输，请为 qui 提供 {{target}} 的文件访问权限（qui 自己的磁盘或 SSH），或在 {{target}} 上重新辅种。",
+    "crossSeedsStayForced_other": "{{count}} 个辅种会留在 {{source}}。它们通过硬链接读取这些文件，而传输种子无法创建硬链接。若要一并传输，请选择方式“自动”或“通过 qui 复制”。",
+    "crossSeed": "辅种",
+    "crossSeedInstance": "添加到 {{instance}}"
+  }
+}

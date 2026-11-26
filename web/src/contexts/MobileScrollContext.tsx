@@ -1,0 +1,91 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import { createContext, useContext, useState, useEffect, useRef } from "react"
+import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react"
+
+interface MobileScrollContextType {
+  isFooterVisible: boolean
+  setScrollContainer: Dispatch<SetStateAction<HTMLElement | null>>
+}
+
+const MobileScrollContext = createContext<MobileScrollContextType | undefined>(undefined)
+
+export function MobileScrollProvider({ children }: { children: ReactNode }) {
+  const [isFooterVisible, setIsFooterVisible] = useState(true)
+  const [scrollContainer, setScrollContainer] = useState<HTMLElement | null>(null)
+  const lastScrollY = useRef(0)
+  const ticking = useRef(false)
+  const threshold = 10
+
+  useEffect(() => {
+    if (!scrollContainer) {
+      setIsFooterVisible(true)
+      return
+    }
+
+    lastScrollY.current = scrollContainer.scrollTop
+
+    const updateScrollDirection = () => {
+      const scrollY = scrollContainer.scrollTop
+
+      if (Math.abs(scrollY - lastScrollY.current) < threshold) {
+        ticking.current = false
+        return
+      }
+
+      if (scrollY > lastScrollY.current) {
+        setIsFooterVisible(false)
+      } else if (scrollY < threshold || scrollY + scrollContainer.clientHeight < scrollContainer.scrollHeight - threshold) {
+        setIsFooterVisible(true)
+      }
+
+      lastScrollY.current = scrollY > 0 ? scrollY : 0
+      ticking.current = false
+    }
+
+    let animationFrame: number | null = null
+
+    const onScroll = () => {
+      if (!ticking.current) {
+        animationFrame = window.requestAnimationFrame(updateScrollDirection)
+        ticking.current = true
+      }
+    }
+
+    scrollContainer.addEventListener("scroll", onScroll)
+    return () => {
+      scrollContainer.removeEventListener("scroll", onScroll)
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame)
+      }
+      ticking.current = false
+    }
+  }, [scrollContainer])
+
+  return (
+    <MobileScrollContext.Provider value={{ isFooterVisible, setScrollContainer }}>
+      {children}
+    </MobileScrollContext.Provider>
+  )
+}
+
+export function useMobileScroll() {
+  const context = useContext(MobileScrollContext)
+  if (!context) {
+    throw new Error("useMobileScroll must be used within a MobileScrollProvider")
+  }
+  return context
+}
+
+export function useRegisterMobileScrollContainer(ref: RefObject<HTMLElement | null>) {
+  const { setScrollContainer } = useMobileScroll()
+
+  useEffect(() => {
+    const el = ref.current
+    setScrollContainer(el)
+    return () => setScrollContainer(prev => (prev === el ? null : prev))
+  }, [ref, setScrollContainer])
+}

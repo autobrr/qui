@@ -1,0 +1,361 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+import i18n from "@/i18n"
+import type { DateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+
+type RelativeUnit = "second" | "minute" | "hour" | "day" | "week" | "month" | "year"
+
+function translateCommon(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: "common", ...options })
+}
+
+function getCurrentLanguage(): string {
+  return i18n.resolvedLanguage || i18n.language || "en"
+}
+
+function getDisplayLocales(): string[] {
+  const language = getCurrentLanguage()
+  const baseLanguage = language.split("-")[0]
+  return Array.from(new Set([language, baseLanguage, "en"]))
+}
+
+function getDateLocales(style: "iso" | "us" | "eu"): string[] {
+  const baseLanguage = getCurrentLanguage().split("-")[0]
+
+  switch (style) {
+    case "iso":
+      return Array.from(new Set([`${baseLanguage}-CA`, ...getDisplayLocales(), "en-CA"]))
+    case "us":
+      return Array.from(new Set([`${baseLanguage}-US`, ...getDisplayLocales(), "en-US"]))
+    case "eu":
+      return Array.from(new Set([`${baseLanguage}-GB`, ...getDisplayLocales(), "en-GB"]))
+  }
+}
+
+function getStoredPreferences(): DateTimePreferences {
+  try {
+    const stored = localStorage.getItem("qui-datetime-preferences")
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      return {
+        timezone: parsed.timezone || "UTC",
+        timeFormat: parsed.timeFormat || "24h",
+        dateFormat: parsed.dateFormat || "iso",
+      }
+    }
+  } catch (error) {
+    console.error("Failed to load date/time preferences:", error)
+  }
+
+  return {
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    timeFormat: "24h",
+    dateFormat: "iso",
+  }
+}
+
+function getNotAvailable(): string {
+  return translateCommon("dateTime.na")
+}
+
+function getRelativeUnitLabel(value: number, unit: RelativeUnit): string {
+  return translateCommon(`dateTime.units.${unit}`, { count: value })
+}
+
+function formatRelativeUnit(value: number, unit: RelativeUnit, addSuffix: boolean, isFuture: boolean): string {
+  if (value <= 0) {
+    return translateCommon("dateTime.justNow")
+  }
+
+  const label = getRelativeUnitLabel(value, unit)
+  if (!addSuffix) {
+    return label
+  }
+
+  return translateCommon(isFuture ? "dateTime.future" : "dateTime.past", { value: label })
+}
+
+function getRelativeParts(absDiffMs: number): { value: number; unit: RelativeUnit } {
+  const diffSec = Math.floor(absDiffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+  const diffWeek = Math.floor(diffDay / 7)
+  const diffMonth = Math.floor(diffDay / 30)
+  const diffYear = Math.floor(diffDay / 365)
+
+  if (diffSec < 60) return { value: 0, unit: "second" }
+  if (diffMin < 60) return { value: diffMin, unit: "minute" }
+  if (diffHour < 24) return { value: diffHour, unit: "hour" }
+  if (diffDay < 7) return { value: diffDay, unit: "day" }
+  if (diffWeek < 4) return { value: diffWeek, unit: "week" }
+  if (diffMonth < 12 && diffMonth > 0) return { value: diffMonth, unit: "month" }
+  if (diffYear > 0) return { value: diffYear, unit: "year" }
+  if (diffWeek > 0) return { value: diffWeek, unit: "week" }
+  if (diffDay > 0) return { value: diffDay, unit: "day" }
+  return { value: 0, unit: "second" }
+}
+
+function formatRelativeToNow(date: Date, addSuffix = true): string {
+  const diffMs = date.getTime() - Date.now()
+  const isFuture = diffMs > 0
+  const { value, unit } = getRelativeParts(Math.abs(diffMs))
+
+  if (value === 0) {
+    return translateCommon("dateTime.justNow")
+  }
+
+  return formatRelativeUnit(value, unit, addSuffix, isFuture)
+}
+
+const formatterCache = new Map<string, Intl.DateTimeFormat>()
+
+function getFormatter(locales: string[], options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = JSON.stringify([locales, options])
+  let formatter = formatterCache.get(key)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locales, options)
+    formatterCache.set(key, formatter)
+  }
+  return formatter
+}
+
+function formatDateAndTime(date: Date, preferences: DateTimePreferences, includeSeconds = false): string {
+  const timeZone = preferences.timezone
+  const hour12 = preferences.timeFormat === "12h"
+  const secondOption = includeSeconds ? { second: "2-digit" as const } : {}
+
+  switch (preferences.dateFormat) {
+    case "iso": {
+      const dateFormatter = getFormatter(getDateLocales("iso"), {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })
+      const timeFormatter = getFormatter(getDisplayLocales(), {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        ...secondOption,
+        hour12,
+      })
+      return `${dateFormatter.format(date)} ${timeFormatter.format(date)}`
+    }
+    case "us":
+      return getFormatter(getDateLocales("us"), {
+        timeZone,
+        month: "2-digit",
+        day: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        ...secondOption,
+        hour12,
+      }).format(date)
+    case "eu":
+      return getFormatter(getDateLocales("eu"), {
+        timeZone,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        ...secondOption,
+        hour12,
+      }).format(date)
+    default:
+      return getFormatter(getDisplayLocales(), {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        ...secondOption,
+        hour12,
+      }).format(date)
+  }
+}
+
+function formatDateOnlyAbsolute(date: Date, preferences: { dateFormat: DateTimePreferences["dateFormat"]; timezone?: string }, weekday?: "short"): string {
+  const timeZone = preferences.timezone
+
+  switch (preferences.dateFormat) {
+    case "iso":
+      return getFormatter(getDateLocales("iso"), {
+        timeZone,
+        weekday,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(date)
+    case "us":
+      return getFormatter(getDateLocales("us"), {
+        timeZone,
+        weekday,
+        month: "2-digit",
+        day: "2-digit",
+        year: "numeric",
+      }).format(date)
+    case "eu":
+      return getFormatter(getDateLocales("eu"), {
+        timeZone,
+        weekday,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(date)
+    default:
+      return getFormatter(getDisplayLocales(), { timeZone }).format(date)
+  }
+}
+
+export function formatCalendarDay(date: Date, preferences: DateTimePreferences, weekday?: "short"): string {
+  return formatDateOnlyAbsolute(date, { dateFormat: preferences.dateFormat === "relative" ? "iso" : preferences.dateFormat }, weekday)
+}
+
+export function formatTimestamp(timestamp: number, preferences?: DateTimePreferences, includeSeconds = false): string {
+  if (!timestamp || timestamp === 0) return getNotAvailable()
+
+  const prefs = preferences || getStoredPreferences()
+  const date = new Date(timestamp * 1000)
+
+  if (prefs.dateFormat === "relative") {
+    return formatRelativeToNow(date)
+  }
+
+  try {
+    return formatDateAndTime(date, prefs, includeSeconds)
+  } catch (error) {
+    console.error("Error formatting timestamp:", error)
+    return new Date(timestamp * 1000).toLocaleString(getDisplayLocales())
+  }
+}
+
+export function formatDateOnly(timestamp: number, preferences?: DateTimePreferences): string {
+  if (!timestamp || timestamp === 0) return getNotAvailable()
+
+  const prefs = preferences || getStoredPreferences()
+  const date = new Date(timestamp * 1000)
+
+  if (prefs.dateFormat === "relative") {
+    const diffMs = Date.now() - date.getTime()
+    const diffDay = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    if (diffDay === 0 && diffMs >= 0) return translateCommon("dateTime.today")
+    if (diffDay === 1) return translateCommon("dateTime.yesterday")
+    if (diffDay > 1 && diffDay < 7) return formatRelativeUnit(diffDay, "day", true, false)
+
+    return formatRelativeToNow(date)
+  }
+
+  try {
+    return formatDateOnlyAbsolute(date, prefs)
+  } catch (error) {
+    console.error("Error formatting date:", error)
+    return new Date(timestamp * 1000).toLocaleDateString(getDisplayLocales())
+  }
+}
+
+export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferences, includeSeconds = false): string {
+  if (!timestamp || timestamp === 0) return getNotAvailable()
+
+  const prefs = preferences || getStoredPreferences()
+  const date = new Date(timestamp * 1000)
+
+  try {
+    return date.toLocaleTimeString(getDisplayLocales(), {
+      timeZone: prefs.timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      ...(includeSeconds ? { second: "2-digit" } : {}),
+      hour12: prefs.timeFormat === "12h",
+    })
+  } catch (error) {
+    console.error("Error formatting time:", error)
+    return new Date(timestamp * 1000).toLocaleTimeString(getDisplayLocales())
+  }
+}
+
+const narrowAgeFormatters = new Map<string, Intl.NumberFormat>()
+
+export function formatNarrowAge(ageMs: number): string {
+  const minutes = Math.max(1, Math.floor(ageMs / 60000))
+  const [value, unit] = minutes < 60 ? [minutes, "minute"] : minutes < 24 * 60 ? [Math.floor(minutes / 60), "hour"] : [Math.floor(minutes / (24 * 60)), "day"]
+  const locales = getDisplayLocales()
+  const key = `${locales.join(",")}|${unit}`
+  let formatter = narrowAgeFormatters.get(key)
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(locales, { style: "unit", unit, unitDisplay: "narrow" })
+    narrowAgeFormatters.set(key, formatter)
+  }
+  return formatter.format(value)
+}
+
+export function formatClockTime(date: Date, preferences?: DateTimePreferences, now = new Date()): string {
+  const prefs = preferences || getStoredPreferences()
+  const hour12 = prefs.timeFormat === "12h"
+  try {
+    return formatClockTimeIn(date, now, prefs.timezone, hour12)
+  } catch (error) {
+    console.error("Error formatting time:", error)
+    return formatClockTimeIn(date, now, undefined, hour12)
+  }
+}
+
+function formatClockTimeIn(date: Date, now: Date, timeZone: string | undefined, hour12: boolean): string {
+  const day = getFormatter(["en-CA"], { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+  const today = day.format(date) === day.format(now)
+
+  return getFormatter(getDisplayLocales(), {
+    timeZone,
+    ...(today ? {} : { weekday: "short" as const }),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12,
+  }).format(date)
+}
+
+export function formatDate(date: Date, preferences?: DateTimePreferences): string {
+  const timestamp = Math.floor(date.getTime() / 1000)
+  return formatTimestamp(timestamp, preferences)
+}
+
+export function formatISOTimestamp(isoTimestamp: string, preferences?: DateTimePreferences): string {
+  if (!isoTimestamp) return getNotAvailable()
+
+  try {
+    const date = new Date(isoTimestamp)
+    if (Number.isNaN(date.getTime())) return isoTimestamp
+
+    const timestamp = Math.floor(date.getTime() / 1000)
+    return formatTimestamp(timestamp, preferences)
+  } catch {
+    return isoTimestamp
+  }
+}
+
+export function formatRelativeTime(value?: string | number | Date | null, addSuffix = true): string {
+  if (value === undefined || value === null) {
+    return "—"
+  }
+
+  const date = value instanceof Date ? value : new Date(typeof value === "number" ? value * 1000 : value)
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
+  return formatRelativeToNow(date, addSuffix)
+}
+
+export function formatTimeHMS(date: Date): string {
+  const hours = date.getHours().toString().padStart(2, "0")
+  const minutes = date.getMinutes().toString().padStart(2, "0")
+  const seconds = date.getSeconds().toString().padStart(2, "0")
+  return `${hours}:${minutes}:${seconds}`
+}
+
+export function isNeverCompletedTimestamp(ts: number | undefined | null): boolean {
+  return !ts || ts <= 86400 || ts === 4294967295
+}

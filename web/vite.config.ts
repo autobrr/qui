@@ -1,0 +1,233 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+/// <reference lib="WebWorker" />
+
+import tailwindcss from "@tailwindcss/vite"
+import react from "@vitejs/plugin-react"
+import { execFileSync } from "node:child_process"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+import { defineConfig } from "vite"
+import { nodePolyfills } from "vite-plugin-node-polyfills"
+import { VitePWA } from "vite-plugin-pwa"
+import { releaseDays } from "./src/lib/release-days"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const nodeMajor = Number(process.versions.node.split(".")[0] ?? 0)
+const workboxMode = nodeMajor >= 24 ? "development" : "production"
+// getqui.com demo (`vite build --mode demo`): the same index.html booted
+// through src/demo/main.tsx, served under /demo/ with a fake API and no service worker.
+// Runs before the anti-FOUC script. Docusaurus keeps its color mode under
+// "theme" on the same origin, so the demo mirrors it into its own key and
+// seeds the layout for every visit; a toggle lasts the visit, a reload resets.
+const demoBoot = `<script>
+      localStorage.setItem('qui-demo-theme', localStorage.getItem('theme') || 'auto');
+      localStorage.setItem('qui-sidebar-collapsed', 'true');
+      localStorage.setItem('qui-torrent-desktop-view-mode', 'dense');
+    </script>`
+
+// A checkout without the release tags, such as a shallow clone, gives no release days.
+function releaseTags(): string {
+  try {
+    return execFileSync("git", ["for-each-ref", "--format=%(refname:short) %(creatordate:unix)", "refs/tags/v*"], {
+      cwd: __dirname,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+  } catch {
+    return ""
+  }
+}
+
+export default defineConfig(({ mode }) => {
+  const demo = mode === "demo"
+  return {
+  base: demo ? "/demo/" : "/",
+  define: {
+    // Defined for every build so src/lib/demo.ts folds to a constant.
+    "import.meta.env.VITE_DEMO": JSON.stringify(demo ? "1" : ""),
+    "import.meta.env.VITE_RELEASE_DAYS": JSON.stringify(releaseDays(releaseTags(), Date.now() / 1000)),
+  },
+  plugins: [
+    demo && {
+      name: "qui-demo-html",
+      transformIndexHtml: {
+        order: "pre" as const,
+        handler: (html: string) => {
+          const out = html
+            .replace("<title>qui</title>", `<title>qui demo</title>\n    <meta name="robots" content="noindex" />\n    ${demoBoot}`)
+            .replace("/src/main.tsx", "/src/demo/main.tsx")
+          if (!out.includes("/src/demo/main.tsx") || !out.includes(demoBoot)) throw new Error("index.html changed; update the demo rewrite")
+          return out
+        },
+      },
+    },
+    react({
+      jsxRuntime: "automatic",
+    }),
+    tailwindcss(),
+    nodePolyfills({
+      // Enable polyfills for Node.js built-in modules
+      // Required for parse-torrent library to work in the browser
+      include: ["path", "buffer", "stream"],
+    }),
+    !demo && VitePWA({
+      // Workbox-build uses Rollup + terser when mode=production; that currently breaks builds
+      // on some newer Node.js versions. We don't need SW minification, so prefer compatibility.
+      mode: "development",
+      registerType: "autoUpdate",
+      injectRegister: null,
+      minify: false,
+      devOptions: {
+        enabled: false,
+      },
+      workbox: {
+        // Workbox uses rollup+terser in production mode; Node 24 currently triggers an "Unexpected early exit".
+        // Use development mode on Node 24+ to keep builds working without changing runtime behavior elsewhere.
+        mode: workboxMode,
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
+        // ~140 flag SVGs plus a 420 kB flag stylesheet, for a tab most users never
+        // open; content-hashed, so the HTTP cache still covers repeat views.
+        globIgnores: ["assets/*.svg", "assets/flag-icons-*.css"],
+        disableDevLogs: true,
+        // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        sourcemap: false,
+        // Avoid serving the SPA shell for backend proxy routes and SSO callback paths
+        // (also under custom base URLs). /cdn-cgi/ is used by Cloudflare Access for its
+        // auth callback (/cdn-cgi/access/authorized); intercepting it breaks the SSO flow.
+        // A denylist entry cannot stop a precached URL: a precache hit wins over the
+        // navigation fallback. The regexes match pathname plus search, so a $-anchored
+        // pattern fails once a query is present.
+        navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/, /\/cdn-cgi(?:\/|$)/, /\/\.well-known(?:\/|$)/],
+        // Serve navigations from the SPA root, not index.html: the server 301s /index.html
+        // to the root (#1600), and a precache miss would hand that redirect to a navigation,
+        // which the browser rejects with ERR_FAILED.
+        templatedURLs: { "./": ["index.html"] },
+        navigateFallback: "./",
+        // Some deployments sit behind Basic Auth; skip assets that tend to 401 (e.g. manifest, source maps)
+        manifestTransforms: [
+          async (entries) => {
+            const manifest = entries.filter((entry) => {
+              const url = entry.url || ""
+              if (url.endsWith("manifest.webmanifest")) {
+                return false
+              }
+              if (url.endsWith(".map")) {
+                return false
+              }
+              return true
+            })
+            return { manifest, warnings: [] }
+          },
+        ],
+      },
+      includeAssets: ["favicon.png", "apple-touch-icon.png"],
+      manifest: {
+        name: "qui",
+        short_name: "qui",
+        description: "Alternative WebUI for qBittorrent - manage your torrents with a modern interface",
+        theme_color: "#000000", // Will be updated dynamically by PWA theme manager
+        background_color: "#000000",
+        display: "standalone",
+        scope: "./",
+        start_url: "./",
+        categories: ["utilities", "productivity"],
+        icons: [
+          {
+            src: "pwa-192x192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "pwa-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "pwa-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
+        ],
+        protocol_handlers: [
+          {
+            protocol: "magnet",
+            url: "./add?url=%s",
+          },
+        ],
+        file_handlers: [
+          {
+            action: "./add",
+            accept: {
+              "application/x-bittorrent": [".torrent"],
+            },
+          },
+        ],
+        launch_handler: {
+          client_mode: "navigate-existing",
+        },
+      },
+    }),
+  ],
+  experimental: {
+    // The Go handler rewrites the absolute /assets/ paths in index.html for
+    // base-URL deployments, but never rewrites JS/CSS content. Emit asset
+    // urls relative to the requesting file so dynamic imports and CSS url()
+    // resolve correctly for any base. HTML keeps the absolute paths the
+    // handler rewrite depends on.
+    renderBuiltUrl: (_filename, { hostType }) => hostType === "html" ? undefined : { relative: true },
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  server: {
+    // src/demo imports the built-in theme CSS from internal/themes/assets.
+    fs: {
+      allow: [path.resolve(__dirname, "..")],
+    },
+    proxy: {
+      "/api": {
+        target: "http://localhost:7476",
+        changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    outDir: demo ? "dist-demo" : "dist",
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-vendor",
+              test: /node_modules[\\/](react|react-dom)([\\/]|$)/,
+              priority: 30,
+            },
+            {
+              name: "tanstack",
+              test: /node_modules[\\/]@tanstack[\\/]/,
+              priority: 20,
+            },
+            {
+              name: "ui-vendor",
+              test: /node_modules[\\/](@radix-ui|lucide-react)([\\/]|$)/,
+              priority: 10,
+            },
+          ],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 750,
+    sourcemap: false,
+  },
+}
+});

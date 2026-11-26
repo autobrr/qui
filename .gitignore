@@ -1,0 +1,94 @@
+# Logs and databases
+*.log
+*.sqlite
+*.db*
+*.exe
+log/
+logs/
+
+# Exception: Allow migration SQL files
+!internal/database/migrations/*.sql
+
+# OS generated files
+.DS_Store*
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.idea
+.vscode
+
+# Package manager
+node_modules
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+# Ditto for yarn, except we're using pnpm
+yarn.lock
+.pnpm-store
+# If needed, package-lock.json shall be added manually using an explicit git add command
+package-lock.json
+
+# Others
+web/build
+bin/
+dist/
+/qui
+/build/
+/web-dist.tar.gz
+.run/
+.dev/
+tmp/
+web/eslint-sarif-report.sarif
+web/coverage/
+test/mockindexer/feeds/*
+test/mockindexer/files/*
+cpu.pprof
+
+# Legacy fetch target for premium themes; keeps old checkouts from staging them.
+web/src/themes/premium/
+/THIRD_PARTY_NOTICES
+
+# Preserve files
+!.gitkeep
+
+docs/*
+!docs/architecture.md
+!docs/linting.md
+!docs/remote-backend-design.md
+!docs/agents/
+!docs/adr/
+!docs/standards/
+.mcp_unused.json
+config.toml
+.env
+.envrc
+.mcp.json
+components.json
+.cache/
+.worktrees/
+tracker-icons/*
+.device-id-*
+backups/*
+.gocache/*
+.gomodcache/*
+.golangci-cache/*
+torrentfiles/*
+analyses/*
+
+# Local reference dumps
+dodopayments.txt
+
+# Customer exports (PII) - never commit
+polar-scripts/
+
+# Local-only planning notes
+plans/
+web/dist-demo/

@@ -1,0 +1,558 @@
+{
+  "nav": {
+    "dashboard": "仪表盘",
+    "statistics": "统计",
+    "search": "搜索",
+    "crossSeed": "辅种",
+    "automations": "自动化",
+    "transfers": "传输",
+    "transfersQueued_other": "{{count}} 项正在运行或等待",
+    "backups": "备份",
+    "rss": "RSS",
+    "settings": "设置",
+    "logs": "日志",
+    "instances": "实例",
+    "generalSettings": "常规设置",
+    "manageInstances": "管理实例",
+    "appearance": "外观",
+    "instanceBackups": "实例备份",
+    "backToSite": "返回 getqui.com",
+    "docs": "文档"
+  },
+  "sidebar": {
+    "instances": "实例",
+    "allInstancesDisabled": "所有实例均已禁用",
+    "noInstancesConfigured": "尚未配置实例",
+    "logout": "退出登录",
+    "version": "版本 {{version}}",
+    "language": "语言",
+    "viewOnGitHub": "在 GitHub 上查看",
+    "rssRunning": "辅种 RSS 运行中",
+    "rssEnabled": "辅种 RSS 已启用",
+    "scanRunning": "扫描运行中",
+    "collapseToIcons": "收起为图标",
+    "expandSidebar": "展开侧边栏",
+    "hideSidebar": "隐藏侧边栏",
+    "showSidebar": "显示侧边栏",
+    "keepOpen": "固定侧边栏",
+    "menu": "菜单"
+  },
+  "problemReports": {
+    "reportProblem": "报告问题",
+    "subtitle": "你的报告会发送给 qui 维护者。",
+    "textLabel": "你的报告",
+    "placeholders": {
+      "menu": "发生了什么？你原本预期是什么结果？",
+      "notice": "发生这件事时你正在做什么？",
+      "search": "你预期匹配哪条结果，以及在哪个索引器上？"
+    },
+    "sentWithIt": "随报告附带的信息",
+    "summary_other": "qui {{version}} 和 {{count}} 个实例",
+    "details": "详情",
+    "view": "查看",
+    "whatGetsSent": "将发送的内容",
+    "whatGetsSentNote": "由 qui 自动填写。在你发送报告之前，不会有任何内容离开 qui。",
+    "loadingFacts": "正在加载报告详情...",
+    "factsFailed": "无法加载报告详情：{{message}}",
+    "facts": {
+      "version": "版本",
+      "system": "系统",
+      "appContainer": "在容器中",
+      "database": "数据库",
+      "logLevel": "日志级别",
+      "started": "启动时间",
+      "experimentalFeatures": "实验性功能",
+      "instance": "实例 {{number}}",
+      "versions": "qBittorrent {{qbittorrent}}, libtorrent {{libtorrent}}",
+      "unknownVersion": "未知",
+      "states": {
+        "connected": "已连接",
+        "offline": "离线",
+        "disabled": "已禁用"
+      },
+      "torrentCount_other": "{{count}} 个种子",
+      "notices": "系统通知",
+      "openCount_other": "{{count}} 条未关闭",
+      "page": "页面",
+      "browser": "浏览器",
+      "screen": "{{width}} × {{height}}，像素比 {{ratio}}",
+      "failedRequests": "失败的请求",
+      "failedCount_other": "本次会话 {{count}} 次",
+      "noAnswer": "无响应",
+      "none": "无"
+    },
+    "logs": {
+      "title": "日志",
+      "scopeLabel": "要包含的日志行",
+      "scopes": {
+        "warnings": "警告和错误",
+        "all": "最近全部",
+        "none": "不包含"
+      },
+      "notes": {
+        "warnings_other": "最近 {{count}} 条警告和错误。qui 会移除密钥和机密信息。",
+        "all_other": "日志级别 {{level}} 下最近的 {{count}} 行。qui 会移除密钥和机密信息。",
+        "none": "报告中不包含日志行。"
+      },
+      "empty": "没有日志行。",
+      "debugMissing": "当前日志级别为 {{level}}，因此 qui 不会记录调试日志。如需包含，请在 设置 > 日志 中将日志级别设为 DEBUG，复现问题后再重新报告。"
+    },
+    "privacy": {
+      "anonymous": "匿名：无姓名，无账号。brrbin 不保留 IP 地址。",
+      "signedIn": "维护者可以看到你的 {{provider}} 名称（{{name}}），并可能会联系你。",
+      "link": "隐私政策"
+    },
+    "sender": {
+      "label": "发送身份",
+      "anonymous": "匿名",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "使用 {{provider}} 登录",
+      "signOut": "退出登录",
+      "waiting": "正在等待 {{provider}}",
+      "errors": {
+        "discordNotMember": "你的 Discord 账号不在 autobrr Discord 服务器中。请加入该服务器后重新登录，使用 GitHub 登录，或匿名发送。",
+        "refused": "登录被拒绝：{{reason}}",
+        "expired": "登录已过期。请重新登录。",
+        "popupBlocked": "你的浏览器阻止了登录窗口。请允许 qui 打开弹出窗口，然后重新登录。",
+        "unavailable": "brrbin 现在无法为你登录。请稍后再试。",
+        "startFailed": "无法开始登录：{{message}}",
+        "signOutFailed": "无法退出登录：{{message}}"
+      }
+    },
+    "newerRelease": "当前运行 {{running}}。新版本 <release>{{newer}}</release> 已发布。",
+    "send": "发送",
+    "sendAnyway": "仍然发送",
+    "sending": "正在发送",
+    "sent": "报告已发送",
+    "errors": {
+      "anonymousFull": {
+        "title": "今天的匿名报告已满",
+        "body": "请登录后立即发送，或明天再试。你输入的内容会作为草稿保留在这里。"
+      },
+      "signInRequired": "请登录后发送此报告。你输入的内容会作为草稿保留在这里。",
+      "accountLimit": "你在过去一小时内发送了很多报告。请稍后再试。",
+      "reporterFull": "你的报告已用完 brrbin 给每个人的全部空间。请在已发送的报告中删除一份旧报告，然后再发送。",
+      "tooLarge": "报告太大。请选择更少的日志行或更小的图片。",
+      "tokenRejected": "你的登录已结束。请重新登录后再发送。",
+      "unavailable": "brrbin 现在无法接收报告。请稍后再试。",
+      "sendFailed": "无法发送报告：{{message}}"
+    },
+    "sentReports": {
+      "title": "已发送的报告",
+      "subtitle": "每次打开此列表时，qui 都会检查报告状态。",
+      "changed_other": "{{count}} 条状态已变更",
+      "status": {
+        "received": "已收到",
+        "issue": "已转为 Issue #{{number}}",
+        "issueClosed": "Issue #{{number}} 已关闭",
+        "closed": "已关闭：{{reason}}",
+        "closedNoReason": "已关闭",
+        "notSent": "未发送"
+      },
+      "delete": "删除报告",
+      "deleteUnavailable": "brrbin 现在无法删除报告。请稍后再试。",
+      "deleteFailed": "无法删除报告：{{message}}",
+      "empty": "没有已发送的报告。",
+      "back": "返回报告"
+    }
+  },
+  "header": {
+    "currentInstance": "当前实例：{{name}}。点击切换实例。",
+    "connected": "已连接",
+    "disconnected": "已断开",
+    "showFilters": "显示筛选器",
+    "hideFilters": "隐藏筛选器",
+    "addTorrent": "添加种子",
+    "createTorrent": "创建种子",
+    "torrentCreationTasks": "种子创建任务",
+    "instanceSettings": "实例设置",
+    "addToInstance": "添加到实例",
+    "createForInstance": "为实例创建",
+    "tasksForInstance": "实例任务",
+    "settingsForInstance": "实例设置",
+    "clearSearch": "清除搜索",
+    "searchTorrents": "搜索种子...",
+    "globPattern": "Glob 模式...",
+    "smartSearchTitle": "智能搜索功能：",
+    "smartSearchGlob": "Glob 模式：",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "模糊匹配：",
+    "smartSearchFuzzyExample": "\"breaking bad\" 可匹配 \"Breaking.Bad\"",
+    "smartSearchDots": "自动处理点号、下划线和方括号",
+    "smartSearchFields": "搜索名称、分类和标签",
+    "smartSearchEnter": "按回车键立即搜索",
+    "smartSearchAuto": "暂停输入 500 毫秒后自动搜索",
+    "smartSearchShortcut": "按 {{shortcutKey}} 跳转到搜索框",
+    "smartSearchPalette": "按 {{shortcutKey}} 打开命令面板",
+    "torrentCreationTasksTitle": "种子创建任务",
+    "allScope": "全部",
+    "unified": "统一视图"
+  },
+  "titleBar": {
+    "speeds": "下载：{{download}} 上传：{{upload}}"
+  },
+  "unifiedScope": {
+    "unified": "统一视图",
+    "collapseScope": "折叠统一视图",
+    "expandScope": "展开统一视图",
+    "allActive": "全部活动 ({{count}})"
+  },
+  "commandPalette": {
+    "title": "命令面板",
+    "placeholder": "搜索页面、设置和种子...",
+    "placeholderIn": "在 {{name}} 中搜索...",
+    "groups": {
+      "pages": "页面",
+      "actions": "操作"
+    },
+    "current": "当前",
+    "statisticsNote": "实例的上传和下载历史",
+    "searchTorrentsFor": "搜索种子「{{query}}」",
+    "torrentMatches_other": "{{count}} 个种子匹配",
+    "noTorrentMatches": "没有匹配的种子",
+    "searching": "正在搜索...",
+    "searchFailed": "种子搜索失败",
+    "listFiltersApply": "已应用列表筛选器",
+    "noMatchIn": "{{name}} 中没有匹配项",
+    "moreOf": "{{name}} 的更多选项",
+    "hints": {
+      "navigate": "导航",
+      "open": "打开",
+      "more": "更多",
+      "searchTorrents": "搜索种子",
+      "back": "返回"
+    }
+  },
+  "mobileNav": {
+    "dashboard": "仪表盘",
+    "statistics": "统计",
+    "clients": "客户端",
+    "settings": "设置",
+    "qbittorrentClients": "qBittorrent 客户端",
+    "instances": "实例",
+    "loading": "加载中...",
+    "noActiveClients": "没有活动的客户端",
+    "updateAvailable": "有可用更新",
+    "updateVersion": "版本 {{version}}",
+    "rssRunning": "辅种 RSS 运行中",
+    "rssEnabled": "辅种 RSS 已启用",
+    "scanRunning": "扫描运行中",
+    "logout": "退出登录",
+    "version": "版本 {{version}}",
+    "viewOnGitHub": "在 GitHub 上查看"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr - GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "取消",
+    "close": "关闭",
+    "create": "创建",
+    "scrollToTop": "回到顶部",
+    "search": "搜索",
+    "select": "选择",
+    "copyValue": "复制 {{label}}"
+  },
+  "featureNotice": {
+    "gotIt": "知道了"
+  },
+  "placeholders": {
+    "search": "搜索...",
+    "selectItems": "选择项目..."
+  },
+  "feedback": {
+    "noResultsFound": "未找到结果。",
+    "copied": "{{label}} 已复制到剪贴板",
+    "copyFailed": "复制到剪贴板失败"
+  },
+  "errors": {
+    "unknown": "未知错误",
+    "httpStatus": "HTTP 错误！状态：{{status}}",
+    "httpStatusHtml": "HTTP 错误！状态：{{status}}（服务器返回了 HTML 错误页面）",
+    "ssoHtmlResponse": "API 返回了 HTML 响应而不是 JSON。如果您位于 SSO 代理（Cloudflare Access、Pangolin 等）之后，请尝试刷新页面或在新标签页中重新打开该 URL。",
+    "torrentFileDownloadFailed": "下载种子文件失败：{{status}}",
+    "altSpeedToggle": "更改备用速度限制失败：{{message}}",
+    "altSpeedToggleHidden": "更改备用速度限制失败。隐身模式隐藏了原因。"
+  },
+  "status": {
+    "disabled": "已禁用",
+    "notContacted": "未连接",
+    "working": "工作中",
+    "updating": "更新中",
+    "error": "错误",
+    "unknown": "未知",
+    "unavailable": "不可用",
+    "trackerError": "Tracker 错误",
+    "unreachable": "无法连接"
+  },
+  "contentTypeLabels": {
+    "movie": "电影",
+    "tv": "电视剧",
+    "music": "音乐",
+    "audiobook": "有声书",
+    "book": "图书",
+    "comic": "漫画",
+    "game": "游戏",
+    "app": "应用",
+    "adult": "成人",
+    "unknown": "未知"
+  },
+  "themeToggle": {
+    "changeTheme": "切换主题",
+    "appearance": "外观",
+    "mode": "模式",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统",
+    "theme": "主题",
+    "switchedToMode": "已切换到{{mode}}模式",
+    "switchedToTheme": "已切换到{{theme}}主题",
+    "switchedToThemeVariation": "已切换到{{theme}}主题（{{variation}}）",
+    "premiumThemeError": "此主题需要许可证。请前往设置 > 主题激活许可证。"
+  },
+  "updateBanner": {
+    "updateAvailable": "有可用更新",
+    "versionAvailable": "版本 {{version}} 现已可用",
+    "dismiss": "关闭"
+  },
+  "systemNotice": {
+    "needsAttention": "需要处理",
+    "since": "自 {{time}} 起，{{age}}",
+    "causeLabel": "原因",
+    "actionFallback": "前往修复",
+    "kinds": {
+      "recording_stopped": {
+        "short": "记录已停止",
+        "title": "记录已停止",
+        "effect": "qui 无法写入传输历史。它会在下次写入时重试。",
+        "fix": "请确认磁盘有可用空间，并且 qui 可以写入数据库文件。",
+        "menuFix": "为数据库释放磁盘空间"
+      },
+      "shrink_failed": {
+        "short": "压缩失败",
+        "title": "压缩失败",
+        "effect": "qui 无法缩小数据库文件。数据库没有变化，qui 照常运行。",
+        "fix": "详情请查看 qui 日志。",
+        "menuFix": "查看 qui 日志",
+        "reasons": {
+          "disk_full": {
+            "fix": "磁盘可用空间不足。压缩最多需要数据库文件大小的两倍空间。请释放磁盘空间后重试。",
+            "menuFix": "释放空间后重试"
+          },
+          "locked": {
+            "fix": "另一个程序占用了数据库文件。请关闭该程序（例如备份工具或数据库查看器）后重试。",
+            "menuFix": "关闭其他程序后重试"
+          }
+        }
+      },
+      "low_disk": {
+        "short": "磁盘空间不足",
+        "title": "磁盘空间不足",
+        "effect": "qui 数据库所在磁盘的可用空间很少。磁盘写满后，qui 的每次写入都会失败。",
+        "fix": "请释放磁盘空间，或在统计设置中缩短“保留每日详情”，或删除较早的历史。",
+        "menuFix": "为数据库释放磁盘空间",
+        "action": "打开统计设置"
+      },
+      "redacted_key_rejected": {
+        "short": "Redacted 密钥被拒绝",
+        "title": "Redacted 拒绝了 API 密钥",
+        "effect": "Redacted 拒绝了上一次搜索。qui 会在下一次搜索时再次查询。",
+        "fix": "如果密钥有误，请在您的 Redacted 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。如果 Redacted 封禁了 qui 的 IP，新密钥也无济于事：请联系 Redacted 的管理团队。",
+        "menuFix": "在设置中粘贴新密钥",
+        "action": "打开 Gazelle (OPS/RED) 设置"
+      },
+      "orpheus_key_rejected": {
+        "short": "Orpheus 密钥被拒绝",
+        "title": "Orpheus 拒绝了 API 密钥",
+        "effect": "Orpheus 拒绝了上一次搜索。qui 会在下一次搜索时再次查询。",
+        "fix": "如果密钥有误，请在您的 Orpheus 个人资料设置中创建具有 Torrents 权限的 API 密钥，然后将其粘贴到 qui 的 Gazelle (OPS/RED) 设置中。如果 Orpheus 封禁了 qui 的 IP，新密钥也无济于事：请联系 Orpheus 的管理团队。",
+        "menuFix": "在设置中粘贴新密钥",
+        "action": "打开 Gazelle (OPS/RED) 设置"
+      },
+      "library_scan_schedule_blocked": {
+        "short": "做种库扫描计划受阻",
+        "title": "做种库扫描计划无法运行",
+        "effect": "qui 无法启动做种库扫描的计划运行。它会每小时重试一次。",
+        "fix": "请检查做种库扫描设置。qui 会每小时重试一次。",
+        "menuFix": "检查做种库扫描设置",
+        "action": "打开做种库扫描设置",
+        "reasons": {
+          "torznab_off_no_gazelle": {
+            "fix": "做种库扫描设置中的 Torznab 已关闭，且未设置 RED 或 OPS API 密钥。请打开 Torznab，或在 Gazelle (OPS/RED) 设置中添加 RED 或 OPS 密钥。qui 会每小时重试一次。",
+            "menuFix": "打开 Torznab，或添加 RED 或 OPS 密钥"
+          },
+          "no_indexer": {
+            "fix": "没有启用的索引器。请启用一个 Torznab 索引器，或在 Gazelle (OPS/RED) 设置中添加 RED 或 OPS 密钥。qui 会每小时重试一次。",
+            "menuFix": "启用一个索引器"
+          },
+          "instance_missing": {
+            "fix": "已保存的做种库扫描设置中的实例不存在。请在做种库扫描设置中选择一个实例，然后保存。qui 会每小时重试一次。",
+            "menuFix": "选择一个实例，然后保存"
+          }
+        }
+      }
+    },
+    "actions": {
+      "tryAgain": "重试",
+      "dismiss": "忽略",
+      "openLog": "打开日志"
+    },
+    "unknown": {
+      "short": "系统通知",
+      "title": "系统通知",
+      "effect": "qui 发现了一个需要你处理的故障。",
+      "fix": "详情请查看 qui 日志。",
+      "menuFix": "查看 qui 日志"
+    }
+  },
+  "databaseShrink": {
+    "done": "数据库文件已从 {{before}} 压缩到 {{after}}",
+    "nextStart": "压缩将在 qui 下次启动时执行",
+    "failed": "无法请求压缩"
+  },
+  "pwaUpdate": {
+    "reload": "重新加载",
+    "waitingDescription": "重新加载以应用最新的 qui 版本。",
+    "activatedTitle": "qui 已更新",
+    "activatedDescription": "方便时请重新加载，以完成最新版本的安装。"
+  },
+  "notFound": {
+    "title": "迷路了？",
+    "subtitle": "看起来你进入了未知区域。",
+    "bugReport": "如果你认为这是一个 bug 而不是无效链接，",
+    "reportTo": "欢迎在我们的",
+    "githubRepository": "GitHub 仓库",
+    "getBackOnTrack": "提交反馈。我们来帮你回到正轨！",
+    "returnToDashboard": "返回仪表盘"
+  },
+  "magnetHandler": {
+    "registerPrompt": "将 qui 注册为磁力链接处理程序",
+    "register": "注册",
+    "dismiss": "关闭",
+    "registrationRequested": "已请求注册磁力链接处理程序",
+    "registrationFailed": "注册磁力链接处理程序失败",
+    "guidance": {
+      "standalone": "请在常规浏览器标签页中打开 qui 进行注册（提示可能出现在地址栏中，PWA 不会显示地址栏）。",
+      "chromium": "Chrome 通常会在地址栏中显示一个小的协议处理图标；如果没有出现，请在 chrome://settings/handlers 中启用协议处理。",
+      "default": "如果浏览器弹出提示，请接受以完成注册。"
+    }
+  },
+  "fieldHelp": {
+    "trigger": "更多信息"
+  },
+  "numberInput": {
+    "unlimited": "无限制"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "刚刚",
+    "today": "今天",
+    "yesterday": "昨天",
+    "past": "{{value}}前",
+    "future": "{{value}}后",
+    "units": {
+      "second_other": "{{count}} 秒",
+      "minute_other": "{{count}} 分钟",
+      "hour_other": "{{count}} 小时",
+      "day_other": "{{count}} 天",
+      "week_other": "{{count}} 周",
+      "month_other": "{{count}} 个月",
+      "year_other": "{{count}} 年"
+    }
+  },
+  "dataUnits": {
+    "byte": {
+      "B": "B",
+      "KiB": "KiB",
+      "MiB": "MiB",
+      "GiB": "GiB",
+      "TiB": "TiB",
+      "PiB": "PiB"
+    },
+    "bit": {
+      "b": "b",
+      "Kb": "Kb",
+      "Mb": "Mb",
+      "Gb": "Gb",
+      "Tb": "Tb"
+    },
+    "perSecond": "{{unit}}/s",
+    "valueWithUnit": "{{value}} {{unit}}"
+  },
+  "support": {
+    "title": "支持 qui",
+    "description": "支持 qui 的方式及其价格。",
+    "heading": "帮助 qui 持续维护",
+    "intro": "qui 是免费的，无论您是否付费，功能都完全相同。支持款项用于支付投入 qui 的时间和工具。",
+    "licensed": "感谢您购买主题许可证。",
+    "releases_other": "qui 在过去 12 个月发布了 {{count}} 个版本。",
+    "releaseMap": "过去 52 周，每天一个方块。亮色方块表示当天有新版本发布。",
+    "releaseDay": "有新版本发布的日子",
+    "plans": {
+      "yearly": "每年 {{price}}",
+      "yearlyNote": "每月 {{price}}，按年支付",
+      "yearlyNoteWithLicense": "每月 {{price}}，按年支付。包含主题许可证。",
+      "license": "主题许可证，{{price}} 起",
+      "licenseNote": "所有当前和未来的高级主题，终身有效",
+      "onePayment": "一次性付款"
+    },
+    "checkout": "前往结账",
+    "fromPrice": "{{price}} 起",
+    "terms": {
+      "yearly": "您今天支付 {{price}}，之后每年支付 {{price}}，直到您取消。",
+      "license": "一次性支付 {{price}} 或更多，金额在结账时设定。不是订阅。"
+    },
+    "perks": {
+      "yearly": "赞助者可在 qui 中获得赞助者徽章，并在 Discord 获得赞助者身份组。结账后，请将您的赞助者密钥添加到此服务器。",
+      "license": "许可证可解锁高级主题。结账后，请将您的许可证密钥添加到此服务器。"
+    },
+    "existing": "已经是赞助者？",
+    "addKey": "添加赞助者密钥",
+    "key": {
+      "help": "您的赞助者密钥显示在结账页面上，也在附有收据的邮件中。",
+      "label": "赞助者密钥",
+      "submit": "添加密钥",
+      "back": "返回"
+    },
+    "ended": "此服务器上的赞助者密钥已失效。qui 每天都会重新检查它。如果您的支持已结束，您的主题许可证仍然保留。请在<portal>许可证门户</portal>中找到它的密钥，然后在设置的主题页中添加。",
+    "removeKey": "从此服务器移除赞助者密钥",
+    "supporter": {
+      "badge": "赞助者",
+      "title": "您正在支持 qui",
+      "thanks": "谢谢。您的支持用于支付投入 qui 的时间和工具。",
+      "detail": "您拥有 qui 中的赞助者徽章和 Discord 中的赞助者身份组。您的支持还会解锁高级主题，并包含一份终身主题许可证。请在<portal>许可证门户</portal>中找到许可证密钥。",
+      "manage": "管理或取消支持"
+    },
+    "reminder": {
+      "title_other": "qui 已在此服务器上运行 {{count}} 天",
+      "tooltip": "仅在此服务器上计算，从不发送。qui 每年只询问一次。",
+      "subtitle": "支持 qui。qui 每年只询问一次。",
+      "notNow": "以后再说",
+      "serverDays_other": "此服务器已运行 qui {{count}} 天。qui 只在此服务器上计算这个数字，从不发送。",
+      "notNowToast": "qui 将在一年后再次询问",
+      "dontAskAgain": "不再询问",
+      "offToast": "qui 不会再询问",
+      "offToastDescription": "支持快捷方式会保留。可在设置的应用页中重新开启提醒。",
+      "undo": "撤销",
+      "hiddenToast": "支持快捷方式已隐藏",
+      "hiddenToastDescription": "qui 不会再询问。可在设置的应用页中恢复快捷方式。",
+      "notForYou": "不感兴趣？<reminder>关闭年度提醒</reminder>，或<heart>隐藏爱心</heart>。可在设置中恢复两者。",
+      "notForYouHeart": "不感兴趣？<heart>隐藏爱心</heart>。可在设置中恢复。"
+    }
+  },
+  "labels": {
+    "path": "路径",
+    "beta": "测试版"
+  },
+  "kit": {
+    "loadFailed": "此部分加载失败。",
+    "retry": "重试",
+    "edit": "编辑",
+    "moreActions": "更多操作",
+    "enabled": "已启用",
+    "clearSelection": "清除选择"
+  }
+}
