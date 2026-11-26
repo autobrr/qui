@@ -3,7 +3,7 @@
 
 //go:build windows
 
-package hardlink
+package local
 
 import (
 	"os"
@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
+
+	"github.com/autobrr/qui/pkg/hardlink"
 )
 
 func TestWindowsFileInfoLayouts(t *testing.T) {
@@ -28,7 +30,7 @@ func TestWindowsFileInfoLayouts(t *testing.T) {
 	require.Equal(t, uintptr(21), unsafe.Offsetof(fileStandardInfo{}.Directory))
 }
 
-func TestGetFileIDWindows(t *testing.T) {
+func TestPathIdentityWindows(t *testing.T) {
 	dir := t.TempDir()
 	sourcePath := filepath.Join(dir, "source")
 	hardlinkPath := filepath.Join(dir, "hardlink")
@@ -50,14 +52,12 @@ func TestGetFileIDWindows(t *testing.T) {
 	require.False(t, copyID.IsZero())
 }
 
-func TestGetFileIDWindowsOpenFailure(t *testing.T) {
+func TestPathIdentityWindowsOpenFailure(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "removed")
 	require.NoError(t, os.WriteFile(path, []byte("source"), 0o600))
-	fi, err := os.Stat(path)
-	require.NoError(t, err)
 	require.NoError(t, os.Remove(path))
 
-	id, links, err := GetFileID(fi, path)
+	id, links, err := pathIdentity(path, false)
 	require.Error(t, err)
 	require.True(t, id.IsZero())
 	require.Zero(t, links)
@@ -83,7 +83,7 @@ func TestLegacyFileIDWindows(t *testing.T) {
 	require.Equal(t, uint64(1), copyLinks)
 	require.False(t, sourceID.IsZero())
 
-	require.Equal(t, KindWindows, sourceID.Kind())
+	require.Equal(t, hardlink.KindWindows, sourceID.Kind())
 	require.Equal(t, make([]byte, 8), sourceID.Bytes()[17:25])
 }
 
@@ -94,7 +94,7 @@ func TestLegacyFileIDWindowsPropagatesOriginalError(t *testing.T) {
 	require.Zero(t, links)
 }
 
-func legacyFileIDForTest(t *testing.T, path string) (FileID, uint64) {
+func legacyFileIDForTest(t *testing.T, path string) (hardlink.FileID, uint64) {
 	t.Helper()
 
 	pathp, err := windows.UTF16PtrFromString(path)
@@ -118,12 +118,10 @@ func legacyFileIDForTest(t *testing.T, path string) (FileID, uint64) {
 	return id, links
 }
 
-func getFileIDForTest(t *testing.T, path string) (FileID, uint64) {
+func getFileIDForTest(t *testing.T, path string) (hardlink.FileID, uint64) {
 	t.Helper()
 
-	fi, err := os.Stat(path)
-	require.NoError(t, err)
-	id, links, err := GetFileID(fi, path)
+	id, links, err := pathIdentity(path, false)
 	require.NoError(t, err)
 	return id, links
 }
