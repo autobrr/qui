@@ -433,10 +433,11 @@ export default tseslint.config([
         deny: [],
         contracts: [{
           pattern: '^(Button|Badge|Label)$',
-          allow: ['layout', 'color'],
+          allow: ['layout'],
           message: { typography: '"{{className}}" is not allowed on <{{component}}>: <{{component}}> owns its {{category}}. Use a size: {{sizes}}.' },
         }],
       }],
+      'shadcn/no-raw-colors': 'error',
       'shadcn/no-unknown-classes': ['error', { allow: ['ss-*', 'fi', 'animated-logo-element', 'toaster'] }],
       'shadcn/require-static-classes': 'error',
     },
@@ -447,6 +448,12 @@ export default tseslint.config([
       'shadcn/no-arbitrary-values': 'off',
       'shadcn/no-restyle': 'off',
       'shadcn/require-static-classes': 'off',
+    },
+  },
+  {
+    files: ['src/components/ui/{Logo,AnimatedLogo}.tsx'],
+    rules: {
+      'shadcn/no-raw-colors': 'off',
     },
   },
 ])

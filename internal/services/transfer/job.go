@@ -244,50 +244,6 @@ func (j *job) openRoot(ctx context.Context, resumed bool) error {
 	return nil
 }
 
-type space struct {
-	free, freed int64
-	known       bool
-}
-
-func (j *job) freeSpace(ctx context.Context) (space, error) {
-	read := space{freed: j.svc.freedOn(j.target.ID), known: true}
-	if !j.blind {
-		stat, err := j.dstFiles.Statfs(ctx, j.rootDir)
-		if err != nil {
-			return space{}, temporary("qui cannot read the free space on %s: %w", j.target.Name, targetError{err})
-		}
-		read.free = stat.BytesAvailable
-		return read, nil
-	}
-	free, known, err := j.svc.clientFreeSpace(ctx, j.target, j.rootPaths, j.rootDir)
-	if err != nil || !known {
-		return space{}, err
-	}
-	read.free = free
-	return read, nil
-}
-
-func (s *Service) clientFreeSpace(ctx context.Context, target *models.Instance, d fsops.PathDialect, dir string) (free int64, known bool, err error) {
-	free, err = s.deps.Sync.GetFreeSpaceAtPath(ctx, target.ID, dir)
-	if !errors.Is(err, qbittorrent.ErrFreeSpaceAtPathUnsupported) {
-		if err != nil {
-			return 0, false, temporary("qui cannot read the free space on %s: %v", target.Name, err)
-		}
-		return free, true, nil
-	}
-	prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
-	if err != nil {
-		return 0, false, temporary("qui cannot read the default save path of %s: %v", target.Name, err)
-	}
-	if d.Clean(prefs.SavePath) != dir {
-		return 0, false, nil
-	}
-	if free, err = s.deps.Sync.GetFreeSpace(ctx, target.ID); err != nil {
-		return 0, false, temporary("qui cannot read the free space on %s: %v", target.Name, err)
-	}
-	return free, true, nil
-}
-
 func (j *job) logStart(ctx context.Context, need int64, known bool) {
 	if !known {
 		j.logf("Free space unknown on %s: before qBittorrent 5.3, qBittorrent reports it only at its default save path.", j.target.Name)
@@ -344,48 +300,6 @@ func (s *Service) onTCPAndUTP(ctx context.Context, instances ...*models.Instance
 }
 
 const bittorrentTCPAndUTP = 0
-
-func (j *job) need() int64 {
-	var need int64
-	for _, f := range j.files {
-		size, made := j.made[f]
-		switch {
-		case f.onTarget || f.linked || f.linksCopy || j.linksCopyLater(f):
-		case made:
-			need += f.size - size
-		default:
-			need += f.size
-		}
-	}
-	return need
-}
-
-func (j *job) reserve(ctx context.Context, bytes int64) (bool, error) {
-	read, err := j.freeSpace(ctx)
-	if err != nil || !read.known {
-		return read.known, err
-	}
-	return true, j.claim(bytes, read)
-}
-
-func (j *job) claim(bytes int64, read space) error {
-	left := read.free - j.reserved
-	if left < bytes {
-		return permanent("Not enough free space on %s: not enough free space on the target: the Transfer needs %s, and %s is free",
-			j.target.Name, formatBytes(bytes), formatBytes(max(left, 0)))
-	}
-	if others, ok := j.svc.reserve(j.target.ID, bytes, read, j.reserved); !ok {
-		return temporary("Not enough free space on %s for now: the Transfer needs %s, and %s is free, but other Transfers to %s take %s of it.",
-			j.target.Name, formatBytes(bytes), formatBytes(left), j.target.Name, formatBytes(others))
-	}
-	j.reserved += bytes
-	return nil
-}
-
-func (j *job) unclaim(bytes int64) {
-	j.svc.unreserve(j.target.ID, bytes)
-	j.reserved -= bytes
-}
 
 func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 	var (
@@ -451,9 +365,9 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 }
 
 func (j *job) checkSource(ctx context.Context) error {
-	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+	torrents, err := j.checkedSource(ctx)
 	if err != nil {
-		return temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
+		return err
 	}
 	for _, p := range j.parts {
 		i := slices.IndexFunc(torrents, func(t *qbt.Torrent) bool { return strings.EqualFold(t.Hash, p.Hash) })
@@ -466,8 +380,8 @@ func (j *job) checkSource(ctx context.Context) error {
 			return sourceGone("it moved")
 		case torrent.Name != p.src.torrent.Name:
 			return sourceChanged("it was renamed")
-		case isChecking(torrent.State) || torrent.Progress < 1:
-			return sourceChanged("qBittorrent checks it again")
+		case torrent.Progress < 1:
+			return sourceChanged("qBittorrent checked it and found pieces that are missing")
 		}
 		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash)
 		if err != nil {
@@ -482,6 +396,25 @@ func (j *job) checkSource(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (j *job) checkedSource(ctx context.Context) ([]*qbt.Torrent, error) {
+	for poll := range j.svc.deps.Config.CheckPolls {
+		if err := j.pause(ctx, poll); err != nil {
+			return nil, err
+		}
+		torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+		if err != nil {
+			return nil, temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
+		}
+		if !slices.ContainsFunc(torrents, func(t *qbt.Torrent) bool { return isChecking(t.State) }) {
+			return torrents, nil
+		}
+		if poll == 0 {
+			j.logf("qBittorrent checks the torrent on %s. qui waits for the check to end.", j.source.Name)
+		}
+	}
+	return nil, sourceChanged("the check of qBittorrent did not end")
 }
 
 func isChecking(state qbt.TorrentState) bool {

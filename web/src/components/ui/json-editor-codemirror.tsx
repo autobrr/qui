@@ -39,8 +39,8 @@ const quiTheme = EditorView.theme({
 
 const quiHighlight = HighlightStyle.define([
   { tag: tags.propertyName, color: "var(--foreground)" },
-  { tag: tags.string, color: "var(--chart-2)" },
-  { tag: [tags.number, tags.bool, tags.null], color: "var(--chart-3)" },
+  { tag: tags.string, color: "var(--chart-text-2, var(--chart-2))" },
+  { tag: [tags.number, tags.bool, tags.null], color: "var(--chart-text-3, var(--chart-3))" },
 ])
 
 const parseLinter = jsonParseLinter()

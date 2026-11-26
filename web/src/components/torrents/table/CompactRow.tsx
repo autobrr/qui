@@ -184,12 +184,12 @@ export function CompactRow({
           {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
             <div className="flex items-center gap-1">
               {torrent.dlspeed > 0 && (
-                <span className="text-chart-2 font-medium">
+                <span className="text-chart-text-2 font-medium">
                   ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
                 </span>
               )}
               {torrent.upspeed > 0 && (
-                <span className="text-chart-3 font-medium">
+                <span className="text-chart-text-3 font-medium">
                   ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
                 </span>
               )}

@@ -1,4 +1,9 @@
 {
+  "src/components/Footer.tsx": {
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
   "src/components/automations/tabs.ts": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
@@ -50,6 +55,9 @@
   "src/components/cross-seed/CrossSeedRouteForm.tsx": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 1
     }
   },
   "src/components/cross-seed/DirScanTab.tsx": {
@@ -60,12 +68,18 @@
       "count": 3
     },
     "shadcn/no-restyle": {
-      "count": 19
+      "count": 20
     }
   },
   "src/components/cross-seed/HardlinkModeSettings.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 3
+    },
+    "shadcn/no-restyle": {
+      "count": 11
     }
   },
   "src/components/cross-seed/LibraryTab.tsx": {
@@ -78,6 +92,11 @@
     "shadcn/no-arbitrary-values": {
       "count": 5
     },
+    "shadcn/no-restyle": {
+      "count": 3
+    }
+  },
+  "src/components/cross-seed/MatchingTab.tsx": {
     "shadcn/no-restyle": {
       "count": 2
     }
@@ -95,6 +114,9 @@
   "src/components/cross-seed/RssTab.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 3
+    },
+    "shadcn/no-raw-colors": {
+      "count": 2
     }
   },
   "src/components/cross-seed/SeasonPackRunsPanel.tsx": {
@@ -102,7 +124,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 5
+      "count": 6
     }
   },
   "src/components/cross-seed/tabs.ts": {
@@ -115,7 +137,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 2
+      "count": 4
     }
   },
   "src/components/dashboard/InstanceList.tsx": {
@@ -124,6 +146,9 @@
     },
     "shadcn/no-arbitrary-values": {
       "count": 2
+    },
+    "shadcn/no-restyle": {
+      "count": 6
     }
   },
   "src/components/dashboard/StreamChart.tsx": {
@@ -154,12 +179,12 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 6
+      "count": 10
     }
   },
   "src/components/display-profiles/DisplayProfileEditor.tsx": {
     "shadcn/no-restyle": {
-      "count": 1
+      "count": 11
     }
   },
   "src/components/display-profiles/DisplayProfileIconPicker.tsx": {
@@ -183,6 +208,9 @@
     },
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 1
     }
   },
   "src/components/feature-notice/notices.ts": {
@@ -202,7 +230,12 @@
   },
   "src/components/indexers/IndexerToolbar.tsx": {
     "shadcn/no-restyle": {
-      "count": 4
+      "count": 5
+    }
+  },
+  "src/components/indexers/SearchHistoryPanel.tsx": {
+    "shadcn/no-restyle": {
+      "count": 1
     }
   },
   "src/components/instances/InstanceErrorDisplay.tsx": {
@@ -237,8 +270,11 @@
     "qui/no-direct-effect": {
       "count": 2
     },
-    "shadcn/no-restyle": {
+    "shadcn/no-raw-colors": {
       "count": 6
+    },
+    "shadcn/no-restyle": {
+      "count": 12
     }
   },
   "src/components/instances/preferences/CompletionOverview.tsx": {
@@ -291,7 +327,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 24
+      "count": 26
     }
   },
   "src/components/instances/preferences/PreferenceWidgets.tsx": {
@@ -323,7 +359,7 @@
   },
   "src/components/instances/preferences/ReannounceOverview.tsx": {
     "shadcn/no-restyle": {
-      "count": 5
+      "count": 8
     },
     "shadcn/require-static-classes": {
       "count": 1
@@ -337,7 +373,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 15
+      "count": 16
     },
     "shadcn/require-static-classes": {
       "count": 1
@@ -357,12 +393,15 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 82
+      "count": 87
     }
   },
   "src/components/instances/preferences/WorkflowPreviewDialog.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 4
     },
     "shadcn/no-restyle": {
       "count": 2
@@ -375,8 +414,11 @@
     "qui/no-direct-effect": {
       "count": 1
     },
+    "shadcn/no-raw-colors": {
+      "count": 20
+    },
     "shadcn/no-restyle": {
-      "count": 75
+      "count": 102
     },
     "shadcn/require-static-classes": {
       "count": 2
@@ -432,7 +474,7 @@
       "count": 2
     },
     "shadcn/no-restyle": {
-      "count": 2
+      "count": 5
     }
   },
   "src/components/layout/HeaderInstanceTitle.tsx": {
@@ -461,8 +503,11 @@
     "qui/no-direct-effect": {
       "count": 2
     },
-    "shadcn/no-restyle": {
+    "shadcn/no-raw-colors": {
       "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 4
     }
   },
   "src/components/layout/SectionedPage.tsx": {
@@ -484,7 +529,7 @@
       "count": 3
     },
     "shadcn/no-restyle": {
-      "count": 6
+      "count": 19
     },
     "shadcn/require-static-classes": {
       "count": 1
@@ -522,7 +567,7 @@
   },
   "src/components/problem-reports/SenderMenu.tsx": {
     "shadcn/no-restyle": {
-      "count": 3
+      "count": 5
     }
   },
   "src/components/problem-reports/SentReports.tsx": {
@@ -533,7 +578,7 @@
       "count": 2
     },
     "shadcn/no-restyle": {
-      "count": 5
+      "count": 9
     }
   },
   "src/components/problem-reports/draft.ts": {
@@ -551,8 +596,11 @@
     "react-refresh/only-export-components": {
       "count": 2
     },
+    "shadcn/no-raw-colors": {
+      "count": 10
+    },
     "shadcn/no-restyle": {
-      "count": 7
+      "count": 15
     }
   },
   "src/components/query-builder/FieldCombobox.tsx": {
@@ -568,7 +616,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 4
+      "count": 10
     }
   },
   "src/components/query-builder/QueryBuilder.tsx": {
@@ -587,6 +635,9 @@
   "src/components/search/ChecklistPicker.tsx": {
     "shadcn/no-arbitrary-values": {
       "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 1
     }
   },
   "src/components/search/SearchForm.tsx": {
@@ -594,7 +645,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 1
+      "count": 5
     }
   },
   "src/components/search/SearchResults.tsx": {
@@ -611,7 +662,7 @@
       "count": 2
     },
     "shadcn/no-restyle": {
-      "count": 6
+      "count": 11
     }
   },
   "src/components/settings/ApiKeysManager.tsx": {
@@ -619,7 +670,7 @@
       "count": 2
     },
     "shadcn/no-restyle": {
-      "count": 1
+      "count": 3
     }
   },
   "src/components/settings/ApplicationSettings.tsx": {
@@ -635,9 +686,17 @@
       "count": 1
     }
   },
+  "src/components/settings/ClientApiKeysManager.tsx": {
+    "shadcn/no-restyle": {
+      "count": 2
+    }
+  },
   "src/components/settings/ExternalProgramsManager.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 2
     }
   },
   "src/components/settings/InstancesSettings.tsx": {
@@ -655,8 +714,11 @@
     "qui/no-direct-effect": {
       "count": 2
     },
+    "shadcn/no-raw-colors": {
+      "count": 8
+    },
     "shadcn/no-restyle": {
-      "count": 6
+      "count": 8
     }
   },
   "src/components/settings/SecuritySettings.tsx": {
@@ -684,7 +746,7 @@
   },
   "src/components/settings/TrackerCustomizationsManager.tsx": {
     "shadcn/no-restyle": {
-      "count": 2
+      "count": 4
     }
   },
   "src/components/settings/tabs.ts": {
@@ -795,8 +857,11 @@
     }
   },
   "src/components/support/SupportButton.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    },
     "shadcn/no-restyle": {
-      "count": 3
+      "count": 5
     }
   },
   "src/components/support/SupportDialog.tsx": {
@@ -806,8 +871,21 @@
     "shadcn/no-arbitrary-values": {
       "count": 6
     },
+    "shadcn/no-raw-colors": {
+      "count": 1
+    },
     "shadcn/no-restyle": {
       "count": 3
+    }
+  },
+  "src/components/support/SupportReminder.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "src/components/support/SupportSettings.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 1
     }
   },
   "src/components/support/reminder.ts": {
@@ -833,8 +911,11 @@
     "shadcn/no-arbitrary-values": {
       "count": 4
     },
+    "shadcn/no-raw-colors": {
+      "count": 1
+    },
     "shadcn/no-restyle": {
-      "count": 3
+      "count": 6
     }
   },
   "src/components/themes/ThemeMenuDialog.tsx": {
@@ -861,7 +942,7 @@
       "count": 2
     },
     "shadcn/no-restyle": {
-      "count": 6
+      "count": 13
     }
   },
   "src/components/torrents/AddTorrentPickers.tsx": {
@@ -869,7 +950,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 7
+      "count": 8
     }
   },
   "src/components/torrents/CategoryTree.tsx": {
@@ -885,7 +966,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 8
+      "count": 13
     }
   },
   "src/components/torrents/CrossSeedDialog.tsx": {
@@ -902,17 +983,28 @@
       "count": 8
     },
     "shadcn/no-restyle": {
-      "count": 19
+      "count": 21
     }
   },
   "src/components/torrents/CrossSeedWarning.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 2
+    },
     "shadcn/no-restyle": {
-      "count": 6
+      "count": 10
+    }
+  },
+  "src/components/torrents/DeleteFilesPreference.tsx": {
+    "shadcn/no-restyle": {
+      "count": 3
     }
   },
   "src/components/torrents/DeleteTorrentDialog.tsx": {
     "shadcn/no-arbitrary-values": {
       "count": 1
+    },
+    "shadcn/no-restyle": {
+      "count": 3
     }
   },
   "src/components/torrents/DiscScanToasts.tsx": {
@@ -943,7 +1035,7 @@
       "count": 6
     },
     "shadcn/no-restyle": {
-      "count": 1
+      "count": 2
     }
   },
   "src/components/torrents/ManualCrossSeedDialog.tsx": {
@@ -975,10 +1067,10 @@
       "count": 8
     },
     "shadcn/no-arbitrary-values": {
-      "count": 5
+      "count": 3
     },
     "shadcn/no-restyle": {
-      "count": 18
+      "count": 27
     },
     "shadcn/require-static-classes": {
       "count": 3
@@ -997,7 +1089,7 @@
       "count": 2
     },
     "shadcn/no-restyle": {
-      "count": 1
+      "count": 2
     }
   },
   "src/components/torrents/TorrentDetailsPanel.tsx": {
@@ -1013,8 +1105,11 @@
     "shadcn/no-arbitrary-values": {
       "count": 1
     },
+    "shadcn/no-raw-colors": {
+      "count": 2
+    },
     "shadcn/no-restyle": {
-      "count": 14
+      "count": 15
     },
     "shadcn/require-static-classes": {
       "count": 1
@@ -1034,7 +1129,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 16
+      "count": 24
     }
   },
   "src/components/torrents/TorrentDiscReportDialog.tsx": {
@@ -1058,6 +1153,11 @@
   "src/components/torrents/TorrentFileTree.tsx": {
     "qui/no-direct-effect": {
       "count": 1
+    }
+  },
+  "src/components/torrents/TorrentManagementBar.tsx": {
+    "shadcn/no-restyle": {
+      "count": 2
     }
   },
   "src/components/torrents/TorrentTableColumns.tsx": {
@@ -1097,7 +1197,7 @@
       "count": 3
     },
     "shadcn/no-restyle": {
-      "count": 16
+      "count": 29
     }
   },
   "src/components/torrents/bulk-actions/BulkActionProvider.tsx": {
@@ -1120,14 +1220,20 @@
     "shadcn/no-arbitrary-values": {
       "count": 1
     },
+    "shadcn/no-raw-colors": {
+      "count": 2
+    },
     "shadcn/no-restyle": {
-      "count": 10
+      "count": 12
     },
     "shadcn/require-static-classes": {
       "count": 1
     }
   },
   "src/components/torrents/details/MobileDetails.tsx": {
+    "shadcn/no-raw-colors": {
+      "count": 2
+    },
     "shadcn/no-restyle": {
       "count": 1
     },
@@ -1138,6 +1244,9 @@
   "src/components/torrents/details/PeersTable.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 2
+    },
+    "shadcn/no-raw-colors": {
+      "count": 2
     }
   },
   "src/components/torrents/details/PieceBar.tsx": {
@@ -1146,6 +1255,9 @@
     },
     "qui/no-direct-effect": {
       "count": 1
+    },
+    "shadcn/no-raw-colors": {
+      "count": 1
     }
   },
   "src/components/torrents/details/TorrentFileTable.tsx": {
@@ -1153,6 +1265,9 @@
       "count": 2
     },
     "qui/no-direct-effect": {
+      "count": 1
+    },
+    "shadcn/no-raw-colors": {
       "count": 1
     }
   },
@@ -1169,6 +1284,11 @@
   "src/components/torrents/table/GroupCopiesNoticePicture.tsx": {
     "shadcn/no-arbitrary-values": {
       "count": 1
+    }
+  },
+  "src/components/torrents/table/GroupCopiesToolbar.tsx": {
+    "shadcn/no-restyle": {
+      "count": 5
     }
   },
   "src/components/torrents/table/TorrentTableRow.tsx": {
@@ -1194,7 +1314,12 @@
       "count": 3
     },
     "shadcn/no-restyle": {
-      "count": 6
+      "count": 8
+    }
+  },
+  "src/components/transfers/RowActions.tsx": {
+    "shadcn/no-restyle": {
+      "count": 7
     }
   },
   "src/components/transfers/TransferDetailsDialog.tsx": {
@@ -1205,7 +1330,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 3
+      "count": 4
     }
   },
   "src/components/transfers/TransferDialog.tsx": {
@@ -1229,7 +1354,7 @@
   },
   "src/components/transfers/TransferSelectionBar.tsx": {
     "shadcn/no-restyle": {
-      "count": 2
+      "count": 4
     }
   },
   "src/components/transfers/TransfersTab.tsx": {
@@ -1240,7 +1365,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 3
+      "count": 4
     }
   },
   "src/components/transfers/tabs.ts": {
@@ -1937,7 +2062,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 24
+      "count": 26
     }
   },
   "src/lib/unit-format.ts": {
@@ -1993,7 +2118,7 @@
       "count": 6
     },
     "shadcn/no-restyle": {
-      "count": 23
+      "count": 25
     }
   },
   "src/pages/Login.tsx": {
@@ -2023,7 +2148,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 10
+      "count": 32
     }
   },
   "src/pages/Search.tsx": {
@@ -2049,7 +2174,7 @@
       "count": 2
     },
     "shadcn/no-restyle": {
-      "count": 2
+      "count": 3
     }
   },
   "src/pages/Torrents.tsx": {

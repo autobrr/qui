@@ -160,9 +160,9 @@ func TestFreeSpaceLedgers_AllowanceFailures(t *testing.T) {
 			wantStart: 1000 - 100,
 		},
 		{
-			name: "a local file without identity counts as its own file", row: local,
-			backend:   entriesBackend{entries: []fsops.WalkEntry{file("/home/user/a.bin", 100), keyless}},
-			wantStart: 1000 - 400,
+			name: "a local walk that read no file identity", row: local,
+			backend: entriesBackend{entries: []fsops.WalkEntry{file("/home/user/a.bin", 100), keyless}},
+			wantErr: errNoIdentity, wantPath: "/home/user/odd.bin",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

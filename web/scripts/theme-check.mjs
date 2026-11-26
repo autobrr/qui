@@ -9,6 +9,7 @@ const licensedThemesDir = path.join(freeThemesDir, "premium")
 const appCss = fs.readFileSync(path.resolve(path.dirname(scriptPath), "..", "src", "index.css"), "utf8")
 const STATUS = ["success", "warning", "info"]
 const CHARTS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
+const CHART_TEXT = [1, 2, 3, 4, 5].map(n => `chart-text-${n}`)
 
 const MODES = [["light", ":root"], ["dark", ".dark"]]
 const TEXT = 4.5
@@ -57,7 +58,7 @@ function pairGroups(color, mode) {
     ["hovered row", surface("accent", 0.4)],
     ["selected row", surface("accent")],
   ]
-  const rowText = ["foreground", "muted-foreground", "primary", "destructive", ...CHARTS]
+  const rowText = ["foreground", "muted-foreground", "primary", "destructive", ...CHART_TEXT]
   const menuTint = mode === "dark" ? 0.2 : 0.1
   const statusPairs = name => [
     [`${name} text on background`, color(name), page, TEXT],
@@ -99,7 +100,7 @@ function pairGroups(color, mode) {
       ],
     },
     {
-      source: "web/src/components/torrents/table/TorrentTableRow.tsx, getRowBackgroundClass in web/src/lib/torrent-table/row-display.ts, getRatioColor in web/src/lib/utils.ts",
+      source: "web/src/components/torrents/table/TorrentTableRow.tsx, getRowBackgroundClass in web/src/lib/torrent-table/row-display.ts, getRatioColor in web/src/lib/utils.ts, text-chart-text-2 and text-chart-text-3 speeds",
       pairs: rows.flatMap(([row, background]) =>
         rowText.map(name => [`${name} text on ${row}`, color(name), background, TEXT])
       ),
@@ -150,7 +151,10 @@ export function checkTheme(css) {
   for (const [mode, selector] of MODES) {
     const base = declarations(css, selector)
     const app = declarations(appCss, selector)
-    const defaults = Object.fromEntries(STATUS.map(name => [`--${name}`, app[`--${name}`]]))
+    const defaults = {
+      ...Object.fromEntries(STATUS.map(name => [`--${name}`, app[`--${name}`]])),
+      ...Object.fromEntries(CHART_TEXT.map(name => [`--${name}`, `var(--${name.replace("text-", "")})`])),
+    }
 
     for (const [name, value] of Object.entries(base)) {
       const literal = parse(value)

@@ -61,11 +61,7 @@ func (r *root) Lstat(ctx context.Context, name string) (*fsops.LstatInfo, error)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	fi, err := r.r.Lstat(filepath.FromSlash(name))
-	if err != nil {
-		return nil, err
-	}
-	return osFileInfoToLstat(fi, name, false), nil
+	return lstatIn(r.r, name)
 }
 
 func (r *root) Create(ctx context.Context, name string) (fsops.FileWriter, error) {
