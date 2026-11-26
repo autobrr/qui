@@ -197,7 +197,7 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {range === "day" && dayData?.partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-10 text-yellow-600 dark:text-yellow-500">{t("statistics:partial")}</Badge>}
+              {range === "day" && dayData?.partial && <Badge variant="outline" className="border-warning/50 py-0 text-10 text-warning">{t("statistics:partial")}</Badge>}
               {controls}
             </div>
           </div>

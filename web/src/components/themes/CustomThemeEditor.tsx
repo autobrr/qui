@@ -230,7 +230,7 @@ export function CustomThemeEditor({ target, onClose }: CustomThemeEditorProps) {
               )}
               <div role="status">
                 {state.phase.kind === "editing" && state.phase.error ? null : previewProblem && previewProblem.kind !== "empty" ? (
-                  <p className="flex items-start gap-1.5 text-xs text-yellow-700 dark:text-yellow-400">
+                  <p className="flex items-start gap-1.5 text-xs text-warning">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>{t(PROBLEM_KEYS[previewProblem.kind], "line" in previewProblem ? { line: previewProblem.line } : undefined)}</span>
                   </p>

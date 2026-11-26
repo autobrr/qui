@@ -218,18 +218,18 @@ interface ParsedLogEntry {
 
 const LEVEL_COLORS: Record<LogLevel, string> = {
   trace: "text-muted-foreground",
-  debug: "text-blue-400",
-  info: "text-green-400",
-  warn: "text-yellow-400",
-  error: "text-red-400",
+  debug: "text-foreground",
+  info: "text-info",
+  warn: "text-warning",
+  error: "text-destructive",
 }
 
 const LEVEL_BADGE_COLORS: Record<LogLevel, string> = {
   trace: "bg-muted text-muted-foreground",
-  debug: "bg-blue-500/20 text-blue-400",
-  info: "bg-green-500/20 text-green-400",
-  warn: "bg-yellow-500/20 text-yellow-400",
-  error: "bg-red-500/20 text-red-400",
+  debug: "bg-muted text-foreground",
+  info: "bg-info/10 text-info",
+  warn: "bg-warning/10 text-warning",
+  error: "bg-destructive/10 text-destructive",
 }
 
 function normalizeLevel(raw: string | undefined): LogLevel {
@@ -455,8 +455,8 @@ type Connection = "connecting" | "open" | "lost"
 
 const CONNECTION_DOT: Record<Connection, string> = {
   connecting: "bg-muted-foreground/50",
-  open: "bg-emerald-500",
-  lost: "bg-amber-500",
+  open: "bg-success",
+  lost: "bg-warning",
 }
 
 const CONNECTION_LABEL = {
@@ -625,7 +625,7 @@ function LiveLogSection() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span role="status" className="inline-flex items-center gap-1.5">
             <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", CONNECTION_DOT[connection])} />
-            <span className={connection === "lost" ? "text-amber-500" : undefined}>{t(CONNECTION_LABEL[connection])}</span>
+            <span className={connection === "lost" ? "text-warning" : undefined}>{t(CONNECTION_LABEL[connection])}</span>
           </span>
           <span>
             {t("logs.viewer.showing", {
@@ -635,7 +635,7 @@ function LiveLogSection() {
               mode: autoScroll ? t("logs.viewer.maxLive") : t("logs.viewer.maxPaused"),
             })}
           </span>
-          {droppedWhilePaused && <span className="text-amber-500">{t("logs.viewer.oldestEntriesDropped")}</span>}
+          {droppedWhilePaused && <span className="text-warning">{t("logs.viewer.oldestEntriesDropped")}</span>}
         </div>
       </div>
 

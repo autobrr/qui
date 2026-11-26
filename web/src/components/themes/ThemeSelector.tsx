@@ -422,7 +422,7 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
           />
 
           {isError && !hasPremiumAccess && (
-            <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
+            <div className="flex items-center gap-2 p-3 rounded-md bg-warning/10 border border-warning/30 text-warning">
               <WifiOff className="h-4 w-4 flex-shrink-0" />
               <p className="text-sm">
                 {t("themes.selector.verificationUnavailable")}
@@ -432,7 +432,7 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
 
           {builtins.isSuccess && premiumThemes.length === 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3">
-              <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-800 dark:bg-orange-950/20 dark:text-orange-400">
+              <Badge variant="warning">
                 <AlertTriangle className="mr-1 h-3 w-3" />
                 {t("themes.selector.notLoaded")}
               </Badge>
