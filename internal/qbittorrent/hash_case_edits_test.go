@@ -30,6 +30,7 @@ type caseEditRig struct {
 	instanceID int
 	mu         sync.Mutex
 	writes     map[string]string
+	syncs      int
 }
 
 func (r *caseEditRig) sent(endpoint string) string {
@@ -46,6 +47,9 @@ func newCaseEditRig(t *testing.T) *caseEditRig {
 		case "/api/v2/app/webapiVersion":
 			_, _ = w.Write([]byte("2.11.4"))
 		case "/api/v2/sync/maindata":
+			rig.mu.Lock()
+			rig.syncs++
+			rig.mu.Unlock()
 			_, _ = fmt.Fprintf(w, `{"rid":1,"full_update":true,"torrents":{%q:{"name":"Show.S01E01.1080p.WEB-GRP","category":"tv","state":"stalledUP"},%q:{"name":"Show.S01E02.1080p.WEB-GRP","infohash_v2":%q,"category":"tv","state":"stalledUP"},%q:{"name":"Show.S01E03.1080p.WEB-GRP","infohash_v1":%q,"infohash_v2":%q,"category":"tv","state":"stalledUP"}},"categories":{"tv":{"name":"tv"},"movies":{"name":"movies"}}}`,
 				caseEditHash, caseEditV2Only[:40], caseEditV2Only, caseEditHybrid[:40], caseEditV1, caseEditHybrid)
 		case "/api/v2/torrents/categories":
@@ -55,7 +59,7 @@ func newCaseEditRig(t *testing.T) *caseEditRig {
 			rig.writes[r.URL.Path] = r.FormValue("hash")
 			rig.mu.Unlock()
 			_, _ = w.Write([]byte("d4:infod4:name4:showee"))
-		case "/api/v2/torrents/setCategory":
+		case "/api/v2/torrents/setCategory", "/api/v2/torrents/stop":
 			if err := r.ParseForm(); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -134,4 +138,16 @@ func TestExportByAnotherHashOfATorrentSendsItsTorrentIDAndNamesTheFileAfterIt(t 
 			require.Equal(t, tc.wantID, rig.sent("/api/v2/torrents/export"))
 		})
 	}
+}
+
+func TestABulkActionOnListedHashesRunsNoSyncRetry(t *testing.T) {
+	t.Parallel()
+	rig := newCaseEditRig(t)
+
+	require.NoError(t, rig.sm.BulkAction(t.Context(), rig.instanceID, []string{caseEditHash, strings.ToUpper(caseEditV2Only)}, "pause"))
+
+	require.Equal(t, caseEditHash+"|"+caseEditV2Only[:40], rig.sent("/api/v2/torrents/stop"))
+	rig.mu.Lock()
+	defer rig.mu.Unlock()
+	require.Equal(t, 1, rig.syncs)
 }
