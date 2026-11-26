@@ -451,9 +451,9 @@ func (j *job) readParts(ctx context.Context, d fsops.PathDialect) error {
 }
 
 func (j *job) checkSource(ctx context.Context) error {
-	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+	torrents, err := j.checkedSource(ctx)
 	if err != nil {
-		return temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
+		return err
 	}
 	for _, p := range j.parts {
 		i := slices.IndexFunc(torrents, func(t *qbt.Torrent) bool { return strings.EqualFold(t.Hash, p.Hash) })
@@ -466,8 +466,8 @@ func (j *job) checkSource(ctx context.Context) error {
 			return sourceGone("it moved")
 		case torrent.Name != p.src.torrent.Name:
 			return sourceChanged("it was renamed")
-		case isChecking(torrent.State) || torrent.Progress < 1:
-			return sourceChanged("qBittorrent checks it again")
+		case torrent.Progress < 1:
+			return sourceChanged("qBittorrent checked it and found pieces that are missing")
 		}
 		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash)
 		if err != nil {
@@ -482,6 +482,25 @@ func (j *job) checkSource(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (j *job) checkedSource(ctx context.Context) ([]*qbt.Torrent, error) {
+	for poll := range j.svc.deps.Config.CheckPolls {
+		if err := j.pause(ctx, poll); err != nil {
+			return nil, err
+		}
+		torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.hashes()})
+		if err != nil {
+			return nil, temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
+		}
+		if !slices.ContainsFunc(torrents, func(t *qbt.Torrent) bool { return isChecking(t.State) }) {
+			return torrents, nil
+		}
+		if poll == 0 {
+			j.logf("qBittorrent checks the torrent on %s. qui waits for the check to end.", j.source.Name)
+		}
+	}
+	return nil, sourceChanged("the check of qBittorrent did not end")
 }
 
 func isChecking(state qbt.TorrentState) bool {

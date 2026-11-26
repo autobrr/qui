@@ -95,6 +95,7 @@ type Server struct {
 	LeaveOutNew         bool
 	FailSyncs           int
 	CheckSyncs          int
+	RecheckSyncs        int
 	ListAfterSyncs      int
 	StaleFileLists      int
 	HashCheck           bool
