@@ -178,3 +178,22 @@ func TestArrIDCacheStore_EpisodeMapRoundTrip(t *testing.T) {
 		require.Nil(t, entry.EpisodeMap)
 	})
 }
+
+func TestArrIDCacheStore_TitleSeasonsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, "arr-id-cache-title-seasons")
+	store := models.NewArrIDCacheStore(db)
+	ids := &models.ExternalIDs{TVDbID: 471000}
+	titleSeasons := map[string][]int{"kodoku no yado": {2, 3}, "yado specials": {0}}
+
+	require.NoError(t, store.SetWithTitles(ctx, "scoped", "tv", nil, ids, []string{"Solitude", "Kodoku no Yado", "Yado Specials"}, titleSeasons, nil, true, false, time.Hour))
+	require.NoError(t, store.SetWithTitles(ctx, "wide", "tv", nil, ids, []string{"Solitude"}, map[string][]int{}, nil, true, false, time.Hour))
+
+	scoped, err := store.Get(ctx, "scoped", "tv")
+	require.NoError(t, err)
+	require.Equal(t, titleSeasons, scoped.TitleSeasons)
+
+	var stored sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT title_seasons_json FROM arr_id_cache WHERE title_hash = ?", "wide").Scan(&stored))
+	require.False(t, stored.Valid, "a row with no scoped title stores no seasons")
+}

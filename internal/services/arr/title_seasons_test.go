@@ -22,7 +22,8 @@ var scopedSonarr = arrAnswers{
 		{"title": "Yado Scene", "sceneSeasonNumber": 4},
 		{"title": "Solitude", "sceneSeasonNumber": 1},
 		{"title": "Yado Everywhere", "seasonNumber": 5},
-		{"title": "Yado Everywhere"}
+		{"title": "Yado Everywhere"},
+		{"title": "Yado Specials", "seasonNumber": 0}
 	]}`,
 }
 
@@ -37,8 +38,8 @@ func TestService_LookupExternalIDsKeepsTheSeasonScopeOfEachTitle(t *testing.T) {
 	require.False(t, asked.FromCache)
 	require.True(t, cached.FromCache)
 	for _, result := range []*ExternalIDsResult{asked, cached} {
-		require.Equal(t, []string{"Solitude", "Kodoku no Yado", "Kodoku-no-Yado", "Yado Wide", "Yado Scene", "Yado Everywhere"}, result.Titles)
-		for title, want := range map[string][]int{"Kodoku no Yado": {2, 3}, "Kodoku-no-Yado": {2, 3}, "Yado Scene": nil} {
+		require.Equal(t, []string{"Solitude", "Kodoku no Yado", "Kodoku-no-Yado", "Yado Wide", "Yado Scene", "Yado Everywhere", "Yado Specials"}, result.Titles)
+		for title, want := range map[string][]int{"Kodoku no Yado": {2, 3}, "Kodoku-no-Yado": {2, 3}, "Yado Scene": nil, "Yado Specials": {0}} {
 			seasons, scoped := result.TitleSeasons.Of(title)
 			require.True(t, scoped, title)
 			require.ElementsMatch(t, want, seasons, title)
