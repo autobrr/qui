@@ -42,32 +42,36 @@ func lstatEntry(path string, d fs.DirEntry, wantID bool) (*fsops.LstatInfo, erro
 
 func lstatIn(r *os.Root, name string) (*fsops.LstatInfo, error) {
 	native := filepath.FromSlash(name)
-	dir, err := r.Open(filepath.Dir(native))
+	f, err := r.OpenFile(native, unix.O_PATH, 0)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = dir.Close() }()
-	conn, err := dir.SyscallConn()
+	defer func() { _ = f.Close() }()
+	conn, err := f.SyscallConn()
 	if err != nil {
 		return nil, err
 	}
-	var info *fsops.LstatInfo
+	var stx unix.Statx_t
 	if ctlErr := conn.Control(func(fd uintptr) {
-		info, err = statxAt(int(fd), filepath.Base(native), name, false, func() (os.FileInfo, error) { return r.Lstat(native) })
+		err = unix.Statx(int(fd), "", statxFlags(false)|unix.AT_EMPTY_PATH, statxWant, &stx)
 	}); ctlErr != nil {
 		return nil, ctlErr
 	}
-	return info, err
+	return statxInfo(&stx, err, name, false, func() (os.FileInfo, error) { return r.Lstat(native) })
 }
 
 func statxAt(dirfd int, name, path string, follow bool, fallback func() (os.FileInfo, error)) (*fsops.LstatInfo, error) {
+	var stx unix.Statx_t
+	err := unix.Statx(dirfd, name, statxFlags(follow), statxWant, &stx)
+	return statxInfo(&stx, err, path, follow, fallback)
+}
+
+func statxFlags(follow bool) int {
 	flags := unix.AT_STATX_FORCE_SYNC | unix.AT_NO_AUTOMOUNT
 	if !follow {
 		flags |= unix.AT_SYMLINK_NOFOLLOW
 	}
-	var stx unix.Statx_t
-	err := unix.Statx(dirfd, name, flags, statxWant, &stx)
-	return statxInfo(&stx, err, path, follow, fallback)
+	return flags
 }
 
 func statxInfo(stx *unix.Statx_t, err error, path string, follow bool, fallback func() (os.FileInfo, error)) (*fsops.LstatInfo, error) {

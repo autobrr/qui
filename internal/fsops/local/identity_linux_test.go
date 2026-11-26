@@ -165,3 +165,53 @@ func TestIdentity_StatFieldsMatchOsLstat(t *testing.T) {
 	_, err = lstatPath(filepath.Join(dir, "missing"))
 	require.ErrorIs(t, err, fs.ErrNotExist)
 }
+
+func TestRootLstat_FifoInThePathFailsWithoutOpeningIt(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "fifo")
+	require.NoError(t, unix.Mkfifo(fifo, 0o600))
+	root := openRoot(t, dir)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := root.Lstat(t.Context(), "fifo/Movie.2019.1080p.BluRay-GRP.mkv")
+		done <- err
+	}()
+	for {
+		select {
+		case err := <-done:
+			require.ErrorIs(t, err, syscall.ENOTDIR)
+			info, err := root.Lstat(t.Context(), "fifo")
+			require.NoError(t, err)
+			require.Equal(t, fs.ModeNamedPipe, info.Mode.Type())
+			return
+		default:
+		}
+		if fd, err := unix.Open(fifo, unix.O_WRONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0); err == nil {
+			require.NoError(t, unix.Close(fd))
+			t.Fatal("Lstat opened the FIFO for reading, which blocks until a writer opens it")
+		}
+	}
+}
+
+func TestRootLstat_ResolvesNamesInsideTheRoot(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "Movie.2019.1080p.BluRay-GRP.mkv"), "top")
+	deep := filepath.Join(dir, "deep", "Movie.2019.1080p.BluRay-GRP.mkv")
+	writeFile(t, deep, "deep")
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "deep", "inner"), 0o750))
+	require.NoError(t, os.Symlink(filepath.Join("deep", "inner"), filepath.Join(dir, "link")))
+	root := openRoot(t, dir)
+
+	info, err := root.Lstat(t.Context(), "link/../Movie.2019.1080p.BluRay-GRP.mkv")
+	require.NoError(t, err)
+	require.Equal(t, statTID(t, deep), info.FileID)
+
+	info, err = root.Lstat(t.Context(), "link")
+	require.NoError(t, err)
+	require.True(t, info.IsSymlink)
+	require.True(t, info.FileID.IsZero())
+
+	_, err = root.Lstat(t.Context(), "..")
+	require.Error(t, err, "a name above the root stays outside it")
+}
