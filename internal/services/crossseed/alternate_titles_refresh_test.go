@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -160,17 +161,44 @@ func TestAlternateTitlesKeepNoRetryForATitleThatLeft(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		source := &fakeAlternateTitles{cached: true}
 		a := runAlternateTitles(t, source)
+		holdNames(a, "Amber Quay", 10)
+		synctest.Wait()
+		most := 0
 		for i := range 100 {
 			title := holdName(a, fmt.Sprintf("Lantern Ward %s S01E01 1080p WEB-DL H.264-GRP", strings.Repeat("x", i+1)), 1)
 			synctest.Wait()
+			a.mu.Lock()
+			most = max(most, len(a.queues[0].retries))
+			a.mu.Unlock()
 			a.drop(title)
 		}
-		holdName(a, "Copper.Fjord.2019.1080p.BluRay.x264-GRP", 1)
-		synctest.Wait()
 
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		require.LessOrEqual(t, len(a.queues[0].retries), 2*len(a.held)+1)
+		require.Equal(t, 2*11, most, "retries of titles that left are dropped once the retries reach twice the held titles")
+	})
+}
+
+func TestAlternateTitlesOweEveryTitleThatASourceChangeAsksAgain(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		source := newChangingAlternateTitles(&fakeAlternateTitles{})
+		var building atomic.Bool
+		a := newAlternateTitleIndex([]AlternateTitleSource{source}, building.Load)
+		go a.run(t.Context())
+		holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
+		synctest.Wait()
+		building.Store(true)
+		time.Sleep(arr.DefaultPositiveCacheTTL + 2*time.Hour)
+		synctest.Wait()
+		require.Len(t, source.askTimes(), 1)
+
+		source.change()
+		synctest.Wait()
+		require.False(t, a.caughtUp(string(releases.ContentTypeTV)), "a title that came due before the change is owed too")
+
+		building.Store(false)
+		a.wakeRun()
+		synctest.Wait()
+		require.Len(t, source.askTimes(), 2)
+		require.True(t, a.caughtUp(string(releases.ContentTypeTV)))
 	})
 }
 
