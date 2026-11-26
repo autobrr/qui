@@ -530,6 +530,52 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	q, err := startInstanceUpdate(ctx, tx, name, normalizedHost, username, basicUsername)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.setSecrets(q, username, password, apiKeyUpdate, basicPassword); err != nil {
+		return nil, err
+	}
+
+	params.setColumns(q)
+
+	q.query += " WHERE id = ?"
+	q.args = append(q.args, id)
+
+	result, err := tx.ExecContext(ctx, q.query, q.args...)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+
+	if rows == 0 {
+		return nil, ErrInstanceNotFound
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return s.Get(ctx, id)
+}
+
+type instanceUpdateQuery struct {
+	query string
+	args  []any
+}
+
+func (q *instanceUpdateQuery) set(column string, value any) {
+	q.query += ", " + column + " = ?"
+	q.args = append(q.args, value)
+}
+
+func startInstanceUpdate(ctx context.Context, tx dbinterface.TxQuerier, name, normalizedHost, username string, basicUsername *string) (*instanceUpdateQuery, error) {
 	var basicUsernameToIntern *string
 	if basicUsername != nil && *basicUsername != "" {
 		basicUsernameToIntern = basicUsername
@@ -553,18 +599,23 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		}
 	}
 
-	query := "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?"
-	args := []any{nameID, hostID, usernameID}
+	q := &instanceUpdateQuery{
+		query: "UPDATE instances SET name_id = ?, host_id = ?, username_id = ?",
+		args:  []any{nameID, hostID, usernameID},
+	}
 
 	if basicUsername != nil {
 		if *basicUsername == "" {
-			query += ", basic_username_id = NULL"
+			q.query += ", basic_username_id = NULL"
 		} else {
-			query += ", basic_username_id = ?"
-			args = append(args, allIDs[3])
+			q.set("basic_username_id", allIDs[3])
 		}
 	}
 
+	return q, nil
+}
+
+func (s *InstanceStore) setSecrets(q *instanceUpdateQuery, username, password string, apiKeyUpdate, basicPassword *string) error {
 	passwordToStore := password
 	if username == "" {
 		passwordToStore = ""
@@ -572,101 +623,66 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	if passwordToStore != "" || username == "" {
 		encryptedPassword, err := s.encrypt(passwordToStore)
 		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt password: %w", err)
+			return fmt.Errorf("failed to encrypt password: %w", err)
 		}
-		query += ", password_encrypted = ?"
-		args = append(args, encryptedPassword)
+		q.set("password_encrypted", encryptedPassword)
 	}
 
 	if apiKeyUpdate != nil {
 		encryptedAPIKey := ""
 		if *apiKeyUpdate != "" {
+			var err error
 			encryptedAPIKey, err = s.encrypt(*apiKeyUpdate)
 			if err != nil {
-				return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+				return fmt.Errorf("failed to encrypt api key: %w", err)
 			}
 		}
-		query += ", api_key_encrypted = ?"
-		args = append(args, encryptedAPIKey)
+		q.set("api_key_encrypted", encryptedAPIKey)
 	}
 
 	if basicPassword != nil {
 		if *basicPassword == "" {
-			query += ", basic_password_encrypted = NULL"
+			q.query += ", basic_password_encrypted = NULL"
 		} else {
 			encryptedBasicPassword, err := s.encrypt(*basicPassword)
 			if err != nil {
-				return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+				return fmt.Errorf("failed to encrypt basic auth password: %w", err)
 			}
-			query += ", basic_password_encrypted = ?"
-			args = append(args, encryptedBasicPassword)
+			q.set("basic_password_encrypted", encryptedBasicPassword)
 		}
 	}
 
-	if params != nil {
-		if params.TLSSkipVerify != nil {
-			query += ", tls_skip_verify = ?"
-			args = append(args, BoolToSQLite(*params.TLSSkipVerify))
-		}
+	return nil
+}
 
-		if params.HasLocalFilesystemAccess != nil {
-			query += ", has_local_filesystem_access = ?"
-			args = append(args, BoolToSQLite(*params.HasLocalFilesystemAccess))
-		}
-
-		if params.UseHardlinks != nil {
-			query += ", use_hardlinks = ?"
-			args = append(args, BoolToSQLite(*params.UseHardlinks))
-		}
-
-		if params.HardlinkBaseDir != nil {
-			query += ", hardlink_base_dir = ?"
-			args = append(args, *params.HardlinkBaseDir)
-		}
-
-		if params.HardlinkDirPreset != nil {
-			query += ", hardlink_dir_preset = ?"
-			args = append(args, *params.HardlinkDirPreset)
-		}
-
-		if params.UseReflinks != nil {
-			query += ", use_reflinks = ?"
-			args = append(args, BoolToSQLite(*params.UseReflinks))
-		}
-
-		if params.FallbackToRegularMode != nil {
-			query += ", fallback_to_regular_mode = ?"
-			args = append(args, BoolToSQLite(*params.FallbackToRegularMode))
-		}
-
-		if params.PublicPeerAddress != nil {
-			query += ", public_peer_address = ?"
-			args = append(args, *params.PublicPeerAddress)
-		}
+func (params *InstanceUpdateParams) setColumns(q *instanceUpdateQuery) {
+	if params == nil {
+		return
 	}
-
-	query += " WHERE id = ?"
-	args = append(args, id)
-
-	result, err := tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
+	if params.TLSSkipVerify != nil {
+		q.set("tls_skip_verify", BoolToSQLite(*params.TLSSkipVerify))
 	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return nil, err
+	if params.HasLocalFilesystemAccess != nil {
+		q.set("has_local_filesystem_access", BoolToSQLite(*params.HasLocalFilesystemAccess))
 	}
-
-	if rows == 0 {
-		return nil, ErrInstanceNotFound
+	if params.UseHardlinks != nil {
+		q.set("use_hardlinks", BoolToSQLite(*params.UseHardlinks))
 	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	if params.HardlinkBaseDir != nil {
+		q.set("hardlink_base_dir", *params.HardlinkBaseDir)
 	}
-
-	return s.Get(ctx, id)
+	if params.HardlinkDirPreset != nil {
+		q.set("hardlink_dir_preset", *params.HardlinkDirPreset)
+	}
+	if params.UseReflinks != nil {
+		q.set("use_reflinks", BoolToSQLite(*params.UseReflinks))
+	}
+	if params.FallbackToRegularMode != nil {
+		q.set("fallback_to_regular_mode", BoolToSQLite(*params.FallbackToRegularMode))
+	}
+	if params.PublicPeerAddress != nil {
+		q.set("public_peer_address", *params.PublicPeerAddress)
+	}
 }
 
 func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool) (*Instance, error) {
