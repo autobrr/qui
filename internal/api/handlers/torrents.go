@@ -575,6 +575,14 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	requested := make(map[string][]string, len(req.Hashes))
+	for _, hash := range req.Hashes {
+		key := normalizeHashValue(hash)
+		if !slices.Contains(requested[key], hash) {
+			requested[key] = append(requested[key], hash)
+		}
+	}
+
 	matches := make([]qbittorrent.DuplicateTorrentMatch, len(torrents))
 	for i, torrent := range torrents {
 		matches[i] = qbittorrent.DuplicateTorrentMatch{
@@ -582,7 +590,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 			InfohashV1:    strings.TrimSpace(torrent.InfohashV1),
 			InfohashV2:    strings.TrimSpace(torrent.InfohashV2),
 			Name:          torrent.Name,
-			MatchedHashes: []string{torrent.Hash},
+			MatchedHashes: requested[normalizeHashValue(torrent.Hash)],
 		}
 	}
 
