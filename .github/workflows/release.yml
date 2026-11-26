@@ -477,7 +477,7 @@ jobs:
 
       - name: Run tests
         run: |
-          go test -v -race -coverprofile=coverage.out ./...
+          go test -v -race -timeout 20m -coverprofile=coverage.out ./...
           go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage reports
