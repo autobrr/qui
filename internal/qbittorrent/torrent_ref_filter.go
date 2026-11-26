@@ -16,6 +16,8 @@ type TorrentRefFilter struct {
 	Category  string
 	Tag       string
 	Completed bool
+
+	WithHelperTorrents bool
 }
 
 func (f TorrentRefFilter) matches(t *qbt.Torrent) bool {
@@ -54,7 +56,7 @@ func (f TorrentRefFilter) Select(snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
 	refs := make([]*qbt.Torrent, 0, len(f.Hashes))
 	seen := make(map[*qbt.Torrent]struct{}, len(f.Hashes))
 	for _, hash := range f.Hashes {
-		t, ok := snapshot.Torrent(hash)
+		t, ok := snapshot.Torrent(canonicalizeHash(hash))
 		if !ok || !f.matches(t) {
 			continue
 		}
@@ -71,5 +73,13 @@ func (sm *SyncManager) GetTorrentRefs(ctx context.Context, instanceID int, filte
 	if err != nil {
 		return nil, err
 	}
-	return filter.Select(owner.Snapshot()), nil
+	return sm.selectRefs(instanceID, filter, owner.Snapshot()), nil
+}
+
+func (sm *SyncManager) selectRefs(instanceID int, filter TorrentRefFilter, snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
+	refs := filter.Select(snapshot)
+	if len(filter.Hashes) > 0 || filter.WithHelperTorrents {
+		return refs
+	}
+	return helpersOf(snapshot, sm.helpers(), instanceID).drop(refs)
 }

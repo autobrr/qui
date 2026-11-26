@@ -602,6 +602,7 @@ type ResolveRequest = crossseed.ResolveRequest
 type filesReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
+	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 }
 
 type torrentDeleter interface {
@@ -642,7 +643,7 @@ type Service struct {
 	activityPublisher activity.Publisher
 	crossSeedRoutes   *crossseedroute.Service
 	routedTorrents    crossseedroute.TorrentReader
-	held              heldTorrents
+	claimed           claimedTorrents
 	exportRunner      exportRunner
 	transferRunner    transferRunner
 	transferHolds     map[string]time.Time
@@ -678,7 +679,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
 		deleter:                   syncManager,
-		routedTorrents:            syncManager,
+		routedTorrents:            routedFileOwners{syncManager},
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
@@ -1109,7 +1110,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.leaveOutHeld(instanceID, torrents)
+	torrents = s.leaveOutClaimed(instanceID, torrents)
 	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
 		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
@@ -1345,7 +1346,7 @@ func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *mod
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.leaveOutHeld(instanceID, torrents)
+	torrents = s.leaveOutClaimed(instanceID, torrents)
 	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
 		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
@@ -1640,7 +1641,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.notifyAutomationFailure(ctx, instanceID, err)
 		return nil, err
 	}
-	torrents = s.leaveOutHeld(instanceID, torrents)
+	torrents = s.leaveOutClaimed(instanceID, torrents)
 
 	eligibleRules, skipped := s.skipRulesWithUnknownFields(ctx, instanceID, eligibleRules, now)
 	skipActivities := s.recordRuleSkips(ctx, instanceID, skipped, force, dryRun)

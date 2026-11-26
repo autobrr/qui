@@ -71,7 +71,7 @@ describe("getStatusBadgeProps", () => {
     const props = getStatusBadgeProps(torrent, true, t)
     expect(props.label).toBe(enTorrents.tableColumns.trackerDown)
     expect(props.variant).toBe("outline")
-    expect(props.className).toContain("text-yellow-500")
+    expect(props.className).toContain("text-warning")
   })
 
   it("overrides for tracker_error", () => {

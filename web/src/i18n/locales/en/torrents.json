@@ -1463,6 +1463,7 @@
     },
     "footer": {
       "adding": "Adding...",
+      "addingBatch": "Adding batch {{current}} of {{total}}...",
       "add": "Add Torrent",
       "cancel": "Cancel",
       "addCount_one": "Add {{count}} torrent",
@@ -1475,6 +1476,8 @@
       "addedMany": "{{count}} torrents added successfully",
       "failedMany": "Failed to add {{count}} torrent(s)",
       "partialSuccess": "Added {{added}}, failed {{failed}}",
+      "batchFailed": "Added {{added}} of {{total}} torrents",
+      "batchFailedDescription": "Batch {{batch}} of {{batches}} failed: {{error}}. The rest stay in the list, so you can add them again.",
       "rejectedOne": "1 file rejected (not a .torrent file)",
       "rejectedMany": "{{count}} files rejected (not .torrent files)"
     }

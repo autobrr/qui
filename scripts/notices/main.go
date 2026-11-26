@@ -185,10 +185,9 @@ func npmNotices() (string, error) {
 		return "", fmt.Errorf("pnpm licenses list: %w", err)
 	}
 	var byLicense map[string][]struct {
-		Name     string   `json:"name"`
-		Versions []string `json:"versions"`
-		Paths    []string `json:"paths"`
-		Author   string   `json:"author"`
+		Name   string   `json:"name"`
+		Paths  []string `json:"paths"`
+		Author string   `json:"author"`
 	}
 	if err := json.Unmarshal(out, &byLicense); err != nil {
 		return "", fmt.Errorf("read pnpm licenses list: %w", err)
@@ -198,8 +197,19 @@ func npmNotices() (string, error) {
 	pkgs := map[string]pkg{}
 	for license, list := range byLicense {
 		for _, p := range list {
-			for i, dir := range p.Paths {
-				title := p.Name + " " + p.Versions[i]
+			for _, dir := range p.Paths {
+				manifestPath := filepath.Join(dir, "package.json")
+				manifest, err := os.ReadFile(manifestPath)
+				if err != nil {
+					return "", err
+				}
+				var metadata struct {
+					Version string `json:"version"`
+				}
+				if err := json.Unmarshal(manifest, &metadata); err != nil {
+					return "", fmt.Errorf("read %s: %w", manifestPath, err)
+				}
+				title := p.Name + " " + metadata.Version
 				fallback := fmt.Sprintf("The package has no license file. It states the license %s.", license)
 				if p.Author != "" {
 					fallback += " Author: " + p.Author + "."

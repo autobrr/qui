@@ -154,9 +154,18 @@ linters:
         - pattern: ^\w+\.\w+\.RenameTorrent(File|Folder)$
           msg: use crossseed.Aligner
         - pattern: ^\w+\.\w+\.(GetCachedInstanceTorrents|ReadInstanceTorrents)$
-          msg: the webhook check reads its candidates from Held titles in internal/services/crossseed/held_titles.go, never the full torrent list
+          msg: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup.go, never the full torrent list
         - pattern: ^\(?\*?qbittorrent\.SyncSnapshot\)?\.(Torrents|Matching)$
-          msg: the webhook check reads its candidates from Held titles in internal/services/crossseed/held_titles.go, never the full torrent list
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: list an instance's torrents through the sync manager reads, which leave out Helper torrents (ADR 0092)
+        - pattern: ^\(?\*?\w+\.\w+\)?\.PendingSync$
+          msg: wait on a due sync through the Held titles lookup in internal/services/crossseed/held_titles_lookup.go
+        - pattern: ^crossseed\.(Service\.(CheckSeasonPackWebhook|ApplySeasonPackWebhook)|SeasonPack(CheckRequest|CheckMatch|CheckResponse|ApplyRequest|ApplyResponse))$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
+        - pattern: ^\(?\*?handlers\.CrossSeedHandler\)?\.(SeasonPackCheck|SeasonPackApply)$
+          pkg: ^github\.com/autobrr/qui/internal/api/handlers$
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: only the Transfer history module in internal/services/transferhistory calls the history store
@@ -183,6 +192,9 @@ linters:
           msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
         - pattern: ^\w+\.\w+\.NewSyncManager$
           msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
+        - pattern: ^(syscall|unix)\.(Stat_t|Statx_t)\.(Nlink|Ino)$
+          pkg: ^(syscall|golang\.org/x/sys/unix)$
+          msg: read the link count and file identity of a local path through the local fsops backend (Lstat, Stat, Root.Lstat, or WalkDir with WantFileID); only internal/fsops/local/identity_*.go reads them, with a forced-sync statx on Linux
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -215,6 +227,12 @@ linters:
       - std-error-handling
 
     rules:
+      # The local backend owns the read of link count and file identity.
+      - path: internal/fsops/local/identity_
+        linters:
+          - forbidigo
+        text: local fsops backend
+
       # The preference catalog is the only code that sends a preference write.
       - path: internal/qbittorrent/prefcatalog/
         linters:
@@ -334,11 +352,35 @@ linters:
           - forbidigo
         text: use crossseed\.Adder
 
-      # Only the webhook check file reads its candidates from Held titles.
-      - path-except: internal/services/crossseed/webhook_check\.go$
+      # The webhook check and the season pack check read their candidates from Held titles.
+      # Their fallback to the full list is in webhook_all_torrents.go and seasonpack_all_torrents.go.
+      - path-except: internal/services/crossseed/(webhook_check|webhook_season_pack|seasonpack|seasonpack_candidates)\.go$
         linters:
           - forbidigo
-        text: Held titles
+        text: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup\.go, never the full torrent list
+
+      # Only the qBittorrent package lists the raw Sync snapshot.
+      - path: ^internal/qbittorrent/|_test\.go$
+        linters:
+          - forbidigo
+        text: list an instance's torrents through the sync manager reads
+
+      # Only the Held titles lookup waits on a due sync.
+      - path: internal/services/crossseed/held_titles_lookup\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: wait on a due sync through the Held titles lookup
+
+      # Only the season pack adapter uses the legacy season pack types. These test
+      # files are older than the rule; a new test goes through the webhook check and apply.
+      - path: internal/services/crossseed/seasonpack_endpoints\.go$|internal/api/handlers/crossseed_seasonpack_endpoints\.go$
+        linters:
+          - forbidigo
+        text: season pack endpoints are a frozen adapter
+      - path: internal/services/crossseed/(log_budget|path_dialect|seasonpack|seasonpack_(blocklist|regression|route|held|held_apply|held_budget|held_freshness|held_rig))_test\.go$|internal/api/handlers/crossseed_(apply_handler|seasonpack)_test\.go$
+        linters:
+          - forbidigo
+        text: season pack endpoints are a frozen adapter
 
       # Only the Aligner renames torrent files in the cross-seed and Dir Scan packages.
       - path-except: ^internal/services/(crossseed|dirscan)/
@@ -398,7 +440,7 @@ linters:
       # The type of a stat field differs between Linux and macOS, so the
       # conversion is redundant on one of them, and an inline nolint would be
       # unused on the other.
-      - path: (internal/fsops/local/statfs_unix|pkg/hardlink/fileid_unix)\.go
+      - path: internal/fsops/local/(statfs_unix|identity_stat)\.go
         linters:
           - unconvert
 

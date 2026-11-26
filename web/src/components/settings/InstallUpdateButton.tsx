@@ -82,9 +82,9 @@ export function InstallUpdateButton({ selfUpdate, release, className }: InstallU
             </p>
           )}
           {!supportChecking && !supported && (supportCheckFailed || guidance) && (
-            <div className={`space-y-3 rounded-md border p-4 ${supportCheckFailed ? "border-destructive/40 bg-destructive/5" : "border-blue-500/30 bg-blue-500/5"}`}>
-              <h3 className={`flex items-center gap-2 text-sm font-medium ${supportCheckFailed ? "text-destructive" : "text-blue-600 dark:text-blue-400"}`}>
-                {supportCheckFailed ? <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" aria-hidden /> : <Info className="h-4 w-4 shrink-0 text-blue-500" aria-hidden />}
+            <div className={`space-y-3 rounded-md border p-4 ${supportCheckFailed ? "border-destructive/40 bg-destructive/5" : "border-info/30 bg-info/5"}`}>
+              <h3 className={`flex items-center gap-2 text-sm font-medium ${supportCheckFailed ? "text-destructive" : "text-info"}`}>
+                {supportCheckFailed ? <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" aria-hidden /> : <Info className="h-4 w-4 shrink-0 text-info" aria-hidden />}
                 {t("application.update.unavailable.nextStep")}
               </h3>
               {!supportCheckFailed && guidance && <p className="text-sm leading-relaxed">{guidance.reason}</p>}

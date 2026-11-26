@@ -1160,7 +1160,7 @@ func TestTransferFailsWhenTheSourceChanges(t *testing.T) {
 		{name: "a recheck", change: func(r *rig, s show) {
 			r.src.CheckSyncs = 1000
 			require.NoError(t, r.sync.BulkAction(r.t.Context(), r.source.ID, []string{s.hash}, "recheck"))
-		}, reason: "qBittorrent checks it again", class: transfer.FailureTemporary},
+		}, reason: "the check of qBittorrent did not end", class: transfer.FailureTemporary},
 		{name: "a file that grows", change: func(r *rig, s show) {
 			f, err := os.OpenFile(filepath.Join(r.srcDir, showName, "Show.S01E02.mkv"), os.O_APPEND|os.O_WRONLY, 0o600)
 			require.NoError(t, err)
@@ -1191,6 +1191,25 @@ func TestTransferFailsWhenTheSourceChanges(t *testing.T) {
 			require.Zero(t, r.dst.Writes("torrents/add"))
 		})
 	}
+}
+
+func TestTransferWaitsForARecheckOnTheSource(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	r.src.CheckSyncs = 5
+	var once sync.Once
+	r.disk.onWrite = func(string) {
+		once.Do(func() {
+			require.NoError(t, r.sync.BulkAction(r.t.Context(), r.source.ID, []string{s.hash}, "recheck"))
+		})
+	}
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Equal(t, 1, strings.Count(logOf(record), "qui waits for the check to end"))
 }
 
 func TestTransferChecksOnTheTargetWithoutAConfirmedFlush(t *testing.T) {

@@ -479,7 +479,7 @@ function ImportEditor({ open, onOpenChange, customizations, createCustomization,
   const summaryParts = [
     newCount > 0 && t("trackerCustomizations.importDialog.newCount", { count: newCount }),
     conflicts.length > 0 && (
-      <span key="conflicts" className="text-amber-600 dark:text-amber-500">
+      <span key="conflicts" className="text-warning">
         {t("trackerCustomizations.importDialog.conflictCount", { count: conflicts.length })}
       </span>
     ),
@@ -525,7 +525,7 @@ function ImportEditor({ open, onOpenChange, customizations, createCustomization,
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium [overflow-wrap:anywhere]">{entry.displayName}</p>
                     <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{entry.domains.join(", ")}</p>
-                    <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-500 [overflow-wrap:anywhere]">
+                    <p className="mt-0.5 text-xs text-warning [overflow-wrap:anywhere]">
                       {t("trackerCustomizations.importDialog.conflictsWith", { name: entry.conflict?.displayName })}
                     </p>
                   </div>

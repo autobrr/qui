@@ -49,7 +49,7 @@ export function SentReportsEntry({ reports }: { reports: ListedProblemReport[] |
       {t("problemReports.sentReports.title")}
       {changed > 0 && (
         <>
-          <span aria-hidden className="rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 tabular-nums text-primary-foreground">{changed}</span>
+          <span aria-hidden className="rounded-full bg-primary px-1.5 text-10 font-semibold leading-4 tabular-nums text-primary-foreground">{changed}</span>
           {" "}
           <span className="sr-only">{t("problemReports.sentReports.changed", { count: changed })}</span>
         </>
@@ -108,7 +108,7 @@ function NotSentRow({ text }: { text: string }) {
   return (
     <li className="flex items-start gap-3 rounded-md px-2 py-1.5 hover:bg-accent/60">
       <span className="mt-1.5 flex h-2 w-4 items-center justify-center">
-        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-yellow-500 ring-[3px] ring-yellow-500/20" />
+        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-warning ring-3 ring-warning/20" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block break-words text-sm font-medium">{draftTitle(text)}</span>
@@ -205,8 +205,8 @@ function StatusDot({ report }: { report: ListedProblemReport }) {
     <span
       className={cn(
         "inline-flex h-2 w-2 shrink-0 rounded-full",
-        received && "bg-muted-foreground ring-[3px] ring-muted-foreground/20",
-        open && "bg-green-500 ring-[3px] ring-green-500/20",
+        received && "bg-muted-foreground ring-3 ring-muted-foreground/20",
+        open && "bg-success ring-3 ring-success/20",
         !received && !open && "border border-muted-foreground/60"
       )}
     />

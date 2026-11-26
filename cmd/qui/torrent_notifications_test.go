@@ -97,7 +97,7 @@ func TestNotifyTorrentsAddedAfterRefreshesSnapshot(t *testing.T) {
 		}
 		notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
 
-		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, fakeHelpers{}, 7, []*qbt.Torrent{&initial}, 5*time.Millisecond)
+		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 7, []*qbt.Torrent{&initial}, 5*time.Millisecond)
 
 		require.Len(t, notifier.events, 1)
 		event := <-notifier.events
@@ -137,7 +137,7 @@ func TestNotifyTorrentsAddedAfterFallsBackToInitialSnapshot(t *testing.T) {
 		}
 		notifier := &captureNotifier{events: make(chan notifications.Event, 1)}
 
-		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, fakeHelpers{}, 2, []*qbt.Torrent{&initial}, 5*time.Millisecond)
+		notifyTorrentsAddedAfter(context.Background(), syncStub, notifier, 2, []*qbt.Torrent{&initial}, 5*time.Millisecond)
 
 		require.Len(t, notifier.events, 1)
 		event := <-notifier.events
@@ -162,7 +162,7 @@ func TestNotifyTorrentsAddedAfterRefreshesBatchInOneRead(t *testing.T) {
 	syncStub := &stubTorrentNotificationSync{torrents: []*qbt.Torrent{&refreshedFirst}}
 	notifier := &captureNotifier{events: make(chan notifications.Event, 2)}
 
-	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, fakeHelpers{}, 3, []*qbt.Torrent{&first, &second}, 0)
+	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 3, []*qbt.Torrent{&first, &second}, 0)
 
 	progress := map[string]float64{}
 	for range 2 {
@@ -182,48 +182,8 @@ func TestNotifyTorrentsAddedAfterSkipsWaitWithNoListener(t *testing.T) {
 	syncStub := &stubTorrentNotificationSync{}
 
 	start := time.Now()
-	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, fakeHelpers{}, 1, []*qbt.Torrent{{Hash: "ABC123"}}, time.Minute)
+	notifyTorrentsAddedAfter(t.Context(), syncStub, notifier, 1, []*qbt.Torrent{{Hash: "ABC123"}}, time.Minute)
 
 	require.Zero(t, syncStub.refreshCalls)
 	require.Less(t, time.Since(start), 10*time.Second)
-}
-
-type fakeHelpers map[string]bool
-
-func (f fakeHelpers) IsHelper(instanceID int, hash string) bool { return instanceID == 1 && f[hash] }
-
-func TestTorrentNotificationsSkipHelperTorrents(t *testing.T) {
-	t.Parallel()
-
-	helper := qbt.Torrent{Name: "Quiet.Harbor.2024.1080p.WEB-DL-GRP", Hash: "cccc000000000000000000000000000000000003", Tags: "qui-transfer", Progress: 1}
-	own := qbt.Torrent{Name: "Quiet.Harbor.2024.1080p.WEB-DL-GRP", Hash: "dddd000000000000000000000000000000000004", Tags: "qui-transfer", Progress: 1}
-	for _, tc := range []struct {
-		name    string
-		helpers fakeHelpers
-		want    []string
-	}{
-		{name: "a helper torrent is left out", helpers: fakeHelpers{helper.Hash: true}, want: []string{own.Hash}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			sent := func(notifier *captureNotifier) []string {
-				var hashes []string
-				for len(notifier.events) > 0 {
-					hashes = append(hashes, (<-notifier.events).TorrentHash)
-				}
-				return hashes
-			}
-
-			added := &captureNotifier{events: make(chan notifications.Event, 2)}
-			notifyTorrentsAddedAfter(t.Context(), &stubTorrentNotificationSync{}, added, tc.helpers, 1, []*qbt.Torrent{&helper, &own}, 0)
-			require.ElementsMatch(t, tc.want, sent(added), "torrent added")
-
-			completed := &captureNotifier{events: make(chan notifications.Event, 2)}
-			for _, torrent := range []qbt.Torrent{helper, own} {
-				notifyTorrentCompleted(t.Context(), &stubTorrentNotificationSync{}, completed, tc.helpers, 1, torrent)
-			}
-			require.ElementsMatch(t, tc.want, sent(completed), "torrent completed")
-		})
-	}
 }

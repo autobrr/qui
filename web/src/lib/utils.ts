@@ -7,7 +7,9 @@ import type { Automation } from "@/types"
 import { getTrackerTokens } from "@/lib/workflow-utils"
 import { BYTE_LADDER, formatValueWithUnit, scaleToUnit } from "@/lib/unit-format"
 import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { extendTailwindMerge } from "tailwind-merge"
+
+const twMerge = extendTailwindMerge({ extend: { theme: { text: ["10", "13"] } } })
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -36,15 +38,15 @@ export function getRatioColor(ratio: number): string {
   if (ratio < 0) return ""
 
   if (ratio < 0.5) {
-    return "var(--chart-5)"
+    return "var(--chart-text-5, var(--chart-5))"
   } else if (ratio < 1.0) {
-    return "var(--chart-4)"
+    return "var(--chart-text-4, var(--chart-4))"
   } else if (ratio < 2.0) {
-    return "var(--chart-3)"
+    return "var(--chart-text-3, var(--chart-3))"
   } else if (ratio < 5.0) {
-    return "var(--chart-2)"
+    return "var(--chart-text-2, var(--chart-2))"
   } else {
-    return "var(--chart-1)"
+    return "var(--chart-text-1, var(--chart-1))"
   }
 }
 

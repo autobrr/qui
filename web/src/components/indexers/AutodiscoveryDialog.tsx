@@ -266,7 +266,7 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
           autoCapitalize="off"
           spellCheck={false}
           placeholder={t("indexers.autodiscovery.placeholders.indexerUrl")}
-          className="font-mono text-[13px]"
+          className="font-mono text-13"
         />
       </Field>
       <Field label={t("indexers.autodiscovery.labels.apiKey")} error={errors.apiKey}>
@@ -371,7 +371,7 @@ function SavedConnectionPicker({ connections, selected, onSelect }: SavedConnect
                 aria-pressed={active}
                 onClick={() => onSelect(connection)}
                 className={cn(
-                  "flex min-h-14 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  "flex min-h-14 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50",
                   active && "border-primary bg-accent/50"
                 )}
               >
@@ -379,7 +379,7 @@ function SavedConnectionPicker({ connections, selected, onSelect }: SavedConnect
                   <Server className="size-4" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-mono text-[13px] [overflow-wrap:anywhere] pointer-fine:truncate">{connection.baseUrl}</span>
+                  <span className="block font-mono text-13 [overflow-wrap:anywhere] pointer-fine:truncate">{connection.baseUrl}</span>
                   <span className="block text-xs text-muted-foreground">
                     {t(`indexers.dialog.backends.${connection.backend}`)} · {t("indexers.autodiscovery.savedConnections.indexerCount", { count: connection.indexerCount })}
                   </span>

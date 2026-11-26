@@ -95,6 +95,7 @@ type Server struct {
 	LeaveOutNew         bool
 	FailSyncs           int
 	CheckSyncs          int
+	RecheckSyncs        int
 	ListAfterSyncs      int
 	StaleFileLists      int
 	HashCheck           bool
@@ -250,10 +251,14 @@ func (s *Server) Requests() int {
 	return s.requests
 }
 
-func (s *Server) RequestsWithout(endpoint string) int {
+func (s *Server) RequestsWithout(endpoints ...string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.requests - s.calls[endpoint]
+	n := s.requests
+	for _, endpoint := range endpoints {
+		n -= s.calls[endpoint]
+	}
+	return n
 }
 
 func (s *Server) Syncs() int {

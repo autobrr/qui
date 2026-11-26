@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} active",
       "today": "{{count}} today",
       "failed": "{{count}} failed",
+      "outcomeFailed": "Failed",
       "failedToLoadRules": "Failed to load rules",
       "checkConnection": "Check connection to the instance.",
       "loadingRules": "Loading rules...",

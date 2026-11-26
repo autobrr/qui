@@ -14,6 +14,7 @@ COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY web ./
+COPY internal/themes/testdata/outside_files.json /app/internal/themes/testdata/
 RUN pnpm run build
 
 # Go build stage

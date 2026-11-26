@@ -686,7 +686,6 @@ func (app *Application) runServer() {
 	go lowdisk.New(db, systemNotices).Run(lowDiskCtx)
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
-	transferHistoryAdapter.SetHelperTorrents(transfers)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
 	syncManager.SetDeleteNoter(transferHistoryAdapter)
 	liveSamples := livesamples.New(clientPool)
@@ -807,7 +806,7 @@ func (app *Application) runServer() {
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
 	automationService.SetCrossSeedRoutes(crossSeedRoutes)
-	automationService.SetHeldTorrents(transfers)
+	automationService.SetClaimedTorrents(transfers)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
@@ -860,11 +859,11 @@ func (app *Application) runServer() {
 	go shareService.Run(shareCtx)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		notifyTorrentCompleted(ctx, syncManager, notificationService, transfers, instanceID, torrent)
+		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 	}, crossSeedService.HandleTorrentCompletion)
 
 	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
-		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, transfers, instanceID, torrents, torrentAddedNotificationDelay)
+		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -901,7 +900,6 @@ func (app *Application) runServer() {
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
 	backupService.SetActivityPublisher(activityHub)
-	backupService.SetHelperTorrents(transfers)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -1204,7 +1202,7 @@ type torrentHashAdapter struct {
 }
 
 func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
-	torrents, err := a.syncManager.GetAllTorrentRefs(ctx, instanceID)
+	torrents, err := a.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 	if err != nil {
 		return nil, fmt.Errorf("get torrents: %w", err)
 	}

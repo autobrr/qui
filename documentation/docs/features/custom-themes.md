@@ -205,7 +205,9 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 | Controls | `--border`, `--input`, `--ring` |
 | Sidebar | `--sidebar`, `--sidebar-foreground`, `--sidebar-primary(-foreground)`, `--sidebar-accent(-foreground)`, `--sidebar-border`, `--sidebar-ring` |
 | Charts | `--chart-1` … `--chart-5` |
+| Chart text | `--chart-text-1` … `--chart-text-5`. The ratio and speed text in the torrent list. Each one takes its `--chart-*` color when the theme does not set it. |
 | Ratio colors (qui-specific) | `--ratio-bad`, `--ratio-almost`, `--ratio-good`, `--ratio-best` |
+| Status colors | `--success`, `--warning`, `--info`. They have no `-foreground` token: text on a solid status fill uses `--background`. |
 | Typography | `--font-sans`, `--font-serif`, `--font-mono` |
 | Shape & spacing | `--radius`, `--spacing`, `--tracking-normal` |
 | Shadows | `--shadow-2xs` … `--shadow-2xl` |

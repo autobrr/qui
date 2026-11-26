@@ -132,17 +132,18 @@ func (l *bigHeldLibrary) announces() map[string]*WebhookCheckRequest {
 }
 
 func TestMemoryBudget_HeldTitles(t *testing.T) {
-	const size = 50_000
+	const size = keptBudgetLibrarySize
 	library := newBigHeldLibrary(t, size)
 	library.heldTitles(t.Context(), t, library.releases)
 
 	for _, tt := range []struct {
-		name    string
-		sources []AlternateTitleSource
-		budget  uint64
+		name            string
+		sources         []AlternateTitleSource
+		fixed           uint64
+		bytesPerTorrent uint64
 	}{
-		{name: "alone", budget: 20 * biglib.MB},
-		{name: "three alternate titles for each title", sources: []AlternateTitleSource{countedAlternateTitles(3)}, budget: 40 * biglib.MB},
+		{name: "alone", fixed: biglib.MB, bytesPerTorrent: 400},
+		{name: "three alternate titles for each title", sources: []AlternateTitleSource{countedAlternateTitles(3)}, fixed: 2 * biglib.MB, bytesPerTorrent: 800},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			kept := biglib.KeptBytes(3, func() any {
@@ -153,7 +154,7 @@ func TestMemoryBudget_HeldTitles(t *testing.T) {
 
 			t.Logf("Held titles keeps %.1f MB for %d torrents", float64(kept)/biglib.MB, size)
 			require.Greater(t, kept, uint64(biglib.MB))
-			require.LessOrEqual(t, kept, tt.budget)
+			require.LessOrEqual(t, kept, tt.fixed+tt.bytesPerTorrent*size)
 		})
 	}
 }
@@ -185,7 +186,7 @@ func waitForAlternateTitles(tb testing.TB, svc *Service) {
 
 func TestMemoryBudget_HeldTitlesBurst(t *testing.T) {
 	const checks = 64
-	small, large := newBigHeldLibrary(t, biglib.Size/10), newBigHeldLibrary(t, biglib.Size)
+	small, large := newBigHeldLibrary(t, biglib.Size/10), newBigHeldLibrary(t, burstLibrarySize)
 	source := countedAlternateTitles(3)
 	smallSvc, largeSvc := small.heldTitles(t.Context(), t, small.releases, source), large.heldTitles(t.Context(), t, large.releases, source)
 	waitForAlternateTitles(t, smallSvc)
@@ -208,7 +209,7 @@ func TestMemoryBudget_HeldTitlesBurst(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			few, many := burst(smallSvc, small.announces()[name]), burst(largeSvc, large.announces()[name])
 
-			t.Logf("%d checks at once allocate %.2f MB on %d torrents and %.2f MB on %d torrents", checks, float64(few)/biglib.MB, biglib.Size/10, float64(many)/biglib.MB, biglib.Size)
+			t.Logf("%d checks at once allocate %.2f MB on %d torrents and %.2f MB on %d torrents", checks, float64(few)/biglib.MB, biglib.Size/10, float64(many)/biglib.MB, burstLibrarySize)
 			require.LessOrEqual(t, many, checks*budget)
 			require.LessOrEqual(t, many, 2*few)
 		})

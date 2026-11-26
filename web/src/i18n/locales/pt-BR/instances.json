@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} ativas",
       "today": "{{count}} hoje",
       "failed": "{{count}} falharam",
+      "outcomeFailed": "Falhou",
       "failedToLoadRules": "Falha ao carregar as regras",
       "checkConnection": "Verifique a conexão da instância.",
       "loadingRules": "Carregando regras...",

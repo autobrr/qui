@@ -30,9 +30,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
         <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
           <div className="flex items-center gap-2 min-w-0">
             {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-info shrink-0" />}
             {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-warning shrink-0" />}
             {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
             <span className="text-xs text-muted-foreground">{t("automation.items", { count: run.totalFeedItems })}</span>
             {run.errorMessage && (
@@ -42,9 +42,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="secondary" className="text-xs">{t("scan.crossSeedsAddedBadge", { count: run.crossSeedsAdded })}</Badge>
+            <Badge variant="secondary">{t("scan.crossSeedsAddedBadge", { count: run.crossSeedsAdded })}</Badge>
             {run.candidatesFailed > 0 && (
-              <Badge variant="destructive" className="text-xs">{t("automation.failedCount", { count: run.candidatesFailed })}</Badge>
+              <Badge variant="destructive">{t("automation.failedCount", { count: run.candidatesFailed })}</Badge>
             )}
             <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
             {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
@@ -56,9 +56,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
           <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
             {successResults.map((result, i) => (
               <div key={`${result.instanceId}-${i}`} className="flex items-center gap-2 text-xs">
-                <Badge variant="default" className={`text-[10px] ${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                <Badge variant="default" size="sm" className={`${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
                 {result.indexerName && (
-                  <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
+                  <Badge variant="secondary" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
                 )}
                 <span className="truncate text-muted-foreground">{result.matchedTorrentName}</span>
               </div>
@@ -68,15 +68,15 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
             )}
             {failedResults.length > 0 && (
               <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                <span className="text-[10px] text-muted-foreground font-medium">{t("scan.failed")}</span>
+                <span className="text-10 text-muted-foreground font-medium">{t("scan.failed")}</span>
                 {failedResults.map((result, i) => {
                   const routeStatusKey = crossSeedRouteStatusKeys[result.status]
                   return (
                     <div key={`failed-${result.instanceId}-${i}`} className="flex flex-col gap-0.5 text-xs">
                       <div className="flex items-center gap-2">
-                        <Badge variant="destructive" className={`text-[10px] ${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
+                        <Badge variant="destructive" size="sm" className={`${instanceBadgeSize(result)} justify-center`}><TruncatedText>{instanceLabel(result)}</TruncatedText></Badge>
                         {result.indexerName && (
-                          <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
+                          <Badge variant="secondary" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName}</TruncatedText></Badge>
                         )}
                       </div>
                       {routeStatusKey && <span className="font-medium pl-1">{t(routeStatusKey)}</span>}

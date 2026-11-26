@@ -59,6 +59,9 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	var resp *CrossSeedResponse
 	if req.TorrentName == "" {
 		resp, err = s.invokeCrossSeed(ctx, crossReq)
+		if err == nil && !resp.seasonPackTried && foundNoDirectMatch(resp) {
+			err = s.applyNamelessSeasonPack(ctx, crossReq, settings, resp)
+		}
 	} else {
 		resp, err = s.applyAutobrrAnnouncement(ctx, req.TorrentName, crossReq, settings)
 	}
@@ -111,7 +114,9 @@ func (s *Service) applyAutobrrAnnouncement(ctx context.Context, announcedName st
 	}
 	matches := s.findAutobrrAnnouncementMatches(ctx, announcedName, meta.Info.TotalLength(), instances, baseRequest, settings)
 	if len(matches) == 0 {
-		return &CrossSeedResponse{}, nil
+		announced := namedRelease{release: s.releaseCache.Parse(announcedName), rawName: announcedName}
+		input := newWebhookCheckInput(announced, uint64(meta.Info.TotalLength()), baseRequest.FindIndividualEpisodes, settings, instances)
+		return s.webhookSeasonPackApply(ctx, input, baseRequest)
 	}
 
 	return s.invokeBoundAnnouncementMatches(ctx, matches, func(match boundAnnouncementMatch) *CrossSeedRequest {

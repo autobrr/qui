@@ -50,8 +50,6 @@
     "internal/backups/restore_execute.go": 2,
     "internal/backups/service.go": 3,
     "internal/models/automation.go": 2,
-    "internal/models/instance.go": 1,
-    "internal/models/torznab_indexer.go": 1,
     "internal/qbittorrent/folder_cleanup.go": 1,
     "internal/qbittorrent/folder_cleanup_triggers.go": 1,
     "internal/qbittorrent/sync_manager.go": 7,

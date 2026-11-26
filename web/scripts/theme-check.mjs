@@ -6,6 +6,9 @@ import { converter, formatHex, inGamut, parse, wcagContrast } from "culori"
 const scriptPath = fs.realpathSync(import.meta.filename)
 const freeThemesDir = path.resolve(path.dirname(scriptPath), "..", "..", "internal", "themes", "assets")
 const licensedThemesDir = path.join(freeThemesDir, "premium")
+const appCss = fs.readFileSync(path.resolve(path.dirname(scriptPath), "..", "src", "index.css"), "utf8")
+const STATUS = ["success", "warning", "info"]
+const CHART_TEXT = [1, 2, 3, 4, 5].map(n => `chart-text-${n}`)
 
 const MODES = [["light", ":root"], ["dark", ".dark"]]
 const TEXT = 4.5
@@ -14,7 +17,7 @@ const GRAPHIC = 3
 const toRgb = converter("rgb")
 const inSrgb = inGamut("rgb")
 
-function declarations(css, selector) {
+export function declarations(css, selector) {
   const block = css.match(new RegExp(`(?:^|\\n)[ \\t]*${selector.replace(".", "\\.")}\\s*{([^}]*)}`))
   if (!block) throw new Error(`the theme has no ${selector} block`)
   return Object.fromEntries(
@@ -54,8 +57,15 @@ function pairGroups(color, mode) {
     ["hovered row", surface("accent", 0.4)],
     ["selected row", surface("accent")],
   ]
-  const rowText = ["foreground", "muted-foreground", "primary", "destructive", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
+  const rowText = ["foreground", "muted-foreground", "primary", "destructive", ...CHART_TEXT]
   const menuTint = mode === "dark" ? 0.2 : 0.1
+  const statusPairs = name => [
+    [`${name} text on background`, color(name), page, TEXT],
+    [`${name} text on card`, color(name), card, TEXT],
+    [`${name} text on popover`, color(name), popover, TEXT],
+    [`${name} text on ${name} 10% on background`, color(name), surface(name, 0.1), TEXT],
+    ...rows.map(([row, background]) => [`${name} text on ${row}`, color(name), background, TEXT]),
+  ]
 
   return [
     {
@@ -89,10 +99,14 @@ function pairGroups(color, mode) {
       ],
     },
     {
-      source: "web/src/components/torrents/table/TorrentTableRow.tsx, getRowBackgroundClass in web/src/lib/torrent-table/row-display.ts, getRatioColor in web/src/lib/utils.ts",
+      source: "web/src/components/torrents/table/TorrentTableRow.tsx, getRowBackgroundClass in web/src/lib/torrent-table/row-display.ts, getRatioColor in web/src/lib/utils.ts, text-chart-text-2 and text-chart-text-3 speeds",
       pairs: rows.flatMap(([row, background]) =>
         rowText.map(name => [`${name} text on ${row}`, color(name), background, TEXT])
       ),
+    },
+    {
+      source: "web/src (text-success, text-warning, text-info, and their 10% tints)",
+      pairs: STATUS.flatMap(statusPairs),
     },
     {
       source: "web/src/components/ui/ (progress, checkbox, focus border)",
@@ -128,6 +142,11 @@ export function checkTheme(css) {
 
   for (const [mode, selector] of MODES) {
     const base = declarations(css, selector)
+    const app = declarations(appCss, selector)
+    const defaults = {
+      ...Object.fromEntries(STATUS.map(name => [`--${name}`, app[`--${name}`]])),
+      ...Object.fromEntries(CHART_TEXT.map(name => [`--${name}`, `var(--${name.replace("text-", "")})`])),
+    }
 
     for (const [name, value] of Object.entries(base)) {
       const literal = parse(value)
@@ -136,7 +155,7 @@ export function checkTheme(css) {
 
     const names = variations(css)
     for (const variation of names.length > 0 ? names : [null]) {
-      const vars = variation ? { ...base, "--variation-color": `var(--variation-${variation})` } : base
+      const vars = { ...defaults, ...base, ...(variation && { "--variation-color": `var(--variation-${variation})` }) }
       const color = name => {
         const value = resolve(vars, `--${name}`)
         const parsed = parse(value)

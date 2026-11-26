@@ -37,7 +37,7 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 		return nil
 	}
 	if len(hashes) == 1 && hashes[0] == "all" {
-		torrents, err := sm.GetTorrentRefsFresh(ctx, instanceID, TorrentRefFilter{})
+		torrents, err := sm.GetTorrentRefsFresh(ctx, instanceID, TorrentRefFilter{WithHelperTorrents: true})
 		if err != nil {
 			return fmt.Errorf("read the torrents of instance %d: %w", instanceID, err)
 		}
@@ -96,10 +96,56 @@ func (h snapshotHelpers) kind(t *qbt.Torrent) string {
 	return ""
 }
 
-func WithoutHelpers(snapshot *qbt.SyncSnapshot, helpers HelperTorrents, instanceID int) []*qbt.Torrent {
-	torrents := snapshot.Torrents()
-	if found := helpersOf(snapshot, helpers, instanceID).torrents; len(found) > 0 {
-		torrents = slices.DeleteFunc(torrents, func(t *qbt.Torrent) bool { return slices.Contains(found, t) })
+func (h snapshotHelpers) drop(torrents []*qbt.Torrent) []*qbt.Torrent {
+	if len(h.torrents) == 0 {
+		return torrents
 	}
-	return torrents
+	return slices.DeleteFunc(torrents, func(t *qbt.Torrent) bool { return slices.Contains(h.torrents, t) })
+}
+
+func (sm *SyncManager) ListSnapshot(instanceID int, snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
+	return helpersOf(snapshot, sm.helpers(), instanceID).drop(snapshotTorrents(snapshot))
+}
+
+func (sm *SyncManager) ListedLookup(instanceID int, snapshot *qbt.SyncSnapshot) func(hash string) (*qbt.Torrent, bool) {
+	kinds := sm.helperKinds(instanceID)
+	return func(hash string) (*qbt.Torrent, bool) {
+		torrent, ok := snapshot.Torrent(hash)
+		if !ok || kinds[strings.ToLower(torrent.Hash)] != "" {
+			return nil, false
+		}
+		return torrent, true
+	}
+}
+
+func (sm *SyncManager) helperKinds(instanceID int) map[string]string {
+	if helpers := sm.helpers(); helpers != nil {
+		return helpers.HelperKinds(instanceID)
+	}
+	return nil
+}
+
+func (sm *SyncManager) skipHelperFinish(handler TorrentCompletionHandler) TorrentCompletionHandler {
+	if handler == nil {
+		return nil
+	}
+	return func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
+		if sm.helperKinds(instanceID)[strings.ToLower(torrent.Hash)] == "" {
+			handler(ctx, instanceID, torrent)
+		}
+	}
+}
+
+func (sm *SyncManager) skipHelperAdds(handler TorrentAddedHandler) TorrentAddedHandler {
+	if handler == nil {
+		return nil
+	}
+	return func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
+		if kinds := sm.helperKinds(instanceID); len(kinds) > 0 {
+			torrents = slices.DeleteFunc(torrents, func(t *qbt.Torrent) bool { return kinds[strings.ToLower(t.Hash)] != "" })
+		}
+		if len(torrents) > 0 {
+			handler(ctx, instanceID, torrents)
+		}
+	}
 }

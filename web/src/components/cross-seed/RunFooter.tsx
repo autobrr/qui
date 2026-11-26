@@ -89,7 +89,7 @@ export function RunFooter({ state, runLabel, runIcon, onRun, onCancel, cancelDia
             <AlertDialogCancel>{t("cancelDialog.keepRunning")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={onCancel}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("cancelDialog.cancelRun")}
             </AlertDialogAction>

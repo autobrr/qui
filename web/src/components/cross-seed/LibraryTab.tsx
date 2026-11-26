@@ -604,7 +604,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
           <div className="flex items-center justify-between gap-3">
             <div className="space-y-0.5">
               <div className="flex items-center gap-1.5">
-                <Label htmlFor="skip-individual-episodes" className="font-medium">{t("scan.skipIndividualEpisodesLabel")}</Label>
+                <Label htmlFor="skip-individual-episodes">{t("scan.skipIndividualEpisodesLabel")}</Label>
                 <FieldHelp>{t("scan.skipIndividualEpisodesDescription")}</FieldHelp>
               </div>
               {skipIndividualEpisodes && settings.seasonPackAutomationEnabled === false && (
@@ -654,7 +654,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5">
-              <Label htmlFor="library-schedule-enabled" className="font-medium">{t("scan.schedule.enableLabel")}</Label>
+              <Label htmlFor="library-schedule-enabled">{t("scan.schedule.enableLabel")}</Label>
               <FieldHelp>{t("scan.schedule.enableHelp")}</FieldHelp>
             </div>
             <Switch id="library-schedule-enabled" checked={scheduleEnabled} onCheckedChange={value => setScheduleEnabled(!!value)} />
@@ -745,7 +745,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                 <History className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">{t("scan.recentRuns")}</span>
                 {searchRunStats.totalRuns > 0 ? (
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary">
                     {searchRunStats.totalFailed > 0? t("scan.runSummaryWithFailures", { runs: searchRunStats.totalRuns, added: searchRunStats.totalAdded, failed: searchRunStats.totalFailed }): t("scan.runSummary", { runs: searchRunStats.totalRuns, added: searchRunStats.totalAdded })}
                   </Badge>
                 ) : (
@@ -776,10 +776,10 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                             <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
                               <div className="flex items-center gap-2 min-w-0">
                                 {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-                                {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-info shrink-0" />}
                                 {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
                                 {run.status === "canceled" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
-                                <Badge variant="outline" className="text-[10px] shrink-0">
+                                <Badge variant="outline" size="sm" className="shrink-0">
                                   {run.kind === "scheduled" ? t("scan.runKind.scheduled") : t("scan.runKind.manual")}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">
@@ -792,9 +792,9 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                 )}
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <Badge variant="secondary" className="text-xs">{t("scan.crossSeedsAddedBadge", { count: run.crossSeedsAdded })}</Badge>
+                                <Badge variant="secondary">{t("scan.crossSeedsAddedBadge", { count: run.crossSeedsAdded })}</Badge>
                                 {run.torrentsFailed > 0 && (
-                                  <Badge variant="destructive" className="text-xs">{t("scan.failedCount", { count: run.torrentsFailed })}</Badge>
+                                  <Badge variant="destructive">{t("scan.failedCount", { count: run.torrentsFailed })}</Badge>
                                 )}
                                 <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
                                 {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
@@ -813,7 +813,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                               <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
                                 {successResults.map((result, i) => (
                                   <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
-                                    <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                    <Badge variant="default" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                     <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                     {routeLabel(result)}
                                   </div>
@@ -823,16 +823,16 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                 )}
                                 {skippedResults.length > 0 && (
                                   <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                                    <span className="text-[10px] text-muted-foreground font-medium">{t("scan.skippedLabel")}</span>
+                                    <span className="text-10 text-muted-foreground font-medium">{t("scan.skippedLabel")}</span>
                                     {skippedResults.map((result, i) => (
                                       <div key={`skipped-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                         <div className="flex items-center gap-2">
-                                          <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                          <Badge variant="secondary" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                           {routeLabel(result)}
                                         </div>
                                         {result.message && (
-                                          <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message}</span>
+                                          <span className="text-muted-foreground/70 pl-[104px] text-10">{result.message}</span>
                                         )}
                                       </div>
                                     ))}
@@ -840,15 +840,15 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                                 )}
                                 {failedResults.length > 0 && (
                                   <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
-                                    <span className="text-[10px] text-muted-foreground font-medium">{t("scan.failed")}</span>
+                                    <span className="text-10 text-muted-foreground font-medium">{t("scan.failed")}</span>
                                     {failedResults.map((result, i) => (
                                       <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                         <div className="flex items-center gap-2">
-                                          <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
+                                          <Badge variant="destructive" size="sm" className="shrink-0 w-24 justify-center"><TruncatedText>{result.indexerName || t("common:status.unknown")}</TruncatedText></Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                           {routeLabel(result)}
                                         </div>
-                                        <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || t("scan.noMessageProvided")}</span>
+                                        <span className="text-muted-foreground/70 pl-[104px] text-10">{result.message || t("scan.noMessageProvided")}</span>
                                       </div>
                                     ))}
                                   </div>

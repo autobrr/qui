@@ -445,10 +445,10 @@ function ArrInstanceEditor({ open, onOpenChange, instance, pending, error, onSav
           role="status"
           className={cn(
             "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm",
-            testResult.success ? "border-emerald-500/40 bg-emerald-500/5" : "border-destructive/40 bg-destructive/5"
+            testResult.success ? "border-success/40 bg-success/5" : "border-destructive/40 bg-destructive/5"
           )}
         >
-          <span aria-hidden="true" className={cn("mt-1.5 size-2 shrink-0 rounded-full", testResult.success ? "bg-emerald-500" : "bg-destructive")} />
+          <span aria-hidden="true" className={cn("mt-1.5 size-2 shrink-0 rounded-full", testResult.success ? "bg-success" : "bg-destructive")} />
           <div className="min-w-0">
             <p className="font-medium">{t(testResult.success ? "arrInstances.toasts.connectionSuccess" : "arrInstances.status.failed")}</p>
             {!testResult.success && (

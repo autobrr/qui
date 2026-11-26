@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"path"
 	"path/filepath"
 	"slices"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -73,6 +73,7 @@ type episodeMatch struct {
 	category    string
 	name        string
 	release     *rls.Release
+	titles      []string
 }
 
 type seasonPackLocalFile struct {
@@ -126,23 +127,26 @@ func seasonPackMatchOptionsFromSettings(settings *models.CrossSeedAutomationSett
 }
 
 type seasonPackPrep struct {
-	manual        bool
-	rejected      map[string]string
-	settings      *models.CrossSeedAutomationSettings
-	packName      string
-	packRelease   *rls.Release
-	meta          TorrentMetadata
-	torrentBytes  []byte
-	packEpisodes  map[episodeIdentity]packEpisodeOrigin
-	totalEpisodes int
-	eligible      []*models.Instance
-	threshold     float64
-	aliasTitles   []string
+	manual         bool
+	heldOnly       bool
+	skipAutoResume bool
+	rejected       map[string]string
+	settings       *models.CrossSeedAutomationSettings
+	packName       string
+	packRelease    *rls.Release
+	meta           TorrentMetadata
+	torrentBytes   []byte
+	packEpisodes   map[episodeIdentity]packEpisodeOrigin
+	totalEpisodes  int
+	eligible       []*models.Instance
+	threshold      float64
+	aliasTitles    []string
+	sonarrAnswers  bool
 }
 
 const seasonPackNoEligibleInstances = "no instances with hardlink/reflink mode and filesystem write access (Local Filesystem Access, or SSH access, in instance settings)"
 
-func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentData string, instanceIDs []int, autonomous bool) (*seasonPackPrep, string, string, error) {
+func (s *Service) prepareSeasonPackLocally(ctx context.Context, torrentName, torrentData string, instanceIDs []int, autonomous, needsTorrent bool) (*seasonPackPrep, string, string, error) {
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("load automation settings: %w", err)
@@ -154,82 +158,21 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 	} else if !settings.SeasonPackEnabled {
 		return nil, "disabled", "", nil
 	}
-	if torrentName == "" || torrentData == "" {
+	switch {
+	case needsTorrent && (torrentName == "" || torrentData == ""):
 		return nil, "invalid_payload", "torrentName and torrentData are required", nil
-	}
-
-	packRelease := s.matcher().parseSeasonPackName(torrentName)
-	if !isTVSeasonPack(packRelease) {
-		return nil, "not_season_pack", fmt.Sprintf("release %q is not a season pack", torrentName), nil
-	}
-
-	torrentBytes, decErr := base64.StdEncoding.DecodeString(torrentData)
-	if decErr != nil {
-		torrentBytes, decErr = decodeBase64Variants(torrentData)
-	}
-	if decErr != nil {
-		return nil, "invalid_torrent", "failed to decode torrent data", nil //nolint:nilerr // a torrent that does not decode is a rejected request, not an error
-	}
-
-	meta, parseErr := ParseTorrentMetadataWithInfo(torrentBytes)
-	if parseErr != nil {
-		return nil, "invalid_torrent", "failed to parse torrent metadata", nil //nolint:nilerr // a torrent that does not parse is a rejected request, not an error
-	}
-
-	packEpisodes := s.matcher().extractPackEpisodes(meta.Files, packRelease)
-	if len(packEpisodes) == 0 {
-		return nil, "invalid_torrent", "no playable episode files found in torrent", nil
-	}
-	totalEpisodes, aliasTitles := s.seasonPackCoverageTotal(ctx, torrentName, packRelease, len(packEpisodes))
-
-	instances, resolveErr := s.resolveInstances(ctx, instanceIDs)
-	if resolveErr != nil {
-		return nil, "", "", fmt.Errorf("resolve instances: %w", resolveErr)
-	}
-
-	eligible := filterLinkEligible(instances)
-	if len(eligible) == 0 {
-		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
-	}
-
-	threshold := settings.SeasonPackCoverageThreshold
-	if threshold <= 0 {
-		threshold = 0.75
-	}
-
-	return &seasonPackPrep{
-		settings:      settings,
-		packName:      torrentName,
-		packRelease:   packRelease,
-		meta:          meta,
-		torrentBytes:  torrentBytes,
-		packEpisodes:  packEpisodes,
-		totalEpisodes: totalEpisodes,
-		eligible:      eligible,
-		threshold:     threshold,
-		aliasTitles:   aliasTitles,
-	}, "", "", nil
-}
-
-func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torrentData string, instanceIDs []int) (*seasonPackPrep, string, string, error) {
-	if torrentData != "" {
-		return s.prepareSeasonPack(ctx, torrentName, torrentData, instanceIDs, false)
-	}
-
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil {
-		return nil, "", "", fmt.Errorf("load automation settings: %w", err)
-	}
-	if !settings.SeasonPackEnabled {
-		return nil, "disabled", "", nil
-	}
-	if torrentName == "" {
+	case torrentName == "":
 		return nil, "invalid_payload", "torrentName is required", nil
 	}
 
-	packRelease := s.matcher().parseSeasonPackName(torrentName)
-	if !isTVSeasonPack(packRelease) {
+	prep := s.newSeasonPackPrep(torrentName, settings)
+	if prep == nil {
 		return nil, "not_season_pack", fmt.Sprintf("release %q is not a season pack", torrentName), nil
+	}
+	if needsTorrent {
+		if message := s.readSeasonPackTorrent(prep, torrentData); message != "" {
+			return nil, "invalid_torrent", message, nil
+		}
 	}
 
 	instances, resolveErr := s.resolveInstances(ctx, instanceIDs)
@@ -237,123 +180,165 @@ func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torre
 		return nil, "", "", fmt.Errorf("resolve instances: %w", resolveErr)
 	}
 
-	eligible := filterLinkEligible(instances)
-	if len(eligible) == 0 {
+	prep.eligible = filterLinkEligible(instances)
+	if len(prep.eligible) == 0 {
 		return nil, "no_eligible_instances", seasonPackNoEligibleInstances, nil
 	}
-
-	totalEpisodes := -1
-	total, aliasTitles, ok := s.seasonPackSeasonLookup(ctx, torrentName, packRelease)
-	if ok && total > 0 {
-		totalEpisodes = total
-	}
-
-	threshold := settings.SeasonPackCoverageThreshold
-	if threshold <= 0 {
-		threshold = 0.75
-	}
-
-	return &seasonPackPrep{
-		settings:      settings,
-		packName:      torrentName,
-		packRelease:   packRelease,
-		packEpisodes:  nil,
-		totalEpisodes: totalEpisodes,
-		eligible:      eligible,
-		threshold:     threshold,
-		aliasTitles:   aliasTitles,
-	}, "", "", nil
+	return prep, "", "", nil
 }
 
-func (s *Service) CheckSeasonPackWebhook(ctx context.Context, req *SeasonPackCheckRequest) (*SeasonPackCheckResponse, error) {
-	prep, reason, message, prepErr := s.prepareSeasonPackCheck(ctx, req.TorrentName, req.TorrentData, req.InstanceIDs)
+func (s *Service) newSeasonPackPrep(name string, settings *models.CrossSeedAutomationSettings) *seasonPackPrep {
+	packRelease := s.matcher().parseSeasonPackName(name)
+	if !isTVSeasonPack(packRelease) {
+		return nil
+	}
+	prep := &seasonPackPrep{
+		settings:    settings,
+		packName:    name,
+		packRelease: packRelease,
+		threshold:   settings.SeasonPackCoverageThreshold,
+	}
+	if prep.threshold <= 0 {
+		prep.threshold = 0.75
+	}
+	return prep
+}
+
+func (s *Service) readSeasonPackTorrent(prep *seasonPackPrep, torrentData string) (problem string) {
+	torrentBytes, err := base64.StdEncoding.DecodeString(torrentData)
+	if err != nil {
+		torrentBytes, err = decodeBase64Variants(torrentData)
+	}
+	if err != nil {
+		return "failed to decode torrent data"
+	}
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	if err != nil {
+		return "failed to parse torrent metadata"
+	}
+	prep.torrentBytes, prep.meta = torrentBytes, meta
+	prep.packEpisodes = s.matcher().extractPackEpisodes(meta.Files, prep.packRelease)
+	if len(prep.packEpisodes) == 0 {
+		return "no playable episode files found in torrent"
+	}
+	return ""
+}
+
+func (s *Service) lookUpSeason(ctx context.Context, prep *seasonPackPrep) {
+	season := s.seasonPackSeasonLookup(ctx, prep.packName, prep.packRelease)
+	prep.aliasTitles, prep.sonarrAnswers = season.titles, season.fromSonarr
+	prep.totalEpisodes = max(len(prep.packEpisodes), season.total)
+	if prep.totalEpisodes == 0 {
+		prep.totalEpisodes = -1
+	}
+}
+
+func (s *Service) checkSeasonPack(ctx context.Context, req seasonPackRequest) (*seasonPackCheckResult, error) {
+	prep, reason, message, prepErr := s.prepareSeasonPackLocally(ctx, req.name, req.torrentData, req.instanceIDs, false, req.torrentData != "")
 	if prep == nil {
 		if prepErr != nil {
 			return nil, prepErr
 		}
-		resp := &SeasonPackCheckResponse{Reason: reason, Message: message}
-		s.recordCheckRun(ctx, req.TorrentName, resp, nil, 0)
+		resp := &seasonPackCheckResult{reason: reason, message: message}
+		s.recordCheckRun(ctx, req.name, resp, 0)
 		return resp, nil
 	}
 
-	if prep.totalEpisodes == -1 {
-		return s.checkSeasonPackNoThreshold(ctx, req.TorrentName, prep)
+	lookup := s.seasonPackLookup(ctx, prep, prep.eligible)
+	defer lookup.refreshStale()
+	if seasonPackNotHeld(ctx, lookup) {
+		log.Trace().Str("torrentName", req.name).Msg("season pack: check found no held episode")
+		return buildCheckResponse(nil, nil, 0, prep.threshold), nil
 	}
+	return s.checkPreparedSeasonPack(ctx, prep, lookup)
+}
 
-	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packName, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings, prep.aliasTitles)
+func (s *Service) checkPreparedSeasonPack(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup) (*seasonPackCheckResult, error) {
+	s.lookUpSeason(ctx, prep)
+	lookup.addTitles(prep.aliasTitles)
+
+	matches, _, err := s.computeCoverage(ctx, prep, lookup)
+	if err == nil && len(prep.passing(matches)) == 0 && lookup.awaitDueSyncs(ctx) {
+		matches, _, err = s.computeCoverage(ctx, prep, lookup)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	var passing []SeasonPackCheckMatch
+	if prep.totalEpisodes == -1 {
+		return s.checkSeasonPackNoThreshold(ctx, prep.packName, matches), nil
+	}
+	passing := prep.passing(matches)
+	resp := buildCheckResponse(passing, matches, prep.totalEpisodes, prep.threshold)
+	s.recordCheckRun(ctx, prep.packName, resp, prep.totalEpisodes)
+	return resp, nil
+}
+
+func (prep *seasonPackPrep) passing(matches []seasonPackCoverage) []seasonPackCoverage {
+	if prep.totalEpisodes == -1 {
+		return matches
+	}
+	var passing []seasonPackCoverage
 	for _, m := range matches {
-		if m.Coverage >= prep.threshold {
+		if m.coverage >= prep.threshold {
 			passing = append(passing, m)
 		}
 	}
-
-	resp := buildCheckResponse(passing, matches, prep.totalEpisodes, prep.threshold)
-	s.recordCheckRun(ctx, req.TorrentName, resp, passing, prep.totalEpisodes)
-	return resp, nil
+	return passing
 }
 
-func (s *Service) checkSeasonPackNoThreshold(ctx context.Context, torrentName string, prep *seasonPackPrep) (*SeasonPackCheckResponse, error) {
-	var matches []SeasonPackCheckMatch
-
-	for _, inst := range prep.eligible {
-		cached, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
-		if err != nil {
-			return nil, fmt.Errorf("load cached torrents for instance %d: %w", inst.ID, err)
-		}
-
-		matched := s.matchEpisodeCandidatesDetailed(cached, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
-		if len(matched) == 0 {
-			continue
-		}
-
-		matches = append(matches, SeasonPackCheckMatch{
-			InstanceID:      inst.ID,
-			MatchedEpisodes: len(matched),
-		})
-	}
-
+func (s *Service) checkSeasonPackNoThreshold(ctx context.Context, torrentName string, matches []seasonPackCoverage) *seasonPackCheckResult {
 	if len(matches) > 0 {
 		best := matches[0]
 		for i := range matches[1:] {
-			if matches[i+1].MatchedEpisodes > best.MatchedEpisodes {
+			if matches[i+1].matched > best.matched {
 				best = matches[i+1]
 			}
 		}
-		resp := &SeasonPackCheckResponse{
-			Ready:            true,
-			Message:          fmt.Sprintf("%d instance(s) have matching episodes (threshold skipped, no episode total available)", len(matches)),
-			Matches:          matches,
-			ThresholdSkipped: true,
+		resp := &seasonPackCheckResult{
+			ready:            true,
+			message:          fmt.Sprintf("%d instance(s) have matching episodes (threshold skipped, no episode total available)", len(matches)),
+			matches:          matches,
+			best:             best,
+			thresholdSkipped: true,
 		}
-		s.recordCheckRunNoThreshold(ctx, torrentName, best.MatchedEpisodes, best.InstanceID)
-		return resp, nil
+		s.recordCheckRunNoThreshold(ctx, torrentName, best.matched, best.instanceID)
+		return resp
 	}
 
-	resp := &SeasonPackCheckResponse{
-		Reason:           "no_matches",
-		Message:          "no matching episodes found on any instance",
-		ThresholdSkipped: true,
+	resp := &seasonPackCheckResult{
+		reason:           "no_matches",
+		message:          "no matching episodes found on any instance",
+		thresholdSkipped: true,
 	}
-	s.recordCheckRun(ctx, torrentName, resp, nil, 0)
-	return resp, nil
+	s.recordCheckRun(ctx, torrentName, resp, 0)
+	return resp
 }
 
-func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
-	prep, reason, message, prepErr := s.prepareSeasonPack(ctx, req.TorrentName, req.TorrentData, req.InstanceIDs, req.autonomous)
+func (s *Service) applySeasonPack(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error) {
+	prep, reason, message, prepErr := s.prepareSeasonPackLocally(ctx, req.name, req.torrentData, req.instanceIDs, req.autonomous, true)
 	if prep == nil {
 		if prepErr != nil {
 			return nil, prepErr
 		}
-		s.recordApplyRun(ctx, req.TorrentName, reason, message, 0, 0, 0, 0, 0, "")
-		return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
+		s.recordApplyRun(ctx, req.name, reason, message, 0, 0, 0, 0, 0, "")
+		return &seasonPackApplyResult{reason: reason, message: message}, nil
 	}
 
+	return s.applyPreparedSeasonPack(ctx, prep, req.indexer)
+}
+
+func (s *Service) applyPreparedSeasonPack(ctx context.Context, prep *seasonPackPrep, indexer string) (*seasonPackApplyResult, error) {
 	hashes := collectHashes(prep.meta)
+	pack, release := s.seasonPackApplies.claim(hashes[0])
+	defer release()
+	s.lookUpSeason(ctx, prep)
+	giveUp, err := pack.takeTurn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer giveUp()
+
 	checks := make(map[int]PreAddCheck, len(prep.eligible))
 	routes := make(map[int]*candidateRoute)
 	unblocked := make([]*models.Instance, 0, len(prep.eligible))
@@ -363,12 +348,15 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		if routeErr != nil {
 			status, message := routeFailure(routeErr)
 			reason := seasonPackRouteReason(status)
-			s.recordApplyRun(ctx, req.TorrentName, reason, message, inst.ID, route.receiverOf(0), 0, prep.totalEpisodes, 0, "")
-			return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
+			s.recordApplyRun(ctx, prep.packName, reason, message, inst.ID, route.receiverOf(0), 0, prep.totalEpisodes, 0, "")
+			return &seasonPackApplyResult{reason: reason, message: message, instanceID: inst.ID}, nil
 		}
 		receiverID := route.receiverOf(inst.ID)
 		routes[inst.ID] = route
 		check, refusal := s.adder.Check(ctx, receiverID, AddFacts{}, hashes...)
+		if refusal == nil && pack.addedTo[receiverID] {
+			refusal = &AddResult{Status: StatusExists, Message: existsInThisInstance}
+		}
 		switch {
 		case refusal == nil:
 			checks[inst.ID] = check
@@ -380,34 +368,37 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 			if refusal.Message != existsInThisInstance {
 				message = refusal.Message
 			}
-			s.recordApplyRun(ctx, req.TorrentName, "already_exists", "", inst.ID, receiverID, 0, prep.totalEpisodes, 0, "")
-			return &SeasonPackApplyResponse{Reason: "already_exists", Message: message}, nil
+			s.recordApplyRun(ctx, prep.packName, "already_exists", "", inst.ID, receiverID, 0, prep.totalEpisodes, 0, "")
+			return &seasonPackApplyResult{reason: "already_exists", message: message, instanceID: inst.ID}, nil
 		default:
 			reason, message := "existing_check_failed", fmt.Sprintf("failed to check existing torrents on instance %d: %v", receiverID, refusal.Err)
 			if strings.HasPrefix(refusal.Message, blocklistCheckFailed) {
 				reason, message = "blocklist_check_failed", fmt.Sprintf("failed to check cross-seed blocklist on instance %d: %v", receiverID, refusal.Err)
 			}
-			s.recordApplyRun(ctx, req.TorrentName, reason, message, inst.ID, receiverID, 0, prep.totalEpisodes, 0, "")
-			return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
+			s.recordApplyRun(ctx, prep.packName, reason, message, inst.ID, receiverID, 0, prep.totalEpisodes, 0, "")
+			return &seasonPackApplyResult{reason: reason, message: message, instanceID: inst.ID}, nil
 		}
 	}
 	if len(unblocked) == 0 {
 		blockedOn := routes[blockedID].receiverOf(blockedID)
-		s.recordApplyRun(ctx, req.TorrentName, "blocked", "", blockedID, blockedOn, 0, prep.totalEpisodes, 0, "")
-		return &SeasonPackApplyResponse{
-			Reason:  "blocked",
-			Message: fmt.Sprintf("torrent is on the cross-seed blocklist for instance %d", blockedOn),
+		s.recordApplyRun(ctx, prep.packName, "blocked", "", blockedID, blockedOn, 0, prep.totalEpisodes, 0, "")
+		return &seasonPackApplyResult{
+			reason:     "blocked",
+			message:    fmt.Sprintf("torrent is on the cross-seed blocklist for instance %d", blockedOn),
+			instanceID: blockedID,
 		}, nil
 	}
 	prep.eligible = unblocked
 
-	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packName, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings, prep.aliasTitles)
+	lookup := s.seasonPackLookup(ctx, prep, prep.eligible)
+	defer lookup.refreshStale()
+	matches, matchedTitles, err := s.computeCoverage(ctx, prep, lookup)
 	if err != nil {
 		message := err.Error()
-		s.recordApplyRun(ctx, req.TorrentName, "coverage_check_failed", message, 0, 0, 0, prep.totalEpisodes, 0, "")
-		return &SeasonPackApplyResponse{
-			Reason:  "coverage_check_failed",
-			Message: message,
+		s.recordApplyRun(ctx, prep.packName, "coverage_check_failed", message, 0, 0, 0, prep.totalEpisodes, 0, "")
+		return &seasonPackApplyResult{
+			reason:  "coverage_check_failed",
+			message: message,
 		}, nil
 	}
 
@@ -416,35 +407,40 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		best := selectWinner(matches, 0)
 		bestInstance, bestMatched, bestCoverage := 0, 0, 0.0
 		if best != nil {
-			bestInstance, bestMatched, bestCoverage = best.InstanceID, best.MatchedEpisodes, best.Coverage
+			bestInstance, bestMatched, bestCoverage = best.instanceID, best.matched, best.coverage
 		}
-		s.recordApplyRun(ctx, req.TorrentName, "drifted", "no instance meets coverage threshold at apply time", bestInstance, routes[bestInstance].receiverOf(bestInstance), bestMatched, prep.totalEpisodes, bestCoverage, "")
-		return &SeasonPackApplyResponse{
-			Reason:  "drifted",
-			Message: "coverage no longer meets threshold",
+		s.recordApplyRun(ctx, prep.packName, "drifted", "no instance meets coverage threshold at apply time", bestInstance, routes[bestInstance].receiverOf(bestInstance), bestMatched, prep.totalEpisodes, bestCoverage, "")
+		return &seasonPackApplyResult{
+			reason:     "drifted",
+			message:    "coverage no longer meets threshold",
+			instanceID: bestInstance,
 		}, nil
 	}
 
-	linkMode := determineLinkMode(prep.eligible, winner.InstanceID)
-	inst := findInstance(prep.eligible, winner.InstanceID)
-	route := routes[winner.InstanceID]
+	linkMode := determineLinkMode(prep.eligible, winner.instanceID)
+	inst := findInstance(prep.eligible, winner.instanceID)
+	route := routes[winner.instanceID]
 	if route != nil {
-		if status, message := s.loadSource(ctx, route, winner.InstanceID); status != "" {
+		if status, message := s.loadSource(ctx, route, winner.instanceID); status != "" {
 			reason := seasonPackRouteReason(status)
-			s.recordApplyRun(ctx, req.TorrentName, reason, message, winner.InstanceID, route.crossSeed.ID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, "")
-			return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
+			s.recordApplyRun(ctx, prep.packName, reason, message, winner.instanceID, route.crossSeed.ID, winner.matched, prep.totalEpisodes, winner.coverage, "")
+			return &seasonPackApplyResult{reason: reason, message: message, instanceID: winner.instanceID}, nil
 		}
 		inst = route.source
 		linkMode = determineLinkMode([]*models.Instance{inst}, inst.ID)
 	}
 
-	planBuild, episodes, err := s.assembleSeasonPack(ctx, prep, inst, route, winner, linkMode, req.Indexer)
+	planBuild, episodes, err := s.assembleSeasonPack(ctx, prep, inst, route, winner, matchedTitles[winner.instanceID], linkMode, indexer)
 	if err != nil {
-		return s.failApply(ctx, req.TorrentName, err, prep, winner, route.receiverOf(winner.InstanceID))
+		return s.failApply(ctx, prep.packName, err, prep, winner, route.receiverOf(winner.instanceID))
 	}
 
-	crossCategory := s.resolveSeasonPackCategory(ctx, prep, req.Indexer, episodes)
-	return s.addSeasonPack(ctx, prep, inst, route, checks[inst.ID], planBuild, episodes, crossCategory, prep.settings.SeasonPackTags, linkMode, req.TorrentName)
+	crossCategory := s.resolveSeasonPackCategory(ctx, prep, indexer, episodes)
+	result, err := s.addSeasonPack(ctx, prep, inst, route, checks[inst.ID], planBuild, episodes, crossCategory, prep.settings.SeasonPackTags, linkMode, prep.packName)
+	if err == nil && result.applied {
+		pack.addedTo[result.addedInstanceID] = true
+	}
+	return result, err
 }
 
 func seasonPackRouteReason(status string) string {
@@ -464,14 +460,14 @@ func seasonPackSavePath(route *candidateRoute, build *seasonPackPlanBuild) (stri
 func (s *Service) addSeasonPack(
 	ctx context.Context, prep *seasonPackPrep, inst *models.Instance, route *candidateRoute, check PreAddCheck, planBuild *seasonPackPlanBuild,
 	episodes map[episodeIdentity]episodeMatch, crossCategory string, tags []string, linkMode, torrentName string,
-) (*SeasonPackApplyResponse, error) {
+) (*seasonPackApplyResult, error) {
 	receiverID := route.receiverOf(inst.ID)
-	fail := func(reason, cause, message string) (*SeasonPackApplyResponse, error) {
+	fail := func(reason, cause, message string) (*seasonPackApplyResult, error) {
 		if rollbackErr := rollbackSeasonPackTree(ctx, planBuild.backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
 			log.Warn().Err(rollbackErr).Str("torrentName", torrentName).Msg("season pack: failed to rollback after add failure")
 		}
 		s.recordApplyRun(ctx, torrentName, reason, cause, inst.ID, receiverID, len(episodes), prep.totalEpisodes, float64(len(episodes))/float64(prep.totalEpisodes), linkMode)
-		return &SeasonPackApplyResponse{Reason: reason, Message: message}, nil
+		return &seasonPackApplyResult{reason: reason, message: message, instanceID: inst.ID}, nil
 	}
 	savePath, mapped := seasonPackSavePath(route, planBuild)
 	if !mapped {
@@ -539,15 +535,15 @@ func (s *Service) addSeasonPack(
 	coverage := float64(matched) / float64(prep.totalEpisodes)
 	s.recordApplyRun(ctx, torrentName, "applied", message, inst.ID, receiverID, matched, prep.totalEpisodes, coverage, linkMode)
 
-	return &SeasonPackApplyResponse{
-		Applied:         true,
-		Message:         message,
-		InstanceID:      inst.ID,
-		AddedInstanceID: receiverID,
-		MatchedEpisodes: matched,
-		TotalEpisodes:   prep.totalEpisodes,
-		Coverage:        coverage,
-		LinkMode:        linkMode,
+	return &seasonPackApplyResult{
+		applied:         true,
+		message:         message,
+		instanceID:      inst.ID,
+		addedInstanceID: receiverID,
+		matched:         matched,
+		total:           prep.totalEpisodes,
+		coverage:        coverage,
+		linkMode:        linkMode,
 	}, nil
 }
 
@@ -558,6 +554,7 @@ func seasonPackFacts(prep *seasonPackPrep, planBuild *seasonPackPlanBuild) AddFa
 		ManualAssembly:   prep.manual,
 		SeasonPackLinked: float64(planBuild.linkedBytes) / float64(planBuild.totalBytes),
 		SkipRecheck:      prep.settings.SkipRecheck,
+		SkipAutoResume:   prep.skipAutoResume,
 	}
 }
 
@@ -566,7 +563,8 @@ func (s *Service) assembleSeasonPack(
 	prep *seasonPackPrep,
 	inst *models.Instance,
 	route *candidateRoute,
-	winner *SeasonPackCheckMatch,
+	winner *seasonPackCoverage,
+	matchedTitles map[string][]string,
 	linkMode string,
 	indexer string,
 ) (*seasonPackPlanBuild, map[episodeIdentity]episodeMatch, error) {
@@ -577,13 +575,14 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, fmt.Errorf("%w: hardlink base dir not configured on instance %d", errLayoutMismatch, inst.ID)
 	}
 
-	cached, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
+	lookup := s.seasonPackLookup(ctx, prep, []*models.Instance{inst})
+	torrents, err := s.seasonPackTorrents(ctx, prep, lookup, matchedTitles)(inst.ID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
 
-	candidates := s.matchEpisodeCandidatesDetailed(cached, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
-	if len(candidates) < winner.MatchedEpisodes {
+	candidates := s.matchEpisodeTorrents(torrents, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
+	if len(candidates) < winner.matched {
 		return nil, nil, fmt.Errorf("%w: episode count drifted during apply", errLayoutMismatch)
 	}
 
@@ -827,9 +826,9 @@ func (s *Service) failApply(
 	torrentName string,
 	err error,
 	prep *seasonPackPrep,
-	winner *SeasonPackCheckMatch,
+	winner *seasonPackCoverage,
 	addedInstanceID int,
-) (*SeasonPackApplyResponse, error) {
+) (*seasonPackApplyResult, error) {
 	reason := "link_failed"
 	if errors.Is(err, errLayoutMismatch) {
 		reason = "layout_mismatch"
@@ -838,8 +837,8 @@ func (s *Service) failApply(
 	} else if errors.Is(err, errCoverageDrifted) {
 		reason = "drifted"
 	}
-	s.recordApplyRun(ctx, torrentName, reason, err.Error(), winner.InstanceID, addedInstanceID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, "")
-	return &SeasonPackApplyResponse{Reason: reason, Message: err.Error()}, nil
+	s.recordApplyRun(ctx, torrentName, reason, err.Error(), winner.instanceID, addedInstanceID, winner.matched, prep.totalEpisodes, winner.coverage, "")
+	return &seasonPackApplyResult{reason: reason, message: err.Error(), instanceID: winner.instanceID}, nil
 }
 
 func findInstance(instances []*models.Instance, id int) *models.Instance {
@@ -964,18 +963,6 @@ func filterLinkEligible(instances []*models.Instance) []*models.Instance {
 	return eligible
 }
 
-func (s *Service) seasonPackCoverageTotal(ctx context.Context, torrentName string, packRelease *rls.Release, packEpisodes int) (int, []string) {
-	if packEpisodes <= 0 {
-		return 0, nil
-	}
-
-	totalEpisodes, aliasTitles, ok := s.seasonPackSeasonLookup(ctx, torrentName, packRelease)
-	if !ok || totalEpisodes < packEpisodes {
-		return packEpisodes, aliasTitles
-	}
-	return totalEpisodes, aliasTitles
-}
-
 func seasonPackPolicy(settings *models.CrossSeedAutomationSettings) matchPolicy {
 	return matchPolicy{
 		SizeTolerancePercent:       defaultSizeMismatchTolerancePercent,
@@ -1065,28 +1052,38 @@ func simplifySeasonPackWEBSource(release *rls.Release) {
 	}
 }
 
-func (s *Service) seasonPackSeasonLookup(ctx context.Context, torrentName string, packRelease *rls.Release) (int, []string, bool) {
+type seasonLookup struct {
+	total      int
+	titles     []string
+	fromSonarr bool
+}
+
+func (s *Service) seasonPackSeasonLookup(ctx context.Context, torrentName string, packRelease *rls.Release) seasonLookup {
 	if lookup := s.seasonPackEpisodeTotalLookup; lookup != nil {
-		return lookup(ctx, torrentName, packRelease)
+		total, titles, ok := lookup(ctx, torrentName, packRelease)
+		if !ok {
+			total = 0
+		}
+		return seasonLookup{total: total, titles: titles}
 	}
 	return s.lookupSeasonPackEpisodeTotal(ctx, torrentName, packRelease)
 }
 
-func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName string, packRelease *rls.Release) (int, []string, bool) {
+func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName string, packRelease *rls.Release) seasonLookup {
 	if s == nil || packRelease == nil || packRelease.Series <= 0 || torrentName == "" {
-		return 0, nil, false
+		return seasonLookup{}
 	}
 
-	var aliasTitles []string
+	var season seasonLookup
 	if !isNilARRLookupService(s.arrService) {
 		result, err := s.arrService.LookupSeasonEpisodeTotal(ctx, torrentName, packRelease.Series)
 		if err != nil {
 			log.Debug().Err(err).Str("torrentName", torrentName).Int("season", packRelease.Series).
 				Msg("season pack: failed to resolve Sonarr season total")
 		} else if result != nil {
-			aliasTitles = result.Titles
-			if result.TotalEpisodes > 0 {
-				return result.TotalEpisodes, aliasTitles, true
+			season = seasonLookup{total: result.TotalEpisodes, titles: result.Titles, fromSonarr: true}
+			if season.total > 0 {
+				return season
 			}
 		}
 	}
@@ -1099,12 +1096,13 @@ func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName 
 				log.Debug().Err(err).Str("torrentName", torrentName).Str("title", showTitle).Int("season", packRelease.Series).
 					Msg("season pack: metadata provider lookup failed")
 			} else if total > 0 {
-				return total, aliasTitles, true
+				season.total = total
+				return season
 			}
 		}
 	}
 
-	return 0, aliasTitles, false
+	return season
 }
 
 func seasonPackMetadataTitles(packRelease *rls.Release) []string {
@@ -1115,43 +1113,46 @@ func seasonPackMetadataTitles(packRelease *rls.Release) []string {
 	return titles
 }
 
-func (s *Service) computeCoverage(
-	ctx context.Context,
-	instances []*models.Instance,
-	packName string,
-	packRelease *rls.Release,
-	packEpisodes map[episodeIdentity]packEpisodeOrigin,
-	totalEpisodes int,
-	settings *models.CrossSeedAutomationSettings,
-	aliasTitles []string,
-) ([]SeasonPackCheckMatch, error) {
-	var matches []SeasonPackCheckMatch
-
-	for _, inst := range instances {
-		cached, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
+func (s *Service) computeCoverage(ctx context.Context, prep *seasonPackPrep, lookup *heldLookup) (matches []seasonPackCoverage, matchedTitles map[int]map[string][]string, err error) {
+	matchedTitles = map[int]map[string][]string{}
+	torrentsOf := s.seasonPackTorrents(ctx, prep, lookup, nil)
+	for _, inst := range prep.eligible {
+		torrents, err := torrentsOf(inst.ID)
 		if err != nil {
-			return nil, fmt.Errorf("load cached torrents for instance %d: %w", inst.ID, err)
+			return nil, nil, fmt.Errorf("load cached torrents for instance %d: %w", inst.ID, err)
 		}
 
-		matched := s.matchEpisodeCandidatesDetailed(cached, packName, packRelease, packEpisodes, settings, aliasTitles)
+		matched := s.matchEpisodeTorrents(torrents, prep.packName, prep.packRelease, prep.packEpisodes, prep.settings, prep.aliasTitles)
 		if len(matched) == 0 {
 			continue
 		}
 
-		coverage := float64(len(matched)) / float64(totalEpisodes)
-		matches = append(matches, SeasonPackCheckMatch{
-			InstanceID:      inst.ID,
-			MatchedEpisodes: len(matched),
-			TotalEpisodes:   totalEpisodes,
-			Coverage:        coverage,
-		})
+		match := seasonPackCoverage{instanceID: inst.ID, matched: len(matched)}
+		if prep.totalEpisodes > 0 {
+			match.total = prep.totalEpisodes
+			match.coverage = float64(len(matched)) / float64(prep.totalEpisodes)
+		}
+		matches = append(matches, match)
+		matchedTitles[inst.ID] = titlesByHash(matched)
 	}
 
-	return matches, nil
+	return matches, matchedTitles, nil
 }
 
-func (s *Service) matchEpisodeCandidatesDetailed(
-	cached []qbittorrent.CrossInstanceTorrentView,
+func titlesByHash(matched map[episodeIdentity][]episodeMatch) map[string][]string {
+	titles := map[string][]string{}
+	for _, episodes := range matched {
+		for _, episode := range episodes {
+			if len(episode.titles) > 0 {
+				titles[episode.torrentHash] = episode.titles
+			}
+		}
+	}
+	return titles
+}
+
+func (s *Service) matchEpisodeTorrents(
+	torrents iter.Seq2[*qbt.Torrent, []string],
 	packName string,
 	packRelease *rls.Release,
 	packEpisodes map[episodeIdentity]packEpisodeOrigin,
@@ -1171,7 +1172,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			return nil
 		}
 		logged[key] = struct{}{}
-		return log.Debug().
+		return log.Trace().
 			Str("pack", packRelease.Title).
 			Int("season", packRelease.Series).
 			Str("candidate", candidateName).
@@ -1184,13 +1185,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	gate := s.sourceGate()
 	webhookFilter := defaultsFor(triggerWebhook, settings).sourceFilter
 
-	for i := range cached {
-		view := &cached[i]
-		if view.TorrentView == nil || view.Torrent == nil {
-			continue
-		}
-		torrent := view.Torrent
-
+	for torrent, alternateTitles := range torrents {
 		answer := gate.check(torrent, webhookFilter)
 		if answer.lasting() {
 			continue
@@ -1221,7 +1216,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 				reason := packEpisodeRejectReason(inPack)
 				pack := namedRelease{release: packRelease, rawName: packName}
 				local := namedRelease{release: parsed, rawName: torrent.Name}
-				if inPack && !m.titlesMatchInSourceSeason(pack, local, matchEvidence{SourceTitles: aliasTitles}) {
+				if inPack && !m.titlesMatchInSourceSeason(pack, local, matchEvidence{SourceTitles: aliasTitles, CandidateTitles: alternateTitles}) {
 					reason = titleMismatchReason
 				}
 				logFiltered(torrent.Name, reason).Msg("[CROSSSEED-MATCH] Release filtered")
@@ -1244,7 +1239,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			packEpisode = asEpisode(packRelease, id.episode)
 			packEpisodeReleases[id.episode] = packEpisode
 		}
-		evidence := matchEvidence{CandidateTitles: aliasTitles}
+		evidence := matchEvidence{SourceTitles: alternateTitles, CandidateTitles: aliasTitles}
 		if origin.file.Size > 0 {
 			evidence.SourceSize, evidence.CandidateSize = torrent.Size, origin.file.Size
 		}
@@ -1268,6 +1263,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			category:    torrent.Category,
 			name:        torrent.Name,
 			release:     resolved,
+			titles:      alternateTitles,
 		})
 	}
 
@@ -1351,6 +1347,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 					matchEvidence{
 						SourceFiles:     qbt.TorrentFiles{{Name: localFile.sourcePath, Size: localFile.size}},
 						CandidateFiles:  qbt.TorrentFiles{expectedFile.file},
+						SourceTitles:    candidate.titles,
 						CandidateTitles: aliasTitles,
 					},
 					seasonPackPolicy(settings),
@@ -1613,12 +1610,12 @@ func rollbackSeasonPackTree(ctx context.Context, backend fsops.Backend, created 
 	return errors.Join(errs...)
 }
 
-func selectWinner(matches []SeasonPackCheckMatch, threshold float64) *SeasonPackCheckMatch {
-	var best *SeasonPackCheckMatch
+func selectWinner(matches []seasonPackCoverage, threshold float64) *seasonPackCoverage {
+	var best *seasonPackCoverage
 
 	for i := range matches {
 		m := &matches[i]
-		if m.Coverage < threshold {
+		if m.coverage < threshold {
 			continue
 		}
 		if best == nil || isBetterMatch(m, best) {
@@ -1629,14 +1626,14 @@ func selectWinner(matches []SeasonPackCheckMatch, threshold float64) *SeasonPack
 	return best
 }
 
-func isBetterMatch(a, b *SeasonPackCheckMatch) bool {
-	if a.Coverage != b.Coverage {
-		return a.Coverage > b.Coverage
+func isBetterMatch(a, b *seasonPackCoverage) bool {
+	if a.coverage != b.coverage {
+		return a.coverage > b.coverage
 	}
-	if a.MatchedEpisodes != b.MatchedEpisodes {
-		return a.MatchedEpisodes > b.MatchedEpisodes
+	if a.matched != b.matched {
+		return a.matched > b.matched
 	}
-	return a.InstanceID < b.InstanceID
+	return a.instanceID < b.instanceID
 }
 
 func determineLinkMode(instances []*models.Instance, instanceID int) string {
@@ -1663,16 +1660,17 @@ func collectHashes(meta TorrentMetadata) []string {
 }
 
 func buildCheckResponse(
-	passing []SeasonPackCheckMatch,
-	allMatches []SeasonPackCheckMatch,
+	passing []seasonPackCoverage,
+	allMatches []seasonPackCoverage,
 	totalEpisodes int,
 	threshold float64,
-) *SeasonPackCheckResponse {
+) *seasonPackCheckResult {
 	if len(passing) > 0 {
-		return &SeasonPackCheckResponse{
-			Ready:   true,
-			Message: fmt.Sprintf("%d instance(s) meet %.0f%% coverage threshold", len(passing), threshold*100),
-			Matches: allMatches,
+		return &seasonPackCheckResult{
+			ready:   true,
+			message: fmt.Sprintf("%d instance(s) meet %.0f%% coverage threshold", len(passing), threshold*100),
+			matches: allMatches,
+			best:    *selectWinner(passing, threshold),
 		}
 	}
 
@@ -1683,24 +1681,23 @@ func buildCheckResponse(
 				best = allMatches[i+1]
 			}
 		}
-		return &SeasonPackCheckResponse{
-			Reason:  "below_threshold",
-			Message: fmt.Sprintf("best coverage %.0f%% on instance %d (%d/%d episodes)", best.Coverage*100, best.InstanceID, best.MatchedEpisodes, totalEpisodes),
-			Matches: allMatches,
+		return &seasonPackCheckResult{
+			reason:  "below_threshold",
+			message: fmt.Sprintf("best coverage %.0f%% on instance %d (%d/%d episodes)", best.coverage*100, best.instanceID, best.matched, totalEpisodes),
+			matches: allMatches,
 		}
 	}
 
-	return &SeasonPackCheckResponse{
-		Reason:  "no_matches",
-		Message: "no matching episodes found on any instance",
+	return &seasonPackCheckResult{
+		reason:  "no_matches",
+		message: "no matching episodes found on any instance",
 	}
 }
 
 func (s *Service) recordCheckRun(
 	ctx context.Context,
 	torrentName string,
-	resp *SeasonPackCheckResponse,
-	passing []SeasonPackCheckMatch,
+	resp *seasonPackCheckResult,
 	totalEpisodes int,
 ) {
 	if s.seasonPackRunStore == nil {
@@ -1713,22 +1710,15 @@ func (s *Service) recordCheckRun(
 		TotalEpisodes: totalEpisodes,
 	}
 
-	if resp.Ready && len(passing) > 0 {
+	if resp.ready {
 		run.Status = "ready"
-		best := passing[0]
-		for i := range passing[1:] {
-			if isBetterMatch(&passing[i+1], &best) {
-				best = passing[i+1]
-			}
-		}
-		run.MatchedEpisodes = best.MatchedEpisodes
-		run.Coverage = best.Coverage
-		instID := best.InstanceID
-		run.InstanceID = &instID
+		run.MatchedEpisodes = resp.best.matched
+		run.Coverage = resp.best.coverage
+		run.InstanceID = new(resp.best.instanceID)
 	} else {
 		run.Status = "skipped"
-		run.Reason = resp.Reason
-		run.Message = resp.Message
+		run.Reason = resp.reason
+		run.Message = resp.message
 	}
 
 	if _, err := s.seasonPackRunStore.Create(ctx, run); err != nil {

@@ -1621,6 +1621,7 @@
     },
     "footer": {
       "adding": "Додавання...",
+      "addingBatch": "Додавання пакета {{current}} з {{total}}...",
       "add": "Додати торент",
       "cancel": "Скасувати",
       "addCount_one": "Додати {{count}} торрент",
@@ -1635,6 +1636,8 @@
       "addedMany": "{{count}} торентів успішно додано",
       "failedMany": "Не вдалося додати торент(и) {{count}}",
       "partialSuccess": "Додано {{added}}, не вдалося {{failed}}",
+      "batchFailed": "Додано {{added}} з {{total}} торентів",
+      "batchFailedDescription": "Пакет {{batch}} з {{batches}} не вдалося додати: {{error}}. Решта лишається у списку, тож їх можна додати знову.",
       "rejectedOne": "1 файл відхилено (не файл.torrent)",
       "rejectedMany": "Файли {{count}} відхилено (не файли.torrent)"
     }

@@ -57,7 +57,7 @@ export function AutoResumeSwitch({ id, skip, onSkipChange, help }: AutoResumeSwi
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-1.5">
-        <Label htmlFor={id} className="font-medium">{t("sourceCard.autoResume")}</Label>
+        <Label htmlFor={id}>{t("sourceCard.autoResume")}</Label>
         <FieldHelp>{t("sourceCard.autoResumeHelp")}{help ? ` ${help}` : ""}</FieldHelp>
       </div>
       <Switch id={id} checked={!skip} onCheckedChange={value => onSkipChange(!value)} />

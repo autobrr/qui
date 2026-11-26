@@ -380,5 +380,5 @@ function TransferTableRow({ row, picked, stale, onTick, running, onDetails, onRe
 }
 
 function Mark({ children }: { children: string }) {
-  return <Badge variant="outline" className="py-0 text-[10px] font-normal text-muted-foreground">{children}</Badge>
+  return <Badge variant="outline" className="py-0 text-10 font-normal text-muted-foreground">{children}</Badge>
 }

@@ -22,10 +22,10 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
-	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -1938,7 +1938,7 @@ func (s *partialPoolCoordinator) rollbackLivePartialPoolHardlink(ctx context.Con
 			return false, true
 		}
 		sourcePath, err := partialPoolLocalPath(sourceMember, sourceFile)
-		if err != nil || !partialPoolCreatedContains(created, targetPath) || !partialPoolSameFile(sourcePath, targetPath) {
+		if err != nil || !partialPoolCreatedContains(created, targetPath) || !partialPoolSameFile(ctx, sourcePath, targetPath) {
 			return false, false
 		}
 		if err := created.Rollback(); err != nil {
@@ -1987,21 +1987,14 @@ func partialPoolCreatedContains(created *hardlinktree.Created, target string) bo
 	return slices.Contains(created.Files, target)
 }
 
-func partialPoolSameFile(sourcePath, targetPath string) bool {
-	sourceInfo, err := os.Lstat(sourcePath)
-	if err != nil || !sourceInfo.Mode().IsRegular() {
+func partialPoolSameFile(ctx context.Context, sourcePath, targetPath string) bool {
+	files := localbackend.NewBackend()
+	source, err := files.Lstat(ctx, sourcePath)
+	if err != nil || !source.Mode.IsRegular() {
 		return false
 	}
-	targetInfo, err := os.Lstat(targetPath)
-	if err != nil || !targetInfo.Mode().IsRegular() {
-		return false
-	}
-	sourceID, _, err := hardlink.GetFileID(sourceInfo, sourcePath)
-	if err != nil {
-		return false
-	}
-	targetID, _, err := hardlink.GetFileID(targetInfo, targetPath)
-	return err == nil && fsops.SameFile(sourceID, nil, targetID, nil)
+	target, err := files.Lstat(ctx, targetPath)
+	return err == nil && target.Mode.IsRegular() && fsops.SameFile(source.FileID, nil, target.FileID, nil)
 }
 
 func (s *partialPoolCoordinator) reconcilePartialPoolAcquiring(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {
@@ -2764,7 +2757,7 @@ func (s *partialPoolCoordinator) finishPartialPoolPropagation(
 			return false
 		}
 		if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
-			if !partialPoolSameFile(sourcePath, targetPath) {
+			if !partialPoolSameFile(ctx, sourcePath, targetPath) {
 				markManual("target_conflict", "a different target file already exists")
 				return false
 			}

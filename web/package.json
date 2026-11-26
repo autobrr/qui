@@ -2,7 +2,7 @@
   "name": "web",
   "private": true,
   "version": "0.0.0",
-  "packageManager": "pnpm@11.1.2",
+  "packageManager": "pnpm@12.23.0",
   "engines": {
     "node": ">=24.0"
   },

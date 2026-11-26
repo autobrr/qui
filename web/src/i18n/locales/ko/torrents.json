@@ -1380,6 +1380,7 @@
     },
     "footer": {
       "adding": "추가 중...",
+      "addingBatch": "{{total}}개 중 {{current}}번째 묶음 추가 중...",
       "add": "토렌트 추가",
       "cancel": "취소",
       "addCount_other": "토렌트 {{count}}개 추가"
@@ -1391,6 +1392,8 @@
       "addedMany": "토렌트 {{count}}개가 추가되었습니다",
       "failedMany": "토렌트 {{count}}개를 추가하지 못했습니다",
       "partialSuccess": "{{added}}개 추가, {{failed}}개 실패",
+      "batchFailed": "토렌트 {{total}}개 중 {{added}}개 추가됨",
+      "batchFailedDescription": "{{batches}}개 중 {{batch}}번째 묶음 실패: {{error}}. 나머지는 목록에 남아 있어 다시 추가할 수 있습니다.",
       "rejectedOne": "파일 1개 거부됨(.torrent 파일 아님)",
       "rejectedMany": "파일 {{count}}개 거부됨(.torrent 파일 아님)"
     }

@@ -111,6 +111,14 @@ func (f *freshSyncs) InstanceSnapshot(_ context.Context, instanceID int) *qbt.Sy
 	return f.instances[instanceID].owner.SnapshotUnchecked()
 }
 
+func (f *freshSyncs) ListSnapshot(_ int, snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
+	return snapshot.Torrents()
+}
+
+func (f *freshSyncs) ListedLookup(_ int, snapshot *qbt.SyncSnapshot) func(hash string) (*qbt.Torrent, bool) {
+	return snapshot.Torrent
+}
+
 func (f *freshSyncs) CopyGroups() *qbittorrent.CopyGroups {
 	return nil
 }

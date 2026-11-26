@@ -71,7 +71,7 @@ export function SystemNoticeDetail({ notice, titleAs: Title = "p", titleId, onNa
           </p>
         </div>
       </div>
-      <div className="space-y-1.5 px-4 pb-3 pl-9 pt-2.5 text-[13px] leading-relaxed">
+      <div className="space-y-1.5 px-4 pb-3 pl-9 pt-2.5 text-13 leading-relaxed">
         <p>{description.effect}</p>
         <p className="text-muted-foreground">{description.fix}</p>
       </div>

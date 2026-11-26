@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -68,6 +69,7 @@ type TorrentsHandler struct {
 	archiveExporter   torrentArchiveExporter
 	deleteMatches     deleteMatchFinder
 	deleter           torrentDeleter
+	installPaths      installPaths
 	held              heldTorrents
 }
 
@@ -117,6 +119,8 @@ func validateTorrentFilePath(path string) error {
 }
 
 const addTorrentMaxFormMemory int64 = 256 << 20
+
+const addTorrentMaxFormParts = 1000
 
 type SortedPeer struct {
 	Key string `json:"key"`
@@ -226,18 +230,19 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	offset := page * limit
 
 	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
-		InstanceID:        instanceID,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		SidebarCounts:     true,
-		CopyGroups:        groupCopiesParam(r),
-		UniqueSize:        uniqueSizeParam(r),
-		CacheOnly:         preferCached,
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		InstanceID:         instanceID,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		SidebarCounts:      true,
+		CopyGroups:         groupCopiesParam(r),
+		UniqueSize:         uniqueSizeParam(r),
+		CacheOnly:          preferCached,
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
@@ -367,7 +372,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		requestedCount := 0
 		resolvedCount := 0
 		for _, targetInstanceID := range targetInstanceIDs {
-			torrents, fieldErr := h.syncManager.GetCachedInstanceTorrents(r.Context(), targetInstanceID)
+			torrents, fieldErr := h.syncManager.GetTorrentRefs(r.Context(), targetInstanceID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 			if fieldErr != nil {
 				if instanceID != allInstancesID {
 					if respondIfInstanceDisabled(w, fieldErr, targetInstanceID, "torrents:metadata") {
@@ -383,6 +388,9 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				return
 			}
 
+			slices.SortFunc(torrents, func(a, b *qbt.Torrent) int {
+				return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Hash, b.Hash))
+			})
 			requestedHashes := buildExcludeHashSet(targetsByInstance[targetInstanceID])
 			requestedCount += len(targetsByInstance[targetInstanceID])
 			for _, torrent := range torrents {
@@ -390,7 +398,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -558,7 +566,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	syncManager, err := h.syncManager.GetSyncOwner(r.Context(), instanceID)
+	torrents, err := h.syncManager.GetTorrentRefs(r.Context(), instanceID, qbittorrent.TorrentRefFilter{Hashes: req.Hashes})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:checkDuplicates") {
 			return
@@ -568,16 +576,12 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var torrents []*qbt.Torrent
-	if snapshot := syncManager.Snapshot(); snapshot != nil {
-		wanted := make(map[string]struct{}, len(req.Hashes))
-		for _, hash := range req.Hashes {
-			wanted[hash] = struct{}{}
+	requested := make(map[string][]string, len(req.Hashes))
+	for _, hash := range req.Hashes {
+		key := normalizeHashValue(hash)
+		if !slices.Contains(requested[key], hash) {
+			requested[key] = append(requested[key], hash)
 		}
-		torrents = snapshot.Matching(func(t *qbt.Torrent) bool {
-			_, ok := wanted[t.Hash]
-			return ok
-		})
 	}
 
 	matches := make([]qbittorrent.DuplicateTorrentMatch, len(torrents))
@@ -587,7 +591,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 			InfohashV1:    strings.TrimSpace(torrent.InfohashV1),
 			InfohashV2:    strings.TrimSpace(torrent.InfohashV2),
 			Name:          torrent.Name,
-			MatchedHashes: []string{torrent.Hash},
+			MatchedHashes: requested[normalizeHashValue(torrent.Hash)],
 		}
 	}
 
@@ -609,14 +613,18 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	err = r.ParseMultipartForm(addTorrentMaxFormMemory)
 	if err != nil {
 		if errors.Is(err, multipart.ErrMessageTooLarge) {
-			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload exceeded %d MB limit", addTorrentMaxFormMemory>>20))
+			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload too large: send at most %d files and fields per request", addTorrentMaxFormParts))
 			return
 		}
 		RespondError(w, http.StatusBadRequest, "Failed to parse form data")
 		return
 	}
 
-	var torrentFiles [][]byte
+	type uploadedTorrent struct {
+		filename string
+		content  []byte
+	}
+	var torrentFiles []uploadedTorrent
 	var urls []string
 
 	type fileReadFailure struct {
@@ -643,7 +651,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					fileReadFailures = append(fileReadFailures, fileReadFailure{filename: fileHeader.Filename, err: "Failed to read file"})
 					continue
 				}
-				torrentFiles = append(torrentFiles, fileContent)
+				torrentFiles = append(torrentFiles, uploadedTorrent{filename: fileHeader.Filename, content: fileContent})
 			}
 		}
 	}
@@ -768,18 +776,18 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	var failedFiles []failedFile
 
 	if len(torrentFiles) > 0 {
-		for i, fileContent := range torrentFiles {
+		for i, torrentFile := range torrentFiles {
 			if ctx.Err() != nil {
 				log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
 				break
 			}
 
-			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
+			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, torrentFile.content, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
 				log.Debug().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
-				failedFiles = append(failedFiles, failedFile{Filename: fmt.Sprintf("file_%d", i), Error: err.Error()})
+				failedFiles = append(failedFiles, failedFile{Filename: torrentFile.filename, Error: err.Error()})
 				failedCount++
 				lastError = err
 			} else {
@@ -1079,13 +1087,14 @@ func explicitTargets(scope int, targets []BulkActionTarget, hashes []string) map
 func (h *TorrentsHandler) selectAllTorrents(r *http.Request, cacheOnly bool, scope int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int, excludeHashes []string, excludeTargets []BulkActionTarget) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	ctx := r.Context()
 	view := qbittorrent.TorrentListView{
-		InstanceID:        scope,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		CacheOnly:         cacheOnly,
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		InstanceID:         scope,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		CacheOnly:          cacheOnly,
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	}
 	var torrents []qbittorrent.CrossInstanceTorrentView
 	if scope == allInstancesID {
@@ -2667,17 +2676,18 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	offset := page * limit
 
 	response, err := h.syncManager.ListTorrents(r.Context(), qbittorrent.TorrentListView{
-		Unified:           true,
-		InstanceIDs:       instanceIDs,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		SidebarCounts:     true,
-		CopyGroups:        groupCopiesParam(r),
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		Unified:            true,
+		InstanceIDs:        instanceIDs,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		SidebarCounts:      true,
+		CopyGroups:         groupCopiesParam(r),
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, 0, "torrents:listCrossInstance") {
@@ -3034,6 +3044,10 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	info, err := file.Stat()
 	if err != nil || info.IsDir() {
 		RespondError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+	if h.isInstallFile(info) {
+		RespondError(w, http.StatusForbidden, "qui does not serve its own config or database files")
 		return
 	}
 

@@ -591,8 +591,7 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 			r.With(crossSeed.Write).Post("/{instanceID}/test", h.TestCrossSeedRoute)
 		})
 		r.Route("/season-pack", func(r chi.Router) {
-			r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run).Post("/check", h.SeasonPackCheck)
-			r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run).Post("/apply", h.SeasonPackApply)
+			h.seasonPackEndpoints(r.With(apiKeyQueryMiddleware, authMiddleware, crossSeed.Run))
 			r.With(authMiddleware, crossSeed.Read).Get("/runs", h.ListSeasonPackRuns)
 		})
 	})
@@ -1531,56 +1530,6 @@ func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
 	default:
 		return http.StatusNotFound
 	}
-}
-
-func (h *CrossSeedHandler) SeasonPackCheck(w http.ResponseWriter, r *http.Request) {
-	var req crossseed.SeasonPackCheckRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	resp, err := h.service.CheckSeasonPackWebhook(r.Context(), &req)
-	if err != nil {
-		log.Error().Err(err).Str("torrentName", req.TorrentName).Msg("Season pack check failed")
-		RespondError(w, http.StatusInternalServerError, "Failed to check season pack")
-		return
-	}
-
-	if resp.Ready {
-		RespondJSON(w, http.StatusOK, resp)
-		return
-	}
-	RespondJSON(w, http.StatusNotFound, resp)
-}
-
-func (h *CrossSeedHandler) SeasonPackApply(w http.ResponseWriter, r *http.Request) {
-	var req crossseed.SeasonPackApplyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	resp, err := h.service.ApplySeasonPackWebhook(context.WithoutCancel(r.Context()), &req)
-	if err != nil {
-		log.Error().Err(err).Str("torrentName", req.TorrentName).Msg("Season pack apply failed")
-		RespondError(w, http.StatusInternalServerError, "Failed to apply season pack")
-		return
-	}
-	if resp == nil || !resp.Applied {
-		reason := ""
-		if resp != nil {
-			reason = resp.Reason
-		}
-		log.Error().
-			Str("torrentName", req.TorrentName).
-			Str("reason", reason).
-			Msg("Season pack apply returned failure response")
-		RespondError(w, http.StatusInternalServerError, "Failed to apply season pack")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, resp)
 }
 
 func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Request) {

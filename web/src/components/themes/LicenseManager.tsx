@@ -259,7 +259,7 @@ export function LicenseManager({
                   {activateLicense.isError ? (
                     <LicenseError error={activateLicense.error} className="text-xs mt-2" />
                   ) : (
-                    <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
+                    <div className="text-xs text-warning mt-2 flex items-start gap-1">
                       <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
                       <span>
                         <Trans ns="settings" i18nKey="themes.license.invalid.dodo" components={{ portal: <LicensePortalLink /> }} />

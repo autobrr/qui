@@ -636,3 +636,16 @@ func TestTransferTorrentPlacesAGroupBelowAWindowsSavePath(t *testing.T) {
 	require.Equal(t, "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added",
 		record.FailureReason, "the stub cannot write at a save path on another host")
 }
+
+func TestTransferTorrentWaitsForARecheckOnCompletionOnTheTarget(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	r.dst.RecheckSyncs = 30
+	s := newShow(t, showName)
+	r.seed(s)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WayBitTorrent, record.Way)
+}

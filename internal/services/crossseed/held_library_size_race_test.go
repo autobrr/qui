@@ -5,4 +5,11 @@
 
 package crossseed
 
-const heldEquivalenceLibrarySize = 2000
+import "github.com/autobrr/qui/internal/testutil/biglib"
+
+const (
+	heldEquivalenceLibrarySize = 2000
+	keptBudgetLibrarySize      = 10_000
+	burstLibrarySize           = biglib.Size / 2
+	packCheckBudget            = 16 * biglib.MB
+)

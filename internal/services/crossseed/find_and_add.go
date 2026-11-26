@@ -573,24 +573,25 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 		return
 	}
 
-	resp, err := s.invokeSeasonPackApply(ctx, &SeasonPackApplyRequest{
-		TorrentName: torrentName,
-		TorrentData: req.TorrentData,
-		InstanceIDs: req.TargetInstanceIDs,
-		Indexer:     req.IndexerName,
+	response.seasonPackTried = true
+	resp, err := s.invokeSeasonPackApply(ctx, seasonPackRequest{
+		name:        torrentName,
+		torrentData: req.TorrentData,
+		instanceIDs: req.TargetInstanceIDs,
+		indexer:     req.IndexerName,
 		autonomous:  true,
 	})
 	if err != nil {
 		log.Warn().Err(err).Str("torrentName", torrentName).Msg("Season pack diversion failed")
 		return
 	}
-	if resp == nil || !resp.Applied {
+	if resp == nil || !resp.applied {
 		if resp != nil {
 			log.Debug().
 				Str("torrentName", torrentName).
-				Str("reason", resp.Reason).
+				Str("reason", resp.reason).
 				Msg("Season pack diversion did not apply")
-			switch resp.Reason {
+			switch resp.reason {
 			case "drifted", "layout_mismatch", "already_exists":
 				s.recordSeasonPackFailCooldown(ctx, torrentName, response)
 			}
@@ -599,37 +600,42 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 	}
 
 	response.Success = true
-	added := InstanceCrossSeedResult{
-		InstanceID:     resp.InstanceID,
-		Success:        true,
-		Status:         "added",
-		Message:        fmt.Sprintf("Season pack assembled from local episodes (%d/%d matched)", resp.MatchedEpisodes, resp.TotalEpisodes),
-		MatchedTorrent: &MatchedTorrent{Name: torrentName},
-	}
-	if resp.AddedInstanceID != 0 && resp.AddedInstanceID != resp.InstanceID {
-		added.CrossSeedInstanceID = resp.AddedInstanceID
-		if inst, instErr := s.instanceStore.Get(ctx, resp.AddedInstanceID); instErr == nil && inst != nil {
-			added.CrossSeedInstanceName = inst.Name
-		}
-	}
+	added := s.seasonPackAddedResult(ctx, torrentName, resp)
 	for i := range response.Results {
-		if response.Results[i].InstanceID == resp.InstanceID {
+		if response.Results[i].InstanceID == resp.instanceID {
 			added.InstanceName = response.Results[i].InstanceName
 			response.Results[i] = added
 			return
 		}
 	}
-	if inst, instErr := s.instanceStore.Get(ctx, resp.InstanceID); instErr == nil && inst != nil {
+	if inst, instErr := s.instanceStore.Get(ctx, resp.instanceID); instErr == nil && inst != nil {
 		added.InstanceName = inst.Name
 	}
 	response.Results = append(response.Results, added)
 }
 
-func (s *Service) invokeSeasonPackApply(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
+func (s *Service) seasonPackAddedResult(ctx context.Context, torrentName string, result *seasonPackApplyResult) InstanceCrossSeedResult {
+	added := InstanceCrossSeedResult{
+		InstanceID:     result.instanceID,
+		Success:        true,
+		Status:         "added",
+		Message:        fmt.Sprintf("Season pack assembled from local episodes (%d/%d matched)", result.matched, result.total),
+		MatchedTorrent: &MatchedTorrent{Name: torrentName},
+	}
+	if result.addedInstanceID != 0 && result.addedInstanceID != result.instanceID {
+		added.CrossSeedInstanceID = result.addedInstanceID
+		if inst, instErr := s.instanceStore.Get(ctx, result.addedInstanceID); instErr == nil && inst != nil {
+			added.CrossSeedInstanceName = inst.Name
+		}
+	}
+	return added
+}
+
+func (s *Service) invokeSeasonPackApply(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error) {
 	if s.seasonPackApplier != nil {
 		return s.seasonPackApplier(ctx, req)
 	}
-	return s.ApplySeasonPackWebhook(ctx, req)
+	return s.applySeasonPack(ctx, req)
 }
 
 func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {

@@ -380,9 +380,9 @@ export function OrphanScanSettingsForm({
           {settings.autoCleanupEnabled && (
             <div className="space-y-4 pl-3 border-l-2 border-muted">
               {!initialAutoCleanupEnabled && (
-                <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/5 p-4 space-y-3">
+                <div className="rounded-lg border border-warning/50 bg-warning/5 p-4 space-y-3">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                    <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-foreground">
                         {t("preferences.orphanScanSettings.autoDeleteWarningTitle")}
