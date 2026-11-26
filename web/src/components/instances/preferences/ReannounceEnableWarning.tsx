@@ -20,8 +20,8 @@ import { useTranslation } from "react-i18next"
 export function ReannounceEnableWarningAlert() {
   const { t } = useTranslation("instances")
   return (
-    <Alert variant="warning" className="border-yellow-500/40 bg-yellow-500/10 text-yellow-950 dark:text-yellow-100">
-      <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+    <Alert variant="warning">
+      <AlertTriangle className="h-4 w-4" />
       <AlertTitle>{t("preferences.reannounceWarning.alertTitle")}</AlertTitle>
       <AlertDescription className="space-y-1">
         <p>{t("preferences.reannounceWarning.alertDescription1")}</p>
