@@ -2444,7 +2444,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     groupOptions={groupedConditionOptions}
                   />
                   {mixedActionConditions && (
-                    <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm">
+                    <div className="rounded-md border border-warning/50 bg-warning/10 p-3 text-sm">
                       <p>{t("preferences.workflowDialog.mixedActionConditions")}</p>
                     </div>
                   )}
@@ -2483,7 +2483,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           {t("preferences.workflowDialog.addConditionsToPreview")}
                         </p>
                       ) : livePreviewResult.skipped ? (
-                        <p className="text-xs text-amber-500">{getRuleSkipReason(livePreviewResult.skipped, t)}</p>
+                        <p className="text-xs text-warning">{getRuleSkipReason(livePreviewResult.skipped, t)}</p>
                       ) : (
                         <>
                           <p className="text-xs text-muted-foreground">
@@ -4107,7 +4107,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </Tooltip>
                   )}
                   {deleteUsesFreeSpace && formState.intervalSeconds === 60 && (
-                    <span className="text-xs text-yellow-500">{t("preferences.workflowDialog.interval.cooldownWarning")}</span>
+                    <span className="text-xs text-warning">{t("preferences.workflowDialog.interval.cooldownWarning")}</span>
                   )}
                 </div>
               </div>

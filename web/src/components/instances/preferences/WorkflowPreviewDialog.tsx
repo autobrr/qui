@@ -295,7 +295,7 @@ export function WorkflowPreviewDialog({
   }, [condition, dynamicColumns])
 
   const confirmVariant = destructive ? "destructive" : "default"
-  const confirmClassName = !destructive && warning ? "bg-amber-600 text-white hover:bg-amber-700" : undefined
+  const confirmClassName = !destructive && warning ? "bg-warning text-background hover:bg-warning/90" : undefined
 
   const dryRunToggle = onDryRunChange && <DryRunToggle checked={dryRun} onCheckedChange={onDryRunChange} />
 
@@ -360,7 +360,7 @@ export function WorkflowPreviewDialog({
         </AlertDialogHeader>
 
         {preview?.skipped && (
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-500">
+          <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             {getRuleSkipReason(preview.skipped, t)}
           </p>
         )}

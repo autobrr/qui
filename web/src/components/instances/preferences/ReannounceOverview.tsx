@@ -155,10 +155,10 @@ export function ReannounceOverview({
   }
 
   const outcomeClasses: Record<InstanceReannounceActivity["outcome"], string> = {
-    succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    succeeded: "bg-success/10 text-success border-success/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
     skipped: "bg-muted text-muted-foreground border-border/60",
-    started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    started: "bg-info/10 text-info border-info/20",
   }
 
   const getSettingsSummaryParts = (settings: InstanceReannounceSettings): string[] => {
@@ -245,7 +245,7 @@ export function ReannounceOverview({
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
                           <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
                           {isEnabled && stats.successToday > 0 && (
-                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                            <Badge variant="success">
                               {t("preferences.reannounceOverview.today", { count: stats.successToday })}
                             </Badge>
                           )}
@@ -270,7 +270,7 @@ export function ReannounceOverview({
                       >
                         <span className={cn(
                           "text-xs font-medium",
-                          isEnabled ? "text-emerald-500" : "text-muted-foreground"
+                          isEnabled ? "text-success" : "text-muted-foreground"
                         )}>
                           {isEnabled ? t("preferences.reannounceOverview.on") : t("preferences.reannounceOverview.off")}
                         </span>

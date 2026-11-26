@@ -321,10 +321,10 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const activityEnabled = Boolean(instance && settings.enabled)
 
   const outcomeClasses: Record<InstanceReannounceActivity["outcome"], string> = {
-    succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    succeeded: "bg-success/10 text-success border-success/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
     skipped: "bg-muted text-muted-foreground border-border/60",
-    started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    started: "bg-info/10 text-info border-info/20",
   }
 
   const headerContent = (
