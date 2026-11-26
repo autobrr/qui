@@ -25,6 +25,7 @@ var alternateTitlesMatcher = (&Service{releaseCache: NewReleaseCache()}).matcher
 type fakeAlternateTitles struct {
 	mu          sync.Mutex
 	titles      map[string][]string
+	seasons     map[string][]int
 	cached      bool
 	down        bool
 	partial     bool
@@ -55,7 +56,7 @@ func (f *fakeAlternateTitles) AlternateTitles(ctx context.Context, held HeldRele
 	if f.searchFails {
 		return AlternateTitles{Requested: true}, ErrTitleUnanswered
 	}
-	return AlternateTitles{Titles: f.titles[held.Title], Requested: !f.cached, Incomplete: f.partial}, nil
+	return AlternateTitles{Titles: f.titles[held.Title], Seasons: f.seasons, Requested: !f.cached, Incomplete: f.partial}, nil
 }
 
 func (f *fakeAlternateTitles) askedReleases() []HeldRelease {
@@ -171,10 +172,10 @@ func TestAlternateTitlesKeepTheTitlesOfEachSource(t *testing.T) {
 		title := holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
 		synctest.Wait()
 
-		require.ElementsMatch(t, []string{"laternenwache", "guardia lanterna"}, a.of(title))
-		require.Equal(t, []*heldTitle{title}, a.namedByAny([]string{"nobody", "laternenwache"}))
-		require.Equal(t, []*heldTitle{title}, a.namedByAny([]string{"guardia lanterna", "laternenwache"}))
-		require.Empty(t, a.namedByAny([]string{"lantern ward"}))
+		require.ElementsMatch(t, []string{"laternenwache", "guardia lanterna"}, a.of(title, 0))
+		require.Equal(t, []*heldTitle{title}, a.namedByAny([]string{"nobody", "laternenwache"}, 0))
+		require.Equal(t, []*heldTitle{title}, a.namedByAny([]string{"guardia lanterna", "laternenwache"}, 0))
+		require.Empty(t, a.namedByAny([]string{"lantern ward"}, 0))
 	})
 }
 
@@ -267,7 +268,7 @@ func TestAlternateTitlesAskAgainAfterAnIncompleteAnswer(t *testing.T) {
 		time.Sleep(time.Minute)
 		synctest.Wait()
 		require.Len(t, source.askTimes(), 10, "a source that answers is not paused")
-		require.Equal(t, []string{"laternenwache"}, a.of(title))
+		require.Equal(t, []string{"laternenwache"}, a.of(title, 0))
 
 		source.set(func(f *fakeAlternateTitles) { f.failsOn = func(string) bool { return true } })
 		time.Sleep(time.Minute)
@@ -288,7 +289,7 @@ func TestAlternateTitlesAskAgainAfterAnIncompleteAnswer(t *testing.T) {
 		synctest.Wait()
 		require.Len(t, source.askTimes(), 22)
 		require.Equal(t, incompleteAnswerRetry, source.askTimes()[12].Sub(started))
-		require.Equal(t, []string{"laternenwache", "wachlaterne"}, a.of(title))
+		require.Equal(t, []string{"laternenwache", "wachlaterne"}, a.of(title, 0))
 
 		time.Sleep(3 * incompleteAnswerRetry)
 		synctest.Wait()
@@ -416,16 +417,16 @@ func TestAlternateTitlesForgetATitleThatNoTorrentHolds(t *testing.T) {
 		require.Equal(t, []string{"Lantern Ward"}, source.askedTitles(), "a title that left before its turn is not asked")
 
 		a.drop(first)
-		require.Equal(t, []*heldTitle{second}, a.namedByAny([]string{"laternenwache"}))
+		require.Equal(t, []*heldTitle{second}, a.namedByAny([]string{"laternenwache"}, 0))
 		a.drop(second)
-		require.Empty(t, a.namedByAny([]string{"laternenwache"}))
-		a.store(second, []string{"Wachlaterne"})
-		require.Empty(t, a.namedByAny([]string{"wachlaterne"}), "an answer for a title that left during its fetch")
+		require.Empty(t, a.namedByAny([]string{"laternenwache"}, 0))
+		a.store(second, AlternateTitles{Titles: []string{"Wachlaterne"}})
+		require.Empty(t, a.namedByAny([]string{"wachlaterne"}, 0), "an answer for a title that left during its fetch")
 
 		holdName(a, "Lantern.Ward.S01E03.1080p.WEB-DL.H.264-GRP", 1)
 		time.Sleep(time.Minute)
 		synctest.Wait()
-		require.Len(t, a.namedByAny([]string{"laternenwache"}), 1)
+		require.Len(t, a.namedByAny([]string{"laternenwache"}, 0), 1)
 	})
 }
 
@@ -455,6 +456,6 @@ func TestAlternateTitlesWithoutASourceHoldNothing(t *testing.T) {
 	a := newAlternateTitleIndex(nil, nil)
 
 	require.Nil(t, holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1))
-	require.Empty(t, a.of(nil))
+	require.Empty(t, a.of(nil, 0))
 	a.drop(nil)
 }

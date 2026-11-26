@@ -58,6 +58,7 @@ func openTestDB(t *testing.T) *sql.DB {
 			tvdb_id INTEGER,
 			tvmaze_id INTEGER,
 			titles_json TEXT,
+			title_seasons_json TEXT,
 			episode_map_season INTEGER,
 			episode_map_episode INTEGER,
 			episode_map_absolute INTEGER,
@@ -550,7 +551,7 @@ func TestService_LookupExternalIDsRefetchesPreMapRowOnce(t *testing.T) {
 	parseCalls := 0
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, solitudeMappedEpisode))
 
-	require.NoError(t, cacheStore.SetWithTitles(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{TVDbID: 471000}, []string{"Solitude"}, nil, false, false, time.Hour))
+	require.NoError(t, cacheStore.SetWithTitles(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{TVDbID: 471000}, []string{"Solitude"}, nil, nil, false, false, time.Hour))
 
 	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
 	require.NoError(t, err)
