@@ -134,3 +134,37 @@ it("keeps a file added while the batches run when a batch fails", async () => {
   expect(ui.getByText("Example.Show.S01E02.torrent")).not.toBeNull()
   expect(ui.getByText("Example.Show.S01E09.torrent")).not.toBeNull()
 })
+
+it("leaves the files of a dialog opened again alone when the batch of the closed one fails", async () => {
+  vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
+  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
+  const files = ["Example.Show.S01E01.torrent", "Example.Show.S01E02.torrent"].map(name => new File(["x"], name))
+  const next = new File(["x"], "Other.Show.S02E01.torrent")
+  let fail: (error: unknown) => void = () => {}
+  vi.mocked(addFilesInBatches).mockReturnValueOnce(new Promise((_, reject) => { fail = reject }))
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  client.setQueryData(["instance-preferences", 1], preferences)
+  const dialog = (open: boolean, dropPayload: AddTorrentDropPayload | null) => (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <AddTorrentDialog instanceId={1} open={open} onOpenChange={() => {}} dropPayload={dropPayload} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+  const ui = render(dialog(true, { type: "file", files }))
+  ui.rerender(dialog(true, null))
+
+  fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" })))
+  await waitFor(() => expect(addFilesInBatches).toHaveBeenCalled())
+  ui.rerender(dialog(false, null))
+  ui.rerender(dialog(true, { type: "file", files: [next] }))
+  ui.rerender(dialog(true, null))
+  await waitFor(() => ui.getByText("Other.Show.S02E01.torrent"))
+
+  fail(new BatchAddError("HTTP error! status: 504", { added: 1, total: 2, batch: 2, batches: 2, unconfirmed: files.slice(1), failedFiles: [] }))
+
+  await waitFor(() => expect(toast.error).toHaveBeenCalled())
+  expect(ui.queryByText("Example.Show.S01E02.torrent")).toBeNull()
+  expect(ui.getByText("Other.Show.S02E01.torrent")).not.toBeNull()
+})

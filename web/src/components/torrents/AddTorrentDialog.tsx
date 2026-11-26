@@ -173,6 +173,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const fileInputRef = useRef<HTMLInputElement>(null)
   const moreOptionsRef = useRef<HTMLDivElement>(null)
   const duplicateCheckRequestRef = useRef(0)
+  const dialogSessionRef = useRef(0)
   const duplicateCheckIndicatorTimeoutRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
 
@@ -539,12 +540,15 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
       return api.addTorrent(instanceId, submitData)
     },
+    onMutate: () => dialogSessionRef.current,
     onSettled: () => setBatchProgress(null),
-    onError: (error, submitted) => {
+    onError: (error, submitted, session) => {
       if (error instanceof BatchAddError) {
         refetchAfterAdd()
-        const addedSince = (form.getFieldValue("torrentFiles") ?? []).filter(file => !submitted.torrentFiles?.includes(file))
-        form.setFieldValue("torrentFiles", [...error.unconfirmed, ...addedSince])
+        if (session === dialogSessionRef.current) {
+          const addedSince = (form.getFieldValue("torrentFiles") ?? []).filter(file => !submitted.torrentFiles?.includes(file))
+          form.setFieldValue("torrentFiles", [...error.unconfirmed, ...addedSince])
+        }
         toast.error(t("addTorrentDialog.toast.batchFailed", { added: error.added, total: error.total }), {
           description: [
             t("addTorrentDialog.toast.batchFailedDescription", { batch: error.batch, batches: error.batches, error: error.message }),
@@ -792,6 +796,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     if (open) {
       return
     }
+    dialogSessionRef.current += 1
     form.reset()
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
