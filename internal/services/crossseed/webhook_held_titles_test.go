@@ -289,6 +289,11 @@ func (f failingHeldSync) ListSnapshot(int, *qbt.SyncSnapshot) []*qbt.Torrent {
 	return nil
 }
 
+func (f failingHeldSync) ListedLookup(int, *qbt.SyncSnapshot) func(hash string) (*qbt.Torrent, bool) {
+	f.t.Error("Held titles looks up a torrent while the feature is off")
+	return func(string) (*qbt.Torrent, bool) { return nil, false }
+}
+
 func (f failingHeldSync) CopyGroups() *qbittorrent.CopyGroups {
 	f.t.Error("Held titles reads the Copy groups while the feature is off")
 	return nil

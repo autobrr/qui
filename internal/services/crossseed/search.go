@@ -132,7 +132,7 @@ func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash str
 	if err != nil {
 		return nil, nil, fmt.Errorf("load torrents: %w", err)
 	}
-	if len(torrents) == 0 {
+	if len(torrents) == 0 || s.isHelper(instanceID, torrents[0].Hash) {
 		return nil, nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
 	sourceTorrent := torrents[0]

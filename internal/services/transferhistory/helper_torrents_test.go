@@ -46,7 +46,7 @@ func TestStatisticsCountNoHelperTorrent(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				module := &Module{wake: make(chan struct{}, 1)}
 				adapter := NewAdapter(module, syncManager)
-				adapter.SetHelperTorrents(tc.helpers)
+				syncManager.SetHelperTorrents(tc.helpers)
 				require.NoError(t, owner.Sync(t.Context()))
 				adapter.HandleSyncUpdate(1, qbt.SyncUpdate{Snapshot: owner.SnapshotUnchecked()})
 				synctest.Wait()

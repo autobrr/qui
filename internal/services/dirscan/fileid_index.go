@@ -74,7 +74,6 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instance *models.Instanc
 	if err != nil {
 		return nil, fmt.Errorf("get cached torrents: %w", err)
 	}
-	torrents = s.leaveOutHelpers(instanceID, torrents)
 
 	hashes, savePaths := collectCompletedTorrentSavePaths(torrents)
 

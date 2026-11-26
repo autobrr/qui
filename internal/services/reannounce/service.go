@@ -54,7 +54,6 @@ type Service struct {
 
 type helperTorrents interface {
 	IsHelper(instanceID int, hash string) bool
-	qbittorrent.HelperTorrents
 }
 
 type reannounceJob struct {
@@ -617,7 +616,7 @@ func (s *Service) cachedTorrents(ctx context.Context, instanceID int) ([]*qbt.To
 	if snapshot == nil {
 		return nil, nil
 	}
-	return qbittorrent.WithoutHelpers(snapshot, s.helpers, instanceID), nil
+	return s.syncManager.ListSnapshot(instanceID, snapshot), nil
 }
 
 func (s *Service) getSettings(ctx context.Context, instanceID int) *models.InstanceReannounceSettings {
