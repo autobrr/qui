@@ -9,21 +9,32 @@ const ADD_TORRENT_FILE_BATCH_SIZE = 500
 
 type AddRequest = { torrentFiles?: File[] }
 
-export class BatchAddError extends Error {
+type BatchAddResult = {
+  added: number
+  total: number
+  batch: number
+  batches: number
+  unconfirmed: File[]
+  failedFiles: AddTorrentFailedFile[]
+}
+
+export class BatchAddError extends Error implements BatchAddResult {
   readonly added: number
   readonly total: number
   readonly batch: number
   readonly batches: number
   readonly unconfirmed: File[]
+  readonly failedFiles: AddTorrentFailedFile[]
 
-  constructor(message: string, added: number, total: number, batch: number, batches: number, unconfirmed: File[]) {
+  constructor(message: string, result: BatchAddResult) {
     super(message)
     this.name = "BatchAddError"
-    this.added = added
-    this.total = total
-    this.batch = batch
-    this.batches = batches
-    this.unconfirmed = unconfirmed
+    this.added = result.added
+    this.total = result.total
+    this.batch = result.batch
+    this.batches = result.batches
+    this.unconfirmed = result.unconfirmed
+    this.failedFiles = result.failedFiles
   }
 }
 
@@ -52,7 +63,15 @@ export async function addFilesInBatches<T extends AddRequest>(
     } catch (error) {
       if (index === 0) throw error
       const message = error instanceof Error ? error.message : String(error)
-      throw new BatchAddError(message, total.added, files.length, index + 1, batches.length, files.slice(index * ADD_TORRENT_FILE_BATCH_SIZE))
+      const failedNames = new Set(failedFiles.map(file => file.filename))
+      throw new BatchAddError(message, {
+        added: total.added,
+        total: files.length,
+        batch: index + 1,
+        batches: batches.length,
+        unconfirmed: [...batches.slice(0, index).flat().filter(file => failedNames.has(file.name)), ...batches.slice(index).flat()],
+        failedFiles,
+      })
     }
     total.message = response.message
     total.added += response.added

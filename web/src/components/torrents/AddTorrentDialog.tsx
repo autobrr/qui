@@ -545,7 +545,10 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         refetchAfterAdd()
         form.setFieldValue("torrentFiles", error.unconfirmed)
         toast.error(t("addTorrentDialog.toast.batchFailed", { added: error.added, total: error.total }), {
-          description: t("addTorrentDialog.toast.batchFailedDescription", { batch: error.batch, batches: error.batches, error: error.message }),
+          description: [
+            t("addTorrentDialog.toast.batchFailedDescription", { batch: error.batch, batches: error.batches, error: error.message }),
+            ...error.failedFiles.slice(0, 3).map(f => `${f.filename}: ${f.error}`),
+          ].join("\n"),
           duration: 10000,
         })
         return

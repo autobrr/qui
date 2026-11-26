@@ -61,6 +61,23 @@ describe("addFilesInBatches", () => {
     expect(error.unconfirmed).toEqual(selection.slice(500))
   })
 
+  it("keeps the files that an earlier batch rejected, with their errors, when a later batch fails", async () => {
+    const selection = files(1200)
+    const calls: Request[] = []
+    const add = async (request: Request): Promise<AddTorrentResponse> => {
+      calls.push(request)
+      if (calls.length === 2) throw new Error("HTTP error! status: 504")
+      return { message: "ok", added: 499, failed: 1, failedFiles: [{ filename: selection[3].name, error: "torrent file is not valid" }] }
+    }
+    const error = await addFilesInBatches(add, {}, selection, () => {}).catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(BatchAddError)
+    if (!(error instanceof BatchAddError)) return
+    expect(error.added).toBe(499)
+    expect(error.failedFiles).toEqual([{ filename: selection[3].name, error: "torrent file is not valid" }])
+    expect(error.unconfirmed).toEqual([selection[3], ...selection.slice(500)])
+  })
+
   it("throws the request error unchanged when the first batch fails", async () => {
     const { add, onBatch } = recorder(1)
     const error = await addFilesInBatches(add, {}, files(1200), onBatch).catch((caught: unknown) => caught)

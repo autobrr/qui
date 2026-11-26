@@ -335,7 +335,7 @@ it("keeps only the unconfirmed files in the dialog when a batch fails, so Add se
   vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
   const files = ["Example.Show.S01E01.torrent", "Example.Show.S01E02.torrent", "Example.Show.S01E03.torrent"].map(name => new File(["x"], name))
   vi.mocked(addFilesInBatches)
-    .mockRejectedValueOnce(new BatchAddError("HTTP error! status: 504", 1, 3, 2, 3, files.slice(1)))
+    .mockRejectedValueOnce(new BatchAddError("HTTP error! status: 504", { added: 1, total: 3, batch: 2, batches: 3, unconfirmed: files.slice(1), failedFiles: [{ filename: "Example.Show.S01E02.torrent", error: "torrent file is not valid" }] }))
     .mockResolvedValueOnce({ added: 2, failed: 0, message: "" })
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
@@ -352,7 +352,7 @@ it("keeps only the unconfirmed files in the dialog when a batch fails, so Add se
 
   fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" })))
 
-  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("addTorrentDialog.toast.batchFailed", expect.anything()))
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("addTorrentDialog.toast.batchFailed", expect.objectContaining({ description: expect.stringContaining("Example.Show.S01E02.torrent: torrent file is not valid") })))
   await waitFor(() => expect(ui.queryByText("Example.Show.S01E01.torrent")).toBeNull())
   expect(ui.getByText("Example.Show.S01E02.torrent")).not.toBeNull()
 
