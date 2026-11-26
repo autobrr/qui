@@ -107,12 +107,7 @@ const KNOWN_OUTSIDE_SRGB = {
     "light --destructive: oklch(0.5770 0.2450 27.3250)",
     "dark --destructive: oklch(0.7040 0.1910 22.2160)",
   ],
-  "napster.css": [
-    "light --accent: oklch(0.82 0.18 100)",
-    "light --chart-2: oklch(0.82 0.18 100)",
-    "dark --accent: oklch(0.82 0.18 100)",
-    "dark --chart-2: oklch(0.82 0.18 100)",
-  ],
+  "napster.css": ["light --accent: oklch(0.82 0.18 100)", "dark --accent: oklch(0.82 0.18 100)"],
   "wave.css": ["light --variation-pink: oklch(0.6931 0.1971 22.11)"],
 }
 
