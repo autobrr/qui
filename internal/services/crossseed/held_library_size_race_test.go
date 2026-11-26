@@ -5,4 +5,8 @@
 
 package crossseed
 
+import "github.com/autobrr/qui/internal/testutil/biglib"
+
 const heldEquivalenceLibrarySize = 2000
+
+const packCheckBudget = 16 * biglib.MB
