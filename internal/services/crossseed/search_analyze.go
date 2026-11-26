@@ -139,6 +139,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	if err := s.requireSource(sourceTorrent); err != nil {
 		return nil, err
 	}
+	hash = sourceTorrent.Hash
 
 	var indexerInfo map[int]jackett.EnabledIndexerInfo
 	if s.jackettService != nil {

@@ -2714,9 +2714,11 @@ func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash s
 
 	suggestedName := strings.TrimSpace(hash)
 	trackerDomain := ""
+	exportID := hash
 	id, _ := infohash.Parse(hash)
 	if torrents := client.getTorrentsByHashes([]infohash.Hash{id}); len(torrents) > 0 {
 		torrent := torrents[0]
+		exportID = torrent.Hash
 		if name := strings.TrimSpace(torrent.Name); name != "" {
 			suggestedName = name
 		}
@@ -2724,7 +2726,7 @@ func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash s
 		trackerDomain = sm.primaryTrackerDomain(torrent)
 	}
 
-	data, err := client.ExportTorrentCtx(ctx, hash)
+	data, err := client.ExportTorrentCtx(ctx, exportID)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed to export torrent: %w", err)
 	}

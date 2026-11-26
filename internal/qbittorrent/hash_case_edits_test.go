@@ -51,6 +51,9 @@ func newCaseEditRig(t *testing.T) *caseEditRig {
 		case "/api/v2/torrents/categories":
 			_, _ = w.Write([]byte(`{"tv":{"name":"tv"},"movies":{"name":"movies"}}`))
 		case "/api/v2/torrents/export":
+			rig.mu.Lock()
+			rig.writes[r.URL.Path] = r.FormValue("hash")
+			rig.mu.Unlock()
 			_, _ = w.Write([]byte("d4:infod4:name4:showee"))
 		case "/api/v2/torrents/setCategory":
 			if err := r.ParseForm(); err != nil {
@@ -108,13 +111,27 @@ func TestAnEditByAnotherHashOfATorrentSendsItsTorrentID(t *testing.T) {
 	}
 }
 
-func TestExportByAnUppercaseHashNamesTheFileAfterTheTorrent(t *testing.T) {
+func TestExportByAnotherHashOfATorrentSendsItsTorrentIDAndNamesTheFileAfterIt(t *testing.T) {
 	t.Parallel()
-	rig := newCaseEditRig(t)
+	unknown := strings.Repeat("ab", 20)
+	for name, tc := range map[string]struct {
+		sent     string
+		wantID   string
+		wantName string
+	}{
+		"the uppercase v2 of a v2-only torrent": {sent: strings.ToUpper(caseEditV2Only), wantID: caseEditV2Only[:40], wantName: "Show.S01E02.1080p.WEB-GRP"},
+		"a hash qBittorrent does not list":      {sent: unknown, wantID: unknown, wantName: unknown},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			rig := newCaseEditRig(t)
 
-	data, name, _, err := rig.sm.ExportTorrent(t.Context(), rig.instanceID, strings.ToUpper(caseEditHash))
+			data, file, _, err := rig.sm.ExportTorrent(t.Context(), rig.instanceID, tc.sent)
 
-	require.NoError(t, err)
-	require.NotEmpty(t, data)
-	require.Equal(t, "Show.S01E01.1080p.WEB-GRP", name)
+			require.NoError(t, err)
+			require.NotEmpty(t, data)
+			require.Equal(t, tc.wantName, file)
+			require.Equal(t, tc.wantID, rig.sent("/api/v2/torrents/export"))
+		})
+	}
 }
