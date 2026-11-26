@@ -131,7 +131,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
-	if len(torrents) == 0 {
+	if len(torrents) == 0 || s.isHelper(instanceID, torrents[0].Hash) {
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
 	sourceTorrent := torrents[0]

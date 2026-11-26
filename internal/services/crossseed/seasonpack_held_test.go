@@ -117,11 +117,8 @@ func TestSeasonPackCheckAnswersAsTheFullScan(t *testing.T) {
 	first, second, helper := packLibraries(t)
 	rig := newPackRig(t, t.TempDir(), first, second)
 	settings := rig.settings
-	helpers := fakeHelpers{helper: true}
-	rig.syncs.SetHelperTorrents(helpers)
+	rig.syncs.SetHelperTorrents(fakeHelpers{helper: true})
 	full, held := rig.full(), rig.held(packAliasSource())
-	full.SetHelperTorrents(helpers)
-	held.SetHelperTorrents(helpers)
 	requireAlternateTitles(t, held.Service, packAliasedKey)
 	requireCaughtUp(t, held.Service)
 

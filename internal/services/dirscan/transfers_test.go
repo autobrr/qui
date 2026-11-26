@@ -20,15 +20,7 @@ import (
 )
 
 type fakeTransfers struct {
-	helpers map[string]bool
 	folders []string
-}
-
-func (f fakeTransfers) HelperCheck(int) func(hash string) bool {
-	if len(f.helpers) == 0 {
-		return nil
-	}
-	return func(hash string) bool { return f.helpers[hash] }
 }
 
 func (f fakeTransfers) RunningFolders(context.Context, int) ([]string, error) { return f.folders, nil }
@@ -54,15 +46,14 @@ func (f seedingFiles) GetTorrentFilesBatch(context.Context, int, []string) (map[
 	return files, nil
 }
 
-func TestScanSkipsHelperTorrentsAndRunningTransfers(t *testing.T) {
+func TestScanSkipsTheFoldersOfRunningTransfers(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
 	store, dir, runID := newLocalModeRun(t)
-	helperFile := filepath.Join(dir.Path, "Synthetic.Film.2024.1080p.WEB.x264-GRP.mkv")
 	ownFile := filepath.Join(dir.Path, "Other.Film.2022.1080p.WEB.x264-GRP.mkv")
 	incoming := filepath.Join(dir.Path, "incoming")
-	for _, path := range []string{helperFile, ownFile, filepath.Join(incoming, "Third.Film.2023.1080p.WEB.x264-GRP.mkv")} {
+	for _, path := range []string{ownFile, filepath.Join(incoming, "Third.Film.2023.1080p.WEB.x264-GRP.mkv")} {
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte("synthetic media"), 0o600))
 	}
@@ -70,9 +61,9 @@ func TestScanSkipsHelperTorrentsAndRunningTransfers(t *testing.T) {
 	svc := &Service{
 		store:        store,
 		backendPool:  fsops.NewPool(instances, local.NewBackend()),
-		torrentFiles: seedingFiles{"ffff": helperFile, "bbbb": ownFile},
+		torrentFiles: seedingFiles{"bbbb": ownFile},
 	}
-	svc.SetTransfers(fakeTransfers{helpers: map[string]bool{"ffff": true}, folders: []string{incoming + string(filepath.Separator)}})
+	svc.SetTransfers(fakeTransfers{folders: []string{incoming + string(filepath.Separator)}})
 	logger := zerolog.Nop()
 
 	validated, target, ok := svc.validateDirectory(ctx, dir.ID, runID, &logger)
@@ -86,5 +77,5 @@ func TestScanSkipsHelperTorrentsAndRunningTransfers(t *testing.T) {
 	for _, searchee := range result.Searchees {
 		seeding[searchee.Path], _ = scanner.CheckAlreadySeeding(searchee)
 	}
-	require.Equal(t, map[string]bool{helperFile: false, ownFile: true}, seeding)
+	require.Equal(t, map[string]bool{ownFile: true}, seeding)
 }
