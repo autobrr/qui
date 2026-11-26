@@ -308,7 +308,7 @@ export function CompletionOverview() {
                       >
                         <span className={cn(
                           "text-xs font-medium",
-                          isEnabled ? "text-emerald-500" : "text-muted-foreground"
+                          isEnabled ? "text-success" : "text-muted-foreground"
                         )}>
                           {isEnabled ? t("preferences.completionOverview.on") : t("preferences.completionOverview.off")}
                         </span>
@@ -337,25 +337,25 @@ export function CompletionOverview() {
                     {!isError && isEnabled && (
                       <>
                         {isMetadataError && (
-                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
-                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
-                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning/10">
+                            <AlertCircle className="h-4 w-4 text-warning shrink-0" />
+                            <p className="text-sm text-warning">
                               {t("preferences.completionOverview.metadataWarning")}
                             </p>
                           </div>
                         )}
                         {indexersQuery.isError && (
-                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
-                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
-                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning/10">
+                            <AlertCircle className="h-4 w-4 text-warning shrink-0" />
+                            <p className="text-sm text-warning">
                               {t("preferences.completionOverview.indexerWarning")}
                             </p>
                           </div>
                         )}
                         {!indexersQuery.isError && !indexersQuery.isPending && !hasEnabledIndexers && (
-                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
-                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
-                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning/10">
+                            <AlertCircle className="h-4 w-4 text-warning shrink-0" />
+                            <p className="text-sm text-warning">
                               {t("preferences.completionOverview.noIndexersWarning")}
                             </p>
                           </div>

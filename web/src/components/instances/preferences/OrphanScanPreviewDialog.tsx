@@ -143,7 +143,7 @@ export function OrphanScanPreviewDialog({
         )}
 
         {run?.errorMessage && (
-          <div role="alert" className="shrink-0 max-h-40 overflow-auto rounded-md border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-600 dark:text-yellow-400">
+          <div role="alert" className="shrink-0 max-h-40 overflow-auto rounded-md border border-warning/20 bg-warning/10 p-3 text-sm text-warning">
             {run.partial && <p className="mb-1 font-medium">{t("preferences.orphanScanOverview.statusPartial")}</p>}
             <p className="whitespace-pre-wrap break-all">{run.errorMessage}</p>
           </div>

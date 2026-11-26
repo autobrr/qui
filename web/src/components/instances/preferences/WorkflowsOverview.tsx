@@ -86,7 +86,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Braces, Clock, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
 import { toast } from "sonner"
@@ -789,11 +789,11 @@ export function WorkflowsOverview() {
     }
   }
 
-  const outcomeClasses: Record<AutomationActivity["outcome"], string> = {
-    success: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-    failed: "bg-destructive/10 text-destructive border-destructive/30",
-    "dry-run": "bg-sky-500/10 text-sky-500 border-sky-500/20",
-    skipped: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+  const outcomeBadges: Record<AutomationActivity["outcome"], Pick<ComponentProps<typeof Badge>, "variant" | "className">> = {
+    success: { variant: "success" },
+    failed: { variant: "outline", className: "bg-destructive/10 text-destructive border-destructive/30" },
+    "dry-run": { variant: "info" },
+    skipped: { variant: "warning" },
   }
 
   const actionClasses: Record<AutomationActivity["action"], string> = {
@@ -802,7 +802,7 @@ export function WorkflowsOverview() {
     deleted_unregistered: "bg-orange-500/10 text-orange-500 border-orange-500/20",
     deleted_condition: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
     delete_failed: "bg-destructive/10 text-destructive border-destructive/30",
-    limit_failed: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    limit_failed: "bg-warning/10 text-warning border-warning/20",
     tags_changed: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
     category_changed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
@@ -817,7 +817,7 @@ export function WorkflowsOverview() {
     exported_to_instance: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     transferred_to_instance: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
-    rule_skipped: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    rule_skipped: "bg-warning/10 text-warning border-warning/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -905,12 +905,12 @@ export function WorkflowsOverview() {
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="font-medium truncate">{instance.name}</span>
                       {rules.length > 0 && (
-                        <Badge variant="outline" className={cn(enabledRulesCount > 0 && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20")}>
+                        <Badge variant={enabledRulesCount > 0 ? "success" : "outline"}>
                           {t("preferences.workflowsOverview.activeCount", { enabled: enabledRulesCount, total: rules.length })}
                         </Badge>
                       )}
                       {activityStats.deletionsToday > 0 && (
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                        <Badge variant="success">
                           {t("preferences.workflowsOverview.today", { count: activityStats.deletionsToday })}
                         </Badge>
                       )}
@@ -1271,10 +1271,10 @@ export function WorkflowsOverview() {
                                         </Badge>
                                         {(!runSummaryActions.has(event.action) || event.outcome === "dry-run") && (
                                           <Badge
-                                            variant="outline"
+                                            variant={outcomeBadges[event.outcome].variant}
                                             className={cn(
                                               "text-10 px-1.5 py-0 h-5 shrink-0",
-                                              outcomeClasses[event.outcome]
+                                              outcomeBadges[event.outcome].className
                                             )}
                                           >
                                             {getOutcomeBadgeText(event)}

@@ -2077,6 +2077,12 @@ paths:
       responses:
         '201':
           description: Torrent added successfully
+        '413':
+          description: The form has more than 1000 parts. Send at most 1000 files and fields per request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 
   /api/instances/{instanceID}/torrents/check-duplicates:
