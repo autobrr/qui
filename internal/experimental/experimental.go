@@ -14,12 +14,9 @@ type Feature string
 
 var known = []Feature{
 	ProblemReports, // goes away when the maintainer decides, with no ticket
-	HeldTitles,     // goes away in #4458
 }
 
 const ProblemReports Feature = "problemReports"
-
-const HeldTitles Feature = "heldTitles"
 
 type Features struct {
 	on []Feature

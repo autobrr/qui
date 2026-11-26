@@ -68,6 +68,7 @@ func (r *seasonPackEndpointRig) holdPack(incomplete bool) {
 	for i := range files {
 		files[i] += ".mkv"
 	}
+	r.heldNames = append(r.heldNames, endpointPack)
 	r.servers[1].Add(qbtstub.Torrent{
 		Hash: fmt.Sprintf("%040d", 7), Name: endpointPack, SavePath: filepath.Join(r.root, "lib"),
 		Layout: qbtstub.RootFolder, Files: files, Incomplete: incomplete,
@@ -138,8 +139,7 @@ func TestWebhookSkipsTheSeasonPackStepWhenItsGateIsClosed(t *testing.T) {
 			status, answer := rig.webhookCheck(webhookPackRequest{TorrentName: endpointPack})
 			require.Equal(t, http.StatusNotFound, status)
 			require.Nil(t, answer.SeasonPack)
-			directScan := map[heldTitlesState]int64{heldTitlesOff: 1, heldTitlesBuilding: 1}[tc.state]
-			require.Equal(t, directScan, rig.sync.lists.Load()-lists, "only the direct check reads the torrent list")
+			require.Equal(t, lists, rig.sync.lists.Load(), "the check reads no full torrent list")
 
 			for _, torrent := range [][]byte{pack, endpointTorrent(t, endpointPack, 1, "notes.txt")} {
 				applied := rig.webhookApply(endpointPack, torrent)

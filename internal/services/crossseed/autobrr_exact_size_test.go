@@ -6,7 +6,6 @@ package crossseed
 import (
 	"bytes"
 	"context"
-	"errors"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -38,7 +37,7 @@ func TestCheckWebhookReportedSizeFallback(t *testing.T) {
 				Size:        1_000_500,
 			},
 			source: qbt.Torrent{
-				Hash: "strict-tolerance", Name: "Starbound.Route.2025.1080p.WEB-DL.H.264-LUMA",
+				Hash: fakeHash("strict-tolerance"), Name: "Starbound.Route.2025.1080p.WEB-DL.H.264-LUMA",
 				Size: 1_000_000, TotalSize: 1_000_000, Progress: 1,
 			},
 			wantMatch: true, wantMatchType: "size",
@@ -51,7 +50,7 @@ func TestCheckWebhookReportedSizeFallback(t *testing.T) {
 				Size:        2_000_000,
 			},
 			source: qbt.Torrent{
-				Hash: "codec-exact", Name: "Starbound.Route.2025.1080p.WEB-DL.H.264-LUMA",
+				Hash: fakeHash("codec-exact"), Name: "Starbound.Route.2025.1080p.WEB-DL.H.264-LUMA",
 				Size: 1_000_000, TotalSize: 2_000_000, Progress: 1,
 			},
 			wantMatch: true, wantMatchType: "exact",
@@ -64,7 +63,7 @@ func TestCheckWebhookReportedSizeFallback(t *testing.T) {
 				Size:        2_000_500,
 			},
 			source: qbt.Torrent{
-				Hash: "codec-nonexact", Name: "Starbound.Route.2025.1080p.WEB-DL.H.264-LUMA",
+				Hash: fakeHash("codec-nonexact"), Name: "Starbound.Route.2025.1080p.WEB-DL.H.264-LUMA",
 				Size: 1_000_000, TotalSize: 2_000_000, Progress: 1,
 			},
 			wantMatch: false,
@@ -83,7 +82,7 @@ func TestCheckWebhookReportedSizeFallback(t *testing.T) {
 				},
 			}
 
-			response, err := service.CheckWebhook(context.Background(), tt.request)
+			response, err := checkOnHeld(t, service, tt.request)
 			require.NoError(t, err)
 			require.Equal(t, tt.wantMatch, response.CanCrossSeed)
 			if !tt.wantMatch {
@@ -142,7 +141,7 @@ func TestCheckWebhookUnknownSizePreflight(t *testing.T) {
 			service := &Service{
 				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 				syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
-					Hash: "unknown-" + tt.name, Name: tt.sourceName, Size: 2_000_000, TotalSize: 2_000_000, Progress: 1,
+					Hash: fakeHash("unknown-" + tt.name), Name: tt.sourceName, Size: 2_000_000, TotalSize: 2_000_000, Progress: 1,
 				}}, nil),
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
@@ -155,7 +154,7 @@ func TestCheckWebhookUnknownSizePreflight(t *testing.T) {
 				},
 			}
 
-			response, err := service.CheckWebhook(context.Background(), &WebhookCheckRequest{
+			response, err := checkOnHeld(t, service, &WebhookCheckRequest{
 				InstanceIDs: []int{instance.ID}, TorrentName: tt.announcement,
 			})
 			require.NoError(t, err)
@@ -216,7 +215,7 @@ func TestCheckWebhookNearMissLog(t *testing.T) {
 			service := &Service{
 				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 				syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
-					Hash: "near-miss", Name: tt.sourceName, Size: 2_000_000, TotalSize: 2_000_000, Progress: 1,
+					Hash: fakeHash("near-miss"), Name: tt.sourceName, Size: 2_000_000, TotalSize: 2_000_000, Progress: 1,
 				}}, nil),
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
@@ -225,7 +224,7 @@ func TestCheckWebhookNearMissLog(t *testing.T) {
 				},
 			}
 
-			response, err := service.CheckWebhook(t.Context(), &WebhookCheckRequest{
+			response, err := checkOnHeld(t, service, &WebhookCheckRequest{
 				InstanceIDs: []int{instance.ID}, TorrentName: tt.announcement,
 			})
 			require.NoError(t, err)
@@ -235,7 +234,7 @@ func TestCheckWebhookNearMissLog(t *testing.T) {
 	}
 }
 
-func TestCheckWebhookARRAlternateTitles(t *testing.T) {
+func TestCheckWebhookMatchesAlternateTitlesWithoutAnArrCall(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -243,27 +242,22 @@ func TestCheckWebhookARRAlternateTitles(t *testing.T) {
 		announceName = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
 		size         = int64(1_500_000_000)
 	)
-	aliasResult := &arr.ExternalIDsResult{
-		Titles:      []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"},
-		TitlesKnown: true,
-	}
 	instance := &models.Instance{ID: 14, Name: "primary", IsActive: true}
 
 	tests := []struct {
 		name      string
-		spy       *spyARRLookupService
+		sources   []AlternateTitleSource
 		wantMatch bool
-		wantCalls int
 	}{
-		{name: "aliases recover the match with one lookup", spy: &spyARRLookupService{result: aliasResult}, wantMatch: true, wantCalls: 1},
-		{name: "no arr service keeps rejecting", spy: nil},
-		{name: "lookup error keeps rejecting", spy: &spyARRLookupService{err: errors.New("arr down")}, wantCalls: 1},
+		{name: "alternate titles of the held release recover the match", sources: []AlternateTitleSource{corpusAlternateTitles{"Frieren: Beyond Journey's End", "Sousou no Frieren"}}, wantMatch: true},
+		{name: "no source keeps rejecting"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			source := qbt.Torrent{Hash: "frieren-source", Name: sourceName, Size: size, TotalSize: size, Progress: 1}
-			unrelated := qbt.Torrent{Hash: "unrelated-source", Name: "Quiet.Signal.2025.1080p.WEB-DL.H.264-LUMA", Size: size, TotalSize: size, Progress: 1}
+			source := qbt.Torrent{Hash: fakeHash("frieren-source"), Name: sourceName, Size: size, TotalSize: size, Progress: 1}
+			unrelated := qbt.Torrent{Hash: fakeHash("unrelated-source"), Name: "Quiet.Signal.2025.1080p.WEB-DL.H.264-LUMA", Size: size, TotalSize: size, Progress: 1}
+			spy := &spyARRLookupService{result: &arr.ExternalIDsResult{Titles: []string{"Sousou no Frieren"}, TitlesKnown: true}}
 			service := &Service{
 				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 				syncManager: newFakeSyncManager(instance, []qbt.Torrent{source, unrelated}, map[string]qbt.TorrentFiles{
@@ -272,25 +266,22 @@ func TestCheckWebhookARRAlternateTitles(t *testing.T) {
 				}),
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				arrService:       spy,
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{}, nil
 				},
 			}
-			if tt.spy != nil {
-				service.arrService = tt.spy
-			}
+			startHeldTitlesOnFake(t.Context(), service, tt.sources...)
+			requireCaughtUpOn(t, service, "tv")
 
-			response, err := service.CheckWebhook(context.Background(), &WebhookCheckRequest{
+			response, err := service.CheckWebhook(t.Context(), &WebhookCheckRequest{
 				InstanceIDs: []int{instance.ID},
 				TorrentName: announceName,
 				Size:        uint64(size),
 			})
 			require.NoError(t, err)
 			require.Equal(t, tt.wantMatch, response.CanCrossSeed)
-			if tt.spy != nil {
-				require.Equal(t, tt.wantCalls, tt.spy.calls)
-				require.Equal(t, announceName, tt.spy.title)
-			}
+			require.Zero(t, spy.calls, "the check asks Sonarr nothing about the announce")
 			if tt.wantMatch {
 				require.Len(t, response.Matches, 1)
 				require.Equal(t, "exact", response.Matches[0].MatchType)
@@ -342,7 +333,7 @@ func TestCheckWebhookAnnouncementCheapGate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			source := qbt.Torrent{
-				Hash: "cheap-gate", Name: "Quiet.Signal.2025.1080p.WEB-DL.H.264-LUMA",
+				Hash: fakeHash("cheap-gate"), Name: "Quiet.Signal.2025.1080p.WEB-DL.H.264-LUMA",
 				Size: sourceSize - 10_000, TotalSize: sourceSize, Progress: 1,
 			}
 			sync := &announcementLookupCountingSyncManager{fakeSyncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
@@ -358,7 +349,7 @@ func TestCheckWebhookAnnouncementCheapGate(t *testing.T) {
 				},
 			}
 
-			response, err := service.CheckWebhook(context.Background(), &WebhookCheckRequest{
+			response, err := checkOnHeld(t, service, &WebhookCheckRequest{
 				InstanceIDs: []int{instance.ID}, TorrentName: tt.announcement, Size: tt.size,
 			})
 			require.NoError(t, err)

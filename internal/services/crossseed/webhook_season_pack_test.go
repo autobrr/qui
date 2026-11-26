@@ -55,7 +55,7 @@ func TestWebhookCheckOfASeasonPackWaitsOnceForASync(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			freshPackCase(t, freshOn, 1, func(rig *freshPackRig) {
+			freshPackCase(t, 1, func(rig *freshPackRig) {
 				rig.sonarr.seasonResult = &arr.SeasonEpisodeTotalResult{TotalEpisodes: 2}
 				tc.before(rig)
 				rig.instances[0].startSync()

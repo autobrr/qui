@@ -55,7 +55,7 @@ http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 4. Leave username and password blank and click **Test**.
 5. Leave basic auth blank. qui handles authentication.
 
-If you use cross-seed integration with autobrr, see the [Cross-Seed](./cross-seed/autobrr.md) section.
+If you use cross-seed integration with autobrr, see the [Cross-Seed](./cross-seed/autobrr.md) section. Adding autobrr's download client through the proxy also helps cross-seed catch releases announced on another tracker seconds later; see [Connect autobrr through the reverse proxy](./cross-seed/autobrr.md#connect-autobrr-through-the-reverse-proxy).
 
 ### cross-seed
 

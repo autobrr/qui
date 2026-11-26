@@ -27,7 +27,7 @@ func heldSyncCase(t *testing.T, torrents []qbt.Torrent, files map[string]qbt.Tor
 func requireAsFullScan(t *testing.T, rig *heldRig, held *Service, name string, size uint64) {
 	t.Helper()
 	full, _ := rig.fullScan()
-	want := checkAnnounce(t, full, name, size)
+	want := checkFullScan(t, full, name, size)
 	require.True(t, want.CanCrossSeed, name)
 	require.Equal(t, want, checkAnnounce(t, held, name, size))
 }

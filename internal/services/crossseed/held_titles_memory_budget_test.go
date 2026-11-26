@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil"
@@ -117,7 +116,7 @@ func (noSinks) AddSyncEventSink(qbittorrent.SyncEventSink) {}
 func (l *bigHeldLibrary) heldTitles(ctx context.Context, tb testing.TB, releases *ReleaseCache, sources ...AlternateTitleSource) *Service {
 	tb.Helper()
 	svc := l.fullScan(releases)
-	svc.StartHeldTitles(ctx, experimental.New([]string{string(experimental.HeldTitles)}), l.syncs, noSinks{}, sources)
+	svc.StartHeldTitles(ctx, l.syncs, noSinks{}, sources)
 	require.Eventually(tb, func() bool { return svc.heldTitles.ready(ctx, []int{l.instance.ID}) }, time.Minute, time.Millisecond)
 	return svc
 }
@@ -235,9 +234,11 @@ func BenchmarkWebhookCheck(b *testing.B) {
 			waitForAlternateTitles(b, heldTitles)
 			for _, name := range []string{"no match", "held title", "held show"} {
 				req := library.announces()[name]
-				b.Run(name+"/full scan", func(b *testing.B) { benchmarkCheck(b, fullScan, req, func() {}) })
-				b.Run(name+"/held titles", func(b *testing.B) { benchmarkCheck(b, heldTitles, req, func() {}) })
-				b.Run(name+"/held titles, names not parsed yet", func(b *testing.B) { benchmarkCheck(b, heldTitles, req, library.forgetNames) })
+				b.Run(name+"/full scan", func(b *testing.B) { benchmarkCheck(b, fullScan, fullScan.webhookFullScan, req, func() {}) })
+				b.Run(name+"/held titles", func(b *testing.B) { benchmarkCheck(b, heldTitles, heldTitles.webhookMatchHeld, req, func() {}) })
+				b.Run(name+"/held titles, names not parsed yet", func(b *testing.B) {
+					benchmarkCheck(b, heldTitles, heldTitles.webhookMatchHeld, req, library.forgetNames)
+				})
 			}
 			b.Run("start", func(b *testing.B) {
 				b.ReportAllocs()
@@ -265,10 +266,10 @@ func BenchmarkWebhookCheck(b *testing.B) {
 	}
 }
 
-func benchmarkCheck(b *testing.B, svc *Service, req *WebhookCheckRequest, before func()) {
+func benchmarkCheck(b *testing.B, svc *Service, match webhookMatcher, req *WebhookCheckRequest, before func()) {
 	b.Helper()
 	check := func() {
-		if _, err := svc.CheckWebhook(b.Context(), req); err != nil {
+		if _, err := svc.checkWebhook(b.Context(), req, match); err != nil {
 			b.Fatal(err)
 		}
 	}

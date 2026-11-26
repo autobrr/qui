@@ -9,9 +9,7 @@ import (
 	"fmt"
 	"path"
 	"testing"
-	"time"
 
-	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
@@ -60,22 +58,6 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
-	checks := func(n int) (cold, warm logbudget.Lines) {
-		torrents, files := library(n)
-		filesCache := ttlcache.New[string, qbt.TorrentFiles](ttlcache.SetDefaultTTL(5 * time.Minute))
-		t.Cleanup(filesCache.Close)
-		service := &Service{
-			instanceStore:     &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
-			syncManager:       newFakeSyncManager(instance, torrents, files),
-			releaseCache:      NewReleaseCache(),
-			torrentFilesCache: filesCache,
-			stringNormalizer:  stringutils.NewDefaultNormalizer(),
-			automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-				return &models.CrossSeedAutomationSettings{}, nil
-			},
-		}
-		return check(service, announce), check(service, announce)
-	}
 	heldChecks := func(n int) (cold, warm logbudget.Lines) {
 		torrents, files := library(n)
 		held := readyHeldTitles(t, torrents, files, models.CrossSeedAutomationSettings{})
@@ -84,22 +66,8 @@ func TestWebhookCheckLogBudget(t *testing.T) {
 		return check(held, &req), check(held, &req)
 	}
 
-	smallCold, smallWarm := checks(10)
-	largeCold, largeWarm := checks(1000)
-
-	for _, large := range []logbudget.Lines{largeCold, largeWarm} {
-		require.GreaterOrEqual(t, large.Message("[CROSSSEED-SEARCH] File has explicit episode markers, using file for TV detection"), 1000)
-		require.GreaterOrEqual(t, large.Message("[CROSSSEED-SEARCH] Using largest file for content type detection"), 1000)
-	}
-	require.Equal(t, nearMissDebugLimit, largeWarm.Message("Webhook check: rejected near miss"))
-	require.Equal(t, nearMissDebugLimit, largeWarm[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}])
-	require.GreaterOrEqual(t, largeWarm.Message("Using cached torrent files"), 2000)
-
-	logbudget.AssertFlat(t, smallCold, largeCold)
-	logbudget.AssertFlat(t, smallWarm, largeWarm)
-
-	smallCold, smallWarm = heldChecks(10)
-	largeCold, largeWarm = heldChecks(1000)
+	smallCold, smallWarm := heldChecks(10)
+	largeCold, largeWarm := heldChecks(1000)
 	slowBatchRead := logbudget.Line{Level: "debug", Message: "GetTorrentFilesBatch completed"}
 	for _, lines := range []logbudget.Lines{smallCold, smallWarm, largeCold, largeWarm} {
 		delete(lines, slowBatchRead)
@@ -117,8 +85,8 @@ func TestWebhookCheckLogBudgetWithSourceFilter(t *testing.T) {
 		for i := range n {
 			for _, category := range []string{"kept", "skipped"} {
 				torrents = append(torrents, qbt.Torrent{
-					Hash: fmt.Sprintf("%s%034x", category[:1], i), Name: fmt.Sprintf("Show%04d.S01E05.1080p.WEB-DL.H.264-LUMA", i), Category: category,
-					Size: 2_000_000, TotalSize: 2_000_000, Progress: 1, AddedOn: 1,
+					Hash: fmt.Sprintf("%x%039x", len(category), i), Name: fmt.Sprintf("Show%04d.S01E05.1080p.WEB-DL.H.264-LUMA", i), Category: category,
+					Size: 3_000_000_000, TotalSize: 3_000_000_000, Progress: 1, AddedOn: 1,
 				})
 			}
 		}
@@ -131,6 +99,7 @@ func TestWebhookCheckLogBudgetWithSourceFilter(t *testing.T) {
 				return &models.CrossSeedAutomationSettings{WebhookSourceExcludeCategories: []string{"skipped"}}, nil
 			},
 		}
+		startHeldTitlesOnFake(t.Context(), service)
 		return logbudget.Count(t, func() {
 			_, err := service.CheckWebhook(t.Context(), announce)
 			require.NoError(t, err)
@@ -165,37 +134,29 @@ func TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss(t *testing.T) {
 		{name: "filter skips the same group", announce: settingsCheckName, excluded: []string{"films"}, debugAnswer: 1, filterSkipped: 1},
 	}
 	for _, tt := range tests {
-		for _, heldTitles := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s held titles %v", tt.name, heldTitles), func(t *testing.T) {
-				settings := models.CrossSeedAutomationSettings{WebhookSourceExcludeCategories: tt.excluded}
-				svc := settingsCheckService(t)
-				svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-					return &settings, nil
+		t.Run(tt.name, func(t *testing.T) {
+			settings := models.CrossSeedAutomationSettings{WebhookSourceExcludeCategories: tt.excluded}
+			torrents, files := settingsCheckLibrary()
+			svc := readyHeldTitles(t, torrents, files, settings)
+			size := cmp.Or(tt.size, 4<<30)
+			check := func() {
+				_, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: tt.announce, Size: size})
+				require.NoError(t, err)
+			}
+			check()
+			if tt.debugAnswer == 0 {
+				logbudget.AssertSilent(t, check)
+				if tt.nothingHeld {
+					require.Equal(t, 1, logbudget.Count(t, check)[logbudget.Line{Level: "trace", Message: "Webhook check completed"}])
 				}
-				if heldTitles {
-					torrents, files := settingsCheckLibrary()
-					svc = readyHeldTitles(t, torrents, files, settings)
-				}
-				size := cmp.Or(tt.size, 4<<30)
-				check := func() {
-					_, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: tt.announce, Size: size})
-					require.NoError(t, err)
-				}
-				check()
-				if tt.debugAnswer == 0 {
-					logbudget.AssertSilent(t, check)
-					if heldTitles && tt.nothingHeld {
-						require.Equal(t, 1, logbudget.Count(t, check)[logbudget.Line{Level: "trace", Message: "Webhook check completed"}])
-					}
-					return
-				}
-				lines := logbudget.Count(t, check)
-				require.Equal(t, tt.debugAnswer, lines[logbudget.Line{Level: "debug", Message: "Webhook check completed"}])
-				require.Equal(t, tt.nearMisses, lines[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}])
-				require.Equal(t, tt.filterSkipped, lines[logbudget.Line{Level: "debug", Message: "Webhook check: source filter skipped near miss"}])
-				require.Zero(t, lines[logbudget.Line{Level: "debug", Message: "[Webhook] Source filter results"}])
-			})
-		}
+				return
+			}
+			lines := logbudget.Count(t, check)
+			require.Equal(t, tt.debugAnswer, lines[logbudget.Line{Level: "debug", Message: "Webhook check completed"}])
+			require.Equal(t, tt.nearMisses, lines[logbudget.Line{Level: "debug", Message: "Webhook check: rejected near miss"}])
+			require.Equal(t, tt.filterSkipped, lines[logbudget.Line{Level: "debug", Message: "Webhook check: source filter skipped near miss"}])
+			require.Zero(t, lines[logbudget.Line{Level: "debug", Message: "[Webhook] Source filter results"}])
+		})
 	}
 }
 

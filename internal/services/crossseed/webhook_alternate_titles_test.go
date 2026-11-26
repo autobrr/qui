@@ -241,8 +241,8 @@ func TestHeldTitlesAskForAnEpisodeMapOnlyForMixedNumbering(t *testing.T) {
 
 func TestHeldTitlesWithoutAnEpisodeMapAnswerAsTheFullScan(t *testing.T) {
 	var answers []*WebhookCheckResponse
-	for _, features := range [][]string{nil, freshOn} {
-		freshCase(t, features, 1, func(rig *freshRig) {
+	for _, fullScan := range []bool{true, false} {
+		freshCase(t, fullScan, 1, func(rig *freshRig) {
 			sonarr := &namedArr{answer: func(ctx context.Context) error {
 				<-ctx.Done()
 				return ctx.Err()
