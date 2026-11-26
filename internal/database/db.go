@@ -475,6 +475,18 @@ var connectionPragmas = []pragmaDirective{
 	{stmt: "PRAGMA analysis_limit = 400", allowReadOnly: true},
 }
 
+func checkpointStartupWAL(ctx context.Context, databasePath string, exec pragmaExecFn) error {
+	slowCheckpoint := time.AfterFunc(startupCheckpointWarnAfter, func() {
+		log.Warn().Msgf("The WAL checkpoint of %s is still running after %s. The disk may be slow or busy, or another program may have the database open", databasePath, startupCheckpointWarnAfter)
+	})
+	defer slowCheckpoint.Stop()
+
+	if err := exec(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		return fmt.Errorf("apply wal checkpoint: %w", err)
+	}
+	return nil
+}
+
 func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn, readOnly bool) error {
 	for _, pragma := range connectionPragmas {
 		if readOnly && !pragma.allowReadOnly {
@@ -560,14 +572,12 @@ func New(databasePath string) (*DB, error) {
 		return nil, err
 	}
 
-	slowCheckpoint := time.AfterFunc(startupCheckpointWarnAfter, func() {
-		log.Warn().Msgf("The WAL checkpoint of %s is still running after %s. The disk may be slow or busy, or another program may have the database open", databasePath, startupCheckpointWarnAfter)
-	})
-	_, err = writerConn.ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)")
-	slowCheckpoint.Stop()
-	if err != nil {
+	if err := checkpointStartupWAL(ctx, databasePath, func(ctx context.Context, stmt string) error {
+		_, execErr := writerConn.ExecContext(ctx, stmt)
+		return execErr
+	}); err != nil {
 		writerConn.Close()
-		return nil, fmt.Errorf("apply wal checkpoint: %w", err)
+		return nil, err
 	}
 
 	readerPool, err := openSQLiteReader(databasePath)
