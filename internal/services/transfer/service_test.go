@@ -1209,6 +1209,7 @@ func TestTransferWaitsForARecheckOnTheSource(t *testing.T) {
 
 	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Equal(t, 1, strings.Count(logOf(record), "qui waits for the check to end"))
 }
 
 func TestTransferChecksOnTheTargetWithoutAConfirmedFlush(t *testing.T) {
