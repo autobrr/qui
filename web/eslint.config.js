@@ -170,6 +170,7 @@ const layers = ['types', 'utils', 'config', 'i18n', 'lib', 'contexts', 'hooks', 
 const effectHooks = {
   'src/hooks/useDebounce.ts': 'Gives a value after it has stayed the same for a delay.',
   'src/hooks/useDelayedVisibility.ts': 'Says when the tab has been hidden for a delay.',
+  'src/hooks/useLastDayPeriod.ts': 'Gives the last 24 hours, and moves them on after each history write while the tab is visible.',
   'src/hooks/useNow.ts': 'Gives the time, and renders again each minute.',
   'src/hooks/usePageTitle.ts': 'Passes the title detail and the speeds of the open page to the tab title.',
   'src/hooks/useTabTitle.ts': 'Writes the browser tab title.',
