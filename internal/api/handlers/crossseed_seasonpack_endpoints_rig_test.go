@@ -320,6 +320,12 @@ func (r *seasonPackEndpointRig) startHeldTitles(state heldTitlesState, clients *
 			r.post("/api/cross-seed/webhook/check", mustJSON(r.t, seasonPackEndpointRequest{TorrentName: endpointUnheld}))
 			return r.arr.lookups.Load() == before
 		}, 10*time.Second, 10*time.Millisecond)
+		if len(alternates) > 0 {
+			require.Eventually(r.t, func() bool {
+				status, _ := r.webhookCheck(webhookPackRequest{TorrentName: endpointEpisode(1)})
+				return status == http.StatusOK
+			}, 10*time.Second, 10*time.Millisecond)
+		}
 	}
 }
 
