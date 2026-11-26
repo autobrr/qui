@@ -587,11 +587,14 @@ func parseHashes(values ...string) []infohash.Hash {
 }
 
 func uniqueHashes(hashes ...infohash.Hash) []infohash.Hash {
+	seen := make(map[infohash.Hash]struct{}, len(hashes))
 	out := make([]infohash.Hash, 0, len(hashes))
 	for _, hash := range hashes {
-		if !hash.IsZero() && !slices.Contains(out, hash) {
-			out = append(out, hash)
+		if _, dup := seen[hash]; dup || hash.IsZero() {
+			continue
 		}
+		seen[hash] = struct{}{}
+		out = append(out, hash)
 	}
 	return out
 }

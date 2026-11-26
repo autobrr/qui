@@ -303,15 +303,18 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 }
 
 func targetHashKeys(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
 	keys := make([]string, 0, len(values))
 	for _, value := range values {
 		key := strings.TrimSpace(value)
 		if hash, err := infohash.Parse(key); err == nil {
 			key = hash.String()
 		}
-		if key != "" && !slices.Contains(keys, key) {
-			keys = append(keys, key)
+		if _, dup := seen[key]; dup || key == "" {
+			continue
 		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
 	}
 	return keys
 }
