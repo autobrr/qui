@@ -474,7 +474,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			fetchErr := errors.New("torrent files still hidden")
 			sync := &partialPoolAdmissionSync{
 				rootlessSavePathSyncManager: &rootlessSavePathSyncManager{},
-				addResponse:                 &qbt.TorrentAddResponse{AddedTorrentIds: []string{"accepted-hash"}},
+				addResponse:                 &qbt.TorrentAddResponse{AddedTorrentIds: []string{fakeHash("accepted-hash")}},
 				fetchErr:                    fetchErr,
 			}
 			instance := &models.Instance{
@@ -514,7 +514,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			props := &qbt.TorrentProperties{SavePath: downloadsDir}
 
 			adds := withLinkAdder(service)
-			adds.addedIDs = []string{"accepted-hash"}
+			adds.addedIDs = []string{fakeHash("accepted-hash")}
 			var result InstanceCrossSeedResult
 			if mode == models.CrossSeedPartialPoolModeHardlink {
 				modeResult := service.processHardlinkMode(t.Context(), linkCheck(t, instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
@@ -569,7 +569,7 @@ func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing
 
 	result, err := service.executeCrossSeedSearchAttempt(
 		t.Context(), 1, triggerDefaults{},
-		&qbt.Torrent{Hash: "source", Name: "source"},
+		&qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
 		TorrentSearchResult{Indexer: "Indexer", DownloadURL: "https://example.invalid/synthetic.torrent"},
 		time.Now(),
 	)

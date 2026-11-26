@@ -208,7 +208,7 @@ func TestProcessAutomationCandidateRecheck(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			source := qbt.Torrent{Hash: "recheck-" + tt.name, Name: tt.sourceName, TotalSize: size, Progress: 1}
+			source := qbt.Torrent{Hash: fakeHash("recheck-" + tt.name), Name: tt.sourceName, TotalSize: size, Progress: 1}
 			instance := &models.Instance{ID: instanceID, Name: "main"}
 			service := &Service{
 				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -376,7 +376,7 @@ func TestFindRSSAnnouncementMatchesIncludesOnlyConfiguredCategoryAndTag(t *testi
 
 	wrongCategory := qbt.Torrent{Hash: "wrong-category", Name: sourceName, TotalSize: size, Progress: 1, Category: "movies", Tags: "keep"}
 	wrongTag := qbt.Torrent{Hash: "wrong-tag", Name: sourceName, TotalSize: size, Progress: 1, Category: "tv", Tags: "ignore"}
-	included := qbt.Torrent{Hash: "included", Name: sourceName, TotalSize: size, Progress: 1, Category: "tv", Tags: "keep"}
+	included := qbt.Torrent{Hash: fakeHash("included"), Name: sourceName, TotalSize: size, Progress: 1, Category: "tv", Tags: "keep"}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -443,7 +443,7 @@ func TestProcessAutomationCandidateDuplicateComment(t *testing.T) {
 		commentURL = "https://example.invalid/torrents/42"
 	)
 
-	source := qbt.Torrent{Hash: "comment-source", Name: sourceName, TotalSize: size, Progress: 1, Comment: "uploaded from " + commentURL}
+	source := qbt.Torrent{Hash: fakeHash("comment-source"), Name: sourceName, TotalSize: size, Progress: 1, Comment: "uploaded from " + commentURL}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -474,7 +474,7 @@ func TestProcessAutomationCandidateExactSizeDoesNotReuseDifferentReportedSize(t 
 		resultName = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	source := qbt.Torrent{Hash: "cached-source", Name: sourceName, TotalSize: size, Progress: 1}
+	source := qbt.Torrent{Hash: fakeHash("cached-source"), Name: sourceName, TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -665,8 +665,8 @@ func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T
 		resultName       = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	first := qbt.Torrent{Hash: "first", Name: sourceName, TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second", Name: sourceName, TotalSize: size, Progress: 1}
+	first := qbt.Torrent{Hash: fakeHash("first"), Name: sourceName, TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: fakeHash("second"), Name: sourceName, TotalSize: size, Progress: 1}
 	firstInstance := &models.Instance{ID: firstInstanceID, Name: "first"}
 	secondInstance := &models.Instance{ID: secondInstanceID, Name: "second"}
 	sync := newFakeSyncManager(firstInstance, []qbt.Torrent{first}, map[string]qbt.TorrentFiles{first.Hash: {{Name: sourceName + ".mkv", Size: size}}})
@@ -743,8 +743,8 @@ func TestProcessAutomationCandidateExactSizeSkipRecheckKeepsSafeInstances(t *tes
 		resultName     = "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI"
 	)
 
-	safe := qbt.Torrent{Hash: "safe", Name: "Azure.Compass.S01.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
-	hard := qbt.Torrent{Hash: "hard", Name: "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", TotalSize: size, Progress: 1}
+	safe := qbt.Torrent{Hash: fakeHash("safe"), Name: "Azure.Compass.S01.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	hard := qbt.Torrent{Hash: fakeHash("hard"), Name: "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", TotalSize: size, Progress: 1}
 	safeInstance := &models.Instance{ID: safeInstanceID, Name: "safe"}
 	hardInstance := &models.Instance{ID: hardInstanceID, Name: "hard"}
 	sync := newFakeSyncManager(safeInstance, []qbt.Torrent{safe}, map[string]qbt.TorrentFiles{safe.Hash: {{Name: safe.Name + ".mkv", Size: size}}})
@@ -789,7 +789,7 @@ func TestProcessAutomationCandidateExactSizeInfohashPrecheckGroupsSourcesByInsta
 	)
 
 	first := qbt.Torrent{Hash: hash, Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: fakeHash("second"), Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -827,8 +827,8 @@ func TestProcessAutomationCandidateExactSizeCommentPrecheckGroupsSourcesByInstan
 		commentURL = "https://example.invalid/torrents/99"
 	)
 
-	first := qbt.Torrent{Hash: "first", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1, Comment: "source " + commentURL}
+	first := qbt.Torrent{Hash: fakeHash("first"), Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: fakeHash("second"), Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1, Comment: "source " + commentURL}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -865,8 +865,8 @@ func TestProcessAutomationCandidateExactSizeNoMatchThenErrorFailsInstance(t *tes
 		resultName = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	first := qbt.Torrent{Hash: "first", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	first := qbt.Torrent{Hash: fakeHash("first"), Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: fakeHash("second"), Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -939,7 +939,7 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			source := qbt.Torrent{Hash: "frieren-source", Name: sourceName, TotalSize: tt.sourceSize, Progress: 1}
+			source := qbt.Torrent{Hash: fakeHash("frieren-source"), Name: sourceName, TotalSize: tt.sourceSize, Progress: 1}
 			unrelated := qbt.Torrent{Hash: "unrelated-source", Name: "Quiet.Signal.2025.1080p.WEB-DL.H.264-LUMA", TotalSize: tt.sourceSize, Progress: 1}
 			instance := &models.Instance{ID: instanceID, Name: "main"}
 			service := &Service{
@@ -1071,8 +1071,8 @@ func TestAutomationRunRetriesStrandedAddOnNextPoll(t *testing.T) {
 		</item></channel></rss>`, resultName, guid, size, feed.URL, size)
 	})
 
-	high := qbt.Torrent{Hash: "high", Name: "Amber.Lantern.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	lower := qbt.Torrent{Hash: "lower", Name: "Distant.Harbor.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	high := qbt.Torrent{Hash: fakeHash("high"), Name: "Amber.Lantern.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	lower := qbt.Torrent{Hash: fakeHash("lower"), Name: "Distant.Harbor.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main", IsActive: true}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},

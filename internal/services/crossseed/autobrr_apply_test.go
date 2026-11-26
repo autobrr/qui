@@ -749,7 +749,7 @@ func TestAutobrrApplyNonexactAnnouncementCheapGate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			source := qbt.Torrent{
-				Hash: "apply-cheap-gate", Name: "Hollow.Station.2025.1080p.WEB-DL.H.264-LUMA",
+				Hash: fakeHash("apply-cheap-gate"), Name: "Hollow.Station.2025.1080p.WEB-DL.H.264-LUMA",
 				Size: sourceSize - 10_000, TotalSize: sourceSize, Progress: 1,
 			}
 			sync := &announcementLookupCountingSyncManager{fakeSyncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
@@ -869,8 +869,8 @@ func TestAutobrrApplyRetainsPartialSuccess(t *testing.T) {
 	)
 	instanceA := &models.Instance{ID: 45, Name: "alpha", IsActive: true}
 	instanceB := &models.Instance{ID: 46, Name: "beta", IsActive: true}
-	sourceA := qbt.Torrent{Hash: "alpha-source", Name: name, Size: size, TotalSize: size, Progress: 1}
-	sourceB := qbt.Torrent{Hash: "beta-source", Name: name, Size: size, TotalSize: size, Progress: 1}
+	sourceA := qbt.Torrent{Hash: fakeHash("alpha-source"), Name: name, Size: size, TotalSize: size, Progress: 1}
+	sourceB := qbt.Torrent{Hash: fakeHash("beta-source"), Name: name, Size: size, TotalSize: size, Progress: 1}
 	sync := &fakeSyncManager{
 		cached: map[int][]internalqb.CrossInstanceTorrentView{
 			instanceA.ID: buildCrossInstanceViews(instanceA, []qbt.Torrent{sourceA}),
@@ -925,7 +925,7 @@ func TestAutobrrApplyReadsSeasonFolderFromFiles(t *testing.T) {
 	instance := &models.Instance{ID: 48, Name: "primary", IsActive: true}
 	files := corpusPackFiles("Season 2", "Kaiju Squad (2020) - S02E%02d - Episode (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)")
 	size := int64(len(files)) * corpusEpisodeSize
-	source := qbt.Torrent{Hash: "season-folder", Name: "Season 2", Size: size, TotalSize: size, Progress: 1}
+	source := qbt.Torrent{Hash: fakeHash("season-folder"), Name: "Season 2", Size: size, TotalSize: size, Progress: 1}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{source.Hash: files}),
@@ -1024,8 +1024,8 @@ func TestAutobrrApplySharesTheFailedRouteFoldersOfOneWebhook(t *testing.T) {
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
-			{Hash: "strict", Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
-			{Hash: "fallback", Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: fakeHash("strict"), Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: fakeHash("fallback"), Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
 		}, nil),
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
@@ -1105,8 +1105,8 @@ func TestAutobrrApplyNotifiesStrandedAddBeforeLaterSource(t *testing.T) {
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
-			{Hash: "strict", Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
-			{Hash: "fallback", Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: fakeHash("strict"), Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: fakeHash("fallback"), Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
 		}, nil),
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),

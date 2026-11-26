@@ -153,7 +153,7 @@ func readSearchRun(t *testing.T, respond crossSeedResponder) models.CrossSeedSea
 		crossSeedInvoker: respond,
 	}
 	result, err := service.executeCrossSeedSearchAttempt(t.Context(), 1, triggerDefaults{},
-		&qbt.Torrent{Hash: "source", Name: "source"},
+		&qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
 		TorrentSearchResult{Indexer: "Indexer", DownloadURL: "https://example.invalid/item.torrent"},
 		time.Now())
 	require.NoError(t, err)

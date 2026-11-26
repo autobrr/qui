@@ -3194,7 +3194,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 
 			defaults := triggerDefaults{sourceFilter: sourceFilter{tt.opts.Categories, tt.opts.Tags, tt.opts.ExcludeCategories, tt.opts.ExcludeTags}}
 			torrent := &qbt.Torrent{
-				Hash:     "testhash",
+				Hash:     fakeHash("testhash"),
 				Name:     "Test.Movie.2025.1080p.BluRay-GROUP",
 				Progress: 1.0,
 				Category: "movies-LTS",

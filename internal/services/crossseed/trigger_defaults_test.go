@@ -113,7 +113,7 @@ func failingSettings(context.Context) (*models.CrossSeedAutomationSettings, erro
 func newInteractiveApplyService(t *testing.T, loader func(context.Context) (*models.CrossSeedAutomationSettings, error)) (*Service, *[]*CrossSeedRequest) {
 	t.Helper()
 	sync := newEpisodeSyncManager()
-	sync.torrents[1] = []qbt.Torrent{{Hash: "source", Name: "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA", Progress: 1}}
+	sync.torrents[1] = []qbt.Torrent{{Hash: fakeHash("source"), Name: "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA", Progress: 1}}
 	var captured []*CrossSeedRequest
 	service := &Service{
 		syncManager:              sync,
@@ -126,7 +126,7 @@ func newInteractiveApplyService(t *testing.T, loader func(context.Context) (*mod
 			return &CrossSeedResponse{Success: true}, nil
 		},
 	}
-	service.cacheSearchResults(1, "source", []TorrentSearchResult{{
+	service.cacheSearchResults(1, fakeHash("source"), []TorrentSearchResult{{
 		Indexer: "Indexer", IndexerID: 9, Title: "Harbor.Signal.2026.1080p.WEB-DL.H.264-GROUP",
 		DownloadURL: "https://example.invalid/a.torrent", GUID: "guid",
 	}})

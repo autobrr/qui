@@ -217,7 +217,7 @@ func TestFilterIndexersByExistingContentRejectsSidecarOnlyExisting(t *testing.T)
 
 	const instanceID = 1
 	const sourceHash = "5011ce0000000000000000000000000000000001"
-	const existingHash = "existinghash"
+	existingHash := fakeHash("existinghash")
 
 	source := qbt.Torrent{
 		Hash:     sourceHash,

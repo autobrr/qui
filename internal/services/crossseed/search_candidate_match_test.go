@@ -1980,7 +1980,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 	result, err := service.executeCrossSeedSearchAttempt(
 		context.Background(),
 		1, triggerDefaults{},
-		&qbt.Torrent{Hash: "source", Name: "source"},
+		&qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
 		TorrentSearchResult{
 			Indexer:     "Indexer",
 			IndexerID:   7,
