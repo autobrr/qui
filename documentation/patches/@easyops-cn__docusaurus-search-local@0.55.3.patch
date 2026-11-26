@@ -1,0 +1,13 @@
+diff --git a/dist/client/client/theme/SearchPage/SearchPage.jsx b/dist/client/client/theme/SearchPage/SearchPage.jsx
+index 2efb8b4817b76bfc13f70ad68d289ee4f2a6bfbf..7246e5eee73e53ecfcaf66623665e887c3a65648 100644
+--- a/dist/client/client/theme/SearchPage/SearchPage.jsx
++++ b/dist/client/client/theme/SearchPage/SearchPage.jsx
+@@ -82,7 +82,7 @@ function SearchPageContent() {
+          We should not index search pages
+           See https://github.com/facebook/docusaurus/pull/3233
+         */}
+-        <meta property="robots" content="noindex, follow"/>
++        <meta name="robots" content="noindex, follow"/>
+         <title>{pageTitle}</title>
+       </Head>
+ 
