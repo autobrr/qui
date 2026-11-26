@@ -163,7 +163,7 @@ export function ConditionGroup({
   }
 
   const childIds = children.map((child, index) => child.clientId ?? `${id}-${index}`);
-  const nestedColorClasses = depth % 2 === 1? "border-cyan-500/40 bg-cyan-500/10": "border-amber-500/45 bg-amber-500/10";
+  const nestedColorClasses = depth % 2 === 1? "border-chart-2/40 bg-chart-2/10": "border-chart-4/45 bg-chart-4/10";
 
   return (
     <div
@@ -191,11 +191,11 @@ export function ConditionGroup({
         )}
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           className={cn(
-            "h-7 px-3 font-mono text-xs font-semibold",
-            condition.operator === "AND"? "border-blue-500/50 bg-blue-500/10 text-blue-500": "border-orange-500/50 bg-orange-500/10 text-orange-500"
+            "h-7 border px-3 font-mono text-xs font-semibold",
+            condition.operator === "AND"? "border-chart-3/50 bg-chart-3/10": "border-chart-5/50 bg-chart-5/10"
           )}
           onClick={toggleOperator}
         >

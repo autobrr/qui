@@ -88,6 +88,36 @@ test("checks a status color on the page, a card, a popover, its own tint, and ea
   ])
 })
 
+test("checks the foreground text of a kind chip on each chart tint, on the page and on a card", () => {
+  const result = checkTheme(theme({
+    foreground: "#767676",
+    "chart-1": "#ffffff", "chart-2": "#ffffff", "chart-3": "#ffffff", "chart-4": "#000000", "chart-5": "#ffffff",
+  }))
+
+  assert.deepEqual(
+    failed(result).filter(entry => entry.mode === "light" && entry.label.startsWith("foreground on chart-")).map(entry => entry.label),
+    ["foreground on chart-4 10% on background", "foreground on chart-4 10% on card"],
+  )
+})
+
+test("checks the chart text of the log viewer values on the muted box over the page", () => {
+  const result = checkTheme(theme({ card: "#000000", muted: "#000000", "chart-text-2": "#ffffff", "chart-text-3": "#000000" }))
+
+  assert.deepEqual(
+    result.pairs.filter(entry => entry.mode === "light" && entry.label.endsWith("on muted 30% on background")).map(entry => [entry.label, entry.ok]),
+    [["chart-text-2 text on muted 30% on background", false], ["chart-text-3 text on muted 30% on background", true]],
+  )
+})
+
+test("each built-in theme keeps the label of a kind chip readable on each chart tint", () => {
+  for (const file of builtInThemeFiles()) {
+    const faint = checkTheme(fs.readFileSync(file, "utf8")).pairs
+      .filter(pair => !pair.ok && /^foreground on chart-\d 10% on /.test(pair.label))
+      .map(pair => `${pair.mode}${pair.variation ? ` ${pair.variation}` : ""} ${pair.label}`)
+    assert.deepEqual(faint, [], path.basename(file))
+  }
+})
+
 test("checks a theme without status colors with the standard ones", () => {
   const fixture = theme().replace(/^ {2}--(success|warning|info):.*\n/gm, "")
 

@@ -1373,8 +1373,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               e.preventDefault()
                               e.stopPropagation()
                               void navigate({
-                                to: "/instances/$instanceId",
-                                params: { instanceId: String(instanceId) },
+                                to: "/automations",
                                 search: { tab: "reannounce" },
                               })
                             }}

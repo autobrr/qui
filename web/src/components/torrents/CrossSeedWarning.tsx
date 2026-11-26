@@ -272,7 +272,7 @@ export function CrossSeedWarning({
                           </span>
                         )}
                         {getLocalMatchTypeInfo(torrent.matchType).independentlyUsable && (
-                          <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-10 font-medium text-blue-500">
+                          <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-10 font-medium", torrent.matchType === "reflink"? "bg-chart-5/10": "bg-chart-2/10")}>
                             {torrent.matchType === "reflink"? t("crossSeedTable.matchTypes.reflink.label"): t("crossSeedTable.matchTypes.hardlink.label")}
                           </span>
                         )}

@@ -297,7 +297,7 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 	store := NewArrIDCacheStore(q)
 	err := store.Set(context.Background(), "title-hash", "movie", nil, nil, false, time.Hour)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 15)
+	require.Len(t, insertArgs, 16)
 
 	mapKnownArg, ok := insertArgs[11].(int)
 	require.Truef(t, ok, "expected int arg for episode_map_known, got %T", insertArgs[11])

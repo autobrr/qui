@@ -352,7 +352,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                       {isFile ? (
                         <File className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       ) : (
-                        <Folder className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
+                        <Folder className="h-3.5 w-3.5 text-chart-4 shrink-0" />
                       )}
                       <TruncatedText
                         className={cn(isPending && "opacity-50")}

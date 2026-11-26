@@ -8,6 +8,7 @@ const freeThemesDir = path.resolve(path.dirname(scriptPath), "..", "..", "intern
 const licensedThemesDir = path.join(freeThemesDir, "premium")
 const appCss = fs.readFileSync(path.resolve(path.dirname(scriptPath), "..", "src", "index.css"), "utf8")
 const STATUS = ["success", "warning", "info"]
+const CHARTS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
 const CHART_TEXT = [1, 2, 3, 4, 5].map(n => `chart-text-${n}`)
 
 const MODES = [["light", ":root"], ["dark", ".dark"]]
@@ -107,6 +108,19 @@ function pairGroups(color, mode) {
     {
       source: "web/src (text-success, text-warning, text-info, and their 10% tints)",
       pairs: STATUS.flatMap(statusPairs),
+    },
+    {
+      source: "web/src/components/settings/LogSettingsPanel.tsx (JSON values in text-chart-text-2 and text-chart-text-3 on bg-muted/30 in the log entry dialog)",
+      pairs: ["chart-text-2", "chart-text-3"].map(name => [
+        `${name} text on muted 30% on background`, color(name), surface("muted", 0.3), TEXT,
+      ]),
+    },
+    {
+      source: "web/src (kind chips: foreground text on bg-chart-1/10 to bg-chart-5/10)",
+      pairs: CHARTS.flatMap(name => [
+        [`foreground on ${name} 10% on background`, color("foreground"), surface(name, 0.1), TEXT],
+        [`foreground on ${name} 10% on card`, color("foreground"), surface(name, 0.1, card), TEXT],
+      ]),
     },
     {
       source: "web/src/components/ui/ (progress, checkbox, focus border)",
