@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"strings"
@@ -26,6 +27,8 @@ func TestApplyTorrentSearchResultsFindsSelectionByHiddenGUID(t *testing.T) {
 	tests := []struct {
 		name           string
 		cached         TorrentSearchResult
+		cachedFor      string
+		wantErr        error
 		wantError      string
 		wantDownloaded []string
 	}{
@@ -53,6 +56,18 @@ func TestApplyTorrentSearchResultsFindsSelectionByHiddenGUID(t *testing.T) {
 			},
 			wantError: "download torrent: gazelle API key not configured for api.example.invalid",
 		},
+		{
+			name: "results of another torrent on the instance",
+			cached: TorrentSearchResult{
+				Indexer:     "Indexer",
+				IndexerID:   7,
+				Title:       "Show.S01.1080p.WEB-DL-GRP",
+				DownloadURL: "https://indexer.example.invalid/dl/1?passkey=made-up-passkey",
+				Size:        100,
+			},
+			cachedFor: strings.Repeat("d", 40),
+			wantErr:   ErrInvalidRequest,
+		},
 	}
 
 	for _, tt := range tests {
@@ -75,7 +90,7 @@ func TestApplyTorrentSearchResultsFindsSelectionByHiddenGUID(t *testing.T) {
 					return nil, errStopAfterDownload
 				},
 			}
-			svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{tt.cached})
+			svc.cacheSearchResults(instanceID, cmp.Or(tt.cachedFor, sourceHash), []TorrentSearchResult{tt.cached})
 
 			resp, err := svc.ApplyTorrentSearchResults(t.Context(), instanceID, mustParseHash(t, sourceHash), &ApplyTorrentSearchRequest{
 				Selections: []TorrentSearchSelection{{
@@ -84,6 +99,11 @@ func TestApplyTorrentSearchResultsFindsSelectionByHiddenGUID(t *testing.T) {
 					GUID:      jackett.HiddenGUID(tt.cached.IndexerID, tt.cached.GUID, tt.cached.DownloadURL),
 				}},
 			})
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+				require.Empty(t, downloaded)
+				return
+			}
 			require.NoError(t, err)
 			require.Len(t, resp.Results, 1)
 			require.Equal(t, tt.wantError, resp.Results[0].Error)

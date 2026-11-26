@@ -1,6 +1,7 @@
 package gazellemusic
 
 import (
+	"cmp"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -113,12 +114,14 @@ func legacyFlagTorrent(t *testing.T) []byte {
 func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 	const pthHash = "2d95e58ed6b0430e79a00d41c506fe3715b43874"
 	for _, tc := range []struct {
-		name, infoHash string
-		wantErr        bool
+		name, torrent, infoHash string
+		wantErr                 bool
 	}{
 		{name: "answer names the hash", infoHash: `,"infoHash":"2D95E58ED6B0430E79A00D41C506FE3715B43874"`},
 		{name: "answer leaves the hash out", infoHash: ""},
 		{name: "answer names another hash", infoHash: `,"infoHash":"0000000000000000000000000000000000000001"`, wantErr: true},
+		{name: "answer has no torrent ID", torrent: `"id":0,"size":123`, wantErr: true},
+		{name: "answer has no size", torrent: `"id":7,"size":0`, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var hashCalls atomic.Int32
@@ -129,7 +132,7 @@ func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 				}
 				hashCalls.Add(1)
 				if r.URL.Query().Get("hash") == strings.ToUpper(pthHash) {
-					_, _ = w.Write([]byte(`{"status":"success","response":{"group":{"id":3,"name":"Album"},"torrent":{"id":7,"size":123` + tc.infoHash + `}}}`))
+					_, _ = w.Write([]byte(`{"status":"success","response":{"group":{"id":3,"name":"Album"},"torrent":{` + cmp.Or(tc.torrent, `"id":7,"size":123`) + tc.infoHash + `}}}`))
 					return
 				}
 				_, _ = w.Write([]byte(`{"status":"failure","error":"bad hash parameter"}`))

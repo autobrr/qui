@@ -46,6 +46,9 @@ func TestCatalogApplyObligations(t *testing.T) {
 		{name: "target changed", kind: gazellemusic.MatchHash, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) {
 			r.SearchDecision.Catalog.TargetHash, r.SearchDecision.Catalog.QueriedHash = mustParseHash(t, adderV1), mustParseHash(t, adderV1)
 		}, wantErr: "selected target hash or full size changed"},
+		{name: "unbound source instance", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SearchDecision.SourceInstanceID = 0 }, wantErr: "incomplete file-evidence decision"},
+		{name: "targets leave out the source instance", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.TargetInstanceIDs = []int{2} }, wantErr: "file-evidence source binding mismatch"},
+		{name: "no target instance list", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.TargetInstanceIDs = nil }, wantAdd: true},
 		{name: "size exact path skips check", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "hash exact path exemption", kind: gazellemusic.MatchHash, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "renames honor skip recheck", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
