@@ -69,6 +69,8 @@ type Service struct {
 
 	cleanupMu        sync.Mutex
 	nextCacheCleanup time.Time
+
+	instanceChanges
 }
 
 type askedInstance struct {
