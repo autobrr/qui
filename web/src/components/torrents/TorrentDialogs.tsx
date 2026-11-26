@@ -1719,7 +1719,7 @@ function LimitSheet({ open, onOpenChange, title, description, headerAction, unre
         </DrawerHeader>
         <div className="min-h-0 flex-1 divide-y overflow-y-auto px-4">{children}</div>
         <div className="shrink-0 space-y-2 border-t px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          {unresolvedMessage && <p className="text-xs text-yellow-600">{unresolvedMessage}</p>}
+          {unresolvedMessage && <p className="text-xs text-warning">{unresolvedMessage}</p>}
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>{cancelLabel}</Button>
             <Button className="h-11" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</Button>
@@ -1826,7 +1826,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
           value={isUnresolvedMixed(form[key]) ? "" : form[key].value}
           onValueChange={(value: string) => updateField(key, { value, touched: true })}
         >
-          <SelectTrigger className={cn("h-10 w-full", isUnresolvedMixed(form[key]) && "border-yellow-600")}>
+          <SelectTrigger className={cn("h-10 w-full", isUnresolvedMixed(form[key]) && "border-warning")}>
             <SelectValue placeholder={t("shareLimits.selectValue")} />
           </SelectTrigger>
           <SelectContent>{items}</SelectContent>
@@ -1867,7 +1867,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                   value={unresolved ? "" : field.mode}
                   onValueChange={(value: ShareLimitMode) => updateField(key, { mode: value, touched: true })}
                 >
-                  <SelectTrigger className={cn("h-10 w-[150px] shrink-0", unresolved && "border-yellow-600")}>
+                  <SelectTrigger className={cn("h-10 w-[150px] shrink-0", unresolved && "border-warning")}>
                     <SelectValue placeholder={t("dialogs.shareLimit.selectValue")} />
                   </SelectTrigger>
                   <SelectContent>{modeItems}</SelectContent>
@@ -2079,7 +2079,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">
           {hasUnresolvedMixed && (
-            <p className="text-xs text-yellow-600 text-left sm:flex-1">
+            <p className="text-xs text-warning text-left sm:flex-1">
               {t("dialogs.shareLimit.unresolvedMixed")}
             </p>
           )}
@@ -2158,7 +2158,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
                 <div className="min-w-0">
                   <Label htmlFor={`${key}EnabledSheet`} className="text-sm font-medium">{t(labelKey)}</Label>
                   {isUnresolvedMixed(field) && (
-                    <p className="text-xs text-yellow-600">{t("dialogs.speedLimits.selectValue")}</p>
+                    <p className="text-xs text-warning">{t("dialogs.speedLimits.selectValue")}</p>
                   )}
                   {field.isMixed && field.touched && (
                     <p className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</p>
@@ -2209,7 +2209,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
                 <Label htmlFor="uploadEnabled">{t("dialogs.speedLimits.uploadLimit")}</Label>
               </div>
               {isUnresolvedMixed(form.upload) && (
-                <span className="text-xs text-yellow-600">{t("dialogs.speedLimits.selectValue")}</span>
+                <span className="text-xs text-warning">{t("dialogs.speedLimits.selectValue")}</span>
               )}
               {form.upload.isMixed && form.upload.touched && (
                 <span className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</span>
@@ -2236,7 +2236,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
                 <Label htmlFor="downloadEnabled">{t("dialogs.speedLimits.downloadLimit")}</Label>
               </div>
               {isUnresolvedMixed(form.download) && (
-                <span className="text-xs text-yellow-600">{t("dialogs.speedLimits.selectValue")}</span>
+                <span className="text-xs text-warning">{t("dialogs.speedLimits.selectValue")}</span>
               )}
               {form.download.isMixed && form.download.touched && (
                 <span className="text-xs text-muted-foreground">{t("dialogs.speedLimits.wasMixed")}</span>
@@ -2254,7 +2254,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">
           {hasUnresolvedMixed && (
-            <p className="text-xs text-yellow-600 text-left sm:flex-1">
+            <p className="text-xs text-warning text-left sm:flex-1">
               {t("dialogs.speedLimits.unresolvedMixed")}
             </p>
           )}

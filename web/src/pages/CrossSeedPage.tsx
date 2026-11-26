@@ -53,7 +53,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       )}
       notice={!hasEnabledIndexers && (
         <Alert className="border-border rounded-xl bg-card">
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertTriangle className="h-4 w-4 text-warning" />
           <AlertTitle>{t("indexersMissing.title")}</AlertTitle>
           <AlertDescription className="space-y-1">
             <p>{t("indexersMissing.description")}</p>

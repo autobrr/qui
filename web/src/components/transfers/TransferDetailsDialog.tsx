@@ -79,7 +79,7 @@ export function TransferDetailsDialog({ transferId, onClose }: TransferDetailsDi
         </DialogHeader>
 
         {data && detail.isRefetchError && (
-          <p role="status" className="flex shrink-0 items-start gap-1.5 border-b bg-amber-500/10 px-6 py-2 text-xs text-amber-700 max-md:px-4 dark:text-amber-400">
+          <p role="status" className="flex shrink-0 items-start gap-1.5 border-b bg-warning/10 px-6 py-2 text-xs text-warning max-md:px-4">
             <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden="true" />
             <span className="[overflow-wrap:anywhere]">{t("details.stale", { message: display.text(detail.error.message) })}</span>
           </p>
@@ -229,7 +229,7 @@ function TorrentRow({ member, crossSeed }: { member: TransferMember; crossSeed: 
 
 const lastDots: Partial<Record<TransferState, string>> = {
   waiting: "bg-muted-foreground",
-  done: "bg-emerald-500",
+  done: "bg-success",
   failed: "bg-destructive",
   cancelled: "bg-muted-foreground",
 }

@@ -429,11 +429,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const streamToneStyles = useMemo(() => {
     switch (streamStatus.tone) {
       case "success":
-        return { dotClass: "bg-emerald-500 shadow-[0_0_0_2px] shadow-emerald-500/25", textClass: "text-emerald-600 dark:text-emerald-400" }
+        return { dotClass: "bg-success shadow-[0_0_0_2px] shadow-success/25", textClass: "text-success" }
       case "error":
         return { dotClass: "bg-destructive shadow-[0_0_0_2px] shadow-destructive/20", textClass: "text-destructive" }
       case "warning":
-        return { dotClass: "bg-amber-400 shadow-[0_0_0_2px] shadow-amber-400/25", textClass: "text-amber-600 dark:text-amber-400" }
+        return { dotClass: "bg-warning shadow-[0_0_0_2px] shadow-warning/25", textClass: "text-warning" }
       default:
         return { dotClass: "bg-muted-foreground/60", textClass: "text-muted-foreground" }
     }
@@ -644,7 +644,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isAltSpeedKnown = altSpeedOverride !== null || hasAltSpeedStatus
   const altSpeedEnabled = altSpeedOverride ?? serverAltSpeedEnabled ?? false
   const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
-  const altSpeedIconClass = isAltSpeedKnown ? altSpeedEnabled ? "text-destructive" : "text-green-500" : "text-muted-foreground"
+  const altSpeedIconClass = isAltSpeedKnown ? altSpeedEnabled ? "text-destructive" : "text-success" : "text-muted-foreground"
 
   useEffect(() => {
     setAltSpeedOverride(null)
@@ -699,7 +699,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
   const connectionStatusTooltip = hasConnectionStatus ? `${isConnectable ? t("statusBar.connectionConnectable") : connectionStatusDisplay}${listenPort ? `. ${t("statusBar.connectionPort", { port: listenPort })}` : ""}` : t("statusBar.connectionUnknown")
-  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
+  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-success" : isFirewalled ? "text-warning" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
 
   const listFacts = useMemo<ListFacts>(() => ({
@@ -1380,7 +1380,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             }}
                             className="h-6 w-6 text-muted-foreground hover:text-accent-foreground"
                           >
-                            <RefreshCcw className="h-4 w-4 text-green-500" />
+                            <RefreshCcw className="h-4 w-4 text-success" />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>{t("statusBar.reannounceEnabled")}</TooltipContent>

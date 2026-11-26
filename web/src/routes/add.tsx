@@ -229,7 +229,7 @@ function InstanceSelector({ instances, onSelect, onCancel }: InstanceSelectorPro
               onClick={() => onSelect(instance.id)}
             >
               <div className="flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${instance.connected ? "bg-green-500" : "bg-red-500"
+                <div className={`h-2 w-2 rounded-full ${instance.connected ? "bg-success" : "bg-destructive"
                 }`} />
                 <span>{instance.name || `Instance ${instance.id}`}</span>
               </div>

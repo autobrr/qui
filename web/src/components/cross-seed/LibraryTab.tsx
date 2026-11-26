@@ -776,7 +776,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
                             <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
                               <div className="flex items-center gap-2 min-w-0">
                                 {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-                                {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+                                {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-info shrink-0" />}
                                 {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
                                 {run.status === "canceled" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
                                 <Badge variant="outline" size="sm" className="shrink-0">
