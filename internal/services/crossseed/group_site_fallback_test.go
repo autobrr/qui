@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -329,7 +330,7 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 
 	const (
 		instanceID = 1
-		sourceHash = "existing"
+		sourceHash = "c0de000000000000000000000000000000000007"
 	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	existing := qbt.Torrent{Hash: sourceHash, Name: fansubBracketPack, Size: fansubPackSize, Progress: 1}
@@ -348,7 +349,7 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 				Class:                 searchCandidateClassExactSizeFallback,
 				SearchCandidateName:   fansubTaggedPack,
 				SourceInstanceID:      instanceID,
-				SourceHash:            sourceHash,
+				SourceHash:            mustParseHash(t, sourceHash),
 				Relaxed:               differencesOf(differenceGroup),
 				GroupFallbackIdentity: "kiri",
 			},
@@ -379,8 +380,10 @@ func TestFindCandidatesGroupFallbackBindsToSearchSource(t *testing.T) {
 		mutate func(*FindCandidatesRequest)
 	}{
 		{
-			name:   "another torrent supplied the size evidence",
-			mutate: func(req *FindCandidatesRequest) { req.SearchDecision.SourceHash = "someotherhash" },
+			name: "another torrent supplied the size evidence",
+			mutate: func(req *FindCandidatesRequest) {
+				req.SearchDecision.SourceHash = mustParseHash(t, "c0de000000000000000000000000000000000008")
+			},
 		},
 		{
 			name:   "another instance supplied the size evidence",
@@ -410,7 +413,7 @@ func TestFindCandidatesKeepsStoredRelaxations(t *testing.T) {
 
 	const (
 		instanceID  = 1
-		sourceHash  = "existing"
+		sourceHash  = "c0de000000000000000000000000000000000007"
 		otherSeason = "[KIRI] Azure Compass S02 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch]"
 	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
@@ -447,7 +450,7 @@ func TestFindCandidatesKeepsStoredRelaxations(t *testing.T) {
 				Class:                 searchCandidateClassExactSizeFallback,
 				SearchCandidateName:   fansubTaggedPack,
 				SourceInstanceID:      instanceID,
-				SourceHash:            sourceHash,
+				SourceHash:            mustParseHash(t, sourceHash),
 				Relaxed:               differencesOf(relaxed...),
 				GroupFallbackIdentity: "kiri",
 			},
@@ -478,7 +481,7 @@ func TestFindCandidates_KeepsFileDerivedStrictEpisodeIdentity(t *testing.T) {
 
 	const (
 		instanceID     = 1
-		sourceHash     = "existing-episode"
+		sourceHash     = "c0de000000000000000000000000000000000006"
 		bracketEpisode = "Azure Compass S01E01 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch][KIRI]"
 		taggedEpisode  = "Azure.Compass.S01E01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 	)
@@ -504,7 +507,7 @@ func TestFindCandidates_KeepsFileDerivedStrictEpisodeIdentity(t *testing.T) {
 			Class:               searchCandidateClassStrict,
 			SearchCandidateName: taggedEpisode,
 			SourceInstanceID:    instanceID,
-			SourceHash:          sourceHash,
+			SourceHash:          mustParseHash(t, sourceHash),
 		},
 	})
 	require.NoError(t, err)
@@ -517,7 +520,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 
 	const (
 		instanceID = 1
-		sourceHash = "raw-episode-pack"
+		sourceHash = "c0de000000000000000000000000000000000004"
 		rawEpisode = "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI"
 		packName   = "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI"
 		size       = int64(2000)
@@ -553,7 +556,7 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 		TorrentName:            packName,
 		TargetInstanceIDs:      []int{instanceID},
 		FindIndividualEpisodes: true,
-		SearchDecision:         decision.provenance().bindSource(instanceID, sourceHash),
+		SearchDecision:         decision.provenance().bindSource(instanceID, mustParseHash(t, sourceHash)),
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1,
@@ -566,10 +569,10 @@ func TestFindCandidates_DerivesBoundPackBeforeEpisodeShapeGate(t *testing.T) {
 		context.Background(),
 		response.Candidates[0],
 		nil,
-		"incoming",
-		"",
+		mustParseHash(t, "c0de000000000000000000000000000000000005"),
+		infohash.Hash{},
 		packName,
-		&CrossSeedRequest{SearchDecision: decision.provenance().bindSource(instanceID, sourceHash)},
+		&CrossSeedRequest{SearchDecision: decision.provenance().bindSource(instanceID, mustParseHash(t, sourceHash))},
 		svc.releaseCache.Parse(packName),
 		files,
 		nil, nil,
@@ -585,7 +588,7 @@ func TestFindCandidates_KeepsFileStructureWithoutReplacingExplicitGroup(t *testi
 
 	const (
 		instanceID   = 1
-		sourceHash   = "explicit-group-source"
+		sourceHash   = "c0de000000000000000000000000000000000003"
 		sourceName   = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 		incomingName = "Azure.Compass.S02.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 	)
@@ -616,7 +619,7 @@ func TestFindCandidates_KeepsFileStructureWithoutReplacingExplicitGroup(t *testi
 			Class:               searchCandidateClassStrict,
 			SearchCandidateName: incomingName,
 			SourceInstanceID:    instanceID,
-			SourceHash:          sourceHash,
+			SourceHash:          mustParseHash(t, sourceHash),
 		},
 	})
 	require.NoError(t, err)
@@ -628,7 +631,7 @@ func TestFindCandidates_KeepsRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 
 	const (
 		instanceID = 1
-		sourceHash = "retitled-season-source"
+		sourceHash = "c0de000000000000000000000000000000000002"
 		rawS01     = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 		size       = int64(10_003)
 	)
@@ -664,7 +667,7 @@ func TestFindCandidates_KeepsRelaxedStructureWhenRawNamesMatch(t *testing.T) {
 			Class:               decision.Class,
 			SearchCandidateName: rawS01,
 			SourceInstanceID:    instanceID,
-			SourceHash:          sourceHash,
+			SourceHash:          mustParseHash(t, sourceHash),
 			Relaxed:             decision.Relaxed,
 		},
 	})
@@ -921,7 +924,7 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 
 	const (
 		instanceID = 1
-		sourceHash = "bound-source"
+		sourceHash = "c0de000000000000000000000000000000000001"
 	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 
@@ -969,7 +972,7 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 						SearchCandidateName:   fansubBracketPack,
 						Class:                 searchCandidateClassExactSizeFallback,
 						SourceInstanceID:      instanceID,
-						SourceHash:            sourceHash,
+						SourceHash:            mustParseHash(t, sourceHash),
 						Relaxed:               differencesOf(differenceGroup),
 						GroupFallbackIdentity: "kiri",
 					},
@@ -1021,7 +1024,7 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 						SearchCandidateName:   fansubBracketPack,
 						Class:                 searchCandidateClassExactSizeFallback,
 						SourceInstanceID:      instanceID,
-						SourceHash:            sourceHash,
+						SourceHash:            mustParseHash(t, sourceHash),
 						Relaxed:               differencesOf(differenceGroup),
 						GroupFallbackIdentity: "kiri",
 					},
@@ -1074,7 +1077,7 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 						SearchCandidateName: targetName,
 						Class:               searchCandidateClassExactSizeFallback,
 						SourceInstanceID:    instanceID,
-						SourceHash:          sourceHash,
+						SourceHash:          mustParseHash(t, sourceHash),
 						Relaxed:             differencesOf(differenceSource),
 					},
 				})

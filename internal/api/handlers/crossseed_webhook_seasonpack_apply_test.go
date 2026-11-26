@@ -17,7 +17,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
@@ -199,7 +198,7 @@ func TestWebhookApplyWithoutANameAddsTheResultOfAnotherInstance(t *testing.T) {
 func TestWebhookApplyWithoutANameKeepsADirectResult(t *testing.T) {
 	pack := endpointPackTorrent(t, 1, 4)
 	rig := newSeasonPackEndpointRig(t, &seasonPackEndpointCase{held: endpointEpisodes(4), total: 4, setup: func(r *seasonPackEndpointRig) {
-		_, err := r.blocklist.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: 1, InfoHash: endpointHash(t, pack)})
+		_, err := r.blocklist.Upsert(t.Context(), 1, endpointInfoHash(t, pack), "")
 		require.NoError(t, err)
 		r.holdPack(false)
 	}}, heldTitlesReady)

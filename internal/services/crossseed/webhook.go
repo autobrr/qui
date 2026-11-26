@@ -164,7 +164,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 				instanceID:   instance.ID,
 				instanceName: instance.Name,
 				torrent:      torrent,
-				decision:     provenance.bindSource(instance.ID, torrent.Hash),
+				decision:     provenance.bindSource(instance.ID, parseHash(torrent.Hash)),
 			})
 		}
 	}

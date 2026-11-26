@@ -176,13 +176,13 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	}
 
 	withAdder(service)
-	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, strings.ToUpper(sourceV2), req)
+	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, mustParseHash(t, strings.ToUpper(sourceV2)), req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
-	require.Equal(t, sourceTorrent.Hash, captured.SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, sourceTorrent.Hash), captured.SearchDecision.SourceHash)
 	require.Equal(t, cached.SearchDecision.Relaxed, captured.SearchDecision.Relaxed)
 	require.Equal(t, cached.SearchDecision.SourceTitles, captured.SearchDecision.SourceTitles)
 }
@@ -264,7 +264,7 @@ func (f *episodeSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID 
 			if files, ok := instFiles[strings.ToLower(h)]; ok {
 				cp := make(qbt.TorrentFiles, len(files))
 				copy(cp, files)
-				result[normalizeHash(h)] = cp
+				result[h] = cp
 			}
 		}
 	}

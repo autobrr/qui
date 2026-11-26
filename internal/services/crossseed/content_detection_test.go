@@ -21,7 +21,7 @@ func TestAnalyzeTorrentForSearchAsync_RejectsUnrelatedLargestFile(t *testing.T) 
 	instance := &models.Instance{ID: 1, Name: "Test"}
 
 	movieTorrent := qbt.Torrent{
-		Hash:     "deadbeef",
+		Hash:     "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
 		Name:     "Example.Movie.2001.1080p.BluRay.x264-GROUP",
 		Progress: 1.0,
 		Size:     10 << 30,
@@ -43,7 +43,7 @@ func TestAnalyzeTorrentForSearchAsync_RejectsUnrelatedLargestFile(t *testing.T) 
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, movieTorrent.Hash, false)
+	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, mustParseHash(t, movieTorrent.Hash), false)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -59,7 +59,7 @@ func TestAnalyzeTorrentForSearchAsync_UsesLargestFileWhenTitlesAlign(t *testing.
 	instance := &models.Instance{ID: 1, Name: "Test"}
 
 	tvTorrent := qbt.Torrent{
-		Hash:     "abcd1234",
+		Hash:     "abcd1234abcd1234abcd1234abcd1234abcd1234",
 		Name:     "MadeUp.Show",
 		Progress: 1.0,
 		Size:     5 << 30,
@@ -81,7 +81,7 @@ func TestAnalyzeTorrentForSearchAsync_UsesLargestFileWhenTitlesAlign(t *testing.
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, tvTorrent.Hash, false)
+	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, mustParseHash(t, tvTorrent.Hash), false)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -97,7 +97,7 @@ func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Miniseries(t *test
 	instance := &models.Instance{ID: 1, Name: "Test"}
 
 	torrent := qbt.Torrent{
-		Hash:     "torka123",
+		Hash:     "c0de000000000000000000000000000000000001",
 		Name:     "Torka.aldrig.tarar.utan.handskar.2012.720p.BluRay.x264-HANDJOB",
 		Progress: 1.0,
 		Size:     8 << 30,
@@ -123,7 +123,7 @@ func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Miniseries(t *test
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, torrent.Hash, false)
+	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, mustParseHash(t, torrent.Hash), false)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -139,7 +139,7 @@ func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Anime(t *testing.T
 	instance := &models.Instance{ID: 1, Name: "Test"}
 
 	torrent := qbt.Torrent{
-		Hash:     "takopii123",
+		Hash:     "c0de000000000000000000000000000000000002",
 		Name:     "[SubsPlease] Takopii no Genzai (1080p)",
 		Progress: 1.0,
 		Size:     9 << 30,
@@ -169,7 +169,7 @@ func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Anime(t *testing.T
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, torrent.Hash, false)
+	result, err := service.AnalyzeTorrentForSearchAsync(ctx, instance.ID, mustParseHash(t, torrent.Hash), false)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 

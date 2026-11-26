@@ -438,7 +438,7 @@ func TestSearchTorrentMatches_FailedIndexerDiscoveryAsksREDOPSAndReportsTorznabF
 		},
 	}
 
-	resp, err := svc.SearchTorrentMatches(t.Context(), instanceID, sourceHash, TorrentSearchOptions{})
+	resp, err := svc.SearchTorrentMatches(t.Context(), instanceID, mustParseHash(t, sourceHash), TorrentSearchOptions{})
 
 	require.NoError(t, err)
 	require.True(t, resp.TorznabFailed, "the dialog must show that Torznab failed")
@@ -548,7 +548,7 @@ func TestSearchRunLoop_TorznabSearchFailureIsReported(t *testing.T) {
 	t.Cleanup(downedTracker.Close)
 	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-torznab-search-failure", downedTracker.URL, torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
 	findGazelleMatch = func(context.Context, *gazellemusic.Client, []byte, map[string]int64, int64) (*gazellemusic.Match, error) {
-		return &gazellemusic.Match{TorrentID: 4242, Title: name, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+		return &gazellemusic.Match{TorrentID: 4242, Title: name, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), QueriedHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}, nil
 	}
 
 	runSearchLoopToCompletion(t, svc, state)

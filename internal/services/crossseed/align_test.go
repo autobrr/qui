@@ -11,6 +11,7 @@ import (
 	"github.com/autobrr/rls"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -1084,7 +1085,7 @@ func (m *rootlessFolderAlignmentSyncManager) GetTorrentFilesBatch(_ context.Cont
 	for _, hash := range hashes {
 		cp := make(qbt.TorrentFiles, len(m.files))
 		copy(cp, m.files)
-		result[normalizeHash(hash)] = cp
+		result[hash] = cp
 	}
 	return result, nil
 }
@@ -1103,7 +1104,7 @@ func TestAlignCrossSeed_RootlessSourceIntoMatchedFolderRenamesBasenameOnly(t *te
 	t.Parallel()
 
 	const (
-		hash         = "newhash"
+		hash         = "feedfacefeedfacefeedfacefeedfacefeedface"
 		sourceName   = "Movie.2015.1080p.BluRay.x264-GROUP.mkv"
 		sourcePath   = "Movie.2015.1080p.BluRay.x264-GROUP.mkv"
 		candidateDir = "Movie.2015.LIMITED.1080p.BluRay.x264-GROUP"
@@ -1135,8 +1136,8 @@ func TestAlignCrossSeed_RootlessSourceIntoMatchedFolderRenamesBasenameOnly(t *te
 	ok, activeHash := service.alignCrossSeed(
 		t.Context(),
 		1,
-		hash,
-		"",
+		mustParseHash(t, hash),
+		infohash.Hash{},
 		sourceName,
 		&plan,
 	)

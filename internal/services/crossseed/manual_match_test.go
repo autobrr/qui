@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -54,7 +55,7 @@ func TestManualMatchPackProposalLimit(t *testing.T) {
 				files[hash] = qbt.TorrentFiles{{Name: names[i], Size: file.Size}}
 			}
 			svc := manualMatchTestService(&models.Instance{ID: 1, Name: "local"}, torrents, files)
-			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, "")
+			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, infohash.Hash{})
 			require.NoError(t, err)
 			require.True(t, resp.PackMode)
 			require.Equal(t, count, resp.PackEpisodeCount)
@@ -89,7 +90,7 @@ func TestManualMatchSeasonNumeralPackMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			data := createTestTorrent(t, tt.torrentName, tt.files, 256*1024)
 			svc := manualMatchTestService(&models.Instance{ID: 1, Name: "local"}, nil, nil)
-			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, "")
+			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, infohash.Hash{})
 			require.NoError(t, err)
 			require.Equal(t, tt.wantPackMode, resp.PackMode)
 		})
@@ -323,7 +324,7 @@ func TestManualMatchProposals(t *testing.T) {
 
 	svc := manualMatchTestService(instance, []qbt.Torrent{fullOverlap, partialOverlap, noOverlap, incomplete, moving}, files)
 
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, "")
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, infohash.Hash{})
 	require.NoError(t, err)
 	require.Equal(t, meta.Name, resp.SourceName)
 	require.Equal(t, []string{"cross-seed"}, resp.DefaultTags, "the cross-seed tag is the default, matching the search dialog")
@@ -339,7 +340,7 @@ func TestManualMatchProposals(t *testing.T) {
 	require.Equal(t, "/downloads", resp.Proposals[0].EffectiveSavePath)
 	require.Equal(t, "tv", resp.Proposals[0].Category)
 
-	resp, err = svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, noOverlap.Hash)
+	resp, err = svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, noOverlap.Hash))
 	require.NoError(t, err)
 	found := false
 	for _, p := range resp.Proposals {
@@ -376,7 +377,7 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 	})
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, zeroOverlap.Hash)
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, zeroOverlap.Hash))
 	require.NoError(t, err)
 	byHash := make(map[string]ManualMatchProposal, len(resp.Proposals))
 	for _, p := range resp.Proposals {
@@ -421,7 +422,7 @@ func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
 	}
 
 	svc := manualMatchTestService(instance, torrents, nil)
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, requested.Hash)
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, requested.Hash))
 	require.NoError(t, err)
 	require.True(t, slices.ContainsFunc(resp.Proposals, func(p ManualMatchProposal) bool {
 		return p.Hash == requested.Hash
@@ -453,7 +454,7 @@ func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
 		rootless.Hash: {{Name: fileName, Size: size}},
 	})
 
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, rootless.Hash)
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, rootless.Hash))
 	require.NoError(t, err)
 	require.Len(t, resp.Proposals, 1)
 	require.Equal(t, "/downloads/movies", resp.Proposals[0].EffectiveSavePath,
@@ -500,7 +501,7 @@ func TestManualMatchProposalsPinnedCategory(t *testing.T) {
 				return tt.settings, nil
 			}
 
-			resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, target.Hash)
+			resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, target.Hash))
 			require.NoError(t, err)
 			require.Equal(t, tt.want, resp.PinnedCategory)
 		})
@@ -584,16 +585,16 @@ func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
 			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{target.Hash: meta.Files})
 			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 
-			resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, target.Hash)
+			resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, mustParseHash(t, target.Hash))
 			require.NoError(t, err)
 			require.Len(t, resp.Proposals, 1)
 			preview := resp.Proposals[0].EffectiveSavePath
 			require.NoDirExists(t, linksParent, "the preview writes nothing")
 
 			adds := withLinkAdder(svc)
-			result := svc.processHardlinkMode(t.Context(), linkCheck(instance.ID, meta.HashV1),
+			result := svc.processHardlinkMode(t.Context(), linkCheck(t, instance.ID, meta.HashV1.String()),
 				CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name},
-				torrentBytes, meta.HashV1, meta.Name, &CrossSeedRequest{},
+				torrentBytes, meta.HashV1.String(), meta.Name, &CrossSeedRequest{},
 				&target, "exact", meta.Files, meta.Files, &qbt.TorrentProperties{SavePath: downloads}, "", "")
 			require.True(t, result.Success, "result: %+v", result)
 			require.Len(t, adds.added, 1)
@@ -654,7 +655,7 @@ func TestManualMatchPreviewKeepsTheDiskOfEachTarget(t *testing.T) {
 	svc := manualMatchTestService(instance, targets, files)
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, backend))
 
-	resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, "")
+	resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, infohash.Hash{})
 	require.NoError(t, err)
 	got := make(map[string]string, len(resp.Proposals))
 	for _, p := range resp.Proposals {

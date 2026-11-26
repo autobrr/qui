@@ -231,7 +231,7 @@ func (r *routedRig) add(req *CrossSeedRequest, addedTo map[int]struct{}, sourceF
 	if req == nil {
 		req = &CrossSeedRequest{}
 	}
-	return r.svc.processCrossSeedCandidate(r.ctx, r.candidate(), []byte("torrent"), adderV1, "", routedName,
+	return r.svc.processCrossSeedCandidate(r.ctx, r.candidate(), []byte("torrent"), mustParseHash(r.t, adderV1), infohash.Hash{}, routedName,
 		req, r.svc.releaseCache.Parse(routedName), sourceFiles, nil, addedTo)
 }
 
@@ -530,7 +530,7 @@ func TestRoutedAddAppliesOnlyTheCrossSeedInstanceBlocklist(t *testing.T) {
 			if blockedOn == "lib" {
 				instanceID = r.source.ID
 			}
-			_, err := r.svc.blocklistStore.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: instanceID, InfoHash: adderV1})
+			_, err := r.svc.blocklistStore.Upsert(t.Context(), instanceID, mustParseHash(t, adderV1), "")
 			require.NoError(t, err)
 
 			result := r.add(nil, nil, nil)
@@ -594,7 +594,7 @@ func TestRoutedAddKeepsTheRecheckOfARelaxedMatch(t *testing.T) {
 	result := r.add(&CrossSeedRequest{SearchDecision: searchDecisionProvenance{
 		Class:            searchCandidateClassExactSizeFallback,
 		SourceInstanceID: r.source.ID,
-		SourceHash:       routedMatched,
+		SourceHash:       mustParseHash(t, routedMatched),
 		Relaxed:          differencesOf(differenceGroup),
 	}}, nil, nil)
 
@@ -666,7 +666,7 @@ func TestRoutedAddMatchOnTheCrossSeedInstanceStaysThere(t *testing.T) {
 			candidate := r.candidate()
 			candidate.InstanceID, candidate.InstanceName = r.crossSeed.ID, r.crossSeed.Name
 
-			result := r.svc.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), adderV1, "", routedName,
+			result := r.svc.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), mustParseHash(t, adderV1), infohash.Hash{}, routedName,
 				&CrossSeedRequest{}, r.svc.releaseCache.Parse(routedName), r.files, nil, nil)
 
 			assert.Equal(t, tt.wantStatus, result.Status, result.Message)
@@ -910,7 +910,7 @@ func TestRoutedManualMatchPreviewShowsTheMappedPath(t *testing.T) {
 	r.sync.cached = map[int][]qbittorrent.CrossInstanceTorrentView{r.source.ID: buildCrossInstanceViews(r.source, []qbt.Torrent{*r.candidate().Torrents[0]})}
 	torrentBytes := createNamedFileTestTorrent(t, routedName, routedName+".mkv", 100)
 
-	resp, err := r.svc.ManualMatchProposals(r.ctx, r.source.ID, torrentBytes, "")
+	resp, err := r.svc.ManualMatchProposals(r.ctx, r.source.ID, torrentBytes, infohash.Hash{})
 
 	require.NoError(t, err)
 	require.Len(t, resp.Proposals, 1)

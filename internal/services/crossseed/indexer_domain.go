@@ -164,14 +164,14 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	return filteredIndexerIDs, excludedIndexers, contentMatches, rejectedContent, nil
 }
 
-func (s *Service) scopeContentPrefilterRejectionsByIndexer(rejectedByHash map[string]contentPrefilterRejectedTorrent, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) map[string]contentPrefilterRejectedTorrent {
+func (s *Service) scopeContentPrefilterRejectionsByIndexer(rejectedByHash map[infohash.Hash]contentPrefilterRejectedTorrent, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) map[string]contentPrefilterRejectedTorrent {
 	if len(rejectedByHash) == 0 || len(indexerIDs) == 0 {
 		return nil
 	}
 
 	scoped := make(map[string]contentPrefilterRejectedTorrent)
 	for hash, rejection := range rejectedByHash {
-		if normalizeHash(hash) == "" || len(rejection.trackerDomains) == 0 {
+		if hash.IsZero() || len(rejection.trackerDomains) == 0 {
 			continue
 		}
 

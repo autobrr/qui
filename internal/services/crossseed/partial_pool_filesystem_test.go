@@ -1112,7 +1112,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, target.Files[0].Status)
 				require.Nil(t, target.Files[0].SourceFileID)
 				require.Empty(t, target.Files[0].LastError)
-				require.Equal(t, []string{"recheck:target"}, sync.bulkActions)
+				require.Equal(t, []string{"recheck:" + fakeHash("target")}, sync.bulkActions)
 				require.True(t, service.partialPoolPropagationPairRejected(source, source.Files[0], target, target.Files[0]))
 				return
 			}
@@ -1136,7 +1136,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 			require.Equal(t, expectedStatus, target.Status)
 			require.Equal(t, partialPoolRecheckRequested, target.LastError)
 			require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[0].Status)
-			require.Equal(t, []string{"recheck:target"}, sync.bulkActions)
+			require.Equal(t, []string{"recheck:" + fakeHash("target")}, sync.bulkActions)
 			if testCase.recheckState != "" {
 				expectedResetState := testCase.recheckState
 				if testCase.delayedCheck {
@@ -1303,7 +1303,7 @@ func TestPartialPoolMixedPersistedPropagationWaitsBeforeRecheck(t *testing.T) {
 	require.Equal(t, partialPoolRecheckRequested, target.LastError)
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[0].Status)
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[1].Status)
-	require.Equal(t, []string{"recheck:target"}, sync.bulkActions)
+	require.Equal(t, []string{"recheck:" + fakeHash("target")}, sync.bulkActions)
 	require.FileExists(t, targetSamplePath)
 }
 
@@ -1464,7 +1464,7 @@ func TestPartialPoolInitialPropagationWaitsForEveryCheckingSourceBeforeRecheck(t
 	require.Equal(t, partialPoolRecheckRequested, target.LastError)
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[0].Status)
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[1].Status)
-	require.Equal(t, []string{"recheck:target"}, sync.bulkActions)
+	require.Equal(t, []string{"recheck:" + fakeHash("target")}, sync.bulkActions)
 	require.FileExists(t, filepath.Join(targetRoot, filepath.FromSlash(files[1].path)))
 }
 
@@ -1695,7 +1695,7 @@ func TestPartialPoolPropagationPauseFailureRetriesUntilStopped(t *testing.T) {
 		},
 	}
 	service.propagatePartialPoolFiles(ctx, time.Now(), pool, snapshots, true, make(map[int64]bool))
-	require.Equal(t, []string{"pause:target"}, sync.recordedActions())
+	require.Equal(t, []string{"pause:" + fakeHash("target")}, sync.recordedActions())
 
 	pool, err = store.GetPartialPool(ctx, pool.ID)
 	require.NoError(t, err)
@@ -1706,7 +1706,7 @@ func TestPartialPoolPropagationPauseFailureRetriesUntilStopped(t *testing.T) {
 
 	sync.bulkActionErr = nil
 	service.reconcilePartialPoolReviewPauses(ctx, pool, snapshots)
-	require.Equal(t, []string{"pause:target", "pause:target"}, sync.recordedActions())
+	require.Equal(t, []string{"pause:" + fakeHash("target"), "pause:" + fakeHash("target")}, sync.recordedActions())
 	pool, err = store.GetPartialPool(ctx, pool.ID)
 	require.NoError(t, err)
 	target = partialPoolMemberByTorrentKey(pool, "target")
@@ -1908,9 +1908,9 @@ func testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 		}
 	}
 	require.ElementsMatch(t, []string{
-		"recheck:target-alpha",
-		"recheck:target-beta",
-		"recheck:target-gamma",
+		"recheck:" + fakeHash("target-alpha"),
+		"recheck:" + fakeHash("target-beta"),
+		"recheck:" + fakeHash("target-gamma"),
 	}, sync.bulkActions)
 
 	for _, key := range targetKeys {
@@ -1950,8 +1950,8 @@ func testPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 		actionCounts[action]++
 	}
 	for _, key := range targetKeys {
-		require.Equal(t, 1, actionCounts["recheck:"+key], "settling an observed member must not request another recheck")
-		require.Equal(t, 1, actionCounts["resume:"+key])
+		require.Equal(t, 1, actionCounts["recheck:"+fakeHash(key)], "settling an observed member must not request another recheck")
+		require.Equal(t, 1, actionCounts["resume:"+fakeHash(key)])
 	}
 }
 
@@ -1992,11 +1992,11 @@ func partialPoolFilesystemRegistration(
 ) models.CrossSeedPartialPoolRegistration {
 	registration := models.CrossSeedPartialPoolRegistration{
 		MatchedInstanceID: instanceID,
-		MatchedTorrentKey: "source-anchor",
-		MatchedAliases:    []string{"source-anchor"},
+		MatchedTorrentKey: fakeHash("source-anchor"),
+		MatchedAliases:    []string{fakeHash("source-anchor")},
 		Member: models.CrossSeedPartialPoolMember{
 			InstanceID: instanceID,
-			TorrentKey: torrentKey,
+			TorrentKey: fakeHash(torrentKey),
 			Mode:       mode,
 			RootPath:   rootPath,
 			Status:     memberStatus,
@@ -2012,8 +2012,8 @@ func partialPoolFilesystemRegistration(
 	}
 	if torrentKey != "source" {
 		registration.SourceInstanceID = instanceID
-		registration.SourceTorrentKey = "source"
-		registration.SourceAliases = []string{"source"}
+		registration.SourceTorrentKey = fakeHash("source")
+		registration.SourceAliases = []string{fakeHash("source")}
 	}
 	return registration
 }
@@ -2023,7 +2023,7 @@ func partialPoolMemberByTorrentKey(pool *models.CrossSeedPartialPool, torrentKey
 		return nil
 	}
 	for _, member := range pool.Members {
-		if member.TorrentKey == torrentKey {
+		if member.TorrentKey == torrentKey || member.TorrentKey == fakeHash(torrentKey) {
 			return member
 		}
 	}

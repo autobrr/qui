@@ -1895,7 +1895,7 @@ func (s *Service) tryMatchAndInject(
 		return candidateReport{event: candidateRejected}
 	}
 
-	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, parsed.InfoHash, parsed.InfoHashV2)
+	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, infohash.ParseAll([]string{parsed.InfoHash, parsed.InfoHashV2})...)
 	if refusal != nil {
 		candidate := matchedCandidate(candidateRefused, refusal.Class(), parsed, matchResult, result)
 		switch candidate.class {

@@ -103,7 +103,7 @@ func (m *completionGazelleSyncMock) GetTorrentRefs(_ context.Context, _ int, fil
 func (m *completionGazelleSyncMock) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	out := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		out[normalizeHash(h)] = qbt.TorrentFiles{{Name: "01 - track.flac", Size: 123}}
+		out[h] = qbt.TorrentFiles{{Name: "01 - track.flac", Size: 123}}
 	}
 	return out, nil
 }

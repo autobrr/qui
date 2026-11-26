@@ -166,7 +166,7 @@ func TestPartialPoolPassCleansReflinkStagingOnlyWithLocalAccess(t *testing.T) {
 			service := &partialPoolCoordinator{
 				automationStore: store,
 				instanceStore:   tc.instanceStore(instanceID),
-				syncManager:     &snapshotPartialPoolSyncManager{owner: newPartialPoolMaindataOwner(t, `{"source":{"name":"Source","state":"stalledUP"}}`)},
+				syncManager:     &snapshotPartialPoolSyncManager{owner: newPartialPoolMaindataOwner(t, `{"`+source.TorrentKey+`":{"name":"Source","state":"stalledUP"}}`)},
 				settings: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},

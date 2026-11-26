@@ -20,7 +20,7 @@ func TestLocalLinkedMatchType_UnsupportedPlatformSkipsCandidateFetchWithoutHardl
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, false)
 	sourceFiles := qbt.TorrentFiles{{Name: fileName, Size: 4}}
 	service := hardlinkTestService(map[string]qbt.TorrentFiles{
-		normalizeHash(hlSourceHash): sourceFiles,
+		hlSourceHash: sourceFiles,
 	})
 	matchCtx := hardlinkTestMatchCtx(service, sourceDir)
 	err := matchCtx.getSourceFiles()

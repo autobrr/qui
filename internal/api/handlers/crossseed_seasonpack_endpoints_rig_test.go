@@ -356,7 +356,7 @@ func (r *seasonPackEndpointRig) updateInstance(id int, params *models.InstanceUp
 func (r *seasonPackEndpointRig) fillResumeQueue() {
 	r.sync.recheckErr = errors.New("recheck rejected")
 	defer func() { r.sync.recheckErr = nil }()
-	for !r.settler.Settle(r.t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull {
+	for !r.settler.Settle(r.t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: infohash.ParseAll([]string{"0000000000000000000000000000000000000001"})}).QueueFull {
 		continue
 	}
 }
@@ -425,6 +425,10 @@ func endpointPackTorrent(t *testing.T, length int64, episodes int) []byte {
 }
 
 func endpointHash(t *testing.T, torrent []byte) string {
+	return endpointInfoHash(t, torrent).String()
+}
+
+func endpointInfoHash(t *testing.T, torrent []byte) infohash.Hash {
 	t.Helper()
 	meta, err := crossseed.ParseTorrentMetadataWithInfo(torrent)
 	require.NoError(t, err)

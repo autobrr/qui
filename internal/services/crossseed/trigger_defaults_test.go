@@ -174,7 +174,7 @@ func TestSettingsReadFailureAddsNothing(t *testing.T) {
 		service, captured := newInteractiveApplyService(t, failingSettings)
 
 		withAdder(service)
-		_, err := service.ApplyTorrentSearchResults(t.Context(), 1, "source", interactiveApplyRequest(true, nil))
+		_, err := service.ApplyTorrentSearchResults(t.Context(), 1, mustParseHash(t, "c0de000000000000000000000000000000000001"), interactiveApplyRequest(true, nil))
 		require.ErrorIs(t, err, errSettingsUnavailable)
 		assert.Empty(t, *captured)
 	})
@@ -199,7 +199,7 @@ func TestInteractiveApplyOverrides(t *testing.T) {
 			service, captured := newInteractiveApplyService(t, loader)
 
 			withAdder(service)
-			_, err := service.ApplyTorrentSearchResults(t.Context(), 1, "source", tt.req)
+			_, err := service.ApplyTorrentSearchResults(t.Context(), 1, mustParseHash(t, "c0de000000000000000000000000000000000001"), tt.req)
 			require.NoError(t, err)
 			require.Len(t, *captured, 1)
 			got := (*captured)[0]

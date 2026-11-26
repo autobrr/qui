@@ -50,7 +50,7 @@ func TestFindMatchBroadFilenameFallback(t *testing.T) {
 			if err != nil || (match != nil) != tt.wantMatch {
 				t.Fatalf("match=%+v err=%v, wantMatch=%v", match, err, tt.wantMatch)
 			}
-			if match != nil && (match.TorrentID != 7 || match.Kind != MatchSize || match.TargetHash != "") {
+			if match != nil && (match.TorrentID != 7 || match.Kind != MatchSize || !match.TargetHash.IsZero()) {
 				t.Fatalf("unexpected match: %+v", match)
 			}
 			if browseCalls.Load() != tt.wantBrowse {
@@ -87,7 +87,7 @@ func TestFindMatchEqualTotalNeedsNoMetadata(t *testing.T) {
 			if err != nil || (match != nil) != tt.wantMatch {
 				t.Fatalf("match=%+v err=%v", match, err)
 			}
-			if match != nil && (match.Kind != MatchSize || match.TorrentID != 7 || match.Size != 123 || match.TargetHash != "" || match.QueriedHash != "") {
+			if match != nil && (match.Kind != MatchSize || match.TorrentID != 7 || match.Size != 123 || !match.TargetHash.IsZero() || !match.QueriedHash.IsZero()) {
 				t.Fatalf("wrong evidence: %+v", match)
 			}
 		})
@@ -128,7 +128,7 @@ func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 					return
 				}
 				hashCalls.Add(1)
-				if strings.EqualFold(r.URL.Query().Get("hash"), pthHash) {
+				if r.URL.Query().Get("hash") == strings.ToUpper(pthHash) {
 					_, _ = w.Write([]byte(`{"status":"success","response":{"group":{"id":3,"name":"Album"},"torrent":{"id":7,"size":123` + tc.infoHash + `}}}`))
 					return
 				}
@@ -151,7 +151,7 @@ func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FindMatch: %v", err)
 			}
-			if match == nil || match.Kind != MatchHash || match.TargetHash != pthHash || match.QueriedHash != pthHash || match.TorrentID != 7 {
+			if match == nil || match.Kind != MatchHash || match.TargetHash.String() != pthHash || match.QueriedHash.String() != pthHash || match.TorrentID != 7 {
 				t.Fatalf("expected the PTH upload as a hash match, got %+v", match)
 			}
 			if got := hashCalls.Load(); got != 2 {

@@ -25,8 +25,6 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/jackett"
-	"github.com/autobrr/qui/pkg/infohash"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type dedupCacheEntry struct {
@@ -419,7 +417,7 @@ func (s *Service) contentPrefilterRejectionForCrossSeedResponse(instanceID int, 
 		return contentPrefilterRejectedTorrent{}, false
 	}
 
-	return s.contentPrefilterRejectionForHashes(instanceID, sourceHash, indexerID, hashes)
+	return s.contentPrefilterRejectionForHashes(instanceID, sourceHash, indexerID, parseHashes(hashes...))
 }
 
 func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
@@ -700,16 +698,15 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to batch fetch torrent files for deduplication")
 		}
 		for _, hash := range contested {
-			normHash := normalizeHash(hash)
-			hasRootCache[normHash] = detectCommonRoot(filesMap[normHash]) != ""
+			hasRootCache[hash] = detectCommonRoot(filesMap[hash]) != ""
 		}
 	}
 
 	for _, group := range groups {
 		for _, idx := range group.members[1:] {
 			rep, current := &parsed[group.representativeIdx], &parsed[idx]
-			repHasRoot := hasRootCache[normalizeHash(rep.torrent.Hash)]
-			currentHasRoot := hasRootCache[normalizeHash(current.torrent.Hash)]
+			repHasRoot := hasRootCache[rep.torrent.Hash]
+			currentHasRoot := hasRootCache[current.torrent.Hash]
 
 			promoteCurrent := (currentHasRoot && !repHasRoot) ||
 				(currentHasRoot == repHasRoot && current.torrent.AddedOn < rep.torrent.AddedOn)
@@ -734,7 +731,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 			log.Trace().
 				Str("representative", rep.torrent.Name).
 				Str("representativeHash", rep.torrent.Hash).
-				Bool("representativeHasRootFolder", hasRootCache[normalizeHash(rep.torrent.Hash)]).
+				Bool("representativeHasRootFolder", hasRootCache[rep.torrent.Hash]).
 				Int64("addedOn", rep.torrent.AddedOn).
 				Int("duplicateCount", len(group.duplicates)).
 				Strs("duplicateHashes", group.duplicates).
@@ -926,7 +923,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	}
 	if scheduled {
 		unsearched := func(t *qbt.Torrent) bool {
-			return state.staleWork[stringutils.DefaultNormalizer.Normalize(t.Hash)].unsearched
+			return state.staleWork[t.Hash].unsearched
 		}
 		slices.SortStableFunc(state.queue, func(a, b *qbt.Torrent) int {
 			switch ua, ub := unsearched(a), unsearched(b); {
@@ -1011,7 +1008,7 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return true, nil
 	}
 
-	cacheKey := stringutils.DefaultNormalizer.Normalize(torrent.Hash)
+	cacheKey := torrent.Hash
 	if cacheKey != "" && state.skipCache != nil {
 		if cached, ok := state.skipCache[cacheKey]; ok {
 			return cached, nil
@@ -1177,8 +1174,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return false, state.resolvedTorznabIndexerErr
 	}
 
-	staleCacheKey := stringutils.DefaultNormalizer.Normalize(torrent.Hash)
-	staleWork, hasStaleWork := state.staleWork[staleCacheKey]
+	staleWork, hasStaleWork := state.staleWork[torrent.Hash]
 	var cooldownIndexerIDs []int
 	if hasStaleWork {
 		cooldownIndexerIDs = subtractInts(state.resolvedTorznabIndexerIDs, staleWork.indexerIDs)
@@ -1418,7 +1414,7 @@ func (s *Service) gazelleTargetsSeeded(ctx context.Context, instanceID int, torr
 		if err != nil {
 			return false
 		}
-		if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes)); err != nil || !exists {
+		if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes); err != nil || !exists {
 			return false
 		}
 	}
@@ -1491,7 +1487,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, instanceID 
 		ReleaseTitle: match.Title,
 		ProcessedAt:  processedAt,
 	}
-	if !match.SearchDecision.matchesSource(instanceID, torrent.Hash) {
+	if !match.SearchDecision.matchesSource(instanceID, parseHash(torrent.Hash)) {
 		result.Status = models.CrossSeedSearchResultStatusFailed
 		result.Message = "file-evidence source binding mismatch"
 		return result, errors.New(result.Message)
@@ -1528,7 +1524,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, instanceID 
 
 	request := defaults.request(base64.StdEncoding.EncodeToString(data), match.Indexer)
 	request.TargetInstanceIDs = []int{instanceID}
-	request.SearchDecision = match.SearchDecision.bindSource(instanceID, torrent.Hash)
+	request.SearchDecision = match.SearchDecision.bindSource(instanceID, parseHash(torrent.Hash))
 	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
 		result.Status = models.CrossSeedSearchResultStatusFailed

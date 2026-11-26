@@ -39,7 +39,7 @@ func (*reflinkFallbackSafetySyncManager) GetTorrentRefs(_ context.Context, _ int
 func (m *reflinkFallbackSafetySyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		key := normalizeHash(h)
+		key := h
 		if files, ok := m.files[key]; ok {
 			cp := make(qbt.TorrentFiles, len(files))
 			copy(cp, files)
@@ -58,7 +58,7 @@ func (*reflinkFallbackSafetySyncManager) HasTorrentByAnyHash(context.Context, in
 }
 
 func (m *reflinkFallbackSafetySyncManager) GetTorrentProperties(_ context.Context, _ int, hash string) (*qbt.TorrentProperties, error) {
-	if props, ok := m.props[normalizeHash(hash)]; ok {
+	if props, ok := m.props[hash]; ok {
 		cp := *props
 		return &cp, nil
 	}
@@ -140,7 +140,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentName := "Movie.2024.1080p.WEB-DL-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1_000_000}}
@@ -156,10 +156,10 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 
 	sync := &reflinkFallbackSafetySyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(matchedHash): candidateFiles,
+			matchedHash: candidateFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
-			normalizeHash(matchedHash): {SavePath: "/downloads/movies"},
+			matchedHash: {SavePath: "/downloads/movies"},
 		},
 	}
 
@@ -194,7 +194,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 	req := &CrossSeedRequest{}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "rejected", result.Status)
 	require.Contains(t, result.Message, "Content file sizes do not match")
@@ -210,10 +210,10 @@ func TestProcessCrossSeedCandidate_ReflinkAddAllowsSizeMismatch(t *testing.T) {
 
 	sync := &reflinkFallbackSafetySyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(matchedHash): {{Name: "Movie.2024.mkv", Size: 1_000_000}},
+			matchedHash: {{Name: "Movie.2024.mkv", Size: 1_000_000}},
 		},
 		props: map[string]*qbt.TorrentProperties{
-			normalizeHash(matchedHash): {SavePath: "/downloads/movies"},
+			matchedHash: {SavePath: "/downloads/movies"},
 		},
 	}
 	service := &Service{
@@ -243,7 +243,7 @@ func TestProcessCrossSeedCandidate_ReflinkAddAllowsSizeMismatch(t *testing.T) {
 	sourceFiles := qbt.TorrentFiles{{Name: "Movie.2024.mkv", Size: 1_000_001}}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), "newhash", "", torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), mustParseHash(t, "feedfacefeedfacefeedfacefeedfacefeedface"), infohash.Hash{}, torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
 
 	require.Equal(t, "reflink_error", result.Status)
 }

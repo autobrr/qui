@@ -22,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const manualMatchType = "manual"
@@ -47,9 +48,9 @@ func (s *Service) findManualTargetCandidate(ctx context.Context, req *FindCandid
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
 
-	want := normalizeHash(req.ManualTargetHash)
+	want := parseHash(req.ManualTargetHash)
 	for _, torrent := range torrents {
-		if normalizeHash(torrent.Hash) != want {
+		if !want.Is(torrent.Hash) {
 			continue
 		}
 		switch s.sourceGate().check(torrent, sourceFilter{}) {
@@ -98,15 +99,15 @@ type ManualMatchProposalsResponse struct {
 	Proposals                 []ManualMatchProposal `json:"proposals"`
 }
 
-func (s *Service) ManualMatchProposalsFromBase64(ctx context.Context, instanceID int, torrentData, requestedHash string) (*ManualMatchProposalsResponse, error) {
+func (s *Service) ManualMatchProposalsFromBase64(ctx context.Context, instanceID int, torrentData string, requested infohash.Hash) (*ManualMatchProposalsResponse, error) {
 	torrentBytes, err := s.decodeTorrentData(torrentData)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to decode torrent data: %w", ErrInvalidRequest, err)
 	}
-	return s.ManualMatchProposals(ctx, instanceID, torrentBytes, requestedHash)
+	return s.ManualMatchProposals(ctx, instanceID, torrentBytes, requested)
 }
 
-func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torrentBytes []byte, requestedHash string) (*ManualMatchProposalsResponse, error) {
+func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torrentBytes []byte, requested infohash.Hash) (*ManualMatchProposalsResponse, error) {
 	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to parse torrent: %w", ErrInvalidRequest, err)
@@ -151,7 +152,6 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	if sourceRelease != nil {
 		sourceTitle = s.stringNormalizer.Normalize(sourceRelease.Title)
 	}
-	wantHash := normalizeHash(requestedHash)
 
 	type coarseEntry struct {
 		torrent *qbt.Torrent
@@ -165,7 +165,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 			continue
 		}
 		torrent := view.Torrent
-		if wantHash != "" && normalizeHash(torrent.Hash) == wantHash {
+		if requested.Is(torrent.Hash) {
 			requestedTorrent = torrent
 			continue
 		}
@@ -214,16 +214,15 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 
 	proposals := make([]ManualMatchProposal, 0, proposalLimit+1)
 	for _, torrent := range shortlist {
-		hashKey := normalizeHash(torrent.Hash)
-		candidateFiles := filesByHash[hashKey]
+		candidateFiles := filesByHash[torrent.Hash]
 		overlap := overlapBytesBySize(sourceSizes, candidateFiles)
-		isRequested := wantHash != "" && hashKey == wantHash
+		isRequested := requested.Is(torrent.Hash)
 		if overlap == 0 && !isRequested {
 			continue
 		}
 		if linkMode && overlap > 0 &&
 			s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
-			linkTargets[hashKey] = torrent
+			linkTargets[torrent.Hash] = torrent
 		}
 		proposals = append(proposals, ManualMatchProposal{
 			Hash:              torrent.Hash,
@@ -240,7 +239,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	})
 	proposalsTruncated := len(proposals) > proposalLimit || (packMode && packEpisodeCount > manualMatchCoarseLimit)
 	if requestedIdx := slices.IndexFunc(proposals, func(p ManualMatchProposal) bool {
-		return wantHash != "" && normalizeHash(p.Hash) == wantHash
+		return requested.Is(p.Hash)
 	}); requestedIdx >= proposalLimit {
 		proposals = append(proposals[:proposalLimit], proposals[requestedIdx])
 	} else if len(proposals) > proposalLimit {
@@ -313,16 +312,16 @@ func (s *Service) previewLinkSavePaths(
 	}
 	backend := newCachedFilesystemChecks(direct)
 	route, _, _ := s.savedRouteOf(ctx, instance.ID)
-	incoming := singleAddTorrent{hash: cmp.Or(meta.HashV1, meta.HashV2), name: meta.Name, files: meta.Files, trackerDomain: trackerDomain}
+	incoming := singleAddTorrent{hash: cmp.Or(meta.HashV1, meta.HashV2).String(), name: meta.Name, files: meta.Files, trackerDomain: trackerDomain}
 	var g errgroup.Group
 	g.SetLimit(linkPreviewPlans)
 	for i := range proposals {
-		target, ok := linkTargets[normalizeHash(proposals[i].Hash)]
+		target, ok := linkTargets[proposals[i].Hash]
 		if !ok {
 			continue
 		}
 		g.Go(func() error {
-			if path, ok := s.linkSavePathPreview(ctx, backend, instance, route, incoming, target, filesByHash[normalizeHash(target.Hash)]); ok {
+			if path, ok := s.linkSavePathPreview(ctx, backend, instance, route, incoming, target, filesByHash[target.Hash]); ok {
 				proposals[i].EffectiveSavePath = path
 			}
 			return nil

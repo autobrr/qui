@@ -79,13 +79,13 @@ func TestAutobrrApplyDoesNotNotifyWhenTorrentExists(t *testing.T) {
 	require.NoError(t, err)
 	instance := &models.Instance{ID: instanceID, Name: "primary", IsActive: true}
 	source := qbt.Torrent{
-		Hash: metadata.HashV1, Name: name, Size: size, TotalSize: size, Progress: 1, SavePath: "/downloads",
+		Hash: metadata.HashV1.String(), Name: name, Size: size, TotalSize: size, Progress: 1, SavePath: "/downloads",
 	}
 	notifier := &recordingNotifier{}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
 		syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
-			metadata.HashV1: {{Name: fileName, Size: size}},
+			metadata.HashV1.String(): {{Name: fileName, Size: size}},
 		})},
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
@@ -602,7 +602,7 @@ func TestAutobrrApplyBindsAnnouncementDecision(t *testing.T) {
 	const (
 		announcedName  = "Starbound.Route.2025.1080p.WEB-DL.H.264-LUMA"
 		downloadedName = "Starbound.Route.2025.1080p.WEB-DL.H.265-LUMA"
-		sourceHash     = "AABBCC"
+		sourceHash     = "AABBCCAABBCCAABBCCAABBCCAABBCCAABBCCAABB"
 		actualSize     = int64(2_000_000)
 	)
 	instance := &models.Instance{ID: 41, Name: "primary", IsActive: true}
@@ -637,7 +637,7 @@ func TestAutobrrApplyBindsAnnouncementDecision(t *testing.T) {
 	require.NotNil(t, captured)
 	require.Equal(t, []int{instance.ID}, captured.TargetInstanceIDs)
 	require.Equal(t, instance.ID, captured.SearchDecision.SourceInstanceID)
-	require.Equal(t, normalizeHash(sourceHash), captured.SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, sourceHash), captured.SearchDecision.SourceHash)
 	require.Equal(t, announcedName, captured.SearchDecision.SearchCandidateName)
 	require.Equal(t, "tracker-a", captured.IndexerName)
 	require.Equal(t, "incoming", captured.Category)
@@ -682,13 +682,15 @@ func TestAutobrrApplyTriesLaterBoundSource(t *testing.T) {
 		announcedName  = "Aurora.Signal.2025.1080p.WEB-DL.H.264-LUMA"
 		downloadedName = "Aurora.Signal.2025.1080p.WEB-DL.H.265-LUMA"
 		actualSize     = int64(2_000_000)
+		strict         = "5555555555555555555555555555555555555555"
+		fallback       = "6666666666666666666666666666666666666666"
 	)
 	instance := &models.Instance{ID: 43, Name: "primary", IsActive: true}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
-			{Hash: "strict", Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
-			{Hash: "fallback", Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: strict, Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: fallback, Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
 		}, nil),
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
@@ -699,8 +701,8 @@ func TestAutobrrApplyTriesLaterBoundSource(t *testing.T) {
 
 	var sourceHashes []string
 	service.crossSeedInvoker = func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
-		sourceHashes = append(sourceHashes, request.SearchDecision.SourceHash)
-		if request.SearchDecision.SourceHash == "strict" {
+		sourceHashes = append(sourceHashes, request.SearchDecision.SourceHash.String())
+		if request.SearchDecision.SourceHash.Is(strict) {
 			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Status: "no_match"}}}, nil
 		}
 		return &CrossSeedResponse{Success: true, Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Success: true, Status: "added"}}}, nil
@@ -713,7 +715,7 @@ func TestAutobrrApplyTriesLaterBoundSource(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.True(t, response.Success)
-	require.Equal(t, []string{"strict", "fallback"}, sourceHashes)
+	require.Equal(t, []string{strict, fallback}, sourceHashes)
 	require.Len(t, response.Results, 1)
 	require.Equal(t, "added", response.Results[0].Status)
 }
@@ -826,7 +828,7 @@ func TestAutobrrApplyUsesARRAlternateTitles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			source := qbt.Torrent{Hash: "frieren-library", Name: sourceName, Size: torrentSize, TotalSize: torrentSize, Progress: 1}
+			source := qbt.Torrent{Hash: "c0de000000000000000000000000000000000001", Name: sourceName, Size: torrentSize, TotalSize: torrentSize, Progress: 1}
 			service := &Service{
 				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 				syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{source.Hash: meta.Files}),
@@ -960,13 +962,14 @@ func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
 	const (
 		torrentName = "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
 		actualSize  = int64(2_000_000)
+		settledHash = "8888888888888888888888888888888888888888"
 	)
 	moving := qbt.Torrent{
-		Hash: "moving", Name: torrentName, Size: actualSize, TotalSize: actualSize, Progress: 1, State: qbt.TorrentStateMoving,
+		Hash: "7777777777777777777777777777777777777777", Name: torrentName, Size: actualSize, TotalSize: actualSize, Progress: 1, State: qbt.TorrentStateMoving,
 		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + torrentName + ".mkv",
 	}
 	settled := qbt.Torrent{
-		Hash: "settled", Name: torrentName, Size: actualSize, TotalSize: actualSize, Progress: 1, State: qbt.TorrentStateStalledUp,
+		Hash: settledHash, Name: torrentName, Size: actualSize, TotalSize: actualSize, Progress: 1, State: qbt.TorrentStateStalledUp,
 		SavePath: "/data/movies", ContentPath: "/data/movies/" + torrentName + ".mkv",
 	}
 
@@ -975,7 +978,7 @@ func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
 		torrents    []qbt.Torrent
 		wantSources []string
 	}{
-		{name: "moving and settled copies use the settled copy", torrents: []qbt.Torrent{moving, settled}, wantSources: []string{"settled"}},
+		{name: "moving and settled copies use the settled copy", torrents: []qbt.Torrent{moving, settled}, wantSources: []string{settledHash}},
 		{name: "only a moving copy adds nothing", torrents: []qbt.Torrent{moving}},
 	}
 	for _, tt := range tests {
@@ -993,7 +996,7 @@ func TestAutobrrApplySkipsSourceThatIsNotSettled(t *testing.T) {
 			}
 			var sources []string
 			service.crossSeedInvoker = func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
-				sources = append(sources, request.SearchDecision.SourceHash)
+				sources = append(sources, request.SearchDecision.SourceHash.String())
 				return &CrossSeedResponse{Success: true, Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Success: true, Status: "added"}}}, nil
 			}
 

@@ -31,7 +31,7 @@ type countingSync struct {
 func (c *countingSync) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	c.mu.Lock()
 	for _, h := range hashes {
-		c.calls = append(c.calls, fmt.Sprintf("%d:%s", instanceID, normalizeHash(h)))
+		c.calls = append(c.calls, fmt.Sprintf("%d:%s", instanceID, h))
 	}
 	c.mu.Unlock()
 	return c.qbittorrentSync.GetTorrentFilesBatch(ctx, instanceID, hashes)
@@ -105,7 +105,7 @@ func sessionFixtures(t *testing.T, offline bool) (*Service, *countingSync, []str
 	svc, sm := deleteMatchService(lib...)
 	for _, f := range lib {
 		if f.files == nil {
-			delete(sm.files, normalizeHash(f.view.Hash))
+			delete(sm.files, f.view.Hash)
 		}
 	}
 	instances := []*models.Instance{

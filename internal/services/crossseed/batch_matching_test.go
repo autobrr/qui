@@ -117,7 +117,7 @@ func buildCrossMatch(t *testing.T, needs CrossMatchNeeds, torrents ...crossMatch
 		candidates: make(map[int][]qbittorrent.CrossInstanceTorrentView),
 	}
 	for _, torrent := range torrents {
-		sm.files[normalizeHash(torrent.view.Hash)] = torrent.files
+		sm.files[torrent.view.Hash] = torrent.files
 		sm.candidates[torrent.view.InstanceID] = append(sm.candidates[torrent.view.InstanceID], torrent.view)
 	}
 	svc := newTestService()

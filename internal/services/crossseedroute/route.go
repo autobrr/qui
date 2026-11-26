@@ -105,7 +105,7 @@ type HashFinder interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 }
 
-func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
+func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, string, error) {
 	route, err := s.CrossSeedRouteStore.Get(ctx, instanceID)
 	if err != nil {
 		return nil, "", fmt.Errorf("read cross-seed route: %w", err)
@@ -137,7 +137,7 @@ func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID 
 	return nil, "", nil
 }
 
-func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
+func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, string, error) {
 	instance, err := s.instances.Get(ctx, instanceID)
 	if err != nil {
 		return nil, "", err
@@ -145,7 +145,7 @@ func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int,
 	if err := s.CheckAvailable(ctx, instanceID, false); err != nil {
 		return nil, instance.Name, err
 	}
-	torrent, _, err := finder.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes))
+	torrent, _, err := finder.HasTorrentByAnyHash(ctx, instanceID, hashes)
 	if err != nil {
 		return nil, instance.Name, fmt.Errorf("%w: %s: %w", ErrUnavailable, instance.Name, err)
 	}

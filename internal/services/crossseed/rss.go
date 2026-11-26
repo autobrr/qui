@@ -1116,7 +1116,7 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 				instanceID:   snapshot.instance.ID,
 				instanceName: snapshot.instance.Name,
 				torrent:      torrent,
-				decision:     decision.decision.provenance().bindSource(snapshot.instance.ID, torrent.Hash),
+				decision:     decision.decision.provenance().bindSource(snapshot.instance.ID, parseHash(torrent.Hash)),
 			}
 			matches = append(matches, match)
 		}

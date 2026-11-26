@@ -346,8 +346,8 @@ func TestSearchDialogRefusesSourceThatCannotGiveFiles(t *testing.T) {
 				recoverErroredTorrentsEnabled: tt.recovery,
 			}
 
-			_, analyzeErr := svc.AnalyzeTorrentForSearch(t.Context(), instance.ID, torrent.Hash)
-			_, _, loadErr := svc.loadSearchSource(t.Context(), instance.ID, torrent.Hash)
+			_, analyzeErr := svc.AnalyzeTorrentForSearch(t.Context(), instance.ID, mustParseHash(t, torrent.Hash))
+			_, _, loadErr := svc.loadSearchSource(t.Context(), instance.ID, mustParseHash(t, torrent.Hash))
 
 			if tt.want == nil {
 				require.NoError(t, analyzeErr)

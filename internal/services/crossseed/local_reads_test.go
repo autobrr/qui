@@ -6,7 +6,6 @@ package crossseed
 import (
 	"context"
 	"slices"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -163,7 +162,7 @@ func TestCheckWebhookReadsFilesAgainAfterChange(t *testing.T) {
 	}{
 		{"category change", func(_ *Service, folder *qbt.Torrent) { folder.Category = "tv" }},
 		{"rename through qui", func(svc *Service, folder *qbt.Torrent) {
-			svc.forgetLocalRead(localReadsInstance.ID, strings.ToUpper(folder.Hash))
+			svc.forgetLocalRead(localReadsInstance.ID, folder.Hash)
 		}},
 	}
 	for _, tt := range tests {

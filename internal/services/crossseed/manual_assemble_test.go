@@ -257,7 +257,7 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	require.Equal(t, 1, preview.MatchedEpisodes)
 	require.Equal(t, "size_mismatch", preview.Targets[1].Reason)
 	require.Equal(t, "target_not_found", preview.Targets[2].Reason)
-	_, err = svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: 1, TorrentData: fix.torrentData, TargetHashes: []string{"e01", " E01 "}})
+	_, err = svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: 1, TorrentData: fix.torrentData, TargetHashes: []string{"abcdefabcdefabcdefabcdefabcdefabcdefabcd", " ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD "}})
 	require.ErrorIs(t, err, ErrInvalidRequest)
 
 	data, err := base64.StdEncoding.DecodeString(fix.torrentData)

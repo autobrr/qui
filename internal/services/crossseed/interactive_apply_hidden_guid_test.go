@@ -77,7 +77,7 @@ func TestApplyTorrentSearchResultsFindsSelectionByHiddenGUID(t *testing.T) {
 			}
 			svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{tt.cached})
 
-			resp, err := svc.ApplyTorrentSearchResults(t.Context(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
+			resp, err := svc.ApplyTorrentSearchResults(t.Context(), instanceID, mustParseHash(t, sourceHash), &ApplyTorrentSearchRequest{
 				Selections: []TorrentSearchSelection{{
 					IndexerID: tt.cached.IndexerID,
 					Title:     tt.cached.Title,
