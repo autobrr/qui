@@ -114,6 +114,8 @@ func boundAnnouncementResponseTerminal(response *CrossSeedResponse) bool {
 func mergeCrossSeedResponses(destination, source *CrossSeedResponse) {
 	destination.Success = destination.Success || source.Success
 	destination.titleRescueUsed = destination.titleRescueUsed || source.titleRescueUsed
+	destination.seasonPackTried = destination.seasonPackTried || source.seasonPackTried
+	destination.seasonPackPermanentFail = destination.seasonPackPermanentFail || source.seasonPackPermanentFail
 	if destination.TorrentInfo == nil && source.TorrentInfo != nil {
 		destination.TorrentInfo = source.TorrentInfo
 	}
@@ -572,6 +574,13 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 	if err != nil || settings == nil || !settings.SeasonPackAutomationEnabled {
 		return
 	}
+	var sourceTitle string
+	if req != nil {
+		sourceTitle = req.sourceTitle
+		if req.respectSeasonPackCooldown && s.hasActiveSeasonPackFailCooldown(ctx, minSearchCooldownMinutes*time.Minute, torrentName, sourceTitle) {
+			return
+		}
+	}
 
 	response.seasonPackTried = true
 	resp, err := s.invokeSeasonPackApply(ctx, seasonPackRequest{
@@ -593,7 +602,10 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 				Msg("Season pack diversion did not apply")
 			switch resp.reason {
 			case "drifted", "layout_mismatch", "already_exists":
-				s.recordSeasonPackFailCooldown(ctx, torrentName, response)
+				s.recordSeasonPackFailCooldown(ctx, req, torrentName, response)
+			case "invalid_torrent":
+				response.seasonPackPermanentFail = true
+				s.recordSeasonPackFailCooldown(ctx, req, torrentName, response)
 			}
 		}
 		return

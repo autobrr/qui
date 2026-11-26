@@ -846,14 +846,14 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		invokeErr error
 	)
 	if len(boundMatches) == 0 {
-		resp, invokeErr = s.invokeCrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, settings))
+		resp, invokeErr = s.invokeCrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, result.Title, settings))
 		if invokeErr != nil {
 			run.CandidatesFailed++
 			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("cross-seed request: %w", invokeErr)
 		}
 	} else {
 		resp, invokeErr = s.invokeBoundAnnouncementMatches(ctx, boundMatches, func(source boundAnnouncementMatch) *CrossSeedRequest {
-			req := s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, settings)
+			req := s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, result.Title, settings)
 			req.TargetInstanceIDs = []int{source.instanceID}
 			req.SearchDecision = source.decision
 			return req
@@ -873,6 +873,9 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	if len(resp.Results) == 0 {
 		run.CandidatesSkipped++
+		if resp.seasonPackPermanentFail {
+			itemStatus = models.CrossSeedFeedItemStatusProcessed
+		}
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
 			IndexerName:  result.Indexer,
@@ -921,7 +924,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	case itemHasFailure:
 		itemStatus = models.CrossSeedFeedItemStatusFailed
 		run.CandidatesFailed++
-	case itemHadExisting:
+	case itemHadExisting || (resp != nil && resp.seasonPackPermanentFail):
 		itemStatus = models.CrossSeedFeedItemStatusProcessed
 		run.CandidatesSkipped++
 	default:
@@ -1125,9 +1128,11 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 	return matches, nil
 }
 
-func (s *Service) newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer string, settings *models.CrossSeedAutomationSettings) *CrossSeedRequest {
+func (s *Service) newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, sourceTitle string, settings *models.CrossSeedAutomationSettings) *CrossSeedRequest {
 	req := defaultsFor(triggerRSS, settings).request(encodedTorrent, sourceIndexer)
 	req.TargetInstanceIDs = append([]int(nil), settings.TargetInstanceIDs...)
+	req.sourceTitle = sourceTitle
+	req.respectSeasonPackCooldown = true
 	return req
 }
 
