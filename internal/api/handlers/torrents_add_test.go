@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -645,4 +646,80 @@ func TestAddTorrentHandler_StartPausedChoiceApplies(t *testing.T) {
 			assert.Equal(t, tt.wantPaused, options["stopped"])
 		})
 	}
+}
+
+func TestAddTorrentHandler_TooManyFormParts_NamesThePartLimit(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &fullMockSyncManager{}
+	handler := &TorrentsHandler{torrentAdder: mockSync}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	for i := range 996 {
+		part, err := writer.CreateFormFile("torrent", fmt.Sprintf("Example.Show.S01E%04d.torrent", i))
+		require.NoError(t, err)
+		_, err = part.Write([]byte("d4:infod4:name1:xee"))
+		require.NoError(t, err)
+	}
+	for _, field := range []string{"paused", "autoTMM", "skip_checking", "sequentialDownload", "firstLastPiecePrio"} {
+		require.NoError(t, writer.WriteField(field, "false"))
+	}
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+	assert.Contains(t, w.Body.String(), "1000 files and fields")
+	assert.NotContains(t, w.Body.String(), "MB")
+	assert.Empty(t, mockSync.addTorrentCalls)
+}
+
+type failSecondFileAdder struct {
+	fullMockSyncManager
+}
+
+func (m *failSecondFileAdder) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
+	_, _ = m.fullMockSyncManager.AddTorrent(ctx, instanceID, fileContent, options)
+	if len(m.addTorrentCalls) == 2 {
+		return nil, errors.New("torrent file is not valid")
+	}
+	return nil, nil
+}
+
+func TestAddTorrentHandler_FailedFile_NamesTheUploadedFile(t *testing.T) {
+	t.Parallel()
+
+	handler := &TorrentsHandler{torrentAdder: &failSecondFileAdder{}}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	for _, name := range []string{"Example.Show.S01E01.torrent", "Example.Show.S01E02.torrent", "Example.Show.S01E03.torrent"} {
+		part, err := writer.CreateFormFile("torrent", name)
+		require.NoError(t, err)
+		_, err = part.Write([]byte("d4:infod4:name1:xee"))
+		require.NoError(t, err)
+	}
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Contains(t, w.Body.String(), `"failedFiles":[{"filename":"Example.Show.S01E02.torrent","error":"torrent file is not valid"}]`)
 }
