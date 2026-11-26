@@ -66,7 +66,9 @@ func TestReannounceSkipsHelperTorrents(t *testing.T) {
 			newService := func() (*Service, int, *[]string) {
 				svc, instanceID, _ := newScanTestService(t, "2.11.4", torrents)
 				svc.now = func() time.Time { return now }
-				svc.SetHelperTorrents(fakeHelpers{instanceID: instanceID, hashes: tc.helpers})
+				helpers := fakeHelpers{instanceID: instanceID, hashes: tc.helpers}
+				svc.syncManager.SetHelperTorrents(helpers)
+				svc.SetHelperTorrents(helpers)
 				svc.settingsCache = NewSettingsCache(nil)
 				svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: instanceID, Enabled: true, MonitorAll: true})
 				var jobs []string

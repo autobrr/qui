@@ -242,25 +242,17 @@ func TestTheChecksOfAnInstanceNameWhatQuiKeepsThere(t *testing.T) {
 
 	store := open(t, testdb.NewMigratedSQLite(t, "transfer-records"))
 	require.Nil(t, store.HelperKinds(target))
-	require.Nil(t, store.HelperCheck(target))
-	require.Nil(t, store.HoldCheck(source))
+	require.Nil(t, store.ClaimCheck(source))
 
 	require.NoError(t, store.Create(t.Context(), group("aaaa")))
 	require.NoError(t, store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: target, Hash: "ffff", Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1}))
 	require.Nil(t, store.HelperKinds(source), "a claim is no helper torrent")
-	require.Nil(t, store.HelperCheck(source))
-
 	require.Equal(t, map[string]string{"ffff": "share"}, store.HelperKinds(target))
-	isHelper := store.HelperCheck(target)
-	require.True(t, isHelper("ffff"))
-	require.False(t, isHelper("aaaa"))
 
-	isHeld := store.HoldCheck(source)
-	require.True(t, isHeld("AAAA"))
-	require.False(t, isHeld("ffff"), "the helper torrent is on the target")
-	isHeld = store.HoldCheck(target)
-	require.True(t, isHeld("ffff"))
-	require.False(t, isHeld("aaaa"), "the claim holds the torrent on the source only")
+	isClaimed := store.ClaimCheck(source)
+	require.True(t, isClaimed("AAAA"))
+	require.False(t, isClaimed("ffff"))
+	require.Nil(t, store.ClaimCheck(target), "the claim holds the torrent on the source only, and a helper torrent is no claim")
 }
 
 func TestSaveKeepsTheProgressPostgresIntegration(t *testing.T) {
