@@ -21,7 +21,7 @@ import { useQueueLimits } from "@/hooks/usePreferenceValues"
 import { api } from "@/lib/api"
 import { getMatchTypeLabel, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { DEFAULT_FILE_SORT } from "@/lib/file-tree"
-import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxRatio, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
+import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxRatio, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { matchPeerClient } from "@/lib/peer-client-icons"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -38,9 +38,10 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { scheduleTorrentListRefetches } from "./bulk-actions/bulk-action-requests"
+import { CategoryTagBadges } from "./details/CategoryTagBadges"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
 import { PeerClientIcon } from "./details/PeerClientIcon"
-import { MobileCategoryTagsRow, MobileDetailsHeader, MobileInfoBlock, MobileInfoGroup, MobileInfoRow, MobilePane, MobilePeerRow, MobileSectionTitle, MobileTrackerList, MobileWebSeedList } from "./details/MobileDetails"
+import { MobileDetailsHeader, MobileInfoBlock, MobileInfoGroup, MobileInfoRow, MobilePane, MobilePeerRow, MobileSectionTitle, MobileTrackerList, MobileWebSeedList } from "./details/MobileDetails"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
 import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
@@ -943,10 +944,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             ratio={incognitoMode ? getLinuxRatio(torrent.hash) : displayTorrent!.ratio}
             onBack={onClose}
           />
-          <MobileCategoryTagsRow
-            category={(incognitoMode ? getLinuxCategory(torrent.hash) : displayTorrent!.category) ?? ""}
-            tags={(incognitoMode ? getLinuxTags(torrent.hash) : displayTorrent!.tags) ?? ""}
-          />
+          <CategoryTagBadges torrent={displayTorrent!} className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-b px-4 py-2.5" />
 
           <TabsContent value="general" className={MOBILE_SECTION}>
             <MobilePane>

@@ -235,23 +235,12 @@ func webhookRun(t *testing.T, host *webhookHost, dirPath string, payload any) (*
 func webhookRunIn(t *testing.T, host *webhookHost, dirs []webhookDir, payload any) (*httptest.ResponseRecorder, *dirScanTriggerResponse) {
 	t.Helper()
 	ctx := t.Context()
-	db := testdb.NewMigratedSQLite(t, "dirscan-remote-webhook")
-	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
-	require.NoError(t, err)
-	instance, err := instances.Create(ctx, "remote", "http://localhost:8080", "", "", nil, nil, false, new(false))
-	require.NoError(t, err)
-	require.NoError(t, instances.SetSSHCredentials(ctx, instance.ID, "box.example", 22, "qui", sshtest.PrivateKey("")))
-	require.NoError(t, instances.SetHostKeyPin(ctx, instance.ID, "box.example", 22, sshtest.NewSigner().PublicKey().Marshal()))
-	localInstance, err := instances.Create(ctx, "local", "http://localhost:8080", "", "", nil, nil, false, new(true))
-	require.NoError(t, err)
-
-	pool := fsops.NewPoolWithRemote(instances, localbackend.NewBackend(), func(*models.Instance) fsops.Backend { return host })
-	service, scan := newSingleDirScanRun(db, pool)
-	handler := NewDirScanHandler(service, instances)
+	f := newWebhookFixture(t, host)
+	service, scan, handler := f.service, f.scan, f.handler
 	for _, dir := range dirs {
-		target := instance.ID
+		target := f.remote.ID
 		if dir.local {
-			target = localInstance.ID
+			target = f.local.ID
 		}
 		_, err := service.CreateDirectory(ctx, &models.DirScanDirectory{Path: dir.path, Enabled: true, TargetInstanceID: target, ScanIntervalMinutes: 60})
 		require.NoError(t, err)

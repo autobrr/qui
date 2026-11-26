@@ -195,7 +195,7 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 	created, err := h.service.CreateDirectory(r.Context(), dir)
 	if err != nil {
 		if errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
-			RespondError(w, http.StatusConflict, "A directory with this path already exists")
+			RespondError(w, http.StatusConflict, "A directory with this path already exists on this instance")
 			return
 		}
 		log.Error().Err(err).Msg("dirscan: failed to create directory")
@@ -328,7 +328,7 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
-			RespondError(w, http.StatusConflict, "A directory with this path already exists")
+			RespondError(w, http.StatusConflict, "A directory with this path already exists on this instance")
 			return
 		}
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to update directory")
@@ -846,14 +846,21 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if payload.isTestEvent() {
+	instanceID, err := webhookInstanceID(r)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instanceId")
+		return
+	}
+
+	testEvent := payload.isTestEvent()
+	if testEvent && instanceID == 0 {
 		log.Debug().Msg("dirscan: webhook test payload accepted")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
 	resolvedPath := payload.resolvedPath()
-	if resolvedPath == "" {
+	if !testEvent && resolvedPath == "" {
 		RespondError(w, http.StatusBadRequest, "Could not determine path from request body (expected 'path', 'series.path', 'movie.folderPath', 'artist.path', or 'author.path')")
 		return
 	}
@@ -865,34 +872,24 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var bestMatch *models.DirScanDirectory
-	var cleanPath string
-	bestLen := 0
-	ambiguous := false
-	for _, dir := range dirs {
-		if !dir.Enabled {
-			continue
+	if testEvent {
+		if !instanceHasEnabledDirectory(dirs, instanceID) {
+			RespondError(w, http.StatusNotFound, "No enabled directory found for the given instanceId")
+			return
 		}
-		dirPath, candidatePath, ok := dirscan.PathWithinDirectory(h.service.DirectoryPaths(r.Context(), dir), dir.Path, resolvedPath)
-		if !ok {
-			continue
-		}
-		if len(dirPath) > bestLen {
-			bestMatch = dir
-			cleanPath = candidatePath
-			bestLen = len(dirPath)
-			ambiguous = false
-		} else if len(dirPath) == bestLen {
-			ambiguous = true
-		}
+		log.Debug().Int("instanceID", instanceID).Msg("dirscan: webhook test payload accepted")
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 
+	match := h.matchWebhookDirectory(r, dirs, instanceID, resolvedPath)
+	bestMatch, cleanPath := match.dir, match.cleanPath
 	if bestMatch == nil {
 		RespondError(w, http.StatusNotFound, "No matching directory found for the given path")
 		return
 	}
-	if ambiguous {
-		RespondError(w, http.StatusConflict, "Multiple directories match the given path")
+	if len(match.tiedInstances) > 1 {
+		RespondError(w, http.StatusConflict, webhookConflictMessage(match.tiedInstances))
 		return
 	}
 	if !payload.isSimpleMode() && !downloadClientAllowed(bestMatch.AllowedDownloadClients, payload.DownloadClient) {
