@@ -246,6 +246,10 @@ func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
 
 func sent(s *qbtstub.Server) int { return s.RequestsWithout("torrents/info") }
 
+func sentWithoutResync(s *qbtstub.Server) int {
+	return s.RequestsWithout("torrents/info", "sync/maindata", "app/webapiVersion")
+}
+
 func (r *rig) requests() int { return sent(r.src) + sent(r.dst) }
 
 func TestTransferRetriesATemporaryFailureAfterAnHour(t *testing.T) {
