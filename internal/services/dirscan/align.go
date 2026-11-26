@@ -15,6 +15,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type alignmentPlan struct {
@@ -108,7 +109,7 @@ func searcheeIsDir(ctx context.Context, backend fsops.Backend, path string) (boo
 }
 
 func (i *Injector) align(ctx context.Context, req *InjectRequest, plan alignmentPlan) (string, bool) {
-	hash, _, ok := i.aligner.WaitForFiles(ctx, req.InstanceID, []string{req.ParsedTorrent.InfoHash, req.ParsedTorrent.InfoHashV2})
+	hash, _, ok := i.aligner.WaitForFiles(ctx, req.InstanceID, infohash.ParseAll([]string{req.ParsedTorrent.InfoHash, req.ParsedTorrent.InfoHashV2}))
 	if !ok {
 		log.Warn().
 			Int("instanceID", req.InstanceID).

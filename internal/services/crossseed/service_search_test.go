@@ -515,7 +515,7 @@ func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T)
 				},
 			},
 			exportedTorrent:    torrentBytes,
-			expectedTargetHash: expectedTargetHash,
+			expectedTargetHash: expectedTargetHash.String(),
 		},
 	}
 
@@ -1208,7 +1208,7 @@ func TestSearchTorrentMatches_GazelleSourceWithoutBackendsReturnsError(t *testin
 		},
 	}
 
-	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, mustParseHash(t, sourceHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Empty(t, resp.Results)
@@ -1248,7 +1248,7 @@ func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testin
 		},
 	}
 
-	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
+	_, err = svc.SearchTorrentMatches(ctx, instance.ID, mustParseHash(t, sourceHash), TorrentSearchOptions{DisableTorznab: true})
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrInvalidRequest)
 	require.Contains(t, err.Error(), "gazelle")
@@ -1301,11 +1301,11 @@ func TestSearchTorrentMatches_GazelleConfiguredWithoutTargetLookupReturnsNoBacke
 		},
 	}
 
-	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, mustParseHash(t, sourceHash), TorrentSearchOptions{DisableTorznab: true})
 	require.NoError(t, err)
 	require.Empty(t, resp.Results)
 
-	resp, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	resp, err = svc.SearchTorrentMatches(ctx, instance.ID, mustParseHash(t, sourceHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Empty(t, resp.Results)
@@ -1378,7 +1378,7 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 		},
 	}
 
-	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, mustParseHash(t, sourceHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Empty(t, resp.Results)
@@ -1429,7 +1429,7 @@ func TestSearchGazelleMatches_SkipsWhenLegacyTargetHashExistsLocally(t *testing.
 			torrents:           []qbt.Torrent{*sourceTorrent},
 			filesByHash:        map[string]qbt.TorrentFiles{strings.ToLower(sourceHash): sourceFiles},
 			exportedTorrent:    torrentBytes,
-			expectedTargetHash: aplHash,
+			expectedTargetHash: aplHash.String(),
 		},
 	}
 
@@ -1566,7 +1566,7 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 			torrents: []qbt.Torrent{*sourceTorrent},
 			filesByHash: map[string]qbt.TorrentFiles{
 				sourceHashNorm: sourceFiles,
-				normalizeHash(cachedCandidate.Hash): {
+				cachedCandidate.Hash: {
 					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
 				},
 			},
@@ -1647,8 +1647,8 @@ func assertGazelleAsksSiteForPartialCopy(t *testing.T, sourceTorrent *qbt.Torren
 		syncManager: &gazelleSkipHashSyncManager{
 			torrents: []qbt.Torrent{*sourceTorrent},
 			filesByHash: map[string]qbt.TorrentFiles{
-				normalizeHash(sourceTorrent.Hash): sourceFiles,
-				normalizeHash(partialCopy.Hash):   {partialFile},
+				sourceTorrent.Hash: sourceFiles,
+				partialCopy.Hash:   {partialFile},
 			},
 			cachedInstanceTorrents: []internalqb.CrossInstanceTorrentView{{
 				TorrentView:  &internalqb.TorrentView{Torrent: &partialCopy},
@@ -1717,7 +1717,7 @@ func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *te
 			torrents: []qbt.Torrent{sourceTorrent},
 			filesByHash: map[string]qbt.TorrentFiles{
 				sourceHashNorm: sourceFiles,
-				normalizeHash(cachedCandidate.Hash): {
+				cachedCandidate.Hash: {
 					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
 				},
 			},
@@ -1733,7 +1733,7 @@ func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *te
 		},
 	}
 
-	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, mustParseHash(t, sourceHash), TorrentSearchOptions{DisableTorznab: true})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Empty(t, resp.Results)
@@ -1790,7 +1790,7 @@ func TestSearchGazelleMatches_DoesNotSkipWhenTargetTrackerContentDoesNotMatch(t 
 			torrents: []qbt.Torrent{*sourceTorrent},
 			filesByHash: map[string]qbt.TorrentFiles{
 				sourceHashNorm: sourceFiles,
-				normalizeHash(nonMatchingCachedCandidate.Hash): {
+				nonMatchingCachedCandidate.Hash: {
 					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
 				},
 			},

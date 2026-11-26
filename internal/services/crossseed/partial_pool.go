@@ -167,10 +167,8 @@ func partialPoolCanonicalTorrentKey(torrent *qbt.Torrent) string {
 	if torrent == nil {
 		return ""
 	}
-	for _, hash := range []string{torrent.InfohashV1, torrent.InfohashV2, torrent.Hash} {
-		if normalized := normalizeHash(hash); normalized != "" {
-			return normalized
-		}
+	if hashes := parseHashes(torrent.InfohashV1, torrent.InfohashV2, torrent.Hash); len(hashes) > 0 {
+		return hashes[0].String()
 	}
 	return ""
 }
@@ -179,7 +177,7 @@ func partialPoolTorrentAliases(torrent *qbt.Torrent) []string {
 	if torrent == nil {
 		return nil
 	}
-	return normalizedHashes(torrent.InfohashV1, torrent.InfohashV2, torrent.Hash)
+	return hashAliases(torrent.InfohashV1, torrent.InfohashV2, torrent.Hash)
 }
 
 func partialPoolParsedIdentity(torrentBytes []byte) (key, infohashV1, infohashV2 string, descriptors []partialPoolFileDescriptor, err error) {
@@ -192,10 +190,10 @@ func partialPoolParsedIdentity(torrentBytes []byte) (key, infohashV1, infohashV2
 		return "", "", "", nil, err
 	}
 	if meta.Info != nil && meta.Info.HasV1() {
-		infohashV1 = normalizeHash(meta.HashV1)
+		infohashV1 = meta.HashV1.String()
 	}
 	if meta.Info != nil && meta.Info.HasV2() {
-		infohashV2 = normalizeHash(meta.HashV2)
+		infohashV2 = meta.HashV2.String()
 	}
 	key = infohashV1
 	if key == "" {
@@ -230,9 +228,9 @@ func (s *partialPoolCoordinator) join(
 		descriptors = parsedDescriptors
 	}
 
-	memberAliases := normalizedHashes(memberKey, infohashV1, infohashV2)
+	memberAliases := hashAliases(memberKey, infohashV1, infohashV2)
 	fetchHash := ""
-	if responseIDs := normalizedHashes(addedTorrentIDs...); len(responseIDs) > 0 {
+	if responseIDs := hashAliases(addedTorrentIDs...); len(responseIDs) > 0 {
 		fetchHash = responseIDs[0]
 	} else {
 		addedTorrent, found, resolveErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, infohash.ParseAll(memberAliases))
@@ -240,7 +238,7 @@ func (s *partialPoolCoordinator) join(
 			return nil, nil, fmt.Errorf("resolve added partial pool torrent: %w", resolveErr)
 		}
 		if found && addedTorrent != nil {
-			fetchHash = normalizeHash(addedTorrent.Hash)
+			fetchHash = addedTorrent.Hash
 			if fetchHash == "" {
 				fetchHash = partialPoolCanonicalTorrentKey(addedTorrent)
 			}
@@ -254,9 +252,9 @@ func (s *partialPoolCoordinator) join(
 	if err != nil {
 		return nil, nil, fmt.Errorf("refresh added partial pool files: %w", err)
 	}
-	files := filesByHash[normalizeHash(fetchHash)]
+	files := filesByHash[fetchHash]
 	if len(files) == 0 {
-		for _, alias := range normalizedHashes(fetchHash, memberKey, infohashV1, infohashV2) {
+		for _, alias := range hashAliases(fetchHash, memberKey, infohashV1, infohashV2) {
 			if len(filesByHash[alias]) > 0 {
 				files = filesByHash[alias]
 				break
@@ -288,11 +286,11 @@ func (s *partialPoolCoordinator) join(
 	sourceInstanceID := 0
 	sourceKey := ""
 	var sourceAliases []string
-	if req.SearchDecision.SourceInstanceID > 0 && normalizeHash(req.SearchDecision.SourceHash) != "" {
+	if sourceHash := req.SearchDecision.SourceHash; req.SearchDecision.SourceInstanceID > 0 && !sourceHash.IsZero() {
 		sourceInstanceID = req.SearchDecision.SourceInstanceID
-		sourceKey = normalizeHash(req.SearchDecision.SourceHash)
+		sourceKey = sourceHash.String()
 		sourceAliases = []string{sourceKey}
-		if sourceTorrent, sourceFound, sourceErr := s.syncManager.HasTorrentByAnyHash(ctx, sourceInstanceID, infohash.ParseAll(sourceAliases)); sourceErr == nil && sourceFound {
+		if sourceTorrent, sourceFound, sourceErr := s.syncManager.HasTorrentByAnyHash(ctx, sourceInstanceID, []infohash.Hash{sourceHash}); sourceErr == nil && sourceFound {
 			sourceKey = partialPoolCanonicalTorrentKey(sourceTorrent)
 			sourceAliases = partialPoolTorrentAliases(sourceTorrent)
 		}
@@ -354,21 +352,8 @@ func (s *partialPoolCoordinator) recordPartialPoolRecheckObserved(ctx context.Co
 	return true
 }
 
-func normalizedHashes(values ...string) []string {
-	seen := make(map[string]struct{}, len(values))
-	hashes := make([]string, 0, len(values))
-	for _, value := range values {
-		value = normalizeHash(value)
-		if value == "" {
-			continue
-		}
-		if _, exists := seen[value]; exists {
-			continue
-		}
-		seen[value] = struct{}{}
-		hashes = append(hashes, value)
-	}
-	return hashes
+func hashAliases(values ...string) []string {
+	return hashStrings(parseHashes(values...))
 }
 
 func (s *partialPoolCoordinator) markPartialPoolMemberManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, reason string) bool {
@@ -808,7 +793,7 @@ func (s *partialPoolCoordinator) observeRequestedPartialPoolRechecks(ctx context
 		for _, member := range targets {
 			hashes = append(hashes, partialPoolMemberHashes(member)...)
 		}
-		hashes = normalizedHashes(hashes...)
+		hashes = hashAliases(hashes...)
 		torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, instanceID, hashes)
 		if !fresh {
 			var loadErr error
@@ -906,7 +891,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolTorrentStates(
 				hashes = append(hashes, partialPoolMemberHashes(candidate)...)
 			}
 		}
-		torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, member.InstanceID, normalizedHashes(hashes...))
+		torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, member.InstanceID, hashAliases(hashes...))
 		if !fresh {
 			return false
 		}
@@ -926,8 +911,10 @@ func (s *partialPoolCoordinator) refreshPartialPoolTorrentStates(
 func newPartialPoolTorrentInventory(torrents []*qbt.Torrent, authoritative bool) partialPoolTorrentInventory {
 	inventory := partialPoolTorrentInventory{loaded: true, authoritative: authoritative, byAlias: make(map[string]*qbt.Torrent, len(torrents)*2)}
 	for _, torrent := range torrents {
-		for _, alias := range normalizedHashes(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
-			inventory.byAlias[alias] = torrent
+		for _, raw := range [...]string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
+			if hash := parseHash(raw); !hash.IsZero() {
+				inventory.byAlias[hash.String()] = torrent
+			}
 		}
 	}
 	return inventory
@@ -950,7 +937,7 @@ func partialPoolInventoryTorrent(inventory partialPoolTorrentInventory, member *
 	if !inventory.loaded || member == nil {
 		return nil, false
 	}
-	for _, alias := range normalizedHashes(member.TorrentKey, member.InfoHashV1, member.InfoHashV2) {
+	for _, alias := range hashAliases(member.TorrentKey, member.InfoHashV1, member.InfoHashV2) {
 		if torrent, ok := inventory.byAlias[alias]; ok {
 			return torrent, true
 		}
@@ -1043,7 +1030,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolFiles(
 			}
 			continue
 		}
-		hash := normalizeHash(snapshot.torrent.Hash)
+		hash := snapshot.torrent.Hash
 		if hash == "" {
 			hash = member.TorrentKey
 		}
@@ -1071,9 +1058,9 @@ func (s *partialPoolCoordinator) refreshPartialPoolFiles(
 			continue
 		}
 		for _, request := range requests {
-			files := filesByHash[normalizeHash(request.hash)]
+			files := filesByHash[request.hash]
 			if len(files) == 0 {
-				for _, alias := range normalizedHashes(request.member.TorrentKey, request.member.InfoHashV1, request.member.InfoHashV2) {
+				for _, alias := range hashAliases(request.member.TorrentKey, request.member.InfoHashV1, request.member.InfoHashV2) {
 					if len(filesByHash[alias]) > 0 {
 						files = filesByHash[alias]
 						break
@@ -1134,7 +1121,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolMemberSnapshot(ctx context.Co
 	if ctx.Err() != nil || member == nil || snapshot == nil {
 		return false
 	}
-	hash := normalizeHash(snapshot.torrent.Hash)
+	hash := snapshot.torrent.Hash
 	if hash == "" {
 		hash = member.TorrentKey
 	}
@@ -1142,7 +1129,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolMemberSnapshot(ctx context.Co
 	if err != nil {
 		return false
 	}
-	files := filesByHash[normalizeHash(hash)]
+	files := filesByHash[hash]
 	if len(files) == 0 {
 		for _, alias := range partialPoolMemberHashes(member) {
 			if len(filesByHash[alias]) > 0 {
@@ -3434,7 +3421,7 @@ func partialPoolMemberHashes(member *models.CrossSeedPartialPoolMember) []string
 	if member == nil {
 		return nil
 	}
-	return normalizedHashes(member.TorrentKey, member.InfoHashV1, member.InfoHashV2)
+	return hashAliases(member.TorrentKey, member.InfoHashV1, member.InfoHashV2)
 }
 
 func partialPoolMemberHasVerificationWork(member *models.CrossSeedPartialPoolMember) bool {

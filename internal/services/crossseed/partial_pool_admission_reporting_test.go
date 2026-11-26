@@ -126,21 +126,21 @@ func TestRegisterPartialPoolAdmissionFetchHashPrecedence(t *testing.T) {
 	}{
 		{
 			name:         "normalized add response ID",
-			responseIDs:  []string{"", "  ABCDEF1234  ", "ignored"},
-			resolved:     &qbt.Torrent{Hash: "stale-sync-hash"},
-			wantFetch:    func(string) string { return "abcdef1234" },
+			responseIDs:  []string{"", "  ABCDEF12ABCDEF12ABCDEF12ABCDEF12ABCDEF12  ", fakeHash("ignored")},
+			resolved:     &qbt.Torrent{Hash: fakeHash("stale-sync")},
+			wantFetch:    func(string) string { return "abcdef12abcdef12abcdef12abcdef12abcdef12" },
 			wantHasCalls: 0,
 		},
 		{
 			name:         "sync resolved API hash",
-			resolved:     &qbt.Torrent{Hash: "legacy-alias", InfohashV1: "CANONICAL1234"},
-			wantFetch:    func(string) string { return "legacy-alias" },
+			resolved:     &qbt.Torrent{Hash: fakeHash("legacy-alias"), InfohashV1: "CAC0CAC0CAC0CAC0CAC0CAC0CAC0CAC0CAC0CAC0"},
+			wantFetch:    func(string) string { return fakeHash("legacy-alias") },
 			wantHasCalls: 1,
 		},
 		{
 			name:         "sync identity when API hash empty",
-			resolved:     &qbt.Torrent{InfohashV1: "CANONICAL1234"},
-			wantFetch:    func(string) string { return "canonical1234" },
+			resolved:     &qbt.Torrent{InfohashV1: "CAC0CAC0CAC0CAC0CAC0CAC0CAC0CAC0CAC0CAC0"},
+			wantFetch:    func(string) string { return "cac0cac0cac0cac0cac0cac0cac0cac0cac0cac0" },
 			wantHasCalls: 1,
 		},
 		{
@@ -167,7 +167,7 @@ func TestRegisterPartialPoolAdmissionFetchHashPrecedence(t *testing.T) {
 				torrentBytes,
 				append([]string(nil), tt.responseIDs...),
 				&CrossSeedRequest{},
-				&qbt.Torrent{Hash: "source-hash"},
+				&qbt.Torrent{Hash: fakeHash("source")},
 				models.CrossSeedPartialPoolModeHardlink,
 				t.TempDir(),
 				[]hardlinktree.TorrentFile{{Path: descriptors[0].RelativePath, Size: descriptors[0].SizeBytes}},
@@ -187,7 +187,7 @@ func TestRegisterPartialPoolAdmissionFetchHashPrecedence(t *testing.T) {
 func TestLinkModeWithoutPartialPoolCoordinatorAddsWithoutPool(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	torrentBytes, memberKey, descriptors := syntheticPartialPoolTorrent(t)
-	responseID := "add-response-hash"
+	responseID := fakeHash("add-response")
 	tempDir := t.TempDir()
 	downloadsDir := filepath.Join(tempDir, "downloads")
 	sourcePath := filepath.Join(downloadsDir, "Matched", "video.mkv")
@@ -217,14 +217,14 @@ func TestLinkModeWithoutPartialPoolCoordinatorAddsWithoutPool(t *testing.T) {
 	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 	candidate := CrossSeedCandidate{InstanceID: instanceID, InstanceName: "partial-pool"}
-	matched := &qbt.Torrent{Hash: "source-hash", ContentPath: filepath.Dir(sourcePath)}
+	matched := &qbt.Torrent{Hash: fakeHash("source"), ContentPath: filepath.Dir(sourcePath)}
 	sourceFiles := qbt.TorrentFiles{{Name: descriptors[0].RelativePath, Size: 1000}, {Name: descriptors[1].RelativePath, Size: 10}}
 	candidateFiles := qbt.TorrentFiles{{Name: "Matched/video.mkv", Size: 1000}}
 	props := &qbt.TorrentProperties{SavePath: downloadsDir}
 
 	adds := withLinkAdder(service)
 	adds.addedIDs = []string{responseID}
-	result := service.processHardlinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", &CrossSeedRequest{}, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
+	result := service.processHardlinkMode(t.Context(), linkCheck(t, instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", &CrossSeedRequest{}, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
 
 	require.True(t, result.Success, result.Message)
 	require.False(t, result.partialPoolPending)
@@ -239,7 +239,7 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 		t.Run(mode, func(t *testing.T) {
 			store, instanceID := newPartialPoolFilesystemStore(t)
 			torrentBytes, memberKey, descriptors := syntheticPartialPoolTorrent(t)
-			responseID := "add-response-hash"
+			responseID := fakeHash("add-response")
 			tempDir := t.TempDir()
 			downloadsDir := filepath.Join(tempDir, "downloads")
 			sourcePath := filepath.Join(downloadsDir, "Matched", "video.mkv")
@@ -280,7 +280,7 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 
 			candidate := CrossSeedCandidate{InstanceID: instanceID, InstanceName: "partial-pool"}
 			req := &CrossSeedRequest{}
-			matched := &qbt.Torrent{Hash: "source-hash", ContentPath: filepath.Dir(sourcePath)}
+			matched := &qbt.Torrent{Hash: fakeHash("source"), ContentPath: filepath.Dir(sourcePath)}
 			sourceFiles := qbt.TorrentFiles{{Name: descriptors[0].RelativePath, Size: 1000}, {Name: descriptors[1].RelativePath, Size: 10}}
 			candidateFiles := qbt.TorrentFiles{{Name: "Matched/video.mkv", Size: 1000}}
 			props := &qbt.TorrentProperties{SavePath: downloadsDir}
@@ -289,9 +289,9 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 			adds.addedIDs = []string{responseID}
 			var result InstanceCrossSeedResult
 			if mode == models.CrossSeedPartialPoolModeHardlink {
-				result = service.processHardlinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
+				result = service.processHardlinkMode(t.Context(), linkCheck(t, instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
 			} else {
-				result = service.processReflinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
+				result = service.processReflinkMode(t.Context(), linkCheck(t, instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "").Result
 			}
 
 			require.True(t, result.Success, result.Message)
@@ -350,7 +350,7 @@ func TestPartialPoolCoordinatorAdoptsRunningRecheck(t *testing.T) {
 			require.Empty(t, sync.bulkActions, "an already-running qBittorrent check must be adopted")
 			require.Equal(t, partialPoolRecheckObserved, member.LastError)
 			require.Equal(t, now, member.UpdatedAt)
-			_, member, err = store.ResolvePartialPoolMember(t.Context(), instanceID, status)
+			_, member, err = store.ResolvePartialPoolMember(t.Context(), instanceID, member.TorrentKey)
 			require.NoError(t, err)
 			require.Equal(t, partialPoolRecheckObserved, member.LastError)
 		})
@@ -389,7 +389,7 @@ func TestPartialPoolCoordinatorKeepsResumeDataPendingUntilStopped(t *testing.T) 
 
 			reconcile(qbt.TorrentStateStoppedDl)
 			require.Equal(t, partialPoolRecheckRequested, member.LastError)
-			require.Equal(t, []string{"recheck:" + status}, sync.bulkActions)
+			require.Equal(t, []string{"recheck:" + fakeHash(status)}, sync.bulkActions)
 		})
 	}
 }
@@ -474,7 +474,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			fetchErr := errors.New("torrent files still hidden")
 			sync := &partialPoolAdmissionSync{
 				rootlessSavePathSyncManager: &rootlessSavePathSyncManager{},
-				addResponse:                 &qbt.TorrentAddResponse{AddedTorrentIds: []string{"accepted-hash"}},
+				addResponse:                 &qbt.TorrentAddResponse{AddedTorrentIds: []string{fakeHash("accepted-hash")}},
 				fetchErr:                    fetchErr,
 			}
 			instance := &models.Instance{
@@ -508,20 +508,20 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 
 			candidate := CrossSeedCandidate{InstanceID: instanceID, InstanceName: "partial-pool"}
 			req := &CrossSeedRequest{}
-			matched := &qbt.Torrent{Hash: "source-hash", ContentPath: filepath.Dir(sourcePath)}
+			matched := &qbt.Torrent{Hash: fakeHash("source"), ContentPath: filepath.Dir(sourcePath)}
 			sourceFiles := qbt.TorrentFiles{{Name: descriptors[0].RelativePath, Size: 1000}, {Name: descriptors[1].RelativePath, Size: 10}}
 			candidateFiles := qbt.TorrentFiles{{Name: "Matched/video.mkv", Size: 1000}}
 			props := &qbt.TorrentProperties{SavePath: downloadsDir}
 
 			adds := withLinkAdder(service)
-			adds.addedIDs = []string{"accepted-hash"}
+			adds.addedIDs = []string{fakeHash("accepted-hash")}
 			var result InstanceCrossSeedResult
 			if mode == models.CrossSeedPartialPoolModeHardlink {
-				modeResult := service.processHardlinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
+				modeResult := service.processHardlinkMode(t.Context(), linkCheck(t, instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
 				require.False(t, modeResult.Success)
 				result = modeResult.Result
 			} else {
-				modeResult := service.processReflinkMode(t.Context(), linkCheck(instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
+				modeResult := service.processReflinkMode(t.Context(), linkCheck(t, instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
 				require.False(t, modeResult.Success)
 				result = modeResult.Result
 			}
@@ -569,7 +569,7 @@ func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing
 
 	result, err := service.executeCrossSeedSearchAttempt(
 		t.Context(), 1, triggerDefaults{},
-		&qbt.Torrent{Hash: "source", Name: "source"},
+		&qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
 		TorrentSearchResult{Indexer: "Indexer", DownloadURL: "https://example.invalid/synthetic.torrent"},
 		time.Now(),
 	)

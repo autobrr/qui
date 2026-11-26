@@ -1434,7 +1434,7 @@ func newFakeSyncManager(instance *models.Instance, torrents []qbt.Torrent, files
 
 	normalizedFiles := make(map[string]qbt.TorrentFiles, len(files))
 	for hash, fl := range files {
-		norm := normalizeHash(hash)
+		norm := hash
 		cp := make(qbt.TorrentFiles, len(fl))
 		copy(cp, fl)
 		normalizedFiles[norm] = cp
@@ -1460,7 +1460,7 @@ func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes 
 	}
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		normalized := normalizeHash(h)
+		normalized := h
 		files, ok := f.files[normalized]
 		if !ok {
 			if files, ok = f.files[strings.ToLower(h)]; !ok {
@@ -1494,7 +1494,7 @@ func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int,
 				if candidate == "" {
 					continue
 				}
-				if _, ok := targets[normalizeHash(candidate)]; ok {
+				if _, ok := targets[candidate]; ok {
 					return &t, true, nil
 				}
 			}
@@ -2015,7 +2015,7 @@ func (f *infohashTestSyncManager) GetTorrentFilesBatch(_ context.Context, instan
 			if files, ok := instFiles[strings.ToLower(h)]; ok {
 				cp := make(qbt.TorrentFiles, len(files))
 				copy(cp, files)
-				result[normalizeHash(h)] = cp
+				result[h] = cp
 			}
 		}
 	}
@@ -2992,7 +2992,7 @@ func (m *rssFilterTestSyncManager) GetTorrentFilesBatch(_ context.Context, insta
 			if files, ok := instFiles[strings.ToLower(h)]; ok {
 				cp := make(qbt.TorrentFiles, len(files))
 				copy(cp, files)
-				result[normalizeHash(h)] = cp
+				result[h] = cp
 			}
 		}
 	}
@@ -3194,7 +3194,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 
 			defaults := triggerDefaults{sourceFilter: sourceFilter{tt.opts.Categories, tt.opts.Tags, tt.opts.ExcludeCategories, tt.opts.ExcludeTags}}
 			torrent := &qbt.Torrent{
-				Hash:     "testhash",
+				Hash:     fakeHash("testhash"),
 				Name:     "Test.Movie.2025.1080p.BluRay-GROUP",
 				Progress: 1.0,
 				Category: "movies-LTS",

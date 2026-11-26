@@ -1319,7 +1319,7 @@ func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	decision := svc.matcher().classifySearchCandidate(input)
 	require.True(t, decision.Accepted || row.searchSource == "", "search must admit the search source: %s", decision.RejectReason)
 	if decision.Accepted {
-		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, boundHash)
+		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, mustParseHash(t, boundHash))
 	}
 	req.TargetRelease = svc.readApplyTarget(row.candidate,
 		corpusFiles(row.candidate, row.candidateSize, row.candidateFiles), req.SearchDecision.admitted())
@@ -1370,7 +1370,7 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 func crossSeedTabCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(true)
-	resp, err := svc.FindCrossSeeds(t.Context(), corpusInstanceID, corpusSourceHash)
+	resp, err := svc.FindCrossSeeds(t.Context(), corpusInstanceID, mustParseHash(t, corpusSourceHash))
 	require.NoError(t, err)
 	return corpusVerdictOf(slices.ContainsFunc(resp.Matches, func(match LocalMatch) bool { return match.Hash == corpusCandidateHash }))
 }

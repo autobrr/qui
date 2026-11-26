@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const alignRenameAttempts = 3
@@ -58,19 +59,15 @@ func (a *Aligner) detach(ctx context.Context) (context.Context, context.CancelFu
 	return context.WithTimeout(context.WithoutCancel(ctx), a.timeout)
 }
 
-func (a *Aligner) WaitForFiles(ctx context.Context, instanceID int, hashes []string) (string, qbt.TorrentFiles, bool) {
+func (a *Aligner) WaitForFiles(ctx context.Context, instanceID int, hashes []infohash.Hash) (string, qbt.TorrentFiles, bool) {
 	ctx, cancel := a.detach(ctx)
 	defer cancel()
 
-	unique := dedupeHashes(hashes...)
-	lookup := make([]string, 0, len(unique))
-	for _, hash := range unique {
-		hash = normalizeHash(hash)
-		if len(hash) == 64 {
-			hash = hash[:40]
-		}
-		lookup = append(lookup, hash)
+	ids := make([]infohash.Hash, len(hashes))
+	for i, hash := range hashes {
+		ids[i] = hash.TorrentID()
 	}
+	lookup := hashStrings(uniqueHashes(ids...))
 	if len(lookup) == 0 {
 		return "", nil, false
 	}
@@ -161,7 +158,7 @@ func (a *Aligner) renameApplied(ctx context.Context, instanceID int, hash, oldPa
 	}
 
 	oldFound, newFound := false, false
-	for _, f := range filesByHash[normalizeHash(hash)] {
+	for _, f := range filesByHash[hash] {
 		if f.Name == oldPath || folder && strings.HasPrefix(f.Name, oldPath+"/") {
 			oldFound = true
 		}

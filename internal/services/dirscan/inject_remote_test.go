@@ -80,7 +80,7 @@ func remoteInjectRequest(d fsops.PathDialect, scanInstance *models.Instance) *In
 		InstanceID:    1,
 		ScanInstance:  scanInstance,
 		TorrentBytes:  []byte("x"),
-		ParsedTorrent: &ParsedTorrent{Name: folder, InfoHash: "deadbeef", Files: []TorrentFile{torrentFile}, PieceLength: 16384},
+		ParsedTorrent: &ParsedTorrent{Name: folder, InfoHash: "deadbeef00000000000000000000000000000000", Files: []TorrentFile{torrentFile}, PieceLength: 16384},
 		Searchee:      &Searchee{Name: folder, Path: searcheePath, Files: []*ScannedFile{source}},
 		MatchResult: &MatchResult{
 			MatchedFiles:   []MatchedFilePair{{SearcheeFile: source, TorrentFile: torrentFile}},

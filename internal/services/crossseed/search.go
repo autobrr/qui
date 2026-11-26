@@ -63,7 +63,7 @@ func (s *Service) searchUsablePredicate(base searchCandidateInput) func(jackett.
 	}
 }
 
-func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
+func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash infohash.Hash, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
 	search, err := s.prepareManualSearch(ctx, instanceID, hash, opts)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ type manualSearch struct {
 	scope          searchScope
 }
 
-func (s *Service) prepareManualSearch(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*manualSearch, error) {
+func (s *Service) prepareManualSearch(ctx context.Context, instanceID int, hash infohash.Hash, opts TorrentSearchOptions) (*manualSearch, error) {
 	settings, settingsErr := s.GetAutomationSettings(ctx)
 	opts.RescueTitleMismatches = false
 	if settingsErr != nil {
@@ -113,11 +113,11 @@ func (s *Service) prepareManualSearch(ctx context.Context, instanceID int, hash 
 	return &manualSearch{opts: opts, gazelleClients: gazelleClients, instance: instance, source: sourceTorrent, scope: scope}, nil
 }
 
-func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash string) (*models.Instance, *qbt.Torrent, error) {
+func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash infohash.Hash) (*models.Instance, *qbt.Torrent, error) {
 	if instanceID <= 0 {
 		return nil, nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
 	}
-	if strings.TrimSpace(hash) == "" {
+	if hash.IsZero() {
 		return nil, nil, fmt.Errorf("%w: torrent hash is required", ErrInvalidRequest)
 	}
 
@@ -129,7 +129,7 @@ func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash str
 		return nil, nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{hash}})
 	if err != nil {
 		return nil, nil, fmt.Errorf("load torrents: %w", err)
 	}
@@ -144,7 +144,7 @@ func (s *Service) loadSearchSource(ctx context.Context, instanceID int, hash str
 }
 
 func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions, scope searchScope, gazelleClients *gazelleClientSet) (*TorrentSearchResponse, error) {
-	instance, sourceTorrent, err := s.loadSearchSource(ctx, instanceID, hash)
+	instance, sourceTorrent, err := s.loadSearchSource(ctx, instanceID, parseHash(hash))
 	if err != nil {
 		return nil, err
 	}
@@ -154,13 +154,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 func (s *Service) searchSourceMatches(ctx context.Context, instance *models.Instance, sourceTorrent *qbt.Torrent, opts TorrentSearchOptions, scope searchScope, gazelleClients *gazelleClientSet) (*TorrentSearchResponse, error) {
 	instanceID := instance.ID
 	hash := sourceTorrent.Hash
-	normalizedHash := normalizeHash(hash)
 
 	filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
-	sourceFiles, ok := filesMap[normalizedHash]
+	sourceFiles, ok := filesMap[hash]
 	if !ok {
 		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
@@ -705,7 +704,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 		res := item.result
 		hashes := torrentSearchResultInfoHashes(res.InfoHashV1, res.InfoHashV2)
 		if len(hashes) > 0 && s.syncManager != nil {
-			existing, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes))
+			existing, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes)
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return nil, duplicateFilteredCount, err
@@ -716,7 +715,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 					Int("indexerID", res.IndexerID).
 					Str("indexer", res.Indexer).
 					Str("title", res.Title).
-					Strs("infoHashes", hashes).
+					Strs("infoHashes", hashStrings(hashes)).
 					Msg("[CROSSSEED-SEARCH] Failed duplicate infohash check; keeping result")
 			} else if exists {
 				if rejection, rejected := s.contentPrefilterRejectionForHashes(instanceID, sourceHash, res.IndexerID, hashes); item.provenance.Class != searchCandidateClassTitleRescue && rejected {
@@ -726,7 +725,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 						Int("indexerID", res.IndexerID).
 						Str("indexer", res.Indexer).
 						Str("title", res.Title).
-						Strs("infoHashes", hashes).
+						Strs("infoHashes", hashStrings(hashes)).
 						Str("rejectionReason", rejection.Reason)
 					if existing != nil {
 						event = event.
@@ -752,7 +751,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 					Int("indexerID", res.IndexerID).
 					Str("indexer", res.Indexer).
 					Str("title", res.Title).
-					Strs("infoHashes", hashes)
+					Strs("infoHashes", hashStrings(hashes))
 				if existing != nil {
 					event = event.
 						Str("existingHash", existing.Hash).

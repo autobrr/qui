@@ -35,18 +35,18 @@ type fileMatchInstruction struct {
 func (s *Service) alignCrossSeed(
 	ctx context.Context,
 	instanceID int,
-	torrentHash string,
-	torrentHashV2 string,
+	torrentHash infohash.Hash,
+	torrentHashV2 infohash.Hash,
 	sourceTorrentName string,
 	addPlan *crossSeedAddPlan,
 ) (bool, string) {
 	if addPlan != nil && len(addPlan.filePairs) > 0 {
 		return s.alignCatalogFiles(ctx, instanceID, torrentHash, torrentHashV2, addPlan)
 	}
-	hashes := dedupeHashes(torrentHash, torrentHashV2)
+	hashes := uniqueHashes(torrentHash, torrentHashV2)
 	hashLabel := ""
 	if len(hashes) > 0 {
-		hashLabel = hashes[0]
+		hashLabel = hashes[0].String()
 	}
 
 	if addPlan == nil {
@@ -66,7 +66,7 @@ func (s *Service) alignCrossSeed(
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Int("expectedSourceFiles", len(expectedSourceFiles)).
 			Int("candidateFiles", len(candidateFiles)).
 			Msg("Empty file list provided to alignment, skipping")
@@ -125,7 +125,7 @@ func (s *Service) alignCrossSeed(
 	if !shouldAlignFilesWithCandidate(sourceRelease, matchedRelease) {
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Str("sourceName", sourceTorrentName).
 			Str("matchedName", matchedTorrent.Name).
 			Msg("Skipping file alignment for episode matched to season pack")
@@ -176,7 +176,7 @@ func (s *Service) alignCrossSeed(
 		if len(unmatched) > 0 {
 			log.Debug().
 				Int("instanceID", instanceID).
-				Str("torrentHash", torrentHash).
+				Stringer("torrentHash", torrentHash).
 				Int("unmatchedFiles", len(unmatched)).
 				Strs("unmatchedPaths", unmatched).
 				Msg("Some cross-seed files could not be mapped, recheck will handle verification")
@@ -206,8 +206,8 @@ func (s *Service) alignCrossSeed(
 	return true, activeHash
 }
 
-func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int, hashes []string, timeout time.Duration) string {
-	hashes = dedupeHashes(hashes...)
+func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int, hashes []infohash.Hash, timeout time.Duration) string {
+	hashes = uniqueHashes(hashes...)
 	if len(hashes) == 0 {
 		return ""
 	}
@@ -228,7 +228,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 			}
 		}
 
-		torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
+		torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 		if err == nil && len(torrents) > 0 {
 			for _, torrent := range torrents {
 				active := strings.TrimSpace(torrent.Hash)
@@ -236,7 +236,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 					return active
 				}
 			}
-			return hashes[0]
+			return hashes[0].String()
 		} else if err != nil {
 			log.Debug().
 				Err(err).

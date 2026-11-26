@@ -577,32 +577,38 @@ func (s *Service) ReconcileInterruptedRuns(ctx context.Context) {
 	}
 }
 
-func dedupeHashes(hashes ...string) []string {
-	if len(hashes) == 0 {
-		return nil
-	}
+func parseHash(value string) infohash.Hash {
+	hash, _ := infohash.Parse(value)
+	return hash
+}
 
-	out := make([]string, 0, len(hashes))
-	seen := make(map[string]struct{}, len(hashes))
+func parseHashes(values ...string) []infohash.Hash {
+	return uniqueHashes(infohash.ParseAll(values)...)
+}
 
+func uniqueHashes(hashes ...infohash.Hash) []infohash.Hash {
+	seen := make(map[infohash.Hash]struct{}, len(hashes))
+	out := make([]infohash.Hash, 0, len(hashes))
 	for _, hash := range hashes {
-		trimmed := strings.TrimSpace(hash)
-		if trimmed == "" {
+		if _, dup := seen[hash]; dup || hash.IsZero() {
 			continue
 		}
-		canonical := normalizeHash(trimmed)
-		if _, ok := seen[canonical]; ok {
-			continue
-		}
-		seen[canonical] = struct{}{}
-		out = append(out, trimmed)
+		seen[hash] = struct{}{}
+		out = append(out, hash)
 	}
-
 	return out
 }
 
-func normalizeHash(hash string) string {
-	return normalizeLowerTrim(hash)
+func torrentHasHash(torrent *qbt.Torrent, hash infohash.Hash) bool {
+	return hash.Is(torrent.Hash) || hash.Is(torrent.InfohashV1) || hash.Is(torrent.InfohashV2)
+}
+
+func hashStrings(hashes []infohash.Hash) []string {
+	out := make([]string, len(hashes))
+	for i, hash := range hashes {
+		out[i] = hash.String()
+	}
+	return out
 }
 
 func postRecheckBudgetSatisfied(
@@ -682,7 +688,7 @@ func cacheKeyForTorrentFiles(instanceID int, hash string) string {
 	if hash == "" {
 		return ""
 	}
-	return fmt.Sprintf("%d|%s", instanceID, normalizeHash(hash))
+	return fmt.Sprintf("%d|%s", instanceID, hash)
 }
 
 func cloneTorrentFiles(files qbt.TorrentFiles) qbt.TorrentFiles {
@@ -704,7 +710,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 		if cached, ok := s.torrentFilesCache.Get(key); ok {
 			log.Trace().
 				Int("instanceID", instanceID).
-				Str("hash", normalizeHash(hash)).
+				Str("hash", hash).
 				Msg("Using cached torrent files")
 			return cloneTorrentFiles(cached), nil
 		}
@@ -715,7 +721,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 		return nil, err
 	}
 
-	files, ok := filesMap[normalizeHash(hash)]
+	files, ok := filesMap[hash]
 	if !ok {
 		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
@@ -726,7 +732,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 
 	log.Trace().
 		Int("instanceID", instanceID).
-		Str("hash", normalizeHash(hash)).
+		Str("hash", hash).
 		Msg("Fetched torrent files from qbittorrent")
 
 	return files, nil
@@ -772,7 +778,7 @@ func searchSourceSize(t *qbt.Torrent) int64 {
 	return t.Size
 }
 
-func (s *Service) contentPrefilterRejectionForHashes(instanceID int, sourceHash string, indexerID int, hashes []string) (contentPrefilterRejectedTorrent, bool) {
+func (s *Service) contentPrefilterRejectionForHashes(instanceID int, sourceHash string, indexerID int, hashes []infohash.Hash) (contentPrefilterRejectedTorrent, bool) {
 	snapshot, _, ok := s.completedAsyncContentFilterSnapshot(instanceID, sourceHash)
 	if !ok || len(snapshot.rejectedContentCandidates) == 0 {
 		return contentPrefilterRejectedTorrent{}, false
@@ -790,12 +796,11 @@ func (s *Service) contentPrefilterRejectionForHashes(instanceID int, sourceHash 
 	return contentPrefilterRejectedTorrent{}, false
 }
 
-func contentPrefilterRejectedContentKey(indexerID int, hash string) string {
-	normalized := normalizeHash(hash)
-	if indexerID <= 0 || normalized == "" {
+func contentPrefilterRejectedContentKey(indexerID int, hash infohash.Hash) string {
+	if indexerID <= 0 || hash.IsZero() {
 		return ""
 	}
-	return fmt.Sprintf("%d|%s", indexerID, normalized)
+	return fmt.Sprintf("%d|%s", indexerID, hash)
 }
 
 func contentPrefilterRejectedExistingStatus(rejection contentPrefilterRejectedTorrent) string {
@@ -818,29 +823,15 @@ func contentPrefilterRejectedExistingMessage(rejection contentPrefilterRejectedT
 	return fmt.Sprintf("Torrent already exists in this instance but was rejected by content prefilter (%s): %s", name, reason)
 }
 
-func torrentSearchResultInfoHashes(infoHashV1, infoHashV2 string) []string {
-	seen := make(map[string]struct{}, 2)
-	hashes := make([]string, 0, 2)
-	for _, raw := range []string{infoHashV1, infoHashV2} {
-		hash := normalizeHash(raw)
-		if hash == "" {
-			continue
-		}
-		if _, ok := seen[hash]; ok {
-			continue
-		}
-		seen[hash] = struct{}{}
-		hashes = append(hashes, hash)
-	}
-	return hashes
+func torrentSearchResultInfoHashes(infoHashV1, infoHashV2 string) []infohash.Hash {
+	return parseHashes(infoHashV1, infoHashV2)
 }
 
 func asyncFilteringCacheKey(instanceID int, hash string) string {
-	cleanHash := stringutils.DefaultNormalizer.Normalize(hash)
-	if cleanHash == "" {
+	if hash == "" {
 		return fmt.Sprintf("async:%d", instanceID)
 	}
-	return fmt.Sprintf("async:%d:%s", instanceID, cleanHash)
+	return fmt.Sprintf("async:%d:%s", instanceID, hash)
 }
 
 func splitTags(raw string) []string {

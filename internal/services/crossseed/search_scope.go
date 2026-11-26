@@ -16,7 +16,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
-	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -349,7 +348,7 @@ func (s *Service) gazelleLocalFacts(ctx context.Context, instanceID int, torrent
 		matchedContent, _, _, err := s.findLayoutAwareContentPrefilterMatches(
 			ctx,
 			instanceID,
-			normalizeHash(torrent.Hash),
+			torrent.Hash,
 			torrent,
 			s.releaseCache.Parse(torrent.Name),
 			instanceTorrents,
@@ -393,11 +392,11 @@ func (s *Service) gazelleLocalFacts(ctx context.Context, instanceID int, torrent
 		if err != nil {
 			continue
 		}
-		if _, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes)); hashErr == nil && exists {
+		if _, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes); hashErr == nil && exists {
 			log.Debug().
 				Str("targetHost", host).
 				Str("hash", torrent.Hash).
-				Strs("targetHashes", hashes).
+				Strs("targetHashes", hashStrings(hashes)).
 				Msg("[CROSSSEED-GAZELLE] Target hash already present locally, skipping search")
 			seeded = append(seeded, host)
 		}
@@ -406,7 +405,7 @@ func (s *Service) gazelleLocalFacts(ctx context.Context, instanceID int, torrent
 }
 
 func (s *Service) contentFilterFacts(ctx context.Context, instanceID int, hash string) contentFilterFacts {
-	analysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
+	analysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, parseHash(hash), true)
 	if err != nil {
 		return contentFilterFacts{err: err}
 	}

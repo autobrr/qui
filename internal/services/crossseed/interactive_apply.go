@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,7 +20,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/infohash"
-	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type cachedTorrentSearchResults struct {
@@ -27,20 +27,21 @@ type cachedTorrentSearchResults struct {
 	titleRescueAttempts *atomic.Int32
 }
 
-func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, hash string, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
+func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, requested infohash.Hash, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
 	ctx = withRouteRun(ctx)
 	if req == nil || len(req.Selections) == 0 {
 		return nil, fmt.Errorf("%w: no selections provided", ErrInvalidRequest)
 	}
 
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{requested}})
 	if err != nil {
 		return nil, err
 	}
 	if len(torrents) == 0 || s.isHelper(instanceID, torrents[0].Hash) {
-		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, requested, instanceID)
 	}
-	hash = torrents[0].Hash
+	hash := torrents[0].Hash
+	sourceID := parseHash(hash)
 
 	cachedSearchResults := s.getCachedSearchResults(instanceID, hash)
 	if cachedSearchResults == nil || len(cachedSearchResults.results) == 0 {
@@ -97,7 +98,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 
-			if !cachedResult.SearchDecision.matchesSource(instanceID, hash) {
+			if !cachedResult.SearchDecision.matchesSource(instanceID, sourceID) {
 				resultChan <- selectionResult{idx, TorrentSearchAddResult{Title: cachedResult.Title, Indexer: cachedResult.Indexer, Error: "file-evidence source binding mismatch"}, nil}
 				return
 			}
@@ -176,7 +177,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				payload.Tags = []string{tagName}
 			}
 			payload.FindIndividualEpisodes = req.FindIndividualEpisodes
-			payload.SearchDecision = cachedResult.SearchDecision.bindSource(instanceID, hash)
+			payload.SearchDecision = cachedResult.SearchDecision.bindSource(instanceID, sourceID)
 
 			resp, err := s.invokeCrossSeed(ctx, payload)
 			if err != nil {
@@ -239,7 +240,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 		return TorrentSearchAddResult{}, false, nil
 	}
 
-	existing, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes))
+	existing, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, hashes)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return TorrentSearchAddResult{}, false, err
@@ -250,7 +251,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 			Int("indexerID", cachedResult.IndexerID).
 			Str("indexer", indexerName).
 			Str("title", title).
-			Strs("infoHashes", hashes).
+			Strs("infoHashes", hashStrings(hashes)).
 			Msg("[CROSSSEED-APPLY] Failed cached-selection duplicate infohash check; continuing with download")
 		return TorrentSearchAddResult{}, false, nil
 	}
@@ -259,9 +260,9 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 	}
 
 	const existsMessage = "Torrent already exists in this instance"
-	resultHashes := append([]string(nil), hashes...)
+	resultHashes := slices.Clone(hashes)
 	if existing != nil {
-		resultHashes = append(resultHashes, existing.Hash, existing.InfohashV1, existing.InfohashV2)
+		resultHashes = append(resultHashes, parseHashes(existing.Hash, existing.InfohashV1, existing.InfohashV2)...)
 	}
 	if rejection, rejected := s.contentPrefilterRejectionForHashes(instanceID, sourceHash, cachedResult.IndexerID, resultHashes); cachedResult.SearchDecision.Class != searchCandidateClassTitleRescue && rejected {
 		message := contentPrefilterRejectedExistingMessage(rejection)
@@ -288,7 +289,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 				Size:     existing.Size,
 			}
 		} else if len(hashes) > 0 {
-			result.InfoHash = hashes[0]
+			result.InfoHash = hashes[0].String()
 		}
 		result.InstanceResults = []InstanceCrossSeedResult{instanceResult}
 
@@ -297,7 +298,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 			Int("indexerID", cachedResult.IndexerID).
 			Str("indexer", indexerName).
 			Str("title", title).
-			Strs("infoHashes", hashes).
+			Strs("infoHashes", hashStrings(hashes)).
 			Str("sourceHash", sourceHash).
 			Str("rejectionReason", rejection.Reason)
 		if existing != nil {
@@ -333,7 +334,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 			Size:     existing.Size,
 		}
 	} else if len(hashes) > 0 {
-		result.InfoHash = hashes[0]
+		result.InfoHash = hashes[0].String()
 	}
 	result.InstanceResults = []InstanceCrossSeedResult{instanceResult}
 
@@ -342,7 +343,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 		Int("indexerID", cachedResult.IndexerID).
 		Str("indexer", indexerName).
 		Str("title", title).
-		Strs("infoHashes", hashes)
+		Strs("infoHashes", hashStrings(hashes))
 	if existing != nil {
 		event = event.
 			Str("existingHash", existing.Hash).
@@ -455,9 +456,8 @@ func (s *Service) resolveSelectionFromCache(cached []TorrentSearchResult, select
 }
 
 func searchResultCacheKey(instanceID int, hash string) string {
-	cleanHash := stringutils.DefaultNormalizer.Normalize(hash)
-	if cleanHash == "" {
+	if hash == "" {
 		return strconv.Itoa(instanceID)
 	}
-	return fmt.Sprintf("%d:%s", instanceID, cleanHash)
+	return fmt.Sprintf("%d:%s", instanceID, hash)
 }

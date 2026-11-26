@@ -60,7 +60,7 @@ func (m *discPolicySyncManager) GetTorrentFilesBatch(_ context.Context, _ int, h
 		if files, ok := m.files[strings.ToLower(h)]; ok {
 			cp := make(qbt.TorrentFiles, len(files))
 			copy(cp, files)
-			result[normalizeHash(h)] = cp
+			result[h] = cp
 		}
 	}
 	return result, nil
@@ -120,9 +120,9 @@ func (*discPolicySyncManager) RenameTorrent(context.Context, int, string, string
 }
 
 func (m *discPolicySyncManager) RenameTorrentFile(_ context.Context, _ int, hash, oldPath, newPath string) error {
-	for i, file := range m.files[normalizeHash(hash)] {
+	for i, file := range m.files[hash] {
 		if file.Name == oldPath {
-			m.files[normalizeHash(hash)][i].Name = newPath
+			m.files[hash][i].Name = newPath
 		}
 	}
 	return nil
@@ -132,9 +132,9 @@ func (m *discPolicySyncManager) RenameTorrentFolder(_ context.Context, _ int, ha
 	if m.renameFolderErr != nil {
 		return m.renameFolderErr
 	}
-	for i, file := range m.files[normalizeHash(hash)] {
+	for i, file := range m.files[hash] {
 		if suffix, ok := strings.CutPrefix(file.Name, oldPath+"/"); ok {
-			m.files[normalizeHash(hash)][i].Name = newPath + "/" + suffix
+			m.files[hash][i].Name = newPath + "/" + suffix
 		}
 	}
 	return nil
@@ -158,7 +158,7 @@ func TestTitleRescueForcesPausedFullRecheck(t *testing.T) {
 	const (
 		instanceID  = 1
 		matchedHash = "matchedhash"
-		newHash     = "newhash"
+		newHash     = "feedfacefeedfacefeedfacefeedfacefeedface"
 		matchedName = "Original.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
 		newName     = "Renamed.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
 	)
@@ -197,8 +197,8 @@ func TestTitleRescueForcesPausedFullRecheck(t *testing.T) {
 				InstanceID: instanceID, InstanceName: "main", Torrents: []*qbt.Torrent{&matchedTorrent}, titleRescue: true,
 			},
 			[]byte("torrent"),
-			newHash,
-			"",
+			mustParseHash(t, newHash),
+			infohash.Hash{},
 			newName,
 			&CrossSeedRequest{StartPaused: &startPaused},
 			service.releaseCache.Parse(newName),
@@ -240,7 +240,7 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Movie.2024.BluRay.1080p"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -303,7 +303,7 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		script := startSettleScript(t, service, completeScript(newHash)...)
 		withAdder(service)
-		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
 		require.True(t, result.Success, "Expected success, got: %s", result.Message)
 		require.Equal(t, "added", result.Status)
@@ -323,7 +323,7 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Movie.2024.DVD-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -388,7 +388,7 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		script := startSettleScript(t, service, completeScript(newHash)...)
 		withAdder(service)
-		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
 		require.True(t, result.Success, "Expected success, got: %s", result.Message)
 
@@ -411,7 +411,7 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Movie.2024.1080p.BluRay.x264-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -472,7 +472,7 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
 	require.True(t, result.Success, "Expected success, got: %s", result.Message)
 
@@ -494,7 +494,7 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Movie.2024.1080p.BluRay.x264-GROUP"
 
 	tempDir := t.TempDir()
@@ -570,7 +570,7 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		script := startSettleScript(t, service, completeScript(newHash)...)
 		withAdder(service)
-		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
+		result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 
 		require.True(t, result.Success, "Expected success, got: %s", result.Message)
 		require.Equal(t, "added", result.Status)
@@ -592,7 +592,7 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Movie.2024.1080p.BluRay.x264-GROUP"
 	sourceName := "Movie.2024.1080p.BluRay.x264-ALT"
 
@@ -667,7 +667,7 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
 
 	require.False(t, result.Success)
 	require.Equal(t, "alignment_failed", result.Status)

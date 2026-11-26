@@ -2480,7 +2480,7 @@ func TestExtractInfoHashFromAttributes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractInfoHashFromAttributes(tt.attrs)
-			if result != tt.expected {
+			if result.String() != tt.expected {
 				t.Errorf("extractInfoHashFromAttributes() = %q, want %q", result, tt.expected)
 			}
 		})
@@ -2538,7 +2538,7 @@ func TestExtractInfoHashFromMagnet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractInfoHashFromMagnet(tt.magnet)
-			if result != tt.expected {
+			if result.String() != tt.expected {
 				t.Errorf("extractInfoHashFromMagnet() = %q, want %q", result, tt.expected)
 			}
 		})

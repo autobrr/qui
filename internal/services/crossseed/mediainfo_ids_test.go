@@ -221,7 +221,7 @@ func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error)
 		&discPolicyInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		local.NewBackend(),
 	))
-	torrent := &qbt.Torrent{Name: "Movie.2024.1080p.WEB-DL-GROUP", Hash: "ABC123", SavePath: dir}
+	torrent := &qbt.Torrent{Name: "Movie.2024.1080p.WEB-DL-GROUP", Hash: "abc123", SavePath: dir}
 	files := qbt.TorrentFiles{{Name: "movie.mkv", Size: 10, Progress: 1}}
 	return svc, cache, instance, torrent, files, &analyzeCalls
 }

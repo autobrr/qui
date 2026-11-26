@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type CrossSeedHandler struct {
@@ -38,8 +38,6 @@ type CrossSeedHandler struct {
 	torrents           crossseedroute.TorrentReader
 	gazelleBaseURL     string
 }
-
-var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
 
 type automationSettingsRequest struct {
 	Enabled                        bool                            `json:"enabled"`
@@ -597,29 +595,26 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 	})
 }
 
-func parseTorrentParams(w http.ResponseWriter, r *http.Request) (instanceID int, hash string, ok bool) {
+func parseTorrentParams(w http.ResponseWriter, r *http.Request) (instanceID int, hash infohash.Hash, ok bool) {
 	instanceIDStr := chi.URLParam(r, "instanceID")
 	id, err := strconv.Atoi(instanceIDStr)
 	if err != nil || id <= 0 {
 		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return 0, "", false
+		return 0, infohash.Hash{}, false
 	}
 
-	h := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if h == "" {
+	raw := chi.URLParam(r, "hash")
+	if strings.TrimSpace(raw) == "" {
 		RespondError(w, http.StatusBadRequest, "hash is required")
-		return 0, "", false
+		return 0, infohash.Hash{}, false
+	}
+	hash, err = infohash.Parse(raw)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "hash must be a valid hex infohash")
+		return 0, infohash.Hash{}, false
 	}
 
-	return id, h, true
-}
-
-func normalizeInfoHashInput(value string) (string, bool) {
-	trimmed := strings.ToLower(strings.TrimSpace(value))
-	if trimmed == "" || !infoHashRegex.MatchString(trimmed) {
-		return "", false
-	}
-	return trimmed, true
+	return id, hash, true
 }
 
 func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *http.Request) {
@@ -634,7 +629,7 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to analyze torrent for search")
 		RespondError(w, status, err.Error())
 		return
@@ -655,7 +650,7 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to find local cross-seed matches")
 		RespondError(w, status, err.Error())
 		return
@@ -675,16 +670,8 @@ func hideMatchPasskeys(r *http.Request, matches []crossseed.LocalMatch) {
 }
 
 func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -694,7 +681,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 			log.Error().
 				Err(err).
 				Int("instanceID", instanceID).
-				Str("hash", hash).
+				Stringer("hash", hash).
 				Msg("Failed to decode torrent search request")
 			RespondError(w, http.StatusBadRequest, "Invalid request body")
 			return
@@ -712,7 +699,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to search cross-seed matches")
 		RespondError(w, status, err.Error())
 		return
@@ -729,14 +716,15 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var torrentName, torrentHash string
+	var torrentName string
+	var torrentHash infohash.Hash
 	var totalSize int64
 	var fileCount int
 	if torrentBytes, err := base64.StdEncoding.DecodeString(req.TorrentData); err == nil {
 		if meta, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
 			torrentName = meta.Name
 			torrentHash = meta.HashV1
-			if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
+			if meta.Info != nil && !meta.Info.HasV1() && !meta.HashV2.IsZero() {
 				torrentHash = meta.HashV2
 			}
 			if meta.Info != nil {
@@ -750,7 +738,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		Str("source", "cross-seed.webhook").
 		Str("announcedName", req.TorrentName).
 		Str("torrentName", torrentName).
-		Str("torrentHash", torrentHash).
+		Stringer("torrentHash", torrentHash).
 		Int64("size", totalSize).
 		Int("fileCount", fileCount).
 		Ints("instanceIds", req.InstanceIDs).
@@ -770,16 +758,8 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -788,7 +768,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to decode cross-seed apply request")
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
@@ -805,7 +785,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to apply cross-seed search results")
 		RespondError(w, status, err.Error())
 		return
@@ -1266,19 +1246,13 @@ func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	infohash, ok := normalizeInfoHashInput(payload.InfoHash)
-	if !ok {
+	hash, err := infohash.Parse(payload.InfoHash)
+	if err != nil {
 		RespondError(w, http.StatusBadRequest, "infoHash must be a valid hex infohash")
 		return
 	}
 
-	entry := &models.CrossSeedBlocklistEntry{
-		InstanceID: payload.InstanceID,
-		InfoHash:   infohash,
-		Note:       strings.TrimSpace(payload.Note),
-	}
-
-	created, err := h.service.UpsertBlocklistEntry(r.Context(), entry)
+	created, err := h.service.UpsertBlocklistEntry(r.Context(), payload.InstanceID, hash, strings.TrimSpace(payload.Note))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to add cross-seed blocklist entry")
 		RespondError(w, http.StatusInternalServerError, "Failed to add blocklist entry")
@@ -1296,13 +1270,13 @@ func (h *CrossSeedHandler) DeleteBlocklistEntry(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	infohash, ok := normalizeInfoHashInput(chi.URLParam(r, "infohash"))
-	if !ok {
+	hash, err := infohash.Parse(chi.URLParam(r, "infohash"))
+	if err != nil {
 		RespondError(w, http.StatusBadRequest, "infohash must be a valid hex infohash")
 		return
 	}
 
-	if err := h.service.DeleteBlocklistEntry(r.Context(), instanceID, infohash); err != nil {
+	if err := h.service.DeleteBlocklistEntry(r.Context(), instanceID, hash); err != nil {
 		if errors.Is(err, crossseed.ErrBlocklistEntryNotFound) {
 			RespondError(w, http.StatusNotFound, "Blocklist entry not found")
 			return

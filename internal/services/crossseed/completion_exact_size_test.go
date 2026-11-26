@@ -124,7 +124,7 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 	require.NotNil(t, captured)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
-	require.Equal(t, sourceHash, captured.SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, sourceHash), captured.SearchDecision.SourceHash)
 	require.Equal(t, differencesOf(differenceCodec), captured.SearchDecision.Relaxed)
 	require.Equal(t, candidateName, captured.SearchDecision.SearchCandidateName)
 	require.Equal(t, []string{"tv"}, captured.sourceFilter.categories)

@@ -310,7 +310,7 @@ func (s *Service) registerCompletionWaitLocked(
 		lane.waits = make(map[string]*completionWaitState)
 	}
 
-	hash := normalizeHash(eventTorrent.Hash)
+	hash := eventTorrent.Hash
 	timeout := s.getCompletionTimeout()
 	now := time.Now()
 	deadline := now.Add(timeout)
@@ -672,7 +672,7 @@ func (s *Service) getCompletionTorrent(ctx context.Context, instanceID int, hash
 		return nil, err
 	}
 
-	torrent, ok := torrents[normalizeHash(hash)]
+	torrent, ok := torrents[hash]
 	if !ok {
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
@@ -690,7 +690,7 @@ func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, has
 
 	result := make(map[string]*qbt.Torrent, len(torrents))
 	for _, torrent := range torrents {
-		result[normalizeHash(torrent.Hash)] = torrent
+		result[torrent.Hash] = torrent
 	}
 
 	return result, nil

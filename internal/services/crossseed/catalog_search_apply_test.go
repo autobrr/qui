@@ -120,7 +120,7 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	wantRecheck := mode == "regular" && !slices.EqualFunc(sourceMeta.Files, targetMeta.Files, func(a, b qbt.TorrentFile) bool { return a.Name == b.Name && a.Size == b.Size })
 	total := sourceFilesTotalSize(sourceMeta.Files)
 	instance := &models.Instance{ID: 1, Name: "catalog", HasLocalFilesystemAccess: true, HardlinkBaseDir: filepath.Join(temp, "links"), UseHardlinks: mode == "hardlink", UseReflinks: mode == "reflink"}
-	svc, base, candidate := newRenameOnlyService(t, instance, sourceMeta.HashV1, sourceMeta.Name, sourceMeta.Files, targetMeta.HashV1, targetMeta.Files)
+	svc, base, candidate := newRenameOnlyService(t, instance, sourceMeta.HashV1.String(), sourceMeta.Name, sourceMeta.Files, targetMeta.HashV1.String(), targetMeta.Files)
 	source := candidate.Torrents[0]
 	source.Size, source.TotalSize = total, total
 	source.Tracker = "https://flacsfor.me/announce"
@@ -128,7 +128,7 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 		source.Tracker = "https://home.opsfet.ch/announce"
 	}
 	source.ContentPath = filepath.Join(temp, "data", filepath.FromSlash(sourceMeta.Files[0].Name))
-	base.props[sourceMeta.HashV1].SavePath = filepath.Join(temp, "data")
+	base.props[sourceMeta.HashV1.String()].SavePath = filepath.Join(temp, "data")
 	for _, file := range sourceMeta.Files {
 		name := filepath.Join(temp, "data", filepath.FromSlash(file.Name))
 		require.NoError(t, os.MkdirAll(filepath.Dir(name), 0o755))
@@ -188,13 +188,13 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	}
 	findGazelleMatch = gazellemusic.FindMatch
 	t.Cleanup(func() { newGazelleClient, findGazelleMatch = previousClient, previousFind })
-	resp, err := svc.SearchTorrentMatches(t.Context(), 1, source.Hash, TorrentSearchOptions{})
+	resp, err := svc.SearchTorrentMatches(t.Context(), 1, mustParseHash(t, source.Hash), TorrentSearchOptions{})
 	require.NoError(t, err)
 	require.Len(t, resp.Results, 1)
 	match := resp.Results[0]
 	require.Equal(t, "gazelle:size", match.MatchReason)
 	require.Equal(t, searchCandidateClassFileEvidence, match.SearchDecision.Class)
-	require.Equal(t, source.Hash, match.SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, source.Hash), match.SearchDecision.SourceHash)
 	require.Empty(t, match.InfoHashV1, "a filename match carries no target hash")
 	require.Equal(t, []int{3000}, resp.SourceTorrent.SearchCategories)
 	if automatic {
@@ -208,7 +208,7 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 		require.Equal(t, models.CrossSeedSearchResultStatusFailed, failed.Status)
 		require.Equal(t, 1, downloads, "bound decisions cannot be spent by another automatic source")
 	} else {
-		result, err := svc.ApplyTorrentSearchResults(t.Context(), 1, source.Hash, &ApplyTorrentSearchRequest{Selections: []TorrentSearchSelection{{IndexerID: match.IndexerID, DownloadURL: match.DownloadURL, Title: "client cannot replace identity"}}})
+		result, err := svc.ApplyTorrentSearchResults(t.Context(), 1, mustParseHash(t, source.Hash), &ApplyTorrentSearchRequest{Selections: []TorrentSearchSelection{{IndexerID: match.IndexerID, DownloadURL: match.DownloadURL, Title: "client cannot replace identity"}}})
 		require.NoError(t, err)
 		require.Len(t, result.Results, 1)
 		require.True(t, result.Results[0].Success, "%+v", result.Results[0])
@@ -218,23 +218,23 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	require.Equal(t, "true", base.addTorrentOpts["skip_checking"])
 	if wantRecheck {
 		require.Equal(t, "true", base.addTorrentOpts["paused"])
-		require.Contains(t, base.bulkActions, "recheck:"+targetMeta.HashV1)
+		require.Contains(t, base.bulkActions, "recheck:"+targetMeta.HashV1.String())
 		require.Len(t, svc.settler.queue, 1)
 		queued := <-svc.settler.queue
 		queued.addedAt = time.Now().Add(-time.Minute)
-		full := qbt.Torrent{Hash: targetMeta.HashV1, State: qbt.TorrentStatePausedUp, Progress: 1}
+		full := qbt.Torrent{Hash: targetMeta.HashV1.String(), State: qbt.TorrentStatePausedUp, Progress: 1}
 		svc.settler.processPendingRecheckResume(t.Context(), 1, targetMeta.HashV1, queued, full)
 		svc.settler.processPendingRecheckResume(t.Context(), 1, targetMeta.HashV1, queued, full)
-		require.Contains(t, svc.settler.sync.(*settleScript).actions, "resume:"+targetMeta.HashV1)
+		require.Contains(t, svc.settler.sync.(*settleScript).actions, "resume:"+targetMeta.HashV1.String())
 	} else {
 		require.Empty(t, svc.settler.queue)
-		require.NotContains(t, base.bulkActions, "recheck:"+targetMeta.HashV1)
+		require.NotContains(t, base.bulkActions, "recheck:"+targetMeta.HashV1.String())
 	}
 	if mode != "regular" {
 		require.NotNil(t, backend.plan)
 		require.Len(t, backend.plan.Files, len(sourceMeta.Files))
 		for _, edge := range backend.plan.Files {
-			from, err := filepath.Rel(base.props[sourceMeta.HashV1].SavePath, edge.SourcePath)
+			from, err := filepath.Rel(base.props[sourceMeta.HashV1.String()].SavePath, edge.SourcePath)
 			require.NoError(t, err)
 			to, err := filepath.Rel(backend.plan.RootDir, edge.TargetPath)
 			require.NoError(t, err)

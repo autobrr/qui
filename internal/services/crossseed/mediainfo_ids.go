@@ -39,7 +39,7 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 		return nil
 	}
 
-	key := normalizeHash(torrent.Hash)
+	key := torrent.Hash
 	if key == "" {
 		return nil
 	}

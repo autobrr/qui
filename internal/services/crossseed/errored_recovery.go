@@ -6,7 +6,6 @@ package crossseed
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -27,14 +26,14 @@ func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, hashes
 }
 
 func (s *Service) findAddedTorrent(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
-	lookup := slices.Clone(hashes)
-	for _, hash := range hashes {
-		if len(hash) == 64 {
-			lookup = append(lookup, hash[:40])
+	lookup := parseHashes(hashes...)
+	for _, hash := range lookup {
+		if hash.IsV2() {
+			lookup = append(lookup, hash.TorrentID())
 		}
 	}
 	s.waitForTorrentAvailability(ctx, instanceID, lookup, crossSeedRenameWaitTimeout)
-	return s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(lookup))
+	return s.syncManager.HasTorrentByAnyHash(ctx, instanceID, lookup)
 }
 
 func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, hashes []string) {

@@ -146,7 +146,7 @@ func TestSearchTorrentMatchesWaitsForContentFilter(t *testing.T) {
 			running.Unlock()
 		}()
 
-		resp, err := service.SearchTorrentMatches(t.Context(), cachedFilteringInstanceID, cachedFilteringSourceHash, TorrentSearchOptions{})
+		resp, err := service.SearchTorrentMatches(t.Context(), cachedFilteringInstanceID, mustParseHash(t, cachedFilteringSourceHash), TorrentSearchOptions{})
 		require.NoError(t, err)
 		require.Empty(t, resp.Results)
 		require.Zero(t, searchRequests.Load(), "the dialog must not ask an indexer that the content filter removes")
@@ -199,7 +199,7 @@ func TestAnalyzeAsyncDoesNotCacheFailedIndexerDiscovery(t *testing.T) {
 	t.Parallel()
 
 	const instanceID = 1
-	hash := "deadbeefcafe"
+	hash := "c0de000000000000000000000000000000000001"
 	movieName := "Example.Movie.2019.1080p.BluRay.x264-GROUP"
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 
@@ -225,7 +225,7 @@ func TestAnalyzeAsyncDoesNotCacheFailedIndexerDiscovery(t *testing.T) {
 		stringNormalizer:    stringutils.NewDefaultNormalizer(),
 	}
 
-	result, err := svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, hash, true)
+	result, err := svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, mustParseHash(t, hash), true)
 	require.NoError(t, err)
 
 	cached, found := svc.asyncFilteringCache.Get(asyncFilteringCacheKey(instanceID, hash))
@@ -266,13 +266,13 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 	}
 
 	svc, cachedState := newService("movie")
-	result, err := svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, requested, true)
+	result, err := svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, mustParseHash(t, requested), true)
 	require.NoError(t, err)
 	require.Same(t, cachedState, result.FilteringState, "matching content type must reuse the cached run")
 	require.Equal(t, []int{7}, result.TorrentInfo.FilteredIndexers)
 
 	svc, cachedState = newService("audiobook")
-	result, err = svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, requested, true)
+	result, err = svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, mustParseHash(t, requested), true)
 	require.NoError(t, err)
 	require.NotSame(t, cachedState, result.FilteringState, "different content type must not reuse the cached run")
 	require.NotEqual(t, []int{7}, result.TorrentInfo.FilteredIndexers)

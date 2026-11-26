@@ -123,7 +123,7 @@ func newCopyGroupSearch(s *Service, torrents map[int][]qbittorrent.CrossInstance
 	for i := range l.all {
 		l.keys[i] = cacheKeyForTorrentFiles(l.all[i].InstanceID, l.all[i].Hash)
 		l.index[l.keys[i]] = i
-		l.places[candidateKey{instanceID: l.all[i].InstanceID, hash: normalizeHash(l.all[i].Hash)}] = i
+		l.places[candidateKey{instanceID: l.all[i].InstanceID, hash: l.all[i].Hash}] = i
 		l.held.fetched[l.keys[i]] = nil
 		l.prints[i] = newCopyGroupsPrint(l.all[i].Torrent)
 		l.changed[i] = last == nil || last.prints[l.keys[i]] != l.prints[i]
@@ -271,7 +271,7 @@ func (l *copyGroupSearch) fetch(ctx context.Context, want []bool) error {
 			return err
 		}
 		for _, t := range torrents {
-			l.held.fetched[cacheKeyForTorrentFiles(instance.id, t.Hash)] = files[normalizeHash(t.Hash)]
+			l.held.fetched[cacheKeyForTorrentFiles(instance.id, t.Hash)] = files[t.Hash]
 		}
 	}
 	return nil
@@ -373,7 +373,7 @@ func copyGroupsOf(all []qbittorrent.CrossInstanceTorrentView, roots []int, key [
 		})]
 		copyGroup := CopyGroup{ID: copyGroupID(key, rep.InstanceID, rep.Hash)}
 		for _, member := range group {
-			copyGroup.Members = append(copyGroup.Members, qbittorrent.CopyGroupMember{InstanceID: all[member].InstanceID, Hash: normalizeHash(all[member].Hash)})
+			copyGroup.Members = append(copyGroup.Members, qbittorrent.CopyGroupMember{InstanceID: all[member].InstanceID, Hash: all[member].Hash})
 		}
 		groups = append(groups, copyGroup)
 	}
@@ -439,7 +439,7 @@ func sharedParts(all []qbittorrent.CrossInstanceTorrentView, roots []int, index 
 			for k, part := range held[n] {
 				list[k] = qbittorrent.SharedPart{ID: nextID + uint64(part), Size: partSizes[part]}
 			}
-			parts[key.instanceID][normalizeHash(all[i].Hash)] = list
+			parts[key.instanceID][all[i].Hash] = list
 		}
 		nextID += uint64(len(partSizes))
 	}

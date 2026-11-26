@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type SearchSettingsPatch struct {
@@ -97,14 +98,14 @@ func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.
 	return s.blocklistStore.List(ctx, instanceID)
 }
 
-func (s *Service) UpsertBlocklistEntry(ctx context.Context, entry *models.CrossSeedBlocklistEntry) (*models.CrossSeedBlocklistEntry, error) {
+func (s *Service) UpsertBlocklistEntry(ctx context.Context, instanceID int, hash infohash.Hash, note string) (*models.CrossSeedBlocklistEntry, error) {
 	if s.blocklistStore == nil {
 		return nil, errors.New("blocklist store unavailable")
 	}
-	return s.blocklistStore.Upsert(ctx, entry)
+	return s.blocklistStore.Upsert(ctx, instanceID, hash, note)
 }
 
-func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash string) error {
+func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash infohash.Hash) error {
 	if s.blocklistStore == nil {
 		return errors.New("blocklist store unavailable")
 	}

@@ -222,7 +222,7 @@ func TestApplySourceSearchResults(t *testing.T) {
 			service := &Service{
 				jackettService: jackettService,
 				syncManager: newFakeSyncManager(instance, []qbt.Torrent{
-					{Hash: "source"},
+					{Hash: fakeHash("source")},
 					{Hash: "ee00000000000000000000000000000000000001"},
 				}, nil),
 				crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -249,7 +249,7 @@ func TestApplySourceSearchResults(t *testing.T) {
 				},
 			}
 
-			entries, err := service.applySourceSearchResults(ctx, instanceID, &qbt.Torrent{Hash: "source", Name: "source"},
+			entries, err := service.applySourceSearchResults(ctx, instanceID, &qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
 				&TorrentSearchResponse{Results: tt.results, JobID: jobID}, triggerDefaults{}, time.Now())
 
 			if tt.wantErr != nil {

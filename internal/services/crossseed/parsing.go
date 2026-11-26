@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/autobrr/rls"
 
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/releases"
 )
@@ -226,8 +227,8 @@ func (m matcher) parseMusicReleaseFromTorrentName(baseRelease *rls.Release, torr
 
 type TorrentMetadata struct {
 	Name   string
-	HashV1 string
-	HashV2 string
+	HashV1 infohash.Hash
+	HashV2 infohash.Hash
 	Files  qbt.TorrentFiles
 	Info   *metainfo.Info
 }
@@ -244,11 +245,10 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 	}
 
 	name := pathutil.TorrentPathName(infoVal.Name)
-	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
-	var hashV2 string
+	hashV1 := parseHash(mi.HashInfoBytes().HexString())
+	var hashV2 infohash.Hash
 	if infoVal.HasV2() {
-		h := metainfo.HashV2Bytes([]byte(mi.InfoBytes))
-		hashV2 = strings.ToLower(h.HexString())
+		hashV2 = parseHash(metainfo.HashV2Bytes([]byte(mi.InfoBytes)).HexString())
 	}
 
 	if name == "" {

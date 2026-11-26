@@ -294,7 +294,7 @@ func (c *candidateSelectionSyncManager) GetTorrentFilesBatch(ctx context.Context
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
 		if files, err := c.GetTorrentFiles(ctx, instanceID, h); err == nil && files != nil {
-			result[normalizeHash(h)] = *files
+			result[h] = *files
 		}
 	}
 	return result, nil

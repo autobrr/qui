@@ -32,7 +32,7 @@ func (m *localMatchSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, h
 	}
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		normalized := normalizeHash(h)
+		normalized := h
 		if files, ok := m.files[normalized]; ok {
 			result[normalized] = files
 		} else if files, ok := m.files[strings.ToLower(h)]; ok {
@@ -107,7 +107,7 @@ func TestGetSourceFiles_EmptyFileListReturnsError(t *testing.T) {
 
 	mockSync := &localMatchSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(sourceHash): {},
+			sourceHash: {},
 		},
 	}
 

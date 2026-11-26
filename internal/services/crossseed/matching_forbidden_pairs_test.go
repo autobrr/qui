@@ -244,7 +244,7 @@ func TestRejectSeasonPackFromEpisode(t *testing.T) {
 func TestFindCandidatesRejectsPackDownloadForStoredEpisodeVerdict(t *testing.T) {
 	const (
 		instanceID  = 1
-		sourceHash  = "local-episode"
+		sourceHash  = "c0de000000000000000000000000000000000002"
 		episodeName = "Kaiju.Squad.S02E05.1080p.WEB.H264-GRP"
 		packName    = "Kaiju.Squad.S02.1080p.WEB.H264-GRP"
 		size        = int64(1_000_000)
@@ -264,7 +264,7 @@ func TestFindCandidatesRejectsPackDownloadForStoredEpisodeVerdict(t *testing.T) 
 				Class:               searchCandidateClassStrict,
 				SearchCandidateName: episodeName,
 				SourceInstanceID:    instanceID,
-				SourceHash:          sourceHash,
+				SourceHash:          mustParseHash(t, sourceHash),
 			},
 		})
 		require.NoError(t, err)
@@ -280,7 +280,7 @@ func TestFindCandidatesRejectsPackDownloadForStoredEpisodeVerdict(t *testing.T) 
 func TestFindCandidatesRelabelNeedsTheStoredVerdict(t *testing.T) {
 	const (
 		instanceID = 1
-		sourceHash = "local-webrip"
+		sourceHash = "c0de000000000000000000000000000000000001"
 		localName  = "Kaiju.Squad.S02E05.1080p.AMZN.WEBRip.DD2.0.x264-GRP"
 		listing    = "Kaiju.Squad.S02E05.1080p.AMZN.WEB-DL.DD+2.0.x264-GRP"
 		size       = int64(1_000_000)
@@ -306,6 +306,6 @@ func TestFindCandidatesRelabelNeedsTheStoredVerdict(t *testing.T) {
 		Class:               searchCandidateClassWebSourceRelabel,
 		SearchCandidateName: listing,
 		SourceInstanceID:    instanceID,
-		SourceHash:          sourceHash,
+		SourceHash:          mustParseHash(t, sourceHash),
 	}), 1, "the stored relabel verdict")
 }
