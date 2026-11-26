@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 type changingAlternateTitles struct {
@@ -122,6 +123,7 @@ func TestAlternateTitlesEndThePauseOfASourceWhenItChanges(t *testing.T) {
 		source := newChangingAlternateTitles(&fakeAlternateTitles{down: true, titles: map[string][]string{"Lantern Ward": {"Laternenwache"}}})
 		a := runAlternateTitles(t, source)
 		title := holdName(a, "Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP", 1)
+		synctest.Wait()
 		holdNames(a, "Amber Quay", sourceFailuresInARow-1)
 		time.Sleep(time.Minute)
 		synctest.Wait()
@@ -209,4 +211,46 @@ func awaitAsk(t *testing.T, asked <-chan struct{}) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the source was not asked")
 	}
+}
+
+func TestAlternateTitlesOweTheTitlesThatASourceChangeAsksAgain(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		source := newChangingAlternateTitles(&fakeAlternateTitles{})
+		a := runAlternateTitles(t, source)
+		holdNames(a, "Lantern Ward", 3)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		require.True(t, a.caughtUp(string(releases.ContentTypeTV)))
+
+		source.change()
+		synctest.Wait()
+		require.Len(t, source.askTimes(), 4)
+		require.False(t, a.caughtUp(string(releases.ContentTypeTV)), "titles still to ask after the change")
+
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		require.Len(t, source.askTimes(), 6)
+		require.True(t, a.caughtUp(string(releases.ContentTypeTV)))
+	})
+}
+
+func TestAlternateTitlesAskAgainInTheOrderOfTheFirstAnswers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		source := &fakeAlternateTitles{cached: true}
+		a := runAlternateTitles(t, source)
+		for _, name := range []string{
+			"Lantern.Ward.S01E01.1080p.WEB-DL.H.264-GRP",
+			"Amber.Quay.S01E01.1080p.WEB-DL.H.264-GRP",
+			"Copper.Fjord.2019.1080p.BluRay.x264-GRP",
+		} {
+			holdName(a, name, 1)
+			synctest.Wait()
+		}
+
+		time.Sleep(arr.DefaultPositiveCacheTTL + 2*time.Hour)
+		synctest.Wait()
+
+		require.Equal(t, []string{"Lantern Ward", "Amber Quay", "Copper Fjord", "Lantern Ward", "Amber Quay", "Copper Fjord"}, source.askedTitles(),
+			"answers due in the same hour keep their order")
+	})
 }

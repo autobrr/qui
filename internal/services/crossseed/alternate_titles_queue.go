@@ -185,7 +185,7 @@ func (q *alternateTitleQueue) askAgain() {
 	q.pausedUntil = time.Time{}
 	for i := range q.retries {
 		if q.retries[i].at.After(now) {
-			q.retries[i].at = now
+			q.retries[i].at, q.retries[i].owed = now, true
 		}
 	}
 }
