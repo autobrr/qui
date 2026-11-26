@@ -30,6 +30,9 @@
   /* Red for errors */
   --destructive: oklch(0.55 0.22 27);
   --destructive-foreground: oklch(1 0 0);
+  --success: oklch(0.3550 0.1116 145.0000);
+  --warning: oklch(0.3700 0.0769 100.0000);
+  --info: oklch(0.3000 0.1400 265.0000);
   /* Windows border gray #808080 */
   --border: oklch(0.65 0 0);
   /* Input fields match the gray chrome for consistency */
@@ -90,6 +93,9 @@
   --accent-foreground: oklch(0.15 0 0);
   --destructive: oklch(0.55 0.22 27);
   --destructive-foreground: oklch(1 0 0);
+  --success: oklch(0.3550 0.1116 145.0000);
+  --warning: oklch(0.3700 0.0769 100.0000);
+  --info: oklch(0.3000 0.1400 265.0000);
   --border: oklch(0.65 0 0);
   --input: oklch(0.78 0 0);
   --ring: oklch(0.30 0.14 265);

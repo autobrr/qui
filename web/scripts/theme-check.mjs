@@ -16,7 +16,7 @@ const GRAPHIC = 3
 const toRgb = converter("rgb")
 const inSrgb = inGamut("rgb")
 
-function declarations(css, selector) {
+export function declarations(css, selector) {
   const block = css.match(new RegExp(`(?:^|\\n)[ \\t]*${selector.replace(".", "\\.")}\\s*{([^}]*)}`))
   if (!block) throw new Error(`the theme has no ${selector} block`)
   return Object.fromEntries(
