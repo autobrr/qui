@@ -47,5 +47,5 @@ func (a arrAlternateTitles) AlternateTitles(ctx context.Context, held HeldReleas
 }
 
 func refetched(cached *arr.ExternalIDsResult) bool {
-	return cached.IDs != nil && !(cached.TitlesKnown && cached.EpisodeMapKnown)
+	return cached.IDs != nil && (!cached.TitlesKnown || !cached.EpisodeMapKnown)
 }
