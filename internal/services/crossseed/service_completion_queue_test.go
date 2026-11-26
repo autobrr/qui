@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -76,9 +77,7 @@ type completionPollingSyncMock struct {
 
 func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completionPollingSyncMock {
 	normalized := make(map[string][]qbt.Torrent, len(sequences))
-	for hash, sequence := range sequences {
-		normalized[hash] = sequence
-	}
+	maps.Copy(normalized, sequences)
 
 	return &completionPollingSyncMock{
 		sequences: normalized,
