@@ -17,7 +17,7 @@ export function isValidTrackerUrl(url: string): boolean {
 
 export function getTrackerStatusBadge(status: number, compact = false) {
   const compactClass = compact ? "text-10 px-1.5 py-0" : ""
-  const workingClass = compact ? `${compactClass} bg-green-500` : ""
+  const workingClass = compact ? `${compactClass} bg-success text-background` : ""
 
   switch (status) {
     case 0:

@@ -17,7 +17,7 @@ const stateIcons: Record<TransferState, { icon: LucideIcon; className: string }>
   copying: { icon: Loader2, className: "motion-safe:animate-spin" },
   checking: { icon: Loader2, className: "motion-safe:animate-spin" },
   finishing: { icon: Loader2, className: "motion-safe:animate-spin" },
-  done: { icon: CircleCheck, className: "text-emerald-500" },
+  done: { icon: CircleCheck, className: "text-success" },
   failed: { icon: CircleX, className: "text-destructive" },
   cancelled: { icon: Ban, className: "text-muted-foreground" },
 }

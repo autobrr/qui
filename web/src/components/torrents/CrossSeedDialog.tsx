@@ -592,8 +592,8 @@ const CrossSeedDialogComponent = ({
                     role="status"
                     className={cn(
                       "text-sm font-medium",
-                      applySummary.level === "success" && "text-green-600 dark:text-green-500",
-                      applySummary.level === "warning" && "text-yellow-600 dark:text-yellow-500",
+                      applySummary.level === "success" && "text-success",
+                      applySummary.level === "warning" && "text-warning",
                       applySummary.level === "error" && "text-destructive",
                       applySummary.level === "info" && "text-muted-foreground"
                     )}
@@ -962,7 +962,7 @@ function RefreshCountdown({ until }: { until: number }) {
 
 function Warning({ children }: { children: string }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-yellow-600 dark:text-yellow-500">
+    <div className="flex items-center gap-1.5 text-xs text-warning">
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
       <span>{children}</span>
     </div>

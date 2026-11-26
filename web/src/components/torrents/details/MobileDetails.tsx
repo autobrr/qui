@@ -225,9 +225,9 @@ export function MobilePeerRow({ address, countryCode, country, client, clientIco
         {clientIcon}
         <span className="min-w-0 flex-1 truncate">{[client, connection, flags].filter(Boolean).join(" · ")}</span>
         <div className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted">
-          <div className={cn("h-full", isSeeder ? "bg-green-500" : "bg-foreground/60")} style={{ width: `${progressPercent}%` }} />
+          <div className={cn("h-full", isSeeder ? "bg-success" : "bg-foreground/60")} style={{ width: `${progressPercent}%` }} />
         </div>
-        <span className={cn("w-11 shrink-0 text-right tabular-nums", isSeeder && "text-green-500")}>{progressPercent}%</span>
+        <span className={cn("w-11 shrink-0 text-right tabular-nums", isSeeder && "text-success")}>{progressPercent}%</span>
       </div>
     </div>
   )

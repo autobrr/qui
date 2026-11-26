@@ -203,7 +203,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
         return (
           <div className="flex items-center gap-1.5">
             <Progress value={progress} className="h-1.5 w-14" />
-            <span className={cn("tabular-nums text-10", isComplete ? "text-green-500" : "text-muted-foreground")}>
+            <span className={cn("tabular-nums text-10", isComplete ? "text-success" : "text-muted-foreground")}>
               {progress.toFixed(0)}%
             </span>
           </div>

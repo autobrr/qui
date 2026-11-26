@@ -805,7 +805,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
 
   const renderDuplicateMatches = (matches: string[]) => (
-    <span className="block text-[11px] text-yellow-700 dark:text-yellow-500">
+    <span className="block text-[11px] text-warning">
       {t("addTorrentDialog.duplicate.matchesExisting", { names: matches.slice(0, 2).join(", ") })}
       {matches.length > 2 && ` ${t("addTorrentDialog.duplicate.more", { count: matches.length - 2 })}`}
     </span>
@@ -918,7 +918,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
                               <span>{t("addTorrentDialog.fileInput.selectedFiles", { count: files.length })}</span>
                               {duplicateFileKeys.length > 0 && (
-                                <span className="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-500">
+                                <span className="flex items-center gap-1 font-medium text-warning">
                                   <AlertCircle className="h-3 w-3" />
                                   {t("addTorrentDialog.fileInput.duplicateFiles", { count: duplicateFileKeys.length })}
                                 </span>
@@ -933,7 +933,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                     key={`${fileKey}-${index}`}
                                     className={cn(
                                       "flex items-center gap-2 pl-3 pr-1 py-1 text-sm",
-                                      duplicateInfo && "bg-yellow-500/10"
+                                      duplicateInfo && "bg-warning/10"
                                     )}
                                   >
                                     <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1000,14 +1000,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         }}
                       />
                       {duplicateUrlKeys.length > 0 && (
-                        <div className="rounded-md border border-yellow-600/30 bg-yellow-500/5 p-2 space-y-2 text-xs">
+                        <div className="rounded-md border border-warning/30 bg-warning/5 p-2 space-y-2 text-xs">
                           {duplicateUrlKeys.map((urlKey) => {
                             const duplicateInfo = duplicateUrlEntries[urlKey]
                             if (!duplicateInfo) {
                               return null
                             }
                             return (
-                              <div key={urlKey} className="text-yellow-700 dark:text-yellow-500 space-y-1">
+                              <div key={urlKey} className="text-warning space-y-1">
                                 <div className="font-medium truncate">{duplicateInfo.label}</div>
                                 {duplicateInfo.matches.length > 0 && renderDuplicateMatches(duplicateInfo.matches)}
                               </div>
@@ -1031,9 +1031,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
               )}
 
               {duplicateSelectionCount > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-yellow-600/30 bg-yellow-500/5 px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2">
                   <div className="flex min-w-0 flex-col gap-0.5 text-sm">
-                    <span className="flex items-center gap-2 font-medium text-yellow-700 dark:text-yellow-500">
+                    <span className="flex items-center gap-2 font-medium text-warning">
                       <AlertCircle className="h-4 w-4 shrink-0" />
                       {t("addTorrentDialog.duplicate.selectionDetected", { count: duplicateSelectionCount })}
                     </span>
@@ -1050,7 +1050,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="text-yellow-700 dark:text-yellow-500 border-yellow-600/40 hover:bg-yellow-600/10"
+                    className="text-warning border-warning/40 hover:bg-warning/10"
                     onClick={handleRemoveDuplicateSelections}
                   >
                     {t("addTorrentDialog.duplicate.remove")}
