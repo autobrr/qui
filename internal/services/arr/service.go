@@ -173,7 +173,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 	if err != nil || cacheEntry == nil {
 		return nil, nil //nolint:nilerr // cache read errors are logged above and treated as a cache miss
 	}
-	mayBePartial := time.Until(cacheEntry.ExpiresAt) <= incompleteCacheTTL
+	incomplete := cachedAsIncomplete(cacheEntry)
 	if cacheEntry.IsNegative {
 		log.Trace().
 			Str("title", title).
@@ -181,7 +181,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 			Msg("[ARR-LOOKUP] Cache hit (negative)")
 		return &ExternalIDsResult{
 			IDs:           nil,
-			Incomplete:    mayBePartial,
+			Incomplete:    incomplete,
 			FromCache:     true,
 			ArrInstanceID: cacheEntry.ArrInstanceID,
 			ContentType:   contentType,
@@ -206,7 +206,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 		TitlesKnown:     cacheEntry.HasTitles,
 		EpisodeMap:      cacheEntry.EpisodeMap,
 		EpisodeMapKnown: cacheEntry.HasEpisodeMap,
-		Incomplete:      mayBePartial,
+		Incomplete:      incomplete,
 		FromCache:       true,
 		ArrInstanceID:   cacheEntry.ArrInstanceID,
 		ContentType:     contentType,
@@ -310,6 +310,10 @@ func parseWithinShare(ctx context.Context, client *Client, title string, catalog
 		defer cancel()
 	}
 	return client.ParseTitleLookupResult(ctx, title)
+}
+
+func cachedAsIncomplete(entry *models.ArrIDCacheEntry) bool {
+	return entry.ExpiresAt.Sub(entry.CachedAt) < 2*incompleteCacheTTL
 }
 
 func cacheTTL(ttl time.Duration, incomplete bool) time.Duration {
