@@ -38,15 +38,15 @@ export function getRatioColor(ratio: number): string {
   if (ratio < 0) return ""
 
   if (ratio < 0.5) {
-    return "var(--chart-5)"
+    return "var(--chart-text-5)"
   } else if (ratio < 1.0) {
-    return "var(--chart-4)"
+    return "var(--chart-text-4)"
   } else if (ratio < 2.0) {
-    return "var(--chart-3)"
+    return "var(--chart-text-3)"
   } else if (ratio < 5.0) {
-    return "var(--chart-2)"
+    return "var(--chart-text-2)"
   } else {
-    return "var(--chart-1)"
+    return "var(--chart-text-1)"
   }
 }
 

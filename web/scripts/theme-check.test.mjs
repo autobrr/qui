@@ -95,6 +95,13 @@ test("checks a theme without status colors with the standard ones", () => {
   assert.equal(pair(checkTheme(fixture), "warning text on background", "dark").colors, "#ffb900 on #ffffff")
 })
 
+test("checks chart text with the theme's chart text color, or with its chart color when it sets none", () => {
+  const faintChart = { "chart-2": "#dddddd" }
+
+  assert.equal(pair(checkTheme(theme(faintChart)), "chart-text-2 text on row").ok, false)
+  assert.equal(pair(checkTheme(theme({ ...faintChart, "chart-text-2": "#000000" })), "chart-text-2 text on row").ok, true)
+})
+
 test("reports a color that sRGB cannot show", () => {
   const result = checkTheme(theme({ primary: "oklch(0.82 0.18 100)" }))
 
@@ -107,7 +114,12 @@ const KNOWN_OUTSIDE_SRGB = {
     "light --destructive: oklch(0.5770 0.2450 27.3250)",
     "dark --destructive: oklch(0.7040 0.1910 22.2160)",
   ],
-  "napster.css": ["light --accent: oklch(0.82 0.18 100)", "dark --accent: oklch(0.82 0.18 100)"],
+  "napster.css": [
+    "light --accent: oklch(0.82 0.18 100)",
+    "light --chart-2: oklch(0.82 0.18 100)",
+    "dark --accent: oklch(0.82 0.18 100)",
+    "dark --chart-2: oklch(0.82 0.18 100)",
+  ],
   "wave.css": ["light --variation-pink: oklch(0.6931 0.1971 22.11)"],
 }
 
@@ -127,7 +139,7 @@ test("each community theme keeps its ratio colors readable on the plain and the 
 
   for (const file of files) {
     const faint = checkTheme(fs.readFileSync(file, "utf8")).pairs
-      .filter(pair => !pair.ok && /^chart-\d text on (row|striped row)$/.test(pair.label))
+      .filter(pair => !pair.ok && /^chart-text-\d text on (row|striped row)$/.test(pair.label))
       .map(pair => `${pair.mode} ${pair.label}`)
     assert.deepEqual(faint, [], path.basename(file))
   }
