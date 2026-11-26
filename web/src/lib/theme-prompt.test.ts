@@ -63,6 +63,7 @@ describe("buildThemePrompt", () => {
       "backslash escapes",
       "1 MiB",
       "height of a torrent row",
+      "keep the five chart colors apart",
     ]) {
       expect(prompt).toContain(rule)
     }

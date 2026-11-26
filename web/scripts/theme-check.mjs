@@ -8,6 +8,7 @@ const freeThemesDir = path.resolve(path.dirname(scriptPath), "..", "..", "intern
 const licensedThemesDir = path.join(freeThemesDir, "premium")
 const appCss = fs.readFileSync(path.resolve(path.dirname(scriptPath), "..", "src", "index.css"), "utf8")
 const STATUS = ["success", "warning", "info"]
+const CHARTS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
 
 const MODES = [["light", ":root"], ["dark", ".dark"]]
 const TEXT = 4.5
@@ -56,7 +57,7 @@ function pairGroups(color, mode) {
     ["hovered row", surface("accent", 0.4)],
     ["selected row", surface("accent")],
   ]
-  const rowText = ["foreground", "muted-foreground", "primary", "destructive", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5"]
+  const rowText = ["foreground", "muted-foreground", "primary", "destructive", ...CHARTS]
   const menuTint = mode === "dark" ? 0.2 : 0.1
   const statusPairs = name => [
     [`${name} text on background`, color(name), page, TEXT],
@@ -106,6 +107,13 @@ function pairGroups(color, mode) {
     {
       source: "web/src (text-success, text-warning, text-info, and their 10% tints)",
       pairs: STATUS.flatMap(statusPairs),
+    },
+    {
+      source: "web/src (kind chips: foreground text on bg-chart-1/10 to bg-chart-5/10)",
+      pairs: CHARTS.flatMap(name => [
+        [`foreground on ${name} 10% on background`, color("foreground"), surface(name, 0.1), TEXT],
+        [`foreground on ${name} 10% on card`, color("foreground"), surface(name, 0.1, card), TEXT],
+      ]),
     },
     {
       source: "web/src/components/ui/ (progress, checkbox, focus border)",

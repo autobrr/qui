@@ -242,12 +242,12 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             <StatRow
               label="DL"
               value={`${formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)} - (${formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)} avg.)`}
-              highlight="green"
+              valueClassName="text-chart-2"
             />
             <StatRow
               label="UL"
               value={`${formatSpeedWithUnit(properties.up_speed || 0, speedUnit)} - (${formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)} avg.)`}
-              highlight="blue"
+              valueClassName="text-chart-3"
             />
             <StatRow
               label={t("generalTab.seeds")}

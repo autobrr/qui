@@ -73,6 +73,7 @@ Rules:
 - Keep the file at 1 MiB or less.
 - Do not change the height of a torrent row, its padding, its border width, or its font size. qui computes the position of each row from a fixed height.
 - Keep the text readable: each foreground token must have enough contrast with its background token, in light mode and in dark mode.
+- The chart colors also mark kinds in lists, for example the actions in the workflow activity log, so keep the five chart colors apart from each other in light mode and in dark mode.
 - The status colors have no foreground token. Text on a solid status fill uses --background, so each status color must have enough contrast with --background.
 - If you set a font token, use a font that the browser has, or embed the font with @font-face and a data: address.
 

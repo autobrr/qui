@@ -360,15 +360,15 @@ function highlightJson(json: string): ReactNode[] {
 
     if (keyMatch) {
       result.push(
-        <span key={key++} className="text-cyan-700 dark:text-cyan-400">{keyMatch}</span>,
+        <span key={key++} className="text-foreground">{keyMatch}</span>,
         ":"
       )
     } else if (stringMatch) {
-      result.push(<span key={key++} className="text-green-700 dark:text-green-400">{stringMatch}</span>)
+      result.push(<span key={key++} className="text-chart-2">{stringMatch}</span>)
     } else if (numberMatch) {
-      result.push(<span key={key++} className="text-amber-700 dark:text-amber-400">{numberMatch}</span>)
+      result.push(<span key={key++} className="text-chart-3">{numberMatch}</span>)
     } else if (boolMatch) {
-      result.push(<span key={key++} className="text-purple-700 dark:text-purple-400">{boolMatch}</span>)
+      result.push(<span key={key++} className="text-chart-3">{boolMatch}</span>)
     } else if (nullMatch) {
       result.push(<span key={key++} className="text-muted-foreground">{nullMatch}</span>)
     } else if (punctMatch) {

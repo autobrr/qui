@@ -1148,11 +1148,6 @@
       "count": 1
     }
   },
-  "src/components/torrents/details/StatRow.tsx": {
-    "shadcn/require-static-classes": {
-      "count": 1
-    }
-  },
   "src/components/torrents/details/TorrentFileTable.tsx": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 2

@@ -204,7 +204,7 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 | Semantic colors | `--primary(-foreground)`, `--secondary(-foreground)`, `--muted(-foreground)`, `--accent(-foreground)`, `--destructive(-foreground)` |
 | Controls | `--border`, `--input`, `--ring` |
 | Sidebar | `--sidebar`, `--sidebar-foreground`, `--sidebar-primary(-foreground)`, `--sidebar-accent(-foreground)`, `--sidebar-border`, `--sidebar-ring` |
-| Charts | `--chart-1` … `--chart-5` |
+| Charts | `--chart-1` … `--chart-5`. They also mark kinds in lists, for example the actions in the workflow activity log, so keep the five colors apart. |
 | Ratio colors (qui-specific) | `--ratio-bad`, `--ratio-almost`, `--ratio-good`, `--ratio-best` |
 | Status colors | `--success`, `--warning`, `--info`. They have no `-foreground` token: text on a solid status fill uses `--background`. |
 | Typography | `--font-sans`, `--font-serif`, `--font-mono` |
