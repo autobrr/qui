@@ -124,7 +124,7 @@ export const PeersTable = memo(function PeersTable({
     columnHelper.accessor("dl_speed", {
       header: t("peersTable.downSpeed"),
       cell: (info) => (
-        <span className="tabular-nums text-green-500">
+        <span className="tabular-nums text-chart-text-2">
           {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
         </span>
       ),
@@ -135,7 +135,7 @@ export const PeersTable = memo(function PeersTable({
     columnHelper.accessor("up_speed", {
       header: t("peersTable.upSpeed"),
       cell: (info) => (
-        <span className="tabular-nums text-blue-500">
+        <span className="tabular-nums text-chart-text-3">
           {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
         </span>
       ),

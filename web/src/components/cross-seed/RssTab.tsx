@@ -366,7 +366,7 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
                     {groupedRuns.scheduled.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 text-sm font-medium">
-                          <Clock className="h-4 w-4 text-blue-500" />
+                          <Clock className="h-4 w-4 text-chart-2" />
                           {t("automation.scheduled")} ({groupedRuns.scheduled.length})
                         </div>
                         <div className="space-y-1">
@@ -380,7 +380,7 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
                     {groupedRuns.manual.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 text-sm font-medium">
-                          <Zap className="h-4 w-4 text-yellow-500" />
+                          <Zap className="h-4 w-4 text-chart-4" />
                           {t("automation.manual")} ({groupedRuns.manual.length})
                         </div>
                         <div className="space-y-1">
