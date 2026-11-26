@@ -146,7 +146,7 @@ func TestArrIDCacheStore_EpisodeMapRoundTrip(t *testing.T) {
 	episodeMap := &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}
 
 	t.Run("map stored and read back", func(t *testing.T) {
-		require.NoError(t, store.SetWithTitles(ctx, "mapped", "tv", nil, ids, []string{"Solitude"}, episodeMap, true, false, time.Hour))
+		require.NoError(t, store.SetWithTitles(ctx, "mapped", "tv", nil, ids, []string{"Solitude"}, nil, episodeMap, true, false, time.Hour))
 		entry, err := store.Get(ctx, "mapped", "tv")
 		require.NoError(t, err)
 		require.True(t, entry.HasEpisodeMap)
@@ -154,7 +154,7 @@ func TestArrIDCacheStore_EpisodeMapRoundTrip(t *testing.T) {
 	})
 
 	t.Run("looked and found none sets the flag with nulls", func(t *testing.T) {
-		require.NoError(t, store.SetWithTitles(ctx, "unmapped", "tv", nil, ids, []string{"Solitude"}, nil, true, false, time.Hour))
+		require.NoError(t, store.SetWithTitles(ctx, "unmapped", "tv", nil, ids, []string{"Solitude"}, nil, nil, true, false, time.Hour))
 		entry, err := store.Get(ctx, "unmapped", "tv")
 		require.NoError(t, err)
 		require.True(t, entry.HasEpisodeMap)

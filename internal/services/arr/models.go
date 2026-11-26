@@ -4,10 +4,12 @@
 package arr
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type SystemStatusResponse struct {
@@ -94,10 +96,50 @@ func (a AlternateTitle) matchesSeason(season int) bool {
 }
 
 type ExternalIDsLookupResult struct {
-	IDs        *models.ExternalIDs
-	Titles     []string
-	EpisodeMap *models.EpisodeMap
-	Incomplete bool
+	IDs          *models.ExternalIDs
+	Titles       []string
+	TitleSeasons TitleSeasons
+	EpisodeMap   *models.EpisodeMap
+	Incomplete   bool
+}
+
+type TitleSeasons map[string][]int
+
+func (s TitleSeasons) Of(title string) (seasons []int, scoped bool) {
+	seasons, scoped = s[titleSeasonKey(title)]
+	return seasons, scoped
+}
+
+func titleSeasonKey(title string) string {
+	return stringutils.NormalizeForMatching(title)
+}
+
+func titleSeasonsFromSeries(series *SonarrSeries) TitleSeasons {
+	if series == nil {
+		return nil
+	}
+	unscoped := map[string]bool{titleSeasonKey(series.Title): true}
+	for _, alternate := range series.AlternateTitles {
+		if !alternate.seasonScoped() {
+			unscoped[titleSeasonKey(alternate.Title)] = true
+		}
+	}
+	var seasons TitleSeasons
+	for _, alternate := range series.AlternateTitles {
+		key := titleSeasonKey(alternate.Title)
+		if key == "" || unscoped[key] {
+			continue
+		}
+		if seasons == nil {
+			seasons = TitleSeasons{}
+		}
+		scope := seasons[key]
+		if season := alternate.SeasonNumber; season != nil && *season >= 0 && !slices.Contains(scope, *season) {
+			scope = append(scope, *season)
+		}
+		seasons[key] = scope
+	}
+	return seasons
 }
 
 func (r *SonarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
@@ -161,8 +203,9 @@ func lookupResultFromSonarrSeries(series *SonarrSeries) *ExternalIDsLookupResult
 	}
 
 	return &ExternalIDsLookupResult{
-		IDs:    ids,
-		Titles: titles,
+		IDs:          ids,
+		Titles:       titles,
+		TitleSeasons: titleSeasonsFromSeries(series),
 	}
 }
 
