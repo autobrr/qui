@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDashboardChartView, type DashboardChartView } from "@/hooks/useDashboardChartView"
+import { useLastDayPeriod } from "@/hooks/useLastDayPeriod"
 import { useLiveSamples } from "@/hooks/useLiveSamples"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { useClientSettingsSettled } from "@/lib/client-settings"
@@ -26,33 +27,14 @@ import {
   trackerGroupShares,
   type DashboardInstanceStats
 } from "@/lib/dashboard-overview"
-import { HISTORY_WRITE_MS, presetPeriod, recordedFrom, sumBytes, type StatisticsPeriod } from "@/lib/statistics"
+import { recordedFrom, sumBytes, type StatisticsPeriod } from "@/lib/statistics"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { themeArea } from "@/lib/theme-areas"
 import { formatBytes } from "@/lib/utils"
 import type { TransferHistoryRow } from "@/types"
 import { ArrowDown, ArrowUp, Loader2 } from "lucide-react"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-
-function useLastDayPeriod(): StatisticsPeriod {
-  const [period, setPeriod] = useState(() => presetPeriod("24h", new Date()))
-  useEffect(() => {
-    const move = () => {
-      if (document.visibilityState !== "visible") {
-        return
-      }
-      setPeriod(current => Date.now() - current.to.getTime() < HISTORY_WRITE_MS ? current : presetPeriod("24h", new Date()))
-    }
-    const timer = setInterval(move, 60_000)
-    document.addEventListener("visibilitychange", move)
-    return () => {
-      clearInterval(timer)
-      document.removeEventListener("visibilitychange", move)
-    }
-  }, [])
-  return period
-}
 
 function PointedLayerProvider({ children }: { children: ReactNode }) {
   const [pointed, setPointed] = useState<number>()
