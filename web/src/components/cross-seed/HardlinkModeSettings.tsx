@@ -232,12 +232,12 @@ export function HardlinkModeSettings({
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className="font-medium truncate">{instance.name}</span>
                       {form.useHardlinks && (
-                        <Badge variant="outline" className="shrink-0 bg-primary/10 text-primary border-primary/30">
+                        <Badge variant="outline" className="shrink-0 bg-chart-2/10 border-chart-2/30">
                           {t("rules.hardlink")}
                         </Badge>
                       )}
                       {form.useReflinks && (
-                        <Badge variant="outline" className="shrink-0 bg-blue-500/10 text-blue-500 border-blue-500/30">
+                        <Badge variant="outline" className="shrink-0 bg-chart-5/10 border-chart-5/30">
                           {t("rules.reflink")}
                         </Badge>
                       )}

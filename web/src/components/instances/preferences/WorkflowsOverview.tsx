@@ -797,26 +797,26 @@ export function WorkflowsOverview() {
   }
 
   const actionClasses: Record<AutomationActivity["action"], string> = {
-    deleted_ratio: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    deleted_seeding: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-    deleted_unregistered: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-    deleted_condition: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
+    deleted_ratio: "bg-chart-5/10 border-chart-5/20",
+    deleted_seeding: "bg-chart-5/10 border-chart-5/20",
+    deleted_unregistered: "bg-chart-5/10 border-chart-5/20",
+    deleted_condition: "bg-chart-5/10 border-chart-5/20",
     delete_failed: "bg-destructive/10 text-destructive border-destructive/30",
     limit_failed: "bg-warning/10 text-warning border-warning/20",
-    tags_changed: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
-    category_changed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-    speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
-    share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
-    paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-    resumed: "bg-lime-500/10 text-lime-500 border-lime-500/20",
-    rechecked: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-    reannounced: "bg-fuchsia-500/10 text-fuchsia-500 border-fuchsia-500/20",
-    moved: "bg-green-500/10 text-green-500 border-green-500/20",
-    external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
-    auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
-    exported_to_instance: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    transferred_to_instance: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
-    dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
+    tags_changed: "bg-chart-3/10 border-chart-3/20",
+    category_changed: "bg-chart-3/10 border-chart-3/20",
+    speed_limits_changed: "bg-chart-3/10 border-chart-3/20",
+    share_limits_changed: "bg-chart-3/10 border-chart-3/20",
+    paused: "bg-chart-4/10 border-chart-4/20",
+    resumed: "bg-chart-4/10 border-chart-4/20",
+    rechecked: "bg-chart-4/10 border-chart-4/20",
+    reannounced: "bg-chart-4/10 border-chart-4/20",
+    moved: "bg-chart-2/10 border-chart-2/20",
+    external_program: "bg-chart-1/10 border-chart-1/20",
+    auto_managed: "bg-chart-3/10 border-chart-3/20",
+    exported_to_instance: "bg-chart-2/10 border-chart-2/20",
+    transferred_to_instance: "bg-chart-2/10 border-chart-2/20",
+    dry_run_no_match: "bg-muted text-muted-foreground border-muted-foreground/30",
     rule_skipped: "bg-warning/10 text-warning border-warning/20",
   }
 
@@ -1389,12 +1389,12 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {addedTags.map(([tag, count]) => (
-                                                <Badge key={`add-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                <Badge key={`add-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                                                   +{tag} ({count})
                                                 </Badge>
                                               ))}
                                               {removedTags.map(([tag, count]) => (
-                                                <Badge key={`rm-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
+                                                <Badge key={`rm-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-5/10 border-chart-5/20">
                                                   -{tag} ({count})
                                                 </Badge>
                                               ))}
@@ -1407,7 +1407,7 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {categories.map(([category, count]) => (
-                                                <Badge key={category} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                <Badge key={category} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                                                   {category} ({count})
                                                 </Badge>
                                               ))}
@@ -1426,7 +1426,7 @@ export function WorkflowsOverview() {
                                                   ? t("preferences.workflowsOverview.unlimited")
                                                   : formatSpeedWithUnit(numKiB * 1024, "bytes")
                                                 return (
-                                                  <Badge key={key} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
+                                                  <Badge key={key} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                                                     {type === "upload" ? "↑" : "↓"} {label} ({count})
                                                   </Badge>
                                                 )
@@ -1448,7 +1448,7 @@ export function WorkflowsOverview() {
                                                   parts.push(`${hours}h`)
                                                 }
                                                 return (
-                                                  <Badge key={key} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-violet-500/10 text-violet-500 border-violet-500/20">
+                                                  <Badge key={key} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                                                     {parts.join(" / ") || t("preferences.workflowsOverview.limit")} ({count})
                                                   </Badge>
                                                 )
@@ -1467,7 +1467,7 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {paths.map(([path, count]) => (
-                                                <Badge key={path} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-green-500/10 text-green-500 border-green-500/20">
+                                                <Badge key={path} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-2/10 border-chart-2/20">
                                                   {path} ({count})
                                                 </Badge>
                                               ))}
@@ -1903,7 +1903,7 @@ function RulePreview({
           </Badge>
         )}
         {rule.conditions?.category?.enabled && (
-          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default bg-chart-3/10 border-chart-3/50">
             <Folder className="h-3 w-3" />
             {rule.conditions.category.category || t("preferences.workflowDialog.uncategorized")}
           </Badge>

@@ -334,7 +334,11 @@ func TestAlternateTitlesFetchLogBudget(t *testing.T) {
 		fake.down = true
 		return service
 	}
-	for name, prepare := range map[string]func(*fakeArrServer, *arr.Service) *arr.Service{"answering": answering, "down": down} {
+	lookupFails := func(fake *fakeArrServer, service *arr.Service) *arr.Service {
+		fake.lookupDown = true
+		return service
+	}
+	for name, prepare := range map[string]func(*fakeArrServer, *arr.Service) *arr.Service{"answering": answering, "down": down, "lookup fails": lookupFails} {
 		t.Run(name, func(t *testing.T) {
 			small, large := logbudget.Count(t, fetch(t, 10, prepare)), logbudget.Count(t, fetch(t, 200, prepare))
 			require.Equal(t, 1, large[logbudget.Line{Level: "debug", Message: "crossseed: alternate titles fetched for Held titles"}])

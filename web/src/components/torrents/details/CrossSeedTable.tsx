@@ -110,7 +110,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
             {isHardlink && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-blue-500 border-blue-500/40">
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 bg-chart-2/10 border-chart-2/40">
                     {t("crossSeedTable.hardlink")}
                   </Badge>
                 </TooltipTrigger>
