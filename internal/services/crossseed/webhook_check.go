@@ -18,12 +18,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
-)
-
-const (
-	heldSyncDueWithin = time.Second
-	heldSyncWait      = heldSyncDueWithin + 500*time.Millisecond
 )
 
 func validateWebhookCheckRequest(req *WebhookCheckRequest) error {
@@ -122,11 +116,12 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		},
 	}
 	var answer webhookCheckAnswer
-	if targets := s.heldTitlesTargets(ctx, instances); s.heldTitles.ready(ctx, targetInstanceIDs) {
-		for instanceID, err := range targets.errs {
+	query := heldTitlesQuery{announced: input.announced, size: int64(input.size)}
+	if lookup := s.heldTitles.lookup(ctx, query, instances); lookup != nil {
+		for instanceID, err := range lookup.readErrors {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents from instance")
 		}
-		answer, err = s.webhookMatchHeldTitles(ctx, input, contentInfo.ContentType, targets)
+		answer, err = s.webhookMatchHeldTitles(ctx, input, contentInfo.ContentType, lookup)
 	} else {
 		input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
 		answer, err = s.webhookMatchAllTorrents(ctx, input)
@@ -169,85 +164,25 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
-type heldTargets struct {
-	owners []*syncowner.Owner
-	synced []int
-	errs   map[int]error
-}
-
-func (s *Service) heldTitlesTargets(ctx context.Context, instances []*models.Instance) heldTargets {
-	if s.heldTitles == nil {
-		return heldTargets{}
-	}
-	targets := heldTargets{errs: map[int]error{}}
-	for _, instance := range instances {
-		owner, err := s.syncManager.GetSyncOwner(ctx, instance.ID)
-		if err != nil {
-			targets.errs[instance.ID] = err
-			continue
-		}
-		targets.owners = append(targets.owners, owner)
-		if owner.SnapshotUnchecked() != nil {
-			targets.synced = append(targets.synced, instance.ID)
-		}
-	}
-	return targets
-}
-
-func (t heldTargets) refreshStale() {
-	for _, owner := range t.owners {
-		owner.RefreshStale()
-	}
-}
-
-func (t heldTargets) pendingSyncs() []<-chan struct{} {
-	var pending []<-chan struct{}
-	for _, owner := range t.owners {
-		if owner.SnapshotUnchecked() == nil {
-			continue
-		}
-		if done := owner.PendingSync(heldSyncDueWithin); done != nil {
-			pending = append(pending, done)
-		}
-	}
-	return pending
-}
-
-func awaitSyncs(ctx context.Context, pending []<-chan struct{}) {
-	limit := time.After(heldSyncWait)
-	for _, done := range pending {
-		select {
-		case <-done:
-		case <-limit:
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (s *Service) webhookMatchHeldTitles(ctx context.Context, input webhookCheckInput, contentType string, targets heldTargets) (webhookCheckAnswer, error) {
-	defer targets.refreshStale()
-	pending := targets.pendingSyncs()
+func (s *Service) webhookMatchHeldTitles(ctx context.Context, input webhookCheckInput, contentType string, lookup *heldLookup) (webhookCheckAnswer, error) {
+	defer lookup.refreshStale()
 	readsCtx, cancelReads := context.WithTimeout(ctx, localReadWait)
 	defer cancelReads()
 	input.policy.lookupEpisodeMap = sync.OnceValue(func() *models.EpisodeMap {
 		_, episodeMap := s.announceAliasTitles(ctx, input.announced.rawName, contentType)
 		return episodeMap
 	})
-	answer, err := s.webhookMatchFound(ctx, readsCtx, input, targets.synced)
-	if err != nil || len(answer.matches) > 0 || len(pending) == 0 {
+	answer, err := s.webhookMatchFound(ctx, readsCtx, input, lookup)
+	if err != nil || len(answer.matches) > 0 || !lookup.awaitDueSyncs(ctx) {
 		return answer, err
 	}
-	awaitSyncs(ctx, pending)
-	return s.webhookMatchFound(ctx, readsCtx, input, targets.synced)
+	return s.webhookMatchFound(ctx, readsCtx, input, lookup)
 }
 
-func (s *Service) webhookMatchFound(ctx, readsCtx context.Context, input webhookCheckInput, targets []int) (webhookCheckAnswer, error) {
+func (s *Service) webhookMatchFound(ctx, readsCtx context.Context, input webhookCheckInput, lookup *heldLookup) (webhookCheckAnswer, error) {
 	gate := s.sourceGate()
 	webhookFilter := defaultsFor(triggerWebhook, input.settings).sourceFilter
-	query := heldTitlesQuery{announced: input.announced, size: int64(input.size)}
-	candidates := s.heldTitles.candidates(query, targets)
+	candidates := lookup.candidates()
 	if !anyHeld(candidates, func(torrent *qbt.Torrent) bool {
 		return !gate.check(torrent, webhookFilter).lasting()
 	}) {
@@ -274,7 +209,7 @@ func (s *Service) webhookMatchFound(ctx, readsCtx context.Context, input webhook
 		}
 	}
 	if waits {
-		candidates = s.heldTitles.candidates(query, targets)
+		candidates = lookup.candidates()
 	}
 
 	held := make(map[int][]*qbt.Torrent, len(candidates))

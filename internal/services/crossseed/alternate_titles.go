@@ -150,6 +150,12 @@ func (a *alternateTitleIndex) store(title *heldTitle, titles []string) {
 	}
 }
 
+func (a *alternateTitleIndex) caughtUp(contentType string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !slices.ContainsFunc(a.queues, func(queue *alternateTitleQueue) bool { return queue.owesAnswer(contentType) })
+}
+
 func (a *alternateTitleIndex) wakeRun() {
 	for _, queue := range a.queues {
 		queue.wakeRun()
