@@ -54,6 +54,7 @@ export async function addFilesInBatches<T extends AddRequest>(
   }
 
   const failedFiles: AddTorrentFailedFile[] = []
+  const rejected: File[] = []
   const total: AddTorrentResponse = { message: "", added: 0, failed: 0, failedFiles }
   for (const [index, batch] of batches.entries()) {
     onBatch(index + 1, batches.length)
@@ -63,20 +64,22 @@ export async function addFilesInBatches<T extends AddRequest>(
     } catch (error) {
       if (index === 0) throw error
       const message = error instanceof Error ? error.message : String(error)
-      const failedNames = new Set(failedFiles.map(file => file.filename))
       throw new BatchAddError(message, {
         added: total.added,
         total: files.length,
         batch: index + 1,
         batches: batches.length,
-        unconfirmed: [...batches.slice(0, index).flat().filter(file => failedNames.has(file.name)), ...batches.slice(index).flat()],
+        unconfirmed: [...rejected, ...batches.slice(index).flat()],
         failedFiles,
       })
     }
     total.message = response.message
     total.added += response.added
     total.failed += response.failed
-    failedFiles.push(...(response.failedFiles ?? []))
+    const batchFailed = response.failedFiles ?? []
+    const failedNames = new Set(batchFailed.map(file => file.filename))
+    rejected.push(...batch.filter(file => failedNames.has(file.name)))
+    failedFiles.push(...batchFailed)
   }
   return total
 }
