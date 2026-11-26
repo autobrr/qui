@@ -584,14 +584,14 @@ function SwipeableCard({
 
               {torrent.dlspeed > 0 && (
                 <div className="flex items-center gap-1">
-                  <ChevronDown className="h-3 w-3 [color:var(--chart-text-2)]" />
+                  <ChevronDown className="h-3 w-3 text-chart-text-2" />
                   <span className="font-medium">{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}</span>
                 </div>
               )}
 
               {torrent.upspeed > 0 && (
                 <div className="flex items-center gap-1">
-                  <ChevronUp className="h-3 w-3 [color:var(--chart-text-3)]" />
+                  <ChevronUp className="h-3 w-3 text-chart-text-3" />
                   <span className="font-medium">{formatSpeedWithUnit(torrent.upspeed, speedUnit)}</span>
                 </div>
               )}

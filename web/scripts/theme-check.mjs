@@ -8,7 +8,7 @@ const freeThemesDir = path.resolve(path.dirname(scriptPath), "..", "..", "intern
 const licensedThemesDir = path.join(freeThemesDir, "premium")
 const appCss = fs.readFileSync(path.resolve(path.dirname(scriptPath), "..", "src", "index.css"), "utf8")
 const STATUS = ["success", "warning", "info"]
-const CHART_TEXT = ["chart-text-1", "chart-text-2", "chart-text-3", "chart-text-4", "chart-text-5"]
+const CHART_TEXT = [1, 2, 3, 4, 5].map(n => `chart-text-${n}`)
 
 const MODES = [["light", ":root"], ["dark", ".dark"]]
 const TEXT = 4.5
@@ -143,7 +143,10 @@ export function checkTheme(css) {
   for (const [mode, selector] of MODES) {
     const base = declarations(css, selector)
     const app = declarations(appCss, selector)
-    const defaults = Object.fromEntries([...STATUS, ...CHART_TEXT].map(name => [`--${name}`, app[`--${name}`]]))
+    const defaults = {
+      ...Object.fromEntries(STATUS.map(name => [`--${name}`, app[`--${name}`]])),
+      ...Object.fromEntries(CHART_TEXT.map(name => [`--${name}`, `var(--${name.replace("text-", "")})`])),
+    }
 
     for (const [name, value] of Object.entries(base)) {
       const literal = parse(value)
