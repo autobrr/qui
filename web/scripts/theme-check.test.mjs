@@ -100,12 +100,12 @@ test("checks the foreground text of a kind chip on each chart tint, on the page 
   )
 })
 
-test("checks the chart text of the log viewer values on the muted box in a card", () => {
+test("checks the chart text of the log viewer values on the muted box over the page", () => {
   const result = checkTheme(theme({ card: "#000000", muted: "#000000", "chart-text-2": "#ffffff", "chart-text-3": "#000000" }))
 
   assert.deepEqual(
-    result.pairs.filter(entry => entry.mode === "light" && entry.label.endsWith("on muted 30% on card")).map(entry => [entry.label, entry.ok]),
-    [["chart-text-2 text on muted 30% on card", true], ["chart-text-3 text on muted 30% on card", false]],
+    result.pairs.filter(entry => entry.mode === "light" && entry.label.endsWith("on muted 30% on background")).map(entry => [entry.label, entry.ok]),
+    [["chart-text-2 text on muted 30% on background", false], ["chart-text-3 text on muted 30% on background", true]],
   )
 })
 

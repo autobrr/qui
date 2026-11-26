@@ -75,7 +75,7 @@ Rules:
 - Do not change the height of a torrent row, its padding, its border width, or its font size. qui computes the position of each row from a fixed height.
 - Keep the text readable: each foreground token must have enough contrast with its background token, in light mode and in dark mode.
 - The chart colors also mark kinds in lists, for example the actions in the workflow activity log, so keep the five chart colors apart from each other in light mode and in dark mode.
-- The ratio and speed text, and the values in the log viewer, use --chart-text-1 to --chart-text-5. Each one takes its --chart-1 to --chart-5 color when the theme does not set it. Set one when its chart color is too faint as text on --background or on --muted over --card.
+- The ratio and speed text, and the values in the log viewer, use --chart-text-1 to --chart-text-5. Each one takes its --chart-1 to --chart-5 color when the theme does not set it. Set one when its chart color is too faint as text on --background or on a 30% --muted tint over --background.
 - The status colors have no foreground token. Text on a solid status fill uses --background, so each status color must have enough contrast with --background.
 - If you set a font token, use a font that the browser has, or embed the font with @font-face and a data: address.
 
