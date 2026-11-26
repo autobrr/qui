@@ -147,6 +147,7 @@ func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.arrService.NoteInstancesChanged()
 	instance.APIKeyEncrypted = ""
 
 	RespondJSON(w, http.StatusCreated, instance)
@@ -229,6 +230,7 @@ func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.arrService.NoteInstancesChanged()
 	instance.APIKeyEncrypted = ""
 
 	RespondJSON(w, http.StatusOK, instance)
@@ -258,6 +260,7 @@ func (h *ArrHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.arrService.NoteInstancesChanged()
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -4,12 +4,15 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"slices"
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/services/arr"
 )
 
 const (
@@ -17,11 +20,16 @@ const (
 	alternateTitleRetry    = 15 * time.Minute
 	incompleteAnswerRetry  = 24 * time.Hour
 	incompleteAnswerBatch  = time.Hour
+	answerLifetime         = arr.DefaultPositiveCacheTTL
 
 	sourceFailuresInARow = 3
 	firstSourcePause     = time.Minute
 	longestSourcePause   = 15 * time.Minute
 )
+
+type changingSource interface {
+	Changed() <-chan struct{}
+}
 
 type alternateTitleQueue struct {
 	titles *alternateTitleIndex
@@ -59,7 +67,14 @@ func (q *alternateTitleQueue) wakeRun() {
 
 func (q *alternateTitleQueue) run(ctx context.Context) {
 	found, failed := 0, 0
+	changed := q.changes()
 	for {
+		select {
+		case <-changed:
+			changed = q.changes()
+			q.askAgain()
+		default:
+		}
 		title, release, wait := q.next()
 		if title == nil {
 			if found+failed > 0 {
@@ -71,6 +86,7 @@ func (q *alternateTitleQueue) run(ctx context.Context) {
 				return
 			case <-q.wake:
 			case <-wait:
+			case <-changed:
 			}
 			continue
 		}
@@ -93,6 +109,8 @@ func (q *alternateTitleQueue) run(ctx context.Context) {
 			})
 		} else if answer.Incomplete {
 			q.retry(titleRetry{heldTitle: title, at: time.Now().Add(incompleteAnswerRetry).Truncate(incompleteAnswerBatch), owed: true})
+		} else {
+			q.retry(titleRetry{heldTitle: title, at: time.Now().Add(answerLifetime + incompleteAnswerBatch).Truncate(incompleteAnswerBatch)})
 		}
 		q.asked()
 		q.count(answer, err)
@@ -153,10 +171,33 @@ func (q *alternateTitleQueue) owesAnswer(contentType string) bool {
 		slices.ContainsFunc(q.retries, func(retry titleRetry) bool { return retry.owed && owed(retry.heldTitle) })
 }
 
+func (q *alternateTitleQueue) changes() <-chan struct{} {
+	if source, ok := q.source.(changingSource); ok {
+		return source.Changed()
+	}
+	return nil
+}
+
+func (q *alternateTitleQueue) askAgain() {
+	q.titles.mu.Lock()
+	defer q.titles.mu.Unlock()
+	now := time.Now()
+	q.pausedUntil = time.Time{}
+	for i := range q.retries {
+		if q.retries[i].at.After(now) {
+			q.retries[i].at = now
+		}
+		q.retries[i].owed = true
+	}
+}
+
 func (q *alternateTitleQueue) retry(next titleRetry) {
 	q.titles.mu.Lock()
 	defer q.titles.mu.Unlock()
-	i, _ := slices.BinarySearchFunc(q.retries, next.at, func(r titleRetry, at time.Time) int { return r.at.Compare(at) })
+	if len(q.retries) >= 2*len(q.titles.held) {
+		q.retries = slices.DeleteFunc(q.retries, func(r titleRetry) bool { return r.holders == 0 })
+	}
+	i, _ := slices.BinarySearchFunc(q.retries, next.at, func(r titleRetry, at time.Time) int { return cmp.Or(r.at.Compare(at), -1) })
 	q.retries = slices.Insert(q.retries, i, next)
 }
 

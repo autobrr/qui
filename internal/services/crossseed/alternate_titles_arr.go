@@ -24,6 +24,10 @@ func NewArrAlternateTitles(service *arr.Service) []AlternateTitleSource {
 	}
 }
 
+func (a arrAlternateTitles) Changed() <-chan struct{} {
+	return a.arr.InstancesChanged()
+}
+
 func (a arrAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
 	contentType := mapContentTypeToARR(held.ContentType)
 	if !slices.Contains(a.contentTypes, contentType) {
