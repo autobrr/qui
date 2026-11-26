@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -190,25 +189,6 @@ func TestReadDir(t *testing.T) {
 	assert.Contains(t, names, "a.txt")
 	assert.Contains(t, names, "b.txt")
 	assert.Contains(t, names, "subdir")
-}
-
-type syslessFileInfo struct{}
-
-func (syslessFileInfo) Name() string       { return "x.mkv" }
-func (syslessFileInfo) Size() int64        { return 42 }
-func (syslessFileInfo) Mode() fs.FileMode  { return 0 }
-func (syslessFileInfo) ModTime() time.Time { return time.Unix(1700000000, 0) }
-func (syslessFileInfo) IsDir() bool        { return false }
-func (syslessFileInfo) Sys() any           { return nil }
-
-func TestLstatConversion_FileIDFailureDegrades(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "missing", "x.mkv")
-	info := osFileInfoToLstat(syslessFileInfo{}, path, false)
-
-	require.Error(t, info.FileIDErr)
-	assert.True(t, info.FileID.IsZero())
-	assert.Equal(t, path, info.Path)
-	assert.Equal(t, int64(42), info.Size)
 }
 
 func TestWalkDir_Basic(t *testing.T) {

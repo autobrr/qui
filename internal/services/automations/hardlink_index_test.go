@@ -220,15 +220,14 @@ func createFile(t *testing.T, path string) hardlink.FileID {
 	if err := os.WriteFile(path, []byte("content-"+filepath.Base(path)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	fi, err := os.Lstat(path)
+	info, err := localbackend.NewBackend().Lstat(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fid, _, err := hardlink.GetFileID(fi, path)
-	if err != nil {
-		t.Fatal(err)
+	if info.FileIDErr != nil {
+		t.Fatal(info.FileIDErr)
 	}
-	return fid
+	return info.FileID
 }
 
 func TestScope_MixedInsideAndOutsideFilesYieldBoth(t *testing.T) {

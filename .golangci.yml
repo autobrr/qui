@@ -192,6 +192,9 @@ linters:
           msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
         - pattern: ^\w+\.\w+\.NewSyncManager$
           msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
+        - pattern: ^(syscall|unix)\.(Stat_t|Statx_t)\.(Nlink|Ino)$
+          pkg: ^(syscall|golang\.org/x/sys/unix)$
+          msg: read the link count and file identity of a local path through the local fsops backend (Lstat, Stat, Root.Lstat, or WalkDir with WantFileID); only internal/fsops/local/identity_*.go reads them, with a forced-sync statx on Linux
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -224,6 +227,12 @@ linters:
       - std-error-handling
 
     rules:
+      # The local backend owns the read of link count and file identity.
+      - path: internal/fsops/local/identity_
+        linters:
+          - forbidigo
+        text: local fsops backend
+
       # The preference catalog is the only code that sends a preference write.
       - path: internal/qbittorrent/prefcatalog/
         linters:
@@ -431,7 +440,7 @@ linters:
       # The type of a stat field differs between Linux and macOS, so the
       # conversion is redundant on one of them, and an inline nolint would be
       # unused on the other.
-      - path: (internal/fsops/local/statfs_unix|pkg/hardlink/fileid_unix)\.go
+      - path: internal/fsops/local/(statfs_unix|identity_stat)\.go
         linters:
           - unconvert
 
