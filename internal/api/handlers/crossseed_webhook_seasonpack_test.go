@@ -68,7 +68,6 @@ func (r *seasonPackEndpointRig) holdPack(incomplete bool) {
 	for i := range files {
 		files[i] += ".mkv"
 	}
-	r.heldNames = append(r.heldNames, endpointPack)
 	r.servers[1].Add(qbtstub.Torrent{
 		Hash: fmt.Sprintf("%040d", 7), Name: endpointPack, SavePath: filepath.Join(r.root, "lib"),
 		Layout: qbtstub.RootFolder, Files: files, Incomplete: incomplete,

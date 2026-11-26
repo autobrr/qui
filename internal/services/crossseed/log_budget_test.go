@@ -99,7 +99,7 @@ func TestWebhookCheckLogBudgetWithSourceFilter(t *testing.T) {
 				return &models.CrossSeedAutomationSettings{WebhookSourceExcludeCategories: []string{"skipped"}}, nil
 			},
 		}
-		startHeldTitlesOnFake(t.Context(), service)
+		startHeldTitlesOnFake(t, service)
 		return logbudget.Count(t, func() {
 			_, err := service.CheckWebhook(t.Context(), announce)
 			require.NoError(t, err)

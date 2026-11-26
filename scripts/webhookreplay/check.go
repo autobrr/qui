@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -103,7 +104,7 @@ func parseAnnounce(text string) (announce, error) {
 		}
 	}
 	if a.TorrentName == "" {
-		return a, fmt.Errorf("no torrent name")
+		return a, errors.New("no torrent name")
 	}
 	return a, nil
 }

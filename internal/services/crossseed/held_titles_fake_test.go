@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -14,11 +15,16 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/testutil"
 )
+
+const heldFakeBuildSpins = 50_000_000
+
+var errHeldFakeNotBuilt = errors.New("held titles did not finish building")
 
 type heldFakeSyncs struct {
 	qbittorrentSync
@@ -30,20 +36,23 @@ type heldFakeSyncs struct {
 	rid    int64
 }
 
-func startHeldTitlesOnFake(ctx context.Context, svc *Service, sources ...AlternateTitleSource) {
+func startHeldTitlesOnFake(t *testing.T, svc *Service, sources ...AlternateTitleSource) {
+	t.Helper()
 	syncs := &heldFakeSyncs{qbittorrentSync: svc.syncManager, svc: svc, owners: map[int]*syncowner.Owner{}}
 	svc.syncManager = syncs
-	svc.StartHeldTitles(ctx, syncs, syncs, sources)
-	instances, _ := svc.instanceStore.List(ctx)
+	svc.StartHeldTitles(t.Context(), syncs, syncs, sources)
+	instances, err := svc.instanceStore.List(t.Context())
+	require.NoError(t, err)
 	for _, instance := range instances {
-		_, _ = syncs.GetSyncOwner(ctx, instance.ID)
+		_, err := syncs.GetSyncOwner(t.Context(), instance.ID)
+		require.NoError(t, err)
 	}
 }
 
 func checkOnHeld(t *testing.T, svc *Service, req *WebhookCheckRequest) (*WebhookCheckResponse, error) {
 	t.Helper()
 	if svc.heldTitles == nil {
-		startHeldTitlesOnFake(t.Context(), svc)
+		startHeldTitlesOnFake(t, svc)
 	}
 	return svc.CheckWebhook(t.Context(), req)
 }
@@ -78,9 +87,9 @@ func (f *heldFakeSyncs) sync(ctx context.Context, instanceID int) error {
 
 func (f *heldFakeSyncs) mainData(ctx context.Context, instanceID int) (*http.Response, error) {
 	torrents := map[string]qbt.Torrent{}
-	if views, err := f.qbittorrentSync.GetCachedInstanceTorrents(ctx, instanceID); err == nil {
+	if views, err := f.GetCachedInstanceTorrents(ctx, instanceID); err == nil {
 		for _, view := range views {
-			torrents[view.Torrent.Hash] = *view.Torrent
+			torrents[view.Hash] = *view.Torrent
 		}
 	}
 	f.mu.Lock()
@@ -97,7 +106,10 @@ func (f *heldFakeSyncs) GetSyncOwner(ctx context.Context, instanceID int) (*sync
 	if err := owner.Sync(ctx); err != nil {
 		return nil, err
 	}
-	for f.svc.heldTitles.buildsPending() {
+	for spins := 0; f.svc.heldTitles.buildsPending(); spins++ {
+		if spins == heldFakeBuildSpins {
+			return nil, errHeldFakeNotBuilt
+		}
 		runtime.Gosched()
 	}
 	return owner, nil

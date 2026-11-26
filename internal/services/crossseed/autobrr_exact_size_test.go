@@ -271,7 +271,7 @@ func TestCheckWebhookMatchesAlternateTitlesWithoutAnArrCall(t *testing.T) {
 					return &models.CrossSeedAutomationSettings{}, nil
 				},
 			}
-			startHeldTitlesOnFake(t.Context(), service, tt.sources...)
+			startHeldTitlesOnFake(t, service, tt.sources...)
 			requireCaughtUpOn(t, service, "tv")
 
 			response, err := service.CheckWebhook(t.Context(), &WebhookCheckRequest{

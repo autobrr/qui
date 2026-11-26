@@ -25,7 +25,7 @@ Exit status: 0 when every answer agrees, 1 when one differs or fails, 2 on a usa
 
 var (
 	errDiffers = errors.New("the answers differ")
-	errUsage   = errors.New(usage)
+	errUsage   = errors.New("invalid arguments")
 )
 
 type config struct {
@@ -49,8 +49,11 @@ func main() {
 	case err == nil:
 	case errors.Is(err, errDiffers):
 		os.Exit(1)
-	case errors.Is(err, errUsage), errors.Is(err, flag.ErrHelp):
-		fmt.Fprintln(os.Stderr, err)
+	case errors.Is(err, errUsage):
+		fmt.Fprintf(os.Stderr, "%v\n\n%s\n", err, usage)
+		os.Exit(2)
+	case errors.Is(err, flag.ErrHelp):
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
 	default:
 		fmt.Fprintln(os.Stderr, "webhookreplay:", err)
@@ -109,7 +112,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
-	var out io.Writer = io.Discard
+	out := io.Discard
 	if c.out != "" {
 		file, err := os.Create(c.out)
 		if err != nil {

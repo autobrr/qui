@@ -2714,7 +2714,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{Hash: fakeHash("excluded"), Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
-				{Hash: fakeHash("included"), Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: fakeHash("movies"), Progress: 1.0},
+				{Hash: fakeHash("included"), Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
@@ -2764,11 +2764,11 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				TorrentName: "Include.Only.2025.1080p.BluRay.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: fakeHash("movies"), Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: fakeHash("movies"), Progress: 1.0},
-				{Hash: fakeHash("tv"), Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: fakeHash("tv"), Progress: 1.0},
+				{Hash: fakeHash("movies"), Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
+				{Hash: fakeHash("tv"), Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories: []string{fakeHash("movies")},
+				WebhookSourceCategories: []string{"movies"},
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1,
@@ -2781,8 +2781,8 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				TorrentName: "No.Filter.2025.1080p.BluRay.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: fakeHash("cat1"), Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: fakeHash("movies"), Progress: 1.0},
-				{Hash: fakeHash("cat2"), Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: fakeHash("tv"), Progress: 1.0},
+				{Hash: fakeHash("cat1"), Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
+				{Hash: fakeHash("cat2"), Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceCategories:        []string{},

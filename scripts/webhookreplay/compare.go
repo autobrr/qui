@@ -47,8 +47,10 @@ func compare(a announce, old, now answer) result {
 
 func compareMatches(old, now []match) (verdict, []match) {
 	held := map[matchKey]bool{}
+	names := map[string]bool{}
 	for _, m := range old {
 		held[matchKey{m.InstanceID, m.TorrentHash}] = true
+		names[m.TorrentName] = true
 	}
 	var extra []match
 	for _, m := range now {
@@ -59,7 +61,7 @@ func compareMatches(old, now []match) (verdict, []match) {
 		delete(held, key)
 	}
 	switch {
-	case len(held) > 0:
+	case len(held) > 0, slices.ContainsFunc(extra, func(m match) bool { return !names[m.TorrentName] }):
 		return verdictDiffers, nil
 	case len(extra) > 0:
 		return verdictExtraCopies, extra

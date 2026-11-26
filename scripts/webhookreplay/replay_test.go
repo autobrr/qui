@@ -35,6 +35,7 @@ func TestCompare(t *testing.T) {
 		{name: "same match in another order", old: ready(a, b), new: ready(b, a), want: verdictSame},
 		{name: "another copy listed", old: ready(a), new: ready(a, b), want: verdictExtraCopies, extra: []match{b}},
 		{name: "a match left out", old: ready(a, b), new: ready(a), want: verdictDiffers},
+		{name: "another torrent listed", old: ready(a), new: ready(a, match{InstanceID: 1, TorrentHash: "cc", TorrentName: "Lost.Harbor.S01E02.1080p.WEB-DL.H.264-GRP"}), want: verdictDiffers},
 		{name: "the same hash on another instance", old: ready(a), new: ready(other), want: verdictDiffers},
 		{name: "a miss that matches", old: none, new: ready(a), want: verdictDiffers},
 		{name: "a match that misses", old: ready(a), new: none, want: verdictDiffers},

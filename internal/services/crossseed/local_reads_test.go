@@ -60,7 +60,7 @@ func localReadsService(t *testing.T, torrents []qbt.Torrent, files map[string]qb
 			return &models.CrossSeedAutomationSettings{}, nil
 		},
 	}
-	startHeldTitlesOnFake(t.Context(), svc)
+	startHeldTitlesOnFake(t, svc)
 	return svc, recorder
 }
 
