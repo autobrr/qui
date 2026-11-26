@@ -201,9 +201,14 @@ func TestRootLstat_ResolvesNamesInsideTheRoot(t *testing.T) {
 	writeFile(t, deep, "deep")
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "deep", "inner"), 0o750))
 	require.NoError(t, os.Symlink(filepath.Join("deep", "inner"), filepath.Join(dir, "link")))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "deep", "deep"), 0o750))
 	root := openRoot(t, dir)
 
-	info, err := root.Lstat(t.Context(), "link/../Movie.2019.1080p.BluRay-GRP.mkv")
+	info, err := root.Lstat(t.Context(), "deep/")
+	require.NoError(t, err)
+	require.Equal(t, statTID(t, filepath.Join(dir, "deep")), info.FileID, "a trailing slash names the folder itself")
+
+	info, err = root.Lstat(t.Context(), "link/../Movie.2019.1080p.BluRay-GRP.mkv")
 	require.NoError(t, err)
 	require.Equal(t, statTID(t, deep), info.FileID)
 
