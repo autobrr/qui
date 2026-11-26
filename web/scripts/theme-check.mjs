@@ -110,6 +110,12 @@ function pairGroups(color, mode) {
       pairs: STATUS.flatMap(statusPairs),
     },
     {
+      source: "web/src/components/settings/LogSettingsPanel.tsx (JSON values in text-chart-text-2 and text-chart-text-3 on bg-muted/30 in a card)",
+      pairs: ["chart-text-2", "chart-text-3"].map(name => [
+        `${name} text on muted 30% on card`, color(name), surface("muted", 0.3, card), TEXT,
+      ]),
+    },
+    {
       source: "web/src (kind chips: foreground text on bg-chart-1/10 to bg-chart-5/10)",
       pairs: CHARTS.flatMap(name => [
         [`foreground on ${name} 10% on background`, color("foreground"), surface(name, 0.1), TEXT],
