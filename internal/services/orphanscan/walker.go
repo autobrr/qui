@@ -455,6 +455,7 @@ func recordInUse(ctx context.Context, root string, protected *protectedPaths, ba
 		if entry.Err != nil {
 			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root &&
 				!errors.Is(entry.Err, fsops.ErrConnectionLost) {
+				keys.incomplete = true
 				continue
 			}
 			if errors.Is(entry.Err, fs.ErrNotExist) && entry.Path != root {
@@ -517,6 +518,7 @@ func walkScanRootWithUnitFilter(
 		if entry.Err != nil {
 			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root &&
 				!errors.Is(entry.Err, fsops.ErrConnectionLost) {
+				keys.incomplete = true
 				continue
 			}
 			if errors.Is(entry.Err, fs.ErrNotExist) && entry.Path != root {
