@@ -191,11 +191,11 @@ export function ConditionGroup({
         )}
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           className={cn(
-            "h-7 px-3 font-mono text-xs font-semibold",
-            condition.operator === "AND"? "border-chart-3/50 bg-chart-3/10 dark:border-chart-3/50 dark:bg-chart-3/10": "border-chart-5/50 bg-chart-5/10 dark:border-chart-5/50 dark:bg-chart-5/10"
+            "h-7 border px-3 font-mono text-xs font-semibold",
+            condition.operator === "AND"? "border-chart-3/50 bg-chart-3/10": "border-chart-5/50 bg-chart-5/10"
           )}
           onClick={toggleOperator}
         >

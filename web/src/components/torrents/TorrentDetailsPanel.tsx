@@ -992,14 +992,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   <MobileInfoGroup title={t("generalTab.network")}>
                     <MobileInfoRow
                       label={t("detailsPanel.labels.downloadSpeed")}
-                      valueClassName="text-chart-2"
+                      valueClassName="text-chart-text-2"
                       sub={`${t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit) })} · ${t("detailsPanel.labels.limit", { value: downloadLimitLabel })}`}
                     >
                       {formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}
                     </MobileInfoRow>
                     <MobileInfoRow
                       label={t("detailsPanel.labels.uploadSpeed")}
-                      valueClassName="text-chart-3"
+                      valueClassName="text-chart-text-3"
                       sub={`${t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit) })} · ${t("detailsPanel.labels.limit", { value: uploadLimitLabel })}`}
                     >
                       {formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}

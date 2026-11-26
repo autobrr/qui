@@ -364,11 +364,11 @@ function highlightJson(json: string): ReactNode[] {
         ":"
       )
     } else if (stringMatch) {
-      result.push(<span key={key++} className="text-chart-2">{stringMatch}</span>)
+      result.push(<span key={key++} className="text-chart-text-2">{stringMatch}</span>)
     } else if (numberMatch) {
-      result.push(<span key={key++} className="text-chart-3">{numberMatch}</span>)
+      result.push(<span key={key++} className="text-chart-text-3">{numberMatch}</span>)
     } else if (boolMatch) {
-      result.push(<span key={key++} className="text-chart-3">{boolMatch}</span>)
+      result.push(<span key={key++} className="text-chart-text-3">{boolMatch}</span>)
     } else if (nullMatch) {
       result.push(<span key={key++} className="text-muted-foreground">{nullMatch}</span>)
     } else if (punctMatch) {
