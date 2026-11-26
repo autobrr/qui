@@ -219,10 +219,13 @@ func TestValidatePartialPoolPathInsideRootMissingRootThroughAlias(t *testing.T) 
 
 func TestPartialPoolJoinIdentity(t *testing.T) {
 	boundSource := mustParseHash(t, fakeHash("bound-source"))
+	hybridV1 := fakeHash("hybrid-source")
+	hybridV2 := mustParseHash(t, strings.Repeat("e", 64))
 	for _, tt := range []struct {
 		name          string
 		decision      func(instanceID int) searchDecisionProvenance
 		matched       *qbt.Torrent
+		resolved      *qbt.Torrent
 		wantSourceKey string
 		wantErr       string
 	}{
@@ -233,6 +236,15 @@ func TestPartialPoolJoinIdentity(t *testing.T) {
 			},
 			matched:       &qbt.Torrent{Hash: fakeHash("matched")},
 			wantSourceKey: boundSource.String(),
+		},
+		{
+			name: "found source keys the pool by its v1 hash",
+			decision: func(instanceID int) searchDecisionProvenance {
+				return searchDecisionProvenance{SourceInstanceID: instanceID, SourceHash: hybridV2}
+			},
+			matched:       &qbt.Torrent{Hash: fakeHash("matched")},
+			resolved:      &qbt.Torrent{Hash: hybridV1, InfohashV1: hybridV1, InfohashV2: hybridV2.String()},
+			wantSourceKey: hybridV1,
 		},
 		{
 			name:    "matched torrent without a hash",
@@ -247,6 +259,7 @@ func TestPartialPoolJoinIdentity(t *testing.T) {
 				rootlessSavePathSyncManager: &rootlessSavePathSyncManager{
 					files: map[string]qbt.TorrentFiles{memberKey: partialPoolFetchedFiles(descriptors)},
 				},
+				resolved: tt.resolved,
 			}
 			req := &CrossSeedRequest{}
 			if tt.decision != nil {
@@ -258,7 +271,7 @@ func TestPartialPoolJoinIdentity(t *testing.T) {
 				t.Context(),
 				CrossSeedCandidate{InstanceID: instanceID},
 				torrentBytes,
-				nil,
+				[]string{memberKey},
 				req,
 				tt.matched,
 				models.CrossSeedPartialPoolModeHardlink,
