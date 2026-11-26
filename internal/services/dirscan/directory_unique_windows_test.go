@@ -1,7 +1,7 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-package models_test
+package dirscan
 
 import (
 	"errors"
@@ -13,10 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-func TestDirScanStore_WindowsDirectoryIdentity(t *testing.T) {
+func TestService_WindowsDirectoryIdentity(t *testing.T) {
 	for _, operation := range []string{"create", "update"} {
 		t.Run(operation, func(t *testing.T) {
 			root := t.TempDir()
@@ -31,74 +34,74 @@ func TestDirScanStore_WindowsDirectoryIdentity(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, os.SameFile(info, aliasInfo), "fixture must name one actual directory")
 
-			db := setupDirScanTestDB(t)
+			db := testdb.NewMigratedSQLite(t, "dirscan-windows-identity")
 			instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 			require.NoError(t, err)
 			instance, err := instances.Create(t.Context(), "synthetic", "http://localhost:8080", "", "", nil, nil, false, nil)
 			require.NoError(t, err)
-			store := models.NewDirScanStore(db)
-			_, err = store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+			service := NewService(DefaultConfig(), models.NewDirScanStore(db), nil, nil, nil, nil, nil, nil, fsops.NewPool(instances, localbackend.NewBackend()), nil)
+			_, err = service.CreateDirectory(t.Context(), &models.DirScanDirectory{
 				Path: path, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
 			})
 			require.NoError(t, err)
-			second, err := store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+			second, err := service.CreateDirectory(t.Context(), &models.DirScanDirectory{
 				Path: other, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
 			})
 			require.NoError(t, err, "a different directory remains configurable")
 			if operation == "create" {
-				_, err = store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+				_, err = service.CreateDirectory(t.Context(), &models.DirScanDirectory{
 					Path: alias, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
 				})
 			} else {
-				_, err = store.UpdateDirectory(t.Context(), second.ID, &models.DirScanDirectoryUpdateParams{Path: &alias})
+				_, err = service.UpdateDirectory(t.Context(), second.ID, &models.DirScanDirectoryUpdateParams{Path: &alias})
 			}
 			if !errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
 				t.Errorf("one Windows directory cannot become two routing identities: got error %v", err)
 			}
-			stored, err := store.GetDirectory(t.Context(), second.ID)
+			stored, err := service.GetDirectory(t.Context(), second.ID)
 			require.NoError(t, err)
 			assert.Equal(t, other, stored.Path)
 		})
 	}
 }
 
-func TestDirScanStore_WindowsMissingDirectoryIdentity(t *testing.T) {
+func TestService_WindowsMissingDirectoryIdentity(t *testing.T) {
 	for _, operation := range []string{"create", "update"} {
 		t.Run(operation, func(t *testing.T) {
 			root := t.TempDir()
 			path := filepath.Join(root, "Future Library")
 			alias := filepath.Join(root, "FUTURE LIBRARY")
 			other := filepath.Join(root, "Other Library")
-			db := setupDirScanTestDB(t)
+			db := testdb.NewMigratedSQLite(t, "dirscan-windows-identity")
 			instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 			require.NoError(t, err)
 			instance, err := instances.Create(t.Context(), "synthetic", "http://localhost:8080", "", "", nil, nil, false, nil)
 			require.NoError(t, err)
-			store := models.NewDirScanStore(db)
-			_, err = store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+			service := NewService(DefaultConfig(), models.NewDirScanStore(db), nil, nil, nil, nil, nil, nil, fsops.NewPool(instances, localbackend.NewBackend()), nil)
+			_, err = service.CreateDirectory(t.Context(), &models.DirScanDirectory{
 				Path: path, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
 			})
 			require.NoError(t, err, "a missing directory remains configurable")
-			second, err := store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+			second, err := service.CreateDirectory(t.Context(), &models.DirScanDirectory{
 				Path: other, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
 			})
 			require.NoError(t, err, "a different missing directory remains configurable")
 			if operation == "create" {
-				_, err = store.CreateDirectory(t.Context(), &models.DirScanDirectory{
+				_, err = service.CreateDirectory(t.Context(), &models.DirScanDirectory{
 					Path: alias, Enabled: true, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60,
 				})
 			} else {
-				_, err = store.UpdateDirectory(t.Context(), second.ID, &models.DirScanDirectoryUpdateParams{Path: &alias})
+				_, err = service.UpdateDirectory(t.Context(), second.ID, &models.DirScanDirectoryUpdateParams{Path: &alias})
 			}
 			require.ErrorIs(t, err, models.ErrDuplicateDirScanDirectoryPath)
-			stored, err := store.GetDirectory(t.Context(), second.ID)
+			stored, err := service.GetDirectory(t.Context(), second.ID)
 			require.NoError(t, err)
 			assert.Equal(t, other, stored.Path)
 		})
 	}
 }
 
-func TestDirScanStore_WindowsCaseSensitiveDirectoryIdentity(t *testing.T) {
+func TestService_WindowsCaseSensitiveDirectoryIdentity(t *testing.T) {
 	root := t.TempDir()
 	name, err := windows.UTF16PtrFromString(root)
 	require.NoError(t, err)
@@ -123,22 +126,22 @@ func TestDirScanStore_WindowsCaseSensitiveDirectoryIdentity(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, os.SameFile(firstInfo, secondInfo))
 
-	db := setupDirScanTestDB(t)
+	db := testdb.NewMigratedSQLite(t, "dirscan-windows-identity")
 	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 	instance, err := instances.Create(t.Context(), "synthetic", "http://localhost:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err)
-	store := models.NewDirScanStore(db)
-	_, err = store.CreateDirectory(t.Context(), &models.DirScanDirectory{Path: first, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
+	service := NewService(DefaultConfig(), models.NewDirScanStore(db), nil, nil, nil, nil, nil, nil, fsops.NewPool(instances, localbackend.NewBackend()), nil)
+	_, err = service.CreateDirectory(t.Context(), &models.DirScanDirectory{Path: first, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
 	require.NoError(t, err)
-	_, err = store.CreateDirectory(t.Context(), &models.DirScanDirectory{Path: second, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
+	_, err = service.CreateDirectory(t.Context(), &models.DirScanDirectory{Path: second, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
 	require.ErrorIs(t, err, models.ErrDuplicateDirScanDirectoryPath, "webhook routing cannot distinguish these physical directories")
 	other := filepath.Join(root, "Other")
-	created, err := store.CreateDirectory(t.Context(), &models.DirScanDirectory{Path: other, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
+	created, err := service.CreateDirectory(t.Context(), &models.DirScanDirectory{Path: other, TargetInstanceID: instance.ID, ScanIntervalMinutes: 60})
 	require.NoError(t, err)
-	_, err = store.UpdateDirectory(t.Context(), created.ID, &models.DirScanDirectoryUpdateParams{Path: &second})
+	_, err = service.UpdateDirectory(t.Context(), created.ID, &models.DirScanDirectoryUpdateParams{Path: &second})
 	require.ErrorIs(t, err, models.ErrDuplicateDirScanDirectoryPath)
-	stored, err := store.GetDirectory(t.Context(), created.ID)
+	stored, err := service.GetDirectory(t.Context(), created.ID)
 	require.NoError(t, err)
 	require.Equal(t, other, stored.Path)
 }

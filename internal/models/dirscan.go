@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -295,9 +294,6 @@ func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirector
 	if dir == nil {
 		return nil, errors.New("directory is nil")
 	}
-	if err := s.ensureUniqueDirectoryPath(ctx, dir.Path, 0); err != nil {
-		return nil, err
-	}
 
 	var qbitPathPrefix any
 	if dir.QbitPathPrefix != "" {
@@ -509,9 +505,6 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 
 	previousTargetInstanceID := existing.TargetInstanceID
 	applyDirectoryUpdateParams(existing, params)
-	if err := s.ensureUniqueDirectoryPath(ctx, existing.Path, id); err != nil {
-		return nil, err
-	}
 
 	var qbitPathPrefix any
 	if existing.QbitPathPrefix != "" {
@@ -570,26 +563,6 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 	}
 
 	return s.GetDirectory(ctx, id)
-}
-
-func (s *DirScanStore) ensureUniqueDirectoryPath(ctx context.Context, path string, excludeID int) error {
-	cleanPath := filepath.Clean(path)
-
-	dirs, err := s.ListDirectories(ctx)
-	if err != nil {
-		return fmt.Errorf("list directories: %w", err)
-	}
-
-	for _, dir := range dirs {
-		if dir.ID == excludeID {
-			continue
-		}
-		if rel, err := filepath.Rel(dir.Path, cleanPath); err == nil && rel == "." {
-			return fmt.Errorf("%w: %s", ErrDuplicateDirScanDirectoryPath, cleanPath)
-		}
-	}
-
-	return nil
 }
 
 func applyDirectoryUpdateParams(existing *DirScanDirectory, params *DirScanDirectoryUpdateParams) {
