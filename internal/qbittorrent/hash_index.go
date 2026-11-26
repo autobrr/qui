@@ -5,6 +5,8 @@ package qbittorrent
 
 import (
 	"runtime"
+	"slices"
+	"strings"
 	"sync"
 	"weak"
 
@@ -112,36 +114,32 @@ func alternateHashes(snapshot *qbt.SyncSnapshot) map[infohash.Hash]*qbt.Torrent 
 	if snapshot == nil {
 		return alternates
 	}
-	snapshot.Matching(func(t *qbt.Torrent) bool {
-		for _, raw := range [2]string{t.InfohashV1, t.InfohashV2} {
-			if raw == "" || raw == t.Hash {
-				continue
-			}
-			if hash, err := infohash.Parse(raw); err == nil {
-				if _, taken := alternates[hash]; !taken {
-					alternates[hash] = t
-				}
+	add := func(t *qbt.Torrent, raw string) {
+		if raw == "" || strings.HasPrefix(raw, t.Hash) {
+			return
+		}
+		if hash, err := infohash.Parse(raw); err == nil {
+			if _, taken := alternates[hash]; !taken {
+				alternates[hash] = t
 			}
 		}
+	}
+	snapshot.Matching(func(t *qbt.Torrent) bool {
+		add(t, t.InfohashV1)
+		add(t, t.InfohashV2)
 		return false
 	})
 	return alternates
 }
 
 func foundTorrents(found []*qbt.Torrent) []*qbt.Torrent {
-	torrents := make([]*qbt.Torrent, 0, len(found))
+	found = slices.DeleteFunc(found, func(t *qbt.Torrent) bool { return t == nil })
 	seen := make(map[*qbt.Torrent]struct{}, len(found))
-	for _, torrent := range found {
-		if torrent == nil {
-			continue
-		}
-		if _, dup := seen[torrent]; dup {
-			continue
-		}
-		seen[torrent] = struct{}{}
-		torrents = append(torrents, torrent)
-	}
-	return torrents
+	return slices.DeleteFunc(found, func(t *qbt.Torrent) bool {
+		_, dup := seen[t]
+		seen[t] = struct{}{}
+		return dup
+	})
 }
 
 func uniqueHashStrings(hashes []string) []string {

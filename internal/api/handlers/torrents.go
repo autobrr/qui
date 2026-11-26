@@ -592,11 +592,14 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 
 func matchedHashes(requested map[infohash.Hash][]string, torrent *qbt.Torrent) []string {
 	var matched []string
-	for _, hash := range torrentHashes(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
-		for _, sent := range requested[hash] {
-			if !slices.Contains(matched, sent) {
-				matched = append(matched, sent)
-			}
+	hashes := torrentHashes(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2)
+	for i, hash := range hashes {
+		switch {
+		case slices.Contains(hashes[:i], hash):
+		case matched == nil:
+			matched = requested[hash]
+		default:
+			matched = append(slices.Clip(matched), requested[hash]...)
 		}
 	}
 	return matched
