@@ -540,10 +540,11 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       return api.addTorrent(instanceId, submitData)
     },
     onSettled: () => setBatchProgress(null),
-    onError: (error) => {
+    onError: (error, submitted) => {
       if (error instanceof BatchAddError) {
         refetchAfterAdd()
-        form.setFieldValue("torrentFiles", error.unconfirmed)
+        const addedSince = (form.getFieldValue("torrentFiles") ?? []).filter(file => !submitted.torrentFiles?.includes(file))
+        form.setFieldValue("torrentFiles", [...error.unconfirmed, ...addedSince])
         toast.error(t("addTorrentDialog.toast.batchFailed", { added: error.added, total: error.total }), {
           description: [
             t("addTorrentDialog.toast.batchFailedDescription", { batch: error.batch, batches: error.batches, error: error.message }),

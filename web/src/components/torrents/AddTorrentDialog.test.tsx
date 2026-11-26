@@ -360,3 +360,38 @@ it("keeps only the unconfirmed files in the dialog when a batch fails, so Add se
   await waitFor(() => expect(addFilesInBatches).toHaveBeenCalledTimes(2))
   expect(vi.mocked(addFilesInBatches).mock.calls[1][2]).toEqual(files.slice(1))
 })
+
+it("keeps a file added while the batches run when a batch fails", async () => {
+  vi.mocked(api.checkTorrentDuplicates).mockResolvedValue({ duplicates: [] })
+  vi.mocked(api.getInstancePreferenceView).mockReturnValue(new Promise(() => {}))
+  const files = ["Example.Show.S01E01.torrent", "Example.Show.S01E02.torrent"].map(name => new File(["x"], name))
+  const late = new File(["x"], "Example.Show.S01E09.torrent")
+  let fail: (error: unknown) => void = () => {}
+  vi.mocked(addFilesInBatches).mockReturnValueOnce(new Promise((_, reject) => { fail = reject }))
+
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  client.setQueryData(["instance-preferences", 1], preferences)
+  const dialog = (dropPayload: AddTorrentDropPayload | null) => (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <AddTorrentDialog instanceId={1} open onOpenChange={() => {}} dropPayload={dropPayload} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+  const ui = render(dialog({ type: "file", files }))
+  ui.rerender(dialog(null))
+
+  fireEvent.click(await waitFor(() => ui.getByRole("button", { name: "addTorrentDialog.footer.addCount" })))
+  await waitFor(() => expect(addFilesInBatches).toHaveBeenCalled())
+  const input = ui.baseElement.querySelector<HTMLInputElement>("input#torrentFiles")
+  if (!input) throw new Error("file input missing")
+  fireEvent.change(input, { target: { files: [late] } })
+  await waitFor(() => ui.getByText("Example.Show.S01E09.torrent"))
+
+  fail(new BatchAddError("HTTP error! status: 504", { added: 1, total: 2, batch: 2, batches: 2, unconfirmed: files.slice(1), failedFiles: [] }))
+
+  await waitFor(() => expect(toast.error).toHaveBeenCalled())
+  await waitFor(() => expect(ui.queryByText("Example.Show.S01E01.torrent")).toBeNull())
+  expect(ui.getByText("Example.Show.S01E02.torrent")).not.toBeNull()
+  expect(ui.getByText("Example.Show.S01E09.torrent")).not.toBeNull()
+})
