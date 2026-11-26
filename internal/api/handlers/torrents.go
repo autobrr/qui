@@ -69,6 +69,7 @@ type TorrentsHandler struct {
 	archiveExporter   torrentArchiveExporter
 	deleteMatches     deleteMatchFinder
 	deleter           torrentDeleter
+	installPaths      installPaths
 	held              heldTorrents
 }
 
@@ -3043,6 +3044,10 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	info, err := file.Stat()
 	if err != nil || info.IsDir() {
 		RespondError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+	if h.isInstallFile(info) {
+		RespondError(w, http.StatusForbidden, "qui does not serve its own config or database files")
 		return
 	}
 
