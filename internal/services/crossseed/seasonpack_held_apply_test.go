@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -214,4 +216,32 @@ func TestSeasonPackApplySurvivesARebuildBetweenCoverageAndAssembly(t *testing.T)
 			require.Len(t, held.linked(), 4)
 		})
 	}
+}
+
+func TestSeasonPackApplyAssemblesWhileABlockedInstanceRebuilds(t *testing.T) {
+	root := t.TempDir()
+	rig := newPackRig(t, root,
+		packLibraryOnDisk(t, root, packTorrents('4', packAliasedLocal, 1, 2, 3, 4)),
+		packLibraryOnDisk(t, root, packTorrents('2', packNotHeldFile, 1)))
+	held := rig.applying(rig.held(packAliasSource()))
+	requireAlternateTitles(t, held.Service, packAliasedKey)
+	held.sonarr.err = errors.New("Sonarr does not answer")
+	pack := packOf(t, packAliased, packAliasedFile, 1, 2, 3, 4)
+	torrentBytes, err := base64.StdEncoding.DecodeString(pack)
+	require.NoError(t, err)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	require.NoError(t, err)
+	held.blocklistStore = models.NewCrossSeedBlocklistStore(rig.db)
+	_, err = held.blocklistStore.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: 2, InfoHash: meta.HashV1})
+	require.NoError(t, err)
+	held.adds = withLinkAdder(held.Service)
+	held.heldTitles.mu.Lock()
+	held.heldTitles.instances[2].needsBuild = true
+	held.heldTitles.mu.Unlock()
+
+	resp := held.apply(t, packAliased, pack)
+
+	require.True(t, resp.Applied, "%s: %s", resp.Reason, resp.Message)
+	require.Equal(t, 1, resp.InstanceID)
+	requireLinked(t, held, packAliasSources())
 }
