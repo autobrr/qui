@@ -47,9 +47,9 @@ export function MagnetHandlerBanner() {
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md bg-blue-500/10 border border-blue-500/20 px-4 py-2.5 text-sm">
+    <div className="flex items-center justify-between gap-4 rounded-md bg-info/10 border border-info/20 px-4 py-2.5 text-sm">
       <div className="flex items-center gap-2">
-        <Link2 className="h-4 w-4 text-blue-500" />
+        <Link2 className="h-4 w-4 text-info" />
         <span>{t("magnetHandler.registerPrompt")}</span>
       </div>
       <div className="flex items-center gap-2">

@@ -108,7 +108,7 @@ function NotSentRow({ text }: { text: string }) {
   return (
     <li className="flex items-start gap-3 rounded-md px-2 py-1.5 hover:bg-accent/60">
       <span className="mt-1.5 flex h-2 w-4 items-center justify-center">
-        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-yellow-500 ring-3 ring-yellow-500/20" />
+        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-warning ring-3 ring-warning/20" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block break-words text-sm font-medium">{draftTitle(text)}</span>
@@ -206,7 +206,7 @@ function StatusDot({ report }: { report: ListedProblemReport }) {
       className={cn(
         "inline-flex h-2 w-2 shrink-0 rounded-full",
         received && "bg-muted-foreground ring-3 ring-muted-foreground/20",
-        open && "bg-green-500 ring-3 ring-green-500/20",
+        open && "bg-success ring-3 ring-success/20",
         !received && !open && "border border-muted-foreground/60"
       )}
     />

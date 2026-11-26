@@ -103,7 +103,7 @@ function OpenSidebarButton({ open, buttonRef, onClick }: { open: boolean; button
           {systemNotices.length > 0 && (
             <span aria-hidden="true" className={cn("absolute top-1.5 left-1.5 h-1.5 w-1.5 rounded-full ring-2 ring-background transition-colors group-hover:ring-muted", systemNoticeDotColor[topSystemNoticeSeverity(systemNotices)].fill)} />
           )}
-          {showUpdate && <span aria-hidden="true" className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-green-500 ring-2 ring-background transition-colors group-hover:ring-muted" />}
+          {showUpdate && <span aria-hidden="true" className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-success ring-2 ring-background transition-colors group-hover:ring-muted" />}
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="text-xs">

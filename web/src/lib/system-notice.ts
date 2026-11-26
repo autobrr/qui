@@ -26,7 +26,7 @@ type Severity = SystemNotice["severity"]
 
 export const systemNoticeDotColor: Record<Severity, { fill: string; ring: string }> = {
   error: { fill: "bg-destructive", ring: "ring-destructive/20" },
-  warning: { fill: "bg-yellow-500", ring: "ring-yellow-500/20" },
+  warning: { fill: "bg-warning", ring: "ring-warning/20" },
 }
 
 export function topSystemNoticeSeverity(notices: SystemNotice[]): Severity {

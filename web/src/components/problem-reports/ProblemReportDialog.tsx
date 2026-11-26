@@ -311,7 +311,7 @@ function Refusal({ error }: { error: Error }) {
   const { title, body } = refusalMessage(t, error)
   return (
     <div role="alert" className="relative">
-      <span className="absolute -left-6 top-1.5 inline-flex h-2 w-2 rounded-full bg-yellow-500 ring-3 ring-yellow-500/20" />
+      <span className="absolute -left-6 top-1.5 inline-flex h-2 w-2 rounded-full bg-warning ring-3 ring-warning/20" />
       {title && <p className="text-sm font-semibold leading-snug">{title}</p>}
       <p className={cn("text-13 leading-relaxed", title ? "mt-0.5 text-muted-foreground" : "text-foreground")}>{body}</p>
     </div>

@@ -202,7 +202,7 @@ function SupportBody({ onClose }: { onClose: () => void }) {
         <p className="text-sm leading-5 text-muted-foreground sm:leading-6">{t("support.intro")}</p>
         {licensed && (
           <p className="flex items-start gap-2 text-sm leading-5 sm:leading-6">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-500 sm:mt-1" />
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-success sm:mt-1" />
             {t("support.licensed")}
           </p>
         )}

@@ -68,7 +68,7 @@ export function GroupChart({ bars, unit, color }: GroupChartProps) {
         <YAxis tickLine={false} axisLine={false} width={narrow ? "auto" : 72} ticks={ticks} domain={[ticks[0], ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Math.abs(Number(value)))} />
         <ReferenceLine y={0} stroke="var(--border)" />
         {rows.map(row => row.gapSeconds > 0 && (
-          <ReferenceLine key={row.start} x={row.start} stroke="#eab308" strokeDasharray="2 3" />
+          <ReferenceLine key={row.start} x={row.start} stroke="var(--warning)" strokeDasharray="2 3" />
         ))}
         <ChartTooltip
           {...tooltip.tooltip}
@@ -94,7 +94,7 @@ export function GroupChart({ bars, unit, color }: GroupChartProps) {
                     </div>
                   ))}
                   {row.gapSeconds > 0 && (
-                    <div className="pt-1 text-yellow-600 dark:text-yellow-500">{t("chart.gap", { duration: formatGapLength(row.gapSeconds, locale) })}</div>
+                    <div className="pt-1 text-warning">{t("chart.gap", { duration: formatGapLength(row.gapSeconds, locale) })}</div>
                   )}
                 </div>
               </div>

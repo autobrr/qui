@@ -148,7 +148,7 @@ export function MobileFooterNav() {
   })
   const systemNotices = useSystemNotices()
   const openSystemNotice = useOpenSystemNotice(systemNotices)
-  const updateItemClass = "flex items-center gap-2 text-green-600 dark:text-green-400 focus:text-green-600 dark:focus:text-green-400"
+  const updateItemClass = "flex items-center gap-2 text-success focus:text-success"
   const updateItemLabel = updateInfo && (
     <>
       <Download className="h-4 w-4" />
@@ -261,7 +261,7 @@ export function MobileFooterNav() {
                 )}
                 {updateInfo && (
                   <Badge
-                    className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center bg-green-500 hover:bg-green-500 text-white"
+                    className="absolute -top-1 -right-2 h-4 w-4 p-0 flex items-center justify-center bg-success hover:bg-success text-background"
                     variant="default"
                   >
                     <Download className="h-2.5 w-2.5" />
