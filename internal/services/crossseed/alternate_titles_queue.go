@@ -94,7 +94,7 @@ func (q *alternateTitleQueue) run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		q.titles.store(title, answer.Titles)
+		q.titles.store(title, answer)
 		if len(answer.Titles) > 0 {
 			found++
 		}

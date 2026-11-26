@@ -75,7 +75,7 @@ func TestAlternateTitlesAskAgainOnceTheCacheLifetimeIsOver(t *testing.T) {
 				askedAt := source.askTimes()
 				require.Len(t, askedAt, 2)
 				require.GreaterOrEqual(t, askedAt[1].Sub(askedAt[0]), arr.DefaultPositiveCacheTTL, "the cache has dropped the answer")
-				require.Equal(t, []string{"laternenwache", "wachlaterne"}, a.of(title))
+				require.Equal(t, []string{"laternenwache", "wachlaterne"}, a.of(title, 0))
 			})
 		})
 	}
@@ -110,8 +110,8 @@ func TestAlternateTitlesAskEveryHeldTitleAgainWhenTheSourceChanges(t *testing.T)
 		require.ElementsMatch(t, []string{"Lantern Ward", "Amber Quay"}, source.askedTitles()[3:], "each held title once, and no title that left")
 		require.Equal(t, time.Second, askedAt[1].Sub(askedAt[0]), "the asks keep the rate of the source")
 		require.Equal(t, changed, askedAt[0])
-		require.Equal(t, []string{"laternenwache"}, a.of(held))
-		require.Equal(t, []string{"bernsteinkai"}, a.of(failing), "a failed title does not wait for its retry")
+		require.Equal(t, []string{"laternenwache"}, a.of(held, 0))
+		require.Equal(t, []string{"bernsteinkai"}, a.of(failing, 0), "a failed title does not wait for its retry")
 
 		time.Sleep(alternateTitleRetry)
 		synctest.Wait()
@@ -135,7 +135,7 @@ func TestAlternateTitlesEndThePauseOfASourceWhenItChanges(t *testing.T) {
 		source.change()
 		synctest.Wait()
 
-		require.Equal(t, []string{"laternenwache"}, a.of(title), "a fixed instance is asked at once")
+		require.Equal(t, []string{"laternenwache"}, a.of(title, 0), "a fixed instance is asked at once")
 		require.Equal(t, changed, source.askTimes()[sourceFailuresInARow])
 	})
 }
@@ -220,7 +220,7 @@ func TestArrAlternateTitlesAskAgainWhenAnInstanceIsAdded(t *testing.T) {
 	a.queues[0].every = 0
 	title := holdName(a, arrSeriesName, 1)
 	awaitAsk(t, asked)
-	require.Empty(t, a.of(title))
+	require.Empty(t, a.of(title, 0))
 
 	_, err = instances.Create(t.Context(), models.ArrInstanceTypeSonarr, "sonarr", srv.URL, "api-key", nil, nil, true, 1, 15)
 	require.NoError(t, err)
@@ -229,7 +229,7 @@ func TestArrAlternateTitlesAskAgainWhenAnInstanceIsAdded(t *testing.T) {
 	holdName(a, arrMovieName, 1)
 	awaitAsk(t, asked)
 
-	require.Contains(t, a.of(title), "laternenwache")
+	require.Contains(t, a.of(title, 0), "laternenwache")
 }
 
 func awaitAsk(t *testing.T, asked <-chan struct{}) {
