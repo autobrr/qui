@@ -48,7 +48,7 @@ func testCachedAnswerNearItsEnd(t *testing.T, openDB func(t *testing.T) *databas
 			service.nextCacheCleanup = time.Now().Add(time.Hour)
 			titleHash := models.ComputeTitleHash(solitudeRelease)
 			episodeMap := &models.EpisodeMap{Season: 1, Episode: 1, Absolute: 1}
-			require.NoError(t, cacheStore.SetWithTitles(t.Context(), titleHash, string(ContentTypeTV), nil, tt.ids, []string{"Solitude"}, episodeMap, true, tt.ids == nil, tt.kept))
+			require.NoError(t, cacheStore.SetWithTitles(t.Context(), titleHash, string(ContentTypeTV), nil, tt.ids, []string{"Solitude"}, nil, episodeMap, true, tt.ids == nil, tt.kept))
 			entry, err := cacheStore.Get(t.Context(), titleHash, string(ContentTypeTV))
 			require.NoError(t, err)
 			require.Equal(t, tt.kept, entry.ExpiresAt.Sub(entry.CachedAt))

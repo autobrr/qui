@@ -138,7 +138,8 @@ func (h *heldTitles) ready(ctx context.Context, instanceIDs []int) bool {
 
 func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[int]heldCandidates {
 	keys := h.svc.matcher().titleKeys(query.announced)
-	for _, title := range h.alternates.namedByAny(keys) {
+	season := query.announced.release.Series
+	for _, title := range h.alternates.namedByAny(keys, season) {
 		keys = append(keys, title.identity.key)
 	}
 	keys = append(keys, query.addedKeys...)
@@ -152,7 +153,7 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 		}
 		held, waiting := inst.index.candidates(keys, query)
 		if len(held)+len(waiting) > 0 {
-			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting), alternateTitles: inst.alternateTitles(held)}
+			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting), alternateTitles: inst.alternateTitles(held, season)}
 		}
 	}
 	return found
@@ -177,7 +178,7 @@ func listed(index qbittorrent.HashIndex, hash string) (*qbt.Torrent, bool) {
 	return index.Listed(id)
 }
 
-func (inst *heldInstance) alternateTitles(hashes []string) map[*qbt.Torrent][]string {
+func (inst *heldInstance) alternateTitles(hashes []string, season int) map[*qbt.Torrent][]string {
 	titles := map[*qbt.Torrent][]string{}
 	index := qbittorrent.NewHashIndex(inst.snapshot)
 	for _, hash := range hashes {
@@ -185,7 +186,7 @@ func (inst *heldInstance) alternateTitles(hashes []string) map[*qbt.Torrent][]st
 		if !ok {
 			continue
 		}
-		if alternates := inst.index.alternates.of(inst.index.torrents[hash].title); len(alternates) > 0 {
+		if alternates := inst.index.alternates.of(inst.index.torrents[hash].title, season); len(alternates) > 0 {
 			titles[torrent] = alternates
 		}
 	}

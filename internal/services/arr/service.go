@@ -45,6 +45,7 @@ const (
 type ExternalIDsResult struct {
 	IDs             *models.ExternalIDs `json:"ids,omitempty"`
 	Titles          []string            `json:"titles,omitempty"`
+	TitleSeasons    TitleSeasons        `json:"-"`
 	TitlesKnown     bool                `json:"-"`
 	EpisodeMap      *models.EpisodeMap  `json:"episode_map,omitempty"`
 	EpisodeMapKnown bool                `json:"-"`
@@ -203,6 +204,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 	return &ExternalIDsResult{
 		IDs:             &cacheEntry.ExternalIDs,
 		Titles:          cacheEntry.Titles,
+		TitleSeasons:    cacheEntry.TitleSeasons,
 		TitlesKnown:     cacheEntry.HasTitles,
 		EpisodeMap:      cacheEntry.EpisodeMap,
 		EpisodeMapKnown: cacheEntry.HasEpisodeMap,
@@ -328,7 +330,7 @@ func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title stri
 	titles := append([]string{}, result.Titles...)
 	writeCtx, cancel := detachedCacheWriteContext(ctx)
 	defer cancel()
-	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, result.EpisodeMap, episodeMapKnown, false, cacheTTL(s.positiveTTL, result.Incomplete)); err != nil {
+	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, result.TitleSeasons, result.EpisodeMap, episodeMapKnown, false, cacheTTL(s.positiveTTL, result.Incomplete)); err != nil {
 		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
 	}
 
@@ -349,6 +351,7 @@ func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title stri
 	return &ExternalIDsResult{
 		IDs:             result.IDs,
 		Titles:          result.Titles,
+		TitleSeasons:    result.TitleSeasons,
 		TitlesKnown:     true,
 		EpisodeMap:      result.EpisodeMap,
 		EpisodeMapKnown: episodeMapKnown,

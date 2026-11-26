@@ -13985,6 +13985,13 @@ components:
           type: array
           items:
             type: string
+        title_seasons:
+          type: object
+          description: The titles that Sonarr gives only to some seasons, keyed by the lower-case title, with the seasons that each one names. An empty list means that the title names no season.
+          additionalProperties:
+            type: array
+            items:
+              type: integer
         has_titles:
           type: boolean
         episode_map:
