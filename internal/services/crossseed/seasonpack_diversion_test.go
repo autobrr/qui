@@ -338,7 +338,11 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 			_, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{DryRun: tt.dryRun}, map[int]jackett.EnabledIndexerInfo{})
 			require.NoError(t, err)
 			requests := injection.Requests()
-			require.Equal(t, tt.wantInvoked, len(requests) == 1, "CrossSeed invocation mismatch")
+			wantRequests := 0
+			if tt.wantInvoked {
+				wantRequests = 1
+			}
+			require.Len(t, requests, wantRequests, "CrossSeed invocation mismatch")
 			for _, request := range requests {
 				require.Equal(t, base64.StdEncoding.EncodeToString([]byte("torrent")), request.TorrentData, "the Injection gets the downloaded pack")
 				require.Equal(t, []int{instanceID}, request.TargetInstanceIDs)
@@ -464,7 +468,11 @@ func TestProcessAutomationCandidate_PackFailCooldownSkipsDownload(t *testing.T) 
 			require.NoError(t, err)
 			require.Equal(t, tt.wantDownloads, downloads, "torrent download count mismatch")
 			requests := injection.Requests()
-			require.Equal(t, tt.wantInvoked, len(requests) == 1, "CrossSeed invocation mismatch")
+			wantRequests := 0
+			if tt.wantInvoked {
+				wantRequests = 1
+			}
+			require.Len(t, requests, wantRequests, "CrossSeed invocation mismatch")
 			for _, request := range requests {
 				require.Equal(t, base64.StdEncoding.EncodeToString([]byte("torrent")), request.TorrentData, "the Injection gets the downloaded pack")
 				require.Equal(t, []int{instanceID}, request.TargetInstanceIDs)
