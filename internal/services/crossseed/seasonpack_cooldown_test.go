@@ -136,7 +136,7 @@ func TestProcessAutomationCandidate_InvalidTorrentMarksFeedItemProcessed(t *test
 					return []byte("torrent"), nil
 				},
 			}
-			service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				require.True(t, req.respectSeasonPackCooldown)
 				require.Equal(t, "Show.Title.S01.1080p.WEB.H264-GRP", req.sourceTitle)
 				results := make([]InstanceCrossSeedResult, len(tt.results))
@@ -150,7 +150,7 @@ func TestProcessAutomationCandidate_InvalidTorrentMarksFeedItemProcessed(t *test
 					seasonPackPermanentFail: true,
 					Results:                 results,
 				}, nil
-			}
+			})
 
 			settings := &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs:           []int{instance.ID},
