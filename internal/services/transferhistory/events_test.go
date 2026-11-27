@@ -5,6 +5,7 @@ package transferhistory_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/services/transferhistory"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type deletesCheck struct {
@@ -41,8 +43,17 @@ func eventCounts(rows []transferhistory.LibraryRow) []transferhistory.LibraryRow
 
 var twoDays = transferhistory.LibraryQuery{InstanceID: instanceID, From: day10, To: day10.Add(48 * time.Hour)}
 
+var (
+	hashA = strings.Repeat("a", 40)
+	hashB = strings.Repeat("b", 40)
+	hashC = strings.Repeat("c", 40)
+	hashD = strings.Repeat("d", 40)
+	hashE = strings.Repeat("e", 40)
+	hashF = strings.Repeat("f", 40)
+)
+
 func note(time time.Time, cause transferhistory.DeleteCause, hashes ...string) step {
-	return step{note: &transferhistory.DeleteNote{InstanceID: instanceID, Time: time, Hashes: hashes, Cause: cause}}
+	return step{note: &transferhistory.DeleteNote{InstanceID: instanceID, Time: time, Hashes: infohash.ParseAll(hashes), Cause: cause}}
 }
 
 func expectDeletes(filter transferhistory.CauseFilter, counts transferhistory.DeleteCounts, want ...transferhistory.DeleteEvent) step {
@@ -108,117 +119,117 @@ func TestTransferHistoryEventsPostgresIntegration(t *testing.T) {
 		{
 			name: "a delete with a delete note has the cause of the note",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0), torrent("c", 0, 0)),
-				note(at(4*time.Minute), byUser, "b"),
-				reading(at(5*time.Minute), torrent("a", 0, 0), torrent("b", 0, 0), torrent("c", 0, 0)),
-				reading(at(10*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0), torrent(hashC, 0, 0)),
+				note(at(4*time.Minute), byUser, hashB),
+				reading(at(5*time.Minute), torrent(hashA, 0, 0), torrent(hashB, 0, 0), torrent(hashC, 0, 0)),
+				reading(at(10*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.UserCauses, transferhistory.DeleteCounts{User: 1, Other: 1},
-					deleted("b", at(10*time.Minute), 0, 0, byUser)),
+					deleted(hashB, at(10*time.Minute), 0, 0, byUser)),
 				expectDeletes(transferhistory.OtherCauses, transferhistory.DeleteCounts{User: 1, Other: 1},
-					deleted("c", at(10*time.Minute), 0, 0, outside)),
+					deleted(hashC, at(10*time.Minute), 0, 0, outside)),
 			},
 		},
 		{
 			name: "a delete note from after a reading does not name the cause of the delete that the reading shows",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
-				note(at(7*time.Minute), byUser, "b"),
-				reading(at(5*time.Minute), torrent("a", 0, 0)),
-				reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(5*time.Minute+30*time.Second))),
-				reading(at(10*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)),
+				note(at(7*time.Minute), byUser, hashB),
+				reading(at(5*time.Minute), torrent(hashA, 0, 0)),
+				reading(at(6*time.Minute), torrent(hashA, 0, 0), addedAt(torrent(hashB, 0, 0), at(5*time.Minute+30*time.Second))),
+				reading(at(10*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{User: 1, Other: 1},
-					deleted("b", at(10*time.Minute), 0, 0, byUser),
-					deleted("b", at(5*time.Minute), 0, 0, outside)),
+					deleted(hashB, at(10*time.Minute), 0, 0, byUser),
+					deleted(hashB, at(5*time.Minute), 0, 0, outside)),
 			},
 		},
 		{
 			name: "a delete with two delete notes has the cause of the first one",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
-				note(at(time.Minute), byRule, "b"),
-				note(at(2*time.Minute), byProxy, "b"),
-				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)),
+				note(at(time.Minute), byRule, hashB),
+				note(at(2*time.Minute), byProxy, hashB),
+				reading(at(5*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Automation: 1},
-					deleted("b", at(5*time.Minute), 0, 0, byRule)),
+					deleted(hashB, at(5*time.Minute), 0, 0, byRule)),
 			},
 		},
 		{
 			name: "a delete note from after a reading stays for the next delete, also behind an earlier note",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
-				note(at(4*time.Minute), byUser, "b"),
-				note(at(7*time.Minute), byProxy, "b"),
-				reading(at(5*time.Minute), torrent("a", 0, 0)),
-				reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(5*time.Minute+30*time.Second))),
-				reading(at(10*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)),
+				note(at(4*time.Minute), byUser, hashB),
+				note(at(7*time.Minute), byProxy, hashB),
+				reading(at(5*time.Minute), torrent(hashA, 0, 0)),
+				reading(at(6*time.Minute), torrent(hashA, 0, 0), addedAt(torrent(hashB, 0, 0), at(5*time.Minute+30*time.Second))),
+				reading(at(10*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{User: 1, Other: 1},
-					deleted("b", at(10*time.Minute), 0, 0, byProxy),
-					deleted("b", at(5*time.Minute), 0, 0, byUser)),
+					deleted(hashB, at(10*time.Minute), 0, 0, byProxy),
+					deleted(hashB, at(5*time.Minute), 0, 0, byUser)),
 			},
 		},
 		{
 			name: "delete notes that arrive out of the order of their time name the cause by their time",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
-				note(at(7*time.Minute), byProxy, "b"),
-				note(at(4*time.Minute), byUser, "b"),
-				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)),
+				note(at(7*time.Minute), byProxy, hashB),
+				note(at(4*time.Minute), byUser, hashB),
+				reading(at(5*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{User: 1},
-					deleted("b", at(5*time.Minute), 0, 0, byUser)),
+					deleted(hashB, at(5*time.Minute), 0, 0, byUser)),
 			},
 		},
 		{
 			name: "a delete note names a hash in upper or lower case",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
-				note(at(time.Minute), byRule, "B"),
-				reading(at(5*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)),
+				note(at(time.Minute), byRule, strings.ToUpper(hashB)),
+				reading(at(5*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Automation: 1},
-					deleted("b", at(5*time.Minute), 0, 0, byRule)),
+					deleted(hashB, at(5*time.Minute), 0, 0, byRule)),
 			},
 		},
 		{
 			name: "a delete note ends when a reading 5 minutes after it still holds the torrent",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
-				note(at(time.Minute), byUser, "b"),
-				reading(at(6*time.Minute), torrent("a", 0, 0), torrent("b", 0, 0)),
-				reading(at(11*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)),
+				note(at(time.Minute), byUser, hashB),
+				reading(at(6*time.Minute), torrent(hashA, 0, 0), torrent(hashB, 0, 0)),
+				reading(at(11*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{Other: 1},
-					deleted("b", at(11*time.Minute), 0, 0, outside)),
+					deleted(hashB, at(11*time.Minute), 0, 0, outside)),
 			},
 		},
 		{
 			name: "a delete note of more than 5 minutes ago still names the cause when no reading held the torrent since",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)),
-				note(at(time.Minute), byUser, "b"),
-				reading(at(30*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)),
+				note(at(time.Minute), byUser, hashB),
+				reading(at(30*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.AllCauses, transferhistory.DeleteCounts{User: 1},
-					deleted("b", at(30*time.Minute), 0, 0, byUser)),
+					deleted(hashB, at(30*time.Minute), 0, 0, byUser)),
 			},
 		},
 		{
 			name: "the filter selects a kind of cause and the counts hold each kind",
 			steps: []step{
-				reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0), torrent("c", 0, 0), torrent("d", 0, 0), torrent("e", 0, 0), torrent("f", 0, 0)),
-				note(at(4*time.Minute), byUser, "b"),
-				reading(at(5*time.Minute), torrent("a", 0, 0), torrent("c", 0, 0), torrent("d", 0, 0), torrent("e", 0, 0), torrent("f", 0, 0)),
-				note(at(9*time.Minute), byRule, "c"),
-				reading(at(10*time.Minute), torrent("a", 0, 0), torrent("d", 0, 0), torrent("e", 0, 0), torrent("f", 0, 0)),
-				note(at(14*time.Minute), byProxy, "d"),
-				reading(at(15*time.Minute), torrent("a", 0, 0), torrent("e", 0, 0), torrent("f", 0, 0)),
-				note(at(19*time.Minute), byRestore, "e"),
-				reading(at(20*time.Minute), torrent("a", 0, 0), torrent("f", 0, 0)),
-				reading(at(25*time.Minute), torrent("a", 0, 0)),
+				reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0), torrent(hashC, 0, 0), torrent(hashD, 0, 0), torrent(hashE, 0, 0), torrent(hashF, 0, 0)),
+				note(at(4*time.Minute), byUser, hashB),
+				reading(at(5*time.Minute), torrent(hashA, 0, 0), torrent(hashC, 0, 0), torrent(hashD, 0, 0), torrent(hashE, 0, 0), torrent(hashF, 0, 0)),
+				note(at(9*time.Minute), byRule, hashC),
+				reading(at(10*time.Minute), torrent(hashA, 0, 0), torrent(hashD, 0, 0), torrent(hashE, 0, 0), torrent(hashF, 0, 0)),
+				note(at(14*time.Minute), byProxy, hashD),
+				reading(at(15*time.Minute), torrent(hashA, 0, 0), torrent(hashE, 0, 0), torrent(hashF, 0, 0)),
+				note(at(19*time.Minute), byRestore, hashE),
+				reading(at(20*time.Minute), torrent(hashA, 0, 0), torrent(hashF, 0, 0)),
+				reading(at(25*time.Minute), torrent(hashA, 0, 0)),
 				expectDeletes(transferhistory.AutomationCauses, transferhistory.DeleteCounts{Automation: 1, User: 1, Other: 3},
-					deleted("c", at(10*time.Minute), 0, 0, byRule)),
+					deleted(hashC, at(10*time.Minute), 0, 0, byRule)),
 				expectDeletes(transferhistory.UserCauses, transferhistory.DeleteCounts{Automation: 1, User: 1, Other: 3},
-					deleted("b", at(5*time.Minute), 0, 0, byUser)),
+					deleted(hashB, at(5*time.Minute), 0, 0, byUser)),
 				expectDeletes(transferhistory.OtherCauses, transferhistory.DeleteCounts{Automation: 1, User: 1, Other: 3},
-					deleted("f", at(25*time.Minute), 0, 0, outside),
-					deleted("e", at(20*time.Minute), 0, 0, byRestore),
-					deleted("d", at(15*time.Minute), 0, 0, byProxy)),
+					deleted(hashF, at(25*time.Minute), 0, 0, outside),
+					deleted(hashE, at(20*time.Minute), 0, 0, byRestore),
+					deleted(hashD, at(15*time.Minute), 0, 0, byProxy)),
 			},
 		},
 		{
@@ -564,12 +575,12 @@ func TestAdapterGivesTheDeleteActorAsTheCause(t *testing.T) {
 
 	now := time.Now().UTC()
 	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: now.Add(-5 * time.Minute), Torrents: []transferhistory.Torrent{
-		torrent("a", 0, 0), torrent("b", 0, 0), torrent("c", 0, 0), torrent("d", 0, 0),
+		torrent(hashA, 0, 0), torrent(hashB, 0, 0), torrent(hashC, 0, 0), torrent(hashD, 0, 0),
 	}})
-	adapter.NoteDelete(instanceID, []string{"a"}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: "Remove old"})
-	adapter.NoteDelete(instanceID, []string{"b"}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorUser})
-	adapter.NoteDelete(instanceID, []string{"c"}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorBackupRestore})
-	adapter.NoteDelete(instanceID, []string{"d"}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorClientProxy, KeyName: "sonarr"})
+	adapter.NoteDelete(instanceID, []string{hashA}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: "Remove old"})
+	adapter.NoteDelete(instanceID, []string{hashB}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorUser})
+	adapter.NoteDelete(instanceID, []string{hashC}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorBackupRestore})
+	adapter.NoteDelete(instanceID, []string{hashD}, qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorClientProxy, KeyName: "sonarr"})
 	module.Record(transferhistory.Reading{InstanceID: instanceID, Time: now.Add(time.Minute)})
 
 	answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: now.Add(time.Hour), Limit: 10})
@@ -578,7 +589,7 @@ func TestAdapterGivesTheDeleteActorAsTheCause(t *testing.T) {
 	for _, d := range answer.Deletes {
 		causes[d.Hash] = d.Cause
 	}
-	require.Equal(t, map[string]transferhistory.DeleteCause{"a": byRule, "b": byUser, "c": byRestore, "d": byProxy}, causes)
+	require.Equal(t, map[string]transferhistory.DeleteCause{hashA: byRule, hashB: byUser, hashC: byRestore, hashD: byProxy}, causes)
 }
 
 func TestAFailedCommitAndAFailedCheckKeepTheDeleteCausePostgresIntegration(t *testing.T) {
@@ -588,10 +599,10 @@ func TestAFailedCommitAndAFailedCheckKeepTheDeleteCausePostgresIntegration(t *te
 		module := transferhistory.New(&failedCommit{DB: db, fail: 2, failCheck: true}, models.NewTrackerCustomizationStore(db), systemnotice.New(nil))
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
-		module.Record(*reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)).reading)
-		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
-		module.Record(*reading(at(5*time.Minute), torrent("a", 0, 0)).reading)
-		module.Record(*reading(at(6*time.Minute), torrent("a", 0, 0)).reading)
+		module.Record(*reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)).reading)
+		module.NoteDelete(*note(at(time.Minute), byRule, hashB).note)
+		module.Record(*reading(at(5*time.Minute), torrent(hashA, 0, 0)).reading)
+		module.Record(*reading(at(6*time.Minute), torrent(hashA, 0, 0)).reading)
 
 		answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: twoDays.To, Limit: 10})
 		require.NoError(t, err)
@@ -608,12 +619,12 @@ func TestALostCommitAnswerAndAFailedCheckGiveTheCauseOnceThenOutsidePostgresInte
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 
 		record := settled(t, module)
-		record(reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)))
-		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
-		record(reading(at(5*time.Minute), torrent("a", 0, 0)))
-		record(reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(5*time.Minute+30*time.Second))))
-		record(reading(at(7*time.Minute), torrent("a", 0, 0)))
-		record(reading(at(12*time.Minute), torrent("a", 0, 0)))
+		record(reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)))
+		module.NoteDelete(*note(at(time.Minute), byRule, hashB).note)
+		record(reading(at(5*time.Minute), torrent(hashA, 0, 0)))
+		record(reading(at(6*time.Minute), torrent(hashA, 0, 0), addedAt(torrent(hashB, 0, 0), at(5*time.Minute+30*time.Second))))
+		record(reading(at(7*time.Minute), torrent(hashA, 0, 0)))
+		record(reading(at(12*time.Minute), torrent(hashA, 0, 0)))
 
 		answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: twoDays.To, Limit: 10})
 		require.NoError(t, err)
@@ -631,13 +642,13 @@ func TestALostCommitAnswerDropsTheCauseOfATorrentThatCameBackPostgresIntegration
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		record := settled(t, module)
 
-		record(reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)))
-		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
-		record(reading(at(2*time.Minute), torrent("a", 0, 0)))
-		record(reading(at(3*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
-		record(reading(at(5*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
-		record(reading(at(6*time.Minute), torrent("a", 0, 0)))
-		record(reading(at(11*time.Minute), torrent("a", 0, 0)))
+		record(reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)))
+		module.NoteDelete(*note(at(time.Minute), byRule, hashB).note)
+		record(reading(at(2*time.Minute), torrent(hashA, 0, 0)))
+		record(reading(at(3*time.Minute), torrent(hashA, 0, 0), addedAt(torrent(hashB, 0, 0), at(150*time.Second))))
+		record(reading(at(5*time.Minute), torrent(hashA, 0, 0), addedAt(torrent(hashB, 0, 0), at(150*time.Second))))
+		record(reading(at(6*time.Minute), torrent(hashA, 0, 0)))
+		record(reading(at(11*time.Minute), torrent(hashA, 0, 0)))
 
 		answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: twoDays.To, Limit: 10})
 		require.NoError(t, err)
@@ -655,14 +666,14 @@ func TestAFailedCommitDropsTheCauseOfATorrentThatCameBackPostgresIntegration(t *
 		t.Cleanup(func() { require.NoError(t, module.Shutdown(context.Background())) })
 		record := settled(t, module)
 
-		record(reading(at(0), torrent("a", 0, 0), torrent("b", 0, 0)))
-		module.NoteDelete(*note(at(time.Minute), byRule, "b").note)
-		record(reading(at(2*time.Minute), torrent("a", 0, 0)))
-		record(reading(at(3*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
-		record(reading(at(5*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
-		record(reading(at(6*time.Minute), torrent("a", 0, 0), addedAt(torrent("b", 0, 0), at(150*time.Second))))
-		record(reading(at(6*time.Minute+30*time.Second), torrent("a", 0, 0)))
-		record(reading(at(12*time.Minute), torrent("a", 0, 0)))
+		record(reading(at(0), torrent(hashA, 0, 0), torrent(hashB, 0, 0)))
+		module.NoteDelete(*note(at(time.Minute), byRule, hashB).note)
+		record(reading(at(2*time.Minute), torrent(hashA, 0, 0)))
+		record(reading(at(3*time.Minute), torrent(hashA, 0, 0), addedAt(torrent(hashB, 0, 0), at(150*time.Second))))
+		record(reading(at(5*time.Minute), torrent(hashA, 0, 0), addedAt(torrent(hashB, 0, 0), at(150*time.Second))))
+		record(reading(at(6*time.Minute), torrent(hashA, 0, 0), addedAt(torrent(hashB, 0, 0), at(150*time.Second))))
+		record(reading(at(6*time.Minute+30*time.Second), torrent(hashA, 0, 0)))
+		record(reading(at(12*time.Minute), torrent(hashA, 0, 0)))
 
 		answer, err := module.Deletes(t.Context(), transferhistory.DeletesQuery{InstanceID: instanceID, To: twoDays.To, Limit: 10})
 		require.NoError(t, err)

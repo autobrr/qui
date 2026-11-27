@@ -4,9 +4,12 @@
 package pathutil
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -194,12 +197,33 @@ func TestIsolationFolder(t *testing.T) {
 	}
 }
 
+func FuzzHashedIsolationFolderIgnoresTheCaseOfTheHash(f *testing.F) {
+	f.Add(bytes.Repeat([]byte{0xab, 0xcd}, 10), uint64(0xff), "Movie")
+	f.Add([]byte("0123456789abcdefghij0123456789ab"), uint64(0x5555), "Show.S01.1080p")
+	f.Fuzz(func(t *testing.T, sum []byte, upper uint64, name string) {
+		if len(sum) != 20 && len(sum) != 32 {
+			t.Skip("not the length of a SHA-1 or a SHA-256 sum")
+		}
+		lower := hex.EncodeToString(sum)
+		mixed := []byte(lower)
+		for i := range mixed {
+			if upper>>(i%64)&1 == 1 {
+				mixed[i] = byte(unicode.ToUpper(rune(mixed[i])))
+			}
+		}
+		want := IsolationFolder(name) + "--" + lower[:8]
+		if got := HashedIsolationFolder(string(mixed), name); got != want {
+			t.Fatalf("HashedIsolationFolder(%q, %q) = %q, want %q", mixed, name, got, want)
+		}
+	})
+}
+
 func TestHashedIsolationFolder(t *testing.T) {
-	if got := HashedIsolationFolder("ABCDEF1234567890", "Movie"); got != "Movie--abcdef12" {
+	if got := HashedIsolationFolder("ABCDEF1234567890ABCDEF1234567890ABCDEF12", "Movie"); got != "Movie--abcdef12" {
 		t.Errorf("HashedIsolationFolder = %q, want %q", got, "Movie--abcdef12")
 	}
 
-	got := HashedIsolationFolder("abcdef1234567890", strings.Repeat("é", 200))
+	got := HashedIsolationFolder("abcdef1234567890abcdef1234567890abcdef12", strings.Repeat("é", 200))
 	if want := strings.Repeat("é", 122) + "--abcdef12"; got != want {
 		t.Errorf("HashedIsolationFolder = %q (%d bytes), want %q", got, len(got), want)
 	}
@@ -318,7 +342,7 @@ func FuzzIsolationFolder(f *testing.F) {
 		got := IsolationFolder(name)
 		call := fmt.Sprintf("IsolationFolder(%q)", name)
 		checkPathSegment(t, call, got)
-		if hashed := HashedIsolationFolder("0123456789abcdef", name); len(hashed) > 255 {
+		if hashed := HashedIsolationFolder("0123456789abcdef0123456789abcdef01234567", name); len(hashed) > 255 {
 			t.Fatalf("HashedIsolationFolder of %q has %d bytes, more than the 255 of a file name", name, len(hashed))
 		}
 		if utf8.ValidString(name) && !utf8.ValidString(got) {

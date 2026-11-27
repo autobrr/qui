@@ -6,6 +6,7 @@ package filesmanager
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -47,7 +48,7 @@ func testBatchReadsMatchViews(t *testing.T, open testDBOpener) {
 		var files []CachedFile
 		var infos []SyncInfo
 		for instanceID := 1; instanceID <= 2; instanceID++ {
-			for _, hash := range []string{"aaa111", "bbb222", "ccc333"} {
+			for _, hash := range []string{testHash("aaa111"), testHash("bbb222"), testHash("ccc333")} {
 				for idx := range 3 {
 					f := baseFile()
 					f.InstanceID = instanceID
@@ -62,14 +63,14 @@ func testBatchReadsMatchViews(t *testing.T, open testDBOpener) {
 		}
 		other := baseFile()
 		other.InstanceID = 2
-		other.TorrentHash = "only-on-2"
+		other.TorrentHash = testHash("only-on-2")
 		files = append(files, other)
-		infos = append(infos, SyncInfo{InstanceID: 2, TorrentHash: "only-on-2", FileCount: 1})
+		infos = append(infos, SyncInfo{InstanceID: 2, TorrentHash: testHash("only-on-2"), FileCount: 1})
 
 		require.NoError(t, repo.UpsertCache(ctx, files, nil))
 		require.NoError(t, repo.UpsertCache(ctx, nil, infos))
 
-		input := []string{"ccc333", "aaa111", "missing", "only-on-2", "AAA111", "ccc333", "bbb222"}
+		input := []string{testHash("ccc333"), testHash("aaa111"), testHash("missing"), testHash("only-on-2"), strings.ToUpper(testHash("aaa111")), testHash("ccc333"), testHash("bbb222")}
 
 		for instanceID := 1; instanceID <= 2; instanceID++ {
 			args := make([]any, 0, 1+len(input))

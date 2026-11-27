@@ -49,17 +49,17 @@ func TestScanKeepsTheFilesOfATransferThatEndsDuringTheRead(t *testing.T) {
 	}
 	var ended atomic.Bool
 	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
-		torrents := []qbt.Torrent{{Hash: "present", SavePath: presentRoot, State: qbt.TorrentStatePausedUp}}
+		torrents := []qbt.Torrent{{Hash: hPresent, SavePath: presentRoot, State: qbt.TorrentStatePausedUp}}
 		if ended.Load() {
-			torrents = append(torrents, qbt.Torrent{Hash: "moved", SavePath: incoming, State: qbt.TorrentStatePausedUp})
+			torrents = append(torrents, qbt.Torrent{Hash: hMoved, SavePath: incoming, State: qbt.TorrentStatePausedUp})
 		}
 		return torrents, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		ended.Store(true)
 		return map[string]qbt.TorrentFiles{
-			"present": {{Name: "owned.mkv", Size: 1}},
-			"moved":   {{Name: "moved.mkv", Size: 1}},
+			hPresent: {{Name: "owned.mkv", Size: 1}},
+			hMoved:   {{Name: "moved.mkv", Size: 1}},
 		}, nil
 	}
 	svc.SetTransfers(endingTransfer{ended: &ended, folder: incoming})
@@ -90,12 +90,12 @@ func TestScanSkipsTheFoldersOfRunningTransfers(t *testing.T) {
 	}
 	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
-			{Hash: "present", SavePath: presentRoot, State: qbt.TorrentStatePausedUp, Tags: "qui-transfer"},
+			{Hash: hPresent, SavePath: presentRoot, State: qbt.TorrentStatePausedUp, Tags: "qui-transfer"},
 		}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
-			"present": {{Name: "owned.mkv", Size: 1}},
+			hPresent: {{Name: "owned.mkv", Size: 1}},
 		}, nil
 	}
 	svc.SetTransfers(fakeTransfers{folders: []string{incoming}})

@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/internal/trackergroup"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -94,7 +95,7 @@ type Module struct {
 	instances    map[int]*instance
 	reloads      map[int]struct{}
 	removed      map[int]struct{}
-	deleteNotes  map[int]map[string][]deleteNote
+	deleteNotes  map[int]map[infohash.Hash][]deleteNote
 	failedWrites map[int]struct{}
 	mapper       *trackergroup.Mapper
 	shutdownErr  error
@@ -113,7 +114,7 @@ func New(db dbinterface.Querier, customizations *models.TrackerCustomizationStor
 		instances:      make(map[int]*instance),
 		reloads:        make(map[int]struct{}),
 		removed:        make(map[int]struct{}),
-		deleteNotes:    make(map[int]map[string][]deleteNote),
+		deleteNotes:    make(map[int]map[infohash.Hash][]deleteNote),
 		failedWrites:   make(map[int]struct{}),
 	}
 	m.foldCtx, m.stopFolds = context.WithCancel(context.Background())

@@ -74,6 +74,21 @@ func TestRetryRunsATemporaryFailureNow(t *testing.T) {
 	require.False(t, r.src.Has(s.hash))
 }
 
+func TestTransferFailsWhenTheTargetDoesNotListTheAdd(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	r.dst.ListAfterSyncs = 1000
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateFailed, record.State)
+	require.Equal(t, transfer.FailureTemporary, record.FailureClass)
+	require.Equal(t, "homelab did not take the torrent: qBittorrent does not list the torrent", record.FailureReason)
+	require.Zero(t, r.dst.Writes("torrents/recheck"))
+	require.True(t, r.src.Has(s.hash))
+}
+
 func TestRetryStartsAFailedExportAgain(t *testing.T) {
 	r := newRig(t, exportPolls)
 	s := newShow(t, showName)

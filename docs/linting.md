@@ -5,7 +5,7 @@ Internal reference for lint policy and interpretation. Read this when lint outpu
 ## Commands
 
 - `make precommit`: `check-mojibake` and `generate`, then fmt + gofix on changed files, then `make lint`, `make lint-ratchet`, `make typecheck-frontend`, `make check-i18n`, and `make test-frontend-changed`.
-- `make prepush`: the checks before a push, picked from the files that the branch changes since the `origin/develop` merge-base, an uncommitted or untracked file included. It runs `actionlint` on each changed workflow and the workflow tests in `scripts/workflows/` when a workflow changed, `bash -n` on each changed `.sh` file, `node --check` on each changed `.js` file outside `documentation/`, where Docusaurus files hold JSX, and the unit tests of `.github/scripts/` when a file there changed. Then it runs `make precommit` and `go test -count=1` on the package of each changed Go file, and says that the final report also needs `make build`. When each changed file is under `.github/`, or is a `.sh`, `.py`, `.md`, or `.txt` file under `scripts/`, it runs `make check-mojibake` in place of those two, and no build is needed.
+- `make prepush`: the checks before a push, picked from the files that the branch changes since the `origin/develop` merge-base, an uncommitted or untracked file included. `scripts/prepush.sh` lists them.
 - `make lint`: golangci-lint on Go issues that are new since the `origin/develop` merge-base, then the `unused` linter on the whole repo, then the full `pnpm lint`. A change can make unchanged code unused, so the `unused` run does not stop at changed lines. A frontend lint error in any file fails it, not only an error in a changed file. `pnpm lint` also fails on a warning, so each frontend rule is `error` or off. CI runs the same full `pnpm lint` when a pull request changes a file under `web/`.
 - `make lint-ratchet`: run the linters in `scripts/ratchet/golangci.yml` and compare the problems in each file with `scripts/ratchet/allowlist.json`. The target first lowers each entry above the count of its file (rule 2): commit that change to `allowlist.json`. CI runs the same check on each pull request, without the lowering. The target compares with the allowlist at the merge base of `origin/develop` and your branch, so a count that `develop` lowered after your branch started is not growth. In a shallow clone without that merge base, the target compares with `origin/develop`. If a merge is not committed yet, or your `origin/develop` is behind, the target reports growth that is not real. Commit the merge first, or run `git fetch origin develop`.
 - `make typecheck-frontend`: `tsc -b` in `web/`, the type check that the frontend build runs first. ESLint and Vitest do not report type errors.
@@ -54,7 +54,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
 - If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
-Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `offlog`, `mapany`, or `testsleep` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
+Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `offlog`, `mapany`, `testsleep`, or `hashset` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
 
 ### Comments
 
@@ -81,6 +81,10 @@ The counter reads only the syntax tree. It cannot read the text of a message tha
 ### Maps of Any
 
 Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `offlog`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
+
+### Sets of Hashes
+
+`pkg/infohash` owns each set and dedupe of torrent hashes: `infohash.Set`, `infohash.Unique`, and `infohash.UniqueStrings`. The `hashset` key of `allowlist.json` holds the sets from before the rule. Like `mapany`, it is not a golangci-lint linter: `scripts/ratchet/hashset.go` counts each `map[infohash.Hash]struct{}` and `map[infohash.Hash]bool` in each tracked Go file outside `pkg/infohash`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. A forbidigo rule in `.golangci.yml` also reports a call of a function named like a hash dedupe helper, such as `uniqueHashes` or `distinctHashes`.
 
 ### Sleeps in Tests
 

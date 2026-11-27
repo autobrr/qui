@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Filter string
@@ -290,12 +291,16 @@ func dropGoneHelpers(ctx context.Context, tx dbinterface.TxQuerier, f finished, 
 		return nil, nil, fmt.Errorf("read helper torrents of transfer %d: %w", f.id, err)
 	}
 	for rows.Next() {
-		var key torrentKey
-		if err := rows.Scan(&key.instanceID, &key.hash); err != nil {
+		var (
+			key  torrentKey
+			hash string
+		)
+		if err := rows.Scan(&key.instanceID, &hash); err != nil {
 			rows.Close()
 			return nil, nil, fmt.Errorf("read helper torrents of transfer %d: %w", f.id, err)
 		}
-		if gone(key.instanceID, key.hash, f.at) {
+		key.hash, _ = infohash.Parse(hash)
+		if gone(key.instanceID, key.hash.String(), f.at) {
 			dropped = append(dropped, key)
 		} else {
 			kept = append(kept, key)
@@ -307,7 +312,7 @@ func dropGoneHelpers(ctx context.Context, tx dbinterface.TxQuerier, f finished, 
 		return nil, nil, fmt.Errorf("read helper torrents of transfer %d: %w", f.id, err)
 	}
 	for _, key := range dropped {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM helper_torrents WHERE instance_id = ? AND hash = ?`, key.instanceID, key.hash); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM helper_torrents WHERE instance_id = ? AND hash = ?`, key.instanceID, key.hash.String()); err != nil {
 			return nil, nil, fmt.Errorf("remove helper torrent of transfer %d: %w", f.id, err)
 		}
 	}
@@ -331,10 +336,14 @@ func (s *Store) ForgetGoneHelpers(ctx context.Context, gone HelperGone) (int, er
 	defer rows.Close()
 	var found []orphan
 	for rows.Next() {
-		var o orphan
-		if err := rows.Scan(&o.key.instanceID, &o.key.hash, &o.ownerID); err != nil {
+		var (
+			o    orphan
+			hash string
+		)
+		if err := rows.Scan(&o.key.instanceID, &hash, &o.ownerID); err != nil {
 			return 0, fmt.Errorf("read helper torrents without a transfer: %w", err)
 		}
+		o.key.hash, _ = infohash.Parse(hash)
 		found = append(found, o)
 	}
 	if err := rows.Err(); err != nil {
@@ -356,7 +365,7 @@ func (s *Store) ForgetGoneHelpers(ctx context.Context, gone HelperGone) (int, er
 
 	var dropped []orphan
 	for _, o := range found {
-		if gone(o.key.instanceID, o.key.hash, since[o.key]) {
+		if gone(o.key.instanceID, o.key.hash.String(), since[o.key]) {
 			dropped = append(dropped, o)
 			delete(since, o.key)
 		}
@@ -384,7 +393,7 @@ func (s *Store) deleteOrphans(ctx context.Context, orphans []orphan) error {
 	defer func() { _ = tx.Rollback() }()
 	for _, o := range orphans {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM helper_torrents WHERE instance_id = ? AND hash = ? AND owner_kind = ? AND owner_id = ?`,
-			o.key.instanceID, o.key.hash, string(OwnerTransfer), o.ownerID); err != nil {
+			o.key.instanceID, o.key.hash.String(), string(OwnerTransfer), o.ownerID); err != nil {
 			return fmt.Errorf("remove helper torrent of transfer %d: %w", o.ownerID, err)
 		}
 	}

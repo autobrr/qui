@@ -1299,9 +1299,7 @@ func (sm *SyncManager) editTorrents(ctx context.Context, instanceID int, hashes 
 	ids := client.torrentIDs(hashes)
 	var folders FolderCleanupBatch
 	if cleanup != nil {
-		op := *cleanup
-		op.Hashes = ids
-		folders = sm.PrepareFolderCleanup(ctx, instanceID, op)
+		folders = sm.PrepareFolderCleanup(ctx, instanceID, cleanup.On(ids))
 	}
 	if err := call(client, ids); err != nil {
 		return err
@@ -1972,7 +1970,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, requested
 
 	var folders FolderCleanupBatch
 	if action == "deleteWithFiles" {
-		folders = sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: canonicalHashes})
+		folders = sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: targetHashes})
 	}
 
 	if action == "recheck" && postAddRetry {
@@ -2388,7 +2386,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 		return nil, err
 	}
 
-	canonical := uniqueHashStrings(hashes)
+	canonical := infohash.UniqueStrings(hashes)
 	if len(canonical) == 0 {
 		return map[string]qbt.TorrentFiles{}, nil
 	}
@@ -3897,7 +3895,7 @@ func (sm *SyncManager) SetComment(ctx context.Context, instanceID int, hashes []
 }
 
 func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error {
-	cleanup := &FolderCleanupOp{Kind: FolderCleanupSetCategory, Hashes: hashes, Category: category}
+	cleanup := &FolderCleanupOp{Kind: FolderCleanupSetCategory, Category: category}
 	return sm.editTorrents(ctx, instanceID, hashes, "set category", cleanup, func(client *Client, hashes []string) error {
 		return client.SetCategoryCtx(ctx, hashes, category)
 	})
@@ -3906,7 +3904,7 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []string, enable bool) error {
 	var cleanup *FolderCleanupOp
 	if enable {
-		cleanup = &FolderCleanupOp{Kind: FolderCleanupEnableATM, Hashes: hashes}
+		cleanup = &FolderCleanupOp{Kind: FolderCleanupEnableATM}
 	}
 	return sm.editTorrents(ctx, instanceID, hashes, "set auto TMM", cleanup, func(client *Client, hashes []string) error {
 		return client.SetAutoManagementCtx(ctx, hashes, enable)
@@ -4267,7 +4265,7 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 		return errors.New("location cannot be empty")
 	}
 
-	cleanup := &FolderCleanupOp{Kind: FolderCleanupSetLocation, Hashes: hashes, Path: location}
+	cleanup := &FolderCleanupOp{Kind: FolderCleanupSetLocation, Path: location}
 	return sm.editTorrents(ctx, instanceID, hashes, "set location", cleanup, func(client *Client, hashes []string) error {
 		sm.beforeTorrentChange(ctx, instanceID, hashes, TorrentChangeMove)
 		if err := client.SetLocationCtx(ctx, hashes, location); err != nil {

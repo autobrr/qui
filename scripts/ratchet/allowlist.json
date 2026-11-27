@@ -100,21 +100,15 @@
     "pkg/hardlinktree/plan.go": 1,
     "pkg/redact/redact.go": 1
   },
-  "hashcase": {
-    "internal/api/handlers/external_programs.go": 2,
-    "internal/backups/restore_execute.go": 2,
-    "internal/backups/restore_plan.go": 13,
-    "internal/services/automations/transfer_rule.go": 2,
-    "internal/services/dirscan/fileid_index.go": 1,
-    "internal/services/orphanscan/service.go": 1,
-    "internal/services/share/service.go": 1,
-    "internal/services/transfer/finish.go": 1,
-    "internal/services/transfer/group.go": 3,
-    "internal/services/transfer/job.go": 1,
-    "internal/services/transfer/start.go": 1,
-    "internal/services/transfer/store.go": 7,
-    "internal/services/transferhistory/events.go": 1,
-    "pkg/pathutil/sanitize.go": 1
+  "hashset": {
+    "internal/api/handlers/torrents.go": 5,
+    "internal/backups/restore_execute.go": 4,
+    "internal/qbittorrent/torrent_list_query.go": 3,
+    "internal/services/automations/transfer_rule.go": 1,
+    "internal/services/crossseed/delete_matches.go": 6,
+    "internal/services/crossseed/source_apply.go": 4,
+    "internal/services/transfer/group.go": 1,
+    "internal/services/transfer/store.go": 4
   },
   "mapany": {
     "internal/api/handlers/automations.go": 1,
