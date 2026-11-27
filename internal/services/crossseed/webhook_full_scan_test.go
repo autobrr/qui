@@ -16,12 +16,14 @@ import (
 
 func checkFullScan(t *testing.T, svc *Service, name string, size uint64, instanceIDs ...int) *WebhookCheckResponse {
 	t.Helper()
-	resp, err := svc.checkWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: instanceIDs, TorrentName: name, Size: size}, svc.webhookFullScan)
+	resp, err := svc.checkWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: instanceIDs, TorrentName: name, Size: size}, fullScanner{svc}.match)
 	require.NoError(t, err)
 	return resp
 }
 
-func (s *Service) webhookFullScan(ctx context.Context, input webhookCheckInput, contentType string) (webhookCheckAnswer, error) {
+type fullScanner struct{ *Service }
+
+func (s fullScanner) match(ctx context.Context, input webhookCheckInput, contentType string) (webhookCheckAnswer, error) {
 	input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, input.announced.rawName, contentType)
 	var answer webhookCheckAnswer
 	gate := s.sourceGate()

@@ -234,7 +234,7 @@ func BenchmarkWebhookCheck(b *testing.B) {
 			waitForAlternateTitles(b, heldTitles)
 			for _, name := range []string{"no match", "held title", "held show"} {
 				req := library.announces()[name]
-				b.Run(name+"/full scan", func(b *testing.B) { benchmarkCheck(b, fullScan, fullScan.webhookFullScan, req, func() {}) })
+				b.Run(name+"/full scan", func(b *testing.B) { benchmarkCheck(b, fullScan, fullScanner{fullScan}.match, req, func() {}) })
 				b.Run(name+"/held titles", func(b *testing.B) { benchmarkCheck(b, heldTitles, heldTitles.webhookMatchHeld, req, func() {}) })
 				b.Run(name+"/held titles, names not parsed yet", func(b *testing.B) {
 					benchmarkCheck(b, heldTitles, heldTitles.webhookMatchHeld, req, library.forgetNames)
