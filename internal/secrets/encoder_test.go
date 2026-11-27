@@ -49,6 +49,11 @@ func (m methodLink) MarshalJSON() ([]byte, error) {
 
 type definedLink link
 
+type chain struct {
+	URL  string `json:"url"`
+	Next any    `json:"next"`
+}
+
 type embedsLink struct{ link }
 
 type wrapsWithMethod struct{ L link }
@@ -76,7 +81,11 @@ var (
 		m.URL = secrets.Origin(m.URL)
 		return m
 	})
-	encoder = secrets.NewEncoder(linkShape, targetShape, holderShape, methodLinkShape)
+	chainShape = secrets.NewShape(secrets.TrackerPasskey, func(c chain) chain {
+		c.URL = secrets.Origin(c.URL)
+		return c
+	})
+	encoder = secrets.NewEncoder(linkShape, targetShape, holderShape, methodLinkShape, chainShape)
 )
 
 func encodingJSON(t *testing.T, v any) string {
@@ -121,6 +130,7 @@ func TestEncoderAppliesAShapeAtAnyDepth(t *testing.T) {
 		{"not for a defined type", definedLink(full), definedLink(full)},
 		{"not inside a type whose own MarshalJSON encodes it", wrapsWithMethod{full}, struct{ L link }{full}},
 		{"not inside raw JSON", jsontext.Value(encodingJSON(t, full)), full},
+		{"not for its own type behind an interface field", chain{URL: zonedLink, Next: chain{URL: zonedLink}}, chain{URL: zonedOrigin, Next: chain{URL: zonedLink}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

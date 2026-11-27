@@ -36,8 +36,6 @@ func RespondError(w http.ResponseWriter, status int, message string) {
 	})
 }
 
-const maxPooledJSONBuffer = 1 << 20
-
 var jsonBuffers = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 func writeJSON(w http.ResponseWriter, audience secrets.Audience, status int, data any) {
@@ -47,7 +45,8 @@ func writeJSON(w http.ResponseWriter, audience secrets.Audience, status int, dat
 	}
 
 	buf := jsonBuffers.Get().(*bytes.Buffer)
-	defer releaseJSONBuffer(buf)
+	buf.Reset()
+	defer jsonBuffers.Put(buf)
 	if err := secretshapes.Encoder.Write(buf, audience, data); err != nil {
 		log.Error().Err(err).Msg("Failed to encode JSON response")
 		writeJSON(w, secrets.Audience{}, http.StatusInternalServerError, ErrorResponse{Error: "Failed to encode response"})
@@ -64,14 +63,6 @@ func writeJSON(w http.ResponseWriter, audience secrets.Audience, status int, dat
 		}
 		log.Error().Err(err).Msg("Failed to write JSON response")
 	}
-}
-
-func releaseJSONBuffer(buf *bytes.Buffer) {
-	if buf.Cap() > maxPooledJSONBuffer {
-		return
-	}
-	buf.Reset()
-	jsonBuffers.Put(buf)
 }
 
 func respondIfInstanceDisabled(w http.ResponseWriter, err error, instanceID int, context string) bool {
