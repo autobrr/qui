@@ -6,6 +6,7 @@ package automations
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -109,20 +110,34 @@ func TestDeleteWaitLiveRunDeletesOnlyTheTorrentWhoseWaitIsOver(t *testing.T) {
 }
 
 func TestDeleteWaitTagActsOnTheFirstMatch(t *testing.T) {
-	svc, instanceID, stub := newWaitRunService(t, &fakeTrackerHealth{})
-	rule := &models.Automation{ID: 1, Name: "tag", Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
+	tag := &models.Automation{ID: 2, Name: "tag", Enabled: true, TrackerPattern: "*", Conditions: &models.ActionConditions{
 		Tags: []*models.TagAction{{Enabled: true, Tags: []string{"unreg"}, Mode: "add", Condition: unregisteredIs("true")}},
 	}}
-
-	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
-	require.NoError(t, err)
-	var tagged []string
-	for _, write := range stub.recordedWrites() {
-		if write.path == "torrents/addTags" || write.path == "torrents/setTags" {
-			tagged = append(tagged, strings.Split(write.form.Get("hashes"), "|")...)
-		}
+	tests := []struct {
+		name   string
+		rules  []*models.Automation
+		health *fakeTrackerHealth
+	}{
+		{name: "a tag rule alone", rules: []*models.Automation{tag}, health: &fakeTrackerHealth{}},
+		{name: "after a delete rule whose torrents wait", rules: []*models.Automation{waitDeleteRule(1, new(365*24*3600), unregisteredIs("true")), tag}, health: &fakeTrackerHealth{}},
+		{name: "after a delete rule whose fresh read fails", rules: []*models.Automation{waitDeleteRule(1, new(0), unregisteredIs("true")), tag},
+			health: &fakeTrackerHealth{err: errors.New("qBittorrent did not answer")}},
 	}
-	require.ElementsMatch(t, []string{waitFreshHash, waitOldHash}, tagged)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, instanceID, stub := newWaitRunService(t, tt.health)
+			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, tt.rules, false)
+			require.NoError(t, err)
+			require.Empty(t, runDeletedHashes(stub))
+			var tagged []string
+			for _, write := range stub.recordedWrites() {
+				if write.path == "torrents/addTags" || write.path == "torrents/setTags" {
+					tagged = append(tagged, strings.Split(write.form.Get("hashes"), "|")...)
+				}
+			}
+			require.ElementsMatch(t, []string{waitFreshHash, waitOldHash}, tagged, "the tag reads the verdict of today")
+		})
+	}
 }
 
 func TestDeleteWaitDryRunWritesTheWaitingLine(t *testing.T) {

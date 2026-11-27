@@ -37,9 +37,16 @@ func (l Lines) Message(msg string) int {
 
 func Count(t testing.TB, fn func()) Lines {
 	t.Helper()
+	return CountWhere(t, func(string) bool { return true }, fn)
+}
+
+func CountWhere(t testing.TB, keep func(text string) bool, fn func()) Lines {
+	t.Helper()
 	lines := make(Lines)
 	for _, entry := range record(t, fn) {
-		lines[Line{Level: entry.Level, Message: entry.Message}]++
+		if keep(entry.text) {
+			lines[Line{Level: entry.Level, Message: entry.Message}]++
+		}
 	}
 	return lines
 }

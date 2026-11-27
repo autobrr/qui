@@ -180,7 +180,11 @@ func (s *Service) confirmVerdictClaims(ctx context.Context, instanceID int, clai
 		}
 		kept = append(kept, claim)
 	}
-	if dropped > 0 && err == nil {
+	if err != nil {
+		in.evalCtx.waited = waited
+		return kept
+	}
+	if dropped > 0 {
 		log.Info().Int("instanceID", instanceID).Int("torrents", dropped).
 			Msg("automations: skipped the deletes of torrents that are no longer unregistered")
 	}

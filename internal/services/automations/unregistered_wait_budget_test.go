@@ -6,6 +6,7 @@ package automations
 import (
 	"encoding/json/v2"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +71,9 @@ func TestDeleteWaitLogsDoNotGrowWithTheTorrents(t *testing.T) {
 				}
 				svc, instanceID, stub := newWaitBudgetService(t, waiting, noLongerUnregistered)
 				rules := []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))}
-				lines := logbudget.Count(t, func() {
+				lines := logbudget.CountWhere(t, func(text string) bool {
+					return !strings.Contains(text, "http://127.0.0.1:") || strings.Contains(text, stub.url)
+				}, func() {
 					_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, rules, dryRun)
 					require.NoError(t, err)
 					if !dryRun {

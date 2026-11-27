@@ -34,9 +34,14 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 		{Type: models.ScoreRuleTypeConditional, Conditional: &models.ConditionalScoreRule{Score: 100, Condition: unregisteredIs("true")}},
 	}}
 
+	notUnregisteredGroup := waitDeleteRule(2, new(0), &models.RuleCondition{Operator: models.OperatorAnd, Conditions: []*models.RuleCondition{unregisteredIs("false"), ratioBelow("1")}})
+	notUnregisteredGroup.Conditions.Delete.GroupID = GroupCrossSeedContentPath
+	notUnregisteredGroup.Conditions.Delete.Atomic = "all"
+
 	tests := []struct {
 		name        string
-		rule        *models.Automation
+		rules       []*models.Automation
+		working     string
 		still       map[string]bool
 		err         error
 		wantDeleted []string
@@ -44,30 +49,33 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 		wantApplied int
 		wantSkipped int
 	}{
-		{name: "a group that needs every member holds when the read clears one", rule: group, still: map[string]bool{waitOldHash: true},
+		{name: "a group that needs every member holds when the read clears one", rules: []*models.Automation{group}, still: map[string]bool{waitOldHash: true},
 			wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 1, wantSkipped: 1},
-		{name: "the same group deletes when the read confirms both", rule: group,
+		{name: "the same group deletes when the read confirms both", rules: []*models.Automation{group},
 			wantDeleted: []string{waitOldHash, waitFreshHash}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 2},
-		{name: "an OR arm on ratio deletes what the read cleared", rule: orRatio, still: map[string]bool{},
+		{name: "an OR arm on ratio deletes what the read cleared", rules: []*models.Automation{orRatio}, still: map[string]bool{},
 			wantDeleted: []string{waitOldHash, waitFreshHash}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 2},
-		{name: "a score that reads the verdict asks for no read", rule: ranked, still: map[string]bool{},
+		{name: "a score that reads the verdict asks for no read", rules: []*models.Automation{ranked}, still: map[string]bool{},
 			wantDeleted: []string{waitOldHash, waitFreshHash}, wantApplied: 2},
-		{name: "a failed read deletes none and writes no skip line", rule: waitDeleteRule(1, new(0), unregisteredIs("true")), err: errors.New("qBittorrent did not answer"),
+		{name: "a failed read deletes none and writes no skip line", rules: []*models.Automation{waitDeleteRule(1, new(0), unregisteredIs("true"))}, err: errors.New("qBittorrent did not answer"),
 			wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}},
+		{name: "a failed read keeps the verdict for a later group that needs every member", rules: []*models.Automation{waitDeleteRule(1, new(0), unregisteredIs("true")), notUnregisteredGroup},
+			working: waitFreshHash, err: errors.New("qBittorrent did not answer"), wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			snapshot := qbittorrent.NewTrackerHealthSnapshotWithSince(
-				map[string]qbittorrent.TrackerHealth{waitOldHash: qbittorrent.TrackerHealthUnregistered, waitFreshHash: qbittorrent.TrackerHealthUnregistered},
-				map[string]time.Time{waitOldHash: waitTestNow.Add(-8 * 24 * time.Hour), waitFreshHash: waitTestNow.Add(-24 * time.Hour)},
-			)
-			health := &fakeTrackerHealth{snapshot: snapshot, still: tt.still, err: tt.err}
+			health := map[string]qbittorrent.TrackerHealth{waitOldHash: qbittorrent.TrackerHealthUnregistered, waitFreshHash: qbittorrent.TrackerHealthUnregistered}
+			since := map[string]time.Time{waitOldHash: waitTestNow.Add(-8 * 24 * time.Hour), waitFreshHash: waitTestNow.Add(-24 * time.Hour)}
+			delete(health, tt.working)
+			delete(since, tt.working)
+			snapshot := qbittorrent.NewTrackerHealthSnapshotWithSince(health, since)
+			source := &fakeTrackerHealth{snapshot: snapshot, still: tt.still, err: tt.err}
 			evalCtx := &EvalContext{waited: verdict.ForDelete(snapshot, waitTestNow)}
 			evalCtx.health = evalCtx.waited.Raw()
 			evalCtx.SameInstanceContentByHash = sharingByContentPath(torrents)
 			evalCtx.CrossSeedFilesByHash = map[string]qbt.TorrentFiles{waitOldHash: files, waitFreshHash: files}
-			rules := []*models.Automation{tt.rule}
-			svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil), trackerHealth: health}
+			rules := tt.rules
+			svc := &Service{syncManager: qbittorrent.NewSyncManager(nil, nil), trackerHealth: source}
 
 			stats := map[int]*ruleRunStats{}
 			var sel *deletionSelection
@@ -84,7 +92,7 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 			})
 
 			require.ElementsMatch(t, tt.wantDeleted, slices.Collect(maps.Keys(sel.byHash)))
-			require.Equal(t, tt.wantAsked, health.asked)
+			require.Equal(t, tt.wantAsked, source.asked)
 			require.Equal(t, tt.wantApplied, stats[1].DeleteApplied, "the run counts only the deletes that the read kept")
 			require.Equal(t, tt.wantSkipped, lines.Message("automations: skipped the deletes of torrents that are no longer unregistered"))
 		})
