@@ -33,6 +33,7 @@ var searchFastPathSamples = []string{
 	"...leading.separators",
 	"trailing.separators...",
 	"cross-seed, unregistered, permaseed",
+	"ZEBRA.Zone.AZ",
 }
 
 func TestNormalizeForSearchMatchesReference(t *testing.T) {

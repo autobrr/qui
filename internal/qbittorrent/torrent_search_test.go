@@ -100,3 +100,39 @@ func TestTorrentSearchKeepsAPlainQueryAsTyped(t *testing.T) {
 	assert.Equal(t, []string{"Some.Movie.2020"}, searchedNames(torrents, "ac3"))
 	assert.Empty(t, searchedNames(torrents, "ac3 "))
 }
+
+func TestTorrentSearchIncludedWordRules(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Name: "Alpha.Beta.Gamma.Delta", Hash: "77770f9a"},
+		{Name: "Amélie"},
+		{Name: "Abcdefghijkl"},
+		{Name: "Nopqrstuvwxyz"},
+		{Name: "Some.Film.2019", Category: "movies"},
+		{Name: "Other.Film.2018", Category: "WEB-DL"},
+	}
+
+	tests := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{"hash with each edge of the hex range", "0f9a", []string{"Alpha.Beta.Gamma.Delta"}},
+		{"words in any order", "delta alpha", []string{"Alpha.Beta.Gamma.Delta"}},
+		{"fuzzy rank that folds accents", "amelie", []string{"Amélie"}},
+		{"fuzzy rank of 9 matches", "acl", []string{"Abcdefghijkl"}},
+		{"fuzzy rank of 10 does not match", "nqz", nil},
+		{"wildcard on the category alone", "mov*", []string{"Some.Film.2019"}},
+		{"punctuation-blind category", "web dl", []string{"Other.Film.2018"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := searchedNames(torrents, tt.query)
+			if tt.want == nil {
+				assert.Empty(t, got)
+				return
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
