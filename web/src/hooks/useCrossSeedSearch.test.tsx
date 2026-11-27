@@ -1073,6 +1073,26 @@ describe("useCrossSeedSearch", () => {
     expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]).toMatchObject({ indexerIds: [], gazelleSites: [] })
   })
 
+  it("asks every site again when a search finishes before the analysis of the torrent", async () => {
+    mockedApi.getCrossSeedSettings.mockResolvedValue({ findIndividualEpisodes: false, gazelleEnabled: true } as never)
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockReturnValue(new Promise(() => {}))
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-slow-analysis" }))
+      await Promise.resolve()
+    })
+    for (let run = 0; run < 2; run++) {
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+    }
+
+    expect(mockedApi.searchCrossSeedTorrent).toHaveBeenCalledTimes(2)
+    expect(mockedApi.searchCrossSeedTorrent.mock.calls[1][2]).toMatchObject({ indexerIds: [], gazelleSites: [] })
+  })
+
   describe("RED/OPS entries", () => {
     const plan: CrossSeedGazelleLookup[] = [
       { ...red, status: "not_asked", reason: "source_site", replacedIndexerIds: [7] },

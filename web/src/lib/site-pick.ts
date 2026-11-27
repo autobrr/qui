@@ -121,6 +121,7 @@ export function useSitePickSources(trigger: SitePickTrigger) {
     sites,
     isPending: indexersQuery.isPending || sitesQuery.isLoading,
     isError: indexersQuery.isError,
+    loaded: indexersQuery.isSuccess && !sitesQuery.isLoading && !sitesQuery.isError,
   }
 }
 

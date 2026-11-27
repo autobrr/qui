@@ -43,6 +43,7 @@ const mocks = vi.hoisted(() => ({
   searchRuns: [] as unknown[],
   indexers: [] as { id: number; indexer_id: string; name: string; base_url: string; enabled: boolean }[],
   gazelleSites: [] as { site: string; name: string; shortName: string; indexerId: number; active: boolean; replacedIndexerIds: number[] }[],
+  gazelleSitesResponse: null as (() => Promise<never>) | null,
   patchSearch: vi.fn(),
   patchSettings: vi.fn(),
   startRun: vi.fn(),
@@ -83,7 +84,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     getCrossSeedSearchSettings: mocks.getSearchSettings,
     getInstances: () => Promise.resolve(mocks.instances),
     listTorznabIndexers: () => Promise.resolve(mocks.indexers),
-    getCrossSeedGazelleSites: () => Promise.resolve(mocks.gazelleSites),
+    getCrossSeedGazelleSites: () => mocks.gazelleSitesResponse?.() ?? Promise.resolve(mocks.gazelleSites),
     getCrossSeedSearchStatus: () => Promise.resolve(mocks.searchStatus),
     listCrossSeedSearchRuns: () => Promise.resolve(mocks.searchRuns),
     getCategories: () => Promise.resolve({}),
@@ -109,6 +110,7 @@ afterEach(() => {
   mocks.searchStatus = { running: false }
   mocks.indexers = []
   mocks.gazelleSites = []
+  mocks.gazelleSitesResponse = null
   mocks.searchRuns = []
 })
 
@@ -223,6 +225,20 @@ describe("LibraryTab save", () => {
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
     expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [1] })
+  })
+
+  it.each([
+    ["has not loaded", () => new Promise<never>(() => {})],
+    ["failed to load", () => Promise.reject(new Error("sites down"))],
+  ])("locks the picker while the list of RED/OPS sites %s", async (_, response) => {
+    Object.assign(mocks.settings, { gazelleEnabled: true, redactedApiKey: "red" })
+    mocks.indexers = [enabledIndexer]
+    mocks.gazelleSitesResponse = response
+    mocks.searchSettings.gazelleSites = [redSite.site]
+    renderTab()
+
+    const picker = (await screen.findByText("scan.indexers.placeholderAllEnabled")).closest("button")
+    expect(picker?.hasAttribute("disabled")).toBe(true)
   })
 
   it("lists the RED/OPS sites in the picker and runs a saved RED-only pick with no Torznab indexer", async () => {

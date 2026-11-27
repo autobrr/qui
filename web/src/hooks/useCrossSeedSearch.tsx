@@ -185,7 +185,7 @@ export function useCrossSeedSearch(instanceId: number) {
       const pickedIds = crossSeedIndexerMode === "custom"
         ? crossSeedIndexerSelection
         : analyzed ? [...searchableIndexers.map(indexer => indexer.id), ...plan.map(entry => entry.indexerId)] : []
-      const indexersUnknown = crossSeedIndexerMode === "all" && (indexersPending || indexersFailed)
+      const indexersUnknown = crossSeedIndexerMode === "all" && (indexersPending || indexersFailed || gazellePlan === undefined)
       const pick = indexersUnknown
         ? { indexerIds: [], gazelleSites: [] }
         : sitePickFromIds(pickedIds.filter(id => !excludedIndexerIds.includes(id)), plan)
@@ -283,7 +283,7 @@ export function useCrossSeedSearch(instanceId: number) {
             return
           }
           setCrossSeedSearchResponse(prev => prev ?? { sourceTorrent: torrentInfo, results: [] })
-          setGazellePlan(torrentInfo.gazellePlan)
+          setGazellePlan(torrentInfo.gazellePlan ?? [])
         })
         .catch((error: unknown) => {
           if (opening !== openingRef.current || searchStartedRef.current) {

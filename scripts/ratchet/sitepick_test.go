@@ -61,6 +61,14 @@ type InstanceCrossSeedCompletionSettings struct {
 			want: 2,
 		},
 		{
+			name: "a pick in a slice or map literal that leaves its type out",
+			path: "internal/services/crossseed/library_scan.go",
+			body: `_ = []resolvedSitePick{{indexerIDs: ids}}
+	_ = map[string]resolvedSitePick{"a": {}}
+	_ = [][]models.SitePick{{{IndexerIDs: ids}}}`,
+			want: 3,
+		},
+		{
 			name: "the stored pick passed whole",
 			path: "internal/services/crossseed/completion.go",
 			body: `sites := s.resolveSitePick(ctx, settings.SitePick, false, nil)

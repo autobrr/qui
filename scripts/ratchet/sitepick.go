@@ -74,12 +74,18 @@ func embedsSitePick(st *ast.StructType) bool {
 
 func countSitePick(path string, f *ast.File, pickTypes map[string]bool) int {
 	n := 0
+	elided := map[*ast.CompositeLit]ast.Expr{}
 	ast.Inspect(f, func(node ast.Node) bool {
 		lit, ok := node.(*ast.CompositeLit)
 		if !ok {
 			return true
 		}
-		name := typeName(lit.Type)
+		litType := lit.Type
+		if litType == nil {
+			litType = elided[lit]
+		}
+		inheritElementType(lit, litType, elided)
+		name := typeName(litType)
 		keys := literalKeys(lit)
 		switch {
 		case pickTypes[name] && countKeys(keys, sitePickHalves) == 1:
@@ -93,6 +99,26 @@ func countSitePick(path string, f *ast.File, pickTypes map[string]bool) int {
 		return true
 	})
 	return n
+}
+
+func inheritElementType(lit *ast.CompositeLit, litType ast.Expr, elided map[*ast.CompositeLit]ast.Expr) {
+	var elem ast.Expr
+	switch t := litType.(type) {
+	case *ast.ArrayType:
+		elem = t.Elt
+	case *ast.MapType:
+		elem = t.Value
+	default:
+		return
+	}
+	for _, elt := range lit.Elts {
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			elt = kv.Value
+		}
+		if inner, ok := elt.(*ast.CompositeLit); ok && inner.Type == nil {
+			elided[inner] = elem
+		}
+	}
 }
 
 func typeName(e ast.Expr) string {

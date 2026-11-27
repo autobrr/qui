@@ -419,7 +419,7 @@ export function CompletionOverview() {
                                 selected={selectedSites}
                                 onChange={(values) => handleFormChange(instance.id, "sitePick", sitePickChange(form.sitePick, values, siteOptions, sitePick.sites), form)}
                                 placeholder={t("preferences.completionOverview.allIndexers")}
-                                disabled={isSaving || sitePick.isPending || siteOptions.length === 0}
+                                disabled={isSaving || !sitePick.loaded || siteOptions.length === 0}
                               />
                               <p className="text-xs text-muted-foreground">
                                 {selectedSites.length === 0? t("preferences.completionOverview.allIndexersSearched"): t("preferences.completionOverview.selectedIndexers", { count: selectedSites.length })}

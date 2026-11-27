@@ -537,7 +537,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
               selected={seededSearchSelected}
               onChange={values => setSearchSitePick(sitePickChange(searchSitePick, values, seededSearchOptions, sitePick.sites))}
               placeholder={seededSearchIndexerPlaceholder}
-              disabled={!seededSearchHasOptions}
+              disabled={!seededSearchHasOptions || !sitePick.loaded}
             />
             <p className="text-xs text-muted-foreground">
               {seededSearchIndexerHelpText}
