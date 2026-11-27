@@ -357,7 +357,8 @@ func (s *Service) readSource(ctx context.Context, instanceID int, hash infohash.
 	if err != nil {
 		return nil, fmt.Errorf("decode the exported torrent: %w", err)
 	}
-	return &source{hash: hash, torrent: *torrent, files: *files, export: export, info: &info}, nil
+	id, _ := infohash.Parse(torrent.Hash)
+	return &source{hash: id, torrent: *torrent, files: *files, export: export, info: &info}, nil
 }
 
 func (src *source) movable() error {

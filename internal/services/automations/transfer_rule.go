@@ -49,7 +49,7 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-func transferHoldKey(instanceID int, hash string) string {
+func transferHoldKey(instanceID int, hash infohash.Hash) string {
 	return fmt.Sprintf("%d:%s", instanceID, hash)
 }
 
@@ -57,7 +57,7 @@ func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string,
 	action := state.transferToInstance
 	parsed, _ := infohash.Parse(hash)
 	s.mu.RLock()
-	until, held := s.transferHolds[transferHoldKey(instanceID, hash)]
+	until, held := s.transferHolds[transferHoldKey(instanceID, parsed)]
 	s.mu.RUnlock()
 	if held && s.now().Before(until) {
 		return pendingTransfer{}, false
@@ -172,7 +172,7 @@ func (s *Service) startTransfers(ctx context.Context, instanceID int, transfers 
 		if reason != "" {
 			outcome = models.ActivityOutcomeFailed
 			s.mu.Lock()
-			s.transferHolds[transferHoldKey(instanceID, pending.hash.String())] = s.now().Add(transferHold)
+			s.transferHolds[transferHoldKey(instanceID, pending.hash)] = s.now().Add(transferHold)
 			s.mu.Unlock()
 			log.Warn().Int("instanceID", instanceID).Str("hash", pending.hash.String()).Str("reason", reason).
 				Msg("automations: Transfer to Instance did not start")
