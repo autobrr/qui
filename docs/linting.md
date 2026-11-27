@@ -54,7 +54,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
 - If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
-Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `offlog`, `mapany`, or `testsleep` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
+Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `offlog`, `mapany`, `testsleep`, or `hashset` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
 
 ### Comments
 
@@ -81,6 +81,10 @@ The counter reads only the syntax tree. It cannot read the text of a message tha
 ### Maps of Any
 
 Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The `mapany` key of `allowlist.json` holds the maps from before the rule, also the ones that decode JSON of an unknown shape on purpose. Like `offlog`, it is not a golangci-lint linter: `scripts/ratchet/mapany.go` counts each such map type in each tracked Go file. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. ADR 0080 has the reason.
+
+### Sets of Hashes
+
+`pkg/infohash` owns each set and dedupe of torrent hashes: `infohash.Set`, `infohash.Unique`, and `infohash.UniqueStrings`. The `hashset` key of `allowlist.json` holds the sets from before the rule. Like `mapany`, it is not a golangci-lint linter: `scripts/ratchet/hashset.go` counts each `map[infohash.Hash]struct{}` and `map[infohash.Hash]bool` in each tracked Go file outside `pkg/infohash`. It skips `_test.go` files. Rules 1 to 3 apply to it as to each linter. A forbidigo rule in `.golangci.yml` also reports a call of a function named like a hash dedupe helper, such as `uniqueHashes` or `distinctHashes`.
 
 ### Sleeps in Tests
 

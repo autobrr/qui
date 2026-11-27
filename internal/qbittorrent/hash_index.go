@@ -141,16 +141,3 @@ func foundTorrents(found []*qbt.Torrent) []*qbt.Torrent {
 		return dup
 	})
 }
-
-func uniqueHashStrings(hashes []string) []string {
-	unique := make([]string, 0, len(hashes))
-	seen := make(map[infohash.Hash]struct{}, len(hashes))
-	for _, hash := range infohash.ParseAll(hashes) {
-		if _, dup := seen[hash]; dup || hash.IsZero() {
-			continue
-		}
-		seen[hash] = struct{}{}
-		unique = append(unique, hash.String())
-	}
-	return unique
-}

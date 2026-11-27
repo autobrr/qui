@@ -82,7 +82,7 @@ func NewRepository(db dbinterface.Querier) *Repository {
 }
 
 func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string][]CachedFile, error) {
-	cleaned := uniqueHashes(hashes)
+	cleaned := infohash.UniqueStrings(hashes)
 	if len(cleaned) == 0 {
 		return map[string][]CachedFile{}, nil
 	}
@@ -143,7 +143,7 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 }
 
 func (r *Repository) getEntriesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*cacheEntryRows, error) {
-	cleaned := uniqueHashes(hashes)
+	cleaned := infohash.UniqueStrings(hashes)
 	results := make(map[string]*cacheEntryRows, len(cleaned))
 	for batch := range slices.Chunk(cleaned, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
@@ -493,7 +493,7 @@ func decodeNullableBoolFromInt(value sql.NullInt64) *bool {
 }
 
 func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*SyncInfo, error) {
-	cleaned := uniqueHashes(hashes)
+	cleaned := infohash.UniqueStrings(hashes)
 	if len(cleaned) == 0 {
 		return map[string]*SyncInfo{}, nil
 	}
@@ -597,7 +597,7 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		return nil
 	}
 
-	hashes = uniqueHashes(hashes)
+	hashes = infohash.UniqueStrings(hashes)
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -673,7 +673,7 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		return 0, nil
 	}
 
-	currentHashes = uniqueHashes(currentHashes)
+	currentHashes = infohash.UniqueStrings(currentHashes)
 	if len(currentHashes) == 0 {
 		return 0, nil
 	}
@@ -835,20 +835,6 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 	}
 
 	return &stats, nil
-}
-
-func uniqueHashes(hashes []string) []string {
-	seen := make(map[infohash.Hash]struct{}, len(hashes))
-	unique := make([]string, 0, len(hashes))
-	for _, raw := range hashes {
-		hash, err := infohash.Parse(raw)
-		if _, dup := seen[hash]; dup || err != nil {
-			continue
-		}
-		seen[hash] = struct{}{}
-		unique = append(unique, hash.String())
-	}
-	return unique
 }
 
 func buildPlaceholders(count int) string {

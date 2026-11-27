@@ -212,7 +212,7 @@ type AddResult struct {
 const blocklistCheckFailed = "Failed to check cross-seed blocklist"
 
 func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashes ...infohash.Hash) (PreAddCheck, *AddResult) {
-	check := PreAddCheck{instanceID: instanceID, hashes: uniqueHashes(hashes...)}
+	check := PreAddCheck{instanceID: instanceID, hashes: infohash.NewSet(hashes...).Hashes()}
 
 	existing, exists, err := a.sync.HasTorrentByAnyHash(ctx, instanceID, check.hashes)
 	if err != nil {
@@ -352,7 +352,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	case v.settle:
 		added := AddedTorrent{
 			InstanceID:          instanceID,
-			Hashes:              uniqueHashes(append(infohash.ParseAll([]string{hash}), req.Check.hashes...)...),
+			Hashes:              infohash.NewSet(append(infohash.ParseAll([]string{hash}), req.Check.hashes...)...).Hashes(),
 			LinkedPaths:         req.Facts.LinkedPaths,
 			Gate:                v.gate,
 			SkipAutoResume:      req.Facts.SkipAutoResume,

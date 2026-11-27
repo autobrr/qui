@@ -201,6 +201,9 @@ linters:
         - pattern: ^(syscall|unix)\.(Stat_t|Statx_t)\.(Nlink|Ino)$
           pkg: ^(syscall|golang\.org/x/sys/unix)$
           msg: read the link count and file identity of a local path through the local fsops backend (Lstat, Stat, Root.Lstat, or WalkDir with WantFileID); only internal/fsops/local/identity_*.go reads them, with a forced-sync statx on Linux
+        - pattern: ^.+\.([Uu]nique|[Dd]istinct|[Dd]edupe?)(Hashes|HashStrings)$
+          pkg: ^github\.com/autobrr/qui/
+          msg: dedupe torrent hashes with infohash.Unique or infohash.UniqueStrings, and keep a set of them in an infohash.Set
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
