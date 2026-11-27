@@ -13,7 +13,6 @@ import (
 	"maps"
 	"net"
 	"net/url"
-	"path"
 	"runtime"
 	"slices"
 	"strconv"
@@ -21,13 +20,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
-	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
@@ -1414,7 +1411,7 @@ func (sm *SyncManager) listInstanceTorrents(ctx context.Context, view *TorrentLi
 	}
 
 	if view.Search != "" {
-		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, view.Search)
+		filteredTorrents = searchTorrents(filteredTorrents, view.Search)
 	}
 
 	if view.Sort != "" && !view.NoRows {
@@ -3570,189 +3567,6 @@ func (sm *SyncManager) TrackerDetails(ctx context.Context, instanceID int, torre
 	}
 
 	return trackerDetailsFromManager(ctx, client, torrents), nil
-}
-
-func isSearchSeparator(c byte) bool {
-	switch c {
-	case '.', '_', '-', '[', ']', '(', ')', '{', '}', ' ', '\t', '\n', '\v', '\f', '\r':
-		return true
-	}
-	return false
-}
-
-func normalizeForSearch(text string) string {
-	for i := range len(text) {
-		if text[i] >= utf8.RuneSelf {
-			return normalizeForSearchUnicode(text)
-		}
-	}
-
-	var out strings.Builder
-	out.Grow(len(text))
-	pendingSpace := false
-	for i := range len(text) {
-		c := text[i]
-		if isSearchSeparator(c) {
-			pendingSpace = out.Len() > 0
-			continue
-		}
-		if pendingSpace {
-			out.WriteByte(' ')
-			pendingSpace = false
-		}
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		out.WriteByte(c)
-	}
-	return out.String()
-}
-
-func normalizeForSearchUnicode(text string) string {
-	replacers := []string{".", "_", "-", "[", "]", "(", ")", "{", "}"}
-	normalized := strings.ToLower(text)
-	for _, r := range replacers {
-		normalized = strings.ReplaceAll(normalized, r, " ")
-	}
-	return strings.Join(strings.Fields(normalized), " ")
-}
-
-func isASCIIFolded(s string) bool {
-	for i := range len(s) {
-		if s[i] >= utf8.RuneSelf || (s[i] >= 'A' && s[i] <= 'Z') {
-			return false
-		}
-	}
-	return true
-}
-
-func rankFuzzy(source, target string, sourceIsFolded bool) int {
-	if sourceIsFolded && isASCIIFolded(target) {
-		return fuzzy.RankMatch(source, target)
-	}
-	if rank := fuzzy.RankMatchNormalizedFold(source, target); rank >= 0 {
-		return rank
-	}
-	if fuzzy.MatchNormalizedFold(source, target) {
-		return 0
-	}
-	return -1
-}
-
-func (sm *SyncManager) filterTorrentsBySearch(torrents []*qbt.Torrent, search string) []*qbt.Torrent {
-	if search == "" {
-		return torrents
-	}
-
-	searchLower := strings.ToLower(search)
-
-	isGlob := strings.ContainsAny(search, "*?")
-	searchNormalized := normalizeForSearch(search)
-	searchWords := strings.Fields(searchNormalized)
-	searchIsFolded := isASCIIFolded(searchNormalized)
-
-	searchCouldBeHash := !strings.ContainsFunc(searchLower, func(r rune) bool {
-		return (r < '0' || r > '9') && (r < 'a' || r > 'f')
-	})
-
-	normalizedCache := make(map[string]string)
-	normalizeCached := func(value string) string {
-		if value == "" {
-			return ""
-		}
-		if cached, ok := normalizedCache[value]; ok {
-			return cached
-		}
-		normalized := normalizeForSearch(value)
-		normalizedCache[value] = normalized
-		return normalized
-	}
-
-	var matched []int
-	for i := range torrents {
-		torrent := torrents[i]
-
-		if isGlob && torrentMatchesGlob(torrent, searchLower) {
-			matched = append(matched, i)
-			continue
-		}
-
-		if stringutils.ContainsFold(torrent.Name, searchLower) ||
-			stringutils.ContainsFold(torrent.Category, searchLower) ||
-			stringutils.ContainsFold(torrent.Tags, searchLower) ||
-			(searchCouldBeHash &&
-				(stringutils.ContainsFold(torrent.Hash, searchLower) ||
-					stringutils.ContainsFold(torrent.InfohashV1, searchLower) ||
-					stringutils.ContainsFold(torrent.InfohashV2, searchLower))) {
-			matched = append(matched, i)
-			continue
-		}
-
-		nameNormalized := normalizeForSearch(torrent.Name)
-		categoryNormalized := normalizeCached(torrent.Category)
-		tagsNormalized := normalizeCached(torrent.Tags)
-
-		if strings.Contains(nameNormalized, searchNormalized) ||
-			strings.Contains(categoryNormalized, searchNormalized) ||
-			strings.Contains(tagsNormalized, searchNormalized) {
-			matched = append(matched, i)
-			continue
-		}
-
-		if len(searchWords) > 1 {
-			allWordsFound := true
-			for _, word := range searchWords {
-				if !strings.Contains(nameNormalized, word) &&
-					!strings.Contains(categoryNormalized, word) &&
-					!strings.Contains(tagsNormalized, word) {
-					allWordsFound = false
-					break
-				}
-			}
-			if allWordsFound {
-				matched = append(matched, i)
-				continue
-			}
-		}
-
-		if score := rankFuzzy(searchNormalized, nameNormalized, searchIsFolded); score >= 0 && score < 10 {
-			matched = append(matched, i)
-		}
-	}
-
-	if len(matched) == len(torrents) {
-		return torrents
-	}
-
-	filtered := make([]*qbt.Torrent, len(matched))
-	for i, idx := range matched {
-		filtered[i] = torrents[idx]
-	}
-
-	log.Trace().
-		Str("search", search).
-		Int("totalTorrents", len(torrents)).
-		Int("matchedTorrents", len(filtered)).
-		Msg("Search completed")
-
-	return filtered
-}
-
-func torrentMatchesGlob(torrent *qbt.Torrent, patternLower string) bool {
-	if matched, _ := path.Match(patternLower, strings.ToLower(torrent.Name)); matched {
-		return true
-	}
-	if torrent.Category != "" {
-		if matched, _ := path.Match(patternLower, strings.ToLower(torrent.Category)); matched {
-			return true
-		}
-	}
-	for tag := range strings.SplitSeq(strings.ToLower(torrent.Tags), ", ") {
-		if matched, _ := path.Match(patternLower, strings.TrimSpace(tag)); matched {
-			return true
-		}
-	}
-	return false
 }
 
 func hasNestedCategories(categories map[string]qbt.Category) bool {

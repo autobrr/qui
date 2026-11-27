@@ -47,7 +47,7 @@ On macOS, Ctrl + J and Ctrl + N also move the highlight down, and Ctrl + K and C
 
 When the text has two characters or more, the palette searches one torrent list. If a torrent list is open, the palette searches that list. On another page, it searches the **Unified** list. If you have one active instance, it searches the list of that instance.
 
-The search matches names, categories, tags, and info hashes, the same as the search field of the torrent list. It accepts the same glob patterns, for example `*.mkv` or `*1080p*`.
+The search matches names, categories, tags, and info hashes, the same as the search field of the torrent list. It accepts the same glob patterns, for example `*.mkv` or `*1080p*`. A word that starts with `-` or `!` hides the torrents that it matches, for example `-x265` or `-*.mkv`.
 
 The filters of that list apply to the search. These are the sidebar filters and, in the table, the column filters. The palette thus finds only the torrents that the list shows for the text. If a filter is on, the row **Search torrents for "text"** shows **List filters apply**. To find a torrent that a filter hides, first [clear the filters](./torrent-management.md#clear-filters) of the list.
 

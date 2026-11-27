@@ -179,6 +179,8 @@
     "smartSearchTitle": "智能搜索功能：",
     "smartSearchGlob": "Glob 模式：",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "隐藏匹配项：",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "模糊匹配：",
     "smartSearchFuzzyExample": "\"breaking bad\" 可匹配 \"Breaking.Bad\"",
     "smartSearchDots": "自动处理点号、下划线和方括号",
