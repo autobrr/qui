@@ -37,7 +37,7 @@ func compare(a announce, old, now answer) result {
 		r.Verdict = verdictFailed
 	case old.Status == http.StatusNotFound && len(old.Matches) == 0 && now.Status == http.StatusOK && now.SeasonPack != nil && len(now.Matches) == 0:
 		r.Verdict = verdictSeasonPack
-	case old.Status != now.Status || old.CanCrossSeed != now.CanCrossSeed || old.Recommendation != now.Recommendation || (old.SeasonPack == nil) != (now.SeasonPack == nil):
+	case old.Status != now.Status || old.CanCrossSeed != now.CanCrossSeed || old.Recommendation != now.Recommendation || !samePack(old.SeasonPack, now.SeasonPack):
 		r.Verdict = verdictDiffers
 	default:
 		r.Verdict, r.Extra = compareMatches(old.Matches, now.Matches)
@@ -45,23 +45,35 @@ func compare(a announce, old, now answer) result {
 	return r
 }
 
+func samePack(old, now *seasonPack) bool {
+	if old == nil || now == nil {
+		return old == now
+	}
+	return *old == *now
+}
+
 func compareMatches(old, now []match) (verdict, []match) {
-	held := map[matchKey]bool{}
+	held := map[matchKey]string{}
 	names := map[string]bool{}
 	for _, m := range old {
-		held[matchKey{m.InstanceID, m.TorrentHash}] = true
+		held[matchKey{m.InstanceID, m.TorrentHash}] = m.MatchType
 		names[m.TorrentName] = true
 	}
 	var extra []match
+	retyped := false
 	for _, m := range now {
 		key := matchKey{m.InstanceID, m.TorrentHash}
-		if !held[key] {
+		matchType, ok := held[key]
+		switch {
+		case !ok:
 			extra = append(extra, m)
+		case matchType != m.MatchType:
+			retyped = true
 		}
 		delete(held, key)
 	}
 	switch {
-	case len(held) > 0, slices.ContainsFunc(extra, func(m match) bool { return !names[m.TorrentName] }):
+	case len(held) > 0, retyped, slices.ContainsFunc(extra, func(m match) bool { return !names[m.TorrentName] }):
 		return verdictDiffers, nil
 	case len(extra) > 0:
 		return verdictExtraCopies, extra

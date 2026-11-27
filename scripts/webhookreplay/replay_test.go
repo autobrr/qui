@@ -25,6 +25,9 @@ func TestCompare(t *testing.T) {
 		return answer{Status: http.StatusOK, CanCrossSeed: true, Recommendation: "download", Matches: matches}
 	}
 	none := answer{Status: http.StatusNotFound, Recommendation: "skip"}
+	pack := func(p seasonPack) answer {
+		return answer{Status: http.StatusOK, CanCrossSeed: true, Recommendation: "download", SeasonPack: &p}
+	}
 	tests := []struct {
 		name     string
 		old, new answer
@@ -41,6 +44,9 @@ func TestCompare(t *testing.T) {
 		{name: "a match that misses", old: ready(a), new: none, want: verdictDiffers},
 		{name: "still downloading", old: answer{Status: http.StatusAccepted, Recommendation: "download", Matches: []match{a}}, new: ready(a), want: verdictDiffers},
 		{name: "a season pack assembly", old: none, new: answer{Status: http.StatusOK, CanCrossSeed: true, Recommendation: "download", SeasonPack: &seasonPack{InstanceID: 1}}, want: verdictSeasonPack},
+		{name: "the same torrent by another match type", old: ready(a), new: ready(match{InstanceID: 1, TorrentHash: "aa", TorrentName: a.TorrentName, MatchType: "metadata"}), want: verdictDiffers},
+		{name: "another season pack", old: pack(seasonPack{InstanceID: 1, MatchedEpisodes: 10, TotalEpisodes: 10}), new: pack(seasonPack{InstanceID: 1, MatchedEpisodes: 8, TotalEpisodes: 10}), want: verdictDiffers},
+		{name: "the same season pack", old: pack(seasonPack{InstanceID: 1, MatchedEpisodes: 10, TotalEpisodes: 10}), new: pack(seasonPack{InstanceID: 1, MatchedEpisodes: 10, TotalEpisodes: 10}), want: verdictSame},
 		{name: "a server error", old: none, new: answer{Status: http.StatusInternalServerError, Error: "status 500"}, want: verdictFailed},
 	}
 	for _, tt := range tests {
