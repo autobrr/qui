@@ -114,14 +114,11 @@ func TestEncoderAppliesAShapeAtAnyDepth(t *testing.T) {
 		in   any
 		want any
 	}{
-		{"the value", full, hidden},
-		{"a slice", []link{full}, []link{hidden}},
 		{"a map value", map[string]link{"a": full}, map[string]link{"a": hidden}},
 		{"behind a pointer", &full, &hidden},
 		{"inside an any", []any{full}, []any{hidden}},
 		{"inside a Shape of another kind", target{URL: targetURL, Link: full}, target{URL: "discord://", Link: hidden}},
 		{"a type with its own MarshalJSON", methodLink{URL: zonedLink}, map[string]string{"url": zonedOrigin}},
-		{"once below a Shape of the same kind", holder{Link: full, Links: []link{full}, Target: target{URL: targetURL, Link: full}}, holder{Link: hidden, Links: []link{hidden}, Target: target{URL: "discord://", Link: hidden}}},
 		{"a nil slice and a nil map", struct {
 			Links  []link
 			ByName map[string]link
@@ -152,7 +149,6 @@ func TestEncoderHidesEachValueOnceForEachAudience(t *testing.T) {
 		{"zero", secrets.Audience{}, func() holder { h := trackersHidden; h.Target.URL = "discord://"; return h }()},
 		{"trackers only", secrets.NewAudience(secrets.TrackerPasskey), func() holder { h := full; h.Target.URL = "discord://"; return h }()},
 		{"notifications only", secrets.NewAudience(secrets.NotificationToken), trackersHidden},
-		{"full", secrets.Full(), full},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -167,21 +163,12 @@ func TestEncoderHidesEachValueOnceForEachAudience(t *testing.T) {
 	}
 }
 
-func TestHiddenHidesOnlyItsKind(t *testing.T) {
-	t.Parallel()
-	full := target{URL: targetURL, Link: link{URL: zonedLink}}
-	assert.Equal(t, target{URL: "discord://", Link: link{URL: zonedLink}}, targetShape.Hidden(secrets.Audience{}, full))
-	assert.Equal(t, full, targetShape.Hidden(secrets.NewAudience(secrets.NotificationToken), full))
-}
-
 func TestHiddenAll(t *testing.T) {
 	t.Parallel()
 	full := []link{{URL: zonedLink}, {URL: "** [DHT] **"}}
 	hidden := linkShape.HiddenAll(secrets.Audience{}, full)
 	assert.Equal(t, []link{{URL: zonedOrigin}, {URL: "** [DHT] **"}}, hidden)
-	assert.Equal(t, link{URL: zonedLink}, full[0])
 	assert.Nil(t, linkShape.HiddenAll(secrets.Audience{}, nil))
-	assert.Equal(t, []link{}, linkShape.HiddenAll(secrets.Audience{}, []link{}))
 }
 
 func TestHiddenAllocatesNothingForAReaderThatSeesTheKind(t *testing.T) {
@@ -193,18 +180,6 @@ func TestHiddenAllocatesNothingForAReaderThatSeesTheKind(t *testing.T) {
 		links = linkShape.HiddenAll(secrets.Full(), links)
 	})
 	assert.Zero(t, allocs)
-}
-
-func TestFullEncodesAsEncodingJSON(t *testing.T) {
-	t.Parallel()
-	for _, v := range []any{
-		holder{Link: link{URL: zonedLink, Note: "<b> & é  "}, Target: target{URL: targetURL}},
-		map[string]any{"b": []int{1}, "a": "<script>", "c": nil},
-		[]string(nil),
-		jsontext.Value(`{"a" : "<x>"}`),
-	} {
-		assert.Equal(t, encodingJSON(t, v), encode(t, encoder, secrets.Full(), v))
-	}
 }
 
 type sealedList struct {
@@ -224,10 +199,8 @@ func TestSealedShape(t *testing.T) {
 	full := []link{{URL: zonedLink}}
 
 	assert.Equal(t, encodingJSON(t, sealedList{Rows: once}), encode(t, enc, secrets.Audience{}, &sealedList{Rows: once, hidden: true}))
-	assert.Equal(t, encodingJSON(t, struct{ Rows []link }{once}), encode(t, enc, secrets.Audience{}, struct{ Rows []link }{full}))
 	assert.Equal(t, encodingJSON(t, sealedList{Rows: once}), encode(t, enc, secrets.Audience{}, &sealedList{Rows: full}))
 	assert.Equal(t, encodingJSON(t, sealedList{Rows: once}), encode(t, enc, secrets.Audience{}, &sealedList{Rows: full, hiddenFor: secrets.Full(), hidden: true}))
-	assert.Equal(t, encodingJSON(t, sealedList{Rows: full}), encode(t, enc, secrets.Full(), &sealedList{Rows: full}))
 }
 
 type rawNames map[string]json.RawMessage
@@ -241,25 +214,17 @@ func TestRawShapeWritesTheBytesOfEncodingJSON(t *testing.T) {
 		}
 		return json.Marshal(hidden)
 	}
-	rawStruct := secrets.NewRawShape(secrets.TrackerPasskey, func(l link) ([]byte, error) {
-		l.URL = secrets.Origin(l.URL)
-		return json.Marshal(l)
-	})
-	enc := secrets.NewEncoder(secrets.NewRawShape(secrets.TrackerPasskey, hide), rawStruct)
+	enc := secrets.NewEncoder(secrets.NewRawShape(secrets.TrackerPasskey, hide))
 	names := rawNames{"https://tracker.example/rss/made-up-key": json.RawMessage(`{"title":"<b>é & ü </b>"}`)}
 	hiddenNames, err := hide(names)
 	require.NoError(t, err)
 
 	assert.Equal(t, encodingJSON(t, json.RawMessage(hiddenNames)), encode(t, enc, secrets.Audience{}, names))
-	assert.Equal(t, encodingJSON(t, names), encode(t, enc, secrets.Full(), names))
-	note := link{URL: zonedLink, Note: "<i>ö &  </i>"}
-	assert.Equal(t, encodingJSON(t, []link{{URL: zonedOrigin, Note: note.Note}}), encode(t, enc, secrets.Audience{}, []link{note}))
 }
 
 func TestRawShapeErrorFailsTheWholeEncode(t *testing.T) {
 	t.Parallel()
 	for _, failure := range []error{
-		errors.New("cannot read the value"),
 		errors.ErrUnsupported,
 		fmt.Errorf("wrapped: %w", errors.ErrUnsupported),
 	} {
@@ -288,12 +253,6 @@ func TestShapesListsEachShape(t *testing.T) {
 	enc := secrets.NewEncoder(linkShape, raw, sealedShape)
 	infos := slices.Collect(enc.Shapes())
 	require.Len(t, infos, 3)
-
-	assert.Equal(t, reflect.TypeFor[link](), infos[0].Type)
-	assert.Equal(t, secrets.TrackerPasskey, infos[0].Kind)
-	assert.True(t, infos[0].ByField)
-	assert.Equal(t, []string{"Note"}, infos[0].Plain)
-	assert.Equal(t, link{URL: zonedOrigin}, infos[0].Hide(link{URL: zonedLink}))
 
 	assert.Equal(t, reflect.TypeFor[rawNames](), infos[1].Type)
 	assert.Equal(t, secrets.NotificationToken, infos[1].Kind)

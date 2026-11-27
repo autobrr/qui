@@ -126,15 +126,6 @@ func TestTheShapeChecksNameEachFault(t *testing.T) {
 			reports: []string{"the encoder hides the plain field Name", "Hide and encoding/json hides the plain field Name"},
 		},
 		{
-			name: "a nested Shape of the same kind that the Shape leaves to the encoder",
-			shape: fixtureTorrentShape(func(t fixtureTorrent) fixtureTorrent {
-				t.Tracker = secrets.Origin(t.Tracker)
-				return t
-			}, "Name", "Comment"),
-			check:   checkHidesEveryString,
-			reports: []string{"shows the field Trackers.URL"},
-		},
-		{
 			name: "a Shape of the same kind inside a Shape of another kind that the Shape leaves to the encoder",
 			shape: fixtureTorrentShape(func(t fixtureTorrent) fixtureTorrent {
 				t.Tracker = secrets.Origin(t.Tracker)

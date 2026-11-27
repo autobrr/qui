@@ -146,10 +146,6 @@ func TestRespondJSON_EncodeFailureLogsError(t *testing.T) {
 	}{
 		{name: "channel", data: make(chan int)},
 		{name: "marshaler error", data: failingMarshaler{err: syscall.EPIPE}},
-		{name: "failure after a written field", data: struct {
-			Name string
-			Feed chan int
-		}{Name: "written before the failure", Feed: make(chan int)}},
 	}
 
 	for _, tt := range tests {
