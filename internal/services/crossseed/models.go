@@ -136,7 +136,6 @@ type TorrentSearchOptions struct {
 	SitePick               models.SitePick `json:"-"`
 	FindIndividualEpisodes bool            `json:"find_individual_episodes,omitempty"`
 	CacheMode              string          `json:"cache_mode,omitempty"`
-	DisableTorznab         bool            `json:"disable_torznab,omitempty"`
 	SkipGazelle            bool            `json:"-"`
 	RescueTitleMismatches  bool            `json:"-"`
 	TitleRescueResultLimit int             `json:"-"`

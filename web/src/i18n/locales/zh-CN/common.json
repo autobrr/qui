@@ -382,9 +382,13 @@
         "menuFix": "检查做种库扫描设置",
         "action": "打开做种库扫描设置",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "做种库扫描设置中的 Torznab 已关闭，且未设置 RED 或 OPS API 密钥。请打开 Torznab，或在 Gazelle (OPS/RED) 设置中添加 RED 或 OPS 密钥。qui 会每小时重试一次。",
-            "menuFix": "打开 Torznab，或添加 RED 或 OPS 密钥"
+          "torznab_pick_no_indexer": {
+            "fix": "做种库扫描设置只选择了 Torznab 索引器，且没有启用的 Torznab 索引器。请启用一个 Torznab 索引器，或在做种库扫描设置中选择其他站点。qui 会每小时重试一次。",
+            "menuFix": "启用一个 Torznab 索引器"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "做种库扫描设置只选择了 RED 或 OPS，且所选站点都没有 API 密钥。请在 Gazelle (OPS/RED) 设置中添加密钥，或在做种库扫描设置中选择其他站点。qui 会每小时重试一次。",
+            "menuFix": "添加 RED 或 OPS 密钥"
           },
           "no_indexer": {
             "fix": "没有启用的索引器。请启用一个 Torznab 索引器，或在 Gazelle (OPS/RED) 设置中添加 RED 或 OPS 密钥。qui 会每小时重试一次。",

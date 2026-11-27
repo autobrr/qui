@@ -20,7 +20,6 @@ func TestSearchTorrentMatches_AsksTheSitesOfTheSitePick(t *testing.T) {
 		{name: "an empty pick asks every site", opts: TorrentSearchOptions{}, redAPI: true, opsAPI: true, musicIndex: true},
 		{name: "a Torznab pick with no RED/OPS site asks no RED/OPS site", opts: TorrentSearchOptions{SitePick: models.SitePick{IndexerIDs: []int{7}}}, musicIndex: true},
 		{name: "a RED pick asks only the RED API", opts: TorrentSearchOptions{SitePick: models.SitePick{GazelleSites: []string{"redacted.sh"}}}, redAPI: true},
-		{name: "with Torznab off a Torznab pick asks every RED/OPS site", opts: TorrentSearchOptions{DisableTorznab: true, SitePick: models.SitePick{IndexerIDs: []int{7}}}, redAPI: true, opsAPI: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

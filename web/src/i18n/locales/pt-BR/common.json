@@ -391,9 +391,13 @@
         "menuFix": "Conferir as configurações da Busca na Biblioteca",
         "action": "Abrir as configurações da Busca na Biblioteca",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "O Torznab está desligado nas configurações da Busca na Biblioteca, e nenhuma chave de API do RED ou do OPS está definida. Ligue o Torznab, ou adicione uma chave do RED ou do OPS nas configurações Gazelle (OPS/RED). O qui tenta de novo a cada hora.",
-            "menuFix": "Ligar o Torznab, ou adicionar uma chave do RED ou do OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "As configurações da Busca na Biblioteca escolhem só indexadores Torznab, e nenhum indexador Torznab está ativado. Ative um indexador Torznab, ou escolha outros sites nas configurações da Busca na Biblioteca. O qui tenta de novo a cada hora.",
+            "menuFix": "Ativar um indexador Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "As configurações da Busca na Biblioteca escolhem só o RED ou o OPS, e nenhum site escolhido tem chave de API. Adicione a chave nas configurações Gazelle (OPS/RED), ou escolha outros sites nas configurações da Busca na Biblioteca. O qui tenta de novo a cada hora.",
+            "menuFix": "Adicionar a chave do RED ou do OPS"
           },
           "no_indexer": {
             "fix": "Nenhum indexador está ativado. Ative um indexador Torznab, ou adicione uma chave do RED ou do OPS nas configurações Gazelle (OPS/RED). O qui tenta de novo a cada hora.",

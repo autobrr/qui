@@ -391,9 +391,13 @@
         "menuFix": "Vérifier les paramètres de l’analyse",
         "action": "Ouvrir les paramètres de l’analyse de la bibliothèque",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab est désactivé dans les paramètres de l’analyse de la bibliothèque, et aucune clé API RED ou OPS n’est définie. Activez Torznab, ou ajoutez une clé RED ou OPS dans les paramètres Gazelle (OPS/RED). qui réessaie toutes les heures.",
-            "menuFix": "Activer Torznab, ou ajouter une clé RED ou OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "Les paramètres de l’analyse de la bibliothèque ne choisissent que des indexeurs Torznab, et aucun indexeur Torznab n’est activé. Activez un indexeur Torznab, ou choisissez d’autres sites dans les paramètres de l’analyse de la bibliothèque. qui réessaie toutes les heures.",
+            "menuFix": "Activer un indexeur Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "Les paramètres de l’analyse de la bibliothèque ne choisissent que RED ou OPS, et aucun site choisi n’a de clé API. Ajoutez la clé dans les paramètres Gazelle (OPS/RED), ou choisissez d’autres sites dans les paramètres de l’analyse de la bibliothèque. qui réessaie toutes les heures.",
+            "menuFix": "Ajouter la clé RED ou OPS"
           },
           "no_indexer": {
             "fix": "Aucun indexeur n’est activé. Activez un indexeur Torznab, ou ajoutez une clé RED ou OPS dans les paramètres Gazelle (OPS/RED). qui réessaie toutes les heures.",

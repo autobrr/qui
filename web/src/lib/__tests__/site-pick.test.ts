@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest"
 
-import { sitePickChange, sitePickForSave, sitePickFromIds, sitePickOptions, sitePickSelected } from "@/lib/site-pick"
+import { redOpsPickWithoutKey, sitePickChange, sitePickForSave, sitePickFromIds, sitePickOptions, sitePickSelected } from "@/lib/site-pick"
 import type { CrossSeedGazelleSite, TorznabIndexer } from "@/types"
 
 function indexer(id: number, name: string, enabled = true): TorznabIndexer {
@@ -45,10 +45,6 @@ describe("sitePickOptions", () => {
   it("lists only Torznab indexers for RSS, the replaced ones too", () => {
     expect(labels(sitePickOptions("rss", indexers, sites))).toEqual(["Music Indexer", "Redacted"])
   })
-
-  it("lists only the RED/OPS sites when Torznab is off", () => {
-    expect(labels(sitePickOptions("library", indexers, sites, { torznabOn: false }))).toEqual(["Redacted (API)", "Orpheus (API)"])
-  })
 })
 
 describe("sitePickChange", () => {
@@ -59,10 +55,10 @@ describe("sitePickChange", () => {
     expect(sitePickSelected(pick, options, sites)).toEqual(["7", "-1001"])
   })
 
-  it("keeps the Torznab picks that the picker hides while Torznab is off", () => {
-    const options = sitePickOptions("library", indexers, sites, { torznabOn: false })
-    const pick = sitePickChange({ indexerIds: [7], gazelleSites: ["redacted.sh"] }, ["-1002"], options, sites)
-    expect(pick).toEqual({ indexerIds: [7], gazelleSites: ["orpheus.network"] })
+  it("keeps the RED/OPS picks that the RSS picker hides", () => {
+    const options = sitePickOptions("rss", indexers, sites)
+    const pick = sitePickChange({ indexerIds: [7], gazelleSites: ["redacted.sh"] }, [], options, sites)
+    expect(pick).toEqual({ indexerIds: [], gazelleSites: ["redacted.sh"] })
   })
 
   it("lists a picked Torznab indexer that is off or deleted, so the user can remove it", () => {
@@ -103,5 +99,15 @@ describe("sitePickFromIds", () => {
   it("reads the RED/OPS sites of the picked ids from the gazelle plan of a search", () => {
     const plan = [{ site: "orpheus.network", name: "Orpheus (API)", indexerId: -1002 }]
     expect(sitePickFromIds([7, -1002, -1001], plan)).toEqual({ indexerIds: [7], gazelleSites: ["orpheus.network"] })
+  })
+})
+
+describe("redOpsPickWithoutKey", () => {
+  it("is true only for a RED/OPS-only pick whose picked sites have no API key", () => {
+    const opsOnlyKey = sites.map(site => ({ ...site, active: site.site === "orpheus.network" }))
+    expect(redOpsPickWithoutKey({ indexerIds: [], gazelleSites: ["redacted.sh"] }, opsOnlyKey)).toBe(true)
+    expect(redOpsPickWithoutKey({ indexerIds: [], gazelleSites: ["orpheus.network"] }, opsOnlyKey)).toBe(false)
+    expect(redOpsPickWithoutKey({ indexerIds: [7], gazelleSites: ["redacted.sh"] }, opsOnlyKey)).toBe(false)
+    expect(redOpsPickWithoutKey({ indexerIds: [], gazelleSites: [] }, opsOnlyKey)).toBe(false)
   })
 })
