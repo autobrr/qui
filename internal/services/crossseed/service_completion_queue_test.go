@@ -234,31 +234,26 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 	firstStarted := make(chan struct{})
 	secondStarted := make(chan struct{})
 	releaseFirst := make(chan struct{})
-	invocationOrder := make([]string, 0, 2)
-	var orderMu sync.Mutex
-	var firstOnce sync.Once
-	var secondOnce sync.Once
+	closeFirstStarted := sync.OnceFunc(func() { close(firstStarted) })
+	closeSecondStarted := sync.OnceFunc(func() { close(secondStarted) })
 
+	search := newCompletionSearchStandIn(func(_ context.Context, torrent *qbt.Torrent) error {
+		switch torrent.Hash {
+		case firstHash:
+			closeFirstStarted()
+			<-releaseFirst
+		case secondHash:
+			closeSecondStarted()
+		}
+		return nil
+	})
 	svc := &Service{
 		completionStore: completionStore,
 		syncManager:     syncMock,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
-		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
-			orderMu.Lock()
-			invocationOrder = append(invocationOrder, torrent.Hash)
-			orderMu.Unlock()
-
-			switch torrent.Hash {
-			case firstHash:
-				firstOnce.Do(func() { close(firstStarted) })
-				<-releaseFirst
-			case secondHash:
-				secondOnce.Do(func() { close(secondStarted) })
-			}
-			return nil
-		},
+		completionSearch: search,
 	}
 
 	var wg sync.WaitGroup
@@ -305,9 +300,11 @@ func TestHandleTorrentCompletion_QueuesPerInstance(t *testing.T) {
 		t.Fatal("second completion search did not start after first completed")
 	}
 
-	orderMu.Lock()
-	defer orderMu.Unlock()
-	require.Equal(t, []string{firstHash, secondHash}, invocationOrder)
+	searched := make([]string, 0, 2)
+	for _, torrent := range search.Searches() {
+		searched = append(searched, torrent.Hash)
+	}
+	require.Equal(t, []string{firstHash, secondHash}, searched)
 }
 
 func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *testing.T) {
@@ -345,25 +342,26 @@ func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *test
 	firstStarted := make(chan struct{})
 	secondStarted := make(chan struct{})
 	releaseFirst := make(chan struct{})
-	var firstOnce sync.Once
-	var secondOnce sync.Once
+	closeFirstStarted := sync.OnceFunc(func() { close(firstStarted) })
+	closeSecondStarted := sync.OnceFunc(func() { close(secondStarted) })
 
+	search := newCompletionSearchStandIn(func(_ context.Context, torrent *qbt.Torrent) error {
+		switch torrent.Hash {
+		case firstHash:
+			closeFirstStarted()
+			<-releaseFirst
+		case secondHash:
+			closeSecondStarted()
+		}
+		return nil
+	})
 	svc := &Service{
 		completionStore: completionStore,
 		syncManager:     syncMock,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
-		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
-			switch torrent.Hash {
-			case firstHash:
-				firstOnce.Do(func() { close(firstStarted) })
-				<-releaseFirst
-			case secondHash:
-				secondOnce.Do(func() { close(secondStarted) })
-			}
-			return nil
-		},
+		completionSearch: search,
 	}
 	setCompletionCheckingTimings(svc, 5*time.Millisecond, 200*time.Millisecond)
 
@@ -412,6 +410,10 @@ func TestHandleTorrentCompletion_ContinuesPollingWhileSearchIsSerialized(t *test
 	}
 
 	wg.Wait()
+	searches := search.Searches()
+	require.Len(t, searches, 2)
+	require.Equal(t, secondHash, searches[1].Hash)
+	require.Equal(t, qbt.TorrentStateUploading, searches[1].State, "the search runs on the torrent after its check ends")
 }
 
 func TestSnapshotCompletionWaits_CopiesSchedulingFields(t *testing.T) {
@@ -444,7 +446,14 @@ func TestSnapshotCompletionWaits_CopiesSchedulingFields(t *testing.T) {
 func TestHandleTorrentCompletion_DoesNotRetryRateLimitError(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
 
-	attempts := 0
+	search := newCompletionSearchStandIn(func(context.Context, *qbt.Torrent) error {
+		return &jackett.RateLimitError{
+			IndexerID:   1,
+			IndexerName: "test",
+			Scope:       "query",
+			RetryAt:     time.Now().Add(10 * time.Millisecond),
+		}
+	})
 	svc := &Service{
 		completionStore: completionStore,
 		syncManager: newCompletionPollingSyncMock(map[string][]qbt.Torrent{
@@ -459,15 +468,7 @@ func TestHandleTorrentCompletion_DoesNotRetryRateLimitError(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
-		completionSearchInvoker: func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error {
-			attempts++
-			return &jackett.RateLimitError{
-				IndexerID:   1,
-				IndexerName: "test",
-				Scope:       "query",
-				RetryAt:     time.Now().Add(10 * time.Millisecond),
-			}
-		},
+		completionSearch: search,
 	}
 
 	svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
@@ -477,7 +478,7 @@ func TestHandleTorrentCompletion_DoesNotRetryRateLimitError(t *testing.T) {
 		CompletionOn: 125,
 	})
 
-	assert.Equal(t, 1, attempts)
+	assert.Len(t, search.Searches(), 1)
 }
 
 func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
@@ -510,10 +511,10 @@ func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
-		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
+		completionSearch: newCompletionSearchStandIn(func(_ context.Context, torrent *qbt.Torrent) error {
 			invoked <- *torrent
 			return nil
-		},
+		}),
 	}
 	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
 
@@ -571,10 +572,10 @@ func TestHandleTorrentCompletion_DefersWhileMoving(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
-		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
+		completionSearch: newCompletionSearchStandIn(func(_ context.Context, torrent *qbt.Torrent) error {
 			invoked <- *torrent
 			return nil
-		},
+		}),
 	}
 	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
 
@@ -627,16 +628,13 @@ func TestHandleTorrentCompletion_RetriesAfterCheckingTimeout(t *testing.T) {
 		CompletionOn: 220,
 	}
 
-	var invoked *qbt.Torrent
+	search := newCompletionSearchStandIn(func(context.Context, *qbt.Torrent) error { return nil })
 	svc := &Service{
 		completionStore: setupCompletionStoreForQueueTests(t),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
-		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
-			invoked = torrent
-			return nil
-		},
+		completionSearch: search,
 	}
 	svc.syncManager = &completionRetrySyncMock{lane: svc.getCompletionLane(1), checking: checking}
 	setCompletionCheckingTimings(svc, 10*time.Millisecond, 100*time.Millisecond)
@@ -644,9 +642,10 @@ func TestHandleTorrentCompletion_RetriesAfterCheckingTimeout(t *testing.T) {
 
 	svc.HandleTorrentCompletion(t.Context(), 1, checking)
 
-	require.NotNil(t, invoked, "completion search was not invoked after checking retry")
-	require.InDelta(t, 1.0, invoked.Progress, 0.0001)
-	require.Equal(t, qbt.TorrentStateUploading, invoked.State)
+	searches := search.Searches()
+	require.Len(t, searches, 1, "completion search was not invoked after checking retry")
+	require.InDelta(t, 1.0, searches[0].Progress, 0.0001)
+	require.Equal(t, qbt.TorrentStateUploading, searches[0].State)
 }
 
 func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T) {
@@ -673,17 +672,14 @@ func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T
 		},
 	})
 
-	invoked := false
+	search := newCompletionSearchStandIn(func(context.Context, *qbt.Torrent) error { return nil })
 	svc := &Service{
 		completionStore: completionStore,
 		syncManager:     syncMock,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
-		completionSearchInvoker: func(_ context.Context, _ int, _ *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
-			invoked = true
-			return nil
-		},
+		completionSearch: search,
 	}
 	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
 
@@ -695,7 +691,7 @@ func TestHandleTorrentCompletion_RechecksSkipConditionsAfterWaiting(t *testing.T
 		CompletionOn: 300,
 	})
 
-	require.False(t, invoked, "completion search should be skipped after refreshed torrent gains cross-seed tag")
+	require.Empty(t, search.Searches(), "completion search should be skipped after refreshed torrent gains cross-seed tag")
 }
 
 const completionLookupsPerAttempt = int(defaultCompletionCheckingTimeout/defaultCompletionCheckingPollInterval) + 1

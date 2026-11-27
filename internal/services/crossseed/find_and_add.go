@@ -574,7 +574,7 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 	}
 
 	response.seasonPackTried = true
-	resp, err := s.invokeSeasonPackApply(ctx, seasonPackRequest{
+	resp, err := s.seasonPackAdd.applySeasonPack(ctx, seasonPackRequest{
 		name:        torrentName,
 		torrentData: req.TorrentData,
 		instanceIDs: req.TargetInstanceIDs,
@@ -629,13 +629,6 @@ func (s *Service) seasonPackAddedResult(ctx context.Context, torrentName string,
 		}
 	}
 	return added
-}
-
-func (s *Service) invokeSeasonPackApply(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error) {
-	if s.seasonPackApplier != nil {
-		return s.seasonPackApplier(ctx, req)
-	}
-	return s.applySeasonPack(ctx, req)
 }
 
 func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {

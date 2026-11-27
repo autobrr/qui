@@ -112,6 +112,7 @@ func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
 			return &fsops.TreeCreateResult{}, nil
 		},
 	}
+	f.svc.seasonPackAdd = f.svc
 	if blocked {
 		f.svc.blocklistStore = blocklistWithPack(t, torrentData)
 	}
