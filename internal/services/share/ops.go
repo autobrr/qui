@@ -33,7 +33,7 @@ func (s *Service) TorrentFile(ctx context.Context, id int64) ([]byte, string, er
 	if err != nil {
 		return nil, "", err
 	}
-	return sh.TorrentFile, torrentname.SanitizeExportFilename(sh.Name, "", "", sh.HelperHash), nil
+	return sh.TorrentFile, torrentname.SanitizeExportFilename(sh.Name, "", "", sh.HelperHash.String()), nil
 }
 
 func (s *Service) Stop(ctx context.Context, id int64) error {

@@ -211,7 +211,7 @@ func TestExportRunsFiveAtATimeOutsideTheTransferQueue(t *testing.T) {
 	require.Equal(t, map[transfer.State]int{transfer.StateFinishing: 5, transfer.StateWaiting: 1}, r.states(ids))
 	require.Equal(t, transfer.StateCopying, r.get(transferID).State)
 	for _, hash := range hashes {
-		require.False(t, r.store.IsClaimed(r.source.ID, hash), "an Export run claims nothing")
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, hash)), "an Export run claims nothing")
 	}
 	close(hold.release)
 	for _, done := range results {

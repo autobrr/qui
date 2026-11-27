@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type healthChecker interface {
@@ -1691,10 +1692,6 @@ func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []s
 	return filtered
 }
 
-func canonicalizeHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
-}
-
 func isAbsoluteFilesystemRoot(d fsops.PathDialect, p string) bool {
 	cleaned := d.Clean(p)
 	sep := d.Separator()
@@ -1898,7 +1895,8 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []*qbt.Torrent, file
 	for _, torrent := range torrents {
 		savePath := d.Clean(torrent.SavePath)
 		hasAbsSavePath := savePath != "" && d.IsAbs(savePath)
-		files, ok := filesByHash[canonicalizeHash(torrent.Hash)]
+		hash, _ := infohash.Parse(torrent.Hash)
+		files, ok := filesByHash[hash.String()]
 		hasFiles := ok && len(files) > 0
 
 		if !hasFiles {

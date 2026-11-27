@@ -89,8 +89,8 @@ func onlyTorrent(savePath string, names ...string) *seededTorrents {
 		files = append(files, qbt.TorrentFile{Name: name, Priority: 1})
 	}
 	return &seededTorrents{
-		savePaths: map[string]string{"aaaa": savePath},
-		files:     map[string]qbt.TorrentFiles{"aaaa": files},
+		savePaths: map[string]string{indexHashA: savePath},
+		files:     map[string]qbt.TorrentFiles{indexHashA: files},
 	}
 }
 
@@ -129,7 +129,7 @@ func TestSeedingIndexScopesRemoteIdentity(t *testing.T) {
 	require.True(t, index.complete, index.incompleteReason)
 	hash, ok := index.hash(remoteID(1))
 	require.True(t, ok)
-	require.Equal(t, "aaaa", hash)
+	require.Equal(t, indexHashA, hash)
 	require.True(t, index.knowsNotSeeding(remoteID(2)), "a file outside a complete index does not seed")
 }
 
@@ -219,11 +219,11 @@ func TestFileIDIndexBatchesAcrossTorrents(t *testing.T) {
 		"/data/b/four.mkv":  remoteID(4),
 	}
 	torrents := &seededTorrents{
-		savePaths: map[string]string{"aaaa": "/data/a", "bbbb": "/data/a", "cccc": "/data/b"},
+		savePaths: map[string]string{indexHashA: "/data/a", indexHashB: "/data/a", indexHashC: "/data/b"},
 		files: map[string]qbt.TorrentFiles{
-			"aaaa": {{Name: "one.mkv", Priority: 1}, {Name: "two.mkv", Priority: 1}},
-			"bbbb": {{Name: "three.mkv", Priority: 1}},
-			"cccc": {{Name: "four.mkv", Priority: 1}},
+			indexHashA: {{Name: "one.mkv", Priority: 1}, {Name: "two.mkv", Priority: 1}},
+			indexHashB: {{Name: "three.mkv", Priority: 1}},
+			indexHashC: {{Name: "four.mkv", Priority: 1}},
 		},
 	}
 	answer := func(p string) (*fsops.LstatInfo, error) {
@@ -335,8 +335,8 @@ func TestDotDotNameUnderMissingSavePath(t *testing.T) {
 			ctx := t.Context()
 			svc, store, dir := newDirScanTestService(t)
 			svc.torrentFiles = &seededTorrents{
-				savePaths: map[string]string{"aaaa": tt.savePath},
-				files:     map[string]qbt.TorrentFiles{"aaaa": {{Name: tt.fileName}}},
+				savePaths: map[string]string{indexHashA: tt.savePath},
+				files:     map[string]qbt.TorrentFiles{indexHashA: {{Name: tt.fileName}}},
 			}
 			backend := newAnswerBackend(func(p string) (*fsops.LstatInfo, error) {
 				switch p {

@@ -7,11 +7,11 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/trackergroup"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const noteLife = 5 * time.Minute
@@ -36,7 +36,7 @@ type DeleteCause struct {
 type DeleteNote struct {
 	InstanceID int
 	Time       time.Time
-	Hashes     []string
+	Hashes     []infohash.Hash
 	Cause      DeleteCause
 }
 
@@ -57,11 +57,13 @@ func (m *Module) NoteDelete(n DeleteNote) {
 func (m *Module) keep(n DeleteNote, kept bool) {
 	notes := m.deleteNotes[n.InstanceID]
 	if notes == nil {
-		notes = make(map[string][]deleteNote, len(n.Hashes))
+		notes = make(map[infohash.Hash][]deleteNote, len(n.Hashes))
 		m.deleteNotes[n.InstanceID] = notes
 	}
 	for _, hash := range n.Hashes {
-		hash = strings.ToLower(hash)
+		if hash.IsZero() {
+			continue
+		}
 		notes[hash] = append(notes[hash], deleteNote{cause: n.Cause, time: n.Time, kept: kept})
 		slices.SortStableFunc(notes[hash], func(x, y deleteNote) int { return x.time.Compare(y.time) })
 	}
@@ -72,8 +74,9 @@ func (m *Module) keepCauses(instanceID int, events []models.TransferHistoryEvent
 		if e.Delete == nil || CauseKind(e.Delete.CauseKind) == CauseOutside {
 			continue
 		}
+		hash, _ := infohash.Parse(e.Record.Hash)
 		m.keep(DeleteNote{
-			InstanceID: instanceID, Time: e.Time, Hashes: []string{e.Record.Hash},
+			InstanceID: instanceID, Time: e.Time, Hashes: []infohash.Hash{hash},
 			Cause: DeleteCause{Kind: CauseKind(e.Delete.CauseKind), Name: e.Delete.CauseName},
 		}, true)
 	}
@@ -96,14 +99,14 @@ func (m *Module) dropStoredCauses(ctx context.Context, instanceID int) error {
 	if err != nil {
 		return err
 	}
-	dropNotes(notes, func(hash string, n deleteNote) bool {
-		_, isStored := stored[models.TransferHistoryDeleteKey{Hash: hash, Second: n.time.Unix()}]
+	dropNotes(notes, func(hash infohash.Hash, n deleteNote) bool {
+		_, isStored := stored[models.TransferHistoryDeleteKey{Hash: hash.String(), Second: n.time.Unix()}]
 		return n.kept && isStored
 	})
 	return nil
 }
 
-func takeNote(notes map[string][]deleteNote, hash string, now time.Time) DeleteCause {
+func takeNote(notes map[infohash.Hash][]deleteNote, hash infohash.Hash, now time.Time) DeleteCause {
 	list := notes[hash]
 	later := slices.IndexFunc(list, func(n deleteNote) bool { return now.Before(n.time) })
 	if len(list) == 0 || later == 0 {
@@ -117,15 +120,15 @@ func takeNote(notes map[string][]deleteNote, hash string, now time.Time) DeleteC
 	return list[0].cause
 }
 
-func dropOldNotes(notes map[string][]deleteNote, now time.Time) {
-	dropNotes(notes, func(_ string, n deleteNote) bool { return !now.Before(n.time.Add(noteLife)) })
+func dropOldNotes(notes map[infohash.Hash][]deleteNote, now time.Time) {
+	dropNotes(notes, func(_ infohash.Hash, n deleteNote) bool { return !now.Before(n.time.Add(noteLife)) })
 }
 
-func dropKeptNotes(notes map[string][]deleteNote) {
-	dropNotes(notes, func(_ string, n deleteNote) bool { return n.kept })
+func dropKeptNotes(notes map[infohash.Hash][]deleteNote) {
+	dropNotes(notes, func(_ infohash.Hash, n deleteNote) bool { return n.kept })
 }
 
-func dropNotes(notes map[string][]deleteNote, drop func(hash string, n deleteNote) bool) {
+func dropNotes(notes map[infohash.Hash][]deleteNote, drop func(hash infohash.Hash, n deleteNote) bool) {
 	for hash, list := range notes {
 		list = slices.DeleteFunc(list, func(n deleteNote) bool { return drop(hash, n) })
 		if len(list) == 0 {

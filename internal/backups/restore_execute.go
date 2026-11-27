@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type RestoreOptions struct {
@@ -225,7 +226,7 @@ func (s *Service) applyTagPlan(ctx context.Context, plan *RestorePlan, applied *
 	return nil
 }
 
-func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, applied *RestoreApplied, errs *[]RestoreError, exclude map[string]struct{}, opts RestoreOptions) ([]string, error) {
+func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, applied *RestoreApplied, errs *[]RestoreError, exclude map[infohash.Hash]struct{}, opts RestoreOptions) ([]string, error) {
 	instanceID := plan.InstanceID
 	var warnings []string
 	var pendingResume []string
@@ -396,17 +397,15 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 	return warnings, nil
 }
 
-func buildHashSet(items []string) map[string]struct{} {
+func buildHashSet(items []string) map[infohash.Hash]struct{} {
 	if len(items) == 0 {
 		return nil
 	}
-	set := make(map[string]struct{}, len(items))
-	for _, hash := range items {
-		normalized := normalizeLowerTrim(hash)
-		if normalized == "" {
-			continue
+	set := make(map[infohash.Hash]struct{}, len(items))
+	for _, hash := range infohash.ParseAll(items) {
+		if !hash.IsZero() {
+			set[hash] = struct{}{}
 		}
-		set[normalized] = struct{}{}
 	}
 	if len(set) == 0 {
 		return nil
@@ -414,13 +413,10 @@ func buildHashSet(items []string) map[string]struct{} {
 	return set
 }
 
-func shouldSkipTorrent(hash string, exclude map[string]struct{}) bool {
-	if len(exclude) == 0 {
-		return false
-	}
-	normalized := normalizeLowerTrim(hash)
-	_, skip := exclude[normalized]
-	return skip
+func shouldSkipTorrent(hash string, exclude map[infohash.Hash]struct{}) bool {
+	parsed, err := infohash.Parse(hash)
+	_, skip := exclude[parsed]
+	return err == nil && skip
 }
 
 func (s *Service) loadTorrentBlobData(blobPath string) ([]byte, error) {

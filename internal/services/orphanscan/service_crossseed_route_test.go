@@ -98,11 +98,11 @@ func newRouteFixture(t *testing.T, offline bool) *routeFixture {
 		if instanceID == crossSeed.ID {
 			return f.torrents, nil
 		}
-		return []qbt.Torrent{{Hash: "own", SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwn, SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	sync.getTorrentFilesBatch = func(_ context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 		if instanceID != crossSeed.ID {
-			return map[string]qbt.TorrentFiles{"own": {{Name: "own.mkv", Size: 1}}}, nil
+			return map[string]qbt.TorrentFiles{hOwn: {{Name: "own.mkv", Size: 1}}}, nil
 		}
 		files := map[string]qbt.TorrentFiles{}
 		for _, hash := range hashes {
@@ -120,16 +120,16 @@ func TestBuildFileMap_ProtectsRoutedFilesAtSourcePaths(t *testing.T) {
 
 	f := newRouteFixture(t, false)
 	f.torrents = []qbt.Torrent{
-		{Hash: "pending", SavePath: "/seeds/links/tracker", ContentPath: "/seeds/links/tracker/Show", State: qbt.TorrentStateDownloading},
-		{Hash: "checking", SavePath: "/seeds/links/checking", State: qbt.TorrentStateCheckingUp},
-		{Hash: "magnet", SavePath: "/seeds/links/magnet", HasMetadata: new(false), State: qbt.TorrentStateMetaDl},
-		{Hash: "elsewhere", SavePath: "/seeds/other", State: qbt.TorrentStatePausedUp},
-		{Hash: "elsewherechecking", SavePath: "/seeds/other/checking", State: qbt.TorrentStateCheckingUp},
+		{Hash: hPending, SavePath: "/seeds/links/tracker", ContentPath: "/seeds/links/tracker/Show", State: qbt.TorrentStateDownloading},
+		{Hash: hChecking, SavePath: "/seeds/links/checking", State: qbt.TorrentStateCheckingUp},
+		{Hash: hMagnet, SavePath: "/seeds/links/magnet", HasMetadata: new(false), State: qbt.TorrentStateMetaDl},
+		{Hash: hElsewhere, SavePath: "/seeds/other", State: qbt.TorrentStatePausedUp},
+		{Hash: hElsewherechecking, SavePath: "/seeds/other/checking", State: qbt.TorrentStateCheckingUp},
 	}
-	f.files["pending"] = qbt.TorrentFiles{{Name: "Show/e01.mkv", Size: 1}}
-	f.files["checking"] = qbt.TorrentFiles{}
-	f.files["magnet"] = qbt.TorrentFiles{}
-	f.files["elsewhere"] = qbt.TorrentFiles{{Name: "x.mkv", Size: 1}}
+	f.files[hPending] = qbt.TorrentFiles{{Name: "Show/e01.mkv", Size: 1}}
+	f.files[hChecking] = qbt.TorrentFiles{}
+	f.files[hMagnet] = qbt.TorrentFiles{}
+	f.files[hElsewhere] = qbt.TorrentFiles{{Name: "x.mkv", Size: 1}}
 
 	result, err := f.svc.buildFileMap(t.Context(), f.source, newTestBackend(), scanScope{TorrentPaths: true})
 	require.NoError(t, err)
@@ -148,10 +148,10 @@ func TestBuildFileMap_ProtectsRoutedHelperTorrentFiles(t *testing.T) {
 
 	f := newRouteFixture(t, false)
 	f.torrents = []qbt.Torrent{
-		{Hash: "helper", SavePath: "/seeds/links/tracker", ContentPath: "/seeds/links/tracker/Show", State: qbt.TorrentStateDownloading},
+		{Hash: hHelper, SavePath: "/seeds/links/tracker", ContentPath: "/seeds/links/tracker/Show", State: qbt.TorrentStateDownloading},
 	}
-	f.files["helper"] = qbt.TorrentFiles{{Name: "Show/e01.mkv", Size: 1}}
-	stubSync(f.svc).helpers = map[string]bool{"helper": true}
+	f.files[hHelper] = qbt.TorrentFiles{{Name: "Show/e01.mkv", Size: 1}}
+	stubSync(f.svc).helpers = map[string]bool{hHelper: true}
 
 	result, err := f.svc.buildFileMap(t.Context(), f.source, newTestBackend(), scanScope{TorrentPaths: true})
 	require.NoError(t, err)
@@ -233,8 +233,8 @@ func TestBuildFileMap_NoRouteKeepsTheScan(t *testing.T) {
 
 	f := newRouteFixture(t, true)
 	require.NoError(t, f.svc.crossSeedRoutes.Delete(t.Context(), f.source.ID))
-	f.torrents = []qbt.Torrent{{Hash: "pending", SavePath: "/seeds/links/tracker", State: qbt.TorrentStateDownloading}}
-	f.files["pending"] = qbt.TorrentFiles{{Name: "e01.mkv", Size: 1}}
+	f.torrents = []qbt.Torrent{{Hash: hPending, SavePath: "/seeds/links/tracker", State: qbt.TorrentStateDownloading}}
+	f.files[hPending] = qbt.TorrentFiles{{Name: "e01.mkv", Size: 1}}
 
 	result, err := f.svc.buildFileMap(t.Context(), f.source, newTestBackend(), scanScope{})
 	require.NoError(t, err)

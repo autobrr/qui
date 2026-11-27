@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -33,14 +32,14 @@ func (s *Service) SetTransferRunner(runner transferRunner) {
 }
 
 type pendingTransfer struct {
-	hash          string
+	hash          infohash.Hash
 	torrent       qbt.Torrent
 	trackerDomain string
 	action        *models.TransferToInstanceAction
 	savePath      string
 	rule          ruleRef
 	failureReason string
-	exportsToDo   map[string]int
+	exportsToDo   map[infohash.Hash]int
 }
 
 func (s *Service) now() time.Time {
@@ -56,6 +55,7 @@ func transferHoldKey(instanceID int, hash string) string {
 
 func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, failedTargets map[int]bool) (pendingTransfer, bool) {
 	action := state.transferToInstance
+	parsed, _ := infohash.Parse(hash)
 	s.mu.RLock()
 	until, held := s.transferHolds[transferHoldKey(instanceID, hash)]
 	s.mu.RUnlock()
@@ -64,7 +64,7 @@ func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string,
 	}
 	if !failedTargets[action.TargetInstanceID] {
 		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, infohash.ParseAll([]string{hash}))
+		_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, []infohash.Hash{parsed})
 		cancel()
 		if err != nil {
 			failedTargets[action.TargetInstanceID] = true
@@ -73,7 +73,7 @@ func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string,
 		}
 	}
 
-	pending := pendingTransfer{hash: hash, torrent: torrent, action: action, rule: state.transferToInstanceRule}
+	pending := pendingTransfer{hash: parsed, torrent: torrent, action: action, rule: state.transferToInstanceRule}
 	if action.SavePath != "" {
 		resolved, ok := renderExportSavePath(action.SavePath, torrent, state, evalCtx)
 		if !ok {
@@ -87,7 +87,7 @@ func (s *Service) planTransfer(ctx context.Context, instanceID int, hash string,
 func transfersAfterMoves(transfers []pendingTransfer, moved map[string]ruleRef) []pendingTransfer {
 	ready := transfers[:0]
 	for _, pending := range transfers {
-		if _, movesNow := moved[pending.hash]; movesNow || pending.torrent.State == qbt.TorrentStateMoving {
+		if _, movesNow := moved[pending.hash.String()]; movesNow || pending.torrent.State == qbt.TorrentStateMoving {
 			continue
 		}
 		ready = append(ready, pending)
@@ -96,10 +96,10 @@ func transfersAfterMoves(transfers []pendingTransfer, moved map[string]ruleRef) 
 }
 
 func transfersAfterExports(transfers []pendingTransfer, exports []pendingExportToInstance) []pendingTransfer {
-	toDo := make(map[string]int, len(exports))
+	toDo := make(map[infohash.Hash]int, len(exports))
 	for _, export := range exports {
-		if export.mark != exportAlreadyOnTarget {
-			toDo[export.hash] = export.action.TargetInstanceID
+		if hash, err := infohash.Parse(export.hash); err == nil && export.mark != exportAlreadyOnTarget {
+			toDo[hash] = export.action.TargetInstanceID
 		}
 	}
 	ready := transfers[:0]
@@ -114,7 +114,7 @@ func transfersAfterExports(transfers []pendingTransfer, exports []pendingExportT
 
 func (p pendingTransfer) takesExport(members []transfer.Member) bool {
 	return slices.ContainsFunc(members, func(member transfer.Member) bool {
-		target, waits := p.exportsToDo[strings.ToLower(member.Hash)]
+		target, waits := p.exportsToDo[member.Hash]
 		return waits && target != p.action.TargetInstanceID
 	})
 }
@@ -136,7 +136,7 @@ func (s *Service) start(ctx context.Context, instanceID int, pending pendingTran
 func (p pendingTransfer) request(instanceID int) transfer.Request {
 	return transfer.Request{
 		SourceInstanceID: instanceID,
-		Hash:             p.hash,
+		Hash:             p.hash.String(),
 		TargetInstanceID: p.action.TargetInstanceID,
 		Placement:        transfer.Placement{SavePath: p.savePath, Category: p.action.Category, Tags: p.action.Tags},
 		Options: transfer.Options{After: transfer.After(p.action.After), LeaveStopped: p.action.LeaveStopped,
@@ -172,14 +172,14 @@ func (s *Service) startTransfers(ctx context.Context, instanceID int, transfers 
 		if reason != "" {
 			outcome = models.ActivityOutcomeFailed
 			s.mu.Lock()
-			s.transferHolds[transferHoldKey(instanceID, pending.hash)] = s.now().Add(transferHold)
+			s.transferHolds[transferHoldKey(instanceID, pending.hash.String())] = s.now().Add(transferHold)
 			s.mu.Unlock()
-			log.Warn().Int("instanceID", instanceID).Str("hash", pending.hash).Str("reason", reason).
+			log.Warn().Int("instanceID", instanceID).Str("hash", pending.hash.String()).Str("reason", reason).
 				Msg("automations: Transfer to Instance did not start")
 		}
 		activity := &models.AutomationActivity{
 			InstanceID:    instanceID,
-			Hash:          pending.hash,
+			Hash:          pending.hash.String(),
 			TorrentName:   pending.torrent.Name,
 			TrackerDomain: pending.trackerDomain,
 			Action:        models.ActivityActionTransferredToInstance,
@@ -192,7 +192,7 @@ func (s *Service) startTransfers(ctx context.Context, instanceID int, transfers 
 		summary.recordActivity(activity, 1)
 		if s.activityStore != nil {
 			if err := s.activityStore.Create(ctx, activity); err != nil {
-				log.Warn().Err(err).Str("hash", pending.hash).Int("instanceID", instanceID).Msg("automations: failed to record activity")
+				log.Warn().Err(err).Str("hash", pending.hash.String()).Int("instanceID", instanceID).Msg("automations: failed to record activity")
 			}
 		}
 	}
@@ -212,7 +212,7 @@ func (s *Service) recordDryRunTransfers(ctx context.Context, r *stepRun, transfe
 	}
 	var order []group
 	items := map[group][]ActivityRunTorrent{}
-	taken := map[string]bool{}
+	taken := map[infohash.Hash]bool{}
 	for _, pending := range transfers {
 		if taken[pending.hash] {
 			continue
@@ -232,11 +232,11 @@ func (s *Service) recordDryRunTransfers(ctx context.Context, r *stepRun, transfe
 		if preview != nil && pending.takesExport(preview.Members) {
 			continue
 		}
-		item := buildRunItemFromHash(pending.hash, r.torrentByHash, r.scope)
+		item := buildRunItemFromHash(pending.hash.String(), r.torrentByHash, r.scope)
 		if reason != "" {
 			r.record(ctx, stepActivity{
 				action:  models.ActivityActionTransferredToInstance,
-				hash:    pending.hash,
+				hash:    pending.hash.String(),
 				reason:  reason,
 				details: transferDetails{TargetInstanceID: pending.action.TargetInstanceID, Count: 1, Refused: true},
 				items:   func() []ActivityRunTorrent { return []ActivityRunTorrent{item} },
@@ -244,7 +244,7 @@ func (s *Service) recordDryRunTransfers(ctx context.Context, r *stepRun, transfe
 			continue
 		}
 		for _, member := range preview.Members {
-			taken[strings.ToLower(member.Hash)] = true
+			taken[member.Hash] = true
 		}
 		for _, hash := range preview.Versions {
 			taken[hash] = true

@@ -1755,8 +1755,8 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
-			Path: strings.TrimSpace(form.get("location"))}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation,
+			Path: strings.TrimSpace(form.get("location"))}.On(splitHashes(form.get("hashes"))), true
 	})
 }
 
@@ -2026,7 +2026,7 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 	h.deleteNoter.NoteProxiedDelete(ctx, instanceID, noted, clientAPIKey.ClientName)
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete}.On(splitHashes(form.get("hashes"))),
 			strings.EqualFold(form.get("deleteFiles"), "true")
 	})
 }
