@@ -39,7 +39,7 @@ func settingsCheckService(t *testing.T) *Service {
 
 func checkSettingsName(t *testing.T, svc *Service) *WebhookCheckResponse {
 	t.Helper()
-	resp, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: settingsCheckName, Size: 4 << 30})
+	resp, err := checkOnHeld(t, svc, &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: settingsCheckName, Size: 4 << 30})
 	require.NoError(t, err)
 	return resp
 }
@@ -61,7 +61,7 @@ func TestCheckWebhookLoadsSettingsOnce(t *testing.T) {
 func TestCheckWebhookLoadsSettingsAgainAfterFailedLoad(t *testing.T) {
 	svc := settingsCheckService(t)
 	svc.automationSettingsLoader = failingSettings
-	_, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: settingsCheckName})
+	_, err := checkOnHeld(t, svc, &WebhookCheckRequest{InstanceIDs: []int{localReadsInstance.ID}, TorrentName: settingsCheckName})
 	require.ErrorIs(t, err, errSettingsUnavailable)
 
 	svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {

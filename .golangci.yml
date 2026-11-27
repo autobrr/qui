@@ -434,7 +434,7 @@ linters:
         text: use crossseed\.Adder
 
       # The webhook check and the season pack check read their candidates from Held titles.
-      # Their fallback to the full list is in webhook_all_torrents.go and seasonpack_all_torrents.go.
+      # Only the season pack endpoints and the automatic assembly fall back to the full list, in seasonpack_all_torrents.go.
       - path-except: internal/services/crossseed/(webhook_check|webhook_season_pack|seasonpack|seasonpack_candidates)\.go$
         linters:
           - forbidigo

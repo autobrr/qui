@@ -941,7 +941,7 @@ func TestAutobrrApplyReadsSeasonFolderFromFiles(t *testing.T) {
 		return &CrossSeedResponse{Success: true, Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Success: true, Status: "added"}}}, nil
 	}
 
-	check, err := service.CheckWebhook(t.Context(), &WebhookCheckRequest{
+	check, err := checkOnHeld(t, service, &WebhookCheckRequest{
 		InstanceIDs: []int{instance.ID}, TorrentName: pack, Size: uint64(size + 500),
 	})
 	require.NoError(t, err)

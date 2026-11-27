@@ -14,7 +14,6 @@ import (
 	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
-	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
@@ -80,10 +79,7 @@ type heldTitlesQuery struct {
 	everyInstance bool
 }
 
-func (s *Service) StartHeldTitles(ctx context.Context, features *experimental.Features, reader heldTitlesSync, sinks syncSinks, sources []AlternateTitleSource) {
-	if !features.Enabled(experimental.HeldTitles) {
-		return
-	}
+func (s *Service) StartHeldTitles(ctx context.Context, reader heldTitlesSync, sinks syncSinks, sources []AlternateTitleSource) {
 	h := &heldTitles{svc: s, sync: reader, wake: make(chan struct{}, 1), instances: map[int]*heldInstance{}}
 	h.alternates = newAlternateTitleIndex(sources, h.buildsPending)
 	s.heldTitles = h
