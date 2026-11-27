@@ -887,12 +887,10 @@ func TestStartSearchRun_RedOpsPickKeepsATenSecondInterval(t *testing.T) {
 	require.Equal(t, 10, run.IntervalSeconds)
 
 	require.Eventually(t, func() bool {
-		loaded, loadErr := store.GetSearchRun(ctx, run.ID)
-		if loadErr != nil || loaded == nil {
-			return false
-		}
-		return loaded.Status != models.CrossSeedSearchRunStatusRunning
-	}, 3*time.Second, 25*time.Millisecond)
+		svc.searchMu.RLock()
+		defer svc.searchMu.RUnlock()
+		return svc.searchCancel == nil
+	}, 3*time.Second, 25*time.Millisecond, "the first run releases its slot")
 
 	loaded, err := store.GetSearchRun(ctx, run.ID)
 	require.NoError(t, err)

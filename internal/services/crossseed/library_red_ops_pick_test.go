@@ -107,23 +107,28 @@ func TestStartSearchRun_TorznabPickWithNoEnabledIndexerFailsWithAPickReason(t *t
 	require.Equal(t, scheduleBlockedTorznabPickNoIndexer, scheduleBlockedReason(err))
 }
 
-func TestStartSearchRun_FailedIndexerLookupAsksOnlyThePickedSites(t *testing.T) {
+func TestStartSearchRun_FailedIndexerLookupAsksOnlyTheRedOpsSitesWithAKey(t *testing.T) {
 	f, gated := newRedOpsPickFixture(t, "crossseed-pick-indexer-lookup-fails")
-	_, err := f.store.UpsertSettings(t.Context(), &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key", OrpheusAPIKey: "ops-key"})
-	require.NoError(t, err)
 	f.svc.jackettService = newFailingJackettService(errors.New("indexer list failed"))
 
-	run, err := f.svc.StartSearchRun(t.Context(), SearchRunOptions{
-		InstanceID: f.instanceID,
-		SitePick:   models.SitePick{IndexerIDs: []int{7}, GazelleSites: []string{"redacted.sh"}},
-	})
+	run, err := f.svc.StartSearchRun(t.Context(), SearchRunOptions{InstanceID: f.instanceID})
 	require.NoError(t, err)
 	require.Empty(t, run.IndexerIDs)
 	opts := f.heldRunOpts(t, gated)
-	require.Equal(t, models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{"redacted.sh"}}, opts.SitePick, "the run asks RED, not OPS")
+	require.Equal(t, models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{}}, opts.SitePick, "the run asks no Torznab indexer")
 
 	loaded, err := f.store.GetSearchRun(t.Context(), run.ID)
 	require.NoError(t, err)
 	require.NotNil(t, loaded.ErrorMessage)
 	require.Contains(t, *loaded.ErrorMessage, "indexer list failed", "the run history shows the failed lookup")
+}
+
+func TestStartSearchRun_TorznabPickStartsWhenTheIndexerLookupFails(t *testing.T) {
+	f := newScheduleFixture(t, "crossseed-torznab-pick-lookup-fails", "http://127.0.0.1:1")
+	f.svc.jackettService = newFailingJackettService(errors.New("indexer list failed"))
+
+	run, err := f.svc.StartSearchRun(t.Context(), SearchRunOptions{InstanceID: f.instanceID, SitePick: models.SitePick{IndexerIDs: []int{7}}})
+	require.NoError(t, err)
+	require.Equal(t, []int{7}, run.IndexerIDs, "the run is in the history with the picked indexer")
+	f.waitRunEnd(t)
 }

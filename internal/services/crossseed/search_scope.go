@@ -96,7 +96,7 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 	if !f.gazelleOnly || scope.asksGazelle() || f.skipGazelle {
 		return scope
 	}
-	if len(f.gazelleKeys) == 0 {
+	if !f.sites.asksGazelle(f.gazelleKeys) {
 		return searchScope{err: fmt.Errorf("%w: %w", ErrInvalidRequest, errGazellePickNoKey)}
 	}
 	if !gazelleCooldownDue(scope.gazelle, scope.gazelleKeyMissing) {
@@ -292,11 +292,7 @@ func (s *Service) runIndexerIDs(ctx context.Context, r resolvedSitePick, gazelle
 	if r.torznabErr != nil || len(ids) == 0 || r.pick.Every() {
 		return ids, r.torznabErr
 	}
-	enabled, err := s.jackettService.GetEnabledIndexersInfo(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(enabled) == 0 {
+	if enabled, err := s.jackettService.GetEnabledIndexersInfo(ctx); err == nil && len(enabled) == 0 {
 		return nil, nil
 	}
 	return ids, nil

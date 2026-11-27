@@ -118,6 +118,11 @@ func TestDecideSearchScope(t *testing.T) {
 			wantErr: "none of them has a usable API key",
 		},
 		{
+			name:    "a pick of only RED with only an OPS key is an error",
+			facts:   searchScopeFacts{gazelleOnly: true, sites: pickedSites(models.SitePick{GazelleSites: []string{red}}), sourceSite: ops, gazelleKeys: []string{ops}},
+			wantErr: "none of them has a usable API key",
+		},
+		{
 			name:  "a RED/OPS-only pick with RED/OPS in cooldown asks nothing",
 			facts: searchScopeFacts{gazelleOnly: true, skipGazelle: true, sourceSite: red, gazelleKeys: bothKeys},
 			want:  scopeWant{skipReason: "no eligible indexers"},
