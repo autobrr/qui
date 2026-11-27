@@ -425,7 +425,6 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
 
-	hookCallCount := 0
 	s := &Service{
 		instanceStore: &mockInstanceStore{
 			instances: map[int]*models.Instance{
@@ -439,35 +438,34 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 			},
 		},
 		syncManager: &rootlessSavePathSyncManager{},
-		postInjectionHook: func(_ context.Context, instanceID int, hashes []string) {
-			if instanceID == 1 && strings.Join(hashes, ",") == hash123 {
-				hookCallCount++
-			}
-		},
 	}
 	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
 
-	withLinkAdder(s)
-	result := s.processHardlinkMode(
-		context.Background(),
-		linkCheck(t, 1, hash123),
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-		[]byte("torrent"),
-		hash123,
-		"TorrentName",
-		&CrossSeedRequest{},
-		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
-		"exact",
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"category",
-		"category.cross",
-	)
+	synctest.Test(t, func(t *testing.T) {
+		withLinkAdder(s)
+		programs := runProgramAfterAdd(s, qbt.Torrent{Hash: hash123})
+		result := s.processHardlinkMode(
+			context.Background(),
+			linkCheck(t, 1, hash123),
+			CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+			[]byte("torrent"),
+			hash123,
+			"TorrentName",
+			&CrossSeedRequest{},
+			&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+			"exact",
+			qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
+			qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
+			&qbt.TorrentProperties{SavePath: downloadsDir},
+			"category",
+			"category.cross",
+		)
+		synctest.Wait()
 
-	require.True(t, result.Success)
-	require.Equal(t, "added_hardlink", result.Result.Status)
-	require.Equal(t, 1, hookCallCount, "expected successful hardlink injection to run post-injection hooks once")
+		require.True(t, result.Success)
+		require.Equal(t, "added_hardlink", result.Result.Status)
+		require.Equal(t, []string{programRun(testProgramID, 1, hash123)}, programs.ran(), "a successful hardlink add runs the External Program once for the added torrent")
+	})
 }
 
 func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
