@@ -31,7 +31,7 @@ func (h *ClientSettingsHandler) GetClientSettings(w http.ResponseWriter, r *http
 		RespondError(w, http.StatusInternalServerError, "Failed to load client settings")
 		return
 	}
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *ClientSettingsHandler) UpdateClientSettings(w http.ResponseWriter, r *http.Request) {
@@ -59,5 +59,5 @@ func (h *ClientSettingsHandler) UpdateClientSettings(w http.ResponseWriter, r *h
 		return
 	}
 	h.activity.Publish(activity.Event{Kind: activity.KindClientSettings})
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }

@@ -55,7 +55,7 @@ func (h *TrackerGroupsHandler) List(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to read tracker groups")
 		return
 	}
-	RespondJSON(w, http.StatusOK, trackerGroupsResponse{Groups: liveTrackerGroups(groups)})
+	RespondJSON(w, r, http.StatusOK, trackerGroupsResponse{Groups: liveTrackerGroups(groups)})
 }
 
 func liveTrackerGroups(groups map[trackergroup.Group]qbittorrent.TrackerTransferStats) []LiveTrackerGroup {

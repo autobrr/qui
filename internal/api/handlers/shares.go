@@ -151,13 +151,13 @@ func (h *SharesHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(res.Shares) > 0:
-		RespondJSON(w, http.StatusCreated, res)
+		RespondJSON(w, r, http.StatusCreated, res)
 	case failed > 0:
 		res.Error = "Failed to start the Share"
-		RespondJSON(w, http.StatusInternalServerError, res)
+		RespondJSON(w, r, http.StatusInternalServerError, res)
 	default:
 		res.Error = res.Refused[0].Reason
-		RespondJSON(w, http.StatusConflict, res)
+		RespondJSON(w, r, http.StatusConflict, res)
 	}
 }
 
@@ -172,7 +172,7 @@ func (h *SharesHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i := range list {
 		views[i] = viewOf(&list[i])
 	}
-	RespondJSON(w, http.StatusOK, views)
+	RespondJSON(w, r, http.StatusOK, views)
 }
 
 func (h *SharesHandler) Stop(w http.ResponseWriter, r *http.Request) {
@@ -292,7 +292,7 @@ func (h *SharesHandler) Settings(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to read the Share settings")
 		return
 	}
-	RespondJSON(w, http.StatusOK, settingsView(settings))
+	RespondJSON(w, r, http.StatusOK, settingsView(settings))
 }
 
 func (h *SharesHandler) SaveSettings(w http.ResponseWriter, r *http.Request) {

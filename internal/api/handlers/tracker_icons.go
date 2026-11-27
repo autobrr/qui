@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 )
@@ -33,11 +32,6 @@ func (h *TrackerIconHandler) GetTrackerIcons(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-
-	if err := json.NewEncoder(w).Encode(icons); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, r, http.StatusOK, icons)
 }

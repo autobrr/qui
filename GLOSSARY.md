@@ -16,6 +16,11 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Instance limit**: The optional list of instances that an API key can reach. No list means every instance, also the ones added later. _Avoid_: instance scope.
 - **Client Proxy API key**: A key bound to one instance that reaches only the qBittorrent proxy. _Avoid_: client key, proxy token.
 - **Browser-only route**: A route that refuses every API key and accepts only a signed-in browser, or any request when authentication is disabled. _Avoid_: session-only route.
+- **Secret kind**: A class of secret that one Permission shows to an API key. qui has two: a tracker passkey, shown with `Torrents: write`, and a notification token, shown with `Notifications: write`. _Avoid_: sensitive field, credential type.
+- **Audience**: The Secret kinds that the reader of a response may see. A browser session sees each kind, and an API key sees the kinds that its Permission allows. A reader with no Audience sees none. _Avoid_: passkey access, access level.
+- **Hidden form**: What a reader gets in place of a secret that its Audience does not include: the scheme and host of a link, its scheme alone, an empty value, or a Stand-in. _Avoid_: masked value, redacted value. `<redacted>` is the placeholder of a stored credential, which no Audience sees.
+- **Stand-in**: A Hidden form that a client can send back, and that qui turns into the full value again. It is the scheme and host of a link with a short hash, or a hash alone. _Avoid_: short form, token, alias.
+- **Secret shape**: The declaration, in the package that owns a type, that the type holds a secret of one Secret kind, with its Hidden form. _Avoid_: mask, redactor, serializer.
 
 ## Torrent filtering
 

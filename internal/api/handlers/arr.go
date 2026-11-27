@@ -50,7 +50,7 @@ func (h *ArrHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
 		instances[i].APIKeyEncrypted = ""
 	}
 
-	RespondJSON(w, http.StatusOK, instances)
+	RespondJSON(w, r, http.StatusOK, instances)
 }
 
 func (h *ArrHandler) GetInstance(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +80,7 @@ func (h *ArrHandler) GetInstance(w http.ResponseWriter, r *http.Request) {
 
 	instance.APIKeyEncrypted = ""
 
-	RespondJSON(w, http.StatusOK, instance)
+	RespondJSON(w, r, http.StatusOK, instance)
 }
 
 type arrCreateRequest struct {
@@ -150,7 +150,7 @@ func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	h.arrService.NoteInstancesChanged()
 	instance.APIKeyEncrypted = ""
 
-	RespondJSON(w, http.StatusCreated, instance)
+	RespondJSON(w, r, http.StatusCreated, instance)
 }
 
 type arrUpdateRequest struct {
@@ -233,7 +233,7 @@ func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	h.arrService.NoteInstancesChanged()
 	instance.APIKeyEncrypted = ""
 
-	RespondJSON(w, http.StatusOK, instance)
+	RespondJSON(w, r, http.StatusOK, instance)
 }
 
 func (h *ArrHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
@@ -289,7 +289,7 @@ func (h *ArrHandler) TestInstance(w http.ResponseWriter, r *http.Request) {
 		log.Debug().Err(testErr).Int("id", id).Msg("ARR instance test failed")
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 type arrTestConnectionRequest struct {
@@ -341,7 +341,7 @@ func (h *ArrHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
 			Msg("ARR connection test failed")
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func normalizeBasicAuthFromURL(rawBaseURL string, basicUsername, basicPassword *string) (string, *string, *string) {
@@ -451,5 +451,5 @@ func (h *ArrHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }

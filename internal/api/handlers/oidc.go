@@ -285,7 +285,7 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 
 	config, state, pkceVerifier, err := h.GetConfigResponse(r.Context())
 	if errors.Is(err, errOIDCProviderUnavailable) {
-		RespondJSON(w, http.StatusServiceUnavailable, oidcUnavailableResponse{
+		RespondJSON(w, r, http.StatusServiceUnavailable, oidcUnavailableResponse{
 			Error:               errOIDCProviderUnavailable.Error(),
 			DisableBuiltInLogin: h.config.Live().OIDCDisableBuiltInLogin,
 		})
@@ -302,7 +302,7 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", pkceVerifier)
 	}
 
-	RespondJSON(w, http.StatusOK, config)
+	RespondJSON(w, r, http.StatusOK, config)
 }
 
 func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {

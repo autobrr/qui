@@ -40,7 +40,7 @@ func (h *CrossSeedHandler) ManualAssembleCheck(w http.ResponseWriter, r *http.Re
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
 func (h *CrossSeedHandler) ManualAssembleApply(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +54,7 @@ func (h *CrossSeedHandler) ManualAssembleApply(w http.ResponseWriter, r *http.Re
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
 func (h *CrossSeedHandler) ManualMatchProposals(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +79,7 @@ func (h *CrossSeedHandler) ManualMatchProposals(w http.ResponseWriter, r *http.R
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
 func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Request) {
@@ -124,5 +124,5 @@ func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Reque
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }

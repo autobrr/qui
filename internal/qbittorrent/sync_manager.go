@@ -32,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/prefcatalog"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/internal/secrets"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/trackergroup"
 	"github.com/autobrr/qui/pkg/infohash"
@@ -2886,21 +2887,7 @@ func ExtractDomainFromURL(urlStr string) string {
 }
 
 func IsPseudoTrackerLabel(value string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	normalized = strings.Trim(normalized, "*")
-	normalized = strings.TrimSpace(normalized)
-	if strings.HasPrefix(normalized, "[") && strings.HasSuffix(normalized, "]") {
-		normalized = strings.TrimPrefix(normalized, "[")
-		normalized = strings.TrimSuffix(normalized, "]")
-		normalized = strings.TrimSpace(normalized)
-	}
-
-	switch normalized {
-	case "dht", "pex", "lsd":
-		return true
-	default:
-		return false
-	}
+	return secrets.IsPseudoTrackerLabel(value)
 }
 
 func (sm *SyncManager) recordTrackerTransition(client *Client, oldURL, newURL string, hashes []string) {

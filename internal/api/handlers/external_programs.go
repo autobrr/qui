@@ -69,10 +69,7 @@ func (h *ExternalProgramsHandler) ListExternalPrograms(w http.ResponseWriter, r 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(programs); err != nil {
-		log.Error().Err(err).Msg("Failed to encode external programs response")
-	}
+	RespondJSON(w, r, http.StatusOK, programs)
 }
 
 func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r *http.Request) {
@@ -101,11 +98,7 @@ func (h *ExternalProgramsHandler) CreateExternalProgram(w http.ResponseWriter, r
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(program); err != nil {
-		log.Error().Err(err).Msg("Failed to encode created program response")
-	}
+	RespondJSON(w, r, http.StatusCreated, program)
 }
 
 func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r *http.Request) {
@@ -150,10 +143,7 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(program); err != nil {
-		log.Error().Err(err).Msg("Failed to encode updated program response")
-	}
+	RespondJSON(w, r, http.StatusOK, program)
 }
 
 func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r *http.Request) {
@@ -182,9 +172,7 @@ func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r
 
 		if len(refs) > 0 {
 			if !force {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusConflict)
-				if err := json.NewEncoder(w).Encode(struct {
+				RespondJSON(w, r, http.StatusConflict, struct {
 					Error       string                        `json:"error"`
 					Message     string                        `json:"message"`
 					Automations []*models.AutomationReference `json:"automations"`
@@ -192,9 +180,7 @@ func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r
 					Error:       "Program is referenced by automations",
 					Message:     "This program is used by one or more automation rules. Use force=true to delete anyway, which will remove the external program action from these automations.",
 					Automations: refs,
-				}); err != nil {
-					log.Error().Err(err).Msg("Failed to encode conflict response")
-				}
+				})
 				return
 			}
 
@@ -320,12 +306,9 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		results = append(results, result)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(struct {
+	RespondJSON(w, r, http.StatusOK, struct {
 		Results []externalProgramExecuteResult `json:"results"`
-	}{results}); err != nil {
-		log.Error().Err(err).Msg("Failed to encode execute response")
-	}
+	}{results})
 }
 
 type externalProgramExecuteResult struct {

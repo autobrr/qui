@@ -174,7 +174,7 @@ func (h *BackupsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *BackupsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +217,7 @@ func (h *BackupsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, r, http.StatusOK, updated)
 }
 
 type triggerBackupRequest struct {
@@ -281,7 +281,7 @@ func (h *BackupsHandler) TriggerBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, run)
+	RespondJSON(w, r, http.StatusAccepted, run)
 }
 
 type backupRunWithProgress struct {
@@ -349,7 +349,7 @@ func (h *BackupsHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		HasMore: hasMore,
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
@@ -386,7 +386,7 @@ func (h *BackupsHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, manifest)
+	RespondJSON(w, r, http.StatusOK, manifest)
 }
 
 func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
@@ -467,7 +467,7 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		extension = "tar"
 	}
 
-	manifestData, err := json.MarshalIndent(manifest, "", "  ")
+	manifestData, err := json.MarshalIndent(manifest, "", "  ") //nolint:forbidigo // a file inside the backup archive, which shows passkeys by ADR 0040
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
 		return
@@ -700,7 +700,7 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, run)
+	RespondJSON(w, r, http.StatusCreated, run)
 }
 
 func archiveEntryBaseName(name string) string {
@@ -1094,7 +1094,7 @@ func (h *BackupsHandler) DeleteRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 func (h *BackupsHandler) DeleteAllRuns(w http.ResponseWriter, r *http.Request) {
@@ -1109,7 +1109,7 @@ func (h *BackupsHandler) DeleteAllRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) {
@@ -1154,7 +1154,7 @@ func (h *BackupsHandler) PreviewRestore(w http.ResponseWriter, r *http.Request) 
 	}
 
 	hideRestorePlanPasskeys(r, plan)
-	RespondJSON(w, http.StatusOK, plan)
+	RespondJSON(w, r, http.StatusOK, plan)
 }
 
 func hideRestorePlanPasskeys(r *http.Request, plan *backups.RestorePlan) {
@@ -1223,7 +1223,7 @@ func (h *BackupsHandler) ExecuteRestore(w http.ResponseWriter, r *http.Request) 
 	}
 
 	hideRestorePlanPasskeys(r, result.Plan)
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }
 
 func (h *BackupsHandler) ensureRunOwnership(ctx context.Context, instanceID int, runID int64) error {

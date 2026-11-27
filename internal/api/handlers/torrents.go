@@ -268,7 +268,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Data-Source", "fresh")
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func groupCopiesParam(r *http.Request) bool {
@@ -411,7 +411,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
+		RespondJSON(w, r, http.StatusOK, &qbittorrent.TorrentFieldResponse{
 			Values: values,
 			Total:  len(values),
 		})
@@ -435,7 +435,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
+	RespondJSON(w, r, http.StatusOK, &qbittorrent.TorrentFieldResponse{
 		Values: values,
 		Total:  len(values),
 	})
@@ -545,7 +545,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 	}
 
 	if len(req.Hashes) == 0 {
-		RespondJSON(w, http.StatusOK, struct {
+		RespondJSON(w, r, http.StatusOK, struct {
 			Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
 		}{Duplicates: []qbittorrent.DuplicateTorrentMatch{}})
 		return
@@ -585,7 +585,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, struct {
+	RespondJSON(w, r, http.StatusOK, struct {
 		Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
 	}{Duplicates: matches})
 }
@@ -989,7 +989,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	if len(failedFiles) > 0 {
 		response["failedFiles"] = failedFiles
 	}
-	RespondJSON(w, http.StatusCreated, response)
+	RespondJSON(w, r, http.StatusCreated, response)
 }
 
 func torrentURLAddFailureError(resp *qbt.TorrentAddResponse) error {
@@ -1337,7 +1337,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		Int("targetCount", len(flattenTargetHashes(targetsByInstance))).
 		Msg("Bulk action completed with optimistic cache update")
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Bulk action completed successfully",
 	})
 }
@@ -1438,7 +1438,7 @@ func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Req
 	}
 
 	hideMatchPasskeys(r, response.Matches)
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func flattenTargetHashes(targetsByInstance map[int][]string) []string {
@@ -1555,7 +1555,7 @@ func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, categories)
+	RespondJSON(w, r, http.StatusOK, categories)
 }
 
 func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
@@ -1588,7 +1588,7 @@ func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]string{
+	RespondJSON(w, r, http.StatusCreated, map[string]string{
 		"message": "Category created successfully",
 	})
 }
@@ -1623,7 +1623,7 @@ func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Category updated successfully",
 	})
 }
@@ -1657,7 +1657,7 @@ func (h *TorrentsHandler) RemoveCategories(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Categories removed successfully",
 	})
 }
@@ -1679,7 +1679,7 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, tags)
+	RespondJSON(w, r, http.StatusOK, tags)
 }
 
 func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Request) {
@@ -1704,7 +1704,7 @@ func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Reque
 			trackers[domain] = qbittorrent.TrackerOrigin(trackerURL)
 		}
 	}
-	RespondJSON(w, http.StatusOK, trackers)
+	RespondJSON(w, r, http.StatusOK, trackers)
 }
 
 func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
@@ -1736,7 +1736,7 @@ func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]string{
+	RespondJSON(w, r, http.StatusCreated, map[string]string{
 		"message": "Tags created successfully",
 	})
 }
@@ -1770,7 +1770,7 @@ func (h *TorrentsHandler) DeleteTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Tags deleted successfully",
 	})
 }
@@ -1798,7 +1798,7 @@ func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, properties)
+	RespondJSON(w, r, http.StatusOK, properties)
 }
 
 func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Request) {
@@ -1827,7 +1827,7 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 	if !middleware.CanReadTrackerPasskeys(r) {
 		trackers = qbittorrent.TrackersWithoutPasskeys(trackers)
 	}
-	RespondJSON(w, http.StatusOK, trackers)
+	RespondJSON(w, r, http.StatusOK, trackers)
 }
 
 func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Request) {
@@ -1858,7 +1858,7 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 			webseeds[i].URL = qbittorrent.TrackerOrigin(webseeds[i].URL)
 		}
 	}
-	RespondJSON(w, http.StatusOK, webseeds)
+	RespondJSON(w, r, http.StatusOK, webseeds)
 }
 
 func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.Request) {
@@ -1884,7 +1884,7 @@ func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, pieceStates)
+	RespondJSON(w, r, http.StatusOK, pieceStates)
 }
 
 type EditTrackerRequest struct {
@@ -1926,7 +1926,7 @@ func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
 type AddTrackerRequest struct {
@@ -1967,7 +1967,7 @@ func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
 type RemoveTrackerRequest struct {
@@ -2008,7 +2008,7 @@ func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
 func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) {
@@ -2051,7 +2051,7 @@ func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent renamed successfully"})
 }
 
 func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Request) {
@@ -2095,7 +2095,7 @@ func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent file renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent file renamed successfully"})
 }
 
 func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Request) {
@@ -2139,7 +2139,7 @@ func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent folder renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent folder renamed successfully"})
 }
 
 func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request) {
@@ -2207,7 +2207,7 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 		Int("peerCount", len(sortedPeers)).
 		Msg("Torrent peers response with sorted peers")
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request) {
@@ -2245,7 +2245,7 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, files)
+	RespondJSON(w, r, http.StatusOK, files)
 }
 
 type SetTorrentFilePriorityRequest struct {
@@ -2378,7 +2378,7 @@ func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"success": true})
 }
 
 func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
@@ -2412,7 +2412,7 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"success": true})
 }
 
 func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) {
@@ -2455,7 +2455,7 @@ func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, resp)
+	RespondJSON(w, r, http.StatusCreated, resp)
 }
 
 func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *http.Request) {
@@ -2491,7 +2491,7 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 			qbittorrent.HideTrackerURLs(tasks[i].URLSeeds)
 		}
 	}
-	RespondJSON(w, http.StatusOK, tasks)
+	RespondJSON(w, r, http.StatusOK, tasks)
 }
 
 func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Request) {
@@ -2502,7 +2502,7 @@ func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Requ
 	}
 
 	count := h.syncManager.GetActiveTaskCount(r.Context(), instanceID)
-	RespondJSON(w, http.StatusOK, map[string]int{"count": count})
+	RespondJSON(w, r, http.StatusOK, map[string]int{"count": count})
 }
 
 func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *http.Request) {
@@ -2587,7 +2587,7 @@ func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *ht
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
 }
 
 func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *http.Request) {
@@ -2684,7 +2684,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Request) {
@@ -2726,7 +2726,7 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func parseDirectoryContentMode(raw string) (qbt.DirectoryContentMode, bool) {
@@ -3192,7 +3192,7 @@ func (h *TorrentsHandler) GetTorrentFileMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, torrentFileMediaInfoResponse{
+	RespondJSON(w, r, http.StatusOK, torrentFileMediaInfoResponse{
 		FileIndex:    resolved.FileIndex,
 		RelativePath: resolved.RelativePath,
 		Streams:      mapReportToMediaInfoStreams(report),
@@ -3266,7 +3266,7 @@ func (h *TorrentsHandler) GetContentPathMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, contentPathMediaInfoResponse{
+	RespondJSON(w, r, http.StatusOK, contentPathMediaInfoResponse{
 		ContentPath:   relativePath,
 		SummaryTxt:    summaryTxt,
 		MediaInfoJSON: json.RawMessage(rawJSON),

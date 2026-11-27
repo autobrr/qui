@@ -34,10 +34,10 @@ func (h *CrossSeedHandler) SeasonPackCheck(w http.ResponseWriter, r *http.Reques
 	}
 
 	if resp.Ready {
-		RespondJSON(w, http.StatusOK, resp)
+		RespondJSON(w, r, http.StatusOK, resp)
 		return
 	}
-	RespondJSON(w, http.StatusNotFound, resp)
+	RespondJSON(w, r, http.StatusNotFound, resp)
 }
 
 func (h *CrossSeedHandler) SeasonPackApply(w http.ResponseWriter, r *http.Request) {
@@ -66,5 +66,5 @@ func (h *CrossSeedHandler) SeasonPackApply(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }

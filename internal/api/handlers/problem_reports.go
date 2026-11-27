@@ -70,7 +70,7 @@ func (h *ProblemReportHandler) Facts(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Str("startedFrom", req.StartedFrom).Msg("Failed to read the Problem report facts")
 		RespondError(w, http.StatusInternalServerError, "read the facts: "+err.Error())
 	default:
-		RespondJSON(w, http.StatusOK, facts)
+		RespondJSON(w, r, http.StatusOK, facts)
 	}
 }
 
@@ -137,7 +137,7 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("Failed to send a Problem report")
 		RespondError(w, http.StatusInternalServerError, "send the report: "+err.Error())
 	default:
-		RespondJSON(w, http.StatusCreated, sent)
+		RespondJSON(w, r, http.StatusCreated, sent)
 	}
 }
 
@@ -148,7 +148,7 @@ func (h *ProblemReportHandler) SentReports(w http.ResponseWriter, r *http.Reques
 		RespondError(w, http.StatusInternalServerError, "list the sent reports: "+err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, reports)
+	RespondJSON(w, r, http.StatusOK, reports)
 }
 
 func (h *ProblemReportHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +175,7 @@ func (h *ProblemReportHandler) Sender(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "read the sender: "+err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, sender)
+	RespondJSON(w, r, http.StatusOK, sender)
 }
 
 func (h *ProblemReportHandler) StartSignIn(w http.ResponseWriter, r *http.Request) {
@@ -198,12 +198,12 @@ func (h *ProblemReportHandler) StartSignIn(w http.ResponseWriter, r *http.Reques
 		log.Error().Err(err).Msg("Failed to start a Problem report sign-in")
 		RespondError(w, http.StatusInternalServerError, "start the sign-in: "+err.Error())
 	default:
-		RespondJSON(w, http.StatusOK, map[string]string{"url": url})
+		RespondJSON(w, r, http.StatusOK, map[string]string{"url": url})
 	}
 }
 
-func (h *ProblemReportHandler) SignInState(w http.ResponseWriter, _ *http.Request) {
-	RespondJSON(w, http.StatusOK, h.service.SignInState())
+func (h *ProblemReportHandler) SignInState(w http.ResponseWriter, r *http.Request) {
+	RespondJSON(w, r, http.StatusOK, h.service.SignInState())
 }
 
 func (h *ProblemReportHandler) SignOut(w http.ResponseWriter, r *http.Request) {

@@ -635,7 +635,7 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, torrentInfo)
+	RespondJSON(w, r, http.StatusOK, torrentInfo)
 }
 
 func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Request) {
@@ -657,7 +657,7 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 	}
 
 	hideMatchPasskeys(r, response.Matches)
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func hideMatchPasskeys(r *http.Request, matches []crossseed.LocalMatch) {
@@ -705,7 +705,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, torrentSearchResponseFor(r, response))
+	RespondJSON(w, r, http.StatusOK, torrentSearchResponseFor(r, response))
 }
 
 func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) {
@@ -754,7 +754,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *http.Request) {
@@ -791,7 +791,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func mapCrossSeedErrorStatus(err error) int {
@@ -852,7 +852,7 @@ func (h *CrossSeedHandler) GetGazelleSites(w http.ResponseWriter, r *http.Reques
 		RespondError(w, http.StatusInternalServerError, "Failed to load the RED/OPS sites")
 		return
 	}
-	RespondJSON(w, http.StatusOK, sites)
+	RespondJSON(w, r, http.StatusOK, sites)
 }
 
 func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.Request) {
@@ -863,7 +863,7 @@ func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *http.Request) {
@@ -1001,7 +1001,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	}
 	h.service.GazelleKeysSaved(settings, passed)
 
-	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
+	RespondJSON(w, r, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }
 
 func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *http.Request) {
@@ -1112,7 +1112,7 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	}
 	h.service.GazelleKeysSaved(&merged, passed)
 
-	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
+	RespondJSON(w, r, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }
 
 func (h *CrossSeedHandler) GetAutomationStatus(w http.ResponseWriter, r *http.Request) {
@@ -1123,7 +1123,7 @@ func (h *CrossSeedHandler) GetAutomationStatus(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, status)
+	RespondJSON(w, r, http.StatusOK, status)
 }
 
 func (h *CrossSeedHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Request) {
@@ -1148,7 +1148,7 @@ func (h *CrossSeedHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.Request) {
@@ -1185,7 +1185,7 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, run)
+	RespondJSON(w, r, http.StatusAccepted, run)
 }
 
 func (h *CrossSeedHandler) CancelAutomationRun(w http.ResponseWriter, r *http.Request) {
@@ -1218,7 +1218,7 @@ func (h *CrossSeedHandler) ListBlocklist(w http.ResponseWriter, r *http.Request)
 		entries = []*models.CrossSeedBlocklistEntry{}
 	}
 
-	RespondJSON(w, http.StatusOK, entries)
+	RespondJSON(w, r, http.StatusOK, entries)
 }
 
 func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Request) {
@@ -1259,7 +1259,7 @@ func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, created)
+	RespondJSON(w, r, http.StatusCreated, created)
 }
 
 func (h *CrossSeedHandler) DeleteBlocklistEntry(w http.ResponseWriter, r *http.Request) {
@@ -1297,7 +1297,7 @@ func (h *CrossSeedHandler) GetSearchSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Request) {
@@ -1336,7 +1336,7 @@ func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, r, http.StatusOK, updated)
 }
 
 func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request) {
@@ -1379,7 +1379,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, run)
+	RespondJSON(w, r, http.StatusAccepted, run)
 }
 
 func (h *CrossSeedHandler) RunSearchScheduleNow(w http.ResponseWriter, r *http.Request) {
@@ -1399,7 +1399,7 @@ func (h *CrossSeedHandler) RunSearchScheduleNow(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, run)
+	RespondJSON(w, r, http.StatusAccepted, run)
 }
 
 func (h *CrossSeedHandler) CancelSearchRun(w http.ResponseWriter, r *http.Request) {
@@ -1414,7 +1414,7 @@ func (h *CrossSeedHandler) GetSearchRunStatus(w http.ResponseWriter, r *http.Req
 		RespondError(w, http.StatusInternalServerError, "Failed to get search run status")
 		return
 	}
-	RespondJSON(w, http.StatusOK, status)
+	RespondJSON(w, r, http.StatusOK, status)
 }
 
 func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.Request) {
@@ -1454,7 +1454,7 @@ func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Request) {
@@ -1490,7 +1490,7 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	RespondJSON(w, webhookResponseStatus(response), response)
+	RespondJSON(w, r, webhookResponseStatus(response), response)
 }
 
 func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
@@ -1527,7 +1527,7 @@ func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 type instanceCompletionSettingsResponse struct {
@@ -1602,7 +1602,7 @@ func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(settings))
+	RespondJSON(w, r, http.StatusOK, toInstanceCompletionSettingsResponse(settings))
 }
 
 func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
@@ -1664,5 +1664,5 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
+	RespondJSON(w, r, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
 }

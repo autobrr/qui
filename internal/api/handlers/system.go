@@ -102,5 +102,5 @@ func (h *SystemHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Info().Str("version", result.Version).Str("backupError", result.BackupError).Msg("self-update installed, restarting")
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }

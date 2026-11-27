@@ -21,6 +21,6 @@ func NewLiveSamplesHandler(recorder *livesamples.Recorder) *LiveSamplesHandler {
 	return &LiveSamplesHandler{recorder: recorder}
 }
 
-func (h *LiveSamplesHandler) List(w http.ResponseWriter, _ *http.Request) {
-	RespondJSON(w, http.StatusOK, h.recorder.Samples())
+func (h *LiveSamplesHandler) List(w http.ResponseWriter, r *http.Request) {
+	RespondJSON(w, r, http.StatusOK, h.recorder.Samples())
 }
