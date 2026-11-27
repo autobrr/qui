@@ -19,3 +19,21 @@ jobs:
         run: python3 -B -m unittest discover -s .github/scripts -p 'test_check_pr_body.py'
       - name: Require complete PR template sections
         run: python3 -B .github/scripts/check_pr_body.py
+
+  ready-for-human:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Test the ready-for-human check
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_check_ready_for_human.py'
+      - name: Require that the PR closes no ready-for-human issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B .github/scripts/check_ready_for_human.py
