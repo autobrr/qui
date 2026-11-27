@@ -198,7 +198,7 @@ describe("LibraryTab save", () => {
     mocks.startRun.mockResolvedValue({ id: 1 })
     renderTab()
 
-    expect(await screen.findByText("scan.indexers.helpSelectedQueried")).toBeTruthy()
+    expect(await screen.findByText(redSite.name)).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))

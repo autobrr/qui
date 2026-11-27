@@ -58,8 +58,11 @@ export function sitePickOptions(
   const sites = TRIGGER_RED_OPS[trigger] === "none" ? [] : redOps.filter(site => site.active !== false || pick.gazelleSites.includes(site.site))
   const replaced = replacedIndexerIds(sites)
   const torznab = torznabOn ? enabledTorznabIndexers(indexers).filter(indexer => !replaced.has(indexer.id)) : []
+  const listed = new Set(torznab.map(indexer => indexer.id))
+  const unavailable = torznabOn ? [...new Set(pick.indexerIds)].filter(id => !listed.has(id) && !replaced.has(id)) : []
   return [
     ...torznab.map(indexer => ({ label: indexer.name, value: String(indexer.id), id: indexer.id })),
+    ...unavailable.map(id => ({ label: indexers.find(indexer => indexer.id === id)?.name ?? String(id), value: String(id), id })),
     ...sites.map(site => ({ label: site.name, value: String(site.indexerId), id: site.indexerId })),
   ]
 }
@@ -114,10 +117,12 @@ export function useSitePickSources(trigger: SitePickTrigger) {
     enabled: TRIGGER_RED_OPS[trigger] === "settings",
     staleTime: 60 * 1000,
   })
-  const indexers = useMemo(() => enabledTorznabIndexers(indexersQuery.data ?? []), [indexersQuery.data])
+  const allIndexers = useMemo(() => indexersQuery.data ?? [], [indexersQuery.data])
+  const indexers = useMemo(() => enabledTorznabIndexers(allIndexers), [allIndexers])
   const sites = useMemo(() => sitesQuery.data ?? [], [sitesQuery.data])
   return {
     indexers,
+    allIndexers,
     sites,
     isPending: indexersQuery.isPending || sitesQuery.isLoading,
     isError: indexersQuery.isError,
@@ -127,10 +132,10 @@ export function useSitePickSources(trigger: SitePickTrigger) {
 
 export function useSitePickOptions(trigger: SitePickTrigger, { torznabOn = true }: { torznabOn?: boolean } = {}) {
   const sources = useSitePickSources(trigger)
-  const { indexers, sites } = sources
+  const { allIndexers, sites } = sources
   const optionsFor = useCallback(
-    (pick: SitePick) => sitePickOptions(trigger, indexers, sites, { pick, torznabOn }),
-    [trigger, indexers, sites, torznabOn]
+    (pick: SitePick) => sitePickOptions(trigger, allIndexers, sites, { pick, torznabOn }),
+    [trigger, allIndexers, sites, torznabOn]
   )
   const options = useMemo(() => optionsFor(EVERY_SITE), [optionsFor])
   return { ...sources, options, optionsFor }

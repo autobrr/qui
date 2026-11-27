@@ -65,6 +65,14 @@ describe("sitePickChange", () => {
     expect(pick).toEqual({ indexerIds: [7], gazelleSites: ["orpheus.network"] })
   })
 
+  it("lists a picked Torznab indexer that is off or deleted, so the user can remove it", () => {
+    const pick = { indexerIds: [7, 9, 42], gazelleSites: [] }
+    const options = sitePickOptions("completion", indexers, sites, { pick })
+    expect(labels(options)).toEqual(["Music Indexer", "Off Indexer", "42", "Redacted (API)", "Orpheus (API)"])
+    expect(sitePickSelected(pick, options, sites)).toEqual(["7", "9", "42"])
+    expect(sitePickChange(pick, ["7"], options, sites)).toEqual({ indexerIds: [7], gazelleSites: [] })
+  })
+
   it("lists a picked RED/OPS site that is off, so the user can remove it", () => {
     const offSites = sites.map(site => ({ ...site, active: false, replacedIndexerIds: [] }))
     const pick = { indexerIds: [7], gazelleSites: ["redacted.sh"] }
