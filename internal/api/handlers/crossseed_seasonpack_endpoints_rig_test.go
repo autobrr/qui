@@ -11,11 +11,14 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,7 +30,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
-	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
@@ -108,6 +110,30 @@ func (h *heldTitlesNeverBuilt) InstanceSnapshot(ctx context.Context, instanceID 
 }
 
 func (*heldTitlesNeverBuilt) AddSyncEventSink(internalqb.SyncEventSink) {}
+
+type heldTitlesBuilt struct {
+	*internalqb.SyncManager
+	mu    sync.Mutex
+	built map[int]bool
+}
+
+func (h *heldTitlesBuilt) ListedLookup(instanceID int, snapshot *qbt.SyncSnapshot) func(hash string) (*qbt.Torrent, bool) {
+	h.mu.Lock()
+	h.built[instanceID] = true
+	h.mu.Unlock()
+	return h.SyncManager.ListedLookup(instanceID, snapshot)
+}
+
+func (h *heldTitlesBuilt) all(instanceIDs []int) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, id := range instanceIDs {
+		if !h.built[id] {
+			return false
+		}
+	}
+	return true
+}
 
 type seasonPackAlternateTitles map[string][]string
 
@@ -307,20 +333,16 @@ func newSeasonPackEndpointRig(t *testing.T, tc *seasonPackEndpointCase, held hel
 
 func (r *seasonPackEndpointRig) startHeldTitles(state heldTitlesState, clients *internalqb.ClientPool, alternates seasonPackAlternateTitles) {
 	r.t.Helper()
-	features := experimental.New([]string{string(experimental.HeldTitles)})
 	switch state {
 	case heldTitlesOff:
 	case heldTitlesBuilding:
 		never := &heldTitlesNeverBuilt{SyncManager: r.sync.SyncManager}
-		r.svc.StartHeldTitles(r.t.Context(), features, never, never, nil)
+		r.svc.StartHeldTitles(r.t.Context(), never, never, nil)
 		never.started.Store(true)
 	case heldTitlesReady:
-		r.svc.StartHeldTitles(r.t.Context(), features, r.sync.SyncManager, clients, []crossseed.AlternateTitleSource{alternates})
-		require.Eventually(r.t, func() bool {
-			before := r.arr.lookups.Load()
-			r.post("/api/cross-seed/webhook/check", mustJSON(r.t, seasonPackEndpointRequest{TorrentName: endpointUnheld}))
-			return r.arr.lookups.Load() == before
-		}, 10*time.Second, 10*time.Millisecond)
+		built := &heldTitlesBuilt{SyncManager: r.sync.SyncManager, built: map[int]bool{}}
+		r.svc.StartHeldTitles(r.t.Context(), built, clients, []crossseed.AlternateTitleSource{alternates})
+		require.Eventually(r.t, func() bool { return built.all(slices.Collect(maps.Keys(r.servers))) }, 10*time.Second, time.Millisecond)
 		if len(alternates) > 0 {
 			require.Eventually(r.t, func() bool {
 				status, _ := r.webhookCheck(webhookPackRequest{TorrentName: endpointEpisode(1)})

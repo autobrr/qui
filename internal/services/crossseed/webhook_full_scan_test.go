@@ -5,49 +5,26 @@ package crossseed
 
 import (
 	"context"
+	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-const nearMissDebugLimit = 5
-
-type webhookCheckInput struct {
-	instances []*models.Instance
-	announced namedRelease
-	size      uint64
-	settings  *models.CrossSeedAutomationSettings
-	policy    announcementMatchPolicy
+func checkFullScan(t *testing.T, svc *Service, name string, size uint64, instanceIDs ...int) *WebhookCheckResponse {
+	t.Helper()
+	resp, err := svc.checkWebhook(t.Context(), &WebhookCheckRequest{InstanceIDs: instanceIDs, TorrentName: name, Size: size}, fullScanner{svc}.match)
+	require.NoError(t, err)
+	return resp
 }
 
-func newWebhookCheckInput(announced namedRelease, size uint64, findIndividualEpisodes bool, settings *models.CrossSeedAutomationSettings, instances []*models.Instance) webhookCheckInput {
-	return webhookCheckInput{
-		instances: instances,
-		announced: announced,
-		size:      size,
-		settings:  settings,
-		policy: announcementMatchPolicy{
-			findIndividualEpisodes: findIndividualEpisodes,
-			rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
-			allowUnknownSize:       size == 0,
-			skipRecheck:            settings.SkipRecheck,
-		},
-	}
-}
+type fullScanner struct{ *Service }
 
-type webhookCheckAnswer struct {
-	matches          []WebhookCheckMatch
-	hasCompleteMatch bool
-	hasPendingMatch  bool
-	nearMisses       int
-	nothingHeld      bool
-	seasonPack       *WebhookSeasonPack
-}
-
-func (s *Service) webhookMatchAllTorrents(ctx context.Context, input webhookCheckInput) (webhookCheckAnswer, error) {
+func (s fullScanner) match(ctx context.Context, input webhookCheckInput, contentType string) (webhookCheckAnswer, error) {
+	input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, input.announced.rawName, contentType)
 	var answer webhookCheckAnswer
 	gate := s.sourceGate()
 	webhookFilter := defaultsFor(triggerWebhook, input.settings).sourceFilter

@@ -620,7 +620,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 				TorrentName: "Cool.Show.S02E05.MULTi.1080p.WEB.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "pack", Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: fakeHash("pack"), Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP", Progress: 1.0},
 			},
 			wantCanCrossSeed:   false,
 			wantMatchCount:     0,
@@ -637,7 +637,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 				}(),
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "pack", Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: fakeHash("pack"), Name: "Cool.Show.S02.MULTi.1080p.WEB.x264-GRP", Progress: 1.0},
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1,
@@ -653,7 +653,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "abc123def456",
+					Hash:     fakeHash("abc123def456"),
 					Name:     "That.Movie.2025.1080p.BluRay.x264-GROUP",
 					Size:     8589934592,
 					Progress: 1.0,
@@ -672,7 +672,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "xyz789abc123",
+					Hash:     fakeHash("xyz789abc123"),
 					Name:     "Another.Movie.2025.1080p.BluRay.x264-GRP",
 					Size:     9000000000,
 					Progress: 1.0,
@@ -691,7 +691,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "framestor",
+					Hash:     fakeHash("framestor"),
 					Name:     "End.of.Watch.2012.UHD.BluRay.2160p.DTS-HD.MA.5.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR.mkv",
 					Progress: 1.0,
 				},
@@ -710,7 +710,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "sample-show-dsnp",
+					Hash:     fakeHash("sample-show-dsnp"),
 					Name:     "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
 					Progress: 1.0,
 				},
@@ -729,7 +729,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "sample-show-dsnp-non-hdb",
+					Hash:     fakeHash("sample-show-dsnp-non-hdb"),
 					Name:     "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
 					Progress: 1.0,
 				},
@@ -748,7 +748,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "sample-show-dsnp-no-group",
+					Hash:     fakeHash("sample-show-dsnp-no-group"),
 					Name:     "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
 					Progress: 1.0,
 				},
@@ -767,7 +767,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "sample-movie-dsnp",
+					Hash:     fakeHash("sample-movie-dsnp"),
 					Name:     "Sample.Movie.2024.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
 					Progress: 1.0,
 				},
@@ -786,7 +786,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "sample-movie-dsnp-no-group",
+					Hash:     fakeHash("sample-movie-dsnp-no-group"),
 					Name:     "Sample.Movie.2024.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
 					Progress: 1.0,
 				},
@@ -805,7 +805,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "pending",
+					Hash:     fakeHash("pending"),
 					Name:     "Pending.Movie.2025.1080p.BluRay.x264-GRP",
 					Size:     8589934592,
 					Progress: 0.5,
@@ -826,7 +826,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "size-mismatch",
+					Hash:     fakeHash("size-mismatch"),
 					Name:     "Size.Test.2025.1080p.BluRay.x264-GRP",
 					Size:     6500000000,
 					Progress: 1.0,
@@ -845,7 +845,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "old-group",
+					Hash:     fakeHash("old-group"),
 					Name:     "Group.Change.2025.1080p.BluRay.x264-OLD",
 					Size:     1073741824,
 					Progress: 1.0,
@@ -864,13 +864,13 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "match1",
+					Hash:     fakeHash("match1"),
 					Name:     "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
 					Size:     8589934592,
 					Progress: 1.0,
 				},
 				{
-					Hash:     "match2",
+					Hash:     fakeHash("match2"),
 					Name:     "Popular.Movie.2025.1080p.BluRay.x264-GROUP3",
 					Size:     8589934592,
 					Progress: 1.0,
@@ -890,13 +890,13 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			},
 			existingTorrents: []qbt.Torrent{
 				{
-					Hash:     "fangbone",
+					Hash:     fakeHash("fangbone"),
 					Name:     "Galactic Tales!",
 					Size:     234567890,
 					Progress: 1.0,
 				},
 				{
-					Hash:     "kiyosaki",
+					Hash:     fakeHash("kiyosaki"),
 					Name:     "Author X - Imaginary Book (Narrated by Jane Doe)[2012]",
 					Size:     345678901,
 					Progress: 1.0,
@@ -922,7 +922,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
 
-			resp, err := svc.CheckWebhook(context.Background(), tt.request)
+			resp, err := checkOnHeld(t, svc, tt.request)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
@@ -990,13 +990,13 @@ func TestCheckWebhook_DoesNotNotifySuccessfulChecks(t *testing.T) {
 			notifier := &recordingNotifier{}
 			svc := &Service{
 				instanceStore:    store,
-				syncManager:      newFakeSyncManager(instance, []qbt.Torrent{{Hash: "abc123", Name: "Notify.Test.2025.1080p.BluRay.x264-GRP", Progress: tt.progress}}, nil),
+				syncManager:      newFakeSyncManager(instance, []qbt.Torrent{{Hash: fakeHash("abc123"), Name: "Notify.Test.2025.1080p.BluRay.x264-GRP", Progress: tt.progress}}, nil),
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 				notifier:         notifier,
 			}
 
-			resp, err := svc.CheckWebhook(context.Background(), &WebhookCheckRequest{
+			resp, err := checkOnHeld(t, svc, &WebhookCheckRequest{
 				InstanceIDs: []int{instance.ID},
 				TorrentName: "Notify.Test.2025.1080p.BluRay.x264-GRP",
 			})
@@ -1131,7 +1131,7 @@ func TestCheckWebhook_NoInstancesAvailable(t *testing.T) {
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
 
-			resp, err := svc.CheckWebhook(context.Background(), tt.request)
+			resp, err := checkOnHeld(t, svc, tt.request)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
 			assert.False(t, resp.CanCrossSeed)
@@ -1160,10 +1160,10 @@ func TestCheckWebhook_MultiInstanceScan(t *testing.T) {
 	sync := &fakeSyncManager{
 		cached: map[int][]internalqb.CrossInstanceTorrentView{
 			instanceA.ID: buildCrossInstanceViews(instanceA, []qbt.Torrent{
-				{Hash: "complete", Name: torrentName, Size: torrentSize, Progress: 1.0},
+				{Hash: fakeHash("complete"), Name: torrentName, Size: torrentSize, Progress: 1.0},
 			}),
 			instanceB.ID: buildCrossInstanceViews(instanceB, []qbt.Torrent{
-				{Hash: "pending", Name: torrentName, Size: torrentSize, Progress: 0.6},
+				{Hash: fakeHash("pending"), Name: torrentName, Size: torrentSize, Progress: 0.6},
 			}),
 		},
 	}
@@ -1234,7 +1234,7 @@ func TestCheckWebhook_MultiInstanceScan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := svc.CheckWebhook(context.Background(), tt.request)
+			resp, err := checkOnHeld(t, svc, tt.request)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
 			assert.Len(t, resp.Matches, tt.wantMatchCount)
@@ -2713,8 +2713,8 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				TorrentName: "Filter.Test.2025.1080p.BluRay.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "excluded", Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
-				{Hash: "included", Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
+				{Hash: fakeHash("excluded"), Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
+				{Hash: fakeHash("included"), Name: "Filter.Test.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
@@ -2730,8 +2730,8 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				TorrentName: "Tag.Filter.2025.1080p.BluRay.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "excluded", Name: "Tag.Filter.2025.1080p.BluRay.x264-GRP", Tags: "no-cross-seed, other", Progress: 1.0},
-				{Hash: "included", Name: "Tag.Filter.2025.1080p.BluRay.x264-GRP", Tags: "cross-seed", Progress: 1.0},
+				{Hash: fakeHash("excluded"), Name: "Tag.Filter.2025.1080p.BluRay.x264-GRP", Tags: "no-cross-seed, other", Progress: 1.0},
+				{Hash: fakeHash("included"), Name: "Tag.Filter.2025.1080p.BluRay.x264-GRP", Tags: "cross-seed", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceExcludeTags: []string{"no-cross-seed"},
@@ -2747,8 +2747,8 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				TorrentName: "All.Excluded.2025.1080p.BluRay.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "excluded1", Name: "All.Excluded.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
-				{Hash: "excluded2", Name: "All.Excluded.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
+				{Hash: fakeHash("excluded1"), Name: "All.Excluded.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
+				{Hash: fakeHash("excluded2"), Name: "All.Excluded.2025.1080p.BluRay.x264-GRP", Category: "cross-seed-link", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
@@ -2764,8 +2764,8 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				TorrentName: "Include.Only.2025.1080p.BluRay.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "movies", Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
-				{Hash: "tv", Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
+				{Hash: fakeHash("movies"), Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
+				{Hash: fakeHash("tv"), Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceCategories: []string{"movies"},
@@ -2781,8 +2781,8 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				TorrentName: "No.Filter.2025.1080p.BluRay.x264-GRP",
 			},
 			existingTorrents: []qbt.Torrent{
-				{Hash: "cat1", Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
-				{Hash: "cat2", Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
+				{Hash: fakeHash("cat1"), Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: "movies", Progress: 1.0},
+				{Hash: fakeHash("cat2"), Name: "No.Filter.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceCategories:        []string{},
@@ -2811,7 +2811,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				},
 			}
 
-			resp, err := svc.CheckWebhook(context.Background(), tt.request)
+			resp, err := checkOnHeld(t, svc, tt.request)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed, "CanCrossSeed mismatch")
@@ -3230,11 +3230,11 @@ func TestCheckWebhook_SettledSource(t *testing.T) {
 	torrentName := "Quiet.Harbor.2025.2160p.WEB-DL.DDP5.1.H.265-NTB"
 	torrentSize := int64(13 << 30)
 	moving := qbt.Torrent{
-		Hash: "moving", Name: torrentName, Size: torrentSize, Progress: 1, State: qbt.TorrentStateMoving,
+		Hash: fakeHash("moving"), Name: torrentName, Size: torrentSize, Progress: 1, State: qbt.TorrentStateMoving,
 		SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + torrentName + ".mkv",
 	}
 	settled := qbt.Torrent{
-		Hash: "settled", Name: torrentName, Size: torrentSize, Progress: 1, State: qbt.TorrentStateStalledUp,
+		Hash: fakeHash("settled"), Name: torrentName, Size: torrentSize, Progress: 1, State: qbt.TorrentStateStalledUp,
 		SavePath: "/data/movies", ContentPath: "/data/movies/" + torrentName + ".mkv",
 	}
 	errored := settled
@@ -3250,11 +3250,11 @@ func TestCheckWebhook_SettledSource(t *testing.T) {
 		wantCanCrossSeed bool
 		wantMatches      []string
 	}{
-		{name: "moving source is pending", torrentsA: []qbt.Torrent{moving}, wantMatches: []string{"moving"}},
-		{name: "settled copy on another instance is complete", torrentsA: []qbt.Torrent{moving}, torrentsB: []qbt.Torrent{settled}, wantCanCrossSeed: true, wantMatches: []string{"moving", "settled"}},
+		{name: "moving source is pending", torrentsA: []qbt.Torrent{moving}, wantMatches: []string{fakeHash("moving")}},
+		{name: "settled copy on another instance is complete", torrentsA: []qbt.Torrent{moving}, torrentsB: []qbt.Torrent{settled}, wantCanCrossSeed: true, wantMatches: []string{fakeHash("moving"), fakeHash("settled")}},
 		{name: "errored source with recovery off is no match", torrentsA: []qbt.Torrent{errored}},
 		{name: "partial errored source with recovery off is no match", torrentsA: []qbt.Torrent{erroredPartial}},
-		{name: "moving source with recovery on is pending", recoverErrored: true, torrentsA: []qbt.Torrent{moving}, wantMatches: []string{"moving"}},
+		{name: "moving source with recovery on is pending", recoverErrored: true, torrentsA: []qbt.Torrent{moving}, wantMatches: []string{fakeHash("moving")}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3270,7 +3270,7 @@ func TestCheckWebhook_SettledSource(t *testing.T) {
 				recoverErroredTorrentsEnabled: tt.recoverErrored,
 			}
 
-			resp, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{TorrentName: torrentName, Size: uint64(torrentSize)})
+			resp, err := checkOnHeld(t, svc, &WebhookCheckRequest{TorrentName: torrentName, Size: uint64(torrentSize)})
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
 			gotHashes := make([]string, 0, len(resp.Matches))

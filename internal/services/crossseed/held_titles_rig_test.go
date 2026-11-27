@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
-	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil"
@@ -248,7 +247,7 @@ func (r *heldRig) fullScan() (*Service, *spyARRLookupService) {
 
 func (r *heldRig) heldTitles(ctx context.Context, sources ...AlternateTitleSource) (*Service, *spyARRLookupService) {
 	svc, spy := r.fullScan()
-	svc.StartHeldTitles(ctx, experimental.New([]string{string(experimental.HeldTitles)}), r.syncs, r.sinks, sources)
+	svc.StartHeldTitles(ctx, r.syncs, r.sinks, sources)
 	return svc, spy
 }
 
