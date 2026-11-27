@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1721,15 +1720,14 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		existingHash = "e000000000000000000000000000000000000051"
 	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
+	torznab := newTorznabServer(t, 7)
 	service := &Service{
 		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
 			{Hash: sourceHash, Name: "Source"},
 			{Hash: existingHash, Name: "Existing"},
 		}, nil),
 		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			return []byte("torrent"), nil
-		},
+		jackettService:    torznab.jackett,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
@@ -1741,14 +1739,14 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		Indexer:     "Indexer",
 		IndexerID:   7,
 		Title:       "candidate",
-		DownloadURL: "https://example.invalid/candidate.torrent",
+		DownloadURL: torznab.url("candidate.torrent"),
 		SearchDecision: searchDecisionProvenance{
 			Class: searchCandidateClassTitleRescue,
 		},
 	}
 	duplicate := result
 	duplicate.Title = "duplicate"
-	duplicate.DownloadURL = "https://example.invalid/duplicate.torrent"
+	duplicate.DownloadURL = torznab.url("duplicate.torrent")
 	duplicate.InfoHashV1 = existingHash
 	service.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{duplicate, result})
 	selection := TorrentSearchSelection{
@@ -1805,17 +1803,14 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 	)
 	settings := models.DefaultCrossSeedAutomationSettings()
 	settings.SkipRecheck = true
-	var downloads atomic.Int32
 	instance := &models.Instance{ID: instanceID, Name: "main"}
+	torznab := newTorznabServer(t, 7)
 	service := &Service{
 		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
 			{Hash: sourceHash, Name: "Source"},
 		}, nil),
 		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloads.Add(1)
-			return []byte("torrent"), nil
-		},
+		jackettService:    torznab.jackett,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
 		},
@@ -1827,7 +1822,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		Indexer:     "Indexer",
 		IndexerID:   7,
 		Title:       "candidate",
-		DownloadURL: "https://example.invalid/candidate.torrent",
+		DownloadURL: torznab.url("candidate.torrent"),
 		SearchDecision: searchDecisionProvenance{
 			Class: searchCandidateClassTitleRescue,
 		},
@@ -1848,7 +1843,7 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 	require.Len(t, blocked.Results, 1)
 	require.False(t, blocked.Results[0].Success)
 	require.Equal(t, skippedRecheckMessage, blocked.Results[0].Error)
-	require.Zero(t, downloads.Load())
+	require.Empty(t, torznab.downloads())
 
 	settings = models.DefaultCrossSeedAutomationSettings()
 	withAdder(service)
@@ -1925,10 +1920,9 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	const size = int64(94_329_473_840)
 	sourceTitles := []string{"ARR Alias"}
 	var captured *CrossSeedRequest
+	torznab := newTorznabServer(t, 7)
 	service := &Service{
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			return []byte("torrent"), nil
-		},
+		jackettService: torznab.jackett,
 		injection: newInjectionStandIn(func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
 			captured = request
 			return &CrossSeedResponse{Success: true}, nil
@@ -1938,7 +1932,7 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 		Indexer:     "Indexer",
 		IndexerID:   7,
 		Title:       "candidate",
-		DownloadURL: "https://example.invalid/candidate.torrent",
+		DownloadURL: torznab.url("candidate.torrent"),
 		Size:        size,
 		SearchDecision: searchDecisionProvenance{
 			Class:        searchCandidateClassExactSizeFallback,
@@ -1967,10 +1961,9 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 }
 
 func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *testing.T) {
+	torznab := newTorznabServer(t, 7)
 	service := &Service{
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			return []byte("torrent"), nil
-		},
+		jackettService: torznab.jackett,
 		injection: newInjectionStandIn(func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
 			require.Equal(t, searchCandidateClassTitleRescue, request.SearchDecision.Class)
 			return &CrossSeedResponse{Success: true, titleRescueUsed: true}, nil
@@ -1985,7 +1978,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 			Indexer:     "Indexer",
 			IndexerID:   7,
 			Title:       "candidate",
-			DownloadURL: "https://example.invalid/candidate.torrent",
+			DownloadURL: torznab.url("candidate.torrent"),
 			SearchDecision: searchDecisionProvenance{
 				Class: searchCandidateClassTitleRescue,
 			},

@@ -24,7 +24,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/infohash"
 )
@@ -550,10 +549,9 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 }
 
 func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing.T) {
+	torznab := newTorznabServer(t, 1)
 	service := &Service{
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			return []byte("torrent"), nil
-		},
+		jackettService: torznab.jackett,
 		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			return &CrossSeedResponse{
 				Success:         true,
@@ -570,7 +568,7 @@ func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing
 	result, err := service.executeCrossSeedSearchAttempt(
 		t.Context(), 1, triggerDefaults{},
 		&qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
-		TorrentSearchResult{Indexer: "Indexer", DownloadURL: "https://example.invalid/synthetic.torrent"},
+		TorrentSearchResult{Indexer: "Indexer", IndexerID: 1, DownloadURL: torznab.url("synthetic.torrent")},
 		time.Now(),
 	)
 

@@ -588,20 +588,17 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 				}
 			}
 
-			var downloads []string
-			service.torrentDownloadFunc = func(_ context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {
-				downloads = append(downloads, req.GUID)
-				return []byte("torrent"), nil
-			}
+			torznab := newTorznabServer(t, 10)
+			service.jackettService = torznab.jackett
 			service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				require.NotEmpty(t, req.TorrentData)
 				return &CrossSeedResponse{Success: tt.applySuccess}, nil
 			})
 
 			groupTorrent := &qbt.Torrent{Hash: ensembleSeasonPseudoHash(tt.key), Name: torrent.Name, Progress: 1.0}
-			service.applyEnsembleSearchResults(ctx, state, groupTorrent, tt.key, "query", &jackett.SearchResponse{Results: tt.results}, time.Now().UTC())
+			service.applyEnsembleSearchResults(ctx, state, groupTorrent, tt.key, "query", &jackett.SearchResponse{Results: torznab.downloadFromGUIDs(tt.results)}, time.Now().UTC())
 
-			require.Equal(t, tt.wantDownloads, downloads, "downloaded candidates mismatch")
+			require.Equal(t, tt.wantDownloads, torznab.downloads(), "downloaded candidates mismatch")
 			require.Equal(t, tt.wantAdded, state.run.CrossSeedsAdded)
 			require.Equal(t, tt.wantFailed, state.run.TorrentsFailed)
 			require.Equal(t, tt.wantSkipped, state.run.TorrentsSkipped)
@@ -688,11 +685,8 @@ func TestApplyEnsembleSearchResults_PackFailCooldown(t *testing.T) {
 			require.NoError(t, service.automationStore.UpsertSearchHistory(
 				ctx, instanceID, seasonPackFailKey(cooledTitle), time.Now().UTC().Add(-tt.stampAge)))
 
-			var downloads []string
-			service.torrentDownloadFunc = func(_ context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {
-				downloads = append(downloads, req.GUID)
-				return []byte("torrent"), nil
-			}
+			torznab := newTorznabServer(t, 10)
+			service.jackettService = torznab.jackett
 			service.injection = newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: false}, nil
 			})
@@ -704,9 +698,9 @@ func TestApplyEnsembleSearchResults_PackFailCooldown(t *testing.T) {
 				packSearchResult("Show.Title.S01.1080p.BluRay.x264-C", "fresh-c"),
 			}
 			torrent := &qbt.Torrent{Hash: ensembleSeasonPseudoHash(key), Name: "Show Title S01", Progress: 1.0}
-			service.applyEnsembleSearchResults(ctx, state, torrent, key, "query", &jackett.SearchResponse{Results: results}, time.Now().UTC())
+			service.applyEnsembleSearchResults(ctx, state, torrent, key, "query", &jackett.SearchResponse{Results: torznab.downloadFromGUIDs(results)}, time.Now().UTC())
 
-			require.Equal(t, tt.wantDownloads, downloads)
+			require.Equal(t, tt.wantDownloads, torznab.downloads())
 		})
 	}
 }

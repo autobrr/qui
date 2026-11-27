@@ -903,7 +903,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 			duplicateHash: existing,
 		},
 	}
-	var downloadCalled atomic.Bool
+	torznab := newTorznabServer(t, 303)
 	var invokerCalled atomic.Bool
 	svc := &Service{
 		instanceStore: &duplicateFilteringInstanceStore{
@@ -913,10 +913,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 		},
 		syncManager:       sync,
 		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled.Store(true)
-			return []byte("torrent"), nil
-		},
+		jackettService:    torznab.jackett,
 		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{Success: true}, nil
@@ -927,7 +924,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       "Already.Seeded.2007.720p.BluRay-GROUP",
-		DownloadURL: "https://example.invalid/duplicate.torrent",
+		DownloadURL: torznab.url("duplicate.torrent"),
 		GUID:        "duplicate-guid",
 		InfoHashV1:  duplicateHash,
 		Size:        existing.Size,
@@ -948,7 +945,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 	require.Len(t, resp.Results[0].InstanceResults, 1)
 	require.Equal(t, "exists", resp.Results[0].InstanceResults[0].Status)
 	require.NotNil(t, resp.Results[0].InstanceResults[0].MatchedTorrent)
-	require.False(t, downloadCalled.Load())
+	require.Empty(t, torznab.downloads())
 	require.False(t, invokerCalled.Load())
 }
 
@@ -969,7 +966,7 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 			duplicateHash: existing,
 		},
 	}
-	var downloadCalled atomic.Bool
+	torznab := newTorznabServer(t, 303)
 	var invokerCalled atomic.Bool
 	svc := &Service{
 		instanceStore: &duplicateFilteringInstanceStore{
@@ -980,10 +977,7 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 		syncManager:         sync,
 		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled.Store(true)
-			return []byte("torrent"), nil
-		},
+		jackettService:      torznab.jackett,
 		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{Success: true}, nil
@@ -1005,7 +999,7 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existing.Name,
-		DownloadURL: "https://example.invalid/duplicate.torrent",
+		DownloadURL: torznab.url("duplicate.torrent"),
 		GUID:        "duplicate-guid",
 		InfoHashV1:  duplicateHash,
 		Size:        existing.Size,
@@ -1027,7 +1021,7 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 	require.Len(t, resp.Results[0].InstanceResults, 1)
 	require.Equal(t, "size_mismatch", resp.Results[0].InstanceResults[0].Status)
 	require.NotNil(t, resp.Results[0].InstanceResults[0].MatchedTorrent)
-	require.False(t, downloadCalled.Load())
+	require.Empty(t, torznab.downloads())
 	require.False(t, invokerCalled.Load())
 }
 
@@ -1048,7 +1042,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 			duplicateHash: existing,
 		},
 	}
-	var downloadCalled atomic.Bool
+	torznab := newTorznabServer(t, 303)
 	var invokerCalled atomic.Bool
 	svc := &Service{
 		instanceStore: &duplicateFilteringInstanceStore{
@@ -1059,10 +1053,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 		syncManager:         sync,
 		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
 		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled.Store(true)
-			return []byte("torrent"), nil
-		},
+		jackettService:      torznab.jackett,
 		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{Success: true}, nil
@@ -1084,7 +1075,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existing.Name,
-		DownloadURL: "https://example.invalid/duplicate.torrent",
+		DownloadURL: torznab.url("duplicate.torrent"),
 		GUID:        "duplicate-guid",
 		InfoHashV1:  duplicateHash,
 		Size:        existing.Size,
@@ -1103,7 +1094,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 	require.Equal(t, "Torrent already exists in this instance", resp.Results[0].Error)
 	require.Len(t, resp.Results[0].InstanceResults, 1)
 	require.Equal(t, "exists", resp.Results[0].InstanceResults[0].Status)
-	require.False(t, downloadCalled.Load())
+	require.Empty(t, torznab.downloads())
 	require.False(t, invokerCalled.Load())
 }
 
@@ -1116,14 +1107,11 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 	source := qbt.Torrent{Hash: sourceHash, Name: "Source.2007.720p.BluRay-GROUP", Progress: 1}
 	existingName := "Already.Seeded.2007.720p.BluRay-GROUP"
 
-	var downloadCalled atomic.Bool
+	torznab := newTorznabServer(t, 303)
 	var invokerCalled atomic.Bool
 	svc := &Service{
 		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled.Store(true)
-			return []byte("torrent"), nil
-		},
+		jackettService:      torznab.jackett,
 		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{
@@ -1161,7 +1149,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
-		DownloadURL: "https://example.invalid/duplicate.torrent",
+		DownloadURL: torznab.url("duplicate.torrent"),
 	}, time.Now().UTC())
 
 	require.NoError(t, err)
@@ -1169,7 +1157,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 	require.Equal(t, models.CrossSeedSearchResultStatusFailed, result.Status)
 	require.Contains(t, result.Message, "rejected by content prefilter")
 	require.Contains(t, result.Message, "Size mismatch")
-	require.True(t, downloadCalled.Load())
+	require.Equal(t, []string{"duplicate.torrent"}, torznab.downloads())
 	require.True(t, invokerCalled.Load())
 }
 
@@ -1182,14 +1170,11 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 	source := qbt.Torrent{Hash: sourceHash, Name: "Source.2007.720p.BluRay-GROUP", Progress: 1}
 	existingName := "Already.Seeded.2007.720p.BluRay-GROUP"
 
-	var downloadCalled atomic.Bool
+	torznab := newTorznabServer(t, 303)
 	var invokerCalled atomic.Bool
 	svc := &Service{
 		asyncFilteringCache: ttlcache.New[string, *AsyncIndexerFilteringState](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled.Store(true)
-			return []byte("torrent"), nil
-		},
+		jackettService:      torznab.jackett,
 		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{Success: true}, nil
@@ -1211,7 +1196,7 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       existingName,
-		DownloadURL: "https://example.invalid/duplicate.torrent",
+		DownloadURL: torznab.url("duplicate.torrent"),
 		InfoHashV1:  duplicateHash,
 	}, time.Now().UTC())
 
@@ -1220,7 +1205,7 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 	require.Equal(t, models.CrossSeedSearchResultStatusFailed, result.Status)
 	require.Contains(t, result.Message, "rejected by content prefilter")
 	require.Contains(t, result.Message, "Size mismatch")
-	require.False(t, downloadCalled.Load())
+	require.Empty(t, torznab.downloads())
 	require.False(t, invokerCalled.Load())
 }
 
@@ -1237,21 +1222,18 @@ func TestApplyTorrentSearchResultsPropagatesCachedDuplicateContextError(t *testi
 		},
 		hashErr: context.DeadlineExceeded,
 	}
-	var downloadCalled atomic.Bool
+	torznab := newTorznabServer(t, 303)
 	svc := &Service{
 		syncManager:       sync,
 		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled.Store(true)
-			return []byte("torrent"), nil
-		},
+		jackettService:    torznab.jackett,
 	}
 
 	cached := TorrentSearchResult{
 		Indexer:     "HDBits",
 		IndexerID:   303,
 		Title:       "Already.Seeded.2007.720p.BluRay-GROUP",
-		DownloadURL: "https://example.invalid/duplicate.torrent",
+		DownloadURL: torznab.url("duplicate.torrent"),
 		GUID:        "duplicate-guid",
 		InfoHashV1:  strings.Repeat("0", 40),
 	}
@@ -1266,7 +1248,7 @@ func TestApplyTorrentSearchResultsPropagatesCachedDuplicateContextError(t *testi
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, resp)
-	require.False(t, downloadCalled.Load())
+	require.Empty(t, torznab.downloads())
 }
 
 type duplicateFilteringInstanceStore struct {
