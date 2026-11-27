@@ -264,3 +264,27 @@ func TestCountHashCase(t *testing.T) {
 		})
 	}
 }
+
+func TestCountHashSet(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"struct set from backups", `import "github.com/autobrr/qui/pkg/infohash"; func buildHashSet(items []string) map[infohash.Hash]struct{} { return make(map[infohash.Hash]struct{}, len(items)) }`, 2},
+		{"bool set from transfer rules", `import "github.com/autobrr/qui/pkg/infohash"; var taken = map[infohash.Hash]bool{}`, 1},
+		{"nested in a map per instance", `import "github.com/autobrr/qui/pkg/infohash"; var requested map[int]map[infohash.Hash]struct{}`, 1},
+		{"renamed import", `import ih "github.com/autobrr/qui/pkg/infohash"; var seen map[ih.Hash]struct{}`, 1},
+		{"map to a value", `import "github.com/autobrr/qui/pkg/infohash"; var sizes map[infohash.Hash]int64`, 0},
+		{"map to a struct with fields", `import "github.com/autobrr/qui/pkg/infohash"; var entries map[infohash.Hash]struct{ size int64 }`, 0},
+		{"set of strings", `import "github.com/autobrr/qui/pkg/infohash"; var seen map[string]struct{}`, 0},
+		{"no infohash import", `var seen map[infohash.Hash]struct{}`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := countHashSet("x.go", []byte("package x\n"+tt.src+"\n"))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, n)
+		})
+	}
+}

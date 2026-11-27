@@ -6,8 +6,10 @@ package logstream
 import (
 	"bytes"
 	"io"
+	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestSwitchableWriter_Write(t *testing.T) {
@@ -198,5 +200,38 @@ func TestSwitchableWriter_NilHub(t *testing.T) {
 
 	if buf.String() != "test\n" {
 		t.Errorf("expected 'test\\n', got %q", buf.String())
+	}
+}
+
+func TestSwitchableWriter_KeepsAtMostMaxLineBytesOfALine(t *testing.T) {
+	var buf bytes.Buffer
+	hub := NewHub(100)
+	sw := NewSwitchableWriter(&buf, hub)
+
+	long := `{"level":"warn","user_agent":"` + strings.Repeat("é", 1<<20) + `"}`
+	_, err := sw.Write([]byte(long + "\nshort\n"))
+	if err != nil {
+		t.Fatalf("Write error: %v", err)
+	}
+
+	if buf.Len() != len(long)+len("\nshort\n") {
+		t.Errorf("the target got %d bytes, want the whole input", buf.Len())
+	}
+
+	history := hub.History(10)
+	if len(history) != 2 {
+		t.Fatalf("expected 2 lines in hub, got %d", len(history))
+	}
+	if len(history[0]) > 64<<10 {
+		t.Errorf("the hub keeps %d bytes of one line, want at most 64 KiB", len(history[0]))
+	}
+	if !strings.HasPrefix(history[0], `{"level":"warn","user_agent":"éé`) {
+		t.Errorf("the kept line lost its start: %q", history[0][:40])
+	}
+	if !utf8.ValidString(history[0]) {
+		t.Error("the kept line is cut inside a character")
+	}
+	if history[1] != "short" {
+		t.Errorf("expected 'short', got %q", history[1])
 	}
 }

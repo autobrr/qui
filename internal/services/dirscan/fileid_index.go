@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type seedingIndex struct {
@@ -87,7 +88,7 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instance *models.Instanc
 		return nil, fmt.Errorf("get torrent files batch: %w", err)
 	}
 	for _, hash := range hashes {
-		files, ok := filesByHash[canonicalizeHash(hash)]
+		files, ok := filesByHash[hash]
 		if !ok {
 			index.markIncomplete("no file list for torrent " + hash)
 			break
@@ -121,21 +122,18 @@ func (s *Service) buildFileIDIndex(ctx context.Context, instance *models.Instanc
 	return index, nil
 }
 
-func canonicalizeHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
-}
-
 func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorrentView) (hashes []string, savePaths map[string]string) {
 	hashes = make([]string, 0, len(torrents))
 	savePaths = make(map[string]string, len(torrents))
 
 	for i := range torrents {
 		t := torrents[i].Torrent
-		if t.Hash == "" || t.Progress < 1.0 || t.SavePath == "" {
+		hash, err := infohash.Parse(t.Hash)
+		if err != nil || t.Progress < 1.0 || t.SavePath == "" {
 			continue
 		}
-		hashes = append(hashes, t.Hash)
-		savePaths[t.Hash] = t.SavePath
+		hashes = append(hashes, hash.String())
+		savePaths[hash.String()] = t.SavePath
 	}
 
 	return hashes, savePaths

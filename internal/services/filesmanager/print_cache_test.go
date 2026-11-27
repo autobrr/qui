@@ -80,7 +80,7 @@ func runFilesPrintCacheTests(t *testing.T, open testDBOpener) {
 	}
 }
 
-const pairHash = "pair-hash"
+var pairHash = testHash("pair-hash")
 
 const (
 	printA int64 = -0x5a5a5a5a5a5a5a5b
@@ -139,7 +139,7 @@ func testPrintWithHighBitRoundTrips(t *testing.T, open testDBOpener) {
 		require.WithinDuration(t, before, entry.SyncedAt, time.Minute)
 		requireOnePair(t, entry)
 
-		_, ok = readEntry(ctx, t, svc, "absent")
+		_, ok = readEntry(ctx, t, svc, testHash("absent"))
 		require.False(t, ok)
 	})
 }
@@ -331,18 +331,18 @@ func testPreviousReleaseQueriesRun(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
 	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
-		previousReleaseWrite(ctx, t, db, "old-hash", time.Now())
+		previousReleaseWrite(ctx, t, db, testHash("old-hash"), time.Now())
 
 		repo := NewRepository(db)
-		infos, err := repo.GetSyncInfoBatch(ctx, 1, []string{"old-hash"})
+		infos, err := repo.GetSyncInfoBatch(ctx, 1, []string{testHash("old-hash")})
 		require.NoError(t, err)
-		require.Equal(t, 3, infos["old-hash"].FileCount)
-		files, err := repo.GetFilesBatch(ctx, 1, []string{"old-hash"})
+		require.Equal(t, 3, infos[testHash("old-hash")].FileCount)
+		files, err := repo.GetFilesBatch(ctx, 1, []string{testHash("old-hash")})
 		require.NoError(t, err)
-		require.Len(t, files["old-hash"], 3)
+		require.Len(t, files[testHash("old-hash")], 3)
 		_, err = repo.GetCacheStats(ctx, 1)
 		require.NoError(t, err)
-		require.NoError(t, repo.DeleteTorrentCache(ctx, 1, []string{"old-hash"}))
+		require.NoError(t, repo.DeleteTorrentCache(ctx, 1, []string{testHash("old-hash")}))
 	})
 }
 
@@ -381,8 +381,8 @@ func TestFilesCacheLockOrderPostgresIntegration(t *testing.T) {
 
 	twoHashes := func(p int64) map[string]qbittorrent.CachedFilesWrite {
 		return map[string]qbittorrent.CachedFilesWrite{
-			"lock-hash-1": {Files: pairList(strconv.FormatInt(p, 10)), Print: &p},
-			"lock-hash-2": {Files: pairList(strconv.FormatInt(p, 10)), Print: &p},
+			testHash("lock-hash-1"): {Files: pairList(strconv.FormatInt(p, 10)), Print: &p},
+			testHash("lock-hash-2"): {Files: pairList(strconv.FormatInt(p, 10)), Print: &p},
 		}
 	}
 
@@ -394,13 +394,13 @@ func TestFilesCacheLockOrderPostgresIntegration(t *testing.T) {
 	}{
 		{"WritersAndInvalidations", 16, false, func(ctx context.Context, _ *database.DB, svc *Service, i int) error {
 			if i%2 == 0 {
-				return svc.InvalidateCache(ctx, 1, "lock-hash-1")
+				return svc.InvalidateCache(ctx, 1, testHash("lock-hash-1"))
 			}
 			return svc.CacheFilesBatch(ctx, 1, twoHashes(int64(i)))
 		}},
 		{"WritersAndOrphanCleanup", 9, false, func(ctx context.Context, _ *database.DB, svc *Service, i int) error {
 			if i == 0 {
-				_, err := svc.CleanupRemovedTorrentsCache(ctx, 1, []string{"other-hash"})
+				_, err := svc.CleanupRemovedTorrentsCache(ctx, 1, []string{testHash("other-hash")})
 				return err
 			}
 			return svc.CacheFilesBatch(ctx, 1, twoHashes(int64(i)))
@@ -414,7 +414,7 @@ func TestFilesCacheLockOrderPostgresIntegration(t *testing.T) {
 				}
 				return store.Delete(ctx, 1)
 			case i%2 == 0:
-				return svc.InvalidateCache(ctx, 1, "lock-hash-1")
+				return svc.InvalidateCache(ctx, 1, testHash("lock-hash-1"))
 			default:
 				return svc.CacheFilesBatch(ctx, 1, twoHashes(int64(i)))
 			}
@@ -429,9 +429,9 @@ func TestFilesCacheLockOrderPostgresIntegration(t *testing.T) {
 				svc := NewService(db)
 				require.NoError(t, svc.CacheFilesBatch(ctx, 1, twoHashes(0)))
 				for round := range 5 {
-					_, err := svc.CleanupRemovedTorrentsCache(ctx, 1, []string{"other-hash"})
+					_, err := svc.CleanupRemovedTorrentsCache(ctx, 1, []string{testHash("other-hash")})
 					require.NoError(t, err)
-					for _, hash := range []string{"lock-hash-2", "lock-hash-1"} {
+					for _, hash := range []string{testHash("lock-hash-2"), testHash("lock-hash-1")} {
 						require.NoError(t, svc.CacheFiles(ctx, 1, hash, twoHashes(0)[hash]))
 					}
 					errs := releaseTogether(tt.n, func(i int) error {

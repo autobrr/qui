@@ -43,7 +43,7 @@ func TestNormalizeSearchRunTimingWithTorznab(t *testing.T) {
 	}
 }
 
-func TestNormalizeSearchRunTimingUsesGazelleFloorWhenTorznabDisabled(t *testing.T) {
+func TestNormalizeSearchRunTimingUsesGazelleFloorForARedOpsOnlyRun(t *testing.T) {
 	t.Parallel()
 
 	gotInterval, gotCooldown := normalizeSearchRunTiming(1, 1, true)

@@ -84,13 +84,10 @@
       "count": 1
     },
     "qui/no-direct-effect": {
-      "count": 2
+      "count": 1
     },
     "shadcn/no-arbitrary-values": {
       "count": 5
-    },
-    "shadcn/no-restyle": {
-      "count": 3
     }
   },
   "src/components/cross-seed/MatchingTab.tsx": {
@@ -155,11 +152,6 @@
       "count": 1
     },
     "shadcn/no-arbitrary-values": {
-      "count": 1
-    }
-  },
-  "src/components/database/DatabaseShrinkProvider.tsx": {
-    "qui/no-direct-effect": {
       "count": 1
     }
   },
@@ -1571,9 +1563,6 @@
     }
   },
   "src/hooks/useCrossSeedSearch.tsx": {
-    "@typescript-eslint/consistent-type-assertions": {
-      "count": 1
-    },
     "qui/layer-order": {
       "count": 1
     },

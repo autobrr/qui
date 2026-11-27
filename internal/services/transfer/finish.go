@@ -29,7 +29,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 	"github.com/autobrr/qui/internal/services/crossseed"
-	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func (j *job) prove(ctx context.Context) error {
@@ -98,12 +97,12 @@ func (j *job) checkOnTarget(ctx context.Context, p *part) ([]qbt.PieceState, err
 	}); err != nil {
 		return nil, err
 	}
-	j.helper = helper.InfoHash
+	j.helper = helper.InfoHash.String()
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
 		InstanceID: j.target.ID,
 		Torrent:    helper.TorrentFile,
-		Hash:       helper.InfoHash,
+		Hash:       helper.InfoHash.String(),
 		Settings: torrentadd.Settings{
 			SavePath:             p.Placement.SavePath,
 			Tags:                 []string{TransferHelperTag},
@@ -123,7 +122,7 @@ func (j *job) checkOnTarget(ctx context.Context, p *part) ([]qbt.PieceState, err
 	if res.Outcome == torrentadd.Failed || res.Outcome == torrentadd.Checking {
 		return nil, temporary("The check on %s did not end: %s", j.target.Name, describe(res))
 	}
-	states, err := j.svc.deps.Sync.GetTorrentPieceStates(ctx, j.target.ID, helper.InfoHash)
+	states, err := j.svc.deps.Sync.GetTorrentPieceStates(ctx, j.target.ID, helper.InfoHash.String())
 	if err != nil {
 		return nil, temporary("qui cannot read the check on %s: %v", j.target.Name, err)
 	}
@@ -175,7 +174,7 @@ func (j *job) place(ctx context.Context) error {
 		switch {
 		case err != nil:
 			return temporary("qui cannot read the torrents of %s: %v", inst.Name, err)
-		case onTarget && j.reachedFor(stepAdd, p.Hash):
+		case onTarget && j.reachedFor(stepAdd, p.Hash.String()):
 			return j.ownershipUnknown(p)
 		case onTarget:
 			which := "this torrent"
@@ -232,7 +231,7 @@ func (j *job) addOnTarget(ctx context.Context, p *part) error {
 		return err
 	}
 	switch {
-	case j.reachedFor(stepRename, p.Hash):
+	case j.reachedFor(stepRename, p.Hash.String()):
 		j.logf("%s checks the files of %s after their rename.", j.target.Name, j.the(p, "the"))
 		return j.recheck(ctx, p)
 	case !complete:
@@ -309,14 +308,14 @@ func (j *job) sameFile(ctx context.Context, a, b string) (bool, error) {
 }
 
 func (j *job) add(ctx context.Context, p *part) (complete bool, err error) {
-	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
+	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash.String()); err != nil {
 		return false, err
 	}
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
 		InstanceID: j.target.ID,
 		Torrent:    p.src.export,
-		Hash:       p.Hash,
+		Hash:       p.Hash.String(),
 		Settings: torrentadd.Settings{
 			SavePath:        p.Placement.SavePath,
 			Category:        p.Placement.Category,
@@ -336,7 +335,7 @@ func (j *job) add(ctx context.Context, p *part) (complete bool, err error) {
 		}
 		return false, temporary("%s did not take %s: %s", j.target.Name, j.the(p, "the"), describe(res))
 	}
-	if err := j.stepWith(ctx, StateFinishing, stepAdded, p.Hash); err != nil {
+	if err := j.stepWith(ctx, StateFinishing, stepAdded, p.Hash.String()); err != nil {
 		return false, err
 	}
 	if res.Outcome != torrentadd.Verified && res.Failure != torrentadd.MissingFiles {
@@ -346,7 +345,7 @@ func (j *job) add(ctx context.Context, p *part) (complete bool, err error) {
 }
 
 func (j *job) check(ctx context.Context, p *part) error {
-	req := torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: 1, PollInterval: j.svc.deps.Config.PollInterval}
+	req := torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash.String(), Polls: 1, PollInterval: j.svc.deps.Config.PollInterval}
 	if res := j.svc.adder.Confirm(ctx, req); res.Outcome == torrentadd.Verified {
 		return nil
 	}
@@ -359,7 +358,7 @@ func (j *job) check(ctx context.Context, p *part) error {
 
 func (j *job) recheck(ctx context.Context, p *part) error {
 	cfg := j.svc.deps.Config
-	res := j.svc.adder.Recheck(ctx, torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash, Polls: cfg.CheckPolls, PollInterval: cfg.PollInterval})
+	res := j.svc.adder.Recheck(ctx, torrentadd.Request{InstanceID: j.target.ID, Hash: p.Hash.String(), Polls: cfg.CheckPolls, PollInterval: cfg.PollInterval})
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -373,7 +372,7 @@ func (j *job) manage(ctx context.Context) error {
 	var hashes []string
 	for _, p := range j.parts {
 		if p.Placement.AutoTMM {
-			hashes = append(hashes, p.Hash)
+			hashes = append(hashes, p.Hash.String())
 		}
 	}
 	if len(hashes) == 0 {
@@ -397,13 +396,13 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 	if route == nil || route.CrossSeedInstanceID != p.TargetInstanceID {
 		return permanent("%s no longer sends its cross-seeds to %s, so the Transfer stopped.", j.target.Name, j.crossSeed.Name)
 	}
-	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash); err != nil {
+	if err := j.stepWith(ctx, StateFinishing, stepAdd, p.Hash.String()); err != nil {
 		return err
 	}
 	res, err := j.svc.deps.CrossSeeds.CrossSeed(ctx, &crossseed.CrossSeedRequest{
 		TorrentData:       base64.StdEncoding.EncodeToString(p.src.export),
 		TargetInstanceIDs: []int{j.target.ID},
-		ManualTargetHash:  representative.Hash,
+		ManualTargetHash:  representative.Hash.String(),
 		SkipAutoResume:    true,
 	})
 	if err != nil {
@@ -420,7 +419,7 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 		}
 		landed := r.CrossSeedInstanceID == p.TargetInstanceID
 		if r.Success && landed {
-			return j.stepWith(ctx, StateFinishing, stepAdded, p.Hash)
+			return j.stepWith(ctx, StateFinishing, stepAdded, p.Hash.String())
 		}
 		stranded = stranded || landed && crossseed.ClassOf(r.Status) == crossseed.ClassStranded
 		why = r.Status
@@ -432,7 +431,7 @@ func (j *job) addCrossSeed(ctx context.Context, p, representative *part) error {
 		if !stranded {
 			return j.ownershipUnknown(p)
 		}
-		if err := j.stepWith(ctx, StateFinishing, stepAdded, p.Hash); err != nil {
+		if err := j.stepWith(ctx, StateFinishing, stepAdded, p.Hash.String()); err != nil {
 			return err
 		}
 	}
@@ -443,7 +442,7 @@ func (j *job) crossSeedChecked(ctx context.Context, p *part) error {
 	cfg := j.svc.deps.Config
 	res := j.svc.adder.ConfirmRecheck(ctx, torrentadd.Request{
 		InstanceID:   j.crossSeed.ID,
-		Hash:         p.Hash,
+		Hash:         p.Hash.String(),
 		Polls:        cfg.CheckPolls,
 		PollInterval: cfg.PollInterval,
 	})
@@ -498,7 +497,7 @@ func (j *job) rename(ctx context.Context, p *part) error {
 				return err
 			}
 		}
-		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.target.ID, p.Hash)
+		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.target.ID, p.Hash.String())
 		if err != nil || files == nil || len(*files) != len(want) {
 			return temporary("qui cannot read the files of the torrent on %s: %v", j.target.Name, err)
 		}
@@ -518,8 +517,8 @@ func (j *job) rename(ctx context.Context, p *part) error {
 }
 
 func (j *job) sendRenames(ctx context.Context, p *part, listed []qbt.TorrentFile, want []string) error {
-	if !j.reachedFor(stepRename, p.Hash) {
-		if err := j.stepWith(ctx, StateFinishing, stepRename, p.Hash); err != nil {
+	if !j.reachedFor(stepRename, p.Hash.String()) {
+		if err := j.stepWith(ctx, StateFinishing, stepRename, p.Hash.String()); err != nil {
 			return err
 		}
 	}
@@ -532,7 +531,7 @@ func (j *job) sendRenames(ctx context.Context, p *part, listed []qbt.TorrentFile
 				return err
 			}
 		}
-		if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash, f.Name, want[i]); err != nil {
+		if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.target.ID, p.Hash.String(), f.Name, want[i]); err != nil {
 			return temporary("qui cannot rename %s to %s on %s: %v", f.Name, want[i], j.target.Name, err)
 		}
 	}
@@ -627,7 +626,7 @@ func (j *job) after(ctx context.Context) error {
 }
 
 func (j *job) running(ctx context.Context) ([]string, error) {
-	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(j.hashes())})
+	torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.memberHashes()})
 	if err != nil {
 		return nil, temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
 	}
@@ -672,7 +671,7 @@ func (j *job) finishRemoval(ctx context.Context) error {
 }
 
 func (j *job) removeFromSource(ctx context.Context, keep string) error {
-	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(j.hashes())})
+	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.memberHashes()})
 	if err != nil {
 		return temporary("qui cannot read the torrents of %s: %v", j.source.Name, err)
 	}
@@ -702,7 +701,7 @@ func (j *job) removeFromSource(ctx context.Context, keep string) error {
 
 func (j *job) startTarget(ctx context.Context, p *part) error {
 	inst := j.instanceOf(p)
-	if err := j.svc.deps.Sync.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), inst.ID, []string{p.Hash}, "resume"); err != nil {
+	if err := j.svc.deps.Sync.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), inst.ID, []string{p.Hash.String()}, "resume"); err != nil {
 		return temporary("qui cannot start %s on %s: %v", j.the(p, "the"), inst.Name, err)
 	}
 	cfg := j.svc.deps.Config
@@ -725,7 +724,7 @@ func (j *job) startTarget(ctx context.Context, p *part) error {
 			j.logf("%s seeds on %s.", j.the(p, "The"), inst.Name)
 			return nil
 		case torrent.State == qbt.TorrentStateMissingFiles || torrent.State == qbt.TorrentStateError:
-			_ = j.svc.deps.Sync.BulkAction(ctx, inst.ID, []string{p.Hash}, "pause")
+			_ = j.svc.deps.Sync.BulkAction(ctx, inst.ID, []string{p.Hash.String()}, "pause")
 			return permanent("%s on %s does not find its files: qBittorrent shows %s.", j.the(p, "The"), inst.Name, torrent.State)
 		}
 	}
@@ -776,19 +775,19 @@ func (j *job) keepReason(ctx context.Context) string {
 }
 
 func (j *job) changedOnSource(ctx context.Context) string {
-	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(j.hashes())})
+	present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.memberHashes()})
 	if err != nil {
 		return "qui cannot read the torrents on " + j.source.Name
 	}
 	for _, p := range j.parts {
-		i := slices.IndexFunc(present, func(t *qbt.Torrent) bool { return strings.EqualFold(t.Hash, p.Hash) })
+		i := slices.IndexFunc(present, func(t *qbt.Torrent) bool { return p.Hash.Is(t.Hash) })
 		if i < 0 {
 			continue
 		}
 		if present[i].SavePath != p.SourceSavePath {
 			return "a torrent moved on " + j.source.Name
 		}
-		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash)
+		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash.String())
 		if err != nil || files == nil {
 			return "qui cannot read the names of the files on " + j.source.Name
 		}

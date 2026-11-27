@@ -125,6 +125,7 @@ You cannot enable `oidcEnabled` and auth-disabled mode at the same time.
 When authentication is disabled:
 
 - qui permits requests only from client IPs that match `authDisabledAllowedCIDRs`.
+- qui refuses a `POST`, `PUT`, `PATCH`, or `DELETE` request that a browser sends from another site. A page on another origin that you trust must send an `X-Requested-With` header, and its origin must be in `corsAllowedOrigins`. Scripts and other clients that are not browsers are not affected.
 - The built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/liveness`) still allow loopback probes. The official Docker image healthcheck works without `127.0.0.1/32` or `::1/128` in your reverse proxy allowlist.
 - `/api/auth/me` returns a synthetic `admin` user, so the frontend works without login.
 - `/api/auth/validate` returns a synthetic `admin` user, so callback and session checks work without login.

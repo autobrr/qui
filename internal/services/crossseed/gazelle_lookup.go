@@ -62,14 +62,18 @@ func (l GazelleLookup) failed(reason GazelleLookupReason, detail string) Gazelle
 }
 
 func gazelleCooldownDue(lookups []GazelleLookup, keyMissing bool) bool {
-	lookedUp := false
+	lookedUp, picked := false, false
 	for _, l := range lookups {
-		if l.Status == GazelleFailed || l.Reason == GazelleReasonCooldown || l.Reason == GazelleReasonNotSelected {
+		if l.Reason == GazelleReasonNotSelected {
+			continue
+		}
+		if l.Status == GazelleFailed || l.Reason == GazelleReasonCooldown {
 			return false
 		}
+		picked = true
 		lookedUp = lookedUp || !l.seededByCopy
 	}
-	return lookedUp || (len(lookups) > 0 && !keyMissing)
+	return lookedUp || (picked && !keyMissing)
 }
 
 func gazelleRequestsSent(lookups []GazelleLookup) bool {

@@ -20,7 +20,6 @@ import {
   useActiveInstances,
   useAggregatedInstanceMetadata,
   useCrossSeedStatus,
-  useEnabledIndexers,
   useFormatDateValue,
   useMissingIndexersToast,
   usePatchCrossSeedSettings
@@ -29,6 +28,7 @@ import { MIN_RSS_INTERVAL_MINUTES, useManualRunCooldown } from "@/hooks/useManua
 import { api } from "@/lib/api"
 import { normalizeNumberList } from "@/lib/cross-seed-utils"
 import { rssRunState } from "@/lib/run-state"
+import { useSitePickOptions } from "@/lib/site-pick"
 import type { CrossSeedAutomationSettings, CrossSeedRun } from "@/types"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { ChevronDown, Clock, History, Loader2, Play, Zap } from "lucide-react"
@@ -68,8 +68,8 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
   const { t } = useTranslation("crossseed")
   const formatDateValue = useFormatDateValue()
   const { activeInstances } = useActiveInstances()
-  const enabledIndexers = useEnabledIndexers()
-  const hasEnabledIndexers = enabledIndexers.length > 0
+  const { options: indexerOptions } = useSitePickOptions("rss")
+  const hasEnabledIndexers = indexerOptions.length > 0
   const { notifyMissingIndexers, handleIndexerError } = useMissingIndexersToast()
   const patchSettings = usePatchCrossSeedSettings()
 
@@ -169,10 +169,6 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
     [activeInstances]
   )
 
-  const indexerOptions = useMemo(
-    () => enabledIndexers.map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
-    [enabledIndexers]
-  )
 
   const groupedRuns = useMemo(() => {
     const result = {

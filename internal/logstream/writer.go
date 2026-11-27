@@ -6,8 +6,14 @@ package logstream
 import (
 	"bytes"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
+)
+
+const (
+	maxLineBytes  = 64 << 10
+	truncatedMark = "... [truncated]"
 )
 
 type SwitchableWriter struct {
@@ -64,9 +70,16 @@ func (sw *SwitchableWriter) captureLine(p []byte) {
 			line = line[:len(line)-1]
 		}
 		if line != "" {
-			sw.hub.Write(line)
+			sw.hub.Write(capLine(line))
 		}
 	}
+}
+
+func capLine(line string) string {
+	if len(line) <= maxLineBytes {
+		return line
+	}
+	return strings.ToValidUTF8(line[:maxLineBytes-len(truncatedMark)], "") + truncatedMark
 }
 
 func (sw *SwitchableWriter) Swap(newWriter io.Writer, newCloser io.Closer) io.Closer {

@@ -180,11 +180,11 @@ type searchSettingsPatchRequest struct {
 	ExcludeCategories      *[]string   `json:"excludeCategories,omitempty"`
 	ExcludeTags            *[]string   `json:"excludeTags,omitempty"`
 	IndexerIDs             *[]int      `json:"indexerIds,omitempty"`
+	GazelleSites           *[]string   `json:"gazelleSites,omitempty"`
 	IntervalSeconds        *int        `json:"intervalSeconds,omitempty"`
 	CooldownMinutes        *int        `json:"cooldownMinutes,omitempty"`
 	MaxAddedAgeDays        *int        `json:"maxAddedAgeDays,omitempty"`
 	SkipIndividualEpisodes *bool       `json:"skipIndividualEpisodes,omitempty"`
-	TorznabEnabled         *bool       `json:"torznabEnabled,omitempty"`
 	ScheduleEnabled        *bool       `json:"scheduleEnabled,omitempty"`
 	ScheduleIntervalHours  *int        `json:"scheduleIntervalHours,omitempty"`
 	ScheduleMaxSearches    *int        `json:"scheduleMaxSearches,omitempty"`
@@ -198,15 +198,30 @@ func (r searchSettingsPatchRequest) isEmpty() bool {
 		r.ExcludeCategories == nil &&
 		r.ExcludeTags == nil &&
 		r.IndexerIDs == nil &&
+		r.GazelleSites == nil &&
 		r.IntervalSeconds == nil &&
 		r.CooldownMinutes == nil &&
 		r.MaxAddedAgeDays == nil &&
 		r.SkipIndividualEpisodes == nil &&
-		r.TorznabEnabled == nil &&
 		r.ScheduleEnabled == nil &&
 		r.ScheduleIntervalHours == nil &&
 		r.ScheduleMaxSearches == nil &&
 		r.ScheduleMaxAgeDays == nil
+}
+
+func (r searchSettingsPatchRequest) sitePick() *models.SitePick {
+	if r.IndexerIDs == nil && r.GazelleSites == nil {
+		return nil
+	}
+	var indexerIDs []int
+	if r.IndexerIDs != nil {
+		indexerIDs = *r.IndexerIDs
+	}
+	var gazelleSites []string
+	if r.GazelleSites != nil {
+		gazelleSites = *r.GazelleSites
+	}
+	return &models.SitePick{IndexerIDs: indexerIDs, GazelleSites: gazelleSites}
 }
 
 func (r automationSettingsPatchRequest) isEmpty() bool {
@@ -495,17 +510,16 @@ type automationRunRequest struct {
 }
 
 type searchRunRequest struct {
-	InstanceID             int      `json:"instanceId"`
-	Categories             []string `json:"categories"`
-	Tags                   []string `json:"tags"`
-	ExcludeCategories      []string `json:"excludeCategories"`
-	ExcludeTags            []string `json:"excludeTags"`
-	IntervalSeconds        int      `json:"intervalSeconds"`
-	IndexerIDs             []int    `json:"indexerIds"`
-	DisableTorznab         bool     `json:"disableTorznab"`
-	CooldownMinutes        int      `json:"cooldownMinutes"`
-	SkipIndividualEpisodes bool     `json:"skipIndividualEpisodes"`
-	MaxAddedAgeDays        int      `json:"maxAddedAgeDays"`
+	InstanceID        int      `json:"instanceId"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	IntervalSeconds   int      `json:"intervalSeconds"`
+	models.SitePick
+	CooldownMinutes        int  `json:"cooldownMinutes"`
+	SkipIndividualEpisodes bool `json:"skipIndividualEpisodes"`
+	MaxAddedAgeDays        int  `json:"maxAddedAgeDays"`
 }
 
 type CrossSeedBlocklistRequest struct {
@@ -669,15 +683,34 @@ func hideMatchPasskeys(r *http.Request, matches []crossseed.LocalMatch) {
 	}
 }
 
+type torrentSearchRequest struct {
+	Query                  string   `json:"query,omitempty"`
+	Limit                  int      `json:"limit,omitempty"`
+	IndexerIDs             []int    `json:"indexer_ids,omitempty"`
+	GazelleSites           []string `json:"gazelle_sites,omitempty"`
+	FindIndividualEpisodes bool     `json:"find_individual_episodes,omitempty"`
+	CacheMode              string   `json:"cache_mode,omitempty"`
+}
+
+func (r torrentSearchRequest) options() crossseed.TorrentSearchOptions {
+	return crossseed.TorrentSearchOptions{
+		Query:                  r.Query,
+		Limit:                  r.Limit,
+		SitePick:               models.SitePick{IndexerIDs: r.IndexerIDs, GazelleSites: r.GazelleSites},
+		FindIndividualEpisodes: r.FindIndividualEpisodes,
+		CacheMode:              r.CacheMode,
+	}
+}
+
 func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.Request) {
 	instanceID, hash, ok := parseTorrentParams(w, r)
 	if !ok {
 		return
 	}
 
-	var opts crossseed.TorrentSearchOptions
+	var req torrentSearchRequest
 	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&opts); err != nil && !errors.Is(err, io.EOF) {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 			log.Error().
 				Err(err).
 				Int("instanceID", instanceID).
@@ -689,6 +722,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
+	opts := req.options()
 	opts.TitleRescueResultLimit = 3
 	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
@@ -1318,12 +1352,11 @@ func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Re
 		Tags:                   patch.Tags,
 		ExcludeCategories:      patch.ExcludeCategories,
 		ExcludeTags:            patch.ExcludeTags,
-		IndexerIDs:             patch.IndexerIDs,
+		SitePick:               patch.sitePick(),
 		IntervalSeconds:        patch.IntervalSeconds,
 		CooldownMinutes:        patch.CooldownMinutes,
 		MaxAddedAgeDays:        patch.MaxAddedAgeDays,
 		SkipIndividualEpisodes: patch.SkipIndividualEpisodes,
-		TorznabEnabled:         patch.TorznabEnabled,
 		ScheduleEnabled:        patch.ScheduleEnabled,
 		ScheduleIntervalHours:  patch.ScheduleIntervalHours,
 		ScheduleMaxSearches:    patch.ScheduleMaxSearches,
@@ -1357,8 +1390,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		ExcludeCategories:      req.ExcludeCategories,
 		ExcludeTags:            req.ExcludeTags,
 		IntervalSeconds:        req.IntervalSeconds,
-		IndexerIDs:             req.IndexerIDs,
-		DisableTorznab:         req.DisableTorznab,
+		SitePick:               req.SitePick,
 		CooldownMinutes:        req.CooldownMinutes,
 		SkipIndividualEpisodes: req.SkipIndividualEpisodes,
 		MaxAddedAgeDays:        req.MaxAddedAgeDays,
@@ -1531,15 +1563,15 @@ func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Req
 }
 
 type instanceCompletionSettingsResponse struct {
-	InstanceID         int      `json:"instanceId"`
-	Enabled            bool     `json:"enabled"`
-	Categories         []string `json:"categories"`
-	Tags               []string `json:"tags"`
-	ExcludeCategories  []string `json:"excludeCategories"`
-	ExcludeTags        []string `json:"excludeTags"`
-	IndexerIDs         []int    `json:"indexerIds"`
-	BypassTorznabCache bool     `json:"bypassTorznabCache"`
-	DelaySeconds       int      `json:"delaySeconds"`
+	InstanceID        int      `json:"instanceId"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	models.SitePick
+	BypassTorznabCache bool `json:"bypassTorznabCache"`
+	DelaySeconds       int  `json:"delaySeconds"`
 }
 
 func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionSettings) instanceCompletionSettingsResponse {
@@ -1550,21 +1582,21 @@ func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionS
 		Tags:               s.Tags,
 		ExcludeCategories:  s.ExcludeCategories,
 		ExcludeTags:        s.ExcludeTags,
-		IndexerIDs:         s.IndexerIDs,
+		SitePick:           s.SitePick,
 		BypassTorznabCache: s.BypassTorznabCache,
 		DelaySeconds:       s.DelaySeconds,
 	}
 }
 
 type instanceCompletionSettingsRequest struct {
-	Enabled            bool     `json:"enabled"`
-	Categories         []string `json:"categories"`
-	Tags               []string `json:"tags"`
-	ExcludeCategories  []string `json:"excludeCategories"`
-	ExcludeTags        []string `json:"excludeTags"`
-	IndexerIDs         []int    `json:"indexerIds"`
-	BypassTorznabCache bool     `json:"bypassTorznabCache"`
-	DelaySeconds       int      `json:"delaySeconds"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	models.SitePick
+	BypassTorznabCache bool `json:"bypassTorznabCache"`
+	DelaySeconds       int  `json:"delaySeconds"`
 }
 
 func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
@@ -1652,7 +1684,7 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		Tags:               req.Tags,
 		ExcludeCategories:  req.ExcludeCategories,
 		ExcludeTags:        req.ExcludeTags,
-		IndexerIDs:         req.IndexerIDs,
+		SitePick:           req.SitePick,
 		BypassTorznabCache: req.BypassTorznabCache,
 		DelaySeconds:       req.DelaySeconds,
 	}

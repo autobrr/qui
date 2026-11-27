@@ -34,8 +34,8 @@ vi.mock("@/components/ui/select", () => ({
 }))
 
 const shrink = vi.hoisted(() => ({ requestShrink: vi.fn(async () => {}), pending: false }))
-vi.mock("@/hooks/useDatabaseShrink", () => ({
-  databaseShrinkQueryKey: ["database-shrink"],
+vi.mock("@/hooks/useDatabaseShrink", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useDatabaseShrink")>()),
   useDatabaseShrink: () => shrink,
 }))
 

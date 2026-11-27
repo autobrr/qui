@@ -91,10 +91,10 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: torrentFileName, Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: torrentFileName, Size: 1}}}, nil
 	}
 	folders := qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath}
 	if opts.categoryFolders != nil {

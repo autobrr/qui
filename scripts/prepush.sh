@@ -30,6 +30,9 @@ printf '%s\n' "$changed" | while read -r file; do
 	*.js | *.mjs | *.cjs) node --check "$file" ;;
 	esac
 done
+if printf '%s\n' "$changed" | grep -q '^\.github/workflows/'; then
+	go test -count=1 ./scripts/workflows/
+fi
 if printf '%s\n' "$changed" | grep -q '^\.github/scripts/'; then
 	python3 -m unittest discover -s .github/scripts -p 'test_*.py'
 fi

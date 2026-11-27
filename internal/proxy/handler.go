@@ -575,7 +575,7 @@ func restoreBody(r *http.Request, body []byte) {
 	r.ContentLength = int64(len(body))
 }
 
-func uniqueHashes(values []string) []string {
+func uniqueHashesKeepingText(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
@@ -1014,7 +1014,7 @@ func parseHashesQueryValues(queryParams url.Values) []string {
 		return nil
 	}
 
-	return uniqueHashes(rawHashes)
+	return uniqueHashesKeepingText(rawHashes)
 }
 
 func mergeUniqueStringSlices(valueSets ...[]string) []string {
@@ -1755,8 +1755,8 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
-			Path: strings.TrimSpace(form.get("location"))}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation,
+			Path: strings.TrimSpace(form.get("location"))}.On(splitHashes(form.get("hashes"))), true
 	})
 }
 
@@ -1783,7 +1783,7 @@ func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	requested := uniqueHashes(strings.Split(r.Form.Get("hashes"), "|"))
+	requested := uniqueHashesKeepingText(strings.Split(r.Form.Get("hashes"), "|"))
 	if len(requested) == 0 {
 		restoreBody(r, bodyBytes)
 		h.proxy.ServeHTTP(w, r)
@@ -2026,7 +2026,7 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 	h.deleteNoter.NoteProxiedDelete(ctx, instanceID, noted, clientAPIKey.ClientName)
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete}.On(splitHashes(form.get("hashes"))),
 			strings.EqualFold(form.get("deleteFiles"), "true")
 	})
 }

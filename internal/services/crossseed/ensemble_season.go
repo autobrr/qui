@@ -165,7 +165,7 @@ func (s *Service) processEnsembleSeasonCandidate(ctx context.Context, state *sea
 		return false, nil
 	}
 
-	if state.opts.DisableTorznab || len(state.resolvedTorznabIndexerIDs) == 0 {
+	if state.gazelleOnly() {
 		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, noEligibleIndexersSkipReason)
 		return false, nil
 	}

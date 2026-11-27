@@ -113,7 +113,6 @@ const benchSize = 10000
 
 func BenchmarkHotSearch(b *testing.B) {
 	benchSilence(b)
-	sm := &SyncManager{}
 	refs := torrentRefs(benchTorrents(benchSize))
 
 	for _, tc := range []struct{ name, search string }{
@@ -123,7 +122,7 @@ func BenchmarkHotSearch(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			for b.Loop() {
-				_ = sm.filterTorrentsBySearch(refs, tc.search)
+				_ = searchTorrents(refs, tc.search)
 			}
 		})
 	}

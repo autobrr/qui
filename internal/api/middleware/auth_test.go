@@ -107,6 +107,75 @@ func TestIsAuthenticated_AuthDisabled(t *testing.T) {
 	assert.Equal(t, "admin", capturedUsername)
 }
 
+func TestIsAuthenticated_AuthDisabledRefusesWritesFromAnotherSite(t *testing.T) {
+	cfg := &domain.Config{AuthDisabled: true, IAcknowledgeThisIsABadIdea: true}
+	handler := IsAuthenticated(nil, nil, cfg)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	tests := []struct {
+		name    string
+		method  string
+		headers map[string]string
+		want    int
+	}{
+		{
+			name:    "a form on another site",
+			method:  http.MethodPost,
+			headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://other.example"},
+			want:    http.StatusForbidden,
+		},
+		{
+			name:    "a page on a sibling host",
+			method:  http.MethodDelete,
+			headers: map[string]string{"Sec-Fetch-Site": "same-site", "Origin": "https://other.qui.example"},
+			want:    http.StatusForbidden,
+		},
+		{
+			name:    "another site in a browser that sends only Origin",
+			method:  http.MethodPut,
+			headers: map[string]string{"Origin": "https://other.example"},
+			want:    http.StatusForbidden,
+		},
+		{
+			name:    "the web UI",
+			method:  http.MethodPost,
+			headers: map[string]string{"Sec-Fetch-Site": "same-origin", "Origin": "https://qui.example"},
+			want:    http.StatusOK,
+		},
+		{
+			name:    "the web UI behind a proxy that changes the Host",
+			method:  http.MethodPost,
+			headers: map[string]string{"Origin": "http://proxy.example", "X-Requested-With": "XMLHttpRequest"},
+			want:    http.StatusOK,
+		},
+		{
+			name:   "a script",
+			method: http.MethodPost,
+			want:   http.StatusOK,
+		},
+		{
+			name:    "a read from another site",
+			method:  http.MethodGet,
+			headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Origin": "https://other.example"},
+			want:    http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, "https://qui.example/api/external-programs", nil)
+			for name, value := range tt.headers {
+				req.Header.Set(name, value)
+			}
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req)
+
+			assert.Equal(t, tt.want, resp.Code)
+		})
+	}
+}
+
 func TestRequireSetup_AuthDisabled(t *testing.T) {
 	cfg := &domain.Config{AuthDisabled: true, IAcknowledgeThisIsABadIdea: true}
 
