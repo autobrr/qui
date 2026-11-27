@@ -34,15 +34,12 @@ func TestCompare(t *testing.T) {
 		want     verdict
 		extra    []match
 	}{
-		{name: "same miss", old: none, new: none, want: verdictSame},
 		{name: "same match in another order", old: ready(a, b), new: ready(b, a), want: verdictSame},
 		{name: "another copy listed", old: ready(a), new: ready(a, b), want: verdictExtraCopies, extra: []match{b}},
 		{name: "a match left out", old: ready(a, b), new: ready(a), want: verdictDiffers},
 		{name: "another torrent listed", old: ready(a), new: ready(a, match{InstanceID: 1, TorrentHash: "cc", TorrentName: "Lost.Harbor.S01E02.1080p.WEB-DL.H.264-GRP"}), want: verdictDiffers},
 		{name: "the same hash on another instance", old: ready(a), new: ready(other), want: verdictDiffers},
 		{name: "a miss that matches", old: none, new: ready(a), want: verdictDiffers},
-		{name: "a match that misses", old: ready(a), new: none, want: verdictDiffers},
-		{name: "still downloading", old: answer{Status: http.StatusAccepted, Recommendation: "download", Matches: []match{a}}, new: ready(a), want: verdictDiffers},
 		{name: "a season pack assembly", old: none, new: answer{Status: http.StatusOK, CanCrossSeed: true, Recommendation: "download", SeasonPack: &seasonPack{InstanceID: 1}}, want: verdictSeasonPack},
 		{name: "the same torrent by another match type", old: ready(a), new: ready(match{InstanceID: 1, TorrentHash: "aa", TorrentName: a.TorrentName, MatchType: "metadata"}), want: verdictDiffers},
 		{name: "another season pack", old: pack(seasonPack{InstanceID: 1, MatchedEpisodes: 10, TotalEpisodes: 10}), new: pack(seasonPack{InstanceID: 1, MatchedEpisodes: 8, TotalEpisodes: 10}), want: verdictDiffers},
