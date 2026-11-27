@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -414,4 +415,22 @@ func TestUnregisteredSinceEndsWhenTheFreshReadFindsAWorkingTracker(t *testing.T)
 			require.NotContains(t, rig.health(t), flagsHashDown, "the snapshot no longer says unregistered")
 		})
 	}
+}
+
+func TestUnregisteredSinceKeepsTheRecoveriesOfAFreshReadThatFailsLater(t *testing.T) {
+	t.Parallel()
+
+	rig := newSinceRig(t, "2.15.1")
+	rig.pass(t)
+	rig.requireSince(t, rig.now, "the verdict starts the time")
+
+	rig.answer(qbt.TrackerStatusOK, "")
+	hashes := []string{flagsHashDown}
+	for i := range trackerDetailChunkSize {
+		hashes = append(hashes, fmt.Sprintf("%040x", 0xf000+i))
+	}
+	rig.set(func() { rig.failFrom = len(rig.requests) + 2 })
+	_, err := rig.sm.StillUnregistered(t.Context(), 1, hashes)
+	require.Error(t, err)
+	rig.requireNoSince(t, "a working tracker in a chunk that the read got restarts the wait")
 }

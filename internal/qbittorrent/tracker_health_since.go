@@ -378,12 +378,12 @@ func (sm *SyncManager) StillUnregistered(ctx context.Context, instanceID int, ha
 	now := sm.healthNow()
 	index := NewHashIndex(owner.SnapshotUnchecked())
 	still := infohash.NewSet()
-	var recovered []seenTrackers
 	for chunk := range slices.Chunk(hashes, trackerDetailChunkSize) {
 		rows, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{Hashes: chunk, IncludeTrackers: true})
 		if err != nil {
 			return nil, err
 		}
+		var recovered []seenTrackers
 		for i := range rows {
 			hash, err := infohash.Parse(rows[i].Hash)
 			if err != nil {
@@ -397,9 +397,9 @@ func (sm *SyncManager) StillUnregistered(ctx context.Context, instanceID int, ha
 				recovered = append(recovered, seenTrackers{hash: torrent.Hash, flags: announceFlagsOf(torrent), trackers: rows[i].Trackers, at: now})
 			}
 		}
-	}
-	if len(recovered) > 0 {
-		sm.applySeenTrackers(ctx, instanceID, recovered...)
+		if len(recovered) > 0 {
+			sm.applySeenTrackers(ctx, instanceID, recovered...)
+		}
 	}
 	return still, nil
 }
