@@ -100,7 +100,6 @@ type searchRunState struct {
 	lastCandidateErr error
 
 	resolvedTorznabIndexerIDs []int
-	resolvedTorznabIndexerErr error
 	torznabErr                error
 	torznabSearched           bool
 
@@ -173,32 +172,33 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	if gazelleErr != nil {
 		log.Warn().Err(gazelleErr).Str("kind", string(opts.Kind)).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
 	}
-	hasGazelle := gazelleClients != nil && len(gazelleClients.byHost) > 0
-	var torznabErr error
-	if opts.DisableTorznab && !hasGazelle {
+	if opts.DisableTorznab && (gazelleClients == nil || len(gazelleClients.byHost) == 0) {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, errTorznabOffNoGazelle)
 	}
-	if s.jackettService == nil {
-		if !hasGazelle {
-			return nil, fmt.Errorf("%w: torznab search is not configured", ErrNoIndexersConfigured)
-		}
-		opts.DisableTorznab = true
-	} else if !opts.DisableTorznab {
-		indexers, indexersErr := s.jackettService.GetEnabledIndexersInfo(ctx)
-		if indexersErr != nil {
-			if !hasGazelle {
-				return nil, fmt.Errorf("failed to load enabled torznab indexers: %w", indexersErr)
-			}
-			log.Warn().Err(indexersErr).Str("kind", string(opts.Kind)).Msg("[CROSSSEED-SEARCH] Failed to probe Torznab indexers; continuing in Gazelle-only mode")
-			opts.DisableTorznab = true
-			torznabErr = fmt.Errorf("load torznab indexers: %w", indexersErr)
-		} else if len(indexers) == 0 {
-			if !hasGazelle {
-				return nil, ErrNoIndexersConfigured
-			}
-			opts.DisableTorznab = true
-		}
+	gazelleKeys := gazelleClients.hosts()
+	sites := s.resolveSitePick(ctx, opts.SitePick, opts.DisableTorznab, gazelleKeys)
+	torznabIDs, torznabErr := sites.runIndexerIDs(gazelleKeys)
+	if s.jackettService == nil || opts.DisableTorznab {
+		torznabIDs = nil
 	}
+	var usableKeys []string
+	if gazelleErr == nil && !gazelleClients.disabled() {
+		usableKeys = slices.Collect(maps.Keys(gazelleClients.byHost))
+	}
+	asksGazelle := sites.asksGazelle(usableKeys)
+	switch {
+	case s.jackettService == nil && !asksGazelle:
+		return nil, fmt.Errorf("%w: torznab search is not configured", ErrNoIndexersConfigured)
+	case torznabErr != nil && !asksGazelle:
+		return nil, fmt.Errorf("failed to load enabled torznab indexers: %w", torznabErr)
+	case torznabErr != nil:
+		log.Warn().Err(torznabErr).Str("kind", string(opts.Kind)).Msg("[CROSSSEED-SEARCH] Failed to probe Torznab indexers; continuing in Gazelle-only mode")
+		torznabIDs = nil
+		torznabErr = fmt.Errorf("load torznab indexers: %w", torznabErr)
+	case len(torznabIDs) == 0 && !asksGazelle:
+		return nil, ErrNoIndexersConfigured
+	}
+	opts.useSitePick(sites, torznabIDs)
 
 	opts.triggerDefaults = defaultsFor(triggerSeededSearch, settings)
 	opts.addTags = normalizeStringSlice(opts.addTags)
@@ -259,12 +259,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		}(),
 	}
 
-	if opts.DisableTorznab {
-		state.resolvedTorznabIndexerIDs = []int{}
-	} else {
-		sites := s.resolveSitePick(ctx, opts.SitePick, false, state.gazelleClients.hosts())
-		state.resolvedTorznabIndexerIDs, state.resolvedTorznabIndexerErr = sites.runIndexerIDs(state.gazelleClients.hosts())
-	}
+	state.resolvedTorznabIndexerIDs = torznabIDs
 
 	runCtx, cancel := context.WithCancel(context.Background())
 	s.searchCancel = cancel
@@ -449,10 +444,6 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 
 		delayAfterCandidate, err := s.processSearchCandidate(ctx, state, candidate)
 		if err != nil && !errors.Is(err, context.Canceled) {
-			if isSearchRunScopedError(state, err) {
-				state.lastError = err
-				return
-			}
 			state.lastCandidateErr = err
 		}
 
@@ -497,10 +488,6 @@ func (s *Service) stopAtSearchLimit(ctx context.Context, state *searchRunState) 
 	state.run.WaitingTorrents = waiting
 	state.run.Message = &msg
 	s.searchMu.Unlock()
-}
-
-func isSearchRunScopedError(state *searchRunState, err error) bool {
-	return state != nil && state.resolvedTorznabIndexerErr != nil && errors.Is(err, state.resolvedTorznabIndexerErr)
 }
 
 func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
@@ -1036,13 +1023,6 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return false, nil
 	}
 
-	if state.resolvedTorznabIndexerErr != nil && !state.opts.DisableTorznab {
-		if cacheKey != "" && state.skipCache != nil {
-			state.skipCache[cacheKey] = false
-		}
-		return false, nil
-	}
-
 	if strings.Contains(torrent.Hash, ":") {
 		last, found, err := s.automationStore.GetSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
 		if err != nil {
@@ -1155,21 +1135,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	if isEnsembleSeasonCandidate(torrent.Hash) {
 		return s.processEnsembleSeasonCandidate(ctx, state, torrent, processedAt)
-	}
-
-	if !state.opts.DisableTorznab && state.resolvedTorznabIndexerErr != nil {
-		state.lastError = state.resolvedTorznabIndexerErr
-		s.appendSearchResult(state, models.CrossSeedSearchResult{
-			TorrentHash:  torrent.Hash,
-			TorrentName:  torrent.Name,
-			IndexerName:  "",
-			ReleaseTitle: "",
-			Status:       models.CrossSeedSearchResultStatusFailed,
-			Message:      fmt.Sprintf("search failed: %v", state.resolvedTorznabIndexerErr),
-			ProcessedAt:  processedAt,
-		})
-		s.finishSearchCandidate(state, 0, true)
-		return false, state.resolvedTorznabIndexerErr
 	}
 
 	staleWork, hasStaleWork := state.staleWork[torrent.Hash]

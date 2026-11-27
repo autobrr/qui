@@ -258,12 +258,28 @@ func (s *Service) resolveSitePick(ctx context.Context, pick models.SitePick, tor
 	r.indexerIDs, r.torznabErr = s.resolveTorznabIndexerIDs(ctx, pick.IndexerIDs)
 	if r.torznabErr == nil && len(gazelleKeys) > 0 {
 		r.gazelleTorznabIndexers = s.gazelleTorznabIndexers(ctx)
+		r.pick.GazelleSites = withReplacingSites(pick, r.gazelleTorznabIndexers, gazelleKeys)
 	}
 	return r
 }
 
+func withReplacingSites(pick models.SitePick, gazelleIndexers map[int]string, gazelleKeys []string) []string {
+	sites := slices.Clone(pick.GazelleSites)
+	for _, id := range pick.IndexerIDs {
+		if host, ok := gazelleIndexers[id]; ok && slices.Contains(gazelleKeys, host) && !slices.Contains(sites, host) {
+			sites = append(sites, host)
+		}
+	}
+	slices.Sort(sites)
+	return sites
+}
+
 func (f searchScopeFacts) picked() bool {
 	return !f.sites.pick.Every()
+}
+
+func (r resolvedSitePick) asksGazelle(keys []string) bool {
+	return len(keys) > 0 && r.pick.Every() || slices.ContainsFunc(r.pick.GazelleSites, func(host string) bool { return slices.Contains(keys, host) })
 }
 
 func (r resolvedSitePick) runIndexerIDs(gazelleKeys []string) ([]int, error) {
@@ -272,6 +288,11 @@ func (r resolvedSitePick) runIndexerIDs(gazelleKeys []string) ([]int, error) {
 
 func (state *searchRunState) sitePick() resolvedSitePick {
 	return resolvedSitePick{pick: state.opts.sitePick(), indexerIDs: state.resolvedTorznabIndexerIDs}
+}
+
+func (opts *SearchRunOptions) useSitePick(sites resolvedSitePick, torznabIDs []int) {
+	opts.SitePick = sites.pick
+	opts.DisableTorznab = len(torznabIDs) == 0
 }
 
 func (opts SearchRunOptions) sitePick() models.SitePick {

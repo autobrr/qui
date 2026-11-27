@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestSearchRunLoop_AsksTheRedOpsSitesOfTheSitePick(t *testing.T) {
@@ -38,8 +41,13 @@ func TestSearchRunLoop_AsksTheRedOpsSitesOfTheSitePick(t *testing.T) {
 			require.NoError(t, err)
 			state.gazelleClients.byHost["redacted.sh"] = redClient
 			state.opts.SitePick = tc.pick
-			var lookupHosts []string
+			var (
+				mu          sync.Mutex
+				lookupHosts []string
+			)
 			findGazelleMatch = func(_ context.Context, client *gazellemusic.Client, _ []byte, _ map[string]int64, _ int64) (*gazellemusic.Match, error) {
+				mu.Lock()
+				defer mu.Unlock()
 				lookupHosts = append(lookupHosts, client.Host())
 				return nil, nil
 			}
@@ -50,4 +58,34 @@ func TestSearchRunLoop_AsksTheRedOpsSitesOfTheSitePick(t *testing.T) {
 			require.Equal(t, tc.want, lookupHosts)
 		})
 	}
+}
+
+func TestGazelleCooldownCountsOnlyThePickedSites(t *testing.T) {
+	notPicked := GazelleLookup{Site: "orpheus.network"}.notAsked(GazelleReasonNotSelected)
+	require.True(t, gazelleCooldownDue([]GazelleLookup{{Site: "redacted.sh", Status: GazelleNoMatch}, notPicked}, false), "a picked site that answered starts the cooldown")
+	require.True(t, gazelleCooldownDue([]GazelleLookup{GazelleLookup{Site: "redacted.sh"}.notAsked(GazelleReasonNotMusic), notPicked}, false), "a failed music check on a picked site starts the cooldown")
+	require.False(t, gazelleCooldownDue([]GazelleLookup{GazelleLookup{Site: "redacted.sh"}.notAsked(GazelleReasonNotSelected), notPicked}, false), "a pick with no RED/OPS site starts no RED/OPS cooldown")
+}
+
+func TestStartSearchRun_TorznabPickWithoutTorznabAsksNoRedOpsSite(t *testing.T) {
+	ctx := t.Context()
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-torznab-pick-no-torznab")
+	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key"})
+	require.NoError(t, err)
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{}, map[string]qbt.TorrentFiles{}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	_, err = svc.StartSearchRun(ctx, SearchRunOptions{InstanceID: instance.ID, SitePick: models.SitePick{IndexerIDs: []int{7}}})
+	require.ErrorIs(t, err, ErrNoIndexersConfigured)
 }

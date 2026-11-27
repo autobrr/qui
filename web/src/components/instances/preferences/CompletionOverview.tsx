@@ -248,7 +248,8 @@ export function CompletionOverview() {
             const isError = query?.isError ?? false
             const isMetadataError = metadataQuery?.isError ?? false
             const form = formMap[instance.id] ?? settingsToForm(query?.data)
-            const selectedSites = sitePickSelected(form.sitePick, sitePick.options, sitePick.sites)
+            const siteOptions = sitePick.optionsFor(form.sitePick)
+            const selectedSites = sitePickSelected(form.sitePick, siteOptions, sitePick.sites)
             const isEnabled = form.enabled
             const isDirty = dirtyMap[instance.id] ?? false
             const isSaving = updateMutation.isPending && updateMutation.variables?.instanceId === instance.id
@@ -414,11 +415,11 @@ export function CompletionOverview() {
                             <div className="space-y-2">
                               <Label size="sm">{t("preferences.completionOverview.indexers")}</Label>
                               <MultiSelect
-                                options={sitePick.options}
+                                options={siteOptions}
                                 selected={selectedSites}
-                                onChange={(values) => handleFormChange(instance.id, "sitePick", sitePickChange(form.sitePick, values, sitePick.options, sitePick.sites), form)}
+                                onChange={(values) => handleFormChange(instance.id, "sitePick", sitePickChange(form.sitePick, values, siteOptions, sitePick.sites), form)}
                                 placeholder={t("preferences.completionOverview.allIndexers")}
-                                disabled={isSaving || sitePick.isPending || !hasSites}
+                                disabled={isSaving || sitePick.isPending || siteOptions.length === 0}
                               />
                               <p className="text-xs text-muted-foreground">
                                 {selectedSites.length === 0? t("preferences.completionOverview.allIndexersSearched"): t("preferences.completionOverview.selectedIndexers", { count: selectedSites.length })}

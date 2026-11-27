@@ -56,8 +56,9 @@ type InstanceCrossSeedCompletionSettings struct {
 		{
 			name: "a resolved pick built outside the Search scope module",
 			path: "internal/services/crossseed/library_scan.go",
-			body: `sites := resolvedSitePick{indexerIDs: ids}`,
-			want: 1,
+			body: `sites := resolvedSitePick{indexerIDs: ids}
+	_ = resolvedSitePick{}`,
+			want: 2,
 		},
 		{
 			name: "the stored pick passed whole",

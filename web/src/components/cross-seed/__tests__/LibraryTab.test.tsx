@@ -181,7 +181,7 @@ describe("LibraryTab save", () => {
     expect(mocks.patchSettings).not.toHaveBeenCalled()
   })
 
-  it("does not start a Gazelle-only run from a stale OPS/RED-only pick", async () => {
+  it("runs a stale pick of the OPS/RED Torznab indexers as a pick of the OPS/RED sites", async () => {
     Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
     mocks.indexers = [
       { id: 1, indexer_id: "orpheus", name: "OPS", base_url: "https://orpheus.example.invalid", enabled: true },
@@ -196,11 +196,11 @@ describe("LibraryTab save", () => {
     mocks.startRun.mockResolvedValue({ id: 1 })
     renderTab()
 
-    expect(await screen.findByText("scan.indexers.helpAllEnabledNonOpsRedQueried")).toBeTruthy()
+    expect(await screen.findByText("scan.indexers.helpSelectedQueried")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
-    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], disableTorznab: false })
+    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], gazelleSites: [redSite.site, opsSite.site], disableTorznab: false })
   })
 
   it("hides the Torznab indexer only of the site that has a key", async () => {

@@ -85,7 +85,7 @@ func countSitePick(path string, f *ast.File, pickTypes map[string]bool) int {
 		case pickTypes[name] && countKeys(keys, sitePickHalves) == 1:
 			n++
 		case path == sitePickScopeFile:
-		case name == "resolvedSitePick" && len(keys) > 0:
+		case name == "resolvedSitePick":
 			n++
 		case name == "searchScopeFacts" && countKeys(keys, sitePickScopeFields) > 0:
 			n++

@@ -65,14 +65,23 @@ describe("sitePickChange", () => {
     expect(pick).toEqual({ indexerIds: [7], gazelleSites: ["orpheus.network"] })
   })
 
-  it("drops a hidden pick of a Torznab indexer that a RED/OPS site replaces", () => {
-    const options = sitePickOptions("completion", indexers, sites)
-    const pick = sitePickChange({ indexerIds: [8], gazelleSites: [] }, ["-1002"], options, sites)
-    expect(pick).toEqual({ indexerIds: [], gazelleSites: ["orpheus.network"] })
+  it("lists a picked RED/OPS site that is off, so the user can remove it", () => {
+    const offSites = sites.map(site => ({ ...site, active: false, replacedIndexerIds: [] }))
+    const pick = { indexerIds: [7], gazelleSites: ["redacted.sh"] }
+    const options = sitePickOptions("completion", indexers, offSites, { pick })
+    expect(labels(options)).toEqual(["Music Indexer", "Redacted", "Redacted (API)"])
+    expect(sitePickChange(pick, ["7"], options, offSites)).toEqual({ indexerIds: [7], gazelleSites: [] })
   })
 })
 
 describe("sitePickForSave", () => {
+  it("turns a picked Torznab indexer that a RED/OPS site replaces into a pick of that site", () => {
+    const pick = { indexerIds: [8], gazelleSites: [] }
+    const options = sitePickOptions("completion", indexers, sites, { pick })
+    expect(sitePickSelected(pick, options, sites)).toEqual(["-1001"])
+    expect(sitePickForSave(pick, options, sites)).toEqual({ indexerIds: [], gazelleSites: ["redacted.sh"] })
+  })
+
   it("keeps the stored RED/OPS sites while the list of sites has not loaded", () => {
     const options = sitePickOptions("library", indexers, [])
     expect(sitePickForSave({ indexerIds: [7], gazelleSites: ["redacted.sh", "orpheus.network"] }, options, [])).toEqual({

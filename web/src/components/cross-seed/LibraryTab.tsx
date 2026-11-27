@@ -291,9 +291,10 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
   }, [seededSearchIntervalMinimum])
 
-  const seededSearchSelected = sitePickSelected(searchSitePick, sitePick.options, sitePick.sites)
-  const seededSearchPick = sitePickForSave(searchSitePick, sitePick.options, sitePick.sites)
-  const seededSearchHasOptions = sitePick.options.length > 0
+  const seededSearchOptions = sitePick.optionsFor(searchSitePick)
+  const seededSearchSelected = sitePickSelected(searchSitePick, seededSearchOptions, sitePick.sites)
+  const seededSearchPick = sitePickForSave(searchSitePick, seededSearchOptions, sitePick.sites)
+  const seededSearchHasOptions = seededSearchOptions.length > 0
 
   const seededSearchIndexerPlaceholder = !seededSearchTorznabEnabled
     ? t(gazelleSavedConfigured ? "scan.indexers.placeholderTorznabDisabledGazelleOnly" : "scan.indexers.placeholderTorznabDisabledEnableGazelle")
@@ -532,9 +533,9 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
               </div>
             </div>
             <MultiSelect
-              options={sitePick.options}
+              options={seededSearchOptions}
               selected={seededSearchSelected}
-              onChange={values => setSearchSitePick(sitePickChange(searchSitePick, values, sitePick.options, sitePick.sites))}
+              onChange={values => setSearchSitePick(sitePickChange(searchSitePick, values, seededSearchOptions, sitePick.sites))}
               placeholder={seededSearchIndexerPlaceholder}
               disabled={!seededSearchHasOptions}
             />

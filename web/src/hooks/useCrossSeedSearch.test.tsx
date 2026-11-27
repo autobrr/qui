@@ -1054,6 +1054,25 @@ describe("useCrossSeedSearch", () => {
     expect(mockedApi.searchCrossSeedTorrent).not.toHaveBeenCalled()
   })
 
+  it("asks every site when the user picks all before the Torznab indexers load", async () => {
+    mockedApi.listTorznabIndexers.mockReturnValue(new Promise(() => {}))
+    mockedApi.getCrossSeedSettings.mockResolvedValue({ findIndividualEpisodes: false, gazelleEnabled: true } as never)
+    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }]
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-loading", gazellePlan: plan } as never)
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-loading" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]).toMatchObject({ indexerIds: [], gazelleSites: [] })
+  })
+
   describe("RED/OPS entries", () => {
     const plan: CrossSeedGazelleLookup[] = [
       { ...red, status: "not_asked", reason: "source_site", replacedIndexerIds: [7] },

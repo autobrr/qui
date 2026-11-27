@@ -38,7 +38,7 @@ func TestExecuteCompletionSearch_AsksTheSitesOfTheSitePick(t *testing.T) {
 		{name: "an empty pick asks every site", pick: models.SitePick{}, redAPI: true, opsAPI: true, musicTorznab: true},
 		{name: "a RED-only pick asks RED through the API and no Torznab indexer", pick: models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{red}}, redAPI: true},
 		{name: "a Torznab-only pick asks no RED/OPS site", pick: models.SitePick{IndexerIDs: []int{7}, GazelleSites: []string{}}, musicTorznab: true},
-		{name: "a pick of the replaced RED Torznab indexer and OPS asks only OPS", pick: models.SitePick{IndexerIDs: []int{8}, GazelleSites: []string{ops}}, opsAPI: true},
+		{name: "a pick of the RED Torznab indexer that the RED key replaces asks RED through the API", pick: models.SitePick{IndexerIDs: []int{8}, GazelleSites: []string{ops}}, redAPI: true, opsAPI: true},
 		{name: "a migrated pick asks every RED/OPS site beside its Torznab indexers", pick: models.SitePick{IndexerIDs: []int{7}, GazelleSites: []string{ops, red}}, redAPI: true, opsAPI: true, musicTorznab: true},
 	}
 	for _, tc := range tests {

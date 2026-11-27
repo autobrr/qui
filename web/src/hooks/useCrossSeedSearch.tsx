@@ -27,7 +27,7 @@ export function useCrossSeedSearch(instanceId: number) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
 
-  const { indexers: sortedEnabledIndexers } = useSitePickSources("manual")
+  const { indexers: sortedEnabledIndexers, isPending: indexersPending, isError: indexersFailed } = useSitePickSources("manual")
 
   const [crossSeedDialogOpen, setCrossSeedDialogOpen] = useState(false)
   const crossSeedInstance = useCrossSeedInstanceOf(instanceId, crossSeedDialogOpen)
@@ -185,7 +185,10 @@ export function useCrossSeedSearch(instanceId: number) {
       const pickedIds = crossSeedIndexerMode === "custom"
         ? crossSeedIndexerSelection
         : analyzed ? [...searchableIndexers.map(indexer => indexer.id), ...plan.map(entry => entry.indexerId)] : []
-      const pick = sitePickFromIds(pickedIds.filter(id => !excludedIndexerIds.includes(id)), plan)
+      const indexersUnknown = crossSeedIndexerMode === "all" && (indexersPending || indexersFailed)
+      const pick = indexersUnknown
+        ? { indexerIds: [], gazelleSites: [] }
+        : sitePickFromIds(pickedIds.filter(id => !excludedIndexerIds.includes(id)), plan)
 
       setCrossSeedSearchLoading(true)
       setCrossSeedSearchError(null)
@@ -247,6 +250,8 @@ export function useCrossSeedSearch(instanceId: number) {
       getCrossSeedResultKey,
       excludedIndexerIds,
       gazellePlan,
+      indexersFailed,
+      indexersPending,
       searchableIndexers,
       instanceId,
       t,

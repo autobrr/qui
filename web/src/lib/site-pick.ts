@@ -4,7 +4,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query"
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
 
 import { api } from "@/lib/api"
 import type { SitePick, TorznabIndexer } from "@/types"
@@ -27,6 +27,7 @@ export interface RedOpsSite {
   site: string
   name: string
   indexerId: number
+  active?: boolean
   replacedIndexerIds?: number[]
 }
 
@@ -35,6 +36,8 @@ export interface SiteOption {
   value: string
   id: number
 }
+
+const EVERY_SITE: SitePick = { indexerIds: [], gazelleSites: [] }
 
 export function enabledTorznabIndexers(indexers: readonly TorznabIndexer[]): TorznabIndexer[] {
   return indexers
@@ -50,9 +53,9 @@ export function sitePickOptions(
   trigger: SitePickTrigger,
   indexers: readonly TorznabIndexer[],
   redOps: readonly RedOpsSite[],
-  { torznabOn = true }: { torznabOn?: boolean } = {}
+  { pick = EVERY_SITE, torznabOn = true }: { pick?: SitePick; torznabOn?: boolean } = {}
 ): SiteOption[] {
-  const sites = TRIGGER_RED_OPS[trigger] === "none" ? [] : redOps
+  const sites = TRIGGER_RED_OPS[trigger] === "none" ? [] : redOps.filter(site => site.active !== false || pick.gazelleSites.includes(site.site))
   const replaced = replacedIndexerIds(sites)
   const torznab = torznabOn ? enabledTorznabIndexers(indexers).filter(indexer => !replaced.has(indexer.id)) : []
   return [
@@ -70,10 +73,11 @@ export function sitePickFromIds(ids: readonly number[], sites: readonly RedOpsSi
 }
 
 function sitePickToIds(pick: SitePick, sites: readonly RedOpsSite[]): number[] {
-  return [
-    ...pick.indexerIds,
+  const replacedBy = new Map(sites.flatMap(site => (site.replacedIndexerIds ?? []).map(id => [id, site.indexerId] as const)))
+  return [...new Set([
+    ...pick.indexerIds.map(id => replacedBy.get(id) ?? id),
     ...sites.filter(site => pick.gazelleSites.includes(site.site)).map(site => site.indexerId),
-  ]
+  ])]
 }
 
 export function sitePickSelected(pick: SitePick, options: readonly SiteOption[], sites: readonly RedOpsSite[]): string[] {
@@ -88,8 +92,7 @@ export function sitePickChange(
   sites: readonly RedOpsSite[]
 ): SitePick {
   const shown = new Set(options.map(option => option.id))
-  const replaced = replacedIndexerIds(sites)
-  const kept = sitePickToIds(pick, sites).filter(id => !shown.has(id) && !replaced.has(id))
+  const kept = sitePickToIds(pick, sites).filter(id => !shown.has(id))
   const next = sitePickFromIds([...kept, ...values.map(Number).filter(Number.isInteger)], sites)
   const known = new Set(sites.map(site => site.site))
   return { ...next, gazelleSites: [...next.gazelleSites, ...pick.gazelleSites.filter(host => !known.has(host))] }
@@ -113,11 +116,9 @@ export function useSitePickSources(trigger: SitePickTrigger) {
   })
   const indexers = useMemo(() => enabledTorznabIndexers(indexersQuery.data ?? []), [indexersQuery.data])
   const sites = useMemo(() => sitesQuery.data ?? [], [sitesQuery.data])
-  const activeSites = useMemo(() => sites.filter(site => site.active), [sites])
   return {
     indexers,
     sites,
-    activeSites,
     isPending: indexersQuery.isPending || sitesQuery.isLoading,
     isError: indexersQuery.isError,
   }
@@ -125,10 +126,11 @@ export function useSitePickSources(trigger: SitePickTrigger) {
 
 export function useSitePickOptions(trigger: SitePickTrigger, { torznabOn = true }: { torznabOn?: boolean } = {}) {
   const sources = useSitePickSources(trigger)
-  const { indexers, activeSites } = sources
-  const options = useMemo(
-    () => sitePickOptions(trigger, indexers, activeSites, { torznabOn }),
-    [trigger, indexers, activeSites, torznabOn]
+  const { indexers, sites } = sources
+  const optionsFor = useCallback(
+    (pick: SitePick) => sitePickOptions(trigger, indexers, sites, { pick, torznabOn }),
+    [trigger, indexers, sites, torznabOn]
   )
-  return { ...sources, options }
+  const options = useMemo(() => optionsFor(EVERY_SITE), [optionsFor])
+  return { ...sources, options, optionsFor }
 }
