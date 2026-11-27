@@ -27,9 +27,14 @@ func HideTrackerURLs(urls []string) {
 }
 
 func TrackersWithoutPasskeys(trackers []qbt.TorrentTracker) []qbt.TorrentTracker {
+	urls := make([]string, len(trackers))
+	for i := range trackers {
+		urls[i] = trackers[i].Url
+	}
 	hidden := slices.Clone(trackers)
 	for i := range hidden {
 		hidden[i].Url = TrackerOrigin(hidden[i].Url)
+		hidden[i].Message = CleanTrackerMessage(hidden[i].Message, urls)
 	}
 	return hidden
 }

@@ -128,7 +128,7 @@ func TestSyncManager_ClearTrackerHealthAndRefetch(t *testing.T) {
 				trackerHealthCache: map[int]*TrackerHealthSnapshot{1: before},
 			}
 
-			sm.clearTrackerHealthAndRefetch(1, tt.hashesToRemove)
+			sm.clearTrackerHealthAndRefetch(t.Context(), 1, tt.hashesToRemove)
 
 			after := sm.GetTrackerHealthSnapshot(1)
 			assert.Equal(t, tt.expectedUnreg, after.Count(TrackerHealthUnregistered), "Unregistered count")
@@ -156,14 +156,14 @@ func TestSyncManager_ClearTrackerHealthAndRefetch_NotifiesOnlyOnChange(t *testin
 		"error":        TrackerHealthError,
 	})
 
-	sm.clearTrackerHealthAndRefetch(1, []string{"down", "missing"})
+	sm.clearTrackerHealthAndRefetch(t.Context(), 1, []string{"down", "missing"})
 	assert.Equal(t, []int{1}, sink.getTrackerHealthUpdates())
 	assert.Equal(t, 0, sm.trackerHealthCache[1].Count(TrackerHealthDown))
 	assert.Empty(t, sm.trackerHealthCache[1].Health("down"))
 
-	sm.clearTrackerHealthAndRefetch(1, []string{"missing"})
-	sm.clearTrackerHealthAndRefetch(2, []string{"unregistered"})
-	sm.clearTrackerHealthAndRefetch(1, nil)
+	sm.clearTrackerHealthAndRefetch(t.Context(), 1, []string{"missing"})
+	sm.clearTrackerHealthAndRefetch(t.Context(), 2, []string{"unregistered"})
+	sm.clearTrackerHealthAndRefetch(t.Context(), 1, nil)
 	assert.Equal(t, []int{1}, sink.getTrackerHealthUpdates())
 }
 
@@ -199,7 +199,7 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 	for i := range 5 {
 		wg.Go(func() {
 			for j := range 20 {
-				sm.clearTrackerHealthAndRefetch(1, []string{fmt.Sprintf("hash%d", i*20+j)})
+				sm.clearTrackerHealthAndRefetch(t.Context(), 1, []string{fmt.Sprintf("hash%d", i*20+j)})
 			}
 		})
 	}

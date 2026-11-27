@@ -552,7 +552,8 @@
         "dryRun": "Simulation",
         "exportToInstance": "Exporter vers l'instance",
         "transferToInstance": "Transférer vers une instance",
-        "ruleSkipped": "Règle non exécutée"
+        "ruleSkipped": "Règle non exécutée",
+        "deleteWaiting": "En attente de suppression"
       },
       "shareLimit": {
         "global": "Global",
@@ -607,7 +608,9 @@
         "exportFailed_one": "Échec d'exportation de {{count}} torrent",
         "exportFailed_other": "Échec d'exportation de {{count}} torrents",
         "transferredDryRun_one": "{{count}} torrent serait transféré",
-        "transferredDryRun_other": "{{count}} torrents seraient transférés"
+        "transferredDryRun_other": "{{count}} torrents seraient transférés",
+        "deleteWaiting_one": "{{count}} torrent attendrait sa suppression",
+        "deleteWaiting_other": "{{count}} torrents attendraient leur suppression"
       },
       "deleteDialog": {
         "title": "Supprimer la règle",
@@ -724,7 +727,11 @@
       "exportCSV": "Exporter CSV",
       "saveWithoutPreview": "Enregistrer sans aperçu",
       "previewFailed": "Échec de l'aperçu : {{error}}",
-      "skipPreviewHint": "La règle agira quand même sur chaque torrent correspondant lors de sa prochaine exécution. Vous pouvez enregistrer sans attendre l'aperçu."
+      "skipPreviewHint": "La règle agira quand même sur chaque torrent correspondant lors de sa prochaine exécution. Vous pouvez enregistrer sans attendre l'aperçu.",
+      "deletes": "Suppression",
+      "deletesNow": "Maintenant",
+      "waitsUntil": "Après le {{time}}",
+      "waitsForTracker": "Quand le tracker répond de nouveau « non enregistré »"
     },
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",
@@ -968,7 +975,8 @@
         "dry_run_no_match": "Simulation (aucune correspondance)",
         "exported_to_instance": "Exporter vers l'instance",
         "transferred_to_instance": "Transférer vers une instance",
-        "rule_skipped": "Règle non exécutée"
+        "rule_skipped": "Règle non exécutée",
+        "delete_waiting": "Simulation (en attente de suppression)"
       }
     },
     "reannounceOverview": {
@@ -1268,7 +1276,10 @@
         "includeHardlinkedCopies": "Inclure les copies hardlinkées",
         "includeHardlinkedCopiesDescription": "Supprime également les torrents partageant les mêmes fichiers par des liens physiques.",
         "localAccessRequired": "Requiert l'activation de l'accès au système de fichiers local.",
-        "remoteNotAvailable": "Non disponible sur les instances distantes"
+        "remoteNotAvailable": "Non disponible sur les instances distantes",
+        "wait": "Délai de suppression",
+        "waitHelp": "Durée pendant laquelle un torrent doit être non enregistré avant que cette règle le supprime. 0 le supprime dès la première correspondance.",
+        "waitUnit": "Unité du délai de suppression"
       },
       "move": {
         "newSavePath": "Nouveau chemin de sauvegarde",
@@ -1385,7 +1396,9 @@
         "state": "État",
         "addedOn": "Ajouté le",
         "path": "Path",
-        "score": "Score"
+        "score": "Score",
+        "deletes": "Suppression",
+        "deletesNow": "Maintenant"
       },
       "footer": {
         "enabled": "Activé",
@@ -1409,7 +1422,9 @@
         "and": "and",
         "crossSeeds": "{{count}} cross-seed",
         "crossSeeds_other": "{{count}} cross-seeds",
-        "toCategory": "vers la catégorie"
+        "toCategory": "vers la catégorie",
+        "waitingSummary_one": "{{count}} torrent non enregistré est encore dans son délai de suppression, cette règle ne le supprime donc pas encore.",
+        "waitingSummary_other": "{{count}} torrents non enregistrés sont encore dans leur délai de suppression, cette règle ne les supprime donc pas encore."
       },
       "enableDryRunPrompt": {
         "title": "Activer la simulation (dry run) ?",
@@ -1465,7 +1480,8 @@
           "noMatches": "Aucune correspondance",
           "exportedToInstance": "Exporter vers l'instance",
           "transferredToInstance": "Transférer vers une instance",
-          "ruleSkipped": "Règle non exécutée"
+          "ruleSkipped": "Règle non exécutée",
+          "deleteWaiting": "En attente de suppression"
         },
         "actionFallback": "Action inconnue ({{action}})",
         "summary": {
@@ -1484,7 +1500,9 @@
           "noMatches": "Aucun torrent n'a correspondu à cette simulation",
           "impacted": "{{count}} torrent impacté",
           "impacted_other": "{{count}} torrents impactés",
-          "completed": "Simulation terminée"
+          "completed": "Simulation terminée",
+          "deleteWaiting_one": "{{count}} torrent attendrait sa suppression",
+          "deleteWaiting_other": "{{count}} torrents attendraient leur suppression"
         }
       },
       "toast": {

@@ -558,7 +558,8 @@
         "dryRun": "Probelauf",
         "exportToInstance": "In Instanz exportieren",
         "transferToInstance": "An Instanz übertragen",
-        "ruleSkipped": "Regel nicht ausgeführt"
+        "ruleSkipped": "Regel nicht ausgeführt",
+        "deleteWaiting": "Wartet auf Löschung"
       },
       "shareLimit": {
         "global": "Global",
@@ -613,7 +614,9 @@
         "exportFailed_one": "{{count}} Torrent konnte nicht exportiert werden",
         "exportFailed_other": "{{count}} Torrents konnten nicht exportiert werden",
         "transferredDryRun_one": "{{count}} Torrent würde übertragen",
-        "transferredDryRun_other": "{{count}} Torrents würden übertragen"
+        "transferredDryRun_other": "{{count}} Torrents würden übertragen",
+        "deleteWaiting_one": "{{count}} Torrent würde auf die Löschung warten",
+        "deleteWaiting_other": "{{count}} Torrents würden auf die Löschung warten"
       },
       "deleteDialog": {
         "title": "Regel löschen",
@@ -730,7 +733,11 @@
       "exportCSV": "CSV exportieren",
       "saveWithoutPreview": "Ohne Vorschau speichern",
       "previewFailed": "Vorschau fehlgeschlagen: {{error}}",
-      "skipPreviewHint": "Die Regel wirkt beim nächsten Lauf trotzdem auf jeden passenden Torrent. Du kannst speichern, ohne auf die Vorschau zu warten."
+      "skipPreviewHint": "Die Regel wirkt beim nächsten Lauf trotzdem auf jeden passenden Torrent. Du kannst speichern, ohne auf die Vorschau zu warten.",
+      "deletes": "Löschen",
+      "deletesNow": "Jetzt",
+      "waitsUntil": "Nach {{time}}",
+      "waitsForTracker": "Wenn der Tracker wieder „nicht registriert“ meldet"
     },
     "orphanScanOverview": {
       "title": "Orphan-Scan",
@@ -974,7 +981,8 @@
         "dry_run_no_match": "Probelauf (keine Übereinstimmung)",
         "exported_to_instance": "Export zur Instanz",
         "transferred_to_instance": "An Instanz übertragen",
-        "rule_skipped": "Regel nicht ausgeführt"
+        "rule_skipped": "Regel nicht ausgeführt",
+        "delete_waiting": "Probelauf (wartet auf Löschung)"
       }
     },
     "reannounceOverview": {
@@ -1274,7 +1282,10 @@
         "includeHardlinkedCopies": "Per Hardlink verknüpfte Kopien einbeziehen",
         "includeHardlinkedCopiesDescription": "Löscht auch Torrents, die sich dieselben zugrunde liegenden Dateien per Hardlink teilen. Bezieht nur Hardlinks vollständig innerhalb von qBittorrent ein; folgt niemals Hardlinks nach außen.",
         "localAccessRequired": "Erfordert, dass \"Local Filesystem Access\" in den Instanz-Einstellungen aktiviert ist.",
-        "remoteNotAvailable": "Nicht verfügbar auf Remote-Instanzen"
+        "remoteNotAvailable": "Nicht verfügbar auf Remote-Instanzen",
+        "wait": "Löschwartezeit",
+        "waitHelp": "Wie lange ein Torrent nicht registriert sein muss, bevor diese Regel ihn löscht. 0 löscht ihn beim ersten Treffer.",
+        "waitUnit": "Einheit der Löschwartezeit"
       },
       "move": {
         "newSavePath": "Neuer Speicherpfad",
@@ -1391,7 +1402,9 @@
         "state": "Status",
         "addedOn": "Hinzugefügt am",
         "path": "Pfad",
-        "score": "Score"
+        "score": "Score",
+        "deletes": "Löschen",
+        "deletesNow": "Jetzt"
       },
       "footer": {
         "enabled": "Aktiviert",
@@ -1415,7 +1428,9 @@
         "and": "und",
         "crossSeeds": "{{count}} Cross-Seed",
         "crossSeeds_other": "{{count}} Cross-Seeds",
-        "toCategory": "in Kategorie"
+        "toCategory": "in Kategorie",
+        "waitingSummary_one": "{{count}} nicht registrierter Torrent ist noch in seiner Löschwartezeit, daher löscht diese Regel ihn noch nicht.",
+        "waitingSummary_other": "{{count}} nicht registrierte Torrents sind noch in ihrer Löschwartezeit, daher löscht diese Regel sie noch nicht."
       },
       "enableDryRunPrompt": {
         "title": "Probelauf aktivieren?",
@@ -1471,7 +1486,8 @@
           "noMatches": "Keine Treffer",
           "exportedToInstance": "In Instanz exportieren",
           "transferredToInstance": "An Instanz übertragen",
-          "ruleSkipped": "Regel nicht ausgeführt"
+          "ruleSkipped": "Regel nicht ausgeführt",
+          "deleteWaiting": "Wartet auf Löschung"
         },
         "actionFallback": "Unbekannte Aktion ({{action}})",
         "summary": {
@@ -1490,7 +1506,9 @@
           "noMatches": "Keine Torrents entsprachen diesem Probelauf",
           "impacted": "{{count}} Torrent betroffen",
           "impacted_other": "{{count}} Torrents betroffen",
-          "completed": "Probelauf abgeschlossen"
+          "completed": "Probelauf abgeschlossen",
+          "deleteWaiting_one": "{{count}} Torrent würde auf die Löschung warten",
+          "deleteWaiting_other": "{{count}} Torrents würden auf die Löschung warten"
         }
       },
       "toast": {

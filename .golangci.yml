@@ -210,6 +210,9 @@ linters:
         - pattern: ^.+\.([Uu]nique|[Dd]istinct|[Dd]edupe?)(Hashes|HashStrings)$
           pkg: ^github\.com/autobrr/qui/
           msg: dedupe torrent hashes with infohash.Unique or infohash.UniqueStrings, and keep a set of them in an infohash.Set
+        - pattern: ^\(?\*?qbittorrent\.TrackerHealthSnapshot\)?\.(Health|UnregisteredSince|UnregisteredSinceLoaded|UnregisteredBy)$
+          pkg: ^github\.com/autobrr/qui/internal/qbittorrent$
+          msg: under automations, read tracker health through internal/services/automations/verdict, which gives a delete the waited verdict (ADR 0100)
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -291,6 +294,17 @@ linters:
         linters:
           - forbidigo
         text: the sync object of go-qbittorrent
+
+      # The waited verdict package is the only automations code that reads
+      # tracker health from the snapshot.
+      - path-except: ^internal/services/automations/
+        linters:
+          - forbidigo
+        text: ADR 0100
+      - path: ^internal/services/automations/verdict/|_test\.go
+        linters:
+          - forbidigo
+        text: ADR 0100
 
       # The one-parser rule binds only the cross-seed production code.
       - path-except: ^internal/services/crossseed/

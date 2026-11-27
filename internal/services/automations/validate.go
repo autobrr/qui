@@ -67,6 +67,12 @@ func ValidateRule(rule *models.Automation, instance *models.Instance) error {
 		}
 	}
 
+	if del := conditions.Delete; del != nil && del.UnregisteredWaitSeconds != nil {
+		if seconds := *del.UnregisteredWaitSeconds; seconds < 0 || seconds > int(models.MaxUnregisteredWait/time.Second) {
+			return ruleError("unregisteredWaitSeconds must be between 0 and 31536000 (365 days)")
+		}
+	}
+
 	if del := conditions.Delete; del != nil && del.Enabled {
 		if del.Condition == nil {
 			return ruleError("Delete action requires at least one condition")

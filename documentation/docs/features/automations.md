@@ -141,7 +141,7 @@ System Day and System Year do not wrap. A month boundary depends on the length o
 | --- | --- |
 | Tracker | Any tracker of the torrent (URL, domain, or customization display name) |
 | Private | Boolean: the torrent uses a private tracker (requires qBittorrent 5.0+) |
-| Unregistered | Boolean: the tracker reports unregistered (requires qBittorrent 5.1+) |
+| Unregistered | Boolean: the tracker reports unregistered (requires qBittorrent 5.1+). A delete rule waits for its [Delete wait](#delete-wait) before it deletes for this condition. |
 | Tracker status | Per-tracker announce status. See [Tracker status values](#tracker-status-values) (requires qBittorrent 5.1+). |
 | Tracker message | Per-tracker status message. Use `nil` for an empty message (requires qBittorrent 5.1+). |
 | Comment | Torrent comment field (requires qBittorrent 5.0+) |
@@ -356,6 +356,9 @@ When you edit workflows, qui provides immediate feedback for delete, category, a
 - When conditions and actions change, the **Live impact preview** in the workflow dialog updates.
 - It shows the current **impacted count** and a preview list of matching torrents.
 - For category and tag rules, the preview summary splits direct matches and cross-seed expansions.
+- For delete rules, the preview counts torrents deleting now and waiting torrents in one list, deletes first. When torrents wait, a **Deletes** column shows **Now**, **After \<date and time\>**, or **When the tracker answers unregistered** (wait over, tracker not answering unregistered now). Its CSV export includes every row and a **Deletes** column (`Now` or the ISO time).
+- The save or enable confirmation dialog shows both counts, showing the waiting count instead of "No torrents currently match" when nothing deletes now.
+- A delete dry run writes a "Waiting to delete" line with the waiting count to the activity log next to the delete line. "No match" appears only when nothing matches or waits.
 
 When you save an enabled delete, category, or tag workflow in the workflow dialog, qui opens a confirmation dialog that loads the same preview. In the workflow list, this dialog opens when you flip the switch. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to save at once. If **Dry run** is off, an enabled workflow acts on every matching torrent on its next run. If **Dry run** is on, the workflow writes the result to automation activity and does not change the torrents.
 
@@ -575,6 +578,23 @@ Remove torrents from qBittorrent. **Delete must be standalone.** You cannot comb
 | `deleteWithFilesIncludeCrossSeeds` | Remove files and also delete all cross-seeded torrents sharing the same files |
 
 Delete skips a torrent while qBittorrent checks it, because the progress of the torrent is not correct until the check ends. qui still deletes a checking torrent that another match pulls in, such as a cross-seed in `deleteWithFilesIncludeCrossSeeds` mode.
+
+#### Delete wait
+
+Delete rules reading `Unregistered` wait before deleting so a tracker mistake does not remove healthy torrents. The wait covers deletes only. Tag, pause, category, and other actions on `Unregistered is true` still run on the first match because you can undo them.
+
+| **Delete wait** (`unregisteredWaitSeconds`) | Behavior |
+| --- | --- |
+| Unset (default) | 7 days (`604800` whole seconds) |
+| `0` | Off; deletes on the first match |
+| Range | 0 to 365 days (`31536000`); qui refuses other values |
+
+The editor shows **Delete wait** (hours or days, set to 7 days) only for rules reading `Unregistered`, `State` with `unregistered` (an older stored form), or a conditional score rule using either. Existing rules wait 7 days. Rules on other fields only (ratio, tags, raw Tracker message) do not wait.
+
+- **Unregistered since:** qui stores in its database when it first sees a torrent as unregistered. Restarts of qui or qBittorrent and tracker downtime do not move it. It starts over when a tracker works again (DHT, PeX, and LSD do not count), the torrent stops, you edit its trackers in qui, or it leaves the client.
+- **Live check:** Past its wait, a torrent whose tracker is down waits until the tracker answers unregistered again. Before a live delete, qui re-reads those trackers from qBittorrent and keeps working torrents. If that read fails, qui skips those deletes until the next run; other delete rules (ratio) still delete.
+- **Stopped torrents and startup:** Stopped torrents never become due because qBittorrent forgets tracker answers on stop, so a pause rule stops delete rules from deleting them. After startup, rules with a wait above 0 skip an instance until its first tracker health pass loads stored times (about a minute); the preview says to try again in a minute.
+- **Conditions and other rules:** A rule deletes for `Unregistered` only when it matches both with **Unregistered since** set and after the wait with a live unregistered answer. `Unregistered is not true` keeps waiting torrents; an `OR` matching another condition deletes at once. Another delete rule (ratio below 1) or a **Delete trigger** past its wait pulling in a cross-seed, hardlink copy, or group member still deletes a waiting torrent. All-or-none group deletes (`atomic: "all"`, keep-files with `groupId`) hold while one member waits.
 
 In the modes `deleteWithFilesPreserveCrossSeeds` and `deleteWithFilesIncludeCrossSeeds`, qui also checks the other active instances with local filesystem access. Two instances can save into one folder on one disk. If a torrent on another instance uses the same file on disk as the torrent that the rule deletes, qui removes the torrent and keeps the files. In include mode, qui keeps the files of the whole group. A rule never deletes a torrent on another instance.
 
@@ -1430,12 +1450,13 @@ Remove torrents the tracker no longer recognizes:
 - Tracker: `*`
 - Condition: `Unregistered is true`
 - Action: Delete (keep files)
+- Delete wait: 7 days (default)
 
 To see these torrents without a rule, select the **Unregistered** status filter in the sidebar.
 
-qui sets **Unregistered** when no tracker of the torrent works and the message of a failed tracker has a known phrase, for example "unregistered" or "torrent not found". The torrent must be 1 hour old or more. A message that names the passkey or the torrent pass, or says "User does not exist", does not count. qui reads the tracker messages again every 60 seconds, and a rule acts on the first match.
+qui sets **Unregistered** when no tracker of the torrent works and the message of a failed tracker has a known phrase, for example "unregistered" or "torrent not found". The torrent must be 1 hour old or more. A message that names the passkey or the torrent pass, or says "User does not exist", does not count. qui reads the tracker messages again every 60 seconds. By default, a delete rule waits 7 days from **Unregistered since** before deleting, and checks the tracker again right before deleting. Set **Delete wait** to `0` to delete on the first match. See [Delete wait](#delete-wait) for how the timer resets and interacts with other rules.
 
-A torrent with two trackers can match while it still works. If one tracker says unregistered and the other tracker is down, the torrent matches until the other tracker works again. On qBittorrent 5.1, the torrent can also match for a short time while the working tracker sends an announce.
+A torrent with two trackers can match while it still works. If one tracker says unregistered and the other tracker is down, the torrent matches until the other tracker works again. On qBittorrent 5.1, the torrent can also match for a short time while the working tracker sends an announce. Because the wait resets when a tracker works again, the default **Delete wait** protects these torrents from immediate removal.
 
 Run a dry run before you turn on the rule.
 

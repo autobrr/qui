@@ -9,10 +9,12 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/automations/verdict"
 )
 
 type deletionSelectionInput struct {
@@ -22,6 +24,7 @@ type deletionSelectionInput struct {
 	crossSeeds *crossSeedGroups
 	scope      *ruleScope
 	stats      map[int]*ruleRunStats
+	live       bool
 }
 
 type selectedDeletion struct {
@@ -83,6 +86,8 @@ type deletionSelection struct {
 	order       []string
 	triggers    map[string]struct{}
 	failedRules map[int]error
+	waiting     []waitingDelete
+	notLoaded   []int
 }
 
 func (d *deletionSelection) add(entry selectedDeletion) {
@@ -122,18 +127,28 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		}
 	}
 
+	defer func() { evalCtx.health = evalCtx.waited.Raw() }()
+
 	var claims []deletionClaim
 	var sortedFor *models.Automation
+	var sortedWait time.Duration
 	for _, rule := range in.rules {
 		if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 			continue
 		}
+		wait := deleteWaitOf(rule, evalCtx.waited)
+		if wait.blocked() {
+			sel.notLoaded = append(sel.notLoaded, rule.ID)
+			continue
+		}
 		enterRule(evalCtx, rule, in.torrents, in.scope)
-		if sortedFor == nil || !rulesCanShareSortingBatch(sortedFor, rule) {
+		wait.read(evalCtx)
+		if sortedFor == nil || !rulesCanShareSortingBatch(sortedFor, rule) || sortedWait != wait.wait {
 			SortTorrentsWithFallback(in.torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 			sortedFor = rule
+			sortedWait = wait.wait
 		}
-		ruleClaims, err := claimDeleteTriggers(rule, in, sel)
+		ruleClaims, err := claimDeleteTriggers(rule, in, sel, evalCtx.waited)
 		if err != nil {
 			sel.failedRules[rule.ID] = err
 			evalCtx.activeFreeSpace.reset()
@@ -143,6 +158,9 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 			sel.triggers[claim.hash] = struct{}{}
 		}
 		claims = append(claims, ruleClaims...)
+	}
+	if in.live {
+		claims = s.confirmVerdictClaims(ctx, instanceID, claims, sel, in)
 	}
 	askDeleteGroups(claims, in.crossSeeds, evalCtx.hardlinkIndex)
 
@@ -160,6 +178,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 		}
 		s.expandDeleteTrigger(ctx, instanceID, in, sel, *triggerTorrents[claim.hash], claim.rule, includedCrossSeeds, rejectedGroups)
 	}
+	sel.dropDeletedWaits()
 	return sel
 }
 
@@ -193,8 +212,9 @@ func deleteExpandsGroups(rule *models.Automation) bool {
 	return false
 }
 
-func claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel *deletionSelection) ([]deletionClaim, error) {
+func claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel *deletionSelection, waited verdict.Waited) ([]deletionClaim, error) {
 	deleteAction := rule.Conditions.Delete
+	wait := deleteWaitOf(rule, waited)
 	deleteMode := getDeleteMode(rule)
 	ledger := in.evalCtx.activeFreeSpace
 	stats := getOrCreateRuleStats(in.stats, rule)
@@ -218,7 +238,15 @@ func claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel
 		if !inScope(torrent) {
 			continue
 		}
-		if deleteAction.Condition == nil || !shouldDeleteTorrent(rule, torrent, in.evalCtx) {
+		if deleteAction.Condition == nil {
+			countNotMet()
+			continue
+		}
+		due, marked := wait.match(in.evalCtx, torrent.Hash, func() bool { return shouldDeleteTorrent(rule, torrent, in.evalCtx) })
+		if !due || !marked {
+			if marked {
+				sel.waiting = append(sel.waiting, waitingDelete{hash: torrent.Hash, rule: ruleRef{id: rule.ID, name: rule.Name}, until: waited.DueAt(torrent.Hash, wait.wait)})
+			}
 			countNotMet()
 			continue
 		}
@@ -320,7 +348,7 @@ func (s *Service) expandDeleteTrigger(
 			return
 		}
 		enterRule(in.evalCtx, rule, in.torrents, in.scope)
-		if !allGroupMembersMatchCondition(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx) ||
+		if !allGroupMembersMatchWaited(members, in.evalCtx.torrentsByHash, deleteAction.Condition, in.evalCtx, deleteWaitOf(rule, in.evalCtx.waited)) ||
 			in.scope.groupDropsMember(rule, members, in.evalCtx.torrentsByHash) {
 			rejectedGroups[groupKey] = struct{}{}
 			return

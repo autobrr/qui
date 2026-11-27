@@ -557,7 +557,8 @@
         "dryRun": "模擬執行",
         "exportToInstance": "匯出到實例",
         "transferToInstance": "傳輸到實例",
-        "ruleSkipped": "規則未執行"
+        "ruleSkipped": "規則未執行",
+        "deleteWaiting": "等待刪除"
       },
       "shareLimit": {
         "global": "全域",
@@ -594,7 +595,8 @@
         "exported_other": "已匯出 {{count}} 個種子",
         "exportedDryRun_other": "將匯出 {{count}} 個種子",
         "exportFailed_other": "{{count}} 個種子匯出失敗",
-        "transferredDryRun_other": "將傳輸 {{count}} 個種子"
+        "transferredDryRun_other": "將傳輸 {{count}} 個種子",
+        "deleteWaiting_other": "{{count}} 個種子將等待刪除"
       },
       "deleteDialog": {
         "title": "刪除規則",
@@ -711,7 +713,11 @@
       "exportCSV": "匯出 CSV",
       "saveWithoutPreview": "跳過預覽並儲存",
       "previewFailed": "預覽失敗：{{error}}",
-      "skipPreviewHint": "規則在下次執行時仍會作用於每個符合的種子。您可以不等待預覽直接儲存。"
+      "skipPreviewHint": "規則在下次執行時仍會作用於每個符合的種子。您可以不等待預覽直接儲存。",
+      "deletes": "刪除",
+      "deletesNow": "立即",
+      "waitsUntil": "{{time}} 之後",
+      "waitsForTracker": "當 Tracker 再次回報未註冊時"
     },
     "orphanScanOverview": {
       "title": "孤立項目掃描",
@@ -945,7 +951,8 @@
         "dry_run_no_match": "模擬執行（無匹配）",
         "exported_to_instance": "匯出到實例",
         "transferred_to_instance": "傳輸到實例",
-        "rule_skipped": "規則未執行"
+        "rule_skipped": "規則未執行",
+        "delete_waiting": "模擬執行（等待刪除）"
       }
     },
     "reannounceOverview": {
@@ -1244,7 +1251,10 @@
         "includeHardlinkedCopies": "包含硬連結副本",
         "includeHardlinkedCopiesDescription": "同時刪除透過硬連結共享相同底層檔案的種子。僅包含完全在 qBittorrent 內部的硬連結；絕不追蹤外部硬連結。",
         "localAccessRequired": "需要在實例設定中啟用\"本機檔案系統存取\"。",
-        "remoteNotAvailable": "遠端實例不可用"
+        "remoteNotAvailable": "遠端實例不可用",
+        "wait": "刪除等待",
+        "waitHelp": "種子必須保持未註冊多久，此規則才會刪除它。0 表示首次匹配時即刪除。",
+        "waitUnit": "刪除等待單位"
       },
       "move": {
         "newSavePath": "新儲存路徑",
@@ -1361,7 +1371,9 @@
         "state": "狀態",
         "addedOn": "新增時間",
         "path": "路徑",
-        "score": "得分"
+        "score": "得分",
+        "deletes": "刪除",
+        "deletesNow": "立即"
       },
       "footer": {
         "enabled": "已啟用",
@@ -1385,7 +1397,8 @@
         "and": "和",
         "crossSeeds": "{{count}} 個輔種",
         "crossSeeds_other": "{{count}} 個輔種",
-        "toCategory": "到分類"
+        "toCategory": "到分類",
+        "waitingSummary_other": "{{count}} 個未註冊的種子仍在刪除等待期內，此規則暫不刪除它們。"
       },
       "enableDryRunPrompt": {
         "title": "啟用模擬執行？",
@@ -1441,7 +1454,8 @@
           "noMatches": "無匹配",
           "exportedToInstance": "匯出到實例",
           "transferredToInstance": "傳輸到實例",
-          "ruleSkipped": "規則未執行"
+          "ruleSkipped": "規則未執行",
+          "deleteWaiting": "等待刪除"
         },
         "actionFallback": "未知操作（{{action}}）",
         "summary": {
@@ -1460,7 +1474,8 @@
           "noMatches": "此次模擬執行沒有種子匹配",
           "impacted": "{{count}} 個種子受影響",
           "impacted_other": "{{count}} 個種子受影響",
-          "completed": "模擬執行完成"
+          "completed": "模擬執行完成",
+          "deleteWaiting_other": "{{count}} 個種子將等待刪除"
         }
       },
       "toast": {

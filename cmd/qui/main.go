@@ -667,6 +667,7 @@ func (app *Application) runServer() {
 	defer clientPool.Close()
 
 	syncManager := qbittorrent.NewSyncManager(clientPool, trackerCustomizationStore)
+	syncManager.SetUnregisteredSinceStore(models.NewUnregisteredSinceStore(db))
 	transfers, err := transfer.NewStore(context.Background(), db)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load the Transfer records")

@@ -559,7 +559,8 @@
         "dryRun": "Zkušební běh",
         "exportToInstance": "Exportovat do instance",
         "transferToInstance": "Přenést do instance",
-        "ruleSkipped": "Pravidlo nespuštěno"
+        "ruleSkipped": "Pravidlo nespuštěno",
+        "deleteWaiting": "Čeká na smazání"
       },
       "shareLimit": {
         "global": "Globální",
@@ -632,7 +633,10 @@
         "exportFailed_other": "{{count}} torrentů se nepodařilo exportovat",
         "transferredDryRun_one": "{{count}} torrent by byl přenesen",
         "transferredDryRun_few": "{{count}} torrenty by byly přeneseny",
-        "transferredDryRun_other": "{{count}} torrentů by bylo přeneseno"
+        "transferredDryRun_other": "{{count}} torrentů by bylo přeneseno",
+        "deleteWaiting_one": "{{count}} torrent by čekal na smazání",
+        "deleteWaiting_few": "{{count}} torrenty by čekaly na smazání",
+        "deleteWaiting_other": "{{count}} torrentů by čekalo na smazání"
       },
       "deleteDialog": {
         "title": "Smazat pravidlo",
@@ -749,7 +753,11 @@
       "exportCSV": "Exportovat CSV",
       "saveWithoutPreview": "Uložit bez náhledu",
       "previewFailed": "Náhled se nezdařil: {{error}}",
-      "skipPreviewHint": "Pravidlo se při dalším spuštění stejně použije na každý odpovídající torrent. Můžete uložit bez čekání na náhled."
+      "skipPreviewHint": "Pravidlo se při dalším spuštění stejně použije na každý odpovídající torrent. Můžete uložit bez čekání na náhled.",
+      "deletes": "Smazání",
+      "deletesNow": "Hned",
+      "waitsUntil": "Po {{time}}",
+      "waitsForTracker": "Až tracker znovu odpoví neregistrovaný"
     },
     "orphanScanOverview": {
       "title": "Vyhledání sirotků",
@@ -1009,7 +1017,8 @@
         "dry_run_no_match": "Zkušební běh (bez shody)",
         "exported_to_instance": "Exportováno do instance",
         "transferred_to_instance": "Přenést do instance",
-        "rule_skipped": "Pravidlo nespuštěno"
+        "rule_skipped": "Pravidlo nespuštěno",
+        "delete_waiting": "Zkušební běh (čeká na smazání)"
       }
     },
     "reannounceOverview": {
@@ -1310,7 +1319,10 @@
         "includeHardlinkedCopies": "Zahrnout hardlinkové kopie",
         "includeHardlinkedCopiesDescription": "Také smazat torrenty, které sdílí stejné podkladové soubory přes hardlinky. Zahrnuje pouze hardlinky plně uvnitř qBittorrentu; nikdy neřídí hardlinky mimo.",
         "localAccessRequired": "Vyžaduje \"Místní přístup k souborovému systému\" pro povolení v nastavení instance.",
-        "remoteNotAvailable": "Není dostupné pro vzdálené instance"
+        "remoteNotAvailable": "Není dostupné pro vzdálené instance",
+        "wait": "Čekání před smazáním",
+        "waitHelp": "Jak dlouho musí být torrent neregistrovaný, než ho toto pravidlo smaže. 0 ho smaže při první shodě.",
+        "waitUnit": "Jednotka čekání před smazáním"
       },
       "move": {
         "newSavePath": "Nová cesta uložení",
@@ -1427,7 +1439,9 @@
         "state": "Stav",
         "addedOn": "Přidáno",
         "path": "Cesta",
-        "score": "Skóre"
+        "score": "Skóre",
+        "deletes": "Smazání",
+        "deletesNow": "Hned"
       },
       "footer": {
         "enabled": "Povoleno",
@@ -1451,7 +1465,10 @@
         "and": "a",
         "crossSeeds": "{{count}} křížové sdílení",
         "crossSeeds_other": "{{count}} křížová sdílení",
-        "toCategory": "do kategorie"
+        "toCategory": "do kategorie",
+        "waitingSummary_one": "{{count}} neregistrovaný torrent je ještě v čekání před smazáním, takže ho toto pravidlo zatím nesmaže.",
+        "waitingSummary_few": "{{count}} neregistrované torrenty jsou ještě v čekání před smazáním, takže je toto pravidlo zatím nesmaže.",
+        "waitingSummary_other": "{{count}} neregistrovaných torrentů je ještě v čekání před smazáním, takže je toto pravidlo zatím nesmaže."
       },
       "enableDryRunPrompt": {
         "title": "Povolit simulaci?",
@@ -1507,7 +1524,8 @@
           "noMatches": "Žádné shody",
           "exportedToInstance": "Exportováno do instance",
           "transferredToInstance": "Přenést do instance",
-          "ruleSkipped": "Pravidlo nespuštěno"
+          "ruleSkipped": "Pravidlo nespuštěno",
+          "deleteWaiting": "Čeká na smazání"
         },
         "actionFallback": "Neznámá akce ({{action}})",
         "summary": {
@@ -1526,7 +1544,10 @@
           "noMatches": "Žádné torrenty neodpovídají této simulaci",
           "impacted": "{{count}} torrent byl ovlivněn",
           "impacted_other": "{{count}} torrenty by byly ovlivněny",
-          "completed": "Simulace dokončena"
+          "completed": "Simulace dokončena",
+          "deleteWaiting_one": "{{count}} torrent by čekal na smazání",
+          "deleteWaiting_few": "{{count}} torrenty by čekaly na smazání",
+          "deleteWaiting_other": "{{count}} torrentů by čekalo na smazání"
         }
       },
       "toast": {

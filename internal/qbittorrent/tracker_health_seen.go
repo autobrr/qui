@@ -28,7 +28,7 @@ func (sm *SyncManager) beginTrackersRead(instanceID int, owner *syncowner.Owner,
 	if !ok {
 		return func([]qbt.TorrentTracker) {}
 	}
-	flags, at := announceFlagsOf(torrent), time.Now()
+	flags, at := announceFlagsOf(torrent), sm.healthNow()
 
 	return func(trackers []qbt.TorrentTracker) {
 		sm.trackerHealthMu.RLock()
@@ -58,7 +58,7 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 
 	trackers := seen.trackers
 	if client.Supports(CapAnnounceFlags) {
-		if seen.flags == (announceFlags{}) {
+		if seen.flags == (announceFlags{}) && !sm.hasUnregisteredSince(instanceID, seen.hash) {
 			trackers = nil
 		} else {
 			cache := sm.trackerDetailsFor(sm.trackerHealthFlagged, instanceID)
@@ -82,26 +82,46 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 		}
 	}
 
-	if sm.setTrackerHealth(instanceID, seen.hash, trackerHealthOf(torrent, trackers, seen.at)) {
+	health, by := trackerVerdictOf(torrent, trackers, seen.at)
+	var reason *unregisteredRow
+	if by >= 0 {
+		reason = &unregisteredRow{trackers: trackers, by: by}
+	}
+	if sm.setTrackerHealth(instanceID, torrent, trackers, health, reason, seen.at) {
+		sm.storeUnregisteredSince(ctx, instanceID)
 		sm.notifyTrackerHealthUpdated(instanceID)
 	}
 }
 
-func (sm *SyncManager) setTrackerHealth(instanceID int, hash string, health TrackerHealth) bool {
+func (sm *SyncManager) setTrackerHealth(instanceID int, torrent *qbt.Torrent, trackers []qbt.TorrentTracker, health TrackerHealth, reason *unregisteredRow, at time.Time) bool {
 	sm.trackerHealthMu.Lock()
 	defer sm.trackerHealthMu.Unlock()
 
 	snapshot := sm.trackerHealthCache[instanceID]
-	if snapshot == nil || snapshot.Health(hash) == health {
+	if snapshot == nil {
+		return false
+	}
+	hash := torrent.Hash
+	sinceChanged := sm.advanceOneUnregisteredSince(instanceID, torrent, trackers, health, at)
+	if snapshot.Health(hash) == health && !sinceChanged {
 		return false
 	}
 	byHash := make(map[string]TrackerHealth, len(snapshot.byHash)+1)
 	maps.Copy(byHash, snapshot.byHash)
+	unregisteredBy := maps.Clone(snapshot.unregisteredBy)
+	delete(unregisteredBy, hash)
 	if health == "" {
 		delete(byHash, hash)
 	} else {
 		byHash[hash] = health
 	}
-	sm.trackerHealthCache[instanceID] = NewTrackerHealthSnapshot(byHash)
+	if reason != nil {
+		if unregisteredBy == nil {
+			unregisteredBy = make(map[string]unregisteredRow, 1)
+		}
+		unregisteredBy[hash] = *reason
+	}
+	state := sm.sinceFor(instanceID)
+	sm.trackerHealthCache[instanceID] = newTrackerHealthSnapshot(byHash, unregisteredBy, state.times, state.loaded)
 	return true
 }

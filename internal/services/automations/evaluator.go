@@ -15,6 +15,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/automations/verdict"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -36,7 +37,8 @@ type EvalContext struct {
 	moveChecks     map[moveCheckKey]checkedMove
 
 	trackers                   qbittorrent.TrackerLookup
-	TrackerHealth              *qbittorrent.TrackerHealthSnapshot
+	health                     verdict.Reader
+	waited                     verdict.Waited
 	HardlinkScopeByHash        map[string]string
 	HardlinkCrossScopeByHash   map[string]string
 	HasMissingFilesByHash      map[string]bool
@@ -471,7 +473,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldSuperSeeding:
 		return compareBool(torrent.SuperSeeding, cond)
 	case FieldIsUnregistered:
-		return compareBool(ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered, cond)
+		return compareBool(ctx != nil && ctx.health.Is(torrent.Hash, qbittorrent.TrackerHealthUnregistered), cond)
 
 	case FieldHardlinkScope:
 		return compareHardlinkScope(ctx.HardlinkScopeByHash[torrent.Hash], cond)
@@ -639,7 +641,7 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 	case "missingfiles":
 		return torrent.State == qbt.TorrentStateMissingFiles
 	case "unregistered", "tracker_down", "tracker_error":
-		return ctx != nil && ctx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealth(strings.ToLower(normalized))
+		return ctx != nil && ctx.health.Is(torrent.Hash, qbittorrent.TrackerHealth(strings.ToLower(normalized)))
 	}
 
 	return strings.EqualFold(string(torrent.State), normalized)

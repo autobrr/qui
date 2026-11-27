@@ -869,7 +869,14 @@ type DeleteAction struct {
 	GroupID          string         `json:"groupId,omitempty" doc:"Only with mode 'delete'. Delete each matching torrent together with the other torrents in its group. A built-in group ID or the id of a group in 'conditions.grouping'."`
 	Atomic           string         `json:"atomic,omitempty" doc:"With 'groupId': 'all' deletes the group only when every torrent in it matches."`
 	Condition        *RuleCondition `json:"condition,omitempty" doc:"Required when 'enabled' is 'true'. The action deletes only torrents that match this condition."`
+
+	UnregisteredWaitSeconds *int `json:"unregisteredWaitSeconds,omitempty" doc:"The Delete wait in seconds: how long qui must have seen a torrent as unregistered before the action deletes it for the unregistered verdict. Default: 604800 (7 days). '0' deletes on the first match. At most 31536000 (365 days). Applies when 'condition' or the score of the rule reads 'IS_UNREGISTERED', or 'STATE' with the value 'unregistered'."`
 }
+
+const (
+	DefaultUnregisteredWait = 7 * 24 * time.Hour
+	MaxUnregisteredWait     = 365 * 24 * time.Hour
+)
 
 type TagAction struct {
 	Enabled           bool           `json:"enabled" doc:"Whether the action runs."`

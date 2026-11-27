@@ -52,3 +52,29 @@ func TestWithoutTrackerPasskeysKeepsTheCachedRows(t *testing.T) {
 	require.Same(t, single, response.Torrents[0].Torrent)
 	require.Same(t, cross, response.CrossInstanceTorrents[0].Torrent)
 }
+
+func TestCleanTrackerMessageRemovesEveryPassKeyForm(t *testing.T) {
+	t.Parallel()
+	announce := []string{"https://tracker.example.invalid/f00dfeedcafe1234/announce?torrent_pass=beefbeefbeef5678", "udp://other.example.invalid:1337/announce"}
+	for _, tc := range []struct{ name, in, want string }{
+		{"plain message stays", "Unregistered torrent", "Unregistered torrent"},
+		{"https URL", "Torrent not registered, see https://tracker.example.invalid/f00dfeedcafe1234/announce", "Torrent not registered, see"},
+		{"udp URL", "unregistered (udp://other.example.invalid:1337/xyz9876543)", "unregistered ("},
+		{"address without a scheme", "failed for //tracker.example.invalid/secret999", "failed for"},
+		{"bare path key", "passkey f00dfeedcafe1234 is not registered", "passkey is not registered"},
+		{"bare query key", "torrent_pass beefbeefbeef5678 unknown", "torrent_pass unknown"},
+		{"empty", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, CleanTrackerMessage(tc.in, announce))
+		})
+	}
+}
+
+func TestTrackersWithoutPasskeysCleansTheMessage(t *testing.T) {
+	t.Parallel()
+	const full = "https://tracker.example.invalid/f00dfeedcafe1234/announce"
+	hidden := TrackersWithoutPasskeys([]qbt.TorrentTracker{{Url: full, Message: "f00dfeedcafe1234: Unregistered torrent https://tracker.example.invalid/x"}})
+	require.Equal(t, []qbt.TorrentTracker{{Url: "https://tracker.example.invalid", Message: ": Unregistered torrent"}}, hidden)
+}

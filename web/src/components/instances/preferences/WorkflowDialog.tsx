@@ -67,6 +67,7 @@ import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { usableFreeSpaceSourceType } from "@/lib/free-space-source"
+import { conditionReadsVerdict, DEFAULT_DELETE_WAIT_SECONDS, previewRowCount } from "@/lib/delete-wait"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, ALLOWANCE_DECIMAL_UNITS, allowanceInputOf, firstActionCondition, freeSpaceSourceOf, getSwitchedOffActions, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, type ActionType, type SwitchedOffActions, type TrackerMatchMode } from "@/lib/workflow-utils"
@@ -95,6 +96,8 @@ import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
+import { DeletePreviewCounts } from "./DeletePreviewCounts"
+import { DeleteWaitField } from "./DeleteWaitField"
 import { RunWorkflowNowDialog } from "./RunWorkflowNowDialog"
 import { DryRunToggle, WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
 import { EDITING, workflowSaveFlowReducer } from "@/lib/workflow-save-flow"
@@ -150,6 +153,7 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   exported_to_instance: "preferences.workflowDialog.dryRun.actions.exportedToInstance",
   transferred_to_instance: "preferences.workflowDialog.dryRun.actions.transferredToInstance",
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
+  delete_waiting: "preferences.workflowDialog.dryRun.actions.deleteWaiting",
   rule_skipped: "preferences.workflowDialog.dryRun.actions.ruleSkipped",
 }
 
@@ -212,6 +216,8 @@ function formatDryRunEventSummary(
       return t("preferences.workflowDialog.dryRun.summary.noMatches")
     case "rule_skipped":
       return getRuleSkipReason(details, t)
+    case "delete_waiting":
+      return t("preferences.workflowDialog.dryRun.summary.deleteWaiting", { count: typeof details?.count === "number" ? details.count : 0 })
     case "paused":
     case "resumed":
     case "rechecked":
@@ -276,6 +282,10 @@ function formUsesFreeSpace(state: Pick<FormState, "actionCondition" | "sortingTy
   if (state.sortingType === "simple") return state.simpleSortField === "FREE_SPACE"
   return state.sortingType === "score" && state.scoreRules.some(rule =>
     rule.fieldMultiplier?.field === "FREE_SPACE" || conditionUsesField(rule.conditional?.condition, "FREE_SPACE"))
+}
+
+function formReadsVerdict(state: Pick<FormState, "actionCondition" | "sortingType" | "scoreRules">): boolean {
+  return conditionReadsVerdict(state.actionCondition) || (state.sortingType === "score" && state.scoreRules.some(rule => conditionReadsVerdict(rule.conditional?.condition)))
 }
 
 const AVAILABLE_GROUP_KEYS = [
@@ -410,6 +420,7 @@ type FormState = {
   exprIncludeHardlinks: boolean
   exprDeleteGroupId: string
   exprDeleteAtomic: "all" | ""
+  exprDeleteWaitSeconds: number | null
   exprFreeSpaceSourceType: "qbittorrent" | "path" | "qbitPath" | "allowance"
   exprFreeSpaceSourcePath: string
   exprFreeSpaceAllowance: string
@@ -480,6 +491,7 @@ const emptyFormState: FormState = {
   exprIncludeHardlinks: false,
   exprDeleteGroupId: "",
   exprDeleteAtomic: "",
+  exprDeleteWaitSeconds: DEFAULT_DELETE_WAIT_SECONDS,
   exprFreeSpaceSourceType: "qbittorrent",
   exprFreeSpaceSourcePath: "",
   exprFreeSpaceAllowance: "",
@@ -933,6 +945,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprGrouping: GroupingConfig | undefined
         let exprDeleteGroupId = ""
         let exprDeleteAtomic: FormState["exprDeleteAtomic"] = ""
+        let exprDeleteWaitSeconds: number | null = DEFAULT_DELETE_WAIT_SECONDS
         let exprCategoryGroupId = ""
         let exprMoveGroupId = ""
         let exprMoveAtomic: FormState["exprMoveAtomic"] = ""
@@ -1031,6 +1044,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprIncludeHardlinks = conditions.delete.includeHardlinks ?? false
             exprDeleteGroupId = conditions.delete.groupId ?? ""
             exprDeleteAtomic = conditions.delete.atomic ?? ""
+            exprDeleteWaitSeconds = conditions.delete.unregisteredWaitSeconds ?? DEFAULT_DELETE_WAIT_SECONDS
           }
           const resolvedTagActions = (conditions.tags && conditions.tags.length > 0? conditions.tags: conditions.tag ? [conditions.tag] : [])
             .filter((action) => action && action.enabled)
@@ -1130,6 +1144,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprIncludeHardlinks,
           exprDeleteGroupId,
           exprDeleteAtomic,
+          exprDeleteWaitSeconds,
           exprFreeSpaceSourceType,
           exprFreeSpaceSourcePath,
           exprFreeSpaceAllowance,
@@ -1417,6 +1432,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         includeHardlinks: input.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" ? input.exprIncludeHardlinks : undefined,
         groupId: input.exprDeleteGroupId || undefined,
         atomic: input.exprDeleteAtomic || undefined,
+        unregisteredWaitSeconds: formReadsVerdict(input) && input.exprDeleteWaitSeconds !== DEFAULT_DELETE_WAIT_SECONDS ? input.exprDeleteWaitSeconds ?? undefined : undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -1922,6 +1938,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     { header: t("preferences.workflowDialog.csv.addedOn"), accessor: t => t.addedOn },
     { header: t("preferences.workflowDialog.csv.path"), accessor: t => t.contentPath ?? "" },
     { header: t("preferences.workflowDialog.csv.score"), accessor: t => (t.score !== null && t.score !== undefined) ? t.score.toFixed(2) : "" },
+    ...(isDeleteRule ? [{ header: t("preferences.workflowDialog.csv.deletes"), accessor: (item: AutomationPreviewTorrent) => item.waitsUntil ? new Date(item.waitsUntil * 1000).toISOString() : t("preferences.workflowDialog.csv.deletesNow") }] : []),
   ]
 
   const handleExport = async () => {
@@ -1932,7 +1949,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       const pageSize = 500
       const allItems: AutomationPreviewTorrent[] = []
       let offset = 0
-      const total = previewResult.totalMatches
+      const total = previewRowCount(previewResult)
 
       while (allItems.length < total) {
         const payload = {
@@ -2489,16 +2506,21 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <p className="text-xs text-muted-foreground">
                             {(isCategoryRule || isTagRule) ? t("preferences.workflowDialog.torrentsImpactedWithCrossSeeds", { total: livePreviewResult.totalMatches, direct: (livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0), crossSeeds: livePreviewResult.crossSeedCount ?? 0 }) : t("preferences.workflowDialog.torrentsImpacted", { total: livePreviewResult.totalMatches })}
                           </p>
-                          {livePreviewResult.examples.length > 0 ? (
+                          {livePreviewResult.examples.some(example => example.waitsUntil === undefined) ? (
                             <div className="space-y-1">
-                              {livePreviewResult.examples.map((example) => (
+                              {livePreviewResult.examples.filter(example => example.waitsUntil === undefined).map((example) => (
                                 <div key={example.hash} className="text-xs text-foreground/90 truncate">
                                   {example.name}
                                 </div>
                               ))}
                             </div>
-                          ) : (
+                          ) : !livePreviewResult.waitingCount && (
                             <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.noCurrentMatches")}</p>
+                          )}
+                          {!!livePreviewResult.waitingCount && (
+                            <p className="text-xs text-muted-foreground">
+                              {t("preferences.workflowDialog.preview.waitingSummary", { count: livePreviewResult.waitingCount })}
+                            </p>
                           )}
                         </>
                       )}
@@ -3761,6 +3783,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </Tooltip>
                           </div>
                         )}
+                        {formReadsVerdict(formState) && (
+                          <DeleteWaitField
+                            seconds={formState.exprDeleteWaitSeconds}
+                            onChange={exprDeleteWaitSeconds => setFormState(prev => ({ ...prev, exprDeleteWaitSeconds }))}
+                          />
+                        )}
                       </div>
                     )}
 
@@ -4161,23 +4189,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           }): t("preferences.workflowDialog.preview.confirmTagChange")
         }
         description={
-          previewResult && previewResult.totalMatches > 0 ? (
+          previewResult && previewRowCount(previewResult) > 0 ? (
             isDeleteRule ? (
-              formState.enabled ? (
-                <>
-                  <p className="text-destructive font-medium">
-                    {t("preferences.workflowDialog.preview.deleteEnabledSummary", { count: previewResult.totalMatches })}
-                  </p>
-                  <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSaveAndEnable")}</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-muted-foreground">
-                    {t("preferences.workflowDialog.preview.deleteDisabledSummary", { count: previewResult.totalMatches })}
-                  </p>
-                  <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSave")}</p>
-                </>
-              )
+              <>
+                <DeletePreviewCounts preview={previewResult} enabled={formState.enabled} />
+                <p className="text-muted-foreground text-sm">{t(formState.enabled ? "preferences.workflowDialog.confirmSaveAndEnable" : "preferences.workflowDialog.confirmSave")}</p>
+              </>
             ) : isCategoryRule ? (
               <>
                 <p>

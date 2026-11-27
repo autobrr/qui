@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/internal/services/automations/verdict"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/externalprograms"
@@ -67,6 +68,7 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
 
 	models.ActivityActionTransferredToInstance: "Transfer to instance",
+	models.ActivityActionDeleteWaiting:         "Waiting to delete",
 }
 
 type automationSummary struct {
@@ -649,6 +651,7 @@ type Service struct {
 	transferRunner    transferRunner
 	transferHolds     map[string]time.Time
 	clock             func() time.Time
+	trackerHealth     trackerHealthSource
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -911,6 +914,7 @@ func prepareRuleForDryRun(rule *models.Automation, instanceID int) *models.Autom
 
 type PreviewResult struct {
 	TotalMatches   int              `json:"totalMatches"`
+	WaitingCount   int              `json:"waitingCount,omitzero"`
 	CrossSeedCount int              `json:"crossSeedCount,omitempty"`
 	Examples       []PreviewTorrent `json:"examples"`
 	Skipped        *RuleSkip        `json:"skipped,omitempty"`
@@ -947,6 +951,7 @@ type PreviewTorrent struct {
 	HardlinkScope      string   `json:"hardlinkScope,omitempty"`
 	HardlinkCrossScope string   `json:"hardlinkCrossScope,omitempty"`
 	Score              *float64 `json:"score,omitempty"`
+	WaitsUntil         int64    `json:"waitsUntil,omitzero"`
 }
 
 func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalContext, isCrossSeed, isHardlinkCopy bool, score *float64) PreviewTorrent {
@@ -980,7 +985,7 @@ func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalCont
 	}
 
 	if evalCtx != nil {
-		pt.IsUnregistered = evalCtx.TrackerHealth.Health(torrent.Hash) == qbittorrent.TrackerHealthUnregistered
+		pt.IsUnregistered = evalCtx.health.Is(torrent.Hash, qbittorrent.TrackerHealthUnregistered)
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
 		}
@@ -1014,8 +1019,9 @@ func (s *Service) buildEvalContext(ctx context.Context, instanceID int, instance
 
 	evalCtx.CategoryIndex, evalCtx.CategoryNames = BuildCategoryIndex(torrents)
 
-	if s.syncManager != nil {
-		evalCtx.TrackerHealth = s.syncManager.GetTrackerHealthSnapshot(instanceID)
+	if health := s.trackerHealthSource(); health != nil {
+		evalCtx.waited = verdict.ForDelete(health.GetTrackerHealthSnapshot(instanceID), s.now())
+		evalCtx.health = evalCtx.waited.Raw()
 	}
 
 	var hardlinkIndex *HardlinkIndex
@@ -1134,7 +1140,9 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 	enterRule(evalCtx, rule, torrents, scope)
 
+	deleteWaitOf(rule, evalCtx.waited).read(evalCtx)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
+	evalCtx.health = evalCtx.waited.Raw()
 
 	crossSeeds := buildCrossSeedGroups(torrents, evalCtx)
 	if ruleNeedsCrossSeedFiles(rule) {
@@ -1154,6 +1162,9 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	})
 	if err := selection.failedRules[rule.ID]; err != nil {
 		return nil, err
+	}
+	if len(selection.notLoaded) > 0 {
+		return nil, ErrUnregisteredSinceNotLoaded
 	}
 	return buildDeletePreviewResult(torrents, selection, evalCtx, cfg, rule, scoreByHash, scope), nil
 }
@@ -1312,6 +1323,7 @@ func buildDeletePreviewResult(
 		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, scope.tracker(torrent), evalCtx, isCrossSeed, selected.hardlinkCopy, score))
 	}
 
+	addWaitingPreviewRows(result, torrents, selection, evalCtx, cfg, rule, scoreByHash, scope, matchIndex)
 	return result
 }
 
@@ -1719,10 +1731,15 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		crossSeeds: crossSeeds,
 		scope:      scope,
 		stats:      ruleStats,
+		live:       !dryRun,
 	})
 	for ruleID, err := range deletions.failedRules {
 		log.Warn().Err(err).Int("instanceID", instanceID).Int("ruleID", ruleID).Str("ruleName", ruleByID[ruleID].Name).
 			Msg("automations: skipping free-space delete rule")
+	}
+	for _, ruleID := range deletions.notLoaded {
+		log.Debug().Int("instanceID", instanceID).Int("ruleID", ruleID).Str("ruleName", ruleByID[ruleID].Name).
+			Msg("automations: skipping delete rule, the unregistered times are not loaded yet")
 	}
 
 	states := make(map[string]*torrentDesiredState)
@@ -3273,6 +3290,12 @@ func (s *Service) recordDryRunActivities(
 
 	if len(plan.transfers) > 0 {
 		s.recordDryRunTransfers(ctx, r, plan.transfers)
+	}
+
+	if waiting := plan.deletions.waitingHashes(); len(waiting) > 0 {
+		r.record(ctx, stepActivity{action: models.ActivityActionDeleteWaiting, details: waitingDetails{Count: len(waiting)}, items: func() []ActivityRunTorrent {
+			return buildRunItemsFromHashes(waiting, torrentByHash, scope)
+		}})
 	}
 
 	if recordNoMatch && len(r.activities) == 0 {
