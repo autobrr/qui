@@ -81,13 +81,13 @@ func splitHashes(list string) []string {
 
 func (h *Handler) handleSetCategory(w http.ResponseWriter, r *http.Request) {
 	h.interceptForFolderCleanup(w, r, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetCategory, Hashes: splitHashes(form.get("hashes")), Category: form.get("category")}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetCategory, Category: form.get("category")}.On(splitHashes(form.get("hashes"))), true
 	})
 }
 
 func (h *Handler) handleSetAutoManagement(w http.ResponseWriter, r *http.Request) {
 	h.interceptForFolderCleanup(w, r, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupEnableATM, Hashes: splitHashes(form.get("hashes"))},
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupEnableATM}.On(splitHashes(form.get("hashes"))),
 			strings.EqualFold(form.get("enable"), "true")
 	})
 }
@@ -100,12 +100,12 @@ func (h *Handler) handleEditCategory(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleSetSavePath(w http.ResponseWriter, r *http.Request) {
 	h.interceptForFolderCleanup(w, r, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetSavePath, Hashes: splitHashes(form.get("id")), Path: form.get("path")}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetSavePath, Path: form.get("path")}.On(splitHashes(form.get("id"))), true
 	})
 }
 
 func (h *Handler) handleSetDownloadPath(w http.ResponseWriter, r *http.Request) {
 	h.interceptForFolderCleanup(w, r, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetDownloadPath, Hashes: splitHashes(form.get("id")), Path: form.get("path")}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetDownloadPath, Path: form.get("path")}.On(splitHashes(form.get("id"))), true
 	})
 }

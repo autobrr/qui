@@ -275,7 +275,7 @@ func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 	row := transfer.Row{
 		ID: record.ID, Kind: record.Kind, Way: record.Way, State: record.State, StartedBy: record.StartedBy,
 		RuleID: record.RuleID, SourceInstanceID: record.SourceInstanceID, TargetInstanceID: record.TargetInstanceID,
-		Hash: record.Members[0].Hash, Name: record.Members[0].Name, Torrents: len(record.Members), Size: record.Size, Options: record.Options,
+		Hash: record.Members[0].Hash.String(), Name: record.Members[0].Name, Torrents: len(record.Members), Size: record.Size, Options: record.Options,
 		RetryAt: record.RetryAt, FailureClass: record.FailureClass, FailureReason: record.FailureReason,
 		CreatedAt: record.CreatedAt, FinishedAt: record.FinishedAt,
 	}
@@ -297,7 +297,7 @@ func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 		if tags == nil {
 			tags = []string{}
 		}
-		res.Members[i] = transferMember{Hash: m.Hash, Name: m.Name, TargetInstanceID: m.TargetInstanceID,
+		res.Members[i] = transferMember{Hash: m.Hash.String(), Name: m.Name, TargetInstanceID: m.TargetInstanceID,
 			SavePath: m.Placement.SavePath, Category: m.Placement.Category, Tags: tags}
 	}
 	RespondJSON(w, http.StatusOK, res)
@@ -341,7 +341,7 @@ func (h *TransfersHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		if tags == nil {
 			tags = []string{}
 		}
-		res.Members[i] = transferMember{Hash: m.Hash, Name: m.Name, TargetInstanceID: m.TargetInstanceID,
+		res.Members[i] = transferMember{Hash: m.Hash.String(), Name: m.Name, TargetInstanceID: m.TargetInstanceID,
 			SavePath: m.Placement.SavePath, Category: m.Placement.Category, Tags: tags}
 	}
 	RespondJSON(w, http.StatusOK, res)

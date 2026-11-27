@@ -61,7 +61,7 @@ func TestScanSkipsTheFoldersOfRunningTransfers(t *testing.T) {
 	svc := &Service{
 		store:        store,
 		backendPool:  fsops.NewPool(instances, local.NewBackend()),
-		torrentFiles: seedingFiles{"bbbb": ownFile},
+		torrentFiles: seedingFiles{indexHashB: ownFile},
 	}
 	svc.SetTransfers(fakeTransfers{folders: []string{incoming + string(filepath.Separator)}})
 	logger := zerolog.Nop()

@@ -119,7 +119,7 @@ func (s *Server) check(t *Torrent) float64 {
 }
 
 func (s *Server) pieceStatesOf(w http.ResponseWriter, param func(string) string) {
-	t, ok := s.torrents[strings.ToLower(param("hash"))]
+	t, ok := s.torrent(param("hash"))
 	if !ok || t.add == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -139,7 +139,7 @@ func (s *Server) pieceStatesOf(w http.ResponseWriter, param func(string) string)
 }
 
 func (s *Server) export(w http.ResponseWriter, param func(string) string) {
-	t, ok := s.torrents[strings.ToLower(param("hash"))]
+	t, ok := s.torrent(param("hash"))
 	if !ok || t.add == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -149,7 +149,7 @@ func (s *Server) export(w http.ResponseWriter, param func(string) string) {
 }
 
 func (s *Server) renameFile(w http.ResponseWriter, param func(string) string) {
-	t, ok := s.torrents[strings.ToLower(param("hash"))]
+	t, ok := s.torrent(param("hash"))
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		return

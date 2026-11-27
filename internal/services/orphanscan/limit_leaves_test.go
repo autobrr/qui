@@ -46,10 +46,10 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "o", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: ho, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"o": {
+		return map[string]qbt.TorrentFiles{ho: {
 			{Name: "seeded/owned.mkv", Size: 1},
 			{Name: "claimed/unwritten.mkv", Size: 1},
 		}}, nil
@@ -116,14 +116,14 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 	}
 	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
-			{Hash: "here", SavePath: parent, State: qbt.TorrentStatePausedUp},
-			{Hash: "gone", SavePath: nested, State: qbt.TorrentStatePausedUp},
+			{Hash: hHere, SavePath: parent, State: qbt.TorrentStatePausedUp},
+			{Hash: hGone, SavePath: nested, State: qbt.TorrentStatePausedUp},
 		}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
-			"here": {{Name: "owned.mkv", Size: 1}},
-			"gone": {{Name: "unreachable.mkv", Size: 1}},
+			hHere: {{Name: "owned.mkv", Size: 1}},
+			hGone: {{Name: "unreachable.mkv", Size: 1}},
 		}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: parent})

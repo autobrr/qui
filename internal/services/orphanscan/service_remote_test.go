@@ -163,10 +163,10 @@ func newModeFixture(t *testing.T, name string, mode models.FilesystemMode, remot
 		return []*models.Instance{inst}, nil
 	}
 	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 	t.Cleanup(svc.runs.Wait)
@@ -293,7 +293,7 @@ func newSSHFixture(t *testing.T, name string, exec sshtest.ExecMode, tier models
 	f.instance.mu.Unlock()
 	root := sftpPath(filepath.Dir(f.orphan))
 	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root})
 	return f, server
@@ -381,13 +381,13 @@ func TestExecuteScan_FindLosingTheConnectionOnALaterRootLeavesAPartialPreview(t 
 	require.NoError(t, os.WriteFile(cutOrphan, []byte("orphan"), 0o600))
 	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
-			{Hash: "owned", SavePath: first, State: qbt.TorrentStatePausedUp},
-			{Hash: "cut", SavePath: cut, State: qbt.TorrentStatePausedUp},
+			{Hash: hOwned, SavePath: first, State: qbt.TorrentStatePausedUp},
+			{Hash: hCut, SavePath: cut, State: qbt.TorrentStatePausedUp},
 		}, nil
 	}
 	stubSync(f.svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		files := qbt.TorrentFiles{{Name: "owned.mkv", Size: 1}}
-		return map[string]qbt.TorrentFiles{"owned": files, "cut": files}, nil
+		return map[string]qbt.TorrentFiles{hOwned: files, hCut: files}, nil
 	}
 	require.Less(t, first, cut)
 	server.DropOnExec(cut+"' '-mindepth'", "")
@@ -490,13 +490,13 @@ func TestExecuteScan_ModeChangedMidScanFailsTheRun(t *testing.T) {
 				require.NoError(t, os.MkdirAll(dir, 0o755))
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "orphan.bin"), []byte("x"), 0o600))
 			}
-			torrents := []qbt.Torrent{{Hash: "big", SavePath: bigRoot, State: qbt.TorrentStatePausedUp}}
+			torrents := []qbt.Torrent{{Hash: hBig, SavePath: bigRoot, State: qbt.TorrentStatePausedUp}}
 			if tc.twoRoots {
-				torrents = append([]qbt.Torrent{{Hash: "owned", SavePath: sftpPath(filepath.Dir(f.orphan)), State: qbt.TorrentStatePausedUp}}, torrents...)
+				torrents = append([]qbt.Torrent{{Hash: hOwned, SavePath: sftpPath(filepath.Dir(f.orphan)), State: qbt.TorrentStatePausedUp}}, torrents...)
 			}
 			stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) { return torrents, nil }
 			stubSync(f.svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-				return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}, "big": {{Name: "d000/kept.bin", Size: 1}}}, nil
+				return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}, hBig: {{Name: "d000/kept.bin", Size: 1}}}, nil
 			}
 
 			run := f.scan(t, "scheduled")

@@ -232,10 +232,10 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 		return []*models.Instance{{ID: 1, Name: "a", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -271,15 +271,15 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	}
 	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		if instanceID == 2 {
-			return []qbt.Torrent{{Hash: "b", SavePath: defaultSavePath, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hb, SavePath: defaultSavePath, State: qbt.TorrentStatePausedUp}}, nil
 		}
-		return []qbt.Torrent{{Hash: "owned", SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: ownRoot, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		if instanceID == 2 {
-			return map[string]qbt.TorrentFiles{"b": {{Name: "stray.txt", Size: 4}}}, nil
+			return map[string]qbt.TorrentFiles{hb: {{Name: "stray.txt", Size: 4}}}, nil
 		}
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
@@ -325,10 +325,10 @@ func TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone(t *testing
 		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath, CategorySaveFolders: []string{categoryFolder}})
 

@@ -39,7 +39,8 @@ const (
 
 type FolderCleanupOp struct {
 	Kind           FolderCleanupKind
-	Hashes         []string
+	All            bool
+	Hashes         []infohash.Hash
 	Path           string
 	Category       string
 	EditedCategory string
@@ -113,17 +114,27 @@ func folderCleanupCandidates(syncManager *syncowner.Owner, d fsops.PathDialect, 
 			return nil
 		}
 		return snapshot.Matching(mayMove)
-	case len(op.Hashes) == 1 && op.Hashes[0] == "all":
+	case op.All:
 		return snapshot.Matching(mayMove)
 	}
-	hashes := infohash.ParseAll(op.Hashes)
-	found := snapshot.Torrents(hashes)
+	found := snapshot.Torrents(op.Hashes)
 	for i, t := range found {
-		if t != nil && (len(op.Hashes[i]) != len(t.Hash) || !hashes[i].Is(t.Hash)) {
+		if t != nil && !op.Hashes[i].Is(t.Hash) {
 			found[i] = nil
 		}
 	}
 	return slices.DeleteFunc(foundTorrents(found), func(t *qbt.Torrent) bool { return !mayMove(t) })
+}
+
+func (op FolderCleanupOp) On(ids []string) FolderCleanupOp {
+	op.All = len(ids) == 1 && ids[0] == "all"
+	op.Hashes = make([]infohash.Hash, len(ids))
+	for i, id := range ids {
+		if hash, err := infohash.Parse(id); err == nil && len(id) == len(hash.String()) {
+			op.Hashes[i] = hash
+		}
+	}
+	return op
 }
 
 func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {

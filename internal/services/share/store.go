@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 var (
@@ -43,7 +44,7 @@ func (s *Store) Create(ctx context.Context, sh *Share) error {
 			peers_json, downloaded, uploaded, created_at, ended_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id`,
-		sh.InstanceID, sh.Hash, sh.Name, sh.SavePath, string(files), sh.Size, sh.HelperHash, string(sh.Tracker), sh.OwnerSecret, sh.RecipientSecret,
+		sh.InstanceID, sh.Hash.String(), sh.Name, sh.SavePath, string(files), sh.Size, sh.HelperHash.String(), string(sh.Tracker), sh.OwnerSecret, sh.RecipientSecret,
 		sh.TorrentFile, sh.EndAtFirstDownload, sh.FirstDownloaderOnly, string(sh.Holder.AppendTo(nil)), sh.ExpiresAt.UTC(), string(sh.State), sh.EndReason,
 		string(peers), sh.Downloaded, sh.Uploaded, sh.CreatedAt.UTC(), nullTime(sh.EndedAt),
 	).Scan(&sh.ID)
@@ -62,19 +63,22 @@ type scanner interface {
 
 func scanShare(row scanner, extra ...any) (*Share, error) {
 	var (
-		sh             Share
-		tracker, state string
-		files, peers   string
-		holder         string
-		endedAt        sql.NullTime
+		sh               Share
+		tracker, state   string
+		files, peers     string
+		hash, helperHash string
+		holder           string
+		endedAt          sql.NullTime
 	)
 	dest := append([]any{
-		&sh.ID, &sh.InstanceID, &sh.Hash, &sh.Name, &sh.SavePath, &files, &sh.Size, &sh.HelperHash, &tracker, &sh.OwnerSecret, &sh.RecipientSecret,
+		&sh.ID, &sh.InstanceID, &hash, &sh.Name, &sh.SavePath, &files, &sh.Size, &helperHash, &tracker, &sh.OwnerSecret, &sh.RecipientSecret,
 		&sh.EndAtFirstDownload, &sh.FirstDownloaderOnly, &holder, &sh.ExpiresAt, &state, &sh.EndReason, &peers, &sh.Downloaded, &sh.Uploaded, &sh.CreatedAt, &endedAt,
 	}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return nil, err
 	}
+	sh.Hash, _ = infohash.Parse(hash)
+	sh.HelperHash, _ = infohash.Parse(helperHash)
 	sh.Tracker, sh.State = TrackerKind(tracker), State(state)
 	sh.ExpiresAt, sh.CreatedAt, sh.EndedAt = sh.ExpiresAt.UTC(), sh.CreatedAt.UTC(), endedAt.Time.UTC()
 	if !endedAt.Valid {

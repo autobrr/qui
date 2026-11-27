@@ -13,6 +13,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/services/share"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func engines(t *testing.T, run func(t *testing.T, db dbinterface.Querier)) {
@@ -28,14 +29,16 @@ func engines(t *testing.T, run func(t *testing.T, db dbinterface.Querier)) {
 var storeClock = time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
 
 func newRecord(hash string) *share.Share {
+	parsed, _ := infohash.Parse(hash)
+	helper, _ := infohash.Parse("b" + hash[1:])
 	return &share.Share{
 		InstanceID:          3,
-		Hash:                hash,
+		Hash:                parsed,
 		Name:                "Show.S01.1080p-GRP",
 		SavePath:            "/data/tv",
 		Files:               []string{"Show.S01.1080p-GRP/Show.S01E01.mkv", "Show.S01.1080p-GRP/Show.S01E02.mkv"},
 		Size:                70,
-		HelperHash:          "b" + hash[1:],
+		HelperHash:          helper,
 		Tracker:             share.TrackerOwn,
 		OwnerSecret:         "owner-" + hash,
 		RecipientSecret:     "recipient-" + hash,

@@ -9,14 +9,13 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 var (
@@ -31,7 +30,7 @@ var (
 
 type torrentKey struct {
 	instanceID int
-	hash       string
+	hash       infohash.Hash
 }
 
 type Store struct {
@@ -59,11 +58,15 @@ func (s *Store) load(ctx context.Context) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var key torrentKey
-		var id int64
-		if err := rows.Scan(&key.instanceID, &key.hash, &id); err != nil {
+		var (
+			key  torrentKey
+			hash string
+			id   int64
+		)
+		if err := rows.Scan(&key.instanceID, &hash, &id); err != nil {
 			return fmt.Errorf("read transfer claims: %w", err)
 		}
+		key.hash, _ = infohash.Parse(hash)
 		s.claims[key] = id
 	}
 	if err := rows.Err(); err != nil {
@@ -76,11 +79,14 @@ func (s *Store) load(ctx context.Context) error {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var key torrentKey
-		var owner string
-		if err := rows.Scan(&key.instanceID, &key.hash, &owner); err != nil {
+		var (
+			key         torrentKey
+			hash, owner string
+		)
+		if err := rows.Scan(&key.instanceID, &hash, &owner); err != nil {
 			return fmt.Errorf("read helper torrents: %w", err)
 		}
+		key.hash, _ = infohash.Parse(hash)
 		s.helpers[key] = OwnerKind(owner)
 	}
 	if err := rows.Err(); err != nil {
@@ -103,7 +109,6 @@ func (s *Store) Create(ctx context.Context, record *Record) error {
 	claimed := make([]torrentKey, 0, len(record.Members))
 	for i := range record.Members {
 		member := &record.Members[i]
-		member.Hash = strings.ToLower(member.Hash)
 		if err := insertMember(ctx, tx, id, i, member); err != nil {
 			return err
 		}
@@ -112,7 +117,7 @@ func (s *Store) Create(ctx context.Context, record *Record) error {
 		}
 		key := torrentKey{record.SourceInstanceID, member.Hash}
 		result, err := tx.ExecContext(ctx, `INSERT INTO torrent_transfer_claims (instance_id, hash, transfer_id)
-			VALUES (?, ?, ?) ON CONFLICT (instance_id, hash) DO NOTHING`, key.instanceID, key.hash, id)
+			VALUES (?, ?, ?) ON CONFLICT (instance_id, hash) DO NOTHING`, key.instanceID, key.hash.String(), id)
 		if err != nil {
 			return fmt.Errorf("claim torrent: %w", err)
 		}
@@ -186,7 +191,7 @@ func insertMember(ctx context.Context, tx dbinterface.TxQuerier, transferID int6
 	if _, err := tx.ExecContext(ctx, `INSERT INTO torrent_transfer_members (
 			transfer_id, position, hash, name, source_save_path, target_instance_id, target_save_path, placement_json, proven_pieces
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		transferID, position, m.Hash, m.Name, m.SourceSavePath, m.TargetInstanceID, m.Placement.SavePath, string(placement), m.ProvenPieces,
+		transferID, position, m.Hash.String(), m.Name, m.SourceSavePath, m.TargetInstanceID, m.Placement.SavePath, string(placement), m.ProvenPieces,
 	); err != nil {
 		return fmt.Errorf("insert transfer member: %w", err)
 	}
@@ -254,13 +259,14 @@ func (s *Store) members(ctx context.Context, transferID int64) ([]Member, error)
 	var members []Member
 	for rows.Next() {
 		var (
-			m         Member
-			placement string
-			stored    placementJSON
+			m               Member
+			hash, placement string
+			stored          placementJSON
 		)
-		if err := rows.Scan(&m.Hash, &m.Name, &m.SourceSavePath, &m.TargetInstanceID, &m.Placement.SavePath, &placement, &m.ProvenPieces); err != nil {
+		if err := rows.Scan(&hash, &m.Name, &m.SourceSavePath, &m.TargetInstanceID, &m.Placement.SavePath, &placement, &m.ProvenPieces); err != nil {
 			return nil, fmt.Errorf("read transfer members: %w", err)
 		}
+		m.Hash, _ = infohash.Parse(hash)
 		if err := json.Unmarshal([]byte(placement), &stored); err != nil {
 			return nil, fmt.Errorf("decode transfer member placement: %w", err)
 		}
@@ -341,12 +347,12 @@ func (s *Store) Unfinished(ctx context.Context) ([]int64, error) {
 	return ids, rows.Err()
 }
 
-func (s *Store) WaitsForUser(ctx context.Context, instanceID int, hash string) (bool, error) {
+func (s *Store) WaitsForUser(ctx context.Context, instanceID int, hash infohash.Hash) (bool, error) {
 	var state, class string
 	err := s.db.QueryRowContext(ctx, `SELECT t.state, t.failure_class FROM torrent_transfers t
 			JOIN torrent_transfer_members m ON m.transfer_id = t.id
 			WHERE t.kind = ? AND t.source_instance_id = ? AND m.hash = ?
-			ORDER BY t.id DESC LIMIT 1`, string(KindTransfer), instanceID, strings.ToLower(hash)).Scan(&state, &class)
+			ORDER BY t.id DESC LIMIT 1`, string(KindTransfer), instanceID, hash.String()).Scan(&state, &class)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return false, nil
@@ -388,7 +394,7 @@ func (s *Store) RunningFolders(ctx context.Context, instanceID int) ([]string, e
 }
 
 func (s *Store) RegisterHelper(ctx context.Context, h Helper) error {
-	hash := strings.ToLower(h.Hash)
+	hash := h.Hash.String()
 	result, err := s.db.ExecContext(ctx, `INSERT INTO helper_torrents (instance_id, hash, random, owner_kind, owner_id)
 		VALUES (?, ?, ?, ?, ?) ON CONFLICT (instance_id, hash) DO NOTHING`,
 		h.InstanceID, hash, h.Random, string(h.Owner), h.OwnerID)
@@ -410,7 +416,7 @@ func (s *Store) RegisterHelper(ctx context.Context, h Helper) error {
 	}
 
 	s.mu.Lock()
-	s.helpers[torrentKey{h.InstanceID, hash}] = h.Owner
+	s.helpers[torrentKey{h.InstanceID, h.Hash}] = h.Owner
 	s.mu.Unlock()
 	return nil
 }
@@ -424,11 +430,14 @@ func (s *Store) HelpersOf(ctx context.Context, owner OwnerKind, ownerID int64) (
 	defer rows.Close()
 	var helpers []Helper
 	for rows.Next() {
-		var h Helper
-		var kind string
-		if err := rows.Scan(&h.InstanceID, &h.Hash, &h.Random, &kind, &h.OwnerID, &h.CreatedAt); err != nil {
+		var (
+			h          Helper
+			hash, kind string
+		)
+		if err := rows.Scan(&h.InstanceID, &hash, &h.Random, &kind, &h.OwnerID, &h.CreatedAt); err != nil {
 			return nil, fmt.Errorf("read helper torrents: %w", err)
 		}
+		h.Hash, _ = infohash.Parse(hash)
 		h.Owner = OwnerKind(kind)
 		helpers = append(helpers, h)
 	}
@@ -445,40 +454,41 @@ func (s *Store) RemoveHelpers(ctx context.Context, owner OwnerKind, ownerID int6
 	}
 	s.mu.Lock()
 	for _, h := range helpers {
-		delete(s.helpers, torrentKey{h.InstanceID, strings.ToLower(h.Hash)})
+		delete(s.helpers, torrentKey{h.InstanceID, h.Hash})
 	}
 	s.mu.Unlock()
 	return nil
 }
 
-func (s *Store) IsClaimed(instanceID int, hash string) bool {
+func (s *Store) IsClaimed(instanceID int, hash infohash.Hash) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.claims) == 0 {
 		return false
 	}
-	_, ok := s.claims[torrentKey{instanceID, strings.ToLower(hash)}]
+	_, ok := s.claims[torrentKey{instanceID, hash}]
 	return ok
 }
 
 func (s *Store) IsHelper(instanceID int, hash string) bool {
-	return s.HelperKind(instanceID, hash) != ""
+	parsed, err := infohash.Parse(hash)
+	return err == nil && s.HelperKind(instanceID, parsed) != ""
 }
 
-func (s *Store) HelperKind(instanceID int, hash string) string {
+func (s *Store) HelperKind(instanceID int, hash infohash.Hash) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.helpers) == 0 {
 		return ""
 	}
-	return string(s.helpers[torrentKey{instanceID, strings.ToLower(hash)}])
+	return string(s.helpers[torrentKey{instanceID, hash}])
 }
 
-func (s *Store) Hold(instanceID int, hash string) error {
+func (s *Store) Hold(instanceID int, hash infohash.Hash) error {
 	if s.IsClaimed(instanceID, hash) {
 		return ErrClaimed
 	}
-	if s.IsHelper(instanceID, hash) {
+	if s.HelperKind(instanceID, hash) != "" {
 		return ErrHelper
 	}
 	return nil
@@ -495,7 +505,7 @@ func (s *Store) HelperKinds(instanceID int) map[string]string {
 		if kinds == nil {
 			kinds = make(map[string]string)
 		}
-		kinds[key.hash] = string(kind)
+		kinds[key.hash.String()] = string(kind)
 	}
 	return kinds
 }
@@ -507,37 +517,29 @@ func (s *Store) ClaimCheck(instanceID int) func(hash string) bool {
 	return hashCheck(claimed)
 }
 
-func hashesOn(entries map[torrentKey]int64, instanceID int) map[string]struct{} {
-	var hashes map[string]struct{}
+func hashesOn(entries map[torrentKey]int64, instanceID int) map[infohash.Hash]struct{} {
+	var hashes map[infohash.Hash]struct{}
 	for key := range entries {
 		if key.instanceID != instanceID {
 			continue
 		}
 		if hashes == nil {
-			hashes = make(map[string]struct{})
+			hashes = make(map[infohash.Hash]struct{})
 		}
 		hashes[key.hash] = struct{}{}
 	}
 	return hashes
 }
 
-func hashCheck(hashes map[string]struct{}) func(hash string) bool {
+func hashCheck(hashes map[infohash.Hash]struct{}) func(hash string) bool {
 	if hashes == nil {
 		return nil
 	}
 	return func(hash string) bool {
-		_, ok := hashes[lowerHash(hash)]
-		return ok
+		parsed, err := infohash.Parse(hash)
+		_, ok := hashes[parsed]
+		return err == nil && ok
 	}
-}
-
-func lowerHash(hash string) string {
-	for i := 0; i < len(hash); i++ {
-		if c := hash[i]; c >= utf8.RuneSelf || 'A' <= c && c <= 'Z' {
-			return strings.ToLower(hash)
-		}
-	}
-	return hash
 }
 
 type endpointJSON struct {

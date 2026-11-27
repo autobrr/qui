@@ -12,6 +12,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const minReadingInterval = 50 * time.Second
@@ -220,7 +221,7 @@ func (a *Adapter) NoteDelete(instanceID int, hashes []string, actor qbittorrent.
 	a.module.NoteDelete(DeleteNote{
 		InstanceID: instanceID,
 		Time:       time.Now().UTC(),
-		Hashes:     hashes,
+		Hashes:     infohash.ParseAll(hashes),
 		Cause:      DeleteCause{Kind: CauseKind(actor.Kind), Name: cmp.Or(actor.RuleName, actor.KeyName)},
 	})
 }

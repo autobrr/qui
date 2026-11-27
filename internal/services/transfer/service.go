@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/peeraddress"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 var (
@@ -236,7 +237,7 @@ type Preview struct {
 	Bytes    int64
 	Members  []Member
 	Stay     int
-	Versions []string
+	Versions []infohash.Hash
 }
 
 func (s *Service) Preview(ctx context.Context, req Request) (*Preview, error) {
