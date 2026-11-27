@@ -24,7 +24,7 @@ var (
 		"${{ github.event.pull_request.base.sha }}",
 		"${{ github.event.repository.default_branch }}",
 	}
-	storedSecret = regexp.MustCompile(`secrets\.(\w+)`)
+	storedSecret = regexp.MustCompile(`secrets(?:\.|\[')(\w+)`)
 )
 
 type workflow struct {
@@ -129,7 +129,7 @@ func storedSecrets(node *yaml.Node) []string {
 }
 
 func TestNoJobRunsForkCodeWithWriteAccessOrASecret(t *testing.T) {
-	files, err := filepath.Glob(filepath.Join("..", "..", ".github", "workflows", "*.yml"))
+	files, err := filepath.Glob(filepath.Join("..", "..", ".github", "workflows", "*.y*ml"))
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(files), 20)
 
@@ -217,6 +217,20 @@ jobs:
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+`,
+			want: []string{"job build runs a checkout of repository ${{ steps.pr.outputs.repo }} and has the secret SIGNING_KEY"},
+		},
+		{
+			name: "a fork checkout with a stored secret in the bracket form",
+			source: `
+permissions:
+  contents: read
+jobs:
+  build:
+    steps:` + forkCheckout + `
+      - run: make build
+        env:
+          SIGNING_KEY: ${{ secrets['SIGNING_KEY'] }}
 `,
 			want: []string{"job build runs a checkout of repository ${{ steps.pr.outputs.repo }} and has the secret SIGNING_KEY"},
 		},
