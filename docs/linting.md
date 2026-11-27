@@ -54,7 +54,7 @@ The linters in `scripts/ratchet/golangci.yml` are rules that existing code does 
 - To get the count for a new or split file, run `go run ./scripts/ratchet` before you edit `allowlist.json`. Each "reports N problems, the allowlist allows M" line names the file, the linter, and N.
 - If you move code that has ratchet problems into another file, or rename such a file, move its count to the entry of the new path in the same change. Rule 3 fails only when the total of a linter grows, and its message names each entry that grew. ADR 0077 has the reason.
 
-Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `offlog`, `mapany`, `testsleep`, or `hashset` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
+Each day, `.github/workflows/ratchet.yml` fixes up to 5 problems in one file of `allowlist.json` and opens a pull request with the `ratchet` label. ADR 0020 describes it. It does not take the `offlog`, `mapany`, `testsleep`, `hashset`, or `testhook` entries, and it opens no pull request while one with its label is open. The held effects of the frontend go down outside CI. See "Held Effects" below.
 
 ### Comments
 
@@ -95,6 +95,14 @@ The counter reads one file at a time. It counts a sleep in a function that runs 
 ### Site Picks
 
 A search asks the whole Site pick of its Trigger (ADR 0098). The `sitepick` check in `scripts/ratchet/sitepick.go` counts a literal of `models.SitePick`, or of a type that embeds it, that sets one of `IndexerIDs` and `GazelleSites` without the other. Outside `internal/services/crossseed/search_scope.go`, it also counts a `searchScopeFacts` literal that sets `sites`, and any `resolvedSitePick` literal. It skips `_test.go` files, and `allowlist.json` has no entries for it. forbidigo covers the reads and writes of those fields outside `search_scope.go`, and a read or write of one half of a pick (`IndexerIDs` or `GazelleSites` of `models.SitePick` or of a setting that embeds it) outside `search_scope.go` and `internal/models/`.
+
+### Test-Only Hooks
+
+Production code has no branch on a function field that only tests set, because a test that sets the field runs a path that no user runs (#4632). A step that tests replace is a part that the constructor always fills, and no code checks it for nil. The `testhook` key of `allowlist.json` holds the hooks from before the rule. Like `mapany`, it is not a golangci-lint linter: `scripts/ratchet/testhook.go` reads the non-test files of each package directory and counts each `== nil` or `!= nil` on a struct field of function type that no non-test code sets. It also counts the check on a local that holds a copy of such a field, as in `run := s.hook; if run == nil` or `if run := s.hook; run != nil`. Rules 1 to 3 apply to it as to each linter, and it has no `nolint` marker. The daily ratchet workflow does not take its entries, because the removal of a hook is not a mechanical fix.
+
+- A field counts as set when non-test code of its package assigns it (`x.hook = fn`) or names it as a key of a composite literal, for example in the constructor or a setter. An exported field also counts as set when non-test code of another package sets it.
+- The counter reads the syntax tree and matches fields by name, so a field of the same name on another struct of the package that non-test code sets hides a hook. A function type counts when it is a `func` type literal or a type of the package declared as one.
+- It skips `_test.go` files and `internal/testutil/`, where every caller is a test.
 
 ### Suppressed ESLint Rules
 
