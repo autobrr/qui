@@ -141,7 +141,6 @@ func TestProxyListsKeepTheAnnounceURL(t *testing.T) {
 	})
 }
 
-// regression: #4308
 func TestTorrentSearchWithoutLimitReturnsAllTorrents(t *testing.T) {
 	t.Parallel()
 
@@ -163,6 +162,15 @@ func TestTorrentSearchWithoutLimitReturnsAllTorrents(t *testing.T) {
 		ctx = context.WithValue(ctx, InstanceIDContextKey, instanceID)
 		return httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
 	}
+	decodeSearch := func(t *testing.T, rec *httptest.ResponseRecorder) (response struct {
+		Torrents []struct{} `json:"torrents"`
+		Total    int        `json:"total"`
+		HasMore  bool       `json:"hasMore"`
+	}) {
+		t.Helper()
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		return response
+	}
 
 	t.Run("omitted limit returns every matching torrent", func(t *testing.T) {
 		t.Parallel()
@@ -170,14 +178,7 @@ func TestTorrentSearchWithoutLimitReturnsAllTorrents(t *testing.T) {
 		handler.handleTorrentSearch(rec, request("/api/v2/torrents/search"))
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-		var response struct {
-			Torrents []struct {
-				Hash string `json:"hash"`
-			} `json:"torrents"`
-			Total   int  `json:"total"`
-			HasMore bool `json:"hasMore"`
-		}
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		response := decodeSearch(t, rec)
 		require.Len(t, response.Torrents, total)
 		require.Equal(t, total, response.Total)
 		require.False(t, response.HasMore)
@@ -189,14 +190,7 @@ func TestTorrentSearchWithoutLimitReturnsAllTorrents(t *testing.T) {
 		handler.handleTorrentSearch(rec, request("/api/v2/torrents/search?limit=25"))
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-		var response struct {
-			Torrents []struct {
-				Hash string `json:"hash"`
-			} `json:"torrents"`
-			Total   int  `json:"total"`
-			HasMore bool `json:"hasMore"`
-		}
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+		response := decodeSearch(t, rec)
 		require.Len(t, response.Torrents, 25)
 		require.Equal(t, total, response.Total)
 		require.True(t, response.HasMore)
