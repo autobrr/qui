@@ -1,6 +1,7 @@
 package gazellemusic
 
 import (
+	"cmp"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -50,7 +51,7 @@ func TestFindMatchBroadFilenameFallback(t *testing.T) {
 			if err != nil || (match != nil) != tt.wantMatch {
 				t.Fatalf("match=%+v err=%v, wantMatch=%v", match, err, tt.wantMatch)
 			}
-			if match != nil && (match.TorrentID != 7 || match.Kind != MatchSize || match.TargetHash != "") {
+			if match != nil && (match.TorrentID != 7 || match.Kind != MatchSize || !match.TargetHash.IsZero()) {
 				t.Fatalf("unexpected match: %+v", match)
 			}
 			if browseCalls.Load() != tt.wantBrowse {
@@ -87,7 +88,7 @@ func TestFindMatchEqualTotalNeedsNoMetadata(t *testing.T) {
 			if err != nil || (match != nil) != tt.wantMatch {
 				t.Fatalf("match=%+v err=%v", match, err)
 			}
-			if match != nil && (match.Kind != MatchSize || match.TorrentID != 7 || match.Size != 123 || match.TargetHash != "" || match.QueriedHash != "") {
+			if match != nil && (match.Kind != MatchSize || match.TorrentID != 7 || match.Size != 123 || !match.TargetHash.IsZero() || !match.QueriedHash.IsZero()) {
 				t.Fatalf("wrong evidence: %+v", match)
 			}
 		})
@@ -113,12 +114,14 @@ func legacyFlagTorrent(t *testing.T) []byte {
 func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 	const pthHash = "2d95e58ed6b0430e79a00d41c506fe3715b43874"
 	for _, tc := range []struct {
-		name, infoHash string
-		wantErr        bool
+		name, torrent, infoHash string
+		wantErr                 bool
 	}{
 		{name: "answer names the hash", infoHash: `,"infoHash":"2D95E58ED6B0430E79A00D41C506FE3715B43874"`},
 		{name: "answer leaves the hash out", infoHash: ""},
 		{name: "answer names another hash", infoHash: `,"infoHash":"0000000000000000000000000000000000000001"`, wantErr: true},
+		{name: "answer has no torrent ID", torrent: `"id":0,"size":123`, wantErr: true},
+		{name: "answer has no size", torrent: `"id":7,"size":0`, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var hashCalls atomic.Int32
@@ -128,8 +131,8 @@ func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 					return
 				}
 				hashCalls.Add(1)
-				if strings.EqualFold(r.URL.Query().Get("hash"), pthHash) {
-					_, _ = w.Write([]byte(`{"status":"success","response":{"group":{"id":3,"name":"Album"},"torrent":{"id":7,"size":123` + tc.infoHash + `}}}`))
+				if r.URL.Query().Get("hash") == strings.ToUpper(pthHash) {
+					_, _ = w.Write([]byte(`{"status":"success","response":{"group":{"id":3,"name":"Album"},"torrent":{` + cmp.Or(tc.torrent, `"id":7,"size":123`) + tc.infoHash + `}}}`))
 					return
 				}
 				_, _ = w.Write([]byte(`{"status":"failure","error":"bad hash parameter"}`))
@@ -151,7 +154,7 @@ func TestFindMatch_HashLookupFindsLegacyFlagUpload(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FindMatch: %v", err)
 			}
-			if match == nil || match.Kind != MatchHash || match.TargetHash != pthHash || match.QueriedHash != pthHash || match.TorrentID != 7 {
+			if match == nil || match.Kind != MatchHash || match.TargetHash.String() != pthHash || match.QueriedHash.String() != pthHash || match.TorrentID != 7 {
 				t.Fatalf("expected the PTH upload as a hash match, got %+v", match)
 			}
 			if got := hashCalls.Load(); got != 2 {

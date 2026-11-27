@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/linktree"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/pathcmp"
 )
 
@@ -101,10 +102,10 @@ func (s *Service) Get(ctx context.Context, sourceInstanceID int) (*models.CrossS
 }
 
 type HashFinder interface {
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 }
 
-func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
+func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, string, error) {
 	route, err := s.CrossSeedRouteStore.Get(ctx, instanceID)
 	if err != nil {
 		return nil, "", fmt.Errorf("read cross-seed route: %w", err)
@@ -136,7 +137,7 @@ func (s *Service) FindLinked(ctx context.Context, finder HashFinder, instanceID 
 	return nil, "", nil
 }
 
-func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int, hashes []string) (*qbt.Torrent, string, error) {
+func (s *Service) findOn(ctx context.Context, finder HashFinder, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, string, error) {
 	instance, err := s.instances.Get(ctx, instanceID)
 	if err != nil {
 		return nil, "", err

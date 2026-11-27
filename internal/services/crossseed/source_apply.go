@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type sourceApplyEntry struct {
@@ -34,7 +35,7 @@ func (s *Service) applySourceSearchResults(ctx context.Context, instanceID int, 
 
 	normalMatches, rescueMatches := splitTitleRescueResults(resp.Results)
 	normalAddedIndexers := make(map[int]struct{})
-	normalAddedHashes := make(map[string]struct{})
+	normalAddedHashes := make(map[infohash.Hash]struct{})
 	var err error
 	for _, match := range normalMatches {
 		if err = ctx.Err(); err != nil {
@@ -157,9 +158,9 @@ func selectTitleRescueAttempts(results []TorrentSearchResult, blockedIndexers ma
 	return selected
 }
 
-func (s *Service) attemptTitleRescueResults(ctx context.Context, instanceID int, results []TorrentSearchResult, blockedIndexers map[int]struct{}, knownHashes map[string]struct{}, attempt func(TorrentSearchResult)) error {
+func (s *Service) attemptTitleRescueResults(ctx context.Context, instanceID int, results []TorrentSearchResult, blockedIndexers map[int]struct{}, knownHashes map[infohash.Hash]struct{}, attempt func(TorrentSearchResult)) error {
 	eligible := make([]TorrentSearchResult, 0, len(results))
-	seenHashes := make(map[string]struct{}, len(knownHashes))
+	seenHashes := make(map[infohash.Hash]struct{}, len(knownHashes))
 	maps.Copy(seenHashes, knownHashes)
 	for _, result := range results {
 		if _, blocked := blockedIndexers[result.IndexerID]; blocked {
@@ -202,7 +203,7 @@ func (s *Service) attemptTitleRescueResults(ctx context.Context, instanceID int,
 	return nil
 }
 
-func addTorrentSearchResultHashes(hashes map[string]struct{}, result TorrentSearchResult) {
+func addTorrentSearchResultHashes(hashes map[infohash.Hash]struct{}, result TorrentSearchResult) {
 	for _, hash := range torrentSearchResultInfoHashes(result.InfoHashV1, result.InfoHashV2) {
 		hashes[hash] = struct{}{}
 	}
@@ -226,7 +227,7 @@ func (s *Service) titleRescueResultExists(ctx context.Context, instanceID int, r
 		Int("indexerID", result.IndexerID).
 		Str("indexer", result.Indexer).
 		Str("title", result.Title).
-		Strs("infoHashes", hashes).
+		Strs("infoHashes", hashStrings(hashes)).
 		Msg("[CROSSSEED-SEARCH] Failed title rescue duplicate check; keeping result")
 	return false, nil
 }

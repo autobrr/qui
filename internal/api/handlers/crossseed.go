@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type CrossSeedHandler struct {
@@ -38,8 +38,6 @@ type CrossSeedHandler struct {
 	torrents           crossseedroute.TorrentReader
 	gazelleBaseURL     string
 }
-
-var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
 
 type automationSettingsRequest struct {
 	Enabled                        bool                            `json:"enabled"`
@@ -182,11 +180,11 @@ type searchSettingsPatchRequest struct {
 	ExcludeCategories      *[]string   `json:"excludeCategories,omitempty"`
 	ExcludeTags            *[]string   `json:"excludeTags,omitempty"`
 	IndexerIDs             *[]int      `json:"indexerIds,omitempty"`
+	GazelleSites           *[]string   `json:"gazelleSites,omitempty"`
 	IntervalSeconds        *int        `json:"intervalSeconds,omitempty"`
 	CooldownMinutes        *int        `json:"cooldownMinutes,omitempty"`
 	MaxAddedAgeDays        *int        `json:"maxAddedAgeDays,omitempty"`
 	SkipIndividualEpisodes *bool       `json:"skipIndividualEpisodes,omitempty"`
-	TorznabEnabled         *bool       `json:"torznabEnabled,omitempty"`
 	ScheduleEnabled        *bool       `json:"scheduleEnabled,omitempty"`
 	ScheduleIntervalHours  *int        `json:"scheduleIntervalHours,omitempty"`
 	ScheduleMaxSearches    *int        `json:"scheduleMaxSearches,omitempty"`
@@ -200,15 +198,30 @@ func (r searchSettingsPatchRequest) isEmpty() bool {
 		r.ExcludeCategories == nil &&
 		r.ExcludeTags == nil &&
 		r.IndexerIDs == nil &&
+		r.GazelleSites == nil &&
 		r.IntervalSeconds == nil &&
 		r.CooldownMinutes == nil &&
 		r.MaxAddedAgeDays == nil &&
 		r.SkipIndividualEpisodes == nil &&
-		r.TorznabEnabled == nil &&
 		r.ScheduleEnabled == nil &&
 		r.ScheduleIntervalHours == nil &&
 		r.ScheduleMaxSearches == nil &&
 		r.ScheduleMaxAgeDays == nil
+}
+
+func (r searchSettingsPatchRequest) sitePick() *models.SitePick {
+	if r.IndexerIDs == nil && r.GazelleSites == nil {
+		return nil
+	}
+	var indexerIDs []int
+	if r.IndexerIDs != nil {
+		indexerIDs = *r.IndexerIDs
+	}
+	var gazelleSites []string
+	if r.GazelleSites != nil {
+		gazelleSites = *r.GazelleSites
+	}
+	return &models.SitePick{IndexerIDs: indexerIDs, GazelleSites: gazelleSites}
 }
 
 func (r automationSettingsPatchRequest) isEmpty() bool {
@@ -497,17 +510,16 @@ type automationRunRequest struct {
 }
 
 type searchRunRequest struct {
-	InstanceID             int      `json:"instanceId"`
-	Categories             []string `json:"categories"`
-	Tags                   []string `json:"tags"`
-	ExcludeCategories      []string `json:"excludeCategories"`
-	ExcludeTags            []string `json:"excludeTags"`
-	IntervalSeconds        int      `json:"intervalSeconds"`
-	IndexerIDs             []int    `json:"indexerIds"`
-	DisableTorznab         bool     `json:"disableTorznab"`
-	CooldownMinutes        int      `json:"cooldownMinutes"`
-	SkipIndividualEpisodes bool     `json:"skipIndividualEpisodes"`
-	MaxAddedAgeDays        int      `json:"maxAddedAgeDays"`
+	InstanceID        int      `json:"instanceId"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	IntervalSeconds   int      `json:"intervalSeconds"`
+	models.SitePick
+	CooldownMinutes        int  `json:"cooldownMinutes"`
+	SkipIndividualEpisodes bool `json:"skipIndividualEpisodes"`
+	MaxAddedAgeDays        int  `json:"maxAddedAgeDays"`
 }
 
 type CrossSeedBlocklistRequest struct {
@@ -597,29 +609,26 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 	})
 }
 
-func parseTorrentParams(w http.ResponseWriter, r *http.Request) (instanceID int, hash string, ok bool) {
+func parseTorrentParams(w http.ResponseWriter, r *http.Request) (instanceID int, hash infohash.Hash, ok bool) {
 	instanceIDStr := chi.URLParam(r, "instanceID")
 	id, err := strconv.Atoi(instanceIDStr)
 	if err != nil || id <= 0 {
 		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return 0, "", false
+		return 0, infohash.Hash{}, false
 	}
 
-	h := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if h == "" {
+	raw := chi.URLParam(r, "hash")
+	if strings.TrimSpace(raw) == "" {
 		RespondError(w, http.StatusBadRequest, "hash is required")
-		return 0, "", false
+		return 0, infohash.Hash{}, false
+	}
+	hash, err = infohash.Parse(raw)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "hash must be a valid hex infohash")
+		return 0, infohash.Hash{}, false
 	}
 
-	return id, h, true
-}
-
-func normalizeInfoHashInput(value string) (string, bool) {
-	trimmed := strings.ToLower(strings.TrimSpace(value))
-	if trimmed == "" || !infoHashRegex.MatchString(trimmed) {
-		return "", false
-	}
-	return trimmed, true
+	return id, hash, true
 }
 
 func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *http.Request) {
@@ -634,13 +643,13 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to analyze torrent for search")
 		RespondError(w, status, err.Error())
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, torrentInfo)
+	RespondJSON(w, r, http.StatusOK, torrentInfo)
 }
 
 func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Request) {
@@ -655,14 +664,14 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to find local cross-seed matches")
 		RespondError(w, status, err.Error())
 		return
 	}
 
 	hideMatchPasskeys(r, response.Matches)
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func hideMatchPasskeys(r *http.Request, matches []crossseed.LocalMatch) {
@@ -674,27 +683,38 @@ func hideMatchPasskeys(r *http.Request, matches []crossseed.LocalMatch) {
 	}
 }
 
+type torrentSearchRequest struct {
+	Query                  string   `json:"query,omitempty"`
+	Limit                  int      `json:"limit,omitempty"`
+	IndexerIDs             []int    `json:"indexer_ids,omitempty"`
+	GazelleSites           []string `json:"gazelle_sites,omitempty"`
+	FindIndividualEpisodes bool     `json:"find_individual_episodes,omitempty"`
+	CacheMode              string   `json:"cache_mode,omitempty"`
+}
+
+func (r torrentSearchRequest) options() crossseed.TorrentSearchOptions {
+	return crossseed.TorrentSearchOptions{
+		Query:                  r.Query,
+		Limit:                  r.Limit,
+		SitePick:               models.SitePick{IndexerIDs: r.IndexerIDs, GazelleSites: r.GazelleSites},
+		FindIndividualEpisodes: r.FindIndividualEpisodes,
+		CacheMode:              r.CacheMode,
+	}
+}
+
 func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
 		return
 	}
 
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
-		return
-	}
-
-	var opts crossseed.TorrentSearchOptions
+	var req torrentSearchRequest
 	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&opts); err != nil && !errors.Is(err, io.EOF) {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 			log.Error().
 				Err(err).
 				Int("instanceID", instanceID).
-				Str("hash", hash).
+				Stringer("hash", hash).
 				Msg("Failed to decode torrent search request")
 			RespondError(w, http.StatusBadRequest, "Invalid request body")
 			return
@@ -702,6 +722,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
+	opts := req.options()
 	opts.TitleRescueResultLimit = 3
 	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
@@ -712,13 +733,13 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to search cross-seed matches")
 		RespondError(w, status, err.Error())
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, torrentSearchResponseFor(r, response))
+	RespondJSON(w, r, http.StatusOK, torrentSearchResponseFor(r, response))
 }
 
 func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) {
@@ -729,14 +750,15 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var torrentName, torrentHash string
+	var torrentName string
+	var torrentHash infohash.Hash
 	var totalSize int64
 	var fileCount int
 	if torrentBytes, err := base64.StdEncoding.DecodeString(req.TorrentData); err == nil {
 		if meta, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
 			torrentName = meta.Name
 			torrentHash = meta.HashV1
-			if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
+			if meta.Info != nil && !meta.Info.HasV1() && !meta.HashV2.IsZero() {
 				torrentHash = meta.HashV2
 			}
 			if meta.Info != nil {
@@ -750,7 +772,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		Str("source", "cross-seed.webhook").
 		Str("announcedName", req.TorrentName).
 		Str("torrentName", torrentName).
-		Str("torrentHash", torrentHash).
+		Stringer("torrentHash", torrentHash).
 		Int64("size", totalSize).
 		Int("fileCount", fileCount).
 		Ints("instanceIds", req.InstanceIDs).
@@ -766,20 +788,12 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -788,7 +802,7 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to decode cross-seed apply request")
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
@@ -805,13 +819,13 @@ func (h *CrossSeedHandler) ApplyTorrentSearchResults(w http.ResponseWriter, r *h
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Failed to apply cross-seed search results")
 		RespondError(w, status, err.Error())
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func mapCrossSeedErrorStatus(err error) int {
@@ -872,7 +886,7 @@ func (h *CrossSeedHandler) GetGazelleSites(w http.ResponseWriter, r *http.Reques
 		RespondError(w, http.StatusInternalServerError, "Failed to load the RED/OPS sites")
 		return
 	}
-	RespondJSON(w, http.StatusOK, sites)
+	RespondJSON(w, r, http.StatusOK, sites)
 }
 
 func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.Request) {
@@ -883,7 +897,7 @@ func (h *CrossSeedHandler) GetAutomationSettings(w http.ResponseWriter, r *http.
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *http.Request) {
@@ -1021,7 +1035,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	}
 	h.service.GazelleKeysSaved(settings, passed)
 
-	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
+	RespondJSON(w, r, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }
 
 func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *http.Request) {
@@ -1132,7 +1146,7 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	}
 	h.service.GazelleKeysSaved(&merged, passed)
 
-	RespondJSON(w, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
+	RespondJSON(w, r, http.StatusOK, automationSettingsSaveResponse{CrossSeedAutomationSettings: updated, Warning: warning})
 }
 
 func (h *CrossSeedHandler) GetAutomationStatus(w http.ResponseWriter, r *http.Request) {
@@ -1143,7 +1157,7 @@ func (h *CrossSeedHandler) GetAutomationStatus(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, status)
+	RespondJSON(w, r, http.StatusOK, status)
 }
 
 func (h *CrossSeedHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Request) {
@@ -1168,7 +1182,7 @@ func (h *CrossSeedHandler) ListAutomationRuns(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.Request) {
@@ -1205,7 +1219,7 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, run)
+	RespondJSON(w, r, http.StatusAccepted, run)
 }
 
 func (h *CrossSeedHandler) CancelAutomationRun(w http.ResponseWriter, r *http.Request) {
@@ -1238,7 +1252,7 @@ func (h *CrossSeedHandler) ListBlocklist(w http.ResponseWriter, r *http.Request)
 		entries = []*models.CrossSeedBlocklistEntry{}
 	}
 
-	RespondJSON(w, http.StatusOK, entries)
+	RespondJSON(w, r, http.StatusOK, entries)
 }
 
 func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Request) {
@@ -1266,26 +1280,20 @@ func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	infohash, ok := normalizeInfoHashInput(payload.InfoHash)
-	if !ok {
+	hash, err := infohash.Parse(payload.InfoHash)
+	if err != nil {
 		RespondError(w, http.StatusBadRequest, "infoHash must be a valid hex infohash")
 		return
 	}
 
-	entry := &models.CrossSeedBlocklistEntry{
-		InstanceID: payload.InstanceID,
-		InfoHash:   infohash,
-		Note:       strings.TrimSpace(payload.Note),
-	}
-
-	created, err := h.service.UpsertBlocklistEntry(r.Context(), entry)
+	created, err := h.service.UpsertBlocklistEntry(r.Context(), payload.InstanceID, hash, strings.TrimSpace(payload.Note))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to add cross-seed blocklist entry")
 		RespondError(w, http.StatusInternalServerError, "Failed to add blocklist entry")
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, created)
+	RespondJSON(w, r, http.StatusCreated, created)
 }
 
 func (h *CrossSeedHandler) DeleteBlocklistEntry(w http.ResponseWriter, r *http.Request) {
@@ -1296,13 +1304,13 @@ func (h *CrossSeedHandler) DeleteBlocklistEntry(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	infohash, ok := normalizeInfoHashInput(chi.URLParam(r, "infohash"))
-	if !ok {
+	hash, err := infohash.Parse(chi.URLParam(r, "infohash"))
+	if err != nil {
 		RespondError(w, http.StatusBadRequest, "infohash must be a valid hex infohash")
 		return
 	}
 
-	if err := h.service.DeleteBlocklistEntry(r.Context(), instanceID, infohash); err != nil {
+	if err := h.service.DeleteBlocklistEntry(r.Context(), instanceID, hash); err != nil {
 		if errors.Is(err, crossseed.ErrBlocklistEntryNotFound) {
 			RespondError(w, http.StatusNotFound, "Blocklist entry not found")
 			return
@@ -1323,7 +1331,7 @@ func (h *CrossSeedHandler) GetSearchSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Request) {
@@ -1344,12 +1352,11 @@ func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Re
 		Tags:                   patch.Tags,
 		ExcludeCategories:      patch.ExcludeCategories,
 		ExcludeTags:            patch.ExcludeTags,
-		IndexerIDs:             patch.IndexerIDs,
+		SitePick:               patch.sitePick(),
 		IntervalSeconds:        patch.IntervalSeconds,
 		CooldownMinutes:        patch.CooldownMinutes,
 		MaxAddedAgeDays:        patch.MaxAddedAgeDays,
 		SkipIndividualEpisodes: patch.SkipIndividualEpisodes,
-		TorznabEnabled:         patch.TorznabEnabled,
 		ScheduleEnabled:        patch.ScheduleEnabled,
 		ScheduleIntervalHours:  patch.ScheduleIntervalHours,
 		ScheduleMaxSearches:    patch.ScheduleMaxSearches,
@@ -1362,7 +1369,7 @@ func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, r, http.StatusOK, updated)
 }
 
 func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request) {
@@ -1383,8 +1390,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		ExcludeCategories:      req.ExcludeCategories,
 		ExcludeTags:            req.ExcludeTags,
 		IntervalSeconds:        req.IntervalSeconds,
-		IndexerIDs:             req.IndexerIDs,
-		DisableTorznab:         req.DisableTorznab,
+		SitePick:               req.SitePick,
 		CooldownMinutes:        req.CooldownMinutes,
 		SkipIndividualEpisodes: req.SkipIndividualEpisodes,
 		MaxAddedAgeDays:        req.MaxAddedAgeDays,
@@ -1405,7 +1411,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, run)
+	RespondJSON(w, r, http.StatusAccepted, run)
 }
 
 func (h *CrossSeedHandler) RunSearchScheduleNow(w http.ResponseWriter, r *http.Request) {
@@ -1425,7 +1431,7 @@ func (h *CrossSeedHandler) RunSearchScheduleNow(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, run)
+	RespondJSON(w, r, http.StatusAccepted, run)
 }
 
 func (h *CrossSeedHandler) CancelSearchRun(w http.ResponseWriter, r *http.Request) {
@@ -1440,7 +1446,7 @@ func (h *CrossSeedHandler) GetSearchRunStatus(w http.ResponseWriter, r *http.Req
 		RespondError(w, http.StatusInternalServerError, "Failed to get search run status")
 		return
 	}
-	RespondJSON(w, http.StatusOK, status)
+	RespondJSON(w, r, http.StatusOK, status)
 }
 
 func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.Request) {
@@ -1480,7 +1486,7 @@ func (h *CrossSeedHandler) ListSearchRunHistory(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 func (h *CrossSeedHandler) GetCrossSeedStatus(w http.ResponseWriter, r *http.Request) {
@@ -1516,7 +1522,7 @@ func (h *CrossSeedHandler) WebhookCheck(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	RespondJSON(w, webhookResponseStatus(response), response)
+	RespondJSON(w, r, webhookResponseStatus(response), response)
 }
 
 func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
@@ -1553,19 +1559,19 @@ func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 type instanceCompletionSettingsResponse struct {
-	InstanceID         int      `json:"instanceId"`
-	Enabled            bool     `json:"enabled"`
-	Categories         []string `json:"categories"`
-	Tags               []string `json:"tags"`
-	ExcludeCategories  []string `json:"excludeCategories"`
-	ExcludeTags        []string `json:"excludeTags"`
-	IndexerIDs         []int    `json:"indexerIds"`
-	BypassTorznabCache bool     `json:"bypassTorznabCache"`
-	DelaySeconds       int      `json:"delaySeconds"`
+	InstanceID        int      `json:"instanceId"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	models.SitePick
+	BypassTorznabCache bool `json:"bypassTorznabCache"`
+	DelaySeconds       int  `json:"delaySeconds"`
 }
 
 func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionSettings) instanceCompletionSettingsResponse {
@@ -1576,21 +1582,21 @@ func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionS
 		Tags:               s.Tags,
 		ExcludeCategories:  s.ExcludeCategories,
 		ExcludeTags:        s.ExcludeTags,
-		IndexerIDs:         s.IndexerIDs,
+		SitePick:           s.SitePick,
 		BypassTorznabCache: s.BypassTorznabCache,
 		DelaySeconds:       s.DelaySeconds,
 	}
 }
 
 type instanceCompletionSettingsRequest struct {
-	Enabled            bool     `json:"enabled"`
-	Categories         []string `json:"categories"`
-	Tags               []string `json:"tags"`
-	ExcludeCategories  []string `json:"excludeCategories"`
-	ExcludeTags        []string `json:"excludeTags"`
-	IndexerIDs         []int    `json:"indexerIds"`
-	BypassTorznabCache bool     `json:"bypassTorznabCache"`
-	DelaySeconds       int      `json:"delaySeconds"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	models.SitePick
+	BypassTorznabCache bool `json:"bypassTorznabCache"`
+	DelaySeconds       int  `json:"delaySeconds"`
 }
 
 func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
@@ -1628,7 +1634,7 @@ func (h *CrossSeedHandler) GetInstanceCompletionSettings(w http.ResponseWriter, 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(settings))
+	RespondJSON(w, r, http.StatusOK, toInstanceCompletionSettingsResponse(settings))
 }
 
 func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWriter, r *http.Request) {
@@ -1678,7 +1684,7 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		Tags:               req.Tags,
 		ExcludeCategories:  req.ExcludeCategories,
 		ExcludeTags:        req.ExcludeTags,
-		IndexerIDs:         req.IndexerIDs,
+		SitePick:           req.SitePick,
 		BypassTorznabCache: req.BypassTorznabCache,
 		DelaySeconds:       req.DelaySeconds,
 	}
@@ -1690,5 +1696,5 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
+	RespondJSON(w, r, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
 }

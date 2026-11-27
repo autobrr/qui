@@ -6,11 +6,13 @@ package crossseed
 import (
 	"context"
 	"sync"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type seasonPackApplies struct {
 	mu    sync.Mutex
-	packs map[string]*seasonPackTurn
+	packs map[infohash.Hash]*seasonPackTurn
 }
 
 type seasonPackTurn struct {
@@ -19,14 +21,14 @@ type seasonPackTurn struct {
 	addedTo map[int]bool
 }
 
-func (a *seasonPackApplies) claim(infoHash string) (pack *seasonPackTurn, release func()) {
+func (a *seasonPackApplies) claim(infoHash infohash.Hash) (pack *seasonPackTurn, release func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	pack = a.packs[infoHash]
 	if pack == nil {
 		pack = &seasonPackTurn{turn: make(chan struct{}, 1), addedTo: map[int]bool{}}
 		if a.packs == nil {
-			a.packs = map[string]*seasonPackTurn{}
+			a.packs = map[infohash.Hash]*seasonPackTurn{}
 		}
 		a.packs[infoHash] = pack
 	}

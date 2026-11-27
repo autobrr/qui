@@ -13,6 +13,7 @@ import (
 	"github.com/autobrr/rls"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type searchCandidateClass string
@@ -71,7 +72,7 @@ type searchDecisionProvenance struct {
 	Class                 searchCandidateClass
 	SearchCandidateName   string
 	SourceInstanceID      int
-	SourceHash            string
+	SourceHash            infohash.Hash
 	Relaxed               matchDifferences
 	GroupFallbackIdentity string
 	SourceTitles          []string
@@ -97,18 +98,18 @@ func (provenance searchDecisionProvenance) clone() searchDecisionProvenance {
 	return provenance
 }
 
-func (provenance searchDecisionProvenance) bindSource(instanceID int, hash string) searchDecisionProvenance {
+func (provenance searchDecisionProvenance) bindSource(instanceID int, hash infohash.Hash) searchDecisionProvenance {
 	bound := provenance.clone()
 	if bound.catalog() {
 		return bound
 	}
 	bound.SourceInstanceID = instanceID
-	bound.SourceHash = normalizeHash(hash)
+	bound.SourceHash = hash
 	return bound
 }
 
-func (provenance searchDecisionProvenance) matchesSource(instanceID int, hash string) bool {
-	return !provenance.catalog() || (provenance.SourceInstanceID == instanceID && provenance.SourceHash == normalizeHash(hash))
+func (provenance searchDecisionProvenance) matchesSource(instanceID int, hash infohash.Hash) bool {
+	return !provenance.catalog() || (provenance.SourceInstanceID == instanceID && provenance.SourceHash == hash)
 }
 
 func (provenance searchDecisionProvenance) admitted() bool {
@@ -403,8 +404,8 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 	if req == nil || candidate.InstanceID != req.SearchDecision.SourceInstanceID {
 		return false
 	}
-	sourceHash := normalizeHash(req.SearchDecision.SourceHash)
-	return sourceHash != "" && normalizeHash(selectedHash) == sourceHash &&
+	sourceHash := req.SearchDecision.SourceHash
+	return !sourceHash.IsZero() && sourceHash.Is(selectedHash) &&
 		searchDecisionRequiresVerification(req.SearchDecision)
 }
 

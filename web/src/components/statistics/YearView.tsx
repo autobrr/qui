@@ -139,7 +139,7 @@ function Calendar({ days }: { days: CalendarDay[] }) {
                       className={cn(
                         "relative aspect-square w-full rounded-[3px] after:absolute after:-inset-[1.5px]",
                         day.uploaded === undefined ? "border border-dashed border-border" : !day.uploaded && "bg-muted",
-                        day.gapSeconds > 0 && "ring-1 ring-yellow-500",
+                        day.gapSeconds > 0 && "ring-1 ring-warning",
                         shown === day.start && "outline outline-1 outline-foreground"
                       )}
                       style={day.uploaded ? { background: HEAT[thresholds.filter(threshold => day.uploaded! > threshold).length] } : undefined}

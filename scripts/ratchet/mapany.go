@@ -14,6 +14,10 @@ const mapAnyLinter = "mapany"
 
 var linterFixes = map[string]string{
 	mapAnyLinter:    " Use a struct instead of a map[string]any or map[string]interface{}.",
+	hashCaseLinter:  " Parse the hash with infohash.Parse and compare infohash.Hash values.",
+	sitePickLinter:  " A search asks the whole Site pick (ADR 0098). Pass the stored models.SitePick of the setting, key both IndexerIDs and GazelleSites, or key neither for every site. Only Service.resolveSitePick and collectSearchScope in internal/services/crossseed/search_scope.go fill searchScopeFacts.sites and build a resolvedSitePick.",
+	hashSetLinter:   " Keep a set of torrent hashes in an infohash.Set, and dedupe a list with infohash.Unique or infohash.UniqueStrings.",
+	testHookLinter:  " A nil check on a function field that only tests set gives production a branch that no test runs. Give the step to the constructor as a part that it always fills, and check it for nil nowhere (#4632).",
 	testSleepLinter: " A time.Sleep in a test outside synctest.Test waits in real time. Wait on a channel, or run the test in synctest.Test. A function that calls synctest.Wait runs in a bubble, so its sleeps do not count.",
 }
 

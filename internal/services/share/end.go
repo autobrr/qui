@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -63,7 +64,7 @@ func (s *Service) end(ctx context.Context, sh *Share, reason, by string) error {
 func (s *Service) removeTorrent(ctx context.Context, sh *Share) error {
 	gone, err := s.gone(ctx, sh)
 	if err == nil && !gone {
-		if err = s.deps.Sync.DeleteTorrents(ctx, sh.InstanceID, []string{sh.HelperHash}, false,
+		if err = s.deps.Sync.DeleteTorrents(ctx, sh.InstanceID, []string{sh.HelperHash.String()}, false,
 			qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorUser}); err == nil {
 			gone, err = s.gone(ctx, sh)
 		}
@@ -121,21 +122,22 @@ func (s *Service) Check(ctx context.Context) error {
 }
 
 type clientView struct {
-	torrents map[string]*qbt.Torrent
+	torrents map[infohash.Hash]*qbt.Torrent
 	err      error
 }
 
 func (s *Service) readClient(ctx context.Context, instanceID int, shares []Share) *clientView {
-	var hashes []string
+	var hashes []infohash.Hash
 	for _, sh := range shares {
 		if sh.InstanceID == instanceID {
 			hashes = append(hashes, sh.Hash, sh.HelperHash)
 		}
 	}
 	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
-	view := &clientView{torrents: map[string]*qbt.Torrent{}, err: err}
+	view := &clientView{torrents: map[infohash.Hash]*qbt.Torrent{}, err: err}
 	for _, t := range torrents {
-		view.torrents[lower(t.Hash)] = t
+		hash, _ := infohash.Parse(t.Hash)
+		view.torrents[hash] = t
 	}
 	return view
 }
@@ -163,7 +165,7 @@ func (s *Service) endReason(ctx context.Context, sh *Share, view *clientView) st
 	if helper == nil {
 		return reasonGone
 	}
-	files, err := s.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), sh.InstanceID, sh.Hash)
+	files, err := s.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), sh.InstanceID, sh.Hash.String())
 	if err != nil || files == nil {
 		return ""
 	}
@@ -178,7 +180,7 @@ func (s *Service) endReason(ctx context.Context, sh *Share, view *clientView) st
 }
 
 func (s *Service) readPeers(ctx context.Context, sh *Share, helper *qbt.Torrent) bool {
-	peers, err := s.deps.Sync.GetTorrentPeers(ctx, sh.InstanceID, sh.HelperHash)
+	peers, err := s.deps.Sync.GetTorrentPeers(ctx, sh.InstanceID, sh.HelperHash.String())
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	l := s.live[sh.ID]
@@ -252,7 +254,7 @@ func (s *Service) removeRow(ctx context.Context, id int64) error {
 }
 
 func (s *Service) gone(ctx context.Context, sh *Share) (bool, error) {
-	left, err := s.deps.Sync.GetTorrentRefsFresh(ctx, sh.InstanceID, qbittorrent.TorrentRefFilter{Hashes: []string{sh.HelperHash}})
+	left, err := s.deps.Sync.GetTorrentRefsFresh(ctx, sh.InstanceID, qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{sh.HelperHash}})
 	return len(left) == 0, err
 }
 
@@ -269,8 +271,8 @@ var changeReasons = map[qbittorrent.TorrentChange]string{
 func (s *Service) BeforeTorrentChange(ctx context.Context, instanceID int, hashes []string, change qbittorrent.TorrentChange) {
 	ids := make([]int64, 0, len(hashes))
 	s.mu.Lock()
-	for _, hash := range hashes {
-		ids = append(ids, s.active[torrentKey{instanceID, lower(hash)}]...)
+	for _, hash := range infohash.ParseAll(hashes) {
+		ids = append(ids, s.active[torrentKey{instanceID, hash}]...)
 	}
 	s.mu.Unlock()
 	if len(ids) == 0 {

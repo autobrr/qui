@@ -15,6 +15,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -25,13 +26,13 @@ type renameOnlySyncManager struct {
 
 func (m *renameOnlySyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
 	for _, h := range hashes {
-		m.bulkActions = append(m.bulkActions, action+":"+normalizeHash(h))
+		m.bulkActions = append(m.bulkActions, action+":"+h)
 	}
 	return nil
 }
 
 func (m *renameOnlySyncManager) RenameTorrentFile(_ context.Context, _ int, hash, oldPath, newPath string) error {
-	key := normalizeHash(hash)
+	key := hash
 	files := m.files[key]
 	for i := range files {
 		if files[i].Name == oldPath {
@@ -62,11 +63,11 @@ func newRenameOnlyService(t *testing.T, instance *models.Instance, matchedHash, 
 	sync := &renameOnlySyncManager{
 		reflinkFallbackSafetySyncManager: &reflinkFallbackSafetySyncManager{
 			files: map[string]qbt.TorrentFiles{
-				normalizeHash(matchedHash): candidateFiles,
-				normalizeHash(newHash):     sourceFiles,
+				matchedHash: candidateFiles,
+				newHash:     sourceFiles,
 			},
 			props: map[string]*qbt.TorrentProperties{
-				normalizeHash(matchedHash): {SavePath: "/downloads/movies"},
+				matchedHash: {SavePath: "/downloads/movies"},
 			},
 		},
 	}
@@ -98,22 +99,22 @@ func TestProcessCrossSeedCandidate_RenameOnlySingleFileSkipsRecheckSkip(t *testi
 	instance := &models.Instance{ID: 1}
 	sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
 	candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	service, sync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
 
 	startPaused := false
 	req := &CrossSeedRequest{SkipRecheck: true, StartPaused: &startPaused}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
 	require.Equal(t, "added", result.Status)
-	require.Contains(t, sync.bulkActions, "resume:"+normalizeHash(newHash))
+	require.Contains(t, sync.bulkActions, "resume:"+newHash)
 	for _, action := range sync.bulkActions {
 		require.NotContains(t, action, "recheck:", "rename-only exact-size add must not recheck")
 	}
-	require.Equal(t, renameOnlyCandidateFile, sync.files[normalizeHash(newHash)][0].Name, "file entry must be renamed to the on-disk name")
+	require.Equal(t, renameOnlyCandidateFile, sync.files[newHash][0].Name, "file entry must be renamed to the on-disk name")
 }
 
 func TestProcessCrossSeedCandidate_RenameOnlyLinkFallbackSkipsRecheckSkip(t *testing.T) {
@@ -128,18 +129,18 @@ func TestProcessCrossSeedCandidate_RenameOnlyLinkFallbackSkipsRecheckSkip(t *tes
 	}
 	sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
 	candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	service, sync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
 
 	req := &CrossSeedRequest{SkipRecheck: true}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
 	require.Equal(t, "added", result.Status)
 	require.NotContains(t, result.Message, "full recheck required")
-	require.Contains(t, sync.bulkActions, "resume:"+normalizeHash(newHash))
+	require.Contains(t, sync.bulkActions, "resume:"+newHash)
 	for _, action := range sync.bulkActions {
 		require.NotContains(t, action, "recheck:")
 	}
@@ -176,21 +177,21 @@ func TestProcessCrossSeedCandidate_ExactLinkFullRecheckFallback(t *testing.T) {
 				sourceFiles = append(sourceFiles, qbt.TorrentFile{Name: "Example.Film.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HDR10.H.265-EXGRP.nfo", Size: 700})
 			}
 			candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
-			newHash := "newhash"
+			newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 			service, sync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
 			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 			req := &CrossSeedRequest{SkipRecheck: tt.skipRecheck}
 
 			withAdder(service)
-			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlyCandidateFile, req, service.releaseCache.Parse(renameOnlyCandidateFile), sourceFiles, nil, nil)
+			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, renameOnlyCandidateFile, req, service.releaseCache.Parse(renameOnlyCandidateFile), sourceFiles, nil, nil)
 
 			require.Equal(t, tt.wantStatus, result.Status, "message: %s", result.Message)
 			if tt.wantAction == "" {
 				require.Nil(t, sync.addTorrentOpts, "AddTorrent must not be called")
 				return
 			}
-			require.Equal(t, []string{tt.wantAction + normalizeHash(newHash)}, sync.bulkActions)
+			require.Equal(t, []string{tt.wantAction + newHash}, sync.bulkActions)
 		})
 	}
 }
@@ -201,17 +202,17 @@ func TestProcessCrossSeedCandidate_RenameOnlyStillRechecksWithoutSkipRecheck(t *
 	instance := &models.Instance{ID: 1}
 	sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
 	candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	service, sync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
 
 	req := &CrossSeedRequest{SkipRecheck: false, SkipAutoResume: true}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 	require.True(t, result.Success, "message: %s", result.Message)
 	require.Equal(t, "added", result.Status)
-	require.Contains(t, sync.bulkActions, "recheck:"+normalizeHash(newHash))
+	require.Contains(t, sync.bulkActions, "recheck:"+newHash)
 }
 
 func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing.T) {
@@ -268,7 +269,7 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 			t.Parallel()
 
 			instance := &models.Instance{ID: 1}
-			newHash := "newhash"
+			newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 			matchedName := tt.matchedName
 			if matchedName == "" {
 				matchedName = renameOnlyCandidateFile
@@ -278,7 +279,7 @@ func TestProcessCrossSeedCandidate_SkipRecheckStillSkipsNonRenameOnly(t *testing
 			req := &CrossSeedRequest{SkipRecheck: true}
 
 			withAdder(service)
-			result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), newHash, "", tt.sourceFiles[0].Name, req, service.releaseCache.Parse(tt.sourceFiles[0].Name), tt.sourceFiles, nil, nil)
+			result := service.processCrossSeedCandidate(context.Background(), candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, tt.sourceFiles[0].Name, req, service.releaseCache.Parse(tt.sourceFiles[0].Name), tt.sourceFiles, nil, nil)
 
 			require.False(t, result.Success)
 			require.Equal(t, tt.wantStatus, result.Status, "message: %s", result.Message)
@@ -311,7 +312,7 @@ func TestProcessCrossSeedCandidate_FailedRecheckIsQueued(t *testing.T) {
 			instance := &models.Instance{ID: 1}
 			sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
 			candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
-			newHash := "newhash"
+			newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 			service, renameSync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
 			service.syncManager = &failingRecheckSyncManager{qbittorrentSync: renameSync, recheckErr: recheckErr}
 			synctest.Test(t, func(t *testing.T) {
@@ -320,7 +321,7 @@ func TestProcessCrossSeedCandidate_FailedRecheckIsQueued(t *testing.T) {
 
 				req := &CrossSeedRequest{}
 				withAdder(service)
-				result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
+				result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 				require.True(t, result.Success, "message: %s", result.Message)
 				require.NotContains(t, result.Message, "manual intervention required")
@@ -336,7 +337,7 @@ func TestProcessCrossSeedCandidate_FailedRecheckWithSkipAutoResumeIsRecheckedNot
 	instance := &models.Instance{ID: 1}
 	sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
 	candidateFiles := qbt.TorrentFiles{{Name: renameOnlyCandidateFile, Size: renameOnlySize}}
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	service, renameSync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlyCandidateFile, candidateFiles, newHash, sourceFiles)
 	service.syncManager = &failingRecheckSyncManager{qbittorrentSync: renameSync, recheckErr: context.DeadlineExceeded}
 	synctest.Test(t, func(t *testing.T) {
@@ -345,7 +346,7 @@ func TestProcessCrossSeedCandidate_FailedRecheckWithSkipAutoResumeIsRecheckedNot
 
 		req := &CrossSeedRequest{SkipAutoResume: true}
 		withAdder(service)
-		result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), newHash, "", renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
+		result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), sourceFiles, nil, nil)
 
 		require.True(t, result.Success, "message: %s", result.Message)
 		require.NotContains(t, result.Message, "manual intervention required")

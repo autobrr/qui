@@ -85,7 +85,7 @@ export function MatchingTab({ settings }: { settings: CrossSeedAutomationSetting
             <div className="space-y-0.5">
               <Label
                 htmlFor="skip-piece-boundary-check"
-                className={form.skipPieceBoundarySafetyCheck ? "text-yellow-600 dark:text-yellow-500" : "text-green-600 dark:text-green-500"}
+                className={form.skipPieceBoundarySafetyCheck ? "text-warning" : "text-success"}
               >
                 {form.skipPieceBoundarySafetyCheck ? t("rules.safety.pieceBoundaryDisabled") : t("rules.safety.pieceBoundaryEnabled")}
               </Label>

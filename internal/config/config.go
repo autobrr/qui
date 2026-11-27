@@ -926,6 +926,10 @@ func (c *AppConfig) resolveDataDir() {
 	}
 }
 
+func (c *AppConfig) GetConfigPath() string {
+	return c.viper.ConfigFileUsed()
+}
+
 func (c *AppConfig) GetDatabasePath() string {
 	return filepath.Join(c.dataDir, "qui.db")
 }

@@ -66,7 +66,7 @@ func (h *TransferHistoryHandler) Transfer(w http.ResponseWriter, r *http.Request
 	if rows == nil {
 		rows = []transferhistory.TransferRow{}
 	}
-	RespondJSON(w, http.StatusOK, transferHistoryResponse{Rows: rows})
+	RespondJSON(w, r, http.StatusOK, transferHistoryResponse{Rows: rows})
 }
 
 func parseHistoryPeriod(w http.ResponseWriter, r *http.Request) (from, to time.Time, ok bool) {
@@ -116,7 +116,7 @@ func (h *TransferHistoryHandler) Library(w http.ResponseWriter, r *http.Request)
 	if respondHistoryError(w, err, instanceID) {
 		return
 	}
-	RespondJSON(w, http.StatusOK, transferHistoryLibraryResponse{Rows: rows})
+	RespondJSON(w, r, http.StatusOK, transferHistoryLibraryResponse{Rows: rows})
 }
 
 const defaultDeletesPage = 50
@@ -149,7 +149,7 @@ func (h *TransferHistoryHandler) Deletes(w http.ResponseWriter, r *http.Request)
 	if respondHistoryError(w, err, instanceID) {
 		return
 	}
-	RespondJSON(w, http.StatusOK, answer)
+	RespondJSON(w, r, http.StatusOK, answer)
 }
 
 func (h *TransferHistoryHandler) Status(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +162,7 @@ func (h *TransferHistoryHandler) Status(w http.ResponseWriter, r *http.Request) 
 	if status.Instances == nil {
 		status.Instances = []transferhistory.InstanceStatus{}
 	}
-	RespondJSON(w, http.StatusOK, status)
+	RespondJSON(w, r, http.StatusOK, status)
 }
 
 func (h *TransferHistoryHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +182,7 @@ func (h *TransferHistoryHandler) UpdateSettings(w http.ResponseWriter, r *http.R
 		log.Error().Err(err).Msg("transfer history: failed to save the settings")
 		RespondError(w, http.StatusInternalServerError, "Failed to save transfer history settings")
 	default:
-		RespondJSON(w, http.StatusOK, settings)
+		RespondJSON(w, r, http.StatusOK, settings)
 	}
 }
 

@@ -69,7 +69,7 @@ func TestHeldTitlesComparesOneCompleteTorrentOfACopyGroup(t *testing.T) {
 	require.Equal(t, []string{copies[2].Hash, copies[4].Hash, copies[6].Hash}, library.takeFileReads(), "one complete torrent of each Copy group, and the torrent outside them")
 	require.Len(t, got.Matches, 6, "each torrent that passes the source filter")
 	full, _ := rig.fullScan()
-	require.Equal(t, checkAnnounce(t, full, heldCopyName, uint64(heldSingleSize)), got)
+	require.Equal(t, checkFullScan(t, full, heldCopyName, uint64(heldSingleSize)), got)
 }
 
 func heldCopyLibraries(t *testing.T) (*heldLibrary, *heldLibrary, []qbittorrent.CopyGroupMember) {
@@ -122,7 +122,7 @@ func TestHeldTitlesAnswerCopyGroupsAsTheFullScan(t *testing.T) {
 		for name, announce := range announces {
 			for _, targets := range [][]int{{1}, {2}, nil} {
 				t.Run(fmt.Sprintf("%s %s targets %v", filter, name, targets), func(t *testing.T) {
-					want := checkAnnounce(t, full, announce.torrent, announce.size, targets...)
+					want := checkFullScan(t, full, announce.torrent, announce.size, targets...)
 					require.Equal(t, want, checkAnnounce(t, held, announce.torrent, announce.size, targets...))
 					answers[fmt.Sprintf("%v %s", want.CanCrossSeed, want.Recommendation)]++
 				})
@@ -218,7 +218,7 @@ func TestHeldTitlesComparesCopiesWithOtherReadReleasesOnTheirOwn(t *testing.T) {
 			rig.waitReady(held)
 			full, _ := rig.fullScan()
 
-			want := checkAnnounce(t, full, tt.announce, tt.size)
+			want := checkFullScan(t, full, tt.announce, tt.size)
 			require.Equal(t, want, checkAnnounce(t, held, tt.announce, tt.size))
 			require.Len(t, want.Matches, 1)
 		})
@@ -256,7 +256,7 @@ func TestHeldTitlesListsTheCopiesOfAMatchThatReadItsFiles(t *testing.T) {
 			rig.waitReady(held)
 			full, _ := rig.fullScan()
 
-			want, got := checkAnnounce(t, full, tt.announce, tt.size), checkAnnounce(t, held, tt.announce, tt.size)
+			want, got := checkFullScan(t, full, tt.announce, tt.size), checkAnnounce(t, held, tt.announce, tt.size)
 
 			require.Equal(t, []string{copies[0].Hash}, matchedHashes(want))
 			require.Equal(t, []string{copies[0].Hash, copies[1].Hash}, matchedHashes(got), "each copy in the Copy group of the match, and no other torrent")

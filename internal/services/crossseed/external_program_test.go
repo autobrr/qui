@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type lateTorrentSyncManager struct {
@@ -17,12 +18,12 @@ type lateTorrentSyncManager struct {
 	misses  int
 }
 
-func (m *lateTorrentSyncManager) listed(hashes []string) bool {
+func (m *lateTorrentSyncManager) listed(hashes []infohash.Hash) bool {
 	if m.misses > 0 {
 		m.misses--
 		return false
 	}
-	return slices.Contains(hashes, m.torrent.Hash)
+	return slices.ContainsFunc(hashes, func(h infohash.Hash) bool { return h.Is(m.torrent.Hash) })
 }
 
 func (m *lateTorrentSyncManager) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
@@ -32,7 +33,7 @@ func (m *lateTorrentSyncManager) GetTorrentRefs(_ context.Context, _ int, filter
 	return nil, nil
 }
 
-func (m *lateTorrentSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (m *lateTorrentSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if m.listed(hashes) {
 		torrent := m.torrent
 		return &torrent, true, nil

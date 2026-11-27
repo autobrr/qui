@@ -216,18 +216,18 @@ export function MobilePeerRow({ address, countryCode, country, client, clientIco
         )}
         <span className="min-w-0 flex-1 truncate font-mono text-sm">{address}</span>
         <span className="shrink-0 text-xs tabular-nums">
-          {downSpeed && <span className="text-green-500">↓ {downSpeed}</span>}
+          {downSpeed && <span className="text-chart-text-2">↓ {downSpeed}</span>}
           {downSpeed && upSpeed && " "}
-          {upSpeed && <span className="text-blue-500">↑ {upSpeed}</span>}
+          {upSpeed && <span className="text-chart-text-3">↑ {upSpeed}</span>}
         </span>
       </div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {clientIcon}
         <span className="min-w-0 flex-1 truncate">{[client, connection, flags].filter(Boolean).join(" · ")}</span>
         <div className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted">
-          <div className={cn("h-full", isSeeder ? "bg-green-500" : "bg-foreground/60")} style={{ width: `${progressPercent}%` }} />
+          <div className={cn("h-full", isSeeder ? "bg-success" : "bg-foreground/60")} style={{ width: `${progressPercent}%` }} />
         </div>
-        <span className={cn("w-11 shrink-0 text-right tabular-nums", isSeeder && "text-green-500")}>{progressPercent}%</span>
+        <span className={cn("w-11 shrink-0 text-right tabular-nums", isSeeder && "text-success")}>{progressPercent}%</span>
       </div>
     </div>
   )

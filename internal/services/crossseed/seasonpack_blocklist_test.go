@@ -41,7 +41,7 @@ func blocklistWithPack(t *testing.T, torrentData string) *models.CrossSeedBlockl
 	require.NoError(t, err)
 
 	store := models.NewCrossSeedBlocklistStore(db)
-	_, err = store.Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: meta.HashV1})
+	_, err = store.Upsert(ctx, instance.ID, meta.HashV1, "")
 	require.NoError(t, err)
 	return store
 }
@@ -204,7 +204,7 @@ func TestApplySeasonPackWebhook_BlockedAndSeededIsAlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	require.NoError(t, err)
-	f.adds.existing = &qbt.Torrent{Hash: meta.HashV1, Name: f.packName, Progress: 1}
+	f.adds.existing = &qbt.Torrent{Hash: meta.HashV1.String(), Name: f.packName, Progress: 1}
 	f.adds.existingOn = 1
 
 	resp, err := f.svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
@@ -259,7 +259,7 @@ func TestSeasonPackAdds_RunExternalProgramOnSuccessOnly(t *testing.T) {
 
 			want := []string(nil)
 			if tt.ran {
-				want = []string{"1/" + meta.HashV1}
+				want = []string{"1/" + meta.HashV1.String()}
 			}
 			require.Equal(t, want, runs)
 		})

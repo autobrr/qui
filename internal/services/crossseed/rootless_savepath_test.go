@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -30,7 +31,7 @@ func (m *rootlessSavePathSyncManager) GetTorrentRefs(_ context.Context, _ int, f
 	if len(filter.Hashes) > 0 {
 		torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 		for _, hash := range filter.Hashes {
-			torrents = append(torrents, qbt.Torrent{Hash: hash})
+			torrents = append(torrents, qbt.Torrent{Hash: hash.String()})
 		}
 		return testTorrentRefs(torrents), nil
 	}
@@ -43,7 +44,7 @@ func (m *rootlessSavePathSyncManager) GetTorrentFilesBatch(_ context.Context, _ 
 		if files, ok := m.files[strings.ToLower(h)]; ok {
 			cp := make(qbt.TorrentFiles, len(files))
 			copy(cp, files)
-			result[normalizeHash(h)] = cp
+			result[h] = cp
 		}
 	}
 	return result, nil
@@ -53,7 +54,7 @@ func (*rootlessSavePathSyncManager) ExportTorrent(context.Context, int, string) 
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*rootlessSavePathSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*rootlessSavePathSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -77,7 +78,7 @@ func (m *rootlessSavePathSyncManager) AddTorrent(_ context.Context, _ int, _ []b
 
 func (m *rootlessSavePathSyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
 	for _, hash := range hashes {
-		m.bulkActions = append(m.bulkActions, action+":"+normalizeHash(hash))
+		m.bulkActions = append(m.bulkActions, action+":"+hash)
 	}
 	return nil
 }
@@ -146,7 +147,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Show.S01E01.1080p.WEB-DL-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -206,7 +207,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath(t *testin
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -222,7 +223,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFile
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Show.S01E01.1080p.WEB-DL-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -284,7 +285,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirOverridesSavePath_MultiFile
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -300,7 +301,7 @@ func TestProcessCrossSeedCandidate_SavePathOverridePinsRootlessFileIntoMatchedFo
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Movie.2015.LIMITED.1080p.BluRay.x264-GROUP"
 	sourceName := "Movie.2015.1080p.BluRay.x264-GROUP.mkv"
 
@@ -361,7 +362,7 @@ func TestProcessCrossSeedCandidate_SavePathOverridePinsRootlessFileIntoMatchedFo
 	}
 
 	withAdder(service)
-	service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
+	service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
 
 	require.NotNil(t, sync.addedOptions)
 	require.Equal(t, "false", sync.addedOptions["autoTMM"])
@@ -375,7 +376,7 @@ func TestProcessCrossSeedCandidate_RootlessFileNameMatchUsesSubfolderNoOverride(
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Movie.2015.1080p.BluRay.x264-GROUP"
 	sourceName := "Movie.2015.1080p.BluRay.x264-GROUP.mkv"
 
@@ -436,7 +437,7 @@ func TestProcessCrossSeedCandidate_RootlessFileNameMatchUsesSubfolderNoOverride(
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 
@@ -455,7 +456,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Show.S01E01.1080p.WEB-DL-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -515,7 +516,7 @@ func TestProcessCrossSeedCandidate_RootlessContentDirNoopWhenSavePathMatches(t *
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 

@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func TestBuildAlignmentPlan(t *testing.T) {
@@ -283,7 +284,7 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash: "deadbeef01",
+		hash: "deadbeef01000000000000000000000000000000",
 		files: qbt.TorrentFiles{
 			{Name: "Linux.Distribution.Release.01/a.iso", Size: 4},
 			{Name: "Linux.Distribution.Release.01/b.iso", Size: 5},
@@ -297,7 +298,7 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Linux.Distribution.Release.01",
-			InfoHash: "deadbeef01",
+			InfoHash: "deadbeef01000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Linux.Distribution.Release.01/a.iso", Size: 4},
 				{Path: "Linux.Distribution.Release.01/b.iso", Size: 5},
@@ -426,7 +427,7 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef04",
+		hash:  "deadbeef04000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "ep01.mkv", Size: 6}},
 	}
 	settle := &settleFake{}
@@ -437,7 +438,7 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "ep01",
-			InfoHash:    "deadbeef04",
+			InfoHash:    "deadbeef04000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "ep01.mkv", Size: 6}},
 			PieceLength: 16384,
 		},
@@ -486,7 +487,7 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:      "deadbeef03",
+		hash:      "deadbeef03000000000000000000000000000000",
 		files:     qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		renameErr: errors.New("qBittorrent instance does not support folder renaming"),
 	}
@@ -498,7 +499,7 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Linux.Distribution.Release.01",
-			InfoHash:    "deadbeef03",
+			InfoHash:    "deadbeef03000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 			PieceLength: 16384,
 		},
@@ -543,7 +544,7 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef02",
+		hash:  "deadbeef02000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "Release 01/a.iso", Size: 4}},
 	}
 	settle := &settleFake{}
@@ -554,7 +555,7 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Release 01",
-			InfoHash:    "deadbeef02",
+			InfoHash:    "deadbeef02000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Release 01/a.iso", Size: 4}},
 			PieceLength: 16384,
 		},
@@ -599,7 +600,7 @@ func alignmentRecheckRequest(t *testing.T) (*models.Instance, *alignFakeManager,
 	}
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 	manager := &alignFakeManager{
-		hash:  "deadbeef05",
+		hash:  "deadbeef05000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 	}
 	req := &InjectRequest{
@@ -607,7 +608,7 @@ func alignmentRecheckRequest(t *testing.T) (*models.Instance, *alignFakeManager,
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Linux.Distribution.Release.01",
-			InfoHash:    "deadbeef05",
+			InfoHash:    "deadbeef05000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 			PieceLength: 16384,
 		},
@@ -632,11 +633,11 @@ func TestInjector_Inject_AlignmentRecheckFailure_IsRetried(t *testing.T) {
 		settle := &settleFake{
 			recheckFailures: 1,
 			polls: []*qbt.Torrent{
-				{Hash: "deadbeef05", State: qbt.TorrentStateStoppedUp, Progress: 1},
-				{Hash: "deadbeef05", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
-				{Hash: "deadbeef05", State: qbt.TorrentStatePausedUp, Progress: 1},
-				{Hash: "deadbeef05", State: qbt.TorrentStateUploading, Progress: 1},
-				{Hash: "deadbeef05", State: qbt.TorrentStateUploading, Progress: 1},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStateStoppedUp, Progress: 1},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStatePausedUp, Progress: 1},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStateUploading, Progress: 1},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStateUploading, Progress: 1},
 			},
 		}
 		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.start(t), nil), nil, nil, testBackendPool(instance))
@@ -658,7 +659,7 @@ func TestInjector_Inject_AlignmentSettleQueueFull_ReportsFailure(t *testing.T) {
 	settle := &settleFake{}
 	settler := settle.idle()
 	for full := false; !full; {
-		full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
+		full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: infohash.ParseAll([]string{"0000000000000000000000000000000000000001"})}).QueueFull
 	}
 	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settler, nil), nil, nil, testBackendPool(instance))
 
@@ -712,7 +713,7 @@ func TestInjector_Inject_RegularAddSettleQueueFull(t *testing.T) {
 			settle := &settleFake{}
 			settler := settle.idle()
 			for full := false; !full; {
-				full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
+				full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: infohash.ParseAll([]string{"0000000000000000000000000000000000000001"})}).QueueFull
 			}
 			injector := NewInjector(nil, crossseed.NewAligner(nil), testAdder(&recordingTorrentManager{}, settler, nil), nil, nil, testBackendPool(instance))
 
@@ -739,7 +740,7 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef07",
+		hash:  "deadbeef07000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "Some.Release/movie.2020.mkv", Size: 8}},
 	}
 	settle := &settleFake{}
@@ -750,7 +751,7 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Some.Release",
-			InfoHash:    "deadbeef07",
+			InfoHash:    "deadbeef07000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Some.Release/movie.2020.mkv", Size: 8}},
 			PieceLength: 16384,
 		},
@@ -802,7 +803,7 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef09",
+		hash:  "deadbeef09000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "movie.mkv", Size: 7}},
 	}
 	settle := &settleFake{}
@@ -813,7 +814,7 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Some.Folder",
-			InfoHash:    "deadbeef09",
+			InfoHash:    "deadbeef09000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Some.Folder/movie.mkv", Size: 7}},
 			PieceLength: 16384,
 		},
@@ -868,7 +869,7 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef10",
+		hash:  "deadbeef10000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "Movie.mkv", Size: 7}},
 	}
 	settle := &settleFake{}
@@ -879,7 +880,7 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Some.Folder",
-			InfoHash:    "deadbeef10",
+			InfoHash:    "deadbeef10000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Some.Folder/Movie.mkv", Size: 7}},
 			PieceLength: 16384,
 		},
@@ -928,7 +929,7 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:              "deadbeef12",
+		hash:              "deadbeef12000000000000000000000000000000",
 		files:             qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		visibleAfterCalls: 5,
 	}
@@ -940,7 +941,7 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Linux.Distribution.Release.01",
-			InfoHash:    "deadbeef12",
+			InfoHash:    "deadbeef12000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 			PieceLength: 16384,
 		},

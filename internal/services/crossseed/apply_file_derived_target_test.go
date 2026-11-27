@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -177,23 +178,23 @@ func (f *applyFakeSyncManager) AddTorrent(_ context.Context, _ int, data []byte,
 	if err != nil {
 		return nil, err
 	}
-	f.files[normalizeHash(meta.HashV1)] = slices.Clone(meta.Files)
+	f.files[meta.HashV1.String()] = slices.Clone(meta.Files)
 	return nil, nil
 }
 
 func (f *applyFakeSyncManager) RenameTorrentFile(_ context.Context, _ int, hash, oldPath, newPath string) error {
-	for i, file := range f.files[normalizeHash(hash)] {
+	for i, file := range f.files[hash] {
 		if file.Name == oldPath {
-			f.files[normalizeHash(hash)][i].Name = newPath
+			f.files[hash][i].Name = newPath
 		}
 	}
 	return nil
 }
 
 func (f *applyFakeSyncManager) RenameTorrentFolder(_ context.Context, _ int, hash, oldPath, newPath string) error {
-	for i, file := range f.files[normalizeHash(hash)] {
+	for i, file := range f.files[hash] {
 		if suffix, ok := strings.CutPrefix(file.Name, oldPath+"/"); ok {
-			f.files[normalizeHash(hash)][i].Name = newPath + "/" + suffix
+			f.files[hash][i].Name = newPath + "/" + suffix
 		}
 	}
 	return nil
@@ -232,7 +233,7 @@ func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {
 			Class:               searchCandidateClassStrict,
 			SearchCandidateName: "Sakura Trick S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
 			SourceInstanceID:    instanceID,
-			SourceHash:          sourceHash,
+			SourceHash:          mustParseHash(t, sourceHash),
 		},
 	})
 	require.NoError(t, err)
@@ -242,7 +243,7 @@ func TestCrossSeedDerivesTargetStructureFromMetainfoFiles(t *testing.T) {
 func TestCrossSeedDoesNotReplaceExplicitTVGroupFromFiles(t *testing.T) {
 	const (
 		instanceID   = 1
-		existingHash = "existing-kiri"
+		existingHash = "c0de000000000000000000000000000000000006"
 		incomingName = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-FoV"
 		existingName = "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-KIRI"
 	)
@@ -280,7 +281,7 @@ func TestCrossSeedDoesNotReplaceExplicitTVGroupFromFiles(t *testing.T) {
 					Class:               tt.decisionClass,
 					SearchCandidateName: existingName,
 					SourceInstanceID:    instanceID,
-					SourceHash:          existingHash,
+					SourceHash:          mustParseHash(t, existingHash),
 				},
 			})
 			require.NoError(t, err)
@@ -297,7 +298,7 @@ func TestCrossSeedGroupFallbackRetainsNonTVSelectedFileProvenance(t *testing.T) 
 
 	const (
 		instanceID   = 1
-		existingHash = "bound-movie"
+		existingHash = "c0de000000000000000000000000000000000005"
 		size         = int64(1_000_000)
 		splitName    = "[KIRI] Azure Compass (2024) [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Batch]"
 		taggedName   = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-KIRI"
@@ -323,7 +324,7 @@ func TestCrossSeedGroupFallbackRetainsNonTVSelectedFileProvenance(t *testing.T) 
 			Class:                 searchCandidateClassExactSizeFallback,
 			SearchCandidateName:   splitName,
 			SourceInstanceID:      instanceID,
-			SourceHash:            existingHash,
+			SourceHash:            mustParseHash(t, existingHash),
 			Relaxed:               differencesOf(differenceGroup),
 			GroupFallbackIdentity: "kiri",
 		},
@@ -340,8 +341,8 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 
 	const (
 		instanceID   = 1
-		matchedHash  = "raw-episode-pack"
-		incomingHash = "incoming-episode"
+		matchedHash  = "c0de000000000000000000000000000000000004"
+		incomingHash = "c0de000000000000000000000000000000000003"
 		rawEpisode   = "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI"
 		episodeName  = "Azure.Compass.S01E02.1080p.WEB-DL.H.264-KIRI"
 		packRoot     = "Azure.Compass.S01"
@@ -383,11 +384,11 @@ func TestProcessCrossSeedCandidate_FileDerivedMatchedPackUsesContentPath(t *test
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []*qbt.Torrent{&matched}},
-		[]byte("torrent"), incomingHash, "", episodeName,
+		[]byte("torrent"), mustParseHash(t, incomingHash), infohash.Hash{}, episodeName,
 		&CrossSeedRequest{
 			StartPaused: &startPaused,
 			SearchDecision: searchDecisionProvenance{
-				Class: searchCandidateClassStrict, SourceInstanceID: instanceID, SourceHash: matchedHash,
+				Class: searchCandidateClassStrict, SourceInstanceID: instanceID, SourceHash: mustParseHash(t, matchedHash),
 			},
 		},
 		service.releaseCache.Parse(episodeName), episodeFiles, nil, nil,
@@ -405,7 +406,7 @@ type fileDerivedPackAlignmentSyncManager struct {
 
 func (m *fileDerivedPackAlignmentSyncManager) RenameTorrentFolder(_ context.Context, _ int, hash, oldPath, newPath string) error {
 	m.folderRenames = append(m.folderRenames, fileRenameInstruction{oldPath: oldPath, newPath: newPath})
-	files := m.files[normalizeHash(hash)]
+	files := m.files[hash]
 	for i := range files {
 		if files[i].Name == oldPath {
 			files[i].Name = newPath
@@ -415,7 +416,7 @@ func (m *fileDerivedPackAlignmentSyncManager) RenameTorrentFolder(_ context.Cont
 			files[i].Name = newPath + "/" + suffix
 		}
 	}
-	m.files[normalizeHash(hash)] = files
+	m.files[hash] = files
 	return nil
 }
 
@@ -424,8 +425,8 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 
 	const (
 		instanceID   = 1
-		matchedHash  = "matched-pack"
-		incomingHash = "incoming-pack"
+		matchedHash  = "c0de000000000000000000000000000000000002"
+		incomingHash = "c0de000000000000000000000000000000000001"
 		rawEpisode   = "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI"
 		matchedName  = "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI"
 		incomingRoot = "Incoming.Azure.Compass.S01"
@@ -472,11 +473,11 @@ func TestProcessCrossSeedCandidate_FileDerivedIncomingPackStillAlignsPackRoots(t
 	result := service.processCrossSeedCandidate(
 		context.Background(),
 		CrossSeedCandidate{InstanceID: instanceID, InstanceName: "main", Torrents: []*qbt.Torrent{&matched}},
-		[]byte("torrent"), incomingHash, "", rawEpisode,
+		[]byte("torrent"), mustParseHash(t, incomingHash), infohash.Hash{}, rawEpisode,
 		&CrossSeedRequest{
 			StartPaused: &startPaused,
 			SearchDecision: searchDecisionProvenance{
-				Class: searchCandidateClassStrict, SourceInstanceID: instanceID, SourceHash: matchedHash,
+				Class: searchCandidateClassStrict, SourceInstanceID: instanceID, SourceHash: mustParseHash(t, matchedHash),
 			},
 		},
 		incomingView.release, incomingFiles, nil, nil,
@@ -626,7 +627,7 @@ func TestCrossSeedAppliesSeasonFolderTorrent(t *testing.T) {
 	decision := searchDecisionProvenance{
 		Class:               searchCandidateClassStrict,
 		SourceInstanceID:    instanceID,
-		SourceHash:          sourceHash,
+		SourceHash:          mustParseHash(t, sourceHash),
 		SearchCandidateName: seasonFolderPack,
 	}
 	tests := []struct {
@@ -747,7 +748,7 @@ func TestCrossSeedAppliesNumeralSeasonPack(t *testing.T) {
 			service.settler = idleSettler(service.syncManager)
 			decision := tt.decision
 			decision.SourceInstanceID = instanceID
-			decision.SourceHash = sourceHash
+			decision.SourceHash = mustParseHash(t, sourceHash)
 
 			withAdder(service)
 			resp, err := service.CrossSeed(t.Context(), &CrossSeedRequest{

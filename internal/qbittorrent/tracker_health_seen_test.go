@@ -124,7 +124,7 @@ func TestTrackersReadKeepsTheFlagsFromBeforeTheRequest(t *testing.T) {
 	seen := rig.seenQueue()
 	client, owner, err := rig.sm.getClientAndSyncManager(t.Context(), 1)
 	require.NoError(t, err)
-	noteRead := rig.sm.beginTrackersRead(1, owner, flagsHashError)
+	noteRead := rig.sm.beginTrackersRead(1, owner, testHash(flagsHashError))
 	stale := []qbt.TorrentTracker{{Url: "https://error.example.invalid/announce", Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"}}
 
 	rig.changeErrorTorrentToDown()

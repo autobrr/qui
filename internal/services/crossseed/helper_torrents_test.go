@@ -79,7 +79,7 @@ func TestHeldTitlesLeaveOutHelperTorrents(t *testing.T) {
 				if len(tt.want) == 0 {
 					requireNotHeld(t, held, tt.announce, int64(tt.size))
 				}
-				require.Equal(t, checkAnnounce(t, full, tt.announce, tt.size), got)
+				require.Equal(t, checkFullScan(t, full, tt.announce, tt.size), got)
 			})
 		}
 	}
@@ -89,7 +89,7 @@ func TestASearchFromATickedHelperTorrentFindsNoSource(t *testing.T) {
 	t.Parallel()
 
 	instance := &models.Instance{ID: 1, Name: "seedbox"}
-	helper := qbt.Torrent{Hash: "cccc", Name: "Harbor.Watch.2024.1080p.WEB-DL-GRP", Progress: 1, Size: 1 << 30}
+	helper := qbt.Torrent{Hash: "cccccccccccccccccccccccccccccccccccccccc", Name: "Harbor.Watch.2024.1080p.WEB-DL-GRP", Progress: 1, Size: 1 << 30}
 	svc := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{helper}, map[string]qbt.TorrentFiles{helper.Hash: {{Name: helper.Name + ".mkv", Size: helper.Size}}}),
@@ -99,14 +99,14 @@ func TestASearchFromATickedHelperTorrentFindsNoSource(t *testing.T) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
-	_, err := svc.AnalyzeTorrentForSearchAsync(t.Context(), instance.ID, helper.Hash, false)
+	_, err := svc.AnalyzeTorrentForSearchAsync(t.Context(), instance.ID, mustParseHash(t, helper.Hash), false)
 	require.NoError(t, err, "the same torrent is a source while it is no Helper torrent")
 
 	svc.SetHelperTorrents(fakeHelpers{helper.Hash: true})
-	_, err = svc.AnalyzeTorrentForSearchAsync(t.Context(), instance.ID, helper.Hash, false)
+	_, err = svc.AnalyzeTorrentForSearchAsync(t.Context(), instance.ID, mustParseHash(t, helper.Hash), false)
 	require.ErrorIs(t, err, ErrTorrentNotFound, "analyze")
-	_, err = svc.SearchTorrentMatches(t.Context(), instance.ID, helper.Hash, TorrentSearchOptions{})
+	_, err = svc.SearchTorrentMatches(t.Context(), instance.ID, mustParseHash(t, helper.Hash), TorrentSearchOptions{})
 	require.ErrorIs(t, err, ErrTorrentNotFound, "search")
-	_, err = svc.ApplyTorrentSearchResults(t.Context(), instance.ID, helper.Hash, &ApplyTorrentSearchRequest{Selections: []TorrentSearchSelection{{IndexerID: 1, DownloadURL: "https://indexer.example.invalid/1"}}})
+	_, err = svc.ApplyTorrentSearchResults(t.Context(), instance.ID, mustParseHash(t, helper.Hash), &ApplyTorrentSearchRequest{Selections: []TorrentSearchSelection{{IndexerID: 1, DownloadURL: "https://indexer.example.invalid/1"}}})
 	require.ErrorIs(t, err, ErrTorrentNotFound, "apply")
 }

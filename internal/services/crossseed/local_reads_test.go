@@ -6,7 +6,6 @@ package crossseed
 import (
 	"context"
 	"slices"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -21,6 +20,19 @@ import (
 
 const localReadsPack = "Kaiju Squad (2020) S02 (1080p AMZN WEB-DL x265 10bit EAC3 5.1 - GRP)"
 
+var (
+	readsFolderHash   = heldHash('e', 1)
+	readsErroredHash  = heldHash('e', 2)
+	readsMissingHash  = heldHash('e', 3)
+	readsInFilterHash = heldHash('e', 4)
+	readsOutsideHash  = heldHash('e', 5)
+	readsPackHash     = heldHash('e', 6)
+	readsNamedHash    = heldHash('e', 7)
+	readsOtherHash    = heldHash('e', 8)
+	readsFolder2Hash  = heldHash('e', 9)
+	readsSlowHash     = heldHash('e', 10)
+)
+
 var localReadsInstance = &models.Instance{ID: 1, Name: "main", IsActive: true}
 
 func seasonFolderFiles() qbt.TorrentFiles {
@@ -32,10 +44,15 @@ func seasonFolderTorrent(hash string) qbt.Torrent {
 	return qbt.Torrent{Hash: hash, Name: "Season 2", Size: size, TotalSize: size, Progress: 1}
 }
 
-func localReadsService(torrents []qbt.Torrent, files map[string]qbt.TorrentFiles) (*Service, *fileRequestRecorder) {
+func localReadsService(t *testing.T, torrents []qbt.Torrent, files map[string]qbt.TorrentFiles, more ...localReadsMore) (*Service, *fileRequestRecorder) {
 	recorder := &fileRequestRecorder{fakeSyncManager: newFakeSyncManager(localReadsInstance, torrents, files)}
+	instances := map[int]*models.Instance{localReadsInstance.ID: localReadsInstance}
+	for _, m := range more {
+		instances[m.instance.ID] = m.instance
+		recorder.cached[m.instance.ID] = buildCrossInstanceViews(m.instance, m.torrents)
+	}
 	svc := &Service{
-		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{localReadsInstance.ID: localReadsInstance}},
+		instanceStore:    &fakeInstanceStore{instances: instances},
 		syncManager:      recorder,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
@@ -43,8 +60,16 @@ func localReadsService(torrents []qbt.Torrent, files map[string]qbt.TorrentFiles
 			return &models.CrossSeedAutomationSettings{}, nil
 		},
 	}
+	startHeldTitlesOnFake(t, svc)
 	return svc, recorder
 }
+
+type localReadsMore struct {
+	instance *models.Instance
+	torrents []qbt.Torrent
+}
+
+var localReadsSecond = &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}
 
 func checkPack(t *testing.T, svc *Service) *WebhookCheckResponse {
 	t.Helper()
@@ -57,21 +82,21 @@ func checkPack(t *testing.T, svc *Service) *WebhookCheckResponse {
 }
 
 func TestCheckWebhookRemembersFileReads(t *testing.T) {
-	folder := seasonFolderTorrent("folder")
-	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	folder := seasonFolderTorrent(readsFolderHash)
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
 
 	first := checkPack(t, svc)
 	second := checkPack(t, svc)
 
 	require.True(t, first.CanCrossSeed, "the check reads the season folder from its files")
 	require.Equal(t, first.Matches, second.Matches)
-	require.Equal(t, []string{"folder"}, recorder.requests(), "the second check reads no file list")
+	require.Equal(t, []string{readsFolderHash}, recorder.requests(), "the second check reads no file list")
 }
 
 func TestCheckWebhookReadsNewSeasonFolderOnceFilesArrive(t *testing.T) {
-	torrents := []qbt.Torrent{seasonFolderTorrent("folder")}
+	torrents := []qbt.Torrent{seasonFolderTorrent(readsFolderHash)}
 	folder := &torrents[0]
-	svc, recorder := localReadsService(torrents, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	svc, recorder := localReadsService(t, torrents, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
 	synctest.Test(t, func(t *testing.T) {
 		folder.AddedOn = time.Now().Unix()
 		calls := 0
@@ -91,11 +116,11 @@ func TestCheckWebhookReadsNewSeasonFolderOnceFilesArrive(t *testing.T) {
 }
 
 func TestCheckWebhookSkipsErroredTorrentFiles(t *testing.T) {
-	errored := seasonFolderTorrent("errored")
+	errored := seasonFolderTorrent(readsErroredHash)
 	errored.State = qbt.TorrentStateError
-	missing := seasonFolderTorrent("missing")
+	missing := seasonFolderTorrent(readsMissingHash)
 	missing.State = qbt.TorrentStateMissingFiles
-	svc, recorder := localReadsService([]qbt.Torrent{errored, missing}, map[string]qbt.TorrentFiles{
+	svc, recorder := localReadsService(t, []qbt.Torrent{errored, missing}, map[string]qbt.TorrentFiles{
 		errored.Hash: seasonFolderFiles(), missing.Hash: seasonFolderFiles(),
 	})
 
@@ -107,8 +132,8 @@ func TestCheckWebhookDropsReadsOfFillDuringSettingsSave(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "local-reads-settings")
 	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
 	require.NoError(t, err)
-	folder := seasonFolderTorrent("folder")
-	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	folder := seasonFolderTorrent(readsFolderHash)
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
 	svc.automationStore = store
 	started, release := make(chan struct{}), make(chan struct{})
 	recorder.serve = func(context.Context, []string) (map[string]qbt.TorrentFiles, error) {
@@ -135,15 +160,15 @@ func TestCheckWebhookDropsReadsOfFillDuringSettingsSave(t *testing.T) {
 	require.NoError(t, <-checked)
 
 	require.True(t, checkPack(t, svc).CanCrossSeed)
-	require.Equal(t, []string{"folder", "folder"}, recorder.requests(), "the reads that the fill made with the old rules are not stored")
+	require.Equal(t, []string{readsFolderHash, readsFolderHash}, recorder.requests(), "the reads that the fill made with the old rules are not stored")
 }
 
 func TestCheckWebhookKeepsReadsAfterSettingsSaveWithSameRules(t *testing.T) {
 	db := testdb.NewMigratedSQLite(t, "local-reads-same-rules")
 	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
 	require.NoError(t, err)
-	folder := seasonFolderTorrent("folder")
-	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	folder := seasonFolderTorrent(readsFolderHash)
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
 	svc.automationStore = store
 	checkPack(t, svc)
 
@@ -153,7 +178,7 @@ func TestCheckWebhookKeepsReadsAfterSettingsSaveWithSameRules(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, checkPack(t, svc).CanCrossSeed)
-	require.Equal(t, []string{"folder"}, recorder.requests())
+	require.Equal(t, []string{readsFolderHash}, recorder.requests())
 }
 
 func TestCheckWebhookReadsFilesAgainAfterChange(t *testing.T) {
@@ -163,32 +188,32 @@ func TestCheckWebhookReadsFilesAgainAfterChange(t *testing.T) {
 	}{
 		{"category change", func(_ *Service, folder *qbt.Torrent) { folder.Category = "tv" }},
 		{"rename through qui", func(svc *Service, folder *qbt.Torrent) {
-			svc.forgetLocalRead(localReadsInstance.ID, strings.ToUpper(folder.Hash))
+			svc.forgetLocalRead(localReadsInstance.ID, folder.Hash)
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			torrents := []qbt.Torrent{seasonFolderTorrent("folder")}
-			svc, recorder := localReadsService(torrents, map[string]qbt.TorrentFiles{"folder": seasonFolderFiles()})
+			torrents := []qbt.Torrent{seasonFolderTorrent(readsFolderHash)}
+			svc, recorder := localReadsService(t, torrents, map[string]qbt.TorrentFiles{readsFolderHash: seasonFolderFiles()})
 
 			checkPack(t, svc)
 			tt.change(svc, &torrents[0])
 			require.True(t, checkPack(t, svc).CanCrossSeed)
 
-			require.Equal(t, []string{"folder", "folder"}, recorder.requests())
+			require.Equal(t, []string{readsFolderHash, readsFolderHash}, recorder.requests())
 		})
 	}
 }
 
 func TestBatchMatcherReadsTorrentsOutsideWebhookFilter(t *testing.T) {
-	inFilter := seasonFolderTorrent("in-filter")
+	inFilter := seasonFolderTorrent(readsInFilterHash)
 	inFilter.Category = "tv"
-	outside := seasonFolderTorrent("outside")
+	outside := seasonFolderTorrent(readsOutsideHash)
 	outside.Category = "other"
 	outside.SavePath, outside.ContentPath = "/a", "/a/Season 2"
-	pack := qbt.Torrent{Hash: "pack", Name: localReadsPack, Size: outside.Size, TotalSize: outside.Size, Progress: 1, Category: "other",
+	pack := qbt.Torrent{Hash: readsPackHash, Name: localReadsPack, Size: outside.Size, TotalSize: outside.Size, Progress: 1, Category: "other",
 		SavePath: "/b", ContentPath: "/b/Season 2"}
-	svc, _ := localReadsService([]qbt.Torrent{inFilter, outside, pack}, map[string]qbt.TorrentFiles{
+	svc, _ := localReadsService(t, []qbt.Torrent{inFilter, outside, pack}, map[string]qbt.TorrentFiles{
 		inFilter.Hash: seasonFolderFiles(),
 		outside.Hash:  seasonFolderFiles(),
 		pack.Hash:     seasonFolderFiles(),
@@ -200,13 +225,13 @@ func TestBatchMatcherReadsTorrentsOutsideWebhookFilter(t *testing.T) {
 	require.True(t, checkPack(t, svc).CanCrossSeed)
 	result := svc.BuildCrossMatchSets(t.Context(), localReadsInstance.ID, CrossMatchNeeds{SameExists: true})
 
-	require.Contains(t, result.SameInstanceExists, "outside", "the Batch matcher reads the folder outside the filter from its files")
+	require.Contains(t, result.SameInstanceExists, readsOutsideHash, "the Batch matcher reads the folder outside the filter from its files")
 }
 
 func TestCheckWebhookAnswersWithNameReadsWhenFillHangs(t *testing.T) {
-	folder := seasonFolderTorrent("folder")
-	named := qbt.Torrent{Hash: "named", Name: localReadsPack, Size: folder.Size, TotalSize: folder.Size, Progress: 1}
-	svc, recorder := localReadsService([]qbt.Torrent{folder, named}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	folder := seasonFolderTorrent(readsFolderHash)
+	named := qbt.Torrent{Hash: readsNamedHash, Name: localReadsPack, Size: folder.Size, TotalSize: folder.Size, Progress: 1}
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder, named}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
 	synctest.Test(t, func(t *testing.T) {
 		recorder.serve = func(ctx context.Context, _ []string) (map[string]qbt.TorrentFiles, error) {
 			<-ctx.Done()
@@ -218,18 +243,19 @@ func TestCheckWebhookAnswersWithNameReadsWhenFillHangs(t *testing.T) {
 
 		require.LessOrEqual(t, time.Since(start), localReadWait)
 		require.Len(t, resp.Matches, 1, "the folder keeps its name read")
-		require.Equal(t, "named", resp.Matches[0].TorrentHash)
+		require.Equal(t, readsNamedHash, resp.Matches[0].TorrentHash)
 		time.Sleep(localReadFillTimeout)
 	})
 }
 
 func TestCheckWebhookDropsReadOfTorrentRenamedDuringWait(t *testing.T) {
-	folder := seasonFolderTorrent("folder")
-	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
+	folder := seasonFolderTorrent(readsFolderHash)
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder}, map[string]qbt.TorrentFiles{folder.Hash: seasonFolderFiles()})
 	renamed := folder
 	renamed.Name = "Season 3"
 	recorder.serve = func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
 		recorder.cached[localReadsInstance.ID] = buildCrossInstanceViews(localReadsInstance, []qbt.Torrent{renamed})
+		require.NoError(t, svc.syncManager.(*heldFakeSyncs).sync(ctx, localReadsInstance.ID))
 		return recorder.fakeSyncManager.GetTorrentFilesBatch(ctx, localReadsInstance.ID, hashes)
 	}
 
@@ -239,11 +265,9 @@ func TestCheckWebhookDropsReadOfTorrentRenamedDuringWait(t *testing.T) {
 }
 
 func TestCheckWebhookWaitsOnceForFillsOfAllInstances(t *testing.T) {
-	folder := seasonFolderTorrent("folder")
-	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
-	second := &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}
-	svc.instanceStore.(*fakeInstanceStore).instances[second.ID] = second
-	recorder.cached[second.ID] = buildCrossInstanceViews(second, []qbt.Torrent{seasonFolderTorrent("folder2")})
+	folder := seasonFolderTorrent(readsFolderHash)
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder}, nil, localReadsMore{localReadsSecond, []qbt.Torrent{seasonFolderTorrent(readsFolder2Hash)}})
+	second := localReadsSecond
 	synctest.Test(t, func(t *testing.T) {
 		recorder.serve = func(ctx context.Context, _ []string) (map[string]qbt.TorrentFiles, error) {
 			<-ctx.Done()
@@ -263,8 +287,8 @@ func TestCheckWebhookWaitsOnceForFillsOfAllInstances(t *testing.T) {
 }
 
 func TestCheckWebhookDropsRememberedReadForgottenDuringWait(t *testing.T) {
-	folder, other := seasonFolderTorrent("folder"), seasonFolderTorrent("other")
-	svc, recorder := localReadsService([]qbt.Torrent{folder}, map[string]qbt.TorrentFiles{
+	folder, other := seasonFolderTorrent(readsFolderHash), seasonFolderTorrent(readsOtherHash)
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder}, map[string]qbt.TorrentFiles{
 		folder.Hash: seasonFolderFiles(), other.Hash: seasonFolderFiles(),
 	})
 	require.True(t, checkPack(t, svc).CanCrossSeed)
@@ -280,12 +304,12 @@ func TestCheckWebhookDropsRememberedReadForgottenDuringWait(t *testing.T) {
 	for _, match := range resp.Matches {
 		hashes = append(hashes, match.TorrentHash)
 	}
-	require.Equal(t, []string{"other"}, hashes, "the check drops the read that qui forgot during the wait")
+	require.Equal(t, []string{readsOtherHash}, hashes, "the check drops the read that qui forgot during the wait")
 }
 
 func TestCheckWebhookRefreshesRememberedReadAfterAnHour(t *testing.T) {
-	folder := seasonFolderTorrent("folder")
-	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
+	folder := seasonFolderTorrent(readsFolderHash)
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder}, nil)
 	synctest.Test(t, func(t *testing.T) {
 		files := seasonFolderFiles()
 		recorder.serve = func(context.Context, []string) (map[string]qbt.TorrentFiles, error) {
@@ -301,13 +325,13 @@ func TestCheckWebhookRefreshesRememberedReadAfterAnHour(t *testing.T) {
 		synctest.Wait()
 
 		require.False(t, checkPack(t, svc).CanCrossSeed, "the next check uses the refreshed read")
-		require.Equal(t, []string{"folder", "folder"}, recorder.requests())
+		require.Equal(t, []string{readsFolderHash, readsFolderHash}, recorder.requests())
 	})
 }
 
 func TestCheckWebhookRemembersFailedReadForAMinute(t *testing.T) {
-	folder := seasonFolderTorrent("folder")
-	svc, recorder := localReadsService([]qbt.Torrent{folder}, nil)
+	folder := seasonFolderTorrent(readsFolderHash)
+	svc, recorder := localReadsService(t, []qbt.Torrent{folder}, nil)
 	synctest.Test(t, func(t *testing.T) {
 		var files qbt.TorrentFiles
 		recorder.serve = func(context.Context, []string) (map[string]qbt.TorrentFiles, error) {
@@ -320,22 +344,20 @@ func TestCheckWebhookRemembersFailedReadForAMinute(t *testing.T) {
 		time.Sleep(localReadFailureTTL + time.Second)
 
 		require.True(t, checkPack(t, svc).CanCrossSeed, "after the minute the check reads the files again")
-		require.Equal(t, []string{"folder", "folder"}, recorder.requests())
+		require.Equal(t, []string{readsFolderHash, readsFolderHash}, recorder.requests())
 	})
 }
 
 func TestCheckWebhookStartsFillsOfAllInstancesBeforeWaiting(t *testing.T) {
-	svc, recorder := localReadsService([]qbt.Torrent{seasonFolderTorrent("slow")}, nil)
-	second := &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}
-	svc.instanceStore.(*fakeInstanceStore).instances[second.ID] = second
-	recorder.cached[second.ID] = buildCrossInstanceViews(second, []qbt.Torrent{seasonFolderTorrent("folder2")})
+	svc, recorder := localReadsService(t, []qbt.Torrent{seasonFolderTorrent(readsSlowHash)}, nil, localReadsMore{localReadsSecond, []qbt.Torrent{seasonFolderTorrent(readsFolder2Hash)}})
+	second := localReadsSecond
 	synctest.Test(t, func(t *testing.T) {
 		recorder.serve = func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
-			if slices.Contains(hashes, "slow") {
+			if slices.Contains(hashes, readsSlowHash) {
 				<-ctx.Done()
 				return nil, ctx.Err()
 			}
-			return map[string]qbt.TorrentFiles{"folder2": seasonFolderFiles()}, nil
+			return map[string]qbt.TorrentFiles{readsFolder2Hash: seasonFolderFiles()}, nil
 		}
 
 		size := int64(len(seasonFolderFiles())) * corpusEpisodeSize
@@ -350,18 +372,16 @@ func TestCheckWebhookStartsFillsOfAllInstancesBeforeWaiting(t *testing.T) {
 }
 
 func TestCheckWebhookDropsRememberedReadForgottenWhileOtherInstanceFills(t *testing.T) {
-	svc, recorder := localReadsService([]qbt.Torrent{seasonFolderTorrent("slow")}, nil)
-	second := &models.Instance{ID: localReadsInstance.ID + 1, Name: "second", IsActive: true}
-	svc.instanceStore.(*fakeInstanceStore).instances[second.ID] = second
-	recorder.cached[second.ID] = buildCrossInstanceViews(second, []qbt.Torrent{seasonFolderTorrent("folder2")})
+	svc, recorder := localReadsService(t, []qbt.Torrent{seasonFolderTorrent(readsSlowHash)}, nil, localReadsMore{localReadsSecond, []qbt.Torrent{seasonFolderTorrent(readsFolder2Hash)}})
+	second := localReadsSecond
 	synctest.Test(t, func(t *testing.T) {
 		recorder.serve = func(_ context.Context, hashes []string) (map[string]qbt.TorrentFiles, error) {
-			if slices.Contains(hashes, "slow") {
+			if slices.Contains(hashes, readsSlowHash) {
 				time.Sleep(time.Second)
-				svc.forgetLocalRead(second.ID, "folder2")
+				svc.forgetLocalRead(second.ID, readsFolder2Hash)
 				return nil, nil
 			}
-			return map[string]qbt.TorrentFiles{"folder2": seasonFolderFiles()}, nil
+			return map[string]qbt.TorrentFiles{readsFolder2Hash: seasonFolderFiles()}, nil
 		}
 		size := int64(len(seasonFolderFiles())) * corpusEpisodeSize
 		check := func(instanceIDs ...int) *WebhookCheckResponse {

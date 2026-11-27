@@ -16,6 +16,7 @@ import (
 
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type InstanceLister interface {
@@ -52,7 +53,7 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 }
 
 func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, maxAge time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
-	unique := dedupeHashes(hashes)
+	unique := infohash.UniqueStrings(hashes)
 	if len(unique) == 0 {
 		return map[string]qbt.TorrentFiles{}, nil, nil
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Kind string
@@ -124,7 +125,7 @@ type Hint struct {
 }
 
 type Member struct {
-	Hash             string
+	Hash             infohash.Hash
 	Name             string
 	SourceSavePath   string
 	TargetInstanceID int
@@ -156,7 +157,7 @@ const (
 
 type Helper struct {
 	InstanceID int
-	Hash       string
+	Hash       infohash.Hash
 	Random     []byte
 	Owner      OwnerKind
 	OwnerID    int64

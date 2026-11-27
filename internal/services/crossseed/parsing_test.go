@@ -33,7 +33,7 @@ func TestParseTorrentTolerantOfMalformedAnnounceList(t *testing.T) {
 			meta, err := ParseTorrentMetadataWithInfo(data)
 			require.NoError(t, err)
 			assert.Equal(t, "Test.Rel", meta.Name)
-			assert.Equal(t, "1698fdcc4e79d4af9ed4406b72639ccdeec12c61", meta.HashV1)
+			assert.Equal(t, "1698fdcc4e79d4af9ed4406b72639ccdeec12c61", meta.HashV1.String())
 
 			assert.Equal(t, tt.wantDomain, ParseTorrentAnnounceDomain(data))
 		})
@@ -563,7 +563,7 @@ func TestParseTorrentMetadata_DirectionalControls(t *testing.T) {
 			meta, err := ParseTorrentMetadataWithInfo(buf.Bytes())
 			require.NoError(t, err)
 			require.Equal(t, wantName, meta.Name)
-			require.Equal(t, mi.HashInfoBytes().HexString(), meta.HashV1)
+			require.Equal(t, mi.HashInfoBytes().HexString(), meta.HashV1.String())
 			require.Equal(t, rawName, meta.Info.Name)
 			require.Equal(t, info.Files, meta.Info.Files)
 			require.Len(t, meta.Files, 1)

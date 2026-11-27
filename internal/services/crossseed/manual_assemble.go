@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -79,7 +81,7 @@ func (s *Service) CheckManualAssemble(ctx context.Context, req *ManualAssembleRe
 }
 
 func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRequest) (*ManualAssembleResponse, error) {
-	if len(normalizedHashes(req.TargetHashes...)) < 2 {
+	if len(targetHashKeys(req.TargetHashes)) < 2 {
 		return nil, fmt.Errorf("%w: assembly requires at least two target hashes", ErrInvalidRequest)
 	}
 	planned, err := s.planManualAssemble(ctx, req)
@@ -183,13 +185,13 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	torrents := make(map[string]*qbt.Torrent, len(cached))
 	for _, view := range cached {
 		if view.Torrent != nil {
-			torrents[normalizeHash(view.Hash)] = view.Torrent
+			torrents[view.Hash] = view.Torrent
 		}
 	}
-	hashes := normalizedHashes(req.TargetHashes...)
+	hashes := targetHashKeys(req.TargetHashes)
 	var candidates map[episodeIdentity][]episodeMatch
 	if len(hashes) == 0 {
-		proposals, err := s.ManualMatchProposals(ctx, inst.ID, torrentBytes, "")
+		proposals, err := s.ManualMatchProposals(ctx, inst.ID, torrentBytes, infohash.Hash{})
 		if err != nil {
 			return nil, err
 		}
@@ -204,8 +206,8 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 			if err != nil {
 				return nil, err
 			}
-			match := s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(proposal.Name), packRelease, files[normalizeHash(proposal.Hash)], meta.Files, defaultSizeMismatchTolerancePercent)
-			_, unmatched := matchSourceFilesToCandidates(uploadFiles, usableFiles(files[normalizeHash(proposal.Hash)]))
+			match := s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(proposal.Name), packRelease, files[proposal.Hash], meta.Files, defaultSizeMismatchTolerancePercent)
+			_, unmatched := matchSourceFilesToCandidates(uploadFiles, usableFiles(files[proposal.Hash]))
 			if match.MatchType != "" && len(uploadFiles) > 0 && len(unmatched) == 0 {
 				resp.Targets = append(resp.Targets, ManualAssembleTarget{Hash: proposal.Hash, Name: proposal.Name})
 				resp.DefaultCategory = proposal.Category
@@ -264,7 +266,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	}
 	selected := make(map[string]struct{}, len(episodes))
 	for _, episode := range episodes {
-		selected[normalizeHash(episode.torrentHash)] = struct{}{}
+		selected[episode.torrentHash] = struct{}{}
 	}
 	if len(hashes) == 0 {
 		hashes = slices.Sorted(maps.Keys(selected))
@@ -298,4 +300,21 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	}
 	planned.build, planned.episodes = plan, episodes
 	return planned, nil
+}
+
+func targetHashKeys(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	keys := make([]string, 0, len(values))
+	for _, value := range values {
+		key := strings.TrimSpace(value)
+		if hash, err := infohash.Parse(key); err == nil {
+			key = hash.String()
+		}
+		if _, dup := seen[key]; dup || key == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys
 }

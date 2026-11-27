@@ -41,6 +41,7 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type show struct {
@@ -519,7 +520,7 @@ func TestTransferMovesATorrent(t *testing.T) {
 	require.Equal(t, "true", add.Get("seedMode"))
 	require.Equal(t, "false", add.Get("autoTMM"))
 	require.Equal(t, r.dstDir, add.Get("savepath"))
-	seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+	seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 	require.NoError(t, err)
 	require.Len(t, seeding, 1)
 	require.Equal(t, "stalledUP", string(seeding[0].State))
@@ -528,7 +529,7 @@ func TestTransferMovesATorrent(t *testing.T) {
 	require.Empty(t, tree(t, r.srcDir))
 	_, err = os.Stat(filepath.Join(r.srcDir, showName))
 	require.ErrorIs(t, err, fs.ErrNotExist, "the emptied folder goes too")
-	require.False(t, r.store.IsClaimed(r.source.ID, s.hash), "the finished Transfer releases the torrent")
+	require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)), "the finished Transfer releases the torrent")
 }
 
 func TestTransferFollowsTheAfterChoice(t *testing.T) {
@@ -558,7 +559,7 @@ func TestTransferFollowsTheAfterChoice(t *testing.T) {
 			if tc.sourceTorrent {
 				require.False(t, r.src.Stopped(s.hash), "the source seeds on")
 			}
-			seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			seeding, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 			require.NoError(t, err)
 			require.Len(t, seeding, 1)
 			require.Equal(t, tc.targetState, string(seeding[0].State))
@@ -591,7 +592,7 @@ func TestTransferPutsATorrentAtTheSavePathOfItsCategory(t *testing.T) {
 
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 			require.Equal(t, contents(s, tc.folder+"/"+showName), tree(t, r.dstDir))
-			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 			require.NoError(t, err)
 			require.Len(t, landed, 1)
 			require.Equal(t, "archive", landed[0].Category)
@@ -630,7 +631,7 @@ func TestTransferLeavesATorrentOnAutomaticManagement(t *testing.T) {
 
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
 			require.Equal(t, contents(s, path.Join(tc.folder, showName)), tree(t, r.dstDir))
-			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			landed, err := r.sync.GetTorrentRefsFresh(t.Context(), r.target.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 			require.NoError(t, err)
 			require.Len(t, landed, 1)
 			require.Equal(t, tc.managed, landed[0].AutoManaged)
@@ -703,7 +704,7 @@ func TestTransferRefuses(t *testing.T) {
 			return r.request(s)
 		}, reason: "Already on the target: homelab has this torrent."},
 		{name: "a helper torrent", setup: func(r *rig, s show) transfer.Request {
-			require.NoError(t, r.store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: r.source.ID, Hash: s.hash,
+			require.NoError(t, r.store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: r.source.ID, Hash: mustParse(t, s.hash),
 				Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1}))
 			return r.request(s)
 		}, reason: "qui added this torrent for a Transfer or a Share."},
@@ -738,7 +739,7 @@ func TestTransferRefuses(t *testing.T) {
 			require.ErrorAs(t, err, &refusal)
 			require.Contains(t, refusal.Reason, tc.reason)
 			require.Equal(t, tc.moving, errors.Is(err, transfer.ErrMoving), "a rule waits for the end of a move")
-			require.False(t, r.store.IsClaimed(r.source.ID, s.hash), "a refused Transfer claims nothing")
+			require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)), "a refused Transfer claims nothing")
 			require.Zero(t, r.dst.Writes("torrents/add"))
 		})
 	}
@@ -910,7 +911,7 @@ func TestCancelOfAWaitingTransferRunsNoCleanup(t *testing.T) {
 		steps = append(steps, step.Name)
 	}
 	require.Equal(t, []string{"start", "cancelled"}, steps, "no cleanup step")
-	require.False(t, r.store.IsClaimed(r.source.ID, second.hash), "the cancel frees the torrent")
+	require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, second.hash)), "the cancel frees the torrent")
 	require.False(t, r.src.Stopped(second.hash))
 	require.Equal(t, transfer.StateDone, r.get(firstID).State)
 }
@@ -921,7 +922,7 @@ func TestASavedCancelEndsTheTransferAtTheNextStart(t *testing.T) {
 	record.State, record.RetryAt = transfer.StateCancelled, time.Time{}
 	record.Steps = []transfer.Step{{Name: "start", At: r.now()}, {Name: string(transfer.StateCancelled), At: r.now()}}
 	require.NoError(t, r.store.Save(t.Context(), record))
-	require.True(t, r.store.IsClaimed(r.source.ID, "bbbb"))
+	require.True(t, r.store.IsClaimed(r.source.ID, hashOf("bbbb")))
 
 	r.restart()
 	r.svc.Wait()
@@ -934,7 +935,7 @@ func TestASavedCancelEndsTheTransferAtTheNextStart(t *testing.T) {
 		steps = append(steps, step.Name)
 	}
 	require.Equal(t, []string{"start", "cancelled"}, steps, "the Transfer did not run")
-	require.False(t, r.store.IsClaimed(r.source.ID, "bbbb"), "the end frees the torrent")
+	require.False(t, r.store.IsClaimed(r.source.ID, hashOf("bbbb")), "the end frees the torrent")
 }
 
 func TestACancelIsSavedBeforeCancelAnswers(t *testing.T) {
@@ -1097,7 +1098,7 @@ func TestTransferRetriesALookupThatGetsNoAnswer(t *testing.T) {
 			require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
 			require.Contains(t, record.FailureReason, fsops.ErrConnectionLost.Error())
 			require.True(t, record.FinishedAt.IsZero())
-			require.True(t, r.store.IsClaimed(r.source.ID, s.hash))
+			require.True(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 			require.Equal(t, source, tree(t, r.srcDir), "the source keeps its files")
 			switch {
 			case tc.resumed:
@@ -1160,7 +1161,7 @@ func TestTransferFailsWhenTheSourceChanges(t *testing.T) {
 		{name: "a recheck", change: func(r *rig, s show) {
 			r.src.CheckSyncs = 1000
 			require.NoError(t, r.sync.BulkAction(r.t.Context(), r.source.ID, []string{s.hash}, "recheck"))
-		}, reason: "qBittorrent checks it again", class: transfer.FailureTemporary},
+		}, reason: "the check of qBittorrent did not end", class: transfer.FailureTemporary},
 		{name: "a file that grows", change: func(r *rig, s show) {
 			f, err := os.OpenFile(filepath.Join(r.srcDir, showName, "Show.S01E02.mkv"), os.O_APPEND|os.O_WRONLY, 0o600)
 			require.NoError(t, err)
@@ -1185,12 +1186,31 @@ func TestTransferFailsWhenTheSourceChanges(t *testing.T) {
 				require.Empty(t, tree(t, r.dstDir), "qui removes what it wrote")
 			} else {
 				require.NotEmpty(t, tree(t, r.dstDir), "qui keeps what it wrote")
-				require.True(t, r.store.IsClaimed(r.source.ID, s.hash))
+				require.True(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 			}
 			require.True(t, r.src.Has(s.hash))
 			require.Zero(t, r.dst.Writes("torrents/add"))
 		})
 	}
+}
+
+func TestTransferWaitsForARecheckOnTheSource(t *testing.T) {
+	r := newRig(t)
+	s := newShow(t, showName)
+	r.seed(s)
+	r.src.CheckSyncs = 5
+	var once sync.Once
+	r.disk.onWrite = func(string) {
+		once.Do(func() {
+			require.NoError(t, r.sync.BulkAction(r.t.Context(), r.source.ID, []string{s.hash}, "recheck"))
+		})
+	}
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Equal(t, 1, strings.Count(logOf(record), "qui waits for the check to end"))
 }
 
 func TestTransferChecksOnTheTargetWithoutAConfirmedFlush(t *testing.T) {
@@ -1209,9 +1229,9 @@ func TestTransferChecksOnTheTargetWithoutAConfirmedFlush(t *testing.T) {
 	helpers, err := r.store.HelpersOf(t.Context(), transfer.OwnerTransfer, record.ID)
 	require.NoError(t, err)
 	require.Len(t, helpers, 1)
-	require.Equal(t, map[string]bool{helpers[0].Hash: true, s.hash: false}, helperAtAdd,
+	require.Equal(t, map[string]bool{helpers[0].Hash.String(): true, s.hash: false}, helperAtAdd,
 		"the helper had its registry row at its add")
-	require.False(t, r.dst.Has(helpers[0].Hash), "qui removed the helper")
+	require.False(t, r.dst.Has(helpers[0].Hash.String()), "qui removed the helper")
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 	require.Contains(t, logOf(record), "Proof: the check on homelab passed all 5 pieces.")
 	require.False(t, r.src.Has(s.hash))

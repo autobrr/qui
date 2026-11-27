@@ -81,7 +81,7 @@ func gazelleStatuses(lookups []GazelleLookup) map[string]string {
 
 func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 	match := func(context.Context) (*gazellemusic.Match, error) {
-		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), QueriedHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}, nil
 	}
 	rejected := func(context.Context) (*gazellemusic.Match, error) {
 		return nil, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied)
@@ -120,7 +120,7 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 			name:     "a site that the request leaves out is not selected",
 			tracker:  otherTracker,
 			settings: bothGazelleKeys(),
-			opts:     TorrentSearchOptions{GazelleSites: []string{"redacted.sh"}},
+			opts:     TorrentSearchOptions{SitePick: models.SitePick{GazelleSites: []string{"redacted.sh"}}},
 			want:     map[string]string{"redacted.sh": "no_match ", "orpheus.network": "not_asked not_selected"},
 		},
 		{
@@ -134,7 +134,7 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newGazelleSeamService(t, tt.tracker, tt.settings, tt.answers)
 
-			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, tt.opts)
+			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), tt.opts)
 
 			require.NoError(t, err)
 			require.Equal(t, tt.want, gazelleStatuses(resp.GazelleLookups))
@@ -160,12 +160,12 @@ func TestSearchTorrentMatches_GazelleHashMatchOutsideMusicAndBooks(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newGazelleSeamService(t, redTracker, bothGazelleKeys(), gazelleSiteAnswers{
 				"orpheus.network": func(context.Context) (*gazellemusic.Match, error) {
-					return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+					return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), QueriedHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}, nil
 				},
 			})
 			svc.syncManager.(*hashFilteringSyncManager).filesByHash[gazelleSeamHash] = tt.files
 
-			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 
 			require.NoError(t, err)
 			require.Equal(t, "match ", gazelleStatuses(resp.GazelleLookups)["orpheus.network"])
@@ -184,7 +184,7 @@ func TestSearchTorrentMatches_SlowGazelleSiteTimesOutAlone(t *testing.T) {
 	})
 
 	synctest.Test(t, func(t *testing.T) {
-		resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+		resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 
 		require.NoError(t, err)
 		require.Equal(t, map[string]string{"redacted.sh": "failed timed_out", "orpheus.network": "no_match "}, gazelleStatuses(resp.GazelleLookups))
@@ -204,7 +204,7 @@ func TestSearchTorrentMatches_RejectedKeyOpensSystemNotice(t *testing.T) {
 	notifier := &recordingNotifier{}
 	svc.systemNotices = systemnotice.New(notifier)
 
-	_, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+	_, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 
 	notices := svc.systemNotices.List()
@@ -214,7 +214,7 @@ func TestSearchTorrentMatches_RejectedKeyOpensSystemNotice(t *testing.T) {
 	require.Equal(t, "Orpheus rejected the API key", notifier.Events()[0].Title)
 
 	rejectKey = false
-	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 	require.Empty(t, svc.systemNotices.List(), "an answer of the site closes its notice")
 }
@@ -279,14 +279,14 @@ func TestExecuteCompletionSearch_NotificationHasGazelleLine(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key"}
 	svc := newGazelleSeamService(t, "https://home.opsfet.ch/announce", settings, gazelleSiteAnswers{
 		"redacted.sh": func(context.Context) (*gazellemusic.Match, error) {
-			return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "redacted.sh", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+			return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "redacted.sh", TargetHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), QueriedHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}, nil
 		},
 	})
 	notifier := &recordingNotifier{}
 	svc.notifier = notifier
-	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Success: true}, nil
-	}
+	})
 	source := qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: "https://home.opsfet.ch/announce"}
 
 	err := svc.executeCompletionSearch(t.Context(), gazelleSeamInstanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{InstanceID: gazelleSeamInstanceID, Enabled: true})
@@ -439,12 +439,12 @@ func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
 	plan, err := svc.collectGazellePlan(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], clients)
 	require.NoError(t, err)
 	require.Equal(t, GazelleWillAsk, gazelleLookupOf(t, plan, "orpheus.network").Status)
-	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 
 	require.Equal(t, 1, syncManager.exportCalls)
 
-	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()}, false)
+	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], resolvedSitePick{}, searchScopeFacts{gazelleOnly: true, gazelleKeys: clients.hosts()})
 	require.NoError(t, scope.err)
 	require.Equal(t, 2, syncManager.exportCalls)
 }
@@ -470,9 +470,9 @@ func TestSearchRunLoop_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 31), Name: name, Progress: 1.0, Size: 123, Tracker: otherTracker}
 	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-gazelle-off", torznabMatchTracker(t, name), torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
 	state.gazelleClients = &gazelleClientSet{off: true}
-	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Success: true}, nil
-	}
+	})
 
 	logbudget.AssertSilent(t, func() { runSearchLoopToCompletion(t, svc, state) }, gazelleWords...)
 
@@ -486,9 +486,9 @@ func TestExecuteCompletionSearch_GazelleOffSaysNothingAboutREDOPS(t *testing.T) 
 	addMusicIndexer(svc, gazelleSeamInstanceID, gazelleSeamHash, torznabMatchTracker(t, gazelleSeamName))
 	notifier := &recordingNotifier{}
 	svc.notifier = notifier
-	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Success: true}, nil
-	}
+	})
 	source := qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: otherTracker}
 
 	logbudget.AssertSilent(t, func() {

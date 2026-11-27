@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/releases"
 )
@@ -623,7 +624,7 @@ func (s *Service) planSeasonPack(
 		for id, file := range localFiles {
 			info, statErr := backend.Stat(ctx, file.sourcePath)
 			if statErr != nil || !info.Mode.IsRegular() || info.Size != file.size {
-				prep.rejected[normalizeHash(episodes[id].torrentHash)] = "local_file_unavailable"
+				prep.rejected[episodes[id].torrentHash] = "local_file_unavailable"
 				delete(episodes, id)
 				delete(localFiles, id)
 			}
@@ -1286,14 +1287,13 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 	seenHashes := make(map[string]struct{})
 	for _, episodeCandidates := range candidates {
 		for _, candidate := range episodeCandidates {
-			normalized := normalizeHash(candidate.torrentHash)
-			if normalized == "" {
+			if candidate.torrentHash == "" {
 				continue
 			}
-			if _, seen := seenHashes[normalized]; seen {
+			if _, seen := seenHashes[candidate.torrentHash]; seen {
 				continue
 			}
-			seenHashes[normalized] = struct{}{}
+			seenHashes[candidate.torrentHash] = struct{}{}
 			hashes = append(hashes, candidate.torrentHash)
 		}
 	}
@@ -1318,11 +1318,11 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 		var lastErr error
 		reject := func(candidate episodeMatch, reason string) {
 			if rejected != nil {
-				rejected[normalizeHash(candidate.torrentHash)] = reason
+				rejected[candidate.torrentHash] = reason
 			}
 		}
 		for _, candidate := range candidates[id] {
-			files, ok := filesByHash[normalizeHash(candidate.torrentHash)]
+			files, ok := filesByHash[candidate.torrentHash]
 			if !ok || len(files) == 0 {
 				reject(candidate, "file_list_unavailable")
 				lastErr = fmt.Errorf("%w: no file list for torrent %s", errLayoutMismatch, candidate.torrentHash)
@@ -1360,7 +1360,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 			}
 
 			localFile.packFile = expectedFile.file.Name
-			delete(rejected, normalizeHash(candidate.torrentHash))
+			delete(rejected, candidate.torrentHash)
 			selected[id] = candidate
 			localFiles[id] = localFile
 			break
@@ -1648,12 +1648,12 @@ func determineLinkMode(instances []*models.Instance, instanceID int) string {
 	return ""
 }
 
-func collectHashes(meta TorrentMetadata) []string {
-	var hashes []string
-	if meta.HashV1 != "" {
+func collectHashes(meta TorrentMetadata) []infohash.Hash {
+	var hashes []infohash.Hash
+	if !meta.HashV1.IsZero() {
 		hashes = append(hashes, meta.HashV1)
 	}
-	if meta.HashV2 != "" {
+	if !meta.HashV2.IsZero() {
 		hashes = append(hashes, meta.HashV2)
 	}
 	return hashes

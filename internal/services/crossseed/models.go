@@ -9,6 +9,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -133,16 +134,14 @@ type CrossSeedCandidate struct {
 }
 
 type TorrentSearchOptions struct {
-	Query                  string   `json:"query,omitempty"`
-	Limit                  int      `json:"limit,omitempty"`
-	IndexerIDs             []int    `json:"indexer_ids,omitempty"`
-	FindIndividualEpisodes bool     `json:"find_individual_episodes,omitempty"`
-	CacheMode              string   `json:"cache_mode,omitempty"`
-	DisableTorznab         bool     `json:"disable_torznab,omitempty"`
-	GazelleSites           []string `json:"gazelle_sites,omitempty"`
-	SkipGazelle            bool     `json:"-"`
-	RescueTitleMismatches  bool     `json:"-"`
-	TitleRescueResultLimit int      `json:"-"`
+	Query                  string          `json:"query,omitempty"`
+	Limit                  int             `json:"limit,omitempty"`
+	SitePick               models.SitePick `json:"-"`
+	FindIndividualEpisodes bool            `json:"find_individual_episodes,omitempty"`
+	CacheMode              string          `json:"cache_mode,omitempty"`
+	SkipGazelle            bool            `json:"-"`
+	RescueTitleMismatches  bool            `json:"-"`
+	TitleRescueResultLimit int             `json:"-"`
 }
 
 type TorrentSearchResult struct {

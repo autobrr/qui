@@ -79,6 +79,7 @@ func (r *packRig) held(sources ...AlternateTitleSource) packService {
 func newPackService(svc *Service, sonarr *spyARRLookupService) packService {
 	runs := &stubSeasonPackRunStore{}
 	svc.seasonPackRunStore = runs
+	svc.injection = svc
 	return packService{Service: svc, runs: runs, sonarr: sonarr}
 }
 

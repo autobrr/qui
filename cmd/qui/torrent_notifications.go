@@ -13,6 +13,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -95,7 +96,7 @@ func refreshTorrentsForNotification(ctx context.Context, syncManager torrentNoti
 	refreshCtx, cancel := context.WithTimeout(ctx, torrentAddedRefreshTimeout)
 	defer cancel()
 
-	fresh, err := syncManager.GetTorrentRefsFresh(refreshCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+	fresh, err := syncManager.GetTorrentRefsFresh(refreshCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 	if err != nil {
 		log.Debug().
 			Err(err).

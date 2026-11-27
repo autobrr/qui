@@ -16,6 +16,8 @@ const (
 	viewTestPasskey = "abc123xyz"
 	viewTestTracker = "https://tracker.example.invalid/" + viewTestPasskey + "/announce"
 	viewTestOrigin  = "https://tracker.example.invalid"
+	viewTestHashA   = "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111"
+	viewTestHashB   = "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222"
 )
 
 func newViewTestManager(t *testing.T) (*SyncManager, int) {
@@ -29,10 +31,10 @@ func newViewTestManager(t *testing.T) (*SyncManager, int) {
 		require.NoError(t, err)
 		clients[instance.ID] = newRuleTestClient(t, instance.ID, map[string]any{
 			"torrents": map[string]any{
-				"aa": map[string]any{"name": "A", "state": "stalledUP", "category": "movies", "progress": 1,
+				viewTestHashA: map[string]any{"name": "A", "state": "stalledUP", "category": "movies", "progress": 1,
 					"tracker": viewTestTracker, "trackers_count": 1,
-					"magnet_uri": "magnet:?xt=urn:btih:aa&tr=" + viewTestTracker},
-				"bb": map[string]any{"name": "B", "state": "downloading", "category": "tv", "progress": 0.5},
+					"magnet_uri": "magnet:?xt=urn:btih:" + viewTestHashA + "&tr=" + viewTestTracker},
+				viewTestHashB: map[string]any{"name": "B", "state": "downloading", "category": "tv", "progress": 0.5},
 			},
 		})
 		ids = append(ids, instance.ID)
@@ -76,7 +78,7 @@ func TestListTorrentsHidesPasskeysUnlessTheViewStatesFullAccess(t *testing.T) {
 				t.Parallel()
 				view := scope.view
 				view.FullPasskeyAccess = access.full
-				view.Filters = FilterOptions{Hashes: []string{"aa"}}
+				view.Filters = FilterOptions{Hashes: []string{viewTestHashA}}
 
 				resp, err := sm.ListTorrents(t.Context(), view)
 				require.NoError(t, err)

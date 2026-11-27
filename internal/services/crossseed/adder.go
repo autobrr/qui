@@ -16,11 +16,12 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type adderSync interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 }
 
@@ -182,7 +183,7 @@ func (f AddFacts) Verdict() AddVerdict {
 
 type PreAddCheck struct {
 	instanceID int
-	hashes     []string
+	hashes     []infohash.Hash
 }
 
 type AddOutcome int
@@ -210,8 +211,8 @@ type AddResult struct {
 
 const blocklistCheckFailed = "Failed to check cross-seed blocklist"
 
-func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashes ...string) (PreAddCheck, *AddResult) {
-	check := PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
+func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashes ...infohash.Hash) (PreAddCheck, *AddResult) {
+	check := PreAddCheck{instanceID: instanceID, hashes: infohash.NewSet(hashes...).Hashes()}
 
 	existing, exists, err := a.sync.HasTorrentByAnyHash(ctx, instanceID, check.hashes)
 	if err != nil {
@@ -220,7 +221,7 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 	if exists && existing != nil {
 		log.Debug().
 			Int("instanceID", instanceID).
-			Strs("torrentHashes", check.hashes).
+			Strs("torrentHashes", hashStrings(check.hashes)).
 			Str("existingHash", existing.Hash).
 			Str("existingName", existing.Name).
 			Msg("Cross-seed apply skipped: torrent already exists in instance")
@@ -234,7 +235,7 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 		if linked != nil {
 			log.Trace().
 				Int("instanceID", instanceID).
-				Strs("torrentHashes", check.hashes).
+				Strs("torrentHashes", hashStrings(check.hashes)).
 				Str("existingHash", linked.Hash).
 				Str("existingName", linked.Name).
 				Str("linkedInstance", where).
@@ -251,8 +252,8 @@ func (a *Adder) Check(ctx context.Context, instanceID int, facts AddFacts, hashe
 		if blocked {
 			log.Info().
 				Int("instanceID", instanceID).
-				Strs("torrentHashes", check.hashes).
-				Str("blockedHash", blockedHash).
+				Strs("torrentHashes", hashStrings(check.hashes)).
+				Stringer("blockedHash", blockedHash).
 				Msg("Cross-seed apply skipped: infohash is blocked")
 			return PreAddCheck{}, &AddResult{Status: StatusBlocked, Message: "Blocked by cross-seed blocklist"}
 		}
@@ -314,7 +315,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 		log.Error().
 			Err(err).
 			Int("instanceID", instanceID).
-			Strs("torrentHashes", req.Check.hashes).
+			Strs("torrentHashes", hashStrings(req.Check.hashes)).
 			Msg("Failed to add cross-seed torrent")
 		return AddResult{Status: "error", Message: fmt.Sprintf("Failed to add torrent: %v", err), Err: err}
 	}
@@ -328,7 +329,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 		message += " - link-mode filesystem fallback, full recheck required"
 	}
 
-	hash := req.Check.hashes[0]
+	hash := req.Check.hashes[0].String()
 	if req.AfterAdd != nil {
 		var addedIDs []string
 		if response != nil {
@@ -351,7 +352,7 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 	case v.settle:
 		added := AddedTorrent{
 			InstanceID:          instanceID,
-			Hashes:              dedupeHashes(append([]string{hash}, req.Check.hashes...)...),
+			Hashes:              infohash.NewSet(append(infohash.ParseAll([]string{hash}), req.Check.hashes...)...).Hashes(),
 			LinkedPaths:         req.Facts.LinkedPaths,
 			Gate:                v.gate,
 			SkipAutoResume:      req.Facts.SkipAutoResume,
@@ -381,6 +382,6 @@ func (a *Adder) Add(ctx context.Context, req AddRequest) AddResult {
 		}
 	}
 
-	a.runExternalProgram(ctx, instanceID, req.Check.hashes)
+	a.runExternalProgram(ctx, instanceID, hashStrings(req.Check.hashes))
 	return AddResult{Outcome: outcome, Message: message, Settled: settled, Paused: v.paused}
 }

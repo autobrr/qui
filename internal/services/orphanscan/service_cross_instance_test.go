@@ -145,10 +145,10 @@ func TestBuildFileMap_FailsWhenOverlapPeerUnavailable(t *testing.T) {
 				return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-10 * time.Second)}, nil
 			}
 			stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-				return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+				return []qbt.Torrent{{Hash: hA, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 			}
 			stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-				return map[string]qbt.TorrentFiles{"a": {{Name: "one.mkv", Size: 1}}}, nil
+				return map[string]qbt.TorrentFiles{ha: {{Name: "one.mkv", Size: 1}}}, nil
 			}
 			stubSync(svc).getLastCompletedRun = func(_ context.Context, _ int) (*models.OrphanScanRun, error) { return nil, nil }
 
@@ -192,11 +192,11 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
-			return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hA, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 		case 2:
 			return []qbt.Torrent{
-				{Hash: "B", SavePath: root, State: qbt.TorrentStatePausedUp},
-				{Hash: "C", SavePath: metadataRoot, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
+				{Hash: hB, SavePath: root, State: qbt.TorrentStatePausedUp},
+				{Hash: hC, SavePath: metadataRoot, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
 			}, nil
 		default:
 			return nil, nil
@@ -207,11 +207,11 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
-				"a": {{Name: "one.mkv", Size: 1}},
+				ha: {{Name: "one.mkv", Size: 1}},
 			}, nil
 		case 2:
 			return map[string]qbt.TorrentFiles{
-				"b": {{Name: "two.mkv", Size: 1}},
+				hb: {{Name: "two.mkv", Size: 1}},
 			}, nil
 		default:
 			return map[string]qbt.TorrentFiles{}, nil
@@ -272,14 +272,14 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		switch instanceID {
 		case 1:
 			return []qbt.Torrent{{
-				Hash:        "A",
+				Hash:        hA,
 				SavePath:    instanceOneSaveRoot,
 				ContentPath: filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv"),
 				State:       qbt.TorrentStatePausedUp,
 			}}, nil
 		case 2:
 			return []qbt.Torrent{{
-				Hash:        "B",
+				Hash:        hB,
 				SavePath:    instanceTwoSaveRoot,
 				ContentPath: filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv"),
 				State:       qbt.TorrentStatePausedUp,
@@ -293,11 +293,11 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
-				"a": {{Name: "Movie.One/file1.mkv", Size: 1}},
+				ha: {{Name: "Movie.One/file1.mkv", Size: 1}},
 			}, nil
 		case 2:
 			return map[string]qbt.TorrentFiles{
-				"b": {{Name: "Movie.Two/file1.mkv", Size: 1}},
+				hb: {{Name: "Movie.Two/file1.mkv", Size: 1}},
 			}, nil
 		default:
 			return map[string]qbt.TorrentFiles{}, nil
@@ -347,12 +347,12 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 	}
 
 	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hA, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
-			"a": {{Name: "one.mkv", Size: 1}},
+			ha: {{Name: "one.mkv", Size: 1}},
 		}, nil
 	}
 
@@ -394,9 +394,9 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
-			return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hA, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 		case 2:
-			return []qbt.Torrent{{Hash: "B", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hB, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 		default:
 			return nil, nil
 		}
@@ -407,7 +407,7 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 			return nil, offlineErr
 		}
 		return map[string]qbt.TorrentFiles{
-			"a": {{Name: "one.mkv", Size: 1}},
+			ha: {{Name: "one.mkv", Size: 1}},
 		}, nil
 	}
 
@@ -448,9 +448,9 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
-			return []qbt.Torrent{{Hash: "A", SavePath: rootA, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hA, SavePath: rootA, State: qbt.TorrentStatePausedUp}}, nil
 		case 2:
-			return []qbt.Torrent{{Hash: "B", SavePath: rootB, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hB, SavePath: rootB, State: qbt.TorrentStatePausedUp}}, nil
 		default:
 			return nil, nil
 		}
@@ -460,11 +460,11 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
-				"a": {{Name: "one.mkv", Size: 1}},
+				ha: {{Name: "one.mkv", Size: 1}},
 			}, nil
 		case 2:
 			return map[string]qbt.TorrentFiles{
-				"b": {{Name: "two.mkv", Size: 1}},
+				hb: {{Name: "two.mkv", Size: 1}},
 			}, nil
 		default:
 			return map[string]qbt.TorrentFiles{}, nil
@@ -548,9 +548,9 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
-			return []qbt.Torrent{{Hash: "A", SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hA, SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
 		case 2:
-			return []qbt.Torrent{{Hash: "B", SavePath: skippedRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
+			return []qbt.Torrent{{Hash: hB, SavePath: skippedRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
 		default:
 			return nil, nil
 		}
@@ -560,7 +560,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
-				"a": {{Name: "one.mkv", Size: 1}},
+				ha: {{Name: "one.mkv", Size: 1}},
 			}, nil
 		case 2:
 			return map[string]qbt.TorrentFiles{}, nil
@@ -614,9 +614,9 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
-			return []qbt.Torrent{{Hash: "A", SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hA, SavePath: stableRoot, State: qbt.TorrentStatePausedUp}}, nil
 		case 2:
-			return []qbt.Torrent{{Hash: "B", SavePath: skippedRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
+			return []qbt.Torrent{{Hash: hB, SavePath: skippedRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
 		default:
 			return nil, nil
 		}
@@ -626,7 +626,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 		switch instanceID {
 		case 1:
 			return map[string]qbt.TorrentFiles{
-				"a": {{Name: "one.mkv", Size: 1}},
+				ha: {{Name: "one.mkv", Size: 1}},
 			}, nil
 		case 2:
 			return map[string]qbt.TorrentFiles{}, nil
@@ -690,14 +690,14 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 
 	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		if instanceID == 1 {
-			return []qbt.Torrent{{Hash: "A", SavePath: rootA, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hA, SavePath: rootA, State: qbt.TorrentStatePausedUp}}, nil
 		}
 		return nil, nil
 	}
 
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
-			"a": {{Name: "one.mkv", Size: 1}},
+			ha: {{Name: "one.mkv", Size: 1}},
 		}, nil
 	}
 
@@ -742,10 +742,10 @@ func TestBuildFileMap_SameHostKeyUnderAnotherNameProtects(t *testing.T) {
 				return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-10 * time.Second)}, nil
 			}
 			stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
-				return []qbt.Torrent{{Hash: fmt.Sprintf("h%d", instanceID), SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+				return []qbt.Torrent{{Hash: fmt.Sprintf("%040d", instanceID), SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 			}
 			stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
-				return map[string]qbt.TorrentFiles{fmt.Sprintf("h%d", instanceID): {{Name: fmt.Sprintf("seeded-by-%d.mkv", instanceID), Size: 1}}}, nil
+				return map[string]qbt.TorrentFiles{fmt.Sprintf("%040d", instanceID): {{Name: fmt.Sprintf("seeded-by-%d.mkv", instanceID), Size: 1}}}, nil
 			}
 
 			result, err := svc.buildFileMap(context.Background(), scanned, newTestBackend(), scanScope{})

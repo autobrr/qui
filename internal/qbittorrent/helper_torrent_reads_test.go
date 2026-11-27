@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/testutil/syncsnap"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func refHashes(torrents []*qbt.Torrent) []string {
@@ -112,7 +113,7 @@ func TestReadsOfNamedHashesFindHelperTorrents(t *testing.T) {
 	t.Parallel()
 	sm, _, _ := newHelperRig(t)
 	ctx := t.Context()
-	named := TorrentRefFilter{Hashes: []string{hashA}}
+	named := TorrentRefFilter{Hashes: infohash.ParseAll([]string{hashA})}
 
 	refs, err := sm.GetTorrentRefs(ctx, 1, named)
 	require.NoError(t, err)

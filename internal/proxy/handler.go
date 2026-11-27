@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/pkg/httphelpers"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/redact"
 )
 
@@ -573,40 +575,24 @@ func restoreBody(r *http.Request, body []byte) {
 	r.ContentLength = int64(len(body))
 }
 
-func normalizeHashes(hashes []string) []string {
-	result := make([]string, 0, len(hashes))
-	seen := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		trimmed := strings.ToUpper(strings.TrimSpace(hash))
-		if trimmed == "" {
+func uniqueHashesKeepingText(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		key := strings.TrimSpace(value)
+		if hash, err := infohash.Parse(key); err == nil {
+			key = hash.String()
+		}
+		if key == "" {
 			continue
 		}
-		if _, ok := seen[trimmed]; ok {
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[trimmed] = struct{}{}
-		result = append(result, trimmed)
+		seen[key] = struct{}{}
+		result = append(result, key)
 	}
 	return result
-}
-
-func difference(all, subset []string) []string {
-	if len(subset) == 0 {
-		return append([]string{}, all...)
-	}
-	remaining := make([]string, 0, len(all))
-	set := make(map[string]int, len(subset))
-	for _, val := range subset {
-		set[val]++
-	}
-	for _, val := range all {
-		if count, ok := set[val]; ok && count > 0 {
-			set[val] = count - 1
-			continue
-		}
-		remaining = append(remaining, val)
-	}
-	return remaining
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
@@ -1028,7 +1014,7 @@ func parseHashesQueryValues(queryParams url.Values) []string {
 		return nil
 	}
 
-	return normalizeHashes(rawHashes)
+	return uniqueHashesKeepingText(rawHashes)
 }
 
 func mergeUniqueStringSlices(valueSets ...[]string) []string {
@@ -1747,14 +1733,13 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 
 			hashList := strings.Split(hashes, "|")
 			failedInvalidations := 0
-			for _, hash := range hashList {
-				hash = strings.TrimSpace(hash)
-				if hash == "" {
+			for _, hash := range infohash.ParseAll(hashList) {
+				if hash.IsZero() {
 					continue
 				}
 				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
 					failedInvalidations++
-					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash.String()).
 						Msg("Failed to invalidate file cache after setLocation")
 				}
 			}
@@ -1770,8 +1755,8 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
-			Path: strings.TrimSpace(form.get("location"))}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation,
+			Path: strings.TrimSpace(form.get("location"))}.On(splitHashes(form.get("hashes"))), true
 	})
 }
 
@@ -1798,22 +1783,23 @@ func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw := r.Form.Get("hashes")
-	normalized := normalizeHashes(strings.Split(raw, "|"))
-	if len(normalized) == 0 {
+	requested := uniqueHashesKeepingText(strings.Split(r.Form.Get("hashes"), "|"))
+	if len(requested) == 0 {
 		restoreBody(r, bodyBytes)
 		h.proxy.ServeHTTP(w, r)
 		return
 	}
 
-	handled := h.reannounceService.RequestReannounce(ctx, instanceID, normalized)
+	handled := h.reannounceService.RequestReannounce(ctx, instanceID, infohash.ParseAll(requested))
 	if len(handled) == 0 {
 		restoreBody(r, bodyBytes)
 		h.proxy.ServeHTTP(w, r)
 		return
 	}
 
-	remaining := difference(normalized, handled)
+	remaining := slices.DeleteFunc(requested, func(hash string) bool {
+		return slices.ContainsFunc(handled, func(id infohash.Hash) bool { return id.Is(hash) })
+	})
 	if len(remaining) > 0 {
 		form := url.Values{}
 		form.Set("hashes", strings.Join(remaining, "|"))
@@ -1864,11 +1850,11 @@ func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 				Msg("Recovered from panic during renameFile cache invalidation")
 		}
 
-		if hash != "" {
+		if id, err := infohash.Parse(hash); err == nil {
 			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, id); err != nil {
 				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
 					Msg("CRITICAL: Failed to invalidate file cache after renameFile - cache is now stale")
 			}
@@ -1917,11 +1903,11 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 				Msg("Recovered from panic during renameFolder cache invalidation")
 		}
 
-		if hash != "" {
+		if id, err := infohash.Parse(hash); err == nil {
 			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, id); err != nil {
 				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
 					Msg("CRITICAL: Failed to invalidate file cache after renameFolder - cache is now stale")
 			}
@@ -2017,14 +2003,13 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 			hashList := strings.Split(hashes, "|")
 			failedInvalidations := 0
-			for _, hash := range hashList {
-				hash = strings.TrimSpace(hash)
-				if hash == "" {
+			for _, hash := range infohash.ParseAll(hashList) {
+				if hash.IsZero() {
 					continue
 				}
 				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
 					failedInvalidations++
-					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash.String()).
 						Msg("Failed to invalidate file cache after delete")
 				}
 			}
@@ -2041,7 +2026,7 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 	h.deleteNoter.NoteProxiedDelete(ctx, instanceID, noted, clientAPIKey.ClientName)
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete}.On(splitHashes(form.get("hashes"))),
 			strings.EqualFold(form.get("deleteFiles"), "true")
 	})
 }

@@ -97,7 +97,7 @@ func TestTheListFiltersTheTransfersByChipPostgresIntegration(t *testing.T) {
 			byID[row.ID] = row
 		}
 		group := byID[copying]
-		require.Equal(t, "aaaa", group.Hash)
+		require.Equal(t, hashOf("aaaa").String(), group.Hash)
 		require.Equal(t, "Name aaaa", group.Name, "a row names the torrent of the request")
 		require.Equal(t, 3, group.Torrents)
 		require.Equal(t, int64(8<<30), group.Size, "a row has the size of the torrent of the request")

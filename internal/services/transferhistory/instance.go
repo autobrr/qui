@@ -11,6 +11,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/trackergroup"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -142,7 +143,7 @@ func (p *pass) present(hash string) bool {
 	return here
 }
 
-func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *releases.Parser, notes map[string][]deleteNote) {
+func (inst *instance) apply(r Reading, mapper *trackergroup.Mapper, parser *releases.Parser, notes map[infohash.Hash][]deleteNote) {
 	p := &pass{reading: &r, first: inst.firstRecordedAt.IsZero(), previous: inst.lastReadingAt, mapper: mapper}
 	if inst.loaded {
 		p.previous, p.baselineOpen, p.deletedLate = inst.completeAt, inst.completeAt.IsZero(), inst.deletedLate
@@ -331,8 +332,9 @@ func (inst *instance) addAgain(rec *models.TransferHistoryRecord, t *Torrent, no
 	}
 }
 
-func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, notes map[string][]deleteNote) {
-	cause := takeNote(notes, rec.Hash, now)
+func (inst *instance) delete(rec *models.TransferHistoryRecord, now time.Time, notes map[infohash.Hash][]deleteNote) {
+	hash, _ := infohash.Parse(rec.Hash)
+	cause := takeNote(notes, hash, now)
 	event := &models.TransferHistoryDelete{
 		Uploaded: rec.LastUploaded, Downloaded: rec.LastDownloaded,
 		CauseKind: string(cause.Kind), CauseName: cause.Name,

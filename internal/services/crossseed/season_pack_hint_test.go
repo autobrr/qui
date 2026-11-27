@@ -32,7 +32,7 @@ func TestFindCandidates_SeasonPackHintReadsHeldAliasTitles(t *testing.T) {
 				SearchDecision: searchDecisionProvenance{
 					Class:           searchCandidateClassStrict,
 					CandidateTitles: tt.titles,
-				}.bindSource(corpusInstanceID, "c0a5000000000000000000000000000000000009"),
+				}.bindSource(corpusInstanceID, mustParseHash(t, "c0a5000000000000000000000000000000000009")),
 			})
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, resp.seasonPackEpisodeCandidates)

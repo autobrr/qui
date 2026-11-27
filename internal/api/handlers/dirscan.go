@@ -69,7 +69,7 @@ func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +149,7 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, r, http.StatusOK, updated)
 }
 
 type DirScanDirectoryPayload struct {
@@ -177,7 +177,7 @@ func (h *DirScanHandler) ListDirectories(w http.ResponseWriter, r *http.Request)
 		dirs = []*models.DirScanDirectory{}
 	}
 
-	RespondJSON(w, http.StatusOK, dirs)
+	RespondJSON(w, r, http.StatusOK, dirs)
 }
 
 func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +203,7 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, created)
+	RespondJSON(w, r, http.StatusCreated, created)
 }
 
 func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *http.Request, payload *DirScanDirectoryPayload) (*models.DirScanDirectory, bool) {
@@ -281,7 +281,7 @@ func (h *DirScanHandler) GetDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, dir)
+	RespondJSON(w, r, http.StatusOK, dir)
 }
 
 func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request) {
@@ -336,7 +336,7 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, r, http.StatusOK, updated)
 }
 
 func (h *DirScanHandler) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +387,7 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
+	RespondJSON(w, r, http.StatusAccepted, dirScanTriggerResponse{
 		RunID:         runID,
 		DirectoryID:   dirID,
 		DirectoryPath: dir.Path,
@@ -476,7 +476,7 @@ func (h *DirScanHandler) RequeueNoMatch(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, dirScanRequeueResponse{Requeued: requeued})
+	RespondJSON(w, r, http.StatusOK, dirScanRequeueResponse{Requeued: requeued})
 }
 
 type dirScanStatusResponse struct {
@@ -503,7 +503,7 @@ func (h *DirScanHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		runs = []*models.DirScanRun{}
 	}
 
-	RespondJSON(w, http.StatusOK, dirScanStatusResponse{Runs: runs})
+	RespondJSON(w, r, http.StatusOK, dirScanStatusResponse{Runs: runs})
 }
 
 func (h *DirScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
@@ -534,7 +534,7 @@ func (h *DirScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		runs = []*models.DirScanRun{}
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 func (h *DirScanHandler) ListRunInjections(w http.ResponseWriter, r *http.Request) {
@@ -576,7 +576,7 @@ func (h *DirScanHandler) ListRunInjections(w http.ResponseWriter, r *http.Reques
 		injections = []*models.DirScanRunInjection{}
 	}
 
-	RespondJSON(w, http.StatusOK, injections)
+	RespondJSON(w, r, http.StatusOK, injections)
 }
 
 func (h *DirScanHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
@@ -630,7 +630,7 @@ func (h *DirScanHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
 		files = []*models.DirScanFile{}
 	}
 
-	RespondJSON(w, http.StatusOK, files)
+	RespondJSON(w, r, http.StatusOK, files)
 }
 
 func parseDirectoryID(w http.ResponseWriter, r *http.Request) (int, error) {
@@ -900,7 +900,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 			Strs("allowedDownloadClients", bestMatch.AllowedDownloadClients).
 			Msg("dirscan: webhook skipped due to download client filter")
 
-		RespondJSON(w, http.StatusOK, dirScanWebhookSkipResponse{
+		RespondJSON(w, r, http.StatusOK, dirScanWebhookSkipResponse{
 			Skipped: true,
 			Reason:  "download client not allowed",
 		})
@@ -922,7 +922,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		Int64("runID", runID).
 		Msg("dirscan: webhook triggered scan")
 
-	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
+	RespondJSON(w, r, http.StatusAccepted, dirScanTriggerResponse{
 		RunID:         runID,
 		DirectoryID:   bestMatch.ID,
 		DirectoryPath: bestMatch.Path,

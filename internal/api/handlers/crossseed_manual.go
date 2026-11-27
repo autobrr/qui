@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type ManualMatchProposalsRequest struct {
@@ -39,7 +40,7 @@ func (h *CrossSeedHandler) ManualAssembleCheck(w http.ResponseWriter, r *http.Re
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
 func (h *CrossSeedHandler) ManualAssembleApply(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +54,7 @@ func (h *CrossSeedHandler) ManualAssembleApply(w http.ResponseWriter, r *http.Re
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
 func (h *CrossSeedHandler) ManualMatchProposals(w http.ResponseWriter, r *http.Request) {
@@ -71,13 +72,14 @@ func (h *CrossSeedHandler) ManualMatchProposals(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	resp, err := h.service.ManualMatchProposalsFromBase64(r.Context(), req.InstanceID, req.TorrentData, req.TargetHash)
+	requested, _ := infohash.Parse(req.TargetHash)
+	resp, err := h.service.ManualMatchProposalsFromBase64(r.Context(), req.InstanceID, req.TorrentData, requested)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", req.InstanceID).Msg("Failed to build manual match proposals")
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
 func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Request) {
@@ -122,5 +124,5 @@ func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Reque
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }

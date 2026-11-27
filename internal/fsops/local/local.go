@@ -11,7 +11,6 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/pkg/fsutil"
-	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
 )
@@ -26,22 +25,14 @@ func (b *Backend) Stat(ctx context.Context, path string) (*fsops.LstatInfo, erro
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	return osFileInfoToLstat(fi, path, true), nil
+	return statPath(path)
 }
 
 func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	return osFileInfoToLstat(fi, path, false), nil
+	return lstatPath(path)
 }
 
 func (b *Backend) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
@@ -119,6 +110,7 @@ func visitWalkEntry(ctx context.Context, ch chan<- fsops.WalkEntry, root, walked
 		return walkErr
 	}
 
+	diskPath := path
 	if walked != root {
 		rel, err := filepath.Rel(walked, path)
 		if err != nil {
@@ -134,7 +126,7 @@ func visitWalkEntry(ctx context.Context, ch chan<- fsops.WalkEntry, root, walked
 		return nil
 	}
 
-	entry, ok := newWalkEntry(root, path, d, walkErr, opts)
+	entry, ok := newWalkEntry(root, path, diskPath, d, walkErr, opts)
 	if !ok {
 		return nil
 	}
@@ -147,7 +139,7 @@ func visitWalkEntry(ctx context.Context, ch chan<- fsops.WalkEntry, root, walked
 	return nil
 }
 
-func newWalkEntry(root, path string, d fs.DirEntry, walkErr error, opts fsops.WalkOptions) (fsops.WalkEntry, bool) {
+func newWalkEntry(root, path, diskPath string, d fs.DirEntry, walkErr error, opts fsops.WalkOptions) (fsops.WalkEntry, bool) {
 	entry := fsops.WalkEntry{
 		Path: path}
 
@@ -161,7 +153,7 @@ func newWalkEntry(root, path string, d fs.DirEntry, walkErr error, opts fsops.Wa
 		return entry, true
 	}
 
-	fi, err := d.Info()
+	info, err := lstatEntry(diskPath, d, opts.WantFileID)
 	if err != nil {
 		if !opts.EmitStatErrors {
 			return entry, false
@@ -169,22 +161,8 @@ func newWalkEntry(root, path string, d fs.DirEntry, walkErr error, opts fsops.Wa
 		entry.StatErr = err
 		return entry, true
 	}
-
-	entry.Size = fi.Size()
-	entry.ModTime = fi.ModTime()
-	entry.Mode = localFileMode(path, fi.Mode(), false)
-	entry.IsDir = fi.IsDir()
-	entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
-
-	if opts.WantFileID && entry.Mode.IsRegular() {
-		fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
-		if fidErr != nil {
-			entry.FileIDErr = fidErr
-		} else {
-			entry.FileID = fid
-			entry.Nlinks = nlinks
-		}
-	}
+	entry.LstatInfo = *info
+	entry.Path = path
 	return entry, true
 }
 
@@ -267,33 +245,6 @@ func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, strin
 	}
 	supported, reason := reflinktree.SupportsReflink(path)
 	return supported, reason, nil
-}
-
-func osFileInfoToFsops(fi os.FileInfo, path string, follow bool) *fsops.FileInfo {
-	return &fsops.FileInfo{
-		Path:      path,
-		Size:      fi.Size(),
-		ModTime:   fi.ModTime(),
-		IsDir:     fi.IsDir(),
-		IsSymlink: fi.Mode()&os.ModeSymlink != 0,
-		Mode:      localFileMode(path, fi.Mode(), follow),
-	}
-}
-
-func osFileInfoToLstat(fi os.FileInfo, path string, follow bool) *fsops.LstatInfo {
-	info := &fsops.LstatInfo{
-		FileInfo: *osFileInfoToFsops(fi, path, follow),
-	}
-	if info.Mode.IsRegular() || fi.IsDir() {
-		fid, nlinks, err := hardlink.GetFileID(fi, path)
-		if err != nil {
-			info.FileIDErr = err
-		} else {
-			info.FileID = fid
-			info.Nlinks = nlinks
-		}
-	}
-	return info
 }
 
 func (b *Backend) Paths() fsops.PathDialect { return fsops.HostPaths }

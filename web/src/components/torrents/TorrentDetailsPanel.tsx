@@ -992,14 +992,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   <MobileInfoGroup title={t("generalTab.network")}>
                     <MobileInfoRow
                       label={t("detailsPanel.labels.downloadSpeed")}
-                      valueClassName="text-green-500"
+                      valueClassName="text-chart-text-2"
                       sub={`${t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit) })} · ${t("detailsPanel.labels.limit", { value: downloadLimitLabel })}`}
                     >
                       {formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}
                     </MobileInfoRow>
                     <MobileInfoRow
                       label={t("detailsPanel.labels.uploadSpeed")}
-                      valueClassName="text-blue-500"
+                      valueClassName="text-chart-text-3"
                       sub={`${t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit) })} · ${t("detailsPanel.labels.limit", { value: uploadLimitLabel })}`}
                     >
                       {formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}
@@ -1233,7 +1233,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             <p className="truncate text-xs text-muted-foreground">
                               {[match.instanceName, getMatchTypeLabel(match.matchType, t).label, incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname].filter(Boolean).join(" · ")}
                             </p>
-                            <p className={cn("text-xs tabular-nums", progressPercent === 100 ? "text-green-500" : "text-muted-foreground")}>
+                            <p className={cn("text-xs tabular-nums", progressPercent === 100 ? "text-success" : "text-muted-foreground")}>
                               {Math.floor(progressPercent * 10) / 10}% · {formatBytes(match.size)}
                             </p>
                           </div>

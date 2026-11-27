@@ -51,7 +51,7 @@ func TestLinkModeFallbackPieceBoundarySkipsUnsafeDespiteRegularToggle(t *testing
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentBytes, meta := buildLinkFallbackBoundaryTorrent(t, 53)
 	candidateFiles := qbt.TorrentFiles{meta.Files[0]}
 
@@ -91,7 +91,7 @@ func TestLinkModeFallbackPieceBoundarySkipsUnsafeDespiteRegularToggle(t *testing
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
 		Torrents:     []*qbt.Torrent{&matchedTorrent},
-	}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
+	}, torrentBytes, mustParseHash(t, newHash), meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
 
 	require.False(t, result.Success)
 	require.Equal(t, "skipped_unsafe_pieces", result.Status)
@@ -131,7 +131,7 @@ func TestRegularAddPieceBoundaryCheckRefusesUnsafePieces(t *testing.T) {
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
 		Torrents:     []*qbt.Torrent{&matchedTorrent},
-	}, torrentBytes, "newhash", meta.HashV2, meta.Name, &CrossSeedRequest{}, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
+	}, torrentBytes, mustParseHash(t, "feedfacefeedfacefeedfacefeedfacefeedface"), meta.HashV2, meta.Name, &CrossSeedRequest{}, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
 
 	require.Equal(t, "skipped_unsafe_pieces", result.Status)
 	require.Equal(t, unsafePiecesMessage, result.Message)
@@ -144,7 +144,7 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentBytes, meta := buildLinkFallbackBoundaryTorrent(t, 64)
 	candidateFiles := qbt.TorrentFiles{meta.Files[0]}
 
@@ -187,7 +187,7 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 			InstanceID:   instanceID,
 			InstanceName: "test-instance",
 			Torrents:     []*qbt.Torrent{&matchedTorrent},
-		}, torrentBytes, newHash, meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
+		}, torrentBytes, mustParseHash(t, newHash), meta.HashV2, meta.Name, req, service.releaseCache.Parse(meta.Name), meta.Files, meta.Info, nil)
 
 		require.True(t, result.Success, result.Message)
 		require.Equal(t, "added", result.Status)

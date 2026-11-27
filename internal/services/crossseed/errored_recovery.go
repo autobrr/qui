@@ -6,7 +6,6 @@ package crossseed
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/externalprograms"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, hashes []string) {
@@ -26,10 +26,10 @@ func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, hashes
 }
 
 func (s *Service) findAddedTorrent(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
-	lookup := slices.Clone(hashes)
-	for _, hash := range hashes {
-		if len(hash) == 64 {
-			lookup = append(lookup, hash[:40])
+	lookup := parseHashes(hashes...)
+	for _, hash := range lookup {
+		if hash.IsV2() {
+			lookup = append(lookup, hash.TorrentID())
 		}
 	}
 	s.waitForTorrentAvailability(ctx, instanceID, lookup, crossSeedRenameWaitTimeout)
@@ -183,7 +183,7 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 				pendingHashes = append(pendingHashes, h)
 			}
 
-			currentTorrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: pendingHashes})
+			currentTorrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(pendingHashes)})
 			if err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to check recheck progress")
 				time.Sleep(pollInterval)

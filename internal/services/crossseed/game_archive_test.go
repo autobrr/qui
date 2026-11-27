@@ -36,10 +36,10 @@ func TestCrossSeedGameArchiveVolumes(t *testing.T) {
 			require.NoError(t, meta.Write(&torrentBytes))
 
 			instance := &models.Instance{ID: 1, Name: "test"}
-			torrent := qbt.Torrent{Hash: "source", Name: name, Progress: 1, Size: 4096}
+			torrent := qbt.Torrent{Hash: "c0de000000000000000000000000000000000001", Name: name, Progress: 1, Size: 4096}
 			service := &Service{
 				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{1: instance}},
-				syncManager:      &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{torrent}, map[string]qbt.TorrentFiles{"source": files})},
+				syncManager:      &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{torrent}, map[string]qbt.TorrentFiles{"c0de000000000000000000000000000000000001": files})},
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
@@ -51,7 +51,7 @@ func TestCrossSeedGameArchiveVolumes(t *testing.T) {
 				StartPaused:                  new(true),
 				SkipAutoResume:               true,
 				SkipPieceBoundarySafetyCheck: true,
-				SearchDecision:               searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: name, SourceInstanceID: 1, SourceHash: "source"},
+				SearchDecision:               searchDecisionProvenance{Class: searchCandidateClassStrict, SearchCandidateName: name, SourceInstanceID: 1, SourceHash: mustParseHash(t, "c0de000000000000000000000000000000000001")},
 			})
 			require.NoError(t, err)
 			require.True(t, response.Success, "identical complete game files must apply: %+v", response.Results)

@@ -38,7 +38,13 @@ func validateWebhookCheckRequest(req *WebhookCheckRequest) error {
 	return nil
 }
 
+type webhookMatcher func(ctx context.Context, input webhookCheckInput, contentType string) (webhookCheckAnswer, error)
+
 func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*WebhookCheckResponse, error) {
+	return s.checkWebhook(ctx, req, s.webhookMatchHeld)
+}
+
+func (s *Service) checkWebhook(ctx context.Context, req *WebhookCheckRequest, match webhookMatcher) (*WebhookCheckResponse, error) {
 	startedAt := time.Now().UTC()
 	if err := validateWebhookCheckRequest(req); err != nil {
 		return nil, err
@@ -105,19 +111,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	announced := namedRelease{release: incomingRelease, rawName: req.TorrentName}
 	input := newWebhookCheckInput(announced, req.Size, findIndividualEpisodes, settings, instances)
-	var answer webhookCheckAnswer
-	if lookup := s.webhookHeldLookup(ctx, input); lookup != nil {
-		for instanceID, err := range lookup.readErrors {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents from instance")
-		}
-		answer, err = s.webhookMatchHeldTitles(ctx, input, contentInfo.ContentType, lookup)
-		if err == nil && len(answer.matches) == 0 {
-			answer.seasonPack, err = s.webhookSeasonPackCheck(ctx, input, lookup)
-		}
-	} else {
-		input.policy.candidateTitles, input.policy.episodeMap = s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
-		answer, err = s.webhookMatchAllTorrents(ctx, input)
-	}
+	answer, err := match(ctx, input, contentInfo.ContentType)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +127,9 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		level = zerolog.DebugLevel
 	}
 	summary := log.WithLevel(level)
+	if answer.notReady {
+		summary = summary.Bool("heldTitlesNotReady", true)
+	}
 	if answer.nothingHeld && summary.Enabled() {
 		summary = summary.Bool("nothingHeld", true).
 			Strs("titleKeys", s.matcher().titleKeys(input.announced)).
@@ -156,6 +153,21 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Recommendation: recommendation,
 		SeasonPack:     answer.seasonPack,
 	}, nil
+}
+
+func (s *Service) webhookMatchHeld(ctx context.Context, input webhookCheckInput, contentType string) (webhookCheckAnswer, error) {
+	lookup := s.webhookHeldLookup(ctx, input)
+	if lookup == nil {
+		return webhookCheckAnswer{notReady: true}, nil
+	}
+	for instanceID, err := range lookup.readErrors {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to get torrents from instance")
+	}
+	answer, err := s.webhookMatchHeldTitles(ctx, input, contentType, lookup)
+	if err == nil && len(answer.matches) == 0 {
+		answer.seasonPack, err = s.webhookSeasonPackCheck(ctx, input, lookup)
+	}
+	return answer, err
 }
 
 func (s *Service) webhookHeldLookup(ctx context.Context, input webhookCheckInput) *heldLookup {
@@ -200,8 +212,12 @@ func (s *Service) webhookMatchFound(ctx, readsCtx context.Context, input webhook
 		waits = waits || pendingReads[instanceID].hasFills()
 	}
 	sourceReads := make(map[int]localReads, len(pendingReads))
-	for instanceID, pending := range pendingReads {
-		sourceReads[instanceID] = pending.wait(readsCtx)
+	for _, instance := range input.instances {
+		pending, ok := pendingReads[instance.ID]
+		if !ok {
+			continue
+		}
+		sourceReads[instance.ID] = pending.wait(readsCtx)
 		if err := ctx.Err(); err != nil {
 			return webhookCheckAnswer{}, err
 		}

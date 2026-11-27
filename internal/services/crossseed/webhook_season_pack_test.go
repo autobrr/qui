@@ -55,7 +55,7 @@ func TestWebhookCheckOfASeasonPackWaitsOnceForASync(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			freshPackCase(t, freshOn, 1, func(rig *freshPackRig) {
+			freshPackCase(t, 1, func(rig *freshPackRig) {
 				rig.sonarr.seasonResult = &arr.SeasonEpisodeTotalResult{TotalEpisodes: 2}
 				tc.before(rig)
 				rig.instances[0].startSync()
@@ -172,9 +172,9 @@ func TestWebhookApplyAssemblesNothingWhileADirectMatchIsStillDownloading(t *test
 func TestSeasonPackAppliesGiveOnePackOneTurn(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var applies seasonPackApplies
-		first, releaseFirst := applies.claim("pack")
-		second, releaseSecond := applies.claim("pack")
-		other, releaseOther := applies.claim("other")
+		first, releaseFirst := applies.claim(mustParseHash(t, "c0de000000000000000000000000000000000002"))
+		second, releaseSecond := applies.claim(mustParseHash(t, "c0de000000000000000000000000000000000002"))
+		other, releaseOther := applies.claim(mustParseHash(t, "c0de000000000000000000000000000000000001"))
 		giveUp, err := first.takeTurn(t.Context())
 		require.NoError(t, err)
 
@@ -201,7 +201,7 @@ func TestSeasonPackAppliesGiveOnePackOneTurn(t *testing.T) {
 		giveUp()
 		releaseFirst()
 		require.True(t, <-turn)
-		third, releaseThird := applies.claim("pack")
+		third, releaseThird := applies.claim(mustParseHash(t, "c0de000000000000000000000000000000000002"))
 		require.Same(t, second, third)
 
 		releaseSecond()

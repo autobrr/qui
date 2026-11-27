@@ -15,6 +15,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func planTestRun(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection) runPlan {
@@ -232,27 +233,33 @@ type fakeTargetLookup struct {
 	slow     bool
 }
 
-func (f fakeTargetLookup) HasTorrentByAnyHash(ctx context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (f fakeTargetLookup) HasTorrentByAnyHash(ctx context.Context, _ int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if f.slow {
 		<-ctx.Done()
 		return nil, false, ctx.Err()
 	}
-	if f.fail[hashes[0]] {
+	if f.fail[hashes[0].String()] {
 		return nil, false, errors.New("target offline")
 	}
-	return nil, f.onTarget[hashes[0]], nil
+	return nil, f.onTarget[hashes[0].String()], nil
 }
 
 func TestRunPlan_ExportMarks(t *testing.T) {
+	const (
+		checkFailedHash = "1111111111111111111111111111111111111111"
+		noCategoryHash  = "2222222222222222222222222222222222222222"
+		onTargetHash    = "3333333333333333333333333333333333333333"
+		readyHash       = "4444444444444444444444444444444444444444"
+	)
 	torrents := []qbt.Torrent{
-		{Hash: "ready", Tags: "x", Category: "tv"},
-		{Hash: "on-target", Tags: "x", Category: "tv"},
-		{Hash: "check-failed", Tags: "x", Category: "tv"},
-		{Hash: "no-category", Tags: "x"},
+		{Hash: readyHash, Tags: "x", Category: "tv"},
+		{Hash: onTargetHash, Tags: "x", Category: "tv"},
+		{Hash: checkFailedHash, Tags: "x", Category: "tv"},
+		{Hash: noCategoryHash, Tags: "x"},
 	}
 	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2, SavePath: "{{.Category}}", Condition: tagsContain("x")}
 	rule := planTestRule(8, &models.ActionConditions{ExportToInstance: action})
-	svc := &Service{targetLookup: fakeTargetLookup{onTarget: map[string]bool{"on-target": true}, fail: map[string]bool{"check-failed": true}}}
+	svc := &Service{targetLookup: fakeTargetLookup{onTarget: map[string]bool{onTargetHash: true}, fail: map[string]bool{checkFailedHash: true}}}
 
 	plan := planTestRunWith(t, svc, torrents, []*models.Automation{rule}, nil, nil)
 	byHash := make(map[string]pendingExportToInstance, len(plan.exports))
@@ -262,14 +269,14 @@ func TestRunPlan_ExportMarks(t *testing.T) {
 		byHash[export.hash] = export
 	}
 	require.Len(t, byHash, 4)
-	require.Equal(t, exportReady, byHash["ready"].mark)
-	require.Equal(t, "tv", byHash["ready"].resolvedSavePath)
-	require.Empty(t, byHash["ready"].failureReason)
-	require.Equal(t, exportAlreadyOnTarget, byHash["on-target"].mark)
-	require.Equal(t, exportCheckFailed, byHash["check-failed"].mark)
-	require.Equal(t, "Failed to check target instance: target offline", byHash["check-failed"].failureReason)
-	require.Equal(t, exportSavePathUnresolved, byHash["no-category"].mark)
-	require.Equal(t, "Save path template resolution failed", byHash["no-category"].failureReason)
+	require.Equal(t, exportReady, byHash[readyHash].mark)
+	require.Equal(t, "tv", byHash[readyHash].resolvedSavePath)
+	require.Empty(t, byHash[readyHash].failureReason)
+	require.Equal(t, exportAlreadyOnTarget, byHash[onTargetHash].mark)
+	require.Equal(t, exportCheckFailed, byHash[checkFailedHash].mark)
+	require.Equal(t, "Failed to check target instance: target offline", byHash[checkFailedHash].failureReason)
+	require.Equal(t, exportSavePathUnresolved, byHash[noCategoryHash].mark)
+	require.Equal(t, "Save path template resolution failed", byHash[noCategoryHash].failureReason)
 }
 
 func sharedFiles(pairs ...[2]string) map[string][]string {

@@ -14,7 +14,7 @@ import (
 )
 
 var walkPathValues = map[string]string{
-	"hash":      "aaa",
+	"hash":      stubHashA,
 	"fileIndex": "0",
 	"ruleName":  "rule",
 	"name":      "qbittorrent",
@@ -39,8 +39,8 @@ var walkRequests = map[routeKey]walkRequest{
 	{http.MethodPost, "/api/instances/{instanceID}/automations/preview"}:                  {body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","tag":{"enabled":true,"tags":["seen"],"mode":"add"}}}`},
 	{http.MethodPost, "/api/cross-seed/manual/proposals"}:                                 {body: `{"instance_id":1,"torrent_data":"` + walkTorrent + `"}`},
 	{http.MethodPost, "/api/cross-seed/manual/assemble/check"}:                            {body: `{"instance_id":1,"torrent_data":"` + walkTorrent + `"}`},
-	{http.MethodPost, "/api/instances/{instanceID}/torrents/field"}:                       {body: `{"field":"name","hashes":["aaa"]}`},
-	{http.MethodPost, "/api/instances/{instanceID}/torrents/delete-cross-seeds"}:          {body: `{"hashes":["aaa"],"action":"delete","deleteFiles":true}`},
+	{http.MethodPost, "/api/instances/{instanceID}/torrents/field"}:                       {body: `{"field":"name","hashes":["` + stubHashA + `"]}`},
+	{http.MethodPost, "/api/instances/{instanceID}/torrents/delete-cross-seeds"}:          {body: `{"hashes":["` + stubHashA + `"],"action":"delete","deleteFiles":true}`},
 	{http.MethodPost, "/api/instances/{instanceID}/backups/runs/{runID}/restore/preview"}: {body: `{"mode":"overwrite"}`},
 }
 

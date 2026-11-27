@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func splitHostUserinfo(host string) (cleanHost, user, pass string) {
@@ -54,7 +55,7 @@ type Client struct {
 	lastHealthCheck      time.Time
 	isHealthy            bool
 	syncManager          *syncowner.Owner
-	peerSyncManager      map[string]*peerSyncEntry
+	peerSyncManager      map[infohash.Hash]*peerSyncEntry
 	optimisticUpdates    *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions    map[string]map[string]struct{}
 	lastServerState      *qbt.ServerState
@@ -136,7 +137,7 @@ func newClient(ctx context.Context, instanceID int, instanceHost, username, pass
 		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](
 			ttlcache.SetDefaultTTL(30 * time.Second)),
 		trackerExclusions: make(map[string]map[string]struct{}),
-		peerSyncManager:   make(map[string]*peerSyncEntry),
+		peerSyncManager:   make(map[infohash.Hash]*peerSyncEntry),
 		completionState:   make(map[string]bool),
 		addedState:        make(map[string]struct{}),
 	}
@@ -416,42 +417,28 @@ func (c *Client) GetCachedServerState() *qbt.ServerState {
 	return &stateCopy
 }
 
-func (c *Client) hasAnyTorrent(hashes []string) bool {
+func (c *Client) hasAnyTorrent(hashes []infohash.Hash) bool {
 	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return false
 	}
-	snapshot := snapshotIndex(syncManager.Snapshot())
-	return slices.ContainsFunc(hashes, func(hash string) bool {
-		_, ok := snapshot.Torrent(hash)
-		return ok
-	})
+	return slices.ContainsFunc(snapshotIndex(syncManager.Snapshot()).Torrents(hashes), func(t *qbt.Torrent) bool { return t != nil })
 }
 
-func (c *Client) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+func (c *Client) getTorrentsByHashes(hashes []infohash.Hash) []*qbt.Torrent {
 	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
-	return torrentsByHash(snapshotIndex(syncManager.Snapshot()), hashes)
+	return foundTorrents(snapshotIndex(syncManager.Snapshot()).Torrents(hashes))
 }
 
-func (c *Client) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
+func (c *Client) getTorrentsByHashesUnchecked(hashes []infohash.Hash) []*qbt.Torrent {
 	syncManager := c.SyncOwner()
 	if syncManager == nil {
 		return nil
 	}
-	return torrentsByHash(snapshotIndex(syncManager.SnapshotUnchecked()), hashes)
-}
-
-func torrentsByHash(snapshot torrentLookup, hashes []string) []*qbt.Torrent {
-	found := make([]*qbt.Torrent, 0, len(hashes))
-	for _, hash := range hashes {
-		if t, ok := snapshot.Torrent(hash); ok {
-			found = append(found, t)
-		}
-	}
-	return found
+	return foundTorrents(snapshotIndex(syncManager.SnapshotUnchecked()).Torrents(hashes))
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
@@ -647,11 +634,11 @@ func (c *Client) handleCompletionUpdates(update qbt.SyncUpdate) {
 	}
 
 	ready := make([]qbt.Torrent, 0)
-	for _, hash := range update.Changes.Torrents {
-		torrent, ok := update.Snapshot.Torrent(hash)
-		if !ok {
+	for _, torrent := range snapshotIndex(update.Snapshot).Torrents(infohash.ParseAll(update.Changes.Torrents)) {
+		if torrent == nil {
 			continue
 		}
+		hash := torrent.Hash
 		if isCheckingState(torrent.State) {
 			continue
 		}
@@ -710,15 +697,14 @@ func (c *Client) handleAddedUpdates(update qbt.SyncUpdate) {
 	}
 
 	ready := make([]*qbt.Torrent, 0)
-	for _, hash := range update.Changes.Torrents {
-		if _, ok := c.addedState[hash]; ok {
+	for _, torrent := range snapshotIndex(update.Snapshot).Torrents(infohash.ParseAll(update.Changes.Torrents)) {
+		if torrent == nil {
 			continue
 		}
-		torrent, ok := update.Snapshot.Torrent(hash)
-		if !ok {
+		if _, ok := c.addedState[torrent.Hash]; ok {
 			continue
 		}
-		c.addedState[hash] = struct{}{}
+		c.addedState[torrent.Hash] = struct{}{}
 		ready = append(ready, torrent)
 	}
 	c.addedMu.Unlock()
@@ -774,11 +760,10 @@ func isStoppedOrErrorState(state qbt.TorrentState) bool {
 
 const peerSyncFetchTimeout = 30 * time.Second
 
-func (c *Client) SyncPeers(ctx context.Context, hash string) (*qbt.TorrentPeersResponse, error) {
-	hash = strings.ToLower(hash)
+func (c *Client) SyncPeers(ctx context.Context, hash infohash.Hash) (*qbt.TorrentPeersResponse, error) {
 	peerSync := c.GetOrCreatePeerSyncManager(hash)
 
-	ch := c.peerSyncGroup.DoChan(hash, func() (any, error) {
+	ch := c.peerSyncGroup.DoChan(hash.String(), func() (any, error) {
 		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), peerSyncFetchTimeout)
 		defer cancel()
 
@@ -799,8 +784,7 @@ func (c *Client) SyncPeers(ctx context.Context, hash string) (*qbt.TorrentPeersR
 	}
 }
 
-func (c *Client) GetOrCreatePeerSyncManager(hash string) *qbt.PeerSyncManager {
-	hash = strings.ToLower(hash)
+func (c *Client) GetOrCreatePeerSyncManager(hash infohash.Hash) *qbt.PeerSyncManager {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -813,7 +797,7 @@ func (c *Client) GetOrCreatePeerSyncManager(hash string) *qbt.PeerSyncManager {
 	peerSyncOpts := qbt.DefaultPeerSyncOptions()
 	peerSyncOpts.AutoSync = false
 	entry := &peerSyncEntry{
-		manager:  c.NewPeerSyncManager(hash, peerSyncOpts),
+		manager:  c.NewPeerSyncManager(hash.String(), peerSyncOpts),
 		lastUsed: time.Now(),
 	}
 	entry.timer = time.AfterFunc(peerSyncIdleTimeout, func() {
@@ -831,27 +815,32 @@ func (c *Client) GetOrCreatePeerSyncManager(hash string) *qbt.PeerSyncManager {
 func (c *Client) prunePeerSyncManagers(snapshot *qbt.SyncSnapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	maps.DeleteFunc(c.peerSyncManager, func(hash string, entry *peerSyncEntry) bool {
-		if _, exists := snapshot.Torrent(hash); exists {
-			return false
+	hashes := slices.Collect(maps.Keys(c.peerSyncManager))
+	for i, torrent := range snapshotIndex(snapshot).Torrents(hashes) {
+		if torrent == nil {
+			c.peerSyncManager[hashes[i]].timer.Stop()
+			delete(c.peerSyncManager, hashes[i])
 		}
-		entry.timer.Stop()
-		return true
-	})
+	}
 }
 
-func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ map[string]any) {
+func (c *Client) applyOptimisticCacheUpdate(hashes []infohash.Hash, action string, _ map[string]any) {
 	now := time.Now()
-	var snapshot torrentIndex = noTorrents{}
+	var snapshot *qbt.SyncSnapshot
 	if syncManager := c.SyncOwner(); syncManager != nil {
-		snapshot = snapshotIndex(syncManager.Snapshot())
+		snapshot = syncManager.Snapshot()
 	}
 
-	for _, hash := range hashes {
+	for i, torrent := range snapshotIndex(snapshot).Torrents(hashes) {
+		if hashes[i].IsZero() {
+			continue
+		}
+		hash := hashes[i].String()
 		var originalState qbt.TorrentState
 		var progress float64
 
-		if torrent, exists := snapshot.Torrent(hash); exists {
+		if torrent != nil {
+			hash = torrent.Hash
 			originalState = torrent.State
 			progress = torrent.Progress
 		}
@@ -989,4 +978,18 @@ func getTargetState(action string, progress float64) qbt.TorrentState {
 	default:
 		return ""
 	}
+}
+
+func (c *Client) torrentIDs(hashes []string) []string {
+	ids := slices.Clone(hashes)
+	syncManager := c.SyncOwner()
+	if syncManager == nil {
+		return ids
+	}
+	for i, torrent := range snapshotIndex(syncManager.Snapshot()).Torrents(infohash.ParseAll(hashes)) {
+		if torrent != nil {
+			ids[i] = torrent.Hash
+		}
+	}
+	return ids
 }

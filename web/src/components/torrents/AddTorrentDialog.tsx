@@ -160,6 +160,10 @@ function createFileKey(file: File): string {
   return `${file.name}__${file.size}__${file.lastModified}`
 }
 
+function linesDescription(lines: string[]) {
+  return { description: lines.join("\n"), descriptionClassName: "whitespace-pre-line" }
+}
+
 export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange, dropPayload, onDropPayloadConsumed, torrents = [] }: AddTorrentDialogProps) {
   const { t } = useTranslation("torrents")
   const [internalOpen, setInternalOpen] = useState(false)
@@ -195,6 +199,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   if (open !== wasOpen) {
     setWasOpen(open)
     if (open) setShowMoreOptions(false)
+    else setBatchProgress(null)
   }
 
   useEffect(() => {
@@ -506,7 +511,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
   const mutation = useMutation({
     retry: false,
-    mutationFn: async (data: FormData) => {
+    mutationFn: async ({ session, ...data }: FormData & { session: number }) => {
       const autoTMM = data.autoTMM
       const tempPathChanged =
         !autoTMM && (data.tempPathEnabled !== preferenceDefaults.tempPathEnabled ||
@@ -532,7 +537,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       }
 
       if (activeTab === "file" && data.torrentFiles && data.torrentFiles.length > 0) {
-        return addFilesInBatches(request => api.addTorrent(instanceId, request), submitData, data.torrentFiles, (current, total) => setBatchProgress({ current, total }))
+        return addFilesInBatches(request => api.addTorrent(instanceId, request), submitData, data.torrentFiles, (current, total) => {
+          if (session === dialogSessionRef.current) setBatchProgress({ current, total })
+        })
       } else if (activeTab === "url" && data.urls) {
         const urls = data.urls.split("\n").map(u => u.trim()).filter(Boolean)
         return addUrlsByIndexer(request => api.addTorrent(instanceId, request), submitData, urls, data.indexerByUrl)
@@ -540,20 +547,21 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
       return api.addTorrent(instanceId, submitData)
     },
-    onMutate: () => dialogSessionRef.current,
-    onSettled: () => setBatchProgress(null),
-    onError: (error, submitted, session) => {
+    onSettled: (_data, _error, { session }) => {
+      if (session === dialogSessionRef.current) setBatchProgress(null)
+    },
+    onError: (error, submitted) => {
       if (error instanceof BatchAddError) {
         refetchAfterAdd()
-        if (session === dialogSessionRef.current) {
+        if (submitted.session === dialogSessionRef.current) {
           const addedSince = (form.getFieldValue("torrentFiles") ?? []).filter(file => !submitted.torrentFiles?.includes(file))
           form.setFieldValue("torrentFiles", [...error.unconfirmed, ...addedSince])
         }
         toast.error(t("addTorrentDialog.toast.batchFailed", { added: error.added, total: error.total }), {
-          description: [
+          ...linesDescription([
             t("addTorrentDialog.toast.batchFailedDescription", { batch: error.batch, batches: error.batches, error: error.message }),
             ...error.failedFiles.slice(0, 3).map(f => `${f.filename}: ${f.error}`),
-          ].join("\n"),
+          ]),
           duration: 10000,
         })
         return
@@ -569,7 +577,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
         duration: 5000,
       })
     },
-    onSuccess: (response: AddTorrentResponse) => {
+    onSuccess: (response: AddTorrentResponse, { session }) => {
       refetchAfterAdd()
 
       if (response.failed === 0) {
@@ -584,7 +592,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           ...(response.failedFiles?.map(f => `${f.filename}: ${f.error}`) ?? []),
         ]
         toast.error(t("addTorrentDialog.toast.failedMany", { count: response.failed }), {
-          description: failedDetails.length > 0 ? failedDetails.slice(0, 3).join("\n") : undefined,
+          ...linesDescription(failedDetails.slice(0, 3)),
           duration: 5000,
         })
       } else {
@@ -593,15 +601,17 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
           ...(response.failedFiles?.map(f => `${f.filename}: ${f.error}`) ?? []),
         ]
         toast.warning(t("addTorrentDialog.toast.partialSuccess", { added: response.added, failed: response.failed }), {
-          description: failedDetails.length > 0 ? failedDetails.slice(0, 3).join("\n") : undefined,
+          ...linesDescription(failedDetails.slice(0, 3)),
           duration: 5000,
         })
       }
 
+      if (session !== dialogSessionRef.current) return
       setOpen(false)
       form.reset()
     },
   })
+  const resetMutation = mutation.reset
 
   const form = useForm({
     defaultValues: {
@@ -621,7 +631,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       indexerByUrl: undefined as Record<string, number> | undefined,
     },
     onSubmit: async ({ value }) => {
-      await mutation.mutateAsync(value).catch(() => undefined)
+      await mutation.mutateAsync({ ...value, session: dialogSessionRef.current }).catch(() => undefined)
     },
   })
 
@@ -797,15 +807,16 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       return
     }
     dialogSessionRef.current += 1
+    resetMutation()
     form.reset()
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
-  }, [open, form])
+  }, [open, form, resetMutation])
 
 
   const renderDuplicateMatches = (matches: string[]) => (
-    <span className="block text-[11px] text-yellow-700 dark:text-yellow-500">
+    <span className="block text-[11px] text-warning">
       {t("addTorrentDialog.duplicate.matchesExisting", { names: matches.slice(0, 2).join(", ") })}
       {matches.length > 2 && ` ${t("addTorrentDialog.duplicate.more", { count: matches.length - 2 })}`}
     </span>
@@ -918,7 +929,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                             <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
                               <span>{t("addTorrentDialog.fileInput.selectedFiles", { count: files.length })}</span>
                               {duplicateFileKeys.length > 0 && (
-                                <span className="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-500">
+                                <span className="flex items-center gap-1 font-medium text-warning">
                                   <AlertCircle className="h-3 w-3" />
                                   {t("addTorrentDialog.fileInput.duplicateFiles", { count: duplicateFileKeys.length })}
                                 </span>
@@ -933,7 +944,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                                     key={`${fileKey}-${index}`}
                                     className={cn(
                                       "flex items-center gap-2 pl-3 pr-1 py-1 text-sm",
-                                      duplicateInfo && "bg-yellow-500/10"
+                                      duplicateInfo && "bg-warning/10"
                                     )}
                                   >
                                     <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1000,14 +1011,14 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         }}
                       />
                       {duplicateUrlKeys.length > 0 && (
-                        <div className="rounded-md border border-yellow-600/30 bg-yellow-500/5 p-2 space-y-2 text-xs">
+                        <div className="rounded-md border border-warning/30 bg-warning/5 p-2 space-y-2 text-xs">
                           {duplicateUrlKeys.map((urlKey) => {
                             const duplicateInfo = duplicateUrlEntries[urlKey]
                             if (!duplicateInfo) {
                               return null
                             }
                             return (
-                              <div key={urlKey} className="text-yellow-700 dark:text-yellow-500 space-y-1">
+                              <div key={urlKey} className="text-warning space-y-1">
                                 <div className="font-medium truncate">{duplicateInfo.label}</div>
                                 {duplicateInfo.matches.length > 0 && renderDuplicateMatches(duplicateInfo.matches)}
                               </div>
@@ -1031,9 +1042,9 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
               )}
 
               {duplicateSelectionCount > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-yellow-600/30 bg-yellow-500/5 px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2">
                   <div className="flex min-w-0 flex-col gap-0.5 text-sm">
-                    <span className="flex items-center gap-2 font-medium text-yellow-700 dark:text-yellow-500">
+                    <span className="flex items-center gap-2 font-medium text-warning">
                       <AlertCircle className="h-4 w-4 shrink-0" />
                       {t("addTorrentDialog.duplicate.selectionDetected", { count: duplicateSelectionCount })}
                     </span>
@@ -1050,7 +1061,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="text-yellow-700 dark:text-yellow-500 border-yellow-600/40 hover:bg-yellow-600/10"
+                    className="text-warning border-warning/40 hover:bg-warning/10"
                     onClick={handleRemoveDuplicateSelections}
                   >
                     {t("addTorrentDialog.duplicate.remove")}

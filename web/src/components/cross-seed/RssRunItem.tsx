@@ -30,9 +30,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
         <div className={`flex items-center justify-between gap-2 p-2 rounded bg-muted/30 text-sm ${hasResults ? "hover:bg-muted/50 cursor-pointer" : ""}`}>
           <div className="flex items-center gap-2 min-w-0">
             {run.status === "success" && <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />}
-            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-yellow-500 shrink-0" />}
+            {run.status === "running" && <Loader2 className="h-3 w-3 animate-spin text-info shrink-0" />}
             {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
-            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
+            {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-warning shrink-0" />}
             {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
             <span className="text-xs text-muted-foreground">{t("automation.items", { count: run.totalFeedItems })}</span>
             {run.errorMessage && (

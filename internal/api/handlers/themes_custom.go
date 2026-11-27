@@ -135,7 +135,7 @@ func (h *ThemesHandler) CreateCustomTheme(w http.ResponseWriter, r *http.Request
 		return
 	}
 	h.activity.Publish(activity.Event{Kind: activity.KindCustomThemes})
-	RespondJSON(w, http.StatusCreated, CustomTheme{ID: req.ID, Filename: filename, CSS: req.CSS})
+	RespondJSON(w, r, http.StatusCreated, CustomTheme{ID: req.ID, Filename: filename, CSS: req.CSS})
 }
 
 func (h *ThemesHandler) ReplaceCustomTheme(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +165,7 @@ func (h *ThemesHandler) ReplaceCustomTheme(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	h.activity.Publish(activity.Event{Kind: activity.KindCustomThemes})
-	RespondJSON(w, http.StatusOK, CustomTheme{ID: customThemeID(entry.Name()), Filename: entry.Name(), CSS: req.CSS})
+	RespondJSON(w, r, http.StatusOK, CustomTheme{ID: customThemeID(entry.Name()), Filename: entry.Name(), CSS: req.CSS})
 }
 
 func (h *ThemesHandler) DeleteCustomTheme(w http.ResponseWriter, r *http.Request) {

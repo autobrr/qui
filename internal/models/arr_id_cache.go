@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"time"
 
@@ -32,18 +33,19 @@ type EpisodeMap struct {
 }
 
 type ArrIDCacheEntry struct {
-	ID            int64       `json:"id"`
-	TitleHash     string      `json:"title_hash"`
-	ContentType   string      `json:"content_type"`
-	ArrInstanceID *int        `json:"arr_instance_id,omitempty"`
-	ExternalIDs   ExternalIDs `json:"external_ids"`
-	Titles        []string    `json:"titles,omitempty"`
-	HasTitles     bool        `json:"has_titles"`
-	EpisodeMap    *EpisodeMap `json:"episode_map,omitempty"`
-	HasEpisodeMap bool        `json:"has_episode_map"`
-	IsNegative    bool        `json:"is_negative"`
-	CachedAt      time.Time   `json:"cached_at"`
-	ExpiresAt     time.Time   `json:"expires_at"`
+	ID            int64            `json:"id"`
+	TitleHash     string           `json:"title_hash"`
+	ContentType   string           `json:"content_type"`
+	ArrInstanceID *int             `json:"arr_instance_id,omitempty"`
+	ExternalIDs   ExternalIDs      `json:"external_ids"`
+	Titles        []string         `json:"titles,omitempty"`
+	TitleSeasons  map[string][]int `json:"title_seasons,omitempty"`
+	HasTitles     bool             `json:"has_titles"`
+	EpisodeMap    *EpisodeMap      `json:"episode_map,omitempty"`
+	HasEpisodeMap bool             `json:"has_episode_map"`
+	IsNegative    bool             `json:"is_negative"`
+	CachedAt      time.Time        `json:"cached_at"`
+	ExpiresAt     time.Time        `json:"expires_at"`
 }
 
 type ArrIDCacheStore struct {
@@ -63,13 +65,13 @@ func ComputeTitleHash(title string) string {
 func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string) (*ArrIDCacheEntry, error) {
 	query := `
 		SELECT id, title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json,
-			episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, cached_at, expires_at
+			title_seasons_json, episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, cached_at, expires_at
 		FROM arr_id_cache
 		WHERE title_hash = ? AND content_type = ? AND expires_at > ?
 	`
 
 	var entry ArrIDCacheEntry
-	var imdbID, titlesJSON *string
+	var imdbID, titlesJSON, titleSeasonsJSON *string
 	var tmdbID, tvdbID, tvmazeID, mapSeason, mapEpisode, mapAbsolute *int
 	var mapKnown, isNegative int
 
@@ -83,6 +85,7 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 		&tvdbID,
 		&tvmazeID,
 		&titlesJSON,
+		&titleSeasonsJSON,
 		&mapSeason,
 		&mapEpisode,
 		&mapAbsolute,
@@ -113,6 +116,11 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 			return nil, fmt.Errorf("failed to decode arr id cache titles: %w", err)
 		}
 	}
+	if titleSeasonsJSON != nil {
+		if err := jsonv2.Unmarshal([]byte(*titleSeasonsJSON), &entry.TitleSeasons); err != nil {
+			return nil, fmt.Errorf("failed to decode arr id cache title seasons: %w", err)
+		}
+	}
 	entry.HasEpisodeMap = SQLiteIntToBool(mapKnown)
 	if mapSeason != nil && mapEpisode != nil && mapAbsolute != nil {
 		entry.EpisodeMap = &EpisodeMap{Season: *mapSeason, Episode: *mapEpisode, Absolute: *mapAbsolute}
@@ -123,14 +131,14 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 }
 
 func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, isNegative bool, ttl time.Duration) error {
-	return s.SetWithTitles(ctx, titleHash, contentType, arrInstanceID, ids, nil, nil, false, isNegative, ttl)
+	return s.SetWithTitles(ctx, titleHash, contentType, arrInstanceID, ids, nil, nil, nil, false, isNegative, ttl)
 }
 
-func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, episodeMap *EpisodeMap, episodeMapKnown, isNegative bool, ttl time.Duration) error {
+func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, titleSeasons map[string][]int, episodeMap *EpisodeMap, episodeMapKnown, isNegative bool, ttl time.Duration) error {
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl)
 
-	var imdbID, titlesJSON *string
+	var imdbID, titlesJSON, titleSeasonsJSON *string
 	var tmdbID, tvdbID, tvmazeID, mapSeason, mapEpisode, mapAbsolute *int
 
 	if episodeMap != nil {
@@ -158,11 +166,19 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 		titlesValue := string(encodedTitles)
 		titlesJSON = &titlesValue
 	}
+	if len(titleSeasons) > 0 {
+		encodedSeasons, err := jsonv2.Marshal(titleSeasons)
+		if err != nil {
+			return fmt.Errorf("failed to encode arr id cache title seasons: %w", err)
+		}
+		seasonsValue := string(encodedSeasons)
+		titleSeasonsJSON = &seasonsValue
+	}
 
 	query := `
 		INSERT INTO arr_id_cache (title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json,
-			episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			title_seasons_json, episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, cached_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(title_hash, content_type) DO UPDATE SET
 			arr_instance_id = excluded.arr_instance_id,
 			imdb_id = excluded.imdb_id,
@@ -170,12 +186,13 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 			tvdb_id = excluded.tvdb_id,
 			tvmaze_id = excluded.tvmaze_id,
 			titles_json = excluded.titles_json,
+			title_seasons_json = excluded.title_seasons_json,
 			episode_map_season = excluded.episode_map_season,
 			episode_map_episode = excluded.episode_map_episode,
 			episode_map_absolute = excluded.episode_map_absolute,
 			episode_map_known = excluded.episode_map_known,
 			is_negative = excluded.is_negative,
-			cached_at = CURRENT_TIMESTAMP,
+			cached_at = excluded.cached_at,
 			expires_at = excluded.expires_at
 		WHERE excluded.is_negative = 0
 			OR arr_id_cache.is_negative = 1
@@ -183,7 +200,7 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 	`
 
 	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, titlesJSON,
-		mapSeason, mapEpisode, mapAbsolute, BoolToSQLite(episodeMapKnown), BoolToSQLite(isNegative), expiresAt, now)
+		titleSeasonsJSON, mapSeason, mapEpisode, mapAbsolute, BoolToSQLite(episodeMapKnown), BoolToSQLite(isNegative), now, expiresAt, now)
 	if err != nil {
 		return fmt.Errorf("failed to set arr id cache entry: %w", err)
 	}

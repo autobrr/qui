@@ -42,6 +42,8 @@ func newLoginLimiter() *rate.Limiter {
 	return rate.NewLimiter(rate.Every(time.Minute/5), 5)
 }
 
+const maxCredentialsBodySize = 1 << 20
+
 func requireJSON(w http.ResponseWriter, r *http.Request) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -177,7 +179,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req SetupRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCredentialsBodySize)).Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -204,7 +206,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Put(r.Context(), "user_id", user.ID)
 	h.sessionManager.Put(r.Context(), "username", user.Username)
 
-	RespondJSON(w, http.StatusCreated, sessionStartedReply{
+	RespondJSON(w, r, http.StatusCreated, sessionStartedReply{
 		Message: "Setup completed successfully",
 		User:    sessionUser{ID: user.ID, Username: user.Username},
 	})
@@ -311,7 +313,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxCredentialsBodySize)).Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -350,7 +352,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	go h.warmSession(context.Background()) //nolint:gosec // G118: session warm-up must outlive the login request
 
-	RespondJSON(w, http.StatusOK, sessionStartedReply{
+	RespondJSON(w, r, http.StatusOK, sessionStartedReply{
 		Message: "Login successful",
 		User:    sessionUser{ID: user.ID, Username: user.Username},
 	})
@@ -367,7 +369,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Logged out successfully",
 	})
 }
@@ -378,7 +380,7 @@ func syntheticAdminResponse() currentUserReply {
 
 func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	if h.config != nil && h.config.Live().IsAuthDisabled() {
-		RespondJSON(w, http.StatusOK, syntheticAdminResponse())
+		RespondJSON(w, r, http.StatusOK, syntheticAdminResponse())
 		return
 	}
 
@@ -397,7 +399,7 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	userID := h.sessionManager.GetInt(r.Context(), "user_id")
 	authMethod := h.sessionManager.GetString(r.Context(), "auth_method")
 
-	RespondJSON(w, http.StatusOK, currentUserReply{
+	RespondJSON(w, r, http.StatusOK, currentUserReply{
 		ID:         userID,
 		Username:   username,
 		AuthMethod: authMethod,
@@ -406,7 +408,7 @@ func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	if h.config != nil && h.config.Live().IsAuthDisabled() {
-		RespondJSON(w, http.StatusOK, syntheticAdminResponse())
+		RespondJSON(w, r, http.StatusOK, syntheticAdminResponse())
 		return
 	}
 
@@ -420,7 +422,7 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	authMethod := h.sessionManager.GetString(r.Context(), "auth_method")
 	profilePicture := h.sessionManager.GetString(r.Context(), "profile_picture")
 
-	RespondJSON(w, http.StatusOK, validateReply{
+	RespondJSON(w, r, http.StatusOK, validateReply{
 		Username:       username,
 		AuthMethod:     authMethod,
 		ProfilePicture: profilePicture,
@@ -429,7 +431,7 @@ func (h *AuthHandler) Validate(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request) {
 	if h.config != nil && (h.config.Live().IsAuthDisabled() || h.config.Live().OIDCEnabled) {
-		RespondJSON(w, http.StatusOK, setupRequiredReply{SetupRequired: false})
+		RespondJSON(w, r, http.StatusOK, setupRequiredReply{SetupRequired: false})
 		return
 	}
 
@@ -440,7 +442,7 @@ func (h *AuthHandler) CheckSetupRequired(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, setupRequiredReply{SetupRequired: !complete})
+	RespondJSON(w, r, http.StatusOK, setupRequiredReply{SetupRequired: !complete})
 }
 
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
@@ -476,7 +478,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Password changed successfully",
 	})
 }
@@ -556,7 +558,7 @@ func (h *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, createdAPIKeyReply{
+	RespondJSON(w, r, http.StatusCreated, createdAPIKeyReply{
 		ID:          apiKey.ID,
 		Name:        apiKey.Name,
 		Key:         rawKey,
@@ -602,7 +604,7 @@ func (h *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, apiKey)
+	RespondJSON(w, r, http.StatusOK, apiKey)
 }
 
 func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
@@ -617,7 +619,7 @@ func (h *AuthHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, keys)
+	RespondJSON(w, r, http.StatusOK, keys)
 }
 
 func (h *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
@@ -647,7 +649,7 @@ func (h *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "API key deleted successfully",
 	})
 }

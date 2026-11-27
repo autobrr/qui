@@ -5,6 +5,7 @@ package transfer
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Request struct {
@@ -53,15 +55,15 @@ const (
 type planned struct {
 	record   *Record
 	group    []*source
-	stay     []string
-	versions []string
+	stay     []infohash.Hash
+	versions []infohash.Hash
 }
 
 func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
-	hash := strings.ToLower(strings.TrimSpace(req.Hash))
-	if hash == "" {
+	if strings.TrimSpace(req.Hash) == "" {
 		return nil, refuse("Name the torrent to transfer.")
 	}
+	hash, _ := infohash.Parse(req.Hash)
 	if req.SourceInstanceID == req.TargetInstanceID {
 		return nil, refuse("The Transfer source and the Transfer target are the same instance.")
 	}
@@ -85,7 +87,7 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.deps.Store.IsHelper(source.ID, hash) {
+	if s.deps.Store.HelperKind(source.ID, hash) != "" {
 		return nil, refuse("qui added this torrent for a Transfer or a Share.")
 	}
 
@@ -94,7 +96,7 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 		return nil, err
 	}
 	if src == nil {
-		return nil, refuse("%s has no torrent %s.", source.Name, hash)
+		return nil, refuse("%s has no torrent %s.", source.Name, cmp.Or(hash.String(), strings.TrimSpace(req.Hash)))
 	}
 	if err := src.movable(); err != nil {
 		return nil, err
@@ -108,9 +110,9 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	if err != nil {
 		return nil, err
 	}
-	others := make([]string, 0, len(group)-1)
+	others := make([]infohash.Hash, 0, len(group)-1)
 	for _, member := range group[1:] {
-		others = append(others, member.torrent.Hash)
+		others = append(others, member.hash)
 	}
 	versions, err := s.ruleChecks(ctx, req, source, src, stay, others)
 	if err != nil {
@@ -185,7 +187,7 @@ func leaveFilesToSource(members []Member, way Way, after After) {
 	}
 }
 
-func (s *Service) ruleChecks(ctx context.Context, req Request, source *models.Instance, first *source, stay, others []string) (versions []string, err error) {
+func (s *Service) ruleChecks(ctx context.Context, req Request, source *models.Instance, first *source, stay, others []infohash.Hash) (versions []infohash.Hash, err error) {
 	if req.StartedBy != StartedByRule {
 		return nil, nil
 	}
@@ -198,11 +200,11 @@ func (s *Service) ruleChecks(ctx context.Context, req Request, source *models.In
 	return versions, s.waitsForUser(ctx, req, others...)
 }
 
-func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, versions []string) error {
+func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, versions []infohash.Hash) error {
 	if len(versions) == 0 {
 		return nil
 	}
-	if slices.ContainsFunc(versions, func(hash string) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
+	if slices.ContainsFunc(versions, func(hash infohash.Hash) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
 		return ErrStays
 	}
 	_, onTarget, err := s.deps.Sync.HasTorrentByAnyHash(ctx, targetID, versions)
@@ -215,7 +217,7 @@ func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, ver
 	return nil
 }
 
-func (s *Service) waitsForUser(ctx context.Context, req Request, hashes ...string) error {
+func (s *Service) waitsForUser(ctx context.Context, req Request, hashes ...infohash.Hash) error {
 	if req.StartedBy != StartedByRule {
 		return nil
 	}
@@ -324,25 +326,26 @@ func (s *Service) seesSameFiles(ctx context.Context, source, target *models.Inst
 }
 
 type source struct {
+	hash    infohash.Hash
 	torrent qbt.Torrent
 	files   qbt.TorrentFiles
 	export  []byte
 	info    *metainfo.Info
 }
 
-func (s *Service) readSource(ctx context.Context, instanceID int, hash string) (*source, error) {
+func (s *Service) readSource(ctx context.Context, instanceID int, hash infohash.Hash) (*source, error) {
 	torrent, err := s.torrent(ctx, instanceID, hash)
 	if err != nil || torrent == nil {
 		return nil, err
 	}
-	files, err := s.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hash)
+	files, err := s.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hash.String())
 	if err != nil {
 		return nil, fmt.Errorf("read the files of the torrent: %w", err)
 	}
 	if files == nil {
 		return nil, nil
 	}
-	export, _, _, err := s.deps.Sync.ExportTorrent(ctx, instanceID, hash)
+	export, _, _, err := s.deps.Sync.ExportTorrent(ctx, instanceID, hash.String())
 	if err != nil {
 		return nil, fmt.Errorf("export the torrent: %w", err)
 	}
@@ -354,7 +357,8 @@ func (s *Service) readSource(ctx context.Context, instanceID int, hash string) (
 	if err != nil {
 		return nil, fmt.Errorf("decode the exported torrent: %w", err)
 	}
-	return &source{torrent: *torrent, files: *files, export: export, info: &info}, nil
+	id, _ := infohash.Parse(torrent.Hash)
+	return &source{hash: id, torrent: *torrent, files: *files, export: export, info: &info}, nil
 }
 
 func (src *source) movable() error {
@@ -382,12 +386,12 @@ func (src *source) movable() error {
 	return nil
 }
 
-func (s *Service) torrent(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
+func (s *Service) torrent(ctx context.Context, instanceID int, hash infohash.Hash) (*qbt.Torrent, error) {
 	return s.read(ctx, instanceID, hash, true)
 }
 
-func (s *Service) read(ctx context.Context, instanceID int, hash string, fresh bool) (*qbt.Torrent, error) {
-	filter := qbittorrent.TorrentRefFilter{Hashes: []string{hash}}
+func (s *Service) read(ctx context.Context, instanceID int, hash infohash.Hash, fresh bool) (*qbt.Torrent, error) {
+	filter := qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{hash}}
 	var torrents []*qbt.Torrent
 	var err error
 	if fresh {
@@ -405,7 +409,7 @@ func (s *Service) read(ctx context.Context, instanceID int, hash string, fresh b
 	return &t, nil
 }
 
-func (s *Service) has(ctx context.Context, instanceID int, hash string) (bool, error) {
+func (s *Service) has(ctx context.Context, instanceID int, hash infohash.Hash) (bool, error) {
 	torrent, err := s.torrent(ctx, instanceID, hash)
 	return torrent != nil, err
 }

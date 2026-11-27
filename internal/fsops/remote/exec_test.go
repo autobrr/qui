@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
@@ -43,15 +44,15 @@ func newExecBackend(t *testing.T) (*Backend, *sshtest.Server) {
 
 func unixID(t *testing.T, p string, follow bool) (hardlink.FileID, uint64) {
 	t.Helper()
-	stat := os.Lstat
+	files := localbackend.NewBackend()
+	stat := files.Lstat
 	if follow {
-		stat = os.Stat
+		stat = files.Stat
 	}
-	fi, err := stat(p)
+	info, err := stat(t.Context(), p)
 	require.NoError(t, err)
-	id, nlink, err := hardlink.GetFileID(fi, p)
-	require.NoError(t, err)
-	return hardlink.RemoteFileID(id.Bytes()[1:17]), nlink
+	require.NoError(t, info.FileIDErr)
+	return hardlink.RemoteFileID(info.FileID.Bytes()[1:17]), info.Nlinks
 }
 
 func TestExecIdentity(t *testing.T) {

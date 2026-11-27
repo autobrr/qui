@@ -181,7 +181,7 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 			mode: "hardlink",
 			setup: func(t *testing.T, e *linkFailureEnv) {
 				require.NoError(t, os.MkdirAll(filepath.Join(e.linksA, "Movie"), 0o755))
-				stranger := filepath.Join(e.linksA, "TorrentName--hash123", "Movie", "movie.mkv")
+				stranger := filepath.Join(e.linksA, "TorrentName--"+hash123[:8], "Movie", "movie.mkv")
 				require.NoError(t, os.MkdirAll(filepath.Dir(stranger), 0o755))
 				require.NoError(t, os.WriteFile(stranger, []byte("stranger"), 0o600))
 			},
@@ -193,7 +193,7 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 			setup: func(t *testing.T, e *linkFailureEnv) {
 				e.backend.lost = []string{e.linksB}
 				require.NoError(t, os.MkdirAll(filepath.Join(e.linksA, "Movie"), 0o755))
-				stranger := filepath.Join(e.linksA, "TorrentName--hash123", "Movie", "movie.mkv")
+				stranger := filepath.Join(e.linksA, "TorrentName--"+hash123[:8], "Movie", "movie.mkv")
 				require.NoError(t, os.MkdirAll(filepath.Dir(stranger), 0o755))
 				require.NoError(t, os.WriteFile(stranger, []byte("stranger"), 0o600))
 			},
@@ -245,8 +245,8 @@ func TestProcessLinkMode_FailureKindRules(t *testing.T) {
 				process = s.processReflinkMode
 			}
 
-			result := process(t.Context(), linkCheck(1, "hash123"), CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-				[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
+			result := process(t.Context(), linkCheck(t, 1, hash123), CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+				[]byte("torrent"), hash123, "TorrentName", &CrossSeedRequest{},
 				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(e.downloads, "Movie")},
 				"exact", e.files, e.matchedFiles, &qbt.TorrentProperties{SavePath: e.downloads}, "category", "category.cross")
 
@@ -287,8 +287,8 @@ func TestProcessLinkMode_RouteWithoutRowLeavesNoTree(t *testing.T) {
 		backend:   local.NewBackend(),
 	}}
 
-	result := s.processHardlinkMode(t.Context(), linkCheck(1, "hash123"), candidate,
-		[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{},
+	result := s.processHardlinkMode(t.Context(), linkCheck(t, 1, hash123), candidate,
+		[]byte("torrent"), hash123, "TorrentName", &CrossSeedRequest{},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloads, "Movie")},
 		"exact", files, files, &qbt.TorrentProperties{SavePath: downloads}, "category", "category.cross")
 

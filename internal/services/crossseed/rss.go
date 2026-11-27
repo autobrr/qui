@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/redact"
 )
 
@@ -728,7 +729,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		var existingResults []models.CrossSeedRunResult
 
 		for _, candidate := range precheckCandidates {
-			existing, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{result.InfoHashV1})
+			existing, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, infohash.ParseAll([]string{result.InfoHashV1}))
 			if hashErr != nil {
 				if errors.Is(hashErr, context.Canceled) || errors.Is(hashErr, context.DeadlineExceeded) {
 					run.CandidatesFailed++
@@ -846,7 +847,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		invokeErr error
 	)
 	if len(boundMatches) == 0 {
-		resp, invokeErr = s.invokeCrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, result.Title, settings))
+		resp, invokeErr = s.injection.CrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, result.Title, settings))
 		if invokeErr != nil {
 			run.CandidatesFailed++
 			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("cross-seed request: %w", invokeErr)
@@ -1118,7 +1119,7 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 				instanceID:   snapshot.instance.ID,
 				instanceName: snapshot.instance.Name,
 				torrent:      torrent,
-				decision:     decision.decision.provenance().bindSource(snapshot.instance.ID, torrent.Hash),
+				decision:     decision.decision.provenance().bindSource(snapshot.instance.ID, parseHash(torrent.Hash)),
 			}
 			matches = append(matches, match)
 		}

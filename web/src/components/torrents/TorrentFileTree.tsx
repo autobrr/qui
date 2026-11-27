@@ -282,7 +282,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />
                       )}
                       <span className="text-10 text-muted-foreground tabular-nums whitespace-nowrap">
-                        <span className={isComplete ? "text-green-500" : ""}>{Math.round(progressPercent)}%</span>
+                        <span className={isComplete ? "text-success" : ""}>{Math.round(progressPercent)}%</span>
                         <span className="mx-1">·</span>
                         {formatBytes(file.size)}
                       </span>
@@ -416,7 +416,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                   </div>
                   <div className="flex items-center gap-2" style={{ paddingLeft: supportsFilePriority ? "40px" : "24px" }}>
                     <span className="text-10 text-muted-foreground tabular-nums whitespace-nowrap">
-                      <span className={isFolderComplete ? "text-green-500" : ""}>{Math.round(progressPercent)}%</span>
+                      <span className={isFolderComplete ? "text-success" : ""}>{Math.round(progressPercent)}%</span>
                       <span className="mx-1">·</span>
                       {formatBytes(node.totalSize)}
                     </span>

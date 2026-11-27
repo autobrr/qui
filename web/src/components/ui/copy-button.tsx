@@ -55,7 +55,7 @@ export function CopyButton({ value, label, className, iconClassName = "size-3.5"
         >
           <span className="relative inline-flex">
             <Copy className={cn(iconClassName, "transition-all duration-200", copied && "scale-50 opacity-0")} />
-            <Check className={cn(iconClassName, "absolute inset-0 text-green-500 transition-all duration-200", !copied && "scale-50 opacity-0")} />
+            <Check className={cn(iconClassName, "absolute inset-0 text-success transition-all duration-200", !copied && "scale-50 opacity-0")} />
           </span>
         </Button>
       </TooltipTrigger>

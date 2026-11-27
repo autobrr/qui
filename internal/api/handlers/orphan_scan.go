@@ -107,7 +107,7 @@ func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +183,7 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, savedSettings)
+	RespondJSON(w, r, http.StatusOK, savedSettings)
 }
 
 func applyOrphanScanSettingsPayload(settings *models.OrphanScanSettings, payload *OrphanScanSettingsPayload) string {
@@ -281,7 +281,7 @@ func (h *OrphanScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, map[string]int64{"runId": runID})
+	RespondJSON(w, r, http.StatusAccepted, map[string]int64{"runId": runID})
 }
 
 func (h *OrphanScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
@@ -312,7 +312,7 @@ func (h *OrphanScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		runs = []*models.OrphanScanRun{}
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 func (h *OrphanScanHandler) GetRun(w http.ResponseWriter, r *http.Request) {
@@ -382,7 +382,7 @@ func (h *OrphanScanHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 		Files []*models.OrphanScanFile `json:"files"`
 	}
 
-	RespondJSON(w, http.StatusOK, RunWithFiles{
+	RespondJSON(w, r, http.StatusOK, RunWithFiles{
 		OrphanScanRun: run,
 		Files:         files,
 	})
@@ -452,7 +452,7 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "deleting"})
+	RespondJSON(w, r, http.StatusAccepted, map[string]string{"status": "deleting"})
 }
 
 func (h *OrphanScanHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
@@ -511,5 +511,5 @@ func (h *OrphanScanHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "canceled"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "canceled"})
 }

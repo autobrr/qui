@@ -13,6 +13,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type exportRunner interface {
@@ -30,7 +31,7 @@ func (s *Service) exportOnTransfers(ctx context.Context, sourceInstanceID int, e
 		delete(s.inFlightExports, fmt.Sprintf("%d:%s", exec.action.TargetInstanceID, exec.hash))
 		s.mu.Unlock()
 	}()
-	if _, exists, err := s.targetLookup.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, []string{exec.hash}); err == nil && exists {
+	if _, exists, err := s.targetLookup.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, infohash.ParseAll([]string{exec.hash})); err == nil && exists {
 		return
 	}
 	_, done, err := s.exportRunner.Export(ctx, transfer.ExportRequest{

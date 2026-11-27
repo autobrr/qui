@@ -161,17 +161,16 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 }
 
 type CrossSeedSearchSettings struct {
-	InstanceID             *int      `json:"instanceId"`
-	Categories             []string  `json:"categories"`
-	Tags                   []string  `json:"tags"`
-	ExcludeCategories      []string  `json:"excludeCategories"`
-	ExcludeTags            []string  `json:"excludeTags"`
-	IndexerIDs             []int     `json:"indexerIds"`
+	InstanceID        *int     `json:"instanceId"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	SitePick
 	IntervalSeconds        int       `json:"intervalSeconds"`
 	CooldownMinutes        int       `json:"cooldownMinutes"`
 	MaxAddedAgeDays        int       `json:"maxAddedAgeDays"`
 	SkipIndividualEpisodes bool      `json:"skipIndividualEpisodes"`
-	TorznabEnabled         bool      `json:"torznabEnabled"`
 	ScheduleEnabled        bool      `json:"scheduleEnabled"`
 	ScheduleIntervalHours  int       `json:"scheduleIntervalHours"`
 	ScheduleMaxSearches    int       `json:"scheduleMaxSearches"`
@@ -183,15 +182,14 @@ type CrossSeedSearchSettings struct {
 func DefaultCrossSeedSearchSettings() *CrossSeedSearchSettings {
 	now := time.Now().UTC()
 	return &CrossSeedSearchSettings{
-		InstanceID:            nil,
-		Categories:            []string{},
-		Tags:                  []string{},
-		ExcludeCategories:     []string{},
-		ExcludeTags:           []string{},
-		IndexerIDs:            []int{},
+		InstanceID:        nil,
+		Categories:        []string{},
+		Tags:              []string{},
+		ExcludeCategories: []string{},
+		ExcludeTags:       []string{},
+		IndexerIDs:        []int{}, GazelleSites: []string{},
 		IntervalSeconds:       60,
 		CooldownMinutes:       720,
-		TorznabEnabled:        true,
 		ScheduleIntervalHours: 24,
 		ScheduleMaxSearches:   400,
 		ScheduleMaxAgeDays:    14,
@@ -1019,9 +1017,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 
 func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearchSettings, error) {
 	query := `
-		SELECT instance_id, categories, tags, exclude_categories, exclude_tags, indexer_ids,
+		SELECT instance_id, categories, tags, exclude_categories, exclude_tags, indexer_ids, gazelle_sites,
 		       interval_seconds, cooldown_minutes, max_added_age_days,
-		       skip_individual_episodes, torznab_enabled, schedule_enabled,
+		       skip_individual_episodes, schedule_enabled,
 		       schedule_interval_hours, schedule_max_searches, schedule_max_age_days,
 		       created_at, updated_at
 		FROM cross_seed_search_settings
@@ -1032,8 +1030,8 @@ func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearc
 
 	var settings CrossSeedSearchSettings
 	var instanceID sql.NullInt64
-	var categoriesJSON, tagsJSON, excludeCategoriesJSON, excludeTagsJSON, indexersJSON sql.NullString
-	var skipIndividualEpisodes, torznabEnabled, scheduleEnabled int
+	var categoriesJSON, tagsJSON, excludeCategoriesJSON, excludeTagsJSON, indexersJSON, gazelleJSON sql.NullString
+	var skipIndividualEpisodes, scheduleEnabled int
 	var createdAt, updatedAt sql.NullTime
 
 	if err := row.Scan(
@@ -1043,11 +1041,11 @@ func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearc
 		&excludeCategoriesJSON,
 		&excludeTagsJSON,
 		&indexersJSON,
+		&gazelleJSON,
 		&settings.IntervalSeconds,
 		&settings.CooldownMinutes,
 		&settings.MaxAddedAgeDays,
 		&skipIndividualEpisodes,
-		&torznabEnabled,
 		&scheduleEnabled,
 		&settings.ScheduleIntervalHours,
 		&settings.ScheduleMaxSearches,
@@ -1081,8 +1079,11 @@ func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearc
 	if err := decodeIntSlice(indexersJSON, &settings.IndexerIDs); err != nil {
 		return nil, fmt.Errorf("decode search indexers: %w", err)
 	}
+	if err := decodeStringSlice(gazelleJSON, &settings.GazelleSites); err != nil {
+		return nil, fmt.Errorf("decode search gazelle sites: %w", err)
+	}
+	settings.SitePick = settings.Clean()
 	settings.SkipIndividualEpisodes = SQLiteIntToBool(skipIndividualEpisodes)
-	settings.TorznabEnabled = SQLiteIntToBool(torznabEnabled)
 	settings.ScheduleEnabled = SQLiteIntToBool(scheduleEnabled)
 
 	if createdAt.Valid {
@@ -1120,6 +1121,10 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 	if err != nil {
 		return nil, fmt.Errorf("encode search indexers: %w", err)
 	}
+	gazelleJSON, err := encodeStringSlice(cleanGazelleSites(settings.GazelleSites))
+	if err != nil {
+		return nil, fmt.Errorf("encode search gazelle sites: %w", err)
+	}
 
 	var instanceID any
 	if settings.InstanceID != nil {
@@ -1128,9 +1133,9 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 
 	query := `
 		INSERT INTO cross_seed_search_settings (
-			id, instance_id, categories, tags, exclude_categories, exclude_tags, indexer_ids,
+			id, instance_id, categories, tags, exclude_categories, exclude_tags, indexer_ids, gazelle_sites,
 			interval_seconds, cooldown_minutes, max_added_age_days,
-			skip_individual_episodes, torznab_enabled, schedule_enabled,
+			skip_individual_episodes, schedule_enabled,
 			schedule_interval_hours, schedule_max_searches, schedule_max_age_days
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -1140,11 +1145,11 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 			exclude_categories = excluded.exclude_categories,
 			exclude_tags = excluded.exclude_tags,
 			indexer_ids = excluded.indexer_ids,
+			gazelle_sites = excluded.gazelle_sites,
 			interval_seconds = excluded.interval_seconds,
 			cooldown_minutes = excluded.cooldown_minutes,
 			max_added_age_days = excluded.max_added_age_days,
 			skip_individual_episodes = excluded.skip_individual_episodes,
-			torznab_enabled = excluded.torznab_enabled,
 			schedule_enabled = excluded.schedule_enabled,
 			schedule_interval_hours = excluded.schedule_interval_hours,
 			schedule_max_searches = excluded.schedule_max_searches,
@@ -1159,11 +1164,11 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 		excludeCategoriesJSON,
 		excludeTagsJSON,
 		indexerJSON,
+		gazelleJSON,
 		settings.IntervalSeconds,
 		settings.CooldownMinutes,
 		settings.MaxAddedAgeDays,
 		BoolToSQLite(settings.SkipIndividualEpisodes),
-		BoolToSQLite(settings.TorznabEnabled),
 		BoolToSQLite(settings.ScheduleEnabled),
 		settings.ScheduleIntervalHours,
 		settings.ScheduleMaxSearches,

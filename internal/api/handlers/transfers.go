@@ -76,7 +76,7 @@ func (h *TransfersHandler) Start(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("transfer: failed to start the Transfer")
 		RespondError(w, http.StatusInternalServerError, "Failed to start the Transfer")
 	default:
-		RespondJSON(w, http.StatusAccepted, startTransferResponse{ID: id})
+		RespondJSON(w, r, http.StatusAccepted, startTransferResponse{ID: id})
 	}
 }
 
@@ -243,7 +243,7 @@ func (h *TransfersHandler) List(w http.ResponseWriter, r *http.Request) {
 	for _, row := range list.Rows {
 		res.Rows = append(res.Rows, h.row(r.Context(), row, names))
 	}
-	RespondJSON(w, http.StatusOK, res)
+	RespondJSON(w, r, http.StatusOK, res)
 }
 
 func queryNumber(value string, fallback int) (int, error) {
@@ -275,7 +275,7 @@ func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 	row := transfer.Row{
 		ID: record.ID, Kind: record.Kind, Way: record.Way, State: record.State, StartedBy: record.StartedBy,
 		RuleID: record.RuleID, SourceInstanceID: record.SourceInstanceID, TargetInstanceID: record.TargetInstanceID,
-		Hash: record.Members[0].Hash, Name: record.Members[0].Name, Torrents: len(record.Members), Size: record.Size, Options: record.Options,
+		Hash: record.Members[0].Hash.String(), Name: record.Members[0].Name, Torrents: len(record.Members), Size: record.Size, Options: record.Options,
 		RetryAt: record.RetryAt, FailureClass: record.FailureClass, FailureReason: record.FailureReason,
 		CreatedAt: record.CreatedAt, FinishedAt: record.FinishedAt,
 	}
@@ -297,10 +297,10 @@ func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 		if tags == nil {
 			tags = []string{}
 		}
-		res.Members[i] = transferMember{Hash: m.Hash, Name: m.Name, TargetInstanceID: m.TargetInstanceID,
+		res.Members[i] = transferMember{Hash: m.Hash.String(), Name: m.Name, TargetInstanceID: m.TargetInstanceID,
 			SavePath: m.Placement.SavePath, Category: m.Placement.Category, Tags: tags}
 	}
-	RespondJSON(w, http.StatusOK, res)
+	RespondJSON(w, r, http.StatusOK, res)
 }
 
 type transferSummaryResponse struct {
@@ -341,10 +341,10 @@ func (h *TransfersHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		if tags == nil {
 			tags = []string{}
 		}
-		res.Members[i] = transferMember{Hash: m.Hash, Name: m.Name, TargetInstanceID: m.TargetInstanceID,
+		res.Members[i] = transferMember{Hash: m.Hash.String(), Name: m.Name, TargetInstanceID: m.TargetInstanceID,
 			SavePath: m.Placement.SavePath, Category: m.Placement.Category, Tags: tags}
 	}
-	RespondJSON(w, http.StatusOK, res)
+	RespondJSON(w, r, http.StatusOK, res)
 }
 
 func (h *TransfersHandler) respondActionError(w http.ResponseWriter, err error, action string) {
@@ -375,7 +375,7 @@ func (h *TransfersHandler) Retry(w http.ResponseWriter, r *http.Request) {
 		h.respondActionError(w, err, "retry")
 		return
 	}
-	RespondJSON(w, http.StatusAccepted, startTransferResponse{ID: newID})
+	RespondJSON(w, r, http.StatusAccepted, startTransferResponse{ID: newID})
 }
 
 func (h *TransfersHandler) Cancel(w http.ResponseWriter, r *http.Request) {
@@ -477,5 +477,5 @@ func (h *TransfersHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	if errored > 0 {
 		log.Error().Err(lastErr).Int("rows", errored).Str("action", req.Action).Msg("transfer: a bulk action failed on some rows")
 	}
-	RespondJSON(w, http.StatusOK, res)
+	RespondJSON(w, r, http.StatusOK, res)
 }

@@ -76,7 +76,7 @@ func reportGazelleSites(scope searchScope) []ReportGazelleSite {
 }
 
 func (s *Service) SearchReportFacts(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*SearchReportFacts, error) {
-	search, err := s.prepareManualSearch(ctx, instanceID, hash, opts)
+	search, err := s.prepareManualSearch(ctx, instanceID, parseHash(hash), opts)
 	if err != nil {
 		return nil, err
 	}

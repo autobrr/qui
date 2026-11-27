@@ -46,7 +46,7 @@ export function DiscReportButton({
             type="button"
             className={cn(
               "p-0.5 rounded transition-colors",
-              status === "completed" ? "text-green-500" : status === "failed" ? "text-destructive" : "text-muted-foreground",
+              status === "completed" ? "text-success" : status === "failed" ? "text-destructive" : "text-muted-foreground",
               disabled ? "pointer-events-none opacity-50" : "hover:bg-muted/80 hover:text-foreground"
             )}
             onClick={onClick}

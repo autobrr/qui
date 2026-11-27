@@ -7,7 +7,7 @@ Use the `gh` CLI for all operations. GitHub shares one number space across discu
 ## Discussions
 
 - **List**: `gh discussion list --category issue-triage --label needs-triage --state open --json number,title,labels`. Category slugs: `issue-triage`, `feature-requests-ideas`.
-- **Read**: `gh discussion view <number> --comments`.
+- **Read**: `gh discussion view <number> --json title,body,labels,comments`. Do not use `--comments` here: in a non-TTY shell it prints only the comments, and nothing when there are none.
 - **Comment**: `gh discussion comment <number> --body "..."`.
 - **Labels**: `gh discussion edit <number> --add-label "..." --remove-label "..."`.
 - **Close**: `gh discussion` has no close command. Use GraphQL with the discussion node id:
@@ -42,7 +42,7 @@ Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `gh issue view <number> --json title,state,labels,body,comments`. If the number is a discussion, run `gh discussion view <number> --comments`.
+Run `gh issue view <number> --json title,state,labels,body,comments`. If the number is a discussion, run `gh discussion view <number> --json title,body,labels,comments`.
 
 ## Log links
 

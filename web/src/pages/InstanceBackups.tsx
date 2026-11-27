@@ -795,7 +795,7 @@ export function InstanceBackups() {
               <span className="truncate">{inst.name}</span>
               <span
                 className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
-                  inst.connected ? "bg-green-500" : "bg-red-500"
+                  inst.connected ? "bg-success" : "bg-destructive"
                 }`}
               />
             </div>
@@ -1464,7 +1464,7 @@ export function InstanceBackups() {
                 )}
 
                 {restoreUnsupportedChanges.length > 0 && (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
+                  <div className="rounded-md border border-warning/30 bg-warning/10 p-3 space-y-2 text-sm text-warning">
                     <p className="font-medium">{t("backups.restore.manualFollowUpRequired")}</p>
                     <ul className="list-disc pl-5 space-y-1">
                       {restoreUnsupportedChanges.map(({ hash, change }, index) => (
@@ -1512,7 +1512,7 @@ export function InstanceBackups() {
                 </div>
               </div>
               {restoreResult.warnings?.length ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1 text-sm text-amber-900">
+                <div className="rounded-md border border-warning/30 bg-warning/10 p-3 space-y-1 text-sm text-warning">
                   <p className="font-medium">{t("backups.restore.warnings")}</p>
                   <ul className="list-disc pl-5 space-y-1">
                     {restoreResult.warnings.map((warning, index) => (

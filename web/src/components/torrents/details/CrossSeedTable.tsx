@@ -110,7 +110,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
             {isHardlink && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-blue-500 border-blue-500/40">
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 bg-chart-2/10 border-chart-2/40">
                     {t("crossSeedTable.hardlink")}
                   </Badge>
                 </TooltipTrigger>
@@ -203,7 +203,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
         return (
           <div className="flex items-center gap-1.5">
             <Progress value={progress} className="h-1.5 w-14" />
-            <span className={cn("tabular-nums text-10", isComplete ? "text-green-500" : "text-muted-foreground")}>
+            <span className={cn("tabular-nums text-10", isComplete ? "text-success" : "text-muted-foreground")}>
               {progress.toFixed(0)}%
             </span>
           </div>

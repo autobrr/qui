@@ -66,7 +66,7 @@ export function NeedsAttention({ statsData, className }: { statsData: DashboardI
           </li>
         ))}
         {firewalled.map(d => (
-          <li key={`firewalled-${d.instance.id}`} data-tone="yellow" className={cn(item, "text-yellow-600 dark:text-yellow-500")}>
+          <li key={`firewalled-${d.instance.id}`} data-tone="yellow" className={cn(item, "text-warning")}>
             <ShieldAlert className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">{t("attention.firewalled", { name: d.instance.name })}</span>
           </li>
         ))}

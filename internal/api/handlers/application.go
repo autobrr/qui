@@ -64,7 +64,7 @@ func NewApplicationHandler(appConfig *config.AppConfig, experimentalFeatures *ex
 	}
 }
 
-func (h *ApplicationHandler) GetInfo(w http.ResponseWriter, _ *http.Request) {
+func (h *ApplicationHandler) GetInfo(w http.ResponseWriter, r *http.Request) {
 	if h.appConfig == nil || h.appConfig.Config == nil {
 		RespondError(w, http.StatusInternalServerError, "Application configuration is unavailable")
 		return
@@ -98,7 +98,7 @@ func (h *ApplicationHandler) GetInfo(w http.ResponseWriter, _ *http.Request) {
 		ProblemReports:       cfg.ProblemReports,
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func shortCommit(commit string) string {

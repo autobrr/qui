@@ -112,7 +112,7 @@ func TestFindCrossSeeds_SkipsDisabledInstances(t *testing.T) {
 		releaseCache:  NewReleaseCache(),
 	}
 
-	resp, err := svc.FindCrossSeeds(context.Background(), active.ID, source.Hash)
+	resp, err := svc.FindCrossSeeds(context.Background(), active.ID, mustParseHash(t, source.Hash))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, []int{active.ID}, syncManager.cachedInstanceIDs)

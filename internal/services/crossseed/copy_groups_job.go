@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -118,11 +119,11 @@ func (j *copyGroupsJob) HandleSyncUpdate(instanceID int, update qbt.SyncUpdate) 
 		j.seen[instanceID] = seen
 	}
 	changed := false
-	for _, hash := range update.Changes.Torrents {
-		torrent, ok := update.Snapshot.Torrent(hash)
-		if !ok {
+	for i, torrent := range qbittorrent.NewHashIndex(update.Snapshot).Torrents(infohash.ParseAll(update.Changes.Torrents)) {
+		if torrent == nil {
 			continue
 		}
+		hash := update.Changes.Torrents[i]
 		if now := newCopyGroupsPrint(torrent); seen[hash] != now {
 			seen[hash] = now
 			changed = true
@@ -363,7 +364,7 @@ func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents 
 	now := time.Now()
 	for i := range torrents {
 		t := torrents[i].Torrent
-		hash := normalizeHash(t.Hash)
+		hash := t.Hash
 		if t.ContentPath == "" {
 			continue
 		}
@@ -378,7 +379,7 @@ func (j *copyGroupsJob) readFiles(ctx context.Context, instanceID int, torrents 
 		return nil, nil, err
 	}
 	for _, t := range wanted {
-		hash := normalizeHash(t.Hash)
+		hash := t.Hash
 		if len(files[hash]) > 0 {
 			continue
 		}
@@ -454,7 +455,7 @@ func newCopyGroupsReader(j *copyGroupsJob, run copyGroupsRun, retried map[int]co
 func (r *copyGroupsReader) read(ctx context.Context, instanceID int, torrents []qbittorrent.CrossInstanceTorrentView) (map[string]qbt.TorrentFiles, error) {
 	files, failed := r.files[instanceID], r.failed[instanceID]
 	torrents = slices.DeleteFunc(slices.Clone(torrents), func(t qbittorrent.CrossInstanceTorrentView) bool {
-		hash := normalizeHash(t.Hash)
+		hash := t.Hash
 		_, unread := failed[hash]
 		return unread || len(files[hash]) > 0
 	})
@@ -687,7 +688,7 @@ func (j *copyGroupsJob) retryReads(ctx context.Context, run copyGroupsRun) (map[
 		var due []qbittorrent.CrossInstanceTorrentView
 		hashes := map[string]bool{}
 		for _, t := range run.torrents[id] {
-			hash := normalizeHash(t.Hash)
+			hash := t.Hash
 			if retryAt, ok := run.failed[id][hash]; ok && !now.Before(retryAt) {
 				due = append(due, t)
 				hashes[hash] = true
@@ -777,7 +778,7 @@ func keepOfflineGroups(groups []CopyGroup, torrents map[int][]qbittorrent.CrossI
 	}
 	for instanceID, list := range torrents {
 		for i := range list {
-			hash := normalizeHash(list[i].Hash)
+			hash := list[i].Hash
 			if id, ok := old.id(instanceID, hash); ok {
 				set(instanceID, hash, id)
 			}

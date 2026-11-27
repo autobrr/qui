@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type seasonPackHandlerInstanceStore struct {
@@ -85,7 +86,7 @@ func (*seasonPackHandlerSyncManager) ExportTorrent(context.Context, int, string)
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*seasonPackHandlerSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*seasonPackHandlerSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -262,6 +263,7 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 func TestAutobrrApplyAcceptsOptionalAnnouncementName(t *testing.T) {
 	instance := &models.Instance{ID: 8, Name: "primary", IsActive: true}
 	svc := &crossseed.Service{}
+	testutil.SetUnexportedField(t, svc, "injection", svc)
 	testutil.SetUnexportedField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
 	testutil.SetUnexportedField(t, svc, "syncManager", &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}})
 	testutil.SetUnexportedField(t, svc, "releaseCache", crossseed.NewReleaseCache())

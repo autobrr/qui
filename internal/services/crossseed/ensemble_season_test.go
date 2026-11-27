@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -452,10 +453,10 @@ type existingHashSyncManager struct {
 	existing string
 }
 
-func (m *existingHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (m *existingHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	for _, h := range hashes {
-		if h == m.existing {
-			return &qbt.Torrent{Hash: h}, true, nil
+		if h.Is(m.existing) {
+			return &qbt.Torrent{Hash: h.String()}, true, nil
 		}
 	}
 	return nil, false, nil
@@ -557,11 +558,11 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 			results: []jackett.SearchResult{
 				func() jackett.SearchResult {
 					r := packResult("existing")
-					r.InfoHashV1 = "deadbeef"
+					r.InfoHashV1 = "deadbeef00000000000000000000000000000000"
 					return r
 				}(),
 			},
-			existingHash: "deadbeef",
+			existingHash: "deadbeef00000000000000000000000000000000",
 			wantSkipped:  1,
 			wantMessage:  "no season pack candidates",
 		},
@@ -592,10 +593,10 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 				downloads = append(downloads, req.GUID)
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				require.NotEmpty(t, req.TorrentData)
 				return &CrossSeedResponse{Success: tt.applySuccess}, nil
-			}
+			})
 
 			groupTorrent := &qbt.Torrent{Hash: ensembleSeasonPseudoHash(tt.key), Name: torrent.Name, Progress: 1.0}
 			service.applyEnsembleSearchResults(ctx, state, groupTorrent, tt.key, "query", &jackett.SearchResponse{Results: tt.results}, time.Now().UTC())
@@ -692,9 +693,9 @@ func TestApplyEnsembleSearchResults_PackFailCooldown(t *testing.T) {
 				downloads = append(downloads, req.GUID)
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: false}, nil
-			}
+			})
 
 			results := []jackett.SearchResult{
 				packSearchResult(cooledTitle, "cooled"),

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -161,6 +162,8 @@ func IsolationFolder(name string) string {
 	return SanitizePathSegment(result[:cut])
 }
 
-func HashedIsolationFolder(infohash, name string) string {
-	return IsolationFolder(name) + "--" + strings.ToLower(infohash[:min(len(infohash), 8)])
+func HashedIsolationFolder(hash, name string) string {
+	parsed, _ := infohash.Parse(hash)
+	hex := parsed.String()
+	return IsolationFolder(name) + "--" + hex[:min(len(hex), 8)]
 }

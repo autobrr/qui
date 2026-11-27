@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
@@ -32,6 +34,11 @@ const (
 	indexerInCooldownSkipReason         = "within cooldown"
 )
 
+var (
+	errTorznabPickNoIndexer = errors.New("the pick asks only Torznab indexers, and no Torznab indexer is enabled")
+	errGazellePickNoKey     = errors.New("the pick asks only RED/OPS sites, and none of them has a usable API key")
+)
+
 type searchScope struct {
 	sourceInstanceID  int
 	torznabIndexerIDs []int
@@ -45,14 +52,12 @@ type searchScope struct {
 }
 
 type searchScopeFacts struct {
-	requestedIndexerIDs    []int
-	picked                 bool
-	torznabOff             bool
+	sites                  resolvedSitePick
+	gazelleOnly            bool
 	cooldownIndexerIDs     []int
 	skipGazelle            bool
 	gazelleOff             bool
 	gazelleKeys            []string
-	gazelleSelected        []string
 	gazelleTorznabIndexers map[int]string
 
 	contentFilter        contentFilterFacts
@@ -88,11 +93,11 @@ func decideSearchScope(f searchScopeFacts) searchScope {
 	}
 	scope.gazelle = decideGazelleSites(f)
 	scope.gazelleKeyMissing = gazelleKeyMissing(f)
-	if !f.torznabOff || scope.asksGazelle() || f.skipGazelle {
+	if !f.gazelleOnly || scope.asksGazelle() || f.skipGazelle {
 		return scope
 	}
-	if len(f.gazelleKeys) == 0 {
-		return searchScope{err: fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)}
+	if !f.sites.asksGazelle(f.gazelleKeys) {
+		return searchScope{err: fmt.Errorf("%w: %w", ErrInvalidRequest, errGazellePickNoKey)}
 	}
 	if !gazelleCooldownDue(scope.gazelle, scope.gazelleKeyMissing) {
 		scope.skipReason = noGazelleKeySkipReason
@@ -124,7 +129,7 @@ func decideGazelleSites(f searchScopeFacts) []GazelleLookup {
 		switch {
 		case f.skipGazelle:
 			d = d.notAsked(GazelleReasonCooldown)
-		case f.gazelleSelected != nil && !slices.Contains(f.gazelleSelected, host):
+		case f.picked() && !slices.Contains(f.sites.pick.GazelleSites, host):
 			d = d.notAsked(GazelleReasonNotSelected)
 		case host == f.sourceSite:
 			d = d.notAsked(GazelleReasonSourceSite)
@@ -179,12 +184,12 @@ func (scope searchScope) asksGazelle() bool {
 }
 
 func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
-	if f.torznabOff {
+	if f.gazelleOnly {
 		return nil, noEligibleIndexersSkipReason, nil
 	}
-	requested := withoutGazelleTorznabIndexers(f.requestedIndexerIDs, f.gazelleTorznabIndexers, f.gazelleKeys)
+	requested := withoutGazelleTorznabIndexers(f.sites.indexerIDs, f.gazelleTorznabIndexers, f.gazelleKeys)
 	if len(requested) == 0 {
-		if f.picked {
+		if f.picked() {
 			return nil, noIndexersAfterFilteringSkipReason, nil
 		}
 		return nil, noEligibleIndexersSkipReason, nil
@@ -218,13 +223,13 @@ func decideTorznabIndexers(f searchScopeFacts) ([]int, string, error) {
 
 func skippedTorznabIndexers(f searchScopeFacts, asked []int, skipReason string) map[int]string {
 	skipped := map[int]string{}
-	for _, id := range uniquePositiveInts(f.requestedIndexerIDs) {
+	for _, id := range uniquePositiveInts(f.sites.indexerIDs) {
 		host, isGazelle := f.gazelleTorznabIndexers[id]
 		switch {
 		case slices.Contains(asked, id):
 		case isGazelle && slices.Contains(f.gazelleKeys, host):
 			skipped[id] = gazelleAPISkipReason
-		case f.torznabOff || f.contentFilter.torznabErr != nil:
+		case f.gazelleOnly || f.contentFilter.torznabErr != nil:
 			skipped[id] = skipReason
 		case !slices.Contains(f.contentFilter.capableIDs, id):
 			skipped[id] = indexerCapabilitySkipReason
@@ -239,18 +244,100 @@ func skippedTorznabIndexers(f searchScopeFacts, asked []int, skipReason string) 
 	return skipped
 }
 
-func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torrent *qbt.Torrent, f searchScopeFacts, resolveIndexers bool) searchScope {
-	expand := !f.picked || len(uniquePositiveInts(f.requestedIndexerIDs)) > 0
-	if resolveIndexers && !f.torznabOff && expand {
-		ids, err := s.resolveTorznabIndexerIDs(ctx, f.requestedIndexerIDs)
-		f.requestedIndexerIDs = ids
-		f.contentFilter.torznabErr = err
-		if err == nil && len(f.gazelleKeys) > 0 {
-			f.gazelleTorznabIndexers = s.gazelleTorznabIndexers(ctx)
+type resolvedSitePick struct {
+	pick                   models.SitePick
+	indexerIDs             []int
+	torznabErr             error
+	gazelleTorznabIndexers map[int]string
+}
+
+func (s *Service) resolveSitePick(ctx context.Context, pick models.SitePick, gazelleKeys []string) resolvedSitePick {
+	pick = pick.Clean()
+	r := resolvedSitePick{pick: pick, indexerIDs: pick.IndexerIDs}
+	if !pick.Every() && len(pick.IndexerIDs) == 0 {
+		return r
+	}
+	r.indexerIDs, r.torznabErr = s.resolveTorznabIndexerIDs(ctx, pick.IndexerIDs)
+	if r.torznabErr == nil && len(gazelleKeys) > 0 {
+		r.gazelleTorznabIndexers = s.gazelleTorznabIndexers(ctx)
+		r.pick.GazelleSites = withReplacingSites(pick, r.gazelleTorznabIndexers, gazelleKeys)
+	}
+	return r
+}
+
+func withReplacingSites(pick models.SitePick, gazelleIndexers map[int]string, gazelleKeys []string) []string {
+	sites := slices.Clone(pick.GazelleSites)
+	for _, id := range pick.IndexerIDs {
+		if host, ok := gazelleIndexers[id]; ok && slices.Contains(gazelleKeys, host) && !slices.Contains(sites, host) {
+			sites = append(sites, host)
 		}
 	}
+	slices.Sort(sites)
+	return sites
+}
 
-	if !f.torznabOff && len(f.requestedIndexerIDs) > 0 {
+func (f searchScopeFacts) picked() bool {
+	return !f.sites.pick.Every()
+}
+
+func (r resolvedSitePick) asksGazelle(keys []string) bool {
+	return len(keys) > 0 && r.pick.Every() || slices.ContainsFunc(r.pick.GazelleSites, func(host string) bool { return slices.Contains(keys, host) })
+}
+
+func (s *Service) runIndexerIDs(ctx context.Context, r resolvedSitePick, gazelleKeys []string) ([]int, error) {
+	if s.jackettService == nil {
+		return nil, nil
+	}
+	ids := withoutGazelleTorznabIndexers(r.indexerIDs, r.gazelleTorznabIndexers, gazelleKeys)
+	if r.torznabErr != nil || len(ids) == 0 || r.pick.Every() {
+		return ids, r.torznabErr
+	}
+	if enabled, err := s.jackettService.GetEnabledIndexersInfo(ctx); err == nil && len(enabled) == 0 {
+		return nil, nil
+	}
+	return ids, nil
+}
+
+func pickWithoutSourceError(pick models.SitePick, fallback error) error {
+	switch {
+	case len(pick.IndexerIDs) > 0 && len(pick.GazelleSites) == 0:
+		return fmt.Errorf("%w: %w", ErrInvalidRequest, errTorznabPickNoIndexer)
+	case redOpsOnlyPick(pick):
+		return fmt.Errorf("%w: %w", ErrInvalidRequest, errGazellePickNoKey)
+	default:
+		return fallback
+	}
+}
+
+func redOpsOnlyPick(pick models.SitePick) bool {
+	return len(pick.IndexerIDs) == 0 && len(pick.GazelleSites) > 0
+}
+
+func (state *searchRunState) sitePick() resolvedSitePick {
+	return resolvedSitePick{pick: state.opts.SitePick, indexerIDs: state.resolvedTorznabIndexerIDs}
+}
+
+func (state *searchRunState) gazelleOnly() bool {
+	return len(state.resolvedTorznabIndexerIDs) == 0
+}
+
+func (opts *SearchRunOptions) useSitePick(sites resolvedSitePick, torznabIDs []int) {
+	opts.SitePick = sites.pick
+	if len(torznabIDs) == 0 {
+		opts.SitePick = models.SitePick{IndexerIDs: []int{}, GazelleSites: sites.pick.GazelleSites}
+	}
+}
+
+func (opts SearchRunOptions) recordedIndexerIDs() []int {
+	return append([]int(nil), opts.SitePick.IndexerIDs...)
+}
+
+func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torrent *qbt.Torrent, sites resolvedSitePick, f searchScopeFacts) searchScope {
+	f.sites = sites
+	f.contentFilter.torznabErr = sites.torznabErr
+	f.gazelleTorznabIndexers = sites.gazelleTorznabIndexers
+
+	if !f.gazelleOnly && len(sites.indexerIDs) > 0 {
 		f.contentFilter = s.contentFilterFacts(ctx, instanceID, torrent.Hash)
 	}
 
@@ -269,7 +356,7 @@ func (s *Service) collectSearchScope(ctx context.Context, instanceID int, torren
 	log.Trace().
 		Int("instanceID", instanceID).
 		Str("torrentHash", torrent.Hash).
-		Ints("requestedIndexers", f.requestedIndexerIDs).
+		Ints("requestedIndexers", sites.indexerIDs).
 		Ints("torznabIndexers", scope.torznabIndexerIDs).
 		Strs("gazelleHosts", scope.gazelleHosts()).
 		Str("skipReason", scope.skipReason).
@@ -348,7 +435,7 @@ func (s *Service) gazelleLocalFacts(ctx context.Context, instanceID int, torrent
 		matchedContent, _, _, err := s.findLayoutAwareContentPrefilterMatches(
 			ctx,
 			instanceID,
-			normalizeHash(torrent.Hash),
+			torrent.Hash,
 			torrent,
 			s.releaseCache.Parse(torrent.Name),
 			instanceTorrents,
@@ -396,7 +483,7 @@ func (s *Service) gazelleLocalFacts(ctx context.Context, instanceID int, torrent
 			log.Debug().
 				Str("targetHost", host).
 				Str("hash", torrent.Hash).
-				Strs("targetHashes", hashes).
+				Strs("targetHashes", hashStrings(hashes)).
 				Msg("[CROSSSEED-GAZELLE] Target hash already present locally, skipping search")
 			seeded = append(seeded, host)
 		}
@@ -405,7 +492,7 @@ func (s *Service) gazelleLocalFacts(ctx context.Context, instanceID int, torrent
 }
 
 func (s *Service) contentFilterFacts(ctx context.Context, instanceID int, hash string) contentFilterFacts {
-	analysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
+	analysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, parseHash(hash), true)
 	if err != nil {
 		return contentFilterFacts{err: err}
 	}
@@ -430,14 +517,6 @@ func withoutGazelleTorznabIndexers(ids []int, gazelleIndexers map[int]string, ga
 		host, ok := gazelleIndexers[id]
 		return ok && slices.Contains(gazelleKeys, host)
 	})
-}
-
-func (s *Service) searchRunIndexerIDs(ctx context.Context, requested []int, gazelleKeys []string) ([]int, error) {
-	ids, err := s.resolveTorznabIndexerIDs(ctx, requested)
-	if err != nil || len(gazelleKeys) == 0 {
-		return ids, err
-	}
-	return withoutGazelleTorznabIndexers(ids, s.gazelleTorznabIndexers(ctx), gazelleKeys), nil
 }
 
 func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int) ([]int, error) {

@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
@@ -95,7 +96,9 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 
 			blocklist := models.NewCrossSeedBlocklistStore(db)
 			if tt.blockHash != nil {
-				_, err = blocklist.Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: tt.blockHash(parsed)})
+				hash, parseErr := infohash.Parse(tt.blockHash(parsed))
+				require.NoError(t, parseErr)
+				_, err = blocklist.Upsert(ctx, instance.ID, hash, "")
 				require.NoError(t, err)
 			}
 			if tt.blocklistErr {

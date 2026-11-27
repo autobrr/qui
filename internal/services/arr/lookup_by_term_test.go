@@ -319,6 +319,7 @@ func TestService_LookupExternalIDsSkipsNegativeCacheWhenBothLegsFail(t *testing.
 	result, err := service.LookupExternalIDs(ctx, yearlessDigitGroupRelease, ContentTypeMovie)
 
 	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrTitleUnanswered)
 	require.Nil(t, result)
 
 	_, err = cacheStore.Get(ctx, models.ComputeTitleHash(yearlessDigitGroupRelease), string(ContentTypeMovie))
@@ -341,7 +342,7 @@ func TestService_LookupExternalIDsNoNegativeCacheWhenLookupErrors(t *testing.T) 
 	ctx := context.Background()
 	result, err := service.LookupExternalIDs(ctx, yearlessDigitGroupRelease, ContentTypeMovie)
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTitleUnanswered)
 	require.Nil(t, result)
 
 	_, err = cacheStore.Get(ctx, models.ComputeTitleHash(yearlessDigitGroupRelease), string(ContentTypeMovie))

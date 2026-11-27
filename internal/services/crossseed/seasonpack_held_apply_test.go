@@ -232,7 +232,7 @@ func TestSeasonPackApplyAssemblesWhileABlockedInstanceRebuilds(t *testing.T) {
 	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	require.NoError(t, err)
 	held.blocklistStore = models.NewCrossSeedBlocklistStore(rig.db)
-	_, err = held.blocklistStore.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: 2, InfoHash: meta.HashV1})
+	_, err = held.blocklistStore.Upsert(t.Context(), 2, meta.HashV1, "")
 	require.NoError(t, err)
 	held.adds = withLinkAdder(held.Service)
 	held.heldTitles.mu.Lock()

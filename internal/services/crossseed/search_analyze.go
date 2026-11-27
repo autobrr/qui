@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -111,11 +112,11 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	return largestRelease, true
 }
 
-func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID int, hash string, enableContentFiltering bool) (*AsyncTorrentAnalysis, error) {
+func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID int, requested infohash.Hash, enableContentFiltering bool) (*AsyncTorrentAnalysis, error) {
 	if instanceID <= 0 {
 		return nil, fmt.Errorf("%w: invalid instance id %d", ErrInvalidRequest, instanceID)
 	}
-	if strings.TrimSpace(hash) == "" {
+	if requested.IsZero() {
 		return nil, fmt.Errorf("%w: torrent hash is required", ErrInvalidRequest)
 	}
 
@@ -127,17 +128,18 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		return nil, fmt.Errorf("%w: instance %d not found", ErrInvalidRequest, instanceID)
 	}
 
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{requested}})
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
 	if len(torrents) == 0 || s.isHelper(instanceID, torrents[0].Hash) {
-		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, requested, instanceID)
 	}
 	sourceTorrent := torrents[0]
 	if err := s.requireSource(sourceTorrent); err != nil {
 		return nil, err
 	}
+	hash := sourceTorrent.Hash
 
 	var indexerInfo map[int]jackett.EnabledIndexerInfo
 	if s.jackettService != nil {
@@ -357,7 +359,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		Msg("[CROSSSEED-ASYNC] Background content filtering completed")
 }
 
-func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, hash string) (*TorrentInfo, error) {
+func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, hash infohash.Hash) (*TorrentInfo, error) {
 	asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
 	if err != nil {
 		return nil, err
@@ -377,7 +379,7 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 		}
 
 		log.Debug().
-			Str("torrentHash", hash).
+			Stringer("torrentHash", hash).
 			Int("instanceID", instanceID).
 			Bool("capabilitiesCompleted", stateSnapshot.CapabilitiesCompleted).
 			Bool("contentCompleted", stateSnapshot.ContentCompleted).
@@ -385,7 +387,7 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 			Msg("[CROSSSEED-ANALYZE] Returning filtering results")
 	} else {
 		log.Warn().
-			Str("torrentHash", hash).
+			Stringer("torrentHash", hash).
 			Int("instanceID", instanceID).
 			Msg("[CROSSSEED-ANALYZE] Capability filtering not completed, returning empty results")
 
@@ -632,7 +634,7 @@ func (s *Service) askGazelleSite(
 		Indexer:              lookup.Name,
 		IndexerID:            lookup.IndexerID,
 		Title:                match.Title,
-		InfoHashV1:           match.TargetHash,
+		InfoHashV1:           match.TargetHash.String(),
 		SearchDecision:       decision,
 		DownloadURL:          gazellemusic.BuildDownloadURL(host, match.TorrentID),
 		Size:                 match.Size,

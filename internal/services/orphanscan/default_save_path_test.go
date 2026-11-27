@@ -138,10 +138,10 @@ func newDefaultSavePathService(defaultSavePath, torrentSavePath string) *Service
 		return []*models.Instance{{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "A", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hA, SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"a": {{Name: "one.mkv", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{ha: {{Name: "one.mkv", Size: 1}}}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath})
 	return svc
@@ -213,9 +213,9 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 	stubSync(svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 		switch instanceID {
 		case 1:
-			return []qbt.Torrent{{Hash: "A", SavePath: ownSavePath, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hA, SavePath: ownSavePath, State: qbt.TorrentStatePausedUp}}, nil
 		case 2:
-			return []qbt.Torrent{{Hash: "B", SavePath: otherSavePath, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hB, SavePath: otherSavePath, State: qbt.TorrentStatePausedUp}}, nil
 		default:
 			return nil, nil
 		}
@@ -223,9 +223,9 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		switch instanceID {
 		case 1:
-			return map[string]qbt.TorrentFiles{"a": {{Name: "one.mkv", Size: 1}}}, nil
+			return map[string]qbt.TorrentFiles{ha: {{Name: "one.mkv", Size: 1}}}, nil
 		case 2:
-			return map[string]qbt.TorrentFiles{"b": {{Name: "two.mkv", Size: 1}}}, nil
+			return map[string]qbt.TorrentFiles{hb: {{Name: "two.mkv", Size: 1}}}, nil
 		default:
 			return map[string]qbt.TorrentFiles{}, nil
 		}

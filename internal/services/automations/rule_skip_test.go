@@ -21,9 +21,14 @@ const (
 	webAPIQbit52 = "2.15.1"
 )
 
+const (
+	magnetHash   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	withMetaHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
 const skipTestTorrents = `{
-	"withmeta": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
-	"magnet":   {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false}
+	"` + withMetaHash + `": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
+	"` + magnetHash + `": {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false}
 }`
 
 func newSkipTestService(t *testing.T, version string) (*Service, int, *stubQbt) {
@@ -79,7 +84,7 @@ func TestRun_PlansTheDeletesAtQbit52(t *testing.T) {
 	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
 
 	require.NoError(t, err)
-	require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
+	require.Equal(t, []string{withMetaHash}, deletedHashes(stub))
 }
 
 func TestRun_SkipsARuleThatReadsAnUnknownField(t *testing.T) {
@@ -179,7 +184,7 @@ func TestRun_UnknownVersionSkipsUntilARead(t *testing.T) {
 	setVersion(webAPIQbit52)
 	_, err = svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
 	require.NoError(t, err)
-	require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
+	require.Equal(t, []string{withMetaHash}, deletedHashes(stub))
 }
 
 func TestRun_SkipStaysOnTheRuleThatReadsTheField(t *testing.T) {
@@ -193,7 +198,7 @@ func TestRun_SkipStaysOnTheRuleThatReadsTheField(t *testing.T) {
 	activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{skipped, runs}, false)
 
 	require.NoError(t, err)
-	require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
+	require.Equal(t, []string{withMetaHash}, deletedHashes(stub))
 	var skips []int
 	for _, activity := range activities {
 		if activity.Action == models.ActivityActionRuleSkipped {
@@ -342,7 +347,7 @@ func TestRun_TorrentWithoutMetadataDropsOutOfAPrivateRule(t *testing.T) {
 			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
 
 			require.NoError(t, err)
-			require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
+			require.Equal(t, []string{withMetaHash}, deletedHashes(stub))
 		})
 	}
 }
@@ -392,13 +397,13 @@ func TestPreview_TorrentWithoutMetadataDropsOutForAFieldInAnotherAction(t *testi
 	require.NoError(t, err)
 	require.Nil(t, preview.Skipped)
 	require.Equal(t, 1, preview.TotalMatches)
-	require.Equal(t, "withmeta", preview.Examples[0].Hash)
+	require.Equal(t, withMetaHash, preview.Examples[0].Hash)
 }
 
 func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
 	const torrents = `{
-		"withmeta": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
-		"magnet":   {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false, "tags": "managed"}
+		"` + withMetaHash + `": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
+		"` + magnetHash + `": {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false, "tags": "managed"}
 	}`
 	tagAction := func(cond *models.RuleCondition) *models.TagAction {
 		return &models.TagAction{Enabled: true, Tags: []string{"managed"}, Mode: models.TagModeFull, DeleteFromClient: true, Condition: cond}
@@ -427,7 +432,7 @@ func TestRun_TorrentWithoutMetadataKeepsItsManagedTags(t *testing.T) {
 			for _, write := range stub.recordedWrites() {
 				reset = reset || write.path == "torrents/deleteTags"
 				if write.path == "torrents/addTags" || write.path == "torrents/setTags" {
-					kept = kept || (strings.Contains(write.form.Get("hashes"), "magnet") && strings.Contains(write.form.Get("tags"), "managed"))
+					kept = kept || (strings.Contains(write.form.Get("hashes"), magnetHash) && strings.Contains(write.form.Get("tags"), "managed"))
 				}
 			}
 			require.True(t, reset)
@@ -448,7 +453,7 @@ func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stub := newStubQbt(t, `{"magnet": {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false, "tags": "`+tt.onTorrent+`"}}`)
+			stub := newStubQbt(t, `{"`+magnetHash+`": {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false, "tags": "`+tt.onTorrent+`"}}`)
 			stub.webAPIVersion = webAPIQbit52
 			svc, _, instanceIDs := newStubService(t, nil, stub)
 			rule := &models.Automation{ID: 1, Name: "tags", TrackerPattern: "*", Enabled: true, Conditions: &models.ActionConditions{
@@ -461,7 +466,7 @@ func TestRun_TorrentWithoutMetadataKeepsATagThatIsWrittenDifferently(t *testing.
 			var kept bool
 			for _, write := range stub.recordedWrites() {
 				if write.path == "torrents/setTags" {
-					kept = kept || (write.form.Get("hashes") == "magnet" &&
+					kept = kept || (write.form.Get("hashes") == magnetHash &&
 						slices.Equal(slices.Sorted(strings.SplitSeq(write.form.Get("tags"), ",")), slices.Sorted(strings.SplitSeq(tt.onTorrent, ","))))
 				}
 			}
@@ -506,7 +511,7 @@ func TestRun_GroupWithATorrentWithoutMetadataSkipsTheGroupedAction(t *testing.T)
 		_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{rule}, false)
 
 		require.NoError(t, err)
-		require.ElementsMatch(t, []string{"magnet", "withmeta"}, strings.Split(strings.Join(deletedHashes(stub), "|"), "|"))
+		require.ElementsMatch(t, []string{magnetHash, withMetaHash}, strings.Split(strings.Join(deletedHashes(stub), "|"), "|"))
 	})
 }
 

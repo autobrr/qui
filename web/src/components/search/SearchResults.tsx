@@ -301,7 +301,7 @@ function PartialStatus() {
   return (
     <Tooltip>
       <TooltipTrigger asChild openOnTap>
-        <span tabIndex={0} className="inline-flex min-w-0 items-center gap-1 rounded-full border border-yellow-500/40 px-2 py-0.5 text-xs text-yellow-600 dark:text-yellow-500">
+        <span tabIndex={0} className="inline-flex min-w-0 items-center gap-1 rounded-full border border-warning/40 px-2 py-0.5 text-xs text-warning">
           <AlertTriangle className="size-3 shrink-0" />
           <span className="truncate">{t("results.partial")}</span>
         </span>

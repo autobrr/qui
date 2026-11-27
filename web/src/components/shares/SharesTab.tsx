@@ -23,7 +23,7 @@ import { toast } from "sonner"
 const REFRESH_MS = 15_000
 
 const stateIcons: Record<ShareState, { icon: LucideIcon; className: string }> = {
-  active: { icon: Radio, className: "text-emerald-500" },
+  active: { icon: Radio, className: "text-success" },
   ending: { icon: Loader2, className: "motion-safe:animate-spin" },
   ended: { icon: CircleSlash, className: "text-muted-foreground" },
 }

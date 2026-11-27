@@ -102,7 +102,7 @@ func newHeldQuaySource() *fakeAlternateTitles {
 
 func requireAlternateTitles(t *testing.T, svc *Service, keys ...string) {
 	t.Helper()
-	require.Eventually(t, func() bool { return len(svc.heldTitles.alternates.namedByAny(keys)) > 0 }, 30*time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return len(svc.heldTitles.alternates.namedByAny(keys, 0)) > 0 }, 30*time.Second, 5*time.Millisecond)
 }
 
 func TestHeldTitlesMatchAnAlternateTitleAfterTheFetch(t *testing.T) {
@@ -166,7 +166,7 @@ func TestHeldTitlesKeepTheAlternateTitlesOfARebuild(t *testing.T) {
 
 	library.set(biglib.Torrents(200))
 	rig.sync(1)
-	require.Empty(t, held.heldTitles.alternates.namedByAny([]string{"bernsteinkai"}))
+	require.Empty(t, held.heldTitles.alternates.namedByAny([]string{"bernsteinkai"}, 0))
 	require.False(t, checkAnnounce(t, held, heldQuayAlternate, 0).CanCrossSeed)
 }
 
@@ -241,8 +241,8 @@ func TestHeldTitlesAskForAnEpisodeMapOnlyForMixedNumbering(t *testing.T) {
 
 func TestHeldTitlesWithoutAnEpisodeMapAnswerAsTheFullScan(t *testing.T) {
 	var answers []*WebhookCheckResponse
-	for _, features := range [][]string{nil, freshOn} {
-		freshCase(t, features, 1, func(rig *freshRig) {
+	for _, fullScan := range []bool{true, false} {
+		freshCase(t, fullScan, 1, func(rig *freshRig) {
 			sonarr := &namedArr{answer: func(ctx context.Context) error {
 				<-ctx.Done()
 				return ctx.Err()

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { databaseShrinkQueryKey, useDatabaseShrink } from "@/hooks/useDatabaseShrink"
+import { databaseShrinkQuery, useDatabaseShrink } from "@/hooks/useDatabaseShrink"
 import { api } from "@/lib/api"
 import { formatBytes } from "@/lib/utils"
 import type { DatabaseShrinkStatus, TransferHistoryInstance } from "@/types"
@@ -50,7 +50,7 @@ export function StatisticsDeleteHistory({ instances }: { instances: TransferHist
   const [shrinkTicked, setShrinkTicked] = useState(false)
   const engineQuery = useQuery({ queryKey: ["application-info"], queryFn: () => api.getApplicationInfo() })
   const engine = engineQuery.data?.database.engine
-  const shrinkQuery = useQuery({ queryKey: databaseShrinkQueryKey, queryFn: () => api.getDatabaseShrink(), enabled: confirming && engine === "sqlite" })
+  const shrinkQuery = useQuery({ ...databaseShrinkQuery, enabled: confirming && engine === "sqlite" })
   const shrinkStatus = shrinkQuery.data
   const shrinkFits = shrinkStatus !== undefined && shrinkStatus.freeBytes >= shrinkStatus.needBytes
   const shrink = shrinkTicked && shrinkFits
