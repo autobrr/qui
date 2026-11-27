@@ -22,6 +22,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Sidebar filters**: Torrent conditions shown in the filter sidebar, including status, category, tag, tracker, and custom expression filters. _Avoid_: All filters when referring only to sidebar filters.
 - **Column filters**: Torrent conditions set through table column controls, such as a ratio below 1. _Avoid_: Column sorting.
 - **Torrent search**: A query entered in the torrent search box to select matching torrents. _Avoid_: Global filter.
+- **Excluded term**: A word in a Torrent search that starts with `-` or `!`. It hides each torrent whose name, category, or tag it matches. _Avoid_: Exclusion (a torrent unticked in Select all mode), negative search, NOT term.
 
 ## Torrent list
 

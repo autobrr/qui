@@ -187,6 +187,8 @@
     "smartSearchTitle": "Funcions de cerca intel·ligent:",
     "smartSearchGlob": "Patrons glob:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Amaga les coincidències:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Coincidència aproximada:",
     "smartSearchFuzzyExample": "\"breaking bad\" troba \"Breaking.Bad\"",
     "smartSearchDots": "Gestiona punts, guions baixos i claudàtors",
