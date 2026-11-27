@@ -39,9 +39,11 @@ type match struct {
 }
 
 type seasonPack struct {
-	InstanceID      int `json:"instanceId"`
-	MatchedEpisodes int `json:"matchedEpisodes"`
-	TotalEpisodes   int `json:"totalEpisodes"`
+	InstanceID       int     `json:"instanceId"`
+	MatchedEpisodes  int     `json:"matchedEpisodes"`
+	TotalEpisodes    int     `json:"totalEpisodes"`
+	Coverage         float64 `json:"coverage"`
+	ThresholdSkipped bool    `json:"thresholdSkipped"`
 }
 
 type answer struct {
