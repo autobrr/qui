@@ -43,7 +43,7 @@ func (h *CrossSeedHandler) ListCrossSeedRoutes(w http.ResponseWriter, r *http.Re
 		RespondError(w, http.StatusInternalServerError, "Failed to list cross-seed routes")
 		return
 	}
-	RespondJSON(w, http.StatusOK, routes)
+	RespondJSON(w, r, http.StatusOK, routes)
 }
 
 func (h *CrossSeedHandler) GetCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +58,7 @@ func (h *CrossSeedHandler) GetCrossSeedRoute(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if route == nil {
-		RespondJSON(w, http.StatusOK, json.RawMessage("null"))
+		RespondJSON(w, r, http.StatusOK, json.RawMessage("null"))
 		return
 	}
 
@@ -89,7 +89,7 @@ func (h *CrossSeedHandler) GetCrossSeedRoute(w http.ResponseWriter, r *http.Requ
 			response.Rows[i].RoutedTorrents = &counts[i]
 		}
 	}
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *CrossSeedHandler) SaveCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +123,7 @@ func (h *CrossSeedHandler) SaveCrossSeedRoute(w http.ResponseWriter, r *http.Req
 		}
 		return
 	}
-	RespondJSON(w, http.StatusOK, saved)
+	RespondJSON(w, r, http.StatusOK, saved)
 }
 
 func (h *CrossSeedHandler) TestCrossSeedRoute(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +157,7 @@ func (h *CrossSeedHandler) TestCrossSeedRoute(w http.ResponseWriter, r *http.Req
 		}
 		return
 	}
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }
 
 func (h *CrossSeedHandler) ClearCrossSeedRoute(w http.ResponseWriter, r *http.Request) {

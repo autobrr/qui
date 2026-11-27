@@ -108,7 +108,7 @@ func (h *InstancesHandler) UpdateSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusNoContent, nil)
+	RespondJSON(w, r, http.StatusNoContent, nil)
 }
 
 func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +157,7 @@ func (h *InstancesHandler) DeleteSSHCredentials(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusNoContent, nil)
+	RespondJSON(w, r, http.StatusNoContent, nil)
 }
 
 func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Request) {
@@ -173,10 +173,10 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 			RespondError(w, http.StatusBadRequest, "SSH credentials are not configured for this instance")
 		case r.Context().Err() != nil:
 		case errors.Is(err, sshpool.ErrConnect):
-			RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: err.Error()})
+			RespondJSON(w, r, http.StatusOK, SSHTestResponse{Status: "error", Error: err.Error()})
 		default:
 			log.Error().Err(err).Int("instanceID", instance.ID).Msg("Failed to read SSH credentials for SSH test")
-			RespondJSON(w, http.StatusOK, SSHTestResponse{Status: "error", Error: "Failed to read SSH credentials"})
+			RespondJSON(w, r, http.StatusOK, SSHTestResponse{Status: "error", Error: "Failed to read SSH credentials"})
 		}
 		return
 	}
@@ -204,7 +204,7 @@ func (h *InstancesHandler) TestSSHConnection(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *InstancesHandler) ConfirmSSHHostKey(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +313,7 @@ func (h *InstancesHandler) pinHostKey(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
-	RespondJSON(w, http.StatusNoContent, nil)
+	RespondJSON(w, r, http.StatusNoContent, nil)
 }
 
 func (h *InstancesHandler) storeSSHTier(ctx context.Context, probed *models.Instance, capabilities *sshpool.Capabilities) {

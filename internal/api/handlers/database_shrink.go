@@ -27,7 +27,7 @@ func (h *DatabaseShrinkHandler) Status(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to read the database shrink status")
 		return
 	}
-	RespondJSON(w, http.StatusOK, status)
+	RespondJSON(w, r, http.StatusOK, status)
 }
 
 type databaseShrinkResponse struct {
@@ -43,7 +43,7 @@ func (h *DatabaseShrinkHandler) Request(w http.ResponseWriter, r *http.Request) 
 		log.Error().Err(err).Msg("database shrink: failed to request the shrink")
 		RespondError(w, http.StatusInternalServerError, err.Error())
 	default:
-		RespondJSON(w, http.StatusAccepted, databaseShrinkResponse{Restarting: restarting})
+		RespondJSON(w, r, http.StatusAccepted, databaseShrinkResponse{Restarting: restarting})
 	}
 }
 

@@ -42,11 +42,11 @@ func (h *InstancesHandler) GetDisk(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Trace().Err(err).Int("instanceID", instanceID).Msg("Failed to read the disk of the default save path")
-		RespondJSON(w, http.StatusOK, InstanceDiskResponse{})
+		RespondJSON(w, r, http.StatusOK, InstanceDiskResponse{})
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, InstanceDiskResponse{FreeBytes: &disk.BytesAvailable, TotalBytes: &disk.BytesTotal})
+	RespondJSON(w, r, http.StatusOK, InstanceDiskResponse{FreeBytes: &disk.BytesAvailable, TotalBytes: &disk.BytesTotal})
 }
 
 func (h *InstancesHandler) readDisk(ctx context.Context, instanceID int) (*fsops.StatfsResult, error) {

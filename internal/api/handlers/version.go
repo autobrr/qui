@@ -58,7 +58,7 @@ func (h *VersionHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 		response.UpdateAvailable = true
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *VersionHandler) GetLatestVersion(w http.ResponseWriter, r *http.Request) {
@@ -80,5 +80,5 @@ func (h *VersionHandler) GetLatestVersion(w http.ResponseWriter, r *http.Request
 		response.Name = *release.Name
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
