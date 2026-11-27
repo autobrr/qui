@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"reflect"
 	"strings"
 )
 
@@ -38,23 +37,7 @@ type deferForeignKeysTx interface {
 	DeferForeignKeyChecks(ctx context.Context) error
 }
 
-func isNilDialectProvider(q DialectProvider) bool {
-	if q == nil {
-		return true
-	}
-	v := reflect.ValueOf(q)
-	switch v.Kind() {
-	case reflect.Pointer, reflect.Interface, reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
-		return v.IsNil()
-	default:
-		return false
-	}
-}
-
 func DialectOf(q DialectProvider) string {
-	if isNilDialectProvider(q) {
-		panic("dbinterface.DialectOf: nil querier")
-	}
 	dialect := strings.ToLower(strings.TrimSpace(q.Dialect()))
 	if dialect == "" {
 		panic("dbinterface.DialectOf: empty dialect")

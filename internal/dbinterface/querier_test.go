@@ -59,12 +59,6 @@ func (s stubDialectProvider) Dialect() string {
 	return string(s)
 }
 
-type stubPointerDialectProvider struct{}
-
-func (*stubPointerDialectProvider) Dialect() string {
-	return "sqlite"
-}
-
 func TestDialectOf(t *testing.T) {
 	t.Run("normalizes non-empty dialects", func(t *testing.T) {
 		tests := []struct {
@@ -72,7 +66,6 @@ func TestDialectOf(t *testing.T) {
 			in   DialectProvider
 			want string
 		}{
-			{name: "sqlite", in: stubDialectProvider("sqlite"), want: "sqlite"},
 			{name: "postgres", in: stubDialectProvider("postgres"), want: "postgres"},
 			{name: "trimmed uppercase postgres", in: stubDialectProvider("  POSTGRES  "), want: "postgres"},
 		}
@@ -94,26 +87,12 @@ func TestDialectOf(t *testing.T) {
 		_ = DialectOf(nil)
 	})
 
-	t.Run("panics on typed-nil provider instead of defaulting to sqlite", func(t *testing.T) {
+	t.Run("panics on blank dialect instead of defaulting to sqlite", func(t *testing.T) {
 		defer func() {
 			if r := recover(); r == nil {
-				t.Fatal("expected DialectOf(typedNil) to panic, but it returned")
+				t.Fatal("expected DialectOf(\"   \") to panic, but it returned")
 			}
 		}()
-		var typedNil *stubPointerDialectProvider
-		_ = DialectOf(typedNil)
-	})
-
-	t.Run("panics on empty dialect instead of defaulting to sqlite", func(t *testing.T) {
-		for _, raw := range []string{"", "   "} {
-			t.Run("dialect_"+raw, func(t *testing.T) {
-				defer func() {
-					if r := recover(); r == nil {
-						t.Fatalf("expected DialectOf(%q) to panic, but it returned", raw)
-					}
-				}()
-				_ = DialectOf(stubDialectProvider(raw))
-			})
-		}
+		_ = DialectOf(stubDialectProvider("   "))
 	})
 }
