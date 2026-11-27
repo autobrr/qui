@@ -44,7 +44,6 @@ type SearchRunOptions struct {
 	ExcludeTags            []string
 	IntervalSeconds        int
 	SitePick               models.SitePick
-	DisableTorznab         bool
 	CooldownMinutes        int
 	RequestedBy            string
 	SpecificHashes         []string
@@ -56,8 +55,6 @@ type SearchRunOptions struct {
 	ScheduleMaxSearches    int
 	ScheduleMaxAgeDays     int
 }
-
-var errTorznabOffNoGazelle = errors.New("torznab disabled but gazelle not configured")
 
 type candidateStaleWork struct {
 	indexerIDs []int
@@ -108,26 +105,12 @@ type searchRunState struct {
 	gazelleClients *gazelleClientSet
 }
 
-func normalizeSearchRunTiming(intervalSeconds, cooldownMinutes int, disableTorznab bool) (int, int) {
+func normalizeSearchRunTiming(intervalSeconds, cooldownMinutes int, gazelleOnly bool) (int, int) {
 	minIntervalSeconds := minSearchIntervalSecondsTorznab
-	if disableTorznab {
+	if gazelleOnly {
 		minIntervalSeconds = minSearchIntervalSecondsGazelleOnly
 	}
-	if intervalSeconds < minIntervalSeconds {
-		intervalSeconds = minIntervalSeconds
-	}
-	if cooldownMinutes < minSearchCooldownMinutes {
-		cooldownMinutes = minSearchCooldownMinutes
-	}
-	return intervalSeconds, cooldownMinutes
-}
-
-func searchRunLoopInterval(opts SearchRunOptions) time.Duration {
-	intervalSeconds := opts.IntervalSeconds
-	if opts.DisableTorznab && intervalSeconds < minSearchIntervalSecondsGazelleOnly {
-		intervalSeconds = minSearchIntervalSecondsGazelleOnly
-	}
-	return time.Duration(intervalSeconds) * time.Second
+	return max(intervalSeconds, minIntervalSeconds), max(cooldownMinutes, minSearchCooldownMinutes)
 }
 
 func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.CrossSeedSearchRun) error {
@@ -172,15 +155,9 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	if gazelleErr != nil {
 		log.Warn().Err(gazelleErr).Str("kind", string(opts.Kind)).Msg("[CROSSSEED-SEARCH] Failed to initialize Gazelle client cache; continuing without Gazelle")
 	}
-	if opts.DisableTorznab && (gazelleClients == nil || len(gazelleClients.byHost) == 0) {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, errTorznabOffNoGazelle)
-	}
 	gazelleKeys := gazelleClients.hosts()
-	sites := s.resolveSitePick(ctx, opts.SitePick, opts.DisableTorznab, gazelleKeys)
-	torznabIDs, torznabErr := sites.runIndexerIDs(gazelleKeys)
-	if s.jackettService == nil || opts.DisableTorznab {
-		torznabIDs = nil
-	}
+	sites := s.resolveSitePick(ctx, opts.SitePick, gazelleKeys)
+	torznabIDs, torznabErr := s.runIndexerIDs(ctx, sites, gazelleKeys)
 	var usableKeys []string
 	if gazelleErr == nil && !gazelleClients.disabled() {
 		usableKeys = slices.Collect(maps.Keys(gazelleClients.byHost))
@@ -188,7 +165,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	asksGazelle := sites.asksGazelle(usableKeys)
 	switch {
 	case s.jackettService == nil && !asksGazelle:
-		return nil, fmt.Errorf("%w: torznab search is not configured", ErrNoIndexersConfigured)
+		return nil, pickWithoutSourceError(opts.SitePick, fmt.Errorf("%w: torznab search is not configured", ErrNoIndexersConfigured))
 	case torznabErr != nil && !asksGazelle:
 		return nil, fmt.Errorf("failed to load enabled torznab indexers: %w", torznabErr)
 	case torznabErr != nil:
@@ -196,7 +173,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		torznabIDs = nil
 		torznabErr = fmt.Errorf("load torznab indexers: %w", torznabErr)
 	case len(torznabIDs) == 0 && !asksGazelle:
-		return nil, ErrNoIndexersConfigured
+		return nil, pickWithoutSourceError(opts.SitePick, ErrNoIndexersConfigured)
 	}
 	opts.useSitePick(sites, torznabIDs)
 
@@ -209,9 +186,9 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	}
 	opts.RescueTitleMismatches = settings.RescueTitleMismatches && !settings.SkipRecheck
 	opts.EnsembleSeasonSearch = settings.SeasonPackAutomationEnabled &&
-		len(opts.SpecificHashes) == 0 && !opts.DisableTorznab
+		len(opts.SpecificHashes) == 0 && len(torznabIDs) > 0
 
-	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchRunTiming(opts.IntervalSeconds, opts.CooldownMinutes, opts.DisableTorznab)
+	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchRunTiming(opts.IntervalSeconds, opts.CooldownMinutes, len(torznabIDs) == 0)
 
 	s.searchMu.Lock()
 	if s.searchCancel != nil && len(opts.SpecificHashes) == 0 {
@@ -292,7 +269,7 @@ func (s *Service) GetSearchRunStatus(ctx context.Context) (*SearchRunStatus, err
 	if state != nil && state.run.CompletedAt == nil && state.opts.RequestedBy != "completion" {
 		status.Running = true
 		status.Run = cloneSearchRun(state.run)
-		status.EffectiveIntervalSeconds = int(searchRunLoopInterval(state.opts) / time.Second)
+		status.EffectiveIntervalSeconds = state.opts.IntervalSeconds
 		if state.currentCandidate != nil {
 			candidate := *state.currentCandidate
 			status.CurrentTorrent = &candidate
@@ -347,7 +324,6 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 	if opts.InstanceID <= 0 {
 		return fmt.Errorf("%w: instance id must be positive", ErrInvalidRequest)
 	}
-	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchRunTiming(opts.IntervalSeconds, opts.CooldownMinutes, opts.DisableTorznab)
 	opts.Categories = normalizeStringSlice(opts.Categories)
 	opts.Tags = normalizeStringSlice(opts.Tags)
 	opts.ExcludeCategories = normalizeStringSlice(opts.ExcludeCategories)
@@ -424,7 +400,7 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 		return
 	}
 
-	interval := searchRunLoopInterval(state.opts)
+	interval := time.Duration(state.opts.IntervalSeconds) * time.Second
 
 	for {
 		if ctx.Err() != nil {
@@ -1007,7 +983,7 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return true, nil
 	}
 
-	if state != nil && state.opts.DisableTorznab {
+	if state != nil && state.gazelleOnly() {
 		if s.gazelleTargetsSeeded(ctx, state.opts.InstanceID, torrent) {
 			if cacheKey != "" && state.skipCache != nil {
 				state.skipCache[cacheKey] = true
@@ -1073,7 +1049,7 @@ func (s *Service) staleSearchWork(ctx context.Context, state *searchRunState, to
 
 	hashes := append([]string{torrent.Hash}, state.duplicateHashes[torrent.Hash]...)
 	requested := state.resolvedTorznabIndexerIDs
-	if !state.opts.DisableTorznab && len(requested) > 0 {
+	if len(requested) > 0 {
 		history, err := s.newestIndexerSearchHistory(ctx, state.opts.InstanceID, hashes)
 		if err != nil {
 			return candidateStaleWork{}, err
@@ -1143,7 +1119,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		cooldownIndexerIDs = subtractInts(state.resolvedTorznabIndexerIDs, staleWork.indexerIDs)
 	}
 	scope := s.collectSearchScope(ctx, state.opts.InstanceID, torrent, state.sitePick(), searchScopeFacts{
-		torznabOff:           state.opts.DisableTorznab,
+		gazelleOnly:          state.gazelleOnly(),
 		cooldownIndexerIDs:   cooldownIndexerIDs,
 		skipGazelle:          hasStaleWork && !staleWork.gazelle,
 		gazelleOff:           state.gazelleClients.disabled(),

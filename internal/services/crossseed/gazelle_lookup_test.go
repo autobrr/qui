@@ -444,7 +444,7 @@ func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
 
 	require.Equal(t, 1, syncManager.exportCalls)
 
-	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], resolvedSitePick{}, searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()})
+	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], resolvedSitePick{}, searchScopeFacts{gazelleOnly: true, gazelleKeys: clients.hosts()})
 	require.NoError(t, scope.err)
 	require.Equal(t, 2, syncManager.exportCalls)
 }

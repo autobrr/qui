@@ -70,7 +70,6 @@ func TestSearchRunLoop_GazelleAccessDeniedStopsQueryingTracker(t *testing.T) {
 
 func TestFinalizeSearchRun_GazelleAccessDeniedWithTorznabSucceeds(t *testing.T) {
 	svc, state := newSearchRunLoopFixture(t, "crossseed-finalize-gazelle-denied", &hashFilteringSyncManager{})
-	state.opts.DisableTorznab = false
 	state.resolvedTorznabIndexerIDs = []int{1}
 	state.torznabSearched = true
 	state.gazelleClients.queried = map[string]struct{}{"orpheus.network": {}}
@@ -104,7 +103,6 @@ func TestFinalizeSearchRun_GazelleOnlyQueriedTrackerDeniedFails(t *testing.T) {
 
 func TestFinalizeSearchRun_GazelleDeniedWithUnsearchedTorznabFails(t *testing.T) {
 	svc, state := newSearchRunLoopFixture(t, "crossseed-finalize-gazelle-denied-torznab-skipped", &hashFilteringSyncManager{})
-	state.opts.DisableTorznab = false
 	state.resolvedTorznabIndexerIDs = []int{1}
 	state.gazelleClients.queried = map[string]struct{}{"orpheus.network": {}}
 	state.gazelleClients.denied = map[string]error{
@@ -143,7 +141,6 @@ func TestSearchRunLoop_GazelleDeniedTorznabSearchDecidesStatus(t *testing.T) {
 			client, err := gazellemusic.NewClient("orpheus.network", gazelle.URL, "ops-key")
 			require.NoError(t, err)
 			state.gazelleClients = &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"orpheus.network": client}}
-			state.opts.DisableTorznab = false
 			state.resolvedTorznabIndexerIDs = []int{1}
 			svc.asyncFilteringCache = ttlcache.New[string, *AsyncIndexerFilteringState]()
 			svc.asyncFilteringCache.Set(asyncFilteringCacheKey(state.opts.InstanceID, torrent.Hash), &AsyncIndexerFilteringState{

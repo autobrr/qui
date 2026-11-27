@@ -26,7 +26,6 @@ type SearchSettingsPatch struct {
 	CooldownMinutes        *int
 	MaxAddedAgeDays        *int
 	SkipIndividualEpisodes *bool
-	TorznabEnabled         *bool
 	ScheduleEnabled        *bool
 	ScheduleIntervalHours  *int
 	ScheduleMaxSearches    *int
@@ -170,7 +169,7 @@ func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettin
 	settings.ExcludeCategories = normalizeStringSlice(settings.ExcludeCategories)
 	settings.ExcludeTags = normalizeStringSlice(settings.ExcludeTags)
 	settings.SitePick = settings.Clean()
-	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, !settings.TorznabEnabled)
+	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, redOpsOnlyPick(settings.SitePick))
 	settings.MaxAddedAgeDays = max(settings.MaxAddedAgeDays, 0)
 	settings.ScheduleIntervalHours = min(max(settings.ScheduleIntervalHours, 1), maxScheduleIntervalHours)
 	settings.ScheduleMaxSearches = max(settings.ScheduleMaxSearches, 1)
@@ -305,9 +304,6 @@ func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings)
 	}
 	if patch.SkipIndividualEpisodes != nil {
 		settings.SkipIndividualEpisodes = *patch.SkipIndividualEpisodes
-	}
-	if patch.TorznabEnabled != nil {
-		settings.TorznabEnabled = *patch.TorznabEnabled
 	}
 	if patch.ScheduleEnabled != nil {
 		settings.ScheduleEnabled = *patch.ScheduleEnabled

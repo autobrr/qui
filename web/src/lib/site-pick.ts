@@ -53,18 +53,26 @@ export function sitePickOptions(
   trigger: SitePickTrigger,
   indexers: readonly TorznabIndexer[],
   redOps: readonly RedOpsSite[],
-  { pick = EVERY_SITE, torznabOn = true }: { pick?: SitePick; torznabOn?: boolean } = {}
+  { pick = EVERY_SITE }: { pick?: SitePick } = {}
 ): SiteOption[] {
   const sites = TRIGGER_RED_OPS[trigger] === "none" ? [] : redOps.filter(site => site.active !== false || pick.gazelleSites.includes(site.site))
   const replaced = replacedIndexerIds(sites)
-  const torznab = torznabOn ? enabledTorznabIndexers(indexers).filter(indexer => !replaced.has(indexer.id)) : []
+  const torznab = enabledTorznabIndexers(indexers).filter(indexer => !replaced.has(indexer.id))
   const listed = new Set(torznab.map(indexer => indexer.id))
-  const unavailable = torznabOn ? [...new Set(pick.indexerIds)].filter(id => !listed.has(id) && !replaced.has(id)) : []
+  const unavailable = [...new Set(pick.indexerIds)].filter(id => !listed.has(id) && !replaced.has(id))
   return [
     ...torznab.map(indexer => ({ label: indexer.name, value: String(indexer.id), id: indexer.id })),
     ...unavailable.map(id => ({ label: indexers.find(indexer => indexer.id === id)?.name ?? String(id), value: String(id), id })),
     ...sites.map(site => ({ label: site.name, value: String(site.indexerId), id: site.indexerId })),
   ]
+}
+
+export function redOpsOnlyPick(pick: SitePick): boolean {
+  return pick.indexerIds.length === 0 && pick.gazelleSites.length > 0
+}
+
+export function redOpsPickWithoutKey(pick: SitePick, sites: readonly RedOpsSite[]): boolean {
+  return redOpsOnlyPick(pick) && !sites.some(site => site.active !== false && pick.gazelleSites.includes(site.site))
 }
 
 export function sitePickFromIds(ids: readonly number[], sites: readonly RedOpsSite[]): SitePick {
@@ -130,12 +138,12 @@ export function useSitePickSources(trigger: SitePickTrigger) {
   }
 }
 
-export function useSitePickOptions(trigger: SitePickTrigger, { torznabOn = true }: { torznabOn?: boolean } = {}) {
+export function useSitePickOptions(trigger: SitePickTrigger) {
   const sources = useSitePickSources(trigger)
   const { allIndexers, sites } = sources
   const optionsFor = useCallback(
-    (pick: SitePick) => sitePickOptions(trigger, allIndexers, sites, { pick, torznabOn }),
-    [trigger, allIndexers, sites, torznabOn]
+    (pick: SitePick) => sitePickOptions(trigger, allIndexers, sites, { pick }),
+    [trigger, allIndexers, sites]
   )
   const options = useMemo(() => optionsFor(EVERY_SITE), [optionsFor])
   return { ...sources, options, optionsFor }
