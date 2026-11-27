@@ -67,7 +67,7 @@ func (a *Aligner) WaitForFiles(ctx context.Context, instanceID int, hashes []inf
 	for i, hash := range hashes {
 		ids[i] = hash.TorrentID()
 	}
-	lookup := hashStrings(uniqueHashes(ids...))
+	lookup := infohash.NewSet(ids...).Strings()
 	if len(lookup) == 0 {
 		return "", nil, false
 	}

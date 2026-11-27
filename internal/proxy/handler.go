@@ -575,7 +575,7 @@ func restoreBody(r *http.Request, body []byte) {
 	r.ContentLength = int64(len(body))
 }
 
-func uniqueHashes(values []string) []string {
+func uniqueHashesKeepingText(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
@@ -1014,7 +1014,7 @@ func parseHashesQueryValues(queryParams url.Values) []string {
 		return nil
 	}
 
-	return uniqueHashes(rawHashes)
+	return uniqueHashesKeepingText(rawHashes)
 }
 
 func mergeUniqueStringSlices(valueSets ...[]string) []string {
@@ -1783,7 +1783,7 @@ func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	requested := uniqueHashes(strings.Split(r.Form.Get("hashes"), "|"))
+	requested := uniqueHashesKeepingText(strings.Split(r.Form.Get("hashes"), "|"))
 	if len(requested) == 0 {
 		restoreBody(r, bodyBytes)
 		h.proxy.ServeHTTP(w, r)
