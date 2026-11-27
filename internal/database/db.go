@@ -427,8 +427,8 @@ const sqliteTimeParams = "_timezone=UTC&_time_format=sqlite"
 
 type pragmaExecFn func(ctx context.Context, stmt string) error
 
-func runSQLiteConnectionHook(timeout time.Duration, dsn string, exec pragmaExecFn) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func runSQLiteConnectionHook(dsn string, exec pragmaExecFn) error {
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteConnectionSetupTimeout)
 	defer cancel()
 
 	return applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
@@ -441,7 +441,7 @@ func runSQLiteConnectionHook(timeout time.Duration, dsn string, exec pragmaExecF
 
 func init() {
 	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
-		return runSQLiteConnectionHook(sqliteConnectionSetupTimeout, dsn, func(ctx context.Context, stmt string) error {
+		return runSQLiteConnectionHook(dsn, func(ctx context.Context, stmt string) error {
 			_, err := conn.ExecContext(ctx, stmt, nil)
 			return err
 		})
@@ -1110,7 +1110,7 @@ func (db *DB) Close() error {
 		}
 
 		if db.dialect == DialectSQLite {
-			ctx, cancel := context.WithTimeout(context.Background(), sqliteConnectionSetupTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
 			defer cancel()
 			if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
 				log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")

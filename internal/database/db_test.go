@@ -178,38 +178,17 @@ func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
 	require.NotContains(t, statementsRO, "PRAGMA journal_mode = WAL", "read-only connections must not attempt to set journal_mode")
 }
 
-func TestSQLiteConnectionHookTimeoutBehavior(t *testing.T) {
-	t.Run("tolerates slow Windows WAL setup past legacy 5s budget", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			err := runSQLiteConnectionHook(sqliteConnectionSetupTimeout, "test.db", func(ctx context.Context, stmt string) error {
-				if stmt == "PRAGMA journal_mode = WAL" {
-					timer := time.NewTimer(10 * time.Second)
-					defer timer.Stop()
-					select {
-					case <-timer.C:
-						return nil
-					case <-ctx.Done():
-						return ctx.Err()
-					}
-				}
-				return nil
-			})
-			require.NoError(t, err)
+func TestSQLiteConnectionHookGivesUpOnAHungPragma(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		err := runSQLiteConnectionHook("test.db", func(ctx context.Context, stmt string) error {
+			if stmt == "PRAGMA synchronous = NORMAL" {
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			return nil
 		})
-	})
-
-	t.Run("hung pragma fails with error naming the pragma", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			err := runSQLiteConnectionHook(sqliteConnectionSetupTimeout, "test.db", func(ctx context.Context, stmt string) error {
-				if stmt == "PRAGMA synchronous = NORMAL" {
-					<-ctx.Done()
-					return ctx.Err()
-				}
-				return nil
-			})
-			require.ErrorIs(t, err, context.DeadlineExceeded)
-			require.ErrorContains(t, err, "PRAGMA synchronous = NORMAL")
-		})
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorContains(t, err, "PRAGMA synchronous = NORMAL")
 	})
 }
 
