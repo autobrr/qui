@@ -19,7 +19,7 @@ import (
 	"github.com/autobrr/qui/pkg/infohash"
 )
 
-var ErrUnregisteredSinceNotLoaded = errors.New("qui has not loaded the unregistered times of this instance yet. Try again in a minute.")
+var ErrUnregisteredSinceNotLoaded = errors.New("qui has not loaded the unregistered times of this instance yet")
 
 type trackerHealthSource interface {
 	GetTrackerHealthSnapshot(instanceID int) *qbittorrent.TrackerHealthSnapshot

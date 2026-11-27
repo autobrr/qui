@@ -703,7 +703,7 @@ func (h *AutomationHandler) handleDeletePreview(ctx context.Context, w http.Resp
 	}
 	result, err := h.service.PreviewDeleteRule(ctx, instanceID, automation, limit, offset, previewView)
 	if errors.Is(err, automations.ErrUnregisteredSinceNotLoaded) {
-		RespondError(w, http.StatusServiceUnavailable, err.Error())
+		RespondError(w, http.StatusServiceUnavailable, err.Error()+". Try again in a minute.")
 		return
 	}
 	if err != nil {

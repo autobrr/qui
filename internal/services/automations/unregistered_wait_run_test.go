@@ -92,8 +92,9 @@ func newWaitRunService(t *testing.T, health *fakeTrackerHealth) (*Service, int, 
 }
 
 func runDeletedHashes(stub *stubQbt) []string {
-	var hashes []string
-	for _, batch := range deletedHashes(stub) {
+	batches := deletedHashes(stub)
+	hashes := make([]string, 0, len(batches))
+	for _, batch := range batches {
 		hashes = append(hashes, strings.Split(batch, "|")...)
 	}
 	return hashes

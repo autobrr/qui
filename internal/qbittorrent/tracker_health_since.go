@@ -260,8 +260,9 @@ func torrentStopped(t *qbt.Torrent) bool {
 	switch t.State {
 	case qbt.TorrentStateStoppedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedUp, qbt.TorrentStatePausedDl:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 func anyTrackerWorking(trackers []qbt.TorrentTracker) bool {

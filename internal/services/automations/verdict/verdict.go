@@ -42,8 +42,9 @@ func (r Reader) Is(hash string, health qbittorrent.TrackerHealth) bool {
 		return marks(r.snapshot, hash)
 	case readDue:
 		return r.due(hash)
+	default:
+		return r.snapshot.Health(hash) == qbittorrent.TrackerHealthUnregistered
 	}
-	return r.snapshot.Health(hash) == qbittorrent.TrackerHealthUnregistered
 }
 
 func (r Reader) due(hash string) bool {
