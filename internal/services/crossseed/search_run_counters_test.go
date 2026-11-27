@@ -46,9 +46,8 @@ func TestApplyEnsembleSearchResults_AddAfterFailureCountsAsAdded(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	service, state, _ := newEnsembleSearchState(t, "crossseed-counters-add-after-fail", nil, true)
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 10)
+	service.jackettService = torznab.jackett
 	applies := 0
 	service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		applies++
@@ -58,8 +57,8 @@ func TestApplyEnsembleSearchResults_AddAfterFailureCountsAsAdded(t *testing.T) {
 	key := ensembleGroupKey{normalizedTitle: service.stringNormalizer.Normalize("Show Title"), season: 1}
 	group := &qbt.Torrent{Hash: ensembleSeasonPseudoHash(key), Name: "Show Title S01", Progress: 1.0}
 	results := []jackett.SearchResult{
-		{Indexer: "Example", IndexerID: 10, Title: "Show.Title.S01.1080p.WEB.H264-A", GUID: "a", DownloadURL: "https://example.invalid/a"},
-		{Indexer: "Example", IndexerID: 10, Title: "Show.Title.S01.720p.WEB.H264-B", GUID: "b", DownloadURL: "https://example.invalid/b"},
+		{Indexer: "Example", IndexerID: 10, Title: "Show.Title.S01.1080p.WEB.H264-A", GUID: "a", DownloadURL: torznab.url("a")},
+		{Indexer: "Example", IndexerID: 10, Title: "Show.Title.S01.720p.WEB.H264-B", GUID: "b", DownloadURL: torznab.url("b")},
 	}
 	state.run.Processed++
 	service.applyEnsembleSearchResults(ctx, state, group, key, "query", &jackett.SearchResponse{Results: results}, time.Now().UTC())

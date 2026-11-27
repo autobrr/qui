@@ -46,6 +46,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 		strings.ToLower(packTorrent.Hash): {SavePath: "/downloads"},
 	}
 
+	torznab := newTorznabServer(t, 10)
 	service := &Service{
 		instanceStore: &episodeInstanceStore{
 			instances: map[int]*models.Instance{
@@ -55,10 +56,10 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 				},
 			},
 		},
-		syncManager:         sync,
-		releaseCache:        NewReleaseCache(),
-		stringNormalizer:    stringutils.NewDefaultNormalizer(),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		jackettService:   torznab.jackett,
 	}
 
 	var captured *CrossSeedRequest
@@ -88,7 +89,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 		Indexer:              "Example",
 		IndexerID:            10,
 		Title:                "Show.S01.1080p.BluRay-GROUP",
-		DownloadURL:          "https://example.invalid/download.torrent",
+		DownloadURL:          torznab.url("download.torrent"),
 		GUID:                 "guid-1",
 		Size:                 1024,
 		PublishDate:          time.Now(),
@@ -119,11 +120,12 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	sync := newEpisodeSyncManager()
 	sync.torrents[instanceID] = []qbt.Torrent{sourceTorrent}
 
+	torznab := newTorznabServer(t, 99)
 	service := &Service{
-		syncManager:         sync,
-		releaseCache:        NewReleaseCache(),
-		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
+		syncManager:       sync,
+		releaseCache:      NewReleaseCache(),
+		searchResultCache: ttlcache.New[string, cachedTorrentSearchResults](),
+		jackettService:    torznab.jackett,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
 			return settings, nil
@@ -134,7 +136,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		Indexer:     "Indexer",
 		IndexerID:   99,
 		Title:       "Show.S01E01.1080p.BluRay-GROUP",
-		DownloadURL: "https://example.invalid/episode.torrent",
+		DownloadURL: torznab.url("episode.torrent"),
 		GUID:        "guid-2",
 		Size:        2048,
 		SearchDecision: searchDecisionProvenance{
