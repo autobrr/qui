@@ -158,11 +158,6 @@
       "count": 1
     }
   },
-  "src/components/database/DatabaseShrinkProvider.tsx": {
-    "qui/no-direct-effect": {
-      "count": 1
-    }
-  },
   "src/components/database/ShrinkFailedActions.tsx": {
     "shadcn/no-restyle": {
       "count": 2
