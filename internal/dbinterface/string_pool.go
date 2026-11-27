@@ -14,7 +14,7 @@ import (
 
 const maxParams = 900
 
-func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64, error) {
+func InternStrings(ctx context.Context, tx queryExecutor, values ...string) ([]int64, error) {
 	if len(values) == 0 {
 		return []int64{}, nil
 	}
@@ -93,7 +93,7 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 	return result, nil
 }
 
-func InternStringNullable(ctx context.Context, tx TxQuerier, values ...*string) ([]sql.NullInt64, error) {
+func InternStringNullable(ctx context.Context, tx queryExecutor, values ...*string) ([]sql.NullInt64, error) {
 	if len(values) == 0 {
 		return []sql.NullInt64{}, nil
 	}
@@ -140,7 +140,7 @@ func InternStringNullable(ctx context.Context, tx TxQuerier, values ...*string) 
 	return results, nil
 }
 
-func InternEmptyString(ctx context.Context, tx TxQuerier) (int64, error) {
+func InternEmptyString(ctx context.Context, tx queryExecutor) (int64, error) {
 	var id int64
 	err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&id)
 	if err == nil {
@@ -163,7 +163,7 @@ func InternEmptyString(ctx context.Context, tx TxQuerier) (int64, error) {
 	return id, nil
 }
 
-func GetStringID(ctx context.Context, tx TxQuerier, values ...string) ([]sql.NullInt64, error) {
+func GetStringID(ctx context.Context, tx queryExecutor, values ...string) ([]sql.NullInt64, error) {
 	if len(values) == 0 {
 		return []sql.NullInt64{}, nil
 	}
@@ -220,7 +220,7 @@ func GetStringID(ctx context.Context, tx TxQuerier, values ...string) ([]sql.Nul
 	return results, nil
 }
 
-func getSingleStringID(ctx context.Context, tx TxQuerier, value string) ([]sql.NullInt64, error) {
+func getSingleStringID(ctx context.Context, tx queryExecutor, value string) ([]sql.NullInt64, error) {
 	if value == "" {
 		return []sql.NullInt64{{Valid: false}}, nil
 	}
@@ -237,7 +237,7 @@ func getSingleStringID(ctx context.Context, tx TxQuerier, value string) ([]sql.N
 	return []sql.NullInt64{{Int64: id, Valid: true}}, nil
 }
 
-func queryStringIDChunk(ctx context.Context, tx TxQuerier, chunk []string, valueToID map[string]int64) error {
+func queryStringIDChunk(ctx context.Context, tx queryExecutor, chunk []string, valueToID map[string]int64) error {
 	args := make([]any, len(chunk))
 	for j, v := range chunk {
 		args[j] = v
