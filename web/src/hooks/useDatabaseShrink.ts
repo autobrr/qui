@@ -22,11 +22,11 @@ function sameResult(a: ShrinkResult | undefined, b: ShrinkResult): boolean {
 
 export const databaseShrinkQuery = queryOptions({
   queryKey: databaseShrinkQueryKey,
-  queryFn: async ({ client }) => {
+  queryFn: async ({ client, signal }) => {
     const shown = client.getQueryData<DatabaseShrinkStatus>(databaseShrinkQueryKey)?.result
     const status = await api.getDatabaseShrink()
     const { result } = status
-    if (result && !sameResult(shown, result)) {
+    if (result && !signal.aborted && !sameResult(shown, result)) {
       toast.success(i18n.t("common:databaseShrink.done", { before: formatBytes(result.beforeBytes), after: formatBytes(result.afterBytes) }), { duration: 15_000 })
       void api.dismissDatabaseShrinkResult()
         .catch(() => undefined)
