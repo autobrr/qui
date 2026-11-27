@@ -13,7 +13,7 @@ import (
 func TestShouldAcceptDirScanMatch_PiecePercentThreshold(t *testing.T) {
 	parsed := &ParsedTorrent{
 		Name:        "Example",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "Example/a.bin", Size: 8, Offset: 0},
@@ -54,7 +54,7 @@ func TestShouldAcceptDirScanMatch_PiecePercentThreshold(t *testing.T) {
 func TestShouldAcceptDirScanMatch_NoFilesMatched(t *testing.T) {
 	parsed := &ParsedTorrent{
 		Name:        "Example",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "Example/a.bin", Size: 8, Offset: 0},
@@ -95,7 +95,7 @@ func TestRefineDirScanMatchDecision_RejectsFlexibleSingleFilePerfectWithoutCorro
 	}
 	parsed := &ParsedTorrent{
 		Name:        "Totally.Different.Movie.2023.1080p.BluRay.x264-GROUP",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "Totally.Different.Movie.2023.1080p.BluRay.x264-GROUP.mkv", Size: 1000, Offset: 0},
@@ -143,7 +143,7 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithIMDbCorr
 	}
 	parsed := &ParsedTorrent{
 		Name:        "John.Wick.Chapter.4.2023.1080p.WEB-DL.DDP5.1.Atmos.H.264-WDYM",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "John.Wick.Chapter.4.2023.1080p.WEB-DL.DDP5.1.Atmos.H.264-WDYM.mkv", Size: 1000, Offset: 0},
@@ -189,7 +189,7 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithSearchIM
 	}
 	parsed := &ParsedTorrent{
 		Name:        "The.Count.of.Monte.Cristo.2024.1080p.WEB-DL.x264-GROUP",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "The.Count.of.Monte.Cristo.2024.1080p.WEB-DL.x264-GROUP.mkv", Size: 1000, Offset: 0},
@@ -232,7 +232,7 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithTVDbCorr
 	}
 	parsed := &ParsedTorrent{
 		Name:        "The.Bureau.S01E01.1080p.WEB-DL.x264-GROUP",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "The.Bureau.S01E01.1080p.WEB-DL.x264-GROUP.mkv", Size: 1000, Offset: 0},
@@ -274,7 +274,7 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithTMDbCorr
 	}
 	parsed := &ParsedTorrent{
 		Name:        "Avatar.Fire.and.Ash.2025.2160p.WEB-DL.x265-GROUP",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "Avatar.Fire.and.Ash.2025.2160p.WEB-DL.x265-GROUP.mkv", Size: 1000, Offset: 0},
@@ -316,7 +316,7 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithResultTM
 	}
 	parsed := &ParsedTorrent{
 		Name:        "Avatar.Fire.and.Ash.2025.2160p.WEB-DL.x265-GROUP",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "Avatar.Fire.and.Ash.2025.2160p.WEB-DL.x265-GROUP.mkv", Size: 1000, Offset: 0},
@@ -358,7 +358,7 @@ func TestRefineDirScanMatchDecision_RejectsFlexibleSingleFilePerfectForWrongEpis
 	}
 	parsed := &ParsedTorrent{
 		Name:        "The.Office.S01E02.1080p.WEB-DL.x264-GROUP",
-		InfoHash:    "deadbeef",
+		InfoHash:    "deadbeef00000000000000000000000000000000",
 		PieceLength: 4,
 		Files: []TorrentFile{
 			{Path: "The.Office.S01E02.1080p.WEB-DL.x264-GROUP.mkv", Size: 1000, Offset: 0},
@@ -484,7 +484,7 @@ func TestRefineDirScanMatchDecision_TitlesMatch(t *testing.T) {
 			}
 			parsed := &ParsedTorrent{
 				Name:        tt.candidate,
-				InfoHash:    "deadbeef",
+				InfoHash:    "deadbeef00000000000000000000000000000000",
 				PieceLength: 4,
 				Files:       []TorrentFile{{Path: "candidate.mkv", Size: 1000}},
 				TotalSize:   1000,

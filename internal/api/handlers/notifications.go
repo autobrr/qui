@@ -49,8 +49,8 @@ type notificationTestRequest struct {
 
 const maxNotificationBodySize = 1 << 20
 
-func (h *NotificationsHandler) ListEvents(w http.ResponseWriter, _ *http.Request) {
-	RespondJSON(w, http.StatusOK, notifications.EventDefinitions())
+func (h *NotificationsHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
+	RespondJSON(w, r, http.StatusOK, notifications.EventDefinitions())
 }
 
 func (h *NotificationsHandler) ListTargets(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +71,7 @@ func (h *NotificationsHandler) ListTargets(w http.ResponseWriter, r *http.Reques
 			target.URL = notificationURLScheme(target.URL)
 		}
 	}
-	RespondJSON(w, http.StatusOK, targets)
+	RespondJSON(w, r, http.StatusOK, targets)
 }
 
 func notificationURLScheme(rawURL string) string {
@@ -144,7 +144,7 @@ func (h *NotificationsHandler) CreateTarget(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, created)
+	RespondJSON(w, r, http.StatusCreated, created)
 }
 
 func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Request) {
@@ -230,7 +230,7 @@ func (h *NotificationsHandler) UpdateTarget(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, r, http.StatusOK, updated)
 }
 
 func (h *NotificationsHandler) DeleteTarget(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +256,7 @@ func (h *NotificationsHandler) DeleteTarget(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusNoContent, nil)
+	RespondJSON(w, r, http.StatusNoContent, nil)
 }
 
 func validateNotificationURL(ctx context.Context, url string) error {
@@ -317,5 +317,5 @@ func (h *NotificationsHandler) TestTarget(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "sent"})
 }

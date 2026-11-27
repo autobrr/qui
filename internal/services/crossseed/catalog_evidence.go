@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -20,14 +19,15 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type catalogFileEvidence struct {
 	Kind           gazellemusic.MatchKind
 	Host           string
 	TorrentID      int64
-	TargetHash     string
-	QueriedHash    string
+	TargetHash     infohash.Hash
+	QueriedHash    infohash.Hash
 	Total          int64
 	SourceSnapshot [32]byte
 	Family         rls.Type
@@ -45,10 +45,9 @@ func (e catalogFileEvidence) valid() bool {
 	}
 	switch e.Kind {
 	case gazellemusic.MatchHash:
-		hash, err := hex.DecodeString(e.TargetHash)
-		return err == nil && len(hash) == 20 && strings.EqualFold(e.QueriedHash, e.TargetHash)
+		return !e.TargetHash.IsZero() && !e.TargetHash.IsV2() && e.QueriedHash == e.TargetHash
 	case gazellemusic.MatchSize:
-		return e.TargetHash == ""
+		return e.TargetHash.IsZero()
 	}
 	return false
 }
@@ -132,26 +131,26 @@ func (s *Service) gazelleDecision(instanceID int, source *qbt.Torrent, files qbt
 	if family != rls.Music && family != rls.Book {
 		return searchDecisionProvenance{}, nil
 	}
-	e := catalogFileEvidence{Kind: match.Kind, Host: match.Host, TorrentID: match.TorrentID, TargetHash: normalizeHash(match.TargetHash), QueriedHash: match.QueriedHash, Total: match.Size, SourceSnapshot: snapshot, Family: family}
+	e := catalogFileEvidence{Kind: match.Kind, Host: match.Host, TorrentID: match.TorrentID, TargetHash: match.TargetHash, QueriedHash: match.QueriedHash, Total: match.Size, SourceSnapshot: snapshot, Family: family}
 	sourceRead := s.matcher().readName(source.Name)
 	candidateRead := s.matcher().readName(match.Title)
 	verdict := s.matcher().matchVerdict(sourceRead, candidateRead, matchEvidence{SourceSize: searchSourceSize(source), CandidateSize: match.Size, SourceFiles: files, Catalog: e}, matchPolicy{CatalogFiles: true})
 	if !verdict.Matched {
 		return searchDecisionProvenance{}, fmt.Errorf("no admissible file evidence: %s", verdict.RejectReason)
 	}
-	return searchDecisionProvenance{Class: verdict.Class, SearchCandidateName: match.Title, SourceInstanceID: instanceID, SourceHash: normalizeHash(source.Hash), Relaxed: verdict.Relaxed, Catalog: e}, nil
+	return searchDecisionProvenance{Class: verdict.Class, SearchCandidateName: match.Title, SourceInstanceID: instanceID, SourceHash: parseHash(source.Hash), Relaxed: verdict.Relaxed, Catalog: e}, nil
 }
 
-func validateCatalogTarget(decision searchDecisionProvenance, hash string, files qbt.TorrentFiles) error {
+func validateCatalogTarget(decision searchDecisionProvenance, hash infohash.Hash, files qbt.TorrentFiles) error {
 	e := decision.Catalog
-	if !e.valid() || decision.SourceInstanceID <= 0 || decision.SourceHash == "" {
+	if !e.valid() || decision.SourceInstanceID <= 0 || decision.SourceHash.IsZero() {
 		return errors.New("incomplete file-evidence decision")
 	}
 	_, total, err := fullFileSnapshot(files)
 	if err != nil {
 		return err
 	}
-	if (e.Kind == gazellemusic.MatchHash && normalizeHash(hash) != e.TargetHash) || total != e.Total {
+	if (e.Kind == gazellemusic.MatchHash && hash != e.TargetHash) || total != e.Total {
 		return errors.New("selected target hash or full size changed")
 	}
 	if catalogFileFamily(files) != e.Family {
@@ -178,7 +177,7 @@ func validateCatalogSource(decision searchDecisionProvenance, torrent *qbt.Torre
 
 func (s *Service) findCatalogCandidate(ctx context.Context, req *FindCandidatesRequest) (*FindCandidatesResponse, error) {
 	p := req.SearchDecision
-	if !p.Catalog.valid() || p.SourceInstanceID <= 0 || p.SourceHash == "" || (len(req.TargetInstanceIDs) > 0 && !slices.Contains(req.TargetInstanceIDs, p.SourceInstanceID)) {
+	if !p.Catalog.valid() || p.SourceInstanceID <= 0 || p.SourceHash.IsZero() || (len(req.TargetInstanceIDs) > 0 && !slices.Contains(req.TargetInstanceIDs, p.SourceInstanceID)) {
 		return nil, errors.New("file-evidence source binding mismatch")
 	}
 	instance, err := s.instanceStore.Get(ctx, p.SourceInstanceID)
@@ -188,22 +187,22 @@ func (s *Service) findCatalogCandidate(ctx context.Context, req *FindCandidatesR
 	if instance == nil {
 		return nil, errors.New("bound source instance unavailable")
 	}
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, p.SourceInstanceID, qbittorrent.TorrentRefFilter{Hashes: []string{p.SourceHash}})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, p.SourceInstanceID, qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{p.SourceHash}})
 	if err != nil {
 		return nil, err
 	}
 	for _, torrent := range torrents {
-		if normalizeHash(torrent.Hash) != p.SourceHash {
+		if !p.SourceHash.Is(torrent.Hash) {
 			continue
 		}
 		if s.sourceGate().check(torrent, req.sourceFilter) != sourcePass {
 			return nil, errors.New("bound source incomplete or ineligible")
 		}
-		files, err := s.syncManager.GetTorrentFilesBatch(qbittorrent.WithForceFilesRefresh(ctx), p.SourceInstanceID, []string{p.SourceHash})
+		files, err := s.syncManager.GetTorrentFilesBatch(qbittorrent.WithForceFilesRefresh(ctx), p.SourceInstanceID, []string{p.SourceHash.String()})
 		if err != nil {
 			return nil, err
 		}
-		if err := validateCatalogSource(p, torrent, files[p.SourceHash]); err != nil {
+		if err := validateCatalogSource(p, torrent, files[p.SourceHash.String()]); err != nil {
 			return nil, err
 		}
 		return &FindCandidatesResponse{SourceTorrent: &TorrentInfo{Name: req.TorrentName}, Candidates: []CrossSeedCandidate{{InstanceID: p.SourceInstanceID, InstanceName: instance.Name, Torrents: []*qbt.Torrent{torrent}, MatchType: "size"}}}, nil

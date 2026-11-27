@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n check-feature-map lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit deps docs-dev docs-build mutation mutation-go mutation-web
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend test-frontend-changed help lint lint-full lint-ratchet lint-version typecheck-frontend check-i18n check-feature-map lint-json lint-fix fmt gofix-changed gofix-check-changed check-mojibake generate precommit prepush deps docs-dev docs-build mutation mutation-go mutation-web bench-compare
 
 # Default target
 all: build
@@ -160,6 +160,11 @@ mutation-web:
 		cd "$$run/wt/$(WEB_DIR)" && pnpm install --frozen-lockfile --prefer-offline --silent && \
 			pnpm exec stryker run --mutate "$$files"
 
+BENCH_BASE ?= origin/develop
+
+bench-compare:
+	@go run ./scripts/benchcompare compare -base $(BENCH_BASE)
+
 # Format changed code only (fast, for iteration)
 fmt:
 	@echo "Formatting changed Go code..."
@@ -243,7 +248,7 @@ MOJIBAKE_LEAD4 = (ð|ñ|ò|ó|ô)
 MOJIBAKE_RE = $(MOJIBAKE_LEAD2)$(MOJIBAKE_CONT)|$(MOJIBAKE_LEAD3)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)|$(MOJIBAKE_LEAD4)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)$(MOJIBAKE_CONT)
 
 check-mojibake:
-	@if git grep -nIE '$(MOJIBAKE_RE)' -- . ':!*pnpm-lock.yaml' ':!go.sum' ':!Makefile'; then \
+	@if git grep --untracked -nIE '$(MOJIBAKE_RE)' -- . ':!*pnpm-lock.yaml' ':!go.sum' ':!Makefile'; then \
 		echo "Mojibake found. Restore the original UTF-8 characters."; \
 		exit 1; \
 	fi
@@ -255,6 +260,10 @@ generate:
 # Local pre-commit gate: mojibake check, generated files, fmt and gofix on changed files, lint, the frontend type and i18n checks, then the frontend tests when the branch changes web/ or internal/
 precommit: check-mojibake generate fmt gofix-changed lint lint-ratchet typecheck-frontend check-i18n check-feature-map test-frontend-changed
 	@echo "Pre-commit checks passed."
+
+# The checks before a push, picked from the files that the branch changes: precommit and the tests of the changed Go packages, or only the script and workflow checks when nothing else changed
+prepush:
+	@sh scripts/prepush.sh
 
 # Warn when the local golangci-lint is not the version that CI pins, because lint and lint-ratchet can then find problems that CI does not
 lint-version:
@@ -355,6 +364,7 @@ help:
 	@echo "  make test-frontend-changed - Run frontend vitest suite when the branch changes web/ or a file that web/src reads"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo "  make mutation       - Mutation test changed Go lines and TypeScript files (MUTATION_BASE=origin/develop)"
+	@echo "  make bench-compare  - Compare the Go benchmarks that the branch touches with the merge base (BENCH_BASE=origin/develop)"
 	@echo ""
 	@echo "Linting:"
 	@echo "  make lint           - Lint changed files only (fast, for iteration)"
@@ -369,6 +379,7 @@ help:
 	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
 	@echo "  make generate       - Write generated files (automation rule JSON reference, query builder fields, API key areas)"
 	@echo "  make precommit      - Run local pre-commit gate (generate + fmt + gofix + lint + lint-ratchet + frontend type and i18n checks + frontend tests when web/ or internal/ changed)"
+	@echo "  make prepush        - Run the checks before a push, picked from the changed files (precommit + tests of changed Go packages, or the workflow and script checks)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"

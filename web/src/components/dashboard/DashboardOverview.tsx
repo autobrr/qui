@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDashboardChartView, type DashboardChartView } from "@/hooks/useDashboardChartView"
+import { useLastDayPeriod } from "@/hooks/useLastDayPeriod"
 import { useLiveSamples } from "@/hooks/useLiveSamples"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { useClientSettingsSettled } from "@/lib/client-settings"
@@ -26,33 +27,14 @@ import {
   trackerGroupShares,
   type DashboardInstanceStats
 } from "@/lib/dashboard-overview"
-import { HISTORY_WRITE_MS, presetPeriod, recordedFrom, sumBytes, type StatisticsPeriod } from "@/lib/statistics"
+import { recordedFrom, sumBytes, type StatisticsPeriod } from "@/lib/statistics"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { themeArea } from "@/lib/theme-areas"
 import { formatBytes } from "@/lib/utils"
 import type { TransferHistoryRow } from "@/types"
 import { ArrowDown, ArrowUp, Loader2 } from "lucide-react"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-
-function useLastDayPeriod(): StatisticsPeriod {
-  const [period, setPeriod] = useState(() => presetPeriod("24h", new Date()))
-  useEffect(() => {
-    const move = () => {
-      if (document.visibilityState !== "visible") {
-        return
-      }
-      setPeriod(current => Date.now() - current.to.getTime() < HISTORY_WRITE_MS ? current : presetPeriod("24h", new Date()))
-    }
-    const timer = setInterval(move, 60_000)
-    document.addEventListener("visibilitychange", move)
-    return () => {
-      clearInterval(timer)
-      document.removeEventListener("visibilitychange", move)
-    }
-  }, [])
-  return period
-}
 
 function PointedLayerProvider({ children }: { children: ReactNode }) {
   const [pointed, setPointed] = useState<number>()
@@ -215,13 +197,13 @@ export function DashboardOverview({ statsData }: { statsData: DashboardInstanceS
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {range === "day" && dayData?.partial && <Badge variant="outline" className="border-yellow-500/50 py-0 text-[10px] text-yellow-600 dark:text-yellow-500">{t("statistics:partial")}</Badge>}
+              {range === "day" && dayData?.partial && <Badge variant="outline" className="border-warning/50 py-0 text-10 text-warning">{t("statistics:partial")}</Badge>}
               {controls}
             </div>
           </div>
           {chart}
           {axis && (
-            <div className="flex justify-between px-4 pb-3 pt-1 text-[10px] text-muted-foreground tabular-nums lg:px-6">
+            <div className="flex justify-between px-4 pb-3 pt-1 text-10 text-muted-foreground tabular-nums lg:px-6">
               {axis.map((label, index) => <span key={index}>{label}</span>)}
             </div>
           )}

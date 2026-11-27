@@ -187,6 +187,8 @@
     "smartSearchTitle": "Smart Search Features:",
     "smartSearchGlob": "Glob patterns:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Hide matches:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Fuzzy matching:",
     "smartSearchFuzzyExample": "\"breaking bad\" finds \"Breaking.Bad\"",
     "smartSearchDots": "Handles dots, underscores, and brackets",
@@ -389,9 +391,13 @@
         "menuFix": "Check the Library Scan settings",
         "action": "Open the Library Scan settings",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab is off in the Library Scan settings, and no RED or OPS API key is set. Turn Torznab on, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
-            "menuFix": "Turn Torznab on, or add a RED or OPS key"
+          "torznab_pick_no_indexer": {
+            "fix": "The Library Scan settings pick only Torznab indexers, and no Torznab indexer is enabled. Enable a Torznab indexer, or pick other sites in the Library Scan settings. qui tries again every hour.",
+            "menuFix": "Enable a Torznab indexer"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "The Library Scan settings pick only RED or OPS, and no picked site has an API key. Add the key in the Gazelle (OPS/RED) settings, or pick other sites in the Library Scan settings. qui tries again every hour.",
+            "menuFix": "Add the RED or OPS key"
           },
           "no_indexer": {
             "fix": "No indexer is enabled. Enable a Torznab indexer, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",

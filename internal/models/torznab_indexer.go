@@ -517,71 +517,20 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 		return nil, err
 	}
 
-	if params.Name != "" {
-		existing.Name = params.Name
-	}
-	if params.BaseURL != "" {
-		existing.BaseURL = params.BaseURL
-	}
-	if params.Enabled != nil {
-		existing.Enabled = *params.Enabled
-	}
-	if params.Priority != nil {
-		existing.Priority = *params.Priority
-	}
-	if params.TimeoutSeconds != nil {
-		existing.TimeoutSeconds = *params.TimeoutSeconds
-	}
-	if params.IndexerID != nil {
-		existing.IndexerID = strings.TrimSpace(*params.IndexerID)
-	}
-	if params.Backend != nil {
-		backend := *params.Backend
-		if backend == "" {
-			backend = TorznabBackendJackett
-		}
-		if backend != TorznabBackendJackett && backend != TorznabBackendProwlarr && backend != TorznabBackendNative {
-			return nil, fmt.Errorf("unsupported torznab backend: %s", backend)
-		}
-		existing.Backend = backend
+	if err := applyTorznabIndexerFieldUpdates(existing, params); err != nil {
+		return nil, err
 	}
 
-	if existing.Backend == TorznabBackendProwlarr && strings.TrimSpace(existing.IndexerID) == "" {
-		return nil, ErrTorznabIndexerIDRequired
-	}
-
-	var encryptedAPIKey string
 	if params.APIKey != "" {
-		encryptedAPIKey, err = s.encrypt(params.APIKey)
+		encryptedAPIKey, err := s.encrypt(params.APIKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 		}
 		existing.APIKeyEncrypted = encryptedAPIKey
 	}
 
-	if params.BasicUsername != nil {
-		trimmed := strings.TrimSpace(*params.BasicUsername)
-		if trimmed == "" {
-			existing.BasicUsername = nil
-			existing.BasicPasswordEncrypted = nil
-		} else {
-			existing.BasicUsername = &trimmed
-			if params.BasicPassword != nil {
-				trimmedPass := strings.TrimSpace(*params.BasicPassword)
-				if trimmedPass == "" {
-					existing.BasicPasswordEncrypted = nil
-				} else {
-					encrypted, err := s.encrypt(trimmedPass)
-					if err != nil {
-						return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
-					}
-					existing.BasicPasswordEncrypted = &encrypted
-				}
-			}
-			if existing.BasicPasswordEncrypted == nil || *existing.BasicPasswordEncrypted == "" {
-				return nil, ErrBasicAuthPasswordRequired
-			}
-		}
+	if err := s.applyTorznabIndexerBasicAuthUpdate(existing, params); err != nil {
+		return nil, err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -644,6 +593,71 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	}
 
 	return s.Get(ctx, id)
+}
+
+func applyTorznabIndexerFieldUpdates(existing *TorznabIndexer, params TorznabIndexerUpdateParams) error {
+	if params.Name != "" {
+		existing.Name = params.Name
+	}
+	if params.BaseURL != "" {
+		existing.BaseURL = params.BaseURL
+	}
+	if params.Enabled != nil {
+		existing.Enabled = *params.Enabled
+	}
+	if params.Priority != nil {
+		existing.Priority = *params.Priority
+	}
+	if params.TimeoutSeconds != nil {
+		existing.TimeoutSeconds = *params.TimeoutSeconds
+	}
+	if params.IndexerID != nil {
+		existing.IndexerID = strings.TrimSpace(*params.IndexerID)
+	}
+	if params.Backend != nil {
+		backend := *params.Backend
+		if backend == "" {
+			backend = TorznabBackendJackett
+		}
+		if backend != TorznabBackendJackett && backend != TorznabBackendProwlarr && backend != TorznabBackendNative {
+			return fmt.Errorf("unsupported torznab backend: %s", backend)
+		}
+		existing.Backend = backend
+	}
+
+	if existing.Backend == TorznabBackendProwlarr && strings.TrimSpace(existing.IndexerID) == "" {
+		return ErrTorznabIndexerIDRequired
+	}
+	return nil
+}
+
+func (s *TorznabIndexerStore) applyTorznabIndexerBasicAuthUpdate(existing *TorznabIndexer, params TorznabIndexerUpdateParams) error {
+	if params.BasicUsername == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*params.BasicUsername)
+	if trimmed == "" {
+		existing.BasicUsername = nil
+		existing.BasicPasswordEncrypted = nil
+		return nil
+	}
+	existing.BasicUsername = &trimmed
+	if params.BasicPassword != nil {
+		trimmedPass := strings.TrimSpace(*params.BasicPassword)
+		if trimmedPass == "" {
+			existing.BasicPasswordEncrypted = nil
+		} else {
+			encrypted, err := s.encrypt(trimmedPass)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt basic auth password: %w", err)
+			}
+			existing.BasicPasswordEncrypted = &encrypted
+		}
+	}
+	if existing.BasicPasswordEncrypted == nil || *existing.BasicPasswordEncrypted == "" {
+		return ErrBasicAuthPasswordRequired
+	}
+	return nil
 }
 
 func (s *TorznabIndexerStore) Delete(ctx context.Context, id int) error {

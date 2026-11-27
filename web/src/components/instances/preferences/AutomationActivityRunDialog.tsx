@@ -216,7 +216,7 @@ export function AutomationActivityRunDialog({
                       {item.tagsAdded && item.tagsAdded.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {item.tagsAdded.map((tag) => (
-                            <Badge key={`add-${item.hash}-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                            <Badge key={`add-${item.hash}-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                               +{tag}
                             </Badge>
                           ))}
@@ -229,7 +229,7 @@ export function AutomationActivityRunDialog({
                       {item.tagsRemoved && item.tagsRemoved.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {item.tagsRemoved.map((tag) => (
-                            <Badge key={`rm-${item.hash}-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
+                            <Badge key={`rm-${item.hash}-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-5/10 border-chart-5/20">
                               -{tag}
                             </Badge>
                           ))}

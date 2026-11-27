@@ -113,7 +113,7 @@ export const PeersTable = memo(function PeersTable({
         return (
           <div className="flex items-center gap-2">
             <Progress value={progress} className="h-1.5 w-16" />
-            <span className="tabular-nums text-[10px] w-10">
+            <span className="tabular-nums text-10 w-10">
               {progress.toFixed(1)}%
             </span>
           </div>
@@ -124,7 +124,7 @@ export const PeersTable = memo(function PeersTable({
     columnHelper.accessor("dl_speed", {
       header: t("peersTable.downSpeed"),
       cell: (info) => (
-        <span className="tabular-nums text-green-500">
+        <span className="tabular-nums text-chart-text-2">
           {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
         </span>
       ),
@@ -135,7 +135,7 @@ export const PeersTable = memo(function PeersTable({
     columnHelper.accessor("up_speed", {
       header: t("peersTable.upSpeed"),
       cell: (info) => (
-        <span className="tabular-nums text-blue-500">
+        <span className="tabular-nums text-chart-text-3">
           {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
         </span>
       ),
@@ -175,7 +175,7 @@ export const PeersTable = memo(function PeersTable({
           return (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="font-mono text-[10px] text-muted-foreground cursor-help">
+                <span className="font-mono text-10 text-muted-foreground cursor-help">
                   {flags}
                 </span>
               </TooltipTrigger>

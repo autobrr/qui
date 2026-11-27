@@ -17,27 +17,21 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func (s *Service) FindDeleteMatches(ctx context.Context, selection map[int][]string) (*DeleteMatchesResponse, error) {
-	requested := make(map[int]map[string]struct{}, len(selection))
+	requested := make(map[int]map[infohash.Hash]struct{}, len(selection))
 	for instanceID, hashes := range selection {
-		requested[instanceID] = make(map[string]struct{}, len(hashes))
-		for _, hash := range hashes {
-			requested[instanceID][normalizeHash(hash)] = struct{}{}
-		}
+		requested[instanceID] = hashSet(infohash.ParseAll(hashes))
 	}
 	matches := deleteMatches{at: make(map[string]int)}
 	skip := func(c candidateEntry) bool {
-		sel := requested[c.instanceID]
-		return len(sel) > 0 && slices.ContainsFunc(normalizedHashes(c.view.Hash, c.view.InfohashV1, c.view.InfohashV2), func(h string) bool {
-			_, ok := sel[h]
-			return ok
-		}) || matches.shared(c.instanceID, c.hash)
+		return torrentInHashSet(c.view.Torrent, requested[c.instanceID]) || matches.shared(c.instanceID, c.hash)
 	}
 	response := &DeleteMatchesResponse{Matches: []LocalMatch{}, Unchecked: []UncheckedInstance{}}
 	for _, instanceID := range slices.Sorted(maps.Keys(selection)) {
-		unchecked, err := s.findSelectedMatches(ctx, instanceID, selection[instanceID], true, skip, func(m LocalMatch) {
+		unchecked, err := s.findSelectedMatches(ctx, instanceID, requested[instanceID], true, skip, func(m LocalMatch) {
 			if m.MatchType == matchTypeContentPath || m.MatchType == matchTypeHardlink || m.MatchType == matchTypeReflink {
 				matches.add(m)
 			}
@@ -58,9 +52,9 @@ func (s *Service) FindDeleteMatches(ctx context.Context, selection map[int][]str
 	return response, nil
 }
 
-func (s *Service) FindCrossSeeds(ctx context.Context, instanceID int, hash string) (*LocalMatchesResponse, error) {
+func (s *Service) FindCrossSeeds(ctx context.Context, instanceID int, hash infohash.Hash) (*LocalMatchesResponse, error) {
 	var matches []LocalMatch
-	if _, err := s.findSelectedMatches(ctx, instanceID, []string{hash}, false, nil, func(m LocalMatch) {
+	if _, err := s.findSelectedMatches(ctx, instanceID, hashSet([]infohash.Hash{hash}), false, nil, func(m LocalMatch) {
 		matches = append(matches, m)
 	}); err != nil {
 		return nil, err
@@ -71,7 +65,7 @@ func (s *Service) FindCrossSeeds(ctx context.Context, instanceID int, hash strin
 func (s *Service) findSelectedMatches(
 	ctx context.Context,
 	instanceID int,
-	hashes []string,
+	hashes map[infohash.Hash]struct{},
 	sharedOnly bool,
 	skip func(candidateEntry) bool,
 	match func(LocalMatch),
@@ -93,7 +87,7 @@ func (s *Service) findSelectedMatches(
 		return nil, ErrTorrentNotFound
 	}
 	isSelected := func(hash string) bool {
-		_, ok := selected[normalizeHash(hash)]
+		_, ok := selected[hash]
 		return ok
 	}
 
@@ -281,7 +275,7 @@ func (b *batchFiles) matchSource(
 	}
 	sourceData, ok := b.get(ctx, instanceID, source.Hash, source.SavePath)
 	if !ok {
-		return fmt.Errorf("read the file list of torrent %s", normalizeHash(source.Hash))
+		return fmt.Errorf("read the file list of torrent %s", source.Hash)
 	}
 	for _, p := range picks {
 		c := p.entry
@@ -415,20 +409,37 @@ func (d *deleteMatches) add(m LocalMatch) {
 	}
 }
 
-func selectedHashes(torrents []qbittorrent.CrossInstanceTorrentView, hashes []string) map[string]struct{} {
-	requested := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		requested[normalizeHash(hash)] = struct{}{}
-	}
+func selectedHashes(torrents []qbittorrent.CrossInstanceTorrentView, hashes map[infohash.Hash]struct{}) map[string]struct{} {
 	selected := make(map[string]struct{}, len(hashes))
 	for i := range torrents {
 		t := torrents[i].Torrent
-		if slices.ContainsFunc(normalizedHashes(t.Hash, t.InfohashV1, t.InfohashV2), func(h string) bool {
-			_, ok := requested[h]
-			return ok
-		}) {
-			selected[normalizeHash(t.Hash)] = struct{}{}
+		if torrentInHashSet(t, hashes) {
+			selected[t.Hash] = struct{}{}
 		}
 	}
 	return selected
+}
+
+func hashSet(hashes []infohash.Hash) map[infohash.Hash]struct{} {
+	set := make(map[infohash.Hash]struct{}, len(hashes))
+	for _, hash := range hashes {
+		if !hash.IsZero() {
+			set[hash] = struct{}{}
+		}
+	}
+	return set
+}
+
+func torrentInHashSet(t *qbt.Torrent, set map[infohash.Hash]struct{}) bool {
+	if len(set) == 0 {
+		return false
+	}
+	for _, raw := range [...]string{t.Hash, t.InfohashV1, t.InfohashV2} {
+		if hash := parseHash(raw); !hash.IsZero() {
+			if _, ok := set[hash]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }

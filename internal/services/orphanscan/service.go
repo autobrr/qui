@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type healthChecker interface {
@@ -1691,10 +1692,6 @@ func filterCoveredScanRoots(d fsops.PathDialect, scanRoots, covers []string) []s
 	return filtered
 }
 
-func canonicalizeHash(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
-}
-
 func isAbsoluteFilesystemRoot(d fsops.PathDialect, p string) bool {
 	cleaned := d.Clean(p)
 	sep := d.Separator()
@@ -1898,7 +1895,8 @@ func buildFileMapFromTorrents(d fsops.PathDialect, torrents []*qbt.Torrent, file
 	for _, torrent := range torrents {
 		savePath := d.Clean(torrent.SavePath)
 		hasAbsSavePath := savePath != "" && d.IsAbs(savePath)
-		files, ok := filesByHash[canonicalizeHash(torrent.Hash)]
+		hash, _ := infohash.Parse(torrent.Hash)
+		files, ok := filesByHash[hash.String()]
 		hasFiles := ok && len(files) > 0
 
 		if !hasFiles {
@@ -2014,7 +2012,6 @@ func (s *Service) buildInstanceScanRoots(ctx context.Context, d fsops.PathDialec
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.leaveOutHelpers(instanceID, torrents)
 
 	return scanRootsFromTorrents(d, torrents), nil
 }
@@ -2059,7 +2056,6 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, scan
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.leaveOutHelpers(instanceID, torrents)
 
 	filesCtx := qbittorrent.WithForceFilesRefresh(ctx)
 	filesByHash, err := s.sync.GetTorrentFilesBatch(filesCtx, instanceID, torrentHashes(torrents))
@@ -2170,7 +2166,7 @@ func (s *Service) mergeRouted(ctx context.Context, instanceID int, d fsops.PathD
 type freshTorrents struct{ sync syncReader }
 
 func (r freshTorrents) GetAllTorrentRefs(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
-	return r.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{})
+	return r.sync.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 }
 
 func (r freshTorrents) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {

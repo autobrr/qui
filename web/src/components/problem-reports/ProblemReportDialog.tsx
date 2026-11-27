@@ -250,7 +250,7 @@ function ReportText({ report, className }: { report: Report; className?: string 
       }}
       placeholder={t(`problemReports.placeholders.${report.startedFrom}`)}
       disabled={report.sending}
-      className={cn("resize-none text-[13px] leading-relaxed", className)}
+      className={cn("resize-none text-13 leading-relaxed", className)}
     />
   )
 }
@@ -311,9 +311,9 @@ function Refusal({ error }: { error: Error }) {
   const { title, body } = refusalMessage(t, error)
   return (
     <div role="alert" className="relative">
-      <span className="absolute -left-6 top-1.5 inline-flex h-2 w-2 rounded-full bg-yellow-500 ring-[3px] ring-yellow-500/20" />
+      <span className="absolute -left-6 top-1.5 inline-flex h-2 w-2 rounded-full bg-warning ring-3 ring-warning/20" />
       {title && <p className="text-sm font-semibold leading-snug">{title}</p>}
-      <p className={cn("text-[13px] leading-relaxed", title ? "mt-0.5 text-muted-foreground" : "text-foreground")}>{body}</p>
+      <p className={cn("text-13 leading-relaxed", title ? "mt-0.5 text-muted-foreground" : "text-foreground")}>{body}</p>
     </div>
   )
 }
@@ -327,7 +327,7 @@ function SentWithIt({ report, loading }: { report: Report; loading: boolean }) {
   const logsOpen = open === "logs" && report.logScope !== "none"
 
   return (
-    <div className="space-y-1.5 text-[13px]">
+    <div className="space-y-1.5 text-13">
       <p className="text-xs text-muted-foreground">{t("problemReports.sentWithIt")}</p>
       {loading ? (
         <p className="text-xs text-muted-foreground">{t("problemReports.loadingFacts")}</p>
@@ -371,7 +371,7 @@ function WhatGetsSent({ report, loading }: { report: Report; loading: boolean })
             <Rows rows={rows} className="border-y-0" />
           </div>
           <div className={cn("space-y-2 px-4 pb-4", pinned ? "shrink-0 pt-3" : "pt-4")}>
-            <div className="flex items-center gap-2 text-[13px]">
+            <div className="flex items-center gap-2 text-13">
               <span className={cn("min-w-0 flex-1 font-medium", report.logScope === "none" && "text-muted-foreground line-through")}>{t("problemReports.logs.title")}</span>
               <LogScope report={report} />
             </div>
@@ -473,7 +473,7 @@ function Rows({ rows, className }: { rows: FactRow[]; className?: string }) {
         <div key={row.label} className="flex items-baseline gap-3 px-4 py-2">
           <dt className="w-28 shrink-0 text-xs uppercase text-muted-foreground xl:w-36">{row.label}</dt>
           <dd className="min-w-0 flex-1">
-            <p className={cn("break-words", row.mono ? "font-mono text-xs" : "text-[13px] font-medium")}>{row.value}</p>
+            <p className={cn("break-words", row.mono ? "font-mono text-xs" : "text-13 font-medium")}>{row.value}</p>
             {row.secondary && <p className="break-words text-xs text-muted-foreground">{row.secondary}</p>}
             {row.lines?.map((line, index) => <p key={index} className="break-words font-mono text-[11px] text-muted-foreground">{line}</p>)}
           </dd>

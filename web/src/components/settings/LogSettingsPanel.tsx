@@ -218,18 +218,18 @@ interface ParsedLogEntry {
 
 const LEVEL_COLORS: Record<LogLevel, string> = {
   trace: "text-muted-foreground",
-  debug: "text-blue-400",
-  info: "text-green-400",
-  warn: "text-yellow-400",
-  error: "text-red-400",
+  debug: "text-foreground",
+  info: "text-info",
+  warn: "text-warning",
+  error: "text-destructive",
 }
 
 const LEVEL_BADGE_COLORS: Record<LogLevel, string> = {
   trace: "bg-muted text-muted-foreground",
-  debug: "bg-blue-500/20 text-blue-400",
-  info: "bg-green-500/20 text-green-400",
-  warn: "bg-yellow-500/20 text-yellow-400",
-  error: "bg-red-500/20 text-red-400",
+  debug: "bg-muted text-foreground",
+  info: "bg-info/10 text-info",
+  warn: "bg-warning/10 text-warning",
+  error: "bg-destructive/10 text-destructive",
 }
 
 function normalizeLevel(raw: string | undefined): LogLevel {
@@ -286,7 +286,7 @@ function LogEntry({
   }
 
   const badgeClass = cn(
-    "mr-2 inline-flex h-4 w-12 shrink-0 items-center justify-center rounded align-[1px] text-[10px] font-medium uppercase sm:mr-0",
+    "mr-2 inline-flex h-4 w-12 shrink-0 items-center justify-center rounded align-[1px] text-10 font-medium uppercase sm:mr-0",
     LEVEL_BADGE_COLORS[entry.level]
   )
 
@@ -360,15 +360,15 @@ function highlightJson(json: string): ReactNode[] {
 
     if (keyMatch) {
       result.push(
-        <span key={key++} className="text-cyan-700 dark:text-cyan-400">{keyMatch}</span>,
+        <span key={key++} className="text-foreground">{keyMatch}</span>,
         ":"
       )
     } else if (stringMatch) {
-      result.push(<span key={key++} className="text-green-700 dark:text-green-400">{stringMatch}</span>)
+      result.push(<span key={key++} className="text-chart-text-2">{stringMatch}</span>)
     } else if (numberMatch) {
-      result.push(<span key={key++} className="text-amber-700 dark:text-amber-400">{numberMatch}</span>)
+      result.push(<span key={key++} className="text-chart-text-3">{numberMatch}</span>)
     } else if (boolMatch) {
-      result.push(<span key={key++} className="text-purple-700 dark:text-purple-400">{boolMatch}</span>)
+      result.push(<span key={key++} className="text-chart-text-3">{boolMatch}</span>)
     } else if (nullMatch) {
       result.push(<span key={key++} className="text-muted-foreground">{nullMatch}</span>)
     } else if (punctMatch) {
@@ -455,8 +455,8 @@ type Connection = "connecting" | "open" | "lost"
 
 const CONNECTION_DOT: Record<Connection, string> = {
   connecting: "bg-muted-foreground/50",
-  open: "bg-emerald-500",
-  lost: "bg-amber-500",
+  open: "bg-success",
+  lost: "bg-warning",
 }
 
 const CONNECTION_LABEL = {
@@ -625,7 +625,7 @@ function LiveLogSection() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span role="status" className="inline-flex items-center gap-1.5">
             <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", CONNECTION_DOT[connection])} />
-            <span className={connection === "lost" ? "text-amber-500" : undefined}>{t(CONNECTION_LABEL[connection])}</span>
+            <span className={connection === "lost" ? "text-warning" : undefined}>{t(CONNECTION_LABEL[connection])}</span>
           </span>
           <span>
             {t("logs.viewer.showing", {
@@ -635,7 +635,7 @@ function LiveLogSection() {
               mode: autoScroll ? t("logs.viewer.maxLive") : t("logs.viewer.maxPaused"),
             })}
           </span>
-          {droppedWhilePaused && <span className="text-amber-500">{t("logs.viewer.oldestEntriesDropped")}</span>}
+          {droppedWhilePaused && <span className="text-warning">{t("logs.viewer.oldestEntriesDropped")}</span>}
         </div>
       </div>
 
@@ -661,7 +661,7 @@ function LogScrollBody({ ref, label, children }: { ref: Ref<HTMLDivElement>; lab
       role="region"
       aria-label={label}
       tabIndex={0}
-      className="h-[clamp(20rem,calc(100dvh-24rem),60rem)] overflow-auto rounded-md border bg-muted/30 p-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:-mx-4 max-sm:h-[max(20rem,calc(100dvh-13rem))] max-sm:overflow-x-hidden max-sm:rounded-none max-sm:border-x-0 max-sm:px-4"
+      className="h-[clamp(20rem,calc(100dvh-24rem),60rem)] overflow-auto rounded-md border bg-muted/30 p-3 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 max-sm:-mx-4 max-sm:h-[max(20rem,calc(100dvh-13rem))] max-sm:overflow-x-hidden max-sm:rounded-none max-sm:border-x-0 max-sm:px-4"
       style={{ overflowAnchor: "none" }}
     >
       <div className="font-mono text-xs leading-relaxed sm:w-fit sm:min-w-full">{children}</div>

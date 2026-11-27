@@ -6,7 +6,6 @@ package crossseed
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -14,30 +13,26 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/externalprograms"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, hashes []string) {
-	if s.postInjectionHook != nil {
-		s.postInjectionHook(ctx, instanceID, hashes)
-		return
-	}
-
-	s.executeExternalProgram(ctx, instanceID, hashes)
+type programRunner interface {
+	Execute(ctx context.Context, req externalprograms.ExecuteRequest) externalprograms.ExecuteResult
 }
 
 func (s *Service) findAddedTorrent(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
-	lookup := slices.Clone(hashes)
-	for _, hash := range hashes {
-		if len(hash) == 64 {
-			lookup = append(lookup, hash[:40])
+	lookup := parseHashes(hashes...)
+	for _, hash := range lookup {
+		if hash.IsV2() {
+			lookup = append(lookup, hash.TorrentID())
 		}
 	}
 	s.waitForTorrentAvailability(ctx, instanceID, lookup, crossSeedRenameWaitTimeout)
 	return s.syncManager.HasTorrentByAnyHash(ctx, instanceID, lookup)
 }
 
-func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, hashes []string) {
-	if s.externalProgramService == nil {
+func (s *Service) RunExternalProgram(ctx context.Context, instanceID int, hashes []string) {
+	if s.programRunner == nil {
 		return
 	}
 
@@ -77,7 +72,7 @@ func (s *Service) executeExternalProgram(ctx context.Context, instanceID int, ha
 			Int("programId", programID).
 			Msg("Executing external program for cross-seed injection")
 
-		result := s.externalProgramService.Execute(ctx, externalprograms.ExecuteRequest{
+		result := s.programRunner.Execute(ctx, externalprograms.ExecuteRequest{
 			ProgramID:  programID,
 			Torrent:    targetTorrent,
 			InstanceID: instanceID,
@@ -183,7 +178,7 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 				pendingHashes = append(pendingHashes, h)
 			}
 
-			currentTorrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: pendingHashes})
+			currentTorrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(pendingHashes)})
 			if err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to check recheck progress")
 				time.Sleep(pollInterval)

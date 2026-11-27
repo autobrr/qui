@@ -23,6 +23,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/autobrr/qui/internal/buildinfo"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 var sharedTransport = func() *http.Transport {
@@ -64,15 +65,19 @@ type TrackerSpec struct {
 	LegacyFlags []string
 }
 
-func (s TrackerSpec) TargetHashes(torrentBytes []byte) ([]string, error) {
+func (s TrackerSpec) TargetHashes(torrentBytes []byte) ([]infohash.Hash, error) {
 	flags := append([]string{s.SourceFlag}, s.LegacyFlags...)
 	hashes, err := CalculateHashesWithSources(torrentBytes, flags)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(flags))
+	out := make([]infohash.Hash, 0, len(flags))
 	for _, flag := range flags {
-		out = append(out, hashes[flag])
+		hash, err := infohash.Parse(hashes[flag])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, hash)
 	}
 	return out, nil
 }
@@ -140,7 +145,7 @@ type TorrentSearchResult struct {
 	GroupID   int64
 	Size      int64
 	Title     string
-	InfoHash  string
+	InfoHash  infohash.Hash
 }
 
 type Client struct {
@@ -204,7 +209,7 @@ func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
 func (c *Client) Host() string       { return c.host }
 func (c *Client) SourceFlag() string { return c.spec.SourceFlag }
 
-func (c *Client) TargetHashes(torrentBytes []byte) ([]string, error) {
+func (c *Client) TargetHashes(torrentBytes []byte) ([]infohash.Hash, error) {
 	return c.spec.TargetHashes(torrentBytes)
 }
 
@@ -288,9 +293,9 @@ func isAccessDeniedText(text string) bool {
 	return strings.EqualFold(text, "Your IP address has been banned.") || strings.EqualFold(text, "invalid token")
 }
 
-func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchResult, error) {
+func (c *Client) SearchByHash(ctx context.Context, hash infohash.Hash) (*TorrentSearchResult, error) {
 	params := url.Values{}
-	params.Set("hash", strings.ToUpper(hash))
+	params.Set("hash", hash.Upper())
 
 	resp, err := c.ajax(ctx, "torrent", params)
 	if errors.Is(err, ErrAccessDenied) {
@@ -301,7 +306,7 @@ func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchR
 		if strings.Contains(lower, "bad id parameter") ||
 			strings.Contains(lower, "bad parameters") ||
 			strings.Contains(lower, "bad hash parameter") {
-			log.Debug().Str("hash", hash).Str("site", c.host).Msg("gazelle: no match by hash")
+			log.Debug().Stringer("hash", hash).Str("site", c.host).Msg("gazelle: no match by hash")
 			return nil, nil
 		}
 		return nil, err
@@ -312,12 +317,19 @@ func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchR
 		return nil, err
 	}
 
+	var infoHash infohash.Hash
+	if torrentResp.Torrent.InfoHash != "" {
+		if infoHash, err = infohash.Parse(torrentResp.Torrent.InfoHash); err != nil {
+			return nil, ErrInconsistentIdentity
+		}
+	}
+
 	return &TorrentSearchResult{
 		TorrentID: torrentResp.Torrent.ID,
 		GroupID:   torrentResp.Group.ID,
 		Size:      torrentResp.Torrent.Size,
 		Title:     torrentResp.Group.Name,
-		InfoHash:  torrentResp.Torrent.InfoHash,
+		InfoHash:  infoHash,
 	}, nil
 }
 

@@ -19,7 +19,7 @@ func TestLogDirScanAcceptedMatch_PartialIncludesUnmatchedSamples(t *testing.T) {
 	logDirScanAcceptedMatch(
 		&logger,
 		&Searchee{Name: "Avatar - De feu et de cendres (2025)"},
-		&ParsedTorrent{Name: "Avatar.Fire.and.Ash.2025.2160p.WEB-DL.mkv", InfoHash: "deadbeef"},
+		&ParsedTorrent{Name: "Avatar.Fire.and.Ash.2025.2160p.WEB-DL.mkv", InfoHash: "deadbeef00000000000000000000000000000000"},
 		&MatchResult{
 			IsPartialMatch: true,
 			MatchRatio:     0.5,

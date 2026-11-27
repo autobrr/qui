@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type settlePoll struct {
@@ -86,8 +87,8 @@ func (f *settleFake) GetTorrentFilesBatch(_ context.Context, _ int, hashes []str
 	}
 	out := make(map[string]qbt.TorrentFiles)
 	for _, hash := range hashes {
-		if files, ok := f.files[normalizeHash(hash)]; ok {
-			out[normalizeHash(hash)] = files
+		if files, ok := f.files[hash]; ok {
+			out[hash] = files
 		}
 	}
 	return out, nil
@@ -99,7 +100,7 @@ func (f *settleFake) GetTorrentPieceStates(_ context.Context, _ int, hash string
 	if f.piecesErr != nil {
 		return nil, f.piecesErr
 	}
-	return f.pieces[normalizeHash(hash)], nil
+	return f.pieces[hash], nil
 }
 
 func (f *settleFake) Create(_ context.Context, run *models.SeasonPackRun) (*models.SeasonPackRun, error) {
@@ -109,8 +110,14 @@ func (f *settleFake) Create(_ context.Context, run *models.SeasonPackRun) (*mode
 	return run, nil
 }
 
+const (
+	hash1  = "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+	v1hash = "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b"
+	v2hash = "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
+)
+
 func torrentAt(state qbt.TorrentState, progress float64, amountLeft int64) *qbt.Torrent {
-	torrent := &qbt.Torrent{Hash: "hash1", State: state, Progress: progress, AmountLeft: amountLeft}
+	torrent := &qbt.Torrent{Hash: hash1, State: state, Progress: progress, AmountLeft: amountLeft}
 	if progress > 0 {
 		torrent.Completed = 1
 	}
@@ -237,18 +244,18 @@ func TestSettle(t *testing.T) {
 	linked := map[string]struct{}{"Show.S01/Show.S01E01.mkv": {}, "Show.S01/Show.S01E02.mkv": {}}
 	linkedPartial := torrentAt(qbt.TorrentStatePausedDl, 0.66, 30<<20)
 	hybridPartial := &qbt.Torrent{
-		Hash: "v2hash", InfohashV1: "v1hash", InfohashV2: "v2hash",
+		Hash: v2hash, InfohashV1: v1hash, InfohashV2: v2hash,
 		State: qbt.TorrentStatePausedDl, Progress: 0.66, AmountLeft: 30 << 20, Completed: 1,
 	}
 	hybridChecking := &qbt.Torrent{
-		Hash: "v2hash", InfohashV1: "v1hash", InfohashV2: "v2hash",
+		Hash: v2hash, InfohashV1: v1hash, InfohashV2: v2hash,
 		State: qbt.TorrentStateCheckingDl, Progress: 0.5, AmountLeft: 2 << 30,
 	}
 
 	budget := func(bytes int64) AddedTorrent { return AddedTorrent{Gate: GateBudget, Budget: bytes} }
 	threshold := func(progress float64) AddedTorrent { return AddedTorrent{Gate: GateThreshold, Threshold: progress} }
 	withFiles := func(files qbt.TorrentFiles) func(*settleFake) {
-		return func(f *settleFake) { f.files = map[string]qbt.TorrentFiles{"hash1": files} }
+		return func(f *settleFake) { f.files = map[string]qbt.TorrentFiles{hash1: files} }
 	}
 	budgetDecision := func(amountLeft int64, progress float64) []settlePoll {
 		return polls(checkingDl, torrentAt(qbt.TorrentStatePausedDl, progress, amountLeft))
@@ -267,22 +274,22 @@ func TestSettle(t *testing.T) {
 			name:        "missing bytes within budget resume without file fetch",
 			added:       budget(50 << 20),
 			fake:        &settleFake{polls: budgetDecision(30<<20, 0.9)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "missing bytes at exact budget resume",
 			added:       budget(50 << 20),
 			fake:        &settleFake{polls: budgetDecision(50<<20, 0.9)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "over budget with relevant file missing stays paused",
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: joinPolls(budgetDecision(80<<20, 0.9), probe),
-				files: map[string]qbt.TorrentFiles{"hash1": episodeMissing},
+				files: map[string]qbt.TorrentFiles{hash1: episodeMissing},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -290,9 +297,9 @@ func TestSettle(t *testing.T) {
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: budgetDecision(70<<20, 0.9),
-				files: map[string]qbt.TorrentFiles{"hash1": sampleOnlyMissing},
+				files: map[string]qbt.TorrentFiles{hash1: sampleOnlyMissing},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -300,18 +307,18 @@ func TestSettle(t *testing.T) {
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: joinPolls(budgetDecision(300<<20, 0.9), probe),
-				files: map[string]qbt.TorrentFiles{"hash1": sampleOnlyMissing},
+				files: map[string]qbt.TorrentFiles{hash1: sampleOnlyMissing},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:  "unwanted relevant file does not block forgiveness",
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: budgetDecision(70<<20, 0.9),
-				files: map[string]qbt.TorrentFiles{"hash1": unwantedRelevantMissing},
+				files: map[string]qbt.TorrentFiles{hash1: unwantedRelevantMissing},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -319,9 +326,9 @@ func TestSettle(t *testing.T) {
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: joinPolls(budgetDecision(150<<20, 0.9), probe),
-				files: map[string]qbt.TorrentFiles{"hash1": keywordTitleMissing},
+				files: map[string]qbt.TorrentFiles{hash1: keywordTitleMissing},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -329,9 +336,9 @@ func TestSettle(t *testing.T) {
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: budgetDecision(120<<20, 0.9),
-				files: map[string]qbt.TorrentFiles{"hash1": dottedSampleMissing},
+				files: map[string]qbt.TorrentFiles{hash1: dottedSampleMissing},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -339,9 +346,9 @@ func TestSettle(t *testing.T) {
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: budgetDecision(120<<20, 0.9),
-				files: map[string]qbt.TorrentFiles{"hash1": bonusFolderMissing},
+				files: map[string]qbt.TorrentFiles{hash1: bonusFolderMissing},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -349,9 +356,9 @@ func TestSettle(t *testing.T) {
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: joinPolls(budgetDecision(150<<20, 0.9), probe),
-				files: map[string]qbt.TorrentFiles{"hash1": keywordSuffixStemMissing},
+				files: map[string]qbt.TorrentFiles{hash1: keywordSuffixStemMissing},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -359,9 +366,9 @@ func TestSettle(t *testing.T) {
 			added: budget(50 << 20),
 			fake: &settleFake{
 				polls: joinPolls(budgetDecision(150<<20, 0.9), probe),
-				files: map[string]qbt.TorrentFiles{"hash1": keywordSuffixDirMissing},
+				files: map[string]qbt.TorrentFiles{hash1: keywordSuffixDirMissing},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -372,32 +379,32 @@ func TestSettle(t *testing.T) {
 					torrent: torrentAt(qbt.TorrentStatePausedDl, 0.98, 70<<20),
 					before:  func(f *settleFake) { f.filesErr = nil },
 				}}),
-				files:    map[string]qbt.TorrentFiles{"hash1": sampleOnlyMissing},
+				files:    map[string]qbt.TorrentFiles{hash1: sampleOnlyMissing},
 				filesErr: errors.New("qbit timeout"),
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   2,
 		},
 		{
 			name:        "budget zero requires complete torrent",
 			added:       budget(0),
 			fake:        &settleFake{polls: budgetDecision(0, 1)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "budget zero trusts zero missing bytes over progress",
 			added:       budget(0),
 			fake:        &settleFake{polls: budgetDecision(0, 0.99)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "budget zero disables forgiveness",
 			added: budget(0),
 			fake: &settleFake{
 				polls: joinPolls(budgetDecision(4<<10, 0.9), probe),
-				files: map[string]qbt.TorrentFiles{"hash1": sampleOnlyMissing},
+				files: map[string]qbt.TorrentFiles{hash1: sampleOnlyMissing},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:  "forgiveness retries after a negative verdict",
@@ -414,9 +421,9 @@ func TestSettle(t *testing.T) {
 						}),
 					},
 				},
-				files: map[string]qbt.TorrentFiles{"hash1": videoAndSampleMissing},
+				files: map[string]qbt.TorrentFiles{hash1: videoAndSampleMissing},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   2,
 		},
 		{
@@ -432,9 +439,9 @@ func TestSettle(t *testing.T) {
 						}),
 					},
 				}, probe),
-				files: map[string]qbt.TorrentFiles{"hash1": sampleOnlyMissing},
+				files: map[string]qbt.TorrentFiles{hash1: sampleOnlyMissing},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   2,
 		},
 		{
@@ -452,10 +459,10 @@ func TestSettle(t *testing.T) {
 						}),
 					},
 				}, probe),
-				files:          map[string]qbt.TorrentFiles{"hash1": sampleOnlyMissing},
+				files:          map[string]qbt.TorrentFiles{hash1: sampleOnlyMissing},
 				resumeFailures: 1,
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   2,
 		},
 
@@ -463,13 +470,13 @@ func TestSettle(t *testing.T) {
 			name:        "reflink missingFiles is resumed once",
 			added:       AddedTorrent{Gate: GateBudget, Budget: 50 << 20, RecoverMissingFiles: true},
 			fake:        &settleFake{polls: polls(missingFiles, missingFiles)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "missingFiles resume retries a transient failure",
 			added:       AddedTorrent{Gate: GateBudget, Budget: 50 << 20, RecoverMissingFiles: true},
 			fake:        &settleFake{polls: polls(missingFiles, missingFiles), resumeFailures: 1},
-			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "missingFiles resume stops after repeated failures",
@@ -478,13 +485,13 @@ func TestSettle(t *testing.T) {
 				polls:          joinPolls(repeatPoll(missingFiles, maxMissingFilesResumeAttempts), probe),
 				resumeFailures: maxMissingFilesResumeAttempts,
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1, "resume:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "threshold gate leaves missingFiles for manual review",
 			added:       AddedTorrent{Gate: GateThreshold, Threshold: 0.95, RecoverMissingFiles: true},
 			fake:        &settleFake{polls: joinPolls(polls(missingFiles), probe)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:  "over-budget recovery download is paused",
@@ -494,9 +501,9 @@ func TestSettle(t *testing.T) {
 					torrentAt(qbt.TorrentStateMissingFiles, 0.05, 2<<30),
 					torrentAt(qbt.TorrentStateDownloading, 0.05, 2<<30),
 				),
-				files: map[string]qbt.TorrentFiles{"hash1": {{Name: "Show.S01E01.mkv", Progress: 0.05, Priority: 1, Size: 2 << 30}}},
+				files: map[string]qbt.TorrentFiles{hash1: {{Name: "Show.S01E01.mkv", Progress: 0.05, Priority: 1, Size: 2 << 30}}},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1", "pause:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1, "pause:" + hash1},
 		},
 		{
 			name:  "recovery download is paused before the forgiveness verdict",
@@ -508,9 +515,9 @@ func TestSettle(t *testing.T) {
 					torrentAt(qbt.TorrentStateDownloading, 0.98, 70<<20),
 					torrentAt(qbt.TorrentStatePausedDl, 0.98, 70<<20),
 				),
-				files: map[string]qbt.TorrentFiles{"hash1": sampleOnlyMissing},
+				files: map[string]qbt.TorrentFiles{hash1: sampleOnlyMissing},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1", "pause:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1, "pause:" + hash1, "resume:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -526,9 +533,9 @@ func TestSettle(t *testing.T) {
 					},
 					{torrent: torrentAt(qbt.TorrentStateDownloading, 0.98, 70<<20)},
 				},
-				files: map[string]qbt.TorrentFiles{"hash1": sampleOnlyMissing},
+				files: map[string]qbt.TorrentFiles{hash1: sampleOnlyMissing},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1, "resume:" + hash1, "resume:" + hash1},
 			wantReads:   1,
 		},
 
@@ -536,19 +543,19 @@ func TestSettle(t *testing.T) {
 			name:        "below threshold while downloading keeps watching",
 			added:       threshold(0.95),
 			fake:        &settleFake{polls: polls(torrentAt(qbt.TorrentStateDownloading, 0.5, 2<<30), pausedFull, pausedFull)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "confirms running after resume",
 			added:       threshold(1),
 			fake:        &settleFake{polls: polls(checkingUp, pausedFull, uploading, uploading, pausedFull)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "retries a torrent that stops again after resume",
 			added:       threshold(1),
 			fake:        &settleFake{polls: polls(checkingUp, stoppedFull, stoppedFull, queuedUp, queuedUp, stoppedFull)},
-			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "stops when confirmation drops below threshold",
@@ -557,7 +564,7 @@ func TestSettle(t *testing.T) {
 				polls(checkingUp, pausedFull, torrentAt(qbt.TorrentStatePausedUp, 0.95, 0)),
 				repeatPoll(pausedFull, 2),
 			)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "resume attempts stop after the limit",
@@ -566,32 +573,32 @@ func TestSettle(t *testing.T) {
 				polls(checkingUp),
 				repeatPoll(stoppedFull, maxRecheckResumeAttempts+2),
 			)},
-			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1, "resume:" + hash1, "resume:" + hash1},
 		},
 
 		{
 			name:        "verify resumes after an observed full check",
 			added:       AddedTorrent{Gate: GateVerify},
 			fake:        &settleFake{polls: polls(checkingUp, pausedFull, uploading, uploading)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "verify ignores a pre-check 100%",
 			added:       AddedTorrent{Gate: GateVerify},
 			fake:        &settleFake{polls: polls(pausedFull, pausedFull)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:        "verify ignores resume-data validation before the fast-complete delay",
 			added:       AddedTorrent{Gate: GateVerify},
 			fake:        &settleFake{polls: polls(resumeData, pausedFull, pausedFull)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:        "verify leaves a check below 100% paused",
 			added:       AddedTorrent{Gate: GateVerify},
 			fake:        &settleFake{polls: joinPolls(polls(checkingUp, torrentAt(qbt.TorrentStatePausedDl, 0.99, 0)), probe)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:  "verify resumes a fast recheck after the delay",
@@ -600,7 +607,7 @@ func TestSettle(t *testing.T) {
 				repeatPoll(pausedFull, int(recheckFastCompleteMinElapsed/recheckPollInterval)+1),
 				polls(uploading, uploading, pausedFull),
 			)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "verify fast resume after only resume-data validation",
@@ -609,14 +616,14 @@ func TestSettle(t *testing.T) {
 				repeatPoll(resumeData, int(recheckFastCompleteMinElapsed/recheckPollInterval)),
 				polls(pausedFull, pausedFull, uploading, uploading, pausedFull),
 			)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "verify below 100% after the delay stays paused",
 			added: AddedTorrent{Gate: GateVerify},
 			fake: &settleFake{polls: repeatPoll(torrentAt(qbt.TorrentStatePausedDl, 0.99, 0),
 				int(recheckFastCompleteMinElapsed/recheckPollInterval)+3)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:  "verify interrupted check stays paused after the delay",
@@ -625,7 +632,7 @@ func TestSettle(t *testing.T) {
 				polls(checkingUp, resumeData),
 				repeatPoll(pausedFull, int(recheckFastCompleteMinElapsed/recheckPollInterval)+2),
 			)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:  "verify resumes after a new piece check follows a restart",
@@ -633,7 +640,7 @@ func TestSettle(t *testing.T) {
 			fake: &settleFake{polls: polls(
 				checkingUp, resumeData, pausedFull, pausedFull, checkingUp, pausedFull,
 			)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "verify restart drops a pending resume confirmation",
@@ -641,7 +648,7 @@ func TestSettle(t *testing.T) {
 			fake: &settleFake{polls: polls(
 				checkingUp, pausedFull, checkingUp, resumeData, pausedFull, pausedFull, checkingUp, pausedFull,
 			)},
-			wantActions: []string{"recheck:hash1", "resume:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1, "resume:" + hash1},
 		},
 
 		{
@@ -649,21 +656,21 @@ func TestSettle(t *testing.T) {
 			added:       AddedTorrent{Gate: GateMonitor, SkipAutoResume: true},
 			fake:        &settleFake{polls: joinPolls(polls(checkingUp, torrentAt(qbt.TorrentStatePausedDl, 1, 0)), probe)},
 			wantOutcome: SettleOutcome{Skipped: true},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:        "monitor waits for full progress",
 			added:       AddedTorrent{Gate: GateMonitor, SkipAutoResume: true},
 			fake:        &settleFake{polls: polls(torrentAt(qbt.TorrentStatePausedDl, 0, 0), pausedFull)},
 			wantOutcome: SettleOutcome{Skipped: true},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:        "skipped auto-resume rechecks and leaves the torrent paused",
 			added:       AddedTorrent{Gate: GateBudget, Budget: 50 << 20, SkipAutoResume: true},
 			fake:        &settleFake{polls: polls(stoppedFull, stoppedFull, stoppedFull)},
 			wantOutcome: SettleOutcome{Skipped: true},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 
 		{
@@ -671,28 +678,28 @@ func TestSettle(t *testing.T) {
 			added:       budget(50 << 20),
 			fake:        &settleFake{polls: polls(stoppedFull, checkingUp, stoppedFull), recheckFailures: 1},
 			wantOutcome: SettleOutcome{RecheckFailed: true},
-			wantActions: []string{"recheck:hash1", "recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "failed recheck with skipped auto-resume is sent again but not resumed",
 			added:       AddedTorrent{Gate: GateBudget, Budget: 50 << 20, SkipAutoResume: true},
 			fake:        &settleFake{polls: joinPolls(polls(stoppedFull, checkingUp, stoppedFull), probe), recheckFailures: 1},
 			wantOutcome: SettleOutcome{Skipped: true, RecheckFailed: true},
-			wantActions: []string{"recheck:hash1", "recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1, "recheck:" + hash1},
 		},
 		{
 			name:        "failed recheck waits while qBittorrent hides the torrent",
 			added:       AddedTorrent{Gate: GateComplete},
 			fake:        &settleFake{polls: polls(nil, nil, nil, stoppedFull), recheckFailures: 1},
 			wantOutcome: SettleOutcome{RecheckFailed: true},
-			wantActions: []string{"recheck:hash1", "recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1, "recheck:" + hash1},
 		},
 		{
 			name:        "failed recheck waits out resume-data validation and is not restarted",
 			added:       AddedTorrent{Gate: GateComplete},
 			fake:        &settleFake{polls: polls(resumeData, checkingUp, stoppedFull), recheckFailures: 1},
 			wantOutcome: SettleOutcome{RecheckFailed: true},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "failed recheck then restart does not resume",
@@ -705,26 +712,26 @@ func TestSettle(t *testing.T) {
 				recheckFailures: 1,
 			},
 			wantOutcome: SettleOutcome{RecheckFailed: true},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 
 		{
 			name:        "after-recheck resumes below 100% once the recheck ran",
 			added:       AddedTorrent{Gate: GateAfterRecheck},
 			fake:        &settleFake{polls: polls(checkingDl, linkedPartial)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "after-recheck resumes on completed bytes without a seen check",
 			added:       AddedTorrent{Gate: GateAfterRecheck},
 			fake:        &settleFake{polls: polls(linkedPartial, linkedPartial)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "after-recheck waits while nothing is completed",
 			added:       AddedTorrent{Gate: GateAfterRecheck},
 			fake:        &settleFake{polls: repeatPoll(torrentAt(qbt.TorrentStatePausedDl, 0, 2<<30), 3)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:  "after-recheck gives up at the settle timeout",
@@ -733,7 +740,7 @@ func TestSettle(t *testing.T) {
 				repeatPoll(torrentAt(qbt.TorrentStatePausedDl, 0, 2<<30), int(time.Hour/recheckPollInterval)),
 				polls(linkedPartial, linkedPartial),
 			)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 		{
 			name:  "complete waits until nothing is left",
@@ -744,13 +751,13 @@ func TestSettle(t *testing.T) {
 				torrentAt(qbt.TorrentStateUploading, 1, 0),
 				uploading, uploading,
 			)},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:        "complete leaves a paused partial paused",
 			added:       AddedTorrent{Gate: GateComplete},
 			fake:        &settleFake{polls: joinPolls(polls(checkingDl, torrentAt(qbt.TorrentStatePausedDl, 0.9, 10<<20)), probe)},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 		},
 
 		{
@@ -758,10 +765,10 @@ func TestSettle(t *testing.T) {
 			added: AddedTorrent{Gate: GateThreshold, Threshold: 0.6, LinkedPaths: linked},
 			fake: &settleFake{
 				polls:  joinPolls(polls(checkingDl, linkedPartial), probe),
-				files:  map[string]qbt.TorrentFiles{"hash1": insideFiles},
-				pieces: map[string][]qbt.PieceState{"hash1": insidePieces},
+				files:  map[string]qbt.TorrentFiles{hash1: insideFiles},
+				pieces: map[string][]qbt.PieceState{hash1: insidePieces},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   1,
 			wantBlocked: "Show.S01/Show.S01E02.mkv",
 		},
@@ -770,10 +777,10 @@ func TestSettle(t *testing.T) {
 			added: AddedTorrent{Gate: GateBudget, Budget: 50 << 20, LinkedPaths: linked},
 			fake: &settleFake{
 				polls:  joinPolls(polls(checkingDl, linkedPartial), probe),
-				files:  map[string]qbt.TorrentFiles{"hash1": insideFiles},
-				pieces: map[string][]qbt.PieceState{"hash1": insidePieces},
+				files:  map[string]qbt.TorrentFiles{hash1: insideFiles},
+				pieces: map[string][]qbt.PieceState{hash1: insidePieces},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   1,
 			wantBlocked: "Show.S01/Show.S01E02.mkv",
 		},
@@ -782,10 +789,10 @@ func TestSettle(t *testing.T) {
 			added: AddedTorrent{Gate: GateAfterRecheck, LinkedPaths: linked},
 			fake: &settleFake{
 				polls:  joinPolls(polls(checkingDl, linkedPartial), probe),
-				files:  map[string]qbt.TorrentFiles{"hash1": insideFiles},
-				pieces: map[string][]qbt.PieceState{"hash1": insidePieces},
+				files:  map[string]qbt.TorrentFiles{hash1: insideFiles},
+				pieces: map[string][]qbt.PieceState{hash1: insidePieces},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   1,
 			wantBlocked: "Show.S01/Show.S01E02.mkv",
 		},
@@ -794,20 +801,20 @@ func TestSettle(t *testing.T) {
 			added: threshold(0.6),
 			fake: &settleFake{
 				polls:  polls(checkingDl, linkedPartial),
-				files:  map[string]qbt.TorrentFiles{"hash1": insideFiles},
-				pieces: map[string][]qbt.PieceState{"hash1": insidePieces},
+				files:  map[string]qbt.TorrentFiles{hash1: insideFiles},
+				pieces: map[string][]qbt.PieceState{hash1: insidePieces},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 		},
 		{
 			name:  "failed piece straddling a pending file still resumes",
 			added: AddedTorrent{Gate: GateThreshold, Threshold: 0.6, LinkedPaths: linked},
 			fake: &settleFake{
 				polls:  polls(checkingDl, linkedPartial),
-				files:  map[string]qbt.TorrentFiles{"hash1": straddleFiles},
-				pieces: map[string][]qbt.PieceState{"hash1": straddlePieces},
+				files:  map[string]qbt.TorrentFiles{hash1: straddleFiles},
+				pieces: map[string][]qbt.PieceState{hash1: straddlePieces},
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   1,
 		},
 		{
@@ -815,10 +822,10 @@ func TestSettle(t *testing.T) {
 			added: AddedTorrent{Gate: GateThreshold, Threshold: 0.6, LinkedPaths: map[string]struct{}{"Show.S01/Show.S01E01.mkv": {}}},
 			fake: &settleFake{
 				polls:  joinPolls(polls(checkingDl, linkedPartial), probe),
-				files:  map[string]qbt.TorrentFiles{"hash1": emptyFiles},
-				pieces: map[string][]qbt.PieceState{"hash1": emptyPieces},
+				files:  map[string]qbt.TorrentFiles{hash1: emptyFiles},
+				pieces: map[string][]qbt.PieceState{hash1: emptyPieces},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   1,
 			wantBlocked: "Show.S01/Show.S01E01.mkv",
 		},
@@ -827,9 +834,9 @@ func TestSettle(t *testing.T) {
 			added: AddedTorrent{Gate: GateThreshold, Threshold: 0.6, LinkedPaths: linked},
 			fake: &settleFake{
 				polls: polls(checkingDl, linkedPartial, linkedPartial),
-				files: map[string]qbt.TorrentFiles{"hash1": straddleFiles},
+				files: map[string]qbt.TorrentFiles{hash1: straddleFiles},
 			},
-			wantActions: []string{"recheck:hash1"},
+			wantActions: []string{"recheck:" + hash1},
 			wantReads:   2,
 		},
 		{
@@ -841,24 +848,24 @@ func TestSettle(t *testing.T) {
 					{torrent: linkedPartial},
 					{torrent: linkedPartial, before: func(f *settleFake) { f.piecesErr = nil }},
 				},
-				files:     map[string]qbt.TorrentFiles{"hash1": straddleFiles},
-				pieces:    map[string][]qbt.PieceState{"hash1": straddlePieces},
+				files:     map[string]qbt.TorrentFiles{hash1: straddleFiles},
+				pieces:    map[string][]qbt.PieceState{hash1: straddlePieces},
 				piecesErr: errors.New("boom"),
 			},
-			wantActions: []string{"recheck:hash1", "resume:hash1"},
+			wantActions: []string{"recheck:" + hash1, "resume:" + hash1},
 			wantReads:   2,
 		},
 		{
 			name: "hybrid torrent reads files and pieces by the hash qBittorrent lists",
 			added: AddedTorrent{
-				Hashes: []string{"v1hash", "v2hash"}, Gate: GateThreshold, Threshold: 0.6, LinkedPaths: linked,
+				Hashes: []infohash.Hash{mustParseHash(t, v1hash), mustParseHash(t, v2hash)}, Gate: GateThreshold, Threshold: 0.6, LinkedPaths: linked,
 			},
 			fake: &settleFake{
 				polls:  polls(hybridChecking, hybridPartial),
-				files:  map[string]qbt.TorrentFiles{"v2hash": straddleFiles},
-				pieces: map[string][]qbt.PieceState{"v2hash": straddlePieces},
+				files:  map[string]qbt.TorrentFiles{v2hash: straddleFiles},
+				pieces: map[string][]qbt.PieceState{v2hash: straddlePieces},
 			},
-			wantActions: []string{"recheck:v1hash", "recheck:v2hash", "resume:v2hash"},
+			wantActions: []string{"recheck:" + v1hash, "recheck:" + v2hash, "resume:" + v2hash},
 			wantReads:   1,
 		},
 	}
@@ -870,7 +877,7 @@ func TestSettle(t *testing.T) {
 				added := tt.added
 				added.InstanceID = 1
 				if added.Hashes == nil {
-					added.Hashes = []string{"hash1"}
+					added.Hashes = []infohash.Hash{mustParseHash(t, hash1)}
 				}
 				if added.LinkedPaths != nil {
 					added.SeasonPackRun = &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"}
@@ -939,13 +946,13 @@ func TestSettleQueueFull(t *testing.T) {
 			fake := &settleFake{}
 			settler := NewSettler(fake, nil)
 			for range cap(settler.queue) {
-				settler.Settle(t.Context(), AddedTorrent{InstanceID: 1, Hashes: []string{"other"}})
+				settler.Settle(t.Context(), AddedTorrent{InstanceID: 1, Hashes: []infohash.Hash{mustParseHash(t, "9999999999999999999999999999999999999999")}})
 			}
 			if tt.failRecheck {
 				fake.recheckFailures = 1
 			}
 			added := tt.added
-			added.InstanceID, added.Hashes = 1, []string{"hash1"}
+			added.InstanceID, added.Hashes = 1, []infohash.Hash{mustParseHash(t, hash1)}
 
 			require.Equal(t, tt.want, settler.Settle(t.Context(), added).StatusSuffix())
 		})
@@ -985,7 +992,7 @@ func (s *settleScript) GetTorrentRefs(_ context.Context, _ int, filter qbittorre
 	}
 	torrent := *s.current
 	if torrent.Hash == "" && len(filter.Hashes) > 0 {
-		torrent.Hash = filter.Hashes[0]
+		torrent.Hash = filter.Hashes[0].String()
 	}
 	return testTorrentRefs([]qbt.Torrent{torrent}), nil
 }
@@ -993,7 +1000,7 @@ func (s *settleScript) GetTorrentRefs(_ context.Context, _ int, filter qbittorre
 func (s *settleScript) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
 	s.mu.Lock()
 	for _, hash := range hashes {
-		s.actions = append(s.actions, action+":"+normalizeHash(hash))
+		s.actions = append(s.actions, action+":"+hash)
 	}
 	failed := action == "recheck" && s.recheckFailures > 0
 	if failed {
@@ -1071,10 +1078,10 @@ func TestPollInstanceTwoHashesOfOneTorrent(t *testing.T) {
 	settler := NewSettler(&lookupFake{listed: []qbt.Torrent{torrent}}, nil)
 	pending := make(map[string]*pendingResume)
 	for _, hash := range []string{v1, v2} {
-		pending[recheckResumeKey(1, hash)] = &pendingResume{instanceID: 1, hash: hash, budgetBytes: new(int64), sawChecking: true}
+		pending[recheckResumeKey(1, mustParseHash(t, hash))] = &pendingResume{instanceID: 1, hash: mustParseHash(t, hash), budgetBytes: new(int64), sawChecking: true}
 	}
 
-	settler.pollInstance(t.Context(), pending, 1, []string{v2, v1})
+	settler.pollInstance(t.Context(), pending, 1, []infohash.Hash{mustParseHash(t, v2), mustParseHash(t, v1)})
 	require.Empty(t, pending)
 }
 
@@ -1082,9 +1089,9 @@ func TestPollInstanceKeepsEntryWhenFullLookupFails(t *testing.T) {
 	const hash = "cccccccccccccccccccccccccccccccccccccccc"
 	settler := NewSettler(&lookupFake{allErr: errors.New("timeout")}, nil)
 	pending := map[string]*pendingResume{
-		recheckResumeKey(1, hash): {instanceID: 1, hash: hash, budgetBytes: new(int64)},
+		recheckResumeKey(1, mustParseHash(t, hash)): {instanceID: 1, hash: mustParseHash(t, hash), budgetBytes: new(int64)},
 	}
 
-	settler.pollInstance(t.Context(), pending, 1, []string{hash})
-	require.Contains(t, pending, recheckResumeKey(1, hash))
+	settler.pollInstance(t.Context(), pending, 1, []infohash.Hash{mustParseHash(t, hash)})
+	require.Contains(t, pending, recheckResumeKey(1, mustParseHash(t, hash)))
 }

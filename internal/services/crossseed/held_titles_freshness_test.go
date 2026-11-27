@@ -23,7 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/dbinterface"
-	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -111,6 +110,14 @@ func (f *freshSyncs) InstanceSnapshot(_ context.Context, instanceID int) *qbt.Sy
 	return f.instances[instanceID].owner.SnapshotUnchecked()
 }
 
+func (f *freshSyncs) ListSnapshot(_ int, snapshot *qbt.SyncSnapshot) []*qbt.Torrent {
+	return snapshot.Torrents()
+}
+
+func (f *freshSyncs) ListedLookup(_ int, snapshot *qbt.SyncSnapshot) func(hash string) (*qbt.Torrent, bool) {
+	return snapshot.Torrent
+}
+
 func (f *freshSyncs) CopyGroups() *qbittorrent.CopyGroups {
 	return nil
 }
@@ -133,6 +140,7 @@ type freshRig struct {
 	svc       *Service
 	syncs     *freshSyncs
 	instances []*freshInstance
+	fullScan  bool
 }
 
 func pass(d time.Duration) {
@@ -140,11 +148,11 @@ func pass(d time.Duration) {
 	synctest.Wait()
 }
 
-func freshCase(t *testing.T, features []string, count int, run func(*freshRig)) {
+func freshCase(t *testing.T, fullScan bool, count int, run func(*freshRig)) {
 	t.Helper()
 	syncs := &freshSyncs{fakeSyncManager: newFakeSyncManager(localReadsInstance, nil, nil), instances: map[int]*freshInstance{}}
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
-	rig := &freshRig{syncs: syncs}
+	rig := &freshRig{syncs: syncs, fullScan: fullScan}
 	for id := 1; id <= count; id++ {
 		instance := &freshInstance{}
 		client := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"}).
@@ -172,7 +180,9 @@ func freshCase(t *testing.T, features []string, count int, run func(*freshRig)) 
 	}
 	synctest.Test(t, func(t *testing.T) {
 		rig.t = t
-		rig.svc.StartHeldTitles(t.Context(), experimental.New(features), syncs, syncs, nil)
+		if !fullScan {
+			rig.svc.StartHeldTitles(t.Context(), syncs, syncs, nil)
+		}
 		require.NoError(t, rig.instances[0].owner.Sync(t.Context()))
 		synctest.Wait()
 		run(rig)
@@ -188,11 +198,11 @@ func (f *freshInstance) startSync() {
 func (r *freshRig) check(name string) (*WebhookCheckResponse, time.Duration) {
 	r.t.Helper()
 	started := time.Now()
-	resp := checkAnnounce(r.t, r.svc, name, 0)
-	return resp, time.Since(started)
+	if r.fullScan {
+		return checkFullScan(r.t, r.svc, name, 0), time.Since(started)
+	}
+	return checkAnnounce(r.t, r.svc, name, 0), time.Since(started)
 }
-
-var freshOn = []string{string(experimental.HeldTitles)}
 
 func TestCheckFindsAProxiedAddInTheSyncThatRunsOrIsDue(t *testing.T) {
 	const ms = time.Millisecond
@@ -200,13 +210,12 @@ func TestCheckFindsAProxiedAddInTheSyncThatRunsOrIsDue(t *testing.T) {
 		takes  time.Duration
 		before func(*freshInstance)
 		waits  time.Duration
-		off    bool
 	}{
 		"1 s after the add": {before: func(f *freshInstance) {
 			pass(time.Minute)
 			f.proxiedAdd()
 			pass(time.Second)
-		}, off: true},
+		}},
 		"1 s after an add while a sync ran": {takes: 400 * ms, before: func(f *freshInstance) {
 			f.startSync()
 			f.proxiedAdd()
@@ -232,7 +241,7 @@ func TestCheckFindsAProxiedAddInTheSyncThatRunsOrIsDue(t *testing.T) {
 		}, waits: 300 * ms},
 	} {
 		t.Run(name, func(t *testing.T) {
-			freshCase(t, freshOn, 1, func(rig *freshRig) {
+			freshCase(t, false, 1, func(rig *freshRig) {
 				rig.instances[0].syncTakes(tc.takes)
 				tc.before(rig.instances[0])
 
@@ -241,15 +250,6 @@ func TestCheckFindsAProxiedAddInTheSyncThatRunsOrIsDue(t *testing.T) {
 				require.Equal(t, "download", resp.Recommendation)
 				require.False(t, resp.CanCrossSeed, "the torrent still downloads")
 				require.Equal(t, tc.waits, waited)
-			})
-			freshCase(t, nil, 1, func(rig *freshRig) {
-				rig.instances[0].syncTakes(tc.takes)
-				tc.before(rig.instances[0])
-
-				resp, waited := rig.check(freshName)
-
-				require.Equal(t, tc.off, resp.Recommendation == "download")
-				require.Zero(t, waited, "with the feature off, a check waits for no sync")
 			})
 		})
 	}
@@ -275,7 +275,7 @@ func TestCheckWaitsForNoOtherSync(t *testing.T) {
 		}, waits: heldSyncWait, syncs: 2},
 	} {
 		t.Run(name, func(t *testing.T) {
-			freshCase(t, freshOn, 1, func(rig *freshRig) {
+			freshCase(t, false, 1, func(rig *freshRig) {
 				rig.instances[0].syncTakes(tc.takes)
 				tc.before(rig.instances[0])
 
@@ -291,7 +291,7 @@ func TestCheckWaitsForNoOtherSync(t *testing.T) {
 }
 
 func TestCheckFindsAProxiedAddWhileAnotherInstanceHangs(t *testing.T) {
-	freshCase(t, freshOn, 3, func(rig *freshRig) {
+	freshCase(t, false, 3, func(rig *freshRig) {
 		slow, hung, quick := rig.instances[0], rig.instances[1], rig.instances[2]
 		require.NoError(rig.t, hung.owner.Sync(rig.t.Context()))
 		require.NoError(rig.t, quick.owner.Sync(rig.t.Context()))
@@ -310,7 +310,7 @@ func TestCheckFindsAProxiedAddWhileAnotherInstanceHangs(t *testing.T) {
 }
 
 func TestCheckWaitsForNoSyncWhenItFindsAMatch(t *testing.T) {
-	freshCase(t, freshOn, 1, func(rig *freshRig) {
+	freshCase(t, false, 1, func(rig *freshRig) {
 		rig.instances[0].hold(freshName, 1)
 		require.NoError(t, rig.instances[0].owner.Sync(rig.t.Context()))
 		rig.instances[0].syncTakes(time.Second)
@@ -324,7 +324,7 @@ func TestCheckWaitsForNoSyncWhenItFindsAMatch(t *testing.T) {
 }
 
 func TestCheckWaitsForNoFirstSync(t *testing.T) {
-	freshCase(t, freshOn, 2, func(rig *freshRig) {
+	freshCase(t, false, 2, func(rig *freshRig) {
 		rig.instances[1].hold(freshName, 1)
 		rig.instances[1].syncTakes(time.Second)
 
@@ -343,7 +343,7 @@ func TestCheckWaitsForNoFirstSync(t *testing.T) {
 }
 
 func TestCheckReadsOneEpisodeMapAndOneFileDeadlineForBothLooks(t *testing.T) {
-	freshCase(t, freshOn, 1, func(rig *freshRig) {
+	freshCase(t, false, 1, func(rig *freshRig) {
 		spy := &spyARRLookupService{result: &arr.ExternalIDsResult{IDs: &models.ExternalIDs{TVDbID: 1}, EpisodeMap: &models.EpisodeMap{Season: 2, Episode: 7, Absolute: 31}}}
 		rig.svc.arrService = spy
 		rig.instances[0].hold(freshAbsoluteName(30), 1)
@@ -358,7 +358,7 @@ func TestCheckReadsOneEpisodeMapAndOneFileDeadlineForBothLooks(t *testing.T) {
 		require.Equal(t, 300*time.Millisecond, waited)
 		require.Equal(t, 1, spy.calls)
 	})
-	freshCase(t, freshOn, 1, func(rig *freshRig) {
+	freshCase(t, false, 1, func(rig *freshRig) {
 		rig.syncs.filesHang = true
 		rig.instances[0].hold("Season 2", 1)
 		require.NoError(t, rig.instances[0].owner.Sync(rig.t.Context()))
@@ -371,10 +371,10 @@ func TestCheckReadsOneEpisodeMapAndOneFileDeadlineForBothLooks(t *testing.T) {
 	})
 }
 
-func announceLoad(t *testing.T, features []string, adds int) []time.Time {
+func announceLoad(t *testing.T, fullScan bool, adds int) []time.Time {
 	t.Helper()
 	var syncs []time.Time
-	freshCase(t, features, 1, func(rig *freshRig) {
+	freshCase(t, fullScan, 1, func(rig *freshRig) {
 		instance := rig.instances[0]
 		instance.syncTakes(50 * time.Millisecond)
 		pass(time.Minute)
@@ -406,8 +406,8 @@ func TestCheckSendsNoMoreSyncsThanTheFullScan(t *testing.T) {
 		"200 adds": {200, 7},
 	} {
 		t.Run(name, func(t *testing.T) {
-			fullScan := announceLoad(t, nil, tc.adds)
-			held := announceLoad(t, freshOn, tc.adds)
+			fullScan := announceLoad(t, true, tc.adds)
+			held := announceLoad(t, false, tc.adds)
 
 			require.LessOrEqual(t, len(held), len(fullScan))
 			for _, syncs := range [][]time.Time{fullScan, held} {

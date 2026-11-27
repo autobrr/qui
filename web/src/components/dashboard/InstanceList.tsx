@@ -132,7 +132,7 @@ function DataStatus({ d }: { d: DashboardInstanceStats }) {
   const status = kind === "error"
     ? { Icon: AlertCircle, className: "text-destructive", label: t("instances.streamStatus.error") }
     : kind === "cached"
-      ? { Icon: Database, className: d.cacheMetadata?.isStale ? "text-amber-500" : "text-blue-500", label: t("instances.streamStatus.cached") }
+      ? { Icon: Database, className: d.cacheMetadata?.isStale ? "text-warning" : "text-info", label: t("instances.streamStatus.cached") }
       : kind === "fallback"
         ? { Icon: RefreshCcw, className: "text-muted-foreground", label: t("instances.streamStatus.fallback") }
         : undefined

@@ -949,9 +949,13 @@ Hardlink scope detection depends on the kernel reporting accurate `nlink` values
 
 - **FUSE-based filesystems** (sshfs, mergerfs, rclone mount) can report `nlink = 1` for all files, regardless of the actual hardlink count.
 - **Some NAS appliance filesystems** and **overlay filesystems** (overlayfs) behave the same way.
-- **Network filesystems** (NFS, CIFS/SMB) usually report accurate nlink values, but behavior varies by server.
+- **Network filesystems** (NFS, CIFS/SMB) usually report accurate `nlink` values, but behavior varies by server.
 
-On affected filesystems, every torrent appears to have scope `none` because nlink is always 1. qui has no workaround for this kernel and filesystem limitation. If you suspect this issue, run `stat` on a file with hardlinks and read the "Links" count.
+On filesystems that always report `nlink = 1` (FUSE, affected NAS appliances, and overlayfs), every torrent appears to have scope `none`. qui has no workaround for this kernel and filesystem limitation.
+
+On a Linux CIFS/SMB mount, the kernel SMB client sets a file's link count to 1 when a program opens it and keeps that cached value while the file stays open. qBittorrent keeps the files it seeds open. On Linux, qui asks the server for the current link count on every read with a forced-sync stat (the same as `stat --cached=never`). This applies to both CIFS/SMB and NFS mounts, so qui still reads the true link count of an open file. Because each read goes to the server, building hardlink scope can take longer on CIFS/SMB and NFS mounts than on a local disk. On a local disk, this adds no extra cost. On a Linux kernel older than 4.11, or in a container that blocks the `statx` call, qui reads the cached link count instead, which can show 1 for an open file on a CIFS/SMB mount.
+
+To check your filesystem by hand, run `stat --cached=never` (a GNU coreutils option) on a file with hardlinks and read the "Links" count. A plain `stat` on a file that qBittorrent has open can show 1 on a Linux CIFS/SMB mount, even when your media library still hardlinks it.
 
 Hardlink scope does not detect reflinks (also called block clones). A reflink is a separate file with its own inode. Cloning does not raise its `nlink` count, even when the file shares its data with another file. A torrent whose files reach your library only through reflinks therefore gets scope `none`, and a "Remove Upgraded Torrents" rule can delete it. Tools such as `cp --reflink`, `fclones dedupe`, and ZFS block cloning make reflinks. Torrents that qui adds in [reflink mode](./cross-seed/hardlink-mode.md#reflink-mode-alternative) also get scope `none`. If your rules depend on `HARDLINK_SCOPE`, use hardlinks for the library link. For example, use `fclones link` instead of `fclones dedupe`.
 

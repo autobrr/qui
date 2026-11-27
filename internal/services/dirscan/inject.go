@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -50,7 +51,7 @@ type JackettDownloader interface {
 }
 
 type TorrentChecker interface {
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 }
 
 type trackerCustomizationProvider interface {
@@ -82,7 +83,7 @@ func (i *Injector) TorrentExistsAny(ctx context.Context, instanceID int, hashes 
 	if len(hashes) == 0 {
 		return false, nil
 	}
-	_, exists, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, hashes)
+	_, exists, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll(hashes))
 	if err != nil {
 		return false, fmt.Errorf("check torrent exists: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -206,21 +207,28 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+const (
+	listRuleHash1 = "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+	listRuleHash2 = "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
+	listRuleHash3 = "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+	listRuleHash4 = "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
+)
+
 func TestListRules_Exclusions(t *testing.T) {
 	sm := &SyncManager{}
 
 	torrents := []qbt.Torrent{
-		{Hash: "hash1", State: qbt.TorrentStateUploading, Category: "movies", Tags: "tagA, tagB", Tracker: "http://trackerA.com/announce"},
-		{Hash: "hash2", State: qbt.TorrentStateDownloading, Category: "tv", Tags: "", Tracker: ""},
-		{Hash: "hash3", State: qbt.TorrentStateUploading, Category: "documentary", Tags: "tagC", Tracker: "udp://trackerb.com:80/announce"},
-		{Hash: "hash4", State: qbt.TorrentStateDownloading, Category: "movies", Tags: "tagC, tagD", Tracker: "https://trackerc.com/announce"},
+		{Hash: listRuleHash1, State: qbt.TorrentStateUploading, Category: "movies", Tags: "tagA, tagB", Tracker: "http://trackerA.com/announce"},
+		{Hash: listRuleHash2, State: qbt.TorrentStateDownloading, Category: "tv", Tags: "", Tracker: ""},
+		{Hash: listRuleHash3, State: qbt.TorrentStateUploading, Category: "documentary", Tags: "tagC", Tracker: "udp://trackerb.com:80/announce"},
+		{Hash: listRuleHash4, State: qbt.TorrentStateDownloading, Category: "movies", Tags: "tagC, tagD", Tracker: "https://trackerc.com/announce"},
 	}
 
 	mainData := &qbt.MainData{
 		Trackers: map[string][]string{
-			"http://trackerA.com/announce":   {"hash1"},
-			"udp://trackerb.com:80/announce": {"hash3"},
-			"https://trackerc.com/announce":  {"hash4"},
+			"http://trackerA.com/announce":   {listRuleHash1},
+			"udp://trackerb.com:80/announce": {listRuleHash3},
+			"https://trackerc.com/announce":  {listRuleHash4},
 		},
 	}
 
@@ -240,37 +248,37 @@ func TestListRules_Exclusions(t *testing.T) {
 		{
 			name:     "exclude status uploading",
 			filters:  FilterOptions{ExcludeStatus: []string{"uploading"}},
-			expected: []string{"hash2", "hash4"},
+			expected: []string{listRuleHash2, listRuleHash4},
 		},
 		{
 			name:     "exclude category movies",
 			filters:  FilterOptions{ExcludeCategories: []string{"movies"}},
-			expected: []string{"hash2", "hash3"},
+			expected: []string{listRuleHash2, listRuleHash3},
 		},
 		{
 			name:     "exclude tracker domain",
 			filters:  FilterOptions{ExcludeTrackers: []string{"trackerb.com"}},
-			expected: []string{"hash1", "hash2", "hash4"},
+			expected: []string{listRuleHash1, listRuleHash2, listRuleHash4},
 		},
 		{
 			name:     "exclude no tracker",
 			filters:  FilterOptions{ExcludeTrackers: []string{""}},
-			expected: []string{"hash1", "hash3", "hash4"},
+			expected: []string{listRuleHash1, listRuleHash3, listRuleHash4},
 		},
 		{
 			name:     "exclude tag removes matching",
 			filters:  FilterOptions{ExcludeTags: []string{"tagD"}},
-			expected: []string{"hash1", "hash2", "hash3"},
+			expected: []string{listRuleHash1, listRuleHash2, listRuleHash3},
 		},
 		{
 			name:     "combined include and exclude",
 			filters:  FilterOptions{Categories: []string{"movies"}, ExcludeTrackers: []string{"trackerc.com"}},
-			expected: []string{"hash1"},
+			expected: []string{listRuleHash1},
 		},
 		{
 			name:     "hash filters include subset",
-			filters:  FilterOptions{Hashes: []string{"hash1", "HASH3"}},
-			expected: []string{"hash1", "hash3"},
+			filters:  FilterOptions{Hashes: []string{listRuleHash1, strings.ToUpper(listRuleHash3)}},
+			expected: []string{listRuleHash1, listRuleHash3},
 		},
 	}
 
@@ -467,8 +475,7 @@ func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
 	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
 }
 
-func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
-	sm := &SyncManager{}
+func TestTorrentSearch_BracketsAndGlobs(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Name: "[Grp] Some Show - 05 [1080p].mkv", Category: "anime", Tags: "fansub, weekly"},
 		{Name: "Who Is It? [Grp]", Category: "music"},
@@ -496,7 +503,7 @@ func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got []string
-			for _, torrent := range sm.filterTorrentsBySearch(torrentRefs(torrents), tt.search) {
+			for _, torrent := range searchTorrents(torrentRefs(torrents), tt.search) {
 				got = append(got, torrent.Name)
 			}
 			assert.Equal(t, tt.want, got)
@@ -505,8 +512,6 @@ func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
 }
 
 func TestSyncManager_SearchFunctionality(t *testing.T) {
-	sm := &SyncManager{}
-
 	torrents := []qbt.Torrent{
 		{Name: "Ubuntu.20.04.LTS.Desktop.amd64.iso", Category: "linux", Tags: "ubuntu,desktop", Hash: "aa11aa11"},
 		{Name: "Windows.10.Pro.x64.iso", Category: "windows", Tags: "microsoft,os", Hash: "bb22bb22"},
@@ -516,8 +521,8 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		{Name: "Music.Album.2023.FLAC", Category: "music", Tags: "flac,2023", Hash: "ff66ff66"},
 	}
 
-	t.Run("filterTorrentsBySearch exact match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "ubuntu")
+	t.Run("search exact match", func(t *testing.T) {
+		results := searchTorrents(torrentRefs(torrents), "ubuntu")
 
 		assert.Len(t, results, 2, "Should find 2 Ubuntu torrents")
 
@@ -528,20 +533,20 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		}
 	})
 
-	t.Run("filterTorrentsBySearch hash match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "dd44")
+	t.Run("search hash match", func(t *testing.T) {
+		results := searchTorrents(torrentRefs(torrents), "dd44")
 
 		assert.Len(t, results, 1, "Should find torrent by hash")
 		assert.Equal(t, "Movie.2023.1080p.BluRay.x264", results[0].Name)
 	})
 
-	t.Run("filterTorrentsBySearch non-hex search skips hash fields", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "x264")
+	t.Run("search non-hex search skips hash fields", func(t *testing.T) {
+		results := searchTorrents(torrentRefs(torrents), "x264")
 		assert.Len(t, results, 2, "Should match names, not hashes")
 	})
 
-	t.Run("filterTorrentsBySearch glob episode example skips season packs", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch([]*qbt.Torrent{
+	t.Run("search glob episode example skips season packs", func(t *testing.T) {
+		results := searchTorrents([]*qbt.Torrent{
 			{Name: "Some.Show.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 			{Name: "Some.Show.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		}, "*S[0-9][0-9]E[0-9][0-9]*")
@@ -605,11 +610,10 @@ func BenchmarkSyncManager_FilterTorrentsBySearch(b *testing.B) {
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 	defer zerolog.SetGlobalLevel(oldLevel)
 
-	sm := &SyncManager{}
 	torrents := createTestTorrents(1000)
 
 	for b.Loop() {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "test-torrent-5")
+		results := searchTorrents(torrentRefs(torrents), "test-torrent-5")
 		if len(results) == 0 {
 			b.Fatal("Should find at least one match")
 		}

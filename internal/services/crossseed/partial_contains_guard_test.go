@@ -15,6 +15,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -24,7 +25,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentName := "Movie.2024.1080p.WEB-DL-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -44,10 +45,10 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 
 	sync := &rootlessSavePathSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(matchedHash): candidateFiles,
+			matchedHash: candidateFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
-			normalizeHash(matchedHash): {SavePath: "/downloads"},
+			matchedHash: {SavePath: "/downloads"},
 		},
 	}
 
@@ -85,8 +86,8 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 		ctx,
 		candidate,
 		[]byte("torrent"),
-		newHash,
-		"",
+		mustParseHash(t, newHash),
+		infohash.Hash{},
 		torrentName,
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
@@ -106,7 +107,7 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentName := "Unparsable.Release.Name-XYZ"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -126,10 +127,10 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 
 	sync := &rootlessSavePathSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(matchedHash): candidateFiles,
+			matchedHash: candidateFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
-			normalizeHash(matchedHash): {SavePath: "/downloads"},
+			matchedHash: {SavePath: "/downloads"},
 		},
 	}
 
@@ -167,8 +168,8 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 		ctx,
 		candidate,
 		[]byte("torrent"),
-		newHash,
-		"",
+		mustParseHash(t, newHash),
+		infohash.Hash{},
 		torrentName,
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
@@ -188,7 +189,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentName := "Movie.2024.1080p.WEB-DL-GROUP"
 
 	tempDir := t.TempDir()
@@ -217,10 +218,10 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 
 	sync := &rootlessSavePathSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(matchedHash): candidateFiles,
+			matchedHash: candidateFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
-			normalizeHash(matchedHash): {SavePath: downloadsDir},
+			matchedHash: {SavePath: downloadsDir},
 		},
 	}
 
@@ -261,8 +262,8 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 		ctx,
 		candidate,
 		[]byte("torrent"),
-		newHash,
-		"",
+		mustParseHash(t, newHash),
+		infohash.Hash{},
 		torrentName,
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),
@@ -282,7 +283,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentName := "Movie.2024.1080p.WEB-DL-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -302,10 +303,10 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 
 	sync := &rootlessSavePathSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(matchedHash): candidateFiles,
+			matchedHash: candidateFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
-			normalizeHash(matchedHash): {SavePath: "/downloads"},
+			matchedHash: {SavePath: "/downloads"},
 		},
 	}
 
@@ -345,8 +346,8 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 		ctx,
 		candidate,
 		[]byte("torrent"),
-		newHash,
-		"",
+		mustParseHash(t, newHash),
+		infohash.Hash{},
 		torrentName,
 		&CrossSeedRequest{},
 		service.releaseCache.Parse(torrentName),

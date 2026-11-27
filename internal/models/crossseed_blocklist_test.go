@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func TestCrossSeedBlocklistStore_UpsertListDelete(t *testing.T) {
@@ -25,15 +26,13 @@ func TestCrossSeedBlocklistStore_UpsertListDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	store := models.NewCrossSeedBlocklistStore(db)
-	infohash := "63E07FF523710CA268567DAD344CE1E0E6B7E8A3"
-
-	entry, err := store.Upsert(ctx, &models.CrossSeedBlocklistEntry{
-		InstanceID: instance.ID,
-		InfoHash:   infohash,
-		Note:       "  bad files ",
-	})
+	raw := "63E07FF523710CA268567DAD344CE1E0E6B7E8A3"
+	hash, err := infohash.Parse(raw)
 	require.NoError(t, err)
-	assert.Equal(t, strings.ToLower(infohash), entry.InfoHash)
+
+	entry, err := store.Upsert(ctx, instance.ID, hash, "  bad files ")
+	require.NoError(t, err)
+	assert.Equal(t, strings.ToLower(raw), entry.InfoHash)
 	assert.Equal(t, "bad files", entry.Note)
 
 	list, err := store.List(ctx, instance.ID)
@@ -41,17 +40,17 @@ func TestCrossSeedBlocklistStore_UpsertListDelete(t *testing.T) {
 	require.Len(t, list, 1)
 	assert.Equal(t, entry.InfoHash, list[0].InfoHash)
 
-	blockedHash, blocked, err := store.FindBlocked(ctx, instance.ID, []string{"deadbeef", strings.ToUpper(entry.InfoHash)})
+	blockedHash, blocked, err := store.FindBlocked(ctx, instance.ID, infohash.ParseAll([]string{"deadbeef", strings.ToUpper(entry.InfoHash)}))
 	require.NoError(t, err)
 	assert.True(t, blocked)
-	assert.Equal(t, entry.InfoHash, blockedHash)
+	assert.Equal(t, hash, blockedHash)
 
-	require.NoError(t, store.Delete(ctx, instance.ID, entry.InfoHash))
+	require.NoError(t, store.Delete(ctx, instance.ID, hash))
 
 	list, err = store.List(ctx, instance.ID)
 	require.NoError(t, err)
 	assert.Empty(t, list)
 
-	err = store.Delete(ctx, instance.ID, entry.InfoHash)
+	err = store.Delete(ctx, instance.ID, hash)
 	assert.ErrorIs(t, err, sql.ErrNoRows)
 }

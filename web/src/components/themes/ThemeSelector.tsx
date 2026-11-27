@@ -109,7 +109,7 @@ function ThemeTile({ theme, palette, variations, isSelected, onSelect, customFil
             aria-pressed={isSelected}
             onClick={onSelect}
             className={cn(
-              "flex w-full flex-col gap-1.5 rounded-lg border bg-card p-1.5 text-left outline-none transition-colors hover:border-muted-foreground/50 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              "flex w-full flex-col gap-1.5 rounded-lg border bg-card p-1.5 text-left outline-none transition-colors hover:border-muted-foreground/50 focus-visible:ring-3 focus-visible:ring-ring/50",
               isSelected && "border-primary ring-1 ring-primary hover:border-primary"
             )}
           >
@@ -176,7 +176,7 @@ function CurrentTheme({ theme, palette, dark, variation, onVariationSelect }: Cu
                     aria-pressed={variation === v.id}
                     aria-label={v.id}
                     onClick={() => onVariationSelect(v.id)}
-                    className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:size-11"
+                    className="grid size-7 place-items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50 max-sm:size-11"
                   >
                     <span
                       className={cn(
@@ -422,7 +422,7 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
           />
 
           {isError && !hasPremiumAccess && (
-            <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
+            <div className="flex items-center gap-2 p-3 rounded-md bg-warning/10 border border-warning/30 text-warning">
               <WifiOff className="h-4 w-4 flex-shrink-0" />
               <p className="text-sm">
                 {t("themes.selector.verificationUnavailable")}
@@ -432,7 +432,7 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
 
           {builtins.isSuccess && premiumThemes.length === 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3">
-              <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-800 dark:bg-orange-950/20 dark:text-orange-400">
+              <Badge variant="warning">
                 <AlertTriangle className="mr-1 h-3 w-3" />
                 {t("themes.selector.notLoaded")}
               </Badge>
@@ -472,7 +472,7 @@ export function ThemeSelector({ openMenu = false, onMenuOpened }: ThemeSelectorP
                         setExpanded(false)
                       }}
                       className={cn(
-                        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 max-sm:h-9 max-sm:gap-1 max-sm:px-2",
+                        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 max-sm:h-9 max-sm:gap-1 max-sm:px-2",
                         active
                           ? "border-primary/50 bg-primary/10 font-medium text-foreground"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground"

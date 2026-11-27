@@ -48,7 +48,7 @@ func TestGetDeleteCrossSeeds_SelectAllChecksEverySelectedTorrent(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v2/sync/maindata" {
-			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aaa":{"name":"A","hash":"aaa","added_on":3},"bbb":{"name":"B","hash":"bbb","added_on":2},"ccc":{"name":"C","hash":"ccc","added_on":1}}}`))
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aaa0000000000000000000000000000000000000":{"name":"A","hash":"aaa0000000000000000000000000000000000000","added_on":3},"bbb0000000000000000000000000000000000000":{"name":"B","hash":"bbb0000000000000000000000000000000000000","added_on":2},"ccc0000000000000000000000000000000000000":{"name":"C","hash":"ccc0000000000000000000000000000000000000","added_on":1}}}`))
 			return
 		}
 		_, _ = w.Write([]byte("Ok."))
@@ -58,9 +58,9 @@ func TestGetDeleteCrossSeeds_SelectAllChecksEverySelectedTorrent(t *testing.T) {
 	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
-		{Name: "A", Hash: "aaa", AddedOn: 3},
-		{Name: "B", Hash: "bbb", AddedOn: 2},
-		{Name: "C", Hash: "ccc", AddedOn: 1},
+		{Name: "A", Hash: "aaa0000000000000000000000000000000000000", AddedOn: 3},
+		{Name: "B", Hash: "bbb0000000000000000000000000000000000000", AddedOn: 2},
+		{Name: "C", Hash: "ccc0000000000000000000000000000000000000", AddedOn: 1},
 	})})
 
 	finder := &fakeDeleteMatches{hashes: make(map[int][]string)}
@@ -68,14 +68,14 @@ func TestGetDeleteCrossSeeds_SelectAllChecksEverySelectedTorrent(t *testing.T) {
 	handler.deleteMatches = finder
 	req := newTorrentFieldRequest(t, instance.ID, map[string]any{
 		"selectAll":     true,
-		"excludeHashes": []string{"CCC"},
+		"excludeHashes": []string{"CCC0000000000000000000000000000000000000"},
 	})
 
 	rec := httptest.NewRecorder()
 	handler.GetDeleteCrossSeeds(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Equal(t, map[int][]string{instance.ID: {"aaa", "bbb"}}, finder.hashes)
+	require.Equal(t, map[int][]string{instance.ID: {"aaa0000000000000000000000000000000000000", "bbb0000000000000000000000000000000000000"}}, finder.hashes)
 	var response crossseed.DeleteMatchesResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 	require.Equal(t, []crossseed.LocalMatch{{InstanceID: 7, Hash: "fff", MatchType: "content_path"}}, response.Matches)

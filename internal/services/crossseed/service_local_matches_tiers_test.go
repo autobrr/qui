@@ -42,7 +42,7 @@ func (m *tierSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceI
 
 func (m *tierSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	for _, h := range hashes {
-		if m.failHashes[normalizeHash(h)] {
+		if m.failHashes[h] {
 			return nil, errors.New("qbittorrent unavailable")
 		}
 	}
@@ -90,7 +90,7 @@ func tierSingleFileSource() qbt.Torrent {
 
 func findTier(t *testing.T, sm *tierSyncManager) []LocalMatch {
 	t.Helper()
-	response, err := tierService(sm).FindCrossSeeds(t.Context(), 1, tierSourceHash)
+	response, err := tierService(sm).FindCrossSeeds(t.Context(), 1, mustParseHash(t, tierSourceHash))
 	require.NoError(t, err)
 	return response.Matches
 }
@@ -264,8 +264,8 @@ func TestFindCrossSeeds_Tiers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sm := &tierSyncManager{
 				files: map[string]qbt.TorrentFiles{
-					normalizeHash(tierSourceHash):    tc.sourceFiles,
-					normalizeHash(tierCandidateHash): tc.candidateFiles,
+					tierSourceHash:    tc.sourceFiles,
+					tierCandidateHash: tc.candidateFiles,
 				},
 				source:     tc.source,
 				candidates: map[int][]qbittorrent.CrossInstanceTorrentView{tc.candidate.InstanceID: {tc.candidate}},
@@ -286,8 +286,8 @@ func TestFindCrossSeeds_HardlinkWithExtraFile(t *testing.T) {
 	candidate := tierCandidate(1, tierSourceName, candidateDir, candidateDir)
 	sm := &tierSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(tierSourceHash): {{Name: tierMovieFile, Size: 4}},
-			normalizeHash(tierCandidateHash): {
+			tierSourceHash: {{Name: tierMovieFile, Size: 4}},
+			tierCandidateHash: {
 				{Name: tierMovieFile, Size: 4},
 				{Name: "Lantern.Bay.2023.1080p.BluRay.x264-GRP.nfo", Size: 3},
 				{Name: "Disc.Menu.m2ts", Size: 9},
@@ -300,7 +300,7 @@ func TestFindCrossSeeds_HardlinkWithExtraFile(t *testing.T) {
 	svc.instanceStore = newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true})
 	svc.syncManager = sm
 
-	response, err := svc.FindCrossSeeds(t.Context(), 1, tierSourceHash)
+	response, err := svc.FindCrossSeeds(t.Context(), 1, mustParseHash(t, tierSourceHash))
 	require.NoError(t, err)
 	requireTier(t, response.Matches, matchTypeHardlink)
 }
@@ -310,13 +310,13 @@ func TestFindCrossSeeds_CrossInstancePathOnlyFetchFailure(t *testing.T) {
 		t.Run(candidatePath, func(t *testing.T) {
 			sm := &tierSyncManager{
 				files: map[string]qbt.TorrentFiles{
-					normalizeHash(tierSourceHash): {{Name: tierMovieFile, Size: 1000}},
+					tierSourceHash: {{Name: tierMovieFile, Size: 1000}},
 				},
 				source: tierSingleFileSource(),
 				candidates: map[int][]qbittorrent.CrossInstanceTorrentView{2: {
 					tierCandidate(2, "Harbor.Lights.2021.720p.WEB.h264-OTHER", "/data/movies", candidatePath),
 				}},
-				failHashes: map[string]bool{normalizeHash(tierCandidateHash): true},
+				failHashes: map[string]bool{tierCandidateHash: true},
 			}
 			require.Empty(t, findTier(t, sm))
 		})
@@ -326,13 +326,13 @@ func TestFindCrossSeeds_CrossInstancePathOnlyFetchFailure(t *testing.T) {
 func TestFindCrossSeeds_CandidateFetchFailure(t *testing.T) {
 	sm := &tierSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(tierSourceHash): {{Name: tierMovieFile, Size: 1000}},
+			tierSourceHash: {{Name: tierMovieFile, Size: 1000}},
 		},
 		source:     tierSingleFileSource(),
 		candidates: map[int][]qbittorrent.CrossInstanceTorrentView{1: {tierCandidate(1, tierSourceName, "/data/other", "/data/other/"+tierMovieFile)}},
-		failHashes: map[string]bool{normalizeHash(tierCandidateHash): true},
+		failHashes: map[string]bool{tierCandidateHash: true},
 	}
 
-	_, err := tierService(sm).FindCrossSeeds(t.Context(), 1, tierSourceHash)
+	_, err := tierService(sm).FindCrossSeeds(t.Context(), 1, mustParseHash(t, tierSourceHash))
 	require.ErrorContains(t, err, "read the file list of torrent "+tierCandidateHash)
 }

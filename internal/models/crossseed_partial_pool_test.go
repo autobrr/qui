@@ -378,6 +378,78 @@ func TestCrossSeedPartialPoolReAdmissionQuarantinesHardlinkDependencyChain(t *te
 	require.Empty(t, reloadedReflink.Files[1].LastError)
 }
 
+func TestCrossSeedPartialPoolReAdmissionKeepsHardlinkSource(t *testing.T) {
+	checkPartialPoolReAdmissionKeepsHardlinkSource(t, func(t *testing.T) *database.DB {
+		return testdb.NewMigratedSQLite(t, "partial-pool-readmission")
+	})
+}
+
+func TestCrossSeedPartialPoolReAdmissionKeepsHardlinkSourcePostgresIntegration(t *testing.T) {
+	checkPartialPoolReAdmissionKeepsHardlinkSource(t, func(t *testing.T) *database.DB {
+		return testdb.NewMigratedPostgres(t, "partial-pool-readmission")
+	})
+}
+
+func checkPartialPoolReAdmissionKeepsHardlinkSource(t *testing.T, openDB func(*testing.T) *database.DB) {
+	t.Helper()
+	store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, openDB(t))
+	_, source, err := store.RegisterPartialPoolMember(t.Context(), partialPoolRegistration(t, secondID, firstID, "BBBB", "AAAA", "BBBB", "SOURCE"))
+	require.NoError(t, err)
+
+	registration := partialPoolRegistration(t, firstID, secondID, "CCCC", "CCCC", "", "BBBB")
+	_, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	changed, err := store.TransitionPartialPoolFile(t.Context(), member.Files[1].ID, member.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+		SourceFileID: models.NullableInt64Update{Set: true, Value: &source.Files[1].ID},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	_, hardlink, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	require.Equal(t, member.Files[1].ID, hardlink.Files[1].ID)
+	require.NotNil(t, hardlink.Files[1].SourceFileID)
+	require.Equal(t, source.Files[1].ID, *hardlink.Files[1].SourceFileID)
+
+	registration.Member.Mode = models.CrossSeedPartialPoolModeReflink
+	_, reflink, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	require.Equal(t, member.Files[1].ID, reflink.Files[1].ID)
+	require.Nil(t, reflink.Files[1].SourceFileID)
+}
+
+func TestCrossSeedPartialPoolRegistrationResolvesSourceIdentity(t *testing.T) {
+	store, _, firstID, secondID := newPartialPoolTestStore(t)
+	for _, tc := range []struct {
+		name             string
+		sourceInstanceID int
+		sourceAliases    []string
+		wantInstanceID   int
+		wantKey          string
+		wantErr          string
+	}{
+		{name: "no source instance uses the matched torrent", sourceAliases: []string{"SOURCE-ALIAS"}, wantInstanceID: secondID, wantKey: "matched"},
+		{name: "source without a key uses its first alias", sourceInstanceID: firstID, sourceAliases: []string{"SOURCE-ALIAS", "OTHER-ALIAS"}, wantInstanceID: firstID, wantKey: "source-alias"},
+		{name: "source without an identity fails", sourceInstanceID: firstID, wantErr: "partial pool source torrent key is required"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registration := partialPoolRegistration(t, secondID, secondID, tc.name, "", "", "matched")
+			registration.SourceInstanceID = tc.sourceInstanceID
+			registration.SourceTorrentKey = ""
+			registration.SourceAliases = tc.sourceAliases
+
+			pool, _, err := store.RegisterPartialPoolMember(t.Context(), registration)
+			if tc.wantErr != "" {
+				require.EqualError(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantInstanceID, pool.SourceInstanceID)
+			require.Equal(t, tc.wantKey, pool.SourceTorrentKey)
+		})
+	}
+}
+
 func TestCrossSeedPartialPoolInheritsOriginalSource(t *testing.T) {
 	store, _, firstID, secondID := newPartialPoolTestStore(t)
 	ctx := context.Background()

@@ -176,7 +176,7 @@ function useFigures(state: SummaryState): FigureItem[] {
 
 const loadingOf = (state: SummaryState) => state.kind === "loading" || (state.kind === "summary" && !state.current)
 const dimOf = (state: SummaryState) => state.kind === "summary" && !state.current && "opacity-50"
-const warningTone = "text-amber-600 dark:text-amber-400"
+const warningTone = "text-warning"
 
 function SummaryPanel({ state, hash, className }: { state: SummaryState; hash: string; className?: string }) {
   const { t } = useTranslation("transfers")

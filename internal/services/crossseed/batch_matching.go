@@ -66,7 +66,7 @@ func (c candidateEntry) key() candidateKey {
 
 func newCandidateEntry(view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool) candidateEntry {
 	return candidateEntry{
-		hash:       normalizeHash(view.Hash),
+		hash:       view.Hash,
 		tags:       view.Tags,
 		seeding:    needsSeeding && isTorrentViewSeeding(view),
 		instanceID: view.InstanceID,
@@ -264,7 +264,7 @@ func (b *batchFiles) get(ctx context.Context, instanceID int, hash, savePath str
 	if !ok {
 		files, err = b.svc.getTorrentFilesCached(ctx, instanceID, hash)
 		if err != nil {
-			log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
+			log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).
 				Msg("crossseed: could not read the file list of a cross-match candidate")
 		}
 	}
@@ -299,7 +299,7 @@ func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources
 	}
 	for _, group := range pathGroups {
 		for _, i := range group {
-			add(sourceInstanceID, normalizeHash(sources[i].Hash))
+			add(sourceInstanceID, sources[i].Hash)
 		}
 	}
 	for _, picks := range picksBySource {
@@ -307,7 +307,7 @@ func (b *batchFiles) prefetch(ctx context.Context, sourceInstanceID int, sources
 			if len(sourcePicks) == 0 || sources[i].ContentPath == "" {
 				continue
 			}
-			add(sourceInstanceID, normalizeHash(sources[i].Hash))
+			add(sourceInstanceID, sources[i].Hash)
 			for _, p := range sourcePicks {
 				if p.entry.view.ContentPath != "" {
 					add(p.entry.instanceID, p.entry.hash)
@@ -613,7 +613,7 @@ func (b *batchFiles) readFolders(ctx context.Context, instanceID int, hash, save
 	}
 	folders, err := b.folderEntries(ctx, instanceID, savePath, data.files)
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", normalizeHash(hash)).
+		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).
 			Msg("crossseed: could not read the folders of a torrent for the shared file check")
 		return nil, false
 	}
@@ -769,7 +769,7 @@ type candidatePick struct {
 }
 
 func (s *Service) selectCandidates(source *qbt.Torrent, sourceRead namedRelease, idx *matchIndex, sameInstance bool) []*candidatePick {
-	sourceHash := normalizeHash(source.Hash)
+	sourceHash := source.Hash
 
 	var picks []*candidatePick
 	picked := make(map[candidateKey]struct{})

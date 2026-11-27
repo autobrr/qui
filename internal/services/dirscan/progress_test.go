@@ -26,6 +26,12 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
+const (
+	indexHashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	indexHashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	indexHashC = "cccccccccccccccccccccccccccccccccccccccc"
+)
+
 func TestBuildTrackedFileUpsert_ComparesModTimeInWholeSeconds(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +195,7 @@ func (f stubTorrentFiles) GetCachedInstanceTorrents(context.Context, int) ([]qbi
 	if f.empty {
 		return nil, f.err
 	}
-	other := &qbt.Torrent{Hash: "bbbb", Progress: 1, SavePath: "/elsewhere"}
+	other := &qbt.Torrent{Hash: indexHashB, Progress: 1, SavePath: "/elsewhere"}
 	return []qbittorrent.CrossInstanceTorrentView{{TorrentView: &qbittorrent.TorrentView{Torrent: other}}}, f.err
 }
 
@@ -224,19 +230,19 @@ func TestBuildFileIDIndexCompleteness(t *testing.T) {
 		{name: "file on disk", priority: 1, info: onDisk, want: true, indexed: 1},
 		{name: "missing skipped file", err: notExist, want: true},
 		{name: "parent of a skipped file is a file", err: &fs.PathError{Op: "stat", Err: syscall.ENOTDIR}, want: true},
-		{name: "missing wanted file", priority: 1, err: notExist, want: false, reason: "torrent bbbb file other.mkv"},
-		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false, reason: "torrent bbbb file other.mkv"},
-		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false, reason: "torrent bbbb file other.mkv"},
-		{name: "no file list", noList: true, want: false, reason: "no file list for torrent bbbb"},
-		{name: "empty file list", emptyList: true, want: false, reason: "empty file list for torrent bbbb"},
+		{name: "missing wanted file", priority: 1, err: notExist, want: false, reason: "torrent " + indexHashB + " file other.mkv"},
+		{name: "unreadable file", err: &fs.PathError{Op: "stat", Err: fs.ErrPermission}, want: false, reason: "torrent " + indexHashB + " file other.mkv"},
+		{name: "no identity", info: &fsops.LstatInfo{Size: 1}, want: false, reason: "torrent " + indexHashB + " file other.mkv"},
+		{name: "no file list", noList: true, want: false, reason: "no file list for torrent " + indexHashB},
+		{name: "empty file list", emptyList: true, want: false, reason: "empty file list for torrent " + indexHashB},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			lists := map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv", Priority: tt.priority}}}
+			lists := map[string]qbt.TorrentFiles{indexHashB: {{Name: "other.mkv", Priority: tt.priority}}}
 			if tt.noList {
 				lists = map[string]qbt.TorrentFiles{}
 			}
 			if tt.emptyList {
-				lists = map[string]qbt.TorrentFiles{"bbbb": {}}
+				lists = map[string]qbt.TorrentFiles{indexHashB: {}}
 			}
 			svc := &Service{torrentFiles: stubTorrentFiles{files: lists}}
 			backend := statBackend{Backend: local.NewBackend(), info: tt.info, err: tt.err}
@@ -268,7 +274,7 @@ func TestFullScanResetsAlreadySeedingOnlyWhenTheSeedingIndexBuilt(t *testing.T) 
 		},
 		{
 			name: "torrent removed",
-			qbt:  stubTorrentFiles{files: map[string]qbt.TorrentFiles{"bbbb": {{Name: "other.mkv"}}}},
+			qbt:  stubTorrentFiles{files: map[string]qbt.TorrentFiles{indexHashB: {{Name: "other.mkv"}}}},
 			want: models.DirScanFileStatusPending,
 		},
 		{
@@ -320,7 +326,7 @@ func TestRefreshTrackedFilesKeepsAlreadySeedingWithoutProof(t *testing.T) {
 	id := hardlink.UnixFileID(7, 42)
 	key, ok := fsops.FileKeyOf(id, nil)
 	require.True(t, ok)
-	seeding := &seedingIndex{byKey: map[fsops.FileKey]string{key: "aaaa"}, complete: true}
+	seeding := &seedingIndex{byKey: map[fsops.FileKey]string{key: indexHashA}, complete: true}
 
 	for _, tt := range []struct {
 		name    string

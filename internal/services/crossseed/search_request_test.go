@@ -239,7 +239,7 @@ func TestSearchTorrentMatches_DialogSendsTypedQuery(t *testing.T) {
 		},
 	}
 
-	_, err := svc.SearchTorrentMatches(t.Context(), instance.ID, sourceHash, TorrentSearchOptions{Query: "  typed words  "})
+	_, err := svc.SearchTorrentMatches(t.Context(), instance.ID, mustParseHash(t, sourceHash), TorrentSearchOptions{Query: "  typed words  "})
 	require.NoError(t, err)
 
 	mu.Lock()

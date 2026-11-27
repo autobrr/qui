@@ -23,7 +23,9 @@ export const THEME_TOKEN_GROUPS: ReadonlyArray<{ group: string; tokens: readonly
     ],
   },
   { group: "Charts", tokens: ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"] },
+  { group: "Chart text", tokens: ["--chart-text-1", "--chart-text-2", "--chart-text-3", "--chart-text-4", "--chart-text-5"] },
   { group: "Ratio colors", tokens: ["--ratio-bad", "--ratio-almost", "--ratio-good", "--ratio-best"] },
+  { group: "Status colors", tokens: ["--success", "--warning", "--info"] },
   { group: "Typography", tokens: ["--font-sans", "--font-serif", "--font-mono"] },
   { group: "Shape and spacing", tokens: ["--radius", "--spacing", "--tracking-normal"] },
   {
@@ -72,6 +74,9 @@ Rules:
 - Keep the file at 1 MiB or less.
 - Do not change the height of a torrent row, its padding, its border width, or its font size. qui computes the position of each row from a fixed height.
 - Keep the text readable: each foreground token must have enough contrast with its background token, in light mode and in dark mode.
+- The chart colors also mark kinds in lists, for example the actions in the workflow activity log, so keep the five chart colors apart from each other in light mode and in dark mode.
+- The ratio and speed text, and the values in the log viewer, use --chart-text-1 to --chart-text-5. Each one takes its --chart-1 to --chart-5 color when the theme does not set it. Set one when its chart color is too faint as text on --background or on a 30% --muted tint over --background.
+- The status colors have no foreground token. Text on a solid status fill uses --background, so each status color must have enough contrast with --background.
 - If you set a font token, use a font that the browser has, or embed the font with @font-face and a data: address.
 
 qui refuses to save a theme that breaks one of the rules about files, and it names the line.`

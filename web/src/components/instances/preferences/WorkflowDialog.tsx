@@ -2304,7 +2304,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </Button>
 
                         <div className="mb-2">
-                          <Badge variant="secondary" className="text-xs uppercase tracking-wider font-mono">
+                          <Badge variant="secondary" className="uppercase tracking-wider font-mono">
                             {rule.type === "field_multiplier" ? t("preferences.workflowDialog.priority.fieldMultiplier") : t("preferences.workflowDialog.priority.conditional")}
                           </Badge>
                         </div>
@@ -2444,7 +2444,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     groupOptions={groupedConditionOptions}
                   />
                   {mixedActionConditions && (
-                    <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm">
+                    <div className="rounded-md border border-warning/50 bg-warning/10 p-3 text-sm">
                       <p>{t("preferences.workflowDialog.mixedActionConditions")}</p>
                     </div>
                   )}
@@ -2483,7 +2483,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           {t("preferences.workflowDialog.addConditionsToPreview")}
                         </p>
                       ) : livePreviewResult.skipped ? (
-                        <p className="text-xs text-amber-500">{getRuleSkipReason(livePreviewResult.skipped, t)}</p>
+                        <p className="text-xs text-warning">{getRuleSkipReason(livePreviewResult.skipped, t)}</p>
                       ) : (
                         <>
                           <p className="text-xs text-muted-foreground">
@@ -2693,7 +2693,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="space-y-3">
                           <div className="space-y-1.5">
-                            <Label className="text-xs">{t("preferences.workflowDialog.speedLimits.uploadLimit")}</Label>
+                            <Label size="sm">{t("preferences.workflowDialog.speedLimits.uploadLimit")}</Label>
                             <div className="flex gap-2">
                               <Select
                                 value={formState.exprUploadMode}
@@ -2766,7 +2766,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </div>
                           </div>
                           <div className="space-y-1.5">
-                            <Label className="text-xs">{t("preferences.workflowDialog.speedLimits.downloadLimit")}</Label>
+                            <Label size="sm">{t("preferences.workflowDialog.speedLimits.downloadLimit")}</Label>
                             <div className="flex gap-2">
                               <Select
                                 value={formState.exprDownloadMode}
@@ -2858,7 +2858,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="space-y-3">
                           <div className="space-y-1.5">
-                            <Label className="text-xs">{t("preferences.workflowDialog.shareLimits.ratioLimit")}</Label>
+                            <Label size="sm">{t("preferences.workflowDialog.shareLimits.ratioLimit")}</Label>
                             <div className="flex gap-2">
                               <Select
                                 value={formState.exprRatioLimitMode}
@@ -2899,7 +2899,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </div>
                           </div>
                           <div className="space-y-1.5">
-                            <Label className="text-xs">{t("preferences.workflowDialog.shareLimits.seedTime")}</Label>
+                            <Label size="sm">{t("preferences.workflowDialog.shareLimits.seedTime")}</Label>
                             <div className="flex gap-2">
                               <Select
                                 value={formState.exprSeedingTimeMode}
@@ -2940,7 +2940,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </div>
                           {capabilities?.supportsShareLimitsAction && (
                             <div className="space-y-1.5">
-                              <Label className="text-xs">{t("preferences.workflowDialog.shareLimitAction.label")}</Label>
+                              <Label size="sm">{t("preferences.workflowDialog.shareLimitAction.label")}</Label>
                               <Select
                                 value={formState.exprShareLimitAction}
                                 onValueChange={(value: string) => setFormState(prev => ({
@@ -2963,7 +2963,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           )}
                           {capabilities?.supportsShareLimitsMode && (
                             <div className="space-y-1.5">
-                              <Label className="text-xs">{t("preferences.workflowDialog.shareLimitsMode.label")}</Label>
+                              <Label size="sm">{t("preferences.workflowDialog.shareLimitsMode.label")}</Label>
                               <Select
                                 value={formState.exprShareLimitsMode}
                                 onValueChange={(value: string) => setFormState(prev => ({
@@ -3099,7 +3099,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           {formState.exprTagActions.map((tagAction, index) => (
                             <div key={`tag-action-${index}`} className="rounded-md border bg-muted/20 p-3 space-y-3">
                               <div className="flex items-center justify-between">
-                                <Label className="text-xs font-medium">{t("preferences.workflowDialog.tag.actionN", { count: index + 1 })}</Label>
+                                <Label size="sm">{t("preferences.workflowDialog.tag.actionN", { count: index + 1 })}</Label>
                                 {formState.exprTagActions.length > 1 && (
                                   <Button
                                     type="button"
@@ -3118,14 +3118,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-start">
                                 {tagAction.useTrackerAsTag ? (
                                   <div className="space-y-1">
-                                    <Label className="text-xs text-muted-foreground">{t("preferences.workflowDialog.tag.tagsDerivedFromTracker")}</Label>
+                                    <Label size="sm" className="text-muted-foreground">{t("preferences.workflowDialog.tag.tagsDerivedFromTracker")}</Label>
                                     <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground">
                                       {t("preferences.workflowDialog.tag.tagsDerivedDescription")}
                                     </div>
                                   </div>
                                 ) : (
                                   <div className="space-y-1">
-                                    <Label className="text-xs">{t("preferences.workflowDialog.tag.tags")}</Label>
+                                    <Label size="sm">{t("preferences.workflowDialog.tag.tags")}</Label>
                                     <MultiSelect
                                       options={tagOptions}
                                       selected={tagAction.tags}
@@ -3143,7 +3143,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   </div>
                                 )}
                                 <div className="space-y-1">
-                                  <Label className="text-xs">{t("preferences.workflowDialog.tag.actionMode")}</Label>
+                                  <Label size="sm">{t("preferences.workflowDialog.tag.actionMode")}</Label>
                                   <Select
                                     value={tagAction.mode}
                                     onValueChange={(value: TagActionForm["mode"]) => setFormState(prev => ({
@@ -3162,7 +3162,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   </Select>
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs">{t("preferences.workflowDialog.tag.strategy")}</Label>
+                                  <Label size="sm">{t("preferences.workflowDialog.tag.strategy")}</Label>
                                   <Select
                                     value={tagAction.deleteFromClient ? "replace" : "managed"}
                                     onValueChange={(value: "managed" | "replace") => {
@@ -3307,7 +3307,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="space-y-1">
-                            <Label className="text-xs">{t("preferences.workflowDialog.category.moveToCategory")}</Label>
+                            <Label size="sm">{t("preferences.workflowDialog.category.moveToCategory")}</Label>
                             <Select
                               value={formState.exprCategory === "" ? CATEGORY_UNCATEGORIZED_VALUE : formState.exprCategory ?? ""}
                               onValueChange={(value) => setFormState(prev => ({
@@ -3363,7 +3363,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">
+                          <Label size="sm">
                             {t("preferences.workflowDialog.move.newSavePath")}
                             <FieldHelp>{pathTemplateHelp(MOVE_PATH_DOCS_URL)}</FieldHelp>
                           </Label>
@@ -3431,7 +3431,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.externalProgram.program")}</Label>
+                          <Label size="sm">{t("preferences.workflowDialog.externalProgram.program")}</Label>
                           {externalProgramsLoading ? (
                             <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3508,7 +3508,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.export.targetInstance")}</Label>
+                          <Label size="sm">{t("preferences.workflowDialog.export.targetInstance")}</Label>
                           {instancesLoading ? (
                             <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3545,7 +3545,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           )}
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">
+                          <Label size="sm">
                             {t("preferences.workflowDialog.export.savePathLabel")}
                             <FieldHelp>
                               {t("preferences.workflowDialog.export.savePathHelp")} {pathTemplateHelp(EXPORT_PATH_DOCS_URL)}
@@ -3559,7 +3559,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.export.categoryLabel")}</Label>
+                          <Label size="sm">{t("preferences.workflowDialog.export.categoryLabel")}</Label>
                           {!formState.exprExportTargetInstanceId ? (
                             <Input
                               value={formState.exprExportCategory}
@@ -3601,7 +3601,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           )}
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.export.tagsLabel")}</Label>
+                          <Label size="sm">{t("preferences.workflowDialog.export.tagsLabel")}</Label>
                           <Input
                             value={formState.exprExportTags}
                             onChange={(e) => setFormState(prev => ({ ...prev, exprExportTags: e.target.value }))}
@@ -3610,7 +3610,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.export.contentLayoutLabel")}</Label>
+                          <Label size="sm">{t("preferences.workflowDialog.export.contentLayoutLabel")}</Label>
                           <Select
                             value={formState.exprExportContentLayout || "default"}
                             onValueChange={(value) => setFormState(prev => ({
@@ -3693,7 +3693,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.delete.mode")}</Label>
+                          <Label size="sm">{t("preferences.workflowDialog.delete.mode")}</Label>
                           {(() => {
                             const usesFreeSpace = conditionUsesField(formState.actionCondition, "FREE_SPACE")
                             const keepFilesDisabled = usesFreeSpace
@@ -3818,7 +3818,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.exprFreeSpaceSourceType === "allowance" && !pathSourceWindowsBlocked && (
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5">
-                          <Label htmlFor="free-space-allowance" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowanceLabel")}</Label>
+                          <Label htmlFor="free-space-allowance" size="sm">{t("preferences.workflowDialog.freeSpace.allowanceLabel")}</Label>
                           <FieldHelp>{t("preferences.workflowDialog.freeSpace.allowanceHelp", { decimalUnit: t("preferences.workflowDialog.freeSpace.allowanceUnits.TB"), binaryUnit: unitLabel("TiB") })}</FieldHelp>
                         </div>
                         <div className="flex gap-2">
@@ -3858,7 +3858,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <div className="flex flex-col gap-1">
                         {formState.exprFreeSpaceSourceType === "allowance" && (
                           <div className="flex items-center gap-1.5">
-                            <Label htmlFor="free-space-source-path" className="text-xs">{t("preferences.workflowDialog.freeSpace.allowancePathLabel")}</Label>
+                            <Label htmlFor="free-space-source-path" size="sm">{t("preferences.workflowDialog.freeSpace.allowancePathLabel")}</Label>
                             <FieldHelp>{t("preferences.workflowDialog.freeSpace.allowancePathHelp")}</FieldHelp>
                           </div>
                         )}
@@ -3933,7 +3933,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 {formState.categoryEnabled && (formState.exprIncludeCrossSeeds || formState.exprBlockIfCrossSeedInCategories.length > 0) && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
-                      <Label className="text-xs">{t("preferences.workflowDialog.category.skipIfCrossSeedExists")}</Label>
+                      <Label size="sm">{t("preferences.workflowDialog.category.skipIfCrossSeedExists")}</Label>
                       <Tooltip>
                         <TooltipTrigger asChild openOnTap>
                           <button
@@ -4107,7 +4107,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     </Tooltip>
                   )}
                   {deleteUsesFreeSpace && formState.intervalSeconds === 60 && (
-                    <span className="text-xs text-yellow-500">{t("preferences.workflowDialog.interval.cooldownWarning")}</span>
+                    <span className="text-xs text-warning">{t("preferences.workflowDialog.interval.cooldownWarning")}</span>
                   )}
                 </div>
               </div>

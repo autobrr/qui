@@ -55,14 +55,14 @@ func newScanTestService(t *testing.T) (*Service, *models.OrphanScanStore, string
 	}
 	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
-			{Hash: "present", SavePath: presentRoot, State: qbt.TorrentStatePausedUp},
-			{Hash: "missing", SavePath: missingRoot, State: qbt.TorrentStatePausedUp},
+			{Hash: hPresent, SavePath: presentRoot, State: qbt.TorrentStatePausedUp},
+			{Hash: hMissing, SavePath: missingRoot, State: qbt.TorrentStatePausedUp},
 		}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
-			"present": {{Name: "owned.mkv", Size: 1}},
-			"missing": {{Name: "unreachable.mkv", Size: 1}},
+			hPresent: {{Name: "owned.mkv", Size: 1}},
+			hMissing: {{Name: "unreachable.mkv", Size: 1}},
 		}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: base})
@@ -328,7 +328,7 @@ func TestExecuteScan_AbsentDeclaredRoot(t *testing.T) {
 			stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: declaredRoot})
 			stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
 				if skippedTorrent {
-					return []qbt.Torrent{{Hash: "missing", SavePath: missingRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
+					return []qbt.Torrent{{Hash: hMissing, SavePath: missingRoot, State: qbt.TorrentStateCheckingResumeData}}, nil
 				}
 				return nil, nil
 			}
@@ -363,7 +363,7 @@ func TestExecuteScan_IgnoredTransitionalPathDoesNotMakeScanPartial(t *testing.T)
 	stubSync(svc).getAllTorrents = func(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 		torrents, err := torrentsProvider(ctx, instanceID)
 		for i := range torrents {
-			if torrents[i].Hash == "missing" {
+			if torrents[i].Hash == hMissing {
 				torrents[i].State = qbt.TorrentStateCheckingResumeData
 			}
 		}
@@ -372,7 +372,7 @@ func TestExecuteScan_IgnoredTransitionalPathDoesNotMakeScanPartial(t *testing.T)
 	filesProvider := stubSync(svc).getTorrentFilesBatch
 	stubSync(svc).getTorrentFilesBatch = func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 		files, err := filesProvider(ctx, instanceID, hashes)
-		delete(files, "missing")
+		delete(files, hMissing)
 		return files, err
 	}
 	run := runScanForTest(t, svc, store)

@@ -18,12 +18,13 @@ import (
 
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
-	claimedHash = "aaaa"
-	helperHash  = "ffff"
-	ownHash     = "bbbb"
+	claimedHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	helperHash  = "ffffffffffffffffffffffffffffffffffffffff"
+	ownHash     = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
 func newHeldHandler(t *testing.T) (*TorrentsHandler, *recordingDeleter) {
@@ -33,10 +34,10 @@ func newHeldHandler(t *testing.T) (*TorrentsHandler, *recordingDeleter) {
 	require.NoError(t, store.Create(t.Context(), &transfer.Record{
 		Kind: transfer.KindTransfer, State: "copying", StartedBy: transfer.StartedByUser,
 		SourceInstanceID: 1, TargetInstanceID: 2,
-		Members: []transfer.Member{{Hash: claimedHash, SourceSavePath: "/src", TargetInstanceID: 2}},
+		Members: []transfer.Member{{Hash: heldHash(t, claimedHash), SourceSavePath: "/src", TargetInstanceID: 2}},
 	}))
 	require.NoError(t, store.RegisterHelper(t.Context(), transfer.Helper{
-		InstanceID: 1, Hash: helperHash, Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1,
+		InstanceID: 1, Hash: heldHash(t, helperHash), Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1,
 	}))
 	deleter := &recordingDeleter{}
 	handler := &TorrentsHandler{deleter: deleter}
@@ -123,4 +124,11 @@ func newTorrentHashRequest(t *testing.T, instanceID int, hash string, payload ma
 	routeCtx.URLParams.Add("instanceID", strconv.Itoa(instanceID))
 	routeCtx.URLParams.Add("hash", hash)
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+}
+
+func heldHash(t *testing.T, s string) infohash.Hash {
+	t.Helper()
+	hash, err := infohash.Parse(s)
+	require.NoError(t, err)
+	return hash
 }

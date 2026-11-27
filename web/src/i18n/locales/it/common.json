@@ -187,6 +187,8 @@
     "smartSearchTitle": "Funzionalità di ricerca intelligente:",
     "smartSearchGlob": "Pattern glob:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Nascondi corrispondenze:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Corrispondenza approssimativa:",
     "smartSearchFuzzyExample": "\"breaking bad\" trova \"Breaking.Bad\"",
     "smartSearchDots": "Gestisce punti, trattini bassi e parentesi quadre",
@@ -389,9 +391,13 @@
         "menuFix": "Controlla le impostazioni della scansione",
         "action": "Apri le impostazioni della scansione della libreria",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab è disattivato nelle impostazioni della scansione della libreria, e nessuna chiave API RED o OPS è impostata. Attiva Torznab, oppure aggiungi una chiave RED o OPS nelle impostazioni Gazelle (OPS/RED). qui riprova ogni ora.",
-            "menuFix": "Attiva Torznab, o aggiungi una chiave RED o OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "Le impostazioni della scansione della libreria scelgono solo indexer Torznab, e nessun indexer Torznab è attivo. Attiva un indexer Torznab, oppure scegli altri siti nelle impostazioni della scansione della libreria. qui riprova ogni ora.",
+            "menuFix": "Attiva un indexer Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "Le impostazioni della scansione della libreria scelgono solo RED o OPS, e nessun sito scelto ha una chiave API. Aggiungi la chiave nelle impostazioni Gazelle (OPS/RED), oppure scegli altri siti nelle impostazioni della scansione della libreria. qui riprova ogni ora.",
+            "menuFix": "Aggiungi la chiave RED o OPS"
           },
           "no_indexer": {
             "fix": "Nessun indexer è attivo. Attiva un indexer Torznab, oppure aggiungi una chiave RED o OPS nelle impostazioni Gazelle (OPS/RED). qui riprova ogni ora.",

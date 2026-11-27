@@ -11,14 +11,19 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
 
-	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
+	"github.com/autobrr/qui/pkg/releases"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type heldTitlesSync interface {
 	InstanceSnapshot(ctx context.Context, instanceID int) *qbt.SyncSnapshot
+	ListSnapshot(instanceID int, snapshot *qbt.SyncSnapshot) []*qbt.Torrent
+	ListedLookup(instanceID int, snapshot *qbt.SyncSnapshot) func(hash string) (*qbt.Torrent, bool)
 	CopyGroups() *qbittorrent.CopyGroups
 }
 
@@ -67,14 +72,14 @@ type heldCandidates struct {
 }
 
 type heldTitlesQuery struct {
-	announced namedRelease
-	size      int64
+	announced     namedRelease
+	size          int64
+	addedKeys     []string
+	titlesOnly    bool
+	everyInstance bool
 }
 
-func (s *Service) StartHeldTitles(ctx context.Context, features *experimental.Features, reader heldTitlesSync, sinks syncSinks, sources []AlternateTitleSource) {
-	if !features.Enabled(experimental.HeldTitles) {
-		return
-	}
+func (s *Service) StartHeldTitles(ctx context.Context, reader heldTitlesSync, sinks syncSinks, sources []AlternateTitleSource) {
 	h := &heldTitles{svc: s, sync: reader, wake: make(chan struct{}, 1), instances: map[int]*heldInstance{}}
 	h.alternates = newAlternateTitleIndex(sources, h.buildsPending)
 	s.heldTitles = h
@@ -129,9 +134,11 @@ func (h *heldTitles) ready(ctx context.Context, instanceIDs []int) bool {
 
 func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[int]heldCandidates {
 	keys := h.svc.matcher().titleKeys(query.announced)
-	for _, title := range h.alternates.namedByAny(keys) {
+	season := query.announced.release.Series
+	for _, title := range h.alternates.namedByAny(keys, season) {
 		keys = append(keys, title.identity.key)
 	}
+	keys = append(keys, query.addedKeys...)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	found := map[int]heldCandidates{}
@@ -140,8 +147,9 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 		if inst == nil || inst.index == nil {
 			continue
 		}
-		if held, waiting := inst.index.candidates(keys, query.size); len(held)+len(waiting) > 0 {
-			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting), alternateTitles: inst.alternateTitles(held)}
+		held, waiting := inst.index.candidates(keys, query)
+		if len(held)+len(waiting) > 0 {
+			found[id] = heldCandidates{held: inst.torrents(held), waiting: inst.torrents(waiting), alternateTitles: inst.alternateTitles(held, season)}
 		}
 	}
 	return found
@@ -149,29 +157,39 @@ func (h *heldTitles) candidates(query heldTitlesQuery, instanceIDs []int) map[in
 
 func (inst *heldInstance) torrents(hashes []string) []*qbt.Torrent {
 	torrents := make([]*qbt.Torrent, 0, len(hashes))
+	index := qbittorrent.NewHashIndex(inst.snapshot)
 	for _, hash := range hashes {
-		if torrent, ok := inst.snapshot.Torrent(hash); ok {
+		if torrent, ok := listed(index, hash); ok {
 			torrents = append(torrents, torrent)
 		}
 	}
 	return torrents
 }
 
-func (inst *heldInstance) alternateTitles(hashes []string) map[*qbt.Torrent][]string {
+func listed(index qbittorrent.HashIndex, hash string) (*qbt.Torrent, bool) {
+	id, err := infohash.Parse(hash)
+	if err != nil {
+		return nil, false
+	}
+	return index.Listed(id)
+}
+
+func (inst *heldInstance) alternateTitles(hashes []string, season int) map[*qbt.Torrent][]string {
 	titles := map[*qbt.Torrent][]string{}
+	index := qbittorrent.NewHashIndex(inst.snapshot)
 	for _, hash := range hashes {
-		torrent, ok := inst.snapshot.Torrent(hash)
+		torrent, ok := listed(index, hash)
 		if !ok {
 			continue
 		}
-		if alternates := inst.index.alternates.of(inst.index.torrents[hash].title); len(alternates) > 0 {
+		if alternates := inst.index.alternates.of(inst.index.torrents[hash].title, season); len(alternates) > 0 {
 			titles[torrent] = alternates
 		}
 	}
 	return titles
 }
 
-func (x *heldIndex) candidates(keys []string, size int64) (held, waiting []string) {
+func (x *heldIndex) candidates(keys []string, query heldTitlesQuery) (held, waiting []string) {
 	seen := map[string]struct{}{}
 	add := func(hashes *[]string, hash string) {
 		if _, ok := seen[hash]; !ok {
@@ -184,7 +202,10 @@ func (x *heldIndex) candidates(keys []string, size int64) (held, waiting []strin
 			add(&held, hash)
 		}
 	}
-	for _, hash := range x.bySize[size] {
+	if query.titlesOnly {
+		return held, nil
+	}
+	for _, hash := range x.bySize[query.size] {
 		add(&held, hash)
 	}
 	for hash := range x.waiting {
@@ -260,8 +281,9 @@ func noteChanged(changed map[string]struct{}, hashes []string) map[string]struct
 }
 
 func (h *heldTitles) applyChanges(instanceID int, inst *heldInstance, hashes []string, rereadFiles bool) {
+	listed := h.sync.ListedLookup(instanceID, inst.snapshot)
 	for _, hash := range hashes {
-		torrent, ok := inst.snapshot.Torrent(hash)
+		torrent, ok := listed(hash)
 		if !ok {
 			inst.index.remove(hash)
 			continue
@@ -290,7 +312,21 @@ func (h *heldTitles) read(instanceID int, torrent *qbt.Torrent) heldTorrent {
 	}
 	held.keys = m.titleKeys(read)
 	held.title = h.alternates.hold(read, held.keys, askName, torrent.AddedOn)
+	if key := seasonlessEpisodeKey(read.release); key != "" && !slices.Contains(held.keys, key) {
+		held.keys = append(held.keys, key)
+	}
 	return held
+}
+
+func seasonlessEpisodeKey(release *rls.Release) string {
+	if release.Series > 0 {
+		return ""
+	}
+	_, title := readTitleNumeral(release.Title)
+	if title == "" || release.Episode == 0 && !releases.IsEpisodeRange(release) {
+		return ""
+	}
+	return stringutils.NormalizeForMatching(title)
 }
 
 func (t heldTorrent) sameAs(torrent *qbt.Torrent) bool {
@@ -416,7 +452,7 @@ func (h *heldTitles) finishBuild(instanceID int, inst *heldInstance, index *held
 }
 
 func (h *heldTitles) build(ctx context.Context, instanceID int, snapshot *qbt.SyncSnapshot) (*heldIndex, bool) {
-	torrents := snapshot.Torrents()
+	torrents := h.sync.ListSnapshot(instanceID, snapshot)
 	index := newHeldIndex(h.alternates, len(torrents))
 	for _, torrent := range torrents {
 		if ctx.Err() != nil {

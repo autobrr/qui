@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/prowlarr"
 	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/releases"
@@ -3097,7 +3098,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			DownloadVolumeFactor: r.DownloadVolumeFactor,
 			UploadVolumeFactor:   r.UploadVolumeFactor,
 			GUID:                 r.GUID,
-			InfoHashV1:           extractInfoHashFromAttributes(r.Attributes),
+			InfoHashV1:           extractInfoHashFromAttributes(r.Attributes).String(),
 			InfoHashV2:           "",
 			IMDbID:               r.Imdb,
 			TVDbID:               s.parseTVDbID(r),
@@ -3310,47 +3311,35 @@ func extractTMDbIDFromAttributes(attrs map[string]string) string {
 	return ""
 }
 
-func extractInfoHashFromAttributes(attrs map[string]string) string {
+func extractInfoHashFromAttributes(attrs map[string]string) infohash.Hash {
 	if len(attrs) == 0 {
-		return ""
+		return infohash.Hash{}
 	}
 
 	for _, key := range infohashAttributeKeys {
 		if value, ok := attrs[key]; ok {
-			if hash := validateInfoHash(value); hash != "" {
+			if hash, err := infohash.Parse(value); err == nil {
 				return hash
 			}
 		}
 	}
 
 	if magnetURL, ok := attrs["magneturl"]; ok {
-		if hash := extractInfoHashFromMagnet(magnetURL); hash != "" {
-			return hash
-		}
+		return extractInfoHashFromMagnet(magnetURL)
 	}
 
-	return ""
+	return infohash.Hash{}
 }
 
-func validateInfoHash(value string) string {
-	value = strings.TrimSpace(strings.ToLower(value))
-	if len(value) == 40 || len(value) == 64 {
-		if _, err := hex.DecodeString(value); err == nil {
-			return value
-		}
-	}
-	return ""
-}
-
-func extractInfoHashFromMagnet(magnetURL string) string {
+func extractInfoHashFromMagnet(magnetURL string) infohash.Hash {
 	magnetURL = strings.TrimSpace(magnetURL)
 	if magnetURL == "" || !strings.HasPrefix(strings.ToLower(magnetURL), "magnet:") {
-		return ""
+		return infohash.Hash{}
 	}
 
 	parts := strings.Split(magnetURL, "?")
 	if len(parts) < 2 {
-		return ""
+		return infohash.Hash{}
 	}
 
 	params := strings.SplitSeq(parts[1], "&")
@@ -3360,11 +3349,12 @@ func extractInfoHashFromMagnet(magnetURL string) string {
 			if idx := strings.Index(hashPart, "&"); idx > 0 {
 				hashPart = hashPart[:idx]
 			}
-			return validateInfoHash(hashPart)
+			hash, _ := infohash.Parse(hashPart)
+			return hash
 		}
 	}
 
-	return ""
+	return infohash.Hash{}
 }
 
 func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int) ([]*models.TorznabIndexer, error) {

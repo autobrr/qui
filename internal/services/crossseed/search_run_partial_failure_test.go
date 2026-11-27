@@ -35,7 +35,7 @@ func (g *hashFilteringSyncManager) GetTorrentRefs(_ context.Context, _ int, opts
 	out := make([]qbt.Torrent, 0, len(opts.Hashes))
 	for _, torrent := range g.torrents {
 		for _, h := range opts.Hashes {
-			if strings.EqualFold(torrent.Hash, h) {
+			if h.Is(torrent.Hash) {
 				out = append(out, torrent)
 			}
 		}
@@ -80,7 +80,7 @@ func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilte
 	require.NoError(t, err)
 	state := &searchRunState{
 		run:  run,
-		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true},
+		opts: SearchRunOptions{InstanceID: instance.ID},
 	}
 	state.gazelleClients = clients
 

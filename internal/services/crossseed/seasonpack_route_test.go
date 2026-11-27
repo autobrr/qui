@@ -354,7 +354,7 @@ func (r *seasonPackRig) blockPack(instanceID int) {
 	require.NoError(r.t, err)
 	meta, err := ParseTorrentMetadataWithInfo(data)
 	require.NoError(r.t, err)
-	_, err = r.svc.blocklistStore.Upsert(r.t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: instanceID, InfoHash: meta.HashV1})
+	_, err = r.svc.blocklistStore.Upsert(r.t.Context(), instanceID, meta.HashV1, "")
 	require.NoError(r.t, err)
 }
 

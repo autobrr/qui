@@ -74,7 +74,7 @@ func (s *Service) OpenCrossMatchSession(ctx context.Context, currentInstanceID i
 		files:      newBatchFiles(s, instances, needs.SameContent),
 	}
 	for i := range torrents {
-		c.pos[normalizeHash(torrents[i].Hash)] = i
+		c.pos[torrents[i].Hash] = i
 	}
 	return c, nil
 }
@@ -95,7 +95,7 @@ func (c *crossMatchSession) Resolve(ctx context.Context, req ResolveRequest) *Cr
 		asked = indexesOf(len(c.torrents))
 	} else {
 		for _, hash := range req.Hashes {
-			if i, ok := c.pos[normalizeHash(hash)]; ok {
+			if i, ok := c.pos[hash]; ok {
 				asked = append(asked, i)
 			}
 		}
@@ -186,7 +186,7 @@ func (n fileNeed) add(instanceID int, hash string) {
 	if n[instanceID] == nil {
 		n[instanceID] = make(map[string]struct{})
 	}
-	n[instanceID][normalizeHash(hash)] = struct{}{}
+	n[instanceID][hash] = struct{}{}
 }
 
 func (c *crossMatchSession) addTorrent(n fileNeed, i int) {
@@ -264,7 +264,7 @@ func (c *crossMatchSession) readGroups(ctx context.Context, torrents []int) {
 	shared := c.files.addSharedPathPicks(ctx, c.instanceID, c.torrents, groups, c.picks, needs)
 	for hash, next := range shared {
 		for _, other := range next {
-			c.link(c.pos[normalizeHash(hash)], c.pos[normalizeHash(other)])
+			c.link(c.pos[hash], c.pos[other])
 		}
 	}
 }
@@ -388,7 +388,7 @@ func (c *crossMatchSession) addGroups(ctx context.Context, asked []int, result *
 			slices.Sort(next)
 			result.SameInstanceContentByHash[t.Hash] = next
 			if data, ok := c.files.get(ctx, c.instanceID, t.Hash, t.SavePath); ok {
-				result.MemberFiles[normalizeHash(t.Hash)] = data.files
+				result.MemberFiles[t.Hash] = data.files
 			}
 		}
 	}

@@ -124,6 +124,7 @@ import type {
   SearchHistoryResponse,
   SetRSSFeedURLRequest,
   SetRSSRuleRequest,
+  SitePick,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -1864,15 +1865,13 @@ class ApiClient {
     return this.request<CrossSeedSearchStatus>("/cross-seed/search/status")
   }
 
-  async startCrossSeedSearchRun(payload: {
+  async startCrossSeedSearchRun(payload: SitePick & {
     instanceId: number
     categories: string[]
     tags: string[]
     excludeCategories: string[]
     excludeTags: string[]
     intervalSeconds: number
-    indexerIds: number[]
-    disableTorznab?: boolean
     cooldownMinutes: number
     skipIndividualEpisodes?: boolean
     maxAddedAgeDays?: number

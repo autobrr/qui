@@ -6,6 +6,8 @@ package share
 import (
 	"net/netip"
 	"time"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type State string
@@ -26,12 +28,12 @@ const (
 type Share struct {
 	ID                  int64
 	InstanceID          int
-	Hash                string
+	Hash                infohash.Hash
 	Name                string
 	SavePath            string
 	Files               []string
 	Size                int64
-	HelperHash          string
+	HelperHash          infohash.Hash
 	Tracker             TrackerKind
 	OwnerSecret         string
 	RecipientSecret     string

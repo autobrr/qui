@@ -454,11 +454,15 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
 
-  test:
-    name: Run tests
+  test-shard:
+    name: Go tests (${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [crossseed, api, rest]
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -476,12 +480,58 @@ jobs:
         run: go mod download
 
       - name: Run tests
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            go test -v -coverprofile=coverage.out ./...
-          else
-            go test -v -race -coverprofile=coverage.out ./...
-          fi
+          crossseed=(./internal/services/crossseed)
+          api=(./internal/api ./internal/api/handlers ./internal/database)
+          case "$SHARD" in
+            crossseed) packages=("${crossseed[@]}") ;;
+            api) packages=("${api[@]}") ;;
+            rest)
+              all=$(go list ./...)
+              sharded=$(go list "${crossseed[@]}" "${api[@]}")
+              mapfile -t packages < <(grep -vxF "$sharded" <<<"$all")
+              ;;
+          esac
+          go test -v -race -timeout 20m -coverprofile="coverage-$SHARD.out" "${packages[@]}"
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-shard-${{ matrix.shard }}
+          path: coverage-${{ matrix.shard }}.out
+
+  test:
+    name: Run tests
+    needs: [changes, test-shard]
+    if: ${{ !cancelled() && needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the test shards
+        if: needs.test-shard.result != 'success'
+        run: |
+          echo "A Go test shard ended with: ${{ needs.test-shard.result }}"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Download coverage profiles
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-shard-*
+          merge-multiple: true
+
+      - name: Merge coverage profiles
+        run: |
+          { echo "mode: atomic"; tail -qn +2 coverage-*.out; } > coverage.out
           go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage reports

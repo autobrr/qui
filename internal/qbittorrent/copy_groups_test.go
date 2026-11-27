@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"encoding/json/v2"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,10 @@ func copyGroupTorrent(hash, name string, addedOn, upSpeed int64, tracker string)
 	}
 }
 
+func copyGroupHash(label string) string { return strings.Repeat(label, 20) }
+
+func copyGroupLabel(hash string) string { return hash[:2] }
+
 type copyGroupFixture struct {
 	sm    *SyncManager
 	a, b  int
@@ -45,18 +50,18 @@ func newCopyGroupFixture(t *testing.T) copyGroupFixture {
 	require.NoError(t, err)
 	libraries := map[string][]qbt.Torrent{
 		"a": {
-			copyGroupTorrent("a1", "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 100, 5, "t1.example.invalid"),
-			copyGroupTorrent("b1", "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 200, 50, "t2.example.invalid"),
-			copyGroupTorrent("c1", "Kaiju Squad S01 1080p WEB-DL", 300, 1, "t1.example.invalid"),
-			copyGroupTorrent("d1", "Other.Film.2020.720p.BluRay-GRPB", 150, 20, "t2.example.invalid"),
-			copyGroupTorrent("e1", "Some.Album.2021.FLAC-GRPC", 50, 0, "t3.example.invalid"),
-			copyGroupTorrent("f1", "Some.Album.2021.FLAC-GRPC", 60, 10, "t3.example.invalid"),
+			copyGroupTorrent(copyGroupHash("a1"), "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 100, 5, "t1.example.invalid"),
+			copyGroupTorrent(copyGroupHash("b1"), "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 200, 50, "t2.example.invalid"),
+			copyGroupTorrent(copyGroupHash("c1"), "Kaiju Squad S01 1080p WEB-DL", 300, 1, "t1.example.invalid"),
+			copyGroupTorrent(copyGroupHash("d1"), "Other.Film.2020.720p.BluRay-GRPB", 150, 20, "t2.example.invalid"),
+			copyGroupTorrent(copyGroupHash("e1"), "Some.Album.2021.FLAC-GRPC", 50, 0, "t3.example.invalid"),
+			copyGroupTorrent(copyGroupHash("f1"), "Some.Album.2021.FLAC-GRPC", 60, 10, "t3.example.invalid"),
 		},
 		"b": {
-			copyGroupTorrent("a1", "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 400, 99, "t4.example.invalid"),
+			copyGroupTorrent(copyGroupHash("a1"), "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 400, 99, "t4.example.invalid"),
 		},
 	}
-	sizes := map[string]int64{"a1": 1000, "b1": 1000, "c1": 1000, "d1": 300, "e1": 50, "f1": 50}
+	sizes := map[string]int64{copyGroupHash("a1"): 1000, copyGroupHash("b1"): 1000, copyGroupHash("c1"): 1000, copyGroupHash("d1"): 300, copyGroupHash("e1"): 50, copyGroupHash("f1"): 50}
 	for _, library := range libraries {
 		for i := range library {
 			library[i].Size = sizes[library[i].Hash]
@@ -84,20 +89,20 @@ func newCopyGroupFixture(t *testing.T) copyGroupFixture {
 
 func (f copyGroupFixture) groups(read ...int) *CopyGroups {
 	return NewCopyGroups(map[int]map[string]uint64{
-		f.a: {"a1": copyGroupKaiju, "b1": copyGroupKaiju, "c1": copyGroupKaiju, "e1": copyGroupAlbum, "f1": copyGroupAlbum},
-		f.b: {"a1": copyGroupKaiju},
+		f.a: {copyGroupHash("a1"): copyGroupKaiju, copyGroupHash("b1"): copyGroupKaiju, copyGroupHash("c1"): copyGroupKaiju, copyGroupHash("e1"): copyGroupAlbum, copyGroupHash("f1"): copyGroupAlbum},
+		f.b: {copyGroupHash("a1"): copyGroupKaiju},
 	}, nil, read)
 }
 
 func (f copyGroupFixture) row(instanceID int, view *TorrentView) string {
-	out := view.Hash
+	out := copyGroupLabel(view.Hash)
 	if instanceID != 0 {
 		out = f.names[instanceID] + "/" + out
 	}
 	if g := view.CopyGroup; g != nil {
 		out += " " + g.ID
 		if g.FirstSorted != nil {
-			out += fmt.Sprintf(" first=%s/%s", f.names[g.FirstSorted.InstanceID], g.FirstSorted.Hash)
+			out += fmt.Sprintf(" first=%s/%s", f.names[g.FirstSorted.InstanceID], copyGroupLabel(g.FirstSorted.Hash))
 		}
 	}
 	return out
@@ -173,14 +178,14 @@ func TestGroupCopiesInstanceView(t *testing.T) {
 		{
 			name:      "the oldest matching copy stands in for a representative that the filter removes",
 			order:     "desc",
-			filters:   FilterOptions{Hashes: []string{"b1", "c1", "d1"}},
+			filters:   FilterOptions{Hashes: []string{copyGroupHash("b1"), copyGroupHash("c1"), copyGroupHash("d1")}},
 			want:      []string{"b1 00000000000000aa first=a/b1", "c1 00000000000000aa", "d1"},
 			wantTotal: 3,
 		},
 		{
 			name:      "a group with one matching member is a plain row",
 			order:     "desc",
-			filters:   FilterOptions{Hashes: []string{"c1", "d1", "e1"}},
+			filters:   FilterOptions{Hashes: []string{copyGroupHash("c1"), copyGroupHash("d1"), copyGroupHash("e1")}},
 			want:      []string{"d1", "c1", "e1"},
 			wantTotal: 3,
 		},

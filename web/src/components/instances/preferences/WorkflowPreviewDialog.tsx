@@ -294,7 +294,8 @@ export function WorkflowPreviewDialog({
     )
   }, [condition, dynamicColumns])
 
-  const confirmClassName = destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
+  const confirmVariant = destructive ? "destructive" : "default"
+  const confirmClassName = !destructive && warning ? "bg-warning text-background hover:bg-warning/90" : undefined
 
   const dryRunToggle = onDryRunChange && <DryRunToggle checked={dryRun} onCheckedChange={onDryRunChange} />
 
@@ -310,7 +311,7 @@ export function WorkflowPreviewDialog({
           {dryRunToggle}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} variant={confirmVariant} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {t("preferences.workflowPreview.saveWithoutPreview")}
             </AlertDialogAction>
@@ -359,7 +360,7 @@ export function WorkflowPreviewDialog({
         </AlertDialogHeader>
 
         {preview?.skipped && (
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-500">
+          <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             {getRuleSkipReason(preview.skipped, t)}
           </p>
         )}
@@ -417,8 +418,8 @@ export function WorkflowPreviewDialog({
                               {torrent.name}
                             </TruncatedText>
                             {(torrent.isCrossSeed || torrent.isHardlinkCopy) && (
-                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
-                                torrent.isHardlinkCopy? "bg-violet-500/10 text-violet-600": "bg-blue-500/10 text-blue-600"
+                              <span className={`shrink-0 text-10 px-1.5 py-0.5 rounded ${
+                                torrent.isHardlinkCopy? "bg-chart-2/10": "bg-chart-4/10"
                               }`}>
                                 {torrent.isHardlinkCopy ? t("preferences.workflowPreview.crossSeedHardlinked") : t("preferences.workflowPreview.crossSeedSameFiles")}
                               </span>
@@ -503,7 +504,7 @@ export function WorkflowPreviewDialog({
           </div>
           <div className="flex gap-2">
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} variant={confirmVariant} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {confirmLabel}
             </AlertDialogAction>

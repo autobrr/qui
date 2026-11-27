@@ -795,7 +795,7 @@ export function InstanceBackups() {
               <span className="truncate">{inst.name}</span>
               <span
                 className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${
-                  inst.connected ? "bg-green-500" : "bg-red-500"
+                  inst.connected ? "bg-success" : "bg-destructive"
                 }`}
               />
             </div>
@@ -913,7 +913,7 @@ export function InstanceBackups() {
                 {SETTING_TOGGLES.map(({ field, key }) => (
                   <div key={field} className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-1.5">
-                      <Label htmlFor={`backup-${field}`} className="font-medium">{t(`backups.settings.${key}`)}</Label>
+                      <Label htmlFor={`backup-${field}`}>{t(`backups.settings.${key}`)}</Label>
                       <FieldHelp>{t(`backups.settings.${key}Description`)}</FieldHelp>
                     </div>
                     <Switch id={`backup-${field}`} checked={formState[field]} onCheckedChange={handleToggle(field)} />
@@ -932,7 +932,7 @@ export function InstanceBackups() {
                   {SCHEDULE_CADENCES.map(({ kind, enabled, keep }) => (
                     <div key={kind} className="flex items-center gap-3">
                       <div className="flex flex-1 items-center gap-1.5">
-                        <Label htmlFor={`backup-${enabled}`} className="font-medium">{t(`backups.settings.schedule.${kind}`)}</Label>
+                        <Label htmlFor={`backup-${enabled}`}>{t(`backups.settings.schedule.${kind}`)}</Label>
                         <FieldHelp>
                           {t(`backups.settings.schedule.${kind}Tooltip`)} {t(`backups.settings.schedule.${kind}Description`)}
                         </FieldHelp>
@@ -996,7 +996,7 @@ export function InstanceBackups() {
           closeRestoreDialog()
         }
       }}>
-        <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
+        <DialogContent className="w-[95vw] max-w-6xl sm:max-w-6xl !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{t("backups.restore.title")}</DialogTitle>
             <DialogDescription>
@@ -1159,7 +1159,7 @@ export function InstanceBackups() {
                 {restoreExcludedHashes.length > 0 ? (
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-muted-foreground/40 bg-muted/20 px-3 py-2">
                     <div className="flex items-center gap-2 text-sm">
-                      <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                      <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.excludedBadge")}</Badge>
                       <span>{t("backups.restore.excludedSummary", { count: restoreExcludedHashes.length })}</span>
                     </div>
                   </div>
@@ -1183,7 +1183,7 @@ export function InstanceBackups() {
                                 <ul className="space-y-1 text-sm">
                                   {restorePlan.categories.create.map(item => (
                                     <li key={`cat-create-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="outline" className="text-[10px] uppercase">{t("backups.restore.create")}</Badge>
+                                      <Badge variant="outline" className="text-10 uppercase">{t("backups.restore.create")}</Badge>
                                       <span>{item.name}</span>
                                       {item.savePath ? (
                                         <span className="text-xs text-muted-foreground">({item.savePath})</span>
@@ -1199,7 +1199,7 @@ export function InstanceBackups() {
                                 <ul className="space-y-1 text-sm">
                                   {restorePlan.categories.update.map(item => (
                                     <li key={`cat-update-${item.name}`} className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.update")}</Badge>
+                                      <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.update")}</Badge>
                                       <span>{item.name}</span>
                                       <span className="text-xs text-muted-foreground">
                                         {item.currentPath || "—"} → {item.desiredPath || "—"}
@@ -1215,7 +1215,7 @@ export function InstanceBackups() {
                                 <ul className="space-y-1 text-sm">
                                   {restorePlan.categories.delete.map(name => (
                                     <li key={`cat-delete-${name}`} className="flex items-center gap-2">
-                                      <Badge variant="destructive" className="text-[10px] uppercase">{t("backups.restore.delete")}</Badge>
+                                      <Badge variant="destructive" className="text-10 uppercase">{t("backups.restore.delete")}</Badge>
                                       <span>{name}</span>
                                     </li>
                                   ))}
@@ -1283,7 +1283,7 @@ export function InstanceBackups() {
                                         className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
                                       >
                                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                                          <Badge variant="outline" className="text-[10px] uppercase">{t("backups.restore.add")}</Badge>
+                                          <Badge variant="outline" className="text-10 uppercase">{t("backups.restore.add")}</Badge>
                                           <span className="font-medium truncate">
                                             {item.manifest.name || hash}
                                           </span>
@@ -1292,7 +1292,7 @@ export function InstanceBackups() {
                                             <span className="text-xs text-muted-foreground">• {item.manifest.category}</span>
                                           ) : null}
                                           {isExcluded ? (
-                                            <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                                            <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.excludedBadge")}</Badge>
                                           ) : null}
                                         </div>
                                         <Button
@@ -1347,7 +1347,7 @@ export function InstanceBackups() {
                                             <div className="flex items-center gap-2">
                                               <span className="text-sm font-medium">{update.desired.name || update.current.name || update.hash}</span>
                                               {isExcluded ? (
-                                                <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                                                <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.excludedBadge")}</Badge>
                                               ) : null}
                                             </div>
                                             <span className="text-xs text-muted-foreground">
@@ -1391,7 +1391,7 @@ export function InstanceBackups() {
                                             <div key={`${update.hash}-${change.field}`} className="flex flex-wrap items-center gap-2 text-sm">
                                               <Badge
                                                 variant={change.supported ? "secondary" : "outline"}
-                                                className="text-[10px] uppercase"
+                                                className="text-10 uppercase"
                                               >
                                                 {change.supported ? t("backups.restore.auto") : t("backups.restore.manual")}
                                               </Badge>
@@ -1424,10 +1424,10 @@ export function InstanceBackups() {
                                         key={`torrent-delete-${hash}`}
                                         className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1 ${isExcluded ? "bg-muted/40 text-muted-foreground" : ""}`}
                                       >
-                                        <Badge variant="destructive" className="text-[10px] uppercase">{t("backups.restore.delete")}</Badge>
+                                        <Badge variant="destructive" className="text-10 uppercase">{t("backups.restore.delete")}</Badge>
                                         <code className="text-xs text-muted-foreground">{hash}</code>
                                         {isExcluded ? (
-                                          <Badge variant="secondary" className="text-[10px] uppercase">{t("backups.restore.excludedBadge")}</Badge>
+                                          <Badge variant="secondary" className="text-10 uppercase">{t("backups.restore.excludedBadge")}</Badge>
                                         ) : null}
                                         <Button
                                           variant="ghost"
@@ -1464,7 +1464,7 @@ export function InstanceBackups() {
                 )}
 
                 {restoreUnsupportedChanges.length > 0 && (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2 text-sm text-amber-900">
+                  <div className="rounded-md border border-warning/30 bg-warning/10 p-3 space-y-2 text-sm text-warning">
                     <p className="font-medium">{t("backups.restore.manualFollowUpRequired")}</p>
                     <ul className="list-disc pl-5 space-y-1">
                       {restoreUnsupportedChanges.map(({ hash, change }, index) => (
@@ -1486,7 +1486,7 @@ export function InstanceBackups() {
             <div className="rounded-md border p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-sm font-semibold">{t("backups.restore.lastExecution")}</h4>
-                <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
+                <Badge variant={restoreResult.dryRun ? "outline" : "default"}>
                   {restoreResult.dryRun ? t("backups.restore.dryRun") : t("backups.restore.applied")}
                 </Badge>
               </div>
@@ -1512,7 +1512,7 @@ export function InstanceBackups() {
                 </div>
               </div>
               {restoreResult.warnings?.length ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1 text-sm text-amber-900">
+                <div className="rounded-md border border-warning/30 bg-warning/10 p-3 space-y-1 text-sm text-warning">
                   <p className="font-medium">{t("backups.restore.warnings")}</p>
                   <ul className="list-disc pl-5 space-y-1">
                     {restoreResult.warnings.map((warning, index) => (
@@ -1857,7 +1857,7 @@ export function InstanceBackups() {
           setManifestRunId(undefined)
         }
       }}>
-        <DialogContent className="!w-[96vw] !max-w-7xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[95vw] max-w-7xl sm:max-w-7xl !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{t("backups.manifest.title")}</DialogTitle>
             <DialogDescription>

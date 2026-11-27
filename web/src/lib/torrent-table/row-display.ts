@@ -35,16 +35,16 @@ const PURPLE: Tone = {
   raisedHoverClass: "hover:border-purple-500 hover:bg-purple-500/20",
 }
 
-const YELLOW: Tone = {
-  className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10",
-  iconClass: "text-yellow-500",
-  hoverClass: "hover:bg-yellow-500/10",
-  raisedHoverClass: "hover:border-yellow-500 hover:bg-yellow-500/20",
+const WARNING: Tone = {
+  className: "text-warning border-warning/40 bg-warning/10",
+  iconClass: "text-warning",
+  hoverClass: "hover:bg-warning/10",
+  raisedHoverClass: "hover:border-warning hover:bg-warning/20",
 }
 
 export const TRACKER_HEALTH_DISPLAY: Record<TrackerHealth, Tone & { labelKey: string, icon: LucideIcon }> = {
   unregistered: { labelKey: "tableColumns.unregistered", icon: XCircle, ...RED },
-  tracker_down: { labelKey: "tableColumns.trackerDown", icon: AlertCircle, ...YELLOW },
+  tracker_down: { labelKey: "tableColumns.trackerDown", icon: AlertCircle, ...WARNING },
   tracker_error: { labelKey: "tableColumns.trackerError", icon: XCircle, ...PURPLE },
 }
 
@@ -55,7 +55,7 @@ export const COPY_PROBLEM_DISPLAY: Record<CopyProblem, Tone & { labelKey: string
   error: { labelKey: "copyGroups.hiddenProblem.error", ...RED },
   unregistered: { labelKey: "copyGroups.hiddenProblem.unregistered", ...RED },
   tracker_error: { labelKey: "copyGroups.hiddenProblem.trackerError", ...PURPLE },
-  tracker_down: { labelKey: "copyGroups.hiddenProblem.trackerDown", ...YELLOW },
+  tracker_down: { labelKey: "copyGroups.hiddenProblem.trackerDown", ...WARNING },
 }
 
 export function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowIndex: number): string {

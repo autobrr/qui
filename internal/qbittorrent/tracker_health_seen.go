@@ -11,6 +11,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const seenTrackersQueue = 16
@@ -22,12 +23,8 @@ type seenTrackers struct {
 	at       time.Time
 }
 
-func (sm *SyncManager) beginTrackersRead(instanceID int, owner *syncowner.Owner, hash string) func([]qbt.TorrentTracker) {
-	snapshot := owner.SnapshotUnchecked()
-	if snapshot == nil {
-		return func([]qbt.TorrentTracker) {}
-	}
-	torrent, ok := snapshot.Torrent(hash)
+func (sm *SyncManager) beginTrackersRead(instanceID int, owner *syncowner.Owner, hash infohash.Hash) func([]qbt.TorrentTracker) {
+	torrent, ok := NewHashIndex(owner.SnapshotUnchecked()).Torrent(hash)
 	if !ok {
 		return func([]qbt.TorrentTracker) {}
 	}
@@ -39,7 +36,7 @@ func (sm *SyncManager) beginTrackersRead(instanceID int, owner *syncowner.Owner,
 		sm.trackerHealthMu.RUnlock()
 
 		select {
-		case seen <- seenTrackers{hash: hash, flags: flags, trackers: trackers, at: at}:
+		case seen <- seenTrackers{hash: torrent.Hash, flags: flags, trackers: trackers, at: at}:
 		default:
 		}
 	}
@@ -50,11 +47,11 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 	if err != nil || !client.Supports(CapTrackerHealth) {
 		return
 	}
-	snapshot := syncManager.SnapshotUnchecked()
-	if snapshot == nil {
+	id, err := infohash.Parse(seen.hash)
+	if err != nil {
 		return
 	}
-	torrent, ok := snapshot.Torrent(seen.hash)
+	torrent, ok := NewHashIndex(syncManager.SnapshotUnchecked()).Torrent(id)
 	if !ok || announceFlagsOf(torrent) != seen.flags {
 		return
 	}

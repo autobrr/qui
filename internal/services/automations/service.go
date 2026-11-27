@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -602,6 +603,7 @@ type ResolveRequest = crossseed.ResolveRequest
 type filesReader interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
+	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 }
 
 type torrentDeleter interface {
@@ -642,7 +644,7 @@ type Service struct {
 	activityPublisher activity.Publisher
 	crossSeedRoutes   *crossseedroute.Service
 	routedTorrents    crossseedroute.TorrentReader
-	held              heldTorrents
+	claimed           claimedTorrents
 	exportRunner      exportRunner
 	transferRunner    transferRunner
 	transferHolds     map[string]time.Time
@@ -678,7 +680,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		filesReader:               syncManager,
 		targetLookup:              syncManager,
 		deleter:                   syncManager,
-		routedTorrents:            syncManager,
+		routedTorrents:            routedFileOwners{syncManager},
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
@@ -1109,7 +1111,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.leaveOutHeld(instanceID, torrents)
+	torrents = s.leaveOutClaimed(instanceID, torrents)
 	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
 		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
@@ -1345,7 +1347,7 @@ func (s *Service) previewPlanPart(ctx context.Context, instanceID int, rule *mod
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
-	torrents = s.leaveOutHeld(instanceID, torrents)
+	torrents = s.leaveOutClaimed(instanceID, torrents)
 	if skip, ok := ruleSkipOf(rule, s.instanceSupports(ctx, instanceID)); ok {
 		return &PreviewResult{Examples: []PreviewTorrent{}, Skipped: &skip}, nil
 	}
@@ -1640,7 +1642,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.notifyAutomationFailure(ctx, instanceID, err)
 		return nil, err
 	}
-	torrents = s.leaveOutHeld(instanceID, torrents)
+	torrents = s.leaveOutClaimed(instanceID, torrents)
 
 	eligibleRules, skipped := s.skipRulesWithUnknownFields(ctx, instanceID, eligibleRules, now)
 	skipActivities := s.recordRuleSkips(ctx, instanceID, skipped, force, dryRun)
@@ -3221,9 +3223,9 @@ func (s *Service) recordDryRunActivities(
 			hashesByProgram[exec.programID] = append(hashesByProgram[exec.programID], exec.hash)
 		}
 		for programID, hashes := range hashesByProgram {
-			uniqueHashes := dedupeHashes(hashes)
-			createActivity(externalprograms.ActivityActionExternalProgram, map[string]any{"programId": programID, "count": len(uniqueHashes)}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, scope)
+			unique := infohash.UniqueStrings(hashes)
+			createActivity(externalprograms.ActivityActionExternalProgram, map[string]any{"programId": programID, "count": len(unique)}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(unique, torrentByHash, scope)
 			})
 		}
 	}
@@ -3243,21 +3245,21 @@ func (s *Service) recordDryRunActivities(
 			}
 		}
 		for targetID, hashes := range successByTarget {
-			uniqueHashes := dedupeHashes(hashes)
-			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes)}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, scope)
+			unique := infohash.UniqueStrings(hashes)
+			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(unique)}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(unique, torrentByHash, scope)
 			})
 		}
 		for targetID, hashes := range existsByTarget {
-			uniqueHashes := dedupeHashes(hashes)
-			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes), "alreadyOnTarget": true}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, scope)
+			unique := infohash.UniqueStrings(hashes)
+			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(unique), "alreadyOnTarget": true}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(unique, torrentByHash, scope)
 			})
 		}
 		for targetID, hashes := range failedByTarget {
-			uniqueHashes := dedupeHashes(hashes)
-			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes), "preflightFailed": true}, func() []ActivityRunTorrent {
-				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, scope)
+			unique := infohash.UniqueStrings(hashes)
+			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(unique), "preflightFailed": true}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(unique, torrentByHash, scope)
 			})
 		}
 	}
@@ -3498,22 +3500,6 @@ func collectManagedTagsForClientReset(rules []*models.Automation) []string {
 	}
 	sort.Strings(tags)
 	return tags
-}
-
-func dedupeHashes(hashes []string) []string {
-	seen := make(map[string]struct{})
-	result := make([]string, 0, len(hashes))
-	for _, hash := range hashes {
-		if hash == "" {
-			continue
-		}
-		if _, ok := seen[hash]; ok {
-			continue
-		}
-		seen[hash] = struct{}{}
-		result = append(result, hash)
-	}
-	return result
 }
 
 type pendingProgramExec struct {

@@ -2077,6 +2077,12 @@ paths:
       responses:
         '201':
           description: Torrent added successfully
+        '413':
+          description: The form has more than 1000 parts. Send at most 1000 files and fields per request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 
   /api/instances/{instanceID}/torrents/check-duplicates:
@@ -2638,6 +2644,8 @@ paths:
       description: >
         Streams a single file from the torrent's content on the local filesystem.
         Requires the instance to have local filesystem access enabled.
+        Refuses the config file, the database, and the SQLite sidecar files of the running qui,
+        also through a symlink or a hard link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -2653,7 +2661,7 @@ paths:
         '400':
           description: Invalid instance ID, hash, or file index
         '403':
-          description: Instance does not have local filesystem access
+          description: Instance does not have local filesystem access, or the file is a config or database file of the running qui
         '404':
           description: Torrent, file index, or file on disk not found
         '500':
@@ -5266,11 +5274,22 @@ paths:
         Accepts a plain `path` payload or native Sonarr, Radarr, Lidarr, or Readarr webhook payloads.
         qui accepts `eventType: test` payloads as a no-op health check. For real events,
         it extracts the path, matches it against enabled scan directories using longest-prefix matching,
-        and starts a scan rooted at the provided path subtree.
+        and starts a scan rooted at the provided path subtree. Two instances can have a directory with
+        the same path. `instanceId` picks the instance.
       security:
         - ApiKeyAuth: []
         - SessionAuth: []
         - ApiKeyQuery: []
+      parameters:
+        - in: query
+          name: instanceId
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: |
+            Match only the scan directories of this instance. A test payload with `instanceId`
+            passes only when the instance has an enabled scan directory.
       requestBody:
         required: true
         content:
@@ -5381,11 +5400,11 @@ paths:
         '204':
           description: Test webhook accepted; no scan started
         '400':
-          description: Invalid request body or no supported path found in payload
+          description: Invalid request body, no supported path found in payload, or `instanceId` is not a positive integer
         '404':
-          description: No enabled directory matched the provided path
+          description: No enabled directory matched the provided path, or the instance of `instanceId` has no such directory
         '409':
-          description: More than one enabled directory matches the path
+          description: More than one enabled directory matches the path. When they belong to different instances, the message lists the instance IDs, and `instanceId` picks one
         '500':
           description: Failed to start scan
 
@@ -5761,10 +5780,12 @@ paths:
                   type: array
                   items:
                     type: integer
-                  description: Specific indexers to search
-                disableTorznab:
-                  type: boolean
-                  description: Disable Torznab searches (Gazelle-only for OPS/RED torrents; other torrents will be skipped)
+                  description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+                gazelleSites:
+                  type: array
+                  items:
+                    type: string
+                  description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent
@@ -6198,10 +6219,11 @@ paths:
         Performs a stateless, advisory check with release data that autobrr already has. This endpoint never downloads the torrent file.
         A positive exact reported size can activate approved reported-size matching. A rounded size can pass only normal strict matching within tolerance. A zero or omitted size uses a narrow metadata-only preflight and grants no authority to add a torrent.
         The HTTP status describes whether the match is ready:
-        * `200 OK` – at least one matching torrent is fully downloaded and ready for cross-seeding
+        * `200 OK` – at least one matching torrent is fully downloaded and ready for cross-seeding, or the release is a season pack that qui can assemble from episodes that it holds
         * `202 Accepted` – matching torrents exist but the data is still downloading; retry `/check` until it returns `200` (ready) or `404`
         * `404 Not Found` – no matches exist (recommendation `skip`)
         When `instanceIds` is omitted or empty, qui searches every configured instance. Provide a subset of IDs to restrict the scan.
+        A season pack without a direct match is checked against the held episodes when season packs are enabled for the webhook and the Held titles experimental feature is ready. This check ignores `size`.
       parameters:
         - name: apikey
           in: query
@@ -6241,7 +6263,7 @@ paths:
                   description: Optional override for matching season packs vs episodes. Defaults to the Cross-Seed automation setting when omitted.
       responses:
         '200':
-          description: Webhook check completed successfully with one or more matches
+          description: Webhook check completed successfully with one or more matches, or with a season pack that qui can assemble
           content:
             application/json:
               schema:
@@ -6271,6 +6293,7 @@ paths:
       description: |
         Accepts a torrent file from autobrr and calculates its actual total size from the metainfo.
         When `torrentName` is present, qui repeats classification against live local sources and checks the downloaded metadata against the original announcement.
+        When no torrent matches, qui assembles a season pack from held episodes under the same conditions as the webhook check. Without `torrentName`, qui uses the name in the torrent. While a torrent that matches the release is still downloading, qui assembles nothing. An assembled pack gets the season pack category and tags from the settings, not `category`, `tags`, or `startPaused`. An assembly that fails on an instance is an entry in `results`.
         When `torrentName` is omitted, qui keeps the legacy strict apply behavior.
         When `instanceIds` is omitted or empty, qui attempts to inject the torrent into every configured instance that has a match.
       parameters:
@@ -7363,13 +7386,13 @@ paths:
           required: false
           schema:
             type: string
-          description: The comma-separated Torznab indexer IDs of the search. Empty means every enabled indexer.
+          description: The comma-separated Torznab indexer IDs of the search. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         - name: gazelleSites
           in: query
           required: false
           schema:
             type: string
-          description: The comma-separated RED/OPS sites of the search. Present and empty means none.
+          description: The comma-separated RED/OPS API hosts of the search. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         - name: findIndividualEpisodes
           in: query
           required: false
@@ -9946,7 +9969,8 @@ components:
         canCrossSeed:
           type: boolean
           description: >-
-            True only when at least one matching torrent is fully downloaded (progress 1.0).
+            True when at least one matching torrent is fully downloaded (progress 1.0), or when
+            qui can assemble the season pack from episodes that it holds (seasonPack is present).
             Pending-only matches return HTTP 202 with recommendation "download" while
             canCrossSeed remains false so clients rely on status and progress.
         matches:
@@ -9956,7 +9980,33 @@ components:
         recommendation:
           type: string
           enum: ["download", "skip"]
-          description: Recommendation - "download" if matches were found (ready or pending) or "skip" if no matches
+          description: Recommendation - "download" if matches were found (ready or pending) or if the season pack can be assembled, or "skip" otherwise
+        seasonPack:
+          $ref: '#/components/schemas/CrossSeedWebhookSeasonPack'
+
+    CrossSeedWebhookSeasonPack:
+      type: object
+      description: >-
+        Present only when no torrent matches the release directly and qui can assemble the season
+        pack from episodes that one instance holds.
+      required: [instanceId, matchedEpisodes, totalEpisodes, coverage, thresholdSkipped]
+      properties:
+        instanceId:
+          type: integer
+          description: Instance that holds the most episodes of the pack
+        matchedEpisodes:
+          type: integer
+          description: Number of episodes of the pack that the instance holds
+        totalEpisodes:
+          type: integer
+          description: Number of episodes in the season, or 0 when no metadata source knows it
+        coverage:
+          type: number
+          format: double
+          description: Matched episodes divided by total episodes, or 0 when the total is unknown
+        thresholdSkipped:
+          type: boolean
+          description: True when the episode total is unknown, so the coverage threshold was not applied
 
     PathMapping:
       type: object
@@ -11762,7 +11812,12 @@ components:
           type: array
           items:
             type: integer
-          description: Limit completion searches to these Torznab indexer IDs (empty means all)
+          description: The Torznab indexer IDs of the Site pick of completion searches. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick of completion searches, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         bypassTorznabCache:
           type: boolean
           default: false
@@ -11805,7 +11860,12 @@ components:
           type: array
           items:
             type: integer
-          description: Limit completion searches to these Torznab indexer IDs (empty means all)
+          description: The Torznab indexer IDs of the Site pick of completion searches. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick of completion searches, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         bypassTorznabCache:
           type: boolean
           default: false
@@ -12491,6 +12551,7 @@ components:
 
     CrossSeedSearchSettingsPatch:
       type: object
+      description: Each field left out keeps its value. A patch with indexerIds or gazelleSites replaces the whole Site pick, and a list left out of it becomes empty.
       properties:
         instanceId:
           type: integer
@@ -12517,9 +12578,15 @@ components:
           type: array
           items:
             type: integer
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         intervalSeconds:
           type: integer
-          description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
+          description: Wait between torrents. At least 5 seconds when the Site pick lists only RED/OPS sites, otherwise at least 60 seconds.
         cooldownMinutes:
           type: integer
         maxAddedAgeDays:
@@ -12528,9 +12595,6 @@ components:
           description: An indexer that already searched a torrent does not search it again after this many days. 0 disables this rule.
         skipIndividualEpisodes:
           type: boolean
-        torznabEnabled:
-          type: boolean
-          description: The Torznab switch of the Library card. With Torznab off, runs ask only RED/OPS.
         scheduleEnabled:
           type: boolean
           description: Turns the Library Scan schedule on. Off by default.
@@ -12575,9 +12639,15 @@ components:
           type: array
           items:
             type: integer
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         intervalSeconds:
           type: integer
-          description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
+          description: Wait between torrents. At least 5 seconds when the Site pick lists only RED/OPS sites, otherwise at least 60 seconds.
         cooldownMinutes:
           type: integer
         maxAddedAgeDays:
@@ -12586,9 +12656,6 @@ components:
           description: An indexer that already searched a torrent does not search it again after this many days. 0 disables this rule.
         skipIndividualEpisodes:
           type: boolean
-        torznabEnabled:
-          type: boolean
-          description: The Torznab switch of the Library card. With Torznab off, runs ask only RED/OPS.
         scheduleEnabled:
           type: boolean
           description: Turns the Library Scan schedule on. Off by default.
@@ -12946,11 +13013,12 @@ components:
           minimum: 1
         indexer_ids:
           type: array
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
           items:
             type: integer
         gazelle_sites:
           type: array
-          description: API hosts of the RED/OPS sites to ask. Absent means every site. A list with no indexer_ids asks no Torznab indexer.
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
           items:
             type: string
 
@@ -13937,6 +14005,13 @@ components:
           type: array
           items:
             type: string
+        title_seasons:
+          type: object
+          description: The titles that Sonarr gives only to some seasons, keyed by the lower-case title, with the seasons that each one names. An empty list means that the title names no season.
+          additionalProperties:
+            type: array
+            items:
+              type: integer
         has_titles:
           type: boolean
         episode_map:

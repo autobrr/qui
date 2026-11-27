@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/logbudget"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func setupCompletionStoreForQueueTests(t *testing.T) *models.InstanceCrossSeedCompletionStore {
@@ -48,6 +50,7 @@ func setupCompletionStoreForQueueTests(t *testing.T) *models.InstanceCrossSeedCo
 			exclude_categories_json TEXT NOT NULL,
 			exclude_tags_json TEXT NOT NULL,
 			indexer_ids_json TEXT NOT NULL,
+			gazelle_sites_json TEXT NOT NULL DEFAULT '[]',
 			bypass_torznab_cache INTEGER NOT NULL DEFAULT 0,
 			completion_delay_seconds INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL
@@ -75,9 +78,7 @@ type completionPollingSyncMock struct {
 
 func newCompletionPollingSyncMock(sequences map[string][]qbt.Torrent) *completionPollingSyncMock {
 	normalized := make(map[string][]qbt.Torrent, len(sequences))
-	for hash, sequence := range sequences {
-		normalized[normalizeHash(hash)] = sequence
-	}
+	maps.Copy(normalized, sequences)
 
 	return &completionPollingSyncMock{
 		sequences: normalized,
@@ -90,7 +91,7 @@ func (m *completionPollingSyncMock) GetTorrentRefs(_ context.Context, _ int, fil
 		return nil, nil
 	}
 
-	hash := normalizeHash(filter.Hashes[0])
+	hash := filter.Hashes[0].String()
 	if m.lookups != nil {
 		m.lookups <- hash
 	}
@@ -117,7 +118,7 @@ func (m *completionPollingSyncMock) hitCount(hash string) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return m.hits[normalizeHash(hash)]
+	return m.hits[hash]
 }
 
 func (m *completionPollingSyncMock) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
@@ -128,7 +129,7 @@ func (*completionPollingSyncMock) ExportTorrent(context.Context, int, string) ([
 	return nil, "", "", nil
 }
 
-func (*completionPollingSyncMock) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*completionPollingSyncMock) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

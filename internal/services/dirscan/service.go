@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Config struct {
@@ -73,8 +74,9 @@ type Service struct {
 	searcher *Searcher
 	injector *Injector
 
-	directoryMu map[directoryMuKey]*sync.Mutex
-	mu          sync.Mutex
+	directoryMu      map[directoryMuKey]*sync.Mutex
+	directoryWriteMu sync.Mutex
+	mu               sync.Mutex
 
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
@@ -98,7 +100,7 @@ type Service struct {
 
 type syncManagerTorrentChecker struct{ sm *qbittorrent.SyncManager }
 
-func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if c == nil || c.sm == nil {
 		return nil, false, nil
 	}
@@ -1893,7 +1895,7 @@ func (s *Service) tryMatchAndInject(
 		return candidateReport{event: candidateRejected}
 	}
 
-	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, parsed.InfoHash, parsed.InfoHashV2)
+	check, refusal := s.adder.Check(ctx, dir.TargetInstanceID, crossseed.AddFacts{}, infohash.ParseAll([]string{parsed.InfoHash, parsed.InfoHashV2})...)
 	if refusal != nil {
 		candidate := matchedCandidate(candidateRefused, refusal.Class(), parsed, matchResult, result)
 		switch candidate.class {
@@ -2782,6 +2784,11 @@ func (s *Service) ListDirectories(ctx context.Context) ([]*models.DirScanDirecto
 }
 
 func (s *Service) CreateDirectory(ctx context.Context, dir *models.DirScanDirectory) (*models.DirScanDirectory, error) {
+	s.directoryWriteMu.Lock()
+	defer s.directoryWriteMu.Unlock()
+	if err := s.ensureUniqueDirectoryPath(ctx, dir); err != nil {
+		return nil, fmt.Errorf("create directory: %w", err)
+	}
 	created, err := s.store.CreateDirectory(ctx, dir)
 	if err != nil {
 		return nil, fmt.Errorf("create directory: %w", err)
@@ -2798,6 +2805,24 @@ func (s *Service) GetDirectory(ctx context.Context, id int) (*models.DirScanDire
 }
 
 func (s *Service) UpdateDirectory(ctx context.Context, id int, params *models.DirScanDirectoryUpdateParams) (*models.DirScanDirectory, error) {
+	s.directoryWriteMu.Lock()
+	defer s.directoryWriteMu.Unlock()
+	if params != nil && (params.Path != nil || params.TargetInstanceID != nil) {
+		existing, err := s.store.GetDirectory(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("get directory: %w", err)
+		}
+		candidate := &models.DirScanDirectory{ID: id, Path: existing.Path, TargetInstanceID: existing.TargetInstanceID}
+		if params.Path != nil {
+			candidate.Path = *params.Path
+		}
+		if params.TargetInstanceID != nil {
+			candidate.TargetInstanceID = *params.TargetInstanceID
+		}
+		if err := s.ensureUniqueDirectoryPath(ctx, candidate); err != nil {
+			return nil, fmt.Errorf("update directory: %w", err)
+		}
+	}
 	updated, err := s.store.UpdateDirectory(ctx, id, params)
 	if err != nil {
 		return nil, fmt.Errorf("update directory: %w", err)

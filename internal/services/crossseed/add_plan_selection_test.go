@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -36,7 +37,7 @@ func (*alignmentFailureSyncManager) GetTorrentRefs(_ context.Context, _ int, fil
 
 	torrents := make([]qbt.Torrent, 0, len(filter.Hashes))
 	for _, hash := range filter.Hashes {
-		torrents = append(torrents, qbt.Torrent{Hash: hash, Progress: 1.0})
+		torrents = append(torrents, qbt.Torrent{Hash: hash.String(), Progress: 1.0})
 	}
 	return testTorrentRefs(torrents), nil
 }
@@ -44,7 +45,7 @@ func (*alignmentFailureSyncManager) GetTorrentRefs(_ context.Context, _ int, fil
 func (m *alignmentFailureSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, hash := range hashes {
-		key := normalizeHash(hash)
+		key := hash
 		if files, ok := m.files[key]; ok {
 			cp := make(qbt.TorrentFiles, len(files))
 			copy(cp, files)
@@ -58,12 +59,12 @@ func (*alignmentFailureSyncManager) ExportTorrent(context.Context, int, string) 
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*alignmentFailureSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*alignmentFailureSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
 func (m *alignmentFailureSyncManager) GetTorrentProperties(_ context.Context, _ int, hash string) (*qbt.TorrentProperties, error) {
-	if props, ok := m.props[normalizeHash(hash)]; ok {
+	if props, ok := m.props[hash]; ok {
 		cp := *props
 		return &cp, nil
 	}
@@ -130,7 +131,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureBeatsLinkFallbackRecheckSucce
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentName := "Incoming.Release"
 
 	sourceFiles := qbt.TorrentFiles{{Name: "Incoming.Release/movie.mkv", Size: 1024}}
@@ -138,11 +139,11 @@ func TestProcessCrossSeedCandidate_AlignmentFailureBeatsLinkFallbackRecheckSucce
 
 	sync := &alignmentFailureSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(matchedHash): candidateFiles,
-			normalizeHash(newHash):     sourceFiles,
+			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
-			normalizeHash(matchedHash): {SavePath: filepath.Join(t.TempDir(), "downloads")},
+			matchedHash: {SavePath: filepath.Join(t.TempDir(), "downloads")},
 		},
 	}
 
@@ -182,7 +183,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureBeatsLinkFallbackRecheckSucce
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, torrentName, &CrossSeedRequest{}, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "alignment_failed", result.Status)
 	require.Contains(t, result.Message, "alignment failed")
@@ -198,7 +199,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	torrentName := "Incoming.Release"
 
 	sourceFiles := qbt.TorrentFiles{{Name: "Incoming.Release/movie.mkv", Size: 1024}}
@@ -207,11 +208,11 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 
 	sync := &alignmentFailureSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(matchedHash): candidateFiles,
-			normalizeHash(newHash):     sourceFiles,
+			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
-			normalizeHash(matchedHash): {SavePath: filepath.Join(t.TempDir(), "downloads")},
+			matchedHash: {SavePath: filepath.Join(t.TempDir(), "downloads")},
 		},
 		bulkActionErr: pauseErr,
 	}
@@ -248,7 +249,7 @@ func TestProcessCrossSeedCandidate_AlignmentFailureReturnsPauseError(t *testing.
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil, nil)
 	require.False(t, result.Success)
 	require.Equal(t, "pause_failed", result.Status)
 	require.Contains(t, result.Message, "failed to pause torrent")

@@ -17,7 +17,7 @@ func (r *rig) requireNothingStarted(hash string) {
 	list, err := r.store.List(r.t.Context(), transfer.FilterAll, 10, 0)
 	require.NoError(r.t, err)
 	require.Empty(r.t, list.Rows, "the summary records no Transfer")
-	require.False(r.t, r.store.IsClaimed(r.source.ID, hash), "the summary claims no torrent")
+	require.False(r.t, r.store.IsClaimed(r.source.ID, mustParse(r.t, hash)), "the summary claims no torrent")
 	require.Zero(r.t, r.dst.Writes("torrents/add"))
 	require.Zero(r.t, r.src.Writes("torrents/add"))
 }
@@ -35,7 +35,7 @@ func TestSummaryShowsTheTransferThatStartWouldStart(t *testing.T) {
 	require.Equal(t, transfer.WaySFTP, summary.Way)
 	require.Equal(t, int64(70), summary.Bytes)
 	require.Len(t, summary.Members, 1)
-	require.Equal(t, s.hash, summary.Members[0].Hash)
+	require.Equal(t, s.hash, summary.Members[0].Hash.String())
 	require.True(t, summary.FreeKnown)
 	require.Positive(t, summary.Free)
 	require.False(t, summary.NoFileAccess)

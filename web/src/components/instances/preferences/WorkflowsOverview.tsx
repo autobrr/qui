@@ -86,7 +86,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Braces, Clock, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
 import { toast } from "sonner"
@@ -183,10 +183,10 @@ function getOutcomeBadgeText(event: AutomationActivity): string {
   const ns = "instances"
   if (event.outcome === "dry-run") return i18n.t(`${s}.dryRun`, { ns })
   if (event.outcome === "skipped") return i18n.t(`${s}.skipped`, { ns })
-  if (event.action === "external_program") return i18n.t(`${s}.${event.outcome === "success" ? "executed" : "failed"}`, { ns })
-  if (event.action === "exported_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "exported" : "failed"}`, { ns })
-  if (event.action === "transferred_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "transferStarted" : "failed"}`, { ns })
-  return i18n.t(`${s}.${event.outcome === "success" ? "removed" : "failed"}`, { ns })
+  if (event.action === "external_program") return i18n.t(`${s}.${event.outcome === "success" ? "executed" : "outcomeFailed"}`, { ns })
+  if (event.action === "exported_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "exported" : "outcomeFailed"}`, { ns })
+  if (event.action === "transferred_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "transferStarted" : "outcomeFailed"}`, { ns })
+  return i18n.t(`${s}.${event.outcome === "success" ? "removed" : "outcomeFailed"}`, { ns })
 }
 
 function sumRecordValues(values: Record<string, number> | undefined): number {
@@ -789,35 +789,35 @@ export function WorkflowsOverview() {
     }
   }
 
-  const outcomeClasses: Record<AutomationActivity["outcome"], string> = {
-    success: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-    failed: "bg-destructive/10 text-destructive border-destructive/30",
-    "dry-run": "bg-sky-500/10 text-sky-500 border-sky-500/20",
-    skipped: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+  const outcomeBadges: Record<AutomationActivity["outcome"], Pick<ComponentProps<typeof Badge>, "variant" | "className">> = {
+    success: { variant: "success" },
+    failed: { variant: "outline", className: "bg-destructive/10 text-destructive border-destructive/30" },
+    "dry-run": { variant: "info" },
+    skipped: { variant: "warning" },
   }
 
   const actionClasses: Record<AutomationActivity["action"], string> = {
-    deleted_ratio: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    deleted_seeding: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-    deleted_unregistered: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-    deleted_condition: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
+    deleted_ratio: "bg-chart-5/10 border-chart-5/20",
+    deleted_seeding: "bg-chart-5/10 border-chart-5/20",
+    deleted_unregistered: "bg-chart-5/10 border-chart-5/20",
+    deleted_condition: "bg-chart-5/10 border-chart-5/20",
     delete_failed: "bg-destructive/10 text-destructive border-destructive/30",
-    limit_failed: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-    tags_changed: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
-    category_changed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-    speed_limits_changed: "bg-sky-500/10 text-sky-500 border-sky-500/20",
-    share_limits_changed: "bg-violet-500/10 text-violet-500 border-violet-500/20",
-    paused: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-    resumed: "bg-lime-500/10 text-lime-500 border-lime-500/20",
-    rechecked: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-    reannounced: "bg-fuchsia-500/10 text-fuchsia-500 border-fuchsia-500/20",
-    moved: "bg-green-500/10 text-green-500 border-green-500/20",
-    external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
-    auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
-    exported_to_instance: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    transferred_to_instance: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
-    dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
-    rule_skipped: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    limit_failed: "bg-warning/10 text-warning border-warning/20",
+    tags_changed: "bg-chart-3/10 border-chart-3/20",
+    category_changed: "bg-chart-3/10 border-chart-3/20",
+    speed_limits_changed: "bg-chart-3/10 border-chart-3/20",
+    share_limits_changed: "bg-chart-3/10 border-chart-3/20",
+    paused: "bg-chart-4/10 border-chart-4/20",
+    resumed: "bg-chart-4/10 border-chart-4/20",
+    rechecked: "bg-chart-4/10 border-chart-4/20",
+    reannounced: "bg-chart-4/10 border-chart-4/20",
+    moved: "bg-chart-2/10 border-chart-2/20",
+    external_program: "bg-chart-1/10 border-chart-1/20",
+    auto_managed: "bg-chart-3/10 border-chart-3/20",
+    exported_to_instance: "bg-chart-2/10 border-chart-2/20",
+    transferred_to_instance: "bg-chart-2/10 border-chart-2/20",
+    dry_run_no_match: "bg-muted text-muted-foreground border-muted-foreground/30",
+    rule_skipped: "bg-warning/10 text-warning border-warning/20",
   }
 
   const openCreateDialog = (instanceId: number) => {
@@ -905,20 +905,17 @@ export function WorkflowsOverview() {
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="font-medium truncate">{instance.name}</span>
                       {rules.length > 0 && (
-                        <Badge variant="outline" className={cn(
-                          "text-xs",
-                          enabledRulesCount > 0 && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                        )}>
+                        <Badge variant={enabledRulesCount > 0 ? "success" : "outline"}>
                           {t("preferences.workflowsOverview.activeCount", { enabled: enabledRulesCount, total: rules.length })}
                         </Badge>
                       )}
                       {activityStats.deletionsToday > 0 && (
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                        <Badge variant="success">
                           {t("preferences.workflowsOverview.today", { count: activityStats.deletionsToday })}
                         </Badge>
                       )}
                       {activityStats.failedToday > 0 && (
-                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                        <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
                           {t("preferences.workflowsOverview.failed", { count: activityStats.failedToday })}
                         </Badge>
                       )}
@@ -1266,7 +1263,7 @@ export function WorkflowsOverview() {
                                         <Badge
                                           variant="outline"
                                           className={cn(
-                                            "text-[10px] px-1.5 py-0 h-5 shrink-0",
+                                            "text-10 px-1.5 py-0 h-5 shrink-0",
                                             actionClasses[event.action]
                                           )}
                                         >
@@ -1274,10 +1271,10 @@ export function WorkflowsOverview() {
                                         </Badge>
                                         {(!runSummaryActions.has(event.action) || event.outcome === "dry-run") && (
                                           <Badge
-                                            variant="outline"
+                                            variant={outcomeBadges[event.outcome].variant}
                                             className={cn(
-                                              "text-[10px] px-1.5 py-0 h-5 shrink-0",
-                                              outcomeClasses[event.outcome]
+                                              "text-10 px-1.5 py-0 h-5 shrink-0",
+                                              outcomeBadges[event.outcome].className
                                             )}
                                           >
                                             {getOutcomeBadgeText(event)}
@@ -1363,7 +1360,7 @@ export function WorkflowsOverview() {
                                         {event.details?.filesKept !== undefined && (() => {
                                           const { filesKept, deleteMode } = event.details
                                           let label: string
-                                          const badgeClassName = "text-[10px] px-1.5 py-0 h-5"
+                                          const badgeClassName = "text-10 px-1.5 py-0 h-5"
 
                                           if (deleteMode === "delete") {
                                             label = t("preferences.workflowsOverview.torrentOnly")
@@ -1392,12 +1389,12 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {addedTags.map(([tag, count]) => (
-                                                <Badge key={`add-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                <Badge key={`add-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                                                   +{tag} ({count})
                                                 </Badge>
                                               ))}
                                               {removedTags.map(([tag, count]) => (
-                                                <Badge key={`rm-${tag}`} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-red-500/10 text-red-500 border-red-500/20">
+                                                <Badge key={`rm-${tag}`} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-5/10 border-chart-5/20">
                                                   -{tag} ({count})
                                                 </Badge>
                                               ))}
@@ -1410,7 +1407,7 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {categories.map(([category, count]) => (
-                                                <Badge key={category} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                                                <Badge key={category} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                                                   {category} ({count})
                                                 </Badge>
                                               ))}
@@ -1429,7 +1426,7 @@ export function WorkflowsOverview() {
                                                   ? t("preferences.workflowsOverview.unlimited")
                                                   : formatSpeedWithUnit(numKiB * 1024, "bytes")
                                                 return (
-                                                  <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-sky-500/10 text-sky-500 border-sky-500/20">
+                                                  <Badge key={key} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                                                     {type === "upload" ? "↑" : "↓"} {label} ({count})
                                                   </Badge>
                                                 )
@@ -1451,7 +1448,7 @@ export function WorkflowsOverview() {
                                                   parts.push(`${hours}h`)
                                                 }
                                                 return (
-                                                  <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-violet-500/10 text-violet-500 border-violet-500/20">
+                                                  <Badge key={key} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-3/10 border-chart-3/20">
                                                     {parts.join(" / ") || t("preferences.workflowsOverview.limit")} ({count})
                                                   </Badge>
                                                 )
@@ -1470,7 +1467,7 @@ export function WorkflowsOverview() {
                                           return (
                                             <div className="flex flex-wrap gap-1.5">
                                               {paths.map(([path, count]) => (
-                                                <Badge key={path} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-green-500/10 text-green-500 border-green-500/20">
+                                                <Badge key={path} variant="outline" className="text-10 px-1.5 py-0 h-5 bg-chart-2/10 border-chart-2/20">
                                                   {path} ({count})
                                                 </Badge>
                                               ))}
@@ -1551,7 +1548,7 @@ export function WorkflowsOverview() {
                   setDeleteConfirm(null)
                 }
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("preferences.workflowsOverview.deleteDialog.delete")}
             </AlertDialogAction>
@@ -1825,13 +1822,13 @@ function RulePreview({
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         {isAllTrackers ? (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 cursor-default">
             {t("preferences.workflows.allTrackers")}
           </Badge>
         ) : trackers.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-help">
+              <Badge variant="outline" className="text-10 px-1.5 h-5 cursor-help">
                 {t("preferences.workflowsOverview.trackers", { count: trackers.length })}
               </Badge>
             </TooltipTrigger>
@@ -1841,84 +1838,84 @@ function RulePreview({
           </Tooltip>
         )}
         {!hasAnyCondition && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 cursor-default">
             {t("preferences.workflowsOverview.allTorrents")}
           </Badge>
         )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.uploadKiB !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowUp className="h-3 w-3" />
             {formatSpeedLimitCompact(rule.conditions.speedLimits.uploadKiB)}
           </Badge>
         )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.downloadKiB !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <ArrowDown className="h-3 w-3" />
             {formatSpeedLimitCompact(rule.conditions.speedLimits.downloadKiB)}
           </Badge>
         )}
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.ratioLimit !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Scale className="h-3 w-3" />
             {formatShareLimit(rule.conditions.shareLimits.ratioLimit, true)}
           </Badge>
         )}
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.seedingTimeMinutes !== undefined && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Clock className="h-3 w-3" />
             {formatShareLimit(rule.conditions.shareLimits.seedingTimeMinutes, false)}{rule.conditions.shareLimits.seedingTimeMinutes >= 0 ? t("preferences.workflows.minuteSuffix") : ""}
           </Badge>
         )}
         {rule.conditions?.pause?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Pause className="h-3 w-3" />
             {t("preferences.workflows.pause")}
           </Badge>
         )}
         {rule.conditions?.resume?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Play className="h-3 w-3" />
             {t("preferences.workflowsOverview.resume")}
           </Badge>
         )}
         {rule.conditions?.recheck?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <RefreshCcw className="h-3 w-3" />
             {t("preferences.workflows.recheck")}
           </Badge>
         )}
         {rule.conditions?.reannounce?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <RefreshCcw className="h-3 w-3" />
             {t("preferences.workflows.reannounce")}
           </Badge>
         )}
         {rule.conditions?.delete?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
             {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? t("preferences.workflowsOverview.xsSafe"): rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? t("preferences.workflowsOverview.plusXs"): rule.conditions.delete.mode === "deleteWithFiles"? t("preferences.workflowsOverview.plusFiles"): ""}
           </Badge>
         )}
         {tagActions.some((action) => action.enabled) && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Tag className="h-3 w-3" />
             {t("preferences.workflowsOverview.tagActions", { count: tagActions.length })}
           </Badge>
         )}
         {rule.conditions?.category?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-emerald-600 border-emerald-600/50">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default bg-chart-3/10 border-chart-3/50">
             <Folder className="h-3 w-3" />
             {rule.conditions.category.category || t("preferences.workflowDialog.uncategorized")}
           </Badge>
         )}
         {rule.conditions?.move?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Move className="h-3 w-3" />
             {rule.conditions.move.path}
           </Badge>
         )}
         {rule.conditions?.externalProgram?.enabled && (
-          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+          <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default">
             <Terminal className="h-3 w-3" />
             {t("preferences.workflowsOverview.program")}
           </Badge>

@@ -5,6 +5,7 @@
 
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
+import { GAZELLE_SITES_KEY } from "@/lib/site-pick"
 import type { Category, CrossSeedAutomationSettingsPatch } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useMemo } from "react"
@@ -54,6 +55,7 @@ export function usePatchCrossSeedSettings() {
       }
       queryClient.setQueryData(CROSS_SEED_SETTINGS_KEY, data)
       void queryClient.refetchQueries({ queryKey: CROSS_SEED_STATUS_KEY })
+      void queryClient.invalidateQueries({ queryKey: GAZELLE_SITES_KEY })
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -80,14 +82,6 @@ export function useActiveInstances() {
   )
   const activeInstanceIds = useMemo(() => activeInstances.map(instance => instance.id), [activeInstances])
   return { instances, activeInstances, activeInstanceIds }
-}
-
-export function useEnabledIndexers() {
-  const { data: indexers } = useQuery({
-    queryKey: ["torznab", "indexers"],
-    queryFn: () => api.listTorznabIndexers(),
-  })
-  return useMemo(() => (indexers ?? []).filter(indexer => indexer.enabled), [indexers])
 }
 
 type AggregatedInstanceMetadata = { categories: Record<string, Category>; tags: string[] }

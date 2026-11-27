@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type stepRun struct {
@@ -419,7 +420,7 @@ func flattenHashes[K comparable](byTarget map[K][]string) (unique []string, writ
 	for _, hashes := range byTarget {
 		all = append(all, hashes...)
 	}
-	return dedupeHashes(all), len(all)
+	return infohash.UniqueStrings(all), len(all)
 }
 
 func countByTarget(byTarget map[string][]string) map[string]int {

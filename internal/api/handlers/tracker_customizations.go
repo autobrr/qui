@@ -70,7 +70,7 @@ func (h *TrackerCustomizationHandler) List(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, customizations)
+	RespondJSON(w, r, http.StatusOK, customizations)
 }
 
 func (h *TrackerCustomizationHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +99,7 @@ func (h *TrackerCustomizationHandler) Create(w http.ResponseWriter, r *http.Requ
 
 	h.invokeMutationHook("create", customization.ID)
 
-	RespondJSON(w, http.StatusCreated, customization)
+	RespondJSON(w, r, http.StatusCreated, customization)
 }
 
 func (h *TrackerCustomizationHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +139,7 @@ func (h *TrackerCustomizationHandler) Update(w http.ResponseWriter, r *http.Requ
 
 	h.invokeMutationHook("update", id)
 
-	RespondJSON(w, http.StatusOK, customization)
+	RespondJSON(w, r, http.StatusOK, customization)
 }
 
 func (h *TrackerCustomizationHandler) Delete(w http.ResponseWriter, r *http.Request) {

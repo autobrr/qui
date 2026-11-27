@@ -45,6 +45,7 @@ const (
 type ExternalIDsResult struct {
 	IDs             *models.ExternalIDs `json:"ids,omitempty"`
 	Titles          []string            `json:"titles,omitempty"`
+	TitleSeasons    TitleSeasons        `json:"-"`
 	TitlesKnown     bool                `json:"-"`
 	EpisodeMap      *models.EpisodeMap  `json:"episode_map,omitempty"`
 	EpisodeMapKnown bool                `json:"-"`
@@ -69,6 +70,8 @@ type Service struct {
 
 	cleanupMu        sync.Mutex
 	nextCacheCleanup time.Time
+
+	instanceChanges
 }
 
 type askedInstance struct {
@@ -173,7 +176,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 	if err != nil || cacheEntry == nil {
 		return nil, nil //nolint:nilerr // cache read errors are logged above and treated as a cache miss
 	}
-	mayBePartial := time.Until(cacheEntry.ExpiresAt) <= incompleteCacheTTL
+	incomplete := cachedAsIncomplete(cacheEntry)
 	if cacheEntry.IsNegative {
 		log.Trace().
 			Str("title", title).
@@ -181,7 +184,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 			Msg("[ARR-LOOKUP] Cache hit (negative)")
 		return &ExternalIDsResult{
 			IDs:           nil,
-			Incomplete:    mayBePartial,
+			Incomplete:    incomplete,
 			FromCache:     true,
 			ArrInstanceID: cacheEntry.ArrInstanceID,
 			ContentType:   contentType,
@@ -203,10 +206,11 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 	return &ExternalIDsResult{
 		IDs:             &cacheEntry.ExternalIDs,
 		Titles:          cacheEntry.Titles,
+		TitleSeasons:    cacheEntry.TitleSeasons,
 		TitlesKnown:     cacheEntry.HasTitles,
 		EpisodeMap:      cacheEntry.EpisodeMap,
 		EpisodeMapKnown: cacheEntry.HasEpisodeMap,
-		Incomplete:      mayBePartial,
+		Incomplete:      incomplete,
 		FromCache:       true,
 		ArrInstanceID:   cacheEntry.ArrInstanceID,
 		ContentType:     contentType,
@@ -250,7 +254,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			lookupResult, lookupErr := a.client.LookupByTerm(ctx, lookupTerm, lookupYear)
 			if lookupErr != nil {
 				incomplete = true
-				log.Debug().Err(lookupErr).
+				log.Trace().Err(lookupErr).
 					Int("instanceId", a.instance.ID).
 					Str("instanceName", a.instance.Name).
 					Str("term", lookupTerm).
@@ -312,6 +316,10 @@ func parseWithinShare(ctx context.Context, client *Client, title string, catalog
 	return client.ParseTitleLookupResult(ctx, title)
 }
 
+func cachedAsIncomplete(entry *models.ArrIDCacheEntry) bool {
+	return entry.ExpiresAt.Sub(entry.CachedAt) < 2*incompleteCacheTTL
+}
+
 func cacheTTL(ttl time.Duration, incomplete bool) time.Duration {
 	if incomplete {
 		return min(ttl, incompleteCacheTTL)
@@ -324,7 +332,7 @@ func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title stri
 	titles := append([]string{}, result.Titles...)
 	writeCtx, cancel := detachedCacheWriteContext(ctx)
 	defer cancel()
-	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, result.EpisodeMap, episodeMapKnown, false, cacheTTL(s.positiveTTL, result.Incomplete)); err != nil {
+	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, result.TitleSeasons, result.EpisodeMap, episodeMapKnown, false, cacheTTL(s.positiveTTL, result.Incomplete)); err != nil {
 		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
 	}
 
@@ -345,6 +353,7 @@ func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title stri
 	return &ExternalIDsResult{
 		IDs:             result.IDs,
 		Titles:          result.Titles,
+		TitleSeasons:    result.TitleSeasons,
 		TitlesKnown:     true,
 		EpisodeMap:      result.EpisodeMap,
 		EpisodeMapKnown: episodeMapKnown,

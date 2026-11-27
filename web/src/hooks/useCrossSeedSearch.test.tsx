@@ -235,7 +235,7 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
     expect(mockedApi.searchCrossSeedTorrent).toHaveBeenCalledTimes(1)
-    expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]?.indexerIds).toBeUndefined()
+    expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]).toMatchObject({ indexerIds: [], gazelleSites: [red.site] })
   })
 
   it("tells the dialog that RED/OPS is on and no site has an API key", async () => {
@@ -1054,6 +1054,45 @@ describe("useCrossSeedSearch", () => {
     expect(mockedApi.searchCrossSeedTorrent).not.toHaveBeenCalled()
   })
 
+  it("asks every site when the user picks all before the Torznab indexers load", async () => {
+    mockedApi.listTorznabIndexers.mockReturnValue(new Promise(() => {}))
+    mockedApi.getCrossSeedSettings.mockResolvedValue({ findIndividualEpisodes: false, gazelleEnabled: true } as never)
+    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }]
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockResolvedValue({ name: "t", hash: "hash-loading", gazellePlan: plan } as never)
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-loading" }))
+      await Promise.resolve()
+    })
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]).toMatchObject({ indexerIds: [], gazelleSites: [] })
+  })
+
+  it("asks every site again when a search finishes before the analysis of the torrent", async () => {
+    mockedApi.getCrossSeedSettings.mockResolvedValue({ findIndividualEpisodes: false, gazelleEnabled: true } as never)
+    mockedApi.analyzeTorrentForCrossSeedSearch.mockReturnValue(new Promise(() => {}))
+    const { result } = await renderSettled()
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(makeTorrent({ progress: 1, hash: "hash-slow-analysis" }))
+      await Promise.resolve()
+    })
+    for (let run = 0; run < 2; run++) {
+      await act(async () => {
+        ;(dialogProps(result).onScopeSearch as () => void)()
+        await Promise.resolve()
+      })
+    }
+
+    expect(mockedApi.searchCrossSeedTorrent).toHaveBeenCalledTimes(2)
+    expect(mockedApi.searchCrossSeedTorrent.mock.calls[1][2]).toMatchObject({ indexerIds: [], gazelleSites: [] })
+  })
+
   describe("RED/OPS entries", () => {
     const plan: CrossSeedGazelleLookup[] = [
       { ...red, status: "not_asked", reason: "source_site", replacedIndexerIds: [7] },
@@ -1113,7 +1152,7 @@ describe("useCrossSeedSearch", () => {
 
       const options = mockedApi.searchCrossSeedTorrent.mock.calls[0][2]
       expect(options?.indexerIds).toEqual([1])
-      expect(options?.gazelleSites).toBeUndefined()
+      expect(options?.gazelleSites).toEqual(plan.map(entry => entry.site))
     })
 
     it("picks the rest when the user takes one entry out, and all again when the user puts it back", async () => {
@@ -1190,7 +1229,7 @@ describe("useCrossSeedSearch", () => {
     it("asks only RED/OPS when the user picks only a RED/OPS entry", async () => {
       const options = await searchCustom(await openWithPlan(), [ops.indexerId])
 
-      expect(options?.indexerIds).toBeUndefined()
+      expect(options?.indexerIds).toEqual([])
       expect(options?.gazelleSites).toEqual(["orpheus.network"])
     })
 

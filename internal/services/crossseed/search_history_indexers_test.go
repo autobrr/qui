@@ -86,6 +86,7 @@ func TestStaleSearchWork(t *testing.T) {
 	expiredHash := "cccccccccccccccccccccccccccccccccccccccc"
 	partialHash := "dddddddddddddddddddddddddddddddddddddddd"
 	virginHash := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	torznabPickHash := "ffffffffffffffffffffffffffffffffffffffff"
 
 	now := time.Now().UTC()
 	stale := now.Add(-24 * time.Hour)
@@ -95,6 +96,7 @@ func TestStaleSearchWork(t *testing.T) {
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, expiredHash, env.indexerIDs, stale))
 	require.NoError(t, env.store.UpsertSearchHistory(ctx, env.instanceID, expiredHash, stale))
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, partialHash, env.indexerIDs[:1], now))
+	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, torznabPickHash, env.indexerIDs, now))
 
 	gazelleClients := &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"redacted.sh": nil}}
 
@@ -108,6 +110,7 @@ func TestStaleSearchWork(t *testing.T) {
 		opts         SearchRunOptions
 		gazelle      *gazelleClientSet
 		duplicates   []string
+		gazelleOnly  bool
 		wantIndexers []int
 		wantGazelle  bool
 	}{
@@ -174,13 +177,23 @@ func TestStaleSearchWork(t *testing.T) {
 			wantGazelle:  true,
 		},
 		{
-			name:         "disable torznab leaves only gazelle work",
+			name:         "a RED/OPS-only run leaves only gazelle work",
 			hash:         expiredHash,
 			addedOn:      recentAdded,
-			opts:         SearchRunOptions{CooldownMinutes: 720, DisableTorznab: true},
+			opts:         SearchRunOptions{CooldownMinutes: 720, SitePick: models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{"orpheus.network", "redacted.sh"}}},
+			gazelleOnly:  true,
 			gazelle:      gazelleClients,
 			wantIndexers: nil,
 			wantGazelle:  true,
+		},
+		{
+			name:         "a Torznab-only pick leaves out RED/OPS work",
+			hash:         torznabPickHash,
+			addedOn:      recentAdded,
+			opts:         SearchRunOptions{CooldownMinutes: 720, SitePick: models.SitePick{IndexerIDs: env.indexerIDs, GazelleSites: []string{}}},
+			gazelle:      gazelleClients,
+			wantIndexers: nil,
+			wantGazelle:  false,
 		},
 		{
 			name:         "a newer search of another copy counts",
@@ -208,9 +221,13 @@ func TestStaleSearchWork(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := tt.opts
 			opts.InstanceID = env.instanceID
+			resolved := env.indexerIDs
+			if tt.gazelleOnly {
+				resolved = nil
+			}
 			state := &searchRunState{
 				opts:                      opts,
-				resolvedTorznabIndexerIDs: env.indexerIDs,
+				resolvedTorznabIndexerIDs: resolved,
 				gazelleClients:            tt.gazelle,
 				duplicateHashes:           map[string][]string{tt.hash: tt.duplicates},
 			}

@@ -163,20 +163,20 @@ func TestRun_SkipWindowStopsASecondDelete(t *testing.T) {
 	}
 
 	run()
-	require.Equal(t, []string{"withmeta"}, deletedHashes(stub))
+	require.Equal(t, []string{withMetaHash}, deletedHashes(stub))
 
 	run()
-	require.Equal(t, []string{"withmeta"}, deletedHashes(stub), "the run inside the Skip window sent a second delete")
+	require.Equal(t, []string{withMetaHash}, deletedHashes(stub), "the run inside the Skip window sent a second delete")
 
-	svc.startSkipWindow(instanceID, []string{"withmeta"}, time.Now().Add(-svc.cfg.SkipWithin))
+	svc.startSkipWindow(instanceID, []string{withMetaHash}, time.Now().Add(-svc.cfg.SkipWithin))
 	run()
-	require.Equal(t, []string{"withmeta", "withmeta"}, deletedHashes(stub))
+	require.Equal(t, []string{withMetaHash, withMetaHash}, deletedHashes(stub))
 }
 
 func TestPreview_TorrentWithoutMetadataThatKeepsAManagedTagIsNoTagMatch(t *testing.T) {
 	const torrents = `{
-		"withmeta": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
-		"magnet":   {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false, "tags": "managed"}
+		"` + withMetaHash + `": {"name": "withmeta", "progress": 1, "state": "stalledUP", "save_path": "/data", "content_path": "/data/withmeta", "has_metadata": true, "private": false},
+		"` + magnetHash + `": {"name": "magnet", "progress": 0, "state": "metaDL", "save_path": "/data", "content_path": "/data/magnet", "has_metadata": false, "tags": "managed"}
 	}`
 	stub := newStubQbt(t, torrents)
 	stub.webAPIVersion = webAPIQbit52
@@ -189,5 +189,5 @@ func TestPreview_TorrentWithoutMetadataThatKeepsAManagedTagIsNoTagMatch(t *testi
 
 	require.NoError(t, err)
 	require.Equal(t, 1, preview.TotalMatches)
-	require.Equal(t, "withmeta", preview.Examples[0].Hash)
+	require.Equal(t, withMetaHash, preview.Examples[0].Hash)
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Config struct {
@@ -54,7 +55,6 @@ type Service struct {
 
 type helperTorrents interface {
 	IsHelper(instanceID int, hash string) bool
-	qbittorrent.HelperTorrents
 }
 
 type reannounceJob struct {
@@ -182,7 +182,7 @@ func (s *Service) Start(ctx context.Context) {
 	}()
 }
 
-func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes []string) []string {
+func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes []infohash.Hash) []infohash.Hash {
 	if s == nil || len(hashes) == 0 {
 		return nil
 	}
@@ -190,22 +190,30 @@ func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes 
 	if !settings.CanMatchTorrents() {
 		return nil
 	}
-	upperHashes := normalizeHashes(hashes)
-	torrents := s.lookupTorrents(ctx, instanceID, upperHashes)
-	var handled []string
-	for hash, torrent := range torrents {
-		if !s.torrentMeetsCriteria(*torrent, settings) {
+	torrents := s.lookupTorrents(ctx, instanceID, hashes)
+	queued := make(map[*qbt.Torrent]bool, len(torrents))
+	var handled []infohash.Hash
+	for i, torrent := range torrents {
+		if torrent == nil {
 			continue
 		}
-		if s.hasHealthyTracker(torrent.Trackers) {
-			continue
+		ok, decided := queued[torrent]
+		if !decided {
+			ok = s.requestReannounce(instanceID, torrent, settings)
+			queued[torrent] = ok
 		}
-		trackers := s.getProblematicTrackers(torrent.Trackers)
-		if s.enqueue(instanceID, hash, torrent.Name, trackers) {
-			handled = append(handled, hash)
+		if ok {
+			handled = append(handled, hashes[i])
 		}
 	}
 	return handled
+}
+
+func (s *Service) requestReannounce(instanceID int, torrent *qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
+	if !s.torrentMeetsCriteria(*torrent, settings) || s.hasHealthyTracker(torrent.Trackers) {
+		return false
+	}
+	return s.enqueue(instanceID, torrent.Hash, torrent.Name, s.getProblematicTrackers(torrent.Trackers))
 }
 
 func (s *Service) loop(ctx context.Context) {
@@ -296,7 +304,7 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 			continue
 		}
 		trackers := s.getProblematicTrackers(torrent.Trackers)
-		s.enqueue(instanceID, strings.ToUpper(torrent.Hash), torrent.Name, trackers)
+		s.enqueue(instanceID, torrent.Hash, torrent.Name, trackers)
 	}
 }
 
@@ -344,14 +352,13 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 			continue
 		}
 
-		hashUpper := strings.ToUpper(strings.TrimSpace(torrent.Hash))
-		if hashUpper == "" {
+		if torrent.Hash == "" {
 			continue
 		}
 
 		state := MonitoredTorrentStateWatching
 		if instJobs != nil {
-			if job, ok := instJobs[hashUpper]; ok {
+			if job, ok := instJobs[torrent.Hash]; ok {
 				if job.isRunning {
 					state = MonitoredTorrentStateReannouncing
 				} else if !job.lastCompleted.IsZero() && now.Sub(job.lastCompleted) < debounceWindow {
@@ -364,7 +371,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 
 		result = append(result, MonitoredTorrent{
 			InstanceID:        instanceID,
-			Hash:              hashUpper,
+			Hash:              torrent.Hash,
 			TorrentName:       torrent.Name,
 			Trackers:          trackers,
 			TimeActiveSeconds: torrent.TimeActive,
@@ -511,7 +518,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
 		return
 	}
-	torrent, ok, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
+	torrent, ok, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, infohash.ParseAll([]string{hash}))
 	if err != nil {
 		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load torrent: %v", err))
 		return
@@ -584,28 +591,21 @@ func (s *Service) baseContext() context.Context {
 	return s.baseCtx
 }
 
-func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []string) map[string]*qbt.Torrent {
-	result := make(map[string]*qbt.Torrent)
-	if len(hashes) == 0 {
-		return result
-	}
-	if s.syncManager == nil {
-		return result
+func (s *Service) lookupTorrents(ctx context.Context, instanceID int, hashes []infohash.Hash) []*qbt.Torrent {
+	if len(hashes) == 0 || s.syncManager == nil {
+		return nil
 	}
 	sync, err := s.syncManager.GetSyncOwner(ctx, instanceID)
 	if err != nil || sync == nil {
-		return result
+		return nil
 	}
-	snapshot := sync.Snapshot()
-	if snapshot == nil {
-		return result
-	}
-	for _, hash := range hashes {
-		if torrent, ok := snapshot.Torrent(hash); ok && !s.isHelper(instanceID, torrent.Hash) {
-			result[strings.ToUpper(torrent.Hash)] = torrent
+	torrents := qbittorrent.NewHashIndex(sync.Snapshot()).Torrents(hashes)
+	for i, torrent := range torrents {
+		if torrent != nil && s.isHelper(instanceID, torrent.Hash) {
+			torrents[i] = nil
 		}
 	}
-	return result
+	return torrents
 }
 
 func (s *Service) cachedTorrents(ctx context.Context, instanceID int) ([]*qbt.Torrent, error) {
@@ -617,7 +617,7 @@ func (s *Service) cachedTorrents(ctx context.Context, instanceID int) ([]*qbt.To
 	if snapshot == nil {
 		return nil, nil
 	}
-	return qbittorrent.WithoutHelpers(snapshot, s.helpers, instanceID), nil
+	return s.syncManager.ListSnapshot(instanceID, snapshot), nil
 }
 
 func (s *Service) getSettings(ctx context.Context, instanceID int) *models.InstanceReannounceSettings {
@@ -834,23 +834,6 @@ func splitTags(raw string) []string {
 	return cleaned
 }
 
-func normalizeHashes(hashes []string) []string {
-	result := make([]string, 0, len(hashes))
-	seen := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		norm := strings.ToUpper(strings.TrimSpace(hash))
-		if norm == "" {
-			continue
-		}
-		if _, exists := seen[norm]; exists {
-			continue
-		}
-		seen[norm] = struct{}{}
-		result = append(result, norm)
-	}
-	return result
-}
-
 func (s *Service) recordActivity(instanceID int, hash string, torrentName string, trackers string, outcome ActivityOutcome, reason string) {
 	if s == nil || instanceID == 0 {
 		return
@@ -874,7 +857,7 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 
 	event := ActivityEvent{
 		InstanceID:  instanceID,
-		Hash:        strings.ToUpper(strings.TrimSpace(hash)),
+		Hash:        strings.TrimSpace(hash),
 		TorrentName: torrentName,
 		Trackers:    strings.TrimSpace(trackers),
 		Outcome:     outcome,

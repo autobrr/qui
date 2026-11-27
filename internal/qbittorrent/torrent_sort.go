@@ -259,7 +259,7 @@ func (sm *SyncManager) trackerOrder(rows []*qbt.Torrent, desc bool, tie func(a, 
 	keys := make([]trackerSortKey, len(rows))
 	for i, torrent := range rows {
 		key := &keys[i]
-		key.hash = strings.ToLower(strings.TrimSpace(torrent.Hash))
+		key.hash = torrent.Hash
 
 		addCandidate := func(candidate string) {
 			candidate = strings.TrimSpace(candidate)

@@ -93,7 +93,7 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 		ProxyURL:     proxyURL,
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +125,7 @@ func (h *ClientAPIKeysHandler) ListClientAPIKeys(w http.ResponseWriter, r *http.
 		})
 	}
 
-	RespondJSON(w, http.StatusOK, enrichedKeys)
+	RespondJSON(w, r, http.StatusOK, enrichedKeys)
 }
 
 func (h *ClientAPIKeysHandler) DeleteClientAPIKey(w http.ResponseWriter, r *http.Request) {

@@ -31,6 +31,7 @@ type HeldRelease struct {
 
 type AlternateTitles struct {
 	Titles     []string
+	Seasons    map[string][]int
 	Requested  bool
 	Incomplete bool
 }
@@ -54,6 +55,12 @@ type heldTitle struct {
 	addedOn    int64
 	holders    int
 	alternates []string
+	seasons    map[string][]int
+}
+
+func (t *heldTitle) fits(key string, season int) bool {
+	seasons, scoped := t.seasons[key]
+	return !scoped || season <= 0 || slices.Contains(seasons, season)
 }
 
 func newAlternateTitleIndex(sources []AlternateTitleSource, busy func() bool) *alternateTitleIndex {
@@ -111,22 +118,31 @@ func (a *alternateTitleIndex) drop(title *heldTitle) {
 	}
 }
 
-func (a *alternateTitleIndex) of(title *heldTitle) []string {
+func (a *alternateTitleIndex) of(title *heldTitle, season int) []string {
 	if title == nil {
 		return nil
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return title.alternates
+	if len(title.seasons) == 0 {
+		return title.alternates
+	}
+	var alternates []string
+	for _, key := range title.alternates {
+		if title.fits(key, season) {
+			alternates = append(alternates, key)
+		}
+	}
+	return alternates
 }
 
-func (a *alternateTitleIndex) namedByAny(keys []string) []*heldTitle {
+func (a *alternateTitleIndex) namedByAny(keys []string, season int) []*heldTitle {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	var titles []*heldTitle
 	for _, key := range keys {
 		for _, title := range a.byTitle[key] {
-			if !slices.Contains(titles, title) {
+			if title.fits(key, season) && !slices.Contains(titles, title) {
 				titles = append(titles, title)
 			}
 		}
@@ -134,20 +150,54 @@ func (a *alternateTitleIndex) namedByAny(keys []string) []*heldTitle {
 	return titles
 }
 
-func (a *alternateTitleIndex) store(title *heldTitle, titles []string) {
+func (a *alternateTitleIndex) store(title *heldTitle, answer AlternateTitles) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if title.holders == 0 {
 		return
 	}
-	for _, alternate := range titles {
+	for _, alternate := range answer.Titles {
 		key := stringutils.NormalizeForMatching(alternate)
-		if key == "" || key == title.identity.key || slices.Contains(title.alternates, key) {
+		if key == "" || key == title.identity.key {
+			continue
+		}
+		seasons, scoped := answer.Seasons[key]
+		if slices.Contains(title.alternates, key) {
+			title.widenScope(key, seasons, scoped)
 			continue
 		}
 		title.alternates = append(title.alternates, key)
 		a.byTitle[key] = append(a.byTitle[key], title)
+		if scoped {
+			if title.seasons == nil {
+				title.seasons = map[string][]int{}
+			}
+			title.seasons[key] = slices.Clone(seasons)
+		}
 	}
+}
+
+func (t *heldTitle) widenScope(key string, seasons []int, scoped bool) {
+	known, wasScoped := t.seasons[key]
+	if !wasScoped {
+		return
+	}
+	if !scoped {
+		delete(t.seasons, key)
+		return
+	}
+	for _, season := range seasons {
+		if !slices.Contains(known, season) {
+			known = append(known, season)
+		}
+	}
+	t.seasons[key] = known
+}
+
+func (a *alternateTitleIndex) caughtUp(contentType string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !slices.ContainsFunc(a.queues, func(queue *alternateTitleQueue) bool { return queue.owesAnswer(contentType) })
 }
 
 func (a *alternateTitleIndex) wakeRun() {

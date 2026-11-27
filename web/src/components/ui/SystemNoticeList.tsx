@@ -60,7 +60,7 @@ function SystemNoticeRow({ notice, now, iconOnly }: { notice: SystemNotice; now:
           <TooltipTrigger
             openOnTap={false}
             className={cn(
-              "group flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm font-medium short:py-1 short:text-[13px]/5 text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+              "group flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm font-medium short:py-1 short:text-13/5 text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
               iconOnly && "overflow-hidden whitespace-nowrap"
             )}
           >

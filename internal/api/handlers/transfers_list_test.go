@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,13 +19,13 @@ import (
 func TestTheTransferListAnswersOnePage(t *testing.T) {
 	store, err := transfer.NewStore(t.Context(), testdb.NewMigratedSQLite(t, "transfer-list-page"))
 	require.NoError(t, err)
-	hashes := []string{"aaaa", "bbbb", "cccc"}
+	hashes := []string{strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)}
 	ids := make([]int64, 0, len(hashes))
 	for _, hash := range hashes {
 		record := &transfer.Record{
 			Kind: transfer.KindTransfer, State: transfer.StateWaiting, StartedBy: transfer.StartedByUser,
 			SourceInstanceID: 1, TargetInstanceID: 2, Size: 4 << 30,
-			Members: []transfer.Member{{Hash: hash, Name: "Name " + hash, SourceSavePath: "/src", TargetInstanceID: 2}},
+			Members: []transfer.Member{{Hash: heldHash(t, hash), Name: "Name " + hash, SourceSavePath: "/src", TargetInstanceID: 2}},
 		}
 		require.NoError(t, store.Create(t.Context(), record))
 		ids = append(ids, record.ID)

@@ -21,7 +21,7 @@ import { useQueueLimits } from "@/hooks/usePreferenceValues"
 import { api } from "@/lib/api"
 import { getMatchTypeLabel, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { DEFAULT_FILE_SORT } from "@/lib/file-tree"
-import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxRatio, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
+import { getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxRatio, getLinuxSavePath, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { matchPeerClient } from "@/lib/peer-client-icons"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -38,9 +38,10 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { scheduleTorrentListRefetches } from "./bulk-actions/bulk-action-requests"
+import { CategoryTagBadges } from "./details/CategoryTagBadges"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
 import { PeerClientIcon } from "./details/PeerClientIcon"
-import { MobileCategoryTagsRow, MobileDetailsHeader, MobileInfoBlock, MobileInfoGroup, MobileInfoRow, MobilePane, MobilePeerRow, MobileSectionTitle, MobileTrackerList, MobileWebSeedList } from "./details/MobileDetails"
+import { MobileDetailsHeader, MobileInfoBlock, MobileInfoGroup, MobileInfoRow, MobilePane, MobilePeerRow, MobileSectionTitle, MobileTrackerList, MobileWebSeedList } from "./details/MobileDetails"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
 import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
@@ -943,10 +944,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             ratio={incognitoMode ? getLinuxRatio(torrent.hash) : displayTorrent!.ratio}
             onBack={onClose}
           />
-          <MobileCategoryTagsRow
-            category={(incognitoMode ? getLinuxCategory(torrent.hash) : displayTorrent!.category) ?? ""}
-            tags={(incognitoMode ? getLinuxTags(torrent.hash) : displayTorrent!.tags) ?? ""}
-          />
+          <CategoryTagBadges torrent={displayTorrent!} className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-b px-4 py-2.5" />
 
           <TabsContent value="general" className={MOBILE_SECTION}>
             <MobilePane>
@@ -994,14 +992,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   <MobileInfoGroup title={t("generalTab.network")}>
                     <MobileInfoRow
                       label={t("detailsPanel.labels.downloadSpeed")}
-                      valueClassName="text-green-500"
+                      valueClassName="text-chart-text-2"
                       sub={`${t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit) })} · ${t("detailsPanel.labels.limit", { value: downloadLimitLabel })}`}
                     >
                       {formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}
                     </MobileInfoRow>
                     <MobileInfoRow
                       label={t("detailsPanel.labels.uploadSpeed")}
-                      valueClassName="text-blue-500"
+                      valueClassName="text-chart-text-3"
                       sub={`${t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit) })} · ${t("detailsPanel.labels.limit", { value: uploadLimitLabel })}`}
                     >
                       {formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}
@@ -1015,7 +1013,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       <MobileInfoRow label={t("detailsPanel.labels.priority")}>
                         {displayTorrent?.priority && displayTorrent.priority > 0 ? displayTorrent.priority : t("detailsPanel.values.normal")}
                         {(displayTorrent?.state === "queuedDL" || displayTorrent?.state === "queuedUP") && (
-                          <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
+                          <Badge variant="secondary" className="ml-2 h-5 px-1.5">
                             {t("detailsPanel.values.queued", { state: displayTorrent.state === "queuedDL" ? "DL" : "UP" })}
                           </Badge>
                         )}
@@ -1230,12 +1228,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex items-start gap-2">
                               <p className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-medium leading-snug">{breakableName(matchName)}</p>
-                              <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5 text-xs", status.className)}>{status.label}</Badge>
+                              <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5", status.className)}>{status.label}</Badge>
                             </div>
                             <p className="truncate text-xs text-muted-foreground">
                               {[match.instanceName, getMatchTypeLabel(match.matchType, t).label, incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname].filter(Boolean).join(" · ")}
                             </p>
-                            <p className={cn("text-xs tabular-nums", progressPercent === 100 ? "text-green-500" : "text-muted-foreground")}>
+                            <p className={cn("text-xs tabular-nums", progressPercent === 100 ? "text-success" : "text-muted-foreground")}>
                               {Math.floor(progressPercent * 10) / 10}% · {formatBytes(match.size)}
                             </p>
                           </div>

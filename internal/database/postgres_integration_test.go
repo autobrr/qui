@@ -20,6 +20,11 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 )
 
+const (
+	keepHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	dropHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
 func TestCleanupUnusedStringsPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -80,8 +85,8 @@ func TestMigratedSQLiteFilesmanagerCleanupPostgresIntegration(t *testing.T) {
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-name").Scan(&instanceNameID))
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-host").Scan(&hostID))
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-user").Scan(&usernameID))
-	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "keep-hash").Scan(&keepHashID))
-	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "drop-hash").Scan(&dropHashID))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", keepHash).Scan(&keepHashID))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", dropHash).Scan(&dropHashID))
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "file.mkv").Scan(&fileNameID))
 
 	_, err = conn.ExecContext(ctx, `
@@ -134,16 +139,16 @@ func TestMigratedSQLiteFilesmanagerCleanupPostgresIntegration(t *testing.T) {
 	})
 
 	repo := filesmanager.NewRepository(pgDB)
-	deleted, err := repo.DeleteCacheForRemovedTorrents(ctx, 1, []string{"keep-hash"})
+	deleted, err := repo.DeleteCacheForRemovedTorrents(ctx, 1, []string{keepHash})
 	require.NoError(t, err)
 	require.Equal(t, 1, deleted)
 
 	var count int
-	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_cache_view WHERE instance_id = ? AND torrent_hash = ?", 1, "keep-hash").Scan(&count))
+	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_cache_view WHERE instance_id = ? AND torrent_hash = ?", 1, keepHash).Scan(&count))
 	require.Equal(t, 1, count)
-	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_cache_view WHERE instance_id = ? AND torrent_hash = ?", 1, "drop-hash").Scan(&count))
+	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_cache_view WHERE instance_id = ? AND torrent_hash = ?", 1, dropHash).Scan(&count))
 	require.Zero(t, count)
-	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_sync_view WHERE instance_id = ? AND torrent_hash = ?", 1, "drop-hash").Scan(&count))
+	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_sync_view WHERE instance_id = ? AND torrent_hash = ?", 1, dropHash).Scan(&count))
 	require.Zero(t, count)
 }
 

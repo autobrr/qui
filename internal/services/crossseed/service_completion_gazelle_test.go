@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -92,7 +93,7 @@ func (m *completionGazelleSyncMock) GetTorrentRefs(_ context.Context, _ int, fil
 		return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 	}
 	for _, h := range filter.Hashes {
-		if normalizeHash(h) == normalizeHash(m.torrent.Hash) {
+		if h.Is(m.torrent.Hash) {
 			return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 		}
 	}
@@ -102,7 +103,7 @@ func (m *completionGazelleSyncMock) GetTorrentRefs(_ context.Context, _ int, fil
 func (m *completionGazelleSyncMock) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	out := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		out[normalizeHash(h)] = qbt.TorrentFiles{{Name: "01 - track.flac", Size: 123}}
+		out[h] = qbt.TorrentFiles{{Name: "01 - track.flac", Size: 123}}
 	}
 	return out, nil
 }
@@ -112,7 +113,7 @@ func (m *completionGazelleSyncMock) ExportTorrent(context.Context, int, string) 
 	return nil, "", "", nil
 }
 
-func (m *completionGazelleSyncMock) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (m *completionGazelleSyncMock) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -198,6 +199,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 			exclude_categories_json TEXT NOT NULL,
 			exclude_tags_json TEXT NOT NULL,
 			indexer_ids_json TEXT NOT NULL,
+			gazelle_sites_json TEXT NOT NULL DEFAULT '[]',
 			bypass_torznab_cache INTEGER NOT NULL DEFAULT 0,
 			completion_delay_seconds INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL

@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -29,17 +29,6 @@ type torrentAddedNotifier interface {
 type torrentNotificationSync interface {
 	GetTorrentRefsFresh(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	ExtractDomainFromURL(rawURL string) string
-}
-
-type helperTorrents interface {
-	IsHelper(instanceID int, hash string) bool
-}
-
-func notifyTorrentCompleted(ctx context.Context, syncManager torrentNotificationSync, notifier notifications.Notifier, helpers helperTorrents, instanceID int, torrent qbt.Torrent) {
-	if helpers.IsHelper(instanceID, torrent.Hash) {
-		return
-	}
-	notifier.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 }
 
 func buildTorrentCompletedEvent(syncManager torrentNotificationSync, instanceID int, torrent qbt.Torrent) notifications.Event {
@@ -78,8 +67,7 @@ func buildTorrentAddedEvent(syncManager torrentNotificationSync, instanceID int,
 	}
 }
 
-func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificationSync, notifier torrentAddedNotifier, helpers helperTorrents, instanceID int, torrents []*qbt.Torrent, delay time.Duration) {
-	torrents = slices.DeleteFunc(slices.Clone(torrents), func(t *qbt.Torrent) bool { return helpers.IsHelper(instanceID, t.Hash) })
+func notifyTorrentsAddedAfter(ctx context.Context, syncManager torrentNotificationSync, notifier torrentAddedNotifier, instanceID int, torrents []*qbt.Torrent, delay time.Duration) {
 	if notifier == nil || len(torrents) == 0 {
 		return
 	}
@@ -108,7 +96,7 @@ func refreshTorrentsForNotification(ctx context.Context, syncManager torrentNoti
 	refreshCtx, cancel := context.WithTimeout(ctx, torrentAddedRefreshTimeout)
 	defer cancel()
 
-	fresh, err := syncManager.GetTorrentRefsFresh(refreshCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+	fresh, err := syncManager.GetTorrentRefsFresh(refreshCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 	if err != nil {
 		log.Debug().
 			Err(err).

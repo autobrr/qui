@@ -86,7 +86,7 @@ func (s *Service) requestLocalReads(ctx context.Context, instanceID int, torrent
 	m := s.matcher()
 	var needed []localTorrent
 	for torrent := range torrents {
-		hash := normalizeHash(torrent.Hash)
+		hash := torrent.Hash
 		if hash == "" || !nameNeedsFiles(m.readName(torrent.Name).release) {
 			continue
 		}
@@ -261,7 +261,7 @@ func (memo *localReadMemo) store(instanceID int, torrents []localTorrent, reads 
 func (memo *localReadMemo) filesRead(instanceID int, torrent *qbt.Torrent) (namedRelease, bool) {
 	memo.mu.Lock()
 	defer memo.mu.Unlock()
-	entry, ok := memo.entries[localReadKey{instanceID: instanceID, hash: normalizeHash(torrent.Hash)}]
+	entry, ok := memo.entries[localReadKey{instanceID: instanceID, hash: torrent.Hash}]
 	if !ok || !entry.fromFiles || entry.name != torrent.Name || entry.category != torrent.Category {
 		return namedRelease{}, false
 	}
@@ -283,7 +283,7 @@ func (s *Service) readLocalFiles(rules []models.CategoryMappingRule, name, categ
 func (s *Service) forgetLocalRead(instanceID int, hash string) {
 	s.copyGroups.forget(instanceID, hash)
 	memo := &s.localReadMemo
-	key := localReadKey{instanceID: instanceID, hash: normalizeHash(hash)}
+	key := localReadKey{instanceID: instanceID, hash: hash}
 	memo.mu.Lock()
 	delete(memo.entries, key)
 	delete(memo.filling, key)

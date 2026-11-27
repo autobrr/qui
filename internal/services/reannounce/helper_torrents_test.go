@@ -5,8 +5,6 @@ package reannounce
 
 import (
 	"context"
-	"maps"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type fakeHelpers struct {
@@ -60,13 +59,15 @@ func TestReannounceSkipsHelperTorrents(t *testing.T) {
 		helpers map[string]bool
 		want    []string
 	}{
-		{name: "a helper torrent is left out", helpers: map[string]bool{helper: true}, want: []string{strings.ToUpper(own)}},
+		{name: "a helper torrent is left out", helpers: map[string]bool{helper: true}, want: []string{own}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			newService := func() (*Service, int, *[]string) {
 				svc, instanceID, _ := newScanTestService(t, "2.11.4", torrents)
 				svc.now = func() time.Time { return now }
-				svc.SetHelperTorrents(fakeHelpers{instanceID: instanceID, hashes: tc.helpers})
+				helpers := fakeHelpers{instanceID: instanceID, hashes: tc.helpers}
+				svc.syncManager.SetHelperTorrents(helpers)
+				svc.SetHelperTorrents(helpers)
 				svc.settingsCache = NewSettingsCache(nil)
 				svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: instanceID, Enabled: true, MonitorAll: true})
 				var jobs []string
@@ -79,7 +80,12 @@ func TestReannounceSkipsHelperTorrents(t *testing.T) {
 			require.ElementsMatch(t, tc.want, *jobs, "scan")
 
 			svc, instanceID, _ = newService()
-			requested := slices.Collect(maps.Keys(svc.lookupTorrents(t.Context(), instanceID, []string{helper, own})))
+			var requested []string
+			for _, torrent := range svc.lookupTorrents(t.Context(), instanceID, infohash.ParseAll([]string{helper, own})) {
+				if torrent != nil {
+					requested = append(requested, torrent.Hash)
+				}
+			}
 			require.ElementsMatch(t, tc.want, requested, "request")
 		})
 	}

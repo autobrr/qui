@@ -20,7 +20,6 @@ import {
   useActiveInstances,
   useAggregatedInstanceMetadata,
   useCrossSeedStatus,
-  useEnabledIndexers,
   useFormatDateValue,
   useMissingIndexersToast,
   usePatchCrossSeedSettings
@@ -29,6 +28,7 @@ import { MIN_RSS_INTERVAL_MINUTES, useManualRunCooldown } from "@/hooks/useManua
 import { api } from "@/lib/api"
 import { normalizeNumberList } from "@/lib/cross-seed-utils"
 import { rssRunState } from "@/lib/run-state"
+import { useSitePickOptions } from "@/lib/site-pick"
 import type { CrossSeedAutomationSettings, CrossSeedRun } from "@/types"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { ChevronDown, Clock, History, Loader2, Play, Zap } from "lucide-react"
@@ -68,8 +68,8 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
   const { t } = useTranslation("crossseed")
   const formatDateValue = useFormatDateValue()
   const { activeInstances } = useActiveInstances()
-  const enabledIndexers = useEnabledIndexers()
-  const hasEnabledIndexers = enabledIndexers.length > 0
+  const { options: indexerOptions } = useSitePickOptions("rss")
+  const hasEnabledIndexers = indexerOptions.length > 0
   const { notifyMissingIndexers, handleIndexerError } = useMissingIndexersToast()
   const patchSettings = usePatchCrossSeedSettings()
 
@@ -169,10 +169,6 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
     [activeInstances]
   )
 
-  const indexerOptions = useMemo(
-    () => enabledIndexers.map(indexer => ({ label: indexer.name, value: String(indexer.id) })),
-    [enabledIndexers]
-  )
 
   const groupedRuns = useMemo(() => {
     const result = {
@@ -222,7 +218,7 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
       <CardContent className="space-y-5">
 
         <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="automation-enabled" className="font-medium">{t("automation.enableSwitch")}</Label>
+          <Label htmlFor="automation-enabled">{t("automation.enableSwitch")}</Label>
           <Switch
             id="automation-enabled"
             checked={form.enabled}
@@ -349,7 +345,7 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
                 <History className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">{t("automation.recentRssRuns")}</span>
                 {runs && runs.length > 0 ? (
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary">
                     {runSummaryStats.totalFailed > 0? t("automation.runSummaryWithFailures", { runs: runSummaryStats.totalRuns, added: runSummaryStats.totalAdded, failed: runSummaryStats.totalFailed }): t("automation.runSummary", { runs: runSummaryStats.totalRuns, added: runSummaryStats.totalAdded })}
                   </Badge>
                 ) : (
@@ -366,7 +362,7 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
                     {groupedRuns.scheduled.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 text-sm font-medium">
-                          <Clock className="h-4 w-4 text-blue-500" />
+                          <Clock className="h-4 w-4 text-chart-2" />
                           {t("automation.scheduled")} ({groupedRuns.scheduled.length})
                         </div>
                         <div className="space-y-1">
@@ -380,7 +376,7 @@ export function RssTab({ settings }: { settings: CrossSeedAutomationSettings }) 
                     {groupedRuns.manual.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 text-sm font-medium">
-                          <Zap className="h-4 w-4 text-yellow-500" />
+                          <Zap className="h-4 w-4 text-chart-4" />
                           {t("automation.manual")} ({groupedRuns.manual.length})
                         </div>
                         <div className="space-y-1">

@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const folderCleanupStatConcurrency = 8
@@ -38,7 +39,8 @@ const (
 
 type FolderCleanupOp struct {
 	Kind           FolderCleanupKind
-	Hashes         []string
+	All            bool
+	Hashes         []infohash.Hash
 	Path           string
 	Category       string
 	EditedCategory string
@@ -112,26 +114,27 @@ func folderCleanupCandidates(syncManager *syncowner.Owner, d fsops.PathDialect, 
 			return nil
 		}
 		return snapshot.Matching(mayMove)
-	case len(op.Hashes) == 1 && op.Hashes[0] == "all":
+	case op.All:
 		return snapshot.Matching(mayMove)
 	}
-	return slices.DeleteFunc(lookupTorrents(snapshot, op.Hashes), func(t *qbt.Torrent) bool { return !mayMove(t) })
-}
-
-func lookupTorrents(snapshot torrentLookup, hashes []string) []*qbt.Torrent {
-	var found []*qbt.Torrent
-	seen := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		id := strings.ToLower(hash)
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		if t, ok := snapshot.Torrent(id); ok {
-			found = append(found, t)
+	found := snapshot.Torrents(op.Hashes)
+	for i, t := range found {
+		if t != nil && !op.Hashes[i].Is(t.Hash) {
+			found[i] = nil
 		}
 	}
-	return found
+	return slices.DeleteFunc(foundTorrents(found), func(t *qbt.Torrent) bool { return !mayMove(t) })
+}
+
+func (op FolderCleanupOp) On(ids []string) FolderCleanupOp {
+	op.All = len(ids) == 1 && ids[0] == "all"
+	op.Hashes = make([]infohash.Hash, len(ids))
+	for i, id := range ids {
+		if hash, err := infohash.Parse(id); err == nil && len(id) == len(hash.String()) {
+			op.Hashes[i] = hash
+		}
+	}
+	return op
 }
 
 func (op FolderCleanupOp) mayMove(d fsops.PathDialect, t *qbt.Torrent) bool {
@@ -191,7 +194,7 @@ func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, back
 			if snaps[i].Layout != layoutNoRootFolder {
 				continue
 			}
-			list := files[canonicalizeHash(snaps[i].Hash)]
+			list := files[snaps[i].Hash]
 			names := make([]string, len(list))
 			for j := range list {
 				names[j] = list[j].Name
@@ -345,12 +348,11 @@ func (sm *SyncManager) ownRows(ctx context.Context, instanceID int, hashes []str
 	if err != nil {
 		return nil, err
 	}
-	snapshot := snapshotIndex(syncManager.SnapshotUnchecked())
-	rows := make(map[string]*qbt.Torrent, len(hashes))
-	for _, hash := range hashes {
-		hash = canonicalizeHash(hash)
-		if t, ok := snapshot.Torrent(hash); ok {
-			rows[hash] = t
+	found := snapshotIndex(syncManager.SnapshotUnchecked()).Torrents(infohash.ParseAll(hashes))
+	rows := make(map[string]*qbt.Torrent, len(found))
+	for _, t := range found {
+		if t != nil {
+			rows[t.Hash] = t
 		}
 	}
 	return rows, nil

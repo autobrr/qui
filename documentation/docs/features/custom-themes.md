@@ -204,8 +204,10 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 | Semantic colors | `--primary(-foreground)`, `--secondary(-foreground)`, `--muted(-foreground)`, `--accent(-foreground)`, `--destructive(-foreground)` |
 | Controls | `--border`, `--input`, `--ring` |
 | Sidebar | `--sidebar`, `--sidebar-foreground`, `--sidebar-primary(-foreground)`, `--sidebar-accent(-foreground)`, `--sidebar-border`, `--sidebar-ring` |
-| Charts | `--chart-1` … `--chart-5` |
+| Charts | `--chart-1` … `--chart-5`. They also mark kinds in lists, for example the actions in the workflow activity log, so keep the five colors apart. |
+| Chart text | `--chart-text-1` … `--chart-text-5`. The ratio and speed text, and the values in the log viewer. Each one takes its `--chart-*` color when the theme does not set it. |
 | Ratio colors (qui-specific) | `--ratio-bad`, `--ratio-almost`, `--ratio-good`, `--ratio-best` |
+| Status colors | `--success`, `--warning`, `--info`. They have no `-foreground` token: text on a solid status fill uses `--background`. |
 | Typography | `--font-sans`, `--font-serif`, `--font-mono` |
 | Shape & spacing | `--radius`, `--spacing`, `--tracking-normal` |
 | Shadows | `--shadow-2xs` … `--shadow-2xl` |

@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type runPlan struct {
@@ -150,7 +151,7 @@ func (s *Service) recordRuleSkips(ctx context.Context, instanceID int, rules []s
 }
 
 type targetLookup interface {
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 }
 
 type exportMark int
@@ -284,7 +285,7 @@ func (s *Service) buildRunPlan(ctx context.Context, in runPlanInput) runPlan {
 	if len(plan.transfers) > 1 {
 		pos := rulePositions(in.ruleByID)
 		slices.SortFunc(plan.transfers, func(a, b pendingTransfer) int {
-			return cmp.Or(cmp.Compare(pos[b.rule.id], pos[a.rule.id]), strings.Compare(a.hash, b.hash))
+			return cmp.Or(cmp.Compare(pos[b.rule.id], pos[a.rule.id]), strings.Compare(a.hash.String(), b.hash.String()))
 		})
 	}
 	if len(waitingExports) > 0 {
@@ -341,7 +342,7 @@ func (s *Service) planExport(ctx context.Context, hash string, torrent qbt.Torre
 	}
 
 	checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
-	_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, []string{hash})
+	_, exists, err := s.targetLookup.HasTorrentByAnyHash(checkCtx, action.TargetInstanceID, infohash.ParseAll([]string{hash}))
 	checkCancel()
 	if err != nil {
 		log.Warn().Err(err).

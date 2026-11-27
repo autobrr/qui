@@ -408,18 +408,21 @@ export interface CrossSeedSearchFilters {
   excludeTags?: string[]
 }
 
-export interface CrossSeedSearchSettings {
+export interface SitePick {
+  indexerIds: number[]
+  gazelleSites: string[]
+}
+
+export interface CrossSeedSearchSettings extends SitePick {
   instanceId?: number | null
   categories: string[]
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
-  indexerIds: number[]
   intervalSeconds: number
   cooldownMinutes: number
   maxAddedAgeDays: number
   skipIndividualEpisodes: boolean
-  torznabEnabled: boolean
   scheduleEnabled: boolean
   scheduleIntervalHours: number
   scheduleMaxSearches: number

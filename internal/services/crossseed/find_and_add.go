@@ -22,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type boundAnnouncementMatch struct {
@@ -57,13 +58,13 @@ func (s *Service) invokeBoundAnnouncementMatches(ctx context.Context, matches []
 		for _, source := range matches[start:end] {
 			req := requestBuilder(source)
 
-			response, err := s.invokeCrossSeed(ctx, req)
+			response, err := s.injection.CrossSeed(ctx, req)
 			if err != nil {
-				attemptErrors = append(attemptErrors, fmt.Errorf("instance %d source %s: %w", source.instanceID, normalizeHash(source.torrent.Hash), err))
+				attemptErrors = append(attemptErrors, fmt.Errorf("instance %d source %s: %w", source.instanceID, source.torrent.Hash, err))
 				continue
 			}
 			if response == nil {
-				attemptErrors = append(attemptErrors, fmt.Errorf("instance %d source %s: cross-seed returned no response", source.instanceID, normalizeHash(source.torrent.Hash)))
+				attemptErrors = append(attemptErrors, fmt.Errorf("instance %d source %s: cross-seed returned no response", source.instanceID, source.torrent.Hash))
 				continue
 			}
 
@@ -128,7 +129,7 @@ func sortBoundAnnouncementMatches(matches []boundAnnouncementMatch) {
 		if iPriority, jPriority := searchCandidateClassPriority(matches[i].decision.Class), searchCandidateClassPriority(matches[j].decision.Class); iPriority != jPriority {
 			return iPriority > jPriority
 		}
-		if iHash, jHash := normalizeHash(matches[i].torrent.Hash), normalizeHash(matches[j].torrent.Hash); iHash != jHash {
+		if iHash, jHash := matches[i].torrent.Hash, matches[j].torrent.Hash; iHash != jHash {
 			return iHash < jHash
 		}
 		return matches[i].torrent.Name < matches[j].torrent.Name
@@ -266,14 +267,13 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
-			hashKey := normalizeHash(torrent.Hash)
+			hashKey := torrent.Hash
 			if hashKey == "" {
 				continue
 			}
-			searchSourceHash := normalizeHash(searchDecision.SourceHash)
 			isSearchSource := searchDecision.admitted() &&
 				searchDecision.SourceInstanceID == instanceID &&
-				searchSourceHash != "" && hashKey == searchSourceHash
+				searchDecision.SourceHash.Is(hashKey)
 			var sourceSide namedRelease
 			if isSearchSource {
 				sourceSide = s.deriveSearchSourceRelease(ctx, instanceID, torrent)
@@ -385,7 +385,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				InstanceName: instance.Name,
 				Torrents:     matchedTorrents,
 				MatchType:    candidateMatchType,
-				titleRescue:  titleRescueTorrent != nil && len(matchedTorrents) == 1 && normalizeHash(matchedTorrents[0].Hash) == titleRescueHash,
+				titleRescue:  titleRescueTorrent != nil && len(matchedTorrents) == 1 && matchedTorrents[0].Hash == titleRescueHash,
 			})
 			totalCandidates += len(matchedTorrents)
 		}
@@ -432,7 +432,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		return nil, fmt.Errorf("failed to parse torrent: %w", err)
 	}
 	torrentHash := meta.HashV1
-	if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
+	if meta.Info != nil && !meta.Info.HasV1() && !meta.HashV2.IsZero() {
 		torrentHash = meta.HashV2
 	}
 	sourceView := s.readApplyTarget(meta.Name, meta.Files, requestHasSearchDecision(req))
@@ -466,7 +466,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	if req.ManualTargetHash != "" {
 		log.Info().
 			Str("torrentName", meta.Name).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Str("manualTargetHash", req.ManualTargetHash).
 			Msg("[CROSSSEED] Manual match: applying against user-chosen target")
 	}
@@ -485,7 +485,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		Results: make([]InstanceCrossSeedResult, 0),
 		TorrentInfo: &TorrentInfo{
 			Name:       meta.Name,
-			Hash:       torrentHash,
+			Hash:       torrentHash.String(),
 			DiscLayout: isDiscLayout,
 			DiscMarker: discMarker,
 		},
@@ -573,24 +573,25 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 		return
 	}
 
-	resp, err := s.invokeSeasonPackApply(ctx, &SeasonPackApplyRequest{
-		TorrentName: torrentName,
-		TorrentData: req.TorrentData,
-		InstanceIDs: req.TargetInstanceIDs,
-		Indexer:     req.IndexerName,
+	response.seasonPackTried = true
+	resp, err := s.invokeSeasonPackApply(ctx, seasonPackRequest{
+		name:        torrentName,
+		torrentData: req.TorrentData,
+		instanceIDs: req.TargetInstanceIDs,
+		indexer:     req.IndexerName,
 		autonomous:  true,
 	})
 	if err != nil {
 		log.Warn().Err(err).Str("torrentName", torrentName).Msg("Season pack diversion failed")
 		return
 	}
-	if resp == nil || !resp.Applied {
+	if resp == nil || !resp.applied {
 		if resp != nil {
 			log.Debug().
 				Str("torrentName", torrentName).
-				Str("reason", resp.Reason).
+				Str("reason", resp.reason).
 				Msg("Season pack diversion did not apply")
-			switch resp.Reason {
+			switch resp.reason {
 			case "drifted", "layout_mismatch", "already_exists":
 				s.recordSeasonPackFailCooldown(ctx, torrentName, response)
 			}
@@ -599,44 +600,42 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 	}
 
 	response.Success = true
-	added := InstanceCrossSeedResult{
-		InstanceID:     resp.InstanceID,
-		Success:        true,
-		Status:         "added",
-		Message:        fmt.Sprintf("Season pack assembled from local episodes (%d/%d matched)", resp.MatchedEpisodes, resp.TotalEpisodes),
-		MatchedTorrent: &MatchedTorrent{Name: torrentName},
-	}
-	if resp.AddedInstanceID != 0 && resp.AddedInstanceID != resp.InstanceID {
-		added.CrossSeedInstanceID = resp.AddedInstanceID
-		if inst, instErr := s.instanceStore.Get(ctx, resp.AddedInstanceID); instErr == nil && inst != nil {
-			added.CrossSeedInstanceName = inst.Name
-		}
-	}
+	added := s.seasonPackAddedResult(ctx, torrentName, resp)
 	for i := range response.Results {
-		if response.Results[i].InstanceID == resp.InstanceID {
+		if response.Results[i].InstanceID == resp.instanceID {
 			added.InstanceName = response.Results[i].InstanceName
 			response.Results[i] = added
 			return
 		}
 	}
-	if inst, instErr := s.instanceStore.Get(ctx, resp.InstanceID); instErr == nil && inst != nil {
+	if inst, instErr := s.instanceStore.Get(ctx, resp.instanceID); instErr == nil && inst != nil {
 		added.InstanceName = inst.Name
 	}
 	response.Results = append(response.Results, added)
 }
 
-func (s *Service) invokeSeasonPackApply(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
+func (s *Service) seasonPackAddedResult(ctx context.Context, torrentName string, result *seasonPackApplyResult) InstanceCrossSeedResult {
+	added := InstanceCrossSeedResult{
+		InstanceID:     result.instanceID,
+		Success:        true,
+		Status:         "added",
+		Message:        fmt.Sprintf("Season pack assembled from local episodes (%d/%d matched)", result.matched, result.total),
+		MatchedTorrent: &MatchedTorrent{Name: torrentName},
+	}
+	if result.addedInstanceID != 0 && result.addedInstanceID != result.instanceID {
+		added.CrossSeedInstanceID = result.addedInstanceID
+		if inst, instErr := s.instanceStore.Get(ctx, result.addedInstanceID); instErr == nil && inst != nil {
+			added.CrossSeedInstanceName = inst.Name
+		}
+	}
+	return added
+}
+
+func (s *Service) invokeSeasonPackApply(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error) {
 	if s.seasonPackApplier != nil {
 		return s.seasonPackApplier(ctx, req)
 	}
-	return s.ApplySeasonPackWebhook(ctx, req)
-}
-
-func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
-	if s.crossSeedInvoker != nil {
-		return s.crossSeedInvoker(ctx, req)
-	}
-	return s.CrossSeed(ctx, req)
+	return s.applySeasonPack(ctx, req)
 }
 
 func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {
@@ -674,14 +673,14 @@ func filterRecheckBlockedSource(candidate CrossSeedCandidate, req *CrossSeedRequ
 		!req.SearchDecision.Relaxed.needsVerification() {
 		return candidate, false
 	}
-	boundHash := normalizeHash(req.SearchDecision.SourceHash)
-	if boundHash == "" {
+	boundHash := req.SearchDecision.SourceHash
+	if boundHash.IsZero() {
 		return candidate, false
 	}
 
 	filtered := candidate
 	filtered.Torrents = slices.DeleteFunc(slices.Clone(candidate.Torrents), func(torrent *qbt.Torrent) bool {
-		return normalizeHash(torrent.Hash) == boundHash
+		return boundHash.Is(torrent.Hash)
 	})
 	return filtered, len(filtered.Torrents) != len(candidate.Torrents)
 }
@@ -690,8 +689,8 @@ func (s *Service) processCrossSeedCandidate(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
 	torrentBytes []byte,
-	torrentHash string,
-	torrentHashV2 string,
+	torrentHash infohash.Hash,
+	torrentHashV2 infohash.Hash,
 	torrentName string,
 	req *CrossSeedRequest,
 	sourceRelease *rls.Release,
@@ -780,7 +779,7 @@ func (s *Service) processCrossSeedCandidate(
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Str("reason", rejectReason).
 			Msg("Cross-seed apply skipped: no best candidate match after file-level validation")
 
@@ -812,7 +811,7 @@ func (s *Service) processCrossSeedCandidate(
 		log.Info().
 			Int("instanceID", candidate.InstanceID).
 			Str("instanceName", candidate.InstanceName).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Str("discMarker", addPolicy.DiscMarker).
 			Msg("[CROSSSEED] Disc layout detected - torrent will be added paused and only resumed after full recheck")
 	}
@@ -874,10 +873,10 @@ func (s *Service) processCrossSeedCandidate(
 	logSafetyRefusal := func() {
 		switch result.Status {
 		case "rejected":
-			log.WithLevel(s.sizeMismatchLogLevel(torrentHash, matchedTorrent.Hash)).
+			log.WithLevel(s.sizeMismatchLogLevel(torrentHash.String(), matchedTorrent.Hash)).
 				Int("instanceID", candidate.InstanceID).
 				Str("instanceName", candidate.InstanceName).
-				Str("torrentHash", torrentHash).
+				Stringer("torrentHash", torrentHash).
 				Str("matchedHash", matchedTorrent.Hash).
 				Str("matchType", matchType).
 				Strs("mismatchedFiles", contentFileSizeMismatchSourceFiles(fileSizeMismatches)).
@@ -886,7 +885,7 @@ func (s *Service) processCrossSeedCandidate(
 		case "skipped_unsafe_pieces":
 			log.Warn().
 				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
+				Stringer("torrentHash", torrentHash).
 				Str("matchedHash", matchedTorrent.Hash).
 				Str("matchType", matchType).
 				Int("violationCount", len(pieceSafety.UnsafeBoundaries)).
@@ -908,7 +907,7 @@ func (s *Service) processCrossSeedCandidate(
 		if hasExtraFiles && torrentInfo != nil && req.SkipPieceBoundarySafetyCheck {
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
+				Stringer("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Piece boundary safety check skipped by user setting")
 		}
 	}
@@ -917,7 +916,7 @@ func (s *Service) processCrossSeedCandidate(
 		if result.Status == "skipped_recheck" {
 			log.Info().
 				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
+				Stringer("torrentHash", torrentHash).
 				Str("discMarker", addPolicy.DiscMarker).
 				Bool("requiresAlignment", requiresAlignment).
 				Bool("hasExtraFiles", hasExtraFiles).
@@ -996,7 +995,7 @@ func (s *Service) processCrossSeedCandidate(
 
 	if useReflinkMode {
 		rlResult := s.processReflinkMode(
-			ctx, check, candidate, torrentBytes, torrentHash, torrentName, req,
+			ctx, check, candidate, torrentBytes, torrentHash.String(), torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
 			baseCategory, crossCategory,
 		)
@@ -1012,7 +1011,7 @@ func (s *Service) processCrossSeedCandidate(
 
 	if useHardlinkMode {
 		hlResult := s.processHardlinkMode(
-			ctx, check, candidate, torrentBytes, torrentHash, torrentName, req,
+			ctx, check, candidate, torrentBytes, torrentHash.String(), torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
 			baseCategory, crossCategory,
 		)
@@ -1040,7 +1039,7 @@ func (s *Service) processCrossSeedCandidate(
 	} else if facts.LinkFallback && !facts.exactInPlace() {
 		log.Debug().
 			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Str("matchType", matchType).
 			Msg("[CROSSSEED] Link-mode fallback piece boundary check skipped because torrent metadata is unavailable")
 	}
@@ -1052,12 +1051,12 @@ func (s *Service) processCrossSeedCandidate(
 		case "skipped_recheck":
 			log.Info().
 				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
+				Stringer("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Link-mode filesystem fallback requires recheck and skip recheck is enabled")
 		case "requires_hardlink_reflink":
 			log.Warn().
 				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
+				Stringer("torrentHash", torrentHash).
 				Str("matchedHash", matchedTorrent.Hash).
 				Str("matchType", matchType).
 				Str("sourceRoot", sourceRoot).
@@ -1103,7 +1102,7 @@ func (s *Service) processCrossSeedCandidate(
 		result.Message = fmt.Sprintf("Episode-in-pack match but matched torrent has no ContentPath (matchedHash=%s). This may indicate the matched torrent is incomplete or was added without proper metadata.", matchedTorrent.Hash)
 		log.Error().
 			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Str("matchedHash", matchedTorrent.Hash).
 			Str("matchedName", matchedTorrent.Name).
 			Bool("isEpisodeInPack", isEpisodeInPack).
@@ -1180,7 +1179,7 @@ func (s *Service) processCrossSeedCandidate(
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Str("matchedName", matchedTorrent.Name).
 			Str("matchedHash", matchedTorrent.Hash).
 			Str("propsSavePath", props.SavePath).
@@ -1242,7 +1241,7 @@ func (s *Service) processCrossSeedCandidate(
 			log.Warn().
 				Err(added.PauseErr).
 				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
+				Stringer("torrentHash", torrentHash).
 				Msg("Failed to pause misaligned cross-seed torrent")
 			result.Message += fmt.Sprintf(" - alignment failed and failed to pause torrent: %v", added.PauseErr)
 			result.Status = "pause_failed"
@@ -1252,7 +1251,7 @@ func (s *Service) processCrossSeedCandidate(
 		result.Status = "alignment_failed"
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
+			Stringer("torrentHash", torrentHash).
 			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
 		return result
 	}
@@ -1263,7 +1262,7 @@ func (s *Service) processCrossSeedCandidate(
 		Int("instanceID", candidate.InstanceID).
 		Str("instanceName", candidate.InstanceName).
 		Str("torrentName", torrentName).
-		Str("torrentHash", torrentHash).
+		Stringer("torrentHash", torrentHash).
 		Str("matchedHash", matchedTorrent.Hash).
 		Str("matchType", matchType).
 		Str("baseCategory", baseCategory).
@@ -1308,7 +1307,7 @@ func (s *Service) batchLoadCandidateFiles(ctx context.Context, instanceID int, t
 		if torrent.Progress < 1.0 {
 			continue
 		}
-		hash := normalizeHash(torrent.Hash)
+		hash := torrent.Hash
 		if hash == "" {
 			continue
 		}
@@ -1358,6 +1357,10 @@ func (s *Service) selectBestCandidateAddPlan(
 		return nil, "No candidate torrents with files to match against"
 	}
 
+	var manualHash infohash.Hash
+	if req != nil {
+		manualHash = parseHash(req.ManualTargetHash)
+	}
 	incompleteTorrents := 0
 	for _, torrent := range candidate.Torrents {
 		if torrent.Progress < 1.0 {
@@ -1365,8 +1368,7 @@ func (s *Service) selectBestCandidateAddPlan(
 			continue
 		}
 
-		hashKey := normalizeHash(torrent.Hash)
-		files, ok := filesByHash[hashKey]
+		files, ok := filesByHash[torrent.Hash]
 		if !ok || len(files) == 0 {
 			continue
 		}
@@ -1374,15 +1376,14 @@ func (s *Service) selectBestCandidateAddPlan(
 		var candidateRead namedRelease
 		if req != nil && req.SearchDecision.admitted() &&
 			candidate.InstanceID == req.SearchDecision.SourceInstanceID &&
-			hashKey == normalizeHash(req.SearchDecision.SourceHash) {
+			req.SearchDecision.SourceHash.Is(torrent.Hash) {
 			candidateRead, _ = s.readSearchSource(ctx, torrent, files)
 		} else {
 			candidateRead = s.matcher().readName(torrent.Name)
 		}
 		candidateRelease := candidateRead.release
 
-		manualTarget := req != nil && req.ManualTargetHash != "" &&
-			hashKey == normalizeHash(req.ManualTargetHash)
+		manualTarget := torrentHasHash(torrent, manualHash)
 
 		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease); reject && !manualTarget {
 			if reason != "" && (bestRejectReason == "" || len(reason) > len(bestRejectReason)) {

@@ -11,6 +11,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/time/rate"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func TestNewClient_SharesLimiterPerHost(t *testing.T) {
@@ -68,7 +70,7 @@ func TestClientTalksToATestServer(t *testing.T) {
 		t.Fatalf("expected the tracker identity to drive the source flag, got %q", client.SourceFlag())
 	}
 
-	result, err := client.SearchByHash(context.Background(), "abc")
+	result, err := client.SearchByHash(context.Background(), testHash(t))
 	if err != nil {
 		t.Fatalf("SearchByHash: %v", err)
 	}
@@ -91,7 +93,7 @@ func TestRequestQueuePastDeadlineIsDeadlineExceeded(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
-	_, err = client.SearchByHash(ctx, "abc")
+	_, err = client.SearchByHash(ctx, testHash(t))
 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
@@ -203,7 +205,16 @@ func TestSearchByHashKeepsAccessDenied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	if _, err := c.SearchByHash(t.Context(), "abc"); !errors.Is(err, ErrAccessDenied) {
+	if _, err := c.SearchByHash(t.Context(), testHash(t)); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("SearchByHash error = %v, want ErrAccessDenied", err)
 	}
+}
+
+func testHash(t *testing.T) infohash.Hash {
+	t.Helper()
+	hash, err := infohash.Parse("2d95e58ed6b0430e79a00d41c506fe3715b43874")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hash
 }

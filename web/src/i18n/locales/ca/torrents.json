@@ -1679,6 +1679,7 @@
     },
     "footer": {
       "adding": "S'està afegint...",
+      "addingBatch": "S'està afegint el lot {{current}} de {{total}}...",
       "add": "Afegeix el torrent",
       "cancel": "Cancel·la",
       "addCount_one": "Afegeix {{count}} torrent",
@@ -1691,6 +1692,8 @@
       "addedMany": "S'han afegit {{count}} torrents correctament",
       "failedMany": "No s'han pogut afegir {{count}} torrent(s)",
       "partialSuccess": "Se n'han afegit {{added}} i {{failed}} han fallat",
+      "batchFailed": "S'han afegit {{added}} de {{total}} torrents",
+      "batchFailedDescription": "El lot {{batch}} de {{batches}} ha fallat: {{error}}. La resta queden a la llista per tornar-los a afegir.",
       "rejectedOne": "S'ha rebutjat 1 fitxer (no és un fitxer .torrent)",
       "rejectedMany": "S'han rebutjat {{count}} fitxers (no són fitxers .torrent)"
     }

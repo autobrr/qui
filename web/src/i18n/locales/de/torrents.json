@@ -1463,6 +1463,7 @@
     },
     "footer": {
       "adding": "Wird hinzugefügt...",
+      "addingBatch": "Stapel {{current}} von {{total}} wird hinzugefügt...",
       "add": "Torrent hinzufügen",
       "cancel": "Abbrechen",
       "addCount_one": "{{count}} Torrent hinzufügen",
@@ -1475,6 +1476,8 @@
       "addedMany": "{{count}} Torrents erfolgreich hinzugefügt",
       "failedMany": "{{count}} Torrent(s) konnten nicht hinzugefügt werden",
       "partialSuccess": "{{added}} hinzugefügt, {{failed}} fehlgeschlagen",
+      "batchFailed": "{{added}} von {{total}} Torrents hinzugefügt",
+      "batchFailedDescription": "Stapel {{batch}} von {{batches}} fehlgeschlagen: {{error}}. Der Rest bleibt in der Liste, damit Sie ihn erneut hinzufügen können.",
       "rejectedOne": "1 Datei abgelehnt (keine .torrent-Datei)",
       "rejectedMany": "{{count}} Dateien abgelehnt (keine .torrent-Dateien)"
     }

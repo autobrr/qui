@@ -90,7 +90,7 @@ func newTorznabGazelleFixture(t *testing.T, dbName, trackerURL string) (*Service
 
 	prevFindMatch := findGazelleMatch
 	findGazelleMatch = func(_ context.Context, _ *gazellemusic.Client, _ []byte, _ map[string]int64, _ int64) (*gazellemusic.Match, error) {
-		return &gazellemusic.Match{TorrentID: 4242, Title: "During - LMK (2024 WF)", Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+		return &gazellemusic.Match{TorrentID: 4242, Title: "During - LMK (2024 WF)", Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), QueriedHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}, nil
 	}
 	t.Cleanup(func() {
 		findGazelleMatch = prevFindMatch
@@ -139,7 +139,7 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 	require.Len(t, resp.Results, 1)
 	require.True(t, resp.Results[0].SearchDecision.admitted())
 	require.Equal(t, instanceID, resp.Results[0].SearchDecision.SourceInstanceID)
-	require.Equal(t, torznabGazelleSourceHash, resp.Results[0].SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, torznabGazelleSourceHash), resp.Results[0].SearchDecision.SourceHash)
 	require.Equal(t, "gazelle:hash", resp.Results[0].MatchReason)
 	require.Contains(t, resp.Results[0].DownloadURL, "4242", "download URL should reference the gazelle torrent")
 }

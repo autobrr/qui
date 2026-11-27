@@ -280,7 +280,7 @@ function TargetEditor({ open, onOpenChange, target, definitions, pending, submit
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
-          className="font-mono text-[13px]"
+          className="font-mono text-13"
           onChange={(event) => {
             setUrl(normalizeNotificationUrl(event.target.value))
             setErrors((prev) => ({ ...prev, url: undefined }))
@@ -377,7 +377,7 @@ function EventGroupRows({ group, selected, onSet }: { group: NotificationEventGr
           aria-label={t("notifications.form.selectGroup", { group: label })}
           className={CHECKBOX_TAP}
         />
-        <CollapsibleTrigger className="group flex min-h-10 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm outline-none transition-colors hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50">
+        <CollapsibleTrigger className="group flex min-h-10 flex-1 items-center gap-2 rounded-md px-2 text-left text-sm outline-none transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50">
           <span className="flex-1">{label}</span>
           <span className="text-xs tabular-nums text-muted-foreground">{count}/{types.length}</span>
           <ChevronDown aria-hidden="true" className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />

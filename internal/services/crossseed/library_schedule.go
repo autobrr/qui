@@ -30,9 +30,10 @@ const (
 var errScheduleNoInstance = fmt.Errorf("%w: the saved Library settings name no instance", ErrInvalidRequest)
 
 const (
-	scheduleBlockedTorznabOffNoGazelle = "torznab_off_no_gazelle"
-	scheduleBlockedNoIndexer           = "no_indexer"
-	scheduleBlockedInstanceMissing     = "instance_missing"
+	scheduleBlockedTorznabPickNoIndexer = "torznab_pick_no_indexer"
+	scheduleBlockedGazellePickNoKey     = "gazelle_pick_no_key"
+	scheduleBlockedNoIndexer            = "no_indexer"
+	scheduleBlockedInstanceMissing      = "instance_missing"
 )
 
 func (s *Service) libraryScheduleLoop(ctx context.Context) {
@@ -125,8 +126,7 @@ func (s *Service) startScheduledSearchRun(ctx context.Context, settings *models.
 		ExcludeCategories:      settings.ExcludeCategories,
 		ExcludeTags:            settings.ExcludeTags,
 		IntervalSeconds:        settings.IntervalSeconds,
-		IndexerIDs:             settings.IndexerIDs,
-		DisableTorznab:         !settings.TorznabEnabled,
+		SitePick:               settings.SitePick,
 		CooldownMinutes:        settings.CooldownMinutes,
 		RequestedBy:            "schedule",
 		SkipIndividualEpisodes: settings.SkipIndividualEpisodes,
@@ -240,8 +240,10 @@ func (s *Service) endScheduleOutage() {
 
 func scheduleBlockedReason(err error) string {
 	switch {
-	case errors.Is(err, errTorznabOffNoGazelle):
-		return scheduleBlockedTorznabOffNoGazelle
+	case errors.Is(err, errTorznabPickNoIndexer):
+		return scheduleBlockedTorznabPickNoIndexer
+	case errors.Is(err, errGazellePickNoKey):
+		return scheduleBlockedGazellePickNoKey
 	case errors.Is(err, ErrNoIndexersConfigured):
 		return scheduleBlockedNoIndexer
 	case errors.Is(err, errScheduleNoInstance):

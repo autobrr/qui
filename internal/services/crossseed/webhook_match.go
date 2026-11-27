@@ -13,6 +13,41 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
+const nearMissDebugLimit = 5
+
+type webhookCheckInput struct {
+	instances []*models.Instance
+	announced namedRelease
+	size      uint64
+	settings  *models.CrossSeedAutomationSettings
+	policy    announcementMatchPolicy
+}
+
+func newWebhookCheckInput(announced namedRelease, size uint64, findIndividualEpisodes bool, settings *models.CrossSeedAutomationSettings, instances []*models.Instance) webhookCheckInput {
+	return webhookCheckInput{
+		instances: instances,
+		announced: announced,
+		size:      size,
+		settings:  settings,
+		policy: announcementMatchPolicy{
+			findIndividualEpisodes: findIndividualEpisodes,
+			rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
+			allowUnknownSize:       size == 0,
+			skipRecheck:            settings.SkipRecheck,
+		},
+	}
+}
+
+type webhookCheckAnswer struct {
+	matches          []WebhookCheckMatch
+	hasCompleteMatch bool
+	hasPendingMatch  bool
+	nearMisses       int
+	nothingHeld      bool
+	notReady         bool
+	seasonPack       *WebhookSeasonPack
+}
+
 func (s *Service) webhookMatchTorrents(ctx context.Context, instance *models.Instance, torrents iter.Seq[*qbt.Torrent], count int, decide func(*qbt.Torrent) searchCandidateDecision, input webhookCheckInput, answer *webhookCheckAnswer) error {
 	settings := input.settings
 	announcedCandidate := input.announced

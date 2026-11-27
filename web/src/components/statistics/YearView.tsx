@@ -125,7 +125,7 @@ function Calendar({ days }: { days: CalendarDay[] }) {
             const first = week.find(day => day && new Date(day.start).getDate() === 1)
             return (
               <li key={index} className="flex min-w-0 flex-col gap-[3px]">
-                <span className={cn("flex h-4 text-[10px] leading-4 whitespace-nowrap text-muted-foreground", index >= weeks.length - 2 && "justify-end")} aria-hidden>
+                <span className={cn("flex h-4 text-10 leading-4 whitespace-nowrap text-muted-foreground", index >= weeks.length - 2 && "justify-end")} aria-hidden>
                   {first && new Date(first.start).toLocaleDateString(locale, { month: "short" })}
                 </span>
                 <ol className="contents">
@@ -139,7 +139,7 @@ function Calendar({ days }: { days: CalendarDay[] }) {
                       className={cn(
                         "relative aspect-square w-full rounded-[3px] after:absolute after:-inset-[1.5px]",
                         day.uploaded === undefined ? "border border-dashed border-border" : !day.uploaded && "bg-muted",
-                        day.gapSeconds > 0 && "ring-1 ring-yellow-500",
+                        day.gapSeconds > 0 && "ring-1 ring-warning",
                         shown === day.start && "outline outline-1 outline-foreground"
                       )}
                       style={day.uploaded ? { background: HEAT[thresholds.filter(threshold => day.uploaded! > threshold).length] } : undefined}

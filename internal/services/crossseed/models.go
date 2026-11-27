@@ -9,6 +9,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -43,6 +44,7 @@ type CrossSeedResponse struct {
 	Results         []InstanceCrossSeedResult `json:"results"`
 	TorrentInfo     *TorrentInfo              `json:"torrent_info,omitempty"`
 	titleRescueUsed bool
+	seasonPackTried bool
 }
 
 type InstanceCrossSeedResult struct {
@@ -129,16 +131,14 @@ type CrossSeedCandidate struct {
 }
 
 type TorrentSearchOptions struct {
-	Query                  string   `json:"query,omitempty"`
-	Limit                  int      `json:"limit,omitempty"`
-	IndexerIDs             []int    `json:"indexer_ids,omitempty"`
-	FindIndividualEpisodes bool     `json:"find_individual_episodes,omitempty"`
-	CacheMode              string   `json:"cache_mode,omitempty"`
-	DisableTorznab         bool     `json:"disable_torznab,omitempty"`
-	GazelleSites           []string `json:"gazelle_sites,omitempty"`
-	SkipGazelle            bool     `json:"-"`
-	RescueTitleMismatches  bool     `json:"-"`
-	TitleRescueResultLimit int      `json:"-"`
+	Query                  string          `json:"query,omitempty"`
+	Limit                  int             `json:"limit,omitempty"`
+	SitePick               models.SitePick `json:"-"`
+	FindIndividualEpisodes bool            `json:"find_individual_episodes,omitempty"`
+	CacheMode              string          `json:"cache_mode,omitempty"`
+	SkipGazelle            bool            `json:"-"`
+	RescueTitleMismatches  bool            `json:"-"`
+	TitleRescueResultLimit int             `json:"-"`
 }
 
 type TorrentSearchResult struct {
@@ -336,6 +336,15 @@ type WebhookCheckResponse struct {
 	CanCrossSeed   bool                `json:"canCrossSeed"`
 	Matches        []WebhookCheckMatch `json:"matches"`
 	Recommendation string              `json:"recommendation"`
+	SeasonPack     *WebhookSeasonPack  `json:"seasonPack,omitempty"`
+}
+
+type WebhookSeasonPack struct {
+	InstanceID       int     `json:"instanceId"`
+	MatchedEpisodes  int     `json:"matchedEpisodes"`
+	TotalEpisodes    int     `json:"totalEpisodes"`
+	Coverage         float64 `json:"coverage"`
+	ThresholdSkipped bool    `json:"thresholdSkipped"`
 }
 
 type AutobrrApplyRequest struct {
@@ -347,46 +356,4 @@ type AutobrrApplyRequest struct {
 	StartPaused            *bool    `json:"startPaused,omitempty"`
 	FindIndividualEpisodes *bool    `json:"findIndividualEpisodes,omitempty"`
 	Indexer                string   `json:"indexer,omitempty"`
-}
-
-type SeasonPackCheckRequest struct {
-	TorrentName string `json:"torrentName"`
-	TorrentData string `json:"torrentData"`
-	InstanceIDs []int  `json:"instanceIds,omitempty"`
-	Indexer     string `json:"indexer,omitempty"`
-}
-
-type SeasonPackCheckMatch struct {
-	InstanceID      int     `json:"instanceId"`
-	MatchedEpisodes int     `json:"matchedEpisodes"`
-	TotalEpisodes   int     `json:"totalEpisodes"`
-	Coverage        float64 `json:"coverage"`
-}
-
-type SeasonPackCheckResponse struct {
-	Ready            bool                   `json:"ready"`
-	Reason           string                 `json:"reason,omitempty"`
-	Message          string                 `json:"message,omitempty"`
-	Matches          []SeasonPackCheckMatch `json:"matches,omitempty"`
-	ThresholdSkipped bool                   `json:"thresholdSkipped,omitempty"`
-}
-
-type SeasonPackApplyRequest struct {
-	TorrentName string `json:"torrentName"`
-	TorrentData string `json:"torrentData"`
-	InstanceIDs []int  `json:"instanceIds,omitempty"`
-	Indexer     string `json:"indexer,omitempty"`
-	autonomous  bool
-}
-
-type SeasonPackApplyResponse struct {
-	Applied         bool    `json:"applied"`
-	Reason          string  `json:"reason,omitempty"`
-	Message         string  `json:"message,omitempty"`
-	InstanceID      int     `json:"instanceId,omitempty"`
-	AddedInstanceID int     `json:"addedInstanceId,omitzero"`
-	MatchedEpisodes int     `json:"matchedEpisodes,omitempty"`
-	TotalEpisodes   int     `json:"totalEpisodes,omitempty"`
-	Coverage        float64 `json:"coverage,omitempty"`
-	LinkMode        string  `json:"linkMode,omitempty"`
 }

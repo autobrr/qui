@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
@@ -68,11 +70,12 @@ type TorrentsHandler struct {
 	archiveExporter   torrentArchiveExporter
 	deleteMatches     deleteMatchFinder
 	deleter           torrentDeleter
+	installPaths      installPaths
 	held              heldTorrents
 }
 
 type heldTorrents interface {
-	Hold(instanceID int, hash string) error
+	Hold(instanceID int, hash infohash.Hash) error
 }
 
 func (h *TorrentsHandler) SetHeldTorrents(held heldTorrents) {
@@ -86,7 +89,11 @@ func (h *TorrentsHandler) respondIfHeld(w http.ResponseWriter, instanceID int, h
 		return false
 	}
 	for _, list := range hashes {
-		for hash := range strings.SplitSeq(list, "|") {
+		for raw := range strings.SplitSeq(list, "|") {
+			hash, err := infohash.Parse(raw)
+			if err != nil {
+				continue
+			}
 			if err := h.held.Hold(instanceID, hash); err != nil {
 				RespondError(w, http.StatusConflict, err.Error())
 				return true
@@ -117,6 +124,8 @@ func validateTorrentFilePath(path string) error {
 }
 
 const addTorrentMaxFormMemory int64 = 256 << 20
+
+const addTorrentMaxFormParts = 1000
 
 type SortedPeer struct {
 	Key string `json:"key"`
@@ -226,18 +235,19 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 	offset := page * limit
 
 	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
-		InstanceID:        instanceID,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		SidebarCounts:     true,
-		CopyGroups:        groupCopiesParam(r),
-		UniqueSize:        uniqueSizeParam(r),
-		CacheOnly:         preferCached,
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		InstanceID:         instanceID,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		SidebarCounts:      true,
+		CopyGroups:         groupCopiesParam(r),
+		UniqueSize:         uniqueSizeParam(r),
+		CacheOnly:          preferCached,
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
@@ -262,7 +272,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Data-Source", "fresh")
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func groupCopiesParam(r *http.Request) bool {
@@ -367,7 +377,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		requestedCount := 0
 		resolvedCount := 0
 		for _, targetInstanceID := range targetInstanceIDs {
-			torrents, fieldErr := h.syncManager.GetCachedInstanceTorrents(r.Context(), targetInstanceID)
+			torrents, fieldErr := h.syncManager.GetTorrentRefs(r.Context(), targetInstanceID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 			if fieldErr != nil {
 				if instanceID != allInstancesID {
 					if respondIfInstanceDisabled(w, fieldErr, targetInstanceID, "torrents:metadata") {
@@ -383,6 +393,9 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				return
 			}
 
+			slices.SortFunc(torrents, func(a, b *qbt.Torrent) int {
+				return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Hash, b.Hash))
+			})
 			requestedHashes := buildExcludeHashSet(targetsByInstance[targetInstanceID])
 			requestedCount += len(targetsByInstance[targetInstanceID])
 			for _, torrent := range torrents {
@@ -390,7 +403,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -402,7 +415,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
+		RespondJSON(w, r, http.StatusOK, &qbittorrent.TorrentFieldResponse{
 			Values: values,
 			Total:  len(values),
 		})
@@ -426,7 +439,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
+	RespondJSON(w, r, http.StatusOK, &qbittorrent.TorrentFieldResponse{
 		Values: values,
 		Total:  len(values),
 	})
@@ -437,11 +450,10 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, contentPath, t
 	case "name":
 		return strings.TrimSpace(name)
 	case "hash":
-		return preferredHashValue(&qbt.Torrent{
-			Hash:       hash,
-			InfohashV1: infohashV1,
-			InfohashV2: infohashV2,
-		})
+		if preferred := preferredHash(hash, infohashV1, infohashV2); !preferred.IsZero() {
+			return preferred.Upper()
+		}
+		return ""
 	case "full_path":
 		return strings.TrimSpace(contentPath)
 	case "tags":
@@ -458,62 +470,52 @@ func shouldIncludeTorrentFieldValue(field, value string) bool {
 }
 
 func resolvedTorrentFieldHash(hash, infohashV1, infohashV2 string) string {
-	preferred := preferredHashValue(&qbt.Torrent{
-		Hash:       hash,
-		InfohashV1: infohashV1,
-		InfohashV2: infohashV2,
-	})
-	if preferred != "" {
-		return preferred
+	if preferred := preferredHash(hash, infohashV1, infohashV2); !preferred.IsZero() {
+		return preferred.Upper()
 	}
 	return strings.TrimSpace(hash)
 }
 
-func torrentFieldHashVariants(hash, infohashV1, infohashV2 string) []string {
-	candidates := []string{
-		hash,
-		infohashV1,
-		infohashV2,
-		resolvedTorrentFieldHash(hash, infohashV1, infohashV2),
+func preferredHash(hash, infohashV1, infohashV2 string) infohash.Hash {
+	hashes := torrentHashes(hash, infohashV1, infohashV2)
+	return cmp.Or(hashes[1], hashes[0], hashes[2])
+}
+
+func torrentHashes(hash, infohashV1, infohashV2 string) [3]infohash.Hash {
+	var hashes [3]infohash.Hash
+	for i, raw := range [3]string{hash, infohashV1, infohashV2} {
+		hashes[i], _ = infohash.Parse(raw)
 	}
-	seen := make(map[string]struct{}, len(candidates))
-	var variants []string
-	for _, candidate := range candidates {
-		normalized := normalizeHashValue(candidate)
-		if normalized == "" {
-			continue
-		}
-		if _, ok := seen[normalized]; ok {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		variants = append(variants, normalized)
-	}
-	return variants
+	return hashes
 }
 
 func hasTorrentFieldHash(hash, infohashV1, infohashV2 string) bool {
-	return normalizeHashValue(hash) != "" || normalizeHashValue(infohashV1) != "" || normalizeHashValue(infohashV2) != ""
+	return strings.TrimSpace(hash) != "" || strings.TrimSpace(infohashV1) != "" || strings.TrimSpace(infohashV2) != ""
 }
 
-func matchesRequestedHashSet(requestedHashes map[string]struct{}, hash, infohashV1, infohashV2 string) bool {
+func matchesRequestedHashSet(requestedHashes map[infohash.Hash]struct{}, hash, infohashV1, infohashV2 string) bool {
 	if len(requestedHashes) == 0 {
 		return false
 	}
-	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
-		if _, ok := requestedHashes[candidate]; ok {
+	for _, candidate := range torrentHashes(hash, infohashV1, infohashV2) {
+		if _, ok := requestedHashes[candidate]; ok && !candidate.IsZero() {
 			return true
 		}
 	}
 	return false
 }
 
-func matchesExcludedTargetSet(excludeTargets map[string]struct{}, instanceID int, hash, infohashV1, infohashV2 string) bool {
+type instanceHash struct {
+	instanceID int
+	hash       infohash.Hash
+}
+
+func matchesExcludedTargetSet(excludeTargets map[instanceHash]struct{}, instanceID int, hash, infohashV1, infohashV2 string) bool {
 	if len(excludeTargets) == 0 {
 		return false
 	}
-	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
-		if _, ok := excludeTargets[fmt.Sprintf("%d:%s", instanceID, candidate)]; ok {
+	for _, candidate := range torrentHashes(hash, infohashV1, infohashV2) {
+		if _, ok := excludeTargets[instanceHash{instanceID: instanceID, hash: candidate}]; ok && !candidate.IsZero() {
 			return true
 		}
 	}
@@ -547,7 +549,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 	}
 
 	if len(req.Hashes) == 0 {
-		RespondJSON(w, http.StatusOK, struct {
+		RespondJSON(w, r, http.StatusOK, struct {
 			Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
 		}{Duplicates: []qbittorrent.DuplicateTorrentMatch{}})
 		return
@@ -558,7 +560,8 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	syncManager, err := h.syncManager.GetSyncOwner(r.Context(), instanceID)
+	hashes := infohash.ParseAll(req.Hashes)
+	torrents, err := h.syncManager.GetTorrentRefs(r.Context(), instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:checkDuplicates") {
 			return
@@ -568,16 +571,11 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var torrents []*qbt.Torrent
-	if snapshot := syncManager.Snapshot(); snapshot != nil {
-		wanted := make(map[string]struct{}, len(req.Hashes))
-		for _, hash := range req.Hashes {
-			wanted[hash] = struct{}{}
+	requested := make(map[infohash.Hash][]string, len(req.Hashes))
+	for i, hash := range hashes {
+		if !hash.IsZero() && !slices.Contains(requested[hash], req.Hashes[i]) {
+			requested[hash] = append(requested[hash], req.Hashes[i])
 		}
-		torrents = snapshot.Matching(func(t *qbt.Torrent) bool {
-			_, ok := wanted[t.Hash]
-			return ok
-		})
 	}
 
 	matches := make([]qbittorrent.DuplicateTorrentMatch, len(torrents))
@@ -587,13 +585,28 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 			InfohashV1:    strings.TrimSpace(torrent.InfohashV1),
 			InfohashV2:    strings.TrimSpace(torrent.InfohashV2),
 			Name:          torrent.Name,
-			MatchedHashes: []string{torrent.Hash},
+			MatchedHashes: matchedHashes(requested, torrent),
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, struct {
+	RespondJSON(w, r, http.StatusOK, struct {
 		Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
 	}{Duplicates: matches})
+}
+
+func matchedHashes(requested map[infohash.Hash][]string, torrent *qbt.Torrent) []string {
+	var matched []string
+	hashes := torrentHashes(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2)
+	for i, hash := range hashes {
+		switch {
+		case slices.Contains(hashes[:i], hash):
+		case matched == nil:
+			matched = requested[hash]
+		default:
+			matched = append(slices.Clip(matched), requested[hash]...)
+		}
+	}
+	return matched
 }
 
 func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
@@ -609,14 +622,18 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	err = r.ParseMultipartForm(addTorrentMaxFormMemory)
 	if err != nil {
 		if errors.Is(err, multipart.ErrMessageTooLarge) {
-			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload exceeded %d MB limit", addTorrentMaxFormMemory>>20))
+			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload too large: send at most %d files and fields per request", addTorrentMaxFormParts))
 			return
 		}
 		RespondError(w, http.StatusBadRequest, "Failed to parse form data")
 		return
 	}
 
-	var torrentFiles [][]byte
+	type uploadedTorrent struct {
+		filename string
+		content  []byte
+	}
+	var torrentFiles []uploadedTorrent
 	var urls []string
 
 	type fileReadFailure struct {
@@ -643,7 +660,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					fileReadFailures = append(fileReadFailures, fileReadFailure{filename: fileHeader.Filename, err: "Failed to read file"})
 					continue
 				}
-				torrentFiles = append(torrentFiles, fileContent)
+				torrentFiles = append(torrentFiles, uploadedTorrent{filename: fileHeader.Filename, content: fileContent})
 			}
 		}
 	}
@@ -768,18 +785,18 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	var failedFiles []failedFile
 
 	if len(torrentFiles) > 0 {
-		for i, fileContent := range torrentFiles {
+		for i, torrentFile := range torrentFiles {
 			if ctx.Err() != nil {
 				log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
 				break
 			}
 
-			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
+			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, torrentFile.content, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
 				log.Debug().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
-				failedFiles = append(failedFiles, failedFile{Filename: fmt.Sprintf("file_%d", i), Error: err.Error()})
+				failedFiles = append(failedFiles, failedFile{Filename: torrentFile.filename, Error: err.Error()})
 				failedCount++
 				lastError = err
 			} else {
@@ -976,7 +993,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	if len(failedFiles) > 0 {
 		response["failedFiles"] = failedFiles
 	}
-	RespondJSON(w, http.StatusCreated, response)
+	RespondJSON(w, r, http.StatusCreated, response)
 }
 
 func torrentURLAddFailureError(resp *qbt.TorrentAddResponse) error {
@@ -1021,16 +1038,16 @@ type BulkActionTarget struct {
 
 const allInstancesID = 0
 
-func normalizeHashValue(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
-}
-
 func addBulkTarget(targetsByInstance map[int][]string, seen map[int]map[string]struct{}, instanceID int, hash string) {
 	if instanceID <= 0 {
 		return
 	}
 
-	normalized := normalizeHashValue(hash)
+	hash = strings.TrimSpace(hash)
+	normalized := hash
+	if id, err := infohash.Parse(hash); err == nil {
+		normalized = id.String()
+	}
 	if normalized == "" {
 		return
 	}
@@ -1044,7 +1061,7 @@ func addBulkTarget(targetsByInstance map[int][]string, seen map[int]map[string]s
 	}
 
 	seen[instanceID][normalized] = struct{}{}
-	targetsByInstance[instanceID] = append(targetsByInstance[instanceID], strings.TrimSpace(hash))
+	targetsByInstance[instanceID] = append(targetsByInstance[instanceID], hash)
 }
 
 var errPartialResults = errors.New("selection read returned partial results")
@@ -1079,13 +1096,14 @@ func explicitTargets(scope int, targets []BulkActionTarget, hashes []string) map
 func (h *TorrentsHandler) selectAllTorrents(r *http.Request, cacheOnly bool, scope int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int, excludeHashes []string, excludeTargets []BulkActionTarget) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	ctx := r.Context()
 	view := qbittorrent.TorrentListView{
-		InstanceID:        scope,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		CacheOnly:         cacheOnly,
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		InstanceID:         scope,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		CacheOnly:          cacheOnly,
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	}
 	var torrents []qbittorrent.CrossInstanceTorrentView
 	if scope == allInstancesID {
@@ -1121,21 +1139,20 @@ func (h *TorrentsHandler) selectAllTorrents(r *http.Request, cacheOnly bool, sco
 	}), nil
 }
 
-func selectionExcluded(excludeHashes, excludeTargets map[string]struct{}, torrent qbittorrent.CrossInstanceTorrentView) bool {
+func selectionExcluded(excludeHashes map[infohash.Hash]struct{}, excludeTargets map[instanceHash]struct{}, torrent qbittorrent.CrossInstanceTorrentView) bool {
 	return matchesRequestedHashSet(excludeHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) ||
 		matchesExcludedTargetSet(excludeTargets, torrent.InstanceID, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2)
 }
 
-func buildExcludeHashSet(excludeHashes []string) map[string]struct{} {
+func buildExcludeHashSet(excludeHashes []string) map[infohash.Hash]struct{} {
 	if len(excludeHashes) == 0 {
 		return nil
 	}
 
-	result := make(map[string]struct{}, len(excludeHashes))
-	for _, hash := range excludeHashes {
-		normalized := normalizeHashValue(hash)
-		if normalized != "" {
-			result[normalized] = struct{}{}
+	result := make(map[infohash.Hash]struct{}, len(excludeHashes))
+	for _, hash := range infohash.ParseAll(excludeHashes) {
+		if !hash.IsZero() {
+			result[hash] = struct{}{}
 		}
 	}
 
@@ -1146,18 +1163,18 @@ func buildExcludeHashSet(excludeHashes []string) map[string]struct{} {
 	return result
 }
 
-func buildExcludeTargetSet(excludeTargets []BulkActionTarget) map[string]struct{} {
+func buildExcludeTargetSet(excludeTargets []BulkActionTarget) map[instanceHash]struct{} {
 	if len(excludeTargets) == 0 {
 		return nil
 	}
 
-	result := make(map[string]struct{}, len(excludeTargets))
+	result := make(map[instanceHash]struct{}, len(excludeTargets))
 	for _, target := range excludeTargets {
-		normalized := normalizeHashValue(target.Hash)
-		if target.InstanceID <= 0 || normalized == "" {
+		hash, err := infohash.Parse(target.Hash)
+		if target.InstanceID <= 0 || err != nil {
 			continue
 		}
-		result[fmt.Sprintf("%d:%s", target.InstanceID, normalized)] = struct{}{}
+		result[instanceHash{instanceID: target.InstanceID, hash: hash}] = struct{}{}
 	}
 
 	if len(result) == 0 {
@@ -1218,8 +1235,8 @@ func appendTargetsFromCrossInstanceTorrents(
 	targetsByInstance map[int][]string,
 	seen map[int]map[string]struct{},
 	torrents []qbittorrent.CrossInstanceTorrentView,
-	excludeHashes map[string]struct{},
-	excludeTargets map[string]struct{},
+	excludeHashes map[infohash.Hash]struct{},
+	excludeTargets map[instanceHash]struct{},
 ) {
 	for _, torrent := range torrents {
 		if selectionExcluded(excludeHashes, excludeTargets, torrent) {
@@ -1227,24 +1244,6 @@ func appendTargetsFromCrossInstanceTorrents(
 		}
 		addBulkTarget(targetsByInstance, seen, torrent.InstanceID, torrent.Hash)
 	}
-}
-
-func preferredHashValue(torrent *qbt.Torrent) string {
-	infoHashV1 := strings.TrimSpace(torrent.InfohashV1)
-	if infoHashV1 != "" {
-		return strings.ToUpper(infoHashV1)
-	}
-
-	hash := strings.TrimSpace(torrent.Hash)
-	infoHashV2 := strings.TrimSpace(torrent.InfohashV2)
-	if hash != "" && (infoHashV2 == "" || !strings.EqualFold(infoHashV2, hash)) {
-		return strings.ToUpper(hash)
-	}
-	if infoHashV2 != "" {
-		return strings.ToUpper(infoHashV2)
-	}
-
-	return ""
 }
 
 func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
@@ -1342,7 +1341,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		Int("targetCount", len(flattenTargetHashes(targetsByInstance))).
 		Msg("Bulk action completed with optimistic cache update")
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Bulk action completed successfully",
 	})
 }
@@ -1443,7 +1442,7 @@ func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Req
 	}
 
 	hideMatchPasskeys(r, response.Matches)
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func flattenTargetHashes(targetsByInstance map[int][]string) []string {
@@ -1560,7 +1559,7 @@ func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, categories)
+	RespondJSON(w, r, http.StatusOK, categories)
 }
 
 func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
@@ -1593,7 +1592,7 @@ func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]string{
+	RespondJSON(w, r, http.StatusCreated, map[string]string{
 		"message": "Category created successfully",
 	})
 }
@@ -1628,7 +1627,7 @@ func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Category updated successfully",
 	})
 }
@@ -1662,7 +1661,7 @@ func (h *TorrentsHandler) RemoveCategories(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Categories removed successfully",
 	})
 }
@@ -1684,7 +1683,7 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, tags)
+	RespondJSON(w, r, http.StatusOK, tags)
 }
 
 func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Request) {
@@ -1709,7 +1708,7 @@ func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Reque
 			trackers[domain] = qbittorrent.TrackerOrigin(trackerURL)
 		}
 	}
-	RespondJSON(w, http.StatusOK, trackers)
+	RespondJSON(w, r, http.StatusOK, trackers)
 }
 
 func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
@@ -1741,7 +1740,7 @@ func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]string{
+	RespondJSON(w, r, http.StatusCreated, map[string]string{
 		"message": "Tags created successfully",
 	})
 }
@@ -1775,7 +1774,7 @@ func (h *TorrentsHandler) DeleteTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Tags deleted successfully",
 	})
 }
@@ -1803,7 +1802,7 @@ func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, properties)
+	RespondJSON(w, r, http.StatusOK, properties)
 }
 
 func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Request) {
@@ -1832,7 +1831,7 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 	if !middleware.CanReadTrackerPasskeys(r) {
 		trackers = qbittorrent.TrackersWithoutPasskeys(trackers)
 	}
-	RespondJSON(w, http.StatusOK, trackers)
+	RespondJSON(w, r, http.StatusOK, trackers)
 }
 
 func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Request) {
@@ -1863,7 +1862,7 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 			webseeds[i].URL = qbittorrent.TrackerOrigin(webseeds[i].URL)
 		}
 	}
-	RespondJSON(w, http.StatusOK, webseeds)
+	RespondJSON(w, r, http.StatusOK, webseeds)
 }
 
 func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.Request) {
@@ -1889,7 +1888,7 @@ func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, pieceStates)
+	RespondJSON(w, r, http.StatusOK, pieceStates)
 }
 
 type EditTrackerRequest struct {
@@ -1931,7 +1930,7 @@ func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
 type AddTrackerRequest struct {
@@ -1972,7 +1971,7 @@ func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
 type RemoveTrackerRequest struct {
@@ -2013,7 +2012,7 @@ func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
 func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) {
@@ -2056,7 +2055,7 @@ func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent renamed successfully"})
 }
 
 func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Request) {
@@ -2100,7 +2099,7 @@ func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent file renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent file renamed successfully"})
 }
 
 func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Request) {
@@ -2144,7 +2143,7 @@ func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent folder renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent folder renamed successfully"})
 }
 
 func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request) {
@@ -2212,7 +2211,7 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 		Int("peerCount", len(sortedPeers)).
 		Msg("Torrent peers response with sorted peers")
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request) {
@@ -2250,7 +2249,7 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, files)
+	RespondJSON(w, r, http.StatusOK, files)
 }
 
 type SetTorrentFilePriorityRequest struct {
@@ -2383,7 +2382,7 @@ func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"success": true})
 }
 
 func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
@@ -2417,7 +2416,7 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"success": true})
 }
 
 func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) {
@@ -2460,7 +2459,7 @@ func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, resp)
+	RespondJSON(w, r, http.StatusCreated, resp)
 }
 
 func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *http.Request) {
@@ -2496,7 +2495,7 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 			qbittorrent.HideTrackerURLs(tasks[i].URLSeeds)
 		}
 	}
-	RespondJSON(w, http.StatusOK, tasks)
+	RespondJSON(w, r, http.StatusOK, tasks)
 }
 
 func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Request) {
@@ -2507,7 +2506,7 @@ func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Requ
 	}
 
 	count := h.syncManager.GetActiveTaskCount(r.Context(), instanceID)
-	RespondJSON(w, http.StatusOK, map[string]int{"count": count})
+	RespondJSON(w, r, http.StatusOK, map[string]int{"count": count})
 }
 
 func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *http.Request) {
@@ -2592,7 +2591,7 @@ func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *ht
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
 }
 
 func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *http.Request) {
@@ -2667,17 +2666,18 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	offset := page * limit
 
 	response, err := h.syncManager.ListTorrents(r.Context(), qbittorrent.TorrentListView{
-		Unified:           true,
-		InstanceIDs:       instanceIDs,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		SidebarCounts:     true,
-		CopyGroups:        groupCopiesParam(r),
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		Unified:            true,
+		InstanceIDs:        instanceIDs,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		SidebarCounts:      true,
+		CopyGroups:         groupCopiesParam(r),
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, 0, "torrents:listCrossInstance") {
@@ -2688,7 +2688,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Request) {
@@ -2730,7 +2730,7 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func parseDirectoryContentMode(raw string) (qbt.DirectoryContentMode, bool) {
@@ -2939,7 +2939,7 @@ func fetchTorrentFilesAndPropsForContentFile(ctx context.Context, resolver torre
 
 func resolveTorrentContentFilePathOnDisk(ctx context.Context, resolver torrentContentResolver, instanceID int, hash string, props *qbt.TorrentProperties, targetFileName string, filesLen int, w http.ResponseWriter) (string, bool) {
 	contentPath := ""
-	if torrents, err := resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}}); err != nil {
+	if torrents, err := resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})}); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent content path for fallback resolution")
 	} else if len(torrents) > 0 {
 		contentPath = torrents[0].ContentPath
@@ -3034,6 +3034,10 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	info, err := file.Stat()
 	if err != nil || info.IsDir() {
 		RespondError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+	if h.isInstallFile(info) {
+		RespondError(w, http.StatusForbidden, "qui does not serve its own config or database files")
 		return
 	}
 
@@ -3192,7 +3196,7 @@ func (h *TorrentsHandler) GetTorrentFileMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, torrentFileMediaInfoResponse{
+	RespondJSON(w, r, http.StatusOK, torrentFileMediaInfoResponse{
 		FileIndex:    resolved.FileIndex,
 		RelativePath: resolved.RelativePath,
 		Streams:      mapReportToMediaInfoStreams(report),
@@ -3266,7 +3270,7 @@ func (h *TorrentsHandler) GetContentPathMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, contentPathMediaInfoResponse{
+	RespondJSON(w, r, http.StatusOK, contentPathMediaInfoResponse{
 		ContentPath:   relativePath,
 		SummaryTxt:    summaryTxt,
 		MediaInfoJSON: json.RawMessage(rawJSON),
