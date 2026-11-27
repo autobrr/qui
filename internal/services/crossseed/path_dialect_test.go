@@ -149,7 +149,7 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 		},
 		{
 			name: "flat isolation folder taken", preset: "flat", baseDir: "/data/hl", savePath: "/data/torrents",
-			file: "movie.mkv", existing: "/data/hl/TorrentName", wantRoot: "/data/hl/TorrentName--hash123", wantCategory: "/data/hl",
+			file: "movie.mkv", existing: "/data/hl/TorrentName", wantRoot: "/data/hl/TorrentName--" + hash123[:8], wantCategory: "/data/hl",
 		},
 		{
 			name: "backslash in save path", preset: "by-tracker", baseDir: "/data/hl", savePath: `/data/torrents\old`,
@@ -187,9 +187,9 @@ func TestPathDialect_LinkModePlan(t *testing.T) {
 			adds := withLinkAdder(s)
 			result := s.processHardlinkMode(
 				t.Context(),
-				linkCheck(1, "hash123"),
+				linkCheck(t, 1, hash123),
 				CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-				[]byte("torrent"), "hash123", "TorrentName", &CrossSeedRequest{IndexerName: "Tracker"},
+				[]byte("torrent"), hash123, "TorrentName", &CrossSeedRequest{IndexerName: "Tracker"},
 				&qbt.Torrent{Hash: "matched", ContentPath: path.Dir(source)},
 				"exact", files, files,
 				&qbt.TorrentProperties{SavePath: tt.savePath},

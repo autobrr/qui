@@ -1380,6 +1380,7 @@
     },
     "footer": {
       "adding": "正在添加...",
+      "addingBatch": "正在添加第 {{current}} 批，共 {{total}} 批...",
       "add": "添加种子",
       "cancel": "取消",
       "addCount_other": "添加 {{count}} 个种子"
@@ -1391,6 +1392,8 @@
       "addedMany": "{{count}} 个种子添加成功",
       "failedMany": "添加 {{count}} 个种子失败",
       "partialSuccess": "已添加 {{added}} 个，失败 {{failed}} 个",
+      "batchFailed": "已添加 {{added}} 个，共 {{total}} 个种子",
+      "batchFailedDescription": "第 {{batch}} 批（共 {{batches}} 批）失败：{{error}}。其余文件仍在列表中，可以再次添加。",
       "rejectedOne": "1 个文件被拒绝（不是 .torrent 文件）",
       "rejectedMany": "{{count}} 个文件被拒绝（不是 .torrent 文件）"
     }

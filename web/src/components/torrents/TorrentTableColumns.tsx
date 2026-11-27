@@ -34,6 +34,7 @@ import { cn, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
 import type { CellContext } from "@tanstack/react-table"
 import type { TorrentTableColumnDef, TorrentTableFeatures } from "./tanstackTableFeatures"
+import { CellText } from "./table/CellText"
 import {
   AlertCircle,
   ArrowDownAZ,
@@ -98,7 +99,7 @@ const TrackerIconCell = memo(({ title, fallback, src }: TrackerIconCellProps) =>
 
   return (
     <div className="flex h-full w-full items-center justify-center" role={title ? "img" : undefined} aria-label={title || undefined}>
-      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-[10px] font-medium uppercase leading-none">
+      <div className="flex h-4 w-4 items-center justify-center rounded-sm border border-border/40 bg-muted text-10 font-medium uppercase leading-none">
         {src && !hasError ? (
           <img
             src={src}
@@ -331,7 +332,7 @@ export const createColumns = ({
       const instanceName = (row.original as CrossInstanceTorrent).instanceName ?? ""
       return (
         <div className="overflow-hidden whitespace-nowrap text-sm font-medium">
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline">
             {instanceName}
           </Badge>
         </div>
@@ -399,7 +400,7 @@ export const createColumns = ({
           const badgeVariant = state === "queuedDL" ? "secondary" : "outline"
           return (
             <div className="flex items-center justify-center gap-1">
-              <Badge variant={badgeVariant} className="text-xs px-1 py-0">
+              <Badge variant={badgeVariant} className="px-1 py-0">
                 Q{priority || "?"}
               </Badge>
               <span className="text-xs text-muted-foreground">{queueType}</span>
@@ -418,18 +419,18 @@ export const createColumns = ({
         const displayName = incognitoMode ? getLinuxIsoName(row.original.hash) : row.original.name
         const helper = row.original.qui_helper
         return (
-          <div className="overflow-hidden whitespace-nowrap text-sm">
+          <div className="flex min-w-0 items-center text-sm">
             {helper && (
               <Tooltip>
                 <TooltipTrigger asChild openOnTap="only">
-                  <Badge variant="outline" className={cn("text-xs mr-1.5", badgePadding)}>
+                  <Badge variant="outline" className={cn("mr-1.5 shrink-0", badgePadding)}>
                     {helper === "share" ? helperShareLabel : helperTransferLabel}
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>{helperHint}</TooltipContent>
               </Tooltip>
             )}
-            {displayName}
+            <CellText>{displayName}</CellText>
           </div>
         )
       },
@@ -517,7 +518,7 @@ export const createColumns = ({
         if (isQueued && priority > 0) {
           return (
             <div className="flex items-center gap-1">
-              <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
+              <Badge variant={badgeVariant} className={cn(badgePadding, badgeClass)}>
                 {displayLabel}
               </Badge>
               <span className="text-xs text-muted-foreground">#{priority}</span>
@@ -526,7 +527,7 @@ export const createColumns = ({
         }
 
         return (
-          <Badge variant={badgeVariant} className={cn("text-xs", badgePadding, badgeClass)}>
+          <Badge variant={badgeVariant} className={cn(badgePadding, badgeClass)}>
             {displayLabel}
           </Badge>
         )
@@ -633,11 +634,7 @@ export const createColumns = ({
       header: t("tableColumns.category"),
       cell: ({ row }) => {
         const displayCategory = incognitoMode ? getLinuxCategory(row.original.hash) : row.original.category
-        return (
-          <div className="overflow-hidden whitespace-nowrap text-sm">
-            {displayCategory || ""}
-          </div>
-        )
+        return <CellText className="text-sm">{displayCategory}</CellText>
       },
       size: 150,
     },
@@ -647,11 +644,7 @@ export const createColumns = ({
       cell: ({ row }) => {
         const tags = incognitoMode ? getLinuxTags(row.original.hash) : row.original.tags
         const displayTags = Array.isArray(tags) ? tags.join(", ") : tags || ""
-        return (
-          <div className="overflow-hidden whitespace-nowrap text-sm">
-            {displayTags}
-          </div>
-        )
+        return <CellText className="text-sm">{displayTags}</CellText>
       },
       size: 200,
     },

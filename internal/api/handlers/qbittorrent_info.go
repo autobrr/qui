@@ -5,7 +5,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -51,11 +50,7 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(appInfo); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode qBittorrent application info")
-	}
+	RespondJSON(w, r, http.StatusOK, appInfo)
 }
 
 func (h *QBittorrentInfoHandler) getQBittorrentAppInfo(ctx context.Context, client *internalqbittorrent.Client) (*internalqbittorrent.AppInfo, error) {

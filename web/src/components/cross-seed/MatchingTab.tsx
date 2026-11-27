@@ -72,7 +72,7 @@ export function MatchingTab({ settings }: { settings: CrossSeedAutomationSetting
           />
           <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
             <div className="flex items-center gap-1.5">
-              <Label htmlFor="skip-recheck" className="font-medium">{t("rules.safety.skipRecheck")}</Label>
+              <Label htmlFor="skip-recheck">{t("rules.safety.skipRecheck")}</Label>
               <FieldHelp>{t("rules.safety.skipRecheckDescription")}</FieldHelp>
             </div>
             <Switch
@@ -85,7 +85,7 @@ export function MatchingTab({ settings }: { settings: CrossSeedAutomationSetting
             <div className="space-y-0.5">
               <Label
                 htmlFor="skip-piece-boundary-check"
-                className={`font-medium ${form.skipPieceBoundarySafetyCheck ? "text-yellow-600 dark:text-yellow-500" : "text-green-600 dark:text-green-500"}`}
+                className={form.skipPieceBoundarySafetyCheck ? "text-warning" : "text-success"}
               >
                 {form.skipPieceBoundarySafetyCheck ? t("rules.safety.pieceBoundaryDisabled") : t("rules.safety.pieceBoundaryEnabled")}
               </Label>
@@ -107,7 +107,7 @@ export function MatchingTab({ settings }: { settings: CrossSeedAutomationSetting
             <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
+            <Label htmlFor="global-find-individual-episodes">{t("rules.matching.crossSeedEpisodes")}</Label>
             <Switch
               id="global-find-individual-episodes"
               checked={form.findIndividualEpisodes}

@@ -124,7 +124,6 @@ func (s *Service) usageUnder(ctx context.Context, instance *models.Instance, roo
 	if root == "" || root == "." {
 		return 0, errors.New("free space source path is empty")
 	}
-	remote := models.FilesystemAccessMode(fsInstance) == models.FilesystemModeRemote
 
 	walkCtx, cancel := context.WithCancel(ctx)
 	entries, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{WantFileID: true, EmitStatErrors: true, FollowRoot: true})
@@ -153,7 +152,7 @@ func (s *Service) usageUnder(ctx context.Context, instance *models.Instance, roo
 			return 0, fmt.Errorf("failed to measure %s: cannot read %s: %w", root, entry.Path, entry.StatErr)
 		case !entry.Mode.IsRegular():
 			continue
-		case remote && entry.FileIDErr != nil:
+		case entry.FileIDErr != nil:
 			if identityErr == nil {
 				identityErr = fmt.Errorf("failed to measure %s: %s: %w", root, entry.Path, entry.FileIDErr)
 			}

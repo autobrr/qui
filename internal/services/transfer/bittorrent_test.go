@@ -40,8 +40,8 @@ func (r *rig) requireNoHelpers(record *transfer.Record) {
 	helpers, err := r.store.HelpersOf(r.t.Context(), transfer.OwnerTransfer, record.ID)
 	require.NoError(r.t, err)
 	for _, h := range helpers {
-		require.False(r.t, r.src.Has(h.Hash), "the Transfer torrent left the source")
-		require.False(r.t, r.dst.Has(h.Hash), "the Transfer torrent left the target")
+		require.False(r.t, r.src.Has(h.Hash.String()), "the Transfer torrent left the source")
+		require.False(r.t, r.dst.Has(h.Hash.String()), "the Transfer torrent left the target")
 	}
 }
 
@@ -55,7 +55,7 @@ func (r *rig) requireHelperTag(record *transfer.Record) {
 		if h.InstanceID == r.source.ID {
 			client = r.src
 		}
-		require.Equal(r.t, []string{"qui-transfer"}, client.AddedTags(h.Hash))
+		require.Equal(r.t, []string{"qui-transfer"}, client.AddedTags(h.Hash.String()))
 	}
 }
 
@@ -635,4 +635,17 @@ func TestTransferTorrentPlacesAGroupBelowAWindowsSavePath(t *testing.T) {
 	require.Equal(t, transfer.StateFailed, record.State)
 	require.Equal(t, "homelab did not take the Transfer torrent: could not add torrent | conflicts detected: torrent(s) failed to be added",
 		record.FailureReason, "the stub cannot write at a save path on another host")
+}
+
+func TestTransferTorrentWaitsForARecheckOnCompletionOnTheTarget(t *testing.T) {
+	r := newRigOn(t, overSFTP, noAccess)
+	r.connect()
+	r.dst.RecheckSyncs = 30
+	s := newShow(t, showName)
+	r.seed(s)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, transfer.WayBitTorrent, record.Way)
 }

@@ -1,0 +1,37 @@
+name: Benchmark approval
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Benchmark limits and starting commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Check the benchmark limits and starting commits
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          git fetch --no-tags origin "$HEAD"
+          go run ./scripts/benchcompare check -base "origin/$BASE_REF" -head "$HEAD" -labels "$LABELS"

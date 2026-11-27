@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/sshtest"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func crossSeedOf(t *testing.T, s show) (data []byte, hash string) {
@@ -40,7 +41,7 @@ func crossSeedOf(t *testing.T, s show) (data []byte, hash string) {
 
 func (r *rig) seeding(instanceID int, hash string) bool {
 	r.t.Helper()
-	torrents, err := r.sync.GetTorrentRefsFresh(r.t.Context(), instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	torrents, err := r.sync.GetTorrentRefsFresh(r.t.Context(), instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})})
 	require.NoError(r.t, err)
 	return len(torrents) == 1 && string(torrents[0].State) == "stalledUP"
 }
@@ -119,7 +120,7 @@ func (c *crossSeeds) CrossSeed(ctx context.Context, req *crossseed.CrossSeedRequ
 			{InstanceID: matchedOn, Status: c.taken, CrossSeedInstanceID: c.inst.ID},
 		}}, nil
 	}
-	matched, err := c.r.sync.GetTorrentRefsFresh(ctx, matchedOn, qbittorrent.TorrentRefFilter{Hashes: []string{req.ManualTargetHash}})
+	matched, err := c.r.sync.GetTorrentRefsFresh(ctx, matchedOn, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{req.ManualTargetHash})})
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +226,7 @@ func TestTransferWaitsForTheCheckOfARoutedCrossSeed(t *testing.T) {
 			record := r.run(req)
 
 			require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
-			torrents, err := r.sync.GetTorrentRefsFresh(t.Context(), cs.inst.ID, qbittorrent.TorrentRefFilter{Hashes: []string{s.hash}})
+			torrents, err := r.sync.GetTorrentRefsFresh(t.Context(), cs.inst.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{s.hash})})
 			require.NoError(t, err)
 			require.Len(t, torrents, 1)
 			require.Equal(t, tc.state, string(torrents[0].State), "the check ended before the Transfer")

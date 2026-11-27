@@ -13,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type RestoreMode string
@@ -198,19 +199,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		return
 	}
 
-	if len(opts.ExcludeHashes) == 0 {
-		return
-	}
-
-	exclude := make(map[string]struct{}, len(opts.ExcludeHashes))
-	for _, hash := range opts.ExcludeHashes {
-		normalized := normalizeLowerTrim(hash)
-		if normalized == "" {
-			continue
-		}
-		exclude[normalized] = struct{}{}
-	}
-
+	exclude := buildHashSet(opts.ExcludeHashes)
 	if len(exclude) == 0 {
 		return
 	}
@@ -221,8 +210,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, item := range items {
-			hash := normalizeLowerTrim(item.Manifest.Hash)
-			if _, skip := exclude[hash]; skip {
+			if shouldSkipTorrent(item.Manifest.Hash, exclude) {
 				continue
 			}
 			filtered = append(filtered, item)
@@ -236,8 +224,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, item := range items {
-			hash := normalizeLowerTrim(item.Hash)
-			if _, skip := exclude[hash]; skip {
+			if shouldSkipTorrent(item.Hash, exclude) {
 				continue
 			}
 			filtered = append(filtered, item)
@@ -251,8 +238,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, hash := range items {
-			normalized := normalizeLowerTrim(hash)
-			if _, skip := exclude[normalized]; skip {
+			if shouldSkipTorrent(hash, exclude) {
 				continue
 			}
 			filtered = append(filtered, hash)
@@ -301,10 +287,11 @@ func (s *Service) loadSnapshotState(ctx context.Context, runID int64) (*Snapshot
 
 	torrents := make(map[string]SnapshotTorrent, len(manifest.Items))
 	for _, item := range manifest.Items {
-		hash := normalizeLowerTrim(item.Hash)
-		if hash == "" {
+		parsed, err := infohash.Parse(item.Hash)
+		if err != nil {
 			continue
 		}
+		hash := parsed.String()
 
 		copyTags := make([]string, len(item.Tags))
 		copy(copyTags, item.Tags)
@@ -389,10 +376,11 @@ func (s *Service) loadLiveState(ctx context.Context, instanceID int) (*LiveState
 
 	liveTorrents := make(map[string]LiveTorrent, len(torrents))
 	for _, torrent := range torrents {
-		hash := normalizeLowerTrim(torrent.Hash)
-		if hash == "" {
+		parsed, err := infohash.Parse(torrent.Hash)
+		if err != nil {
 			continue
 		}
+		hash := parsed.String()
 
 		liveTorrents[hash] = LiveTorrent{
 			Hash:        hash,
@@ -534,12 +522,7 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 	plan := TorrentPlan{}
 
 	for hash, snap := range snapshot {
-		normalizedHash := normalizeLowerTrim(hash)
-		if normalizedHash == "" {
-			continue
-		}
-
-		liveTorrent, exists := live[normalizedHash]
+		liveTorrent, exists := live[hash]
 		if !exists {
 			plan.Add = append(plan.Add, TorrentSpec{Manifest: snapshotTorrentToManifestItem(snap)})
 			continue
@@ -555,7 +538,7 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 		}
 
 		plan.Update = append(plan.Update, TorrentUpdate{
-			Hash:    normalizedHash,
+			Hash:    hash,
 			Current: cloneLiveTorrent(liveTorrent),
 			Desired: snap,
 			Changes: changes,
@@ -564,21 +547,17 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 
 	if includeDeletes {
 		for hash := range live {
-			normalizedHash := normalizeLowerTrim(hash)
-			if normalizedHash == "" {
-				continue
-			}
-			if _, exists := snapshot[normalizedHash]; !exists {
-				plan.Delete = append(plan.Delete, normalizedHash)
+			if _, exists := snapshot[hash]; !exists {
+				plan.Delete = append(plan.Delete, hash)
 			}
 		}
 	}
 
 	sort.Slice(plan.Add, func(i, j int) bool {
-		return normalizeLowerTrim(plan.Add[i].Manifest.Hash) < normalizeLowerTrim(plan.Add[j].Manifest.Hash)
+		return plan.Add[i].Manifest.Hash < plan.Add[j].Manifest.Hash
 	})
 	sort.Slice(plan.Update, func(i, j int) bool {
-		return normalizeLowerTrim(plan.Update[i].Hash) < normalizeLowerTrim(plan.Update[j].Hash)
+		return plan.Update[i].Hash < plan.Update[j].Hash
 	})
 	sort.Strings(plan.Delete)
 
@@ -587,7 +566,7 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 
 func snapshotTorrentToManifestItem(t SnapshotTorrent) ManifestItem {
 	manifest := ManifestItem{
-		Hash:        normalizeLowerTrim(t.Hash),
+		Hash:        t.Hash,
 		Name:        t.Name,
 		ArchivePath: t.ArchivePath,
 		SizeBytes:   t.SizeBytes,

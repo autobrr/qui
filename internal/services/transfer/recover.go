@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -81,7 +82,7 @@ func (j *job) reachedFor(name, detail string) bool {
 }
 
 func (j *job) added(p *part) bool {
-	return j.reachedFor(stepAdded, p.Hash)
+	return j.reachedFor(stepAdded, p.Hash.String())
 }
 
 func (j *job) findOnTargetAgain(ctx context.Context) error {
@@ -249,13 +250,13 @@ func (j *job) removeHelpers(ctx context.Context) error {
 		var hashes []string
 		for _, h := range helpers {
 			if h.InstanceID == inst.ID {
-				hashes = append(hashes, h.Hash)
+				hashes = append(hashes, h.Hash.String())
 			}
 		}
 		if len(hashes) == 0 {
 			continue
 		}
-		present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+		present, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 		if err != nil {
 			return fmt.Errorf("%s: %w", inst.Name, err)
 		}
@@ -386,8 +387,8 @@ func (j *job) removeMember(ctx context.Context, m *Member) (keep bool, err error
 	switch {
 	case err != nil:
 		return false, err
-	case present && j.reachedFor(stepAdded, m.Hash):
-		return false, j.svc.deps.Sync.DeleteTorrents(ctx, inst.ID, []string{m.Hash}, false, j.actor())
+	case present && j.reachedFor(stepAdded, m.Hash.String()):
+		return false, j.svc.deps.Sync.DeleteTorrents(ctx, inst.ID, []string{m.Hash.String()}, false, j.actor())
 	}
 	return present, nil
 }

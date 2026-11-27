@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog"
 
+	"github.com/autobrr/qui/pkg/httphelpers"
 	"github.com/autobrr/qui/pkg/redact"
 )
 
@@ -48,7 +49,7 @@ func Logger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 						Str("url", redact.ProxyPath(r.URL.EscapedPath())).
 						Str("proto", r.Proto).
 						Str("method", r.Method).
-						Str("user_agent", r.Header.Get("User-Agent")).
+						Str("user_agent", httphelpers.LoggedUserAgent(r)).
 						Int("status", ww.Status()).
 						Float64("latency_ms", float64(latency.Nanoseconds())/1000000.0).
 						Str("bytes_in", r.Header.Get("Content-Length")).

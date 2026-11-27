@@ -78,7 +78,7 @@ func (m *localMatchContext) getSourceFiles() error {
 	}
 
 	if len(srcFiles) == 0 {
-		m.sourceFilesErr = fmt.Errorf("source torrent %s returned empty file list", normalizeHash(m.sourceHash))
+		m.sourceFilesErr = fmt.Errorf("source torrent %s returned empty file list", m.sourceHash)
 		return m.sourceFilesErr
 	}
 
@@ -113,7 +113,7 @@ func (m *localMatchContext) getSourceFileIDs() map[fsops.FileKey]struct{} {
 		}
 		return true
 	}); err != nil && m.verificationErr == nil {
-		m.verificationErr = fmt.Errorf("source torrent %s: %w", normalizeHash(m.sourceHash), err)
+		m.verificationErr = fmt.Errorf("source torrent %s: %w", m.sourceHash, err)
 	}
 	m.sourceFileIDs = ids
 	return m.sourceFileIDs
@@ -169,9 +169,6 @@ func (s *Service) localLinkedMatchType(
 	var filesShareAllocation func(sourcePath, candidatePath string) (bool, error)
 	if matchCtx.sourceLocal && models.FilesystemAccessMode(candidateInstance) == models.FilesystemModeLocal {
 		filesShareAllocation = s.filesShareAllocation
-		if filesShareAllocation == nil && sharedextents.Supported {
-			filesShareAllocation = sharedextents.FilesShareAllocation
-		}
 	}
 	if len(sourceIDs) == 0 && filesShareAllocation == nil {
 		return ""
@@ -196,7 +193,7 @@ func (s *Service) localLinkedMatchType(
 		return matchTypeHardlink
 	}
 	if err != nil && matchCtx.verificationErr == nil {
-		matchCtx.verificationErr = fmt.Errorf("candidate torrent %s: %w", normalizeHash(candidate.Hash), err)
+		matchCtx.verificationErr = fmt.Errorf("candidate torrent %s: %w", candidate.Hash, err)
 	}
 
 	if filesShareAllocation == nil {
@@ -242,7 +239,7 @@ func (s *Service) getLocalMatchCandidateFiles(
 ) (qbt.TorrentFiles, bool) {
 	candidateFiles, err := s.getTorrentFilesCached(matchCtx.ctx, candidate.InstanceID, candidate.Hash)
 	if err == nil && len(candidateFiles) == 0 {
-		err = fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candidate.Hash))
+		err = fmt.Errorf("candidate torrent %s returned empty file list", candidate.Hash)
 	}
 	if err != nil {
 		if matchCtx.candidateFilesErr == nil {

@@ -14,9 +14,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import { sitePickChange, sitePickSelected, useSitePickOptions } from "@/lib/site-pick"
 import { cn } from "@/lib/utils"
-import type { Instance, InstanceCrossSeedCompletionSettings } from "@/types"
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { Instance, InstanceCrossSeedCompletionSettings, SitePick } from "@/types"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Info, Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
@@ -30,7 +31,7 @@ interface CompletionFormState {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
-  indexerIds: number[]
+  sitePick: SitePick
   bypassTorznabCache: boolean
   delaySeconds: number
 }
@@ -41,7 +42,7 @@ const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   tags: [],
   excludeCategories: [],
   excludeTags: [],
-  indexerIds: [],
+  sitePick: { indexerIds: [], gazelleSites: [] },
   bypassTorznabCache: false,
   delaySeconds: 0,
 }
@@ -54,7 +55,7 @@ function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefine
     tags: settings.tags ?? [],
     excludeCategories: settings.excludeCategories ?? [],
     excludeTags: settings.excludeTags ?? [],
-    indexerIds: settings.indexerIds ?? [],
+    sitePick: { indexerIds: settings.indexerIds ?? [], gazelleSites: settings.gazelleSites ?? [] },
     bypassTorznabCache: settings.bypassTorznabCache ?? false,
     delaySeconds: settings.delaySeconds ?? 0,
   }
@@ -67,22 +68,10 @@ function formToSettings(form: CompletionFormState): Omit<InstanceCrossSeedComple
     tags: form.tags,
     excludeCategories: form.excludeCategories,
     excludeTags: form.excludeTags,
-    indexerIds: form.indexerIds,
+    ...form.sitePick,
     bypassTorznabCache: form.bypassTorznabCache,
     delaySeconds: form.delaySeconds,
   }
-}
-
-function normalizeNumberList(values: Array<string | number>): number[] {
-  const normalized: number[] = []
-  const seen = new Set<number>()
-  values.forEach((value) => {
-    const parsed = typeof value === "number" ? value : Number(value)
-    if (!Number.isFinite(parsed) || parsed <= 0 || seen.has(parsed)) return
-    seen.add(parsed)
-    normalized.push(parsed)
-  })
-  return normalized
 }
 
 export function CompletionOverview() {
@@ -106,21 +95,8 @@ export function CompletionOverview() {
     })),
   })
 
-  const indexersQuery = useQuery({
-    queryKey: ["torznab-indexers"],
-    queryFn: () => api.listTorznabIndexers(),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const enabledIndexers = useMemo(
-    () => (indexersQuery.data ?? []).filter((indexer) => indexer.enabled),
-    [indexersQuery.data]
-  )
-  const indexerOptions = useMemo(
-    () => enabledIndexers.map((indexer) => ({ label: indexer.name, value: String(indexer.id) })),
-    [enabledIndexers]
-  )
-  const hasEnabledIndexers = enabledIndexers.length > 0
+  const sitePick = useSitePickOptions("completion")
+  const hasSites = sitePick.options.length > 0
 
   const metadataQueries = useQueries({
     queries: activeInstances.map((instance) => ({
@@ -177,7 +153,7 @@ export function CompletionOverview() {
   const handleFormChange = (
     instanceId: number,
     field: keyof CompletionFormState,
-    value: string[] | number[] | boolean | number,
+    value: string[] | SitePick | boolean | number,
     currentForm: CompletionFormState
   ) => {
     setFormMap((prev) => ({
@@ -272,6 +248,8 @@ export function CompletionOverview() {
             const isError = query?.isError ?? false
             const isMetadataError = metadataQuery?.isError ?? false
             const form = formMap[instance.id] ?? settingsToForm(query?.data)
+            const siteOptions = sitePick.optionsFor(form.sitePick)
+            const selectedSites = sitePickSelected(form.sitePick, siteOptions, sitePick.sites)
             const isEnabled = form.enabled
             const isDirty = dirtyMap[instance.id] ?? false
             const isSaving = updateMutation.isPending && updateMutation.variables?.instanceId === instance.id
@@ -308,7 +286,7 @@ export function CompletionOverview() {
                       >
                         <span className={cn(
                           "text-xs font-medium",
-                          isEnabled ? "text-emerald-500" : "text-muted-foreground"
+                          isEnabled ? "text-success" : "text-muted-foreground"
                         )}>
                           {isEnabled ? t("preferences.completionOverview.on") : t("preferences.completionOverview.off")}
                         </span>
@@ -337,25 +315,25 @@ export function CompletionOverview() {
                     {!isError && isEnabled && (
                       <>
                         {isMetadataError && (
-                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
-                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
-                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning/10">
+                            <AlertCircle className="h-4 w-4 text-warning shrink-0" />
+                            <p className="text-sm text-warning">
                               {t("preferences.completionOverview.metadataWarning")}
                             </p>
                           </div>
                         )}
-                        {indexersQuery.isError && (
-                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
-                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
-                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                        {sitePick.isError && (
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning/10">
+                            <AlertCircle className="h-4 w-4 text-warning shrink-0" />
+                            <p className="text-sm text-warning">
                               {t("preferences.completionOverview.indexerWarning")}
                             </p>
                           </div>
                         )}
-                        {!indexersQuery.isError && !indexersQuery.isPending && !hasEnabledIndexers && (
-                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
-                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
-                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                        {!sitePick.isError && !sitePick.isPending && !hasSites && (
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning/10">
+                            <AlertCircle className="h-4 w-4 text-warning shrink-0" />
+                            <p className="text-sm text-warning">
                               {t("preferences.completionOverview.noIndexersWarning")}
                             </p>
                           </div>
@@ -407,7 +385,7 @@ export function CompletionOverview() {
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.includeFilters")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.categories")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.categories}
@@ -421,7 +399,7 @@ export function CompletionOverview() {
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.tags")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.tags}
@@ -435,16 +413,16 @@ export function CompletionOverview() {
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.indexers")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.indexers")}</Label>
                               <MultiSelect
-                                options={indexerOptions}
-                                selected={form.indexerIds.map(String)}
-                                onChange={(values) => handleFormChange(instance.id, "indexerIds", normalizeNumberList(values), form)}
+                                options={siteOptions}
+                                selected={selectedSites}
+                                onChange={(values) => handleFormChange(instance.id, "sitePick", sitePickChange(form.sitePick, values, siteOptions, sitePick.sites), form)}
                                 placeholder={t("preferences.completionOverview.allIndexers")}
-                                disabled={isSaving || indexersQuery.isPending || (!hasEnabledIndexers && !indexersQuery.isPending)}
+                                disabled={isSaving || !sitePick.loaded || siteOptions.length === 0}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.indexerIds.length === 0? t("preferences.completionOverview.allIndexersSearched"): t("preferences.completionOverview.selectedIndexers", { count: form.indexerIds.length })}
+                                {selectedSites.length === 0? t("preferences.completionOverview.allIndexersSearched"): t("preferences.completionOverview.selectedIndexers", { count: selectedSites.length })}
                               </p>
                             </div>
                           </div>
@@ -452,7 +430,7 @@ export function CompletionOverview() {
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.excludeFilters")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.categories")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.excludeCategories}
@@ -464,7 +442,7 @@ export function CompletionOverview() {
                               <p className="text-xs text-muted-foreground">{t("preferences.completionOverview.skipCategoriesDescription")}</p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">{t("preferences.completionOverview.tags")}</Label>
+                              <Label size="sm">{t("preferences.completionOverview.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.excludeTags}

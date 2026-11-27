@@ -352,7 +352,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                       {isFile ? (
                         <File className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       ) : (
-                        <Folder className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
+                        <Folder className="h-3.5 w-3.5 text-chart-4 shrink-0" />
                       )}
                       <TruncatedText
                         className={cn(isPending && "opacity-50")}
@@ -378,7 +378,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                   <div className="w-28 px-2 py-1.5 shrink-0">
                     <div className="flex items-center gap-2">
                       <Progress value={progress} className="h-1.5 w-16" />
-                      <span className="tabular-nums text-[10px] text-muted-foreground w-10">
+                      <span className="tabular-nums text-10 text-muted-foreground w-10">
                         {(Math.floor(progress * 10) / 10).toFixed(1)}%
                       </span>
                     </div>

@@ -14,9 +14,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/experimental"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/testutil/biglib"
 	"github.com/autobrr/qui/internal/testutil/testdb"
@@ -112,7 +110,7 @@ func TestHeldTitlesAnswerAsTheFullScan(t *testing.T) {
 			for _, targets := range [][]int{{1}, {2}, nil} {
 				for _, announce := range announces {
 					t.Run(fmt.Sprintf("%s rescue %v skip recheck %v targets %v source %q", announce.name, settings.RescueTitleMismatches, settings.SkipRecheck, targets, source), func(t *testing.T) {
-						want := checkAnnounce(t, full, announce.torrent, announce.size, targets...)
+						want := checkFullScan(t, full, announce.torrent, announce.size, targets...)
 						got := checkAnnounce(t, held, announce.torrent, announce.size, targets...)
 						require.Equal(t, want, got)
 						matched[announce.name] = matched[announce.name] || want.CanCrossSeed
@@ -146,7 +144,7 @@ func TestHeldTitlesMissAnswersWithoutFileReadOrArrCall(t *testing.T) {
 	require.Empty(t, first.takeFileReads())
 
 	full, fullSpy := rig.fullScan()
-	require.Equal(t, resp, checkAnnounce(t, full, heldMissName, 1_000_000))
+	require.Equal(t, resp, checkFullScan(t, full, heldMissName, 1_000_000))
 	require.Equal(t, 1, fullSpy.calls, "the full scan asks Sonarr for the alternate titles of the same miss")
 }
 
@@ -194,18 +192,24 @@ func TestHeldTitlesReadsFilesOnlyOfCandidates(t *testing.T) {
 	require.Empty(t, first.takeFileReads())
 }
 
-func TestHeldTitlesBeforeReadyAnswersAsTheFullScan(t *testing.T) {
+func TestHeldTitlesBeforeReadyAnswersNoMatchWithoutAFullScan(t *testing.T) {
 	first, _ := heldLibraries(t, 2000)
 	rig := newHeldRig(t, first)
 	stopped, cancel := context.WithCancel(t.Context())
 	cancel()
-	held, _ := rig.heldTitles(stopped)
+	held, spy := rig.heldTitles(stopped)
 	full, _ := rig.fullScan()
+	first.takeFileReads()
 
 	for _, announce := range heldAnnounces(first.torrents) {
-		require.Equal(t, checkAnnounce(t, full, announce.torrent, announce.size), checkAnnounce(t, held, announce.torrent, announce.size), announce.name)
+		resp := checkAnnounce(t, held, announce.torrent, announce.size)
+		require.Equal(t, &WebhookCheckResponse{Recommendation: "skip"}, resp, announce.name)
 	}
-	require.True(t, checkAnnounce(t, held, first.torrents[500].Name, uint64(first.torrents[500].Size)).CanCrossSeed)
+	require.True(t, checkFullScan(t, full, first.torrents[500].Name, uint64(first.torrents[500].Size)).CanCrossSeed, "the full scan would match")
+	first.takeFileReads()
+	require.False(t, checkAnnounce(t, held, first.torrents[500].Name, uint64(first.torrents[500].Size)).CanCrossSeed)
+	require.Zero(t, spy.calls, "a full scan asks Sonarr about the announce")
+	require.Empty(t, first.takeFileReads(), "a full scan reads the files of the torrents that wait on them")
 }
 
 func TestHeldTitlesFollowsSyncs(t *testing.T) {
@@ -244,7 +248,7 @@ func TestHeldTitlesFollowsSyncs(t *testing.T) {
 			requireNotHeld(t, held, renamed.Name, 0)
 			got := checkAnnounce(t, held, newName, uint64(renamed.Size))
 			require.True(t, got.CanCrossSeed)
-			require.Equal(t, checkAnnounce(t, full, newName, uint64(renamed.Size)), got)
+			require.Equal(t, checkFullScan(t, full, newName, uint64(renamed.Size)), got)
 		})
 	}
 }
@@ -272,38 +276,9 @@ func TestHeldTitlesRebuildsAfterCategoryMappingRulesChange(t *testing.T) {
 	full, _ := rig.fullScan()
 	full.automationSettingsLoader, full.automationStore = nil, store
 
-	want := checkAnnounce(t, full, heldSingleAnnoun, 0)
+	want := checkFullScan(t, full, heldSingleAnnoun, 0)
 	require.True(t, want.CanCrossSeed, "without the rule, the single file names the title")
 	require.Equal(t, want, checkAnnounce(t, held, heldSingleAnnoun, 0))
-}
-
-type failingHeldSync struct{ t *testing.T }
-
-func (f failingHeldSync) InstanceSnapshot(context.Context, int) *qbt.SyncSnapshot {
-	f.t.Error("Held titles reads a snapshot while the feature is off")
-	return nil
-}
-
-func (f failingHeldSync) CopyGroups() *qbittorrent.CopyGroups {
-	f.t.Error("Held titles reads the Copy groups while the feature is off")
-	return nil
-}
-
-func (f failingHeldSync) AddSyncEventSink(qbittorrent.SyncEventSink) {
-	f.t.Error("Held titles follows syncs while the feature is off")
-}
-
-func TestHeldTitlesOffBuildsNothing(t *testing.T) {
-	svc := settingsCheckService(t)
-	off := failingHeldSync{t: t}
-
-	sonarr, service := newFakeArr(t)
-
-	svc.StartHeldTitles(t.Context(), experimental.New(nil), off, off, NewArrAlternateTitles(service))
-
-	require.True(t, checkSettingsName(t, svc).CanCrossSeed)
-	require.Nil(t, svc.heldTitles)
-	require.Empty(t, sonarr.takeRequests())
 }
 
 func TestHeldTitlesMatchesOnlyTheTorrentsLeftAfterTheFileReads(t *testing.T) {
@@ -336,6 +311,6 @@ func TestHeldTitlesMatchesOnlyTheTorrentsLeftAfterTheFileReads(t *testing.T) {
 	got := <-answered
 	require.NoError(t, got.err)
 	full, _ := rig.fullScan()
-	require.Equal(t, checkAnnounce(t, full, localReadsPack, 0), got.resp)
+	require.Equal(t, checkFullScan(t, full, localReadsPack, 0), got.resp)
 	require.False(t, got.resp.CanCrossSeed, "the season folder left qBittorrent while its files were read")
 }

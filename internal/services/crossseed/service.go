@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/go-cache/ttlcache"
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/autobrr/rls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
@@ -39,6 +38,8 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
+	"github.com/autobrr/qui/pkg/sharedextents"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -77,11 +78,15 @@ type seasonPackRunCreator interface {
 	Create(ctx context.Context, run *models.SeasonPackRun) (*models.SeasonPackRun, error)
 }
 
+type injector interface {
+	CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+}
+
 type qbittorrentSync interface {
 	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 	ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error)
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
@@ -169,8 +174,8 @@ type Service struct {
 	gazelleNoticeMu          sync.Mutex
 	gazelleKeyGens           map[string]uint64
 
-	externalProgramStore   *models.ExternalProgramStore
-	externalProgramService *externalprograms.Service
+	externalProgramStore *models.ExternalProgramStore
+	programRunner        programRunner
 
 	completionStore *models.InstanceCrossSeedCompletionStore
 
@@ -215,15 +220,15 @@ type Service struct {
 	completionMaxAttempts  int
 
 	seasonPackRunStore seasonPackRunCreator
+	seasonPackApplies  seasonPackApplies
 
 	backendPool atomic.Value
 
-	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
+	injection               injector
+	seasonPackApplier       func(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
 	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	postInjectionHook       func(context.Context, int, []string)
 	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
 
 	settler *Settler
@@ -231,8 +236,6 @@ type Service struct {
 	aligner *Aligner
 
 	partialPool *partialPoolCoordinator
-
-	seasonPackEpisodeTotalLookup func(context.Context, string, *rls.Release) (int, []string, bool)
 
 	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error)
 	metadataCredentialLoader    func(ctx context.Context) (apiKey, pin string, err error)
@@ -303,7 +306,6 @@ func NewService(
 		notifier:                      notifier,
 		systemNotices:                 systemNotices,
 		externalProgramStore:          externalProgramStore,
-		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
 		seasonPackRunStore:            seasonPackRunStore,
@@ -323,7 +325,15 @@ func NewService(
 		metadataCredentialLoader:      metadataCredentialLoader,
 		metadataService:               metadata.NewService("", ""),
 		activityPublisher:             activity.NopPublisher{},
+		analyzeMediaFile:              analyzeMediaFile,
 	}
+	if externalProgramService != nil {
+		svc.programRunner = externalProgramService
+	}
+	if sharedextents.Supported {
+		svc.filesShareAllocation = sharedextents.FilesShareAllocation
+	}
+	svc.injection = svc
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
 	if syncManager != nil {
@@ -345,6 +355,7 @@ func (s *Service) MetricsCollectors() []prometheus.Collector { return s.metrics.
 
 func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
 	svc := &Service{automationStore: automationStore}
+	svc.injection = svc
 	svc.partialPool = &partialPoolCoordinator{
 		automationStore: automationStore,
 		settings:        svc.GetAutomationSettings,
@@ -575,32 +586,25 @@ func (s *Service) ReconcileInterruptedRuns(ctx context.Context) {
 	}
 }
 
-func dedupeHashes(hashes ...string) []string {
-	if len(hashes) == 0 {
-		return nil
-	}
-
-	out := make([]string, 0, len(hashes))
-	seen := make(map[string]struct{}, len(hashes))
-
-	for _, hash := range hashes {
-		trimmed := strings.TrimSpace(hash)
-		if trimmed == "" {
-			continue
-		}
-		canonical := normalizeHash(trimmed)
-		if _, ok := seen[canonical]; ok {
-			continue
-		}
-		seen[canonical] = struct{}{}
-		out = append(out, trimmed)
-	}
-
-	return out
+func parseHash(value string) infohash.Hash {
+	hash, _ := infohash.Parse(value)
+	return hash
 }
 
-func normalizeHash(hash string) string {
-	return normalizeLowerTrim(hash)
+func parseHashes(values ...string) []infohash.Hash {
+	return infohash.Unique(values)
+}
+
+func torrentHasHash(torrent *qbt.Torrent, hash infohash.Hash) bool {
+	return hash.Is(torrent.Hash) || hash.Is(torrent.InfohashV1) || hash.Is(torrent.InfohashV2)
+}
+
+func hashStrings(hashes []infohash.Hash) []string {
+	out := make([]string, len(hashes))
+	for i, hash := range hashes {
+		out[i] = hash.String()
+	}
+	return out
 }
 
 func postRecheckBudgetSatisfied(
@@ -680,7 +684,7 @@ func cacheKeyForTorrentFiles(instanceID int, hash string) string {
 	if hash == "" {
 		return ""
 	}
-	return fmt.Sprintf("%d|%s", instanceID, normalizeHash(hash))
+	return fmt.Sprintf("%d|%s", instanceID, hash)
 }
 
 func cloneTorrentFiles(files qbt.TorrentFiles) qbt.TorrentFiles {
@@ -702,7 +706,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 		if cached, ok := s.torrentFilesCache.Get(key); ok {
 			log.Trace().
 				Int("instanceID", instanceID).
-				Str("hash", normalizeHash(hash)).
+				Str("hash", hash).
 				Msg("Using cached torrent files")
 			return cloneTorrentFiles(cached), nil
 		}
@@ -713,7 +717,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 		return nil, err
 	}
 
-	files, ok := filesMap[normalizeHash(hash)]
+	files, ok := filesMap[hash]
 	if !ok {
 		return nil, fmt.Errorf("torrent files not found for hash %s", hash)
 	}
@@ -724,7 +728,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 
 	log.Trace().
 		Int("instanceID", instanceID).
-		Str("hash", normalizeHash(hash)).
+		Str("hash", hash).
 		Msg("Fetched torrent files from qbittorrent")
 
 	return files, nil
@@ -770,7 +774,7 @@ func searchSourceSize(t *qbt.Torrent) int64 {
 	return t.Size
 }
 
-func (s *Service) contentPrefilterRejectionForHashes(instanceID int, sourceHash string, indexerID int, hashes []string) (contentPrefilterRejectedTorrent, bool) {
+func (s *Service) contentPrefilterRejectionForHashes(instanceID int, sourceHash string, indexerID int, hashes []infohash.Hash) (contentPrefilterRejectedTorrent, bool) {
 	snapshot, _, ok := s.completedAsyncContentFilterSnapshot(instanceID, sourceHash)
 	if !ok || len(snapshot.rejectedContentCandidates) == 0 {
 		return contentPrefilterRejectedTorrent{}, false
@@ -788,12 +792,11 @@ func (s *Service) contentPrefilterRejectionForHashes(instanceID int, sourceHash 
 	return contentPrefilterRejectedTorrent{}, false
 }
 
-func contentPrefilterRejectedContentKey(indexerID int, hash string) string {
-	normalized := normalizeHash(hash)
-	if indexerID <= 0 || normalized == "" {
+func contentPrefilterRejectedContentKey(indexerID int, hash infohash.Hash) string {
+	if indexerID <= 0 || hash.IsZero() {
 		return ""
 	}
-	return fmt.Sprintf("%d|%s", indexerID, normalized)
+	return fmt.Sprintf("%d|%s", indexerID, hash)
 }
 
 func contentPrefilterRejectedExistingStatus(rejection contentPrefilterRejectedTorrent) string {
@@ -816,29 +819,15 @@ func contentPrefilterRejectedExistingMessage(rejection contentPrefilterRejectedT
 	return fmt.Sprintf("Torrent already exists in this instance but was rejected by content prefilter (%s): %s", name, reason)
 }
 
-func torrentSearchResultInfoHashes(infoHashV1, infoHashV2 string) []string {
-	seen := make(map[string]struct{}, 2)
-	hashes := make([]string, 0, 2)
-	for _, raw := range []string{infoHashV1, infoHashV2} {
-		hash := normalizeHash(raw)
-		if hash == "" {
-			continue
-		}
-		if _, ok := seen[hash]; ok {
-			continue
-		}
-		seen[hash] = struct{}{}
-		hashes = append(hashes, hash)
-	}
-	return hashes
+func torrentSearchResultInfoHashes(infoHashV1, infoHashV2 string) []infohash.Hash {
+	return parseHashes(infoHashV1, infoHashV2)
 }
 
 func asyncFilteringCacheKey(instanceID int, hash string) string {
-	cleanHash := stringutils.DefaultNormalizer.Normalize(hash)
-	if cleanHash == "" {
+	if hash == "" {
 		return fmt.Sprintf("async:%d", instanceID)
 	}
-	return fmt.Sprintf("async:%d:%s", instanceID, cleanHash)
+	return fmt.Sprintf("async:%d:%s", instanceID, hash)
 }
 
 func splitTags(raw string) []string {

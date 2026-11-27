@@ -44,8 +44,8 @@ func TestBuildGivesTheHelperItsOwnInfoHash(t *testing.T) {
 			helper, err := helpertorrent.Build(original, []string{"Some.Movie.2024.mkv"}, "salt-1")
 			require.NoError(t, err)
 
-			assert.NotEqual(t, infoHashOf(t, original), helper.InfoHash)
-			assert.Equal(t, infoHashOf(t, helper.TorrentFile), helper.InfoHash)
+			assert.NotEqual(t, infoHashOf(t, original), helper.InfoHash.String())
+			assert.Equal(t, infoHashOf(t, helper.TorrentFile), helper.InfoHash.String())
 			assert.Equal(t, int64(1), decodeDict(t, helper.TorrentFile)["info"].(map[string]any)["private"])
 		})
 	}

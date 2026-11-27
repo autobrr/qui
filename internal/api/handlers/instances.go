@@ -135,7 +135,7 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 	}
 
 	capabilities := NewInstanceCapabilitiesResponse(client)
-	RespondJSON(w, http.StatusOK, capabilities)
+	RespondJSON(w, r, http.StatusOK, capabilities)
 }
 
 func instanceCapabilitiesClientErrorMessage(err error) string {
@@ -152,7 +152,7 @@ func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.
 		return
 	}
 	if h.reannounceSvc == nil {
-		RespondJSON(w, http.StatusOK, []reannounce.ActivityEvent{})
+		RespondJSON(w, r, http.StatusOK, []reannounce.ActivityEvent{})
 		return
 	}
 	limitParam := strings.TrimSpace(r.URL.Query().Get("limit"))
@@ -166,12 +166,7 @@ func (h *InstancesHandler) GetReannounceActivity(w http.ResponseWriter, r *http.
 	if events == nil {
 		events = []reannounce.ActivityEvent{}
 	}
-	normalized := make([]reannounce.ActivityEvent, len(events))
-	for i, event := range events {
-		event.Hash = strings.ToLower(event.Hash)
-		normalized[i] = event
-	}
-	RespondJSON(w, http.StatusOK, normalized)
+	RespondJSON(w, r, http.StatusOK, events)
 }
 
 func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +176,7 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 		return
 	}
 	if h.reannounceSvc == nil {
-		RespondJSON(w, http.StatusOK, []reannounce.MonitoredTorrent{})
+		RespondJSON(w, r, http.StatusOK, []reannounce.MonitoredTorrent{})
 		return
 	}
 
@@ -193,13 +188,7 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 		candidates = []reannounce.MonitoredTorrent{}
 	}
 
-	normalized := make([]reannounce.MonitoredTorrent, len(candidates))
-	for i, candidate := range candidates {
-		candidate.Hash = strings.ToLower(candidate.Hash)
-		normalized[i] = candidate
-	}
-
-	RespondJSON(w, http.StatusOK, normalized)
+	RespondJSON(w, r, http.StatusOK, candidates)
 }
 
 type transferInfoResponse struct {
@@ -249,7 +238,7 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 		}
 
 		if state := client.GetCachedServerState(); state != nil {
-			RespondJSON(w, http.StatusOK, newTransferInfoResponse(state))
+			RespondJSON(w, r, http.StatusOK, newTransferInfoResponse(state))
 			return
 		}
 	}
@@ -261,7 +250,7 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, transferInfoResponse{TransferInfo: *info})
+	RespondJSON(w, r, http.StatusOK, transferInfoResponse{TransferInfo: *info})
 }
 
 type InstanceFreeSpaceResponse struct {
@@ -295,11 +284,11 @@ func (h *InstancesHandler) GetFreeSpaceAtPath(w http.ResponseWriter, r *http.Req
 			return
 		}
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to get free space at path")
-		RespondJSON(w, http.StatusOK, InstanceFreeSpaceResponse{Path: path})
+		RespondJSON(w, r, http.StatusOK, InstanceFreeSpaceResponse{Path: path})
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, InstanceFreeSpaceResponse{Path: path, Bytes: &freeSpace})
+	RespondJSON(w, r, http.StatusOK, InstanceFreeSpaceResponse{Path: path, Bytes: &freeSpace})
 }
 
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
@@ -715,7 +704,7 @@ func (h *InstancesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 
 	response := h.buildInstanceResponsesParallel(r.Context(), instances)
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Request) {
@@ -777,7 +766,7 @@ func (h *InstancesHandler) UpdateInstanceOrder(w http.ResponseWriter, r *http.Re
 	}
 
 	response := h.buildInstanceResponsesParallel(r.Context(), updatedInstances)
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
@@ -810,7 +799,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 
 	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) })
 
-	RespondJSON(w, http.StatusCreated, response)
+	RespondJSON(w, r, http.StatusCreated, response)
 }
 
 func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
@@ -914,7 +903,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 
 	h.connectionTests.Go(func() { h.testConnectionAsync(instance.ID) })
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (req *UpdateInstanceRequest) restoreRedactedSecrets(existing *models.Instance) {
@@ -995,7 +984,7 @@ func (h *InstancesHandler) DeleteInstance(w http.ResponseWriter, r *http.Request
 	response := DeleteInstanceResponse{
 		Message: "Instance deleted successfully",
 	}
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.Request) {
@@ -1031,7 +1020,7 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 
 	response := h.buildQuickInstanceResponse(instance)
 	response.ReannounceSettings = h.getReannounceSettingsPayload(r.Context(), instanceID)
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
@@ -1049,14 +1038,14 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 				Message:   "Instance is disabled",
 				Error:     err.Error(),
 			}
-			RespondJSON(w, http.StatusOK, response)
+			RespondJSON(w, r, http.StatusOK, response)
 			return
 		}
 		response := TestConnectionResponse{
 			Connected: false,
 			Error:     err.Error(),
 		}
-		RespondJSON(w, http.StatusOK, response)
+		RespondJSON(w, r, http.StatusOK, response)
 		return
 	}
 
@@ -1065,7 +1054,7 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 			Connected: false,
 			Error:     err.Error(),
 		}
-		RespondJSON(w, http.StatusOK, response)
+		RespondJSON(w, r, http.StatusOK, response)
 		return
 	}
 
@@ -1073,5 +1062,5 @@ func (h *InstancesHandler) TestConnection(w http.ResponseWriter, r *http.Request
 		Connected: true,
 		Message:   "Connection successful",
 	}
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }

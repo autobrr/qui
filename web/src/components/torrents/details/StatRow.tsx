@@ -16,7 +16,6 @@ interface StatRowProps {
   valueClassName?: string
   valueStyle?: React.CSSProperties
   tooltip?: string
-  highlight?: "green" | "blue" | "yellow" | "red"
 }
 
 export const StatRow = memo(function StatRow({
@@ -27,15 +26,7 @@ export const StatRow = memo(function StatRow({
   valueClassName,
   valueStyle,
   tooltip,
-  highlight,
 }: StatRowProps) {
-  const highlightClass = highlight? {
-    green: "text-green-500",
-    blue: "text-blue-500",
-    yellow: "text-yellow-500",
-    red: "text-red-500",
-  }[highlight]: ""
-
   const content = (
     <div className={cn("flex items-center gap-1.5 text-xs", className)}>
       <span className="text-muted-foreground shrink-0">{label}:</span>
@@ -43,7 +34,6 @@ export const StatRow = memo(function StatRow({
         className={cn(
           "font-medium",
           monospace && "font-mono",
-          highlightClass,
           valueClassName
         )}
         style={valueStyle}

@@ -19,7 +19,7 @@ import (
 
 func findCrossSeedsForFiles(t *testing.T, files, onDisk qbt.TorrentFiles) (*LocalMatchesResponse, error) {
 	t.Helper()
-	return localMatchesServiceForFiles(t, files, onDisk).FindCrossSeeds(t.Context(), 1, hlSourceHash)
+	return localMatchesServiceForFiles(t, files, onDisk).FindCrossSeeds(t.Context(), 1, mustParseHash(t, hlSourceHash))
 }
 
 func localMatchesServiceForFiles(t *testing.T, files, onDisk qbt.TorrentFiles) *Service {
@@ -35,8 +35,8 @@ func localMatchesServiceForFiles(t *testing.T, files, onDisk qbt.TorrentFiles) *
 	candidate := *hardlinkTestCandidate(candidateDir)
 	candidate.ContentPath = candidateDir
 	return pairService(map[string]qbt.TorrentFiles{
-		normalizeHash(hlSourceHash):    files,
-		normalizeHash(hlCandidateHash): files,
+		hlSourceHash:    files,
+		hlCandidateHash: files,
 	}, source, candidate)
 }
 
@@ -47,7 +47,7 @@ func TestFindCrossSeeds_UnresolvableFileName_FailsClosed(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, response)
 	require.Contains(t, err.Error(), "check the links of torrent")
-	require.Contains(t, err.Error(), normalizeHash(hlSourceHash))
+	require.Contains(t, err.Error(), hlSourceHash)
 	require.Contains(t, err.Error(), strconv.Quote(files[0].Name))
 }
 
@@ -72,17 +72,17 @@ func TestFindCrossSeeds_UnresolvableCandidateName_FailsClosed(t *testing.T) {
 			}
 			candidate := *hardlinkTestCandidate(candidateDir)
 			service := pairService(map[string]qbt.TorrentFiles{
-				normalizeHash(hlSourceHash):    {{Name: fileName, Size: 4}},
-				normalizeHash(hlCandidateHash): {{Name: candidateName, Size: 4}},
+				hlSourceHash:    {{Name: fileName, Size: 4}},
+				hlCandidateHash: {{Name: candidateName, Size: 4}},
 			}, source, candidate)
 			if tc.reflink {
 				service.filesShareAllocation = func(string, string) (bool, error) { return false, nil }
 			}
 
-			_, err := service.FindCrossSeeds(t.Context(), 1, source.Hash)
+			_, err := service.FindCrossSeeds(t.Context(), 1, mustParseHash(t, source.Hash))
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "check the links of torrent")
-			require.Contains(t, err.Error(), normalizeHash(hlCandidateHash))
+			require.Contains(t, err.Error(), hlCandidateHash)
 			require.Contains(t, err.Error(), strconv.Quote(candidateName))
 		})
 	}
@@ -120,7 +120,7 @@ func TestFindCrossSeeds_LstatError(t *testing.T) {
 			service := localMatchesServiceForFiles(t, files, nil)
 			service.SetBackendPool(fsops.NewPool(service.instanceStore, lstatErrorBackend{Backend: local.NewBackend(), err: tc.err}))
 
-			response, err := service.FindCrossSeeds(t.Context(), 1, hlSourceHash)
+			response, err := service.FindCrossSeeds(t.Context(), 1, mustParseHash(t, hlSourceHash))
 			if tc.wantErr {
 				require.ErrorIs(t, err, fs.ErrPermission)
 				require.Contains(t, err.Error(), "check the links of torrent")

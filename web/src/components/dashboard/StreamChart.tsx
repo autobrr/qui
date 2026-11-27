@@ -123,7 +123,7 @@ export function StreamChart({ layers, kind, gaps, slots = 0, label, className, p
             x2={(center(index) / 100) * W}
             y1="0"
             y2={H}
-            stroke="#eab308"
+            stroke="var(--warning)"
             strokeDasharray="2 3"
             vectorEffect="non-scaling-stroke"
           />
@@ -132,7 +132,7 @@ export function StreamChart({ layers, kind, gaps, slots = 0, label, className, p
       {gapBars.filter(index => labelled.has(index)).map(index => (
         <span
           key={index}
-          className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[10px] text-yellow-600 dark:text-yellow-500"
+          className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-10 text-warning"
           style={{ left: `${center(index)}%` }}
         >
           {t("chart.gapLabel", { duration: formatGapLength(gaps![index], locale) })}

@@ -20,9 +20,16 @@ import (
 )
 
 func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManager, cfg *domain.Config) func(http.Handler) http.Handler {
+	crossOrigin := http.NewCrossOriginProtection()
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if cfg != nil && cfg.Live().IsAuthDisabled() {
+				if r.Header.Get("X-Requested-With") == "" && crossOrigin.Check(r) != nil {
+					http.Error(w, "Cross-origin request refused", http.StatusForbidden)
+					return
+				}
+
 				ctx := context.WithValue(r.Context(), ctxkeys.Username, "admin")
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return

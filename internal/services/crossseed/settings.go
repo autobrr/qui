@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type SearchSettingsPatch struct {
@@ -20,12 +21,11 @@ type SearchSettingsPatch struct {
 	Tags                   *[]string
 	ExcludeCategories      *[]string
 	ExcludeTags            *[]string
-	IndexerIDs             *[]int
+	SitePick               *models.SitePick
 	IntervalSeconds        *int
 	CooldownMinutes        *int
 	MaxAddedAgeDays        *int
 	SkipIndividualEpisodes *bool
-	TorznabEnabled         *bool
 	ScheduleEnabled        *bool
 	ScheduleIntervalHours  *int
 	ScheduleMaxSearches    *int
@@ -97,14 +97,14 @@ func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.
 	return s.blocklistStore.List(ctx, instanceID)
 }
 
-func (s *Service) UpsertBlocklistEntry(ctx context.Context, entry *models.CrossSeedBlocklistEntry) (*models.CrossSeedBlocklistEntry, error) {
+func (s *Service) UpsertBlocklistEntry(ctx context.Context, instanceID int, hash infohash.Hash, note string) (*models.CrossSeedBlocklistEntry, error) {
 	if s.blocklistStore == nil {
 		return nil, errors.New("blocklist store unavailable")
 	}
-	return s.blocklistStore.Upsert(ctx, entry)
+	return s.blocklistStore.Upsert(ctx, instanceID, hash, note)
 }
 
-func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash string) error {
+func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash infohash.Hash) error {
 	if s.blocklistStore == nil {
 		return errors.New("blocklist store unavailable")
 	}
@@ -168,8 +168,8 @@ func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettin
 	settings.Tags = normalizeStringSlice(settings.Tags)
 	settings.ExcludeCategories = normalizeStringSlice(settings.ExcludeCategories)
 	settings.ExcludeTags = normalizeStringSlice(settings.ExcludeTags)
-	settings.IndexerIDs = uniquePositiveInts(settings.IndexerIDs)
-	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, !settings.TorznabEnabled)
+	settings.SitePick = settings.Clean()
+	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, redOpsOnlyPick(settings.SitePick))
 	settings.MaxAddedAgeDays = max(settings.MaxAddedAgeDays, 0)
 	settings.ScheduleIntervalHours = min(max(settings.ScheduleIntervalHours, 1), maxScheduleIntervalHours)
 	settings.ScheduleMaxSearches = max(settings.ScheduleMaxSearches, 1)
@@ -284,8 +284,8 @@ func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings)
 	if patch.Tags != nil {
 		settings.Tags = append([]string(nil), *patch.Tags...)
 	}
-	if patch.IndexerIDs != nil {
-		settings.IndexerIDs = append([]int(nil), *patch.IndexerIDs...)
+	if patch.SitePick != nil {
+		settings.SitePick = patch.SitePick.Clean()
 	}
 	if patch.IntervalSeconds != nil {
 		settings.IntervalSeconds = *patch.IntervalSeconds
@@ -304,9 +304,6 @@ func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings)
 	}
 	if patch.SkipIndividualEpisodes != nil {
 		settings.SkipIndividualEpisodes = *patch.SkipIndividualEpisodes
-	}
-	if patch.TorznabEnabled != nil {
-		settings.TorznabEnabled = *patch.TorznabEnabled
 	}
 	if patch.ScheduleEnabled != nil {
 		settings.ScheduleEnabled = *patch.ScheduleEnabled

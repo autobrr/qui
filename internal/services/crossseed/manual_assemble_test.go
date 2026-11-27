@@ -71,7 +71,8 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				require.NoError(t, os.WriteFile(source, data, 0o600))
 				torrents = append(torrents, qbt.Torrent{Hash: hash, Name: localName, ContentPath: source, Progress: 1, Category: "excluded"})
 			}
-			torrentData := base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 64, contents))
+			packBytes := buildMultiFileTorrent(t, packName, 64, contents)
+			torrentData := base64.StdEncoding.EncodeToString(packBytes)
 			sm := &seasonPackSyncManager{fakeSyncManager: newFakeSyncManager(inst, torrents, files)}
 			runs := &stubSeasonPackRunStore{}
 			svc := &Service{
@@ -87,10 +88,9 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 					}, nil
 				},
 			}
-			var hookRuns []string
-			svc.postInjectionHook = func(_ context.Context, _ int, hashes []string) {
-				hookRuns = append(hookRuns, strings.Join(hashes, ","))
-			}
+			packMeta, err := ParseTorrentMetadataWithInfo(packBytes)
+			require.NoError(t, err)
+			programs := runProgramAfterAdd(svc, qbt.Torrent{Hash: packMeta.HashV1.String()})
 			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 			if mode == "reflink" {
 				svc.seasonPackLinkCreator = local.NewBackend().HardlinkTree
@@ -108,7 +108,7 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			_, err = os.Stat(inst.HardlinkBaseDir)
 			require.True(t, os.IsNotExist(err), "check must not create a tree")
 			require.Empty(t, runs.runs)
-			require.Empty(t, hookRuns, "check must not run the External Program")
+			require.Empty(t, programs.ran(), "check must not run the External Program")
 
 			unalignedReq := *req
 			unalignedReq.TorrentData = base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 1024, contents))
@@ -136,7 +136,8 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				require.Equal(t, "local_file_unavailable", applied.Targets[1].Reason)
 				require.Equal(t, "e02", applied.Targets[1].Hash)
 				require.Len(t, adds.added, 1)
-				require.Len(t, hookRuns, 1, "apply runs the External Program once")
+				synctest.Wait()
+				require.Equal(t, []string{programRun(testProgramID, 1, packMeta.HashV1.String())}, programs.ran(), "apply runs the External Program once for the pack")
 				require.NotContains(t, adds.added[0], "skip_checking")
 				require.Equal(t, "true", adds.added[0]["paused"])
 				require.Equal(t, "true", adds.added[0]["stopped"])
@@ -257,7 +258,7 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	require.Equal(t, 1, preview.MatchedEpisodes)
 	require.Equal(t, "size_mismatch", preview.Targets[1].Reason)
 	require.Equal(t, "target_not_found", preview.Targets[2].Reason)
-	_, err = svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: 1, TorrentData: fix.torrentData, TargetHashes: []string{"e01", " E01 "}})
+	_, err = svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: 1, TorrentData: fix.torrentData, TargetHashes: []string{"abcdefabcdefabcdefabcdefabcdefabcdefabcd", " ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD "}})
 	require.ErrorIs(t, err, ErrInvalidRequest)
 
 	data, err := base64.StdEncoding.DecodeString(fix.torrentData)

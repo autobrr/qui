@@ -30,7 +30,7 @@ func (h *DashboardSettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *DashboardSettingsHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -48,5 +48,5 @@ func (h *DashboardSettingsHandler) Update(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }

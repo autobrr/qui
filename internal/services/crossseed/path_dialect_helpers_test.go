@@ -4,7 +4,10 @@
 package crossseed
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,6 +15,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/linktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func eachDialect(t *testing.T, hostToo bool, fn func(t *testing.T, d fsops.PathDialect, conv func(string) string)) {
@@ -138,3 +142,18 @@ func TestPathDialect_SafeSeasonPackJoin(t *testing.T) {
 		})
 	}
 }
+
+func mustParseHash(t testing.TB, s string) infohash.Hash {
+	t.Helper()
+	hash, err := infohash.Parse(s)
+	require.NoError(t, err)
+	return hash
+}
+
+func fakeHash(label string) string {
+	prefix := hex.EncodeToString([]byte(label)[:min(len(label), 12)])
+	sum := sha1.Sum([]byte(label))
+	return prefix + strings.Repeat("0", 24-len(prefix)) + hex.EncodeToString(sum[:8])
+}
+
+const hash123 = "0123012301230123012301230123012301230123"

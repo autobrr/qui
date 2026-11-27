@@ -14,7 +14,7 @@ import { renderTextWithLinks } from "@/lib/linkUtils"
 import { getTrackerStatusBadge, isValidTrackerUrl } from "@/lib/tracker-utils"
 import { breakableName, cn, copyTextToClipboard } from "@/lib/utils"
 import type { TorrentTracker } from "@/types"
-import { ChevronLeft, Copy, Edit, Folder, Tag } from "lucide-react"
+import { ChevronLeft, Copy, Edit } from "lucide-react"
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -93,31 +93,12 @@ export function MobileDetailsHeader({ name, status, progress, size, ratio, onBac
       <div className="min-w-0 flex-1">
         <h2 className="line-clamp-2 break-words text-sm font-semibold leading-tight">{breakableName(name)}</h2>
         <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
-          <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5 text-xs", status.className)}>{status.label}</Badge>
+          <Badge variant={status.variant} className={cn("h-5 shrink-0 px-1.5", status.className)}>{status.label}</Badge>
           <span className="truncate">
             {percent}% · {size} · {t("generalTab.ratio")} {ratio < 0 ? "∞" : ratio.toFixed(2)}
           </span>
         </div>
       </div>
-    </div>
-  )
-}
-
-export function MobileCategoryTagsRow({ category, tags }: { category: string; tags: string }) {
-  const tagList = tags.split(",").map(tag => tag.trim()).filter(Boolean)
-  if (!category && tagList.length === 0) return null
-  return (
-    <div className="flex max-h-24 shrink-0 flex-wrap gap-1.5 overflow-y-auto border-b px-4 py-2.5">
-      {category && (
-        <Badge variant="secondary" className="gap-1 text-xs">
-          <Folder className="size-3" />{category}
-        </Badge>
-      )}
-      {tagList.map(tag => (
-        <Badge key={tag} variant="outline" className="gap-1 text-xs">
-          <Tag className="size-3" />{tag}
-        </Badge>
-      ))}
     </div>
   )
 }
@@ -235,18 +216,18 @@ export function MobilePeerRow({ address, countryCode, country, client, clientIco
         )}
         <span className="min-w-0 flex-1 truncate font-mono text-sm">{address}</span>
         <span className="shrink-0 text-xs tabular-nums">
-          {downSpeed && <span className="text-green-500">↓ {downSpeed}</span>}
+          {downSpeed && <span className="text-chart-text-2">↓ {downSpeed}</span>}
           {downSpeed && upSpeed && " "}
-          {upSpeed && <span className="text-blue-500">↑ {upSpeed}</span>}
+          {upSpeed && <span className="text-chart-text-3">↑ {upSpeed}</span>}
         </span>
       </div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {clientIcon}
         <span className="min-w-0 flex-1 truncate">{[client, connection, flags].filter(Boolean).join(" · ")}</span>
         <div className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-muted">
-          <div className={cn("h-full", isSeeder ? "bg-green-500" : "bg-foreground/60")} style={{ width: `${progressPercent}%` }} />
+          <div className={cn("h-full", isSeeder ? "bg-success" : "bg-foreground/60")} style={{ width: `${progressPercent}%` }} />
         </div>
-        <span className={cn("w-11 shrink-0 text-right tabular-nums", isSeeder && "text-green-500")}>{progressPercent}%</span>
+        <span className={cn("w-11 shrink-0 text-right tabular-nums", isSeeder && "text-success")}>{progressPercent}%</span>
       </div>
     </div>
   )

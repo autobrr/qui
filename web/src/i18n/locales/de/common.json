@@ -187,6 +187,8 @@
     "smartSearchTitle": "Funktionen der intelligenten Suche:",
     "smartSearchGlob": "Glob-Muster:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Treffer ausblenden:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Unscharfe Suche:",
     "smartSearchFuzzyExample": "\"breaking bad\" findet \"Breaking.Bad\"",
     "smartSearchDots": "Verarbeitet Punkte, Unterstriche und Klammern",
@@ -389,9 +391,13 @@
         "menuFix": "Einstellungen des Bibliotheks-Scans prüfen",
         "action": "Einstellungen des Bibliotheks-Scans öffnen",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab ist in den Einstellungen des Bibliotheks-Scans aus, und kein RED- oder OPS-API-Schlüssel ist gesetzt. Schalte Torznab ein, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",
-            "menuFix": "Torznab einschalten oder RED- oder OPS-Schlüssel hinzufügen"
+          "torznab_pick_no_indexer": {
+            "fix": "Die Einstellungen des Bibliotheks-Scans wählen nur Torznab-Indexer, und kein Torznab-Indexer ist aktiviert. Aktiviere einen Torznab-Indexer, oder wähle andere Seiten in den Einstellungen des Bibliotheks-Scans. qui versucht es jede Stunde erneut.",
+            "menuFix": "Einen Torznab-Indexer aktivieren"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "Die Einstellungen des Bibliotheks-Scans wählen nur RED oder OPS, und keine gewählte Seite hat einen API-Schlüssel. Füge den Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu, oder wähle andere Seiten in den Einstellungen des Bibliotheks-Scans. qui versucht es jede Stunde erneut.",
+            "menuFix": "RED- oder OPS-Schlüssel hinzufügen"
           },
           "no_indexer": {
             "fix": "Kein Indexer ist aktiviert. Aktiviere einen Torznab-Indexer, oder füge einen RED- oder OPS-Schlüssel in den Gazelle (OPS/RED)-Einstellungen hinzu. qui versucht es jede Stunde erneut.",

@@ -232,17 +232,17 @@ export function HardlinkModeSettings({
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className="font-medium truncate">{instance.name}</span>
                       {form.useHardlinks && (
-                        <Badge variant="outline" className="shrink-0 bg-primary/10 text-primary border-primary/30 text-xs">
+                        <Badge variant="outline" className="shrink-0 bg-chart-2/10 border-chart-2/30">
                           {t("rules.hardlink")}
                         </Badge>
                       )}
                       {form.useReflinks && (
-                        <Badge variant="outline" className="shrink-0 bg-blue-500/10 text-blue-500 border-blue-500/30 text-xs">
+                        <Badge variant="outline" className="shrink-0 bg-chart-5/10 border-chart-5/30">
                           {t("rules.reflink")}
                         </Badge>
                       )}
                       {!canEnableModes && (
-                        <Badge variant="outline" className="shrink-0 bg-muted text-muted-foreground border-muted-foreground/30 text-xs">
+                        <Badge variant="outline" className="shrink-0 bg-muted text-muted-foreground border-muted-foreground/30">
                           {t("rules.noLocalAccess")}
                         </Badge>
                       )}
@@ -251,7 +251,7 @@ export function HardlinkModeSettings({
                   <AccordionContent className="px-4 pb-4">
                     <div className="space-y-4 pt-2">
                       <div className="space-y-2">
-                        <Label className="font-medium">{t("rules.crossSeedMode")}</Label>
+                        <Label>{t("rules.crossSeedMode")}</Label>
                         {!canEnableModes && (
                           <p className="text-xs text-muted-foreground">
                             {t("rules.enableLocalFilesystem")}
@@ -266,7 +266,7 @@ export function HardlinkModeSettings({
                           <div className="flex items-start gap-3">
                             <RadioGroupItem value="regular" id={`mode-regular-${instance.id}`} className="mt-0.5" />
                             <div className="space-y-0.5 flex-1">
-                              <Label htmlFor={`mode-regular-${instance.id}`} className="font-medium cursor-pointer">{t("rules.regular")}</Label>
+                              <Label htmlFor={`mode-regular-${instance.id}`} className="cursor-pointer">{t("rules.regular")}</Label>
                               <p className="text-xs text-muted-foreground">{t("rules.regularDescription")}</p>
                             </div>
                           </div>
@@ -278,7 +278,7 @@ export function HardlinkModeSettings({
                               disabled={!canEnableModes}
                             />
                             <div className="space-y-0.5 flex-1">
-                              <Label htmlFor={`mode-hardlink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>{t("rules.hardlink")}</Label>
+                              <Label htmlFor={`mode-hardlink-${instance.id}`} className={`cursor-pointer ${!canEnableModes ? "text-muted-foreground" : ""}`}>{t("rules.hardlink")}</Label>
                               <p className="text-xs text-muted-foreground">{t("rules.hardlinkDescription2")}</p>
                             </div>
                           </div>
@@ -290,7 +290,7 @@ export function HardlinkModeSettings({
                               disabled={!canEnableReflink}
                             />
                             <div className="space-y-0.5 flex-1">
-                              <Label htmlFor={`mode-reflink-${instance.id}`} className={`font-medium cursor-pointer ${!canEnableReflink ? "text-muted-foreground" : ""}`}>{t("rules.reflink")}</Label>
+                              <Label htmlFor={`mode-reflink-${instance.id}`} className={`cursor-pointer ${!canEnableReflink ? "text-muted-foreground" : ""}`}>{t("rules.reflink")}</Label>
                               <p className="text-xs text-muted-foreground">{t("rules.reflinkDescription")}</p>
                             </div>
                           </div>
@@ -345,7 +345,7 @@ export function HardlinkModeSettings({
                                 disabled={checking}
                               />
                               <div className="flex items-center gap-1.5">
-                                <Label htmlFor={`fallback-${instance.id}`} className="font-medium cursor-pointer">
+                                <Label htmlFor={`fallback-${instance.id}`} className="cursor-pointer">
                                   {t("rules.fallbackToRegular")}
                                 </Label>
                                 <FieldHelp>

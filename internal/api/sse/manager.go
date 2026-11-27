@@ -2154,6 +2154,8 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 		NoRows:     p.Summary,
 		CopyGroups: p.GroupCopies,
 		UniqueSize: p.UniqueSize,
+
+		WithHelperTorrents: true,
 	}
 	if err := view.Validate(); err != nil {
 		return StreamOptions{}, err

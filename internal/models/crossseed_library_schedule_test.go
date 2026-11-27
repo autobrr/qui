@@ -35,7 +35,6 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	defaults, err := store.GetSearchSettings(ctx)
 	require.NoError(t, err)
 	require.False(t, defaults.ScheduleEnabled)
-	require.True(t, defaults.TorznabEnabled)
 	_, found, err := store.LastScheduledSearchRun(ctx)
 	require.NoError(t, err)
 	require.False(t, found)
@@ -44,17 +43,16 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	require.NoError(t, store.SetLastScheduledSearchRun(ctx, started))
 
 	want := &models.CrossSeedSearchSettings{
-		InstanceID:             &instance.ID,
-		Categories:             []string{"movies"},
-		Tags:                   []string{"keep"},
-		ExcludeCategories:      []string{"no-cross-seed"},
-		ExcludeTags:            []string{"no-cs"},
-		IndexerIDs:             []int{3},
+		InstanceID:        &instance.ID,
+		Categories:        []string{"movies"},
+		Tags:              []string{"keep"},
+		ExcludeCategories: []string{"no-cross-seed"},
+		ExcludeTags:       []string{"no-cs"},
+		IndexerIDs:        []int{3}, GazelleSites: []string{"redacted.sh"},
 		IntervalSeconds:        5,
 		CooldownMinutes:        720,
 		MaxAddedAgeDays:        30,
 		SkipIndividualEpisodes: true,
-		TorznabEnabled:         false,
 		ScheduleEnabled:        true,
 		ScheduleIntervalHours:  6,
 		ScheduleMaxSearches:    50,

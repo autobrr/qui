@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -52,7 +53,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Int("indexerCount", len(indexerIDs)).
 		Msg("filtering indexers by existing content")
 
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})})
 	if err != nil {
 		return indexerIDs, nil, nil, nil, err
 	}
@@ -163,14 +164,14 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	return filteredIndexerIDs, excludedIndexers, contentMatches, rejectedContent, nil
 }
 
-func (s *Service) scopeContentPrefilterRejectionsByIndexer(rejectedByHash map[string]contentPrefilterRejectedTorrent, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) map[string]contentPrefilterRejectedTorrent {
+func (s *Service) scopeContentPrefilterRejectionsByIndexer(rejectedByHash map[infohash.Hash]contentPrefilterRejectedTorrent, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) map[string]contentPrefilterRejectedTorrent {
 	if len(rejectedByHash) == 0 || len(indexerIDs) == 0 {
 		return nil
 	}
 
 	scoped := make(map[string]contentPrefilterRejectedTorrent)
 	for hash, rejection := range rejectedByHash {
-		if normalizeHash(hash) == "" || len(rejection.trackerDomains) == 0 {
+		if hash.IsZero() || len(rejection.trackerDomains) == 0 {
 			continue
 		}
 

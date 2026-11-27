@@ -144,9 +144,9 @@ function transformParams(params: Record<string, string>, t: (key: string) => str
 const SHOWN = 10
 
 const STATUS_ICON: Record<SearchHistoryEntry["status"], { icon: LucideIcon; className: string }> = {
-  success: { icon: CircleCheck, className: "text-emerald-500" },
+  success: { icon: CircleCheck, className: "text-success" },
   error: { icon: CircleX, className: "text-destructive" },
-  rate_limited: { icon: CircleAlert, className: "text-amber-500" },
+  rate_limited: { icon: CircleAlert, className: "text-warning" },
   skipped: { icon: Clock, className: "text-muted-foreground" },
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 type corpusVerdict string
@@ -1319,7 +1320,7 @@ func applyCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	decision := svc.matcher().classifySearchCandidate(input)
 	require.True(t, decision.Accepted || row.searchSource == "", "search must admit the search source: %s", decision.RejectReason)
 	if decision.Accepted {
-		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, boundHash)
+		req.SearchDecision = decision.provenance().bindSource(corpusInstanceID, mustParseHash(t, boundHash))
 	}
 	req.TargetRelease = svc.readApplyTarget(row.candidate,
 		corpusFiles(row.candidate, row.candidateSize, row.candidateFiles), req.SearchDecision.admitted())
@@ -1370,7 +1371,7 @@ func seasonPackCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 func crossSeedTabCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
 	svc := row.corpusService(true)
-	resp, err := svc.FindCrossSeeds(t.Context(), corpusInstanceID, corpusSourceHash)
+	resp, err := svc.FindCrossSeeds(t.Context(), corpusInstanceID, mustParseHash(t, corpusSourceHash))
 	require.NoError(t, err)
 	return corpusVerdictOf(slices.ContainsFunc(resp.Matches, func(match LocalMatch) bool { return match.Hash == corpusCandidateHash }))
 }
@@ -1403,16 +1404,31 @@ func dedupCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	return corpusVerdictOf(len(deduped) == 1)
 }
 
+type corpusAlternateTitles []string
+
+func (c corpusAlternateTitles) AlternateTitles(context.Context, HeldRelease) (AlternateTitles, error) {
+	return AlternateTitles{Titles: c}, nil
+}
+
 func webhookCorpusVerdict(t *testing.T, row corpusRow) corpusVerdict {
 	t.Helper()
-	svc := row.corpusService(false)
-	svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-		settings := models.DefaultCrossSeedAutomationSettings()
-		settings.RescueTitleMismatches = row.rescue
-		return settings, nil
+	source := row.sourceTorrent()
+	rig := newHeldRig(t, serveHeldLibrary(t, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+		corpusSourceHash: corpusFiles(row.source, row.sourceSize, row.sourceFiles),
+	}))
+	rig.settings = *models.DefaultCrossSeedAutomationSettings()
+	rig.settings.RescueTitleMismatches = row.rescue
+	rig.startNoBackgroundSyncs()
+	var sources []AlternateTitleSource
+	if len(row.titles) > 0 {
+		sources = append(sources, corpusAlternateTitles(row.titles))
 	}
-	svc.arrService = &spyARRLookupService{result: &arr.ExternalIDsResult{Titles: row.titles, EpisodeMap: row.episodeMap}}
-	resp, err := svc.CheckWebhook(t.Context(), &WebhookCheckRequest{TorrentName: row.candidate, Size: uint64(row.candidateSize)})
-	require.NoError(t, err)
+	svc, sonarr := rig.heldTitles(t.Context(), sources...)
+	rig.waitReady(svc)
+	for _, contentType := range releases.ContentTypes {
+		requireCaughtUpOn(t, svc, string(contentType))
+	}
+	sonarr.result = &arr.ExternalIDsResult{EpisodeMap: row.episodeMap}
+	resp := checkAnnounce(t, svc, row.candidate, uint64(row.candidateSize))
 	return corpusVerdictOf(slices.ContainsFunc(resp.Matches, func(match WebhookCheckMatch) bool { return match.TorrentHash == corpusSourceHash }))
 }

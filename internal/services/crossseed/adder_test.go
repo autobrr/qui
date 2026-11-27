@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseedroute"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -51,7 +52,7 @@ func (f *adderFake) AddTorrent(_ context.Context, instanceID int, _ []byte, opti
 	return &qbt.TorrentAddResponse{AddedTorrentIds: f.addedIDs}, f.addErr
 }
 
-func (f *adderFake) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+func (f *adderFake) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if f.existingOn != 0 && instanceID != f.existingOn {
 		return nil, false, f.findErr
 	}
@@ -65,8 +66,12 @@ func (f *adderFake) BulkAction(_ context.Context, _ int, hashes []string, action
 	return nil
 }
 
-func linkCheck(instanceID int, hashes ...string) PreAddCheck {
-	return PreAddCheck{instanceID: instanceID, hashes: dedupeHashes(hashes...)}
+func linkCheck(t testing.TB, instanceID int, hashes ...string) PreAddCheck {
+	check := PreAddCheck{instanceID: instanceID}
+	for _, hash := range hashes {
+		check.hashes = append(check.hashes, mustParseHash(t, hash))
+	}
+	return check
 }
 
 func withLinkAdder(svc *Service) *adderFake {
@@ -85,10 +90,10 @@ type adderRig struct {
 func newAdderRig(t *testing.T, sync *adderFake, blocklist *models.CrossSeedBlocklistStore) *adderRig {
 	t.Helper()
 	rig := &adderRig{sync: sync, settler: NewSettler(&settleFake{}, nil)}
-	svc := &Service{postInjectionHook: func(_ context.Context, _ int, hashes []string) {
+	runProgram := func(_ context.Context, _ int, hashes []string) {
 		rig.programs = append(rig.programs, hashes)
-	}}
-	rig.adder = NewAdder(sync, blocklist, rig.settler, func(context.Context) int64 { return adderBudget }, svc.RunExternalProgram)
+	}
+	rig.adder = NewAdder(sync, blocklist, rig.settler, func(context.Context) int64 { return adderBudget }, runProgram)
 	return rig
 }
 
@@ -477,7 +482,7 @@ func TestAdderAdd(t *testing.T) {
 			t.Parallel()
 
 			rig := newAdderRig(t, &adderFake{}, nil)
-			check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, adderV1, adderV2)
+			check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, mustParseHash(t, adderV1), mustParseHash(t, adderV2))
 			require.Nil(t, refusal)
 
 			result := rig.adder.Add(t.Context(), AddRequest{
@@ -510,7 +515,7 @@ func TestAdderAdd(t *testing.T) {
 			} else {
 				require.NotNil(t, queued)
 				require.Equal(t, *tt.wantGate, queued.gate)
-				require.Equal(t, adderV1, queued.hash)
+				require.Equal(t, mustParseHash(t, adderV1), queued.hash)
 				require.Equal(t, tt.facts.LinkedPaths, queued.linkedPaths)
 				require.Equal(t, tt.facts.RecoverMissingFiles, queued.recoverMissingFilesWithResume)
 				require.Equal(t, tt.facts.SeasonPackRun, queued.blockedRun)
@@ -532,7 +537,7 @@ func TestAdderAddFailureDoesNotRetry(t *testing.T) {
 	t.Parallel()
 
 	rig := newAdderRig(t, &adderFake{addErr: errors.New("boom")}, nil)
-	check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, adderV1)
+	check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, mustParseHash(t, adderV1))
 	require.Nil(t, refusal)
 
 	result := rig.adder.Add(t.Context(), AddRequest{Check: check, Placement: AddPlacement{SavePath: "/data"}})
@@ -574,7 +579,7 @@ func TestAdderResultClass(t *testing.T) {
 				blocklist, _ = adderBlocklist(t, adderV1)
 			}
 			rig := newAdderRig(t, tt.sync, blocklist)
-			check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, adderV1)
+			check, refusal := rig.adder.Check(t.Context(), 1, AddFacts{}, mustParseHash(t, adderV1))
 			if tt.add == nil {
 				require.NotNil(t, refusal)
 				require.Equal(t, tt.want, refusal.Class())
@@ -668,7 +673,7 @@ func TestAdderCheck(t *testing.T) {
 					rig.adder.SetCrossSeedRoutes(routes)
 				}
 			}
-			check, refusal := rig.adder.Check(t.Context(), 1, tt.facts, adderV1, adderV2)
+			check, refusal := rig.adder.Check(t.Context(), 1, tt.facts, mustParseHash(t, adderV1), mustParseHash(t, adderV2))
 
 			if tt.wantStatus == "" {
 				require.Nil(t, refusal)
@@ -700,7 +705,7 @@ func adderBlocklist(t *testing.T, hash string) (*models.CrossSeedBlocklistStore,
 
 	store := models.NewCrossSeedBlocklistStore(db)
 	if hash != "" {
-		_, err = store.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: hash})
+		_, err = store.Upsert(t.Context(), instance.ID, mustParseHash(t, hash), "")
 		require.NoError(t, err)
 	}
 	return store, db
@@ -741,7 +746,7 @@ func adderRoutes(t *testing.T, db *database.DB, link adderLink) *crossseedroute.
 		require.NoError(t, err)
 	}
 	if link.blocked {
-		_, err = models.NewCrossSeedBlocklistStore(db).Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: linked.ID, InfoHash: adderV1})
+		_, err = models.NewCrossSeedBlocklistStore(db).Upsert(ctx, linked.ID, mustParseHash(t, adderV1), "")
 		require.NoError(t, err)
 	}
 	store := models.NewCrossSeedRouteStore(db)

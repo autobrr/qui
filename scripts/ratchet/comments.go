@@ -24,7 +24,7 @@ const (
 	suppressionsPath = "web/eslint-suppressions.json"
 )
 
-var suppressedRules = []string{"@typescript-eslint/consistent-type-assertions", "@typescript-eslint/no-non-null-assertion", "qui/disable-reason", "qui/entry-files", "qui/layer-order", "qui/no-direct-effect", "react-hooks/exhaustive-deps", "react-refresh/only-export-components"}
+var suppressedRules = []string{"@typescript-eslint/consistent-type-assertions", "@typescript-eslint/no-non-null-assertion", "qui/disable-reason", "qui/entry-files", "qui/layer-order", "qui/no-direct-effect", "react-hooks/exhaustive-deps", "react-refresh/only-export-components", "shadcn/no-arbitrary-values", "shadcn/no-raw-colors", "shadcn/no-restyle", "shadcn/require-static-classes"}
 
 func commentProblems() ([]string, error) {
 	var problems []string

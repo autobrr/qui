@@ -24,6 +24,10 @@ func NewArrAlternateTitles(service *arr.Service) []AlternateTitleSource {
 	}
 }
 
+func (a arrAlternateTitles) Changed() <-chan struct{} {
+	return a.arr.InstancesChanged()
+}
+
 func (a arrAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
 	contentType := mapContentTypeToARR(held.ContentType)
 	if !slices.Contains(a.contentTypes, contentType) {
@@ -39,9 +43,13 @@ func (a arrAlternateTitles) AlternateTitles(ctx context.Context, held HeldReleas
 	if result == nil {
 		return AlternateTitles{}, nil
 	}
-	return AlternateTitles{Titles: result.Titles, Requested: !result.FromCache || refetched(result), Incomplete: result.Incomplete}, nil
+	answer := AlternateTitles{Titles: result.Titles, Seasons: result.TitleSeasons, Requested: !result.FromCache || refetched(result), Incomplete: result.Incomplete}
+	if result.FromCache && refetched(result) && result.Incomplete {
+		return answer, fmt.Errorf("look up the alternate titles of %s: no instance answered, so the cached answer stays", contentType)
+	}
+	return answer, nil
 }
 
 func refetched(cached *arr.ExternalIDsResult) bool {
-	return cached.IDs != nil && !cached.EpisodeMapKnown
+	return cached.IDs != nil && (!cached.TitlesKnown || !cached.EpisodeMapKnown)
 }

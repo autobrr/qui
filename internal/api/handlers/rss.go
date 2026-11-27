@@ -114,7 +114,7 @@ func (h *RSSHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if middleware.CanReadTrackerPasskeys(r) {
-		RespondJSON(w, http.StatusOK, items)
+		RespondJSON(w, r, http.StatusOK, items)
 		return
 	}
 	full, err := json.Marshal(items)
@@ -126,7 +126,7 @@ func (h *RSSHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to get RSS items")
 		return
 	}
-	RespondJSON(w, http.StatusOK, json.RawMessage(full))
+	RespondJSON(w, r, http.StatusOK, json.RawMessage(full))
 }
 
 func (h *RSSHandler) AddFolder(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +158,7 @@ func (h *RSSHandler) AddFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, nil)
+	RespondJSON(w, r, http.StatusCreated, nil)
 }
 
 func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +201,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, nil)
+	RespondJSON(w, r, http.StatusCreated, nil)
 }
 
 func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, instanceID int, feedURL, targetFolder string) {
@@ -232,7 +232,7 @@ func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, ins
 	newFeeds, err := h.syncManager.GetRSSItems(ctx, instanceID, false)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("failed to get RSS items after add")
-		RespondJSON(w, http.StatusCreated, WarningResponse{
+		RespondJSON(w, r, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not move to folder",
 		})
 		return
@@ -240,7 +240,7 @@ func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, ins
 
 	if !hasBaseline {
 		log.Warn().Int("instanceID", instanceID).Msg("RSS feed added to root; could not determine baseline to safely move into folder")
-		RespondJSON(w, http.StatusCreated, WarningResponse{
+		RespondJSON(w, r, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not move to folder",
 		})
 		return
@@ -249,7 +249,7 @@ func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, ins
 	newFeedName := findNewRSSFeedName(newFeeds, existingNames, instanceID, feedURL)
 	if newFeedName == "" {
 		log.Warn().Int("instanceID", instanceID).Str("url", redact.URLString(feedURL)).Msg("could not identify RSS feed to move to folder")
-		RespondJSON(w, http.StatusCreated, WarningResponse{
+		RespondJSON(w, r, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not identify feed to move",
 		})
 		return
@@ -260,13 +260,13 @@ func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, ins
 		logRSSPaths(log.Warn(), err, "feedName", newFeedName, "destPath", destPath).
 			Int("instanceID", instanceID).
 			Msg("failed to move RSS feed to folder (feed was added to root)")
-		RespondJSON(w, http.StatusCreated, WarningResponse{
+		RespondJSON(w, r, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not move to folder",
 		})
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, nil)
+	RespondJSON(w, r, http.StatusCreated, nil)
 }
 
 func findNewRSSFeedName(newFeeds qbt.RSSItems, existingNames map[string]bool, instanceID int, feedURL string) string {
@@ -342,7 +342,7 @@ func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
 func (h *RSSHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
@@ -374,7 +374,7 @@ func (h *RSSHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
 func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
@@ -406,7 +406,7 @@ func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
 func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
@@ -435,7 +435,7 @@ func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
 func (h *RSSHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
@@ -467,7 +467,7 @@ func (h *RSSHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
 func (h *RSSHandler) GetRules(w http.ResponseWriter, r *http.Request) {
@@ -487,7 +487,7 @@ func (h *RSSHandler) GetRules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hideRSSRuleFeeds(r, rules)
-	RespondJSON(w, http.StatusOK, rules)
+	RespondJSON(w, r, http.StatusOK, rules)
 }
 
 func (h *RSSHandler) SetRule(w http.ResponseWriter, r *http.Request) {
@@ -519,7 +519,7 @@ func (h *RSSHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, nil)
+	RespondJSON(w, r, http.StatusCreated, nil)
 }
 
 func (h *RSSHandler) RenameRule(w http.ResponseWriter, r *http.Request) {
@@ -554,7 +554,7 @@ func (h *RSSHandler) RenameRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
 func (h *RSSHandler) RemoveRule(w http.ResponseWriter, r *http.Request) {
@@ -578,7 +578,7 @@ func (h *RSSHandler) RemoveRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
 func (h *RSSHandler) GetMatchingArticles(w http.ResponseWriter, r *http.Request) {
@@ -606,7 +606,7 @@ func (h *RSSHandler) GetMatchingArticles(w http.ResponseWriter, r *http.Request)
 	if !middleware.CanReadTrackerPasskeys(r) {
 		articles = hideRSSMatchingArticles(articles)
 	}
-	RespondJSON(w, http.StatusOK, articles)
+	RespondJSON(w, r, http.StatusOK, articles)
 }
 
 func (h *RSSHandler) ReprocessRules(w http.ResponseWriter, r *http.Request) {
@@ -624,5 +624,5 @@ func (h *RSSHandler) ReprocessRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }

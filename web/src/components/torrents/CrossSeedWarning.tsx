@@ -63,20 +63,20 @@ export function CrossSeedWarning({
       <div
         className={cn(
           "group relative rounded-lg border py-2 px-3 transition-all duration-300",
-          isHighRisk? "border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10": "border-border/50 bg-muted/30 hover:border-border hover:bg-muted/50",
+          isHighRisk? "border-warning/40 bg-warning/5 hover:border-warning/60 hover:bg-warning/10": "border-border/50 bg-muted/30 hover:border-border hover:bg-muted/50",
           className
         )}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             {isHighRisk ? (
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
             ) : (
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <p className={cn(
               "text-xs font-medium truncate",
-              isHighRisk ? "text-amber-700 dark:text-amber-300" : "text-foreground"
+              isHighRisk ? "text-warning" : "text-foreground"
             )}>
               {isHighRisk ? t("crossSeedWarning.idle.checkForCrossSeeds") : t("crossSeedWarning.idle.crossSeedsNotChecked")}
             </p>
@@ -89,7 +89,7 @@ export function CrossSeedWarning({
             onClick={onSearch}
             className={cn(
               "shrink-0 h-7 px-2 text-xs transition-all",
-              isHighRisk? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm": "hover:bg-accent"
+              isHighRisk? "bg-warning text-background hover:bg-warning/90 shadow-sm": "hover:bg-accent"
             )}
           >
             <Search className="h-3 w-3 mr-1" />
@@ -128,7 +128,7 @@ export function CrossSeedWarning({
   }
 
   const uncheckedNotes = uncheckedInstances.map(instance => (
-    <p key={instance.instanceId} className="mt-1 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+    <p key={instance.instanceId} className="mt-1 flex items-center gap-2 text-xs text-warning">
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
       <span>
         {instance.reason === "offline"? t("crossSeedWarning.uncheckedOffline", { instance: instance.instanceName }): t("crossSeedWarning.uncheckedDisabled", { instance: instance.instanceName })}
@@ -140,7 +140,7 @@ export function CrossSeedWarning({
     return (
       <div className={cn("py-2", className)}>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          <CheckCircle2 className="h-3.5 w-3.5 text-success" />
           <span>{t("crossSeedWarning.noCrossSeeds")}</span>
         </div>
         {uncheckedNotes}
@@ -182,7 +182,7 @@ export function CrossSeedWarning({
     <div
       className={cn(
         "rounded-lg border py-3 px-4 overflow-hidden",
-        isDestructive? "border-destructive/40 bg-destructive/5": "border-blue-500/30 bg-blue-500/5",
+        isDestructive? "border-destructive/40 bg-destructive/5": "border-info/30 bg-info/5",
         className
       )}
     >
@@ -190,12 +190,12 @@ export function CrossSeedWarning({
         {isDestructive ? (
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" />
         ) : (
-          <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
+          <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-info" />
         )}
         <div className="flex-1 min-w-0">
           <p className={cn(
             "text-sm font-medium",
-            isDestructive ? "text-destructive" : "text-blue-600 dark:text-blue-400"
+            isDestructive ? "text-destructive" : "text-info"
           )}>
             {deleteCrossSeeds? t("crossSeedWarning.deleteCrossSeeds"): deleteFiles? (linkedCopiesOnly ? t(hardlinkCopiesOnly ? "crossSeedWarning.hardlinkedCopies" : "crossSeedWarning.linkedCopies") : t("crossSeedWarning.deletingFilesBreaks")): t("crossSeedWarning.dataPreserved")}
           </p>
@@ -252,7 +252,7 @@ export function CrossSeedWarning({
           <div className="mt-2 space-y-2 overflow-hidden">
             {Object.entries(byInstance).map(([instanceName, torrents]) => (
               <div key={instanceName} className="min-w-0">
-                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                <p className="text-10 font-medium text-muted-foreground uppercase tracking-wide mb-1">
                   {instanceName}
                 </p>
                 <div className="space-y-1 min-w-0">
@@ -267,12 +267,12 @@ export function CrossSeedWarning({
                           {incognitoMode? getLinuxIsoName(torrent.hash): torrent.name}
                         </span>
                         {trackerDomain && (
-                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-10 font-medium text-muted-foreground">
                             {trackerDomain}
                           </span>
                         )}
                         {getLocalMatchTypeInfo(torrent.matchType).independentlyUsable && (
-                          <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                          <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-10 font-medium", torrent.matchType === "reflink"? "bg-chart-5/10": "bg-chart-2/10")}>
                             {torrent.matchType === "reflink"? t("crossSeedTable.matchTypes.reflink.label"): t("crossSeedTable.matchTypes.hardlink.label")}
                           </span>
                         )}
@@ -282,7 +282,7 @@ export function CrossSeedWarning({
                   {torrents.length > 8 && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <p className="text-[10px] text-muted-foreground pt-0.5 cursor-help hover:text-foreground transition-colors w-fit">
+                        <p className="text-10 text-muted-foreground pt-0.5 cursor-help hover:text-foreground transition-colors w-fit">
                           {t("crossSeedWarning.more", { count: torrents.length - 8 })}
                         </p>
                       </TooltipTrigger>

@@ -28,6 +28,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Layout uint8
@@ -95,6 +97,7 @@ type Server struct {
 	LeaveOutNew         bool
 	FailSyncs           int
 	CheckSyncs          int
+	RecheckSyncs        int
 	ListAfterSyncs      int
 	StaleFileLists      int
 	HashCheck           bool
@@ -250,10 +253,14 @@ func (s *Server) Requests() int {
 	return s.requests
 }
 
-func (s *Server) RequestsWithout(endpoint string) int {
+func (s *Server) RequestsWithout(endpoints ...string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.requests - s.calls[endpoint]
+	n := s.requests
+	for _, endpoint := range endpoints {
+		n -= s.calls[endpoint]
+	}
+	return n
 }
 
 func (s *Server) Syncs() int {
@@ -457,6 +464,12 @@ func (s *Server) remove(t *Torrent) {
 	}
 }
 
+func (s *Server) torrent(raw string) (*Torrent, bool) {
+	hash, err := infohash.Parse(raw)
+	t, ok := s.torrents[hash.String()]
+	return t, err == nil && ok && len(raw) == len(t.Hash)
+}
+
 func (s *Server) selected(list, sep string) []*Torrent {
 	var out []*Torrent
 	for h := range strings.SplitSeq(list, sep) {
@@ -466,7 +479,7 @@ func (s *Server) selected(list, sep string) []*Torrent {
 			}
 			return out
 		}
-		if t, ok := s.torrents[strings.ToLower(h)]; ok {
+		if t, ok := s.torrent(h); ok {
 			out = append(out, t)
 		}
 	}
@@ -629,7 +642,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			"server_state": map[string]any{"connection_status": "connected",
 				"last_external_address_v4": s.externalV4, "last_external_address_v6": s.externalV6, "free_space_on_disk": s.FreeSpace}})
 	case "sync/torrentPeers":
-		t, ok := s.torrents[strings.ToLower(param("hash"))]
+		t, ok := s.torrent(param("hash"))
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -639,8 +652,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			peers[net.JoinHostPort(p.IP, strconv.Itoa(p.Port))] = p
 		}
 		writeJSON(w, map[string]any{"rid": 1, "full_update": true, "peers": peers})
+	case "torrents/info":
+		rows := []qbt.Torrent{}
+		for h, t := range s.torrents {
+			rows = append(rows, qbt.Torrent{Hash: h, Name: t.Name, SavePath: t.SavePath})
+		}
+		writeJSON(w, rows)
 	case "torrents/files":
-		if t, ok := s.torrents[strings.ToLower(param("hash"))]; ok {
+		if t, ok := s.torrent(param("hash")); ok {
 			writeJSON(w, s.apiFiles(t))
 			return
 		}

@@ -146,7 +146,7 @@ export function SearchForm(props: SearchFormProps) {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {advancedFieldsFor(type).map(field => (
                 <div key={field} className="space-y-1.5">
-                  <Label htmlFor={`advanced-${field}`} className="text-xs text-muted-foreground">{t(FIELD_KEYS[field].label)}</Label>
+                  <Label htmlFor={`advanced-${field}`} size="sm" className="text-muted-foreground">{t(FIELD_KEYS[field].label)}</Label>
                   <Input
                     id={`advanced-${field}`}
                     inputMode={NUMERIC_FIELDS.has(field) ? "numeric" : undefined}

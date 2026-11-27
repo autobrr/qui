@@ -242,3 +242,49 @@ func TestCountTestSleeps(t *testing.T) {
 		})
 	}
 }
+
+func TestCountHashCase(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"lower of a hash field", `import "strings"; func f(t T) string { return strings.ToLower(t.Hash) }`, 1},
+		{"renamed strings import", `import str "strings"; func f(targetHash string) string { return str.ToLower(targetHash) }`, 1},
+		{"lower trim helper", `func f(hashes []string) string { return normalizeLowerTrim(hashes[0]) }`, 1},
+		{"default normalizer", `import "x/stringutils"; func f(hash string) string { return stringutils.DefaultNormalizer.Normalize(hash) }`, 1},
+		{"lower of a name", `import "strings"; func f(name string) string { return strings.ToLower(name) }`, 0},
+		{"no strings import", `func f(hash string) string { return strings.ToLower(hash) }`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := countHashCase("x.go", []byte("package x\n"+tt.src+"\n"))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, n)
+		})
+	}
+}
+
+func TestCountHashSet(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"struct set from backups", `import "github.com/autobrr/qui/pkg/infohash"; func buildHashSet(items []string) map[infohash.Hash]struct{} { return make(map[infohash.Hash]struct{}, len(items)) }`, 2},
+		{"bool set from transfer rules", `import "github.com/autobrr/qui/pkg/infohash"; var taken = map[infohash.Hash]bool{}`, 1},
+		{"nested in a map per instance", `import "github.com/autobrr/qui/pkg/infohash"; var requested map[int]map[infohash.Hash]struct{}`, 1},
+		{"renamed import", `import ih "github.com/autobrr/qui/pkg/infohash"; var seen map[ih.Hash]struct{}`, 1},
+		{"map to a value", `import "github.com/autobrr/qui/pkg/infohash"; var sizes map[infohash.Hash]int64`, 0},
+		{"map to a struct with fields", `import "github.com/autobrr/qui/pkg/infohash"; var entries map[infohash.Hash]struct{ size int64 }`, 0},
+		{"set of strings", `import "github.com/autobrr/qui/pkg/infohash"; var seen map[string]struct{}`, 0},
+		{"no infohash import", `var seen map[infohash.Hash]struct{}`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := countHashSet("x.go", []byte("package x\n"+tt.src+"\n"))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, n)
+		})
+	}
+}

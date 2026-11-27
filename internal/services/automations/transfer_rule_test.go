@@ -22,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type transfers struct {
@@ -64,7 +65,7 @@ func (f *transfers) Preview(_ context.Context, req transfer.Request) (*transfer.
 	if way == "" {
 		way = transfer.WaySFTP
 	}
-	return &transfer.Preview{Way: way, Bytes: 10, Members: []transfer.Member{{Hash: req.Hash}}}, nil
+	return &transfer.Preview{Way: way, Bytes: 10, Members: members(req.Hash)}, nil
 }
 
 func (f *transfers) hashes() []string {
@@ -235,7 +236,7 @@ func TestTransferToInstanceWaitsForTheExportOfACrossSeed(t *testing.T) {
 			runner := &transfers{}
 			if !tc.alone {
 				runner.preview = map[string]*transfer.Preview{runningHash: {Way: transfer.WaySFTP, Bytes: 10,
-					Members: []transfer.Member{{Hash: runningHash}, {Hash: stoppedHash}}}}
+					Members: members(runningHash, stoppedHash)}}
 			}
 			if tc.refused {
 				runner.previewErr = map[string]error{runningHash: errors.New("no answer")}
@@ -270,9 +271,9 @@ func (exportsEnd) Export(context.Context, transfer.ExportRequest) (int64, <-chan
 func TestTransferToInstanceDryRunListsWayAndSize(t *testing.T) {
 	svc, _, runner, instanceIDs := transferRig(t, everyActionTorrents())
 	runner.preview = map[string]*transfer.Preview{
-		runningHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: runningHash}, {Hash: stoppedHash}}},
-		stoppedHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: stoppedHash}, {Hash: runningHash}}},
-		doomedHash:  {Way: transfer.WaySFTP, Bytes: 2048, Members: []transfer.Member{{Hash: doomedHash}}},
+		runningHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: members(runningHash, stoppedHash)},
+		stoppedHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: members(stoppedHash, runningHash)},
+		doomedHash:  {Way: transfer.WaySFTP, Bytes: 2048, Members: members(doomedHash)},
 	}
 	rules := []*models.Automation{transferRule(1, instanceIDs[1], models.TransferToInstanceAction{SavePath: "/archive"})}
 
@@ -379,8 +380,8 @@ func TestTransferToInstancePassesASetOfHardlinkedCrossSeedsOnce(t *testing.T) {
 
 	runner.startErr = nil
 	runner.preview = map[string]*transfer.Preview{
-		runningHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: runningHash}}, Stay: 1, Versions: []string{stoppedHash}},
-		stoppedHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: []transfer.Member{{Hash: stoppedHash}}, Stay: 1, Versions: []string{runningHash}},
+		runningHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: members(runningHash), Stay: 1, Versions: []infohash.Hash{mustHash(stoppedHash)}},
+		stoppedHash: {Way: transfer.WayBitTorrent, Bytes: 4096, Members: members(stoppedHash), Stay: 1, Versions: []infohash.Hash{mustHash(runningHash)}},
 	}
 	activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, true)
 	require.NoError(t, err)
@@ -431,7 +432,12 @@ func TestTransferToInstanceStartsTheRestInTheNextRunAfterTheRunEnds(t *testing.T
 }
 
 func TestTransferToInstanceWaitsForASlowTargetOncePerRun(t *testing.T) {
-	torrents := []qbt.Torrent{{Hash: "a", Tags: "x"}, {Hash: "b", Tags: "x"}, {Hash: "c", Tags: "x"}}
+	const (
+		a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		c = "cccccccccccccccccccccccccccccccccccccccc"
+	)
+	torrents := []qbt.Torrent{{Hash: a, Tags: "x"}, {Hash: b, Tags: "x"}, {Hash: c, Tags: "x"}}
 	rule := planTestRule(1, &models.ActionConditions{TransferToInstance: &models.TransferToInstanceAction{
 		Enabled: true, TargetInstanceID: 2, Condition: tagsContain("x"),
 	}})
@@ -441,8 +447,8 @@ func TestTransferToInstanceWaitsForASlowTargetOncePerRun(t *testing.T) {
 		wait    time.Duration
 		planned []string
 	}{
-		{name: "slow target", target: fakeTargetLookup{slow: true}, wait: 10 * time.Second, planned: []string{"a", "b", "c"}},
-		{name: "target answers", target: fakeTargetLookup{onTarget: map[string]bool{"b": true, "c": true}}, planned: []string{"a"}},
+		{name: "slow target", target: fakeTargetLookup{slow: true}, wait: 10 * time.Second, planned: []string{a, b, c}},
+		{name: "target answers", target: fakeTargetLookup{onTarget: map[string]bool{b: true, c: true}}, planned: []string{a}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -452,7 +458,7 @@ func TestTransferToInstanceWaitsForASlowTargetOncePerRun(t *testing.T) {
 				require.Equal(t, tc.wait, time.Since(start))
 				planned := make([]string, 0, len(plan.transfers))
 				for _, pending := range plan.transfers {
-					planned = append(planned, pending.hash)
+					planned = append(planned, pending.hash.String())
 				}
 				slices.Sort(planned)
 				require.Equal(t, tc.planned, planned)
@@ -469,4 +475,20 @@ func count(hashes []string, hash string) int {
 		}
 	}
 	return n
+}
+
+func mustHash(s string) infohash.Hash {
+	hash, err := infohash.Parse(s)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}
+
+func members(hashes ...string) []transfer.Member {
+	out := make([]transfer.Member, len(hashes))
+	for i, hash := range hashes {
+		out[i].Hash = mustHash(hash)
+	}
+	return out
 }

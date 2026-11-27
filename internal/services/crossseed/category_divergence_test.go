@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -42,7 +43,7 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 	ctx := context.Background()
 	instanceID := 1
 	matchedHash := "matchedhash"
-	newHash := "newhash"
+	newHash := "feedfacefeedfacefeedfacefeedfacefeedface"
 	matchedName := "Show.S01E01.1080p.WEB-DL-GROUP"
 
 	candidateFiles := qbt.TorrentFiles{
@@ -104,7 +105,7 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 	}
 
 	withAdder(service)
-	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{}, matchedName, req, service.releaseCache.Parse(matchedName), sourceFiles, nil, nil)
 	require.True(t, result.Success)
 	require.Equal(t, "added", result.Status)
 

@@ -16,6 +16,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const exportsAtATime = 5
@@ -47,6 +48,7 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 	if err != nil {
 		return 0, nil, err
 	}
+	hash, _ := infohash.Parse(req.Hash)
 	record := &Record{
 		Kind:             KindExport,
 		State:            StateWaiting,
@@ -57,7 +59,7 @@ func (s *Service) Export(ctx context.Context, req ExportRequest) (int64, <-chan 
 		TargetEndpoint:   fsops.EndpointOf(target),
 		Options:          Options{After: AfterKeepSeeding, Paused: req.Paused, SkipChecking: new(req.SkipChecking)},
 		Steps:            []Step{{Name: "start", At: s.deps.Now(), Detail: req.RuleName}},
-		Members: []Member{{Hash: req.Hash, Name: req.Name, TargetInstanceID: req.TargetInstanceID,
+		Members: []Member{{Hash: hash, Name: req.Name, TargetInstanceID: req.TargetInstanceID,
 			Placement: req.Placement}},
 		Size: req.Size,
 	}
@@ -152,7 +154,7 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 			unchecked := torrent.Progress == 0 &&
 				slices.Contains([]qbt.TorrentState{qbt.TorrentStateStoppedDl, qbt.TorrentStatePausedDl}, torrent.State)
 			if req.Settings.Recheck && unchecked {
-				err := e.svc.deps.Sync.BulkAction(ctx, m.TargetInstanceID, []string{m.Hash}, "recheck")
+				err := e.svc.deps.Sync.BulkAction(ctx, m.TargetInstanceID, []string{m.Hash.String()}, "recheck")
 				switch {
 				case ctx.Err() != nil:
 					return ExportResult{}, false
@@ -168,13 +170,13 @@ func (e *exportJob) run(ctx context.Context) (res ExportResult, ended bool) {
 		}
 		e.logf("Resumed: the add did not reach the target, so qui adds the torrent again.")
 	}
-	if _, has, err := e.svc.deps.Sync.HasTorrentByAnyHash(ctx, m.TargetInstanceID, []string{m.Hash}); err == nil && has {
+	if _, has, err := e.svc.deps.Sync.HasTorrentByAnyHash(ctx, m.TargetInstanceID, []infohash.Hash{m.Hash}); err == nil && has {
 		e.result.AlreadyOnTarget = true
 		e.logf("The target already has the torrent, so qui adds nothing.")
 		return e.end(ctx, "", false), true
 	}
 
-	data, _, tracker, err := e.svc.deps.Sync.ExportTorrent(ctx, e.rec.SourceInstanceID, m.Hash)
+	data, _, tracker, err := e.svc.deps.Sync.ExportTorrent(ctx, e.rec.SourceInstanceID, m.Hash.String())
 	e.result.TrackerDomain = tracker
 	switch {
 	case ctx.Err() != nil:
@@ -218,7 +220,7 @@ func (e *exportJob) endResumed(ctx context.Context, reason string) ExportResult 
 
 func (e *exportJob) addRequest(data []byte) torrentadd.Request {
 	m, cfg := e.member(), e.svc.deps.Config
-	return torrentadd.Request{InstanceID: m.TargetInstanceID, Torrent: data, Hash: m.Hash,
+	return torrentadd.Request{InstanceID: m.TargetInstanceID, Torrent: data, Hash: m.Hash.String(),
 		Settings: exportSettings(m.Placement, e.rec.Options), Polls: cfg.ExportPolls, PollInterval: cfg.ExportPollInterval}
 }
 
@@ -228,7 +230,7 @@ func (e *exportJob) verify(ctx context.Context, added torrentadd.Result) string 
 	if reason == "" {
 		return ""
 	}
-	torrent, found, err := e.svc.deps.Sync.HasTorrentByAnyHash(ctx, m.TargetInstanceID, []string{m.Hash})
+	torrent, found, err := e.svc.deps.Sync.HasTorrentByAnyHash(ctx, m.TargetInstanceID, []infohash.Hash{m.Hash})
 	if err == nil && found && torrent.State != qbt.TorrentStateMissingFiles && torrent.State != qbt.TorrentStateError &&
 		torrent.Progress >= 1 {
 		e.logf("The torrent turned healthy after the wait for it.")
@@ -272,7 +274,7 @@ func (e *exportJob) end(ctx context.Context, reason string, remove bool) ExportR
 		_ = e.finish(ctx, StateFailed)
 	}
 	event.Int64("transfer", e.rec.ID).Int("rule", *e.rec.RuleID).Int("source", e.rec.SourceInstanceID).
-		Int("target", m.TargetInstanceID).Str("hash", m.Hash).Msg("transfer: the Export run ended")
+		Int("target", m.TargetInstanceID).Str("hash", m.Hash.String()).Msg("transfer: the Export run ended")
 	return e.result
 }
 
@@ -305,7 +307,7 @@ func (e *exportJob) removeFromTarget(ctx context.Context) {
 		return
 	}
 	actor := qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: e.ruleName}
-	if err := e.svc.deps.Sync.DeleteTorrents(ctx, m.TargetInstanceID, []string{m.Hash}, false, actor); err != nil {
+	if err := e.svc.deps.Sync.DeleteTorrents(ctx, m.TargetInstanceID, []string{m.Hash.String()}, false, actor); err != nil {
 		e.logf("qui could not remove the torrent from the target: %v", err)
 		return
 	}

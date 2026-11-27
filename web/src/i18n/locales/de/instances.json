@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} aktiv",
       "today": "{{count}} heute",
       "failed": "{{count}} fehlgeschlagen",
+      "outcomeFailed": "Fehlgeschlagen",
       "failedToLoadRules": "Regeln konnten nicht geladen werden",
       "checkConnection": "Prüfe die Verbindung zur Instanz.",
       "loadingRules": "Regeln werden geladen...",

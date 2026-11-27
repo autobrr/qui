@@ -101,7 +101,7 @@ func TestTargetHashes_CurrentThenLegacy(t *testing.T) {
 		t.Fatalf("expected %d hashes, got %v", len(want), hashes)
 	}
 	for i := range want {
-		if hashes[i] != want[i] {
+		if hashes[i].String() != want[i] {
 			t.Fatalf("hash %d: expected %s, got %s", i, want[i], hashes[i])
 		}
 	}

@@ -21,6 +21,8 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 )
 
+const catalogSourceHash = "5ec0000000000000000000000000000000000001"
+
 func TestCatalogApplyObligations(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
@@ -42,8 +44,11 @@ func TestCatalogApplyObligations(t *testing.T) {
 		}, wantErr: "bound source incomplete or ineligible"},
 		{name: "source renamed", kind: gazellemusic.MatchSize, mutate: func(m *catalogReplaySync, _ *CrossSeedRequest) { m.files[m.source.Hash][0].Name = "changed/track.flac" }, wantErr: "bound source file table, full size or content family changed"},
 		{name: "target changed", kind: gazellemusic.MatchHash, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) {
-			r.SearchDecision.Catalog.TargetHash, r.SearchDecision.Catalog.QueriedHash = adderV1, adderV1
+			r.SearchDecision.Catalog.TargetHash, r.SearchDecision.Catalog.QueriedHash = mustParseHash(t, adderV1), mustParseHash(t, adderV1)
 		}, wantErr: "selected target hash or full size changed"},
+		{name: "unbound source instance", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SearchDecision.SourceInstanceID = 0 }, wantErr: "incomplete file-evidence decision"},
+		{name: "targets leave out the source instance", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.TargetInstanceIDs = []int{2} }, wantErr: "file-evidence source binding mismatch"},
+		{name: "no target instance list", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.TargetInstanceIDs = nil }, wantAdd: true},
 		{name: "size exact path skips check", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "hash exact path exemption", kind: gazellemusic.MatchHash, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
 		{name: "renames honor skip recheck", kind: gazellemusic.MatchSize, mutate: func(_ *catalogReplaySync, r *CrossSeedRequest) { r.SkipRecheck = true }, wantAdd: true},
@@ -62,7 +67,7 @@ func TestCatalogApplyObligations(t *testing.T) {
 			if strings.HasPrefix(tt.name, "renames") {
 				files[0].Name = "Mira Calder - Morning Is Near (1992) [FLAC]/renamed.flac"
 			}
-			svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, "source", meta.Name, files, meta.HashV1, meta.Files)
+			svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, catalogSourceHash, meta.Name, files, meta.HashV1.String(), meta.Files)
 			source := candidate.Torrents[0]
 			source.Size, source.TotalSize = 110, 110
 			listing := "Different listing"
@@ -93,7 +98,7 @@ func TestCatalogApplyObligations(t *testing.T) {
 				if !tt.wantCheck {
 					require.Equal(t, "true", sync.addTorrentOpts["skip_checking"])
 					require.Empty(t, svc.settler.queue)
-					require.NotContains(t, sync.bulkActions, "recheck:"+meta.HashV1)
+					require.NotContains(t, sync.bulkActions, "recheck:"+meta.HashV1.String())
 				}
 			}
 			if !tt.wantAdd {
@@ -101,21 +106,21 @@ func TestCatalogApplyObligations(t *testing.T) {
 			}
 			if tt.wantCheck {
 				require.Len(t, svc.settler.queue, 1)
-				require.Contains(t, sync.bulkActions, "recheck:"+meta.HashV1)
+				require.Contains(t, sync.bulkActions, "recheck:"+meta.HashV1.String())
 				pending := <-svc.settler.queue
 				pending.addedAt = time.Now().Add(-time.Minute)
 				if tt.failedCheck {
-					checking := qbt.Torrent{Hash: meta.HashV1, State: qbt.TorrentStateCheckingDl}
+					checking := qbt.Torrent{Hash: meta.HashV1.String(), State: qbt.TorrentStateCheckingDl}
 					require.True(t, svc.settler.processPendingRecheckResume(t.Context(), 1, meta.HashV1, pending, checking))
-					partial := qbt.Torrent{Hash: meta.HashV1, State: qbt.TorrentStatePausedDl, Progress: 0.99, AmountLeft: 1, Completed: 109}
+					partial := qbt.Torrent{Hash: meta.HashV1.String(), State: qbt.TorrentStatePausedDl, Progress: 0.99, AmountLeft: 1, Completed: 109}
 					require.False(t, svc.settler.processPendingRecheckResume(t.Context(), 1, meta.HashV1, pending, partial))
-					require.NotContains(t, svc.settler.sync.(*settleScript).actions, "resume:"+meta.HashV1)
+					require.NotContains(t, svc.settler.sync.(*settleScript).actions, "resume:"+meta.HashV1.String())
 					return
 				}
-				full := qbt.Torrent{Hash: meta.HashV1, State: qbt.TorrentStatePausedUp, Progress: 1}
+				full := qbt.Torrent{Hash: meta.HashV1.String(), State: qbt.TorrentStatePausedUp, Progress: 1}
 				svc.settler.processPendingRecheckResume(t.Context(), 1, meta.HashV1, pending, full)
 				svc.settler.processPendingRecheckResume(t.Context(), 1, meta.HashV1, pending, full)
-				require.Contains(t, svc.settler.sync.(*settleScript).actions, "resume:"+meta.HashV1)
+				require.Contains(t, svc.settler.sync.(*settleScript).actions, "resume:"+meta.HashV1.String())
 			}
 		})
 	}
@@ -157,7 +162,7 @@ func TestCatalogFileOrderUsesPathAndSize(t *testing.T) {
 			if tt.reorder {
 				current[0], current[1] = current[1], current[0]
 			}
-			svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, sourceMeta.HashV1, "A completely different local display name", current, targetMeta.HashV1, targetMeta.Files)
+			svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, sourceMeta.HashV1.String(), "A completely different local display name", current, targetMeta.HashV1.String(), targetMeta.Files)
 			source := candidate.Torrents[0]
 			source.Size, source.TotalSize = 6, 6
 			p, err := svc.gazelleDecision(1, source, current, &gazellemusic.Match{Kind: gazellemusic.MatchHash, Host: "orpheus.network", TorrentID: 7, Size: 6, Title: "Tracker listing", TargetHash: targetMeta.HashV1, QueriedHash: targetMeta.HashV1})
@@ -172,8 +177,8 @@ func TestCatalogFileOrderUsesPathAndSize(t *testing.T) {
 			require.True(t, response.Success, "%+v", response.Results)
 			if !tt.skip {
 				require.Len(t, svc.settler.queue, 1)
-				require.Contains(t, sync.bulkActions, "recheck:"+targetMeta.HashV1)
-				require.NotContains(t, sync.bulkActions, "resume:"+targetMeta.HashV1)
+				require.Contains(t, sync.bulkActions, "recheck:"+targetMeta.HashV1.String())
+				require.NotContains(t, sync.bulkActions, "resume:"+targetMeta.HashV1.String())
 			} else {
 				require.Empty(t, svc.settler.queue)
 			}
@@ -211,7 +216,7 @@ func TestCatalogMappedAlignmentStartsPaused(t *testing.T) {
 				if shape == "flattened source" {
 					name = sourceMeta.Name
 				}
-				svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, sourceMeta.HashV1, name, current, targetMeta.HashV1, targetMeta.Files)
+				svc, base, candidate := newRenameOnlyService(t, &models.Instance{ID: 1}, sourceMeta.HashV1.String(), name, current, targetMeta.HashV1.String(), targetMeta.Files)
 				source := candidate.Torrents[0]
 				total := sourceFilesTotalSize(current)
 				source.Size, source.TotalSize = total, total
@@ -238,14 +243,14 @@ func TestCatalogMappedAlignmentStartsPaused(t *testing.T) {
 					}
 				}
 				require.NotEqual(t, -1, lastRename)
-				nextAction := "recheck:" + targetMeta.HashV1
+				nextAction := "recheck:" + targetMeta.HashV1.String()
 				if skip {
-					nextAction = "resume:" + targetMeta.HashV1
+					nextAction = "resume:" + targetMeta.HashV1.String()
 				}
 				require.Greater(t, slices.Index(sync.bulkActions, nextAction), lastRename)
 				for _, pair := range targetMeta.Files {
 					index := pair.Index
-					require.Equal(t, current[index].Name, sync.files[targetMeta.HashV1][index].Name)
+					require.Equal(t, current[index].Name, sync.files[targetMeta.HashV1.String()][index].Name)
 				}
 			})
 		}

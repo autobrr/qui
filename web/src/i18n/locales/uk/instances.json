@@ -472,6 +472,7 @@
       "activeCount": "{{enabled}}/{{total}} активних",
       "today": "{{count}} сьогодні",
       "failed": "{{count}} не вдалося",
+      "outcomeFailed": "Не вдалося",
       "failedToLoadRules": "Не вдалося завантажити правила",
       "checkConnection": "Перевірте підключення до екземпляра.",
       "loadingRules": "Завантаження правил...",

@@ -8,10 +8,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type CrossSeedBlocklistEntry struct {
@@ -62,12 +64,12 @@ func (s *CrossSeedBlocklistStore) List(ctx context.Context, instanceID int) ([]*
 	return entries, nil
 }
 
-func (s *CrossSeedBlocklistStore) Get(ctx context.Context, instanceID int, infoHash string) (*CrossSeedBlocklistEntry, error) {
+func (s *CrossSeedBlocklistStore) Get(ctx context.Context, instanceID int, hash infohash.Hash) (*CrossSeedBlocklistEntry, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT instance_id, infohash, note, created_at
 		FROM cross_seed_blocklist
 		WHERE instance_id = ? AND infohash = ?
-	`, instanceID, normalizeInfoHash(infoHash))
+	`, instanceID, hash.String())
 
 	var entry CrossSeedBlocklistEntry
 	if err := row.Scan(&entry.InstanceID, &entry.InfoHash, &entry.Note, &entry.CreatedAt); err != nil {
@@ -77,43 +79,37 @@ func (s *CrossSeedBlocklistStore) Get(ctx context.Context, instanceID int, infoH
 	return &entry, nil
 }
 
-func (s *CrossSeedBlocklistStore) Upsert(ctx context.Context, entry *CrossSeedBlocklistEntry) (*CrossSeedBlocklistEntry, error) {
-	if entry == nil {
-		return nil, errors.New("entry is nil")
-	}
-	if entry.InstanceID <= 0 {
+func (s *CrossSeedBlocklistStore) Upsert(ctx context.Context, instanceID int, hash infohash.Hash, note string) (*CrossSeedBlocklistEntry, error) {
+	if instanceID <= 0 {
 		return nil, errors.New("instanceID must be positive")
 	}
-
-	normalized := normalizeInfoHash(entry.InfoHash)
-	if normalized == "" {
+	if hash.IsZero() {
 		return nil, errors.New("infohash is required")
 	}
-	note := strings.TrimSpace(entry.Note)
+	note = strings.TrimSpace(note)
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO cross_seed_blocklist (instance_id, infohash, note)
 		VALUES (?, ?, ?)
 		ON CONFLICT(instance_id, infohash)
 		DO UPDATE SET note = excluded.note
-	`, entry.InstanceID, normalized, note)
+	`, instanceID, hash.String(), note)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.Get(ctx, entry.InstanceID, normalized)
+	return s.Get(ctx, instanceID, hash)
 }
 
-func (s *CrossSeedBlocklistStore) Delete(ctx context.Context, instanceID int, infoHash string) error {
-	normalized := normalizeInfoHash(infoHash)
-	if normalized == "" {
+func (s *CrossSeedBlocklistStore) Delete(ctx context.Context, instanceID int, hash infohash.Hash) error {
+	if hash.IsZero() {
 		return errors.New("infohash is required")
 	}
 
 	res, err := s.db.ExecContext(ctx, `
 		DELETE FROM cross_seed_blocklist
 		WHERE instance_id = ? AND infohash = ?
-	`, instanceID, normalized)
+	`, instanceID, hash.String())
 	if err != nil {
 		return err
 	}
@@ -129,17 +125,13 @@ func (s *CrossSeedBlocklistStore) Delete(ctx context.Context, instanceID int, in
 	return nil
 }
 
-func (s *CrossSeedBlocklistStore) FindBlocked(ctx context.Context, instanceID int, hashes []string) (string, bool, error) {
+func (s *CrossSeedBlocklistStore) FindBlocked(ctx context.Context, instanceID int, hashes []infohash.Hash) (infohash.Hash, bool, error) {
+	hashes = slices.DeleteFunc(slices.Clone(hashes), infohash.Hash.IsZero)
 	if instanceID <= 0 || len(hashes) == 0 {
-		return "", false, nil
+		return infohash.Hash{}, false, nil
 	}
 
-	normalized := normalizeInfoHashList(hashes)
-	if len(normalized) == 0 {
-		return "", false, nil
-	}
-
-	placeholders := buildPlaceholders(len(normalized))
+	placeholders := buildPlaceholders(len(hashes))
 	query := fmt.Sprintf(`
 		SELECT infohash
 		FROM cross_seed_blocklist
@@ -147,42 +139,25 @@ func (s *CrossSeedBlocklistStore) FindBlocked(ctx context.Context, instanceID in
 		LIMIT 1
 	`, placeholders)
 
-	args := make([]any, 0, len(normalized)+1)
+	args := make([]any, 0, len(hashes)+1)
 	args = append(args, instanceID)
-	for _, h := range normalized {
-		args = append(args, h)
+	for _, h := range hashes {
+		args = append(args, h.String())
 	}
 
-	var infohash string
-	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&infohash); err != nil {
+	var stored string
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&stored); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", false, nil
+			return infohash.Hash{}, false, nil
 		}
-		return "", false, err
+		return infohash.Hash{}, false, err
 	}
 
-	return infohash, true, nil
-}
-
-func normalizeInfoHash(value string) string {
-	return normalizeLowerTrim(value)
-}
-
-func normalizeInfoHashList(values []string) []string {
-	seen := make(map[string]struct{})
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		normalized := normalizeInfoHash(value)
-		if normalized == "" {
-			continue
-		}
-		if _, exists := seen[normalized]; exists {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		out = append(out, normalized)
+	blocked, err := infohash.Parse(stored)
+	if err != nil {
+		return infohash.Hash{}, false, fmt.Errorf("blocklist row %q: %w", stored, err)
 	}
-	return out
+	return blocked, true, nil
 }
 
 func buildPlaceholders(count int) string {

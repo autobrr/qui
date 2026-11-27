@@ -334,6 +334,10 @@ func (staticFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbit
 	return nil, nil
 }
 
+func (staticFilesReader) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return nil, nil
+}
+
 func TestRunSession_HardlinkCopyLeadsToASecondGroup(t *testing.T) {
 	t.Parallel()
 	torrents := []qbt.Torrent{

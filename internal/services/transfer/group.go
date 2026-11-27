@@ -14,6 +14,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -29,18 +30,18 @@ type RouteReader interface {
 	Get(ctx context.Context, sourceInstanceID int) (*models.CrossSeedRoute, error)
 }
 
-func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, way Way) (group []*source, stay []string, err error) {
+func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, way Way) (group []*source, stay []infohash.Hash, err error) {
 	group = []*source{first}
-	seen := map[string]bool{strings.ToLower(first.torrent.Hash): true}
-	for frontier := []string{first.torrent.Hash}; len(frontier) > 0; {
+	seen := map[infohash.Hash]bool{first.hash: true}
+	for frontier := []string{first.hash.String()}; len(frontier) > 0; {
 		res, err := s.deps.Groups.FindDeleteMatches(ctx, map[int][]string{instanceID: frontier})
 		if err != nil {
 			return nil, nil, fmt.Errorf("find the torrents that share the files: %w", err)
 		}
 		frontier = nil
 		for _, m := range res.Matches {
-			hash := strings.ToLower(m.Hash)
-			if m.InstanceID != instanceID || seen[hash] || (m.MatchType != matchSharedPath && m.MatchType != matchHardlink) {
+			hash, _ := infohash.Parse(m.Hash)
+			if m.InstanceID != instanceID || hash.IsZero() || seen[hash] || (m.MatchType != matchSharedPath && m.MatchType != matchHardlink) {
 				continue
 			}
 			seen[hash] = true
@@ -59,7 +60,7 @@ func (s *Service) groupOf(ctx context.Context, instanceID int, first *source, wa
 				return nil, nil, refuse("%s shares the files of this torrent: %w", m.Name, err)
 			}
 			group = append(group, member)
-			frontier = append(frontier, hash)
+			frontier = append(frontier, hash.String())
 		}
 	}
 	return group, stay, nil
@@ -112,7 +113,7 @@ func (s *Service) members(ctx context.Context, from, target *models.Instance, gr
 			return nil, fmt.Errorf("place %s: %w", src.torrent.Name, err)
 		}
 		m := Member{
-			Hash:             strings.ToLower(src.torrent.Hash),
+			Hash:             src.hash,
 			Name:             src.torrent.Name,
 			SourceSavePath:   src.torrent.SavePath,
 			TargetInstanceID: target.ID,

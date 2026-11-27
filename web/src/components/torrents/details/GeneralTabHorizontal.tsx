@@ -16,6 +16,7 @@ import type { Torrent, TorrentProperties } from "@/types"
 import { Loader2 } from "lucide-react"
 import { memo, useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { CategoryTagBadges } from "./CategoryTagBadges"
 import { PieceBar } from "./PieceBar"
 import { StatRow } from "./StatRow"
 
@@ -121,9 +122,10 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
   return (
     <ScrollArea className="h-full">
       <div className="p-3">
+        <CategoryTagBadges torrent={torrent} className="mb-2 flex flex-wrap gap-1.5" />
         <div className="grid grid-cols-2 gap-6 h-5">
           <div className="flex items-start gap-2 min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+            <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               {t("generalTab.name")}
             </span>
             <TruncatedText className="text-xs font-mono text-muted-foreground">
@@ -134,7 +136,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             )}
           </div>
           <div className="flex items-start gap-2 min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+            <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               {t("generalTab.size")}
             </span>
             <span className="text-xs text-muted-foreground">
@@ -145,7 +147,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
         <div className="grid grid-cols-2 gap-6 h-5">
           <div className="flex items-start gap-2 min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+            <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               {t("generalTab.hashV1")}
             </span>
             <TruncatedText className="text-xs font-mono text-muted-foreground">
@@ -157,7 +159,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
           {displayInfohashV2 && (
             <div className="flex items-start gap-2 min-w-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+              <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                 {t("generalTab.hashV2")}
               </span>
               <TruncatedText className="text-xs font-mono text-muted-foreground">
@@ -170,7 +172,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
         <div className="grid grid-cols-2 gap-6 h-5">
           <div className="flex items-start gap-2 min-w-0">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+            <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               {t("generalTab.savePath")}
             </span>
             <TruncatedText className="text-xs font-mono text-muted-foreground">
@@ -182,7 +184,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
           {tempPathEnabled && displayTempPath ? (
             <div className="flex items-start gap-2 min-w-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+              <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                 {t("generalTab.tempPath")}
               </span>
               <TruncatedText className="text-xs font-mono text-muted-foreground">
@@ -198,7 +200,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           <div className="grid grid-cols-2 gap-6">
             {displayComment && (
               <div className="flex items-start gap-2 min-w-0">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+                <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                   {t("generalTab.comment")}
                 </span>
                 <span className="min-w-0 flex-1 font-mono text-xs text-muted-foreground whitespace-pre-wrap break-words">
@@ -208,7 +210,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             )}
             {displayCreatedBy && (
               <div className="flex items-start gap-2 min-w-0">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
+                <span className="text-10 font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                   {t("generalTab.createdBy")}
                 </span>
                 <TruncatedText className="min-w-0 flex-1 text-xs text-muted-foreground">
@@ -223,7 +225,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-6 lg:gap-y-0 m-0 mt-2">
           <div className="space-y-1">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.transfer")}</h4>
+            <h4 className="text-10 font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.transfer")}</h4>
             <StatRow label={t("generalTab.downloaded")} value={formatBytes(properties.total_downloaded || 0)} />
             <StatRow label={t("generalTab.uploaded")} value={formatBytes(properties.total_uploaded || 0)} />
             <StatRow
@@ -236,16 +238,16 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
 
           <div className="space-y-1">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.network")}</h4>
+            <h4 className="text-10 font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.network")}</h4>
             <StatRow
               label="DL"
               value={`${formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)} - (${formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)} avg.)`}
-              highlight="green"
+              valueClassName="text-chart-text-2"
             />
             <StatRow
               label="UL"
               value={`${formatSpeedWithUnit(properties.up_speed || 0, speedUnit)} - (${formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)} avg.)`}
-              highlight="blue"
+              valueClassName="text-chart-text-3"
             />
             <StatRow
               label={t("generalTab.seeds")}
@@ -269,7 +271,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
 
           <div className="space-y-1">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.time")}</h4>
+            <h4 className="text-10 font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.time")}</h4>
             <StatRow label={t("generalTab.timeActive")} value={formatDuration(properties.time_elapsed || 0)} />
             <StatRow label={t("generalTab.seedingTime")} value={formatDuration(properties.seeding_time || 0)} />
             {reannounceIn !== undefined && <StatRow label={t("tableColumns.reannounce")} value={reannounceIn} />}
@@ -283,7 +285,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
           </div>
 
           <div className="space-y-1">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.limits")}</h4>
+            <h4 className="text-10 font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{t("generalTab.limits")}</h4>
             <StatRow label={t("generalTab.ratioLimit")} value={torrent.max_ratio > 0 ? torrent.max_ratio.toFixed(2) : "∞"} />
             <StatRow label={t("generalTab.downLimit")} value={downloadLimitLabel} />
             <StatRow label={t("generalTab.upLimit")} value={uploadLimitLabel} />
@@ -303,7 +305,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
         <Separator className="opacity-30 mt-2" />
         <div className="mt-2">
           <div className="flex items-center justify-between mb-1.5">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <h4 className="text-10 font-semibold uppercase tracking-wider text-muted-foreground">
               {t("generalTab.pieces")}
             </h4>
             <span className="text-xs text-muted-foreground tabular-nums">

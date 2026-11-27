@@ -35,18 +35,18 @@ func TestGetTorrentField_TagBaselineAcceptsFrontendMixedSelectionPayload(t *test
 
 	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
 		"alpha": {
-			{Name: "Alpha", Hash: "aaa", Tags: "movies"},
+			{Name: "Alpha", Hash: "aaa0000000000000000000000000000000000000", Tags: "movies"},
 		},
 		"beta": {
-			{Name: "Beta", Hash: "bbb", Tags: "hdr"},
+			{Name: "Beta", Hash: "bbb0000000000000000000000000000000000000", Tags: "hdr"},
 		},
 	})
 
 	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "tags",
-		"hashes":      []string{"aaa", "bbb"},
-		"targets":     []map[string]any{{"instanceId": instanceIDs["alpha"], "hash": "aaa"}, {"instanceId": instanceIDs["beta"], "hash": "bbb"}},
+		"hashes":      []string{"aaa0000000000000000000000000000000000000", "bbb0000000000000000000000000000000000000"},
+		"targets":     []map[string]any{{"instanceId": instanceIDs["alpha"], "hash": "aaa0000000000000000000000000000000000000"}, {"instanceId": instanceIDs["beta"], "hash": "bbb0000000000000000000000000000000000000"}},
 		"instanceIds": []int{instanceIDs["alpha"], instanceIDs["beta"]},
 	})
 
@@ -65,17 +65,17 @@ func TestGetTorrentField_TagBaselineHandlesDuplicateCrossInstanceHashesWithoutTa
 
 	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
 		"alpha": {
-			{Name: "Alpha", Hash: "shared", Tags: "movies"},
+			{Name: "Alpha", Hash: "5ba7ed0000000000000000000000000000000000", Tags: "movies"},
 		},
 		"beta": {
-			{Name: "Beta", Hash: "shared", Tags: "hdr"},
+			{Name: "Beta", Hash: "5ba7ed0000000000000000000000000000000000", Tags: "hdr"},
 		},
 	})
 
 	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"field":       "tags",
-		"hashes":      []string{"shared"},
+		"hashes":      []string{"5ba7ed0000000000000000000000000000000000"},
 		"instanceIds": []int{instanceIDs["alpha"], instanceIDs["beta"]},
 	})
 
@@ -125,15 +125,15 @@ func TestGetTorrentField_FullPathReturnsContentPath(t *testing.T) {
 
 	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
 		"alpha": {
-			{Name: "Renamed Show", Hash: "aaa", SavePath: "/data/tv", ContentPath: "/data/tv/Show.S01.1080p.WEB-GRP"},
-			{Name: "Pending", Hash: "bbb", SavePath: "/data/tv"},
+			{Name: "Renamed Show", Hash: "aaa0000000000000000000000000000000000000", SavePath: "/data/tv", ContentPath: "/data/tv/Show.S01.1080p.WEB-GRP"},
+			{Name: "Pending", Hash: "bbb0000000000000000000000000000000000000", SavePath: "/data/tv"},
 		},
 	})
 	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 
 	for name, body := range map[string]map[string]any{
 		"select all":      {"field": "full_path", "sort": "name", "order": "asc"},
-		"explicit hashes": {"field": "full_path", "hashes": []string{"aaa", "bbb"}},
+		"explicit hashes": {"field": "full_path", "hashes": []string{"aaa0000000000000000000000000000000000000", "bbb0000000000000000000000000000000000000"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -155,16 +155,16 @@ func TestGetTorrentField_MagnetURIExplicitHashes(t *testing.T) {
 
 	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
 		"alpha": {
-			{Name: "Alpha", Hash: "aaa", MagnetURI: "magnet:?xt=urn:btih:aaa"},
-			{Name: "Beta", Hash: "bbb", MagnetURI: "magnet:?xt=urn:btih:bbb"},
-			{Name: "Gamma", Hash: "ccc", MagnetURI: "magnet:?xt=urn:btih:ccc"},
+			{Name: "Alpha", Hash: "aaa0000000000000000000000000000000000000", MagnetURI: "magnet:?xt=urn:btih:aaa0000000000000000000000000000000000000"},
+			{Name: "Beta", Hash: "bbb0000000000000000000000000000000000000", MagnetURI: "magnet:?xt=urn:btih:bbb0000000000000000000000000000000000000"},
+			{Name: "Gamma", Hash: "ccc0000000000000000000000000000000000000", MagnetURI: "magnet:?xt=urn:btih:ccc0000000000000000000000000000000000000"},
 		},
 	})
 
 	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
 		"field":  "magnet_uri",
-		"hashes": []string{"aaa", "ccc"},
+		"hashes": []string{"aaa0000000000000000000000000000000000000", "ccc0000000000000000000000000000000000000"},
 	})
 
 	rec := httptest.NewRecorder()
@@ -175,8 +175,8 @@ func TestGetTorrentField_MagnetURIExplicitHashes(t *testing.T) {
 	var response quiqbt.TorrentFieldResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 	require.ElementsMatch(t, []string{
-		"magnet:?xt=urn:btih:aaa",
-		"magnet:?xt=urn:btih:ccc",
+		"magnet:?xt=urn:btih:aaa0000000000000000000000000000000000000",
+		"magnet:?xt=urn:btih:ccc0000000000000000000000000000000000000",
 	}, response.Values)
 }
 
@@ -241,19 +241,19 @@ func TestGetTorrentField_SingleInstanceFormatsLikeUnified(t *testing.T) {
 
 	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
 		"alpha": {
-			{Name: "  Alpha  ", Hash: "aaa", InfohashV1: "aaa", AddedOn: 2},
-			{Name: "Hybrid", Hash: "ddd", InfohashV1: "eee", AddedOn: 1},
+			{Name: "  Alpha  ", Hash: "aaa0000000000000000000000000000000000000", InfohashV1: "aaa0000000000000000000000000000000000000", AddedOn: 2},
+			{Name: "Hybrid", Hash: "ddd0000000000000000000000000000000000000", InfohashV1: "eee0000000000000000000000000000000000000", AddedOn: 1},
 		},
 	})
 
 	handler := NewTorrentsHandler(syncManager, nil, instanceStore, nil)
 	for field, want := range map[string][]string{
-		"hash": {"AAA"},
+		"hash": {"AAA0000000000000000000000000000000000000"},
 		"name": {"Alpha"},
 	} {
 		req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
 			"field":         field,
-			"excludeHashes": []string{"EEE"},
+			"excludeHashes": []string{"EEE0000000000000000000000000000000000000"},
 		})
 
 		rec := httptest.NewRecorder()

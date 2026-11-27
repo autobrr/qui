@@ -54,8 +54,8 @@ interface ResourceListProps<T> {
 const INLINE_ACTIONS = 3
 
 const TONE_DOT: Record<ResourceTone, string> = {
-  ok: "bg-emerald-500",
-  warn: "bg-amber-500",
+  ok: "bg-success",
+  warn: "bg-warning",
   error: "bg-destructive",
   off: "bg-muted-foreground/50",
 }

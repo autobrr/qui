@@ -90,14 +90,15 @@ func (a announcedAlternateTitles) AlternateTitles(ctx context.Context, held Held
 }
 
 type fakeArrServer struct {
-	mu         sync.Mutex
-	down       bool
-	hangs      bool
-	noSeries   bool
-	lookupDown bool
-	parsed     map[string]string
-	requests   []string
-	cache      *models.ArrIDCacheStore
+	mu          sync.Mutex
+	down        bool
+	hangs       bool
+	noSeries    bool
+	lookupDown  bool
+	scopedTitle string
+	parsed      map[string]string
+	requests    []string
+	cache       *models.ArrIDCacheStore
 }
 
 func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +117,8 @@ func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type alternateTitle struct {
-		Title string `json:"title"`
+		Title        string `json:"title"`
+		SeasonNumber *int   `json:"seasonNumber,omitempty"`
 	}
 	type series struct {
 		ID              int              `json:"id"`
@@ -144,7 +146,11 @@ func (f *fakeArrServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.MarshalWrite(w, answer)
 	case "/api/v3/series/7":
-		_ = json.MarshalWrite(w, series{ID: 7, Title: "Lantern Ward", TVDbID: 70, AlternateTitles: []alternateTitle{{Title: "Laternenwache"}}})
+		alternates := []alternateTitle{{Title: "Laternenwache"}}
+		if f.scopedTitle != "" {
+			alternates = append(alternates, alternateTitle{Title: f.scopedTitle, SeasonNumber: new(2)})
+		}
+		_ = json.MarshalWrite(w, series{ID: 7, Title: "Lantern Ward", TVDbID: 70, AlternateTitles: alternates})
 	case "/api/v3/movie/8":
 		_ = json.MarshalWrite(w, movie{ID: 8, Title: "Copper Fjord", TMDbID: 80, AlternateTitles: []alternateTitle{{Title: "Kupferfjord"}}})
 	case "/api/v3/series/lookup", "/api/v3/movie/lookup":
@@ -265,16 +271,46 @@ func TestArrAlternateTitlesSkipContentOfAnotherSource(t *testing.T) {
 }
 
 func TestArrAlternateTitlesCountACachedRowThatIsFetchedAgain(t *testing.T) {
+	for name, row := range map[string]struct {
+		titles          []string
+		episodeMapKnown bool
+	}{
+		"without an episode map": {titles: []string{"Lantern Ward"}},
+		"without titles":         {episodeMapKnown: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fake, service := newFakeArr(t)
+			fake.down = true
+			hash, ids := models.ComputeTitleHash(arrSeriesName), &models.ExternalIDs{TVDbID: 70}
+			require.NoError(t, fake.cache.SetWithTitles(t.Context(), hash, string(arr.ContentTypeTV), nil, ids, row.titles, nil, nil, row.episodeMapKnown, false, time.Hour))
+
+			answer, err := arrSourceOf(service, heldSeries).AlternateTitles(t.Context(), heldSeries)
+
+			require.Error(t, err, "the queue asks again soon and counts the failure")
+			require.NotErrorIs(t, err, ErrTitleUnanswered)
+			require.Equal(t, row.titles, answer.Titles)
+			require.NotEmpty(t, fake.takeRequests())
+			require.True(t, answer.Requested)
+		})
+	}
+}
+
+func TestArrAlternateTitlesKeepTheSeasonOfAScopedTitle(t *testing.T) {
 	fake, service := newFakeArr(t)
-	fake.down = true
-	hash, ids := models.ComputeTitleHash(arrSeriesName), &models.ExternalIDs{TVDbID: 70}
-	require.NoError(t, fake.cache.SetWithTitles(t.Context(), hash, string(arr.ContentTypeTV), nil, ids, []string{"Lantern Ward"}, nil, false, false, time.Hour))
+	fake.scopedTitle = "Laternenwache Zwei"
+	source := arrSourceOf(service, heldSeries)
 
-	answer, err := arrSourceOf(service, heldSeries).AlternateTitles(t.Context(), heldSeries)
-
+	asked, err := source.AlternateTitles(t.Context(), heldSeries)
 	require.NoError(t, err)
-	require.NotEmpty(t, fake.takeRequests())
-	require.True(t, answer.Requested)
+	cached, err := source.AlternateTitles(t.Context(), heldSeries)
+	require.NoError(t, err)
+
+	require.True(t, asked.Requested)
+	require.False(t, cached.Requested)
+	for _, answer := range []AlternateTitles{asked, cached} {
+		require.Subset(t, answer.Titles, []string{"Lantern Ward", "Laternenwache", "Laternenwache Zwei"})
+		require.Equal(t, map[string][]int{"laternenwache zwei": {2}}, answer.Seasons)
+	}
 }
 
 func TestArrAlternateTitlesMarkAnIncompleteAnswer(t *testing.T) {
@@ -334,7 +370,11 @@ func TestAlternateTitlesFetchLogBudget(t *testing.T) {
 		fake.down = true
 		return service
 	}
-	for name, prepare := range map[string]func(*fakeArrServer, *arr.Service) *arr.Service{"answering": answering, "down": down} {
+	lookupFails := func(fake *fakeArrServer, service *arr.Service) *arr.Service {
+		fake.lookupDown = true
+		return service
+	}
+	for name, prepare := range map[string]func(*fakeArrServer, *arr.Service) *arr.Service{"answering": answering, "down": down, "lookup fails": lookupFails} {
 		t.Run(name, func(t *testing.T) {
 			small, large := logbudget.Count(t, fetch(t, 10, prepare)), logbudget.Count(t, fetch(t, 200, prepare))
 			require.Equal(t, 1, large[logbudget.Line{Level: "debug", Message: "crossseed: alternate titles fetched for Held titles"}])

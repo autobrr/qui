@@ -28,12 +28,12 @@ import (
 const aliasStatus = "skipped: a torrent now uses this file through another path"
 
 func addTorrentAfterScan(svc *Service, ownedSavePath string, late qbt.Torrent, names ...string) {
-	late.Hash, late.State = "late", qbt.TorrentStatePausedUp
+	late.Hash, late.State = hLate, qbt.TorrentStatePausedUp
 	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: ownedSavePath, State: qbt.TorrentStatePausedUp}, late}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: ownedSavePath, State: qbt.TorrentStatePausedUp}, late}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}, "late": torrentFiles(names...)}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}, hLate: torrentFiles(names...)}, nil
 	}
 }
 
@@ -114,14 +114,14 @@ func TestExecuteDeletion_KeepsFileATorrentReachesThroughEachKindOfPath(t *testin
 			stubSync(f.svc).getAllTorrents = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
 				if instanceID == 2 {
 					return []qbt.Torrent{
-						{Hash: "peer-owned", SavePath: f.torrentSavePath, State: qbt.TorrentStatePausedUp},
-						{Hash: "peer-late", SavePath: alias, State: qbt.TorrentStatePausedUp},
+						{Hash: hPeerOwned, SavePath: f.torrentSavePath, State: qbt.TorrentStatePausedUp},
+						{Hash: hPeerLate, SavePath: alias, State: qbt.TorrentStatePausedUp},
 					}, nil
 				}
-				return []qbt.Torrent{{Hash: "owned", SavePath: f.torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
+				return []qbt.Torrent{{Hash: hOwned, SavePath: f.torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 			}
 			stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-				return map[string]qbt.TorrentFiles{"owned": torrentFiles("owned.mkv"), "peer-owned": torrentFiles("owned.mkv"), "peer-late": torrentFiles("movie.mkv")}, nil
+				return map[string]qbt.TorrentFiles{hOwned: torrentFiles("owned.mkv"), hPeerOwned: torrentFiles("owned.mkv"), hPeerLate: torrentFiles("movie.mkv")}, nil
 			}
 		}},
 		{"an Auto TMM torrent whose content path is a symlinked folder", func(t *testing.T, f *orphanOnlyFixture, orphan, base string) {

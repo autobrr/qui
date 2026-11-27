@@ -230,6 +230,7 @@ func mergeLookupResults(base, hydrated *ExternalIDsLookupResult) *ExternalIDsLoo
 	for _, title := range hydrated.Titles {
 		addUniqueTitle(&result.Titles, title)
 	}
+	result.TitleSeasons = hydrated.TitleSeasons
 	if result.IDs == nil && len(result.Titles) == 0 {
 		return nil
 	}

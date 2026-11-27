@@ -385,37 +385,53 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	}
 	lead := c.tick
 	var waiting []*pendingFolder
-	hint, asked := false, false
+	asked := false
 	if models.FilesystemAccessMode(instance) == models.FilesystemModeRemote {
 		lead = c.remoteTick + c.tick
-		if slices.ContainsFunc(items, func(item *pendingFolder) bool { return !now.Before(item.checked.Add(c.remoteTick)) }) {
-			for _, item := range items {
-				item.checked = now
+		var expired []*pendingFolder
+		expired, waiting, asked = c.splitRemote(items, now)
+		if len(expired) == 0 {
+			if asked {
+				c.view.hintRefresh(instanceID)
 			}
-		} else {
-			var expired []*pendingFolder
-			for _, item := range items {
-				if now.Before(item.expires) {
-					if item.asksAgain(now, c.tick) {
-						item.syncAsked = now
-						asked = true
-					}
-					waiting = append(waiting, item)
-				} else {
-					expired = append(expired, item)
-				}
-			}
-			if len(expired) == 0 {
-				if asked {
-					c.view.hintRefresh(instanceID)
-				}
-				return items
-			}
-			items = expired
+			return items
 		}
+		items = expired
 	}
 
-	var ready, retry []*pendingFolder
+	ready, retry, askedNow := c.sortItems(ctx, backend, instanceID, items, now, lead)
+	if asked || askedNow {
+		c.view.hintRefresh(instanceID)
+	}
+	retry = append(retry, waiting...)
+	if len(ready) == 0 {
+		return retry
+	}
+	return append(retry, c.judgeReady(ctx, instanceID, instance, backend, ready)...)
+}
+
+func (c *FolderCleanup) splitRemote(items []*pendingFolder, now time.Time) (expired, waiting []*pendingFolder, asked bool) {
+	if slices.ContainsFunc(items, func(item *pendingFolder) bool { return !now.Before(item.checked.Add(c.remoteTick)) }) {
+		for _, item := range items {
+			item.checked = now
+		}
+		return items, nil, false
+	}
+	for _, item := range items {
+		if !now.Before(item.expires) {
+			expired = append(expired, item)
+			continue
+		}
+		if item.asksAgain(now, c.tick) {
+			item.syncAsked = now
+			asked = true
+		}
+		waiting = append(waiting, item)
+	}
+	return expired, waiting, asked
+}
+
+func (c *FolderCleanup) sortItems(ctx context.Context, backend fsops.Backend, instanceID int, items []*pendingFolder, now time.Time, lead time.Duration) (ready, retry []*pendingFolder, asked bool) {
 	var synced *time.Time
 	var syncErr error
 	var unjudged []*pendingFolder
@@ -458,26 +474,24 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 	if len(unjudged) > 0 {
 		retry = append(retry, markUnjudged(instanceID, syncErr, unjudged)...)
 	}
-	if asked {
-		c.view.hintRefresh(instanceID)
-	}
-	retry = append(retry, waiting...)
-	if len(ready) == 0 {
-		return retry
-	}
+	return ready, retry, asked
+}
 
+func (c *FolderCleanup) judgeReady(ctx context.Context, instanceID int, instance *models.Instance, backend fsops.Backend, ready []*pendingFolder) []*pendingFolder {
 	hashes := make([]string, len(ready))
 	for i, item := range ready {
 		hashes[i] = item.snap.Hash
 	}
 	rows, err := c.view.ownRows(ctx, instanceID, hashes)
 	if err != nil {
-		return append(retry, markUnjudged(instanceID, err, ready)...)
+		return markUnjudged(instanceID, err, ready)
 	}
+	var retry []*pendingFolder
+	hint := false
 	d := backend.Paths()
 	judge := make([]*pendingFolder, 0, len(ready))
 	for _, item := range ready {
-		if t, ok := rows[canonicalizeHash(item.snap.Hash)]; ok && item.waitsFor(d, t) {
+		if t, ok := rows[item.snap.Hash]; ok && item.waitsFor(d, t) {
 			hint = true
 			retry = append(retry, item)
 			continue
@@ -485,26 +499,36 @@ func (c *FolderCleanup) checkInstance(ctx context.Context, instanceID int, items
 		judge = append(judge, item)
 	}
 	if len(judge) > 0 {
-		scope, waiting, err := c.buildScope(ctx, instanceID, instance, backend, judge)
+		waited, err := c.cleanJudged(ctx, instanceID, instance, backend, judge)
 		if err != nil {
 			retry = append(retry, markUnjudged(instanceID, err, judge)...)
-		} else {
-			for _, item := range judge {
-				if _, wait := waiting[item]; wait {
-					hint = true
-					retry = append(retry, item)
-					continue
-				}
-				if item.atDeadline {
-					log.Debug().Int("instanceID", instanceID).Str("hash", item.snap.Hash).Str("contentPath", item.snap.ContentPath).
-						Msg("folder cleanup: content still there at the deadline, removing only empty folders")
-				}
-				scope.clean(ctx, item)
-			}
+		} else if len(waited) > 0 {
+			hint = true
+			retry = append(retry, waited...)
 		}
 	}
 	if hint {
 		c.view.hintRefresh(instanceID)
 	}
 	return retry
+}
+
+func (c *FolderCleanup) cleanJudged(ctx context.Context, instanceID int, instance *models.Instance, backend fsops.Backend, judge []*pendingFolder) ([]*pendingFolder, error) {
+	scope, waiting, err := c.buildScope(ctx, instanceID, instance, backend, judge)
+	if err != nil {
+		return nil, err
+	}
+	var waited []*pendingFolder
+	for _, item := range judge {
+		if _, wait := waiting[item]; wait {
+			waited = append(waited, item)
+			continue
+		}
+		if item.atDeadline {
+			log.Debug().Int("instanceID", instanceID).Str("hash", item.snap.Hash).Str("contentPath", item.snap.ContentPath).
+				Msg("folder cleanup: content still there at the deadline, removing only empty folders")
+		}
+		scope.clean(ctx, item)
+	}
+	return waited, nil
 }

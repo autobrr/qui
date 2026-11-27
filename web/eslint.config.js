@@ -1,6 +1,7 @@
 import path from 'node:path'
 
 import js from '@eslint/js'
+import { plugin as shadcn } from '@shadcn/lint'
 import stylistic from '@stylistic/eslint-plugin'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
@@ -58,6 +59,14 @@ const bulkActionDialogImportPattern = {
 }
 
 const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
+const bulkActionCallerFiles = [
+  ...bulkActionModuleFiles,
+  'src/components/torrents/TorrentDetailsPanel.tsx',
+  'src/components/torrents/FilterSidebar.tsx',
+  'src/lib/__tests__/api.torrents.test.ts',
+  'src/lib/__tests__/api.mutations.test.ts',
+  'src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx',
+]
 
 const bulkActionRestriction = {
   object: 'api',
@@ -73,7 +82,10 @@ const tabTitleRestriction = {
 
 const tabTitleModuleFiles = ['src/hooks/useTabTitle.ts', 'src/hooks/useTabTitle.test.tsx']
 
-const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
+const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from useSitePickSources in @/lib/site-pick or the gazellePlan of a search.'
+const sitePickMessage = 'The Site pick module in @/lib/site-pick owns which sites a search can ask (ADR 0098). Read the Torznab indexers and the RED/OPS sites with useSitePickOptions or useSitePickSources from "@/lib/site-pick", and turn a picked value into a request with sitePickChange or sitePickFromIds.'
+const sitePickRestrictions = ['listTorznabIndexers', 'getCrossSeedGazelleSites'].map(property => ({ object: 'api', property, message: sitePickMessage }))
+const sitePickOwnerFiles = ['src/lib/site-pick.ts', 'src/components/indexers/**', 'src/pages/Search.tsx', '**/*.test.{ts,tsx}', '**/__tests__/**']
 const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
 const pageShellMessage = 'A page renders Page from @/components/layout/Page, which owns the padding, the title, the description, and the controls. A page with sections renders SectionedPage, which renders Page.'
 const gazelleSiteSelectors = [
@@ -169,6 +181,7 @@ const layers = ['types', 'utils', 'config', 'i18n', 'lib', 'contexts', 'hooks', 
 const effectHooks = {
   'src/hooks/useDebounce.ts': 'Gives a value after it has stayed the same for a delay.',
   'src/hooks/useDelayedVisibility.ts': 'Says when the tab has been hidden for a delay.',
+  'src/hooks/useLastDayPeriod.ts': 'Gives the last 24 hours, and moves them on after each history write while the tab is visible.',
   'src/hooks/useNow.ts': 'Gives the time, and renders again each minute.',
   'src/hooks/usePageTitle.ts': 'Passes the title detail and the speeds of the open page to the tab title.',
   'src/hooks/useTabTitle.ts': 'Writes the browser tab title.',
@@ -248,19 +261,19 @@ export default tseslint.config([
   {
     files: ['**/*.{ts,tsx}'],
     rules: {
-      'no-restricted-properties': ['error', tabTitleRestriction],
+      'no-restricted-properties': ['error', tabTitleRestriction, ...sitePickRestrictions],
     },
   },
   {
     files: ['**/*.{ts,tsx}'],
-    ignores: [
-      ...bulkActionModuleFiles,
-      'src/components/torrents/TorrentDetailsPanel.tsx',
-      'src/components/torrents/FilterSidebar.tsx',
-      'src/lib/__tests__/api.torrents.test.ts',
-      'src/lib/__tests__/api.mutations.test.ts',
-      'src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx',
-    ],
+    ignores: bulkActionCallerFiles,
+    rules: {
+      'no-restricted-properties': ['error', bulkActionRestriction, tabTitleRestriction, ...sitePickRestrictions],
+    },
+  },
+  {
+    files: sitePickOwnerFiles,
+    ignores: bulkActionCallerFiles,
     rules: {
       'no-restricted-properties': ['error', bulkActionRestriction, tabTitleRestriction],
     },
@@ -268,7 +281,7 @@ export default tseslint.config([
   {
     files: tabTitleModuleFiles,
     rules: {
-      'no-restricted-properties': ['error', bulkActionRestriction],
+      'no-restricted-properties': ['error', bulkActionRestriction, ...sitePickRestrictions],
     },
   },
   {
@@ -413,6 +426,45 @@ export default tseslint.config([
       '@typescript-eslint/no-non-null-assertion': 'error',
       'qui/entry-files': ['error', { root: path.join(import.meta.dirname, 'src'), features: 'components' }],
       'qui/layer-order': ['error', { root: path.join(import.meta.dirname, 'src'), layers }],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**'],
+    plugins: { shadcn },
+    settings: {
+      shadcn: {
+        note: 'Ask the maintainer before you add an option to a primitive.',
+        ui: '@/components/ui',
+      },
+    },
+    rules: {
+      'shadcn/no-arbitrary-values': ['error', { allow: ['layout'] }],
+      'shadcn/no-restyle': ['error', {
+        deny: [],
+        contracts: [{
+          pattern: '^(Button|Badge|Label)$',
+          allow: ['layout'],
+          message: { typography: '"{{className}}" is not allowed on <{{component}}>: <{{component}}> owns its {{category}}. Use a size: {{sizes}}.' },
+        }],
+      }],
+      'shadcn/no-raw-colors': 'error',
+      'shadcn/no-unknown-classes': ['error', { allow: ['ss-*', 'fi', 'animated-logo-element', 'toaster'] }],
+      'shadcn/require-static-classes': 'error',
+    },
+  },
+  {
+    files: ['src/components/{ui,kit}/**/*.{ts,tsx}'],
+    rules: {
+      'shadcn/no-arbitrary-values': 'off',
+      'shadcn/no-restyle': 'off',
+      'shadcn/require-static-classes': 'off',
+    },
+  },
+  {
+    files: ['src/components/ui/{Logo,AnimatedLogo}.tsx'],
+    rules: {
+      'shadcn/no-raw-colors': 'off',
     },
   },
 ])

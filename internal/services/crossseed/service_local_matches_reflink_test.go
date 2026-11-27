@@ -60,8 +60,8 @@ func TestFindCrossSeeds_ReflinkCandidates(t *testing.T) {
 			candidate := hardlinkTestCandidate(candidateDir)
 			candidate.Name = tt.candidateName
 			service := pairService(map[string]qbt.TorrentFiles{
-				normalizeHash(hlSourceHash):    {{Name: fileName, Size: 4}},
-				normalizeHash(hlCandidateHash): {{Name: fileName, Size: 4}},
+				hlSourceHash:    {{Name: fileName, Size: 4}},
+				hlCandidateHash: {{Name: fileName, Size: 4}},
 			}, source, *candidate)
 			var queries int
 			service.filesShareAllocation = func(sourcePath, candidatePath string) (bool, error) {
@@ -71,7 +71,7 @@ func TestFindCrossSeeds_ReflinkCandidates(t *testing.T) {
 				return true, nil
 			}
 
-			response, err := service.FindCrossSeeds(t.Context(), 1, hlSourceHash)
+			response, err := service.FindCrossSeeds(t.Context(), 1, mustParseHash(t, hlSourceHash))
 			require.NoError(t, err)
 			require.Len(t, response.Matches, 1)
 			require.Equal(t, matchTypeReflink, response.Matches[0].MatchType)
@@ -85,8 +85,8 @@ func TestLocalLinkedMatchType_HardlinkPrecedesReflink(t *testing.T) {
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
 	files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
 	service := hardlinkTestService(map[string]qbt.TorrentFiles{
-		normalizeHash(hlSourceHash):    files,
-		normalizeHash(hlCandidateHash): files,
+		hlSourceHash:    files,
+		hlCandidateHash: files,
 	})
 	var queries int
 	service.filesShareAllocation = func(string, string) (bool, error) {
@@ -139,8 +139,8 @@ func TestFindCrossSeeds_MetadataLessIsNotACrossSeed(t *testing.T) {
 				candidate.ContentPath = ""
 			}
 			service := pairService(map[string]qbt.TorrentFiles{
-				normalizeHash(hlSourceHash):    files,
-				normalizeHash(hlCandidateHash): files,
+				hlSourceHash:    files,
+				hlCandidateHash: files,
 			}, source, *candidate)
 			var queries int
 			service.filesShareAllocation = func(string, string) (bool, error) {
@@ -148,7 +148,7 @@ func TestFindCrossSeeds_MetadataLessIsNotACrossSeed(t *testing.T) {
 				return true, nil
 			}
 
-			response, err := service.FindCrossSeeds(t.Context(), 1, hlSourceHash)
+			response, err := service.FindCrossSeeds(t.Context(), 1, mustParseHash(t, hlSourceHash))
 			require.NoError(t, err)
 			require.Empty(t, response.Matches)
 			require.Zero(t, queries)
@@ -223,8 +223,8 @@ func TestLocalLinkedMatchType_ConservativePairing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, tt.sourceFiles, tt.candidateFiles)
 			service := hardlinkTestService(map[string]qbt.TorrentFiles{
-				normalizeHash(hlSourceHash):    tt.sourceFiles,
-				normalizeHash(hlCandidateHash): tt.candidateFiles,
+				hlSourceHash:    tt.sourceFiles,
+				hlCandidateHash: tt.candidateFiles,
 			})
 			var queries int
 			service.filesShareAllocation = func(string, string) (bool, error) {
@@ -257,8 +257,8 @@ func TestLocalLinkedMatchType_SkipsSamePhysicalFile(t *testing.T) {
 	sourceFiles := qbt.TorrentFiles{{Name: path.Join("Release", fileName), Size: 4}}
 	candidateFiles := qbt.TorrentFiles{{Name: fileName, Size: 4}}
 	service := hardlinkTestService(map[string]qbt.TorrentFiles{
-		normalizeHash(hlSourceHash):    sourceFiles,
-		normalizeHash(hlCandidateHash): candidateFiles,
+		hlSourceHash:    sourceFiles,
+		hlCandidateHash: candidateFiles,
 	})
 	var queries int
 	service.filesShareAllocation = func(string, string) (bool, error) {
@@ -292,8 +292,8 @@ func TestLocalLinkedMatchType_SkipsUnsafePaths(t *testing.T) {
 			sourceFiles := qbt.TorrentFiles{{Name: unsafeName, Size: 4}}
 			candidateFiles := qbt.TorrentFiles{{Name: unsafeName, Size: 4}}
 			service := hardlinkTestService(map[string]qbt.TorrentFiles{
-				normalizeHash(hlSourceHash):    sourceFiles,
-				normalizeHash(hlCandidateHash): candidateFiles,
+				hlSourceHash:    sourceFiles,
+				hlCandidateHash: candidateFiles,
 			})
 			var queries int
 			service.filesShareAllocation = func(string, string) (bool, error) {
@@ -319,8 +319,8 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 
 	t.Run("no filesystem access", func(t *testing.T) {
 		service := hardlinkTestService(map[string]qbt.TorrentFiles{
-			normalizeHash(hlSourceHash):    files,
-			normalizeHash(hlCandidateHash): files,
+			hlSourceHash:    files,
+			hlCandidateHash: files,
 		})
 		var queries int
 		service.filesShareAllocation = func(string, string) (bool, error) {
@@ -343,8 +343,8 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 		}
 		sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
 		service := hardlinkTestService(map[string]qbt.TorrentFiles{
-			normalizeHash(hlSourceHash):    files,
-			normalizeHash(hlCandidateHash): files,
+			hlSourceHash:    files,
+			hlCandidateHash: files,
 		})
 		var queries int
 		service.filesShareAllocation = func(string, string) (bool, error) {
@@ -367,8 +367,8 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 
 	t.Run("different volume result", func(t *testing.T) {
 		service := hardlinkTestService(map[string]qbt.TorrentFiles{
-			normalizeHash(hlSourceHash):    files,
-			normalizeHash(hlCandidateHash): files,
+			hlSourceHash:    files,
+			hlCandidateHash: files,
 		})
 		service.filesShareAllocation = func(string, string) (bool, error) {
 			return false, nil
@@ -386,8 +386,8 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 	t.Run("unexpected verification failure", func(t *testing.T) {
 		queryErr := errors.New("retrieval pointer failure")
 		service := hardlinkTestService(map[string]qbt.TorrentFiles{
-			normalizeHash(hlSourceHash):    files,
-			normalizeHash(hlCandidateHash): files,
+			hlSourceHash:    files,
+			hlCandidateHash: files,
 		})
 		service.filesShareAllocation = func(string, string) (bool, error) {
 			return false, queryErr
@@ -420,8 +420,8 @@ func TestLocalLinkedMatchType_SkipsAllocationCheckOffLocal(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			service := hardlinkTestService(map[string]qbt.TorrentFiles{
-				normalizeHash(hlSourceHash):    files,
-				normalizeHash(hlCandidateHash): files,
+				hlSourceHash:    files,
+				hlCandidateHash: files,
 			})
 			var queries int
 			service.filesShareAllocation = func(string, string) (bool, error) {
@@ -482,15 +482,15 @@ func TestFindCrossSeeds_ReflinkVerificationError(t *testing.T) {
 		ContentPath: filepath.Join(sourceDir, fileName),
 	}
 	service := pairService(map[string]qbt.TorrentFiles{
-		normalizeHash(hlSourceHash):    files,
-		normalizeHash(hlCandidateHash): files,
+		hlSourceHash:    files,
+		hlCandidateHash: files,
 	}, source, *hardlinkTestCandidate(candidateDir))
 	queryErr := errors.New("retrieval pointer failure")
 	service.filesShareAllocation = func(string, string) (bool, error) {
 		return false, queryErr
 	}
 
-	response, err := service.FindCrossSeeds(t.Context(), 1, source.Hash)
+	response, err := service.FindCrossSeeds(t.Context(), 1, mustParseHash(t, source.Hash))
 	require.Nil(t, response)
 	require.ErrorIs(t, err, queryErr)
 }
@@ -545,8 +545,8 @@ func TestLocalLinkedMatchTypeReFS(t *testing.T) {
 
 	files := qbt.TorrentFiles{{Name: fileName, Size: int64(len(data))}}
 	service := hardlinkTestService(map[string]qbt.TorrentFiles{
-		normalizeHash(hlSourceHash):    files,
-		normalizeHash(hlCandidateHash): files,
+		hlSourceHash:    files,
+		hlCandidateHash: files,
 	})
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 

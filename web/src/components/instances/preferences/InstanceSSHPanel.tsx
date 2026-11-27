@@ -296,7 +296,7 @@ function SSHCredentialsForm({ instance }: InstanceSSHPanelProps) {
             <AlertDialogCancel>{t("preferences.ssh.replaceDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => pin(true)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("preferences.ssh.replaceDialog.confirm")}
             </AlertDialogAction>
@@ -335,7 +335,7 @@ function SSHTestResult({ result, instance, onConfirm, onReplace }: SSHTestResult
       return (
         <div className="space-y-3" data-ssh-status="pinned">
           <p className="flex items-center gap-2 text-sm font-medium">
-            <Check className="h-4 w-4 text-green-500" aria-hidden="true" />
+            <Check className="h-4 w-4 text-success" aria-hidden="true" />
             {t("preferences.ssh.status.pinned.title")}
           </p>
           <ProbeTable probe={result.capabilities} tier={tier} />
@@ -434,7 +434,7 @@ function ProbeTable({ probe, tier }: { probe?: SSHProbe; tier: Instance["sshTier
         {rows.map((row) => (
           <li key={row.label} className="flex items-center gap-2">
             {row.ok
-              ? <Check className="h-4 w-4 text-green-500" aria-label={t("preferences.ssh.probes.yes")} />
+              ? <Check className="h-4 w-4 text-success" aria-label={t("preferences.ssh.probes.yes")} />
               : <X className="h-4 w-4 text-muted-foreground" aria-label={t("preferences.ssh.probes.no")} />}
             {row.label}
           </li>

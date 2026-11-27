@@ -7,6 +7,7 @@
 
 import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
+import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
@@ -123,13 +124,28 @@ function AlertDialogDescription({
   )
 }
 
+const alertDialogActionVariants = cva(buttonVariants(), {
+  variants: {
+    variant: {
+      default: "",
+      destructive:
+        "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+    },
+  },
+  defaultVariants: {
+    variant: "default",
+  },
+})
+
 function AlertDialogAction({
   className,
+  variant,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Action> &
+  VariantProps<typeof alertDialogActionVariants>) {
   return (
     <AlertDialogPrimitive.Action
-      className={cn(buttonVariants(), className)}
+      className={cn(alertDialogActionVariants({ variant }), className)}
       {...props}
     />
   )

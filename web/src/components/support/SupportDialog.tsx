@@ -147,7 +147,7 @@ function SupportBody({ onClose }: { onClose: () => void }) {
           {t("support.supporter.title")}
         </Heading>
         <p className="text-sm leading-6 text-muted-foreground">{t("support.supporter.thanks")}</p>
-        <p className="text-xs leading-5 text-muted-foreground max-sm:text-[13px]">
+        <p className="text-xs leading-5 text-muted-foreground max-sm:text-13">
           <Trans ns="common" i18nKey="support.supporter.detail" components={{ portal: <LicensePortalLink /> }} />
         </p>
         <Button variant="outline" className="h-11 w-full justify-between px-4 sm:h-10" asChild>
@@ -156,7 +156,7 @@ function SupportBody({ onClose }: { onClose: () => void }) {
             <ArrowUpRight className="h-3.5 w-3.5" />
           </a>
         </Button>
-        <p className="text-xs leading-5 text-muted-foreground max-sm:text-[13px]">{removeKey}</p>
+        <p className="text-xs leading-5 text-muted-foreground max-sm:text-13">{removeKey}</p>
       </div>
     )
   }
@@ -202,12 +202,12 @@ function SupportBody({ onClose }: { onClose: () => void }) {
         <p className="text-sm leading-5 text-muted-foreground sm:leading-6">{t("support.intro")}</p>
         {licensed && (
           <p className="flex items-start gap-2 text-sm leading-5 sm:leading-6">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-500 sm:mt-1" />
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-success sm:mt-1" />
             {t("support.licensed")}
           </p>
         )}
         {supporterKey?.status === "invalid" && (
-          <div className="space-y-1.5 rounded-md border px-3 py-2 text-xs leading-5 text-muted-foreground max-sm:text-[13px]">
+          <div className="space-y-1.5 rounded-md border px-3 py-2 text-xs leading-5 text-muted-foreground max-sm:text-13">
             <p>
               <Trans ns="common" i18nKey="support.ended" components={{ portal: <LicensePortalLink /> }} />
             </p>
@@ -256,7 +256,7 @@ function SupportBody({ onClose }: { onClose: () => void }) {
         </p>
       </div>
 
-      <div className="space-y-2.5 text-xs leading-5 text-muted-foreground max-sm:space-y-3 max-sm:text-[13px]">
+      <div className="space-y-2.5 text-xs leading-5 text-muted-foreground max-sm:space-y-3 max-sm:text-13">
         <p>{supporterPlan ? t("support.perks.yearly") : t("support.perks.license")}</p>
         {!isDemo && (
           <p>

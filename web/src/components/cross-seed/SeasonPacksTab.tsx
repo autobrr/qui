@@ -91,7 +91,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5">
-            <Label htmlFor="season-pack-enabled" className="font-medium">{t("rules.seasonPack.enable")}</Label>
+            <Label htmlFor="season-pack-enabled">{t("rules.seasonPack.enable")}</Label>
             <FieldHelp>{t("rules.seasonPack.enableDescription")}</FieldHelp>
           </div>
           <Switch
@@ -102,7 +102,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
         </div>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5">
-            <Label htmlFor="season-pack-automation-enabled" className="font-medium">{t("rules.seasonPack.enableAutomation")}</Label>
+            <Label htmlFor="season-pack-automation-enabled">{t("rules.seasonPack.enableAutomation")}</Label>
             <FieldHelp>{t("rules.seasonPack.enableAutomationDescription")}</FieldHelp>
           </div>
           <Switch
@@ -139,7 +139,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
           </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5">
-              <Label htmlFor="season-pack-skip-repack-compare" className="font-medium">{t("rules.seasonPack.ignoreRepackProper")}</Label>
+              <Label htmlFor="season-pack-skip-repack-compare">{t("rules.seasonPack.ignoreRepackProper")}</Label>
               <FieldHelp>{t("rules.seasonPack.ignoreRepackProperDescription")}</FieldHelp>
             </div>
             <Switch
@@ -151,7 +151,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
           </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5">
-              <Label htmlFor="season-pack-simplify-hdr-compare" className="font-medium">{t("rules.seasonPack.simplifyHdr")}</Label>
+              <Label htmlFor="season-pack-simplify-hdr-compare">{t("rules.seasonPack.simplifyHdr")}</Label>
               <FieldHelp>{t("rules.seasonPack.simplifyHdrDescription")}</FieldHelp>
             </div>
             <Switch
@@ -163,7 +163,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
           </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5">
-              <Label htmlFor="season-pack-simplify-web-compare" className="font-medium">{t("rules.seasonPack.simplifyWeb")}</Label>
+              <Label htmlFor="season-pack-simplify-web-compare">{t("rules.seasonPack.simplifyWeb")}</Label>
               <FieldHelp>{t("rules.seasonPack.simplifyWebDescription")}</FieldHelp>
             </div>
             <Switch
@@ -175,7 +175,7 @@ export function SeasonPacksTab({ settings }: { settings: CrossSeedAutomationSett
           </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5">
-              <Label htmlFor="season-pack-skip-year-compare" className="font-medium">{t("rules.seasonPack.ignoreYear")}</Label>
+              <Label htmlFor="season-pack-skip-year-compare">{t("rules.seasonPack.ignoreYear")}</Label>
               <FieldHelp>{t("rules.seasonPack.ignoreYearDescription")}</FieldHelp>
             </div>
             <Switch

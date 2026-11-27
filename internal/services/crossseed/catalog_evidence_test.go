@@ -166,17 +166,17 @@ func TestCatalogPairingKeepsFullPathPriority(t *testing.T) {
 func TestCatalogAdmissionAndSnapshots(t *testing.T) {
 	s := &Service{releaseCache: NewReleaseCache()}
 	files := qbt.TorrentFiles{{Name: "Album/01.flac", Size: 100, Progress: 1}, {Name: "Album/booklet.pdf", Size: 10, Progress: 1}}
-	source := &qbt.Torrent{Hash: "source", Name: "Mira Calder - Beneath Quiet Skies - 2001 [WEB 2011 FLAC 24-96] - HDtracks", Size: 50, TotalSize: 110}
+	source := &qbt.Torrent{Hash: "50c050c050c050c050c050c050c050c050c050c0", Name: "Mira Calder - Beneath Quiet Skies - 2001 [WEB 2011 FLAC 24-96] - HDtracks", Size: 50, TotalSize: 110}
 	match := &gazellemusic.Match{Kind: gazellemusic.MatchSize, Host: "orpheus.network", TorrentID: 7, Size: 110, Title: "Other Artist - Different Album (2002) [FLAC]-OTHER"}
 	p, err := s.gazelleDecision(1, source, files, match)
 	require.NoError(t, err)
 	require.Equal(t, searchCandidateClassFileEvidence, p.Class)
 	require.False(t, searchDecisionRequiresVerification(p))
-	require.Equal(t, p, p.bindSource(2, "another"))
+	require.Equal(t, p, p.bindSource(2, mustParseHash(t, "c0de000000000000000000000000000000000001")))
 	require.Equal(t, p, p.clone())
-	require.NoError(t, validateCatalogTarget(p, adderV1, files))
-	require.NoError(t, validateCatalogTarget(p, adderV2, files), "the torrent ID, not a hash, names a size match")
-	require.Error(t, validateCatalogTarget(p, adderV1, files[:1]), "a target of another full size fails")
+	require.NoError(t, validateCatalogTarget(p, mustParseHash(t, adderV1), files))
+	require.NoError(t, validateCatalogTarget(p, mustParseHash(t, adderV2), files), "the torrent ID, not a hash, names a size match")
+	require.Error(t, validateCatalogTarget(p, mustParseHash(t, adderV1), files[:1]), "a target of another full size fails")
 	require.NoError(t, validateCatalogSource(p, source, files))
 	changed := append(qbt.TorrentFiles(nil), files...)
 	changed[0].Name = "Album/renamed.flac"
@@ -201,13 +201,13 @@ func TestCatalogAdmissionAndSnapshots(t *testing.T) {
 		require.True(t, permitted.Relaxed.has(difference), "difference %v lost", difference)
 	}
 	require.False(t, s.matcher().matchVerdict(sourceRead, targetRead, evidence, matchPolicy{}).Matched)
-	match.Kind, match.TargetHash, match.QueriedHash = gazellemusic.MatchHash, adderV1, adderV1
+	match.Kind, match.TargetHash, match.QueriedHash = gazellemusic.MatchHash, mustParseHash(t, adderV1), mustParseHash(t, adderV1)
 	hashed, err := s.gazelleDecision(1, source, files, match)
 	require.NoError(t, err)
-	require.NoError(t, validateCatalogTarget(hashed, adderV1, files))
-	require.Error(t, validateCatalogTarget(hashed, adderV2, files))
+	require.NoError(t, validateCatalogTarget(hashed, mustParseHash(t, adderV1), files))
+	require.Error(t, validateCatalogTarget(hashed, mustParseHash(t, adderV2), files))
 	sized := p
-	sized.Catalog.TargetHash = adderV1
+	sized.Catalog.TargetHash = mustParseHash(t, adderV1)
 	require.False(t, sized.Catalog.valid(), "a size match carries no target hash")
 	match.Size = 50
 	_, err = s.gazelleDecision(1, source, files, match)

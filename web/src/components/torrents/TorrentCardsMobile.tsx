@@ -188,7 +188,7 @@ function parseMobileSortState(raw: string): MobileSortState {
 const trackerIconSizeClasses = {
   xs: "h-3 w-3 text-[8px]",
   sm: "h-[14px] w-[14px] text-[9px]",
-  md: "h-4 w-4 text-[10px]",
+  md: "h-4 w-4 text-10",
 } as const
 
 type TrackerIconSize = keyof typeof trackerIconSizeClasses
@@ -379,7 +379,7 @@ function SwipeableCard({
   const helperBadge = torrent.qui_helper && (
     <Tooltip>
       <TooltipTrigger asChild openOnTap="only">
-        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 flex-shrink-0 ml-1">
+        <Badge variant="outline" className="text-10 px-1 py-0 h-4 flex-shrink-0 ml-1">
           {torrent.qui_helper === "share" ? t("tableColumns.helperShare") : t("tableColumns.helperTransfer")}
         </Badge>
       </TooltipTrigger>
@@ -455,14 +455,14 @@ function SwipeableCard({
           </div>
 
           {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
-            <div className="flex items-center gap-1 text-[10px] flex-shrink-0">
+            <div className="flex items-center gap-1 text-10 flex-shrink-0">
               {torrent.dlspeed > 0 && (
-                <span className="text-chart-2 font-medium">
+                <span className="text-chart-text-2 font-medium">
                   ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
                 </span>
               )}
               {torrent.upspeed > 0 && (
-                <span className="text-chart-3 font-medium">
+                <span className="text-chart-text-3 font-medium">
                   ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
                 </span>
               )}
@@ -473,12 +473,12 @@ function SwipeableCard({
 
           {helperBadge}
 
-          <Badge variant={statusBadgeVariant} className={cn("text-[10px] px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
+          <Badge variant={statusBadgeVariant} className={cn("text-10 px-1 py-0 h-4 flex-shrink-0", statusBadgeClass)}>
             {statusBadgeLabel}
           </Badge>
 
           {torrent.progress * 100 !== 100 && (
-            <span className="text-[10px] text-muted-foreground flex-shrink-0">
+            <span className="text-10 text-muted-foreground flex-shrink-0">
               {torrent.progress >= 0.99 && torrent.progress < 1 ? (
                 (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
               ) : (
@@ -531,7 +531,7 @@ function SwipeableCard({
                 </span>
               </span>
             </div>
-            <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0 ml-auto", statusBadgeClass)}>
+            <Badge variant={statusBadgeVariant} className={cn("flex-shrink-0 ml-auto", statusBadgeClass)}>
               {statusBadgeLabel}
             </Badge>
           </div>
@@ -584,20 +584,20 @@ function SwipeableCard({
 
               {torrent.dlspeed > 0 && (
                 <div className="flex items-center gap-1">
-                  <ChevronDown className="h-3 w-3 [color:var(--chart-2)]" />
+                  <ChevronDown className="h-3 w-3 text-chart-text-2" />
                   <span className="font-medium">{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}</span>
                 </div>
               )}
 
               {torrent.upspeed > 0 && (
                 <div className="flex items-center gap-1">
-                  <ChevronUp className="h-3 w-3 [color:var(--chart-3)]" />
+                  <ChevronUp className="h-3 w-3 text-chart-text-3" />
                   <span className="font-medium">{formatSpeedWithUnit(torrent.upspeed, speedUnit)}</span>
                 </div>
               )}
             </div>
 
-            <Badge variant={statusBadgeVariant} className={cn("text-xs", statusBadgeClass)}>
+            <Badge variant={statusBadgeVariant} className={statusBadgeClass}>
               {statusBadgeLabel}
             </Badge>
           </div>
@@ -641,12 +641,12 @@ function SwipeableCard({
               {hasSpeeds && (
                 <div className="flex items-center gap-1">
                   {torrent.dlspeed > 0 && (
-                    <span className="text-chart-2 font-medium">
+                    <span className="text-chart-text-2 font-medium">
                       ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
                     </span>
                   )}
                   {torrent.upspeed > 0 && (
-                    <span className="text-chart-3 font-medium">
+                    <span className="text-chart-text-3 font-medium">
                       ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
                     </span>
                   )}
@@ -681,7 +681,7 @@ function SwipeableCard({
             <div className="flex items-center gap-1 flex-wrap justify-end ml-auto overflow-hidden max-h-4">
               <Tag className="h-3 w-3 text-muted-foreground flex-shrink-0" />
               {(Array.isArray(displayTags) ? displayTags : displayTags.split(",")).map((tag, i) => (
-                <Badge key={i} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                <Badge key={i} variant="secondary" className="text-10 px-1.5 py-0 h-4">
                   {tag.trim()}
                 </Badge>
               ))}
@@ -1657,7 +1657,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               {incognitoMode ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              <span className="truncate text-[10px]">{t("mobileCards.incognito")}</span>
+              <span className="truncate text-10">{t("mobileCards.incognito")}</span>
             </button>
 
             <button
@@ -1665,7 +1665,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Filter className="h-5 w-5" />
-              <span className="truncate text-[10px]">{t("filterSidebar.title")}</span>
+              <span className="truncate text-10">{t("filterSidebar.title")}</span>
             </button>
 
             {!isAllInstancesView && (
@@ -1674,7 +1674,7 @@ export function TorrentCardsMobile({
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
               >
                 <Plus className="h-5 w-5" />
-                <span className="truncate text-[10px]">{t("mobileCards.add")}</span>
+                <span className="truncate text-10">{t("mobileCards.add")}</span>
               </button>
             )}
 
@@ -1687,7 +1687,7 @@ export function TorrentCardsMobile({
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
               >
                 <FileEdit className="h-5 w-5" />
-                <span className="truncate text-[10px]">{t("common:actions.create")}</span>
+                <span className="truncate text-10">{t("common:actions.create")}</span>
               </button>
             )}
 
@@ -1705,7 +1705,7 @@ export function TorrentCardsMobile({
                     {activeTaskCount}
                   </Badge>
                 )}
-                <span className="truncate text-[10px]">{t("mobileCards.tasks")}</span>
+                <span className="truncate text-10">{t("mobileCards.tasks")}</span>
               </button>
             )}
           </div>

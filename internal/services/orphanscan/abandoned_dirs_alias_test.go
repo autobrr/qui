@@ -218,12 +218,12 @@ func TestExecuteDeletion_FolderIdentityReadFailures(t *testing.T) {
 		}, "", "failed: file identity"},
 		{"torrent folder missing", func(t *testing.T, f *orphanOnlyFixture, _ *string, _ *string, base string) {
 			late := []qbt.Torrent{
-				{Hash: "owned", SavePath: f.torrentSavePath, State: qbt.TorrentStatePausedUp},
-				{Hash: "missing", SavePath: filepath.Join(base, "never"), State: qbt.TorrentStatePausedUp},
+				{Hash: hOwned, SavePath: f.torrentSavePath, State: qbt.TorrentStatePausedUp},
+				{Hash: hMissing, SavePath: filepath.Join(base, "never"), State: qbt.TorrentStatePausedUp},
 			}
 			stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) { return late, nil }
 			stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-				return map[string]qbt.TorrentFiles{"owned": torrentFiles("owned.mkv"), "missing": torrentFiles("Sub/x.mkv")}, nil
+				return map[string]qbt.TorrentFiles{hOwned: torrentFiles("owned.mkv"), hMissing: torrentFiles("Sub/x.mkv")}, nil
 			}
 		}, "", ""},
 		{"torrent folder denied, an alias to a listed folder", func(t *testing.T, f *orphanOnlyFixture, _ *string, _ *string, base string) {
@@ -394,15 +394,15 @@ func TestExecuteScan_SFTPTierListsEmptyFolderBySpelling(t *testing.T) {
 }
 
 func fileListLess(svc *Service, ownedSavePath, savePath string, magnet bool) {
-	late := qbt.Torrent{Hash: "late", SavePath: savePath, State: qbt.TorrentStateCheckingResumeData}
+	late := qbt.Torrent{Hash: hLate, SavePath: savePath, State: qbt.TorrentStateCheckingResumeData}
 	if magnet {
 		late.State, late.HasMetadata = qbt.TorrentStateMetaDl, new(false)
 	}
 	stubSync(svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: ownedSavePath, State: qbt.TorrentStatePausedUp}, late}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: ownedSavePath, State: qbt.TorrentStatePausedUp}, late}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": torrentFiles("owned.mkv")}, nil
+		return map[string]qbt.TorrentFiles{hOwned: torrentFiles("owned.mkv")}, nil
 	}
 }
 

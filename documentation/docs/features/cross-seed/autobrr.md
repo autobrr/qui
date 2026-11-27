@@ -13,13 +13,17 @@ qui integrates with autobrr through webhook endpoints. When autobrr announces a 
 
 1. autobrr sees a new release from a tracker
 2. autobrr sends the torrent name, reported size, and indexer to `/api/cross-seed/webhook/check`
-3. qui checks your qBittorrent instances without downloading a torrent file
+3. qui looks the announce up in an in-memory list of every title and exact size that your qBittorrent instances hold, without downloading a torrent file
 4. qui responds with:
-   - `200 OK`: a matching torrent is complete and ready to cross-seed
+   - `200 OK`: a matching torrent is complete and ready to cross-seed, or (when **Enable season pack matching** is on) qui can assemble a season pack from local episodes
    - `202 Accepted`: a matching torrent exists, but it is not complete yet, or qBittorrent is moving or checking it. Retry later.
-   - `404 Not Found`: no matching torrent exists. If `crossSeedRecoverErroredTorrents` is off (the default), a matching torrent in an error state or a missing-files state also counts as no match.
+   - `404 Not Found`: no matching torrent exists. When nothing matches, qui answers in about a millisecond. By default, a matching torrent in an error state or a missing-files state also counts as no match. To make qui try to recover those torrents instead, set `crossSeedRecoverErroredTorrents = true` in `config.toml` (or `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS=true`). See the [configuration reference](../../configuration/reference.md).
 5. On `200 OK`, autobrr sends the torrent file and original announcement name to `/api/cross-seed/apply`
 6. qui reads the actual size from the torrent file and repeats the match against the current local torrents
+
+:::note
+Right after qui starts, an instance reconnects, or you change your category mapping rules, qui rebuilds this in-memory list. That takes a few seconds on a large library. A check during that window answers `404`. RSS automation can still pick up a missed release later, if it watches that indexer and the release is still in the feed at its next run.
+:::
 
 ## Setup
 
@@ -36,6 +40,12 @@ qui integrates with autobrr through webhook endpoints. When autobrr announces a 
 :::warning
 Create a **new autobrr filter dedicated to qui**.
 :::
+
+One filter handles episodes, movies, and season packs. Turn on **Enable season pack matching** in **Cross-Seed > Season packs** to include season packs.
+
+Do not put a title list in front of this filter (no Sonarr or Radarr list, and no **Match releases** title list). qui checks every announce against its in-memory list of titles and exact sizes and answers `404` in about a millisecond with no Sonarr or Radarr call, so let qui be the gate. A title list only approximates what qui holds: a torrent that qui holds but the list does not name never reaches qui, so its cross-seeds are lost.
+
+The endpoint, request body, and `200`/`202`/`404` responses are unchanged, so existing filters keep working without edits.
 
 :::note
 The **External** webhook (`/api/cross-seed/webhook/check`) only answers: "is this ready to cross-seed?" It does **not** add a torrent to qBittorrent.
@@ -112,6 +122,12 @@ Use autobrr's **Retry** block to handle `202 Accepted` responses:
 - **Maximum retry attempts:** `10`
 - **Retry delay in seconds:** `4`
 
+### Connect autobrr through the reverse proxy
+
+Add autobrr's qBittorrent download client through [qui's reverse proxy](../reverse-proxy.md#autobrr) instead of connecting straight to qBittorrent.
+
+A torrent added through qui's proxy shows up in qui within about 2 seconds. qui syncs the instance 200 ms after the add, but at most once every 2 seconds. If another tracker announces the same release after that, qui sees the torrent, returns `202 Accepted` while it finishes, and then matches it. qui sees a torrent added straight to qBittorrent only at its next sync of that instance. A check that finds the data of an instance older than 2 seconds starts a sync, but answers from the data it has. With the web UI closed and no recent check, the next sync can be up to a minute away, so an announce of that release in that time gets `404`.
+
 ### Test the External filter
 
 The autobrr **Test** button sends a sample release, `Best.Show.Ever.S18E21.1080p.AMZN.WEB-DL.DDP2.0.H.264-GROUP`. You do not seed this release, so qui finds no match. autobrr then shows a result that starts with `Webhook responded with status 404 (expected 200)`, with this body:
@@ -164,10 +180,14 @@ The **Expected HTTP status** field needs an autobrr release with [autobrr/autobr
 }
 ```
 
+:::note
+If you set up your filter before qui v1.27.0, your apply payload does not send `torrentName`. Add `"torrentName": {{ toRawJson .TorrentName }}` to the payload so `/apply` counts the same episodes as `/check` for a season pack.
+:::
+
 **Field descriptions:**
 
 - `torrentData` (required): Base64-encoded torrent file bytes
-- `torrentName` (optional): The original announced name. Include it to use reported-size matching and detect metadata changes.
+- `torrentName` (optional): The original announced name. Include it to use reported-size matching, detect metadata changes, and count the same episodes as `/check` for season packs.
 - `instanceIds` (optional): Target instances (omit to apply to any matching instance)
 - `indexer` (optional): The autobrr indexer identifier (for example `hdb`). If you enable "Use indexer name as category", qui uses this value as the category. Otherwise qui ignores it.
 - `tags` (optional): Override the webhook tags from settings
@@ -248,8 +268,10 @@ Configure in qui UI: **Cross-Seed > Webhook**
 
 ## Season Pack Webhook
 
-qui also has a dedicated season-pack flow with separate endpoints. When autobrr announces a season pack, qui checks your instances for matching individual episodes. It links the episodes that are already local. When coverage is sufficient, qui adds the pack and qBittorrent fetches the remainder after a recheck.
+Your main cross-seed filter handles episodes, movies, and season packs when **Enable season pack matching** is on in **Cross-Seed > Season packs**.
 
-This flow uses `/api/cross-seed/season-pack/check` and `/api/cross-seed/season-pack/apply`. It requires a separate autobrr filter.
+When autobrr announces a season pack and no direct match exists, `/api/cross-seed/webhook/check` checks your instances for matching local episodes. A direct match always wins. When coverage meets the threshold, `/check` responds with `200 OK` and a `seasonPack` object (`instanceId`, `matchedEpisodes`, `totalEpisodes`, `coverage`, `thresholdSkipped`). `/api/cross-seed/apply` then links the local episodes, adds the pack, and lets qBittorrent fetch the remainder after a recheck.
 
-See [Season Packs](./season-packs.md) for full setup instructions.
+Pack assembly requires an instance with hardlink or reflink mode. The separate `/api/cross-seed/season-pack/check` and `/api/cross-seed/season-pack/apply` endpoints still work unchanged, though a separate autobrr filter is no longer needed.
+
+See [Season Packs](./season-packs.md) for prerequisites, matching settings, and how to retire a separate filter.

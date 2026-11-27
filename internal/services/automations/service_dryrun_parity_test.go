@@ -247,6 +247,13 @@ func parityTagRule(action models.TagAction) *models.Automation {
 }
 
 func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
+	const (
+		copyHash      = "1111111111111111111111111111111111111111"
+		sourceHash    = "2222222222222222222222222222222222222222"
+		unrelatedHash = "3333333333333333333333333333333333333333"
+		firstHash     = "4444444444444444444444444444444444444444"
+		secondHash    = "5555555555555555555555555555555555555555"
+	)
 	tests := []struct {
 		name           string
 		fixture        func(t *testing.T) parityFixture
@@ -298,14 +305,14 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "c", "y.mkv"), []byte("unrelated"), 0o600))
 				return parityFixture{
 					torrents: map[string]map[string]any{
-						"source":    {"name": "source", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": dir + "/a", "content_path": dir + "/a/x.mkv"},
-						"copy":      {"name": "copy", "size": 10, "progress": 1, "state": "stalledUP", "save_path": dir + "/b", "content_path": dir + "/b/x.mkv"},
-						"unrelated": {"name": "unrelated", "size": 9, "progress": 1, "state": "stalledUP", "save_path": dir + "/c", "content_path": dir + "/c/y.mkv"},
+						sourceHash:    {"name": "source", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": dir + "/a", "content_path": dir + "/a/x.mkv"},
+						copyHash:      {"name": "copy", "size": 10, "progress": 1, "state": "stalledUP", "save_path": dir + "/b", "content_path": dir + "/b/x.mkv"},
+						unrelatedHash: {"name": "unrelated", "size": 9, "progress": 1, "state": "stalledUP", "save_path": dir + "/c", "content_path": dir + "/c/y.mkv"},
 					},
 					files: map[string]qbt.TorrentFiles{
-						"source":    {{Name: "x.mkv", Size: 10, Progress: 1, Priority: 1}},
-						"copy":      {{Name: "x.mkv", Size: 10, Progress: 1, Priority: 1}},
-						"unrelated": {{Name: "y.mkv", Size: 9, Progress: 1, Priority: 1}},
+						sourceHash:    {{Name: "x.mkv", Size: 10, Progress: 1, Priority: 1}},
+						copyHash:      {{Name: "x.mkv", Size: 10, Progress: 1, Priority: 1}},
+						unrelatedHash: {{Name: "y.mkv", Size: 9, Progress: 1, Priority: 1}},
 					},
 					localFS: true,
 				}
@@ -315,7 +322,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 				rule.Conditions.Delete.IncludeHardlinks = true
 				return rule
 			}(),
-			want: []string{"source", "copy"},
+			want: []string{sourceHash, copyHash},
 		},
 		{
 			name: "keep-files group with an ambiguous content path",
@@ -323,10 +330,10 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 				files := qbt.TorrentFiles{{Name: "pack/01.mkv", Size: 10}}
 				return parityFixture{
 					torrents: map[string]map[string]any{
-						"first":  {"name": "first", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": "/data/pack", "content_path": "/data/pack"},
-						"second": {"name": "second", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": "/data/pack", "content_path": "/data/pack"},
+						firstHash:  {"name": "first", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": "/data/pack", "content_path": "/data/pack"},
+						secondHash: {"name": "second", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": "/data/pack", "content_path": "/data/pack"},
 					},
-					files: map[string]qbt.TorrentFiles{"first": files, "second": files},
+					files: map[string]qbt.TorrentFiles{firstHash: files, secondHash: files},
 				}
 			},
 			rule: func() *models.Automation {
@@ -334,7 +341,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 				rule.Conditions.Delete.GroupID = GroupCrossSeedContentPath
 				return rule
 			}(),
-			want: []string{"first", "second"},
+			want: []string{firstHash, secondHash},
 		},
 		{
 			name: "preserve cross-seeds",

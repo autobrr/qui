@@ -145,7 +145,7 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 			require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
 			record := r.get(id)
 			require.False(t, record.FinishedAt.IsZero(), "the Transfer ended after the restart")
-			require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+			require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 			adds := map[string]int{}
 			for _, hash := range added {
 				if slices.Contains(members, hash) {
@@ -204,11 +204,11 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 				require.Equal(t, notifications.EventTransferFailed, notified.events[0].Type)
 			}
 
-			src, dst, sends := sent(r.src), sent(r.dst), len(notified.events)
+			src, dst, sends := sentWithoutResync(r.src), sentWithoutResync(r.dst), len(notified.events)
 			r.restart()
 			r.svc.Wait()
-			require.Equal(t, src, sent(r.src))
-			require.Equal(t, dst, sent(r.dst))
+			require.Equal(t, src, sentWithoutResync(r.src))
+			require.Equal(t, dst, sentWithoutResync(r.dst))
 			require.Len(t, notified.events, sends)
 		})
 	}

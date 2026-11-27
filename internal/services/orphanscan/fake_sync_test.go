@@ -24,6 +24,7 @@ type fakeSync struct {
 	getLastCompletedRun  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
 	instanceFolders      func(ctx context.Context, instanceID int) (qbittorrent.InstanceFolders, error)
 	hostKeyPins          map[int][]byte
+	helpers              map[string]bool
 }
 
 func (f *fakeSync) folders(folders qbittorrent.InstanceFolders) {
@@ -42,14 +43,17 @@ func stubSync(svc *Service) *fakeSync {
 	return f
 }
 
-func (f *fakeSync) GetTorrentRefsFresh(ctx context.Context, instanceID int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+func (f *fakeSync) GetTorrentRefsFresh(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
 	if f.getAllTorrents == nil {
 		return nil, errNotStubbed
 	}
 	torrents, err := f.getAllTorrents(ctx, instanceID)
-	refs := make([]*qbt.Torrent, len(torrents))
+	hidesHelpers := len(filter.Hashes) == 0 && !filter.WithHelperTorrents
+	refs := make([]*qbt.Torrent, 0, len(torrents))
 	for i := range torrents {
-		refs[i] = &torrents[i]
+		if !hidesHelpers || !f.helpers[torrents[i].Hash] {
+			refs = append(refs, &torrents[i])
+		}
 	}
 	return refs, err
 }

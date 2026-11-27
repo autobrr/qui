@@ -26,6 +26,8 @@ type TorrentListView struct {
 	UniqueSize        bool
 	CacheOnly         bool
 	FullPasskeyAccess bool
+
+	WithHelperTorrents bool
 }
 
 func (v *TorrentListView) Validate() error {

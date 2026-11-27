@@ -13,6 +13,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -81,7 +82,7 @@ func (g SettleGate) String() string {
 
 type AddedTorrent struct {
 	InstanceID          int
-	Hashes              []string
+	Hashes              []infohash.Hash
 	LinkedPaths         map[string]struct{}
 	Gate                SettleGate
 	Budget              int64
@@ -116,13 +117,13 @@ func (o SettleOutcome) StatusSuffix() string {
 }
 
 func (s *Settler) Settle(ctx context.Context, added AddedTorrent) SettleOutcome {
-	recheckErr := s.sync.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), added.InstanceID, added.Hashes, "recheck")
+	recheckErr := s.sync.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), added.InstanceID, hashStrings(added.Hashes), "recheck")
 	out := SettleOutcome{Skipped: added.SkipAutoResume, RecheckFailed: recheckErr != nil}
 	if recheckErr != nil {
 		log.Warn().
 			Err(recheckErr).
 			Int("instanceID", added.InstanceID).
-			Strs("hashes", added.Hashes).
+			Strs("hashes", hashStrings(added.Hashes)).
 			Bool("skipAutoResume", added.SkipAutoResume).
 			Msg("Failed to trigger recheck after add")
 	}
@@ -132,7 +133,7 @@ func (s *Settler) Settle(ctx context.Context, added AddedTorrent) SettleOutcome 
 		if !out.RecheckFailed {
 			log.Debug().
 				Int("instanceID", added.InstanceID).
-				Str("hash", req.hash).
+				Stringer("hash", req.hash).
 				Stringer("gate", req.gate).
 				Msg("Skipping auto-resume per user settings (recheck triggered)")
 			return out
@@ -184,7 +185,7 @@ func (s *Settler) enqueue(req *pendingResume) bool {
 	req.addedAt = time.Now()
 	logged := log.With().
 		Int("instanceID", req.instanceID).
-		Str("hash", req.hash).
+		Stringer("hash", req.hash).
 		Stringer("gate", req.gate).
 		Logger()
 	budget := pendingResumeBudgetForLog(req)
@@ -205,7 +206,7 @@ func (s *Settler) enqueue(req *pendingResume) bool {
 
 type pendingResume struct {
 	instanceID                    int
-	hash                          string
+	hash                          infohash.Hash
 	gate                          SettleGate
 	monitorOnly                   bool
 	recheckPending                bool
@@ -238,8 +239,8 @@ func (req *pendingResume) leftPausedMsg(fallback string) string {
 	return fmt.Sprintf("Linked file %s does not match the torrent, left paused to protect the source", req.blockedLinkedFile)
 }
 
-func recheckResumeKey(instanceID int, hash string) string {
-	return fmt.Sprintf("%d:%s", instanceID, normalizeHash(hash))
+func recheckResumeKey(instanceID int, hash infohash.Hash) string {
+	return fmt.Sprintf("%d:%s", instanceID, hash)
 }
 
 func pendingResumeBudgetForLog(req *pendingResume) int64 {
@@ -265,17 +266,17 @@ func (s *Settler) hardlinkResumeAllowed(ctx context.Context, instanceID int, req
 	ctx, cancel := context.WithTimeout(qbittorrent.WithForceFilesRefresh(ctx), recheckAPITimeout)
 	defer cancel()
 
-	filesByHash, err := s.sync.GetTorrentFilesBatch(ctx, instanceID, []string{req.hash})
-	files := filesByHash[normalizeHash(req.hash)]
+	filesByHash, err := s.sync.GetTorrentFilesBatch(ctx, instanceID, []string{req.hash.String()})
+	files := filesByHash[req.hash.String()]
 	if err != nil || len(files) == 0 {
-		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", req.hash).
+		log.Debug().Err(err).Int("instanceID", instanceID).Stringer("hash", req.hash).
 			Msg("Linked-file check could not read the file list, will retry")
 		req.forgivenessEvalFailed = true
 		return false
 	}
-	pieces, err := s.sync.GetTorrentPieceStates(ctx, instanceID, req.hash)
+	pieces, err := s.sync.GetTorrentPieceStates(ctx, instanceID, req.hash.String())
 	if err != nil || len(pieces) == 0 {
-		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", req.hash).
+		log.Debug().Err(err).Int("instanceID", instanceID).Stringer("hash", req.hash).
 			Msg("Linked-file check could not read the piece states, will retry")
 		req.forgivenessEvalFailed = true
 		return false
@@ -357,7 +358,7 @@ func (s *Settler) thresholdOrBudgetSatisfied(ctx context.Context, instanceID int
 		}
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("hash", req.hash).
+			Stringer("hash", req.hash).
 			Int64("amountLeft", torrent.AmountLeft).
 			Int64("budgetBytes", budget).
 			Msg("Auto-resume budget exceeded but the shortfall beyond it is only irrelevant files, allowing resume")
@@ -365,17 +366,17 @@ func (s *Settler) thresholdOrBudgetSatisfied(ctx context.Context, instanceID int
 	return granted
 }
 
-func (s *Settler) missingRelevantBytesWithinBudget(ctx context.Context, instanceID int, hash string, budget int64) (bool, bool) {
+func (s *Settler) missingRelevantBytesWithinBudget(ctx context.Context, instanceID int, hash infohash.Hash, budget int64) (bool, bool) {
 	ctx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
 	defer cancel()
 
 	ctx = qbittorrent.WithForceFilesRefresh(ctx)
 
-	filesByHash, err := s.sync.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
+	filesByHash, err := s.sync.GetTorrentFilesBatch(ctx, instanceID, []string{hash.String()})
 	if err != nil {
 		return false, false
 	}
-	files := filesByHash[normalizeHash(hash)]
+	files := filesByHash[hash.String()]
 	if len(files) == 0 {
 		return false, false
 	}
@@ -383,7 +384,7 @@ func (s *Settler) missingRelevantBytesWithinBudget(ctx context.Context, instance
 	return relevantMissingFilesWithinBudget(files, budget, stringutils.DefaultNormalizer), true
 }
 
-func (s *Settler) processPendingRecheckResume(ctx context.Context, instanceID int, hash string, req *pendingResume, torrent qbt.Torrent) bool {
+func (s *Settler) processPendingRecheckResume(ctx context.Context, instanceID int, hash infohash.Hash, req *pendingResume, torrent qbt.Torrent) bool {
 	if req.recheckPending {
 		return s.sendPendingRecheck(ctx, instanceID, hash, req, torrent.State)
 	}
@@ -445,7 +446,7 @@ func (s *Settler) processPendingRecheckResume(ctx context.Context, instanceID in
 		}
 		log.Warn().
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Stringer("gate", req.gate).
 			Float64("progress", progress).
 			Float64("threshold", req.threshold).
@@ -481,14 +482,14 @@ func observeChecking(req *pendingResume, state qbt.TorrentState) bool {
 	return true
 }
 
-func monitorVerdict(instanceID int, hash string, req *pendingResume, torrent qbt.Torrent, isChecking bool, satisfied func() bool) bool {
+func monitorVerdict(instanceID int, hash infohash.Hash, req *pendingResume, torrent qbt.Torrent, isChecking bool, satisfied func() bool) bool {
 	if isChecking {
 		return true
 	}
 	if satisfied() {
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Stringer("gate", req.gate).
 			Msg("Monitored recheck completed at 100%; torrent left paused per settings")
 		return false
@@ -496,7 +497,7 @@ func monitorVerdict(instanceID int, hash string, req *pendingResume, torrent qbt
 	if torrent.Progress > 0 || req.sawChecking {
 		log.Warn().
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Stringer("gate", req.gate).
 			Float64("progress", torrent.Progress).
 			Int64("amountLeft", torrent.AmountLeft).
@@ -506,14 +507,14 @@ func monitorVerdict(instanceID int, hash string, req *pendingResume, torrent qbt
 	return true
 }
 
-func (s *Settler) nudgeMissingFiles(ctx context.Context, instanceID int, hash string, req *pendingResume, progress float64) bool {
+func (s *Settler) nudgeMissingFiles(ctx context.Context, instanceID int, hash infohash.Hash, req *pendingResume, progress float64) bool {
 	if req.missingFilesResumeSucceeded {
 		return true
 	}
 	if req.missingFilesResumeAttempts >= maxMissingFilesResumeAttempts {
 		log.Warn().
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Stringer("gate", req.gate).
 			Int("attempts", req.missingFilesResumeAttempts).
 			Msg("MissingFiles recheck recovery resume attempts exhausted")
@@ -522,13 +523,13 @@ func (s *Settler) nudgeMissingFiles(ctx context.Context, instanceID int, hash st
 
 	req.missingFilesResumeAttempts++
 	resumeCtx, resumeCancel := context.WithTimeout(ctx, recheckAPITimeout)
-	err := s.sync.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
+	err := s.sync.BulkAction(resumeCtx, instanceID, []string{hash.String()}, "resume")
 	resumeCancel()
 	if err != nil {
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Float64("progress", progress).
 			Int("attempt", req.missingFilesResumeAttempts).
 			Int("maxAttempts", maxMissingFilesResumeAttempts).
@@ -540,7 +541,7 @@ func (s *Settler) nudgeMissingFiles(ctx context.Context, instanceID int, hash st
 	req.missingFilesResumeSucceeded = true
 	log.Debug().
 		Int("instanceID", instanceID).
-		Str("hash", hash).
+		Stringer("hash", hash).
 		Float64("progress", progress).
 		Float64("threshold", req.threshold).
 		Int("attempt", req.missingFilesResumeAttempts).
@@ -548,7 +549,7 @@ func (s *Settler) nudgeMissingFiles(ctx context.Context, instanceID int, hash st
 	return true
 }
 
-func (s *Settler) confirmResume(ctx context.Context, instanceID int, hash string, req *pendingResume, torrent qbt.Torrent, isChecking bool, satisfied func() bool) bool {
+func (s *Settler) confirmResume(ctx context.Context, instanceID int, hash infohash.Hash, req *pendingResume, torrent qbt.Torrent, isChecking bool, satisfied func() bool) bool {
 	progress, state := torrent.Progress, torrent.State
 	if isRecheckResumeConfirmed(state) {
 		req.resumeConfirmedPolls++
@@ -557,7 +558,7 @@ func (s *Settler) confirmResume(ctx context.Context, instanceID int, hash string
 		}
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Float64("progress", progress).
 			Float64("threshold", req.threshold).
 			Str("state", string(state)).
@@ -577,7 +578,7 @@ func (s *Settler) confirmResume(ctx context.Context, instanceID int, hash string
 		}
 		log.Warn().
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Stringer("gate", req.gate).
 			Float64("progress", progress).
 			Float64("threshold", req.threshold).
@@ -594,7 +595,7 @@ func (s *Settler) confirmResume(ctx context.Context, instanceID int, hash string
 	if isPausedOrStopped(state) && satisfied() {
 		log.Debug().
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Float64("progress", progress).
 			Float64("threshold", req.threshold).
 			Str("state", string(state)).
@@ -606,22 +607,22 @@ func (s *Settler) confirmResume(ctx context.Context, instanceID int, hash string
 	return true
 }
 
-func (s *Settler) pauseOverBudget(ctx context.Context, instanceID int, hash string, req *pendingResume, torrent qbt.Torrent) {
+func (s *Settler) pauseOverBudget(ctx context.Context, instanceID int, hash infohash.Hash, req *pendingResume, torrent qbt.Torrent) {
 	pauseCtx, pauseCancel := context.WithTimeout(ctx, recheckAPITimeout)
-	err := s.sync.BulkAction(pauseCtx, instanceID, []string{hash}, "pause")
+	err := s.sync.BulkAction(pauseCtx, instanceID, []string{hash.String()}, "pause")
 	pauseCancel()
 	if err != nil {
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Int64("amountLeft", torrent.AmountLeft).
 			Int64("budgetBytes", pendingResumeBudgetForLog(req)).
 			Msg("Failed to pause over-budget torrent after missingFiles recovery")
 	}
 }
 
-func (s *Settler) sendPendingRecheck(ctx context.Context, instanceID int, hash string, req *pendingResume, state qbt.TorrentState) bool {
+func (s *Settler) sendPendingRecheck(ctx context.Context, instanceID int, hash infohash.Hash, req *pendingResume, state qbt.TorrentState) bool {
 	switch state { //nolint:exhaustive // only checking states change the send
 	case qbt.TorrentStateCheckingResumeData:
 		return true
@@ -631,13 +632,13 @@ func (s *Settler) sendPendingRecheck(ctx context.Context, instanceID int, hash s
 		return true
 	}
 	ctx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
-	err := s.sync.BulkAction(ctx, instanceID, []string{hash}, "recheck")
+	err := s.sync.BulkAction(ctx, instanceID, []string{hash.String()}, "recheck")
 	cancel()
 	if err != nil {
 		log.Debug().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Msg("Deferred post-add recheck failed, will retry")
 		return true
 	}
@@ -645,7 +646,7 @@ func (s *Settler) sendPendingRecheck(ctx context.Context, instanceID int, hash s
 	req.addedAt = time.Now()
 	log.Debug().
 		Int("instanceID", instanceID).
-		Str("hash", hash).
+		Stringer("hash", hash).
 		Msg("Sent deferred post-add recheck")
 	return true
 }
@@ -659,15 +660,15 @@ func (s *Settler) recordBlockedResume(ctx context.Context, req *pendingResume) {
 	ctx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
 	defer cancel()
 	if _, err := s.runs.Create(ctx, run); err != nil {
-		log.Warn().Err(err).Str("hash", req.hash).Msg("failed to record blocked season pack resume")
+		log.Warn().Err(err).Stringer("hash", req.hash).Msg("failed to record blocked season pack resume")
 	}
 }
 
-func (s *Settler) resumePendingRecheck(ctx context.Context, instanceID int, hash string, req *pendingResume, progress float64, state qbt.TorrentState) bool {
+func (s *Settler) resumePendingRecheck(ctx context.Context, instanceID int, hash infohash.Hash, req *pendingResume, progress float64, state qbt.TorrentState) bool {
 	if req.resumeAttempts >= maxRecheckResumeAttempts {
 		log.Warn().
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Stringer("gate", req.gate).
 			Float64("progress", progress).
 			Float64("threshold", req.threshold).
@@ -679,13 +680,13 @@ func (s *Settler) resumePendingRecheck(ctx context.Context, instanceID int, hash
 
 	req.resumeAttempts++
 	resumeCtx, resumeCancel := context.WithTimeout(ctx, recheckAPITimeout)
-	err := s.sync.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
+	err := s.sync.BulkAction(resumeCtx, instanceID, []string{hash.String()}, "resume")
 	resumeCancel()
 	if err != nil {
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Stringer("hash", hash).
 			Float64("progress", progress).
 			Float64("threshold", req.threshold).
 			Str("state", string(state)).
@@ -699,7 +700,7 @@ func (s *Settler) resumePendingRecheck(ctx context.Context, instanceID int, hash
 	req.awaitingResumeConfirmation = true
 	log.Debug().
 		Int("instanceID", instanceID).
-		Str("hash", hash).
+		Stringer("hash", hash).
 		Float64("progress", progress).
 		Float64("threshold", req.threshold).
 		Str("state", string(state)).
@@ -732,8 +733,8 @@ func (s *Settler) run(ctx context.Context) {
 	}
 }
 
-func expirePending(pending map[string]*pendingResume) map[int][]string {
-	byInstance := make(map[int][]string)
+func expirePending(pending map[string]*pendingResume) map[int][]infohash.Hash {
+	byInstance := make(map[int][]infohash.Hash)
 	for key, req := range pending {
 		if time.Since(req.addedAt) > settleTimeout {
 			message := "Recheck resume absolute timeout reached, removing from queue"
@@ -745,7 +746,7 @@ func expirePending(pending map[string]*pendingResume) map[int][]string {
 			}
 			log.Warn().
 				Int("instanceID", req.instanceID).
-				Str("hash", req.hash).
+				Stringer("hash", req.hash).
 				Stringer("gate", req.gate).
 				Dur("elapsed", time.Since(req.addedAt)).
 				Msg(message)
@@ -757,7 +758,7 @@ func expirePending(pending map[string]*pendingResume) map[int][]string {
 	return byInstance
 }
 
-func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingResume, instanceID int, hashes []string) {
+func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingResume, instanceID int, hashes []infohash.Hash) {
 	torrentByHash, ok := s.torrentLookup(ctx, instanceID, hashes)
 	if !ok {
 		return
@@ -769,14 +770,14 @@ func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingR
 		if req == nil {
 			continue
 		}
-		ref, found := torrentByHash[normalizeHash(hash)]
+		ref, found := torrentByHash[hash]
 		if !found && req.recheckPending {
 			continue
 		}
 		if !found {
 			log.Debug().
 				Int("instanceID", instanceID).
-				Str("hash", hash).
+				Stringer("hash", hash).
 				Msg("Torrent not found during recheck resume, removing from queue")
 			delete(pending, key)
 			continue
@@ -792,7 +793,7 @@ func (s *Settler) pollInstance(ctx context.Context, pending map[string]*pendingR
 	}
 }
 
-func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []string) (map[string]*qbt.Torrent, bool) {
+func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []infohash.Hash) (map[infohash.Hash]*qbt.Torrent, bool) {
 	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
 	torrents, err := s.sync.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 	cancel()
@@ -826,11 +827,14 @@ func (s *Settler) torrentLookup(ctx context.Context, instanceID int, hashes []st
 func rekeyPendingRecheckResume(
 	pending map[string]*pendingResume,
 	instanceID int,
-	queuedHash string,
+	queuedHash infohash.Hash,
 	req *pendingResume,
 	torrent qbt.Torrent,
-) (string, string) {
-	canonicalHash := canonicalRecheckResumeHash(queuedHash, torrent)
+) (infohash.Hash, string) {
+	canonicalHash, err := infohash.Parse(torrent.Hash)
+	if err != nil {
+		canonicalHash = queuedHash
+	}
 	canonicalKey := recheckResumeKey(instanceID, canonicalHash)
 	key := recheckResumeKey(instanceID, queuedHash)
 	if canonicalKey != key {
@@ -841,30 +845,21 @@ func rekeyPendingRecheckResume(
 	return canonicalHash, canonicalKey
 }
 
-func canonicalRecheckResumeHash(queuedHash string, torrent qbt.Torrent) string {
-	if canonicalHash := normalizeHash(torrent.Hash); canonicalHash != "" {
-		return canonicalHash
-	}
-	return normalizeHash(queuedHash)
-}
-
-func buildTorrentVariantLookup(torrents []*qbt.Torrent) map[string]*qbt.Torrent {
-	torrentByHash := make(map[string]*qbt.Torrent, len(torrents))
+func buildTorrentVariantLookup(torrents []*qbt.Torrent) map[infohash.Hash]*qbt.Torrent {
+	torrentByHash := make(map[infohash.Hash]*qbt.Torrent, len(torrents))
 	for _, torrent := range torrents {
-		for _, hash := range []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
-			normalized := normalizeHash(hash)
-			if normalized == "" {
-				continue
+		for _, raw := range [...]string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
+			if hash := parseHash(raw); !hash.IsZero() {
+				torrentByHash[hash] = torrent
 			}
-			torrentByHash[normalized] = torrent
 		}
 	}
 	return torrentByHash
 }
 
-func missingVariantLookupHash(torrentByHash map[string]*qbt.Torrent, hashes []string) bool {
+func missingVariantLookupHash(torrentByHash map[infohash.Hash]*qbt.Torrent, hashes []infohash.Hash) bool {
 	for _, hash := range hashes {
-		if _, found := torrentByHash[normalizeHash(hash)]; !found {
+		if _, found := torrentByHash[hash]; !found {
 			return true
 		}
 	}

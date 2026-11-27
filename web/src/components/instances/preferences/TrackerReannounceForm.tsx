@@ -32,7 +32,7 @@ import { cn, formatErrorReason, normalizeTrackerDomains } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { HardDrive, Info, RefreshCcw } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ComponentProps } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -320,11 +320,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const activityEvents = hideSkipped? (activityQuery.data ?? []).filter((event) => event.outcome !== "skipped").slice(-50).reverse(): allActivityEvents
   const activityEnabled = Boolean(instance && settings.enabled)
 
-  const outcomeClasses: Record<InstanceReannounceActivity["outcome"], string> = {
-    succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-    failed: "bg-destructive/10 text-destructive border-destructive/30",
-    skipped: "bg-muted text-muted-foreground border-border/60",
-    started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  const outcomeBadges: Record<InstanceReannounceActivity["outcome"], Pick<ComponentProps<typeof Badge>, "variant" | "className">> = {
+    succeeded: { variant: "success" },
+    failed: { variant: "outline", className: "bg-destructive/10 text-destructive border-destructive/30" },
+    skipped: { variant: "outline", className: "bg-muted text-muted-foreground border-border/60" },
+    started: { variant: "info" },
   }
 
   const headerContent = (
@@ -689,7 +689,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             <p className="font-semibold">{event.torrentName || "N/A"}</p>
                           </TooltipContent>
                         </Tooltip>
-                        <Badge variant="outline" className={cn("capitalize text-[10px] px-1.5 py-0 h-5", outcomeClasses[event.outcome])}>
+                        <Badge variant={outcomeBadges[event.outcome].variant} className={cn("capitalize text-10 px-1.5 py-0 h-5", outcomeBadges[event.outcome].className)}>
                           {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
                         </Badge>
                       </div>

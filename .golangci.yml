@@ -103,6 +103,9 @@ linters:
         - pattern: ^(qbittorrent\.TorrentFilterOptions\.)?(Filter|Category|Tag)$
           pkg: ^github\.com/autobrr/go-qbittorrent$
           msg: decide torrent list filters in the torrent list query module (ADR 0043)
+        - pattern: ^(fuzzy\.\w+|qbittorrent\.(normalizeForSearch\w*|isSearchSeparator|rankFuzzy|torrentMatchesGlob))$
+          pkg: ^github\.com/(lithammer/fuzzysearch/fuzzy|autobrr/qui/internal/qbittorrent)$
+          msg: match a Torrent search through the torrent search module in internal/qbittorrent/torrent_search.go (ADR 0097)
         - pattern: ^(releases\.(DefaultParser|NewDefaultParser|NewParser)|rls\.(DefaultParser|NewDefaultParser|NewTagParser|NewReleaseScanner|NewScanner|Parse|ParseString|ParseTags|ParseTagsString))$
           pkg: ^github\.com/autobrr/(qui/pkg/releases|rls)$
           msg: cross-seed code parses release names through the release cache or matcher.parseReleaseName (ADR 0008)
@@ -112,6 +115,12 @@ linters:
         - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|decideGazelleSites|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts|collectGazelleFacts|gazelleLocalFacts))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
+        - pattern: ^crossseed\.(searchScopeFacts\.sites|resolvedSitePick\.(pick|indexerIDs|torznabErr|gazelleTorznabIndexers))$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: a search asks the whole Site pick; pass the stored models.SitePick of the setting to Service.resolveSitePick and collectSearchScope in internal/services/crossseed/search_scope.go (ADR 0098)
+        - pattern: ^models\.(SitePick|CrossSeedSearchSettings|InstanceCrossSeedCompletionSettings)\.(IndexerIDs|GazelleSites)$
+          pkg: ^github\.com/autobrr/qui/internal/models$
+          msg: a search asks the whole Site pick; pass the stored models.SitePick of the setting to Service.resolveSitePick and collectSearchScope in internal/services/crossseed/search_scope.go (ADR 0098)
         - pattern: ^gazellemusic\.(siteTable|KnownTrackers|TrackerToSite)$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed/gazellemusic$
           msg: read the RED/OPS sites through the site table in internal/services/crossseed/gazellemusic/sites.go
@@ -154,9 +163,24 @@ linters:
         - pattern: ^\w+\.\w+\.RenameTorrent(File|Folder)$
           msg: use crossseed.Aligner
         - pattern: ^\w+\.\w+\.(GetCachedInstanceTorrents|ReadInstanceTorrents)$
-          msg: the webhook check reads its candidates from Held titles in internal/services/crossseed/held_titles.go, never the full torrent list
+          msg: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup.go, never the full torrent list
         - pattern: ^\(?\*?qbittorrent\.SyncSnapshot\)?\.(Torrents|Matching)$
-          msg: the webhook check reads its candidates from Held titles in internal/services/crossseed/held_titles.go, never the full torrent list
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: list an instance's torrents through the sync manager reads, which leave out Helper torrents (ADR 0092)
+        - pattern: ^\(?\*?qbittorrent\.SyncSnapshot\)?\.Torrent$
+          pkg: ^github\.com/autobrr/go-qbittorrent$
+          msg: look a torrent up by an infohash.Hash through qbittorrent.HashIndex in internal/qbittorrent/hash_index.go, which finds v1, v2, and hybrid torrents by any hash
+        - pattern: ^\(?\*?\w+\.\w+\)?\.PendingSync$
+          msg: wait on a due sync through the Held titles lookup in internal/services/crossseed/held_titles_lookup.go
+        - pattern: ^crossseed\.(Service\.(CheckSeasonPackWebhook|ApplySeasonPackWebhook)|SeasonPack(CheckRequest|CheckMatch|CheckResponse|ApplyRequest|ApplyResponse))$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
+        - pattern: ^\(?\*?handlers\.CrossSeedHandler\)?\.(SeasonPackCheck|SeasonPackApply)$
+          pkg: ^github\.com/autobrr/qui/internal/api/handlers$
+          msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
+        - pattern: ^\(?\*?crossseed\.Service\)?\.CrossSeed$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: a Trigger reaches the Injection through the required part Service.injection, which the constructor fills (ADR 0099)
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: only the Transfer history module in internal/services/transferhistory calls the history store
@@ -183,6 +207,30 @@ linters:
           msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
         - pattern: ^\w+\.\w+\.NewSyncManager$
           msg: only internal/qbittorrent/syncowner creates the sync object of go-qbittorrent; read the Sync snapshot with Owner.Snapshot or Owner.SnapshotUnchecked (ADR 0051)
+        - pattern: ^(syscall|unix)\.(Stat_t|Statx_t)\.(Nlink|Ino)$
+          pkg: ^(syscall|golang\.org/x/sys/unix)$
+          msg: read the link count and file identity of a local path through the local fsops backend (Lstat, Stat, Root.Lstat, or WalkDir with WantFileID); only internal/fsops/local/identity_*.go reads them, with a forced-sync statx on Linux
+        - pattern: ^(json\.(NewEncoder|Marshal|MarshalIndent|MarshalWrite|MarshalEncode)|jsontext\.NewEncoder)$
+          pkg: ^encoding/json(/v2|/jsontext)?$
+          msg: a handler writes JSON with RespondJSON, and a stream with secretshapes.Encoder, so that internal/secrets hides by the Audience (docs/adr/0098-one-module-hides-secrets-by-the-audience-of-the-reader-and-every-json-response-leaves-through-it.md)
+        - pattern: ^secrets\.NewAudience$
+          pkg: ^github\.com/autobrr/qui/internal/secrets$
+          msg: only middleware.AudienceOf turns a request into an Audience (docs/adr/0098-one-module-hides-secrets-by-the-audience-of-the-reader-and-every-json-response-leaves-through-it.md)
+        - pattern: ^secrets\.Full$
+          pkg: ^github\.com/autobrr/qui/internal/secrets$
+          msg: a handler takes the Audience of its request from middleware.AudienceOf, and secrets.Full is for qui's own callers (docs/adr/0098-one-module-hides-secrets-by-the-audience-of-the-reader-and-every-json-response-leaves-through-it.md)
+        - pattern: ^secrets\.NewEncoder$
+          pkg: ^github\.com/autobrr/qui/internal/secrets$
+          msg: one encoder exists, secretshapes.Encoder (docs/adr/0098-one-module-hides-secrets-by-the-audience-of-the-reader-and-every-json-response-leaves-through-it.md)
+        - pattern: ^secrets\.(NewShape|NewRawShape|NewSealedShape)$
+          pkg: ^github\.com/autobrr/qui/internal/secrets$
+          msg: a Secret shape is declared in the secret_shapes.go of the package that owns the type (docs/adr/0098-one-module-hides-secrets-by-the-audience-of-the-reader-and-every-json-response-leaves-through-it.md)
+        - pattern: ^middleware\.(CanReadTrackerPasskeys|CanReadNotificationURLs)$
+          pkg: ^github\.com/autobrr/qui/internal/api/middleware$
+          msg: return the full value and let a Secret shape in internal/secrets hide it; only the files that the migration has not reached ask the old Permission question (docs/adr/0098-one-module-hides-secrets-by-the-audience-of-the-reader-and-every-json-response-leaves-through-it.md)
+        - pattern: ^.+\.([Uu]nique|[Dd]istinct|[Dd]edupe?)(Hashes|HashStrings)$
+          pkg: ^github\.com/autobrr/qui/
+          msg: dedupe torrent hashes with infohash.Unique or infohash.UniqueStrings, and keep a set of them in an infohash.Set
 
     exhaustive:
       # A switch with a default has handled the rest by definition, and the repo
@@ -215,6 +263,53 @@ linters:
       - std-error-handling
 
     rules:
+      # JSON leaves the handler packages only through internal/secrets (ADR 0098).
+      # Until their migration step, the listed files keep their own encodes.
+      - path-except: ^internal/api/(handlers|sse)/
+        linters:
+          - forbidigo
+        text: a handler writes JSON with RespondJSON
+      - path: _test\.go$|^internal/api/handlers/(preferences|rss|rss_links|rss_sse)\.go$|^internal/api/sse/manager\.go$
+        linters:
+          - forbidigo
+        text: a handler writes JSON with RespondJSON
+      - path: ^internal/api/middleware/|^internal/secrets/|_test\.go$
+        linters:
+          - forbidigo
+        text: only middleware\.AudienceOf turns a request into an Audience
+      - path-except: ^internal/api/(handlers|sse)/
+        linters:
+          - forbidigo
+        text: secrets\.Full is for qui's own callers
+      - path: _test\.go$
+        linters:
+          - forbidigo
+        text: secrets\.Full is for qui's own callers
+      - path: ^internal/api/secretshapes/|^internal/secrets/|_test\.go$
+        linters:
+          - forbidigo
+        text: one encoder exists, secretshapes\.Encoder
+      - path: (^|/)secret_shapes\.go$|^internal/secrets/|_test\.go$
+        linters:
+          - forbidigo
+        text: a Secret shape is declared in the secret_shapes\.go
+      # The files that still ask the old Permission question. Each migration step takes its files off.
+      - path: ^internal/api/handlers/(backups|crossseed|notifications|preferences|rss|rss_links|rss_paths|rss_sse|search_links|torrents)\.go$|^internal/api/middleware/auth\.go$|^internal/api/sse/manager\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: only the files that the migration has not reached ask the old Permission question
+
+      - path: ^internal/api/handlers/crossseed_manual\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: a Trigger reaches the Injection through the required part
+
+      # The local backend owns the read of link count and file identity.
+      - path: internal/fsops/local/identity_
+        linters:
+          - forbidigo
+        text: local fsops backend
+
       # The preference catalog is the only code that sends a preference write.
       - path: internal/qbittorrent/prefcatalog/
         linters:
@@ -293,6 +388,18 @@ linters:
           - forbidigo
         text: Search scope module
 
+      # Only the Search scope module turns a Site pick into scope facts (ADR 0098).
+      - path: internal/services/crossseed/search_scope\.go$|internal/models/|_test\.go$
+        linters:
+          - forbidigo
+        text: whole Site pick
+
+      # Only the torrent search module matches a Torrent search (ADR 0097).
+      - path: internal/qbittorrent/torrent_search\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: torrent search module
+
       # Only the Source gate reads the moving and errored helpers. The rule cannot
       # catch an inline read of progress, because the package has many valid reads.
       - path: internal/services/crossseed/source_gate\.go$|_test\.go$
@@ -334,11 +441,42 @@ linters:
           - forbidigo
         text: use crossseed\.Adder
 
-      # Only the webhook check file reads its candidates from Held titles.
-      - path-except: internal/services/crossseed/webhook_check\.go$
+      # The webhook check and the season pack check read their candidates from Held titles.
+      # Only the season pack endpoints and the automatic assembly fall back to the full list, in seasonpack_all_torrents.go.
+      - path-except: internal/services/crossseed/(webhook_check|webhook_season_pack|seasonpack|seasonpack_candidates)\.go$
         linters:
           - forbidigo
-        text: Held titles
+        text: the webhook check and the season pack check read their candidates from Held titles in internal/services/crossseed/held_titles_lookup\.go, never the full torrent list
+
+      # The hash index owns the lookup of a torrent by hash. Tests read the
+      # shared snapshot to check pointer identity.
+      - path: internal/qbittorrent/hash_index\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: look a torrent up by an infohash.Hash
+
+      # Only the qBittorrent package lists the raw Sync snapshot.
+      - path: ^internal/qbittorrent/|_test\.go$
+        linters:
+          - forbidigo
+        text: list an instance's torrents through the sync manager reads
+
+      # Only the Held titles lookup waits on a due sync.
+      - path: internal/services/crossseed/held_titles_lookup\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: wait on a due sync through the Held titles lookup
+
+      # Only the season pack adapter uses the legacy season pack types. These test
+      # files are older than the rule; a new test goes through the webhook check and apply.
+      - path: internal/services/crossseed/seasonpack_endpoints\.go$|internal/api/handlers/crossseed_seasonpack_endpoints\.go$
+        linters:
+          - forbidigo
+        text: season pack endpoints are a frozen adapter
+      - path: internal/services/crossseed/(log_budget|path_dialect|seasonpack|seasonpack_(blocklist|regression|route|held|held_apply|held_budget|held_freshness|held_rig))_test\.go$|internal/api/handlers/crossseed_(apply_handler|seasonpack)_test\.go$
+        linters:
+          - forbidigo
+        text: season pack endpoints are a frozen adapter
 
       # Only the Aligner renames torrent files in the cross-seed and Dir Scan packages.
       - path-except: ^internal/services/(crossseed|dirscan)/
@@ -398,7 +536,7 @@ linters:
       # The type of a stat field differs between Linux and macOS, so the
       # conversion is redundant on one of them, and an inline nolint would be
       # unused on the other.
-      - path: (internal/fsops/local/statfs_unix|pkg/hardlink/fileid_unix)\.go
+      - path: internal/fsops/local/(statfs_unix|identity_stat)\.go
         linters:
           - unconvert
 

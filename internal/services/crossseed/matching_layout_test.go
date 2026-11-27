@@ -15,6 +15,7 @@ import (
 
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -293,7 +294,7 @@ func (c *candidateSelectionSyncManager) GetTorrentFilesBatch(ctx context.Context
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
 		if files, err := c.GetTorrentFiles(ctx, instanceID, h); err == nil && files != nil {
-			result[normalizeHash(h)] = *files
+			result[h] = *files
 		}
 	}
 	return result, nil
@@ -303,7 +304,7 @@ func (*candidateSelectionSyncManager) ExportTorrent(context.Context, int, string
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*candidateSelectionSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*candidateSelectionSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

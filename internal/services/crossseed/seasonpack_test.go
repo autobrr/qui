@@ -134,7 +134,7 @@ func seasonPackEpisodeFiles(t *testing.T, torrentData string, hashes ...string) 
 	files := make(map[string]qbt.TorrentFiles, len(hashes))
 	for i, hash := range hashes {
 		file := meta.Files[i]
-		files[normalizeHash(hash)] = qbt.TorrentFiles{
+		files[hash] = qbt.TorrentFiles{
 			{Name: filepath.Base(file.Name), Size: file.Size},
 		}
 	}
@@ -711,7 +711,7 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 			},
 			want: []want{
 				{titleMismatchReason, "", 0},
-				{"group mismatch", "debug", 1},
+				{"group mismatch", "trace", 1},
 			},
 		},
 		{
@@ -733,8 +733,8 @@ func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
 			},
 			want: []want{
 				{notInPackReason, "", 0},
-				{"episode numbering mismatch", "debug", 2},
-				{"source not settled", "debug", 1},
+				{"episode numbering mismatch", "trace", 2},
+				{"source not settled", "trace", 1},
 			},
 		},
 	}
@@ -1009,9 +1009,7 @@ func TestCheckSeasonPackWebhook_UsesSeasonTotalLookupWhenAvailable(t *testing.T)
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackEpisodeTotalLookup: func(context.Context, string, *rls.Release) (int, []string, bool) {
-			return 6, nil, true
-		},
+		arrService:               &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{TotalEpisodes: 6}},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -1272,7 +1270,7 @@ func testApplySeasonPackAlreadyExists(t *testing.T, linked bool, wantMessage str
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	sync := withLinkAdder(svc)
-	sync.existing = &qbt.Torrent{Hash: meta.HashV1, Name: fix.packName, Progress: 1.0}
+	sync.existing = &qbt.Torrent{Hash: meta.HashV1.String(), Name: fix.packName, Progress: 1.0}
 	if linked {
 		sync.existingOn = 2
 		_, db := adderBlocklist(t, "")
@@ -1837,7 +1835,7 @@ func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing
 	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 
 	sm.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
-	sm.files[normalizeHash("e03")][0].Size++
+	sm.files["e03"][0].Size++
 
 	var capturedPlan *hardlinktree.TreePlan
 	svc := &Service{
@@ -1903,7 +1901,7 @@ func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *te
 	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 
 	sm.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
-	sm.files[normalizeHash("e03")][0].Size++
+	sm.files["e03"][0].Size++
 
 	svc := &Service{
 		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
@@ -1955,7 +1953,7 @@ func TestApplySeasonPackWebhook_DriftsWhenDemotionDropsCoverageBelowThreshold(t 
 	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 
 	sm.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
-	sm.files[normalizeHash("e03")][0].Size++
+	sm.files["e03"][0].Size++
 
 	svc := &Service{
 		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
@@ -2014,8 +2012,8 @@ func TestApplySeasonPackWebhook_TriesNextEpisodeCandidateAfterValidationFailure(
 		map[int]*models.Instance{inst.ID: inst},
 	)
 	files := seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03bad", "e04")
-	files[normalizeHash("e03good")] = append(qbt.TorrentFiles(nil), files[normalizeHash("e03bad")]...)
-	files[normalizeHash("e03bad")][0].Size++
+	files["e03good"] = append(qbt.TorrentFiles(nil), files["e03bad"]...)
+	files["e03bad"][0].Size++
 	baseSM.files = files
 	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 
@@ -2070,7 +2068,7 @@ func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *te
 	)
 	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 	sm.files = map[string]qbt.TorrentFiles{
-		normalizeHash("e01"): {
+		"e01": {
 			{Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: int64(len(main))},
 		},
 	}
@@ -2147,7 +2145,7 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 	)
 	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 	sm.files = map[string]qbt.TorrentFiles{
-		normalizeHash("e01"): {
+		"e01": {
 			{Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: int64(len(main))},
 		},
 	}
@@ -2275,9 +2273,9 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 		map[int]*models.Instance{inst.ID: inst},
 	)
 	baseSM.files = map[string]qbt.TorrentFiles{
-		normalizeHash("e01"): {{Name: packFiles[0], Size: 64}},
-		normalizeHash("e02"): {{Name: packFiles[1], Size: 64}},
-		normalizeHash("e03"): {{Name: packFiles[2], Size: 64}},
+		"e01": {{Name: packFiles[0], Size: 64}},
+		"e02": {{Name: packFiles[1], Size: 64}},
+		"e03": {{Name: packFiles[2], Size: 64}},
 	}
 	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 
@@ -2391,7 +2389,7 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 			)
 			sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
 			sm.files = map[string]qbt.TorrentFiles{
-				normalizeHash("e01"): {
+				"e01": {
 					{Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: int64(len(main))},
 				},
 			}
@@ -2456,7 +2454,7 @@ func TestApplySeasonPackWebhook_ResolvesEpisodeFileFromDirectoryContentPath(t *t
 		map[int]*models.Instance{inst.ID: inst},
 	)
 	baseSM.files = map[string]qbt.TorrentFiles{
-		normalizeHash("e01"): {
+		"e01": {
 			{Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 64},
 			{Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP/Subs/Cool.Show.S01E01.1080p.WEB.x264-GRP.srt", Size: 12},
 		},
@@ -2518,9 +2516,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_WithMetadata_ThresholdWorks(t *tes
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 4, nil, true
-		},
+		arrService:               &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{TotalEpisodes: 4}},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2564,9 +2560,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NoMetadata_ReturnsReadyIfMatchesEx
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 0, nil, false
-		},
+		arrService:               &spyARRLookupService{},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2609,9 +2603,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NoMetadata_NoMatches_ReturnsNotRea
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 0, nil, false
-		},
+		arrService:               &spyARRLookupService{},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2652,9 +2644,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_BelowThreshold_ReturnsNotReady(t *
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 10, nil, true
-		},
+		arrService:               &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{TotalEpisodes: 10}},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2697,9 +2687,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NilPackEpisodes_DeduplicatesByIden
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 0, nil, false
-		},
+		arrService:               &spyARRLookupService{},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2895,7 +2883,7 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 	require.Len(t, meta.Files, len(hashes))
 	localFiles := make(map[string]qbt.TorrentFiles, len(hashes))
 	for i, hash := range hashes {
-		localFiles[normalizeHash(hash)] = qbt.TorrentFiles{
+		localFiles[hash] = qbt.TorrentFiles{
 			{Name: localNames[i] + ".mkv", Size: meta.Files[i].Size},
 		}
 	}

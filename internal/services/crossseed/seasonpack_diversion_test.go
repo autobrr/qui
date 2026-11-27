@@ -138,7 +138,7 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 			settings := models.DefaultCrossSeedAutomationSettings()
 			settings.SeasonPackAutomationEnabled = tt.automationEnabled
 
-			var diverted *SeasonPackApplyRequest
+			var diverted *seasonPackRequest
 			svc := &Service{
 				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{1: instance}},
 				syncManager:      newFakeSyncManager(instance, tt.libraryTorrents, tt.libraryFiles),
@@ -147,17 +147,17 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return settings, nil
 				},
-				seasonPackApplier: func(_ context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
-					diverted = req
+				seasonPackApplier: func(_ context.Context, req seasonPackRequest) (*seasonPackApplyResult, error) {
+					diverted = &req
 					if !tt.applied {
-						return &SeasonPackApplyResponse{Reason: "below_threshold"}, nil
+						return &seasonPackApplyResult{reason: "below_threshold"}, nil
 					}
-					return &SeasonPackApplyResponse{
-						Applied:         true,
-						InstanceID:      instance.ID,
-						MatchedEpisodes: 1,
-						TotalEpisodes:   3,
-						Coverage:        1.0 / 3.0,
+					return &seasonPackApplyResult{
+						applied:    true,
+						instanceID: instance.ID,
+						matched:    1,
+						total:      3,
+						coverage:   1.0 / 3.0,
 					}, nil
 				},
 			}
@@ -179,10 +179,10 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 				require.Nil(t, diverted, "season pack apply should not have been invoked")
 			} else {
 				require.NotNil(t, diverted, "season pack apply should have been invoked")
-				require.Equal(t, packName, diverted.TorrentName)
-				require.Equal(t, packB64, diverted.TorrentData)
-				require.Equal(t, []int{instance.ID}, diverted.InstanceIDs)
-				require.Equal(t, "tracker", diverted.Indexer)
+				require.Equal(t, packName, diverted.name)
+				require.Equal(t, packB64, diverted.torrentData)
+				require.Equal(t, []int{instance.ID}, diverted.instanceIDs)
+				require.Equal(t, "tracker", diverted.indexer)
 				require.True(t, diverted.autonomous, "diverted request must use the autonomous gate")
 			}
 
@@ -209,8 +209,8 @@ func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
 		},
-		seasonPackApplier: func(context.Context, *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
-			return &SeasonPackApplyResponse{Applied: true, InstanceID: 1, MatchedEpisodes: 2, TotalEpisodes: 3}, nil
+		seasonPackApplier: func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
+			return &seasonPackApplyResult{applied: true, instanceID: 1, matched: 2, total: 3}, nil
 		},
 	}
 
@@ -244,8 +244,8 @@ func TestMaybeDivertSeasonPack_NamesTheCrossSeedInstance(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
 		},
-		seasonPackApplier: func(context.Context, *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
-			return &SeasonPackApplyResponse{Applied: true, InstanceID: 1, AddedInstanceID: 2, MatchedEpisodes: 3, TotalEpisodes: 3}, nil
+		seasonPackApplier: func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
+			return &seasonPackApplyResult{applied: true, instanceID: 1, addedInstanceID: 2, matched: 3, total: 3}, nil
 		},
 	}
 
@@ -299,7 +299,6 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 				"ep1": {{Name: "Show.Title.S01E01.1080p.WEB.H264-GRP.mkv", Size: 1 << 30}},
 			}
 
-			var invoked bool
 			var downloads int
 			service := &Service{
 				instanceStore: &episodeInstanceStore{
@@ -315,10 +314,10 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 					return []byte("torrent"), nil
 				},
 			}
-			service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
-				invoked = true
+			injection := newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: false}, nil
-			}
+			})
+			service.injection = injection
 
 			settings := &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs:           []int{instanceID},
@@ -338,7 +337,17 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 
 			_, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{DryRun: tt.dryRun}, map[int]jackett.EnabledIndexerInfo{})
 			require.NoError(t, err)
-			require.Equal(t, tt.wantInvoked, invoked, "CrossSeed invocation mismatch")
+			requests := injection.Requests()
+			wantRequests := 0
+			if tt.wantInvoked {
+				wantRequests = 1
+			}
+			require.Len(t, requests, wantRequests, "CrossSeed invocation mismatch")
+			for _, request := range requests {
+				require.Equal(t, base64.StdEncoding.EncodeToString([]byte("torrent")), request.TorrentData, "the Injection gets the downloaded pack")
+				require.Equal(t, []int{instanceID}, request.TargetInstanceIDs)
+				require.True(t, request.FindIndividualEpisodes)
+			}
 			require.Equal(t, tt.wantDownloads, downloads, "torrent download count mismatch")
 			if tt.wantLastMessage != "" {
 				require.NotEmpty(t, run.Results)
@@ -377,8 +386,8 @@ func TestMaybeDivertSeasonPack_RecordsFailCooldown(t *testing.T) {
 			service.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 				return settings, nil
 			}
-			service.seasonPackApplier = func(context.Context, *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
-				return &SeasonPackApplyResponse{Applied: tt.applied, Reason: tt.reason, InstanceID: instanceID}, nil
+			service.seasonPackApplier = func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
+				return &seasonPackApplyResult{applied: tt.applied, reason: tt.reason, instanceID: instanceID}, nil
 			}
 
 			response := &CrossSeedResponse{
@@ -430,16 +439,15 @@ func TestProcessAutomationCandidate_PackFailCooldownSkipsDownload(t *testing.T) 
 			require.NoError(t, service.automationStore.UpsertSearchHistory(
 				ctx, instanceID, seasonPackFailKey(packTitle), time.Now().UTC().Add(-tt.stampAge)))
 
-			var invoked bool
 			var downloads int
 			service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 				downloads++
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
-				invoked = true
+			injection := newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: false}, nil
-			}
+			})
+			service.injection = injection
 
 			settings := &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs:           []int{instanceID},
@@ -459,7 +467,17 @@ func TestProcessAutomationCandidate_PackFailCooldownSkipsDownload(t *testing.T) 
 			status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 			require.NoError(t, err)
 			require.Equal(t, tt.wantDownloads, downloads, "torrent download count mismatch")
-			require.Equal(t, tt.wantInvoked, invoked, "CrossSeed invocation mismatch")
+			requests := injection.Requests()
+			wantRequests := 0
+			if tt.wantInvoked {
+				wantRequests = 1
+			}
+			require.Len(t, requests, wantRequests, "CrossSeed invocation mismatch")
+			for _, request := range requests {
+				require.Equal(t, base64.StdEncoding.EncodeToString([]byte("torrent")), request.TorrentData, "the Injection gets the downloaded pack")
+				require.Equal(t, []int{instanceID}, request.TargetInstanceIDs)
+				require.True(t, request.FindIndividualEpisodes)
+			}
 			if !tt.wantInvoked {
 				require.Equal(t, models.CrossSeedFeedItemStatusSkipped, status)
 				require.NotEmpty(t, run.Results)
@@ -499,7 +517,7 @@ func TestPrepareSeasonPack_AutonomousGating(t *testing.T) {
 				},
 			}
 
-			prep, reason, _, err := svc.prepareSeasonPack(context.Background(), "", "", nil, tt.autonomous)
+			prep, reason, _, err := svc.prepareSeasonPackLocally(context.Background(), "", "", nil, tt.autonomous, true)
 			require.NoError(t, err)
 			require.Nil(t, prep)
 			require.Equal(t, tt.wantReason, reason)

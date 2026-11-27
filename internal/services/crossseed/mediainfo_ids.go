@@ -39,7 +39,7 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 		return nil
 	}
 
-	key := normalizeHash(torrent.Hash)
+	key := torrent.Hash
 	if key == "" {
 		return nil
 	}
@@ -66,17 +66,9 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 		return nil
 	}
 
-	analyze := s.analyzeMediaFile
-	if analyze == nil {
-		analyze = func(ctx context.Context, path string) (mediainfo.Report, error) {
-			// #nosec G304 -- path is constructed from the instance save path via resolveLocalTorrentFile.
-			return mediainfo.AnalyzeFileContext(ctx, path, mediainfo.WithParseSpeed(0))
-		}
-	}
-
 	analyzeCtx, cancel := context.WithTimeout(ctx, mediaIDAnalyzeTimeout)
 	defer cancel()
-	report, err := analyze(analyzeCtx, filePath)
+	report, err := s.analyzeMediaFile(analyzeCtx, filePath)
 	if err != nil {
 		log.Debug().Err(err).Str("torrentName", torrent.Name).Str("file", filePath).Msg("[CROSSSEED-SEARCH] MediaInfo analysis failed; not caching")
 		return nil
@@ -223,4 +215,9 @@ func normalizeTVDbTag(value, contentType string) (string, bool) {
 func isDecimalID(s string) bool {
 	_, err := strconv.ParseUint(s, 10, 64)
 	return err == nil
+}
+
+func analyzeMediaFile(ctx context.Context, path string) (mediainfo.Report, error) {
+	// #nosec G304 -- path is constructed from the instance save path via resolveLocalTorrentFile.
+	return mediainfo.AnalyzeFileContext(ctx, path, mediainfo.WithParseSpeed(0))
 }

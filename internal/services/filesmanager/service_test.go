@@ -5,6 +5,8 @@ package filesmanager
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
@@ -55,9 +57,9 @@ func TestCacheFilesAndGetCachedFiles(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, svc.CacheFiles(ctx, 1, "hash", qbittorrent.CachedFilesWrite{Files: files}))
+	require.NoError(t, svc.CacheFiles(ctx, 1, testHash("hash"), qbittorrent.CachedFilesWrite{Files: files}))
 
-	cached, err := svc.GetCachedFiles(ctx, 1, "hash")
+	cached, err := svc.GetCachedFiles(ctx, 1, testHash("hash"))
 	require.NoError(t, err)
 	require.NotNil(t, cached, "cache should be available")
 	require.Len(t, cached, 1)
@@ -70,11 +72,11 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 	db, ctx := setupFilesManagerDB(t)
 	svc := NewService(db)
 
-	hashes := []string{"hash-a", "hash-b", "hash-c"}
+	hashes := []string{testHash("hash-a"), testHash("hash-b"), testHash("hash-c")}
 	names := map[string]string{
-		"hash-a": "alpha.mkv",
-		"hash-b": "bravo.mkv",
-		"hash-c": "charlie.mkv",
+		testHash("hash-a"): "alpha.mkv",
+		testHash("hash-b"): "bravo.mkv",
+		testHash("hash-c"): "charlie.mkv",
 	}
 
 	for attempt := range 3 {
@@ -111,7 +113,7 @@ func testCacheFilesBatchAcrossQueryBatches(t *testing.T, open testDBOpener) {
 		hashes := make([]string, 801)
 		files := make(map[string]qbt.TorrentFiles, len(hashes))
 		for i := range hashes {
-			hashes[i] = fmt.Sprintf("batch-hash-%d", i)
+			hashes[i] = testHash(fmt.Sprintf("batch-hash-%d", i))
 			files[hashes[i]] = qbt.TorrentFiles{{Name: fmt.Sprintf("example-%d.mkv", i), Size: int64(i + 1)}}
 		}
 		require.NoError(t, svc.CacheFilesBatch(ctx, 1, unprinted(files)))
@@ -126,9 +128,9 @@ func testCacheFilesBatchAcrossQueryBatches(t *testing.T, open testDBOpener) {
 			require.NoError(t, svc.repo.DeleteTorrentCache(ctx, 1, empty))
 		}
 
-		cached, missing, err := svc.GetCachedFilesBatch(ctx, 1, append(hashes, hashes[0], " ", "absent"), 0)
+		cached, missing, err := svc.GetCachedFilesBatch(ctx, 1, append(hashes, hashes[0], " ", testHash("absent")), 0)
 		require.NoError(t, err)
-		require.Equal(t, []string{"absent"}, missing)
+		require.Equal(t, []string{testHash("absent")}, missing)
 		require.Len(t, cached, len(hashes))
 		for _, hash := range hashes {
 			require.Len(t, cached[hash], 1)
@@ -136,7 +138,7 @@ func testCacheFilesBatchAcrossQueryBatches(t *testing.T, open testDBOpener) {
 			require.Equal(t, files[hash][0].Size, cached[hash][0].Size)
 		}
 
-		require.NoError(t, svc.CacheFiles(ctx, 1, "keep", qbittorrent.CachedFilesWrite{Files: qbt.TorrentFiles{{Name: "keep.mkv", Size: 1}}}))
+		require.NoError(t, svc.CacheFiles(ctx, 1, testHash("keep"), qbittorrent.CachedFilesWrite{Files: qbt.TorrentFiles{{Name: "keep.mkv", Size: 1}}}))
 		require.NoError(t, svc.repo.DeleteTorrentCache(ctx, 1, hashes))
 		cachedFiles, err := svc.repo.GetFilesBatch(ctx, 1, hashes)
 		require.NoError(t, err)
@@ -144,7 +146,7 @@ func testCacheFilesBatchAcrossQueryBatches(t *testing.T, open testDBOpener) {
 		info, err := svc.repo.GetSyncInfoBatch(ctx, 1, hashes)
 		require.NoError(t, err)
 		require.Empty(t, info)
-		kept, err := svc.GetCachedFiles(ctx, 1, "keep")
+		kept, err := svc.GetCachedFiles(ctx, 1, testHash("keep"))
 		require.NoError(t, err)
 		require.Len(t, kept, 1)
 		require.Equal(t, "keep.mkv", kept[0].Name)
@@ -158,21 +160,21 @@ func TestGetCachedFilesBatch_MaxAgeServesAgedRows(t *testing.T) {
 	svc := NewService(db)
 
 	files := qbt.TorrentFiles{{Name: "aged.mkv", Size: 1, Priority: 1}}
-	require.NoError(t, svc.CacheFiles(ctx, 1, "aged", qbittorrent.CachedFilesWrite{Files: files}))
+	require.NoError(t, svc.CacheFiles(ctx, 1, testHash("aged"), qbittorrent.CachedFilesWrite{Files: files}))
 
 	_, err := db.ExecContext(ctx, "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
 	require.NoError(t, err)
 
-	cached, missing, err := svc.GetCachedFilesBatch(ctx, 1, []string{"aged", "absent"}, 0)
+	cached, missing, err := svc.GetCachedFilesBatch(ctx, 1, []string{testHash("aged"), testHash("absent")}, 0)
 	require.NoError(t, err)
 	require.Empty(t, cached)
-	require.ElementsMatch(t, []string{"aged", "absent"}, missing)
+	require.ElementsMatch(t, []string{testHash("aged"), testHash("absent")}, missing)
 
-	cached, missing, err = svc.GetCachedFilesBatch(ctx, 1, []string{"aged", "absent"}, 2*time.Hour)
+	cached, missing, err = svc.GetCachedFilesBatch(ctx, 1, []string{testHash("aged"), testHash("absent")}, 2*time.Hour)
 	require.NoError(t, err)
 	require.Len(t, cached, 1)
-	require.Equal(t, "aged.mkv", cached["aged"][0].Name)
-	require.Equal(t, []string{"absent"}, missing)
+	require.Equal(t, "aged.mkv", cached[testHash("aged")][0].Name)
+	require.Equal(t, []string{testHash("absent")}, missing)
 }
 
 func unprinted(files map[string]qbt.TorrentFiles) map[string]qbittorrent.CachedFilesWrite {
@@ -181,4 +183,9 @@ func unprinted(files map[string]qbt.TorrentFiles) map[string]qbittorrent.CachedF
 		writes[hash] = qbittorrent.CachedFilesWrite{Files: list}
 	}
 	return writes
+}
+
+func testHash(label string) string {
+	sum := sha1.Sum([]byte(label))
+	return hex.EncodeToString(sum[:])
 }

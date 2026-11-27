@@ -147,7 +147,7 @@ func TestFindCandidatesEpisodeMapReachesFileValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			const (
 				instanceID = 1
-				sourceHash = "existing"
+				sourceHash = "c0de000000000000000000000000000000000001"
 			)
 			instance := &models.Instance{ID: instanceID, Name: "main"}
 			existing := qbt.Torrent{Hash: sourceHash, Name: tt.existingName, Size: episodeMapSize, TotalSize: episodeMapSize, Progress: 1}
@@ -167,7 +167,7 @@ func TestFindCandidatesEpisodeMapReachesFileValidation(t *testing.T) {
 					Class:               searchCandidateClassStrict,
 					SearchCandidateName: tt.targetName,
 					SourceInstanceID:    instanceID,
-					SourceHash:          sourceHash,
+					SourceHash:          mustParseHash(t, sourceHash),
 					EpisodeMap:          episodeMapS04E15,
 				},
 			})

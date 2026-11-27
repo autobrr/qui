@@ -153,10 +153,12 @@ func (r crossFilesReader) GetTorrentFilesBatch(_ context.Context, _ int, hashes 
 	return out, nil
 }
 
-func (r crossFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
-	return []qbittorrent.CrossInstanceTorrentView{{
-		TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "other", SavePath: r.savePath}},
-	}}, nil
+func (crossFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbittorrent.CrossInstanceTorrentView, error) {
+	return nil, nil
+}
+
+func (r crossFilesReader) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return []*qbt.Torrent{{Hash: "other", SavePath: r.savePath}}, nil
 }
 
 func TestCrossScopeSkipsAnInstanceThatLeftLocalMode(t *testing.T) {

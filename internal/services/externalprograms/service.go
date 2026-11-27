@@ -441,41 +441,6 @@ func isTerminalAvailable(terminal string) bool {
 	}
 }
 
-func (s *Service) createTerminalCommand(ctx context.Context, cmdLine string) (cmd *exec.Cmd, launcher bool) {
-	if terminal, found := detectTerminalFromEnv(); found {
-		if isTerminalAvailable(terminal) {
-			cmdName, args := buildTerminalArgs(terminal, cmdLine)
-			if cmdName != "" {
-				log.Debug().
-					Str("terminal", terminal).
-					Str("source", "TERM_PROGRAM").
-					Str("command", cmdLine).
-					Msg("using terminal emulator for external program")
-				return exec.CommandContext(ctx, cmdName, args...), true
-			}
-		}
-	}
-
-	for _, tc := range getTerminalCandidates() {
-		if isTerminalAvailable(tc.name) {
-			cmdName, args := buildTerminalArgs(tc.name, cmdLine)
-			if cmdName != "" {
-				log.Debug().
-					Str("terminal", tc.name).
-					Str("source", "detection").
-					Str("command", cmdLine).
-					Msg("using terminal emulator for external program")
-				return exec.CommandContext(ctx, cmdName, args...), true
-			}
-		}
-	}
-
-	log.Warn().
-		Str("command", cmdLine).
-		Msg("no terminal emulator found, running command in background")
-	return exec.CommandContext(ctx, "sh", "-c", cmdLine), false
-}
-
 func (s *Service) IsPathAllowed(programPath string) bool {
 	programPath = strings.TrimSpace(programPath)
 	if programPath == "" {

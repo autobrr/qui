@@ -286,6 +286,7 @@ func (s *Server) transferRoutes(r chi.Router) {
 
 func (s *Server) newTorrentsHandler() *handlers.TorrentsHandler {
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore, s.crossSeedService)
+	torrentsHandler.SetInstallPaths(s.config)
 	if s.transfers != nil {
 		torrentsHandler.SetHeldTorrents(s.transfers)
 	}

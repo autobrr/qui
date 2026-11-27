@@ -126,6 +126,9 @@ func (s *Server) pass(seeder *Server, from, to *Torrent) {
 		s.FreeSpace = max(s.FreeSpace-int64(len(data[i])), 0)
 	}
 	to.add.progress, to.add.pieceStates = 1, nil
+	if s.RecheckSyncs > 0 {
+		to.add.checking, to.add.checkLeft = true, s.RecheckSyncs
+	}
 }
 
 func (s *Server) freeSpaceAt(w http.ResponseWriter, r *http.Request) {
