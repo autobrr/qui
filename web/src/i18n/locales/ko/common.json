@@ -179,6 +179,8 @@
     "smartSearchTitle": "스마트 검색 기능:",
     "smartSearchGlob": "Glob 패턴:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "일치 항목 숨기기:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "유사 일치:",
     "smartSearchFuzzyExample": "\"breaking bad\"로 \"Breaking.Bad\"를 찾습니다",
     "smartSearchDots": "점, 밑줄, 대괄호를 처리합니다",

@@ -40,6 +40,8 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | UI text goes through i18n keys, with no dead keys | `pnpm check:i18n` |
 | Each endpoint is in the OpenAPI spec | `TestAllEndpointsDocumented`, `make test-openapi` |
 | No response gives a stored credential, and only a backup download, which needs `Backups: write`, gives a tracker passkey to an API key without `Torrents: write` (ADR 0040) | `TestReadKeyGetsNoPlantedSecret` reads each route that a key with only read Permissions reaches (ADR 0087). A secret that its rig does not plant: judgment |
+| A workflow job that runs code from a fork or a pull request head has no write permission and no stored secret | `TestNoJobRunsForkCodeWithWriteAccessOrASecret` |
+| A route reads at most 1 MiB of a request body before sign-in | `TestRoutesReadAtMostOneMiBOfABodyWithoutSignIn` |
 | The feature map lists each route and dialog with steps | `make check-feature-map` |
 | The match corpus only grows | the Match corpus workflow |
 | A maintainer approves a moved starting commit, a looser benchmark limit, a changed workload, or a removed benchmark (ADR 0093) | the Benchmark approval workflow |

@@ -338,6 +338,52 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	require.Equal(t, []string{"aaa0000000000000000000000000000000000000"}, rechecked)
 }
 
+func TestBulkAction_SelectAllLeavesOutTheTorrentsOfAnExcludedTerm(t *testing.T) {
+	t.Parallel()
+
+	db := testdb.NewMigratedSQLite(t, "torrents-bulk-action-excluded-term")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	var mu sync.Mutex
+	var rechecked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/torrents/recheck" {
+			_ = r.ParseForm()
+			mu.Lock()
+			rechecked = append(rechecked, r.Form.Get("hashes"))
+			mu.Unlock()
+		}
+		_, _ = w.Write([]byte("Ok."))
+	}))
+	t.Cleanup(srv.Close)
+
+	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
+		{Name: "Some.Movie.2020.1080p.x264-GRPA", Hash: "aaa0000000000000000000000000000000000000", AddedOn: 2},
+		{Name: "Some.Movie.2020.1080p.x265-GRPA", Hash: "bbb0000000000000000000000000000000000000", AddedOn: 1},
+	})})
+
+	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
+	req := newTorrentFieldRequest(t, instance.ID, map[string]any{
+		"action":    "recheck",
+		"selectAll": true,
+		"search":    "-x265",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.BulkAction(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"aaa0000000000000000000000000000000000000"}, rechecked)
+}
+
 func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
 	t.Parallel()
 
