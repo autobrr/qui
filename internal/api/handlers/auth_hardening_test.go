@@ -235,7 +235,9 @@ func TestLoginAndSetupRefuseOversizedBody(t *testing.T) {
 		config:         &domain.Config{},
 	}
 	setup := fresh.sessionManager.LoadAndSave(http.HandlerFunc(fresh.Setup))
-	assert.Equal(t, http.StatusBadRequest, post(t, setup, "/api/auth/setup", "application/json", body).Code)
+	rec := post(t, setup, "/api/auth/setup", "application/json", body)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "Invalid request body")
 
 	complete, err := fresh.authService.IsSetupComplete(t.Context())
 	require.NoError(t, err)
