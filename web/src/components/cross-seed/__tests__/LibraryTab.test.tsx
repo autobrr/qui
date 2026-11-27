@@ -21,7 +21,6 @@ const defaultSearchSettings = vi.hoisted(() => ({
   cooldownMinutes: 720,
   maxAddedAgeDays: 0,
   skipIndividualEpisodes: false,
-  torznabEnabled: true,
   scheduleEnabled: false,
   scheduleIntervalHours: 24,
   scheduleMaxSearches: 400,
@@ -202,7 +201,7 @@ describe("LibraryTab save", () => {
     fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
-    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], gazelleSites: [redSite.site, opsSite.site], disableTorznab: false })
+    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], gazelleSites: [redSite.site, opsSite.site] })
   })
 
   it("hides the Torznab indexer only of the site that has a key", async () => {
@@ -258,7 +257,36 @@ describe("LibraryTab save", () => {
     fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
-    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], gazelleSites: [redSite.site], disableTorznab: false })
+    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], gazelleSites: [redSite.site] })
+  })
+})
+
+describe("LibraryTab RED/OPS-only pick", () => {
+  it("blocks Start when no picked RED/OPS site has a key", async () => {
+    Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops" })
+    mocks.indexers = [enabledIndexer]
+    mocks.gazelleSites = [
+      { ...redSite, active: false, replacedIndexerIds: [] },
+      { ...opsSite, active: true, replacedIndexerIds: [] },
+    ]
+    mocks.searchSettings.gazelleSites = [redSite.site]
+    renderTab()
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "scan.startRun" }).hasAttribute("disabled")).toBe(true))
+  })
+
+  it("asks a Torznab pick for at least 60 seconds between torrents", async () => {
+    Object.assign(mocks.settings, { gazelleEnabled: true, redactedApiKey: "red" })
+    mocks.indexers = [enabledIndexer]
+    mocks.gazelleSites = [{ ...redSite, active: true, replacedIndexerIds: [] }]
+    mocks.searchSettings = { ...defaultSearchSettings, indexerIds: [enabledIndexer.id], intervalSeconds: 10 }
+    renderTab()
+
+    const save = await findSave()
+    expect(inputValue("scan.intervalLabel")).toBe("10")
+    fireEvent.click(save)
+    expect(screen.getByText("validation.minIntervalSeconds")).toBeTruthy()
+    expect(mocks.patchSearch).not.toHaveBeenCalled()
   })
 })
 
@@ -277,10 +305,10 @@ describe("LibraryTab saved fields", () => {
     ...defaultSearchSettings,
     excludeCategories: ["no-cs"],
     excludeTags: ["keep-out"],
+    gazelleSites: ["redacted.sh"],
     intervalSeconds: 10,
     maxAddedAgeDays: 30,
     skipIndividualEpisodes: true,
-    torznabEnabled: false,
     scheduleEnabled: true,
     scheduleIntervalHours: 6,
     scheduleMaxSearches: 50,
@@ -294,7 +322,7 @@ describe("LibraryTab saved fields", () => {
     renderTab()
     const save = await findSave()
 
-    expect(screen.getByRole("switch", { name: "scan.torznab" }).getAttribute("aria-checked")).toBe("false")
+    expect(inputValue("scan.intervalLabel")).toBe("10")
     expect(screen.getByRole("switch", { name: "scan.skipIndividualEpisodesLabel" }).getAttribute("aria-checked")).toBe("true")
     expect(screen.getByRole("switch", { name: "scan.schedule.enableLabel" }).getAttribute("aria-checked")).toBe("true")
     expect(inputValue("scan.maxAddedAgeLabel")).toBe("30")
@@ -313,7 +341,6 @@ describe("LibraryTab saved fields", () => {
     renderTab()
     const save = await findSave()
 
-    fireEvent.click(screen.getByRole("switch", { name: "scan.torznab" }))
     fireEvent.click(screen.getByRole("switch", { name: "scan.skipIndividualEpisodesLabel" }))
     fireEvent.change(screen.getByLabelText("scan.maxAddedAgeLabel"), { target: { value: "45" } })
     fireEvent.click(screen.getByRole("switch", { name: "scan.schedule.enableLabel" }))
@@ -325,7 +352,6 @@ describe("LibraryTab saved fields", () => {
     await waitFor(() => expect(mocks.patchSearch).toHaveBeenCalledTimes(1))
     expect(mocks.patchSearch).toHaveBeenCalledWith({
       ...defaultSearchSettings,
-      torznabEnabled: false,
       skipIndividualEpisodes: true,
       maxAddedAgeDays: 45,
       scheduleEnabled: true,
@@ -351,7 +377,7 @@ describe("LibraryTab saved fields", () => {
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
   })
 
-  it("sends the exclude filters and the Torznab switch with Start", async () => {
+  it("sends the exclude filters with Start", async () => {
     mocks.searchSettings = { ...defaultSearchSettings, excludeCategories: ["no-cs"], excludeTags: ["keep-out"] }
     mocks.indexers = [enabledIndexer]
     mocks.startRun.mockResolvedValue({ id: 1 })
@@ -367,7 +393,6 @@ describe("LibraryTab saved fields", () => {
       tags: [],
       excludeCategories: ["no-cs"],
       excludeTags: ["keep-out"],
-      disableTorznab: false,
     })
   })
 })

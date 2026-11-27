@@ -5786,9 +5786,6 @@ paths:
                   items:
                     type: string
                   description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
-                disableTorznab:
-                  type: boolean
-                  description: Disable Torznab searches (Gazelle-only for OPS/RED torrents; other torrents will be skipped)
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent
@@ -12589,7 +12586,7 @@ components:
           description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         intervalSeconds:
           type: integer
-          description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
+          description: Wait between torrents. At least 5 seconds when the Site pick lists only RED/OPS sites, otherwise at least 60 seconds.
         cooldownMinutes:
           type: integer
         maxAddedAgeDays:
@@ -12598,9 +12595,6 @@ components:
           description: An indexer that already searched a torrent does not search it again after this many days. 0 disables this rule.
         skipIndividualEpisodes:
           type: boolean
-        torznabEnabled:
-          type: boolean
-          description: The Torznab switch of the Library card. With Torznab off, runs ask only RED/OPS.
         scheduleEnabled:
           type: boolean
           description: Turns the Library Scan schedule on. Off by default.
@@ -12653,7 +12647,7 @@ components:
           description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         intervalSeconds:
           type: integer
-          description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
+          description: Wait between torrents. At least 5 seconds when the Site pick lists only RED/OPS sites, otherwise at least 60 seconds.
         cooldownMinutes:
           type: integer
         maxAddedAgeDays:
@@ -12662,9 +12656,6 @@ components:
           description: An indexer that already searched a torrent does not search it again after this many days. 0 disables this rule.
         skipIndividualEpisodes:
           type: boolean
-        torznabEnabled:
-          type: boolean
-          description: The Torznab switch of the Library card. With Torznab off, runs ask only RED/OPS.
         scheduleEnabled:
           type: boolean
           description: Turns the Library Scan schedule on. Off by default.

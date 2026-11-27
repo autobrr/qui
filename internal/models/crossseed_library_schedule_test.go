@@ -35,7 +35,6 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	defaults, err := store.GetSearchSettings(ctx)
 	require.NoError(t, err)
 	require.False(t, defaults.ScheduleEnabled)
-	require.True(t, defaults.TorznabEnabled)
 	_, found, err := store.LastScheduledSearchRun(ctx)
 	require.NoError(t, err)
 	require.False(t, found)
@@ -54,7 +53,6 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 		CooldownMinutes:        720,
 		MaxAddedAgeDays:        30,
 		SkipIndividualEpisodes: true,
-		TorznabEnabled:         false,
 		ScheduleEnabled:        true,
 		ScheduleIntervalHours:  6,
 		ScheduleMaxSearches:    50,

@@ -400,9 +400,13 @@
         "menuFix": "Zkontrolovat nastavení hledání ve sdílených",
         "action": "Otevřít nastavení hledání ve sdílených",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab je v nastavení hledání ve sdílených vypnutý a není nastaven žádný klíč API pro RED ani OPS. Zapněte Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
-            "menuFix": "Zapnout Torznab, nebo přidat klíč pro RED nebo OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "Nastavení hledání ve sdílených vybírá jen indexery Torznab a není zapnutý žádný indexer Torznab. Zapněte indexer Torznab, nebo vyberte jiné weby v nastavení hledání ve sdílených. qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout indexer Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "Nastavení hledání ve sdílených vybírá jen RED nebo OPS a žádný vybraný web nemá klíč API. Přidejte klíč v nastavení Gazelle (OPS/RED), nebo vyberte jiné weby v nastavení hledání ve sdílených. qui to zkusí znovu každou hodinu.",
+            "menuFix": "Přidat klíč pro RED nebo OPS"
           },
           "no_indexer": {
             "fix": "Není zapnutý žádný indexer. Zapněte indexer Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",

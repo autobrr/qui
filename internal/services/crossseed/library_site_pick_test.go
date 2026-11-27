@@ -27,7 +27,6 @@ func TestSearchRunLoop_AsksTheRedOpsSitesOfTheSitePick(t *testing.T) {
 	}{
 		{name: "an empty pick asks every RED/OPS site", pick: models.SitePick{}, want: []string{"orpheus.network", "redacted.sh"}},
 		{name: "a RED pick asks only RED", pick: models.SitePick{GazelleSites: []string{"redacted.sh"}}, want: []string{"redacted.sh"}},
-		{name: "a Torznab pick with Torznab off asks every RED/OPS site", pick: models.SitePick{IndexerIDs: []int{4}}, want: []string{"orpheus.network", "redacted.sh"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,7 +66,7 @@ func TestGazelleCooldownCountsOnlyThePickedSites(t *testing.T) {
 	require.False(t, gazelleCooldownDue([]GazelleLookup{GazelleLookup{Site: "redacted.sh"}.notAsked(GazelleReasonNotSelected), notPicked}, false), "a pick with no RED/OPS site starts no RED/OPS cooldown")
 }
 
-func TestStartSearchRun_TorznabPickWithoutTorznabAsksNoRedOpsSite(t *testing.T) {
+func TestStartSearchRun_TorznabPickWithNoTorznabServiceFailsWithAPickReason(t *testing.T) {
 	ctx := t.Context()
 	db := testdb.NewMigratedSQLite(t, "crossseed-start-torznab-pick-no-torznab")
 	store, err := models.NewCrossSeedStore(db, make([]byte, 32))
@@ -87,5 +86,6 @@ func TestStartSearchRun_TorznabPickWithoutTorznabAsksNoRedOpsSite(t *testing.T) 
 	}
 
 	_, err = svc.StartSearchRun(ctx, SearchRunOptions{InstanceID: instance.ID, SitePick: models.SitePick{IndexerIDs: []int{7}}})
-	require.ErrorIs(t, err, ErrNoIndexersConfigured)
+	require.ErrorIs(t, err, errTorznabPickNoIndexer)
+	require.Equal(t, scheduleBlockedTorznabPickNoIndexer, scheduleBlockedReason(err))
 }

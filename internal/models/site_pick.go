@@ -17,10 +17,6 @@ func (p SitePick) Every() bool {
 	return len(p.IndexerIDs) == 0 && len(p.GazelleSites) == 0
 }
 
-func (p SitePick) WithoutTorznab() SitePick {
-	return SitePick{IndexerIDs: []int{}, GazelleSites: p.GazelleSites}
-}
-
 func (p SitePick) Clean() SitePick {
 	return SitePick{IndexerIDs: sanitizePositiveInts(p.IndexerIDs), GazelleSites: cleanGazelleSites(p.GazelleSites)}
 }

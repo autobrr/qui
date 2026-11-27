@@ -382,9 +382,13 @@
         "menuFix": "檢查做種庫掃描設定",
         "action": "開啟做種庫掃描設定",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "做種庫掃描設定中的 Torznab 已關閉，且未設定 RED 或 OPS API 金鑰。請開啟 Torznab，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",
-            "menuFix": "開啟 Torznab，或新增 RED 或 OPS 金鑰"
+          "torznab_pick_no_indexer": {
+            "fix": "做種庫掃描設定只選擇了 Torznab 索引器，且沒有已啟用的 Torznab 索引器。請啟用一個 Torznab 索引器，或在做種庫掃描設定中選擇其他站點。qui 會每小時重試一次。",
+            "menuFix": "啟用一個 Torznab 索引器"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "做種庫掃描設定只選擇了 RED 或 OPS，且所選站點都沒有 API 金鑰。請在 Gazelle (OPS/RED) 設定中新增金鑰，或在做種庫掃描設定中選擇其他站點。qui 會每小時重試一次。",
+            "menuFix": "新增 RED 或 OPS 金鑰"
           },
           "no_indexer": {
             "fix": "沒有已啟用的索引器。請啟用一個 Torznab 索引器，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",

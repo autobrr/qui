@@ -423,7 +423,6 @@ export interface CrossSeedSearchSettings extends SitePick {
   cooldownMinutes: number
   maxAddedAgeDays: number
   skipIndividualEpisodes: boolean
-  torznabEnabled: boolean
   scheduleEnabled: boolean
   scheduleIntervalHours: number
   scheduleMaxSearches: number

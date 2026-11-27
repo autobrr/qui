@@ -382,9 +382,13 @@
         "menuFix": "라이브러리 스캔 설정 확인",
         "action": "라이브러리 스캔 설정 열기",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "라이브러리 스캔 설정에서 Torznab이 꺼져 있고, RED 또는 OPS API 키가 설정되어 있지 않습니다. Torznab을 켜거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
-            "menuFix": "Torznab을 켜거나 RED 또는 OPS 키 추가"
+          "torznab_pick_no_indexer": {
+            "fix": "라이브러리 스캔 설정에서 Torznab 인덱서만 선택했고, 활성화된 Torznab 인덱서가 없습니다. Torznab 인덱서를 활성화하거나 라이브러리 스캔 설정에서 다른 사이트를 선택하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "Torznab 인덱서 활성화"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "라이브러리 스캔 설정에서 RED 또는 OPS만 선택했고, 선택한 사이트에 API 키가 없습니다. Gazelle (OPS/RED) 설정에 키를 추가하거나 라이브러리 스캔 설정에서 다른 사이트를 선택하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "RED 또는 OPS 키 추가"
           },
           "no_indexer": {
             "fix": "활성화된 인덱서가 없습니다. Torznab 인덱서를 활성화하거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
