@@ -485,14 +485,10 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			} else {
 				instance.UseReflinks = true
 			}
-			hookCalls := 0
 			service := &Service{
 				instanceStore:   &mockInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
 				automationStore: store,
 				syncManager:     sync,
-				postInjectionHook: func(context.Context, int, []string) {
-					hookCalls++
-				},
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
@@ -514,6 +510,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 
 			adds := withLinkAdder(service)
 			adds.addedIDs = []string{fakeHash("accepted-hash")}
+			programs := runProgramAfterAdd(service, qbt.Torrent{Hash: memberKey})
 			var result InstanceCrossSeedResult
 			if mode == models.CrossSeedPartialPoolModeHardlink {
 				modeResult := service.processHardlinkMode(t.Context(), linkCheck(t, instanceID, memberKey), candidate, torrentBytes, memberKey, "Synthetic.Release", req, matched, "partial-in-pack", sourceFiles, candidateFiles, props, "", "")
@@ -532,7 +529,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			require.Contains(t, result.Message, "pooled registration failed")
 			require.Contains(t, result.Message, "remains stopped for manual intervention")
 			require.Contains(t, result.Message, fetchErr.Error())
-			require.Zero(t, hookCalls, "a failed add runs no External Program")
+			require.Empty(t, programs.ran(), "a failed add runs no External Program")
 			require.Len(t, adds.added, 1, "qBittorrent add must remain intact")
 			require.Empty(t, adds.actions, "terminal registration failure must not recheck or resume")
 			_, statErr := os.Stat(filepath.Join(adds.added[0]["savepath"], descriptors[0].RelativePath))

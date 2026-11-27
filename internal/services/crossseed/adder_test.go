@@ -90,10 +90,10 @@ type adderRig struct {
 func newAdderRig(t *testing.T, sync *adderFake, blocklist *models.CrossSeedBlocklistStore) *adderRig {
 	t.Helper()
 	rig := &adderRig{sync: sync, settler: NewSettler(&settleFake{}, nil)}
-	svc := &Service{postInjectionHook: func(_ context.Context, _ int, hashes []string) {
+	runProgram := func(_ context.Context, _ int, hashes []string) {
 		rig.programs = append(rig.programs, hashes)
-	}}
-	rig.adder = NewAdder(sync, blocklist, rig.settler, func(context.Context) int64 { return adderBudget }, svc.RunExternalProgram)
+	}
+	rig.adder = NewAdder(sync, blocklist, rig.settler, func(context.Context) int64 { return adderBudget }, runProgram)
 	return rig
 }
 
