@@ -43,7 +43,7 @@
   },
   "gocognit": {
     "cmd/qui/main.go": 2,
-    "internal/api/handlers/backups.go": 3,
+    "internal/api/handlers/backups.go": 2,
     "internal/api/handlers/crossseed.go": 2,
     "internal/api/handlers/jackett.go": 2,
     "internal/api/handlers/torrents.go": 2,
@@ -138,6 +138,21 @@
     "internal/config/config.go": 1,
     "internal/metrics/collector/torrent.go": 1,
     "internal/services/externalprograms/service.go": 1
+  },
+  "testhook": {
+    "internal/qbittorrent/sync_manager.go": 3,
+    "internal/services/automations/transfer_rule.go": 1,
+    "internal/services/crossseed/completion.go": 1,
+    "internal/services/crossseed/errored_recovery.go": 1,
+    "internal/services/crossseed/find_and_add.go": 3,
+    "internal/services/crossseed/local_match.go": 3,
+    "internal/services/crossseed/mediainfo_ids.go": 1,
+    "internal/services/crossseed/partial_pool.go": 3,
+    "internal/services/crossseed/seasonpack.go": 2,
+    "internal/services/crossseed/service.go": 1,
+    "internal/services/crossseed/settings.go": 1,
+    "internal/services/jackett/service.go": 3,
+    "internal/services/orphanscan/service.go": 2
   },
   "testsleep": {
     "internal/api/handlers/jackett_rate_limit_test.go": 1,
