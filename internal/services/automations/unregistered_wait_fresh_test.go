@@ -34,6 +34,9 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 		{Type: models.ScoreRuleTypeConditional, Conditional: &models.ConditionalScoreRule{Score: 100, Condition: unregisteredIs("true")}},
 	}}
 
+	orRatioGroup := waitDeleteRule(1, new(0), &models.RuleCondition{Operator: models.OperatorOr, Conditions: []*models.RuleCondition{unregisteredIs("true"), ratioBelow("1")}})
+	orRatioGroup.Conditions.Delete.GroupID = GroupCrossSeedContentPath
+	orRatioGroup.Conditions.Delete.Atomic = "all"
 	notUnregisteredGroup := waitDeleteRule(2, new(0), &models.RuleCondition{Operator: models.OperatorAnd, Conditions: []*models.RuleCondition{unregisteredIs("false"), ratioBelow("1")}})
 	notUnregisteredGroup.Conditions.Delete.GroupID = GroupCrossSeedContentPath
 	notUnregisteredGroup.Conditions.Delete.Atomic = "all"
@@ -52,6 +55,8 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 		{name: "a group that needs every member holds when the read clears one", rules: []*models.Automation{group}, still: map[string]bool{waitOldHash: true},
 			wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 1, wantSkipped: 1},
 		{name: "the same group deletes when the read confirms both", rules: []*models.Automation{group},
+			wantDeleted: []string{waitOldHash, waitFreshHash}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 2},
+		{name: "a group with an OR arm on ratio deletes a member that the read cleared", rules: []*models.Automation{orRatioGroup}, still: map[string]bool{waitOldHash: true},
 			wantDeleted: []string{waitOldHash, waitFreshHash}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 2},
 		{name: "an OR arm on ratio deletes what the read cleared", rules: []*models.Automation{orRatio}, still: map[string]bool{},
 			wantDeleted: []string{waitOldHash, waitFreshHash}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 2},
