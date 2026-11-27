@@ -148,10 +148,10 @@ func TestCheckWebhookUnknownSizePreflight(t *testing.T) {
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{SkipRecheck: tt.skipRecheck}, nil
 				},
-				crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+				injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 					t.Fatal("webhook check must not invoke CrossSeed")
 					return nil, nil
-				},
+				}),
 			}
 
 			response, err := checkOnHeld(t, service, &WebhookCheckRequest{

@@ -225,7 +225,7 @@ func TestApplySourceSearchResults(t *testing.T) {
 					{Hash: fakeHash("source")},
 					{Hash: "ee00000000000000000000000000000000000001"},
 				}, nil),
-				crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+				injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 					data, err := base64.StdEncoding.DecodeString(req.TorrentData)
 					require.NoError(t, err)
 					mi, err := metainfo.Load(bytes.NewReader(data))
@@ -246,7 +246,7 @@ func TestApplySourceSearchResults(t *testing.T) {
 						cancel()
 					}
 					return resp, nil
-				},
+				}),
 			}
 
 			entries, err := service.applySourceSearchResults(ctx, instanceID, &qbt.Torrent{Hash: fakeHash("source"), Name: "source"},

@@ -847,7 +847,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		invokeErr error
 	)
 	if len(boundMatches) == 0 {
-		resp, invokeErr = s.invokeCrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, settings))
+		resp, invokeErr = s.injection.CrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, settings))
 		if invokeErr != nil {
 			run.CandidatesFailed++
 			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("cross-seed request: %w", invokeErr)

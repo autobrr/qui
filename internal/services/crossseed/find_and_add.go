@@ -58,7 +58,7 @@ func (s *Service) invokeBoundAnnouncementMatches(ctx context.Context, matches []
 		for _, source := range matches[start:end] {
 			req := requestBuilder(source)
 
-			response, err := s.invokeCrossSeed(ctx, req)
+			response, err := s.injection.CrossSeed(ctx, req)
 			if err != nil {
 				attemptErrors = append(attemptErrors, fmt.Errorf("instance %d source %s: %w", source.instanceID, source.torrent.Hash, err))
 				continue
@@ -636,13 +636,6 @@ func (s *Service) invokeSeasonPackApply(ctx context.Context, req seasonPackReque
 		return s.seasonPackApplier(ctx, req)
 	}
 	return s.applySeasonPack(ctx, req)
-}
-
-func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
-	if s.crossSeedInvoker != nil {
-		return s.crossSeedInvoker(ctx, req)
-	}
-	return s.CrossSeed(ctx, req)
 }
 
 func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {

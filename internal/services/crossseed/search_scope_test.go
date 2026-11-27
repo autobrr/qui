@@ -529,9 +529,9 @@ func TestSearchRunLoop_GazelleTimeoutBesideTorznabMatchIsRecorded(t *testing.T) 
 	trackerURL = tracker.URL
 	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-gazelle-timeout-torznab", tracker.URL, torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
 	state.gazelleClients, _, _ = slowGazelleClients(t)
-	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Success: true}, nil
-	}
+	})
 
 	runSearchLoopToCompletion(t, svc, state)
 

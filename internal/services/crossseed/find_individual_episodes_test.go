@@ -62,7 +62,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 	}
 
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{
 			Success: true,
@@ -75,7 +75,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 				},
 			},
 		}, nil
-	}
+	})
 
 	settings := &models.CrossSeedAutomationSettings{
 		RSSAutomationTags:      []string{"cross-seed"},
@@ -146,7 +146,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
 
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{
 			Success: true,
@@ -159,7 +159,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 				},
 			},
 		}, nil
-	}
+	})
 
 	startPaused := true
 	req := &ApplyTorrentSearchRequest{

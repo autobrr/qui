@@ -263,6 +263,7 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 func TestAutobrrApplyAcceptsOptionalAnnouncementName(t *testing.T) {
 	instance := &models.Instance{ID: 8, Name: "primary", IsActive: true}
 	svc := &crossseed.Service{}
+	testutil.SetUnexportedField(t, svc, "injection", svc)
 	testutil.SetUnexportedField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
 	testutil.SetUnexportedField(t, svc, "syncManager", &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}})
 	testutil.SetUnexportedField(t, svc, "releaseCache", crossseed.NewReleaseCache())

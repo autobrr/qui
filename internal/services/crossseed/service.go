@@ -78,6 +78,10 @@ type seasonPackRunCreator interface {
 	Create(ctx context.Context, run *models.SeasonPackRun) (*models.SeasonPackRun, error)
 }
 
+type injector interface {
+	CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+}
+
 type qbittorrentSync interface {
 	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
@@ -220,7 +224,7 @@ type Service struct {
 
 	backendPool atomic.Value
 
-	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	injection               injector
 	seasonPackApplier       func(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
@@ -326,6 +330,7 @@ func NewService(
 		metadataService:               metadata.NewService("", ""),
 		activityPublisher:             activity.NopPublisher{},
 	}
+	svc.injection = svc
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
 	if syncManager != nil {
@@ -347,6 +352,7 @@ func (s *Service) MetricsCollectors() []prometheus.Collector { return s.metrics.
 
 func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
 	svc := &Service{automationStore: automationStore}
+	svc.injection = svc
 	svc.partialPool = &partialPoolCoordinator{
 		automationStore: automationStore,
 		settings:        svc.GetAutomationSettings,
