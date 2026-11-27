@@ -42,7 +42,7 @@ func shapesByType(enc *secrets.Encoder) map[reflect.Type]secrets.ShapeInfo {
 func fill(info secrets.ShapeInfo, shapes map[reflect.Type]secrets.ShapeInfo) filled {
 	f := &filler{kind: info.Kind, shapes: shapes, onPath: make(map[reflect.Type]bool)}
 	v := reflect.New(info.Type).Elem()
-	f.fillValue(v, "", "", info.Plain)
+	f.fillValue(v, place{plain: info.Plain, plants: true})
 	return filled{value: v.Interface(), planted: f.planted}
 }
 
@@ -53,63 +53,77 @@ type filler struct {
 	planted []planted
 }
 
-func (f *filler) plant(name, plainName string, plain []string) string {
-	link := "https://planted.invalid/" + name + "/made-up-key"
-	f.planted = append(f.planted, planted{name: name, link: link, plain: slices.Contains(plain, plainName)})
+type place struct {
+	name      string
+	plainName string
+	plain     []string
+	plants    bool
+}
+
+func (p place) field(name string) place {
+	p.name, p.plainName = joinName(p.name, name), joinName(p.plainName, name)
+	return p
+}
+
+func (f *filler) plant(p place) string {
+	if !p.plants {
+		return ""
+	}
+	link := "https://planted.invalid/" + p.name + "/made-up-key"
+	f.planted = append(f.planted, planted{name: p.name, link: link, plain: slices.Contains(p.plain, p.plainName)})
 	return link
 }
 
-func (f *filler) enter(v reflect.Value, name, plainName string, plain []string) {
+func (f *filler) enter(v reflect.Value, p place) {
 	if info, ok := f.shapes[v.Type()]; ok {
-		if info.Kind != f.kind {
-			return
-		}
-		plainName, plain = "", info.Plain
+		p.plants = info.Kind == f.kind
+		p.plainName, p.plain = "", info.Plain
 	}
-	f.fillValue(v, name, plainName, plain)
+	f.fillValue(v, p)
 }
 
-func (f *filler) fillValue(v reflect.Value, name, plainName string, plain []string) {
+func (f *filler) fillValue(v reflect.Value, p place) {
 	t := v.Type()
+	if f.onPath[t] {
+		return
+	}
+	f.onPath[t] = true
+	defer delete(f.onPath, t)
 	switch t.Kind() {
 	case reflect.String:
-		if t == stringType && name != "" {
-			v.SetString(f.plant(name, plainName, plain))
+		if t == stringType && p.name != "" {
+			v.SetString(f.plant(p))
 		}
 	case reflect.Pointer:
 		v.Set(reflect.New(t.Elem()))
-		f.enter(v.Elem(), name, plainName, plain)
+		f.enter(v.Elem(), p)
 	case reflect.Slice:
 		if t.Elem().Kind() == reflect.Uint8 {
 			return
 		}
 		v.Set(reflect.MakeSlice(t, 1, 1))
-		f.enter(v.Index(0), name, plainName, plain)
+		f.enter(v.Index(0), p)
 	case reflect.Array:
 		if t.Len() > 0 {
-			f.enter(v.Index(0), name, plainName, plain)
+			f.enter(v.Index(0), p)
 		}
 	case reflect.Map:
 		key := reflect.New(t.Key()).Elem()
 		if t.Key() == stringType {
-			key.SetString(f.plant(name, plainName, plain))
+			key.SetString(f.plant(p))
 		}
 		elem := reflect.New(t.Elem()).Elem()
-		f.enter(elem, name, plainName, plain)
+		f.enter(elem, p)
 		m := reflect.MakeMap(t)
 		m.SetMapIndex(key, elem)
 		v.Set(m)
+	case reflect.Struct:
+		f.fillFields(v, p)
 	default:
-		if t.Kind() != reflect.Struct || f.onPath[t] {
-			return
-		}
-		f.onPath[t] = true
-		defer delete(f.onPath, t)
-		f.fillFields(v, name, plainName, plain)
 	}
 }
 
-func (f *filler) fillFields(v reflect.Value, name, plainName string, plain []string) {
+func (f *filler) fillFields(v reflect.Value, p place) {
 	t := v.Type()
 	for i := range t.NumField() {
 		field := t.Field(i)
@@ -121,12 +135,12 @@ func (f *filler) fillFields(v reflect.Value, name, plainName string, plain []str
 		fv := v.Field(i)
 		if field.Anonymous && jsonName == "" {
 			if embedded := promotedStruct(fv); embedded.IsValid() {
-				f.fillFields(embedded, name, plainName, plain)
+				f.fillFields(embedded, p)
 				continue
 			}
 		}
 		if field.IsExported() {
-			f.enter(fv, joinName(name, field.Name), joinName(plainName, field.Name), plain)
+			f.enter(fv, p.field(field.Name))
 		}
 	}
 }

@@ -44,6 +44,32 @@ type fields struct {
 	Any      any
 	Skipped  string `json:"-"`
 	Shadowed shadows
+	Deep     deepShadow
+	Tagged   taggedRival
+}
+
+type deepShadow struct {
+	named
+	Title int `json:"title"`
+}
+
+type labelTag struct {
+	Name string `json:"Label"`
+}
+
+type labelPlain struct {
+	Label int
+}
+
+type taggedRival struct {
+	labelTag
+	labelPlain
+}
+
+type nodes map[string]nodes
+
+type holdsNodes struct {
+	Rows nodes
 }
 
 type tree struct {
@@ -76,7 +102,7 @@ func TestNewEncoderAcceptsEachPlainName(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{
 		"Name", "Text", "Ptr", "List", "Array", "ByName", "ByID",
-		"Nested.Name", "Rows.Name", "Groups.Name", "Shadowed.Title",
+		"Nested.Name", "Rows.Name", "Groups.Name", "Shadowed.Title", "Tagged.Name",
 	} {
 		assert.NotPanics(t, func() { secrets.NewEncoder(shapeOf(name), linkShape) }, name)
 	}
@@ -86,13 +112,16 @@ func TestNewEncoderAcceptsEachPlainName(t *testing.T) {
 	assert.NotPanics(t, func() {
 		secrets.NewEncoder(secrets.NewShape(secrets.TrackerPasskey, func(e embedsLink) embedsLink { return e }, "URL", "Note"), linkShape)
 	})
+	assert.NotPanics(t, func() {
+		secrets.NewEncoder(secrets.NewShape(secrets.TrackerPasskey, func(h holdsNodes) holdsNodes { return h }, "Rows"))
+	})
 }
 
 func TestNewEncoderRefusesAPlainNameThatEndsAtNoTextField(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{
 		"inner.Name", "Nested", "Rows", "Groups", "State", "Count", "Any", "Skipped",
-		"Link.URL", "Link.Note", "Links.Note", "Shadowed.named.Title", "Missing", "",
+		"Link.URL", "Link.Note", "Links.Note", "Shadowed.named.Title", "Deep.Title", "Missing", "",
 	} {
 		assert.Panics(t, func() { secrets.NewEncoder(shapeOf(name), linkShape) }, name)
 	}

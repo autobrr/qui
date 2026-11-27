@@ -47,7 +47,8 @@ type fixtureTracker struct {
 }
 
 type fixtureTarget struct {
-	URL string
+	URL     string
+	Tracker fixtureTracker
 }
 
 type fixtureTorrent struct {
@@ -81,6 +82,7 @@ func fixtureTorrentShape(hidden func(fixtureTorrent) fixtureTorrent, plain ...st
 func hideFixtureTorrent(t fixtureTorrent) fixtureTorrent {
 	t.Tracker = secrets.Origin(t.Tracker)
 	t.Trackers = fixtureTrackerShape.HiddenAll(secrets.Audience{}, t.Trackers)
+	t.Target.Tracker = fixtureTrackerShape.Hidden(secrets.Audience{}, t.Target.Tracker)
 	return t
 }
 
@@ -131,6 +133,16 @@ func TestTheShapeChecksNameEachFault(t *testing.T) {
 			}, "Name", "Comment"),
 			check:   checkHidesEveryString,
 			reports: []string{"shows the field Trackers.URL"},
+		},
+		{
+			name: "a Shape of the same kind inside a Shape of another kind that the Shape leaves to the encoder",
+			shape: fixtureTorrentShape(func(t fixtureTorrent) fixtureTorrent {
+				t.Tracker = secrets.Origin(t.Tracker)
+				t.Trackers = fixtureTrackerShape.HiddenAll(secrets.Audience{}, t.Trackers)
+				return t
+			}, "Name", "Comment"),
+			check:   checkHidesEveryString,
+			reports: []string{"the encoder shows the field Target.Tracker.URL"},
 		},
 		{
 			name: "a Shape that writes through a slice of its source",

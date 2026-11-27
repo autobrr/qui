@@ -60,8 +60,7 @@ func innerTypes(t reflect.Type) []reflect.Type {
 		return []reflect.Type{t.Key(), t.Elem()}
 	case reflect.Struct:
 		var inner []reflect.Type
-		for i := range t.NumField() {
-			f := t.Field(i)
+		for f := range t.Fields() {
 			if (f.IsExported() || f.Anonymous) && f.Tag.Get("json") != "-" {
 				inner = append(inner, f.Type)
 			}
@@ -82,6 +81,11 @@ func textNames(root reflect.Type, shaped map[reflect.Type]bool) map[string]bool 
 		}
 	}
 	walk = func(t reflect.Type, path string) {
+		if onPath[t] {
+			return
+		}
+		onPath[t] = true
+		defer delete(onPath, t)
 		switch t.Kind() {
 		case reflect.Pointer, reflect.Slice, reflect.Array:
 			enter(t.Elem(), path)
@@ -94,15 +98,11 @@ func textNames(root reflect.Type, shaped map[reflect.Type]bool) map[string]bool 
 			if t == stringType && path != "" {
 				names[path] = true
 			}
-		default:
-			if t.Kind() != reflect.Struct || onPath[t] {
-				return
-			}
-			onPath[t] = true
-			defer delete(onPath, t)
+		case reflect.Struct:
 			for _, f := range jsonFields(t) {
 				enter(f.typ, joinName(path, f.name))
 			}
+		default:
 		}
 	}
 	walk(root, "")
@@ -134,8 +134,7 @@ func jsonFields(t reflect.Type) []jsonField {
 		}
 		onPath[t] = true
 		defer delete(onPath, t)
-		for i := range t.NumField() {
-			f := t.Field(i)
+		for f := range t.Fields() {
 			tag := f.Tag.Get("json")
 			if tag == "-" {
 				continue
