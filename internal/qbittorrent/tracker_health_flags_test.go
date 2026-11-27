@@ -126,7 +126,7 @@ func newFlagsRigAt(t *testing.T, webAPI string) *flagsRig {
 				out = append(out, map[string]any{"hash": hash, "added_on": tor.addedOn, "trackers": tor.trackers})
 			}
 			_ = json.MarshalWrite(w, out)
-		case "/api/v2/torrents/editTracker", "/api/v2/torrents/addTrackers", "/api/v2/torrents/removeTrackers":
+		case "/api/v2/torrents/editTracker", "/api/v2/torrents/addTrackers", "/api/v2/torrents/removeTrackers", "/api/v2/torrents/stop", "/api/v2/torrents/start":
 			_, _ = io.WriteString(w, "Ok.")
 		case "/api/v2/torrents/trackers":
 			tor, ok := rig.torrents[r.URL.Query().Get("hash")]

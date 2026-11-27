@@ -798,39 +798,7 @@ func (sm *SyncManager) GetTrackerHealthSnapshot(instanceID int) *TrackerHealthSn
 }
 
 func (sm *SyncManager) clearTrackerHealthAndRefetch(ctx context.Context, instanceID int, hashes []string) {
-	sm.trackerHealthMu.Lock()
-	for _, cache := range []*trackerDetails{sm.trackerHealthFlagged[instanceID], sm.automationTrackerDetails[instanceID]} {
-		if cache == nil {
-			continue
-		}
-		if cache.edited == nil {
-			cache.edited = make(map[string]struct{}, len(hashes))
-		}
-		for _, hash := range hashes {
-			cache.edited[hash] = struct{}{}
-		}
-	}
-
-	sm.markTrackersEdited(instanceID, hashes, sm.healthNow())
-	snapshot := sm.trackerHealthCache[instanceID]
-	changed := snapshot != nil && slices.ContainsFunc(hashes, func(hash string) bool {
-		_, has := snapshot.since[hash]
-		return snapshot.byHash[hash] != "" || has
-	})
-	if changed {
-		byHash := maps.Clone(snapshot.byHash)
-		for _, hash := range hashes {
-			delete(byHash, hash)
-		}
-		state := sm.sinceFor(instanceID)
-		sm.trackerHealthCache[instanceID] = newTrackerHealthSnapshot(byHash, snapshot.unregisteredBy, state.times, state.loaded)
-	}
-	sm.trackerHealthMu.Unlock()
-
-	sm.storeUnregisteredSince(ctx, instanceID)
-	if changed {
-		sm.notifyTrackerHealthUpdated(instanceID)
-	}
+	sm.forgetTrackerHealth(ctx, instanceID, hashes, true)
 }
 
 func (sm *SyncManager) getValidatedTrackerMapping(instanceID int) *ValidatedTrackerMapping {
@@ -2028,6 +1996,9 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, requested
 	switch action {
 	case "pause":
 		err = client.PauseCtx(ctx, canonicalHashes)
+		if err == nil {
+			sm.forgetTrackerHealth(ctx, instanceID, canonicalHashes, false)
+		}
 	case "resume":
 		err = client.ResumeCtx(ctx, canonicalHashes)
 	case "delete":

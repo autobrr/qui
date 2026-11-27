@@ -230,6 +230,35 @@ func TestUnregisteredSinceEditRemovesTheStoredTimeAtOnce(t *testing.T) {
 	rig.requireNoSince(t, "the next pass after the edit starts no time")
 }
 
+func TestUnregisteredSinceRestartsWhenQuiStopsTheTorrent(t *testing.T) {
+	t.Parallel()
+
+	rig := newSinceRig(t, "2.15.1")
+	rig.now = rig.now.Add(-time.Hour)
+	started := rig.now
+	rig.pass(t)
+	rig.requireSince(t, started, "first pass")
+	client, err := rig.sm.clientPool.GetClient(t.Context(), 1)
+	require.NoError(t, err)
+	torrents := snapshotTorrents(client.SyncOwner().SnapshotUnchecked())
+	var details TrackerLookup
+	rig.set(func() { details = TrackerLookup{flagsHashDown: slices.Clone(rig.torrents[flagsHashDown].trackers)} })
+
+	rig.now = rig.now.Add(time.Minute)
+	require.NoError(t, rig.sm.BulkAction(t.Context(), 1, []string{flagsHashDown}, "pause"))
+	rig.requireNoSince(t, "a stop through qui removes the time at once")
+	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashDown], "a stop keeps the verdict until the next pass")
+
+	rig.sm.applyTrackerHealthRefreshResult(1, torrents, details, nil, true, started, true)
+	rig.requireNoSince(t, "a pass that started before the stop does not bring the time back")
+
+	rig.now = rig.now.Add(time.Minute)
+	require.NoError(t, rig.sm.BulkAction(t.Context(), 1, []string{flagsHashDown}, "resume"))
+	rig.sm.trackerHealthDetailMaxAge = 0
+	rig.pass(t)
+	rig.requireSince(t, rig.now, "the wait starts again with the first verdict after the start")
+}
+
 func TestUnregisteredSinceDropsTheStoredTimeOfAnEditBeforeTheLoad(t *testing.T) {
 	t.Parallel()
 

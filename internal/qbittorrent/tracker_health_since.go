@@ -107,6 +107,47 @@ func (sm *SyncManager) markTrackersEdited(instanceID int, hashes []string, at ti
 	state.times = times
 }
 
+func (sm *SyncManager) forgetTrackerHealth(ctx context.Context, instanceID int, hashes []string, trackersChanged bool) {
+	sm.trackerHealthMu.Lock()
+	if trackersChanged {
+		for _, cache := range []*trackerDetails{sm.trackerHealthFlagged[instanceID], sm.automationTrackerDetails[instanceID]} {
+			if cache == nil {
+				continue
+			}
+			if cache.edited == nil {
+				cache.edited = make(map[string]struct{}, len(hashes))
+			}
+			for _, hash := range hashes {
+				cache.edited[hash] = struct{}{}
+			}
+		}
+	}
+
+	sm.markTrackersEdited(instanceID, hashes, sm.healthNow())
+	snapshot := sm.trackerHealthCache[instanceID]
+	changed := snapshot != nil && slices.ContainsFunc(hashes, func(hash string) bool {
+		_, has := snapshot.since[hash]
+		return has || trackersChanged && snapshot.byHash[hash] != ""
+	})
+	if changed {
+		byHash := snapshot.byHash
+		if trackersChanged {
+			byHash = maps.Clone(byHash)
+			for _, hash := range hashes {
+				delete(byHash, hash)
+			}
+		}
+		state := sm.sinceFor(instanceID)
+		sm.trackerHealthCache[instanceID] = newTrackerHealthSnapshot(byHash, snapshot.unregisteredBy, state.times, state.loaded)
+	}
+	sm.trackerHealthMu.Unlock()
+
+	sm.storeUnregisteredSince(ctx, instanceID)
+	if changed {
+		sm.notifyTrackerHealthUpdated(instanceID)
+	}
+}
+
 type sinceStep struct {
 	torrent  *qbt.Torrent
 	trackers []qbt.TorrentTracker
