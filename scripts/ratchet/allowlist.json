@@ -43,7 +43,7 @@
   },
   "gocognit": {
     "cmd/qui/main.go": 2,
-    "internal/api/handlers/backups.go": 3,
+    "internal/api/handlers/backups.go": 2,
     "internal/api/handlers/crossseed.go": 2,
     "internal/api/handlers/jackett.go": 2,
     "internal/api/handlers/torrents.go": 2,
