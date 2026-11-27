@@ -55,7 +55,8 @@ func newWaitBudgetService(t *testing.T, waiting, noLongerUnregistered int) (*Ser
 	require.NoError(t, err)
 	stub := newStubQbt(t, string(raw))
 	stub.webAPIVersion = webAPIQbit52
-	svc, _, instanceIDs := newStubService(t, nil, stub)
+	svc, _, instanceIDs, clientPool := newStubServiceWithPool(t, nil, stub)
+	clientPool.SetSyncManager(nil)
 	svc.trackerHealth = &fakeTrackerHealth{snapshot: qbittorrent.NewTrackerHealthSnapshotWithSince(health, since), still: still}
 	svc.clock = func() time.Time { return waitTestNow }
 	return svc, instanceIDs[0], stub

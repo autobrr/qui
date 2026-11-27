@@ -181,6 +181,12 @@ func (s *stubQbt) recordedWrites() []stubWrite {
 
 func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) (*Service, *database.DB, []int) {
 	t.Helper()
+	svc, db, instanceIDs, _ := newStubServiceWithPool(t, crossMatcher, stubs...)
+	return svc, db, instanceIDs
+}
+
+func newStubServiceWithPool(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) (*Service, *database.DB, []int, *qbittorrent.ClientPool) {
+	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, t.Name())
 	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
@@ -205,7 +211,7 @@ func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) 
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
 	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, models.NewAutomationStore(db), models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
-	return svc, db, instanceIDs
+	return svc, db, instanceIDs, clientPool
 }
 
 func parityDeleteRule(mode string, cond *models.RuleCondition) *models.Automation {
