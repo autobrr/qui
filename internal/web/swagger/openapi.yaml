@@ -5780,7 +5780,12 @@ paths:
                   type: array
                   items:
                     type: integer
-                  description: Specific indexers to search
+                  description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+                gazelleSites:
+                  type: array
+                  items:
+                    type: string
+                  description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
                 disableTorznab:
                   type: boolean
                   description: Disable Torznab searches (Gazelle-only for OPS/RED torrents; other torrents will be skipped)
@@ -7384,13 +7389,13 @@ paths:
           required: false
           schema:
             type: string
-          description: The comma-separated Torznab indexer IDs of the search. Empty means every enabled indexer.
+          description: The comma-separated Torznab indexer IDs of the search. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         - name: gazelleSites
           in: query
           required: false
           schema:
             type: string
-          description: The comma-separated RED/OPS sites of the search. Present and empty means none.
+          description: The comma-separated RED/OPS API hosts of the search. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         - name: findIndividualEpisodes
           in: query
           required: false
@@ -11810,7 +11815,12 @@ components:
           type: array
           items:
             type: integer
-          description: Limit completion searches to these Torznab indexer IDs (empty means all)
+          description: The Torznab indexer IDs of the Site pick of completion searches. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick of completion searches, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         bypassTorznabCache:
           type: boolean
           default: false
@@ -11853,7 +11863,12 @@ components:
           type: array
           items:
             type: integer
-          description: Limit completion searches to these Torznab indexer IDs (empty means all)
+          description: The Torznab indexer IDs of the Site pick of completion searches. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick of completion searches, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         bypassTorznabCache:
           type: boolean
           default: false
@@ -12539,6 +12554,7 @@ components:
 
     CrossSeedSearchSettingsPatch:
       type: object
+      description: Each field left out keeps its value. A patch with indexerIds or gazelleSites replaces the whole Site pick, and a list left out of it becomes empty.
       properties:
         instanceId:
           type: integer
@@ -12565,6 +12581,12 @@ components:
           type: array
           items:
             type: integer
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         intervalSeconds:
           type: integer
           description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
@@ -12623,6 +12645,12 @@ components:
           type: array
           items:
             type: integer
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         intervalSeconds:
           type: integer
           description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
@@ -12994,11 +13022,12 @@ components:
           minimum: 1
         indexer_ids:
           type: array
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
           items:
             type: integer
         gazelle_sites:
           type: array
-          description: API hosts of the RED/OPS sites to ask. Absent means every site. A list with no indexer_ids asks no Torznab indexer.
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
           items:
             type: string
 

@@ -2387,7 +2387,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 		return nil, err
 	}
 
-	canonical := uniqueHashStrings(hashes)
+	canonical := infohash.UniqueStrings(hashes)
 	if len(canonical) == 0 {
 		return map[string]qbt.TorrentFiles{}, nil
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/problemreport"
 )
 
@@ -50,13 +51,12 @@ func (h *ProblemReportHandler) Facts(w http.ResponseWriter, r *http.Request) {
 			RespondError(w, http.StatusBadRequest, "instanceId must be a number")
 			return
 		}
-		if req.Search.IndexerIDs, err = parseIDList(query.Get("indexerIds")); err != nil {
+		indexerIDs, err := parseIDList(query.Get("indexerIds"))
+		if err != nil {
 			RespondError(w, http.StatusBadRequest, "indexerIds must be a comma-separated list of numbers")
 			return
 		}
-		if query.Has("gazelleSites") {
-			req.Search.GazelleSites = splitList(query.Get("gazelleSites"))
-		}
+		req.Search.SitePick = models.SitePick{IndexerIDs: indexerIDs, GazelleSites: splitList(query.Get("gazelleSites"))}
 		req.Search.FindIndividualEpisodes = query.Get("findIndividualEpisodes") == "true"
 	}
 

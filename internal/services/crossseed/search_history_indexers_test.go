@@ -86,6 +86,7 @@ func TestStaleSearchWork(t *testing.T) {
 	expiredHash := "cccccccccccccccccccccccccccccccccccccccc"
 	partialHash := "dddddddddddddddddddddddddddddddddddddddd"
 	virginHash := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	torznabOnlyHash := "ffffffffffffffffffffffffffffffffffffffff"
 
 	now := time.Now().UTC()
 	stale := now.Add(-24 * time.Hour)
@@ -95,6 +96,7 @@ func TestStaleSearchWork(t *testing.T) {
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, expiredHash, env.indexerIDs, stale))
 	require.NoError(t, env.store.UpsertSearchHistory(ctx, env.instanceID, expiredHash, stale))
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, partialHash, env.indexerIDs[:1], now))
+	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, torznabOnlyHash, env.indexerIDs, now))
 
 	gazelleClients := &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"redacted.sh": nil}}
 
@@ -181,6 +183,15 @@ func TestStaleSearchWork(t *testing.T) {
 			gazelle:      gazelleClients,
 			wantIndexers: nil,
 			wantGazelle:  true,
+		},
+		{
+			name:         "a Torznab-only pick leaves out RED/OPS work",
+			hash:         torznabOnlyHash,
+			addedOn:      recentAdded,
+			opts:         SearchRunOptions{CooldownMinutes: 720, SitePick: models.SitePick{IndexerIDs: env.indexerIDs, GazelleSites: []string{}}},
+			gazelle:      gazelleClients,
+			wantIndexers: nil,
+			wantGazelle:  false,
 		},
 		{
 			name:         "a newer search of another copy counts",

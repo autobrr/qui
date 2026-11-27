@@ -69,7 +69,8 @@ Library Scan searches other trackers for torrents you already seed. Configure it
 - **Include categories/tags**: qui scans only torrents that match these filters. Leave them empty to scan all torrents.
 - **Exclude categories/tags**: qui never searches a torrent that matches these filters, in a manual run or in a scheduled run. For example, exclude a `no-cross-seed` category or a `no-cs` tag. These are the same pickers that RSS, webhook, and completion use.
 - **Interval**: The delay between torrents. If Torznab is on, the minimum is 60 seconds. If Torznab is off, the minimum is 5 seconds. Set 10 seconds or more for Gazelle-only runs.
-- **Torznab**: The switch beside the indexers. If you turn it off, qui asks only the OPS/RED APIs. qui saves the switch with the other settings, and the switch applies to manual runs and to scheduled runs.
+- **Indexers**: The Torznab indexers and the OPS/RED sites that the scan asks. Leave it empty to ask all of them, or pick only OPS/RED sites to ask no Torznab indexer.
+- **Torznab**: The switch beside the indexers. If you turn it off, qui asks only the OPS/RED APIs: the OPS/RED sites that you picked, or both when you picked none. qui saves the switch with the other settings, and the switch applies to manual runs and to scheduled runs.
 - **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records a Torznab cooldown after an indexer completes its search. If you enable Gazelle, qui records a cooldown when it sends a lookup or local checks find nothing to look up. If the search fails before a lookup, qui can try the torrent in the next run.
 - **Max age for repeat searches**: An indexer that already searched a torrent does not search it again after this many days. 0 turns off this rule.
 - **Skip individual episodes**: The run does not search single TV episodes. If [automatic assembly](./season-packs.md#automatic-assembly) is on, groups of episodes still start season pack searches.
@@ -125,7 +126,7 @@ Start a manual run sparingly. A manual run touches every matching torrent and qu
 When a torrent finishes downloading, qui starts a cross-seed search. Configure this in the **Completion** tab. The **On completion** card holds the tags and the auto-resume switch. The per-instance card below it turns the search on and sets its filters.
 
 - **Categories/Tags**: Filter which completed torrents trigger searches
-- **Target indexers**: Limit completion searches to specific indexers (empty means all enabled)
+- **Indexers**: The Torznab indexers and the OPS/RED sites that completion searches ask. Leave it empty to ask all of them, or pick only OPS/RED sites to ask no Torznab indexer.
 - **Exclude categories/tags**: Skip torrents that match these filters
 - **Bypass Torznab cache**: If you enable this setting for an instance, completion searches for that instance always run a fresh Torznab search instead of using cached indexer results. Default: off. This setting does not affect Gazelle (OPS/RED) searches, because Gazelle searches do not use the Torznab cache.
 - **Search delay**: qui waits 0 to 600 seconds after completion before it searches. Default: 0. If post-completion file moves or sister-torrent injection tools need a head start before qui searches trackers, use this setting.

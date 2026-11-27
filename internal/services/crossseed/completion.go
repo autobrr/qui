@@ -727,20 +727,19 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	if gazelleErr != nil {
 		log.Warn().Err(gazelleErr).Msg("[CROSSSEED-COMPLETION] Failed to initialize Gazelle clients; continuing without Gazelle")
 	}
-	var requestedIndexerIDs []int
+	var pick models.SitePick
 	cacheMode := ""
 	if completionSettings != nil {
-		requestedIndexerIDs = completionSettings.IndexerIDs
+		pick = completionSettings.SitePick
 		if completionSettings.BypassTorznabCache {
 			cacheMode = jackett.CacheModeBypass
 		}
 	}
-	scope := s.collectSearchScope(ctx, instanceID, torrent, searchScopeFacts{
-		requestedIndexerIDs: requestedIndexerIDs,
-		picked:              len(uniquePositiveInts(requestedIndexerIDs)) > 0,
-		gazelleOff:          gazelleClients.disabled(),
-		gazelleKeys:         gazelleClients.hosts(),
-	}, true)
+	sites := s.resolveSitePick(ctx, pick, false, gazelleClients.hosts())
+	scope := s.collectSearchScope(ctx, instanceID, torrent, sites, searchScopeFacts{
+		gazelleOff:  gazelleClients.disabled(),
+		gazelleKeys: gazelleClients.hosts(),
+	})
 	if scope.err != nil {
 		return scope.err
 	}
