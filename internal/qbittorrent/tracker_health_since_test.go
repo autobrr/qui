@@ -425,7 +425,8 @@ func TestUnregisteredSinceKeepsTheRecoveriesOfAFreshReadThatFailsLater(t *testin
 	rig.requireSince(t, rig.now, "the verdict starts the time")
 
 	rig.answer(qbt.TrackerStatusOK, "")
-	hashes := []string{flagsHashDown}
+	hashes := make([]string, 0, 1+trackerDetailChunkSize)
+	hashes = append(hashes, flagsHashDown)
 	for i := range trackerDetailChunkSize {
 		hashes = append(hashes, fmt.Sprintf("%040x", 0xf000+i))
 	}
