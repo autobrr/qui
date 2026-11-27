@@ -384,6 +384,7 @@ func (sm *SyncManager) StillUnregistered(ctx context.Context, instanceID int, ha
 			return nil, err
 		}
 		var recovered []seenTrackers
+		var stopped []string
 		for i := range rows {
 			hash, err := infohash.Parse(rows[i].Hash)
 			if err != nil {
@@ -395,10 +396,16 @@ func (sm *SyncManager) StillUnregistered(ctx context.Context, instanceID int, ha
 			}
 			if torrent, ok := index.Torrent(hash); ok {
 				recovered = append(recovered, seenTrackers{hash: torrent.Hash, flags: announceFlagsOf(torrent), trackers: rows[i].Trackers, at: now})
+				if torrentStopped(&rows[i]) {
+					stopped = append(stopped, torrent.Hash)
+				}
 			}
 		}
 		if len(recovered) > 0 {
 			sm.applySeenTrackers(ctx, instanceID, recovered...)
+		}
+		if len(stopped) > 0 {
+			sm.forgetTrackerHealth(ctx, instanceID, stopped, false)
 		}
 	}
 	return still, nil

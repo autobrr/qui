@@ -123,7 +123,7 @@ func newFlagsRigAt(t *testing.T, webAPI string) *flagsRig {
 				if rig.missing[hash] || (hashes != nil && !slices.Contains(hashes, hash)) {
 					continue
 				}
-				out = append(out, map[string]any{"hash": hash, "added_on": tor.addedOn, "trackers": tor.trackers})
+				out = append(out, map[string]any{"hash": hash, "added_on": tor.addedOn, "state": tor.state, "trackers": tor.trackers})
 			}
 			_ = json.MarshalWrite(w, out)
 		case "/api/v2/torrents/editTracker", "/api/v2/torrents/addTrackers", "/api/v2/torrents/removeTrackers", "/api/v2/torrents/stop", "/api/v2/torrents/start":

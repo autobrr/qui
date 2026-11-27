@@ -435,3 +435,28 @@ func TestUnregisteredSinceKeepsTheRecoveriesOfAFreshReadThatFailsLater(t *testin
 	require.Error(t, err)
 	rig.requireNoSince(t, "a working tracker in a chunk that the read got restarts the wait")
 }
+
+func TestUnregisteredSinceRestartsWhenTheFreshReadSeesAStop(t *testing.T) {
+	t.Parallel()
+
+	rig := newSinceRig(t, "2.15.1")
+	rig.now = rig.now.Add(-time.Hour)
+	started := rig.now
+	rig.pass(t)
+	rig.requireSince(t, started, "first pass")
+
+	rig.now = rig.now.Add(time.Minute)
+	rig.answer(qbt.TrackerStatusNotContacted, "")
+	rig.set(func() { rig.torrents[flagsHashDown].state = string(qbt.TorrentStateStoppedUp) })
+	still, err := rig.sm.StillUnregistered(t.Context(), 1, []string{flagsHashDown})
+	require.NoError(t, err)
+	require.Zero(t, still.Len(), "the fresh read keeps the stopped torrent")
+	rig.requireNoSince(t, "a stop that the fresh read sees restarts the wait")
+
+	rig.now = rig.now.Add(time.Minute)
+	rig.answer(qbt.TrackerStatusNotWorking, "Unregistered torrent")
+	rig.set(func() { rig.torrents[flagsHashDown].state = "" })
+	rig.sm.trackerHealthDetailMaxAge = 0
+	rig.pass(t)
+	rig.requireSince(t, rig.now, "the wait starts again with the first verdict after the start")
+}
