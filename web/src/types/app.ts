@@ -10,7 +10,7 @@ export interface ApplicationDatabaseInfo {
   target: string
 }
 
-export type ExperimentalFeature = "problemReports" | "heldTitles"
+export type ExperimentalFeature = "problemReports"
 
 export interface ApplicationInfo {
   version: string

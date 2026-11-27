@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -118,7 +117,7 @@ func (h *AutomationHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, automations)
+	RespondJSON(w, r, http.StatusOK, automations)
 }
 
 func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +139,7 @@ func (h *AutomationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, automation)
+	RespondJSON(w, r, http.StatusCreated, automation)
 }
 
 func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +184,7 @@ func (h *AutomationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, automation)
+	RespondJSON(w, r, http.StatusOK, automation)
 }
 
 func (h *AutomationHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +210,7 @@ func (h *AutomationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusNoContent, nil)
+	RespondJSON(w, r, http.StatusNoContent, nil)
 }
 
 func (h *AutomationHandler) Reorder(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +233,7 @@ func (h *AutomationHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusNoContent, nil)
+	RespondJSON(w, r, http.StatusNoContent, nil)
 }
 
 func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
@@ -270,7 +269,7 @@ func (h *AutomationHandler) ApplyNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "applied"})
+	RespondJSON(w, r, http.StatusAccepted, map[string]string{"status": "applied"})
 }
 
 func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request) {
@@ -319,7 +318,7 @@ func (h *AutomationHandler) ApplyRuleNow(w http.ResponseWriter, r *http.Request)
 	if rule.DryRun {
 		status = "dry-run-completed"
 	}
-	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+	RespondJSON(w, r, http.StatusAccepted, AutomationDryRunResult{
 		Status:      status,
 		ActivityIDs: activityIDs(activities),
 		Activities:  activities,
@@ -354,7 +353,7 @@ func (h *AutomationHandler) DryRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, AutomationDryRunResult{
+	RespondJSON(w, r, http.StatusAccepted, AutomationDryRunResult{
 		Status:      "dry-run-completed",
 		ActivityIDs: activityIDs(activities),
 		Activities:  activities,
@@ -492,7 +491,7 @@ func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request)
 	}
 
 	if h.activityStore == nil {
-		RespondJSON(w, http.StatusOK, []*models.AutomationActivity{})
+		RespondJSON(w, r, http.StatusOK, []*models.AutomationActivity{})
 		return
 	}
 
@@ -507,7 +506,7 @@ func (h *AutomationHandler) ListActivity(w http.ResponseWriter, r *http.Request)
 		activities = []*models.AutomationActivity{}
 	}
 
-	RespondJSON(w, http.StatusOK, activities)
+	RespondJSON(w, r, http.StatusOK, activities)
 }
 
 func (h *AutomationHandler) GetActivityRun(w http.ResponseWriter, r *http.Request) {
@@ -556,7 +555,7 @@ func (h *AutomationHandler) GetActivityRun(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, run)
+	RespondJSON(w, r, http.StatusOK, run)
 }
 
 func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Request) {
@@ -573,7 +572,7 @@ func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Reques
 	}
 
 	if h.activityStore == nil {
-		RespondJSON(w, http.StatusOK, map[string]int64{"deleted": 0})
+		RespondJSON(w, r, http.StatusOK, map[string]int64{"deleted": 0})
 		return
 	}
 
@@ -584,7 +583,7 @@ func (h *AutomationHandler) DeleteActivity(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
+	RespondJSON(w, r, http.StatusOK, map[string]int64{"deleted": deleted})
 }
 
 type previewActionType int
@@ -655,16 +654,16 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 	previewLimit, previewOffset := payload.previewPagination()
 
 	if action == previewActionCategory {
-		h.handleCategoryPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
+		h.handleCategoryPreview(w, r, instanceID, automation, previewLimit, previewOffset)
 		return
 	}
 
 	if action == previewActionTag {
-		h.handleTagPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
+		h.handleTagPreview(w, r, instanceID, automation, previewLimit, previewOffset)
 		return
 	}
 
-	h.handleDeletePreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset, payload.PreviewView)
+	h.handleDeletePreview(w, r, instanceID, automation, previewLimit, previewOffset, payload.PreviewView)
 }
 
 func (p *AutomationPayload) previewPagination() (limit, offset int) {
@@ -677,31 +676,31 @@ func (p *AutomationPayload) previewPagination() (limit, offset int) {
 	return
 }
 
-func (h *AutomationHandler) handleCategoryPreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int) {
-	result, err := h.service.PreviewCategoryRule(ctx, instanceID, automation, limit, offset)
+func (h *AutomationHandler) handleCategoryPreview(w http.ResponseWriter, r *http.Request, instanceID int, automation *models.Automation, limit, offset int) {
+	result, err := h.service.PreviewCategoryRule(r.Context(), instanceID, automation, limit, offset)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview category rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
 		return
 	}
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }
 
-func (h *AutomationHandler) handleTagPreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int) {
-	result, err := h.service.PreviewTagRule(ctx, instanceID, automation, limit, offset)
+func (h *AutomationHandler) handleTagPreview(w http.ResponseWriter, r *http.Request, instanceID int, automation *models.Automation, limit, offset int) {
+	result, err := h.service.PreviewTagRule(r.Context(), instanceID, automation, limit, offset)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview tag rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
 		return
 	}
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }
 
-func (h *AutomationHandler) handleDeletePreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int, previewView string) {
+func (h *AutomationHandler) handleDeletePreview(w http.ResponseWriter, r *http.Request, instanceID int, automation *models.Automation, limit, offset int, previewView string) {
 	if previewView == "" {
 		previewView = "needed"
 	}
-	result, err := h.service.PreviewDeleteRule(ctx, instanceID, automation, limit, offset, previewView)
+	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, automation, limit, offset, previewView)
 	if errors.Is(err, automations.ErrUnregisteredSinceNotLoaded) {
 		RespondError(w, http.StatusServiceUnavailable, err.Error()+". Try again in a minute.")
 		return
@@ -711,7 +710,7 @@ func (h *AutomationHandler) handleDeletePreview(ctx context.Context, w http.Resp
 		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
 		return
 	}
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }
 
 func (h *AutomationHandler) ValidateRegex(w http.ResponseWriter, r *http.Request) {
@@ -724,7 +723,7 @@ func (h *AutomationHandler) ValidateRegex(w http.ResponseWriter, r *http.Request
 
 	validationErrors := automations.ConditionRegexErrors(payload.Conditions)
 
-	RespondJSON(w, http.StatusOK, map[string]any{
+	RespondJSON(w, r, http.StatusOK, map[string]any{
 		"valid":  len(validationErrors) == 0,
 		"errors": validationErrors,
 	})

@@ -76,7 +76,7 @@ func (h *ThemesHandler) ListCustomThemes(w http.ResponseWriter, r *http.Request)
 	dir, err := h.themesDir.EnsureCustomThemesDir()
 	if err != nil {
 		log.Warn().Err(err).Str("dir", dir).Msg("Custom themes directory unavailable")
-		RespondJSON(w, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: []CustomTheme{}})
+		RespondJSON(w, r, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: []CustomTheme{}})
 		return
 	}
 
@@ -104,7 +104,7 @@ func (h *ThemesHandler) ListCustomThemes(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
-	RespondJSON(w, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: themes})
+	RespondJSON(w, r, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: themes})
 }
 
 func customThemeEntries(dir string) ([]os.DirEntry, error) {
@@ -149,7 +149,7 @@ func (h *ThemesHandler) GetThemeSettings(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusInternalServerError, "Failed to load theme settings")
 		return
 	}
-	RespondJSON(w, http.StatusOK, slots)
+	RespondJSON(w, r, http.StatusOK, slots)
 }
 
 func themeSlotParam(r *http.Request) (string, bool) {
@@ -196,7 +196,7 @@ func (h *ThemesHandler) UpdateThemeSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	h.activity.Publish(activity.Event{Kind: activity.KindThemeSettings})
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *ThemesHandler) DeleteThemeSettings(w http.ResponseWriter, r *http.Request) {
@@ -264,5 +264,5 @@ func (h *ThemesHandler) ListThemes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, map[string][]BuiltinTheme{"themes": buildBuiltinThemeList(themes.All(), hasPremium, authed, selectedIDs...)})
+	RespondJSON(w, r, http.StatusOK, map[string][]BuiltinTheme{"themes": buildBuiltinThemeList(themes.All(), hasPremium, authed, selectedIDs...)})
 }

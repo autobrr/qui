@@ -77,7 +77,7 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 	var req ActivateLicenseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error().Err(err).Msg("Failed to decode activate license request")
-		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+		RespondJSON(w, r, http.StatusBadRequest, ActivateLicenseResponse{
 			Valid: false,
 			Error: "Invalid request body",
 		})
@@ -85,7 +85,7 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.LicenseKey == "" {
-		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+		RespondJSON(w, r, http.StatusBadRequest, ActivateLicenseResponse{
 			Valid: false,
 			Error: "License key is required",
 		})
@@ -94,7 +94,7 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 
 	username, ok := r.Context().Value(ctxkeys.Username).(string)
 	if !ok || username == "" {
-		RespondJSON(w, http.StatusBadRequest, ActivateLicenseResponse{
+		RespondJSON(w, r, http.StatusBadRequest, ActivateLicenseResponse{
 			Valid: false,
 			Error: "Username not found in context",
 		})
@@ -108,7 +108,7 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 			Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 			Msg("Failed to activate license")
 
-		RespondJSON(w, http.StatusForbidden, ActivateLicenseResponse{
+		RespondJSON(w, r, http.StatusForbidden, ActivateLicenseResponse{
 			Valid: false,
 			Error: err.Error(),
 		})
@@ -120,7 +120,7 @@ func (h *LicenseHandler) ActivateLicense(w http.ResponseWriter, r *http.Request)
 		Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 		Msg("License activated successfully")
 
-	RespondJSON(w, http.StatusOK, ActivateLicenseResponse{
+	RespondJSON(w, r, http.StatusOK, ActivateLicenseResponse{
 		Valid:       true,
 		ProductName: licenseResp.ProductName,
 		ExpiresAt:   licenseResp.ExpiresAt,
@@ -132,7 +132,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 	var req ValidateLicenseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error().Err(err).Msg("Failed to decode validate license request")
-		RespondJSON(w, http.StatusBadRequest, ValidateLicenseResponse{
+		RespondJSON(w, r, http.StatusBadRequest, ValidateLicenseResponse{
 			Valid: false,
 			Error: "Invalid request body",
 		})
@@ -140,7 +140,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.LicenseKey == "" {
-		RespondJSON(w, http.StatusBadRequest, ValidateLicenseResponse{
+		RespondJSON(w, r, http.StatusBadRequest, ValidateLicenseResponse{
 			Valid: false,
 			Error: "License key is required",
 		})
@@ -149,7 +149,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 
 	username, ok := r.Context().Value(ctxkeys.Username).(string)
 	if !ok || username == "" {
-		RespondJSON(w, http.StatusBadRequest, ValidateLicenseResponse{
+		RespondJSON(w, r, http.StatusBadRequest, ValidateLicenseResponse{
 			Valid: false,
 			Error: "Username not found in context",
 		})
@@ -164,14 +164,14 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 			Msg("Failed to validate license")
 
 		if errors.Is(err, models.ErrLicenseNotFound) {
-			RespondJSON(w, http.StatusNotFound, ValidateLicenseResponse{
+			RespondJSON(w, r, http.StatusNotFound, ValidateLicenseResponse{
 				Valid: false,
 				Error: err.Error(),
 			})
 			return
 		}
 
-		RespondJSON(w, http.StatusForbidden, ValidateLicenseResponse{
+		RespondJSON(w, r, http.StatusForbidden, ValidateLicenseResponse{
 			Valid: false,
 			Error: err.Error(),
 		})
@@ -183,7 +183,7 @@ func (h *LicenseHandler) ValidateLicense(w http.ResponseWriter, r *http.Request)
 		Str("licenseKey", maskLicenseKey(req.LicenseKey)).
 		Msg("License validated successfully")
 
-	RespondJSON(w, http.StatusOK, ValidateLicenseResponse{
+	RespondJSON(w, r, http.StatusOK, ValidateLicenseResponse{
 		Valid:       true,
 		ProductName: licenseResp.ProductName,
 		ExpiresAt:   licenseResp.ExpiresAt,
@@ -195,7 +195,7 @@ func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Reques
 	hasPremium, err := h.licenseService.HasPremiumAccess(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check premium access")
-		RespondJSON(w, http.StatusInternalServerError, map[string]string{
+		RespondJSON(w, r, http.StatusInternalServerError, map[string]string{
 			"error": "Failed to check premium access",
 		})
 		return
@@ -204,7 +204,7 @@ func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Reques
 	isSupporter, err := h.licenseService.IsSupporter(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to check supporter status")
-		RespondJSON(w, http.StatusInternalServerError, map[string]string{
+		RespondJSON(w, r, http.StatusInternalServerError, map[string]string{
 			"error": "Failed to check supporter status",
 		})
 		return
@@ -218,14 +218,14 @@ func (h *LicenseHandler) GetLicensedThemes(w http.ResponseWriter, r *http.Reques
 		response.SetupAt = &setupAt
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) {
 	licenses, err := h.licenseService.GetAllLicenses(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get licenses")
-		RespondJSON(w, http.StatusInternalServerError, map[string]string{
+		RespondJSON(w, r, http.StatusInternalServerError, map[string]string{
 			"error": "Failed to retrieve licenses",
 		})
 		return
@@ -241,13 +241,13 @@ func (h *LicenseHandler) GetAllLicenses(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	RespondJSON(w, http.StatusOK, licenseInfos)
+	RespondJSON(w, r, http.StatusOK, licenseInfos)
 }
 
 func (h *LicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
 	licenseKey := chi.URLParam(r, "licenseKey")
 	if licenseKey == "" {
-		RespondJSON(w, http.StatusBadRequest, map[string]string{
+		RespondJSON(w, r, http.StatusBadRequest, map[string]string{
 			"error": "License key is required",
 		})
 		return
@@ -259,7 +259,7 @@ func (h *LicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
 			Err(err).
 			Str("licenseKey", maskLicenseKey(licenseKey)).
 			Msg("Failed to delete license")
-		RespondJSON(w, http.StatusInternalServerError, map[string]string{
+		RespondJSON(w, r, http.StatusInternalServerError, map[string]string{
 			"error": "Failed to delete license",
 		})
 		return
@@ -269,7 +269,7 @@ func (h *LicenseHandler) DeleteLicense(w http.ResponseWriter, r *http.Request) {
 		Str("licenseKey", maskLicenseKey(licenseKey)).
 		Msg("License deleted successfully")
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "License deleted successfully",
 	})
 }
@@ -278,7 +278,7 @@ func (h *LicenseHandler) RefreshLicenses(w http.ResponseWriter, r *http.Request)
 	err := h.licenseService.RefreshAllLicenses(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to refresh licenses")
-		RespondJSON(w, http.StatusInternalServerError, map[string]string{
+		RespondJSON(w, r, http.StatusInternalServerError, map[string]string{
 			"error": "Failed to refresh licenses",
 		})
 		return
@@ -286,7 +286,7 @@ func (h *LicenseHandler) RefreshLicenses(w http.ResponseWriter, r *http.Request)
 
 	log.Info().Msg("All licenses refreshed successfully")
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "All licenses refreshed successfully",
 	})
 }

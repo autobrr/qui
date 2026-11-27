@@ -30,7 +30,7 @@ func (h *LogExclusionsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, exclusions)
+	RespondJSON(w, r, http.StatusOK, exclusions)
 }
 
 func (h *LogExclusionsHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -48,5 +48,5 @@ func (h *LogExclusionsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, exclusions)
+	RespondJSON(w, r, http.StatusOK, exclusions)
 }

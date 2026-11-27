@@ -99,8 +99,8 @@ func (h *LogsHandler) listLogFiles() []LogFileEntry {
 	return files
 }
 
-func (h *LogsHandler) ListLogFiles(w http.ResponseWriter, _ *http.Request) {
-	RespondJSON(w, http.StatusOK, h.listLogFiles())
+func (h *LogsHandler) ListLogFiles(w http.ResponseWriter, r *http.Request) {
+	RespondJSON(w, r, http.StatusOK, h.listLogFiles())
 }
 
 func (h *LogsHandler) DownloadLogFile(w http.ResponseWriter, r *http.Request) {
@@ -152,10 +152,7 @@ func (h *LogsHandler) DownloadLogFile(w http.ResponseWriter, r *http.Request) {
 func (h *LogsHandler) GetLogSettings(w http.ResponseWriter, r *http.Request) {
 	settings := h.appConfig.GetLogSettings()
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(settings); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *LogsHandler) UpdateLogSettings(w http.ResponseWriter, r *http.Request) {
@@ -199,10 +196,7 @@ func (h *LogsHandler) UpdateLogSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(settings); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
 func (h *LogsHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {

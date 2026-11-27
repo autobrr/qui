@@ -138,8 +138,7 @@ func TestWebhookSkipsTheSeasonPackStepWhenItsGateIsClosed(t *testing.T) {
 			status, answer := rig.webhookCheck(webhookPackRequest{TorrentName: endpointPack})
 			require.Equal(t, http.StatusNotFound, status)
 			require.Nil(t, answer.SeasonPack)
-			directScan := map[heldTitlesState]int64{heldTitlesOff: 1, heldTitlesBuilding: 1}[tc.state]
-			require.Equal(t, directScan, rig.sync.lists.Load()-lists, "only the direct check reads the torrent list")
+			require.Equal(t, lists, rig.sync.lists.Load(), "the check reads no full torrent list")
 
 			for _, torrent := range [][]byte{pack, endpointTorrent(t, endpointPack, 1, "notes.txt")} {
 				applied := rig.webhookApply(endpointPack, torrent)

@@ -130,7 +130,7 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to queue disc scan")
 		return
 	}
-	RespondJSON(w, http.StatusOK, run)
+	RespondJSON(w, r, http.StatusOK, run)
 }
 
 func (h *DiscScanHandler) ListForTorrent(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +150,7 @@ func (h *DiscScanHandler) ListForTorrent(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusInternalServerError, "Failed to list disc scans")
 		return
 	}
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
 func (h *DiscScanHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +169,7 @@ func (h *DiscScanHandler) Get(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusNotFound, "Disc scan not found")
 		return
 	}
-	RespondJSON(w, http.StatusOK, run)
+	RespondJSON(w, r, http.StatusOK, run)
 }
 
 func (h *DiscScanHandler) Cancel(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +191,7 @@ func (h *DiscScanHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to cancel disc scan")
 		return
 	}
-	RespondJSON(w, http.StatusOK, run)
+	RespondJSON(w, r, http.StatusOK, run)
 }
 
 func parseDiscScanParams(w http.ResponseWriter, r *http.Request) (int, int64, bool) {

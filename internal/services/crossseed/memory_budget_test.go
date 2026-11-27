@@ -34,15 +34,18 @@ func TestMemoryBudget_WebhookCheck(t *testing.T) {
 	t.Cleanup(func() { _ = pool.Close() })
 	testutil.SetUnexportedField(t, pool, "clients", map[int]*qbittorrent.Client{instance.ID: client})
 
+	syncs := qbittorrent.NewSyncManager(pool, nil)
 	svc := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
-		syncManager:      qbittorrent.NewSyncManager(pool, nil),
+		syncManager:      syncs,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{}, nil
 		},
 	}
+	svc.StartHeldTitles(t.Context(), syncs, pool, nil)
+	require.Eventually(t, func() bool { return svc.heldTitles.ready(t.Context(), []int{instance.ID}) }, time.Minute, time.Millisecond)
 	req := &WebhookCheckRequest{
 		InstanceIDs: []int{instance.ID},
 		TorrentName: "Amber.Signal.Vale.101.S02E11.1080p.WEB-DL.DDP5.1.H.264-GRP1",

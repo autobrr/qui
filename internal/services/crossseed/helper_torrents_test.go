@@ -79,7 +79,7 @@ func TestHeldTitlesLeaveOutHelperTorrents(t *testing.T) {
 				if len(tt.want) == 0 {
 					requireNotHeld(t, held, tt.announce, int64(tt.size))
 				}
-				require.Equal(t, checkAnnounce(t, full, tt.announce, tt.size), got)
+				require.Equal(t, checkFullScan(t, full, tt.announce, tt.size), got)
 			})
 		}
 	}

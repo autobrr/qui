@@ -66,7 +66,7 @@ func (h *FilterViewHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, views)
+	RespondJSON(w, r, http.StatusOK, views)
 }
 
 func (h *FilterViewHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,7 @@ func (h *FilterViewHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, view)
+	RespondJSON(w, r, http.StatusCreated, view)
 }
 
 func (h *FilterViewHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +114,7 @@ func (h *FilterViewHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, view)
+	RespondJSON(w, r, http.StatusOK, view)
 }
 
 func (h *FilterViewHandler) Delete(w http.ResponseWriter, r *http.Request) {

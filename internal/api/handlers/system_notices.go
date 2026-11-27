@@ -21,8 +21,8 @@ func NewSystemNoticeHandler(notices *systemnotice.Module) *SystemNoticeHandler {
 	return &SystemNoticeHandler{notices: notices}
 }
 
-func (h *SystemNoticeHandler) List(w http.ResponseWriter, _ *http.Request) {
-	RespondJSON(w, http.StatusOK, h.notices.List())
+func (h *SystemNoticeHandler) List(w http.ResponseWriter, r *http.Request) {
+	RespondJSON(w, r, http.StatusOK, h.notices.List())
 }
 
 func (h *SystemNoticeHandler) Dismiss(w http.ResponseWriter, r *http.Request) {

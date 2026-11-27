@@ -116,10 +116,7 @@ func (h *PreferencesHandler) GetNetworkBinding(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(binding); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode network binding")
-	}
+	RespondJSON(w, r, http.StatusOK, binding)
 }
 
 func (h *PreferencesHandler) respondWithView(w http.ResponseWriter, r *http.Request, instanceID int, operation string) {
@@ -141,10 +138,7 @@ func (h *PreferencesHandler) respondWithView(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode preference view")
-	}
+	RespondJSON(w, r, http.StatusOK, view)
 }
 
 func hideTrackerPreferences(view []prefcatalog.Field) error {
@@ -185,12 +179,7 @@ func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled}); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode alternative speed limits mode response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"enabled": enabled})
 }
 
 func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter, r *http.Request) {
@@ -220,10 +209,5 @@ func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter,
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled}); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode toggle response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"enabled": enabled})
 }

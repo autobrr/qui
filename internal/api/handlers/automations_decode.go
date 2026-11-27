@@ -98,8 +98,8 @@ func differentConditions(conditions *models.ActionConditions) string {
 }
 
 func sameJSON(a, b any) bool {
-	aJSON, errA := json.Marshal(a)
-	bJSON, errB := json.Marshal(b)
+	aJSON, errA := json.Marshal(a) //nolint:forbidigo // compares two conditions and writes no response
+	bJSON, errB := json.Marshal(b) //nolint:forbidigo // compares two conditions and writes no response
 	return errA == nil && errB == nil && bytes.Equal(aJSON, bJSON)
 }
 

@@ -143,7 +143,7 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, searchResponseFor(r, response))
+	RespondJSON(w, r, http.StatusOK, searchResponseFor(r, response))
 }
 
 func respondRateLimitError(w http.ResponseWriter, err error, message string) bool {
@@ -222,7 +222,7 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, searchResponseFor(r, response))
+	RespondJSON(w, r, http.StatusOK, searchResponseFor(r, response))
 }
 
 func (h *JackettHandler) ListRecentSearches(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +247,7 @@ func (h *JackettHandler) ListRecentSearches(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, searches)
+	RespondJSON(w, r, http.StatusOK, searches)
 }
 
 func (h *JackettHandler) GetSearchCacheStats(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +258,7 @@ func (h *JackettHandler) GetSearchCacheStats(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, stats)
+	RespondJSON(w, r, http.StatusOK, stats)
 }
 
 func (h *JackettHandler) UpdateSearchCacheSettings(w http.ResponseWriter, r *http.Request) {
@@ -288,7 +288,7 @@ func (h *JackettHandler) UpdateSearchCacheSettings(w http.ResponseWriter, r *htt
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, stats)
+	RespondJSON(w, r, http.StatusOK, stats)
 }
 
 func (h *JackettHandler) ListIndexers(w http.ResponseWriter, r *http.Request) {
@@ -299,7 +299,7 @@ func (h *JackettHandler) ListIndexers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, indexers)
+	RespondJSON(w, r, http.StatusOK, indexers)
 }
 
 func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
@@ -443,7 +443,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	RespondJSON(w, http.StatusCreated, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
+	RespondJSON(w, r, http.StatusCreated, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
 }
 
 func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
@@ -464,7 +464,7 @@ func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, indexer)
+	RespondJSON(w, r, http.StatusOK, indexer)
 }
 
 func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
@@ -623,7 +623,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
+	RespondJSON(w, r, http.StatusOK, IndexerResponse{TorznabIndexer: indexer, Warnings: warnings})
 }
 
 func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
@@ -722,7 +722,7 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		h.logTestStatusUpdateError(updateErr, id, "ok")
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func indexerTestRequestTimeout(indexer *models.TorznabIndexer) time.Duration {
@@ -798,7 +798,7 @@ func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request)
 			Msg("Failed to invalidate search cache after caps sync")
 	}
 
-	RespondJSON(w, http.StatusOK, indexer)
+	RespondJSON(w, r, http.StatusOK, indexer)
 }
 
 type sourceCredentials struct {
@@ -893,7 +893,7 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }
 
 func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
@@ -904,7 +904,7 @@ func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, health)
+	RespondJSON(w, r, http.StatusOK, health)
 }
 
 func (h *JackettHandler) GetIndexerTrackerDomains(w http.ResponseWriter, r *http.Request) {
@@ -919,7 +919,7 @@ func (h *JackettHandler) GetIndexerTrackerDomains(w http.ResponseWriter, r *http
 		domains = []string{}
 	}
 
-	RespondJSON(w, http.StatusOK, domains)
+	RespondJSON(w, r, http.StatusOK, domains)
 }
 
 func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request) {
@@ -940,7 +940,7 @@ func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, health)
+	RespondJSON(w, r, http.StatusOK, health)
 }
 
 func (h *JackettHandler) GetIndexerErrors(w http.ResponseWriter, r *http.Request) {
@@ -964,7 +964,7 @@ func (h *JackettHandler) GetIndexerErrors(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, errors)
+	RespondJSON(w, r, http.StatusOK, errors)
 }
 
 func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request) {
@@ -981,7 +981,7 @@ func (h *JackettHandler) GetIndexerStats(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, stats)
+	RespondJSON(w, r, http.StatusOK, stats)
 }
 
 func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request) {
@@ -999,7 +999,7 @@ func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, history)
+	RespondJSON(w, r, http.StatusOK, history)
 }
 
 func (h *JackettHandler) GetActivityStatus(w http.ResponseWriter, r *http.Request) {
@@ -1010,5 +1010,5 @@ func (h *JackettHandler) GetActivityStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, status)
+	RespondJSON(w, r, http.StatusOK, status)
 }

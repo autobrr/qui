@@ -4,20 +4,15 @@
 package qbittorrent
 
 import (
-	"net/url"
 	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/secrets"
 )
 
 func TrackerOrigin(announceURL string) string {
-	if u, err := url.Parse(announceURL); err == nil && u.Scheme != "" && u.Host != "" {
-		return u.Scheme + "://" + u.Host
-	}
-	if IsPseudoTrackerLabel(announceURL) {
-		return announceURL
-	}
-	return ""
+	return secrets.Origin(announceURL)
 }
 
 func HideTrackerURLs(urls []string) {
