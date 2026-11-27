@@ -47,12 +47,12 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 		return []byte("torrent"), nil
 	}
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{
 			InstanceID: instanceID, InstanceName: instance.Name, Success: true, Status: "added",
 		}}}, nil
-	}
+	})
 
 	status, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:            []int{instanceID},
@@ -124,10 +124,10 @@ func TestProcessAutomationCandidateExactSizeFallbackRequiresPositiveEqualSizes(t
 				downloadCalls++
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				crossSeedCalls++
 				return nil, nil
-			}
+			})
 
 			_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs: []int{instanceID},
@@ -159,10 +159,10 @@ func TestProcessAutomationCandidateStrict(t *testing.T) {
 	}
 	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{instanceID},
@@ -222,10 +222,10 @@ func TestProcessAutomationCandidateRecheck(t *testing.T) {
 				downloadCalls++
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				crossSeedCalls++
 				return nil, nil
-			}
+			})
 			matches, err := service.findRSSAnnouncementMatches(context.Background(), jackett.SearchResult{Title: tt.announcement, Size: size}, &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs:     []int{instanceID},
 				RescueTitleMismatches: tt.rescueTitles,
@@ -317,10 +317,10 @@ func TestFindRSSAnnouncementMatchesPrefersCodecFallbackOverTitleRescue(t *testin
 		downloadCalls++
 		return []byte("torrent"), nil
 	}
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err = service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:     []int{instanceID},
@@ -487,9 +487,9 @@ func TestProcessAutomationCandidateExactSizeDoesNotReuseDifferentReportedSize(t 
 		downloadCalls++
 		return []byte("torrent"), nil
 	}
-	service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 	autoCtx := &automationContext{candidateCache: make(map[string]*FindCandidatesResponse)}
 	settings := &models.CrossSeedAutomationSettings{TargetInstanceIDs: []int{instanceID}}
 
@@ -519,10 +519,10 @@ func TestProcessAutomationCandidateBindsRecheckDecision(t *testing.T) {
 	}
 	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{instanceID},
@@ -565,10 +565,10 @@ func TestProcessAutomationCandidateExactSizeAcrossInstances(t *testing.T) {
 		return []byte("torrent"), nil
 	}
 	var requests []*CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		requests = append(requests, req)
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: req.TargetInstanceIDs[0], Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{firstInstanceID, secondInstanceID},
@@ -608,13 +608,13 @@ func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t
 		return []byte("torrent"), nil
 	}
 	var sourceHashes []string
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		sourceHashes = append(sourceHashes, req.SearchDecision.SourceHash.String())
 		if req.SearchDecision.SourceHash.Is(high.Hash) {
 			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "no_match"}}}, nil
 		}
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 	run := &models.CrossSeedRun{}
 
 	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
@@ -638,13 +638,13 @@ func TestInvokeBoundAnnouncementMatchesStopsOnTopLevelSuccess(t *testing.T) {
 	}
 	calls := 0
 	service := &Service{
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			calls++
 			if calls > 1 {
 				t.Fatal("a top-level successful response must stop source retries")
 			}
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 
 	response, err := service.invokeBoundAnnouncementMatches(context.Background(), matches, func(boundAnnouncementMatch) *CrossSeedRequest {
@@ -705,12 +705,12 @@ func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				if req.TargetInstanceIDs[0] == firstInstanceID {
 					return tt.first(firstInstanceID, firstInstance.Name)
 				}
 				return tt.second(secondInstanceID, secondInstance.Name)
-			}
+			})
 			run := &models.CrossSeedRun{}
 
 			status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
@@ -763,10 +763,10 @@ func TestProcessAutomationCandidateExactSizeSkipRecheckKeepsSafeInstances(t *tes
 		return []byte("torrent"), nil
 	}
 	var requests []*CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		requests = append(requests, req)
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: safeInstanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{safeInstanceID, hardInstanceID},
@@ -878,12 +878,12 @@ func TestProcessAutomationCandidateExactSizeNoMatchThenErrorFailsInstance(t *tes
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		if req.SearchDecision.SourceHash.Is(first.Hash) {
 			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "no_match"}}}, nil
 		}
 		return nil, errors.New("second source unavailable")
-	}
+	})
 	run := &models.CrossSeedRun{}
 
 	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
@@ -998,6 +998,7 @@ func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 					return models.DefaultCrossSeedAutomationSettings(), nil
 				},
 			}
+			service.injection = service
 			downloads := 0
 			service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 				downloads++
@@ -1088,13 +1089,13 @@ func TestAutomationRunRetriesStrandedAddOnNextPoll(t *testing.T) {
 		}}, jackett.WithMinRequestInterval(time.Millisecond)),
 	}
 	added := false
-	service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		if !added {
 			added = true
 			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "alignment_failed"}}}, nil
 		}
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "exists"}}}, nil
-	}
+	})
 	settings := &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:     []int{instanceID},
 		TargetIndexerIDs:      []int{indexerID},

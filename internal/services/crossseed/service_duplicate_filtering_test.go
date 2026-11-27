@@ -917,10 +917,10 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 
 	cached := TorrentSearchResult{
@@ -984,10 +984,10 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -1063,10 +1063,10 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -1124,7 +1124,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{
 				Success: false,
@@ -1143,7 +1143,7 @@ func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPer
 					},
 				}},
 			}, nil
-		},
+		}),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
@@ -1190,10 +1190,10 @@ func TestExecuteCrossSeedSearchAttemptFailsKnownRejectedInfohashWithoutDownloadi
 			downloadCalled.Store(true)
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			invokerCalled.Store(true)
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
