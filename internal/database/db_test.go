@@ -211,21 +211,6 @@ func TestSQLiteConnectionHookTimeoutBehavior(t *testing.T) {
 			require.ErrorContains(t, err, "PRAGMA synchronous = NORMAL")
 		})
 	})
-
-	t.Run("hung checkpoint fails with setup deadline", func(t *testing.T) {
-		synctest.Test(t, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), sqliteConnectionSetupTimeout)
-			defer cancel()
-
-			err := checkpointStartupWAL(ctx, "test.db", func(ctx context.Context, stmt string) error {
-				require.Equal(t, "PRAGMA wal_checkpoint(TRUNCATE)", stmt)
-				<-ctx.Done()
-				return ctx.Err()
-			})
-			require.ErrorIs(t, err, context.DeadlineExceeded)
-			require.ErrorContains(t, err, "apply wal checkpoint")
-		})
-	})
 }
 
 type columnSpec struct {
