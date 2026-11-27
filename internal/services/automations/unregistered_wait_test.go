@@ -5,6 +5,7 @@ package automations
 
 import (
 	"maps"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -172,4 +173,29 @@ func TestDeleteWaitRanksAWaitingTorrentAsNotUnregistered(t *testing.T) {
 
 	sel = selectTestDeletions(t, []*models.Automation{ranked(nil)}, slices.Clone(torrents), waitTestContext(waitTestSnapshot()))
 	require.Equal(t, []string{"old", "fresh"}, sel.order, "the waiting torrent ranks below the due one")
+}
+
+func TestDeleteWaitSortsAgainForARuleWithAnotherWait(t *testing.T) {
+	root := filepath.ToSlash(t.TempDir())
+	torrents := []qbt.Torrent{
+		{Hash: "fine", Size: 1000, AddedOn: 1, State: qbt.TorrentStateStalledUp, SavePath: root, ContentPath: root + "/fine.mkv"},
+		{Hash: "fresh", Size: 1000, AddedOn: 2, State: qbt.TorrentStateStalledUp, SavePath: root, ContentPath: root + "/fresh.mkv"},
+		{Hash: "old", Size: 1000, AddedOn: 3, State: qbt.TorrentStateStalledUp, SavePath: root, ContentPath: root + "/old.mkv"},
+	}
+	unregisteredFirst := &models.SortingConfig{SchemaVersion: "1", Type: models.SortingTypeScore, Direction: models.SortDirectionDESC,
+		ScoreRules: []models.ScoreRule{{Type: models.ScoreRuleTypeConditional, Conditional: &models.ConditionalScoreRule{Condition: unregisteredIs("true"), Score: 100}}}}
+	waiting := waitDeleteRule(1, nil, &models.RuleCondition{Field: FieldTags, Operator: models.OperatorContains, Value: "never"})
+	waiting.SortingConfig = unregisteredFirst
+	freeing := waitDeleteRule(2, new(0), &models.RuleCondition{Field: FieldFreeSpace, Operator: models.OperatorLessThan, Value: "1500"})
+	freeing.Conditions.Delete.Mode = DeleteModeWithFiles
+	freeing.SortingConfig = unregisteredFirst
+	evalCtx := waitTestContext(waitTestSnapshot())
+	evalCtx.CrossSeedFilesByHash = map[string]qbt.TorrentFiles{}
+	for _, torrent := range torrents {
+		evalCtx.CrossSeedFilesByHash[torrent.Hash] = qbt.TorrentFiles{{Name: torrent.Hash + ".mkv", Size: 1000}}
+	}
+	evalCtx.freeSpaceLedgers = testFreeSpaceLedgers(0, freeing)
+
+	sel := selectTestDeletions(t, []*models.Automation{waiting, freeing}, torrents, evalCtx)
+	require.ElementsMatch(t, []string{"fresh", "old"}, slices.Collect(maps.Keys(sel.byHash)), "a rule with no wait ranks the torrent unregistered for a day first")
 }

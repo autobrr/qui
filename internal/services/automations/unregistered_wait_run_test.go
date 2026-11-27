@@ -179,6 +179,11 @@ func TestDeleteWaitPreviewListsDeletesThenWaitingTorrents(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, page.Examples, 1)
 	require.Equal(t, rows[2], page.Examples[0].Hash, "the waiting rows page after the deletes")
+
+	full, err := svc.PreviewDeleteRule(t.Context(), instanceID, rule, 1, 1, "")
+	require.NoError(t, err)
+	require.Len(t, full.Examples, 1, "a page that the first waiting row fills takes no second one")
+	require.Equal(t, rows[1], full.Examples[0].Hash)
 }
 
 func TestDeleteWaitPreviewAsksAgainUntilTheTimesLoad(t *testing.T) {
