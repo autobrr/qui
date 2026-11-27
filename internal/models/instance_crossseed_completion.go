@@ -17,13 +17,13 @@ import (
 const MaxCompletionDelaySeconds = 600
 
 type InstanceCrossSeedCompletionSettings struct {
-	InstanceID         int       `json:"instanceId"`
-	Enabled            bool      `json:"enabled"`
-	Categories         []string  `json:"categories"`
-	Tags               []string  `json:"tags"`
-	ExcludeCategories  []string  `json:"excludeCategories"`
-	ExcludeTags        []string  `json:"excludeTags"`
-	IndexerIDs         []int     `json:"indexerIds"`
+	InstanceID        int      `json:"instanceId"`
+	Enabled           bool     `json:"enabled"`
+	Categories        []string `json:"categories"`
+	Tags              []string `json:"tags"`
+	ExcludeCategories []string `json:"excludeCategories"`
+	ExcludeTags       []string `json:"excludeTags"`
+	SitePick
 	BypassTorznabCache bool      `json:"bypassTorznabCache"`
 	DelaySeconds       int       `json:"delaySeconds"`
 	UpdatedAt          time.Time `json:"updatedAt"`
@@ -45,13 +45,13 @@ func NewInstanceCrossSeedCompletionStore(db dbinterface.Querier) *InstanceCrossS
 
 func DefaultInstanceCrossSeedCompletionSettings(instanceID int) *InstanceCrossSeedCompletionSettings {
 	return &InstanceCrossSeedCompletionSettings{
-		InstanceID:         instanceID,
-		Enabled:            false,
-		Categories:         []string{},
-		Tags:               []string{},
-		ExcludeCategories:  []string{},
-		ExcludeTags:        []string{},
-		IndexerIDs:         []int{},
+		InstanceID:        instanceID,
+		Enabled:           false,
+		Categories:        []string{},
+		Tags:              []string{},
+		ExcludeCategories: []string{},
+		ExcludeTags:       []string{},
+		IndexerIDs:        []int{}, GazelleSites: []string{},
 		BypassTorznabCache: false,
 		DelaySeconds:       0,
 	}
@@ -74,7 +74,7 @@ func (s *InstanceCrossSeedCompletionStore) Get(ctx context.Context, instanceID i
 
 func (s *InstanceCrossSeedCompletionStore) get(ctx context.Context, instanceID int) (*InstanceCrossSeedCompletionSettings, error) {
 	const query = `SELECT instance_id, enabled, categories_json, tags_json,
-		exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, completion_delay_seconds, updated_at
+		exclude_categories_json, exclude_tags_json, indexer_ids_json, gazelle_sites_json, bypass_torznab_cache, completion_delay_seconds, updated_at
 		FROM instance_crossseed_completion_settings WHERE instance_id = ?`
 
 	row := s.db.QueryRowContext(ctx, query, instanceID)
@@ -90,7 +90,7 @@ func (s *InstanceCrossSeedCompletionStore) get(ctx context.Context, instanceID i
 
 func (s *InstanceCrossSeedCompletionStore) List(ctx context.Context) ([]*InstanceCrossSeedCompletionSettings, error) {
 	const query = `SELECT instance_id, enabled, categories_json, tags_json,
-		exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, completion_delay_seconds, updated_at
+		exclude_categories_json, exclude_tags_json, indexer_ids_json, gazelle_sites_json, bypass_torznab_cache, completion_delay_seconds, updated_at
 		FROM instance_crossseed_completion_settings`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -141,10 +141,14 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 	if err != nil {
 		return nil, err
 	}
+	gazelleJSON, err := EncodeStringSliceJSON(coerced.GazelleSites)
+	if err != nil {
+		return nil, err
+	}
 
 	const stmt = `INSERT INTO instance_crossseed_completion_settings (
-		instance_id, enabled, categories_json, tags_json, exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, completion_delay_seconds)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		instance_id, enabled, categories_json, tags_json, exclude_categories_json, exclude_tags_json, indexer_ids_json, gazelle_sites_json, bypass_torznab_cache, completion_delay_seconds)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(instance_id) DO UPDATE SET
 		enabled = excluded.enabled,
 		categories_json = excluded.categories_json,
@@ -152,6 +156,7 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 		exclude_categories_json = excluded.exclude_categories_json,
 		exclude_tags_json = excluded.exclude_tags_json,
 		indexer_ids_json = excluded.indexer_ids_json,
+		gazelle_sites_json = excluded.gazelle_sites_json,
 		bypass_torznab_cache = excluded.bypass_torznab_cache,
 		completion_delay_seconds = excluded.completion_delay_seconds`
 
@@ -163,6 +168,7 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 		excludeCatJSON,
 		excludeTagJSON,
 		indexerJSON,
+		gazelleJSON,
 		BoolToSQLite(coerced.BypassTorznabCache),
 		coerced.DelaySeconds,
 	)
@@ -183,7 +189,7 @@ func sanitizeInstanceCrossSeedCompletionSettings(s *InstanceCrossSeedCompletionS
 	clone.Tags = SanitizeStringSlice(clone.Tags)
 	clone.ExcludeCategories = SanitizeStringSlice(clone.ExcludeCategories)
 	clone.ExcludeTags = SanitizeStringSlice(clone.ExcludeTags)
-	clone.IndexerIDs = sanitizePositiveInts(clone.IndexerIDs)
+	clone.SitePick = clone.Clean()
 	if clone.DelaySeconds < 0 {
 		clone.DelaySeconds = 0
 	}
@@ -223,6 +229,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		excludeCatJSON     sql.NullString
 		excludeTagJSON     sql.NullString
 		indexerJSON        sql.NullString
+		gazelleJSON        sql.NullString
 		bypassTorznabCache int
 		delaySeconds       int
 		updatedAt          sql.NullTime
@@ -236,6 +243,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		&excludeCatJSON,
 		&excludeTagJSON,
 		&indexerJSON,
+		&gazelleJSON,
 		&bypassTorznabCache,
 		&delaySeconds,
 		&updatedAt,
@@ -263,15 +271,19 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 	if err != nil {
 		return nil, fmt.Errorf("decode indexer ids: %w", err)
 	}
+	gazelleSites, err := DecodeStringSliceJSON(gazelleJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode gazelle sites: %w", err)
+	}
 
 	settings := &InstanceCrossSeedCompletionSettings{
-		InstanceID:         instanceID,
-		Enabled:            enabledInt == 1,
-		Categories:         categories,
-		Tags:               tags,
-		ExcludeCategories:  excludeCategories,
-		ExcludeTags:        excludeTags,
-		IndexerIDs:         indexerIDs,
+		InstanceID:        instanceID,
+		Enabled:           enabledInt == 1,
+		Categories:        categories,
+		Tags:              tags,
+		ExcludeCategories: excludeCategories,
+		ExcludeTags:       excludeTags,
+		IndexerIDs:        indexerIDs, GazelleSites: cleanGazelleSites(gazelleSites),
 		BypassTorznabCache: bypassTorznabCache == 1,
 		DelaySeconds:       max(0, min(MaxCompletionDelaySeconds, delaySeconds)),
 	}

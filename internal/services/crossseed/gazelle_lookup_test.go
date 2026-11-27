@@ -120,7 +120,7 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 			name:     "a site that the request leaves out is not selected",
 			tracker:  otherTracker,
 			settings: bothGazelleKeys(),
-			opts:     TorrentSearchOptions{GazelleSites: []string{"redacted.sh"}},
+			opts:     TorrentSearchOptions{SitePick: models.SitePick{GazelleSites: []string{"redacted.sh"}}},
 			want:     map[string]string{"redacted.sh": "no_match ", "orpheus.network": "not_asked not_selected"},
 		},
 		{
@@ -444,7 +444,7 @@ func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
 
 	require.Equal(t, 1, syncManager.exportCalls)
 
-	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()}, false)
+	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], resolvedSitePick{}, searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()})
 	require.NoError(t, scope.err)
 	require.Equal(t, 2, syncManager.exportCalls)
 }

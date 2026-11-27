@@ -117,7 +117,7 @@ func TestCollectSearchScopeIgnoresCachedFilteringStateForDifferentContentType(t 
 			}, ttlcache.DefaultTTL)
 			service, _ := newCachedFilteringSearchService(t, filterCache)
 
-			scope := service.collectSearchScope(t.Context(), cachedFilteringInstanceID, &qbt.Torrent{Hash: cachedFilteringSourceHash}, searchScopeFacts{}, true)
+			scope := service.collectSearchScope(t.Context(), cachedFilteringInstanceID, &qbt.Torrent{Hash: cachedFilteringSourceHash}, service.resolveSitePick(t.Context(), models.SitePick{}, false, nil), searchScopeFacts{})
 			require.NoError(t, scope.err)
 			require.Equal(t, tc.wantIndexerIDs, scope.torznabIndexerIDs)
 		})

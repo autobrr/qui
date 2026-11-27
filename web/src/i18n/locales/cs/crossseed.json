@@ -13,6 +13,7 @@
     "seededSearch": {
       "gazelleFullDescription": "Gazelle kontroluje RED/OPS pro každý torrent. Torznab dotazuje vybrané ne-OPS/RED indexery.",
       "gazellePartialDescription": "Gazelle kontroluje nakonfigurované stránky pro každý zdrojový torrent. Torznab dotazuje vybrané indexery.",
+      "pickedDescription": "Každé hledání se ptá jen vybraných webů.",
       "noGazelleDescription": "Bez Gazelle, všechny shody závisí na Torznab indexerech."
     }
   },
@@ -124,7 +125,7 @@
     "selectAnInstance": "Vybrat instanci",
     "addInstanceToSearch": "Přidat instanci, aby hledala torrenty, které již seedujete.",
     "torznabIndexers": "Torznab indexery",
-    "torznabIndexersNonOpsRed": "Torznab indexery (ne-OPS/RED)",
+    "indexersAndRedOps": "Indexery a weby RED/OPS",
     "torznab": "Torznab",
     "status": "Stav",
     "currentlyProcessing": "Aktuálně zpracováváno:",
@@ -158,21 +159,13 @@
     "indexers": {
       "placeholderTorznabDisabledGazelleOnly": "Torznab zakázán (pouze Gazelle)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab zakázán (povolit Gazelle)",
-      "placeholderAllEnabledNonOpsRed": "Všechny povolené ne-OPS/RED indexery (pro všechny nechte prázdné)",
       "placeholderAllEnabled": "Všechny povolené indexery (pro všechny nechte prázdné)",
-      "placeholderOnlyOpsRedEnabled": "Povoleno pouze OPS/RED (Gazelle)",
       "placeholderNoTorznabConfigured": "Nenakonfigurovány žádné indexery Torznab",
       "helpTorznabDisabledGazelleCheck": "Torznab zakázán. Gazelle bude u každého zdrojového torrentu kontrolovat RED/OPS.",
       "helpTorznabDisabledEnableGazelle": "Torznab zakázán. Povolte Gazelle (OPS/RED) pro spuštění hledání seedovaných torrentů v režimu pouze Gazelle.",
-      "helpOnlyOpsRedEnabled": "Jsou povoleny pouze Torznab indexery OPS/RED. Torznab zde nijak nepřispívá; Gazelle stále kontroluje RED/OPS.",
-      "helpNoNonOpsRedTorznab": "Žádné ne-OPS/RED Torznab indexery. Gazelle bude stále kontrolovat RED/OPS u každého zdrojového torrentu.",
       "helpNoTorznabConfigured": "Nenakonfigurovány žádné indexery Torznab.",
       "helpAllEnabledNonOpsRedQueried": "Budou dotázány všechny povolené ne-OPS/RED Torznab indexery. Gazelle také kontroluje RED/OPS.",
       "helpAllEnabledTorznabQueried": "Budou dotázány všechny povolené Torznab indexery na shody.",
-      "helpSelectedTorznabQueriedGazelle_one": "Bude dotázán pouze {{count}} vybraný Torznab indexer. Gazelle stále kontroluje RED/OPS.",
-      "helpSelectedTorznabQueriedGazelle_few": "Budou dotázány pouze {{count}} vybrané Torznab indexery. Gazelle stále kontroluje RED/OPS.",
-      "helpSelectedTorznabQueriedGazelle_many": "Bude dotázáno pouze {{count}} vybraných Torznab indexerů. Gazelle stále kontroluje RED/OPS.",
-      "helpSelectedTorznabQueriedGazelle_other": "Bude dotázáno pouze {{count}} vybraných Torznab indexerů. Gazelle stále kontroluje RED/OPS.",
       "helpSelectedQueried_one": "Bude dotázán pouze {{count}} vybraný indexer.",
       "helpSelectedQueried_few": "Budou dotázány pouze {{count}} vybrané indexery.",
       "helpSelectedQueried_many": "Bude dotázáno pouze {{count}} vybraných indexerů.",

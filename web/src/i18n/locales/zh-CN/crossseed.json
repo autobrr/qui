@@ -13,6 +13,7 @@
     "seededSearch": {
       "gazelleFullDescription": "Gazelle 会对每个源种子检查 RED/OPS。Torznab 查询已选择的非 OPS/RED 索引器。",
       "gazellePartialDescription": "Gazelle 会对每个源种子检查已配置的站点。Torznab 查询已选择的索引器。",
+      "pickedDescription": "每次搜索只查询已选择的站点。",
       "noGazelleDescription": "没有 Gazelle，所有匹配依赖 Torznab 索引器。"
     }
   },
@@ -124,7 +125,7 @@
     "selectAnInstance": "选择一个实例",
     "addInstanceToSearch": "添加一个实例以搜索你已做种的种子。",
     "torznabIndexers": "Torznab 索引器",
-    "torznabIndexersNonOpsRed": "Torznab 索引器（非 OPS/RED）",
+    "indexersAndRedOps": "索引器和 RED/OPS 站点",
     "torznab": "Torznab",
     "status": "状态",
     "currentlyProcessing": "当前处理：",
@@ -156,18 +157,13 @@
     "indexers": {
       "placeholderTorznabDisabledGazelleOnly": "Torznab 已禁用（仅限 Gazelle）",
       "placeholderTorznabDisabledEnableGazelle": "Torznab 已禁用（启用 Gazelle）",
-      "placeholderAllEnabledNonOpsRed": "所有已启用的非 OPS/RED 索引器（留空表示全部）",
       "placeholderAllEnabled": "所有已启用的索引器（留空表示全部）",
-      "placeholderOnlyOpsRedEnabled": "仅启用 OPS/RED（Gazelle）",
       "placeholderNoTorznabConfigured": "未配置 Torznab 索引器",
       "helpTorznabDisabledGazelleCheck": "Torznab 已禁用。Gazelle 将为每个源种子检查 RED/OPS。",
       "helpTorznabDisabledEnableGazelle": "Torznab 已禁用。启用 Gazelle (OPS/RED) 以在仅 Gazelle 模式下运行做种搜索。",
-      "helpOnlyOpsRedEnabled": "仅启用了 OPS/RED Torznab 索引器。Torznab 在此不起作用；Gazelle 仍在检查 RED/OPS。",
-      "helpNoNonOpsRedTorznab": "没有非 OPS/RED 的 Torznab 索引器。Gazelle 仍将为每个源种子检查 RED/OPS。",
       "helpNoTorznabConfigured": "未配置 Torznab 索引器。",
       "helpAllEnabledNonOpsRedQueried": "将查询所有已启用的非 OPS/RED Torznab 索引器。Gazelle 也会检查 RED/OPS。",
       "helpAllEnabledTorznabQueried": "将查询所有已启用的 Torznab 索引器以查找匹配项。",
-      "helpSelectedTorznabQueriedGazelle_other": "将仅查询 {{count}} 个选定的 Torznab 索引器。Gazelle 仍在检查 RED/OPS。",
       "helpSelectedQueried_other": "将仅查询 {{count}} 个选定的索引器。"
     },
     "gazelleStatus": {

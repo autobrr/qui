@@ -2113,7 +2113,7 @@ func TestSearchRunLoop_NoBackendDoesNotSleepWithoutLookupAttempt(t *testing.T) {
 			InstanceID:      instance.ID,
 			DisableTorznab:  false,
 			IntervalSeconds: 1,
-			IndexerIDs:      []int{1},
+			SitePick:        models.SitePick{IndexerIDs: []int{1}},
 		},
 		queue: []*qbt.Torrent{
 			&sourceTorrent,
@@ -2152,82 +2152,6 @@ func TestSearchRunLoop_NoBackendDoesNotSleepWithoutLookupAttempt(t *testing.T) {
 	require.True(t, nextWake.IsZero())
 
 	_, found, err := store.GetSearchHistory(ctx, instance.ID, sourceTorrent.Hash)
-	require.NoError(t, err)
-	require.False(t, found)
-}
-
-func TestSearchRunLoop_RunScopedIndexerErrorStopsAfterFirstCandidate(t *testing.T) {
-	ctx := context.Background()
-	db := testdb.NewMigratedSQLite(t, "crossseed-runloop-indexer-resolution-error")
-
-	key := make([]byte, 32)
-	for i := range key {
-		key[i] = byte(i)
-	}
-	store, err := models.NewCrossSeedStore(db, key)
-	require.NoError(t, err)
-	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
-	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
-	require.NoError(t, err)
-
-	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
-		InstanceID:      instance.ID,
-		Status:          models.CrossSeedSearchRunStatusRunning,
-		StartedAt:       time.Now().UTC(),
-		Filters:         models.CrossSeedSearchFilters{},
-		IndexerIDs:      []int{},
-		IntervalSeconds: 1,
-		CooldownMinutes: 0,
-		Results:         []models.CrossSeedSearchResult{},
-	})
-	require.NoError(t, err)
-
-	torrents := []qbt.Torrent{
-		{
-			Hash:     "223759985c562a644428312c8cd3585d04686847",
-			Name:     "During - LMK (2024 WF)",
-			Progress: 1.0,
-			Size:     123,
-			Tracker:  "https://tracker.example/announce",
-		},
-		{
-			Hash:     "323759985c562a644428312c8cd3585d04686847",
-			Name:     "Other Artist - Other Album (2024)",
-			Progress: 1.0,
-			Size:     456,
-			Tracker:  "https://tracker.example/announce",
-		},
-	}
-	resolveErr := errors.New("indexer resolution unavailable")
-	state := &searchRunState{
-		run:                       run,
-		opts:                      SearchRunOptions{InstanceID: instance.ID, IntervalSeconds: 1},
-		resolvedTorznabIndexerErr: resolveErr,
-	}
-
-	svc := &Service{
-		instanceStore:    instanceStore,
-		automationStore:  store,
-		syncManager:      newFakeSyncManager(instance, torrents, nil),
-		releaseCache:     NewReleaseCache(),
-		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		searchState:      state,
-	}
-
-	svc.searchRunLoop(ctx, state)
-
-	require.ErrorIs(t, state.lastError, resolveErr)
-	require.Equal(t, models.CrossSeedSearchRunStatusFailed, state.run.Status)
-	require.Equal(t, 2, state.run.TotalTorrents)
-	require.Equal(t, 1, state.run.Processed)
-	require.Equal(t, 1, state.run.TorrentsFailed)
-	require.Len(t, state.run.Results, 1)
-	require.Equal(t, models.CrossSeedSearchResultStatusFailed, state.run.Results[0].Status)
-	require.Contains(t, state.run.Results[0].Message, "indexer resolution unavailable")
-	require.True(t, state.nextWake.IsZero())
-
-	_, found, err := store.GetSearchHistory(ctx, instance.ID, torrents[0].Hash)
 	require.NoError(t, err)
 	require.False(t, found)
 }
@@ -2358,7 +2282,7 @@ func lookupGazelleForTest(t *testing.T, svc *Service, torrent *qbt.Torrent, file
 
 func lookupGazelleCooldownForTest(t *testing.T, svc *Service, torrent *qbt.Torrent, files qbt.TorrentFiles, clients *gazelleClientSet) (lookups []GazelleLookup, cooldownDue bool) {
 	t.Helper()
-	scope := svc.collectSearchScope(t.Context(), 1, torrent, searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()}, false)
+	scope := svc.collectSearchScope(t.Context(), 1, torrent, resolvedSitePick{}, searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()})
 	require.NoError(t, scope.err)
 	lookups = svc.startGazelleSearch(t.Context(), torrent, files, scope, clients)().lookups
 	return lookups, gazelleCooldownDue(lookups, scope.gazelleKeyMissing)

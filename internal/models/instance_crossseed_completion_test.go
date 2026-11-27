@@ -86,13 +86,13 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 	instanceID := insertTestInstance(t, db, "Test Instance")
 
 	saved, err := store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID:         instanceID,
-		Enabled:            true,
-		Categories:         []string{"Movies", "TV"},
-		Tags:               []string{"scene", "internal"},
-		ExcludeCategories:  []string{"XXX"},
-		ExcludeTags:        []string{"skip"},
-		IndexerIDs:         []int{3, 9},
+		InstanceID:        instanceID,
+		Enabled:           true,
+		Categories:        []string{"Movies", "TV"},
+		Tags:              []string{"scene", "internal"},
+		ExcludeCategories: []string{"XXX"},
+		ExcludeTags:       []string{"skip"},
+		IndexerIDs:        []int{3, 9}, GazelleSites: []string{" Redacted.sh ", "orpheus.network", "redacted.sh"},
 		BypassTorznabCache: true,
 		DelaySeconds:       45,
 	})
@@ -107,6 +107,7 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 	assert.ElementsMatch(t, []string{"XXX"}, saved.ExcludeCategories)
 	assert.ElementsMatch(t, []string{"skip"}, saved.ExcludeTags)
 	assert.ElementsMatch(t, []int{3, 9}, saved.IndexerIDs)
+	assert.Equal(t, []string{"orpheus.network", "redacted.sh"}, saved.GazelleSites)
 
 	retrieved, err := store.Get(ctx, instanceID)
 	require.NoError(t, err)
@@ -120,6 +121,7 @@ func TestInstanceCrossSeedCompletionStore_UpsertAndGet(t *testing.T) {
 	assert.ElementsMatch(t, saved.ExcludeCategories, retrieved.ExcludeCategories)
 	assert.ElementsMatch(t, saved.ExcludeTags, retrieved.ExcludeTags)
 	assert.ElementsMatch(t, saved.IndexerIDs, retrieved.IndexerIDs)
+	assert.Equal(t, saved.GazelleSites, retrieved.GazelleSites)
 }
 
 func TestInstanceCrossSeedCompletionStore_UpsertClampsDelaySeconds(t *testing.T) {
