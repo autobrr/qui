@@ -13,6 +13,7 @@
     "seededSearch": {
       "gazelleFullDescription": "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers.",
       "gazellePartialDescription": "Gazelle checks configured sites for every source torrent. Torznab queries selected indexers.",
+      "pickedDescription": "Each search asks only the picked sites.",
       "noGazelleDescription": "Without Gazelle, all matching relies on Torznab indexers."
     }
   },
@@ -124,7 +125,7 @@
     "selectAnInstance": "Select an instance",
     "addInstanceToSearch": "Add an instance to search the torrents you already seed.",
     "torznabIndexers": "Torznab indexers",
-    "torznabIndexersNonOpsRed": "Torznab indexers (non-OPS/RED)",
+    "indexersAndRedOps": "Indexers and RED/OPS sites",
     "torznab": "Torznab",
     "status": "Status",
     "currentlyProcessing": "Currently processing:",
@@ -157,19 +158,13 @@
     "indexers": {
       "placeholderTorznabDisabledGazelleOnly": "Torznab disabled (Gazelle-only)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab disabled (enable Gazelle)",
-      "placeholderAllEnabledNonOpsRed": "All enabled non-OPS/RED indexers (leave empty for all)",
       "placeholderAllEnabled": "All enabled indexers (leave empty for all)",
-      "placeholderOnlyOpsRedEnabled": "Only OPS/RED enabled (Gazelle)",
       "placeholderNoTorznabConfigured": "No Torznab indexers configured",
       "helpTorznabDisabledGazelleCheck": "Torznab disabled. Gazelle will check RED/OPS for every source torrent.",
       "helpTorznabDisabledEnableGazelle": "Torznab disabled. Enable Gazelle (OPS/RED) to run Seeded Torrent Search in Gazelle-only mode.",
-      "helpOnlyOpsRedEnabled": "Only OPS/RED Torznab indexers are enabled. Torznab contributes nothing here; Gazelle still checks RED/OPS.",
-      "helpNoNonOpsRedTorznab": "No non-OPS/RED Torznab indexers. Gazelle will still check RED/OPS for every source torrent.",
       "helpNoTorznabConfigured": "No Torznab indexers configured.",
       "helpAllEnabledNonOpsRedQueried": "All enabled non-OPS/RED Torznab indexers will be queried. Gazelle also checks RED/OPS.",
       "helpAllEnabledTorznabQueried": "All enabled Torznab indexers will be queried for matches.",
-      "helpSelectedTorznabQueriedGazelle_one": "Only {{count}} selected Torznab indexer will be queried. Gazelle still checks RED/OPS.",
-      "helpSelectedTorznabQueriedGazelle_other": "Only {{count}} selected Torznab indexers will be queried. Gazelle still checks RED/OPS.",
       "helpSelectedQueried_one": "Only {{count}} selected indexer will be queried.",
       "helpSelectedQueried_other": "Only {{count}} selected indexers will be queried."
     },

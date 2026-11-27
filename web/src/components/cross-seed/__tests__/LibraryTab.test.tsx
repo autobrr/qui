@@ -16,6 +16,7 @@ const defaultSearchSettings = vi.hoisted(() => ({
   excludeCategories: [] as string[],
   excludeTags: [] as string[],
   indexerIds: [] as number[],
+  gazelleSites: [] as string[],
   intervalSeconds: 60,
   cooldownMinutes: 720,
   maxAddedAgeDays: 0,
@@ -222,6 +223,26 @@ describe("LibraryTab save", () => {
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
     expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [1] })
+  })
+
+  it("lists the RED/OPS sites in the picker and runs a saved RED-only pick with no Torznab indexer", async () => {
+    Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
+    mocks.indexers = [enabledIndexer]
+    mocks.gazelleSites = [
+      { ...redSite, active: true, replacedIndexerIds: [] },
+      { ...opsSite, active: true, replacedIndexerIds: [] },
+    ]
+    mocks.searchSettings.gazelleSites = [redSite.site]
+    mocks.startRun.mockResolvedValue({ id: 1 })
+    renderTab()
+
+    expect(await screen.findByText("scan.indexers.helpSelectedQueried")).toBeTruthy()
+    expect(screen.getByText(redSite.name)).toBeTruthy()
+    expect(screen.getByText("overview.seededSearch.pickedDescription")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
+
+    await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
+    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], gazelleSites: [redSite.site], disableTorznab: false })
   })
 })
 

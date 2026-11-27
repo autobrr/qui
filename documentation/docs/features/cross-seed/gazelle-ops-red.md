@@ -47,6 +47,8 @@ The **Indexers** section of the **Search Cross-Seeds** dialog names the indexers
 
 To leave an indexer out of one search, select **Change** and clear its check box. If you select only Torznab indexers, the search asks no Gazelle site. If you select only Gazelle sites, the search asks no Torznab indexer.
 
+The indexer pickers of the **Completion** and **Library** tabs list the sites the same way, and a pick there follows the same rules.
+
 Below the check boxes, the dialog lists each site that the search does not ask, with the reason:
 
 | Text | Meaning |

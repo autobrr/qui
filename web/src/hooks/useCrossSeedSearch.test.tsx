@@ -235,7 +235,7 @@ describe("useCrossSeedSearch", () => {
       await Promise.resolve()
     })
     expect(mockedApi.searchCrossSeedTorrent).toHaveBeenCalledTimes(1)
-    expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]?.indexerIds).toBeUndefined()
+    expect(mockedApi.searchCrossSeedTorrent.mock.calls[0][2]).toMatchObject({ indexerIds: [], gazelleSites: [red.site] })
   })
 
   it("tells the dialog that RED/OPS is on and no site has an API key", async () => {
@@ -1113,7 +1113,7 @@ describe("useCrossSeedSearch", () => {
 
       const options = mockedApi.searchCrossSeedTorrent.mock.calls[0][2]
       expect(options?.indexerIds).toEqual([1])
-      expect(options?.gazelleSites).toBeUndefined()
+      expect(options?.gazelleSites).toEqual(plan.map(entry => entry.site))
     })
 
     it("picks the rest when the user takes one entry out, and all again when the user puts it back", async () => {
@@ -1190,7 +1190,7 @@ describe("useCrossSeedSearch", () => {
     it("asks only RED/OPS when the user picks only a RED/OPS entry", async () => {
       const options = await searchCustom(await openWithPlan(), [ops.indexerId])
 
-      expect(options?.indexerIds).toBeUndefined()
+      expect(options?.indexerIds).toEqual([])
       expect(options?.gazelleSites).toEqual(["orpheus.network"])
     })
 

@@ -2113,7 +2113,7 @@ func TestSearchRunLoop_NoBackendDoesNotSleepWithoutLookupAttempt(t *testing.T) {
 			InstanceID:      instance.ID,
 			DisableTorznab:  false,
 			IntervalSeconds: 1,
-			IndexerIDs:      []int{1},
+			SitePick:        models.SitePick{IndexerIDs: []int{1}},
 		},
 		queue: []*qbt.Torrent{
 			&sourceTorrent,
@@ -2358,7 +2358,7 @@ func lookupGazelleForTest(t *testing.T, svc *Service, torrent *qbt.Torrent, file
 
 func lookupGazelleCooldownForTest(t *testing.T, svc *Service, torrent *qbt.Torrent, files qbt.TorrentFiles, clients *gazelleClientSet) (lookups []GazelleLookup, cooldownDue bool) {
 	t.Helper()
-	scope := svc.collectSearchScope(t.Context(), 1, torrent, searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()}, false)
+	scope := svc.collectSearchScope(t.Context(), 1, torrent, resolvedSitePick{}, searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()})
 	require.NoError(t, scope.err)
 	lookups = svc.startGazelleSearch(t.Context(), torrent, files, scope, clients)().lookups
 	return lookups, gazelleCooldownDue(lookups, scope.gazelleKeyMissing)

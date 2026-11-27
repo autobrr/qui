@@ -43,7 +43,7 @@ type SearchRunOptions struct {
 	ExcludeCategories      []string
 	ExcludeTags            []string
 	IntervalSeconds        int
-	IndexerIDs             []int
+	SitePick               models.SitePick
 	DisableTorznab         bool
 	CooldownMinutes        int
 	RequestedBy            string
@@ -211,9 +211,6 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	opts.EnsembleSeasonSearch = settings.SeasonPackAutomationEnabled &&
 		len(opts.SpecificHashes) == 0 && !opts.DisableTorznab
 
-	if opts.DisableTorznab {
-		opts.IndexerIDs = []int{}
-	}
 	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchRunTiming(opts.IntervalSeconds, opts.CooldownMinutes, opts.DisableTorznab)
 
 	s.searchMu.Lock()
@@ -233,7 +230,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 			ExcludeCategories: slices.Clone(opts.ExcludeCategories),
 			ExcludeTags:       slices.Clone(opts.ExcludeTags),
 		},
-		IndexerIDs:      append([]int(nil), opts.IndexerIDs...),
+		IndexerIDs:      opts.recordedIndexerIDs(),
 		IntervalSeconds: opts.IntervalSeconds,
 		CooldownMinutes: opts.CooldownMinutes,
 		SearchLimit:     searchLimit,
@@ -265,7 +262,8 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	if opts.DisableTorznab {
 		state.resolvedTorznabIndexerIDs = []int{}
 	} else {
-		state.resolvedTorznabIndexerIDs, state.resolvedTorznabIndexerErr = s.searchRunIndexerIDs(ctx, opts.IndexerIDs, state.gazelleClients.hosts())
+		sites := s.resolveSitePick(ctx, opts.SitePick, false, state.gazelleClients.hosts())
+		state.resolvedTorznabIndexerIDs, state.resolvedTorznabIndexerErr = sites.runIndexerIDs(state.gazelleClients.hosts())
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -359,7 +357,7 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 	opts.Tags = normalizeStringSlice(opts.Tags)
 	opts.ExcludeCategories = normalizeStringSlice(opts.ExcludeCategories)
 	opts.ExcludeTags = normalizeStringSlice(opts.ExcludeTags)
-	opts.IndexerIDs = uniquePositiveInts(opts.IndexerIDs)
+	opts.SitePick = opts.SitePick.Clean()
 	if opts.RequestedBy == "" {
 		opts.RequestedBy = "manual"
 	}
@@ -1179,16 +1177,14 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	if hasStaleWork {
 		cooldownIndexerIDs = subtractInts(state.resolvedTorznabIndexerIDs, staleWork.indexerIDs)
 	}
-	scope := s.collectSearchScope(ctx, state.opts.InstanceID, torrent, searchScopeFacts{
-		requestedIndexerIDs:  state.resolvedTorznabIndexerIDs,
-		picked:               len(uniquePositiveInts(state.opts.IndexerIDs)) > 0,
+	scope := s.collectSearchScope(ctx, state.opts.InstanceID, torrent, state.sitePick(), searchScopeFacts{
 		torznabOff:           state.opts.DisableTorznab,
 		cooldownIndexerIDs:   cooldownIndexerIDs,
 		skipGazelle:          hasStaleWork && !staleWork.gazelle,
 		gazelleOff:           state.gazelleClients.disabled(),
 		gazelleKeys:          state.gazelleClients.hosts(),
 		duplicateSourceSites: state.duplicateSourceSites[torrent.Hash],
-	}, false)
+	})
 	if s.skipRefusedSource(state, torrent, scope.err, processedAt) { //nolint:contextcheck // the run row is saved with its own context, so a canceled run keeps it
 		return false, nil
 	}

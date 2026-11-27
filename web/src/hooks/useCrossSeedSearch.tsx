@@ -12,13 +12,13 @@ import { CrossSeedDialog, type CrossSeedApplySummary } from "@/components/torren
 import { useCrossSeedInstanceOf } from "@/hooks/useCrossSeedInstanceOf"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"
+import { sitePickFromIds, sitePickOptions, useSitePickSources } from "@/lib/site-pick"
 import type {
   CrossSeedApplyResponse,
   CrossSeedGazelleLookup,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
-  Torrent,
-  TorznabIndexer
+  Torrent
 } from "@/types"
 
 const CROSS_SEED_REFRESH_COOLDOWN_MS = 30_000
@@ -27,29 +27,7 @@ export function useCrossSeedSearch(instanceId: number) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
 
-  const { data: torznabIndexers } = useQuery({
-    queryKey: ["torznab", "indexers"],
-    queryFn: () => api.listTorznabIndexers(),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const enabledTorznabIndexers = useMemo(
-    () => (torznabIndexers ?? []).filter(indexer => indexer.enabled),
-    [torznabIndexers]
-  )
-
-  const sortedEnabledIndexers = useMemo(() => {
-    if (enabledTorznabIndexers.length === 0) {
-      return [] as TorznabIndexer[]
-    }
-
-    return [...enabledTorznabIndexers].sort((a, b) => {
-      if (b.priority !== a.priority) {
-        return b.priority - a.priority
-      }
-      return a.name.localeCompare(b.name)
-    })
-  }, [enabledTorznabIndexers])
+  const { indexers: sortedEnabledIndexers } = useSitePickSources("manual")
 
   const [crossSeedDialogOpen, setCrossSeedDialogOpen] = useState(false)
   const crossSeedInstance = useCrossSeedInstanceOf(instanceId, crossSeedDialogOpen)
@@ -82,13 +60,11 @@ export function useCrossSeedSearch(instanceId: number) {
   })
 
   const gazelleLookups = crossSeedSearchResponse?.gazelleLookups
-  const replacedIndexerIds = useMemo(
-    () => new Set((gazellePlan ?? []).flatMap(entry => entry.replacedIndexerIds ?? [])),
-    [gazellePlan]
-  )
   const searchableIndexers = useMemo(
-    () => sortedEnabledIndexers.filter(indexer => !replacedIndexerIds.has(indexer.id)),
-    [sortedEnabledIndexers, replacedIndexerIds]
+    () => sitePickOptions("manual", sortedEnabledIndexers, gazellePlan ?? [])
+      .filter(option => option.id > 0)
+      .map(option => ({ id: option.id, name: option.label })),
+    [sortedEnabledIndexers, gazellePlan]
   )
   const selectableGazelleIds = useMemo(
     () => (gazellePlan ?? []).filter(entry => entry.status === "will_ask").map(entry => entry.indexerId),
@@ -199,27 +175,17 @@ export function useCrossSeedSearch(instanceId: number) {
   }, [])
 
   const runCrossSeedSearch = useCallback(
-    (torrent: Torrent, indexerOverride?: number[] | null, options?: { bypassCache?: boolean }) => {
+    (torrent: Torrent, options?: { bypassCache?: boolean }) => {
       if (!torrent) {
         return
       }
 
-      let resolvedIndexerIds: number[] | null | undefined
-      let gazelleSites: string[] | undefined
-      if (indexerOverride !== undefined) {
-        resolvedIndexerIds = indexerOverride
-      } else if (crossSeedIndexerMode === "custom") {
-        resolvedIndexerIds = crossSeedIndexerSelection.filter(id => id > 0)
-        gazelleSites = (gazellePlan ?? [])
-          .filter(entry => crossSeedIndexerSelection.includes(entry.indexerId))
-          .map(entry => entry.site)
-      } else {
-        resolvedIndexerIds = searchableIndexers.map(indexer => indexer.id)
-      }
-
-      if (Array.isArray(resolvedIndexerIds) && excludedIndexerIds.length > 0) {
-        resolvedIndexerIds = resolvedIndexerIds.filter(id => !excludedIndexerIds.includes(id))
-      }
+      const plan = gazellePlan ?? []
+      const analyzed = Boolean(crossSeedSearchResponse?.sourceTorrent)
+      const pickedIds = crossSeedIndexerMode === "custom"
+        ? crossSeedIndexerSelection
+        : analyzed ? [...searchableIndexers.map(indexer => indexer.id), ...plan.map(entry => entry.indexerId)] : []
+      const pick = sitePickFromIds(pickedIds.filter(id => !excludedIndexerIds.includes(id)), plan)
 
       setCrossSeedSearchLoading(true)
       setCrossSeedSearchError(null)
@@ -234,8 +200,7 @@ export function useCrossSeedSearch(instanceId: number) {
       void api
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
           findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
-          indexerIds: Array.isArray(resolvedIndexerIds) && resolvedIndexerIds.length > 0 ? resolvedIndexerIds : undefined,
-          gazelleSites,
+          ...pick,
           cacheMode: options?.bypassCache ? "bypass" : undefined,
         })
         .then(response => {
@@ -277,6 +242,7 @@ export function useCrossSeedSearch(instanceId: number) {
     [
       crossSeedIndexerMode,
       crossSeedIndexerSelection,
+      crossSeedSearchResponse?.sourceTorrent,
       crossSeedSettings?.findIndividualEpisodes,
       getCrossSeedResultKey,
       excludedIndexerIds,
@@ -298,7 +264,7 @@ export function useCrossSeedSearch(instanceId: number) {
       return
     }
     setCrossSeedRefreshCooldownUntil(Date.now() + CROSS_SEED_REFRESH_COOLDOWN_MS)
-    runCrossSeedSearch(crossSeedTorrent, undefined, { bypassCache: true })
+    runCrossSeedSearch(crossSeedTorrent, { bypassCache: true })
   }, [crossSeedTorrent, runCrossSeedSearch])
 
   const canCrossSeedSearch = sortedEnabledIndexers.length > 0 || Boolean(crossSeedSettings?.gazelleEnabled)

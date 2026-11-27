@@ -97,16 +97,14 @@ func (s *Service) prepareManualSearch(ctx context.Context, instanceID int, hash 
 	if err != nil {
 		return nil, err
 	}
-	scope := s.collectSearchScope(ctx, instanceID, sourceTorrent, searchScopeFacts{
-		requestedIndexerIDs: opts.IndexerIDs,
-		picked:              len(uniquePositiveInts(opts.IndexerIDs)) > 0 || opts.GazelleSites != nil,
-		torznabOff:          opts.DisableTorznab,
-		skipGazelle:         opts.SkipGazelle,
-		gazelleOff:          gazelleClients.disabled(),
-		gazelleKeys:         gazelleClients.hosts(),
-		gazelleSelected:     opts.GazelleSites,
-		reuseLocalChecks:    true,
-	}, true)
+	sites := s.resolveSitePick(ctx, opts.SitePick, opts.DisableTorznab, gazelleClients.hosts())
+	scope := s.collectSearchScope(ctx, instanceID, sourceTorrent, sites, searchScopeFacts{
+		torznabOff:       opts.DisableTorznab,
+		skipGazelle:      opts.SkipGazelle,
+		gazelleOff:       gazelleClients.disabled(),
+		gazelleKeys:      gazelleClients.hosts(),
+		reuseLocalChecks: true,
+	})
 	if scope.err != nil {
 		return nil, scope.err
 	}

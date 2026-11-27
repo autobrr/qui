@@ -21,7 +21,7 @@ type SearchSettingsPatch struct {
 	Tags                   *[]string
 	ExcludeCategories      *[]string
 	ExcludeTags            *[]string
-	IndexerIDs             *[]int
+	SitePick               *models.SitePick
 	IntervalSeconds        *int
 	CooldownMinutes        *int
 	MaxAddedAgeDays        *int
@@ -169,7 +169,7 @@ func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettin
 	settings.Tags = normalizeStringSlice(settings.Tags)
 	settings.ExcludeCategories = normalizeStringSlice(settings.ExcludeCategories)
 	settings.ExcludeTags = normalizeStringSlice(settings.ExcludeTags)
-	settings.IndexerIDs = uniquePositiveInts(settings.IndexerIDs)
+	settings.SitePick = settings.Clean()
 	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, !settings.TorznabEnabled)
 	settings.MaxAddedAgeDays = max(settings.MaxAddedAgeDays, 0)
 	settings.ScheduleIntervalHours = min(max(settings.ScheduleIntervalHours, 1), maxScheduleIntervalHours)
@@ -285,8 +285,8 @@ func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings)
 	if patch.Tags != nil {
 		settings.Tags = append([]string(nil), *patch.Tags...)
 	}
-	if patch.IndexerIDs != nil {
-		settings.IndexerIDs = append([]int(nil), *patch.IndexerIDs...)
+	if patch.SitePick != nil {
+		settings.SitePick = patch.SitePick.Clean()
 	}
 	if patch.IntervalSeconds != nil {
 		settings.IntervalSeconds = *patch.IntervalSeconds

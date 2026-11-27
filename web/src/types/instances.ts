@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { SitePick } from "./crossseed"
+
 export type FilesystemMode = "none" | "local" | "remote"
 
 export interface Instance {
@@ -117,14 +119,13 @@ export const REANNOUNCE_CONSTRAINTS = {
   DEFAULT_MAX_RETRIES: 50,
 } as const
 
-export interface InstanceCrossSeedCompletionSettings {
+export interface InstanceCrossSeedCompletionSettings extends SitePick {
   instanceId: number
   enabled: boolean
   categories: string[]
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
-  indexerIds: number[]
   bypassTorznabCache: boolean
   delaySeconds: number
 }
