@@ -78,6 +78,23 @@ func TestExportAddsTheTorrentAndKeepsTheSource(t *testing.T) {
 	require.Zero(t, r.src.Writes("torrents/delete"))
 }
 
+func TestExportAddsNothingWhenTheTargetHasTheTorrent(t *testing.T) {
+	r := newRig(t, exportPolls)
+	s := newShow(t, showName)
+	r.seed(s)
+	write(t, filepath.Join(r.dstDir, showName), s.files)
+	r.dst.Seed(s.data, r.dstDir)
+
+	record, res := r.export(r.exportRequest(s))
+
+	require.Empty(t, res.Failure)
+	require.True(t, res.AlreadyOnTarget)
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Contains(t, logOf(record), "The target already has the torrent, so qui adds nothing.")
+	require.Zero(t, r.dst.Writes("torrents/add"))
+	require.True(t, r.seeding(r.source.ID, s.hash), "the source seeds on")
+}
+
 type deletes struct {
 	mu     sync.Mutex
 	actors []qbittorrent.DeleteActor
@@ -113,6 +130,7 @@ func TestExportFailsAndTheNextRuleRunTriesAgain(t *testing.T) {
 	require.False(t, record.FinishedAt.IsZero())
 	require.False(t, r.dst.Has(s.hash), "qui takes the failed torrent off the target")
 	require.Equal(t, "false", r.dst.LastParams("torrents/delete").Get("deleteFiles"))
+	require.Contains(t, logOf(record), "Removed the torrent from the target, and kept its files.")
 	require.Equal(t, []qbittorrent.DeleteActor{{Kind: qbittorrent.DeleteActorAutomation, RuleName: "export"}}, noted.list())
 	require.Equal(t, map[string]string{showName + "/Show.S01E01.mkv": string(half["Show.S01E01.mkv"])}, tree(t, r.dstDir))
 	require.True(t, r.seeding(r.source.ID, s.hash), "the source seeds on")
