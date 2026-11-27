@@ -37,7 +37,7 @@ func (s *Service) Retry(ctx context.Context, id int64) (int64, error) {
 		newID, _, err := s.Export(ctx, ExportRequest{
 			SourceInstanceID: record.SourceInstanceID,
 			TargetInstanceID: record.TargetInstanceID,
-			Hash:             m.Hash,
+			Hash:             m.Hash.String(),
 			Name:             m.Name,
 			Size:             record.Size,
 			Placement:        m.Placement,
@@ -54,7 +54,7 @@ func (s *Service) Retry(ctx context.Context, id int64) (int64, error) {
 	}
 	return s.Start(ctx, Request{
 		SourceInstanceID: record.SourceInstanceID,
-		Hash:             record.Members[0].Hash,
+		Hash:             record.Members[0].Hash.String(),
 		TargetInstanceID: record.TargetInstanceID,
 		Placement:        placement,
 		Options:          Options{After: record.Options.After, LeaveStopped: record.Options.LeaveStopped, ForcedWay: record.Options.ForcedWay},

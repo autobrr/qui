@@ -149,7 +149,7 @@ func TestTransferUsesFilesAlreadyOnTheTarget(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, helpers, tc.checks, "a check-only helper for each check on the target")
 			for _, h := range helpers {
-				require.False(t, r.dst.Has(h.Hash), "qui removed its helper")
+				require.False(t, r.dst.Has(h.Hash.String()), "qui removed its helper")
 			}
 
 			require.False(t, r.src.Has(s.hash))

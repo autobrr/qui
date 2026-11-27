@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type Repository struct {
@@ -81,7 +82,7 @@ func NewRepository(db dbinterface.Querier) *Repository {
 }
 
 func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string][]CachedFile, error) {
-	cleaned := dedupeHashes(hashes)
+	cleaned := uniqueHashes(hashes)
 	if len(cleaned) == 0 {
 		return map[string][]CachedFile{}, nil
 	}
@@ -142,7 +143,7 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 }
 
 func (r *Repository) getEntriesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*cacheEntryRows, error) {
-	cleaned := dedupeHashes(hashes)
+	cleaned := uniqueHashes(hashes)
 	results := make(map[string]*cacheEntryRows, len(cleaned))
 	for batch := range slices.Chunk(cleaned, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
@@ -492,7 +493,7 @@ func decodeNullableBoolFromInt(value sql.NullInt64) *bool {
 }
 
 func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*SyncInfo, error) {
-	cleaned := dedupeHashes(hashes)
+	cleaned := uniqueHashes(hashes)
 	if len(cleaned) == 0 {
 		return map[string]*SyncInfo{}, nil
 	}
@@ -596,7 +597,7 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 		return nil
 	}
 
-	hashes = dedupeHashes(hashes)
+	hashes = uniqueHashes(hashes)
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -672,7 +673,7 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 		return 0, nil
 	}
 
-	currentHashes = dedupeHashes(currentHashes)
+	currentHashes = uniqueHashes(currentHashes)
 	if len(currentHashes) == 0 {
 		return 0, nil
 	}
@@ -836,19 +837,16 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 	return &stats, nil
 }
 
-func dedupeHashes(hashes []string) []string {
-	seen := make(map[string]struct{}, len(hashes))
+func uniqueHashes(hashes []string) []string {
+	seen := make(map[infohash.Hash]struct{}, len(hashes))
 	unique := make([]string, 0, len(hashes))
-	for _, h := range hashes {
-		h = strings.ToLower(strings.TrimSpace(h))
-		if h == "" {
+	for _, raw := range hashes {
+		hash, err := infohash.Parse(raw)
+		if _, dup := seen[hash]; dup || err != nil {
 			continue
 		}
-		if _, ok := seen[h]; ok {
-			continue
-		}
-		seen[h] = struct{}{}
-		unique = append(unique, h)
+		seen[hash] = struct{}{}
+		unique = append(unique, hash.String())
 	}
 	return unique
 }

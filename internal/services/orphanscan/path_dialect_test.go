@@ -232,8 +232,8 @@ func TestPathDialect_RootBuilders(t *testing.T) {
 func TestPathDialect_FileMapKeys(t *testing.T) {
 	t.Parallel()
 
-	torrents := []*qbt.Torrent{{Hash: "h", SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}
-	files := map[string]qbt.TorrentFiles{"h": {{Name: "Show/E01.mkv"}, {Name: "a\\b.mkv"}}}
+	torrents := []*qbt.Torrent{{Hash: hh, SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}
+	files := map[string]qbt.TorrentFiles{hh: {{Name: "Show/E01.mkv"}, {Name: "a\\b.mkv"}}}
 	result, err := buildFileMapFromTorrents(fsops.SlashPaths, torrents, files, false)
 	require.NoError(t, err)
 
@@ -446,10 +446,10 @@ func TestExecuteScan_RemoteStoresSlashPaths(t *testing.T) {
 	}, "/srv/data/empty", "/srv/data/x/y")
 	f := newModeFixture(t, "orphanscan-slash-paths", models.FilesystemModeRemote, func(*models.Instance) fsops.Backend { return b })
 	stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: "//srv/data/", State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv"}, {Name: "a\\b.mkv"}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv"}, {Name: "a\\b.mkv"}}}, nil
 	}
 	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: "/srv/data", CategorySaveFolders: []string{"/srv/data/x/y"}})
 	_, err := f.store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
@@ -500,13 +500,13 @@ func TestPathDialect_DeletionRechecks(t *testing.T) {
 	f := newModeFixture(t, "orphanscan-slash-delete", models.FilesystemModeLocal, nil)
 	f.svc.backendPool = fsops.NewPool(f.instance, b)
 	torrents := []qbt.Torrent{
-		{Hash: "owned", SavePath: "/srv/data", State: qbt.TorrentStatePausedUp},
-		{Hash: "nested", SavePath: "/srv/data/a", State: qbt.TorrentStatePausedUp},
-		{Hash: "late", SavePath: "/srv/data", State: qbt.TorrentStatePausedUp},
-		{Hash: "disc", SavePath: "/srv/data", State: qbt.TorrentStatePausedUp},
+		{Hash: hOwned, SavePath: "/srv/data", State: qbt.TorrentStatePausedUp},
+		{Hash: hNested, SavePath: "/srv/data/a", State: qbt.TorrentStatePausedUp},
+		{Hash: hLate, SavePath: "/srv/data", State: qbt.TorrentStatePausedUp},
+		{Hash: hDisc, SavePath: "/srv/data", State: qbt.TorrentStatePausedUp},
 	}
 	live := 2
-	files := map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv"}}, "nested": {{Name: "n.mkv"}}}
+	files := map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv"}}, hNested: {{Name: "n.mkv"}}}
 	var categories []string
 	stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) { return torrents[:live], nil }
 	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
@@ -531,8 +531,8 @@ func TestPathDialect_DeletionRechecks(t *testing.T) {
 	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 
 	live = len(torrents)
-	files["late"] = qbt.TorrentFiles{{Name: "late.mkv"}}
-	files["disc"] = qbt.TorrentFiles{{Name: "Movie/BDMV/STREAM/00000.m2ts"}}
+	files[hLate] = qbt.TorrentFiles{{Name: "late.mkv"}}
+	files[hDisc] = qbt.TorrentFiles{{Name: "Movie/BDMV/STREAM/00000.m2ts"}}
 	categories = []string{"/srv/data/c\\x", "/srv/data/cat"}
 	settings.IgnorePaths = []string{"/srv/data/skip"}
 	_, err = f.store.UpsertSettings(t.Context(), settings)

@@ -4,6 +4,8 @@
 package transfer_test
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
@@ -49,7 +52,7 @@ func group(hashes ...string) *transfer.Record {
 	}
 	for _, hash := range hashes {
 		record.Members = append(record.Members, transfer.Member{
-			Hash:             hash,
+			Hash:             hashOf(hash),
 			Name:             "Name " + hash,
 			SourceSavePath:   "/src/" + hash,
 			TargetInstanceID: target,
@@ -66,18 +69,18 @@ func TestStartClaimsTheGroupInOneWritePostgresIntegration(t *testing.T) {
 		store := open(t, db)
 		require.NoError(t, store.Create(t.Context(), group("aaaa", "bbbb")))
 
-		require.True(t, store.IsClaimed(source, "aaaa"))
-		require.True(t, store.IsClaimed(source, "bbbb"))
-		require.False(t, store.IsClaimed(target, "aaaa"), "a claim holds the torrent on its own instance only")
+		require.True(t, store.IsClaimed(source, hashOf("aaaa")))
+		require.True(t, store.IsClaimed(source, hashOf("bbbb")))
+		require.False(t, store.IsClaimed(target, hashOf("aaaa")), "a claim holds the torrent on its own instance only")
 
 		err := store.Create(t.Context(), group("cccc", "bbbb"))
 		require.ErrorIs(t, err, transfer.ErrClaimed)
-		require.False(t, store.IsClaimed(source, "cccc"), "a refused claim claims no torrent of its group")
+		require.False(t, store.IsClaimed(source, hashOf("cccc")), "a refused claim claims no torrent of its group")
 
 		reopened := open(t, db)
-		require.True(t, reopened.IsClaimed(source, "aaaa"))
-		require.True(t, reopened.IsClaimed(source, "bbbb"))
-		require.False(t, reopened.IsClaimed(source, "cccc"))
+		require.True(t, reopened.IsClaimed(source, hashOf("aaaa")))
+		require.True(t, reopened.IsClaimed(source, hashOf("bbbb")))
+		require.False(t, reopened.IsClaimed(source, hashOf("cccc")))
 		folders, err := reopened.RunningFolders(t.Context(), source)
 		require.NoError(t, err)
 		require.ElementsMatch(t, []string{"/src/aaaa", "/src/bbbb"}, folders, "the refused Transfer is not stored")
@@ -129,8 +132,8 @@ func TestFinishReleasesTheClaimsAndTheFoldersPostgresIntegration(t *testing.T) {
 
 		require.NoError(t, store.Finish(t.Context(), record.ID, "done"))
 
-		require.False(t, store.IsClaimed(source, "aaaa"))
-		require.False(t, open(t, db).IsClaimed(source, "aaaa"))
+		require.False(t, store.IsClaimed(source, hashOf("aaaa")))
+		require.False(t, open(t, db).IsClaimed(source, hashOf("aaaa")))
 		for _, instanceID := range []int{source, target} {
 			folders, err := store.RunningFolders(t.Context(), instanceID)
 			require.NoError(t, err)
@@ -162,7 +165,7 @@ func TestRecordKeepsEveryFieldPostgresIntegration(t *testing.T) {
 			Steps:            []transfer.Step{{Name: "copy", At: at, Detail: "file 1 of 2"}},
 			Log:              []transfer.LogLine{{At: at, Message: "Connected over SFTP"}},
 			Members: []transfer.Member{{
-				Hash:             "aaaa",
+				Hash:             hashOf("aaaa"),
 				Name:             "Name aaaa",
 				SourceSavePath:   "/src",
 				TargetInstanceID: 3,
@@ -199,18 +202,18 @@ func TestTheRegistryKnowsAHelperFromItsRowPostgresIntegration(t *testing.T) {
 
 	engines(t, func(t *testing.T, db *database.DB) {
 		store := open(t, db)
-		helper := transfer.Helper{InstanceID: target, Hash: "ffff", Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 4}
-		require.False(t, store.IsHelper(target, "ffff"))
+		helper := transfer.Helper{InstanceID: target, Hash: hashOf("ffff"), Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 4}
+		require.False(t, store.IsHelper(target, hashOf("ffff").String()))
 
 		require.NoError(t, store.RegisterHelper(t.Context(), helper))
 		require.NoError(t, store.RegisterHelper(t.Context(), helper), "recovery registers the helper that it adds again")
 
-		require.True(t, store.IsHelper(target, "ffff"))
-		require.Equal(t, "share", store.HelperKind(target, "ffff"))
-		require.False(t, store.IsHelper(source, "ffff"), "the row names one instance")
+		require.True(t, store.IsHelper(target, hashOf("ffff").String()))
+		require.Equal(t, "share", store.HelperKind(target, hashOf("ffff")))
+		require.False(t, store.IsHelper(source, hashOf("ffff").String()), "the row names one instance")
 
 		reopened := open(t, db)
-		require.True(t, reopened.IsHelper(target, "ffff"))
+		require.True(t, reopened.IsHelper(target, hashOf("ffff").String()))
 		helpers, err := reopened.HelpersOf(t.Context(), transfer.OwnerShare, 4)
 		require.NoError(t, err)
 		require.Len(t, helpers, 1)
@@ -229,12 +232,12 @@ func TestHoldNamesWhyQuiKeepsATorrent(t *testing.T) {
 
 	store := open(t, testdb.NewMigratedSQLite(t, "transfer-records"))
 	require.NoError(t, store.Create(t.Context(), group("aaaa")))
-	require.NoError(t, store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: target, Hash: "ffff", Random: []byte("salt"), Owner: transfer.OwnerTransfer, OwnerID: 1}))
+	require.NoError(t, store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: target, Hash: hashOf("ffff"), Random: []byte("salt"), Owner: transfer.OwnerTransfer, OwnerID: 1}))
 
-	require.ErrorIs(t, store.Hold(source, "aaaa"), transfer.ErrClaimed)
-	require.ErrorIs(t, store.Hold(target, "ffff"), transfer.ErrHelper)
-	require.NoError(t, store.Hold(source, "bbbb"))
-	require.ErrorIs(t, store.Hold(source, "AAAA"), transfer.ErrClaimed, "a hash in upper case names the same torrent")
+	require.ErrorIs(t, store.Hold(source, hashOf("aaaa")), transfer.ErrClaimed)
+	require.ErrorIs(t, store.Hold(target, hashOf("ffff")), transfer.ErrHelper)
+	require.NoError(t, store.Hold(source, hashOf("bbbb")))
+	require.ErrorIs(t, store.Hold(source, mustParse(t, hashOf("aaaa").Upper())), transfer.ErrClaimed, "a hash in upper case names the same torrent")
 }
 
 func TestTheChecksOfAnInstanceNameWhatQuiKeepsThere(t *testing.T) {
@@ -245,13 +248,13 @@ func TestTheChecksOfAnInstanceNameWhatQuiKeepsThere(t *testing.T) {
 	require.Nil(t, store.ClaimCheck(source))
 
 	require.NoError(t, store.Create(t.Context(), group("aaaa")))
-	require.NoError(t, store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: target, Hash: "ffff", Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1}))
+	require.NoError(t, store.RegisterHelper(t.Context(), transfer.Helper{InstanceID: target, Hash: hashOf("ffff"), Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1}))
 	require.Nil(t, store.HelperKinds(source), "a claim is no helper torrent")
-	require.Equal(t, map[string]string{"ffff": "share"}, store.HelperKinds(target))
+	require.Equal(t, map[string]string{hashOf("ffff").String(): "share"}, store.HelperKinds(target))
 
 	isClaimed := store.ClaimCheck(source)
-	require.True(t, isClaimed("AAAA"))
-	require.False(t, isClaimed("ffff"))
+	require.True(t, isClaimed(hashOf("aaaa").Upper()))
+	require.False(t, isClaimed(hashOf("ffff").String()))
 	require.Nil(t, store.ClaimCheck(target), "the claim holds the torrent on the source only, and a helper torrent is no claim")
 }
 
@@ -326,7 +329,7 @@ func TestTheCleanupKeepsAPermanentFailureThatWaitsForTheUserPostgresIntegration(
 		require.Equal(t, 1, cleanup())
 		require.False(t, exists(temporary))
 		require.True(t, exists(permanent))
-		waits, err := store.WaitsForUser(t.Context(), source, "aaaa")
+		waits, err := store.WaitsForUser(t.Context(), source, hashOf("aaaa"))
 		require.NoError(t, err)
 		require.True(t, waits, "the rule stays off")
 
@@ -345,7 +348,7 @@ func TestTheLastPermanentFailureWaitsForTheUserPostgresIntegration(t *testing.T)
 		store := open(t, db)
 		waits := func(hash string) bool {
 			t.Helper()
-			got, err := store.WaitsForUser(t.Context(), source, hash)
+			got, err := store.WaitsForUser(t.Context(), source, hashOf(hash))
 			require.NoError(t, err)
 			return got
 		}
@@ -360,9 +363,27 @@ func TestTheLastPermanentFailureWaitsForTheUserPostgresIntegration(t *testing.T)
 		require.False(t, waits("aaaa"), "a torrent with no Transfer")
 		end(group("aaaa", "bbbb"), transfer.FailurePermanent)
 		require.True(t, waits("aaaa"))
-		require.True(t, waits("BBBB"), "each member, by any case of its hash")
+		upper, err := store.WaitsForUser(t.Context(), source, mustParse(t, hashOf("bbbb").Upper()))
+		require.NoError(t, err)
+		require.True(t, upper, "each member, by any case of its hash")
 		end(group("aaaa"), transfer.FailureTemporary)
 		require.False(t, waits("aaaa"), "a later Transfer ended the wait")
 		require.True(t, waits("bbbb"))
 	})
+}
+
+func hashOf(label string) infohash.Hash {
+	sum := sha1.Sum([]byte(label))
+	hash, err := infohash.Parse(hex.EncodeToString(sum[:]))
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}
+
+func mustParse(t testing.TB, s string) infohash.Hash {
+	t.Helper()
+	hash, err := infohash.Parse(s)
+	require.NoError(t, err)
+	return hash
 }

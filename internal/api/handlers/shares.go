@@ -84,7 +84,7 @@ func viewOf(sh *share.Share) shareView {
 	v := shareView{
 		ID:                  sh.ID,
 		InstanceID:          sh.InstanceID,
-		Hash:                sh.Hash,
+		Hash:                sh.Hash.String(),
 		Name:                sh.Name,
 		Size:                sh.Size,
 		Tracker:             string(sh.Tracker),

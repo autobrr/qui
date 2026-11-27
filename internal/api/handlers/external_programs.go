@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/externalprograms"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type ExternalProgramsHandler struct {
@@ -275,18 +276,20 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 		return
 	}
 
-	torrentIndex := make(map[string]*qbt.Torrent, len(torrents))
+	torrentIndex := make(map[infohash.Hash]*qbt.Torrent, len(torrents))
 	for i := range torrents {
-		torrentIndex[strings.ToLower(torrents[i].Hash)] = &torrents[i]
+		if hash, err := infohash.Parse(torrents[i].Hash); err == nil {
+			torrentIndex[hash] = &torrents[i]
+		}
 	}
 
 	results := make([]externalProgramExecuteResult, 0, len(req.Hashes))
-	for _, hash := range req.Hashes {
-		result := externalProgramExecuteResult{Hash: hash}
+	for i, hash := range infohash.ParseAll(req.Hashes) {
+		result := externalProgramExecuteResult{Hash: req.Hashes[i]}
 
-		torrent, found := torrentIndex[strings.ToLower(hash)]
+		torrent, found := torrentIndex[hash]
 		if !found {
-			result.Error = fmt.Sprintf("Torrent with hash %s not found", hash)
+			result.Error = fmt.Sprintf("Torrent with hash %s not found", req.Hashes[i])
 			results = append(results, result)
 			continue
 		}

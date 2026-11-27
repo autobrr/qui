@@ -75,7 +75,7 @@ type TorrentsHandler struct {
 }
 
 type heldTorrents interface {
-	Hold(instanceID int, hash string) error
+	Hold(instanceID int, hash infohash.Hash) error
 }
 
 func (h *TorrentsHandler) SetHeldTorrents(held heldTorrents) {
@@ -89,7 +89,11 @@ func (h *TorrentsHandler) respondIfHeld(w http.ResponseWriter, instanceID int, h
 		return false
 	}
 	for _, list := range hashes {
-		for hash := range strings.SplitSeq(list, "|") {
+		for raw := range strings.SplitSeq(list, "|") {
+			hash, err := infohash.Parse(raw)
+			if err != nil {
+				continue
+			}
 			if err := h.held.Hold(instanceID, hash); err != nil {
 				RespondError(w, http.StatusConflict, err.Error())
 				return true

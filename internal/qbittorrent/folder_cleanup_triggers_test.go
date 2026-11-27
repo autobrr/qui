@@ -515,7 +515,7 @@ func TestFolderCleanupSnapshotsOnlyHashesQBittorrentActsOn(t *testing.T) {
 		{hashes: []string{"ALL"}},
 		{hashes: []string{"zz" + hashA[2:]}},
 	} {
-		batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: tc.hashes})
+		batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete}.On(tc.hashes))
 		require.Len(t, batch.snaps, tc.want, "%q", tc.hashes)
 	}
 }
@@ -674,7 +674,7 @@ func TestFolderCleanupPrepareReturnsPastAHungStat(t *testing.T) {
 			}
 
 			start := time.Now()
-			batch := prepare(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA, hashB}})
+			batch := prepare(t.Context(), r.instanceID, FolderCleanupOp{Kind: FolderCleanupDelete}.On([]string{hashA, hashB}))
 			require.Less(t, time.Since(start), 2*time.Second)
 			existed := map[string]bool{}
 			for _, snap := range batch.snaps {
@@ -764,7 +764,7 @@ func TestFolderCleanupPrepareTakesOneBatchStatOnARemoteInstance(t *testing.T) {
 	r.sm.SetFolderCleanup(NewFolderCleanup(pool, r.sm, &fakeIgnores{}))
 
 	batch := r.sm.PrepareFolderCleanup(t.Context(), r.instanceID,
-		FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: []string{hashA, hashB, hashC}})
+		FolderCleanupOp{Kind: FolderCleanupDelete}.On([]string{hashA, hashB, hashC}))
 
 	require.EqualValues(t, 1, spy.batches.Load())
 	require.Zero(t, spy.stats.Load())

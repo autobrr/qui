@@ -145,7 +145,7 @@ func TestTransferResumesAfterACrash(t *testing.T) {
 			require.NoError(t, r.db.QueryRowContext(t.Context(), `SELECT id FROM torrent_transfers`).Scan(&id))
 			record := r.get(id)
 			require.False(t, record.FinishedAt.IsZero(), "the Transfer ended after the restart")
-			require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+			require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 			adds := map[string]int{}
 			for _, hash := range added {
 				if slices.Contains(members, hash) {

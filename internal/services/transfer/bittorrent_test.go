@@ -40,8 +40,8 @@ func (r *rig) requireNoHelpers(record *transfer.Record) {
 	helpers, err := r.store.HelpersOf(r.t.Context(), transfer.OwnerTransfer, record.ID)
 	require.NoError(r.t, err)
 	for _, h := range helpers {
-		require.False(r.t, r.src.Has(h.Hash), "the Transfer torrent left the source")
-		require.False(r.t, r.dst.Has(h.Hash), "the Transfer torrent left the target")
+		require.False(r.t, r.src.Has(h.Hash.String()), "the Transfer torrent left the source")
+		require.False(r.t, r.dst.Has(h.Hash.String()), "the Transfer torrent left the target")
 	}
 }
 
@@ -55,7 +55,7 @@ func (r *rig) requireHelperTag(record *transfer.Record) {
 		if h.InstanceID == r.source.ID {
 			client = r.src
 		}
-		require.Equal(r.t, []string{"qui-transfer"}, client.AddedTags(h.Hash))
+		require.Equal(r.t, []string{"qui-transfer"}, client.AddedTags(h.Hash.String()))
 	}
 }
 

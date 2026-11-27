@@ -87,12 +87,12 @@ func TestConfirmDeletion_RemoteRunWithIncompleteIdentityIsRefused(t *testing.T) 
 		f.setTier(models.SSHTierExec)
 		stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 			return []qbt.Torrent{
-				{Hash: "owned", SavePath: filepath.Dir(f.orphan), State: qbt.TorrentStatePausedUp},
-				{Hash: "cut", SavePath: cutRoot, State: qbt.TorrentStatePausedUp},
+				{Hash: hOwned, SavePath: filepath.Dir(f.orphan), State: qbt.TorrentStatePausedUp},
+				{Hash: hCut, SavePath: cutRoot, State: qbt.TorrentStatePausedUp},
 			}, nil
 		}
 		stubSync(f.svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-			return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}, "cut": {{Name: "kept.bin", Size: 1}}}, nil
+			return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}, hCut: {{Name: "kept.bin", Size: 1}}}, nil
 		}
 
 		run := f.scan(t, "manual")
@@ -121,12 +121,12 @@ func TestConfirmDeletion_RemoteRunWithACutIgnoredLinkIsRefused(t *testing.T) {
 	f.setTier(models.SSHTierExec)
 	stubSync(f.svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
 		return []qbt.Torrent{
-			{Hash: "owned", SavePath: filepath.Dir(f.orphan), State: qbt.TorrentStatePausedUp},
-			{Hash: "linked", SavePath: link, State: qbt.TorrentStatePausedUp},
+			{Hash: hOwned, SavePath: filepath.Dir(f.orphan), State: qbt.TorrentStatePausedUp},
+			{Hash: hLinked, SavePath: link, State: qbt.TorrentStatePausedUp},
 		}, nil
 	}
 	stubSync(f.svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}, "linked": {{Name: "kept.bin", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}, hLinked: {{Name: "kept.bin", Size: 1}}}, nil
 	}
 	settings, err := f.store.GetSettings(t.Context(), 1)
 	require.NoError(t, err)
@@ -533,12 +533,12 @@ func ignoredTorrentDirFixture(t *testing.T, f *modeFixture, savePath func(string
 	root := filepath.Dir(f.orphan)
 	keep = filepath.Join(root, "keep")
 	writeFile(t, filepath.Join(keep, "kept.mkv"))
-	torrents := append([]qbt.Torrent{{Hash: "owned", SavePath: savePath(root), State: qbt.TorrentStatePausedUp}}, extra...)
+	torrents := append([]qbt.Torrent{{Hash: hOwned, SavePath: savePath(root), State: qbt.TorrentStatePausedUp}}, extra...)
 	stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) { return torrents, nil }
 	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{
-			"owned": {{Name: "owned.mkv", Size: 1}, {Name: "keep/kept.mkv", Size: 1}},
-			"other": {{Name: "other.bin", Size: 1}},
+			hOwned: {{Name: "owned.mkv", Size: 1}, {Name: "keep/kept.mkv", Size: 1}},
+			hOther: {{Name: "other.bin", Size: 1}},
 		}, nil
 	}
 	settings, err := f.store.GetSettings(t.Context(), 1)
@@ -572,7 +572,7 @@ func TestExecuteScan_RemoteKeepsAliasOfAnIgnoredTorrentFile(t *testing.T) {
 				link := filepath.Join(t.TempDir(), "link")
 				symlinkOrSkip(t, filepath.Dir(f.orphan), link)
 				alias = filepath.Join(link, "keep", "kept.mkv")
-				extra = append(extra, qbt.Torrent{Hash: "other", SavePath: sftpPath(filepath.Dir(alias)), State: qbt.TorrentStatePausedUp})
+				extra = append(extra, qbt.Torrent{Hash: hOther, SavePath: sftpPath(filepath.Dir(alias)), State: qbt.TorrentStatePausedUp})
 			}
 			keep := ignoredTorrentDirFixture(t, f, sftpPath, extra...)
 			if tc.ignoreFile {

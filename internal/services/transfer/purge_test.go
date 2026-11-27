@@ -17,7 +17,7 @@ import (
 
 func (r *rig) ended(hash string, state transfer.State) int64 {
 	r.t.Helper()
-	return r.endedWithHelper(hash, state, r.target.ID, "helper"+hash)
+	return r.endedWithHelper(hash, state, r.target.ID, hashOf("helper"+hash).String())
 }
 
 func (r *rig) endedWithHelper(hash string, state transfer.State, instanceID int, helperHash string) int64 {
@@ -26,7 +26,7 @@ func (r *rig) endedWithHelper(hash string, state transfer.State, instanceID int,
 	record := group(hash)
 	record.SourceInstanceID, record.TargetInstanceID = r.source.ID, r.target.ID
 	require.NoError(r.t, r.store.Create(ctx, record))
-	require.NoError(r.t, r.store.RegisterHelper(ctx, transfer.Helper{InstanceID: instanceID, Hash: helperHash,
+	require.NoError(r.t, r.store.RegisterHelper(ctx, transfer.Helper{InstanceID: instanceID, Hash: mustParse(r.t, helperHash),
 		Random: []byte{1}, Owner: transfer.OwnerTransfer, OwnerID: record.ID}))
 	require.NoError(r.t, r.store.Finish(ctx, record.ID, state))
 	nextClockStep()

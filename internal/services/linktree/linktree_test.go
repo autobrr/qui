@@ -120,7 +120,7 @@ func (e *testEnv) request() Request {
 	return Request{
 		Backend: e.stub,
 		Config:  Config{BaseDirs: []string{e.baseA}, Preset: PresetFlat, Kind: Hardlink},
-		Torrent: Torrent{InfoHash: "DEADBEEFcafe", Name: "Show.S01", Files: []string{"Show.S01/e1.mkv", "Show.S01/e2.mkv"}},
+		Torrent: Torrent{InfoHash: "DEADBEEFcafe0000000000000000000000000000", Name: "Show.S01", Files: []string{"Show.S01/e1.mkv", "Show.S01/e2.mkv"}},
 		Links: []Link{
 			{TorrentPath: "Show.S01/e1.mkv", SourcePath: e.e1},
 			{TorrentPath: "Show.S01/e2.mkv", SourcePath: e.e2},
