@@ -222,3 +222,22 @@ func TestLoginFailsWhenTokenRenewalFails(t *testing.T) {
 	assert.True(t, sessionAuthenticated(t, h, renewed))
 	assert.False(t, sessionAuthenticated(t, h, existing))
 }
+
+func TestLoginAndSetupRefuseOversizedBody(t *testing.T) {
+	body := `{"pad":"` + strings.Repeat("a", 2<<20) + `","username":"alice","password":"password1234"}`
+
+	h := newPasswordAuthHandler(t)
+	assert.Equal(t, http.StatusBadRequest, h.postLogin(t, "application/json", body).Code)
+
+	fresh := &AuthHandler{
+		authService:    auth.NewService(testdb.NewMigratedSQLite(t, "auth-oversized-setup")),
+		sessionManager: scs.New(),
+		config:         &domain.Config{},
+	}
+	setup := fresh.sessionManager.LoadAndSave(http.HandlerFunc(fresh.Setup))
+	assert.Equal(t, http.StatusBadRequest, post(t, setup, "/api/auth/setup", "application/json", body).Code)
+
+	complete, err := fresh.authService.IsSetupComplete(t.Context())
+	require.NoError(t, err)
+	assert.False(t, complete)
+}
