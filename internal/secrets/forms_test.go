@@ -75,6 +75,7 @@ func TestHoldsLink(t *testing.T) {
 	}{
 		{"Mirror //tracker.example/dl/1?passkey=made-up-key", true},
 		{"https://tracker.example/dl/1?passkey=made-up-key", true},
+		{"https://", true},
 		{"MAGNET:?xt=urn:btih:made-up", true},
 		{`<a href="/dl/1">Download</a>`, true},
 		{"folder//feed", false},

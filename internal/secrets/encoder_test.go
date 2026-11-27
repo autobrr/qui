@@ -254,6 +254,9 @@ func TestShapesListsEachShape(t *testing.T) {
 	infos := slices.Collect(enc.Shapes())
 	require.Len(t, infos, 3)
 
+	assert.True(t, infos[0].ByField)
+	assert.Equal(t, link{URL: zonedOrigin}, infos[0].Hide(link{URL: zonedLink}))
+
 	assert.Equal(t, reflect.TypeFor[rawNames](), infos[1].Type)
 	assert.Equal(t, secrets.NotificationToken, infos[1].Kind)
 	assert.False(t, infos[1].ByField)
