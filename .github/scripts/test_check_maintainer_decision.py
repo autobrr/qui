@@ -6,10 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from check_ready_for_human import blocked_issues
+from check_maintainer_decision import blocked_issues
 
 REPOSITORY = "autobrr/qui"
-SCRIPT = Path(__file__).with_name("check_ready_for_human.py")
+SCRIPT = Path(__file__).with_name("check_maintainer_decision.py")
 
 
 def issue(number, *labels, repository=REPOSITORY):
@@ -29,13 +29,27 @@ class TestBlockedIssues(unittest.TestCase):
         cases = [
             ("closes nothing", response(), []),
             ("closes a ready-for-agent issue", response(issue(7, "ready-for-agent", "ci")), []),
-            ("closes a ready-for-human issue", response(issue(7, "bug", "ready-for-human")), [7]),
+            ("closes a ready-for-human issue", response(issue(7, "bug", "ready-for-human")), [(7, "ready-for-human")]),
+            ("closes a needs-grilling issue", response(issue(7, "needs-grilling", "feature")), [(7, "needs-grilling")]),
+            ("an issue with both labels", response(issue(7, "needs-grilling", "ready-for-human")), [(7, "ready-for-human")]),
             (
-                "closes both kinds",
-                response(issue(9, "ready-for-human"), issue(8, "ready-for-agent"), issue(3, "ready-for-human")),
-                [3, 9],
+                "closes each kind",
+                response(
+                    issue(9, "ready-for-human"),
+                    issue(8, "ready-for-agent"),
+                    issue(5, "needs-grilling"),
+                    issue(3, "ready-for-human"),
+                ),
+                [(3, "ready-for-human"), (5, "needs-grilling"), (9, "ready-for-human")],
             ),
-            ("closes a ready-for-human issue of another repo", response(issue(7, "ready-for-human", repository="autobrr/autobrr")), []),
+            (
+                "closes waiting issues of another repo",
+                response(
+                    issue(7, "ready-for-human", repository="autobrr/autobrr"),
+                    issue(8, "needs-grilling", repository="autobrr/autobrr"),
+                ),
+                [],
+            ),
         ]
         for name, data, expected in cases:
             with self.subTest(name):
@@ -74,6 +88,12 @@ class TestJob(unittest.TestCase):
         self.assertIn("owner=autobrr", args)
         self.assertIn("name=qui", args)
         self.assertIn("number=42", args)
+
+    def test_fails_on_a_needs_grilling_issue(self):
+        result, _ = self.run_job(response(issue(4663, "needs-grilling")))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("::error::This PR closes #4663, which is labelled needs-grilling.", result.stdout)
+        self.assertIn("passes on a rerun once a maintainer labels the issue ready-for-agent", result.stdout)
 
     def test_passes_on_a_ready_for_agent_issue(self):
         result, _ = self.run_job(response(issue(4663, "ready-for-agent")))

@@ -7,7 +7,7 @@ Repo rules for AI agents working on qui.
 ## Rules
 
 - Stay inside requested scope. Do not implement review-suggested/extra changes without explicit user approval. Keep diffs minimal in high-churn areas: `internal/services/crossseed`, `internal/qbittorrent`, `internal/models`.
-- An issue labelled `ready-for-human` waits on a maintainer's call. Implement it only after a maintainer relabels it `ready-for-agent`. Until then, tell your user that the issue waits on a maintainer.
+- An issue labelled `ready-for-human` or `needs-grilling` waits on a maintainer's call. Implement it only after a maintainer relabels it `ready-for-agent`. Until then, tell your user that the issue waits on a maintainer.
 - Avoid repo-wide `pnpm format` / `eslint --fix` sweeps unless explicitly requested. Do not weaken, delete, or skip tests or lint rules to hide failures.
 - qui is single-user self-hosted software. Prefer readable, maintainable code over paranoid guards for impossible states. No backward compatibility shims unless requested.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
@@ -50,7 +50,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | The feature map lists each route and dialog with steps | `make check-feature-map` |
 | The match corpus only grows | the Match corpus workflow |
 | A maintainer approves a moved starting commit, a looser benchmark limit, a changed workload, or a removed benchmark (ADR 0093) | the Benchmark approval workflow |
-| An issue labelled `ready-for-human` waits on a maintainer | the `ready-for-human` job of the PR body workflow |
+| An issue labelled `ready-for-human` or `needs-grilling` waits on a maintainer | the `maintainer-decision` job of the PR body workflow |
 | Stay in scope, no private tracker links or release names in public text, a live run before you report done, new UI copies an existing page | judgment: the rules above and `web/AGENTS.md` |
 
 ## Read When

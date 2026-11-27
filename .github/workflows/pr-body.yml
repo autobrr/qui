@@ -20,7 +20,7 @@ jobs:
       - name: Require complete PR template sections
         run: python3 -B .github/scripts/check_pr_body.py
 
-  ready-for-human:
+  maintainer-decision:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,9 +31,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
-      - name: Test the ready-for-human check
-        run: python3 -B -m unittest discover -s .github/scripts -p 'test_check_ready_for_human.py'
-      - name: Require that the PR closes no ready-for-human issue
+      - name: Test the maintainer decision check
+        run: python3 -B -m unittest discover -s .github/scripts -p 'test_check_maintainer_decision.py'
+      - name: Require that the PR closes no issue that waits on a maintainer
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -B .github/scripts/check_ready_for_human.py
+        run: python3 -B .github/scripts/check_maintainer_decision.py

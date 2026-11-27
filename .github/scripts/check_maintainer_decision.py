@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-LABEL = "ready-for-human"
+LABELS = ("ready-for-human", "needs-grilling")
 
 QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
@@ -25,19 +25,22 @@ query($owner: String!, $name: String!, $number: Int!) {
 
 def blocked_issues(response, repository):
     references = response["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["nodes"]
-    return sorted(
-        issue["number"]
-        for issue in references
-        if issue["repository"]["nameWithOwner"] == repository
-        and any(label["name"] == LABEL for label in issue["labels"]["nodes"])
-    )
+    blocked = []
+    for issue in references:
+        if issue["repository"]["nameWithOwner"] != repository:
+            continue
+        names = {label["name"] for label in issue["labels"]["nodes"]}
+        label = next((label for label in LABELS if label in names), None)
+        if label:
+            blocked.append((issue["number"], label))
+    return sorted(blocked)
 
 
-def failures(numbers):
+def failures(blocked):
     return [
-        f"This PR closes #{number}, which is labelled {LABEL}. A maintainer must decide on that issue first. "
+        f"This PR closes #{number}, which is labelled {label}. A maintainer must decide on that issue first. "
         f"This check passes on a rerun once a maintainer labels the issue ready-for-agent."
-        for number in numbers
+        for number, label in blocked
     ]
 
 
@@ -66,5 +69,5 @@ if __name__ == "__main__":
     for error in found:
         print(f"::error::{error}")
     if not found:
-        print(f"This PR closes no issue labelled {LABEL}.")
+        print(f"This PR closes no issue labelled {' or '.join(LABELS)}.")
     sys.exit(bool(found))
