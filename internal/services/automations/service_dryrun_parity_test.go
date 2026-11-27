@@ -94,6 +94,7 @@ type stubQbt struct {
 	fileReads        int
 	trackers         string
 	trackerInfo      string
+	syncsSinceWrite  int
 }
 
 func newStubQbt(t *testing.T, torrents string) *stubQbt {
@@ -121,6 +122,7 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/v2/sync/maindata":
 		s.mu.Lock()
 		torrents, trackers := s.torrents, s.trackers
+		s.syncsSinceWrite++
 		s.mu.Unlock()
 		if trackers != "" {
 			trackers = `,"trackers":` + trackers
@@ -162,6 +164,7 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.writes = append(s.writes, stubWrite{path: path, form: r.Form})
+		s.syncsSinceWrite = 0
 		if path == "torrents/add" && s.torrentsAfterAdd != "" {
 			s.torrents = s.torrentsAfterAdd
 		}

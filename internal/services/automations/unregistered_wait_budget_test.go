@@ -70,13 +70,21 @@ func TestDeleteWaitLogsDoNotGrowWithTheTorrents(t *testing.T) {
 				}
 				svc, instanceID, stub := newWaitBudgetService(t, waiting, noLongerUnregistered)
 				rules := []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))}
-				return logbudget.Count(t, func() {
+				lines := logbudget.Count(t, func() {
 					_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, rules, dryRun)
 					require.NoError(t, err)
 					if !dryRun {
 						require.Len(t, runDeletedHashes(stub), waitBudgetDeletes, "only the due torrents whose tracker still says unregistered go")
 					}
 				})
+				if !dryRun {
+					require.Eventually(t, func() bool {
+						stub.mu.Lock()
+						defer stub.mu.Unlock()
+						return stub.syncsSinceWrite >= 2
+					}, 5*time.Second, 10*time.Millisecond, "the two syncs that follow a delete end before the stub stops")
+				}
+				return lines
 			}
 			logbudget.AssertFlat(t, run(2), run(30))
 		})
