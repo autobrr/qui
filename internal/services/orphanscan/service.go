@@ -608,7 +608,7 @@ func canDeleteOrphans(caps models.FilesystemCapabilities) bool {
 }
 
 func runCanDelete(run *models.OrphanScanRun, caps models.FilesystemCapabilities) bool {
-	if run.FilesystemMode == models.FilesystemModeRemote && !run.IdentityComplete {
+	if !run.IdentityComplete {
 		return false
 	}
 	return canDeleteOrphans(caps)
@@ -888,7 +888,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	if partial {
 		scanWarnings = append(scanWarnings, "Automatic cleanup is disabled for partial scans. Review the results before deleting files.")
 	}
-	if keys.incomplete && len(allOrphans) > 0 && mode == models.FilesystemModeRemote && models.FilesystemCapabilitiesOf(instance).Identity {
+	if keys.incomplete && len(allOrphans) > 0 && models.FilesystemCapabilitiesOf(instance).Identity {
 		scanWarnings = append(scanWarnings, IdentityIncompleteMessage)
 	}
 	scanWarning := strings.Join(scanWarnings, "\n\n")

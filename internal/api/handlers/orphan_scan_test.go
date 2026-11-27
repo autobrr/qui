@@ -218,10 +218,11 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	service.SetActivityPublisher(hub)
 	router := newOrphanScanRouter(NewOrphanScanHandler(store, instances, service))
 
-	previewWithFiles := func(instanceID int, mode models.FilesystemMode) int64 {
+	previewWithFiles := func(instanceID int, mode models.FilesystemMode, identityComplete bool) int64 {
 		runID, err := store.CreateRunIfNoActive(t.Context(), instanceID, "manual")
 		require.NoError(t, err)
 		require.NoError(t, store.UpdateRunFilesystemMode(t.Context(), runID, mode, ""))
+		require.NoError(t, store.UpdateRunIdentityComplete(t.Context(), runID, identityComplete))
 		require.NoError(t, store.UpdateRunFoundStats(t.Context(), runID, 2, false, 20))
 		require.NoError(t, store.UpdateRunStatus(t.Context(), runID, "preview_ready"))
 		return runID
@@ -239,7 +240,7 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	}
 
 	remote := newOrphanScanInstance(t, instances, models.FilesystemModeRemote)
-	oldRemote := previewWithFiles(remote.ID, models.FilesystemModeRemote)
+	oldRemote := previewWithFiles(remote.ID, models.FilesystemModeRemote, false)
 	accepted := trigger(remote.ID)
 	require.Equal(t, http.StatusAccepted, accepted.Code, accepted.Body.String())
 	var body struct {
@@ -250,11 +251,19 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	waitForActivity(t, events, func() bool { return status(body.RunID) == "failed" })
 
 	local := newOrphanScanInstance(t, instances, models.FilesystemModeLocal)
-	oldLocal := previewWithFiles(local.ID, models.FilesystemModeLocal)
+	oldLocal := previewWithFiles(local.ID, models.FilesystemModeLocal, true)
 	conflict := trigger(local.ID)
 	require.Equal(t, http.StatusConflict, conflict.Code, conflict.Body.String())
 	require.Contains(t, conflict.Body.String(), fmt.Sprintf("runId=%d status=preview_ready", oldLocal))
 	require.Equal(t, "preview_ready", status(oldLocal))
+
+	localIncomplete := newOrphanScanInstance(t, instances, models.FilesystemModeLocal)
+	oldLocalIncomplete := previewWithFiles(localIncomplete.ID, models.FilesystemModeLocal, false)
+	acceptedLocal := trigger(localIncomplete.ID)
+	require.Equal(t, http.StatusAccepted, acceptedLocal.Code, acceptedLocal.Body.String())
+	require.NoError(t, json.Unmarshal(acceptedLocal.Body.Bytes(), &body))
+	require.Equal(t, "canceled", status(oldLocalIncomplete))
+	waitForActivity(t, events, func() bool { return status(body.RunID) == "failed" })
 }
 
 func TestOrphanScan_RunsListCountsScanPathsAndOneRunListsThem(t *testing.T) {

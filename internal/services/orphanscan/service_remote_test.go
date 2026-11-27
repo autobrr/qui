@@ -618,6 +618,26 @@ func TestConfirmDeletion_RunWithoutASavedModeCannotDelete(t *testing.T) {
 	f.requireNothingDeleted(t)
 }
 
+func TestConfirmDeletion_LocalRunFromBeforeIdentityColumnKeepsItsPreview(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-legacy-local-noid", models.FilesystemModeLocal, nil)
+	var runID int64
+	require.NoError(t, f.db.QueryRowContext(t.Context(),
+		`INSERT INTO orphan_scan_runs (instance_id, status, triggered_by) VALUES (1, 'pending', 'manual') RETURNING id`,
+	).Scan(&runID))
+	require.NoError(t, f.store.UpdateRunScanPaths(t.Context(), runID, []string{filepath.Dir(f.orphan)}))
+	require.NoError(t, f.store.InsertFiles(t.Context(), runID, []models.OrphanScanFile{{FilePath: f.orphan, FileSize: 6, Status: "pending"}}))
+	require.NoError(t, f.store.UpdateRunFoundStats(t.Context(), runID, 1, false, 6))
+	require.NoError(t, f.store.UpdateRunStatus(t.Context(), runID, "preview_ready"))
+	require.Equal(t, models.FilesystemModeLocal, f.run(t, runID).FilesystemMode)
+	require.False(t, f.run(t, runID).IdentityComplete)
+
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, runID), fsops.ErrNotCapable)
+	require.Equal(t, "preview_ready", f.run(t, runID).Status)
+	f.requireNothingDeleted(t)
+}
+
 func TestConfirmDeletion_RunWithoutARecordedModeConfirmsAsLocal(t *testing.T) {
 	t.Parallel()
 
@@ -626,6 +646,7 @@ func TestConfirmDeletion_RunWithoutARecordedModeConfirmsAsLocal(t *testing.T) {
 	require.NoError(t, f.db.QueryRowContext(t.Context(),
 		`INSERT INTO orphan_scan_runs (instance_id, status, triggered_by) VALUES (1, 'pending', 'manual') RETURNING id`,
 	).Scan(&runID))
+	require.NoError(t, f.store.UpdateRunIdentityComplete(t.Context(), runID, true))
 	require.NoError(t, f.store.UpdateRunScanPaths(t.Context(), runID, []string{filepath.Dir(f.orphan)}))
 	require.NoError(t, f.store.InsertFiles(t.Context(), runID, []models.OrphanScanFile{{FilePath: f.orphan, FileSize: 6, Status: "pending"}}))
 	require.NoError(t, f.store.UpdateRunFoundStats(t.Context(), runID, 1, false, 6))

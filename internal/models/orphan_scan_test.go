@@ -249,17 +249,22 @@ func runRemotePreviewReplacement(t *testing.T, newDB func(testing.TB, string) *d
 		require.Equal(t, old, active.ID)
 	})
 
-	t.Run("local preview with incomplete identity still blocks", func(t *testing.T) {
-		instanceID := newInstance()
-		old := previewWithIdentity(instanceID, models.FilesystemModeLocal, false)
-		_, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
-		require.ErrorIs(t, err, models.ErrRunAlreadyActive)
-		require.Equal(t, "preview_ready", status(old))
-	})
-
-	t.Run("local preview still blocks", func(t *testing.T) {
+	t.Run("local preview without identity is canceled", func(t *testing.T) {
 		instanceID := newInstance()
 		old := preview(instanceID, models.FilesystemModeLocal)
+		active, err := store.GetMostRecentActiveRun(ctx, instanceID)
+		require.NoError(t, err)
+		require.Nil(t, active, "an unconfirmable local preview does not block")
+
+		runID, err := store.CreateRunIfNoActive(ctx, instanceID, "scheduled")
+		require.NoError(t, err)
+		require.Equal(t, "canceled", status(old))
+		require.Equal(t, "pending", status(runID))
+	})
+
+	t.Run("local preview with complete identity still blocks", func(t *testing.T) {
+		instanceID := newInstance()
+		old := previewWithIdentity(instanceID, models.FilesystemModeLocal, true)
 		_, err := store.CreateRunIfNoActive(ctx, instanceID, "manual")
 		require.ErrorIs(t, err, models.ErrRunAlreadyActive)
 		require.Equal(t, "preview_ready", status(old))
