@@ -17,6 +17,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 )
 
 func TestBuildMissingFilesResultInvalidPathLeavesUnknown(t *testing.T) {
@@ -51,14 +52,10 @@ func TestBuildMissingFilesResultInvalidPathLeavesUnknown(t *testing.T) {
 	}
 }
 
-// rowGetter answers every Get with the current row, as the instance store does.
 type rowGetter struct{ row *models.Instance }
 
 func (g rowGetter) Get(context.Context, int) (*models.Instance, error) { return g.row, nil }
 
-// batchBackend is a remote host that answers only batch stats, so a check
-// that falls back to one Stat per file panics on the nil Backend. A path in
-// errs gets that error, and any other path exists.
 type batchBackend struct {
 	fsops.Backend
 	errs map[string]error
@@ -83,9 +80,6 @@ func (batchBackend) LstatBatch(context.Context, []string) ([]*fsops.LstatInfo, [
 	panic("the missing files check follows links")
 }
 
-// The callers gate on a snapshot that can be minutes old by the time the
-// backend is resolved. The check runs over the backend of the current row, and
-// only while that row still grants Read.
 func TestMissingFilesUsesTheBackendOfTheCurrentRow(t *testing.T) {
 	t.Parallel()
 
@@ -114,7 +108,6 @@ func TestMissingFilesUsesTheBackendOfTheCurrentRow(t *testing.T) {
 				filesReader: fakeFilesReader{files: qbt.TorrentFiles{{Name: "present.mkv"}}},
 				backendPool: fsops.NewPoolWithRemote(rowGetter{row: test.row}, localbackend.NewBackend(),
 					func(*models.Instance) fsops.Backend {
-						// The remote host does not have the local test directory.
 						return batchBackend{errs: map[string]error{path.Join(test.savePath, "present.mkv"): fs.ErrNotExist}}
 					}),
 			}
@@ -130,8 +123,6 @@ func TestMissingFilesUsesTheBackendOfTheCurrentRow(t *testing.T) {
 	}
 }
 
-// A remote instance reads the field: a torrent with a file that is not on the
-// host has missing files, and a torrent with every file there has none.
 func TestMissingFilesOnARemoteInstance(t *testing.T) {
 	t.Parallel()
 
@@ -156,9 +147,6 @@ func TestMissingFilesOnARemoteInstance(t *testing.T) {
 	require.True(t, EvaluateConditionWithContext(cond, broken, evalCtx, 0))
 }
 
-// A file that a lost connection left unchecked makes the torrent unknown, unless
-// another file is confirmed missing. A symlink loop is missing on a remote
-// instance, because OpenSSH's sftp-server answers ELOOP as no such file.
 func TestBuildMissingFilesResultOnARemoteHost(t *testing.T) {
 	t.Parallel()
 
@@ -196,15 +184,14 @@ func TestBuildMissingFilesResultOnARemoteHost(t *testing.T) {
 	}
 }
 
-// A local os.Stat returns ELOOP for a symlink loop, so the local check skips
-// the file and the torrent reads from its other files.
 func TestBuildMissingFilesResultSkipsALocalSymlinkLoop(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "present.mkv"), []byte("present"), 0o600))
-	require.NoError(t, os.Symlink("loop-b.mkv", filepath.Join(dir, "loop-a.mkv")))
-	require.NoError(t, os.Symlink("loop-a.mkv", filepath.Join(dir, "loop-b.mkv")))
+	for _, pair := range [][2]string{{"loop-b.mkv", "loop-a.mkv"}, {"loop-a.mkv", "loop-b.mkv"}} {
+		testutil.SymlinkOrSkip(t, pair[0], filepath.Join(dir, pair[1]))
+	}
 
 	torrent := qbt.Torrent{Hash: "hash", SavePath: dir, Progress: 1}
 	result, connectionLost := buildMissingFilesResult(t.Context(), localbackend.NewBackend(),

@@ -30,6 +30,9 @@
   /* Red for errors */
   --destructive: oklch(0.55 0.22 27);
   --destructive-foreground: oklch(1 0 0);
+  --success: oklch(0.3550 0.1116 145.0000);
+  --warning: oklch(0.3700 0.0769 100.0000);
+  --info: oklch(0.3000 0.1400 265.0000);
   /* Windows border gray #808080 */
   --border: oklch(0.65 0 0);
   /* Input fields match the gray chrome for consistency */
@@ -42,6 +45,10 @@
   --chart-3: oklch(0.55 0.15 145);
   --chart-4: oklch(0.50 0.12 265);
   --chart-5: oklch(0.55 0.18 27);
+  --chart-text-2: oklch(0.40 0.08 100);
+  --chart-text-3: oklch(0.39 0.12 145);
+  --chart-text-4: oklch(0.41 0.12 265);
+  --chart-text-5: oklch(0.425 0.17 27);
   /* Sidebar like Windows Explorer tree view - slightly darker gray */
   --sidebar: oklch(0.75 0 0);
   --sidebar-foreground: oklch(0.15 0 0);
@@ -90,6 +97,9 @@
   --accent-foreground: oklch(0.15 0 0);
   --destructive: oklch(0.55 0.22 27);
   --destructive-foreground: oklch(1 0 0);
+  --success: oklch(0.3550 0.1116 145.0000);
+  --warning: oklch(0.3700 0.0769 100.0000);
+  --info: oklch(0.3000 0.1400 265.0000);
   --border: oklch(0.65 0 0);
   --input: oklch(0.78 0 0);
   --ring: oklch(0.30 0.14 265);
@@ -98,6 +108,10 @@
   --chart-3: oklch(0.55 0.15 145);
   --chart-4: oklch(0.50 0.12 265);
   --chart-5: oklch(0.55 0.18 27);
+  --chart-text-2: oklch(0.40 0.08 100);
+  --chart-text-3: oklch(0.39 0.12 145);
+  --chart-text-4: oklch(0.41 0.12 265);
+  --chart-text-5: oklch(0.425 0.17 27);
   --sidebar: oklch(0.75 0 0);
   --sidebar-foreground: oklch(0.15 0 0);
   --sidebar-primary: oklch(0.30 0.14 265);

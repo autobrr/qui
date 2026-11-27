@@ -61,7 +61,7 @@ func (f fakeCreds) GetHostKeyPin(*models.Instance) ([]byte, error) {
 
 func (f fakeCreds) SetSSHProbe(ctx context.Context, probed *models.Instance, tier models.SSHTier, hardlink bool) error {
 	if err := ctx.Err(); err != nil {
-		return err // as the store's ExecContext would
+		return err
 	}
 	if f.inst == nil || f.inst.ID != probed.ID {
 		return models.ErrInstanceNotFound
@@ -102,14 +102,9 @@ func TestFirstContactReportsKeyAndCapabilities(t *testing.T) {
 	assert.True(t, report.Capabilities.SFTP)
 	assert.True(t, report.Capabilities.Statvfs)
 	assert.True(t, report.Capabilities.Hardlink)
-	// pkg/sftp's server cannot advertise limits@openssh.com, so this flag is
-	// only ever exercised against a real OpenSSH host.
 	assert.False(t, report.Capabilities.Limits)
 }
 
-// legacyHostKeySigner hides ssh.AlgorithmSigner, which is what makes x/crypto's
-// server offer ssh-rsa on its own instead of the SHA-2 signature names as well.
-// That is the host key an old OpenSSH presents.
 type legacyHostKeySigner struct{ signer ssh.Signer }
 
 func (s legacyHostKeySigner) PublicKey() ssh.PublicKey { return s.signer.PublicKey() }
@@ -252,19 +247,13 @@ func TestExecCapabilities(t *testing.T) {
 		{name: "sftp only key", mode: sshtest.ExecSFTPOnly},
 		{name: "gnu userland", mode: sshtest.ExecGNU, exec: true, posixShell: true, gnuUserland: true},
 		{name: "bsd userland", mode: sshtest.ExecBSD, exec: true, posixShell: true},
-		// regression: #4341
 		{name: "uutils stat", mode: sshtest.ExecUutils, exec: true, posixShell: true, gnuUserland: true},
-		// regression: #4345
 		{name: "fish login shell", mode: sshtest.ExecNonPOSIX, exec: true, posixShell: true, gnuUserland: true},
-		// regression: #4345
 		{name: "nushell login shell", mode: sshtest.ExecSplitQuote, exec: true, posixShell: true, gnuUserland: true},
-		// regression: #4345
 		{name: "csh login shell", mode: sshtest.ExecCsh, exec: true, posixShell: true, gnuUserland: true},
 		{name: "restricted bash login shell", mode: sshtest.ExecRestrictedBash, exec: true, posixShell: true, gnuUserland: true},
 		{name: "login shell that prints a banner", mode: sshtest.ExecLoginBanner, exec: true},
 		{name: "login shell with no sh", mode: sshtest.ExecNoSh},
-		// A pooled connection keeps sftp open, so a host with MaxSessions 1
-		// has no channel left for a command.
 		{name: "one session at a time", mode: sshtest.ExecOneSession},
 	}
 
@@ -307,8 +296,6 @@ func TestExecTierNeedsSFTP(t *testing.T) {
 	assert.Equal(t, models.SSHTierSFTP, report.Capabilities.Tier())
 }
 
-// Not parallel: SetSFTPExtensions mutates a package global in pkg/sftp, and the
-// parallel tests above resume only once the sequential pass is done.
 func TestMissingSFTPExtensions(t *testing.T) {
 	require.NoError(t, sftp.SetSFTPExtensions("posix-rename@openssh.com"))
 	t.Cleanup(func() {
@@ -325,9 +312,6 @@ func TestMissingSFTPExtensions(t *testing.T) {
 	assert.False(t, report.Capabilities.Hardlink)
 }
 
-// Not parallel, for the same reason as TestMissingSFTPExtensions. A pooled
-// connect reads the flag from its own sftp client, so a server without the
-// extension writes false, and a later test on a pinned host repairs the row.
 func TestPoolWritesTheHardlinkFlagFromTheExtensionList(t *testing.T) {
 	require.NoError(t, sftp.SetSFTPExtensions("posix-rename@openssh.com"))
 	t.Cleanup(func() {
@@ -376,9 +360,6 @@ func TestMissingCredentials(t *testing.T) {
 	require.ErrorIs(t, err, models.ErrSSHKeyNotConfigured)
 }
 
-// An RSA host key is offered under the SHA-2 signature names, so pinning one
-// has to accept those; ssh-rsa stays in the list for a host that offers
-// nothing else, which x/crypto's own client default also still accepts.
 func TestPinnedRSAHostKeyMatches(t *testing.T) {
 	t.Parallel()
 
@@ -455,10 +436,6 @@ func TestMissingCredentialsOutrankUnreadablePin(t *testing.T) {
 	require.ErrorIs(t, err, models.ErrSSHKeyNotConfigured, "nothing to dial with is a request error, not a tampering report")
 }
 
-// testWithin runs Test in the background, so a dialer that lets a stalled host
-// outlive its own timeout fails here instead of hanging the package until the
-// go test deadline. The context deliberately carries no deadline of its own:
-// neither does the request context in production.
 func testWithin(t *testing.T, dialer *Dialer, inst *models.Instance, limit time.Duration) (*Report, error) {
 	t.Helper()
 
@@ -490,12 +467,17 @@ func dialerWithTimeout(timeout time.Duration) *Dialer {
 func TestTimeoutBoundsHandshake(t *testing.T) {
 	t.Parallel()
 
-	addr := sshtest.NewHangingListener(t).Addr
+	listener := sshtest.NewHangingListener(t)
 
 	start := time.Now()
-	_, err := testWithin(t, dialerWithTimeout(200*time.Millisecond), instanceAt(t, addr), 10*time.Second)
+	_, err := testWithin(t, dialerWithTimeout(time.Second), instanceAt(t, listener.Addr), 10*time.Second)
 	require.Error(t, err, "a stalled handshake must fail rather than wait for the caller to give up")
 	assert.Less(t, time.Since(start), 5*time.Second)
+	select {
+	case <-listener.Accepted:
+	default:
+		t.Fatal("the connection did not reach the SSH handshake")
+	}
 }
 
 func TestTimeoutBoundsProbe(t *testing.T) {

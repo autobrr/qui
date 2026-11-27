@@ -4,11 +4,15 @@
 package pathutil
 
 import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 )
 
-// regression: #4073
 func TestSanitizePathSegment(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -181,6 +185,7 @@ func TestIsolationFolder(t *testing.T) {
 		{name: "name over 255 bytes of 2-byte characters", torrent: strings.Repeat("é", 200), want: strings.Repeat("é", 122)},
 		{name: "cut never splits a 4-byte character", torrent: strings.Repeat("a", 243) + "😀" + "bbb", want: strings.Repeat("a", 243)},
 		{name: "trailing dots and spaces after the cut", torrent: strings.Repeat("a", 241) + ". .." + "tail", want: strings.Repeat("a", 241)},
+		{name: "device name after the cut", torrent: "AUX" + strings.Repeat(" ", 300) + "x", want: "_AUX"},
 	}
 
 	for _, tt := range tests {
@@ -192,18 +197,38 @@ func TestIsolationFolder(t *testing.T) {
 	}
 }
 
+func FuzzHashedIsolationFolderIgnoresTheCaseOfTheHash(f *testing.F) {
+	f.Add(bytes.Repeat([]byte{0xab, 0xcd}, 10), uint64(0xff), "Movie")
+	f.Add([]byte("0123456789abcdefghij0123456789ab"), uint64(0x5555), "Show.S01.1080p")
+	f.Fuzz(func(t *testing.T, sum []byte, upper uint64, name string) {
+		if len(sum) != 20 && len(sum) != 32 {
+			t.Skip("not the length of a SHA-1 or a SHA-256 sum")
+		}
+		lower := hex.EncodeToString(sum)
+		mixed := []byte(lower)
+		for i := range mixed {
+			if upper>>(i%64)&1 == 1 {
+				mixed[i] = byte(unicode.ToUpper(rune(mixed[i])))
+			}
+		}
+		want := IsolationFolder(name) + "--" + lower[:8]
+		if got := HashedIsolationFolder(string(mixed), name); got != want {
+			t.Fatalf("HashedIsolationFolder(%q, %q) = %q, want %q", mixed, name, got, want)
+		}
+	})
+}
+
 func TestHashedIsolationFolder(t *testing.T) {
-	if got := HashedIsolationFolder("ABCDEF1234567890", "Movie"); got != "Movie--abcdef12" {
+	if got := HashedIsolationFolder("ABCDEF1234567890ABCDEF1234567890ABCDEF12", "Movie"); got != "Movie--abcdef12" {
 		t.Errorf("HashedIsolationFolder = %q, want %q", got, "Movie--abcdef12")
 	}
 
-	got := HashedIsolationFolder("abcdef1234567890", strings.Repeat("é", 200))
+	got := HashedIsolationFolder("abcdef1234567890abcdef1234567890abcdef12", strings.Repeat("é", 200))
 	if want := strings.Repeat("é", 122) + "--abcdef12"; got != want {
 		t.Errorf("HashedIsolationFolder = %q (%d bytes), want %q", got, len(got), want)
 	}
 }
 
-// regression: #4220
 func FuzzTorrentFilePathMatchesReference(f *testing.F) {
 	for _, seed := range [][3]string{
 		{"Album", "Disc 1", "01 - Track.flac"},
@@ -254,6 +279,83 @@ func FuzzTorrentFilePathMatchesReference(f *testing.F) {
 		}
 		if err != nil || got != want {
 			t.Fatalf("TorrentFilePath(%q, %q, %q) = %q, %v; want %q", root, dir, file, got, err, want)
+		}
+	})
+}
+
+func checkPathSegment(t *testing.T, call, got string) {
+	t.Helper()
+	if got == "" {
+		t.Fatalf("%s is empty", call)
+	}
+	if i := strings.IndexFunc(got, func(r rune) bool { return r < 0x20 || strings.ContainsRune(`<>:"/\|?*`, r) }); i >= 0 {
+		t.Fatalf("%s = %q holds %q, which a Windows file name cannot hold", call, got, got[i])
+	}
+	if strings.HasSuffix(got, ".") || strings.HasSuffix(got, " ") {
+		t.Fatalf("%s = %q ends in a dot or a space", call, got)
+	}
+}
+
+func FuzzSanitizePathSegment(f *testing.F) {
+	for _, seed := range []string{
+		"",
+		"Movie.2024.1080p",
+		"a/b\\c:d*e?f\"g<h>i|j",
+		"name. . ",
+		"..",
+		"\x00\x1f",
+		"CON",
+		"con.txt",
+		"LPT1 ",
+		"COM\u00b9.log",
+		"\xff\xfe",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, name string) {
+		got := SanitizePathSegment(name)
+		call := fmt.Sprintf("SanitizePathSegment(%q)", name)
+		checkPathSegment(t, call, got)
+		if IsWindowsDeviceName(got) {
+			t.Fatalf("%s = %q is a Windows device name", call, got)
+		}
+	})
+}
+
+func FuzzIsolationFolder(f *testing.F) {
+	for _, seed := range []string{
+		"",
+		"Movie",
+		strings.Repeat("a", 300),
+		strings.Repeat("\u00e9", 200),
+		strings.Repeat("a", 244) + "\u00e9",
+		strings.Repeat("a", 240) + ". . . .x",
+		strings.Repeat(".", 300),
+		strings.Repeat(".", 250) + "x",
+		strings.Repeat("\xff", 300),
+		"AUX" + strings.Repeat(" ", 300) + "x",
+		"COM1" + strings.Repeat(" ", 241) + "x",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, name string) {
+		got := IsolationFolder(name)
+		call := fmt.Sprintf("IsolationFolder(%q)", name)
+		checkPathSegment(t, call, got)
+		if hashed := HashedIsolationFolder("0123456789abcdef0123456789abcdef01234567", name); len(hashed) > 255 {
+			t.Fatalf("HashedIsolationFolder of %q has %d bytes, more than the 255 of a file name", name, len(hashed))
+		}
+		if utf8.ValidString(name) && !utf8.ValidString(got) {
+			t.Fatalf("%s = %q cuts a character in two", call, got)
+		}
+		if IsWindowsDeviceName(got) {
+			t.Fatalf("%s = %q is a Windows device name", call, got)
+		}
+		full := SanitizePathSegment(name)
+		device, guarded := strings.CutPrefix(got, "_")
+		guarded = guarded && IsWindowsDeviceName(device) && strings.HasPrefix(full, device)
+		if got != "_" && !strings.HasPrefix(full, got) && !guarded {
+			t.Fatalf("%s = %q is not the start of %q", call, got, full)
 		}
 	})
 }

@@ -28,7 +28,7 @@ import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { SearchScopeEntries, type ScopeEntry } from "@/components/torrents/SearchScopeEntries"
 import { useGazelleLookupText } from "@/hooks/useGazelleLookupText"
-import { gazelleReportLines, gazelleSettingsReasons, gazelleStatusClass } from "@/lib/gazelle-lookup"
+import { gazelleReportLines, gazelleStatusClass } from "@/lib/gazelle-lookup"
 import type {
   CrossSeedApplyResponse,
   CrossSeedGazelleLookup,
@@ -75,11 +75,9 @@ export interface CrossSeedDialogProps {
   indexerOptions: CrossSeedIndexerOption[]
   alreadySeededIndexers: CrossSeedIndexerOption[]
   unsupportedIndexers: CrossSeedIndexerOption[]
-  /** The RED/OPS sites for the scope list: the outcome of the last search while the pick is the same, else the plan. */
   gazelleEntries: CrossSeedGazelleLookup[]
-  /** The outcome of each RED/OPS site in the last search, for the report. */
+  gazelleKeysMissing?: boolean
   gazelleLookups?: CrossSeedGazelleLookup[]
-  /** The pseudo indexer IDs of the RED/OPS entries that the user can pick. */
   selectableGazelleIds: number[]
   indexerMode: "all" | "custom"
   selectedIndexerIds: number[]
@@ -110,11 +108,9 @@ export interface CrossSeedDialogProps {
   canForceRefresh?: boolean
   refreshCooldownUntil?: number
   onForceRefresh?: () => void
-  /** The Cross-seed instance that receives the adds, when the instance of the torrent routes its cross-seeds. */
   crossSeedInstanceName?: string
 }
 
-// Backend TorrentSearchResponse.query_degraded values; unknown values render nothing.
 const queryDegradedMessageKeys: Record<string, string> = {
   arr_lookup_failed: "crossSeedDialog.arrLookupFailed",
   arr_no_ids: "crossSeedDialog.arrNoIds",
@@ -137,6 +133,7 @@ const CrossSeedDialogComponent = ({
   alreadySeededIndexers,
   unsupportedIndexers,
   gazelleEntries,
+  gazelleKeysMissing = false,
   gazelleLookups: lastLookups,
   selectableGazelleIds,
   indexerMode,
@@ -233,8 +230,7 @@ const CrossSeedDialogComponent = ({
     const gazelle = gazelleEntries.filter(entry => entry.reason !== "not_music").map((entry): ScopeEntry => {
       const base = { key: entry.site, name: entry.name, status: entry.status }
       if (!selectableGazelleIds.includes(entry.indexerId)) {
-        const settingsLink = gazelleSettingsReasons.has(entry.reason)
-        return { ...base, picked: null, note: lookupText(entry), settingsLink, attention: settingsLink }
+        return { ...base, picked: null, note: lookupText(entry) }
       }
       const picked = isPicked(entry.indexerId)
       const quiet = entry.reason === "not_selected" || entry.status === "no_match" || entry.status === "failed" || (entry.status === "will_ask" && entry.reason !== "key_rejected")
@@ -258,11 +254,14 @@ const CrossSeedDialogComponent = ({
       note: t("crossSeedDialog.scope.alreadySeeded"),
     }))
 
-    return [...torznab, ...gazelle.filter(entry => entry.picked !== null), ...gazelle.filter(entry => entry.picked === null), ...alreadySeeded]
+    const noGazelleKeys: ScopeEntry[] = gazelleKeysMissing ? [{ key: "gazelle-no-keys", name: t("crossSeedDialog.gazelle.noApiKeys"), status: "not_asked", picked: null, settingsLink: true, attention: true }] : []
+
+    return [...torznab, ...gazelle.filter(entry => entry.picked !== null), ...gazelle.filter(entry => entry.picked === null), ...noGazelleKeys, ...alreadySeeded]
   }, [
     alreadySeededIndexers,
     decisionTrace?.indexers,
     gazelleEntries,
+    gazelleKeysMissing,
     indexerOptions,
     isPicked,
     lookupText,
@@ -593,8 +592,8 @@ const CrossSeedDialogComponent = ({
                     role="status"
                     className={cn(
                       "text-sm font-medium",
-                      applySummary.level === "success" && "text-green-600 dark:text-green-500",
-                      applySummary.level === "warning" && "text-yellow-600 dark:text-yellow-500",
+                      applySummary.level === "success" && "text-success",
+                      applySummary.level === "warning" && "text-warning",
                       applySummary.level === "error" && "text-destructive",
                       applySummary.level === "info" && "text-muted-foreground"
                     )}
@@ -849,7 +848,6 @@ const CrossSeedDialogComponent = ({
 export const CrossSeedDialog = memo(CrossSeedDialogComponent)
 CrossSeedDialog.displayName = "CrossSeedDialog"
 
-// Plain-text report for sharing in bug reports; deliberately not localized.
 export function buildCrossSeedTraceReport(
   trace: CrossSeedSearchDecisionTrace | undefined,
   sourceName: string,
@@ -908,7 +906,6 @@ function groupTraceReasons(trace: CrossSeedSearchDecisionTrace): Array<{
     }))
 }
 
-// Maps instance status codes to user-friendly display information
 function getInstanceStatusDisplay(
   t: ReturnType<typeof useTranslation<"torrents">>["t"],
   status: string,
@@ -949,7 +946,6 @@ function getInstanceStatusDisplay(
     case "error":
       return { text: t("crossSeedDialog.status.error"), variant: "destructive" }
     default:
-      // For unknown status, use success flag to determine variant
       return { text: status, variant: success ? "success" : "destructive" }
   }
 }
@@ -966,7 +962,7 @@ function RefreshCountdown({ until }: { until: number }) {
 
 function Warning({ children }: { children: string }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-yellow-600 dark:text-yellow-500">
+    <div className="flex items-center gap-1.5 text-xs text-warning">
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
       <span>{children}</span>
     </div>

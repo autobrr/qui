@@ -5,11 +5,15 @@ package crossseed
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/metadata"
 )
 
@@ -107,4 +111,32 @@ func TestGetMetadataService_DoesNotReplaceNewerCachedRevisionWithOlderSnapshot(t
 	require.Equal(t, newerRevision, svc.metadataCredsRevision)
 	require.Equal(t, metadataCredentialsFingerprint("newer-api-key", "9999"), svc.metadataCredsFingerprint)
 	require.True(t, got.HasTVDB())
+}
+
+type tvMazeTransport struct{}
+
+func (tvMazeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	body := `{"id":1}`
+	if strings.HasSuffix(r.URL.Path, "/episodes") {
+		body = `[{"season":1},{"season":1},{"season":1}]`
+	}
+	_, _ = recorder.WriteString(body)
+	return recorder.Result(), nil
+}
+
+func TestSeasonTotalComesFromTVMazeOnlyWhenSonarrHasNone(t *testing.T) {
+	transport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = transport })
+	http.DefaultTransport = tvMazeTransport{}
+	for _, tt := range []struct{ sonarr, want int }{{sonarr: 5, want: 5}, {sonarr: 0, want: 3}} {
+		svc := &Service{
+			releaseCache:    NewReleaseCache(),
+			arrService:      &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{TotalEpisodes: tt.sonarr}},
+			metadataService: metadata.NewService("", ""),
+		}
+		season := svc.lookupSeasonPackEpisodeTotal(t.Context(), packShow, svc.matcher().parseSeasonPackName(packShow))
+
+		require.Equal(t, seasonLookup{total: tt.want, fromSonarr: true}, season)
+	}
 }

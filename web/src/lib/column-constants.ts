@@ -8,26 +8,13 @@ import type { Torrent } from "@/types"
 // i18n-namespace: torrents
 
 export const NUMERIC_COLUMNS = [
-  // "size",
-  // "total_size",
-  // "progress",
   "num_seeds",
   "num_complete",
   "num_leechs",
   "num_incomplete",
-  // "eta",
   "ratio",
   "ratio_limit",
-  // "downloaded",
-  // "uploaded",
-  // "downloaded_session",
-  // "uploaded_session",
-  // "amount_left",
-  // "time_active",
-  // "seeding_time",
-  // "completed",
   "availability",
-  // "reannounce",
   "priority",
   "popularity",
 ] as const satisfies readonly (keyof Torrent)[]
@@ -89,12 +76,12 @@ export type ColumnType =
   | "string"
 
 export type FilterOperation =
-  | "eq" // equals
-  | "ne" // not equals
-  | "gt" // greater than
-  | "ge" // greater than or equal
-  | "lt" // less than
-  | "le" // less than or equal
+  | "eq"
+  | "ne"
+  | "gt"
+  | "ge"
+  | "lt"
+  | "le"
   | "between"
   | "contains"
   | "notContains"

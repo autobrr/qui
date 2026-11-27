@@ -3,15 +3,10 @@
 
 package crossseed
 
-// DefaultIgnoredExtensions contains file extensions that should be ignored
-// during cross-seed matching. These are typically scene metadata files,
-// subtitles, and other sidecar files that don't affect content matching.
 var DefaultIgnoredExtensions = []string{
-	// Scene release files
 	".nfo",
 	".srr",
 
-	// Subtitles
 	".srt",
 	".sub",
 	".idx",
@@ -20,12 +15,9 @@ var DefaultIgnoredExtensions = []string{
 	".sup",
 	".vtt",
 
-	// Text files
 	".txt",
 }
 
-// DefaultIgnoredPathKeywords mark sample files, proof screenshots, and bonus
-// content. shouldIgnoreFile decides where in a path a keyword counts.
 var DefaultIgnoredPathKeywords = []string{
 	"sample",
 	"!sample",

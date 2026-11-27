@@ -22,11 +22,9 @@ interface DisplayProfileIconPickerProps {
   color: DisplayProfileColor | null
   onIconChange: (icon: string) => void
   onColorChange: (color: DisplayProfileColor | null) => void
-  /** The trigger, a button around the icon tile. */
   children: ReactNode
 }
 
-/** A popover with the icons and the colors of a profile. A pick calls back at once, and the popover stays open. */
 export function DisplayProfileIconPicker({ icon, color, onIconChange, onColorChange, children }: DisplayProfileIconPickerProps) {
   const { t } = useTranslation("torrents")
   const colorLabelId = useId()
@@ -70,7 +68,7 @@ export function DisplayProfileIconPicker({ icon, color, onIconChange, onColorCha
                           aria-pressed={pressed}
                           onClick={() => onIconChange(entry.name)}
                           className={cn(
-                            "grid size-9 place-items-center rounded-md outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                            "grid size-9 place-items-center rounded-md outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50",
                             pressed && "bg-accent ring-1 ring-foreground/40"
                           )}
                         >
@@ -99,7 +97,7 @@ export function DisplayProfileIconPicker({ icon, color, onIconChange, onColorCha
                         aria-pressed={pressed}
                         aria-label={label}
                         onClick={() => onColorChange(option.color)}
-                        className={cn("grid size-7 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", option.className)}
+                        className={cn("grid size-7 place-items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50", option.className)}
                       >
                         <span
                           className={cn(

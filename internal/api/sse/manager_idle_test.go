@@ -19,8 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// pipeListener serves HTTP over net.Pipe connections. A goroutine blocked on a
-// loopback socket keeps a synctest bubble from moving its clock.
 type pipeListener struct {
 	conns     chan net.Conn
 	closed    chan struct{}
@@ -55,7 +53,6 @@ func (l *pipeListener) dial(ctx context.Context, _, _ string) (net.Conn, error) 
 	}
 }
 
-// connectPipeStream serves the manager inside the bubble and opens one stream.
 func connectPipeStream(t *testing.T, manager *StreamManager, payload []map[string]any) *sseReader {
 	t.Helper()
 
@@ -81,7 +78,6 @@ func connectPipeStream(t *testing.T, manager *StreamManager, payload []map[strin
 	return newSSEReader(resp.Body)
 }
 
-// syncClock is a fake success-only sync clock for each instance.
 type syncClock struct {
 	mu   sync.Mutex
 	last map[int]time.Time
@@ -93,8 +89,6 @@ func newSyncClock(manager *StreamManager) *syncClock {
 	return clock
 }
 
-// syncOneSecondLater moves the clock one second, then records a successful sync
-// of each instance. The sync then comes after a frame sent before the call.
 func (c *syncClock) syncOneSecondLater(instanceIDs ...int) {
 	time.Sleep(time.Second)
 	c.mu.Lock()
@@ -110,7 +104,6 @@ func (c *syncClock) get(_ context.Context, instanceID int) time.Time {
 	return c.last[instanceID]
 }
 
-// requireNoTick reads the stream for d and fails on a data frame.
 func (r *sseReader) requireNoTick(t *testing.T, d time.Duration) {
 	t.Helper()
 	deadline := time.After(d)
@@ -128,15 +121,12 @@ func (r *sseReader) requireNoTick(t *testing.T, d time.Duration) {
 	}
 }
 
-// fakeInstanceStore reports each instance id as an active instance. A database
-// does not run in a synctest bubble.
 type fakeInstanceStore struct{}
 
 func (fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
 	return &models.Instance{ID: id, IsActive: true}, nil
 }
 
-// newIdleTestManager returns a manager with a fake instance store.
 func newIdleTestManager(t *testing.T, provider *fakeSyncProvider) *StreamManager {
 	t.Helper()
 	manager := NewStreamManager(nil, provider, provider, fakeInstanceStore{})
@@ -157,7 +147,6 @@ func TestIdleFrameOnQuietInstance(t *testing.T) {
 		initAt := time.Now()
 		builds := provider.torrentsCallCount()
 
-		// The instance syncs, but nothing changes.
 		clock.syncOneSecondLater(instanceID)
 
 		frame := decodeStreamPayloadData(t, reader.waitForTick(t, 2*time.Minute).data)
@@ -182,7 +171,6 @@ func TestNoIdleFrameWithoutSyncAfterLastFrame(t *testing.T) {
 		clock := newSyncClock(manager)
 		instanceID := 1
 
-		// The last successful sync comes before the first frame, and the sync then hangs.
 		clock.syncOneSecondLater(instanceID)
 		time.Sleep(time.Second)
 		reader := connectPipeStream(t, manager, streamPayload(instanceID, "stream-hung"))
@@ -236,7 +224,6 @@ func TestIdleTickRebuildsAfterFailedRebuild(t *testing.T) {
 		manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true})
 		reader.waitForError(t, "failed to refresh torrent list", time.Second)
 
-		// The instance then goes quiet, with a torrent that the view does not show yet.
 		provider.mu.Lock()
 		provider.torrentsErr = nil
 		provider.torrentsResponse = singleResp(tv("a", "added while quiet"))
@@ -260,8 +247,6 @@ func TestIdleTickDoesNotReplacePendingTick(t *testing.T) {
 		synctest.Wait()
 		clock.syncOneSecondLater(instanceID)
 
-		// A rebuild runs past the idle deadline, and a real tick with a new torrent
-		// waits behind it.
 		builds := provider.signalBuilds()
 		release := provider.gateTorrentBuilds()
 		manager.publishInstance(instanceID, &StreamMeta{InstanceID: instanceID, IncludeCounts: true})
@@ -287,7 +272,6 @@ func TestIdleTickSendsFirstSnapshotAfterFailedInit(t *testing.T) {
 		clock := newSyncClock(manager)
 		instanceID := 1
 
-		// The first snapshot fails, so the view has no baseline.
 		provider.setTorrentsErr(errors.New("boom"))
 		reader := connectPipeStream(t, manager, streamPayload(instanceID, "stream-idle-new"))
 		reader.waitForError(t, "failed to refresh torrent list", time.Second)
@@ -297,7 +281,6 @@ func TestIdleTickSendsFirstSnapshotAfterFailedInit(t *testing.T) {
 		provider.mu.Unlock()
 		clock.syncOneSecondLater(instanceID)
 
-		// The first data frame is a full snapshot, not an idle frame.
 		frame := decodeStreamPayloadData(t, reader.waitForTick(t, 2*time.Minute).data)
 		require.Equal(t, streamEventUpdate, frame.Type)
 		require.Equal(t, []string{"a"}, changedHashes(frame))
@@ -315,8 +298,6 @@ func TestFailingRebuildRetriesAfterIdleWindow(t *testing.T) {
 		reader.waitForEvent(t, streamEventInit, time.Second)
 		synctest.Wait()
 
-		// The view is quiet for longer than the idle window, then each rebuild fails
-		// while the syncs work.
 		time.Sleep(2 * idleFrameAfter)
 		provider.setTorrentsErr(errors.New("boom"))
 		clock.syncOneSecondLater(instanceID)
@@ -329,7 +310,6 @@ func TestFailingRebuildRetriesAfterIdleWindow(t *testing.T) {
 	})
 }
 
-// countErrors reads the stream for d and counts the stream-error frames with msg.
 func (r *sseReader) countErrors(msg string, d time.Duration) int {
 	count := 0
 	deadline := time.After(d)

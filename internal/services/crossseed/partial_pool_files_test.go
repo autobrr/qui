@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
-// regression: #4220
 func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 	t.Parallel()
 
@@ -26,7 +26,6 @@ func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 		Name:        "Synthetic.Release",
 		MetaVersion: 2,
 		PieceLength: 16,
-		// Hybrid v1 order deliberately disagrees with sorted v2 traversal.
 		Files: []metainfo.FileInfo{
 			{Path: []string{"sub\xff\xfe\u200e", "B.mkv"}, Length: 20},
 			{Path: []string{"A.mkv"}, Length: 10},
@@ -48,7 +47,6 @@ func TestBuildPartialPoolFileDescriptorsJoinsV2RootsByPath(t *testing.T) {
 	require.Equal(t, strings.Repeat("61", 32), descriptors[1].PiecesRoot)
 }
 
-// regression: #4220
 func TestBuildPartialPoolFileDescriptorsSingleFileSanitizesUTF8(t *testing.T) {
 	info := &metainfo.Info{
 		Name:        "Synthetic\xff\xfe\u200e.flac",
@@ -217,4 +215,79 @@ func TestValidatePartialPoolPathInsideRootMissingRootThroughAlias(t *testing.T) 
 	link := filepath.Join(root, "escape")
 	require.NoError(t, os.Symlink(outside, link))
 	require.Error(t, validatePartialPoolPathInsideRoot(root, filepath.Join(link, "missing.mkv")))
+}
+
+func TestPartialPoolJoinIdentity(t *testing.T) {
+	boundSource := mustParseHash(t, fakeHash("bound-source"))
+	hybridV1 := fakeHash("hybrid-source")
+	hybridV2 := mustParseHash(t, strings.Repeat("e", 64))
+	for _, tt := range []struct {
+		name          string
+		decision      func(instanceID int) searchDecisionProvenance
+		matched       *qbt.Torrent
+		resolved      *qbt.Torrent
+		wantSourceKey string
+		wantErr       string
+	}{
+		{
+			name: "bound source names the pool",
+			decision: func(instanceID int) searchDecisionProvenance {
+				return searchDecisionProvenance{SourceInstanceID: instanceID, SourceHash: boundSource}
+			},
+			matched:       &qbt.Torrent{Hash: fakeHash("matched")},
+			wantSourceKey: boundSource.String(),
+		},
+		{
+			name: "found source keys the pool by its v1 hash",
+			decision: func(instanceID int) searchDecisionProvenance {
+				return searchDecisionProvenance{SourceInstanceID: instanceID, SourceHash: hybridV2}
+			},
+			matched:       &qbt.Torrent{Hash: fakeHash("matched")},
+			resolved:      &qbt.Torrent{Hash: hybridV1, InfohashV1: hybridV1, InfohashV2: hybridV2.String()},
+			wantSourceKey: hybridV1,
+		},
+		{
+			name:    "matched torrent without a hash",
+			matched: &qbt.Torrent{Hash: "not-a-hash"},
+			wantErr: "matched partial pool source has no identity",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store, instanceID := newPartialPoolFilesystemStore(t)
+			torrentBytes, memberKey, descriptors := syntheticPartialPoolTorrent(t)
+			sync := &partialPoolAdmissionSync{
+				rootlessSavePathSyncManager: &rootlessSavePathSyncManager{
+					files: map[string]qbt.TorrentFiles{memberKey: partialPoolFetchedFiles(descriptors)},
+				},
+				resolved: tt.resolved,
+			}
+			req := &CrossSeedRequest{}
+			if tt.decision != nil {
+				req.SearchDecision = tt.decision(instanceID)
+			}
+			service := &partialPoolCoordinator{automationStore: store, syncManager: sync}
+
+			pool, _, err := service.join(
+				t.Context(),
+				CrossSeedCandidate{InstanceID: instanceID},
+				torrentBytes,
+				[]string{memberKey},
+				req,
+				tt.matched,
+				models.CrossSeedPartialPoolModeHardlink,
+				t.TempDir(),
+				[]hardlinktree.TorrentFile{{Path: descriptors[0].RelativePath, Size: descriptors[0].SizeBytes}},
+				nil,
+				descriptors,
+			)
+
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, instanceID, pool.SourceInstanceID)
+			require.Equal(t, tt.wantSourceKey, pool.SourceTorrentKey)
+		})
+	}
 }

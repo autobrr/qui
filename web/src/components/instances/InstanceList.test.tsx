@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { HttpResponse, http } from "msw"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
@@ -29,15 +29,6 @@ const instances = vi.hoisted(() => ({
 }))
 vi.mock("@/hooks/useInstances", async (importOriginal) => ({ ...(await importOriginal<object>()), useInstances: () => instances }))
 
-
-// The switch of a row measures itself, and jsdom has no ResizeObserver.
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()
@@ -67,12 +58,10 @@ describe("InstanceList", () => {
   it("lists the limits of a remote instance in a tooltip on its file access", async () => {
     renderList({ id: 1, name: "seedbox", host: "http://127.0.0.1:8080", isActive: true, connected: true, filesystemMode: "remote", sshTier: "sftp" } as InstanceResponse)
 
-    // jsdom has ontouchstart, so the tooltip opens as on a touch screen: on a tap.
     fireEvent.click(screen.getByText("Files over SSH"))
     expect((await screen.findByRole("tooltip")).textContent).toContain("No reflinks on a remote instance.")
   })
 
-  // regression: #4263
   it("shows the limits on a tap of the file access, and leaves the editor closed", async () => {
     const onEdit = vi.fn()
     render(
@@ -88,7 +77,6 @@ describe("InstanceList", () => {
       </QueryClientProvider>
     )
 
-    // iOS Safari sends a tap as a touch pointer down and then a click with the mouse pointer type.
     const fact = screen.getByText("Files over SSH")
     fireEvent.pointerDown(fact, { pointerType: "touch" })
     fireEvent(fact, new PointerEvent("click", { bubbles: true, pointerType: "mouse" }))

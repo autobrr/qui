@@ -21,11 +21,6 @@ export type ThemeThumbnailPalette = Partial<Record<keyof typeof THUMBNAIL_TOKENS
 
 const VAR_REFERENCE = /^var\(\s*(--[\w-]+)\s*\)$/
 
-/**
- * The colors that a thumbnail of the theme paints in one mode. A light-only
- * theme always gives its light colors. A token that the theme does not set
- * is missing: a locked theme sends only primary, secondary, and accent.
- */
 export function themeThumbnailPalette(theme: Theme, dark: boolean, variation: string | null): ThemeThumbnailPalette {
   const own = dark && !theme.lightOnly ? theme.cssVars.dark : theme.cssVars.light
   const root = theme.cssVars.light
@@ -33,13 +28,10 @@ export function themeThumbnailPalette(theme: Theme, dark: boolean, variation: st
   const lookup = (name: string): string | undefined => {
     if (name === "--variation-color") {
       const id = variation && theme.variations?.includes(variation) ? variation : theme.variations?.[0]
-      // Like applyTheme, a missing variation color keeps the own --variation-color of the theme.
       return (id ? token(`--variation-${id}`) : undefined) ?? token("--variation-color")
     }
     return token(name)
   }
-  // A theme can point one token at another; ten steps end a cycle. Any other value, such as a
-  // color function, goes to the browser as written, as the CSS of the theme does.
   const resolve = (name: string): string | undefined => {
     let value = lookup(name)
     for (let step = 0; value !== undefined && step < 10; step++) {
@@ -58,7 +50,6 @@ export function themeThumbnailPalette(theme: Theme, dark: boolean, variation: st
   return palette
 }
 
-/** The color variations of a theme, each with its color in one mode. */
 export function themeVariationColors(theme: Theme, dark: boolean): Array<{ id: string; color: string }> {
   const own = dark && !theme.lightOnly ? theme.cssVars.dark : theme.cssVars.light
   return (theme.variations ?? []).flatMap((id) => {

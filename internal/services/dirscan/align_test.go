@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func TestBuildAlignmentPlan(t *testing.T) {
@@ -118,8 +119,6 @@ func TestBuildAlignmentPlan(t *testing.T) {
 			wantFiles:  []crossseed.FileRename{{OldPath: "ep01.mkv", NewPath: "Show S01E01.mkv"}},
 		},
 		{
-			// No on-disk folder to rename the root to; the root is stripped at add time
-			// (contentLayout=NoSubfolder) and the stripped name already matches disk.
 			name:          "foldered torrent matched to single loose file, identical filename, strip only",
 			torrentFiles:  []TorrentFile{{Path: "Some.Folder/Movie.mkv", Size: 7}},
 			searcheePath:  "/downloads/Movie.mkv",
@@ -186,27 +185,16 @@ func TestBuildAlignmentPlan(t *testing.T) {
 	}
 }
 
-// alignFakeManager is a stateful TorrentManager that applies renames to an in-memory file list,
-// so verification via GetTorrentFilesBatch reflects the renames the injector issued.
 type alignFakeManager struct {
-	mu            sync.Mutex
-	hash          string
-	files         qbt.TorrentFiles
-	addOptions    map[string]string
-	fileRenames   [][2]string
-	folderRenames [][2]string
-	// renameLog records file and folder renames in a single call-ordered list ("file"/"folder")
-	// so tests can assert files are renamed before the root folder.
-	renameLog []string
-	// renameErr, when set, makes every rename fail without touching the file list, simulating a
-	// qBittorrent that does not support renaming (e.g. WebAPI < 2.7.0).
-	renameErr error
-	// filesErr, when set, makes GetTorrentFilesBatch fail, simulating an instance whose file list
-	// cannot be read so a rename can never be confirmed.
-	filesErr error
-	// visibleAfterCalls, when > 0, hides the torrent (empty file list, renames error) until
-	// GetTorrentFilesBatch has been called that many times, simulating a slow instance where a
-	// just-added torrent takes a while to become visible/renameable.
+	mu                sync.Mutex
+	hash              string
+	files             qbt.TorrentFiles
+	addOptions        map[string]string
+	fileRenames       [][2]string
+	folderRenames     [][2]string
+	renameLog         []string
+	renameErr         error
+	filesErr          error
 	visibleAfterCalls int
 	filesCalls        int
 }
@@ -293,10 +281,10 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		t.Fatalf("mkdir searchee: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true} // regular mode (no hardlink/reflink)
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash: "deadbeef01",
+		hash: "deadbeef01000000000000000000000000000000",
 		files: qbt.TorrentFiles{
 			{Name: "Linux.Distribution.Release.01/a.iso", Size: 4},
 			{Name: "Linux.Distribution.Release.01/b.iso", Size: 5},
@@ -310,7 +298,7 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Linux.Distribution.Release.01",
-			InfoHash: "deadbeef01",
+			InfoHash: "deadbeef01000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Linux.Distribution.Release.01/a.iso", Size: 4},
 				{Path: "Linux.Distribution.Release.01/b.iso", Size: 5},
@@ -345,8 +333,6 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		t.Fatalf("expected success, got %+v", res)
 	}
 
-	// Added force-paused AND skip_checking so qBittorrent does not verify (and thereby block renames
-	// on) the pre-rename paths before we align them; the manual recheck after alignment verifies.
 	if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
 		t.Errorf("expected paused+stopped add options, got %+v", manager.addOptions)
 	}
@@ -354,7 +340,6 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		t.Errorf("expected skip_checking when alignment is needed, got %+v", manager.addOptions)
 	}
 
-	// The top-level folder was renamed to the on-disk directory name; filenames already matched.
 	if len(manager.folderRenames) != 1 || manager.folderRenames[0] != [2]string{"Linux.Distribution.Release.01", "Release 01"} {
 		t.Fatalf("expected folder rename to on-disk name, got %+v", manager.folderRenames)
 	}
@@ -368,15 +353,12 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		}
 	}
 
-	// After aligning, qBittorrent must recheck the data, then resume (StartPaused=false).
 	if len(settle.calls()) != 1 || settle.calls()[0] != "recheck" {
 		t.Fatalf("expected a single recheck, got %+v", settle.calls())
 	}
 }
 
 func TestInjector_Inject_AlignsTorrentListedUnderV2ID(t *testing.T) {
-	// qBittorrent lists a v2-only torrent under the first 40 characters of its v2 hash, not
-	// under the v1 hash that the parser computes from the info bytes.
 	v1 := strings.Repeat("a", 40)
 	v2 := strings.Repeat("b", 64)
 	qbitID := v2[:40]
@@ -430,7 +412,6 @@ func TestInjector_Inject_AlignsTorrentListedUnderV2ID(t *testing.T) {
 		if got := manager.currentNames(); !slices.Equal(got, []string{"Release 01/a.iso"}) {
 			t.Fatalf("torrent files = %v, want the on-disk folder", got)
 		}
-		// Settle watches the first recheck hash, so it must be the ID that qBittorrent knows.
 		if got := settle.hashedCalls(); len(got) == 0 || got[0] != "recheck:"+qbitID {
 			t.Fatalf("settle calls = %v, want the first recheck on %s", got, qbitID)
 		}
@@ -438,7 +419,6 @@ func TestInjector_Inject_AlignsTorrentListedUnderV2ID(t *testing.T) {
 }
 
 func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
-	// A rootless torrent dropped into a directory searchee whose file has a different on-disk name.
 	searcheeDir := filepath.Join(t.TempDir(), "Season 01")
 	if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
 		t.Fatalf("mkdir searchee: %v", err)
@@ -447,7 +427,7 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef04",
+		hash:  "deadbeef04000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "ep01.mkv", Size: 6}},
 	}
 	settle := &settleFake{}
@@ -458,7 +438,7 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "ep01",
-			InfoHash:    "deadbeef04",
+			InfoHash:    "deadbeef04000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "ep01.mkv", Size: 6}},
 			PieceLength: 16384,
 		},
@@ -506,10 +486,8 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
-	// Simulate a qBittorrent that cannot rename (e.g. WebAPI < 2.7.0): every rename errors and the
-	// file list never changes, so alignment can never be confirmed.
 	manager := &alignFakeManager{
-		hash:      "deadbeef03",
+		hash:      "deadbeef03000000000000000000000000000000",
 		files:     qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 		renameErr: errors.New("qBittorrent instance does not support folder renaming"),
 	}
@@ -521,7 +499,7 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Linux.Distribution.Release.01",
-			InfoHash:    "deadbeef03",
+			InfoHash:    "deadbeef03000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 			PieceLength: 16384,
 		},
@@ -543,7 +521,6 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 	if err != nil {
 		t.Fatalf("inject returned error: %v", err)
 	}
-	// The torrent was added, but alignment failed, so the injection is reported as a failure.
 	if res.Success {
 		t.Fatalf("expected Success=false when alignment fails, got %+v", res)
 	}
@@ -553,7 +530,6 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 	if res.ErrorMessage == "" {
 		t.Errorf("expected an error message describing the alignment failure")
 	}
-	// It must be left paused for inspection: no recheck and no resume watcher.
 	if len(settle.calls()) != 0 {
 		t.Errorf("expected no recheck when alignment fails, got %+v", settle.calls())
 	}
@@ -568,7 +544,7 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef02",
+		hash:  "deadbeef02000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "Release 01/a.iso", Size: 4}},
 	}
 	settle := &settleFake{}
@@ -579,7 +555,7 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Release 01",
-			InfoHash:    "deadbeef02",
+			InfoHash:    "deadbeef02000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Release 01/a.iso", Size: 4}},
 			PieceLength: 16384,
 		},
@@ -608,7 +584,6 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 	if len(manager.folderRenames) != 0 || len(manager.fileRenames) != 0 {
 		t.Errorf("expected no renames when names match, got folders=%+v files=%+v", manager.folderRenames, manager.fileRenames)
 	}
-	// Perfect match with matching names keeps the fast path: skip_checking, no forced pause, no recheck.
 	if manager.addOptions["skip_checking"] != "true" {
 		t.Errorf("expected skip_checking on the fast path, got %+v", manager.addOptions)
 	}
@@ -625,7 +600,7 @@ func alignmentRecheckRequest(t *testing.T) (*models.Instance, *alignFakeManager,
 	}
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 	manager := &alignFakeManager{
-		hash:  "deadbeef05",
+		hash:  "deadbeef05000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 	}
 	req := &InjectRequest{
@@ -633,7 +608,7 @@ func alignmentRecheckRequest(t *testing.T) (*models.Instance, *alignFakeManager,
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Linux.Distribution.Release.01",
-			InfoHash:    "deadbeef05",
+			InfoHash:    "deadbeef05000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 			PieceLength: 16384,
 		},
@@ -652,19 +627,17 @@ func alignmentRecheckRequest(t *testing.T) (*models.Instance, *alignFakeManager,
 	return instance, manager, req
 }
 
-// A post-alignment recheck that fails is sent again from the settle queue, and
-// the torrent resumes once it is complete.
 func TestInjector_Inject_AlignmentRecheckFailure_IsRetried(t *testing.T) {
 	instance, manager, req := alignmentRecheckRequest(t)
 	synctest.Test(t, func(t *testing.T) {
 		settle := &settleFake{
 			recheckFailures: 1,
 			polls: []*qbt.Torrent{
-				{Hash: "deadbeef05", State: qbt.TorrentStateStoppedUp, Progress: 1},
-				{Hash: "deadbeef05", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
-				{Hash: "deadbeef05", State: qbt.TorrentStatePausedUp, Progress: 1},
-				{Hash: "deadbeef05", State: qbt.TorrentStateUploading, Progress: 1},
-				{Hash: "deadbeef05", State: qbt.TorrentStateUploading, Progress: 1},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStateStoppedUp, Progress: 1},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStatePausedUp, Progress: 1},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStateUploading, Progress: 1},
+				{Hash: "deadbeef05000000000000000000000000000000", State: qbt.TorrentStateUploading, Progress: 1},
 			},
 		}
 		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.start(t), nil), nil, nil, testBackendPool(instance))
@@ -681,14 +654,12 @@ func TestInjector_Inject_AlignmentRecheckFailure_IsRetried(t *testing.T) {
 	})
 }
 
-// The torrent was added force-paused for alignment. When the settle module
-// cannot take it, nothing would recheck or resume it, so the run reports failure.
 func TestInjector_Inject_AlignmentSettleQueueFull_ReportsFailure(t *testing.T) {
 	instance, manager, req := alignmentRecheckRequest(t)
 	settle := &settleFake{}
 	settler := settle.idle()
 	for full := false; !full; {
-		full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
+		full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: infohash.ParseAll([]string{"0000000000000000000000000000000000000001"})}).QueueFull
 	}
 	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settler, nil), nil, nil, testBackendPool(instance))
 
@@ -707,8 +678,6 @@ func TestInjector_Inject_AlignmentSettleQueueFull_ReportsFailure(t *testing.T) {
 	}
 }
 
-// A regular add whose settle queue is full fails only when it was added paused:
-// nothing would recheck or resume it. A running partial add downloads without the module.
 func TestInjector_Inject_RegularAddSettleQueueFull(t *testing.T) {
 	runningPartial := func(t *testing.T) (*models.Instance, *InjectRequest) {
 		t.Helper()
@@ -744,7 +713,7 @@ func TestInjector_Inject_RegularAddSettleQueueFull(t *testing.T) {
 			settle := &settleFake{}
 			settler := settle.idle()
 			for full := false; !full; {
-				full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: []string{"other"}}).QueueFull
+				full = settler.Settle(t.Context(), crossseed.AddedTorrent{InstanceID: 1, Hashes: infohash.ParseAll([]string{"0000000000000000000000000000000000000001"})}).QueueFull
 			}
 			injector := NewInjector(nil, crossseed.NewAligner(nil), testAdder(&recordingTorrentManager{}, settler, nil), nil, nil, testBackendPool(instance))
 
@@ -763,9 +732,6 @@ func TestInjector_Inject_RegularAddSettleQueueFull(t *testing.T) {
 }
 
 func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
-	// Both the top-level folder and the file name differ from the on-disk layout, so alignment must
-	// rename the file (within the still-nonexistent source root) BEFORE renaming the root folder,
-	// then recheck and resume.
 	searcheeDir := filepath.Join(t.TempDir(), "Release Folder")
 	if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
 		t.Fatalf("mkdir searchee: %v", err)
@@ -774,7 +740,7 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef07",
+		hash:  "deadbeef07000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "Some.Release/movie.2020.mkv", Size: 8}},
 	}
 	settle := &settleFake{}
@@ -785,7 +751,7 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Some.Release",
-			InfoHash:    "deadbeef07",
+			InfoHash:    "deadbeef07000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Some.Release/movie.2020.mkv", Size: 8}},
 			PieceLength: 16384,
 		},
@@ -811,20 +777,15 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 		t.Fatalf("expected success, got %+v", res)
 	}
 
-	// The file is renamed within the source root first, then the root folder is renamed onto the
-	// on-disk directory name.
 	if len(manager.fileRenames) != 1 || manager.fileRenames[0] != [2]string{"Some.Release/movie.2020.mkv", "Some.Release/Movie (2020).mkv"} {
 		t.Fatalf("expected one file rename inside the source root, got %+v", manager.fileRenames)
 	}
 	if len(manager.folderRenames) != 1 || manager.folderRenames[0] != [2]string{"Some.Release", "Release Folder"} {
 		t.Fatalf("expected the folder rename to the on-disk name, got %+v", manager.folderRenames)
 	}
-	// Files must be renamed before the folder, otherwise the folder rename would land the file on a
-	// path that already exists on disk.
 	if want := []string{"file", "folder"}; !slices.Equal(manager.renameLog, want) {
 		t.Fatalf("expected renames in order %v, got %v", want, manager.renameLog)
 	}
-	// Every torrent path now lands under the on-disk folder with the on-disk file name.
 	if names := manager.currentNames(); len(names) != 1 || names[0] != "Release Folder/Movie (2020).mkv" {
 		t.Errorf("torrent file not aligned to on-disk layout, got %+v", names)
 	}
@@ -834,8 +795,6 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 }
 
 func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
-	// A foldered torrent matched to a loose on-disk file: added with contentLayout=NoSubfolder so
-	// qBittorrent strips the root, then the (root-stripped) file is renamed to the on-disk name.
 	looseFile := filepath.Join(t.TempDir(), "Movie (2020).mkv")
 	if err := os.WriteFile(looseFile, []byte("x"), 0o600); err != nil {
 		t.Fatalf("write loose file: %v", err)
@@ -844,8 +803,7 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash: "deadbeef09",
-		// qBittorrent stores the root-stripped path after a NoSubfolder add.
+		hash:  "deadbeef09000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "movie.mkv", Size: 7}},
 	}
 	settle := &settleFake{}
@@ -856,7 +814,7 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Some.Folder",
-			InfoHash:    "deadbeef09",
+			InfoHash:    "deadbeef09000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Some.Folder/movie.mkv", Size: 7}},
 			PieceLength: 16384,
 		},
@@ -903,8 +861,6 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 }
 
 func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
-	// Same shape but the file name already matches disk: the NoSubfolder add alone aligns the
-	// torrent, so it keeps the fast path (no forced pause, no renames, no recheck).
 	looseFile := filepath.Join(t.TempDir(), "Movie.mkv")
 	if err := os.WriteFile(looseFile, []byte("x"), 0o600); err != nil {
 		t.Fatalf("write loose file: %v", err)
@@ -913,7 +869,7 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:  "deadbeef10",
+		hash:  "deadbeef10000000000000000000000000000000",
 		files: qbt.TorrentFiles{{Name: "Movie.mkv", Size: 7}},
 	}
 	settle := &settleFake{}
@@ -924,7 +880,7 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Some.Folder",
-			InfoHash:    "deadbeef10",
+			InfoHash:    "deadbeef10000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Some.Folder/Movie.mkv", Size: 7}},
 			PieceLength: 16384,
 		},
@@ -965,9 +921,6 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 }
 
 func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
-	// The just-added torrent is not visible in qBittorrent for the first few polls (slow
-	// instance); renames error until it is. Alignment must wait for visibility instead of burning
-	// its rename attempts on a torrent that is not registered yet.
 	searcheeDir := filepath.Join(t.TempDir(), "Release 01")
 	if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
 		t.Fatalf("mkdir searchee: %v", err)
@@ -976,9 +929,9 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
-		hash:              "deadbeef12",
+		hash:              "deadbeef12000000000000000000000000000000",
 		files:             qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
-		visibleAfterCalls: 5, // more polls than renameTorrentPath alone would attempt
+		visibleAfterCalls: 5,
 	}
 	settle := &settleFake{}
 	injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.idle(), nil), nil, nil, testBackendPool(instance))
@@ -988,7 +941,7 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Linux.Distribution.Release.01",
-			InfoHash:    "deadbeef12",
+			InfoHash:    "deadbeef12000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
 			PieceLength: 16384,
 		},

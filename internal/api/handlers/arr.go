@@ -19,13 +19,11 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 )
 
-// ArrHandler handles ARR instance management endpoints
 type ArrHandler struct {
 	instanceStore *models.ArrInstanceStore
 	arrService    *arr.Service
 }
 
-// NewArrHandler creates a new ARR handler
 func NewArrHandler(instanceStore *models.ArrInstanceStore, arrService *arr.Service) *ArrHandler {
 	return &ArrHandler{
 		instanceStore: instanceStore,
@@ -33,13 +31,11 @@ func NewArrHandler(instanceStore *models.ArrInstanceStore, arrService *arr.Servi
 	}
 }
 
-// arrTestResponse is the response for test endpoints
 type arrTestResponse struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
 }
 
-// ListInstances handles GET /api/arr/instances
 func (h *ArrHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -50,15 +46,13 @@ func (h *ArrHandler) ListInstances(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mask API keys in the response
 	for i := range instances {
 		instances[i].APIKeyEncrypted = ""
 	}
 
-	RespondJSON(w, http.StatusOK, instances)
+	RespondJSON(w, r, http.StatusOK, instances)
 }
 
-// GetInstance handles GET /api/arr/instances/{id}
 func (h *ArrHandler) GetInstance(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
@@ -84,13 +78,11 @@ func (h *ArrHandler) GetInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mask API key in the response
 	instance.APIKeyEncrypted = ""
 
-	RespondJSON(w, http.StatusOK, instance)
+	RespondJSON(w, r, http.StatusOK, instance)
 }
 
-// arrCreateRequest represents the request to create an ARR instance
 type arrCreateRequest struct {
 	Type           models.ArrInstanceType `json:"type"`
 	Name           string                 `json:"name"`
@@ -103,7 +95,6 @@ type arrCreateRequest struct {
 	TimeoutSeconds int                    `json:"timeout_seconds"`
 }
 
-// CreateInstance handles POST /api/arr/instances
 func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	var req arrCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -112,7 +103,6 @@ func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate required fields
 	if req.Name == "" {
 		RespondError(w, http.StatusBadRequest, "Name is required")
 		return
@@ -136,7 +126,6 @@ func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Default timeout
 	if req.TimeoutSeconds <= 0 {
 		req.TimeoutSeconds = 15
 	}
@@ -158,25 +147,23 @@ func (h *ArrHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mask API key in response
+	h.arrService.NoteInstancesChanged()
 	instance.APIKeyEncrypted = ""
 
-	RespondJSON(w, http.StatusCreated, instance)
+	RespondJSON(w, r, http.StatusCreated, instance)
 }
 
-// arrUpdateRequest represents the request to update an ARR instance
 type arrUpdateRequest struct {
 	Name           string  `json:"name"`
 	BaseURL        string  `json:"base_url"`
-	APIKey         string  `json:"api_key,omitempty"` // Optional - only update if provided
+	APIKey         string  `json:"api_key,omitempty"`
 	BasicUsername  *string `json:"basic_username,omitempty"`
-	BasicPassword  *string `json:"basic_password,omitempty"` // Optional - update if provided, omit to keep, empty to clear
+	BasicPassword  *string `json:"basic_password,omitempty"`
 	Enabled        *bool   `json:"enabled,omitempty"`
 	Priority       *int    `json:"priority,omitempty"`
 	TimeoutSeconds *int    `json:"timeout_seconds,omitempty"`
 }
 
-// UpdateInstance handles PUT /api/arr/instances/{id}
 func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
@@ -197,7 +184,6 @@ func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build update params
 	params := &models.ArrInstanceUpdateParams{}
 
 	if req.Name != "" {
@@ -213,7 +199,6 @@ func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		params.APIKey = &req.APIKey
 	}
 
-	// Basic auth: treat "<redacted>" as "keep existing".
 	if req.BasicPassword != nil && domain.IsRedactedString(strings.TrimSpace(*req.BasicPassword)) {
 		req.BasicPassword = nil
 	}
@@ -245,13 +230,12 @@ func (h *ArrHandler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mask API key in response
+	h.arrService.NoteInstancesChanged()
 	instance.APIKeyEncrypted = ""
 
-	RespondJSON(w, http.StatusOK, instance)
+	RespondJSON(w, r, http.StatusOK, instance)
 }
 
-// DeleteInstance handles DELETE /api/arr/instances/{id}
 func (h *ArrHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
@@ -276,10 +260,10 @@ func (h *ArrHandler) DeleteInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.arrService.NoteInstancesChanged()
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// TestInstance handles POST /api/arr/instances/{id}/test
 func (h *ArrHandler) TestInstance(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
@@ -305,10 +289,9 @@ func (h *ArrHandler) TestInstance(w http.ResponseWriter, r *http.Request) {
 		log.Debug().Err(testErr).Int("id", id).Msg("ARR instance test failed")
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
-// arrTestConnectionRequest represents the request to test a connection before saving
 type arrTestConnectionRequest struct {
 	Type          models.ArrInstanceType `json:"type"`
 	BaseURL       string                 `json:"base_url"`
@@ -317,7 +300,6 @@ type arrTestConnectionRequest struct {
 	BasicPassword *string                `json:"basic_password,omitempty"`
 }
 
-// TestConnection handles POST /api/arr/test
 func (h *ArrHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
 	var req arrTestConnectionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -359,7 +341,7 @@ func (h *ArrHandler) TestConnection(w http.ResponseWriter, r *http.Request) {
 			Msg("ARR connection test failed")
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func normalizeBasicAuthFromURL(rawBaseURL string, basicUsername, basicPassword *string) (string, *string, *string) {
@@ -369,7 +351,6 @@ func normalizeBasicAuthFromURL(rawBaseURL string, basicUsername, basicPassword *
 		return rawBaseURL, basicUsername, basicPassword
 	}
 
-	// If caller omitted basic auth fields entirely, use URL userinfo.
 	if basicUsername == nil && basicPassword == nil {
 		user := strings.TrimSpace(u.User.Username())
 		if user != "" {
@@ -381,7 +362,6 @@ func normalizeBasicAuthFromURL(rawBaseURL string, basicUsername, basicPassword *
 		}
 	}
 
-	// Strip userinfo from stored URL.
 	u.User = nil
 	return strings.TrimRight(u.String(), "/"), basicUsername, basicPassword
 }
@@ -406,19 +386,16 @@ func normalizeBasicAuthForUpdate(basicUsername, basicPassword *string) (*string,
 	user := strings.TrimSpace(stringOrEmpty(basicUsername))
 	pass := strings.TrimSpace(stringOrEmpty(basicPassword))
 
-	// Field omitted entirely -> no change.
 	if basicUsername == nil && basicPassword == nil {
 		return nil, nil
 	}
 
-	// Explicit clear when username is present but empty.
 	if basicUsername != nil && user == "" {
 		empty := ""
 		return &empty, &empty
 	}
 
 	if user == "" {
-		// Username absent/empty and not an explicit clear -> no change.
 		return nil, nil
 	}
 
@@ -437,13 +414,11 @@ func stringOrEmpty(s *string) string {
 	return *s
 }
 
-// arrResolveRequest represents a request to resolve a title to external IDs
 type arrResolveRequest struct {
 	Title       string `json:"title"`
-	ContentType string `json:"content_type"` // "movie" or "tv"
+	ContentType string `json:"content_type"`
 }
 
-// Resolve handles POST /api/arr/resolve
 func (h *ArrHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 	var req arrResolveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -476,5 +451,5 @@ func (h *ArrHandler) Resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, result)
+	RespondJSON(w, r, http.StatusOK, result)
 }

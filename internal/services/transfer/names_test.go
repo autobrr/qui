@@ -16,8 +16,6 @@ import (
 
 const episode = "Show.S01E01.mkv"
 
-// seedOneFile seeds a torrent of one file on the source, at the name that
-// the content layout of qBittorrent gives it, and returns its infohash.
 func (r *rig) seedOneFile(data []byte, layout, name string) string {
 	r.t.Helper()
 	at := filepath.Join(r.srcDir, filepath.FromSlash(name))
@@ -27,8 +25,6 @@ func (r *rig) seedOneFile(data []byte, layout, name string) string {
 	return r.src.SeedWithLayout(file, r.srcPath(), layout)
 }
 
-// ways are the two ways that add the torrent on the target: after a copy
-// through qui, and after a Transfer torrent to a target without file access.
 var ways = []struct {
 	name   string
 	target side
@@ -37,10 +33,6 @@ var ways = []struct {
 	{name: "Transfer torrent", target: noAccess},
 }
 
-// A torrent of one file that the source added with the layout "Create
-// subfolder" has its file in a folder. The target makes the same folder at
-// the add, so it finds the file at once, with no rename and no check.
-// regression: #4242
 func TestTransferKeepsTheFolderOfOneFile(t *testing.T) {
 	for _, tc := range ways {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,10 +52,6 @@ func TestTransferKeepsTheFolderOfOneFile(t *testing.T) {
 	}
 }
 
-// A file whose name on the source no content layout gives gets that name
-// after the add. The target misses the file until then, so it checks the
-// file at its name, and the Transfer ends only when that check passes.
-// regression: #4242
 func TestTransferChecksATorrentThatItRenamed(t *testing.T) {
 	for _, tc := range ways {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,10 +73,6 @@ func TestTransferChecksATorrentThatItRenamed(t *testing.T) {
 	}
 }
 
-// qBittorrent lists a new file name some time after it takes the rename, and
-// refuses a second rename from the old name. qui sends each rename once and
-// waits for the names.
-// regression: #4242
 func TestTransferSendsEachRenameOnce(t *testing.T) {
 	r := newRig(t)
 	r.dst.StaleFileLists = 2
@@ -104,10 +88,6 @@ func TestTransferSendsEachRenameOnce(t *testing.T) {
 	require.True(t, r.seeding(r.target.ID, s.hash), "the target seeds the torrent")
 }
 
-// A torrent that does not pass the check after its rename is not complete
-// on the target. The Transfer fails for a retry, and the source keeps the
-// torrent and its files.
-// regression: #4242
 func TestTransferFailsWhenTheCheckAfterTheRenameFails(t *testing.T) {
 	r := newRig(t)
 	data := numbered("E01", 40)
@@ -129,10 +109,6 @@ func TestTransferFailsWhenTheCheckAfterTheRenameFails(t *testing.T) {
 	require.Less(t, r.dst.Syncs(), 20, "the wait ends when the check ends")
 }
 
-// seedMovedFolder seeds a torrent of one file whose folder on the source has
-// another name than the folder that the target makes for it at the add. So
-// the target has to rename the file. It puts another file of the same size
-// at the name of the add on the target, as a second torrent there has it.
 func (r *rig) seedMovedFolder(data []byte) string {
 	r.t.Helper()
 	hash := r.seedOneFile(data, "Subfolder", "Show.S01E01/"+episode)
@@ -142,12 +118,6 @@ func (r *rig) seedMovedFolder(data []byte) string {
 	return hash
 }
 
-// On a target without file access, qui does not see a file of another
-// torrent at the name that the add gives the file. The target shows the
-// torrent complete on trust, and the rename moves that file over the copy.
-// Only a check of the bytes finds this, so the target checks each torrent
-// that qui renamed. The Transfer fails, and the source keeps the torrent.
-// regression: #4242
 func TestTransferFailsWhenARenameMovesAnotherFileOverTheCopy(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()
@@ -163,12 +133,6 @@ func TestTransferFailsWhenARenameMovesAnotherFileOverTheCopy(t *testing.T) {
 	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
 }
 
-// A target with a slow status refresh reports the state from before the
-// recheck for longer: complete on trust. qui waits two refresh intervals of
-// the target before it takes a state that no poll saw in a check. So the
-// source keeps the torrent, also with Leave stopped, which needs no start of
-// the torrent on the target.
-// regression: #4242
 func TestTransferWaitsForTheCheckOfATargetWithASlowRefresh(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.dst.RefreshInterval, r.dst.StaleSyncs = 4, 6
@@ -185,11 +149,6 @@ func TestTransferWaitsForTheCheckOfATargetWithASlowRefresh(t *testing.T) {
 	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
 }
 
-// On a target whose status refresh is slower than the whole wait for the
-// check, every poll can read the state from before the recheck: complete on
-// trust. Such a state is no passed check, so the Transfer fails and the
-// source keeps the torrent and its files.
-// regression: #4242
 func TestTransferKeepsTheSourceWhenTheWaitForTheCheckRunsOut(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.dst.RefreshInterval, r.dst.StaleSyncs = 1000, 100
@@ -206,9 +165,6 @@ func TestTransferKeepsTheSourceWhenTheWaitForTheCheckRunsOut(t *testing.T) {
 	require.Equal(t, map[string]string{"Show/" + episode: string(data)}, tree(t, r.srcDir))
 }
 
-// A retry also checks the bytes of a torrent that an earlier run renamed,
-// when the target did not take the check of that run.
-// regression: #4242
 func TestRetryChecksATorrentThatAnEarlierRunRenamed(t *testing.T) {
 	r := newRigOn(t, overSFTP, noAccess)
 	r.connect()

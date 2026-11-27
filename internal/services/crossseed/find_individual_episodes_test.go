@@ -19,6 +19,7 @@ import (
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -61,7 +62,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 	}
 
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{
 			Success: true,
@@ -74,7 +75,7 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 				},
 			},
 		}, nil
-	}
+	})
 
 	settings := &models.CrossSeedAutomationSettings{
 		RSSAutomationTags:      []string{"cross-seed"},
@@ -107,10 +108,12 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 
 	ctx := context.Background()
 	instanceID := 2
+	sourceV2 := strings.Repeat("ab", 32)
 	sourceTorrent := qbt.Torrent{
-		Hash:     "abc123",
-		Name:     "Show.S01.1080p.BluRay-GROUP",
-		Progress: 1.0,
+		Hash:       sourceV2[:40],
+		InfohashV2: sourceV2,
+		Name:       "Show.S01.1080p.BluRay-GROUP",
+		Progress:   1.0,
 	}
 
 	sync := newEpisodeSyncManager()
@@ -143,7 +146,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
 
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{
 			Success: true,
@@ -156,7 +159,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 				},
 			},
 		}, nil
-	}
+	})
 
 	startPaused := true
 	req := &ApplyTorrentSearchRequest{
@@ -173,13 +176,13 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	}
 
 	withAdder(service)
-	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, req)
+	_, err := service.ApplyTorrentSearchResults(ctx, instanceID, mustParseHash(t, strings.ToUpper(sourceV2)), req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
-	require.Equal(t, sourceTorrent.Hash, captured.SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, sourceTorrent.Hash), captured.SearchDecision.SourceHash)
 	require.Equal(t, cached.SearchDecision.Relaxed, captured.SearchDecision.Relaxed)
 	require.Equal(t, cached.SearchDecision.SourceTitles, captured.SearchDecision.SourceTitles)
 }
@@ -261,7 +264,7 @@ func (f *episodeSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID 
 			if files, ok := instFiles[strings.ToLower(h)]; ok {
 				cp := make(qbt.TorrentFiles, len(files))
 				copy(cp, files)
-				result[normalizeHash(h)] = cp
+				result[h] = cp
 			}
 		}
 	}
@@ -272,7 +275,7 @@ func (*episodeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, 
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*episodeSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*episodeSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 

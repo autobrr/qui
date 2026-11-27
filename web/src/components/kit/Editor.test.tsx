@@ -32,7 +32,6 @@ describe("Editor", () => {
 
     expect(screen.getAllByRole("form", { hidden: true }).map((form) => form.getAttribute("aria-label"))).toEqual(["inner"])
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull()
-    // The footer button, not the X in the corner.
     fireEvent.click(screen.getAllByRole("button", { name: "Close" }).find((button) => button.dataset.slot !== "dialog-close")!)
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
@@ -58,7 +57,6 @@ describe("Editor", () => {
     await waitFor(() => expect(document.activeElement).toBe(target.current))
   })
 
-  // regression: #4233
   it.each([["fine", true], ["coarse", false]] as const)("with a %s pointer, focuses the first field on open: %s", async (pointer, focusesField) => {
     stubPointer(pointer)
     render(
@@ -72,7 +70,6 @@ describe("Editor", () => {
     expect(document.activeElement === screen.getByRole("textbox", { name: "Name" })).toBe(focusesField)
   })
 
-  // regression: #4233
   it.each([
     ["skips a disabled combobox and focuses the first field that takes input", <button type="button" role="combobox" aria-label="Type" disabled />, "Name"],
     ["focuses the editor itself when the field it picks takes no focus", <div role="combobox" aria-label="Type" />, null],

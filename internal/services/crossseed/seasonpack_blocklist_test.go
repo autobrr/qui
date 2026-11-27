@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -24,8 +25,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// blocklistWithPack returns a blocklist store that blocks the torrent's infohash
-// on instance 1.
 func blocklistWithPack(t *testing.T, torrentData string) *models.CrossSeedBlocklistStore {
 	t.Helper()
 
@@ -43,7 +42,7 @@ func blocklistWithPack(t *testing.T, torrentData string) *models.CrossSeedBlockl
 	require.NoError(t, err)
 
 	store := models.NewCrossSeedBlocklistStore(db)
-	_, err = store.Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: meta.HashV1})
+	_, err = store.Upsert(ctx, instance.ID, meta.HashV1, "")
 	require.NoError(t, err)
 	return store
 }
@@ -58,8 +57,6 @@ type blockedPackFixture struct {
 	treeCalls   int
 }
 
-// newBlockedPackFixture builds a season pack that applies in full on instance 1,
-// with its infohash on the blocklist when blocked is true.
 func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
 	t.Helper()
 
@@ -173,8 +170,6 @@ func TestCrossSeed_SeasonPackDiversionHonorsBlocklist(t *testing.T) {
 	}
 }
 
-// addUnblockedInstanceB adds instance 2 with the same episodes as instance 1
-// and no blocklist entry.
 func addUnblockedInstanceB(t *testing.T, f *blockedPackFixture) {
 	t.Helper()
 	instB := &models.Instance{
@@ -210,7 +205,7 @@ func TestApplySeasonPackWebhook_BlockedAndSeededIsAlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 	require.NoError(t, err)
-	f.adds.existing = &qbt.Torrent{Hash: meta.HashV1, Name: f.packName, Progress: 1}
+	f.adds.existing = &qbt.Torrent{Hash: meta.HashV1.String(), Name: f.packName, Progress: 1}
 	f.adds.existingOn = 1
 
 	resp, err := f.svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
@@ -222,21 +217,21 @@ func TestApplySeasonPackWebhook_BlockedAndSeededIsAlreadyExists(t *testing.T) {
 }
 
 func TestSeasonPackAdds_RunExternalProgramOnSuccessOnly(t *testing.T) {
-	add := func(f *blockedPackFixture) error {
-		_, err := f.svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+	add := func(ctx context.Context, f *blockedPackFixture) error {
+		_, err := f.svc.ApplySeasonPackWebhook(ctx, &SeasonPackApplyRequest{
 			TorrentName: f.packName, TorrentData: f.torrentData, InstanceIDs: []int{1},
 		})
 		return err
 	}
-	assemble := func(f *blockedPackFixture) error {
-		_, err := f.svc.CrossSeed(t.Context(), &CrossSeedRequest{
+	assemble := func(ctx context.Context, f *blockedPackFixture) error {
+		_, err := f.svc.CrossSeed(ctx, &CrossSeedRequest{
 			TorrentData: f.torrentData, TargetInstanceIDs: []int{1}, FindIndividualEpisodes: true,
 		})
 		return err
 	}
 	tests := []struct {
 		name    string
-		run     func(*blockedPackFixture) error
+		run     func(context.Context, *blockedPackFixture) error
 		blocked bool
 		addErr  error
 		ran     bool
@@ -256,18 +251,22 @@ func TestSeasonPackAdds_RunExternalProgramOnSuccessOnly(t *testing.T) {
 			require.NoError(t, err)
 			meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
 			require.NoError(t, err)
-			var runs []string
-			f.svc.postInjectionHook = func(_ context.Context, instanceID int, hashes []string) {
-				runs = append(runs, fmt.Sprintf("%d/%s", instanceID, strings.Join(hashes, ",")))
-			}
+			programs := runProgramAfterAdd(f.svc, qbt.Torrent{Hash: meta.HashV1.String()})
 
-			require.NoError(t, tt.run(f))
+			if tt.blocked {
+				require.NoError(t, tt.run(t.Context(), f))
+			} else {
+				synctest.Test(t, func(t *testing.T) {
+					require.NoError(t, tt.run(t.Context(), f))
+					synctest.Wait()
+				})
+			}
 
 			want := []string(nil)
 			if tt.ran {
-				want = []string{"1/" + meta.HashV1}
+				want = []string{programRun(testProgramID, 1, meta.HashV1.String())}
 			}
-			require.Equal(t, want, runs)
+			require.Equal(t, want, programs.ran())
 		})
 	}
 }

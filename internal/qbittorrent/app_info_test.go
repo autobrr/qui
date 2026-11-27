@@ -71,9 +71,6 @@ func TestBuildProcessInfo(t *testing.T) {
 	}
 }
 
-// newAppInfoStub serves the app info endpoints and counts hits per path. A
-// non-2xx versionStatus makes the version call fail without retries. Call it
-// inside a synctest bubble: the version handler sleeps on the fake clock.
 func newAppInfoStub(t *testing.T, versionStatus int) (*Client, func(path string) int) {
 	t.Helper()
 
@@ -85,7 +82,7 @@ func newAppInfoStub(t *testing.T, versionStatus int) (*Client, func(path string)
 		mu.Unlock()
 		switch r.URL.Path {
 		case "/api/v2/app/version":
-			time.Sleep(50 * time.Millisecond) // widen the window so callers overlap
+			time.Sleep(50 * time.Millisecond)
 			w.WriteHeader(versionStatus)
 			_, _ = w.Write([]byte("v5.1.0"))
 		case "/api/v2/app/webapiVersion":
@@ -114,7 +111,6 @@ type appInfoResult struct {
 	err  error
 }
 
-// callGetAppInfoConcurrently runs n overlapping GetAppInfo calls and returns every result.
 func callGetAppInfoConcurrently(ctx context.Context, c *Client, n int) []appInfoResult {
 	results := make([]appInfoResult, n)
 	var wg sync.WaitGroup
@@ -131,7 +127,7 @@ func TestGetAppInfoSharesOneRefreshAcrossConcurrentCallers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c, hitCount := newAppInfoStub(t, http.StatusOK)
 		c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
-		c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
+		c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL)
 
 		for _, r := range callGetAppInfoConcurrently(t.Context(), c, 8) {
 			require.NoError(t, r.err)
@@ -150,7 +146,7 @@ func TestGetAppInfoServesStaleCacheWhenRefreshFails(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c, hitCount := newAppInfoStub(t, http.StatusInternalServerError)
 		c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
-		c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
+		c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL)
 
 		for _, r := range callGetAppInfoConcurrently(t.Context(), c, 8) {
 			require.NoError(t, r.err)

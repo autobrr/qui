@@ -25,6 +25,7 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog"
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer"
 import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,26 +33,30 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
+import { useIsPhone } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"
 import {
   accessByArea,
+  API_KEY_TEMPLATE_IDS,
+  API_KEY_TEMPLATE_LABELS,
   holdsLevel,
   isAreaRefusedByInstanceLimit,
+  keyAccessReducer,
   PERMISSION_AREA_LABELS,
   PERMISSION_AREAS,
   PERMISSION_LEVEL_LABELS,
   PERMISSION_LEVELS,
   permissionsToSave,
   summarizePermissions,
-  togglePermission,
   type ApiKeyPermission,
+  type ApiKeyTemplateId,
   type PermissionLevel
 } from "@/lib/api-key-permissions"
 import { cn } from "@/lib/utils"
 import type { ApiKey, ApiKeyRequest, ApplicationInfo, InstanceResponse } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react"
-import { Fragment, useId, useState } from "react"
+import { Check, ChevronDown, Pencil, Plus, Trash2 } from "lucide-react"
+import { Fragment, useId, useReducer, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -157,6 +162,84 @@ function AccessMapLegend() {
   )
 }
 
+interface TemplatePickerProps {
+  labelId: string
+  picked: ApiKeyTemplateId | null
+  onPick: (id: ApiKeyTemplateId) => void
+}
+
+function TemplatePicker({ labelId, picked, onPick }: TemplatePickerProps) {
+  const { t } = useTranslation("settings")
+  const isPhone = useIsPhone()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const description = picked && (
+    <p className="text-xs text-muted-foreground">{t(API_KEY_TEMPLATE_LABELS[picked].descriptionKey)}</p>
+  )
+
+  if (isPhone) {
+    return (
+      <>
+        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} autoFocus>
+          <DrawerTrigger asChild>
+            <Button type="button" variant="outline" aria-describedby={labelId} className="w-full justify-between">
+              <span className="truncate">{picked ? t(API_KEY_TEMPLATE_LABELS[picked].nameKey) : t("apiKeys.templates.pick")}</span>
+              <ChevronDown aria-hidden className="h-4 w-4 shrink-0 opacity-60" />
+            </Button>
+          </DrawerTrigger>
+          <DrawerContent className="max-h-[85dvh]" aria-describedby={undefined}>
+            <DrawerHeader className="border-b pb-3 text-left">
+              <DrawerTitle className="text-base">{t("apiKeys.templates.pick")}</DrawerTitle>
+            </DrawerHeader>
+            <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              {API_KEY_TEMPLATE_IDS.map(id => (
+                <li key={id}>
+                  <button
+                    type="button"
+                    aria-pressed={picked === id}
+                    className="flex min-h-11 w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-accent/60"
+                    onClick={() => {
+                      onPick(id)
+                      setDrawerOpen(false)
+                    }}
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="text-sm font-medium">{t(API_KEY_TEMPLATE_LABELS[id].nameKey)}</span>
+                      <span className="text-xs text-muted-foreground">{t(API_KEY_TEMPLATE_LABELS[id].descriptionKey)}</span>
+                    </span>
+                    {picked === id && <Check aria-hidden className="h-4 w-4 shrink-0 text-primary" />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </DrawerContent>
+        </Drawer>
+        {description}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-1.5">
+        {API_KEY_TEMPLATE_IDS.map(id => (
+          <Button
+            key={id}
+            type="button"
+            size="xs"
+            variant={picked === id ? "secondary" : "outline"}
+            aria-pressed={picked === id}
+            className={cn("border", picked === id ? "border-transparent" : "text-muted-foreground")}
+            onClick={() => onPick(id)}
+          >
+            {t(API_KEY_TEMPLATE_LABELS[id].nameKey)}
+          </Button>
+        ))}
+      </div>
+      {description}
+    </>
+  )
+}
+
 interface ApiKeyFormProps {
   initial?: ApiKey
   instances?: InstanceResponse[]
@@ -169,12 +252,15 @@ interface ApiKeyFormProps {
 function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, onSubmit }: ApiKeyFormProps) {
   const { t } = useTranslation("settings")
   const permissionText = usePermissionText()
+  const templateLabelId = useId()
   const [name, setName] = useState(initial?.name ?? "")
-  const [nameTouched, setNameTouched] = useState(false)
-  const [permissions, setPermissions] = useState<readonly ApiKeyPermission[]>(initial?.permissions ?? [])
-  const [instanceIds, setInstanceIds] = useState<readonly number[]>(initial?.instanceIds ?? [])
+  const [submitTried, setSubmitTried] = useState(false)
+  const [{ permissions, instanceIds, template }, dispatch] = useReducer(keyAccessReducer, {
+    permissions: initial?.permissions ?? [],
+    instanceIds: initial?.instanceIds ?? [],
+    template: null,
+  })
   const toSave = permissionsToSave(permissions, instanceIds)
-  // A deleted instance stays in the list: dropping it can empty the limit, and an empty limit means all instances.
   const deletedIds = instances
     ? [...new Set([...(initial?.instanceIds ?? []), ...instanceIds])].filter(id => !instances.some(instance => instance.id === id))
     : []
@@ -187,6 +273,10 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
     <form
       onSubmit={(e) => {
         e.preventDefault()
+        if (!name) {
+          setSubmitTried(true)
+          return
+        }
         onSubmit({ name, permissions: toSave, instanceIds: [...instanceIds] })
       }}
       className="flex min-h-0 flex-1 flex-col gap-4"
@@ -198,13 +288,21 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
             id="api-key-name"
             placeholder={t("apiKeys.createDialog.namePlaceholder")}
             value={name}
-            onBlur={() => setNameTouched(true)}
+            aria-invalid={submitTried && !name}
             onChange={(e) => setName(e.target.value)}
             autoComplete="off"
           />
-          {nameTouched && !name && (
+          {submitTried && !name && (
             <p className="text-sm text-destructive">{t("apiKeys.createDialog.nameRequired")}</p>
           )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <Label id={templateLabelId}>{t("apiKeys.templates.title")}</Label>
+            <FieldHelp>{t("apiKeys.templates.help")}</FieldHelp>
+          </div>
+          <TemplatePicker labelId={templateLabelId} picked={template} onPick={id => dispatch({ type: "applyTemplate", id })} />
         </div>
 
         <div className="space-y-2">
@@ -215,9 +313,7 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
               <label key={id} className="flex min-w-0 items-center gap-2 text-sm">
                 <Checkbox
                   checked={instanceIds.includes(id)}
-                  onCheckedChange={() => setInstanceIds(
-                    instanceIds.includes(id) ? instanceIds.filter(other => other !== id) : [...instanceIds, id]
-                  )}
+                  onCheckedChange={() => dispatch({ type: "toggleInstance", id })}
                 />
                 <span className="truncate">{label}</span>
               </label>
@@ -256,7 +352,7 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
                       className="justify-self-center"
                       checked={!refused && (includedByWrite || holdsLevel(permissions, area, level))}
                       disabled={refused || includedByWrite}
-                      onCheckedChange={() => setPermissions(togglePermission(permissions, area, level))}
+                      onCheckedChange={() => dispatch({ type: "togglePermission", area, level })}
                     />
                   )
                 }),
@@ -269,7 +365,7 @@ function ApiKeyForm({ initial, instances, isPending, submitLabel, pendingLabel, 
       {toSave.length === 0 && (
         <p className="text-sm text-muted-foreground">{t("apiKeys.permissions.required")}</p>
       )}
-      <Button type="submit" disabled={!name || toSave.length === 0 || isPending} className="w-full flex-shrink-0">
+      <Button type="submit" disabled={toSave.length === 0 || isPending} className="w-full flex-shrink-0">
         {isPending ? pendingLabel : submitLabel}
       </Button>
     </form>
@@ -459,7 +555,7 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
                 <div className="min-w-0 space-y-1">
                   <div className="flex items-start gap-2">
                     <span className="min-w-0 break-words font-medium">{key.name}</span>
-                    <Badge variant="outline" className="flex-shrink-0 text-xs">
+                    <Badge variant="outline" className="flex-shrink-0">
                       {t("clientApiKeys.idLabel", { id: key.id })}
                     </Badge>
                   </div>
@@ -561,7 +657,7 @@ export function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProp
             <AlertDialogCancel>{t("apiKeys.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
             >
               {t("apiKeys.deleteDialog.delete")}
             </AlertDialogAction>

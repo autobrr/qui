@@ -14,7 +14,6 @@ import { useCrossSeedSettings, usePatchCrossSeedSettings } from "@/hooks/useCros
 import { changedSecret } from "@/lib/cross-seed-utils"
 import type { CrossSeedAutomationSettings } from "@/types"
 
-/** Gazelle (OPS/RED) keys live on the cross-seed settings; this section saves only those three fields. */
 export function GazelleSettingsCard() {
   const { t } = useTranslation("settings")
   const query = useCrossSeedSettings()
@@ -36,7 +35,6 @@ function GazelleSection({ settings }: { settings: CrossSeedAutomationSettings })
     redactedApiKey: changedSecret(redactedApiKey, settings.redactedApiKey),
     orpheusApiKey: changedSecret(orpheusApiKey, settings.orpheusApiKey),
   }, {
-    // Take the placeholders back, so the next save does not check a saved key again.
     onSuccess: (data) => {
       setRedactedApiKey(data.redactedApiKey ?? "")
       setOrpheusApiKey(data.orpheusApiKey ?? "")

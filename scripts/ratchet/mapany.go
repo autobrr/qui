@@ -1,0 +1,65 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package main
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"strings"
+)
+
+const mapAnyLinter = "mapany"
+
+var linterFixes = map[string]string{
+	mapAnyLinter:    " Use a struct instead of a map[string]any or map[string]interface{}.",
+	hashCaseLinter:  " Parse the hash with infohash.Parse and compare infohash.Hash values.",
+	sitePickLinter:  " A search asks the whole Site pick (ADR 0098). Pass the stored models.SitePick of the setting, key both IndexerIDs and GazelleSites, or key neither for every site. Only Service.resolveSitePick and collectSearchScope in internal/services/crossseed/search_scope.go fill searchScopeFacts.sites and build a resolvedSitePick.",
+	hashSetLinter:   " Keep a set of torrent hashes in an infohash.Set, and dedupe a list with infohash.Unique or infohash.UniqueStrings.",
+	testHookLinter:  " A nil check on a function field that only tests set gives production a branch that no test runs. Give the step to the constructor as a part that it always fills, and check it for nil nowhere (#4632).",
+	testSleepLinter: " A time.Sleep in a test outside synctest.Test waits in real time. Wait on a channel, or run the test in synctest.Test. A function that calls synctest.Wait runs in a bubble, so its sleeps do not count.",
+}
+
+func mapAnyCounts() (map[string]int, error) {
+	got := map[string]int{}
+	err := eachTrackedGoFile(func(path string, src []byte) error {
+		if strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		n, err := countMapAny(path, src)
+		if n > 0 {
+			got[path] = n
+		}
+		return err
+	})
+	return got, err
+}
+
+func countMapAny(path string, src []byte) (int, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), path, src, parser.SkipObjectResolution)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	ast.Inspect(f, func(node ast.Node) bool {
+		if m, ok := node.(*ast.MapType); ok && isIdent(m.Key, "string") && isEmptyInterface(m.Value) {
+			n++
+		}
+		return true
+	})
+	return n, nil
+}
+
+func isIdent(e ast.Expr, name string) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && id.Name == name
+}
+
+func isEmptyInterface(e ast.Expr) bool {
+	if isIdent(e, "any") {
+		return true
+	}
+	iface, ok := e.(*ast.InterfaceType)
+	return ok && len(iface.Methods.List) == 0
+}

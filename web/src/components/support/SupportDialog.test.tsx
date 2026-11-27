@@ -83,7 +83,6 @@ describe("SupportDialog", () => {
     expect(screen.queryByText("support.plans.license $9.99")).toBeNull()
   })
 
-  // regression: #4276
   it("keeps the theme license checkout closed until the license list loads", () => {
     licenses.data = undefined
     const { rerender } = render(<SupportDialog open onOpenChange={() => {}} />)
@@ -101,7 +100,6 @@ describe("SupportDialog", () => {
     const { rerender } = render(<SupportDialog open onOpenChange={() => {}} />)
     fireEvent.click(screen.getByText("support.plans.license $9.99"))
 
-    // The license list loads with a stored license.
     licenses.data = [{ licenseKey: "KEY-1", status: "invalid", productName: "premium-access" }]
     rerender(<SupportDialog open onOpenChange={() => {}} />)
 
@@ -117,7 +115,6 @@ describe("SupportDialog", () => {
 
     expect(activation.mutate.mock.calls[0][0]).toBe("KEY-1")
 
-    // regression: #4276
     activation.isPending = true
     rerender(<SupportDialog open onOpenChange={() => {}} />)
 
@@ -162,7 +159,6 @@ describe("SupportDialog", () => {
 
     expect(answerReminder).toHaveBeenCalledTimes(1)
 
-    // The answer ends the reminder.
     reminder.due = false
     rerender(<SupportDialog open onOpenChange={() => {}} />)
 

@@ -22,12 +22,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
 vi.mock("sonner", () => ({ toast }))
 vi.mock("@/lib/utils", async (importOriginal) => ({ ...(await importOriginal<object>()), copyTextToClipboard }))
 
-// The tabs indicator measures itself through ResizeObserver, which jsdom lacks.
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 afterEach(() => {
   cleanup()
@@ -78,7 +72,6 @@ describe("DiscReportButton", () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
-  // regression: #4358
   it("shows its label on a tap while disabled, without a click on the row around it", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null

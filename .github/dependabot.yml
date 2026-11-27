@@ -35,6 +35,8 @@ updates:
       npm:
         patterns:
           - "*"
+        exclude-patterns:
+          - "@shadcn/lint"
     cooldown:
       default-days: 7
       semver-patch-days: 3
@@ -69,3 +71,14 @@ updates:
       # Change the model in run.mjs in the same pull request.
       exclude:
         - "@anthropic-ai/*"
+
+  - package-ecosystem: npm
+    directory: /.github/scripts/exceptions
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      # The counter reads the frontend with the parser that web/ uses, so both move to a new major together.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]

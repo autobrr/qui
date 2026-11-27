@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -33,7 +34,7 @@ func TestProcessCrossSeedCandidate_WindowsUNCSavePath(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sync := &rootlessSavePathSyncManager{
-				files: map[string]qbt.TorrentFiles{"matchedhash": tc.files, "newhash": tc.files},
+				files: map[string]qbt.TorrentFiles{"matchedhash": tc.files, "feedfacefeedfacefeedfacefeedfacefeedface": tc.files},
 				props: map[string]*qbt.TorrentProperties{"matchedhash": {SavePath: tc.savePath}},
 			}
 			service := &Service{
@@ -55,7 +56,7 @@ func TestProcessCrossSeedCandidate_WindowsUNCSavePath(t *testing.T) {
 				}},
 			}
 			withAdder(service)
-			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), "newhash", "", name,
+			result := service.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), mustParseHash(t, "feedfacefeedfacefeedfacefeedfacefeedface"), infohash.Hash{}, name,
 				&CrossSeedRequest{StartPaused: new(true)}, service.releaseCache.Parse(name), tc.files, nil, nil)
 			require.True(t, result.Success, "candidate must reach AddTorrent: %+v", result)
 			require.NotNil(t, sync.addedOptions)

@@ -15,6 +15,7 @@ import (
 
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -103,7 +104,6 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibilityBeforeTopLevelFolder(t
 		},
 	}
 
-	// The candidate torrents are local, and the source is the new torrent.
 	localRelease := svc.releaseCache.Parse("Minimal.Payload")
 	singleMatch := svc.matcher().getMatchTypeWithReason(localRelease, &sourceRelease, svc.syncManager.(*candidateSelectionSyncManager).files["single"], sourceFiles, 0).MatchType
 	folderMatch := svc.matcher().getMatchTypeWithReason(localRelease, &sourceRelease, svc.syncManager.(*candidateSelectionSyncManager).files["folder"], sourceFiles, 0).MatchType
@@ -294,7 +294,7 @@ func (c *candidateSelectionSyncManager) GetTorrentFilesBatch(ctx context.Context
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
 		if files, err := c.GetTorrentFiles(ctx, instanceID, h); err == nil && files != nil {
-			result[normalizeHash(h)] = *files
+			result[h] = *files
 		}
 	}
 	return result, nil
@@ -304,7 +304,7 @@ func (*candidateSelectionSyncManager) ExportTorrent(context.Context, int, string
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*candidateSelectionSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*candidateSelectionSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -362,7 +362,6 @@ func TestGetMatchTypeFromTitle_FallbackWhenReleaseKeysMissing(t *testing.T) {
 	targetRelease := svc.releaseCache.Parse("[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]")
 	candidateRelease := svc.releaseCache.Parse("[TestGroup] Example Show - 1150 (1080p) [ABCDEF01]")
 
-	// Use a filename that won't produce any usable release keys when parsed.
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "random_data_file.bin", Size: 1024},
 	}
@@ -379,8 +378,6 @@ func TestGetMatchTypeFromTitle_NonEpisodicRequiresMatchingReleaseKey(t *testing.
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	// Non-episodic content with different years should not match purely because
-	// candidate files have some parsed metadata.
 	targetRelease := rls.Release{
 		Title: "Movie 2020",
 		Year:  2020,
@@ -433,8 +430,6 @@ func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	// Game scene releases have RAR files with group prefixes, no year, no episode info.
-	// These should match based on title alone when the titles match.
 	targetRelease := rls.Release{
 		Title: "Oddsparks An Automation Adventure Coaster Rush",
 		Group: "RUNE",
@@ -447,7 +442,6 @@ func TestGetMatchTypeFromTitle_GameSceneReleasesWithRARFiles(t *testing.T) {
 		Type:  rls.Game,
 	}
 
-	// RAR files don't produce usable release keys when parsed
 	candidateFiles := qbt.TorrentFiles{
 		{Name: "rune-oddsparks.rar", Size: 100 << 20},
 		{Name: "rune-oddsparks.r00", Size: 100 << 20},

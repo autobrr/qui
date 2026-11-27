@@ -64,8 +64,6 @@ for (const locale of allLocales) {
     ]) {
       assert.ok(result.stdout.includes(message), result.stdout)
     }
-    // Every locale gets untranslated reporting, uk included: before the checkers were merged, uk
-    // was the one locale with 116 English-identical values and no warning for any of them.
     assert.match(result.stdout, /Untranslated \(kept intentionally[^\]]*\)] 1 warning/)
   })
 
@@ -121,10 +119,6 @@ for (const locale of allLocales) {
     assert.ok(f.run(locale).stdout.includes(`${locale} locale file missing`))
   })
 }
-
-// --- plural categories -------------------------------------------------------
-// Configured per locale, never from CLDR: i18next resolves a category a locale lacks against
-// English, and the categories that are actually reachable are narrower than CLDR lists.
 
 for (const locale of ["fr", "de", "it", "pt-BR", "ca", "cs", "uk"]) {
   test(`${locale}: _one is required`, (t) => {
@@ -208,8 +202,6 @@ for (const locale of ["cs", "uk"]) {
   })
 }
 
-// An unsuffixed key is i18next's last-resort in-language lookup: it answers every category the
-// locale omits, so a base carrying one needs no _few or _many.
 const englishWithCatchAll = { items: "{{count}} item", ...english }
 
 for (const locale of ["cs", "uk"]) {
@@ -328,7 +320,6 @@ test("without an argument every configured locale is checked in one process", (t
     assert.ok(passing.stdout.includes(`${locale} translation coverage: all checks passed.`), `no report for ${locale}`)
   }
 
-  // One bad locale fails the whole run, so a single invocation can replace the per-locale ones.
   fs.writeFileSync(path.join(f.localeRoot, "..", "ca", "common.json"), JSON.stringify({ extra: "Unexpected" }))
   const failing = f.run()
   assert.equal(failing.status, 1, failing.stdout)

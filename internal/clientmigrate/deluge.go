@@ -92,8 +92,6 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
-		// complete means every piece of every wanted file has its have-bit
-		// set; files with priority 0 may legitimately be missing
 		pieces, complete := delugePieces(&fastResume, &metaInfo)
 		if !complete {
 			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.BestName(), torrentID)
@@ -154,8 +152,6 @@ func (di *DelugeImport) loadFastresume() (map[string]any, error) {
 		}
 	}
 
-	// deluge itself falls back to the .bak copy and the pre-1.3 location,
-	// including when the main file exists but is corrupt
 	var fastresumeFile map[string]any
 	for _, candidate := range []string{
 		filepath.Join(sourceDir, "torrents.fastresume"),
@@ -200,33 +196,23 @@ func decodeDelugeEntry(value any, torrentID string) (Fastresume, bool) {
 }
 
 func (di *DelugeImport) checkDelugeResume(fr *Fastresume, file *metainfo.MetaInfo, info *metainfo.Info) string {
-	// v2-only torrents lose their merkle trees in this format;
-	// qBittorrent would reject or mis-verify them
 	if info.MetaVersion == 2 {
 		return "is a BitTorrent v2 torrent, not supported by this importer, skipping"
 	}
 
-	// qBittorrent rejects resume data without an exact 20-byte v1 infohash
 	if len(fr.InfoHash) != 20 {
 		return "resume data has no valid v1 infohash, skipping"
 	}
 
-	// resume data that does not belong to this torrent file would import
-	// piece state for different content
 	if !bytes.Equal(fr.InfoHash, file.HashInfoBytes().Bytes()) {
 		return "resume data does not match the torrent file, skipping"
 	}
 
-	// files moved out of the save path are absolute in mapped_files and
-	// need the same rewrite as the save path
 	fr.SavePath = replacePath(fr.SavePath, di.opts.PathReplaces)
 	for idx, p := range fr.MappedFiles {
 		fr.MappedFiles[idx] = replacePath(p, di.opts.PathReplaces)
 	}
 
-	// a corrupt entry with an unusable save path would import a torrent
-	// qBittorrent resolves against its own default download dir; a save
-	// path from another OS needs --replace-path
 	if !filepath.IsAbs(filepath.Clean(fr.SavePath)) {
 		return fmt.Sprintf("has an unusable save path %q, skipping, map it with --replace-path", fr.SavePath)
 	}
@@ -239,7 +225,6 @@ func (di *DelugeImport) checkDelugeResume(fr *Fastresume, file *metainfo.MetaInf
 }
 
 func delugeQbtFields(fr *Fastresume, info *metainfo.Info, label string, positionNum int, pieces string) {
-	// valid QbtContentLayout = Original, Subfolder, NoSubfolder
 	fr.QbtContentLayout = "Original"
 	if info.IsDir() {
 		fr.QbtHasRootFolder = 1
@@ -252,8 +237,6 @@ func delugeQbtFields(fr *Fastresume, info *metainfo.Info, label string, position
 	fr.QbtSeedingTimeLimit = -2
 	fr.QbtCategory = label
 	fr.QbtTags = []string{"migrated"}
-	// deluge stores renames in mapped_files and leaves name at the
-	// metainfo value; derive the display name from the first mapped path
 	if len(fr.MappedFiles) > 0 {
 		renamed := fr.MappedFiles[0]
 		if info.IsDir() {
@@ -268,53 +251,35 @@ func delugeQbtFields(fr *Fastresume, info *metainfo.Info, label string, position
 	fr.QbtSavePath = fr.SavePath
 	fr.QbtQueuePosition = positionNum
 
-	// deluge 1.3.x era resume data predates apply_ip_filter; leaving the
-	// decoded zero would explicitly disable the IP filter in qBittorrent
 	fr.ApplyIPFilter = 1
 	fr.NumIncomplete = 0
 
-	// libtorrent 1.0-era resume data (deluge 1.3.x) folds the session-wide
-	// shutdown pause into every torrent's paused flag, so it reads 1 for
-	// the whole library and the real state only exists in the
-	// torrents.state pickle; resume everything for those sources, and for
-	// data too old or stripped to carry a version at all. Newer libtorrent
-	// records accurate per-torrent flags, keep them.
 	ltVersion := fr.LibTorrentVersion
 	if ltVersion == "" || strings.HasPrefix(ltVersion, "0.") || strings.HasPrefix(ltVersion, "1.0") {
 		fr.Paused = 0
 		fr.AutoManaged = 1
 	}
 
-	// libtorrent writes 4 for default-priority files; qBittorrent's enum
-	// is 0 skip, 1 normal, 6 high, 7 maximum
 	for idx, p := range fr.FilePriority {
 		if p != 0 && p != 6 && p != 7 {
 			fr.FilePriority[idx] = 1
 		}
 	}
 
-	// keep the decoded libtorrent file priorities when the resume data has
-	// them, they carry the user's deselected files
 	if len(fr.FilePriority) != len(info.UpvertedFiles()) {
 		fr.ConvertFilePriority(len(info.UpvertedFiles()))
 	}
 
-	// pieces overlapping only deselected files stay unset; drop the
-	// source's partial-piece list so it cannot contradict the bitfield
 	fr.Pieces = pieces
 	fr.Unfinished = nil
 }
 
-// delugePieces converts the decoded libtorrent resume pieces (one byte per
-// piece, bit 0 = have) into a qBittorrent piece bitfield and reports whether
-// every piece of every wanted (non-zero priority) file is present
 func delugePieces(fr *Fastresume, info *metainfo.Info) (string, bool) {
 	numPieces := info.NumPieces()
 	if numPieces == 0 || info.PieceLength <= 0 {
 		return "", false
 	}
 
-	// a torrent that never finished its initial check has short or no pieces
 	if len(fr.Pieces) < numPieces {
 		return "", false
 	}
@@ -349,9 +314,6 @@ func delugePieces(fr *Fastresume, info *metainfo.Info) (string, bool) {
 	return string(pieces), complete
 }
 
-// readDelugeLabels reads the label plugin state from <config_dir>/label.conf,
-// one level above the state dir. The file is two concatenated JSON documents:
-// a version dict followed by the config data
 func readDelugeLabels(stateDir string) map[string]string {
 	path := filepath.Join(stateDir, "..", "label.conf")
 

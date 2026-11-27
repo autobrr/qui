@@ -9,8 +9,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
-// Capability is something an instance can do or send because of its
-// qBittorrent version. Client.Supports answers for one.
 type Capability int
 
 const (
@@ -19,9 +17,7 @@ const (
 	CapTorrentCreation
 	CapTorrentExport
 	CapTrackerEditing
-	// CapTrackerHealth is torrents/info?includeTrackers, which tracker health reads.
 	CapTrackerHealth
-	// CapAnnounceFlags is the has_tracker_* flags in sync/maindata.
 	CapAnnounceFlags
 	CapFilePriority
 	CapRenameTorrent
@@ -29,49 +25,24 @@ const (
 	CapRenameFolder
 	CapSubcategories
 	CapSubcategoriesAlwaysEnabled
-	// CapCategorySavePathNesting resolves an empty category save path under
-	// the parent category. qBittorrent 4.6 shows subcategories but saves to
-	// the default save path plus the full name.
 	CapCategorySavePathNesting
-	// CapCategoryFileNames names the folder of a category with no save path
-	// with toValidFileName, not toValidPath.
 	CapCategoryFileNames
 	CapTorrentTmpPath
 	CapPathAutocomplete
 	CapTestEmail
 	CapSetRSSFeedURL
-	// CapShareLimitsAction is setShareLimits with ratio, seeding time,
-	// inactive seeding time and the share-limit action.
 	CapShareLimitsAction
-	// CapShareLimitsMode is setShareLimits with ShareLimitsMode (MatchAny / MatchAll).
 	CapShareLimitsMode
-	// CapLiveReannounce is the seconds until the next announce in the torrent
-	// list. Before that, only torrents/properties has the value.
 	CapLiveReannounce
-	// CapListFieldsV5 is popularity, private and comment in the torrent list.
-	// Before that, qBittorrent leaves them out.
 	CapListFieldsV5
-	// CapListCreatedBy is created_by in the torrent list.
 	CapListCreatedBy
-	// CapPartialCategoryEdit is an editCategory that keeps the options it
-	// leaves out. Before that, an edit replaces them all.
 	CapPartialCategoryEdit
-	// CapProcessInfo is app/processInfo, which has the launch time.
 	CapProcessInfo
-	// CapFreeSpaceAtPath is app/getFreeSpaceAtPath.
 	CapFreeSpaceAtPath
-	// CapExportOmitsTrackers marks the qBittorrent 4.6.x builds that export a
-	// .torrent file without its trackers. No capture confirms the bug: the
-	// 4.6.0 and 4.6.7 feature probes in go-qbittorrent keep the tracker.
 	CapExportOmitsTrackers
-	// CapTransferAndShare is the oldest qBittorrent that Transfer and Share
-	// support: 5.1, the first that reports last_external_address_v4. Export
-	// to Instance does not read it.
 	CapTransferAndShare
 )
 
-// versionRange holds the Web API versions of a capability. A nil highest
-// means no upper bound; both ends are inclusive.
 type versionRange struct {
 	lowest, highest *semver.Version
 }
@@ -80,8 +51,6 @@ func since(lowest string) versionRange {
 	return versionRange{lowest: semver.MustParse(lowest)}
 }
 
-// capabilityVersions is the one table of qBittorrent version cut-offs. A
-// capability that it leaves out reads as not supported.
 var capabilityVersions = map[Capability]versionRange{
 	CapSetTags:                    since("2.11.4"),
 	CapSetComment:                 since("2.12.1"),
@@ -89,28 +58,28 @@ var capabilityVersions = map[Capability]versionRange{
 	CapTorrentExport:              since("2.8.11"),
 	CapTrackerEditing:             since("2.2.0"),
 	CapTrackerHealth:              since("2.11.4"),
-	CapAnnounceFlags:              since("2.11.7"), // qBittorrent 5.2
+	CapAnnounceFlags:              since("2.11.7"),
 	CapFilePriority:               since("2.2.0"),
 	CapRenameTorrent:              since("2.0.0"),
 	CapRenameFile:                 since("2.4.0"),
 	CapRenameFolder:               since("2.7.0"),
 	CapSubcategories:              since("2.9.0"),
 	CapSubcategoriesAlwaysEnabled: since("2.15.0"),
-	CapCategorySavePathNesting:    since("2.10.0"), // qBittorrent 5.0; 4.6.x is 2.9.x
-	CapCategoryFileNames:          since("2.15.4"), // qBittorrent 5.3; 5.2.x is 2.15.1, and dev builds at 2.15.3 predate the rule
+	CapCategorySavePathNesting:    since("2.10.0"),
+	CapCategoryFileNames:          since("2.15.4"),
 	CapTorrentTmpPath:             since("2.8.4"),
 	CapPathAutocomplete:           since("2.11.2"),
 	CapTestEmail:                  since("2.11.2"),
 	CapSetRSSFeedURL:              since("2.9.1"),
 	CapShareLimitsAction:          since("2.15.1"),
 	CapShareLimitsMode:            since("2.16.0"),
-	CapLiveReannounce:             since("2.10.0"), // qBittorrent 5.0
-	CapListFieldsV5:               since("2.11.2"), // qBittorrent 5.0.0rc1. 5.0.0beta1 (2.10.4) sends comment, but not popularity or private
-	CapListCreatedBy:              since("2.15.1"), // qBittorrent 5.2
-	CapPartialCategoryEdit:        since("2.16.1"), // qBittorrent 5.3. The partial edit (4b429e4f4) landed at 2.16.0, and 5.3.0 reports 2.16.2
+	CapLiveReannounce:             since("2.10.0"),
+	CapListFieldsV5:               since("2.11.2"),
+	CapListCreatedBy:              since("2.15.1"),
+	CapPartialCategoryEdit:        since("2.16.1"),
 	CapProcessInfo:                since("2.15.1"),
-	CapFreeSpaceAtPath:            since("2.15.2"), // qBittorrent 5.3
-	CapTransferAndShare:           since("2.11.3"), // qBittorrent 5.1
+	CapFreeSpaceAtPath:            since("2.15.2"),
+	CapTransferAndShare:           since("2.11.3"),
 	CapExportOmitsTrackers:        {lowest: semver.MustParse("2.9.1"), highest: semver.MustParse("2.9.3")},
 }
 
@@ -122,9 +91,6 @@ func versionSupports(version *semver.Version, capability Capability) bool {
 	return !version.LessThan(r.lowest) && (r.highest == nil || !version.GreaterThan(r.highest))
 }
 
-// WebAPIVersionsChanged reports whether an instance in versions now has another
-// Web API version, "" while unknown. An instance with no client counts as
-// unchanged.
 func (sm *SyncManager) WebAPIVersionsChanged(ctx context.Context, versions map[int]string) bool {
 	for id, version := range versions {
 		if client, err := sm.clientPool.GetClientOffline(ctx, id); err == nil && client.GetWebAPIVersion() != version {

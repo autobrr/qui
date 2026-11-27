@@ -4,12 +4,16 @@
 package qbittorrent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime/pprof"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,11 +25,9 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// setupTestPool creates a new ClientPool for testing
 func setupTestPool(t *testing.T) *ClientPool {
 	db := testdb.NewMigratedSQLite(t, "qbittorrent-pool")
 
-	// Use test encryption key
 	testKey := make([]byte, 32)
 
 	instanceStore, err := models.NewInstanceStore(db, testKey)
@@ -44,20 +46,15 @@ func TestClientPool_ResetFailureTracking(t *testing.T) {
 	instanceID := 1
 	banError := errors.New("User's IP is banned for too many failed login attempts")
 
-	// Track multiple failures
 	pool.trackFailure(instanceID, banError)
 	pool.trackFailure(instanceID, banError)
 
-	// Should be in backoff
 	assert.True(t, pool.isInBackoff(instanceID), "Instance should be in backoff after failures")
 
-	// Reset failure tracking
 	pool.ResetFailureTracking(instanceID)
 
-	// Should no longer be in backoff
 	assert.False(t, pool.isInBackoff(instanceID), "Instance should not be in backoff after reset")
 
-	// Failure info should be cleared
 	pool.mu.RLock()
 	_, exists := pool.failureTracker[instanceID]
 	pool.mu.RUnlock()
@@ -65,21 +62,16 @@ func TestClientPool_ResetFailureTracking(t *testing.T) {
 	assert.False(t, exists, "Failure info should be cleared after reset")
 }
 
-// TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails verifies that an
-// existing but unhealthy client already in backoff fast-fails instead of running a
-// live HealthCheck that would block on the unreachable host every call (discussion #2096).
 func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
 	const instanceID = 1
 
-	// Existing but unhealthy client (zero-value isHealthy == false).
 	pool.mu.Lock()
 	pool.clients[instanceID] = &Client{instanceID: instanceID}
 	pool.mu.Unlock()
 
-	// Drive the instance into failure backoff.
 	pool.trackFailure(instanceID, errors.New("connection refused"))
 	require.True(t, pool.isInBackoff(instanceID), "instance should be in backoff")
 
@@ -98,17 +90,12 @@ func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.
 	assert.Less(t, elapsed, time.Second, "backoff fast-path must not perform a network health check")
 }
 
-// TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce verifies that
-// a burst of concurrent callers against one unhealthy, not-yet-backed-off instance records
-// a single failure (advances backoff once), not once per caller (adversarial review of #2096).
-// The instance is dead (connection refused): a hard failure, so it must back off.
 func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
 	const instanceID = 1
 	pool.mu.Lock()
-	// Port 1 is outside the ephemeral range: during the retries, a closed httptest port can go to another test's server.
 	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1", Timeout: 60}), instanceID: instanceID}
 	pool.mu.Unlock()
 
@@ -132,14 +119,14 @@ func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t 
 	assert.True(t, pool.isInBackoff(instanceID), "a dead instance must go into backoff (#2096)")
 }
 
-// TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff verifies that a probe that
-// times out against a responding-but-saturated instance does NOT record a failure or back
-// the instance off: slow is not down, and backing off a working instance turns one slow
-// request into an outage for every caller.
 func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
-	// Blocking endpoint: the connection is accepted but the response never comes,
-	// so the probe fails with a deadline, the signature of a saturated instance.
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	var arrived atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/app/webapiVersion" {
+			http.NotFound(w, r)
+			return
+		}
+		arrived.Store(true)
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
@@ -152,12 +139,14 @@ func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
 	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
 	pool.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	client, err := pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
 	require.Error(t, err)
 	require.Nil(t, client)
+	require.True(t, IsDeadlineExpired(err), "the probe must fail at the deadline: %v", err)
+	require.True(t, arrived.Load(), "the health probe did not reach qBittorrent")
 
 	assert.False(t, pool.isInBackoff(instanceID), "a timed-out probe must not put the instance in backoff")
 	pool.mu.RLock()
@@ -166,9 +155,6 @@ func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
 	assert.False(t, tracked, "a timed-out probe must not record an instance failure")
 }
 
-// TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff verifies that a probe
-// interrupted by caller cancellation (client disconnect / shutdown) does NOT record a
-// failure or back off the instance, so a healthy instance is not stranded (review of #2096).
 func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing.T) {
 	arrived := make(chan struct{})
 	closeArrived := sync.OnceFunc(func() { close(arrived) })
@@ -203,19 +189,15 @@ func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing
 	assert.False(t, tracked, "a cancelled probe must not record an instance failure")
 }
 
-// TestClientPool_GetClientWithTimeout_ProbeInProgressFastFails verifies that a caller does
-// not block behind an in-flight probe (TryLock): with a probe holding the per-instance lock,
-// a second caller returns promptly instead of queueing until the probe completes (#2096).
 func TestClientPool_GetClientWithTimeout_ProbeInProgressFastFails(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
 	const instanceID = 1
 	pool.mu.Lock()
-	pool.clients[instanceID] = &Client{instanceID: instanceID} // unhealthy; never probed (lock is held)
+	pool.clients[instanceID] = &Client{instanceID: instanceID}
 	pool.mu.Unlock()
 
-	// Simulate an in-flight probe by holding the per-instance lock for the test.
 	lock := pool.getInstanceLock(instanceID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -406,7 +388,6 @@ func (o *orderSyncEventSink) HandleSyncUpdate(int, qbt.SyncUpdate) {
 func (o *orderSyncEventSink) HandleTrackerHealthUpdated(int) { *o.calls = append(*o.calls, o.name) }
 func (o *orderSyncEventSink) HandleSyncError(int, error)     { *o.calls = append(*o.calls, o.name) }
 
-// recordingSyncEventSink records each update in the order it arrives.
 type recordingSyncEventSink struct {
 	events []string
 }
@@ -423,18 +404,13 @@ func (r *recordingSyncEventSink) HandleSyncError(instanceID int, err error) {
 	r.events = append(r.events, fmt.Sprintf("error:%d:%v", instanceID, err))
 }
 
-// TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient guards the
-// create-path double-check against re-creating a client another caller just
-// stored: creation can legitimately succeed with a not-yet-verified
-// (unhealthy) client, and callers queued on the instance lock must reuse it
-// instead of serially re-logging in and overwriting the pool entry.
 func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
 
 	const instanceID = 1
 
-	existing := &Client{instanceID: instanceID} // zero-value isHealthy == false
+	existing := &Client{instanceID: instanceID}
 	pool.mu.Lock()
 	pool.clients[instanceID] = existing
 	pool.mu.Unlock()
@@ -443,4 +419,56 @@ func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T
 
 	require.NoError(t, err, "double-check must return the pooled client, not attempt a re-create")
 	require.Same(t, existing, client)
+}
+
+func TestClientPool_CloseWaitsForBackgroundWork(t *testing.T) {
+	const instanceID = 1
+
+	tests := []struct {
+		name  string
+		start func(pool *ClientPool)
+	}{
+		{name: "tracker health pass", start: func(pool *ClientPool) { NewSyncManager(pool, nil).StartTrackerHealthRefresh(instanceID) }},
+		{name: "health probe", start: func(pool *ClientPool) { pool.performHealthChecks() }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool := setupTestPool(t)
+
+			arrived := make(chan struct{})
+			closeArrived := sync.OnceFunc(func() { close(arrived) })
+			srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				closeArrived()
+				<-r.Context().Done()
+			}))
+			t.Cleanup(srv.Close)
+
+			pool.mu.Lock()
+			pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+			pool.mu.Unlock()
+
+			pprof.Do(t.Context(), pprof.Labels("close-test", tt.name), func(context.Context) { tt.start(pool) })
+			<-arrived
+			assert.NotEmpty(t, poolGoroutinesLabeled(t, tt.name), "detector must find the background work before Close")
+
+			require.NoError(t, pool.Close())
+			assert.Empty(t, poolGoroutinesLabeled(t, tt.name), "background work of the pool outlived Close")
+		})
+	}
+}
+
+func poolGoroutinesLabeled(t *testing.T, value string) []string {
+	t.Helper()
+
+	var profile bytes.Buffer
+	require.NoError(t, pprof.Lookup("goroutine").WriteTo(&profile, 1))
+
+	var stacks []string
+	for stack := range strings.SplitSeq(profile.String(), "\n\n") {
+		if strings.Contains(stack, fmt.Sprintf("%q:%q", "close-test", value)) && strings.Contains(stack, "qui/internal/qbittorrent.") {
+			stacks = append(stacks, stack)
+		}
+	}
+	return stacks
 }

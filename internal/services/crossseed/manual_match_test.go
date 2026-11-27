@@ -21,6 +21,7 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -54,7 +55,7 @@ func TestManualMatchPackProposalLimit(t *testing.T) {
 				files[hash] = qbt.TorrentFiles{{Name: names[i], Size: file.Size}}
 			}
 			svc := manualMatchTestService(&models.Instance{ID: 1, Name: "local"}, torrents, files)
-			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, "")
+			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, infohash.Hash{})
 			require.NoError(t, err)
 			require.True(t, resp.PackMode)
 			require.Equal(t, count, resp.PackEpisodeCount)
@@ -65,8 +66,6 @@ func TestManualMatchPackProposalLimit(t *testing.T) {
 	}
 }
 
-// A name with only a Season numeral is a pack when its files are episodes,
-// and a movie sequel with one file stays a movie.
 func TestManualMatchSeasonNumeralPackMode(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -91,7 +90,7 @@ func TestManualMatchSeasonNumeralPackMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			data := createTestTorrent(t, tt.torrentName, tt.files, 256*1024)
 			svc := manualMatchTestService(&models.Instance{ID: 1, Name: "local"}, nil, nil)
-			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, "")
+			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, infohash.Hash{})
 			require.NoError(t, err)
 			require.Equal(t, tt.wantPackMode, resp.PackMode)
 		})
@@ -154,9 +153,6 @@ func TestFindCandidatesManualTarget(t *testing.T) {
 	})
 }
 
-// A retitled listing: the uploaded torrent's files are byte-identical to the
-// target's, but the target's qBittorrent name shares nothing with the incoming
-// name, so automatic matching rejects the pair on the release prefilter.
 func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 	t.Parallel()
 
@@ -175,7 +171,6 @@ func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 		targetHash: {{Name: incomingName + "/" + fileName, Size: size}},
 	})
 
-	// Without the pin the release prefilter rejects the pair.
 	auto, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs: []int{instanceID},
@@ -197,24 +192,24 @@ func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 	require.Equal(t, targetHash, resp.Results[0].MatchedTorrent.Hash)
 }
 
-// A zero-overlap pick must still reach the add, also on a link-mode instance
-// (no linkable files would fail materialization): the recheck is the arbiter
-// of a wrong pick, and a failed recheck leaves the torrent paused.
 func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 	t.Parallel()
 
 	const (
 		instanceID   = 1
 		targetHash   = "dddddddddddddddddddddddddddddddddddddddd"
+		targetHashV2 = "dddddddddddddddddddddddddddddddddddddddd0000000000000000000000ee"
 		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
 	)
 
 	tests := []struct {
 		name         string
 		useHardlinks bool
+		requested    string
 	}{
-		{name: "regular instance"},
-		{name: "hardlink instance skips link mode", useHardlinks: true},
+		{name: "regular instance", requested: targetHash},
+		{name: "hardlink instance skips link mode", useHardlinks: true, requested: targetHash},
+		{name: "full v2 hash of a hybrid target", requested: strings.ToUpper(targetHashV2)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,7 +217,7 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 			torrentBytes := createNamedFileTestTorrent(t, incomingName, incomingName+".mkv", 4<<20)
 
 			instance := &models.Instance{ID: instanceID, Name: "main", UseHardlinks: tt.useHardlinks}
-			target := qbt.Torrent{Hash: targetHash, Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
+			target := qbt.Torrent{Hash: targetHash, InfohashV1: targetHash, InfohashV2: targetHashV2, Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
 			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
 				targetHash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
 			})
@@ -231,7 +226,7 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 				TargetInstanceIDs: []int{instanceID},
-				ManualTargetHash:  targetHash,
+				ManualTargetHash:  tt.requested,
 			})
 			require.NoError(t, err)
 			require.True(t, resp.Success, "zero-overlap manual match rejected: %+v", resp.Results)
@@ -241,8 +236,6 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 	}
 }
 
-// recordingApplySyncManager records add options and bulk actions so tests can
-// observe the recheck policy of an apply.
 type recordingApplySyncManager struct {
 	*applyFakeSyncManager
 	addOptions  []map[string]string
@@ -259,9 +252,6 @@ func (r *recordingApplySyncManager) BulkAction(ctx context.Context, instanceID i
 	return r.applyFakeSyncManager.BulkAction(ctx, instanceID, hashes, action)
 }
 
-// A perfect-twin Manual match (identical name and files) would sail through
-// the automatic pipeline with skip_checking and no recheck. Manual matches
-// bypass the release and content gates, so they must verify regardless.
 func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
 	t.Parallel()
 
@@ -337,7 +327,7 @@ func TestManualMatchProposals(t *testing.T) {
 
 	svc := manualMatchTestService(instance, []qbt.Torrent{fullOverlap, partialOverlap, noOverlap, incomplete, moving}, files)
 
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, "")
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, infohash.Hash{})
 	require.NoError(t, err)
 	require.Equal(t, meta.Name, resp.SourceName)
 	require.Equal(t, []string{"cross-seed"}, resp.DefaultTags, "the cross-seed tag is the default, matching the search dialog")
@@ -347,14 +337,13 @@ func TestManualMatchProposals(t *testing.T) {
 	require.InDelta(t, 1.0, resp.Proposals[0].OverlapFraction, 0.001)
 	for _, p := range resp.Proposals {
 		require.NotEqual(t, incomplete.Hash, p.Hash, "incomplete torrents are not proposable")
-		require.NotEqual(t, moving.Hash, p.Hash, "moving torrents are not proposable") // regression: #3626
+		require.NotEqual(t, moving.Hash, p.Hash, "moving torrents are not proposable")
 		require.NotEqual(t, noOverlap.Hash, p.Hash, "zero-overlap torrents are not proposed")
 	}
 	require.Equal(t, "/downloads", resp.Proposals[0].EffectiveSavePath)
 	require.Equal(t, "tv", resp.Proposals[0].Category)
 
-	// A requested target is always reported, with its overlap, even at zero.
-	resp, err = svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, noOverlap.Hash)
+	resp, err = svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, noOverlap.Hash))
 	require.NoError(t, err)
 	found := false
 	for _, p := range resp.Proposals {
@@ -366,9 +355,6 @@ func TestManualMatchProposals(t *testing.T) {
 	require.True(t, found, "requested target must be included")
 }
 
-// On a link-mode instance the effective save path must track validation: a
-// validated pick lands at the link destination, but a zero-overlap pick takes
-// the regular add at the target's save path (the apply skips link modes for it).
 func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 	t.Parallel()
 
@@ -394,7 +380,7 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 	})
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, zeroOverlap.Hash)
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, zeroOverlap.Hash))
 	require.NoError(t, err)
 	byHash := make(map[string]ManualMatchProposal, len(resp.Proposals))
 	for _, p := range resp.Proposals {
@@ -407,8 +393,6 @@ func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
 		"zero-overlap pick previews the target save path (regular add)")
 }
 
-// The requested hash must survive a coarse pass crowded with same-title keeps
-// that outrank it on size ratio (e.g. every episode of a long-running show).
 func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
 	t.Parallel()
 
@@ -422,34 +406,41 @@ func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
 	sourceTotal := meta.Info.TotalLength()
 
 	requested := qbt.Torrent{
-		Hash:     "5555555555555555555555555555555555555555",
-		Name:     "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI",
-		SavePath: "/downloads",
-		Progress: 1,
-		Size:     1, // worst possible ratio: crowded out without its reserved slot
+		Hash:       "5555555555555555555555555555555555555555",
+		InfohashV1: "5555555555555555555555555555555555555555",
+		InfohashV2: "5555555555555555555555555555555555555555000000000000000000000077",
+		Name:       "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI",
+		SavePath:   "/downloads",
+		Progress:   1,
+		Size:       1,
 	}
 	torrents := make([]qbt.Torrent, 0, manualMatchCoarseLimit+11)
 	torrents = append(torrents, requested)
+	files := make(map[string]qbt.TorrentFiles, manualMatchCoarseLimit+10)
 	for i := range manualMatchCoarseLimit + 10 {
-		torrents = append(torrents, qbt.Torrent{
+		torrent := qbt.Torrent{
 			Hash:     fmt.Sprintf("%040x", i+1),
 			Name:     fmt.Sprintf("Azure.Compass.S01E%02d.1080p.WEB-DL.AAC2.0.H.264-KIRI", i+1),
 			SavePath: "/downloads",
 			Progress: 1,
 			Size:     sourceTotal,
-		})
+		}
+		torrents = append(torrents, torrent)
+		files[torrent.Hash] = qbt.TorrentFiles{{Name: torrent.Name + ".mkv", Size: sourceTotal}}
 	}
 
-	svc := manualMatchTestService(instance, torrents, nil)
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, requested.Hash)
-	require.NoError(t, err)
-	require.True(t, slices.ContainsFunc(resp.Proposals, func(p ManualMatchProposal) bool {
-		return p.Hash == requested.Hash
-	}), "requested target must be included even when title keeps fill the coarse pass")
+	for _, hash := range []string{requested.Hash, requested.InfohashV2} {
+		t.Run(hash, func(t *testing.T) {
+			svc := manualMatchTestService(instance, torrents, files)
+			resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, hash))
+			require.NoError(t, err)
+			require.True(t, slices.ContainsFunc(resp.Proposals, func(p ManualMatchProposal) bool {
+				return p.Hash == requested.Hash
+			}), "requested target must be included even when title keeps fill the coarse pass")
+		})
+	}
 }
 
-// A rootless target sends the apply to the target's content dir, not its save
-// path. The preview must say the same, or the read-only save path lies.
 func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
 	t.Parallel()
 
@@ -463,8 +454,6 @@ func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
 	)
 	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
 
-	// No root folder in the file list, so the data sits directly in ContentPath's
-	// directory rather than under SavePath.
 	rootless := qbt.Torrent{
 		Hash:        "8888888888888888888888888888888888888888",
 		Name:        incomingName,
@@ -477,16 +466,13 @@ func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
 		rootless.Hash: {{Name: fileName, Size: size}},
 	})
 
-	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, rootless.Hash)
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, rootless.Hash))
 	require.NoError(t, err)
 	require.Len(t, resp.Proposals, 1)
 	require.Equal(t, "/downloads/movies", resp.Proposals[0].EffectiveSavePath,
 		"rootless target previews its content dir, not its save path")
 }
 
-// The dialog locks its category select on PinnedCategory, so the condition here
-// must stay in step with determineCrossSeedCategory. A pin the apply does not
-// honour locks the user out of a choice they still have.
 func TestManualMatchProposalsPinnedCategory(t *testing.T) {
 	t.Parallel()
 
@@ -527,15 +513,13 @@ func TestManualMatchProposalsPinnedCategory(t *testing.T) {
 				return tt.settings, nil
 			}
 
-			resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, target.Hash)
+			resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, mustParseHash(t, target.Hash))
 			require.NoError(t, err)
 			require.Equal(t, tt.want, resp.PinnedCategory)
 		})
 	}
 }
 
-// regression: #3626
-// regression: #3707
 func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	t.Parallel()
 
@@ -580,7 +564,6 @@ func TestCrossSeedManualTargetRefusesSourceThatCannotGiveFiles(t *testing.T) {
 	}
 }
 
-// regression: #4137
 func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
 	const name = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
 	tests := []struct {
@@ -614,16 +597,16 @@ func TestManualMatchPreviewShowsTheSavePathOfTheSingleAdd(t *testing.T) {
 			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{target.Hash: meta.Files})
 			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 
-			resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, target.Hash)
+			resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, mustParseHash(t, target.Hash))
 			require.NoError(t, err)
 			require.Len(t, resp.Proposals, 1)
 			preview := resp.Proposals[0].EffectiveSavePath
 			require.NoDirExists(t, linksParent, "the preview writes nothing")
 
 			adds := withLinkAdder(svc)
-			result := svc.processHardlinkMode(t.Context(), linkCheck(instance.ID, meta.HashV1),
+			result := svc.processHardlinkMode(t.Context(), linkCheck(t, instance.ID, meta.HashV1.String()),
 				CrossSeedCandidate{InstanceID: instance.ID, InstanceName: instance.Name},
-				torrentBytes, meta.HashV1, meta.Name, &CrossSeedRequest{},
+				torrentBytes, meta.HashV1.String(), meta.Name, &CrossSeedRequest{},
 				&target, "exact", meta.Files, meta.Files, &qbt.TorrentProperties{SavePath: downloads}, "", "")
 			require.True(t, result.Success, "result: %+v", result)
 			require.Len(t, adds.added, 1)
@@ -684,7 +667,7 @@ func TestManualMatchPreviewKeepsTheDiskOfEachTarget(t *testing.T) {
 	svc := manualMatchTestService(instance, targets, files)
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, backend))
 
-	resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, "")
+	resp, err := svc.ManualMatchProposals(t.Context(), instance.ID, torrentBytes, infohash.Hash{})
 	require.NoError(t, err)
 	got := make(map[string]string, len(resp.Proposals))
 	for _, p := range resp.Proposals {

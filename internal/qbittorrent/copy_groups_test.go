@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"encoding/json/v2"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,10 @@ func copyGroupTorrent(hash, name string, addedOn, upSpeed int64, tracker string)
 	}
 }
 
+func copyGroupHash(label string) string { return strings.Repeat(label, 20) }
+
+func copyGroupLabel(hash string) string { return hash[:2] }
+
 type copyGroupFixture struct {
 	sm    *SyncManager
 	a, b  int
@@ -45,18 +50,18 @@ func newCopyGroupFixture(t *testing.T) copyGroupFixture {
 	require.NoError(t, err)
 	libraries := map[string][]qbt.Torrent{
 		"a": {
-			copyGroupTorrent("a1", "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 100, 5, "t1.example.invalid"),
-			copyGroupTorrent("b1", "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 200, 50, "t2.example.invalid"),
-			copyGroupTorrent("c1", "Kaiju Squad S01 1080p WEB-DL", 300, 1, "t1.example.invalid"),
-			copyGroupTorrent("d1", "Other.Film.2020.720p.BluRay-GRPB", 150, 20, "t2.example.invalid"),
-			copyGroupTorrent("e1", "Some.Album.2021.FLAC-GRPC", 50, 0, "t3.example.invalid"),
-			copyGroupTorrent("f1", "Some.Album.2021.FLAC-GRPC", 60, 10, "t3.example.invalid"),
+			copyGroupTorrent(copyGroupHash("a1"), "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 100, 5, "t1.example.invalid"),
+			copyGroupTorrent(copyGroupHash("b1"), "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 200, 50, "t2.example.invalid"),
+			copyGroupTorrent(copyGroupHash("c1"), "Kaiju Squad S01 1080p WEB-DL", 300, 1, "t1.example.invalid"),
+			copyGroupTorrent(copyGroupHash("d1"), "Other.Film.2020.720p.BluRay-GRPB", 150, 20, "t2.example.invalid"),
+			copyGroupTorrent(copyGroupHash("e1"), "Some.Album.2021.FLAC-GRPC", 50, 0, "t3.example.invalid"),
+			copyGroupTorrent(copyGroupHash("f1"), "Some.Album.2021.FLAC-GRPC", 60, 10, "t3.example.invalid"),
 		},
 		"b": {
-			copyGroupTorrent("a1", "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 400, 99, "t4.example.invalid"),
+			copyGroupTorrent(copyGroupHash("a1"), "Kaiju.Squad.S01.1080p.WEB-DL-GRPA", 400, 99, "t4.example.invalid"),
 		},
 	}
-	sizes := map[string]int64{"a1": 1000, "b1": 1000, "c1": 1000, "d1": 300, "e1": 50, "f1": 50}
+	sizes := map[string]int64{copyGroupHash("a1"): 1000, copyGroupHash("b1"): 1000, copyGroupHash("c1"): 1000, copyGroupHash("d1"): 300, copyGroupHash("e1"): 50, copyGroupHash("f1"): 50}
 	for _, library := range libraries {
 		for i := range library {
 			library[i].Size = sizes[library[i].Hash]
@@ -84,20 +89,20 @@ func newCopyGroupFixture(t *testing.T) copyGroupFixture {
 
 func (f copyGroupFixture) groups(read ...int) *CopyGroups {
 	return NewCopyGroups(map[int]map[string]uint64{
-		f.a: {"a1": copyGroupKaiju, "b1": copyGroupKaiju, "c1": copyGroupKaiju, "e1": copyGroupAlbum, "f1": copyGroupAlbum},
-		f.b: {"a1": copyGroupKaiju},
+		f.a: {copyGroupHash("a1"): copyGroupKaiju, copyGroupHash("b1"): copyGroupKaiju, copyGroupHash("c1"): copyGroupKaiju, copyGroupHash("e1"): copyGroupAlbum, copyGroupHash("f1"): copyGroupAlbum},
+		f.b: {copyGroupHash("a1"): copyGroupKaiju},
 	}, nil, read)
 }
 
 func (f copyGroupFixture) row(instanceID int, view *TorrentView) string {
-	out := view.Hash
+	out := copyGroupLabel(view.Hash)
 	if instanceID != 0 {
 		out = f.names[instanceID] + "/" + out
 	}
 	if g := view.CopyGroup; g != nil {
 		out += " " + g.ID
 		if g.FirstSorted != nil {
-			out += fmt.Sprintf(" first=%s/%s", f.names[g.FirstSorted.InstanceID], g.FirstSorted.Hash)
+			out += fmt.Sprintf(" first=%s/%s", f.names[g.FirstSorted.InstanceID], copyGroupLabel(g.FirstSorted.Hash))
 		}
 	}
 	return out
@@ -173,14 +178,14 @@ func TestGroupCopiesInstanceView(t *testing.T) {
 		{
 			name:      "the oldest matching copy stands in for a representative that the filter removes",
 			order:     "desc",
-			filters:   FilterOptions{Hashes: []string{"b1", "c1", "d1"}},
+			filters:   FilterOptions{Hashes: []string{copyGroupHash("b1"), copyGroupHash("c1"), copyGroupHash("d1")}},
 			want:      []string{"b1 00000000000000aa first=a/b1", "c1 00000000000000aa", "d1"},
 			wantTotal: 3,
 		},
 		{
 			name:      "a group with one matching member is a plain row",
 			order:     "desc",
-			filters:   FilterOptions{Hashes: []string{"c1", "d1", "e1"}},
+			filters:   FilterOptions{Hashes: []string{copyGroupHash("c1"), copyGroupHash("d1"), copyGroupHash("e1")}},
 			want:      []string{"d1", "c1", "e1"},
 			wantTotal: 3,
 		},
@@ -283,8 +288,6 @@ func TestGroupCopiesReady(t *testing.T) {
 	f := newCopyGroupFixture(t)
 	instance, err := f.sm.clientPool.instanceStore.Create(t.Context(), "c", "http://127.0.0.1:8080", "", "", nil, nil, false, nil)
 	require.NoError(t, err)
-	// An instance that never synced: its client is in failure backoff, so a
-	// list read fails at once and makes no request.
 	unsynced := instance.ID
 	f.sm.clientPool.clients[unsynced] = &Client{}
 	f.sm.clientPool.failureTracker = map[int]*failureInfo{unsynced: {nextRetry: time.Now().Add(time.Hour)}}
@@ -354,7 +357,6 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		1: {"a1": copyGroupKaiju, "b1": copyGroupKaiju, "c1": copyGroupKaiju},
 		2: {"a1": copyGroupKaiju},
 	}, map[int]map[string][]SharedPart{
-		// p1 holds all three episodes of a pack, and q1 holds two of them.
 		1: {"p1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "q1": {{ID: 7, Size: 900}}, "r1": {{ID: 7, Size: 900}, {ID: 8, Size: 100}}, "s1": {{ID: 7, Size: 900}, {ID: 9, Size: 200}}},
 	}, []int{1, 2})
 	sizes := func(instanceID int, torrents ...qbt.Torrent) *TorrentStats {
@@ -375,11 +377,9 @@ func TestCopyGroupsUniqueSize(t *testing.T) {
 		{name: "torrents without a content path share no data", torrents: []qbt.Torrent{torrent("y1", 300), torrent("z1", 300)}, want: 600, wantSeeding: 600},
 		{name: "a torrent outside a group with the content path of a member counts one time", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(torrent("y1", 1000), "/data/Rel")}, want: 1000, wantSeeding: 1000},
 		{name: "two torrents outside a group with one content path count one time", torrents: []qbt.Torrent{at(torrent("y1", 300), "/data/Film"), at(torrent("z1", 300), "/data/Film")}, want: 300, wantSeeding: 300},
-		// regression: #4020
 		{name: "a stalled member still joins its content path", torrents: []qbt.Torrent{at(torrent("a1", 1000), "/data/Rel"), at(stalledTorrent("b1", 1000), "/links/Rel"), at(torrent("y1", 1000), "/links/Rel")}, want: 1000, wantSeeding: 1000},
 		{name: "torrents that share some files count each Shared part one time", torrents: []qbt.Torrent{torrent("p1", 1000), torrent("q1", 900)}, want: 1000, wantSeeding: 1000},
 		{name: "a Shared part seeds when a torrent that seeds holds it", torrents: []qbt.Torrent{stalledTorrent("p1", 1000), torrent("q1", 900)}, want: 1000, wantSeeding: 900},
-		// regression: #4041
 		{name: "a torrent on the content path of a torrent with Shared parts counts one time", torrents: []qbt.Torrent{at(torrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1000), "/data/Pack"), torrent("q1", 900)}, want: 1000, wantSeeding: 1000},
 		{name: "a torrent on that content path counts its bytes above the Shared parts", torrents: []qbt.Torrent{at(torrent("p1", 1000), "/data/Pack"), at(torrent("y1", 1200), "/data/Pack")}, want: 1200, wantSeeding: 1200},
 		{name: "two torrents with the same Shared parts on that content path hold them one time", torrents: []qbt.Torrent{at(torrent("p1", 1000), "/data/Pack"), at(torrent("r1", 1000), "/data/Pack"), at(torrent("y1", 1200), "/data/Pack")}, want: 1200, wantSeeding: 1200},

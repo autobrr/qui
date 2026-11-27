@@ -867,9 +867,8 @@
       "match": "shoda",
       "noMatch": "žádná shoda",
       "openSettings": "Otevřít nastavení",
+      "noApiKeys": "RED/OPS je zapnuto, ale není nastaven žádný klíč API",
       "notAsked": {
-        "disabled": "nedotázán: vypnuto",
-        "noApiKey": "nedotázán: chybí klíč API",
         "cooldown": "nedotázán: nedávno prohledán",
         "notSelected": "nedotázán: nevybrán",
         "sourceSite": "nedotázán: torrent pochází z {{site}}",
@@ -1539,6 +1538,7 @@
     },
     "footer": {
       "adding": "Přidávání...",
+      "addingBatch": "Přidávání dávky {{current}} z {{total}}...",
       "add": "Přidat torrent",
       "cancel": "Zrušit",
       "addCount_one": "Přidat {{count}} torrent",
@@ -1552,6 +1552,8 @@
       "addedMany": "{{count}} torrenty byly úspěšně přidány",
       "failedMany": "Nepodařilo se přidat {{count}} torrent(ů)",
       "partialSuccess": "Přidáno {{added}}, nepodařilo se přidat {{failed}}",
+      "batchFailed": "Přidáno {{added}} z {{total}} torrentů",
+      "batchFailedDescription": "Dávka {{batch}} z {{batches}} selhala: {{error}}. Zbytek zůstává v seznamu, takže je můžete přidat znovu.",
       "rejectedOne": "1 soubor odmítnut (ne .torrent soubor)",
       "rejectedMany": "{{count}} soubory odmítnuty (ne .torrent soubory)"
     }

@@ -10,9 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// The fold helpers exist only because they avoid allocating, so every one of
-// them has to return exactly what the strings.ToLower spelling returns.
-
 var foldSamples = []string{
 	"",
 	"a",
@@ -31,9 +28,6 @@ var foldSamples = []string{
 	"İ",
 }
 
-// The Kelvin sign and capital sharp s lower-case to FEWER bytes ("k", "ß"),
-// and the dotted capital I to MORE ("i" plus a combining dot), so they catch
-// any byte-length arithmetic that runs before the non-ASCII fallback.
 var foldNeedles = []string{"", "s01", "S01", "release", "ø", "æbler", "  ", "grpa", "nomatch", "a", "K", "ẞ", "İ"}
 
 func TestContainsFoldMatchesLowerContains(t *testing.T) {

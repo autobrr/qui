@@ -12,7 +12,6 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { formatErrorMessage } from "@/lib/format-error-message"
 import type { InstanceResponse } from "@/types"
 
-/** The errors of one instance, under its row: a saved password that qui cannot read, and the last connection errors. */
 export function InstanceErrorDisplay({ instance, onEdit }: { instance: InstanceResponse; onEdit: () => void }) {
   const { t } = useTranslation("instances")
   const { formatTimestamp } = useDateTimeFormatters()
@@ -37,7 +36,7 @@ export function InstanceErrorDisplay({ instance, onEdit }: { instance: InstanceR
 
       {recentErrors.length > 0 && (
         <Collapsible>
-          <CollapsibleTrigger className="group -mx-1.5 flex min-h-8 w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 text-left text-sm text-destructive outline-none transition-colors hover:bg-destructive/10 focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:min-h-10">
+          <CollapsibleTrigger className="group -mx-1.5 flex min-h-8 w-[calc(100%+0.75rem)] items-center gap-2 rounded-md px-1.5 text-left text-sm text-destructive outline-none transition-colors hover:bg-destructive/10 focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:min-h-10">
             <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
             <span className="flex-1 font-medium">{t("errorDisplay.recentErrors", { count: recentErrors.length })}</span>
             <ChevronDown aria-hidden="true" className="size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />

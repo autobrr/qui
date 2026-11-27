@@ -40,10 +40,6 @@ function Section({ id, title, help, className, children }: { id: string; title: 
   )
 }
 
-/**
- * The instances that are offline, are firewalled, or have a disk that is almost full, and the torrent counts with a
- * problem. Nothing when no item needs an action.
- */
 export function NeedsAttention({ statsData, className }: { statsData: DashboardInstanceStats[]; className?: string }) {
   const { t } = useTranslation("dashboard")
   const offline = statsData.filter(d => instanceHealth(d) === "offline")
@@ -70,7 +66,7 @@ export function NeedsAttention({ statsData, className }: { statsData: DashboardI
           </li>
         ))}
         {firewalled.map(d => (
-          <li key={`firewalled-${d.instance.id}`} data-tone="yellow" className={cn(item, "text-yellow-600 dark:text-yellow-500")}>
+          <li key={`firewalled-${d.instance.id}`} data-tone="yellow" className={cn(item, "text-warning")}>
             <ShieldAlert className="size-4 shrink-0" aria-hidden="true" /><span className="truncate">{t("attention.firewalled", { name: d.instance.name })}</span>
           </li>
         ))}
@@ -88,7 +84,6 @@ export function NeedsAttention({ statsData, className }: { statsData: DashboardI
   )
 }
 
-/** The free disk space of each instance that answers. */
 export function Storage({ statsData, className }: { statsData: DashboardInstanceStats[]; className?: string }) {
   const { t } = useTranslation("dashboard")
   const rows = statsData.filter(d => instanceHealth(d) === "ok" && reportsFreeSpace(d))
@@ -116,7 +111,6 @@ export function Storage({ statsData, className }: { statsData: DashboardInstance
   )
 }
 
-/** The torrents and the sizes of all instances, the count of connected instances, and the all-time transfer. */
 export function Library({ statsData, className }: { statsData: DashboardInstanceStats[]; className?: string }) {
   const { t, i18n } = useTranslation("dashboard")
   const sizes = resolveDashboardSizes(statsData.map(d => d.stats))

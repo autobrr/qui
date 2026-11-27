@@ -83,8 +83,6 @@ func TestLooksLikeTorrentPayload_ValidatesInfoDict(t *testing.T) {
 	}
 }
 
-// TestTargetHashes_CurrentThenLegacy pins the lookup order: the hash an
-// upload gets today, then the hash a pre-rename upload still carries.
 func TestTargetHashes_CurrentThenLegacy(t *testing.T) {
 	site, ok := SiteByHost("redacted.sh")
 	if !ok {
@@ -96,14 +94,14 @@ func TestTargetHashes_CurrentThenLegacy(t *testing.T) {
 	}
 
 	want := []string{
-		"7ce6f6f7740f75ed5b3a9457ebf04b16931f35cd", // source RED
-		"2d95e58ed6b0430e79a00d41c506fe3715b43874", // source PTH
+		"7ce6f6f7740f75ed5b3a9457ebf04b16931f35cd",
+		"2d95e58ed6b0430e79a00d41c506fe3715b43874",
 	}
 	if len(hashes) != len(want) {
 		t.Fatalf("expected %d hashes, got %v", len(want), hashes)
 	}
 	for i := range want {
-		if hashes[i] != want[i] {
+		if hashes[i].String() != want[i] {
 			t.Fatalf("hash %d: expected %s, got %s", i, want[i], hashes[i])
 		}
 	}

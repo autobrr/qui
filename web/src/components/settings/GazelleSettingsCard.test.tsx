@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   settings: {
@@ -36,15 +36,6 @@ vi.mock("@/lib/api", () => ({
 import { toast } from "sonner"
 import { CROSS_SEED_SETTINGS_KEY } from "@/hooks/useCrossSeedSettings"
 import { GazelleSettingsCard } from "./GazelleSettingsCard"
-
-// The switch sits in the section form, where Radix measures it with a ResizeObserver that jsdom lacks.
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

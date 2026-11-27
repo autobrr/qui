@@ -14,11 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNew_DatabaseFilesOwnerOnly verifies the SQLite database and its WAL/SHM
-// sidecars are created owner-only, even under a permissive process umask. A
-// content-sharing UMASK (discussion #1704) must not expose the encrypted
-// credentials and API keys the database holds. Not parallel: umask is
-// process-global.
 func TestNew_DatabaseFilesOwnerOnly(t *testing.T) {
 	old := syscall.Umask(0)
 	defer syscall.Umask(old)
@@ -32,8 +27,6 @@ func TestNew_DatabaseFilesOwnerOnly(t *testing.T) {
 		p := dbPath + suffix
 		info, statErr := os.Stat(p)
 		if statErr != nil {
-			// -wal/-shm may be absent depending on checkpoint state; only the
-			// main file is guaranteed to exist.
 			if suffix == "" {
 				t.Fatalf("stat %s: %v", p, statErr)
 			}

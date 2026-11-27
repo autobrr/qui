@@ -4,6 +4,8 @@
  */
 
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
+import { DayBands } from "@/components/statistics/DayBands"
+import { useHourAxis } from "@/components/statistics/useHourAxis"
 import { useBucketFormat } from "@/components/statistics/useBucketFormat"
 import { useTapTooltip } from "@/components/statistics/useTapTooltip"
 import { useIsPhone } from "@/hooks/useMediaQuery"
@@ -18,22 +20,19 @@ interface ChartRow {
   width: BarWidth
   gapSeconds: number
   uploaded: number
-  // Negative, so that the bar hangs below the zero line.
   downloaded: number
 }
 
 interface GroupChartProps {
   bars: StatisticsBar[]
   unit: ChartUnit
-  // The theme colors of the upload series.
   color: { light: string; dark: string } | undefined
 }
 
-/** The upload of one group above the zero line and its download below it. */
 export function GroupChart({ bars, unit, color }: GroupChartProps) {
   const { t, i18n } = useTranslation("statistics")
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const { formatStart, formatTick } = useBucketFormat(unit)
+  const { formatStart, formatTick, formatHour } = useBucketFormat()
   const tooltip = useTapTooltip()
   const narrow = useIsPhone()
 
@@ -48,6 +47,7 @@ export function GroupChart({ bars, unit, color }: GroupChartProps) {
   }), [bars])
 
   const widths = useMemo(() => new Map(rows.map(row => [row.start, row.width])), [rows])
+  const hourAxis = useHourAxis(rows, unit)
 
   const ticks = useMemo(() => {
     const up = byteTicks(Math.max(0, ...rows.map(row => row.uploaded)), 2)
@@ -59,11 +59,16 @@ export function GroupChart({ bars, unit, color }: GroupChartProps) {
     <ChartContainer {...tooltip.wrapper} config={config} className="aspect-auto h-[200px] w-full">
       <BarChart data={rows} stackOffset="sign" margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap={rows.length > 60 ? 0.5 : "18%"}>
         <CartesianGrid vertical={false} />
-        <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value), widths.get(Number(value)))} />
+        {hourAxis ? (
+          <XAxis dataKey="start" tickLine={false} axisLine={false} ticks={hourAxis.ticks} interval={0} tickFormatter={value => formatHour(Number(value))} />
+        ) : (
+          <XAxis dataKey="start" tickLine={false} axisLine={false} minTickGap={48} tickFormatter={value => formatTick(Number(value), widths.get(Number(value)))} />
+        )}
+        {hourAxis && <DayBands axis={hourAxis} />}
         <YAxis tickLine={false} axisLine={false} width={narrow ? "auto" : 72} ticks={ticks} domain={[ticks[0], ticks[ticks.length - 1]]} tickFormatter={value => formatBytes(Math.abs(Number(value)))} />
         <ReferenceLine y={0} stroke="var(--border)" />
         {rows.map(row => row.gapSeconds > 0 && (
-          <ReferenceLine key={row.start} x={row.start} stroke="#eab308" strokeDasharray="2 3" />
+          <ReferenceLine key={row.start} x={row.start} stroke="var(--warning)" strokeDasharray="2 3" />
         ))}
         <ChartTooltip
           {...tooltip.tooltip}
@@ -89,7 +94,7 @@ export function GroupChart({ bars, unit, color }: GroupChartProps) {
                     </div>
                   ))}
                   {row.gapSeconds > 0 && (
-                    <div className="pt-1 text-yellow-600 dark:text-yellow-500">{t("chart.gap", { duration: formatGapLength(row.gapSeconds, locale) })}</div>
+                    <div className="pt-1 text-warning">{t("chart.gap", { duration: formatGapLength(row.gapSeconds, locale) })}</div>
                   )}
                 </div>
               </div>

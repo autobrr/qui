@@ -5,12 +5,13 @@ package gazellemusic
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type MatchKind string
@@ -30,11 +31,12 @@ type Match struct {
 	Size        int64
 	Title       string
 	Kind        MatchKind
-	TargetHash  string
-	QueriedHash string
+	TargetHash  infohash.Hash
+	QueriedHash infohash.Hash
 }
 
-// FindMatch distinguishes a completed lookup from a transport or identity failure.
+var ErrInconsistentIdentity = errors.New("hash lookup returned inconsistent target identity")
+
 func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles map[string]int64, totalSize int64) (*Match, error) {
 	if torrentBytes != nil {
 		if hashes, err := c.TargetHashes(torrentBytes); err == nil {
@@ -44,15 +46,13 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 					return nil, err
 				}
 				if res != nil {
-					// OPS names the hash only on a torrent the user snatched or
-					// uploaded. The hit itself confirms the queried hash.
-					if res.InfoHash == "" {
+					if res.InfoHash.IsZero() {
 						res.InfoHash = targetHash
 					}
-					if !validIdentity(res.TorrentID, res.Size, res.InfoHash) || !strings.EqualFold(res.InfoHash, targetHash) {
-						return nil, errors.New("hash lookup returned inconsistent target identity")
+					if !validIdentity(res.TorrentID, res.Size, res.InfoHash) || res.InfoHash != targetHash {
+						return nil, ErrInconsistentIdentity
 					}
-					return &Match{Host: c.Host(), SourceFlag: c.SourceFlag(), TorrentID: res.TorrentID, GroupID: res.GroupID, Size: res.Size, Title: res.Title, Kind: MatchHash, TargetHash: strings.ToLower(res.InfoHash), QueriedHash: targetHash}, nil
+					return &Match{Host: c.Host(), SourceFlag: c.SourceFlag(), TorrentID: res.TorrentID, GroupID: res.GroupID, Size: res.Size, Title: res.Title, Kind: MatchHash, TargetHash: res.InfoHash, QueriedHash: targetHash}, nil
 				}
 			}
 		}
@@ -86,9 +86,8 @@ func FindMatch(ctx context.Context, c *Client, torrentBytes []byte, localFiles m
 	return nil, lookupErr
 }
 
-func validIdentity(id, size int64, hash string) bool {
-	decoded, err := hex.DecodeString(hash)
-	return id > 0 && size > 0 && err == nil && len(decoded) == 20
+func validIdentity(id, size int64, hash infohash.Hash) bool {
+	return id > 0 && size > 0 && !hash.IsZero() && !hash.IsV2()
 }
 
 var musicExtensions = map[string]bool{

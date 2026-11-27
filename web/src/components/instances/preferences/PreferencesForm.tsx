@@ -22,7 +22,6 @@ import { NetworkBindingWidget, preferenceWidgets } from "./PreferenceWidgets"
 
 const WIDE_CONTROLS = new Set<PreferenceField["control"]>(["switch", "list", "watchFolders"])
 
-// The network binding widget draws these keys together with current_network_interface.
 const NETWORK_BINDING_PARTS = new Set(["current_interface_address", "current_interface_name"])
 
 interface PreferencesFormProps {
@@ -30,23 +29,15 @@ interface PreferencesFormProps {
   fields: PreferenceField[]
 }
 
-// The qBittorrent tabs of the preferences dialog, drawn from the catalog view. All tabs share
-// one form: a save from any tab sends every changed key.
 export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
-  // The dialog reads the view itself, so this hook only saves.
   const { updatePreferences, isUpdating } = useInstancePreferences(instanceId, { enabled: false })
-  // The values that qBittorrent has. They do not follow a refresh of the view, so that a
-  // refresh does not reset open edits.
   const [saved, setSaved] = useState(() => valuesOf(fields))
   const [values, setValues] = useState(saved)
 
   const setValue = useCallback((key: string, value: unknown) => setValues(previous => {
     const next = { ...previous, [key]: value }
-    // qBittorrent turns a seeding limit on when it gets a limit without the switch. So a switch
-    // that turns off empties the box, and a switch that turns on fills an empty box with the
-    // saved limit or the starting value of the qBittorrent WebUI.
     for (const field of fields) {
       const labels = field.dependsOn === key ? labelsOf(field) : undefined
       if (labels?.whenEnabled === undefined) continue
@@ -60,7 +51,6 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
   }), [fields, saved])
 
   const byKey = new Map(fields.map(field => [field.key, field]))
-  // A read-only field has no edits to keep, so it shows the latest view.
   const valueOf = (field: PreferenceField) => !field.readOnly && field.key in values ? values[field.key] : field.value
   const isEnabled = (field: PreferenceField): boolean => {
     const parent = field.dependsOn ? byKey.get(field.dependsOn) : undefined
@@ -77,7 +67,6 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
         await updatePreferences(changed as Partial<AppPreferences>)
       } catch (error) {
         console.error("Failed to save preferences:", error)
-        // The server names the setting that it rejected, for example a decimal in a whole-number field.
         toast.error(t("preferences.toast.saveFailed"), {
           description: error instanceof Error ? formatErrorMessage(error.message) : undefined,
         })
@@ -85,7 +74,6 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
       }
       setSaved(previous => ({ ...previous, ...changed }))
       void queryClient.invalidateQueries({ queryKey: preferenceViewKey(instanceId) })
-      // The saved binding decides which interface and address are "not available".
       void queryClient.invalidateQueries({ queryKey: networkBindingKey(instanceId) })
     }
     toast.success(t("preferences.toast.saved"))
@@ -134,7 +122,6 @@ export function PreferencesForm({ instanceId, fields }: PreferencesFormProps) {
                           addressLabels={preferenceTabLabels.advanced.fields.current_interface_address}
                           iface={String(values.current_network_interface ?? "")}
                           address={String(values.current_interface_address ?? "")}
-                          // The name belongs to the saved interface, not to an interface selected in the form.
                           interfaceName={values.current_network_interface === byKey.get("current_network_interface")?.value
                             ? String(byKey.get("current_interface_name")?.value ?? "")
                             : ""}
@@ -176,7 +163,6 @@ interface PreferenceRowProps {
   onChange: (key: string, value: unknown) => void
 }
 
-// Memoized, so that a keystroke re-renders only the field that changed and the fields that depend on it.
 const PreferenceRow = memo(function PreferenceRow({ instanceId, field, value, disabled, onChange }: PreferenceRowProps) {
   const { t } = useTranslation("instances")
   const Widget = preferenceWidgets[field.control]
@@ -197,8 +183,6 @@ const PreferenceRow = memo(function PreferenceRow({ instanceId, field, value, di
   )
 })
 
-// qBittorrent sends the test email with its saved settings, and sends nothing while email
-// notification is off. So the button follows the saved switch, not the switch in the form.
 function SendTestEmailButton({ instanceId, disabled }: { instanceId: number; disabled: boolean }) {
   const { t } = useTranslation("instances")
   const { data: capabilities } = useInstanceCapabilities(instanceId)
@@ -246,7 +230,6 @@ const MODERN_AUTORUN_PLACEHOLDERS = [
   { token: "%K", labelKey: "preferences.fileManagement.placeholderLabels.torrentId" },
 ]
 
-// qBittorrent 4.5.0 added the program that runs when a torrent is added, and the %J and %K placeholders.
 function AutorunPlaceholders({ supportsTorrentAdded }: { supportsTorrentAdded: boolean }) {
   const { t } = useTranslation("instances")
   const placeholders = supportsTorrentAdded ? MODERN_AUTORUN_PLACEHOLDERS : LEGACY_AUTORUN_PLACEHOLDERS

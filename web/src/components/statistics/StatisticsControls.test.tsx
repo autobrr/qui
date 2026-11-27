@@ -19,11 +19,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
 }))
 
 function renderPicker(screenKind: "upright" | "desktop") {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
   stubPhone(screenKind)
   render(<PeriodPicker value="30d" onPreset={() => {}} onCustom={() => {}} />)
 }
@@ -35,7 +30,6 @@ afterEach(() => {
 })
 
 describe("PeriodPicker", () => {
-  // regression: #4179
   it("opens the custom range on a touch screen without focus on a day field, so that iOS opens no date picker over it", async () => {
     renderPicker("upright")
 
@@ -46,7 +40,6 @@ describe("PeriodPicker", () => {
     expect(document.activeElement).not.toBe(firstDay)
   })
 
-  // regression: #4179
   it("puts the focus on the first day of the custom range on a screen with hover", async () => {
     renderPicker("desktop")
 

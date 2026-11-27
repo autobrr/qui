@@ -27,7 +27,7 @@ export function PooledCompletionSetting({
         onCheckedChange={value => onCheckedChange(value === true)}
       />
       <div className="flex items-center gap-1.5">
-        <Label htmlFor={id} className="font-medium cursor-pointer">
+        <Label htmlFor={id} className="cursor-pointer">
           {t("rules.postInjection.pooledPartialCompletion")}
         </Label>
         <FieldHelp>{t("rules.postInjection.pooledPartialCompletionDescription")}</FieldHelp>

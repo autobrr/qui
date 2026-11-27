@@ -32,31 +32,27 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	instance, err := instances.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// No saved row: the schedule is off, and no scheduled run started yet.
 	defaults, err := store.GetSearchSettings(ctx)
 	require.NoError(t, err)
 	require.False(t, defaults.ScheduleEnabled)
-	require.True(t, defaults.TorznabEnabled)
 	_, found, err := store.LastScheduledSearchRun(ctx)
 	require.NoError(t, err)
 	require.False(t, found)
 
-	// A start saved before the first settings save survives that save.
 	started := time.Date(2026, 11, 17, 8, 30, 0, 0, time.UTC)
 	require.NoError(t, store.SetLastScheduledSearchRun(ctx, started))
 
 	want := &models.CrossSeedSearchSettings{
-		InstanceID:             &instance.ID,
-		Categories:             []string{"movies"},
-		Tags:                   []string{"keep"},
-		ExcludeCategories:      []string{"no-cross-seed"},
-		ExcludeTags:            []string{"no-cs"},
-		IndexerIDs:             []int{3},
+		InstanceID:        &instance.ID,
+		Categories:        []string{"movies"},
+		Tags:              []string{"keep"},
+		ExcludeCategories: []string{"no-cross-seed"},
+		ExcludeTags:       []string{"no-cs"},
+		IndexerIDs:        []int{3}, GazelleSites: []string{"redacted.sh"},
 		IntervalSeconds:        5,
 		CooldownMinutes:        720,
 		MaxAddedAgeDays:        30,
 		SkipIndividualEpisodes: true,
-		TorznabEnabled:         false,
 		ScheduleEnabled:        true,
 		ScheduleIntervalHours:  6,
 		ScheduleMaxSearches:    50,
@@ -77,8 +73,6 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 	require.False(t, found)
 
-	// The run keeps its kind, its exclude filters, its cap, and the torrents
-	// that still wait.
 	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
 		InstanceID:  instance.ID,
 		Kind:        models.CrossSeedSearchRunKindScheduled,

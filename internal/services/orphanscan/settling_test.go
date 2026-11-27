@@ -152,7 +152,7 @@ func TestBuildFileMapFromTorrents_FailsWhenStableTorrentMissingFiles(t *testing.
 	root := t.TempDir()
 
 	_, err := buildFileMapFromTorrents(fsops.HostPaths, []*qbt.Torrent{
-		{Hash: "stable", SavePath: root, State: qbt.TorrentStatePausedUp},
+		{Hash: hStable, SavePath: root, State: qbt.TorrentStatePausedUp},
 	}, map[string]qbt.TorrentFiles{}, false)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "stable torrents returned no files")
@@ -166,11 +166,11 @@ func TestBuildFileMapFromTorrents_IgnoresTorrentWithoutMetadataAtSharedRoot(t *t
 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
 		[]*qbt.Torrent{
-			{Hash: "stable", SavePath: root, State: qbt.TorrentStatePausedUp},
-			{Hash: "metadata-less", SavePath: root, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
+			{Hash: hStable, SavePath: root, State: qbt.TorrentStatePausedUp},
+			{Hash: hMetadataLess, SavePath: root, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
 		},
 		map[string]qbt.TorrentFiles{
-			"stable": {{Name: "movie.mkv", Size: 1}},
+			hStable: {{Name: "movie.mkv", Size: 1}},
 		},
 		false,
 	)
@@ -188,11 +188,11 @@ func TestBuildFileMapFromTorrents_SkipsTransientMissingRoots(t *testing.T) {
 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
 		[]*qbt.Torrent{
-			{Hash: "stable", SavePath: stableRoot, State: qbt.TorrentStatePausedUp},
-			{Hash: "checking", SavePath: transientRoot, State: qbt.TorrentStateCheckingResumeData},
+			{Hash: hStable, SavePath: stableRoot, State: qbt.TorrentStatePausedUp},
+			{Hash: hChecking, SavePath: transientRoot, State: qbt.TorrentStateCheckingResumeData},
 		},
 		map[string]qbt.TorrentFiles{
-			"stable": {{Name: "movie.mkv", Size: 1}},
+			hStable: {{Name: "movie.mkv", Size: 1}},
 		},
 		false,
 	)
@@ -209,11 +209,11 @@ func TestBuildFileMapFromTorrents_SkipsSharedRootWhenTransientTorrentHasNoFiles(
 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
 		[]*qbt.Torrent{
-			{Hash: "stable", SavePath: root, State: qbt.TorrentStatePausedUp},
-			{Hash: "allocating", SavePath: root, State: qbt.TorrentStateAllocating},
+			{Hash: hStable, SavePath: root, State: qbt.TorrentStatePausedUp},
+			{Hash: hAllocating, SavePath: root, State: qbt.TorrentStateAllocating},
 		},
 		map[string]qbt.TorrentFiles{
-			"stable": {{Name: "movie.mkv", Size: 1}},
+			hStable: {{Name: "movie.mkv", Size: 1}},
 		},
 		false,
 	)
@@ -283,8 +283,6 @@ func TestFilterCoveredScanRoots(t *testing.T) {
 	}
 }
 
-// A filesystem-root cover matches every descendant. Pruning with it would
-// drop every scan root; the walk must keep them and ignore the files instead.
 func TestFilterCoveredScanRoots_FilesystemRoot(t *testing.T) {
 	t.Parallel()
 
@@ -364,19 +362,19 @@ func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
 		[]*qbt.Torrent{
 			{
-				Hash:        "abc123",
+				Hash:        hAbc123,
 				SavePath:    categoryRoot,
 				ContentPath: filepath.Join(trackerDir, "My.Torrent", "file1.mkv"),
 				State:       qbt.TorrentStatePausedUp,
 			},
-			{Hash: "plain", SavePath: categoryRoot, State: qbt.TorrentStatePausedUp},
+			{Hash: hPlain, SavePath: categoryRoot, State: qbt.TorrentStatePausedUp},
 		},
 		map[string]qbt.TorrentFiles{
-			"abc123": {
+			hAbc123: {
 				{Name: "My.Torrent/file1.mkv", Size: 1000},
 				{Name: "My.Torrent/file2.srt", Size: 100},
 			},
-			"plain": {{Name: "plain.mkv", Size: 1}},
+			hPlain: {{Name: "plain.mkv", Size: 1}},
 		},
 		true,
 	)
@@ -398,14 +396,14 @@ func TestBuildFileMapFromTorrents_FlatMultiFileContentPathStaysWithinSavePath(t 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
 		[]*qbt.Torrent{
 			{
-				Hash:        "flat123",
+				Hash:        hFlat123,
 				SavePath:    saveRoot,
 				ContentPath: saveRoot,
 				State:       qbt.TorrentStatePausedUp,
 			},
 		},
 		map[string]qbt.TorrentFiles{
-			"flat123": {
+			hFlat123: {
 				{Name: "movie.mkv", Size: 1000},
 				{Name: "subs/file.srt", Size: 100},
 			},
@@ -428,14 +426,14 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
 		[]*qbt.Torrent{
 			{
-				Hash:        "flat-divergent",
+				Hash:        hFlatDivergent,
 				SavePath:    categoryRoot,
 				ContentPath: contentRoot,
 				State:       qbt.TorrentStatePausedUp,
 			},
 		},
 		map[string]qbt.TorrentFiles{
-			"flat-divergent": {
+			hFlatDivergent: {
 				{Name: "extras/poster.jpg", Size: 100},
 				{Name: "movie.mkv", Size: 1000},
 			},
@@ -453,9 +451,6 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 	assert.NotContains(t, result.scanRoots, filepath.Dir(categoryRoot))
 }
 
-// Two torrents whose save paths differ only by case name the same physical
-// directory on a case-insensitive filesystem, so both spellings must resolve to
-// the same owned files. See issue #2314.
 func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
 	t.Parallel()
 
@@ -465,18 +460,17 @@ func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
 
 	result, err := buildFileMapFromTorrents(fsops.HostPaths,
 		[]*qbt.Torrent{
-			{Hash: "upper", SavePath: upper, ContentPath: filepath.Join(upper, "Show.S01"), State: qbt.TorrentStatePausedUp},
-			{Hash: "lower", SavePath: lower, ContentPath: filepath.Join(lower, "Movie.2024"), State: qbt.TorrentStatePausedUp},
+			{Hash: hUpper, SavePath: upper, ContentPath: filepath.Join(upper, "Show.S01"), State: qbt.TorrentStatePausedUp},
+			{Hash: hLower, SavePath: lower, ContentPath: filepath.Join(lower, "Movie.2024"), State: qbt.TorrentStatePausedUp},
 		},
 		map[string]qbt.TorrentFiles{
-			"upper": {{Name: "Show.S01/Show.S01E01.mkv", Size: 1000}},
-			"lower": {{Name: "Movie.2024/Movie.2024.mkv", Size: 2000}},
+			hUpper: {{Name: "Show.S01/Show.S01E01.mkv", Size: 1000}},
+			hLower: {{Name: "Movie.2024/Movie.2024.mkv", Size: 2000}},
 		},
 		false,
 	)
 	require.NoError(t, err)
 
-	// Each file must be found under either spelling of its directory.
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(lower, "Show.S01", "Show.S01E01.mkv")))
 	assert.True(t, newTestProtected(t, fsops.HostPaths, nil, result.fileMap).torrentFile(filepath.Join(upper, "Movie.2024", "Movie.2024.mkv")))
 }
@@ -490,21 +484,15 @@ func TestDedupeCaseVariantRoots(t *testing.T) {
 	lower := filepath.Join(base, "trackername")
 
 	if _, err := os.Lstat(lower); err == nil {
-		// Case-insensitive filesystem: one directory, two spellings, walk once.
 		assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(context.Background(), []string{upper, lower}, local.NewBackend(), nil))
 		return
 	}
 
-	// Case-sensitive filesystem: nothing may be dropped, because every spelling
-	// is a directory of its own.
 	require.NoError(t, os.MkdirAll(lower, 0o755))
 	missing := filepath.Join(base, "Gone")
 	roots := []string{upper, lower, missing, strings.ToLower(missing)}
 	assert.Equal(t, roots, dedupeCaseVariantRoots(context.Background(), roots, local.NewBackend(), nil))
 
-	// A symlink whose name is a case variant of its target must not evict the
-	// target: filepath.WalkDir does not follow a symlinked scan root, so the
-	// tree would stop being scanned.
 	linked := filepath.Join(base, "Linked")
 	require.NoError(t, os.MkdirAll(linked, 0o755))
 	link := filepath.Join(base, "linked")
@@ -533,8 +521,6 @@ func TestRootIdentityChecksUseBackend(t *testing.T) {
 	assert.Empty(t, metadataIgnoreRoots(t.Context(), []string{base, lower}, []string{upper}, backend, nil))
 }
 
-// A remote backend reports no file identity, so only a byte-identical root is
-// dropped; a case variant is kept because nothing confirms it is the same dir.
 func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T) {
 	noID := &fsops.LstatInfo{IsDir: true, FileIDErr: errors.New("no identity")}
 	root := "/remote/TrackerName"
@@ -544,12 +530,9 @@ func TestDedupeCaseVariantRootsDropsExactDuplicatesWithoutIdentity(t *testing.T)
 		infos:   map[string]*fsops.LstatInfo{root: noID, lower: noID},
 	}
 
-	// root, lower, root is the no-identity case: Clean does not collapse it.
 	assert.Equal(t, []string{root, lower}, dedupeCaseVariantRoots(t.Context(), []string{root, lower, root}, backend, nil))
 }
 
-// Declaring the default save path alongside a torrent at the same root must not
-// walk it twice when the backend cannot confirm file identity.
 func TestExecuteScan_DropsExactDuplicateRootsWithoutIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -573,10 +556,10 @@ func TestExecuteScan_DropsExactDuplicateRootsWithoutIdentity(t *testing.T) {
 		return backend
 	})
 	stubSync(f.svc).getAllTorrents = func(context.Context, int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(f.svc).getTorrentFilesBatch = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 	stubSync(f.svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: root + "/"})
 

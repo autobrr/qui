@@ -12,9 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// outsideFileCases holds the cases of the outside-file rule. The browser check
-// in web/src/lib/css-outside-files.test.ts reads the same file, so the two
-// checks cannot drift apart.
 type outsideFileCases struct {
 	Refused []struct {
 		Name   string          `json:"name"`

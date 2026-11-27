@@ -1,7 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Command postgres runs Postgres integration tests with a temporary server.
 package main
 
 import (
@@ -68,7 +67,6 @@ func run(ctx context.Context, args []string) (runErr error) {
 			StartParameters(map[string]string{"max_connections": "200"}).
 			Logger(os.Stderr)
 		pg := embeddedpostgres.NewDatabase(config)
-		// The library downloads binaries through the default HTTP client.
 		http.DefaultClient.Timeout = 2 * time.Minute
 		if err := pg.Start(); err != nil {
 			return fmt.Errorf("start test Postgres: %w", err)

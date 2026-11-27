@@ -3,7 +3,6 @@
 
 package qbittorrent
 
-// FilterOptions represents the filter options from the frontend
 type FilterOptions struct {
 	Hashes            []string `json:"hashes"`
 	Status            []string `json:"status"`
@@ -17,7 +16,6 @@ type FilterOptions struct {
 	Expr              string   `json:"expr"`
 }
 
-// IsEmpty reports whether no filter is set.
 func (f FilterOptions) IsEmpty() bool {
 	return len(f.Hashes) == 0 &&
 		len(f.Status) == 0 &&

@@ -12,19 +12,15 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// ManualMatchProposalsRequest asks for ranked Manual match target proposals.
 type ManualMatchProposalsRequest struct {
-	InstanceID int `json:"instance_id"`
-	// TorrentData is the base64-encoded uploaded .torrent file.
+	InstanceID  int    `json:"instance_id"`
 	TorrentData string `json:"torrent_data"`
-	// TargetHash, when set, is always included in the proposals with its
-	// computed overlap, even at zero overlap.
-	TargetHash string `json:"target_hash,omitempty"`
+	TargetHash  string `json:"target_hash,omitempty"`
 }
 
-// ManualMatchApplyRequest applies a Manual match through the cross-seed pipeline.
 type ManualMatchApplyRequest struct {
 	InstanceID  int      `json:"instance_id"`
 	TorrentData string   `json:"torrent_data"`
@@ -33,7 +29,6 @@ type ManualMatchApplyRequest struct {
 	Tags        []string `json:"tags,omitempty"`
 }
 
-// ManualAssembleCheck previews a season pack without writing a link tree.
 func (h *CrossSeedHandler) ManualAssembleCheck(w http.ResponseWriter, r *http.Request) {
 	var req crossseed.ManualAssembleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -45,10 +40,9 @@ func (h *CrossSeedHandler) ManualAssembleCheck(w http.ResponseWriter, r *http.Re
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
-// ManualAssembleApply adds a selected season pack paused and queues a recheck.
 func (h *CrossSeedHandler) ManualAssembleApply(w http.ResponseWriter, r *http.Request) {
 	var req crossseed.ManualAssembleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -60,21 +54,9 @@ func (h *CrossSeedHandler) ManualAssembleApply(w http.ResponseWriter, r *http.Re
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
-// ManualMatchProposals godoc
-// @Summary Rank Manual match target proposals for an uploaded torrent
-// @Description Ranks same-instance torrents by file-size overlap with the uploaded torrent and returns dialog prefill values.
-// @Tags cross-seed
-// @Accept json
-// @Produce json
-// @Param request body ManualMatchProposalsRequest true "Uploaded torrent and instance"
-// @Success 200 {object} crossseed.ManualMatchProposalsResponse
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/cross-seed/manual/proposals [post]
 func (h *CrossSeedHandler) ManualMatchProposals(w http.ResponseWriter, r *http.Request) {
 	var req ManualMatchProposalsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -90,27 +72,16 @@ func (h *CrossSeedHandler) ManualMatchProposals(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	resp, err := h.service.ManualMatchProposalsFromBase64(r.Context(), req.InstanceID, req.TorrentData, req.TargetHash)
+	requested, _ := infohash.Parse(req.TargetHash)
+	resp, err := h.service.ManualMatchProposalsFromBase64(r.Context(), req.InstanceID, req.TorrentData, requested)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", req.InstanceID).Msg("Failed to build manual match proposals")
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }
 
-// ManualMatchApply godoc
-// @Summary Apply a Manual match cross-seed against a chosen target torrent
-// @Description Adds the uploaded torrent through the cross-seed pipeline, pinned to the user-chosen target. Every Manual match runs a full recheck before it seeds; the recheck arbitrates a wrong pick and cannot be skipped.
-// @Tags cross-seed
-// @Accept json
-// @Produce json
-// @Param request body ManualMatchApplyRequest true "Uploaded torrent, instance, and chosen target"
-// @Success 200 {object} crossseed.CrossSeedResponse
-// @Failure 400 {object} httphelpers.ErrorResponse
-// @Failure 500 {object} httphelpers.ErrorResponse
-// @Security ApiKeyAuth
-// @Router /api/cross-seed/manual/apply [post]
 func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Request) {
 	var req ManualMatchApplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -137,12 +108,7 @@ func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Reque
 		Category:          req.Category,
 		Tags:              req.Tags,
 	}
-	// Detach from the request context like the other apply handlers: a client
-	// disconnect mid-apply must not cancel the recheck or resume-queue setup.
 	ctx := context.WithoutCancel(r.Context())
-	// Full pipeline parity with the other interactive flows: honor the saved
-	// tag-inheritance and piece-boundary preferences. SkipRecheck is not
-	// propagated because the recheck is the arbiter of a Manual match.
 	settings, err := h.service.GetAutomationSettings(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Manual match apply: failed to load automation settings")
@@ -158,5 +124,5 @@ func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Reque
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, resp)
+	RespondJSON(w, r, http.StatusOK, resp)
 }

@@ -17,37 +17,21 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// FindDeleteMatches returns the torrents, other than the selected torrents,
-// that a delete of the selected torrents with their files affects. selection
-// holds the selected hashes of each instance. On the instance of a selected
-// torrent, these are the torrents that share a file path with it and the
-// linked copies of its files. On every other active instance with trusted
-// identity, these are the torrents with a Shared file. The response names
-// each such instance that the check could not read. One call covers a
-// selection of any size.
 func (s *Service) FindDeleteMatches(ctx context.Context, selection map[int][]string) (*DeleteMatchesResponse, error) {
-	requested := make(map[int]map[string]struct{}, len(selection))
+	requested := make(map[int]map[infohash.Hash]struct{}, len(selection))
 	for instanceID, hashes := range selection {
-		requested[instanceID] = make(map[string]struct{}, len(hashes))
-		for _, hash := range hashes {
-			requested[instanceID][normalizeHash(hash)] = struct{}{}
-		}
+		requested[instanceID] = hashSet(infohash.ParseAll(hashes))
 	}
 	matches := deleteMatches{at: make(map[string]int)}
-	// A torrent of the selection on another instance is no match, and a
-	// torrent that already shares a path needs no second check.
 	skip := func(c candidateEntry) bool {
-		sel := requested[c.instanceID]
-		return len(sel) > 0 && slices.ContainsFunc(normalizedHashes(c.view.Hash, c.view.InfohashV1, c.view.InfohashV2), func(h string) bool {
-			_, ok := sel[h]
-			return ok
-		}) || matches.shared(c.instanceID, c.hash)
+		return torrentInHashSet(c.view.Torrent, requested[c.instanceID]) || matches.shared(c.instanceID, c.hash)
 	}
 	response := &DeleteMatchesResponse{Matches: []LocalMatch{}, Unchecked: []UncheckedInstance{}}
 	for _, instanceID := range slices.Sorted(maps.Keys(selection)) {
-		unchecked, err := s.findSelectedMatches(ctx, instanceID, selection[instanceID], true, skip, func(m LocalMatch) {
+		unchecked, err := s.findSelectedMatches(ctx, instanceID, requested[instanceID], true, skip, func(m LocalMatch) {
 			if m.MatchType == matchTypeContentPath || m.MatchType == matchTypeHardlink || m.MatchType == matchTypeReflink {
 				matches.add(m)
 			}
@@ -68,14 +52,9 @@ func (s *Service) FindDeleteMatches(ctx context.Context, selection map[int][]str
 	return response, nil
 }
 
-// FindCrossSeeds returns the cross-seeds of one torrent for the Cross-Seed
-// tab: every match on its instance, and the Content, Name, Release, Hardlink,
-// and Reflink matches on every other active instance. Content on another
-// instance is a Shared file. An instance whose torrents cannot be read is left
-// out.
-func (s *Service) FindCrossSeeds(ctx context.Context, instanceID int, hash string) (*LocalMatchesResponse, error) {
+func (s *Service) FindCrossSeeds(ctx context.Context, instanceID int, hash infohash.Hash) (*LocalMatchesResponse, error) {
 	var matches []LocalMatch
-	if _, err := s.findSelectedMatches(ctx, instanceID, []string{hash}, false, nil, func(m LocalMatch) {
+	if _, err := s.findSelectedMatches(ctx, instanceID, hashSet([]infohash.Hash{hash}), false, nil, func(m LocalMatch) {
 		matches = append(matches, m)
 	}); err != nil {
 		return nil, err
@@ -83,21 +62,10 @@ func (s *Service) FindCrossSeeds(ctx context.Context, instanceID int, hash strin
 	return &LocalMatchesResponse{Matches: matches}, nil
 }
 
-// findSelectedMatches runs the batch matcher for the selected torrents of an
-// instance, and calls match for each candidate with a tier. A selected torrent
-// of the instance is never a match. The torrents of every other active
-// instance are also candidates. With sharedOnly, only the instances with
-// trusted identity are, and only for a Shared file, and unchecked names those
-// of them that are offline or turned off. skip, when set, leaves out a
-// candidate before its files are read. It applies title rescue, and only
-// trusted identity counts for a link, because the delete dialog and the tab
-// can add the matches to a delete. A file list or a link check that cannot be
-// read fails the call, so a list never reads "no cross-seeds" in error. It
-// returns ErrTorrentNotFound when no selected torrent is on the instance.
 func (s *Service) findSelectedMatches(
 	ctx context.Context,
 	instanceID int,
-	hashes []string,
+	hashes map[infohash.Hash]struct{},
 	sharedOnly bool,
 	skip func(candidateEntry) bool,
 	match func(LocalMatch),
@@ -119,7 +87,7 @@ func (s *Service) findSelectedMatches(
 		return nil, ErrTorrentNotFound
 	}
 	isSelected := func(hash string) bool {
-		_, ok := selected[normalizeHash(hash)]
+		_, ok := selected[hash]
 		return ok
 	}
 
@@ -193,9 +161,6 @@ func (s *Service) findSelectedMatches(
 	return unchecked, nil
 }
 
-// buildSharedFileIndex indexes the torrents of the other active instances with
-// trusted identity, because a Shared file needs trusted identity on both
-// sides. unchecked names those of them that are offline or turned off.
 func (s *Service) buildSharedFileIndex(
 	ctx context.Context,
 	instances []*models.Instance,
@@ -218,12 +183,6 @@ func (s *Service) buildSharedFileIndex(
 	return idx, views, unchecked
 }
 
-// addOtherPathPicks adds to the picks of each selected torrent the torrents of
-// its crossPathGroups that share a file path with it. The path text only
-// selects a candidate, and sharedFile decides. One index of file paths per
-// group finds them, so a flat folder costs its file count, not its pair count.
-// A torrent whose file list cannot be read gets one pick, or is one pick, so
-// that matchSource fails the call.
 func (b *batchFiles) addOtherPathPicks(
 	ctx context.Context,
 	instanceID int,
@@ -272,10 +231,6 @@ func (b *batchFiles) addOtherPathPicks(
 	}
 }
 
-// addSizePicks adds to picks each torrent of the size group on an instance
-// with trusted identity, so that sharedFile checks it. A Shared file needs no
-// Name or Release.
-// ponytail: linear check for a pick, fine while a size group stays small.
 func addSizePicks(instances []*models.Instance, picks []*candidatePick, sizeGroup []*releaseCandidate) []*candidatePick {
 	for _, c := range sizeGroup {
 		if !instanceHas(instances, c.instanceID, models.CapabilityTrustedIdentity) ||
@@ -287,9 +242,6 @@ func addSizePicks(instances []*models.Instance, picks []*candidatePick, sizeGrou
 	return picks
 }
 
-// selectedAndTrustedOthers returns the selected torrents, then the torrents of
-// others on instances with trusted identity. sources holds the index in
-// torrents of each selected torrent.
 func selectedAndTrustedOthers(
 	instances []*models.Instance,
 	torrents, others []qbittorrent.CrossInstanceTorrentView,
@@ -310,7 +262,6 @@ func selectedAndTrustedOthers(
 	return all, sources
 }
 
-// matchSource calls match for each candidate of a selected torrent with a tier.
 func (b *batchFiles) matchSource(
 	ctx context.Context,
 	source *qbt.Torrent,
@@ -319,13 +270,12 @@ func (b *batchFiles) matchSource(
 	skip func(candidateEntry) bool,
 	match func(LocalMatch),
 ) error {
-	// A magnet without metadata has no files.
 	if len(picks) == 0 || source.ContentPath == "" {
 		return nil
 	}
 	sourceData, ok := b.get(ctx, instanceID, source.Hash, source.SavePath)
 	if !ok {
-		return fmt.Errorf("read the file list of torrent %s", normalizeHash(source.Hash))
+		return fmt.Errorf("read the file list of torrent %s", source.Hash)
 	}
 	for _, p := range picks {
 		c := p.entry
@@ -343,10 +293,6 @@ func (b *batchFiles) matchSource(
 	return nil
 }
 
-// strictTier returns the tier of a candidate of a selected torrent. Unlike
-// classifyCandidates, it checks the link also when the sizes pair: a linked
-// copy survives a delete, and the lists say so. A candidate on another
-// instance with a Shared file gets Content first, as on one instance.
 func (b *batchFiles) strictTier(ctx context.Context, source *qbt.Torrent, sourceInstanceID int, sourceData batchFileData, p *candidatePick) (string, error) {
 	c := p.entry
 	candidateData, ok := b.get(ctx, c.instanceID, c.hash, c.savePath)
@@ -377,11 +323,6 @@ func (b *batchFiles) strictTier(ctx context.Context, source *qbt.Torrent, source
 	return tier, nil
 }
 
-// sharedFile reports whether a source file and a candidate file on another
-// instance are one folder entry: their parent folders have the same file
-// identity and their names are equal. Equal file identity of the files alone
-// is also a hardlink, and path text differs between two mounts of one folder.
-// Both instances need trusted identity, so only the qui host answers.
 func (b *batchFiles) sharedFile(ctx context.Context, sourceInstanceID int, source *qbt.Torrent, sourceFiles qbt.TorrentFiles, c candidateEntry, candidateFiles qbt.TorrentFiles) (bool, error) {
 	if !instanceHas(b.instances, sourceInstanceID, models.CapabilityTrustedIdentity) ||
 		!instanceHas(b.instances, c.instanceID, models.CapabilityTrustedIdentity) {
@@ -406,9 +347,6 @@ func (b *batchFiles) sharedFile(ctx context.Context, sourceInstanceID int, sourc
 	return false, nil
 }
 
-// folderEntries maps each file name in files to the identities of the folders
-// that hold a file of that name. A folder that does not exist holds no file,
-// and a name that does not resolve under the save path is skipped.
 func (b *batchFiles) folderEntries(ctx context.Context, instanceID int, savePath string, files qbt.TorrentFiles) (map[string][]fsops.FileKey, error) {
 	backend, err := b.svc.getBackendForInstance(ctx, instanceID, models.CapabilityTrustedIdentity)
 	if err != nil {
@@ -449,15 +387,11 @@ func (b *batchFiles) folderEntries(ctx context.Context, instanceID int, savePath
 	return folders, nil
 }
 
-// deleteMatches keeps one match for each torrent on each instance. A shared
-// path outranks a link, because the delete removes the files of a torrent that
-// shares a path.
 type deleteMatches struct {
 	list []LocalMatch
 	at   map[string]int
 }
 
-// shared reports whether the torrent already has a shared-path match.
 func (d *deleteMatches) shared(instanceID int, hash string) bool {
 	at, ok := d.at[cacheKeyForTorrentFiles(instanceID, hash)]
 	return ok && d.list[at].MatchType == matchTypeContentPath
@@ -475,22 +409,37 @@ func (d *deleteMatches) add(m LocalMatch) {
 	}
 }
 
-// selectedHashes returns the Hash of each torrent that hashes names. A request
-// can name a hybrid torrent by any of its hashes, as a bulk action can.
-func selectedHashes(torrents []qbittorrent.CrossInstanceTorrentView, hashes []string) map[string]struct{} {
-	requested := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		requested[normalizeHash(hash)] = struct{}{}
-	}
+func selectedHashes(torrents []qbittorrent.CrossInstanceTorrentView, hashes map[infohash.Hash]struct{}) map[string]struct{} {
 	selected := make(map[string]struct{}, len(hashes))
 	for i := range torrents {
 		t := torrents[i].Torrent
-		if slices.ContainsFunc(normalizedHashes(t.Hash, t.InfohashV1, t.InfohashV2), func(h string) bool {
-			_, ok := requested[h]
-			return ok
-		}) {
-			selected[normalizeHash(t.Hash)] = struct{}{}
+		if torrentInHashSet(t, hashes) {
+			selected[t.Hash] = struct{}{}
 		}
 	}
 	return selected
+}
+
+func hashSet(hashes []infohash.Hash) map[infohash.Hash]struct{} {
+	set := make(map[infohash.Hash]struct{}, len(hashes))
+	for _, hash := range hashes {
+		if !hash.IsZero() {
+			set[hash] = struct{}{}
+		}
+	}
+	return set
+}
+
+func torrentInHashSet(t *qbt.Torrent, set map[infohash.Hash]struct{}) bool {
+	if len(set) == 0 {
+		return false
+	}
+	for _, raw := range [...]string{t.Hash, t.InfohashV1, t.InfohashV2} {
+		if hash := parseHash(raw); !hash.IsZero() {
+			if _, ok := set[hash]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }

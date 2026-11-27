@@ -12,7 +12,6 @@ import (
 	"github.com/autobrr/qui/pkg/pathutil"
 )
 
-// Data-file tags from WinNT.h. Unknown tags can represent special files.
 const (
 	reparseCloudMask       = 0x0000f000
 	reparseCloud           = 0x9000001a
@@ -21,8 +20,6 @@ const (
 	reparseOneDrive        = 0x80000021
 )
 
-// localFileMode recognizes cloud/WOF data files without admitting junctions,
-// WSL devices/FIFOs or unknown irregular entries.
 func localFileMode(path string, mode fs.FileMode, follow bool) fs.FileMode {
 	if mode&fs.ModeIrregular == 0 {
 		return mode
@@ -34,13 +31,12 @@ func localFileMode(path string, mode fs.FileMode, follow bool) fs.FileMode {
 	var data windows.Win32finddata
 	h, err := windows.FindFirstFile(p, &data)
 	if err != nil {
-		return mode // Keep unverified entries excluded from scans and deletion.
+		return mode
 	}
 	defer func() { _ = windows.FindClose(h) }()
 	if data.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
 		return mode
 	}
-	// Stat already followed the final symlink; classify the same target.
 	if follow && data.Reserved0 == windows.IO_REPARSE_TAG_SYMLINK {
 		tag, err := followedReparseTag(p)
 		if err != nil {

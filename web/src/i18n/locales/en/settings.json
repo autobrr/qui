@@ -144,6 +144,37 @@
       "submit": "Save changes",
       "saving": "Saving..."
     },
+    "templates": {
+      "title": "Template",
+      "help": "Replaces the permissions below with what a tool needs, and clears the instance limit when needed. You can change any box afterwards.",
+      "pick": "Pick a template",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Cross-seed and season-pack webhooks (not download client)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "Instance list and transfer totals (dashbrr 0.5.0 or later)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "qui widget. Limit the key to an instance only when the widget sets instance"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "Dir Scan webhook only. The download client uses a Client proxy key."
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "Browser extension to add torrents"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (cross-seed)",
+          "description": "Add torrents, manual match, and season-pack assembly"
+        }
+      }
+    },
     "permissions": {
       "title": "Permissions",
       "help": "Write includes read and run. Run does not include read, because settings hold credentials.",

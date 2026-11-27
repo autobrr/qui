@@ -38,15 +38,11 @@ import { useThemeVisibility } from "@/hooks/useThemeVisibility";
 import { themeThumbnailPalette, themeVariationColors } from "@/lib/theme-thumbnail";
 import { QuickThemeRow } from "@/components/themes/QuickThemeRow";
 
-// Constants
 const THEME_CHANGE_EVENT = "themechange";
 
-// Custom hook for theme change detection
 const useThemeChange = (customThemes: readonly Theme[]) => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode());
   const [currentTheme, setCurrentTheme] = useState(getCurrentTheme());
-  // A system switch in auto mode keeps the mode and the theme, so the resolved
-  // light or dark is state of its own, to render again on that switch.
   const [dark, setDark] = useState(() => isDarkMode(getCurrentThemeMode()));
 
   const checkTheme = useCallback(() => {
@@ -66,8 +62,6 @@ const useThemeChange = (customThemes: readonly Theme[]) => {
     };
   }, [checkTheme]);
 
-  // Custom theme registration sends no themechange. Call this hook after
-  // useCustomThemes, so that a stored custom theme resolves here.
   useEffect(checkTheme, [checkTheme, customThemes]);
 
   return { currentMode, currentTheme, dark };
@@ -86,8 +80,6 @@ export const ThemeToggle: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [visibility] = useThemeVisibility();
 
-  // Subscribe so the list re-renders when the async theme registry lands;
-  // the registry array mutates in place, so it must not be a memo dep.
   useBuiltinThemes();
   const sortedThemes = buildThemeCatalog(themes, customThemes, { visibility, currentThemeId: currentTheme.id });
 
@@ -99,8 +91,6 @@ export const ThemeToggle: React.FC = () => {
   }, [t]);
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
-    // The server is the authority: a premium theme without a license arrives
-    // as a locked stub with no CSS, so the locked flag is the gate.
     if (getThemeById(themeId)?.locked) {
       toast.error(t("themeToggle.premiumThemeError"));
       return;
@@ -190,7 +180,6 @@ export const ThemeToggle: React.FC = () => {
                   />
                 </DropdownMenuItem>
                 {isCurrentTheme && variations.length > 0 && (
-                  // Menu items of their own, beside the theme row, so the arrow keys reach each color.
                   <DropdownMenuPrimitive.RadioGroup
                     aria-label={t("settings:themes.current.colors")}
                     value={variation ?? undefined}

@@ -17,9 +17,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// deriveSourceReleaseForSearch enhances parsed torrent metadata with information inferred
-// from actual files, primarily to recover season/episode structure when the torrent name
-// doesn't include it (common for anime season packs).
 func (s *Service) deriveSourceReleaseForSearch(sourceRelease *rls.Release, files qbt.TorrentFiles) *rls.Release {
 	if sourceRelease == nil || len(files) == 0 || s == nil || s.releaseCache == nil {
 		return sourceRelease
@@ -35,7 +32,6 @@ func (s *Service) deriveSourceReleaseForSearch(sourceRelease *rls.Release, files
 		derived.Series = inferredSeries
 	}
 
-	// Trust file structure when it indicates a season pack.
 	if inferredIsPack {
 		derived.Type = rls.Series
 		derived.Episode = 0
@@ -82,8 +78,6 @@ func mergeSeasonPackSearchStructure(sourceRelease, inferredRelease *rls.Release)
 	return &merged
 }
 
-// deriveSearchSourceRelease reads a library torrent as search reads it, with
-// its files when they can be read.
 func (s *Service) deriveSearchSourceRelease(ctx context.Context, instanceID int, torrent *qbt.Torrent) namedRelease {
 	files, err := s.getTorrentFilesCached(ctx, instanceID, torrent.Hash)
 	if err != nil {
@@ -93,11 +87,6 @@ func (s *Service) deriveSearchSourceRelease(ctx context.Context, instanceID int,
 	return read
 }
 
-// nameNeedsFiles reports whether a local torrent name reads too little to pair
-// with a release: a season without a title ("Season 2"), or a movie without a
-// year or a season, as a bracket batch reads. The Match paths that cover the
-// whole library read only these torrents from their files, because a file list
-// costs a qBittorrent call for each torrent.
 func nameNeedsFiles(release *rls.Release) bool {
 	if release.Episode != 0 {
 		return false
@@ -107,7 +96,6 @@ func nameNeedsFiles(release *rls.Release) bool {
 	return seasonFolder || seasonlessBatch
 }
 
-// viewTorrents yields the torrents of cached views.
 func viewTorrents(views []qbittorrent.CrossInstanceTorrentView) iter.Seq[*qbt.Torrent] {
 	return func(yield func(*qbt.Torrent) bool) {
 		for i := range views {
@@ -118,9 +106,6 @@ func viewTorrents(views []qbittorrent.CrossInstanceTorrentView) iter.Seq[*qbt.To
 	}
 }
 
-// readSearchSource reads the torrent that search looks up. Category routing is
-// part of the reading, so search and cached-decision replay derive the same TV
-// structure.
 func (s *Service) readSearchSource(ctx context.Context, torrent *qbt.Torrent, files qbt.TorrentFiles) (namedRelease, ContentTypeInfo) {
 	return s.readRelease(torrent.Name, files, readPolicy{
 		mapContent: func(contentInfo ContentTypeInfo) ContentTypeInfo {
@@ -129,33 +114,19 @@ func (s *Service) readSearchSource(ctx context.Context, torrent *qbt.Torrent, fi
 	})
 }
 
-// readApplyTarget reads the torrent that apply adds. A cached search may need
-// file-derived TV structure, but an explicit info.name group remains
-// authoritative and selected-file tags stay as veto evidence.
 func (s *Service) readApplyTarget(name string, files qbt.TorrentFiles, replaySearch bool) namedRelease {
 	read, _ := s.readRelease(name, files, readPolicy{applyTarget: true, replaySearch: replaySearch})
 	return read
 }
 
-// readPolicy says how a Match path reads the files of a release.
 type readPolicy struct {
-	// mapContent applies the category mapping rule of the search source.
-	mapContent func(ContentTypeInfo) ContentTypeInfo
-	// applyTarget reads the torrent that apply adds. Trackers retitle listings
-	// but keep the original info.name, so a TV name keeps its own structure
-	// unless apply replays a search, and an explicit info.name group stays.
+	mapContent   func(ContentTypeInfo) ContentTypeInfo
 	applyTarget  bool
 	replaySearch bool
 }
 
-// readRelease is the one reader of a release name: it returns the Read release
-// (GLOSSARY.md). files, when known, give the season, episode, and pack. The
-// content type is returned only when the files were read or the policy maps
-// content.
 func (s *Service) readRelease(name string, files qbt.TorrentFiles, policy readPolicy) (namedRelease, ContentTypeInfo) {
 	read := s.matcher().readName(name)
-	// Before the apply target drops its files: a season folder name has no
-	// identity of its own to keep.
 	read.release = s.seasonFolderRelease(read.release, files)
 	parsed := read.release
 	if policy.applyTarget && isTVRelease(parsed) && !policy.replaySearch {
@@ -192,11 +163,6 @@ func (s *Service) readRelease(name string, files qbt.TorrentFiles, policy readPo
 	return read, contentInfo
 }
 
-// seasonFolderRelease reads a name that holds only a season, such as
-// "Season 2", with the identity of its largest file of the same season: the
-// files carry the title, year, and tags that the folder name lacks. A bonus
-// video names no season, and a special or a file of another season names
-// another one, so they lend nothing. The name keeps its season pack shape.
 func (s *Service) seasonFolderRelease(parsed *rls.Release, files qbt.TorrentFiles) *rls.Release {
 	if parsed.Title != "" || parsed.Series == 0 || parsed.Episode != 0 {
 		return parsed
@@ -222,12 +188,10 @@ func (s *Service) seasonFolderRelease(parsed *rls.Release, files qbt.TorrentFile
 	return &borrowed
 }
 
-// readName reads a release name without its files.
 func (m matcher) readName(name string) namedRelease {
 	return namedRelease{release: m.parseReleaseName(name), rawName: name}
 }
 
-// titleKeys returns the Title keys of a Read release (GLOSSARY.md), each once.
 func (m matcher) titleKeys(read namedRelease) []string {
 	var buf [8]string
 	titles := append(m.appendReleaseTitles(buf[:0], read.release, read.rawName), numeralFreeTitle(read.release))
@@ -243,9 +207,6 @@ func (m matcher) titleKeys(read namedRelease) []string {
 	return keys
 }
 
-// numeralFreeTitle is the title without its Season numeral, or "". A name that
-// parses as a yearless movie also counts, because the matcher reads the numeral
-// of a bare "Title III" against a seasoned other side.
 func numeralFreeTitle(release *rls.Release) string {
 	if title := titleWithoutSeasonNumeral(release); title != "" {
 		return title
@@ -257,12 +218,6 @@ func numeralFreeTitle(release *rls.Release) string {
 	return title
 }
 
-// inferredSeasonNumeral reads a last-word II to X as the season of a pack
-// that has no season anywhere else: "Kaiju Squad 100 II" files carry only the
-// numeral, and trackers list the pack as S02. A larger numeral, or a lone I, is
-// more often part of the real title than a season. An episode keeps its
-// absolute number, so qui never invents an S02E03 from "II - 03". A movie with
-// a year, such as "Rocky III 1982", is a sequel and not a season.
 func inferredSeasonNumeral(release *rls.Release) int {
 	if release == nil || release.Series > 0 || release.Episode > 0 || isYearBearingMovieRelease(release) {
 		return 0
@@ -273,9 +228,6 @@ func inferredSeasonNumeral(release *rls.Release) int {
 	return 0
 }
 
-// withTitleNumeralSeason gives a release with only a title numeral the season
-// of the other release, when the numeral names that season. The copy lives for
-// one pair: a numeral that names another season leaves the release seasonless.
 func withTitleNumeralSeason(release, other *rls.Release) *rls.Release {
 	if other == nil || other.Series == 0 || inferredSeasonNumeral(release) != other.Series {
 		return release
@@ -296,8 +248,6 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		episodes  map[int]struct{}
 	}
 
-	// Read each file name before the torrent's season is copied in, so the
-	// seasonless files take their numbering scheme from seasonlessFilesPerSeason.
 	fileReleases := make([]*rls.Release, 0, len(files))
 	lowestSeasonlessEpisode := 0
 	for _, file := range files {
@@ -355,8 +305,6 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 			return 0, 0, false, false
 		}
 
-		// Multiple seasonless episode files indicate a pack even if parsing
-		// collapses them to the same absolute episode number.
 		if seasonlessEpisodeFiles >= 2 {
 			return 0, 0, true, true
 		}
@@ -368,7 +316,6 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		return 0, 0, false, false
 	}
 
-	// Seasonless files in the absolute scheme are episodes of the pack too.
 	switch {
 	case bestEpisodeCount+len(absoluteEpisodes) >= 2:
 		return bestSeries, 0, true, true
@@ -378,8 +325,6 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		}
 	}
 
-	// If rls detected a season but couldn't extract episode numbers, treat multiple
-	// relevant files as a season pack.
 	if bestFileCount >= 2 {
 		return bestSeries, 0, true, true
 	}
@@ -397,7 +342,6 @@ func (s *Service) readCatalogRelease(name string, files qbt.TorrentFiles, family
 	}
 	read := s.matcher().readName(name)
 	read.tagOrigin = read.release
-	// rls keeps episode tags private; retain their origins separately from this structural view.
 	derived := rls.Release{Type: family,
 		Artist:     read.release.Artist,
 		Title:      read.release.Title,

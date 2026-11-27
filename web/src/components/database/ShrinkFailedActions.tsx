@@ -11,7 +11,6 @@ import { SystemNoticeDismissButton } from "@/components/ui/SystemNoticeDismissBu
 import { useDatabaseShrink } from "@/hooks/useDatabaseShrink"
 import type { SystemNotice } from "@/types"
 
-/** Try again, Dismiss, and for an unknown cause a link to the log, for the notice "Shrink failed". */
 export function ShrinkFailedActions({ notice, onNavigate }: { notice: SystemNotice; onNavigate?: () => void }) {
   const { t } = useTranslation("common")
   const { requestShrink, pending } = useDatabaseShrink()

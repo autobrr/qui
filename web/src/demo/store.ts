@@ -3,11 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// In-memory library for the getqui.com demo build. Two instances of synthetic
-// torrents, a query engine that answers the list endpoint, and the fake writes
-// behind bulk actions. Built once from a fixed seed, so every visitor sees the
-// same library and a reload resets it.
-
 import type { PreferenceField } from "@/types/app"
 import type { InstanceCapabilities, InstanceResponse } from "@/types/instances"
 import type {
@@ -82,7 +77,6 @@ const DOCS = [
   "the-linux-command-line-2nd", "pro-git-2nd-edition", "sqlite-docs-3.49", "postgresql-17-manual",
 ] as const
 
-// Public-domain films, so the release-style names infringe nothing.
 const FILMS = [
   ["Nosferatu", 1922], ["Metropolis", 1927], ["The.General", 1926], ["Safety.Last", 1923],
   ["The.Cabinet.of.Dr.Caligari", 1920], ["Battleship.Potemkin", 1925], ["Sherlock.Jr", 1924],
@@ -111,7 +105,6 @@ const STATE_SORT_ORDER: Record<string, number> = {
   pausedDL: 50, pausedUP: 51, checkingUP: 60, checkingResumeData: 61, moving: 70, error: 80, missingFiles: 81,
 }
 
-// Mirrors namedStatuses in internal/qbittorrent/torrent_list_query.go.
 const STATE_CATEGORIES: Record<string, readonly string[]> = {
   downloading: ["downloading", "stalledDL", "metaDL", "forcedMetaDL", "queuedDL", "allocating", "checkingDL", "forcedDL"],
   completed: ["uploading", "stalledUP", "queuedUP", "checkingUP", "forcedUP", "pausedUP", "stoppedUP"],
@@ -164,7 +157,6 @@ export interface DemoInstance {
   categories: Record<string, Category>
   tags: Set<string>
   serverState: ServerState
-  // Detail writes the app can make. Details are derived from the hash, so these overlay them.
   comments: Map<string, string>
   renames: Map<string, Array<[string, string]>>
   filePriorities: Map<string, Map<number, number>>
@@ -290,7 +282,6 @@ function generateTorrent(rng: () => number, now: number, index: number): Torrent
   const active = state === "downloading" || (state === "uploading" && rng() < 0.08)
   const dlspeed = state === "downloading" ? Math.round((0.3 + rng() * 6) * MIB) : 0
   const upspeed = active && state === "uploading" ? Math.round((50 + rng() * 4000) * KIB) : 0
-  // The second roll splits between down and error, so the draws from rng() stay the same.
   const healthRoll = rng() < 0.012 ? -1 : rng()
   const health = healthRoll < 0 ? "unregistered" : healthRoll < 0.004 ? "tracker_down" : healthRoll < 0.008 ? "tracker_error" : undefined
   const savePath = `/data/torrents/${category.split("/")[0]}`
@@ -517,7 +508,6 @@ function computeStats(torrents: readonly Torrent[]): TorrentStats {
   return stats
 }
 
-// The catalog view that GET /instances/{id}/preferences returns.
 export const PREFERENCE_VIEW: PreferenceField[] = [
   { key: "torrent_content_layout", value: "Original", tab: "downloads", section: "whenAdding", control: "select", optionSource: "fixed", options: ["Original", "Subfolder", "NoSubfolder"] },
   { key: "auto_tmm_enabled", value: true, tab: "downloads", section: "savingManagement", control: "switch" },
@@ -559,7 +549,6 @@ export const CAPABILITIES: InstanceCapabilities = {
   webAPIVersion: "2.11.4",
 }
 
-// [client, peer_id_client] as qBittorrent reports them, so the demo shows each peer client rule.
 const PEER_CLIENTS = [
   ["qBittorrent/5.1.2", "-qB5120-"], ["qBittorrent/5.1.2", "-qB5120-"], ["qBittorrent/5.0.4", "-qB5040-"], ["qBittorrent/4.6.7", "-qB4670-"],
   ["Transmission 4.0.6", "-TR4060-"], ["Transmission 3.00", "-TR3000-"],
@@ -710,7 +699,6 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
   ]
   const byId = new Map(instances.map(i => [i.id, i]))
   const tickRng = mulberry32(seed + 2)
-  // One stream for every add, so two adds in the same millisecond get distinct hashes.
   const addRng = mulberry32(seed + 3)
   let sessionDl = 0
   let sessionUl = 0
@@ -743,7 +731,6 @@ export function createStore(options: { seed?: number; counts?: [number, number] 
     })
   }
 
-  // Queue moves renumber the queued rows (priority > 0) from 1 like qBittorrent does.
   function reorderQueue(inst: DemoInstance, hashes: Set<string>, action: string): void {
     const queue = inst.torrents.filter(t => t.priority > 0).sort((a, b) => a.priority - b.priority)
     const selected = queue.filter(t => hashes.has(t.hash))

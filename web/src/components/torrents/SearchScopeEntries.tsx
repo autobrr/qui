@@ -48,7 +48,7 @@ export function SearchScopeEntries({ entries, disabled }: SearchScopeEntriesProp
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className={cn("min-w-0 break-words", !entry.picked && "text-muted-foreground")}>{entry.name}</span>
                     {(entry.status === "error" || entry.status === "failed" || entry.status === "not_covered") && (
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-yellow-600 dark:text-yellow-500" aria-hidden />
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
                     )}
                   </span>
                   {entry.note && <span className={cn("block break-words text-xs", entry.noteClass ?? "text-muted-foreground")}>{entry.note}</span>}

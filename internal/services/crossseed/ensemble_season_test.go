@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -40,13 +41,13 @@ func TestEnsembleSeasonPseudoHash(t *testing.T) {
 
 	rejected := []string{
 		"",
-		"abcdef1234567890",      // real torrent hash
-		"season:",               // no title, no season
-		"season::s01",           // empty title
-		"season:show title",     // no season suffix
-		"season:show title:sxx", // non-numeric season
-		"season:show title:s-1", // negative season
-		"pack:show title:s01",   // wrong prefix
+		"abcdef1234567890",
+		"season:",
+		"season::s01",
+		"season:show title",
+		"season:show title:sxx",
+		"season:show title:s-1",
+		"pack:show title:s01",
 	}
 	for _, hash := range rejected {
 		_, ok := parseEnsembleSeasonPseudoHash(hash)
@@ -73,7 +74,7 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 	tests := []struct {
 		name       string
 		torrents   []qbt.Torrent
-		packSource []qbt.Torrent // defaults to torrents when nil
+		packSource []qbt.Torrent
 		wantHashes []string
 		wantNames  []string
 	}{
@@ -110,7 +111,6 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 				{Hash: "partial", Name: "Show.Title.S01E03.1080p.WEB.H264-GRP", Progress: 0.5},
 			},
 		},
-		// regression: #3707
 		{
 			name: "moving episode does not count toward the group",
 			torrents: []qbt.Torrent{
@@ -120,8 +120,6 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 			},
 		},
 		{
-			// The two-parter must not suppress the group as a seeded pack, and it
-			// must count episodes 1 and 2, or the group stays below the floor.
 			name: "a seeded two-parter does not suppress and counts each episode it names",
 			torrents: []qbt.Torrent{
 				episode("Show.Title.S01E01E02.1080p.WEB.H264-GRP"),
@@ -221,8 +219,6 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 	}
 }
 
-// newEnsembleSearchState builds a Service + running search-run state backed by
-// a migrated SQLite store, mirroring the refreshSearchQueue test harness.
 func newEnsembleSearchState(t *testing.T, dbName string, torrents []qbt.Torrent, ensemble bool) (*Service, *searchRunState, int) {
 	t.Helper()
 	ctx := context.Background()
@@ -379,8 +375,6 @@ func TestProcessEnsembleSeasonCandidate_NoIndexers(t *testing.T) {
 	require.Equal(t, "no eligible indexers", state.run.Results[len(state.run.Results)-1].Message)
 }
 
-// A failed ensemble search reached no indexer, so it must not count as a
-// Torznab source that keeps a Gazelle-denied run from failing.
 func TestProcessEnsembleSeasonCandidate_FailedSearchIsNotTorznabSearch(t *testing.T) {
 	t.Parallel()
 	service, state, _ := newEnsembleSearchState(t, "crossseed-ensemble-torznab-searched", nil, true)
@@ -443,7 +437,6 @@ func TestProcessEnsembleSeasonCandidate_WireRequest(t *testing.T) {
 	require.Equal(t, map[string]int{"Azure and Compass II": 4, "Azure & Compass II": 4}, queries)
 }
 
-// packSearchResult builds a torznab search result for a season pack candidate.
 func packSearchResult(title, guid string) jackett.SearchResult {
 	return jackett.SearchResult{
 		Indexer:     "Example",
@@ -455,16 +448,15 @@ func packSearchResult(title, guid string) jackett.SearchResult {
 	}
 }
 
-// existingHashSyncManager reports one infohash as already present in the client.
 type existingHashSyncManager struct {
 	*episodeSyncManager
 	existing string
 }
 
-func (m *existingHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (m *existingHashSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	for _, h := range hashes {
-		if h == m.existing {
-			return &qbt.Torrent{Hash: h}, true, nil
+		if h.Is(m.existing) {
+			return &qbt.Torrent{Hash: h.String()}, true, nil
 		}
 	}
 	return nil, false, nil
@@ -530,9 +522,6 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 			wantFailed:    1,
 		},
 		{
-			// Gachiakuta case: the same pack carries a distinct GUID per
-			// indexer; duplicates must not consume cap slots and starve
-			// later variants.
 			name: "duplicate names across indexers share one cap slot",
 			key:  key,
 			results: []jackett.SearchResult{
@@ -569,11 +558,11 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 			results: []jackett.SearchResult{
 				func() jackett.SearchResult {
 					r := packResult("existing")
-					r.InfoHashV1 = "deadbeef"
+					r.InfoHashV1 = "deadbeef00000000000000000000000000000000"
 					return r
 				}(),
 			},
-			existingHash: "deadbeef",
+			existingHash: "deadbeef00000000000000000000000000000000",
 			wantSkipped:  1,
 			wantMessage:  "no season pack candidates",
 		},
@@ -604,10 +593,10 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 				downloads = append(downloads, req.GUID)
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				require.NotEmpty(t, req.TorrentData)
 				return &CrossSeedResponse{Success: tt.applySuccess}, nil
-			}
+			})
 
 			groupTorrent := &qbt.Torrent{Hash: ensembleSeasonPseudoHash(tt.key), Name: torrent.Name, Progress: 1.0}
 			service.applyEnsembleSearchResults(ctx, state, groupTorrent, tt.key, "query", &jackett.SearchResponse{Results: tt.results}, time.Now().UTC())
@@ -627,9 +616,6 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 func TestCanonicalReleaseNameKey(t *testing.T) {
 	t.Parallel()
 
-	// Cooldowns are recorded under the torrent's internal (dotted) name but
-	// checked against feed/indexer titles, which restyle separators between
-	// AND inside tokens (field case: BeyondHD's "DDP 5.1" vs "DDP5.1").
 	require.Equal(t,
 		canonicalReleaseNameKey("Stranger.Things.S05.2160p.NF.WEB-DL.DDP5.1.Atmos.H.265-Draken02"),
 		canonicalReleaseNameKey("Stranger Things S05 2160p NF WEB-DL DDP 5.1 Atmos H.265-Draken02"))
@@ -639,17 +625,11 @@ func TestCanonicalReleaseNameKey(t *testing.T) {
 	require.NotEqual(t,
 		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-GRP"),
 		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-OTHER"))
-	// Documented tradeoff, not a bug: the mapping is many-to-one, so names
-	// differing only in token boundaries collide. Accepted because real
-	// variants differ by tokens and a collision costs one cooldown window.
 	require.Equal(t, canonicalReleaseNameKey("ab-c"), canonicalReleaseNameKey("a-bc"))
 	require.Equal(t, "packfail:showtitles011080pwebh264grp", seasonPackFailKey("Show.Title.S01.1080p.WEB.H264-GRP"))
 
-	// Names with no ASCII alphanumerics must not all collapse onto one key.
 	require.NotEqual(t, canonicalReleaseNameKey("進撃の巨人"), canonicalReleaseNameKey("鬼滅の刃"))
 
-	// Punctuation-only names carry no identity: no key, no cooldown
-	// bookkeeping, so "!!!" can never suppress "???".
 	require.Empty(t, seasonPackFailKey("!!!"))
 	require.Empty(t, seasonPackFailKey("???"))
 }
@@ -676,9 +656,6 @@ func TestIsSeasonRangePack(t *testing.T) {
 	}
 }
 
-// TestApplyEnsembleSearchResults_PackFailCooldown covers the ensemble side of
-// the failed-diversion cooldown: a cooling release name is skipped before its
-// .torrent download and does not consume a cap slot; an expired stamp retries.
 func TestApplyEnsembleSearchResults_PackFailCooldown(t *testing.T) {
 	t.Parallel()
 
@@ -691,14 +668,11 @@ func TestApplyEnsembleSearchResults_PackFailCooldown(t *testing.T) {
 		wantDownloads []string
 	}{
 		{
-			// Cooled name skipped pre-download; the three fresh variants all
-			// get cap slots, proving the skip does not consume one.
 			name:          "cooling name is skipped without consuming a cap slot",
 			stampAge:      time.Hour,
 			wantDownloads: []string{"fresh-a", "fresh-b", "fresh-c"},
 		},
 		{
-			// All four names admissible again; the cap trims to three.
 			name:          "expired stamp retries the name",
 			stampAge:      13 * time.Hour,
 			wantDownloads: []string{"cooled", "fresh-a", "fresh-b"},
@@ -719,9 +693,9 @@ func TestApplyEnsembleSearchResults_PackFailCooldown(t *testing.T) {
 				downloads = append(downloads, req.GUID)
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: false}, nil
-			}
+			})
 
 			results := []jackett.SearchResult{
 				packSearchResult(cooledTitle, "cooled"),

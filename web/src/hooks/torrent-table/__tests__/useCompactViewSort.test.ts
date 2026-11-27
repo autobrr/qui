@@ -41,9 +41,7 @@ describe("useCompactViewSort", () => {
     const values = result.current.compactSortOptions.map(o => o.value)
     expect(values).toContain("name")
     expect(values).toContain("size")
-    // "status_icon" -> backend "state", which is a sort option value.
     expect(values).toContain("state")
-    // A field with no matching column is excluded.
     expect(values).not.toContain("ratio")
   })
 
@@ -60,7 +58,6 @@ describe("useCompactViewSort", () => {
   it("changes the sort field", () => {
     const { params, result } = render({ activeSortField: "name" })
     act(() => result.current.handleCompactSortFieldChange("size"))
-    // "size" is numeric, so getDefaultSortOrder("size") === "desc".
     expect(params.setSorting).toHaveBeenCalledWith([{ id: "size", desc: true }])
   })
 

@@ -20,9 +20,6 @@ const (
 	pendingHashOther  = "cccc000000000000000000000000000000000002"
 )
 
-// newPendingStateRig is a sync manager over a qBittorrent stub with two
-// seeding torrents. The stub accepts each write and keeps both torrents
-// seeding, as qBittorrent does before the next sync shows a pause.
 func newPendingStateRig(t *testing.T) (*SyncManager, *Client) {
 	t.Helper()
 
@@ -46,9 +43,6 @@ func newPendingStateRig(t *testing.T) (*SyncManager, *Client) {
 	return NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil), client
 }
 
-// An automation pass right after a pause in qui must see the torrent as
-// paused, also before the next sync shows it. The torrent in the Sync snapshot
-// keeps its state for the other readers.
 func TestGetAllTorrentRefsShowsAPauseBeforeTheNextSync(t *testing.T) {
 	t.Parallel()
 
@@ -71,8 +65,6 @@ func TestGetAllTorrentRefsShowsAPauseBeforeTheNextSync(t *testing.T) {
 	require.NotSame(t, shared, byHash[pendingHashPaused], "the paused torrent is a private copy")
 }
 
-// A torrent without a pending change is the torrent of the Sync snapshot, not
-// a copy.
 func TestGetAllTorrentRefsSharesTorrentsWithoutAPendingChange(t *testing.T) {
 	t.Parallel()
 

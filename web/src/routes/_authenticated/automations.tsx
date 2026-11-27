@@ -8,6 +8,9 @@ import { Automations } from "@/pages/Automations"
 import { createFileRoute } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/automations")({
+  staticData: {
+    title: { titleKey: "nav.automations", titleNs: "common" },
+  },
   validateSearch: automationsSearchSchema,
   component: AutomationsRoute,
 })

@@ -20,19 +20,17 @@ describe("reorderColumns", () => {
   })
 
   it("appends newly-present columns to the end during normalization", () => {
-    // active id absent -> returns the normalized order, which now includes "c"
     expect(reorderColumns(["a", "b"], "missing", "b", ["a", "b", "c"])).toEqual(["a", "b", "c"])
   })
 
   it("returns the order with the appended columns (not the raw input) when a dragged id is missing", () => {
     const currentOrder = ["a", "unseen"]
     const result = reorderColumns(currentOrder, "a", "nope", ["a", "b"])
-    expect(result).not.toEqual(currentOrder) // proves normalization still persists
+    expect(result).not.toEqual(currentOrder)
     expect(result).toEqual(["a", "unseen", "b"])
   })
 
   it("computes indices against the normalized order, not the raw input (off-by-one guard)", () => {
-    // raw "c" is at index 2 / "a" at index 0; after "a" is appended they are at 1 / 2
     expect(reorderColumns(["unseen", "c", "b"], "c", "a", ["a", "b", "c"])).toEqual(["unseen", "b", "a", "c"])
   })
 })

@@ -14,8 +14,8 @@ The webhook flow below is one of two triggers. The second trigger is [Automatic 
 ## How it works
 
 1. autobrr sees a season pack release.
-2. autobrr sends the torrent name (and optionally the torrent file) to the qui `/api/cross-seed/season-pack/check` endpoint.
-3. If you provide a torrent file, qui parses its file list to determine the playable episode files. If not, qui queries metadata providers for episode counts.
+2. autobrr sends the torrent name to `/api/cross-seed/webhook/check` through your main cross-seed filter (or to `/api/cross-seed/season-pack/check`, optionally with the torrent file, if you use a separate filter). On `/api/cross-seed/webhook/check`, a direct match always wins; qui checks season-pack assembly when no direct match exists and **Enable season pack matching** is on.
+3. If autobrr sends the torrent file to `/api/cross-seed/season-pack/check`, qui parses its file list to determine the playable episode files. `/api/cross-seed/webhook/check` takes no torrent file, so there qui queries metadata providers for episode counts.
 4. qui scans your qBittorrent instances for completed individual episodes that match the release details of the season pack.
 5. qui computes coverage from completed, matching local episodes:
    - If the request includes torrent data, the playable episode files in the pack torrent define the expected pack layout.
@@ -23,9 +23,9 @@ The webhook flow below is one of two triggers. The second trigger is [Automatic 
    - If Sonarr cannot resolve the show, qui falls back to metadata providers: TVDB when configured, then TVMaze.
    - If the request includes torrent data, qui never uses a total lower than the playable episode count inside the pack torrent.
 6. qui responds with:
-   - `200 OK`: coverage meets the threshold, ready to apply
+   - `200 OK`: ready to apply. Coverage meets the threshold, or neither a provider nor the torrent file gives an episode total, so qui skips the threshold and sets `thresholdSkipped`. On `/api/cross-seed/webhook/check`, a response from season-pack assembly includes a `seasonPack` object (`instanceId`, `matchedEpisodes`, `totalEpisodes`, `coverage`, `thresholdSkipped`). A direct match of the pack name skips assembly: a complete match answers `200` and a match that is still downloading answers `202`, both without a coverage check and without a `seasonPack` object.
    - `404 Not Found`: local coverage is too low, the release is not a season pack, or the feature is disabled
-7. If qui returns `200 OK`, autobrr sends the torrent file to `/api/cross-seed/season-pack/apply`.
+7. If qui returns `200 OK`, autobrr sends the torrent file to `/api/cross-seed/apply` (or `/api/cross-seed/season-pack/apply` with a separate filter).
 8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent. qui never links a local episode file if its size or release details differ from the pack file. qui treats that episode as missing and downloads it instead. If these demotions drop coverage below the threshold, the apply fails as `drifted`.
 9. If episodes or extras are missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. qBittorrent then downloads the missing files. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review. In hardlink mode, qui also leaves the torrent paused when a linked file fails its recheck on a piece it does not share with a pending file, because a download into that file would change the local episode. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck). qui reports best-effort fallbacks by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
 
@@ -44,7 +44,7 @@ The diverted pack then goes through the same steps as a webhook apply: qui compu
 Automatic assembly uses the same settings as the webhook flow: the coverage threshold, the matching settings, category routing, tags, and metadata providers. qui records each attempt in the [Activity](#activity) panel.
 
 :::note
-Automatic assembly also extends library search runs. If a show has three or more seeded episodes of one season and no seeded pack, the search run queries your indexers for the season pack and assembles a match through the same pipeline. If you want to search for season packs without single-episode searches, enable **Skip individual episodes** in the Library Scan form.
+Automatic assembly also extends library search runs. If a show has three or more seeded episodes of one season and no seeded pack, the search run queries your Torznab indexers for the season pack and assembles a match through the same pipeline. A run that picks only OPS/RED sites skips this search, because it asks no Torznab indexer. If you want to search for season packs without single-episode searches, enable **Skip individual episodes** in the Library Scan form.
 :::
 
 ## Coverage model
@@ -148,7 +148,7 @@ See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 ### 1. Enable season packs in qui
 
 - Go to **Cross-Seed > Season packs**
-- Enable the feature
+- Turn on **Enable season pack matching**
 - Set the coverage threshold (default 75%)
 - Optionally, add a TVDB API key for better episode count accuracy. qui uses TVMaze as a free fallback without any configuration.
 - Optionally, configure **Category routing** for season pack injects. Add rules that map a resolution (and optionally a source) to a qBittorrent category. Then set an **Anything else** fallback category for packs that match no rule. If you run multiple Sonarr instances, point each rule to the category that Sonarr monitors on its qBittorrent download client (for example, route `1080p` to `tv-hd` and `2160p` to `tv-uhd`). Sonarr picks up the assembled pack and imports it. If Sonarr uses hardlinks and the library sits on the same filesystem, the same on-disk bytes back both the library and every seeded episode. If a category does not exist yet, qui creates it on demand. qui leaves existing categories untouched. If no rule matches and you set no fallback, season packs use the global Category Mode configured under **Cross-Seed > Categories and tags > Categories**.
@@ -181,11 +181,25 @@ If you do not already have an API key for autobrr:
 
 ### 3. Configure the autobrr external filter
 
-:::warning
-Create a **separate autobrr filter** for season packs. Do not reuse your existing cross-seed filter. The endpoints and payload differ.
+:::note
+A separate season-pack filter is optional. The recommended setup is the single cross-seed filter in [autobrr Integration](./autobrr.md), which handles episodes, movies, and season packs when **Enable season pack matching** is on.
+
+The dedicated `/api/cross-seed/season-pack/check` and `/api/cross-seed/season-pack/apply` endpoints keep working unchanged. Use the steps below only if you still want a separate filter.
 :::
 
-Set the filter priorities in this order:
+#### Retiring a separate season-pack filter
+
+If you already run a separate season-pack filter and want to move to the single cross-seed filter:
+
+1. Turn on **Enable season pack matching** in **Cross-Seed > Season packs** if it is not already on (it is already on if your season-pack filter works).
+2. Check your main qui cross-seed filter in autobrr: make sure it does not exclude season packs (remove any **Seasons** or **Episodes** restriction that drops packs), and confirm its `/apply` payload includes `"torrentName": {{ toRawJson .TorrentName }}` (filters set up before qui v1.27.0 omit it).
+3. Disable or delete the season-pack filter in autobrr.
+
+While both filters run, a season pack that both send at the same moment is added once.
+
+#### Separate filter setup (optional)
+
+If you still want a separate season-pack filter, set the filter priorities in this order:
 
 1. Your regular [qui cross-seed filter](https://autobrr.com/filters/cross-seed-qui#create-the-filter)
 2. The season-pack filter from this guide
@@ -346,13 +360,13 @@ Start with autobrr:
 
 - A rejected check usually appears as `[external webhook status code] not matching: got 404 want: 200`
 - This status means qui processed the season-pack check, but the release was not ready to apply.
-- Verify that the release matched the season-pack filter and not the standard cross-seed filter.
+- If you use the single cross-seed filter, verify that it does not exclude season packs and that **Enable season pack matching** is on. If you still use the separate season-pack filter, verify that the release matched it.
 
 Then check qui:
 
 - Open **Cross-Seed > Season packs**, turn on all status chips, and find the row for the torrent name.
 - Check the phase (`check` or `apply`), status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode.
-- If the row is missing, autobrr failed to reach qui or used the wrong endpoint or API key. Confirm this with `/api/cross-seed/season-pack/runs?limit=20`.
+- If the row is missing, qui may have answered without a season-pack check. Both endpoints answer `404` without a row when your instances hold no episode of that season. `/api/cross-seed/webhook/check` also writes no row when it finds a direct match, when **Enable season pack matching** is off or the name is not a season pack, while qui builds its list of held titles after a start, an instance reconnect, or new category mapping rules, when none of the requested instances exists or is active (qui logs `Webhook check skipped because no instances were available`), and when no requested instance can link files: it needs filesystem write access, and hardlinks or reflinks with a hardlink base directory. `/api/cross-seed/season-pack/check` reads the full torrent list during that build and writes its row. If none of these applies, autobrr failed to reach qui or used the wrong endpoint or API key. Confirm this with `/api/cross-seed/season-pack/runs?limit=20`.
 
 For deeper logs, set:
 

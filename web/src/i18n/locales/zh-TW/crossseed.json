@@ -13,6 +13,7 @@
     "seededSearch": {
       "gazelleFullDescription": "Gazelle 會對每個源種子檢查 RED/OPS。Torznab 查詢已選擇的非 OPS/RED 索引器。",
       "gazellePartialDescription": "Gazelle 會對每個源種子檢查已配置的站點。Torznab 查詢已選擇的索引器。",
+      "pickedDescription": "每次搜尋只查詢已選擇的站點。",
       "noGazelleDescription": "沒有 Gazelle，所有匹配依賴 Torznab 索引器。"
     }
   },
@@ -124,8 +125,7 @@
     "selectAnInstance": "選擇一個實例",
     "addInstanceToSearch": "新增一個實例以搜尋您已做種的種子。",
     "torznabIndexers": "Torznab 索引器",
-    "torznabIndexersNonOpsRed": "Torznab 索引器（非 OPS/RED）",
-    "torznab": "Torznab",
+    "indexersAndRedOps": "索引器和 RED/OPS 站點",
     "status": "狀態",
     "currentlyProcessing": "目前處理：",
     "progress": "進度：",
@@ -154,20 +154,11 @@
     "failedCount": "{{count}} 個失敗",
     "runError": "錯誤：{{message}}",
     "indexers": {
-      "placeholderTorznabDisabledGazelleOnly": "Torznab 已停用（僅限 Gazelle）",
-      "placeholderTorznabDisabledEnableGazelle": "Torznab 已停用（啟用 Gazelle）",
-      "placeholderAllEnabledNonOpsRed": "所有已啟用的非 OPS/RED 索引器（留空表示全部）",
       "placeholderAllEnabled": "所有已啟用的索引器（留空表示全部）",
-      "placeholderOnlyOpsRedEnabled": "僅啟用 OPS/RED（Gazelle）",
       "placeholderNoTorznabConfigured": "未配置 Torznab 索引器",
-      "helpTorznabDisabledGazelleCheck": "Torznab 已停用。Gazelle 將為每個源種子檢查 RED/OPS。",
-      "helpTorznabDisabledEnableGazelle": "Torznab 已停用。啟用 Gazelle (OPS/RED) 以在僅 Gazelle 模式下執行做種搜尋。",
-      "helpOnlyOpsRedEnabled": "僅啟用了 OPS/RED Torznab 索引器。Torznab 在此不起作用；Gazelle 仍在檢查 RED/OPS。",
-      "helpNoNonOpsRedTorznab": "沒有非 OPS/RED 的 Torznab 索引器。Gazelle 仍將為每個源種子檢查 RED/OPS。",
       "helpNoTorznabConfigured": "未配置 Torznab 索引器。",
       "helpAllEnabledNonOpsRedQueried": "將查詢所有已啟用的非 OPS/RED Torznab 索引器。Gazelle 也會檢查 RED/OPS。",
       "helpAllEnabledTorznabQueried": "將查詢所有已啟用的 Torznab 索引器以查詢匹配項。",
-      "helpSelectedTorznabQueriedGazelle_other": "將僅查詢 {{count}} 個選定的 Torznab 索引器。Gazelle 仍在檢查 RED/OPS。",
       "helpSelectedQueried_other": "將僅查詢 {{count}} 個選定的索引器。"
     },
     "gazelleStatus": {
@@ -188,8 +179,6 @@
       "siteWithNotAsked": "{{counts}}，未查詢 {{notAsked}}（{{reasons}}）",
       "reasonCount": "{{count}} {{reason}}",
       "reasons": {
-        "disabled": "已關閉",
-        "noApiKey": "無 API 金鑰",
         "cooldown": "最近已搜尋",
         "sourceSite": "來自該網站",
         "alreadySeeded": "已在做種",
@@ -455,8 +444,8 @@
     "enableAutomationAfterIndexers": "請在配置 Torznab 索引器後再啟用 RSS 自動化。",
     "saveSettingsFirst": "請先儲存 RSS 自動化設定以套用更新的要搜尋的實例後再執行。",
     "selectInstanceToRun": "請選擇一個要執行的實例",
-    "seededSearchNeedsGazelle": "做種搜尋需要 Gazelle",
-    "enableGazelleDescription": "在停用 Torznab 的情況下執行前，請先啟用 Gazelle 匹配（OPS/RED）。",
+    "seededSearchNeedsGazelle": "所選的 RED/OPS 站點沒有 API 金鑰",
+    "enableGazelleDescription": "請在 Gazelle (OPS/RED) 設定中新增 API 金鑰，或選擇其他站點。",
     "seededSearchNeedsTorznabOrGazelle": "做種搜尋需要 Torznab 或 Gazelle",
     "configureTorznabOrGazelle": "請配置至少一個 Torznab 索引器，或為 OPS/RED 種子啟用 Gazelle 匹配。",
     "selectAtLeastOneInstance": "請為 RSS 自動化選擇至少一個實例。",

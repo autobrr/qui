@@ -29,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -36,24 +37,16 @@ import (
 const (
 	routedName    = "Movie.2024.1080p.BluRay.x264-GRP"
 	routedMatched = "3333333333333333333333333333333333333333"
-	// routedMapped is where the Cross-seed instance sees the links folder.
-	routedMapped = "/seeds/links"
+	routedMapped  = "/seeds/links"
 )
 
-// routedSync is the qBittorrent fake of a routed add. It records adds and
-// created categories per instance, and reports the torrent on the instances
-// in existing.
 type routedSync struct {
 	*rootlessSavePathSyncManager
-	adds       map[int][]map[string]string
-	categories map[int]map[string]string
-	existing   map[int]bool
-	addErr     error
-	// cached holds the torrent views of each instance for season packs.
-	cached map[int][]qbittorrent.CrossInstanceTorrentView
-	// The Cross-seed instance lists links at routedMapped. Each listing goes
-	// in listed. listErr answers every listing, and the first hidden listings
-	// miss every entry.
+	adds        map[int][]map[string]string
+	categories  map[int]map[string]string
+	existing    map[int]bool
+	addErr      error
+	cached      map[int][]qbittorrent.CrossInstanceTorrentView
 	crossSeedID int
 	links       string
 	listed      []string
@@ -97,9 +90,9 @@ func (f *routedSync) AddTorrent(_ context.Context, instanceID int, _ []byte, opt
 	return &qbt.TorrentAddResponse{}, nil
 }
 
-func (f *routedSync) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error) {
+func (f *routedSync) HasTorrentByAnyHash(_ context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if f.existing[instanceID] {
-		return &qbt.Torrent{Hash: hashes[0], Name: routedName}, true, nil
+		return &qbt.Torrent{Hash: hashes[0].String(), Name: routedName}, true, nil
 	}
 	return nil, false, nil
 }
@@ -112,12 +105,8 @@ func (f *routedSync) CreateCategory(_ context.Context, instanceID int, name, sav
 	return nil
 }
 
-// routedRig is a Source instance "lib" in hardlink mode that routes to the
-// Cross-seed instance "seeds", both on local fake qBittorrents. lib holds
-// the matched torrent in downloads, and its base folder is links.
 type routedRig struct {
-	t *testing.T
-	// ctx is the context of each add. It is t.Context() unless a test sets it.
+	t         *testing.T
 	ctx       context.Context
 	db        *database.DB
 	svc       *Service
@@ -132,8 +121,6 @@ type routedRig struct {
 	files     qbt.TorrentFiles
 }
 
-// newRoutedRig builds the rig. crossSeedDown puts the Cross-seed instance on
-// a qBittorrent that answers 503 to everything.
 func newRoutedRig(t *testing.T, crossSeedDown bool) *routedRig {
 	t.Helper()
 	ctx := t.Context()
@@ -206,8 +193,6 @@ func (r *routedRig) updateSource(params *models.InstanceUpdateParams) {
 	r.source = source
 }
 
-// saveRoute stores the route with mapped as the path of the links row,
-// without the route rules.
 func (r *routedRig) saveRoute(mapped string) {
 	r.t.Helper()
 	require.NoError(r.t, r.routes.Upsert(r.t.Context(), &models.CrossSeedRoute{
@@ -217,7 +202,6 @@ func (r *routedRig) saveRoute(mapped string) {
 	}))
 }
 
-// writeDownloads writes the files of the matched torrent into downloads.
 func (r *routedRig) writeDownloads(files qbt.TorrentFiles) {
 	r.t.Helper()
 	for _, file := range files {
@@ -239,8 +223,6 @@ func (r *routedRig) candidate() CrossSeedCandidate {
 	}
 }
 
-// add runs the per-candidate step for the matched torrent with sourceFiles,
-// or the files of the matched torrent when sourceFiles is nil.
 func (r *routedRig) add(req *CrossSeedRequest, addedTo map[int]struct{}, sourceFiles qbt.TorrentFiles) InstanceCrossSeedResult {
 	r.t.Helper()
 	if sourceFiles == nil {
@@ -249,11 +231,10 @@ func (r *routedRig) add(req *CrossSeedRequest, addedTo map[int]struct{}, sourceF
 	if req == nil {
 		req = &CrossSeedRequest{}
 	}
-	return r.svc.processCrossSeedCandidate(r.ctx, r.candidate(), []byte("torrent"), adderV1, "", routedName,
+	return r.svc.processCrossSeedCandidate(r.ctx, r.candidate(), []byte("torrent"), mustParseHash(r.t, adderV1), infohash.Hash{}, routedName,
 		req, r.svc.releaseCache.Parse(routedName), sourceFiles, nil, addedTo)
 }
 
-// linked reports whether the tree holds a hardlink of the downloaded file name.
 func (r *routedRig) linked(treeRoot, name string) bool {
 	r.t.Helper()
 	got, err := os.Stat(filepath.Join(treeRoot, filepath.FromSlash(name)))
@@ -265,7 +246,6 @@ func (r *routedRig) linked(treeRoot, name string) bool {
 	return os.SameFile(got, want)
 }
 
-// requireNoLinkTree fails when links holds a file.
 func (r *routedRig) requireNoLinkTree() {
 	r.t.Helper()
 	_ = filepath.WalkDir(r.links, func(p string, d os.DirEntry, err error) error {
@@ -317,8 +297,6 @@ func TestRoutedAddLandsOnTheCrossSeedInstance(t *testing.T) {
 	}
 }
 
-// A user with no saved route sees no change: the add goes to the instance
-// that holds the match, and the result names no Cross-seed instance.
 func TestRoutedAddWithoutARouteAddsToTheSourceInstance(t *testing.T) {
 	r := newRoutedRig(t, false)
 	require.NoError(t, r.routes.Delete(t.Context(), r.source.ID))
@@ -369,8 +347,6 @@ func TestRoutedAddMapsSubfolders(t *testing.T) {
 	}
 }
 
-// Each closed fallback fails with its own status. The Source instance has
-// Fallback to regular mode on, so a regular add would land on it.
 func TestRoutedAddNeverFallsBackToARegularAdd(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -381,8 +357,6 @@ func TestRoutedAddNeverFallsBackToARegularAdd(t *testing.T) {
 		wantMsg    string
 	}{
 		{
-			// The route service reads a row that is still in link mode, and the
-			// capability read reads the row that left it.
 			name: "Source instance left link mode",
 			setup: func(r *routedRig) {
 				r.svc.SetBackendPool(fsops.NewPool(leftLinkMode{r.instances}, local.NewBackend()))
@@ -411,7 +385,6 @@ func TestRoutedAddNeverFallsBackToARegularAdd(t *testing.T) {
 		{
 			name: "no base folder matches",
 			setup: func(r *routedRig) {
-				// The base folder cannot be created under a file.
 				require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(r.links), "blocker"), nil, 0o600))
 				r.links = filepath.Join(filepath.Dir(r.links), "blocker", "links")
 				r.updateSource(&models.InstanceUpdateParams{HardlinkBaseDir: new(r.links)})
@@ -440,8 +413,6 @@ func TestRoutedAddNeverFallsBackToARegularAdd(t *testing.T) {
 		{
 			name: "existing target",
 			setup: func(r *routedRig) {
-				// Another torrent holds the root folder, and a stranger's file
-				// sits in the hashed isolation folder.
 				require.NoError(t, os.MkdirAll(filepath.Join(r.links, routedName), 0o755))
 				stranger := filepath.Join(r.links, pathutil.HashedIsolationFolder(adderV1, routedName), filepath.FromSlash(r.files[0].Name))
 				require.NoError(t, os.MkdirAll(filepath.Dir(stranger), 0o755))
@@ -488,7 +459,6 @@ func TestRoutedAddNeverFallsBackToARegularAdd(t *testing.T) {
 	}
 }
 
-// leftLinkMode reads the Source instance as it is after it left link mode.
 type leftLinkMode struct{ *models.InstanceStore }
 
 func (s leftLinkMode) Get(ctx context.Context, id int) (*models.Instance, error) {
@@ -499,7 +469,6 @@ func (s leftLinkMode) Get(ctx context.Context, id int) (*models.Instance, error)
 	return instance, err
 }
 
-// leftLocalMode reads the Source instance as a remote instance.
 type leftLocalMode struct{ *models.InstanceStore }
 
 func (s leftLocalMode) Get(ctx context.Context, id int) (*models.Instance, error) {
@@ -561,7 +530,7 @@ func TestRoutedAddAppliesOnlyTheCrossSeedInstanceBlocklist(t *testing.T) {
 			if blockedOn == "lib" {
 				instanceID = r.source.ID
 			}
-			_, err := r.svc.blocklistStore.Upsert(t.Context(), &models.CrossSeedBlocklistEntry{InstanceID: instanceID, InfoHash: adderV1})
+			_, err := r.svc.blocklistStore.Upsert(t.Context(), instanceID, mustParseHash(t, adderV1), "")
 			require.NoError(t, err)
 
 			result := r.add(nil, nil, nil)
@@ -577,9 +546,6 @@ func TestRoutedAddAppliesOnlyTheCrossSeedInstanceBlocklist(t *testing.T) {
 	}
 }
 
-// An unavailable Cross-seed instance fails the add before the Pre-add check:
-// the Cross-seed instance reports the hash, and the add still fails as
-// unavailable, with no tree and no add.
 func TestRoutedAddFailsWhenTheCrossSeedInstanceIsUnavailable(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -622,15 +588,13 @@ func TestRoutedAddFailsWhenTheStoredRouteBreaksARule(t *testing.T) {
 	r.requireNoLinkTree()
 }
 
-// The Match verdict compares the candidate's instance with the instance of the
-// search decision, so a routed add keeps the recheck that a relaxed match needs.
 func TestRoutedAddKeepsTheRecheckOfARelaxedMatch(t *testing.T) {
 	r := newRoutedRig(t, false)
 
 	result := r.add(&CrossSeedRequest{SearchDecision: searchDecisionProvenance{
 		Class:            searchCandidateClassExactSizeFallback,
 		SourceInstanceID: r.source.ID,
-		SourceHash:       routedMatched,
+		SourceHash:       mustParseHash(t, routedMatched),
 		Relaxed:          differencesOf(differenceGroup),
 	}}, nil, nil)
 
@@ -653,7 +617,6 @@ func TestRoutedAddStaysOutOfThePartialPool(t *testing.T) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
-	// The NFO is not on disk, so the tree is partial.
 	sourceFiles := append(qbt.TorrentFiles{}, r.files...)
 	sourceFiles = append(sourceFiles, qbt.TorrentFile{Name: routedName + "/" + routedName + ".nfo", Size: 1})
 	require.True(t, r.svc.partialPool.joinEnabled(t.Context(), r.source, true, &CrossSeedRequest{}, false), "the pool takes an add that is not routed")
@@ -667,13 +630,10 @@ func TestRoutedAddStaysOutOfThePartialPool(t *testing.T) {
 	assert.Equal(t, r.crossSeed.ID, queued.instanceID, "Settle, not the pool, resumes the routed add")
 }
 
-// The Cross-seed instance has no route, so a match on it stays on it. Its add
-// still checks the hashes on its Source instance.
 func TestRoutedAddMatchOnTheCrossSeedInstanceStaysThere(t *testing.T) {
 	tests := []struct {
-		name    string
-		hasHash bool
-		// source is "disabled", "offline", or empty for an online Source instance.
+		name        string
+		hasHash     bool
 		source      string
 		wantStatus  string
 		wantMessage []string
@@ -706,7 +666,7 @@ func TestRoutedAddMatchOnTheCrossSeedInstanceStaysThere(t *testing.T) {
 			candidate := r.candidate()
 			candidate.InstanceID, candidate.InstanceName = r.crossSeed.ID, r.crossSeed.Name
 
-			result := r.svc.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), adderV1, "", routedName,
+			result := r.svc.processCrossSeedCandidate(t.Context(), candidate, []byte("torrent"), mustParseHash(t, adderV1), infohash.Hash{}, routedName,
 				&CrossSeedRequest{}, r.svc.releaseCache.Parse(routedName), r.files, nil, nil)
 
 			assert.Equal(t, tt.wantStatus, result.Status, result.Message)
@@ -726,9 +686,6 @@ func TestRoutedAddMatchOnTheCrossSeedInstanceStaysThere(t *testing.T) {
 	}
 }
 
-// The route maps the preset folder before the category save path changes to
-// slashes, so a base folder with a backslash, as on a Windows Source instance,
-// maps under its row.
 func TestRoutedCategorySavePath(t *testing.T) {
 	t.Parallel()
 
@@ -782,10 +739,6 @@ func TestWebhookNotificationCountsRoutedFailures(t *testing.T) {
 	}
 }
 
-// The top folder is taken by an empty folder, so the tree goes into the
-// folder with a short hash. The second add finds every target there already
-// linked, so its build creates no file. The check lists the folder that the
-// tree used.
 func TestRoutedAddChecksTheFolderThatTheTreeUsed(t *testing.T) {
 	r := newRoutedRig(t, false)
 	require.NoError(t, os.MkdirAll(filepath.Join(r.links, routedName), 0o755))
@@ -861,8 +814,6 @@ func TestRoutedAddPassesWhenTheEntryShowsUpOnARetry(t *testing.T) {
 	assert.Len(t, r.sync.adds[r.crossSeed.ID], 1)
 }
 
-// After a check fails for a base folder, a later add under that folder in
-// the same run lists once. A new run retries again.
 func TestRoutedAddRetriesAFailedFolderOncePerRun(t *testing.T) {
 	r := newRoutedRig(t, false)
 	r.sync.hidden = 100
@@ -881,10 +832,6 @@ func TestRoutedAddRetriesAFailedFolderOncePerRun(t *testing.T) {
 	assert.Len(t, r.sync.listed, 1+visibleRetries, "a new run retries")
 }
 
-// A Source instance's candidate runs first, so the routed add builds its own
-// link tree on the Cross-seed instance before a match on that instance can add
-// the torrent there. The sort keeps the order of the other candidates, and
-// without a route it changes nothing.
 func TestRoutedCandidatesPutSourceInstancesFirst(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -917,10 +864,6 @@ func TestRoutedCandidatesPutSourceInstancesFirst(t *testing.T) {
 	}
 }
 
-// A Library Scan on a Source instance does not start while its Cross-seed
-// instance is unavailable. With the Cross-seed instance up, or with no route,
-// the start goes on to the next check, which fails here because no Torznab
-// search is set up.
 func TestLibraryScanNeedsTheCrossSeedInstance(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -962,15 +905,12 @@ func TestLibraryScanNeedsTheCrossSeedInstance(t *testing.T) {
 	}
 }
 
-// A Manual match preview shows where the Cross-seed instance sees the tree,
-// also while the Cross-seed instance is offline: the preview reads the saved
-// route and sends nothing to the Cross-seed instance.
 func TestRoutedManualMatchPreviewShowsTheMappedPath(t *testing.T) {
 	r := newRoutedRig(t, true)
 	r.sync.cached = map[int][]qbittorrent.CrossInstanceTorrentView{r.source.ID: buildCrossInstanceViews(r.source, []qbt.Torrent{*r.candidate().Torrents[0]})}
 	torrentBytes := createNamedFileTestTorrent(t, routedName, routedName+".mkv", 100)
 
-	resp, err := r.svc.ManualMatchProposals(r.ctx, r.source.ID, torrentBytes, "")
+	resp, err := r.svc.ManualMatchProposals(r.ctx, r.source.ID, torrentBytes, infohash.Hash{})
 
 	require.NoError(t, err)
 	require.Len(t, resp.Proposals, 1)

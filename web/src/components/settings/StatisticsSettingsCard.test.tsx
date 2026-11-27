@@ -19,10 +19,8 @@ const i18n = vi.hoisted(() => ({
   t: (key: string, values?: object) => (values ? `${key} ${JSON.stringify(values)}` : key),
   i18n: { language: "en", resolvedLanguage: "en" },
 }))
-// The byte units come from the loaded locale, and the card text stays as keys.
 vi.mock("react-i18next", async (importOriginal) => ({ ...(await importOriginal<typeof import("react-i18next")>()), useTranslation: () => i18n }))
 
-// jsdom cannot open the Radix select, so the test drives a native select.
 vi.mock("@/components/ui/select", () => ({
   Select: ({ name, value, onValueChange, disabled, children }: { name?: string; value: string; onValueChange: (value: string) => void; disabled?: boolean; children: ReactNode }) => (
     <select aria-label={name ?? "retention"} value={value} disabled={disabled} onChange={(e: ChangeEvent<HTMLSelectElement>) => onValueChange(e.target.value)}>
@@ -36,8 +34,8 @@ vi.mock("@/components/ui/select", () => ({
 }))
 
 const shrink = vi.hoisted(() => ({ requestShrink: vi.fn(async () => {}), pending: false }))
-vi.mock("@/hooks/useDatabaseShrink", () => ({
-  databaseShrinkQueryKey: ["database-shrink"],
+vi.mock("@/hooks/useDatabaseShrink", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useDatabaseShrink")>()),
   useDatabaseShrink: () => shrink,
 }))
 

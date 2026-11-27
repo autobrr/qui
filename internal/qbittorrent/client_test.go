@@ -26,6 +26,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/testutil/syncsnap"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type peerSyncTestTransport func(*http.Request) (*http.Response, error)
@@ -34,9 +35,6 @@ func (f peerSyncTestTransport) RoundTrip(r *http.Request) (*http.Response, error
 	return f(r)
 }
 
-// serveInProcess sends each request of c straight to handler, so a synctest
-// bubble can advance its clock while a request waits. A request whose context
-// ends fails with the context error, as it does over a real connection.
 func serveInProcess(c *qbt.Client, handler http.Handler) *qbt.Client {
 	transport := peerSyncTestTransport(func(req *http.Request) (*http.Response, error) {
 		rec := httptest.NewRecorder()
@@ -69,14 +67,14 @@ func TestPeerSyncManagerIdleExpiry(t *testing.T) {
 				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 			}),
 		})
-		client := &Client{Client: qbtClient, peerSyncManager: make(map[string]*peerSyncEntry)}
-		active := client.GetOrCreatePeerSyncManager(activeHash)
-		idle := client.GetOrCreatePeerSyncManager(idleHash)
+		client := &Client{Client: qbtClient, peerSyncManager: make(map[infohash.Hash]*peerSyncEntry)}
+		active := client.GetOrCreatePeerSyncManager(testHash(activeHash))
+		idle := client.GetOrCreatePeerSyncManager(testHash(idleHash))
 		require.NoError(t, active.Sync(t.Context()))
 		require.NoError(t, idle.Sync(t.Context()))
 
 		time.Sleep(4 * time.Minute)
-		require.Same(t, active, client.GetOrCreatePeerSyncManager(strings.ToUpper(activeHash)))
+		require.Same(t, active, client.GetOrCreatePeerSyncManager(testHash(strings.ToUpper(activeHash))))
 		require.NoError(t, active.Sync(t.Context()))
 		require.Equal(t, int64(2), active.GetPeers().Rid)
 		require.Equal(t, "192.0.2.1", active.GetPeers().Peers["192.0.2.1:1"].IP)
@@ -84,10 +82,10 @@ func TestPeerSyncManagerIdleExpiry(t *testing.T) {
 
 		time.Sleep(2 * time.Minute)
 		synctest.Wait()
-		require.NotContains(t, client.peerSyncManager, idleHash, "idle entries expire without another lookup")
-		require.Contains(t, client.peerSyncManager, activeHash, "reads renew the idle timeout")
+		require.NotContains(t, client.peerSyncManager, testHash(idleHash), "idle entries expire without another lookup")
+		require.Contains(t, client.peerSyncManager, testHash(activeHash), "reads renew the idle timeout")
 		require.Equal(t, int64(1), idle.GetPeers().Rid, "eviction preserves data held by an existing reader")
-		replacement := client.GetOrCreatePeerSyncManager(idleHash)
+		replacement := client.GetOrCreatePeerSyncManager(testHash(idleHash))
 		require.NotSame(t, idle, replacement)
 		require.NoError(t, replacement.Sync(t.Context()))
 		require.Equal(t, int64(1), replacement.GetPeers().Rid, "a reopened torrent starts with a full sync")
@@ -126,23 +124,22 @@ func TestPeerSyncManagerTorrentRemoval(t *testing.T) {
 	require.NoError(t, err)
 	defer client.optimisticUpdates.Close()
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
-	active := client.GetOrCreatePeerSyncManager(activeHash)
-	removed := client.GetOrCreatePeerSyncManager(strings.ToUpper(removedHash))
+	active := client.GetOrCreatePeerSyncManager(testHash(activeHash))
+	removed := client.GetOrCreatePeerSyncManager(testHash(strings.ToUpper(removedHash)))
 	empty := syncsnap.Update(t).Snapshot
 	t.Cleanup(func() { client.prunePeerSyncManagers(empty) })
 
 	phase.Store(1)
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
-	require.NotContains(t, client.peerSyncManager, removedHash)
-	require.Same(t, active, client.GetOrCreatePeerSyncManager(activeHash), "an unchanged torrent survives a delta")
-	require.NotSame(t, removed, client.GetOrCreatePeerSyncManager(removedHash))
+	require.NotContains(t, client.peerSyncManager, testHash(removedHash))
+	require.Same(t, active, client.GetOrCreatePeerSyncManager(testHash(activeHash)), "an unchanged torrent survives a delta")
+	require.NotSame(t, removed, client.GetOrCreatePeerSyncManager(testHash(removedHash)))
 
 	phase.Store(2)
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.Empty(t, client.peerSyncManager, "a full refresh removes absent torrents")
 }
 
-// mockSyncEventSink is a test helper that records calls to HandleSyncError and HandleTrackerHealthUpdated.
 type mockSyncEventSink struct {
 	mu                   sync.Mutex
 	trackerHealthUpdates []int
@@ -181,9 +178,10 @@ func (m *mockSyncEventSink) getTrackerHealthUpdates() []int {
 }
 
 func TestGetTorrentPeersSyncsAndMergesWithoutProxyWarmup(t *testing.T) {
+	const peersHash = "abc123abc123abc123abc123abc123abc123abc1"
 	var requests atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v2/sync/torrentPeers" || r.URL.Query().Get("hash") != "abc123" {
+		if r.URL.Path != "/api/v2/sync/torrentPeers" || r.URL.Query().Get("hash") != peersHash {
 			t.Errorf("unexpected request: %s", r.URL)
 			http.NotFound(w, r)
 			return
@@ -205,17 +203,17 @@ func TestGetTorrentPeersSyncsAndMergesWithoutProxyWarmup(t *testing.T) {
 	client := &Client{
 		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, APIKey: "test-key"}),
 		isHealthy:       true,
-		peerSyncManager: make(map[string]*peerSyncEntry),
+		peerSyncManager: make(map[infohash.Hash]*peerSyncEntry),
 	}
 	sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
 
-	full, err := sm.GetTorrentPeers(t.Context(), 1, "abc123")
+	full, err := sm.GetTorrentPeers(t.Context(), 1, peersHash)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), full.Rid)
 	require.Len(t, full.Peers, 2)
 	require.Contains(t, full.Peers, "remove")
 
-	merged, err := sm.GetTorrentPeers(t.Context(), 1, "abc123")
+	merged, err := sm.GetTorrentPeers(t.Context(), 1, peersHash)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), merged.Rid)
 	require.Len(t, merged.Peers, 2)
@@ -282,7 +280,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	getterDone := make(chan struct{})
 	go func() {
 		defer close(getterDone)
-		_ = client.getTorrentsByHashes([]string{"abc"})
+		_ = client.getTorrentsByHashes(infohash.ParseAll([]string{"abc"}))
 	}()
 
 	select {
@@ -404,6 +402,8 @@ func TestNewClientWithTimeoutRejectsLoginCookiesWithoutVerifiedSessionMarker(t *
 func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	t.Parallel()
 
+	ctx, expire := context.WithCancelCause(t.Context())
+	defer expire(nil)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/auth/login":
@@ -416,12 +416,8 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 			})
 			_, _ = w.Write([]byte("Ok."))
 		case "/api/v2/app/webapiVersion":
-			// A saturated-but-alive WebUI: the request parks until the caller's
-			// deadline expires without ever answering.
+			expire(context.DeadlineExceeded)
 			<-r.Context().Done()
-			// Close the connection with no response. If the handler returns, the
-			// server sends an empty 200, and the client can read it after its
-			// deadline. An empty version is an invalid session, so the test fails.
 			panic(http.ErrAbortHandler)
 		default:
 			http.NotFound(w, r)
@@ -429,17 +425,14 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// The budget also covers the TLS login, which a busy runner can hold past 50 ms.
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	client, err := newClient(ctx, 1, srv.URL, "user", "pass", "", nil, nil, true, 60*time.Second)
 
 	require.NoError(t, err, "transient capability fetch failures must not block client creation")
 	require.NotNil(t, client)
 	require.False(t, client.IsHealthy(), "client should start unhealthy until a capability refresh succeeds")
+	require.ErrorIs(t, context.Cause(ctx), context.DeadlineExceeded, "client did not reach the capability lookup")
 }
 
-// TestNewClientWithTimeoutTransportIndependentOfLoginBudget verifies that a short
-// creation budget (e.g. the 3s login warm) is not baked into the HTTP transport
-// timeout for the life of the client.
 func TestNewClientWithTimeoutTransportIndependentOfLoginBudget(t *testing.T) {
 	t.Parallel()
 
@@ -506,7 +499,6 @@ func TestClientDispatchSyncErrorNilSinkDoesNotPanic(t *testing.T) {
 
 	testErr := errors.New("connection refused")
 
-	// Should not panic
 	client.dispatchSyncError(testErr)
 }
 
@@ -596,9 +588,6 @@ func TestClientHandleSyncManagerErrorKeepsHealthyForDeadline(t *testing.T) {
 
 			client.handleSyncManagerError(tc.err)
 
-			// Slow, not down: health and cached state survive, but the error
-			// still dispatches so the SSE loop backs off and escalates its
-			// sync budget.
 			require.True(t, client.IsHealthy())
 			require.NotNil(t, client.GetCachedServerState())
 			require.Len(t, sink.getSyncErrorCalls(), 1)
@@ -632,8 +621,6 @@ func TestIsDeadlineExpired(t *testing.T) {
 	}
 }
 
-// TestClientHealthCheckKeepsHealthOnDeadline verifies that a probe timing out against a
-// responding-but-saturated instance does not demote health.
 func TestClientHealthCheckKeepsHealthOnDeadline(t *testing.T) {
 	t.Parallel()
 
@@ -652,12 +639,9 @@ func TestClientHealthCheckKeepsHealthOnDeadline(t *testing.T) {
 	})
 }
 
-// TestClientHealthCheckMarksUnhealthyOnHardFailure pins that connection-level failures
-// still demote health immediately (#2096: dead instances must go red fast).
 func TestClientHealthCheckMarksUnhealthyOnHardFailure(t *testing.T) {
 	t.Parallel()
 
-	// Port 1 is outside the ephemeral range: during the retries, a closed httptest port can go to another test's server.
 	client := &Client{Client: qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:1", Timeout: 60}), instanceID: 42, isHealthy: true}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -700,7 +684,6 @@ func TestSplitHostUserinfo(t *testing.T) {
 			wantHost: "http://qbit.example.com:8080",
 		},
 		{
-			// Fake credentials exercising userinfo stripping.
 			name:     "userinfo stripped and returned",
 			host:     "https://proxyuser:proxypass@qbit.example.com",
 			wantHost: "https://qbit.example.com",
@@ -736,9 +719,6 @@ func TestSplitHostUserinfo(t *testing.T) {
 	}
 }
 
-// TestNewClientWithTimeoutEnablesBulkTrackerFetch pins list hydration to the
-// bulk torrents/info request on qBittorrent 5.1+ and to no request at all below
-// it. The per-hash torrents/trackers fallback must never fire from qui.
 func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 	t.Parallel()
 
@@ -746,8 +726,8 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 		version      string
 		bulkRequests int
 	}{
-		{version: "2.11.3", bulkRequests: 0}, // highest version below the gate
-		{version: "2.11.4", bulkRequests: 1}, // lowest version at the gate
+		{version: "2.11.3", bulkRequests: 0},
+		{version: "2.11.4", bulkRequests: 1},
 	} {
 		t.Run(tc.version, func(t *testing.T) {
 			t.Parallel()
@@ -793,16 +773,12 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 			require.Zero(t, hits["/api/v2/torrents/trackers"], "list hydration must never use per-hash torrents/trackers; use torrents/info?includeTrackers on 5.1+ and skip hydration below it")
 			require.Equal(t, tc.bulkRequests, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
 			for _, torrent := range torrents {
-				// One tracker per torrent when hydrated, none when the gate skips hydration.
 				require.Len(t, lookup.Trackers(torrent.Hash), tc.bulkRequests, "hash %s", torrent.Hash)
 			}
 		})
 	}
 }
 
-// TestHealthCheckRetriesCapabilitiesUntilLoaded covers a transient capability
-// failure at construction. Sync updates stamp the client healthy, which used to
-// let HealthCheck skip the probe forever and leave bulk tracker fetching off.
 func TestHealthCheckRetriesCapabilitiesUntilLoaded(t *testing.T) {
 	t.Parallel()
 
@@ -830,7 +806,6 @@ func TestHealthCheckRetriesCapabilitiesUntilLoaded(t *testing.T) {
 	require.Empty(t, client.GetWebAPIVersion())
 	require.False(t, client.trackerManager().SupportsIncludeTrackers())
 
-	// A successful sync stamps the client healthy and fresh.
 	client.updateHealthStatus(true)
 	versionFails.Store(false)
 
@@ -839,9 +814,6 @@ func TestHealthCheckRetriesCapabilitiesUntilLoaded(t *testing.T) {
 	require.True(t, client.trackerManager().SupportsIncludeTrackers(), "the health check must apply the capability to the tracker manager")
 }
 
-// TestSyncPeersSerializesConcurrentReaders pins the ordering guarantee that the
-// race detector cannot see: every peer fetch must carry the rid the previous
-// merge produced, so an older snapshot can never merge on top of a newer one.
 func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -853,9 +825,6 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 		newestRid := int64(0)
 		secondRequest := make(chan struct{})
 
-		// served records the newest response the server produced. The merged state
-		// must end up matching it, whatever order the fetches ran in. Only the rid 1
-		// response carries the stale peer, so the rid alone says what to expect.
 		served := func(rid int64) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -877,9 +846,6 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 
 			if first {
-				// Hold the oldest snapshot open long enough for an unserialized
-				// reader to overtake it. Nothing overtakes it once fetch and merge
-				// are serialized, so fall through on the timeout instead.
 				select {
 				case <-secondRequest:
 				case <-time.After(200 * time.Millisecond):
@@ -891,7 +857,6 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 
 			served(2)
 			if rid == "0" {
-				// A reader that never saw the first merge asks for a full snapshot.
 				_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"}}}`))
 				return
 			}
@@ -900,16 +865,13 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 
 		client := &Client{
 			Client:          qbtClient,
-			peerSyncManager: make(map[string]*peerSyncEntry),
+			peerSyncManager: make(map[infohash.Hash]*peerSyncEntry),
 		}
 
 		var wg sync.WaitGroup
-		// One caller spells the hash in upper case. The API takes the hash straight
-		// from the URL, so both spellings reach SyncPeers, and both must land on the
-		// same fetch: a second spelling must not open a second rid on one manager.
 		for _, callerHash := range []string{hash, strings.ToUpper(hash)} {
 			wg.Go(func() {
-				_, err := client.SyncPeers(t.Context(), callerHash)
+				_, err := client.SyncPeers(t.Context(), testHash(callerHash))
 				require.NoError(t, err)
 			})
 		}
@@ -923,9 +885,7 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 		}
 		mu.Unlock()
 
-		// The merged state must match the newest response the server produced, not
-		// whichever fetch happened to return last.
-		peers := client.GetOrCreatePeerSyncManager(hash).GetPeers()
+		peers := client.GetOrCreatePeerSyncManager(testHash(hash)).GetPeers()
 		require.Equal(t, wantRid, peers.Rid, "rid regressed to an older snapshot")
 		if wantStalePeer {
 			require.Contains(t, peers.Peers, stalePeer)
@@ -933,17 +893,13 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 			require.NotContains(t, peers.Peers, stalePeer, "an older snapshot restored a removed peer")
 		}
 
-		// The next reader carries the rid the last merge produced, so the server can
-		// answer with a removal and the removal sticks.
-		peers, err := client.SyncPeers(t.Context(), hash)
+		peers, err := client.SyncPeers(t.Context(), testHash(hash))
 		require.NoError(t, err)
 		require.Equal(t, int64(2), peers.Rid)
 		require.NotContains(t, peers.Peers, stalePeer, "a removal from an incremental update was lost")
 	})
 }
 
-// TestSyncPeersLeavesWhenCallerGoesAway keeps a reader whose request was
-// cancelled from waiting out a slow qBittorrent.
 func TestSyncPeersLeavesWhenCallerGoesAway(t *testing.T) {
 	const hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
@@ -956,23 +912,20 @@ func TestSyncPeersLeavesWhenCallerGoesAway(t *testing.T) {
 		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{}}`))
 	}))
 	t.Cleanup(srv.Close)
-	// Cleanups run last registered first, so the handler is released before the
-	// server shuts down and waits for it.
 	t.Cleanup(func() { close(release) })
 
 	client := &Client{
 		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
-		peerSyncManager: make(map[string]*peerSyncEntry),
+		peerSyncManager: make(map[infohash.Hash]*peerSyncEntry),
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	errs := make(chan error, 1)
 	go func() {
-		_, err := client.SyncPeers(ctx, hash)
+		_, err := client.SyncPeers(ctx, testHash(hash))
 		errs <- err
 	}()
 
-	// Cancel while the fetch is in flight, which is what a closed tab does.
 	<-fetchStarted
 	cancel()
 

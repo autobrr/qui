@@ -22,9 +22,6 @@ import (
 
 const packPiece = 16 << 10
 
-// newSeason is a torrent of files of random data with the sizes, named
-// Show.S01E01.mkv and on, in the folder Show.S01.1080p-GRP, with pieces of
-// 16 KiB.
 func newSeason(t *testing.T, sizes ...int) show {
 	t.Helper()
 	random := rand.New(rand.NewChaCha8([32]byte{byte(len(sizes))}))
@@ -43,7 +40,6 @@ func newSeason(t *testing.T, sizes ...int) show {
 	return show{data: data, hash: hash, files: files}
 }
 
-// allPieces is the Proven pieces of a torrent whose n pieces are all proven.
 func allPieces(n int) []byte {
 	out := make([]byte, (n+7)/8)
 	for piece := range n {
@@ -52,13 +48,11 @@ func allPieces(n int) []byte {
 	return out
 }
 
-// fastCopy reads as much at once as qui does, and flushes every 256 KiB.
 func fastCopy(c *transfer.Config) {
 	c.ReadBytes = transfer.DefaultConfig().ReadBytes
 	c.FlushBytes = 256 << 10
 }
 
-// readers counts the connections that read file bytes.
 func readers(ranges []sshtest.ReadRange) int {
 	conns := map[int]bool{}
 	for _, read := range ranges {
@@ -67,8 +61,6 @@ func readers(ranges []sshtest.ReadRange) int {
 	return len(conns)
 }
 
-// A big file splits into four byte ranges, one on each connection, each with
-// many reads in flight. qui checks every piece.
 func TestTransferCopiesABigFileInFourRanges(t *testing.T) {
 	r := newRig(t, fastCopy)
 	const size = 4<<20 + 3
@@ -94,9 +86,6 @@ func TestTransferCopiesABigFileInFourRanges(t *testing.T) {
 	require.GreaterOrEqual(t, r.ssh.MaxInFlight(), 16, "the ranges keep reads in flight")
 }
 
-// Small files go up to 128 at a time across the connections, and qui checks
-// every piece, also the pieces that hold the end of one file and the start
-// of the next.
 func TestTransferCopiesManySmallFilesAtOnce(t *testing.T) {
 	r := newRig(t, fastCopy)
 	sizes := make([]int, 400)
@@ -121,9 +110,6 @@ func TestTransferCopiesManySmallFilesAtOnce(t *testing.T) {
 	require.LessOrEqual(t, r.ssh.MaxInFlight(), 128, "at most 128 files are read at once")
 }
 
-// A copy in four ranges that qui stops once several ranges have Proven
-// pieces resumes after the restart. qui reads and writes only the pieces
-// that were not Proven pieces at the stop.
 func TestTransferResumesACopyInSeveralRanges(t *testing.T) {
 	r := newRig(t, fastCopy)
 	const size = 4<<20 + 3
@@ -131,13 +117,10 @@ func TestTransferResumesACopyInSeveralRanges(t *testing.T) {
 	r.seed(s)
 	ids := make(chan int64, 1)
 	var (
-		// mu takes the writes of the four streams one at a time.
-		mu      sync.Mutex
-		once    sync.Once
-		id      int64
-		stopped bool
-		// at is the Proven pieces at the stop, and writes and reads count
-		// the writes and the read handles before it.
+		mu            sync.Mutex
+		once          sync.Once
+		id            int64
+		stopped       bool
 		at            []byte
 		writes, reads int
 	)
@@ -186,10 +169,6 @@ func TestTransferResumesACopyInSeveralRanges(t *testing.T) {
 	}
 }
 
-// A resume that copies one piece in the middle of each of many files closes
-// the files of each piece before the next one. A stream keeps no file open
-// that it does not write.
-// regression: #4231
 func TestTransferResumeClosesTheFilesOfEachTask(t *testing.T) {
 	r := newRig(t)
 	sizes := make([]int, 40)
@@ -205,8 +184,6 @@ func TestTransferResumeClosesTheFilesOfEachTask(t *testing.T) {
 	id, err := r.svc.Start(t.Context(), r.request(s))
 	require.NoError(t, err)
 	r.svc.Wait()
-	// The target lost bytes of each file, in a piece that holds no other
-	// file.
 	for name := range s.files {
 		lose(t, filepath.Join(r.dstDir, showName, name+".qui-transfer-"+strconv.FormatInt(id, 10)), 20000, 50)
 	}
@@ -223,7 +200,6 @@ func TestTransferResumeClosesTheFilesOfEachTask(t *testing.T) {
 	require.Equal(t, 1, r.disk.mostWriters, "qui writes one file at a time")
 }
 
-// provenRanges counts the quarters of the n pieces that hold a Proven piece.
 func provenRanges(bits []byte, n int) int {
 	quarters := map[int]bool{}
 	for piece := range n {
@@ -234,8 +210,6 @@ func provenRanges(bits []byte, n int) int {
 	return len(quarters)
 }
 
-// A seedbox that refuses extra SSH connections gets the copy on fewer. The
-// Transfer goes on, and removes the source files over SSH at its end.
 func TestTransferGoesOnWithFewerConnections(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

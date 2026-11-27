@@ -21,7 +21,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// What each reader makes of one result.
 const (
 	rssAdded    = "added"
 	rssExisting = "existing"
@@ -33,7 +32,6 @@ const (
 	hookNone   = ""
 )
 
-// TestReadersSortEachStatus sends each status through the real readers.
 func TestReadersSortEachStatus(t *testing.T) {
 	t.Parallel()
 
@@ -76,7 +74,6 @@ func TestReadersSortEachStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.status, func(t *testing.T) {
 			t.Parallel()
-			// Only an add sets Success, and its response then succeeds too.
 			success := tt.rss == rssAdded
 			respond := func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: success, Results: []InstanceCrossSeedResult{
@@ -94,14 +91,13 @@ func TestReadersSortEachStatus(t *testing.T) {
 
 type crossSeedResponder func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error)
 
-// readSourceLoop reports whether the source loop stops after the first source.
 func readSourceLoop(t *testing.T, respond crossSeedResponder) bool {
 	t.Helper()
 	calls := 0
-	service := &Service{crossSeedInvoker: func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service := &Service{injection: newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		calls++
 		return respond(ctx, req)
-	}}
+	})}
 	_, err := service.invokeBoundAnnouncementMatches(t.Context(), []boundAnnouncementMatch{
 		{instanceID: 1, instanceName: "main", torrent: &qbt.Torrent{Hash: "source-one"}},
 		{instanceID: 1, instanceName: "main", torrent: &qbt.Torrent{Hash: "source-two"}},
@@ -125,7 +121,7 @@ func readRSS(t *testing.T, respond crossSeedResponder) string {
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: respond,
+		injection: newInjectionStandIn(respond),
 	}
 	run := &models.CrossSeedRun{}
 	status, _, err := service.processAutomationCandidate(t.Context(), run,
@@ -154,10 +150,10 @@ func readSearchRun(t *testing.T, respond crossSeedResponder) models.CrossSeedSea
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: respond,
+		injection: newInjectionStandIn(respond),
 	}
 	result, err := service.executeCrossSeedSearchAttempt(t.Context(), 1, triggerDefaults{},
-		&qbt.Torrent{Hash: "source", Name: "source"},
+		&qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
 		TorrentSearchResult{Indexer: "Indexer", DownloadURL: "https://example.invalid/item.torrent"},
 		time.Now())
 	require.NoError(t, err)
@@ -167,7 +163,7 @@ func readSearchRun(t *testing.T, respond crossSeedResponder) models.CrossSeedSea
 func readWebhook(t *testing.T, respond crossSeedResponder) string {
 	t.Helper()
 	notifier := &recordingNotifier{}
-	service := &Service{notifier: notifier, crossSeedInvoker: respond}
+	service := &Service{notifier: notifier, injection: newInjectionStandIn(respond)}
 	_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
 	require.NoError(t, err)
 
@@ -184,8 +180,6 @@ func readWebhook(t *testing.T, respond crossSeedResponder) string {
 	return ""
 }
 
-// TestTroubleshootingPageMatchesClasses reads the status table on the
-// troubleshooting page.
 func TestTroubleshootingPageMatchesClasses(t *testing.T) {
 	t.Parallel()
 
@@ -218,8 +212,6 @@ func TestTroubleshootingPageMatchesClasses(t *testing.T) {
 	require.NotZero(t, read)
 }
 
-// TestWebhookNotificationCountsOnlyFailures sends a stranded result beside
-// harmless results in one response.
 func TestWebhookNotificationCountsOnlyFailures(t *testing.T) {
 	t.Parallel()
 
@@ -239,9 +231,9 @@ func TestWebhookNotificationCountsOnlyFailures(t *testing.T) {
 				results = append(results, InstanceCrossSeedResult{InstanceID: i + 1, InstanceName: status, Status: status})
 			}
 			notifier := &recordingNotifier{}
-			service := &Service{notifier: notifier, crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service := &Service{notifier: notifier, injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Results: results}, nil
-			}}
+			})}
 			_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
 			require.NoError(t, err)
 
@@ -259,7 +251,6 @@ func TestWebhookNotificationCountsOnlyFailures(t *testing.T) {
 	}
 }
 
-// regression: #3826
 func TestApplyReplyEncodesClassBesideUnchangedStatus(t *testing.T) {
 	t.Parallel()
 

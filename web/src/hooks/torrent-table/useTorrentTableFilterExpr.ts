@@ -20,12 +20,6 @@ export interface TorrentTableFilterExpr {
   isDoingCrossSeedFiltering: boolean
 }
 
-/**
- * Owns the table's search + filter-expression derivation: the route search
- * (`?q=`, already debounced by the header input), the column-filter-to-expr
- * conversion, and the cross-seed detection. useTorrentListController joins the
- * column filters into the list request.
- */
 export function useTorrentTableFilterExpr({
   filters,
   columnFilters,
@@ -34,7 +28,6 @@ export function useTorrentTableFilterExpr({
   const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
   const effectiveSearch = rawRouteSearch.trim()
 
-  // Convert column filters to expr format for backend
   const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
 
   const isDoingCrossSeedFiltering = isCrossSeedExpr(filters?.expr)

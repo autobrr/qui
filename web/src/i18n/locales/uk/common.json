@@ -120,7 +120,28 @@
     },
     "privacy": {
       "anonymous": "Анонімно: без імені та облікового запису. brrbin не зберігає IP-адресу.",
+      "signedIn": "Супровідники бачать ваше ім'я в {{provider}} ({{name}}) і можуть зв'язатися з вами.",
       "link": "Політика конфіденційності"
+    },
+    "sender": {
+      "label": "Надіслати як",
+      "anonymous": "Анонімно",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Увійти через {{provider}}",
+      "signOut": "Вийти",
+      "waiting": "Очікування {{provider}}",
+      "errors": {
+        "discordNotMember": "Ваш обліковий запис Discord не на сервері Discord autobrr. Приєднайтеся до сервера й увійдіть знову, увійдіть через GitHub або надішліть анонімно.",
+        "refused": "Вхід відхилено: {{reason}}",
+        "expired": "Час входу минув. Увійдіть знову.",
+        "popupBlocked": "Ваш браузер заблокував вікно входу. Дозвольте спливні вікна для qui, а потім увійдіть знову.",
+        "unavailable": "brrbin зараз не може виконати вхід. Спробуйте пізніше.",
+        "startFailed": "Не вдалося почати вхід: {{message}}",
+        "signOutFailed": "Не вдалося вийти: {{message}}"
+      }
     },
     "newerRelease": "У вас {{running}}. Вже вийшла версія <release>{{newer}}</release>.",
     "send": "Надіслати",
@@ -152,7 +173,8 @@
         "issue": "Перетворено на issue #{{number}}",
         "issueClosed": "Issue #{{number}} закрито",
         "closed": "Закрито: {{reason}}",
-        "closedNoReason": "Закрито"
+        "closedNoReason": "Закрито",
+        "notSent": "Не надіслано"
       },
       "delete": "Видалити звіт",
       "deleteUnavailable": "brrbin зараз не може видаляти звіти. Спробуйте пізніше.",
@@ -181,6 +203,8 @@
     "smartSearchTitle": "Можливості розумного пошуку:",
     "smartSearchGlob": "Glob шаблони:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Приховати збіги:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Нечіткий пошук:",
     "smartSearchFuzzyExample": "\"breaking bad\" знайде \"Breaking.Bad\"",
     "smartSearchDots": "Обробляє крапки, підкреслення та дужки",
@@ -385,9 +409,13 @@
         "menuFix": "Перевірити налаштування сканування бібліотеки",
         "action": "Відкрити налаштування сканування бібліотеки",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab вимкнено в налаштуваннях сканування бібліотеки, і жоден API-ключ RED чи OPS не задано. Увімкніть Torznab або додайте ключ RED чи OPS у налаштуваннях Gazelle (OPS/RED). qui повторює спробу щогодини.",
-            "menuFix": "Увімкнути Torznab або додати ключ RED чи OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "У налаштуваннях сканування бібліотеки вибрано лише індексатори Torznab, і жоден індексатор Torznab не ввімкнено. Увімкніть індексатор Torznab або виберіть інші сайти в налаштуваннях сканування бібліотеки. qui повторює спробу щогодини.",
+            "menuFix": "Увімкнути індексатор Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "У налаштуваннях сканування бібліотеки вибрано лише RED чи OPS, і жоден вибраний сайт не має API-ключа. Додайте ключ у налаштуваннях Gazelle (OPS/RED) або виберіть інші сайти в налаштуваннях сканування бібліотеки. qui повторює спробу щогодини.",
+            "menuFix": "Додати ключ RED чи OPS"
           },
           "no_indexer": {
             "fix": "Жоден індексатор не ввімкнено. Увімкніть індексатор Torznab або додайте ключ RED чи OPS у налаштуваннях Gazelle (OPS/RED). qui повторює спробу щогодини.",

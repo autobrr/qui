@@ -19,9 +19,9 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/discscan"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// DiscScanHandler starts, lists, and cancels BDInfo scans of Discs.
 type DiscScanHandler struct {
 	service     *discscan.Service
 	store       *models.DiscScanStore
@@ -38,8 +38,6 @@ type discScanStartRequest struct {
 	Force    bool   `json:"force"`
 }
 
-// Start queues a Disc scan or returns the cached report.
-// POST /api/instances/{instanceID}/torrents/{hash}/disc-scans
 func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -63,9 +61,6 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	// BDInfo runs on the qui host, so only an instance whose files are local
-	// may be scanned: a remote-mode instance would pass the save-path Stat
-	// over SFTP and then scan a path that does not exist here.
 	backend, _, err := h.backendPool.Require(ctx, instanceID, models.CapabilityContent)
 	if err != nil {
 		switch {
@@ -106,7 +101,7 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contentPath := ""
-	if torrents, err := h.resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}}); err == nil && len(torrents) > 0 {
+	if torrents, err := h.resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})}); err == nil && len(torrents) > 0 {
 		contentPath = torrents[0].ContentPath
 	}
 
@@ -135,11 +130,9 @@ func (h *DiscScanHandler) Start(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to queue disc scan")
 		return
 	}
-	RespondJSON(w, http.StatusOK, run)
+	RespondJSON(w, r, http.StatusOK, run)
 }
 
-// ListForTorrent returns the newest run per Disc path of one torrent.
-// GET /api/instances/{instanceID}/torrents/{hash}/disc-scans
 func (h *DiscScanHandler) ListForTorrent(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -157,11 +150,9 @@ func (h *DiscScanHandler) ListForTorrent(w http.ResponseWriter, r *http.Request)
 		RespondError(w, http.StatusInternalServerError, "Failed to list disc scans")
 		return
 	}
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
-// Get returns one run.
-// GET /api/instances/{instanceID}/disc-scans/{runID}
 func (h *DiscScanHandler) Get(w http.ResponseWriter, r *http.Request) {
 	instanceID, runID, ok := parseDiscScanParams(w, r)
 	if !ok {
@@ -178,11 +169,9 @@ func (h *DiscScanHandler) Get(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusNotFound, "Disc scan not found")
 		return
 	}
-	RespondJSON(w, http.StatusOK, run)
+	RespondJSON(w, r, http.StatusOK, run)
 }
 
-// Cancel stops a pending or scanning run.
-// POST /api/instances/{instanceID}/disc-scans/{runID}/cancel
 func (h *DiscScanHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	instanceID, runID, ok := parseDiscScanParams(w, r)
 	if !ok {
@@ -202,7 +191,7 @@ func (h *DiscScanHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusInternalServerError, "Failed to cancel disc scan")
 		return
 	}
-	RespondJSON(w, http.StatusOK, run)
+	RespondJSON(w, r, http.StatusOK, run)
 }
 
 func parseDiscScanParams(w http.ResponseWriter, r *http.Request) (int, int64, bool) {
@@ -218,9 +207,6 @@ func parseDiscScanParams(w http.ResponseWriter, r *http.Request) (int, int64, bo
 	return instanceID, runID, true
 }
 
-// normalizeDiscPath returns the slash-form, torrent-relative Disc path. "." is
-// the torrent root, for a torrent whose files start with BDMV/. Absolute paths
-// (POSIX, drive letter, UNC) and traversal are rejected on every OS.
 func normalizeDiscPath(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -236,10 +222,6 @@ func normalizeDiscPath(raw string) (string, bool) {
 	return cleaned, true
 }
 
-// discKind reports whether discPath names a Disc in the torrent: an .iso file
-// in the file list, or a folder that holds a BDMV folder. isDir tells which.
-// This is the BDMV half of crossseed.isDiscLayoutTorrent, applied to one
-// folder instead of the whole torrent; VIDEO_TS is not a Disc (no DVD reports).
 func discKind(files qbt.TorrentFiles, discPath string) (isDir bool, ok bool) {
 	prefix := discPath + "/"
 	if discPath == "." {

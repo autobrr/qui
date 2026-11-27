@@ -5,7 +5,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Instance } from "@/types"
 
 const mocks = vi.hoisted(() => ({
@@ -24,14 +24,6 @@ vi.mock("@/components/ui/field-help", () => ({
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => mocks.instances }))
 
 import { InstanceForm } from "./InstanceForm"
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()

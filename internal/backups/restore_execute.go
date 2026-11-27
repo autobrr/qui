@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type RestoreOptions struct {
@@ -131,8 +132,6 @@ func (s *Service) applyCategoryPlan(ctx context.Context, plan *RestorePlan, appl
 		applied.Categories.Created = append(applied.Categories.Created, spec.Name)
 	}
 
-	// SyncManager.EditCategory keeps the category's download path. On
-	// qBittorrent 5.2 an edit still clears its share limits.
 	for _, update := range plan.Categories.Update {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -227,7 +226,7 @@ func (s *Service) applyTagPlan(ctx context.Context, plan *RestorePlan, applied *
 	return nil
 }
 
-func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, applied *RestoreApplied, errs *[]RestoreError, exclude map[string]struct{}, opts RestoreOptions) ([]string, error) {
+func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, applied *RestoreApplied, errs *[]RestoreError, exclude map[infohash.Hash]struct{}, opts RestoreOptions) ([]string, error) {
 	instanceID := plan.InstanceID
 	var warnings []string
 	var pendingResume []string
@@ -280,26 +279,13 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		if len(spec.Manifest.Tags) > 0 {
 			options["tags"] = strings.Join(spec.Manifest.Tags, ",")
 		}
-		// Category and tags ride on the add. A post-add SetCategory raced the
-		// sync cache and failed for a torrent qB had accepted (#2259).
 
-		// Pin the captured per-torrent save path so torrents whose on-disk
-		// location diverges from their category (cross-seed hardlinks, manual
-		// relocations, Auto TMM off) land where their data already is. The path
-		// is only present when capture decided it cannot be reproduced from the
-		// category (see resolveBackupSavePath), so any non-empty value is pinned.
-		// savepath-on-add (+autoTMM=false) places the torrent without moving
-		// files; the path is passed verbatim because it is an opaque
-		// qBittorrent-side path that may target a different host OS.
 		pinned := false
 		if savePath := strings.TrimSpace(spec.Manifest.SavePath); savePath != "" {
 			options["autoTMM"] = "false"
 			options["savepath"] = savePath
 			pinned = true
 		} else if categoryManaged {
-			// A missing per-torrent path means capture proved the category path
-			// can reproduce placement. qB does not select that path merely because
-			// category is present on add; Auto TMM must be requested explicitly.
 			options["autoTMM"] = "true"
 		}
 
@@ -411,17 +397,15 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 	return warnings, nil
 }
 
-func buildHashSet(items []string) map[string]struct{} {
+func buildHashSet(items []string) map[infohash.Hash]struct{} {
 	if len(items) == 0 {
 		return nil
 	}
-	set := make(map[string]struct{}, len(items))
-	for _, hash := range items {
-		normalized := normalizeLowerTrim(hash)
-		if normalized == "" {
-			continue
+	set := make(map[infohash.Hash]struct{}, len(items))
+	for _, hash := range infohash.ParseAll(items) {
+		if !hash.IsZero() {
+			set[hash] = struct{}{}
 		}
-		set[normalized] = struct{}{}
 	}
 	if len(set) == 0 {
 		return nil
@@ -429,13 +413,10 @@ func buildHashSet(items []string) map[string]struct{} {
 	return set
 }
 
-func shouldSkipTorrent(hash string, exclude map[string]struct{}) bool {
-	if len(exclude) == 0 {
-		return false
-	}
-	normalized := normalizeLowerTrim(hash)
-	_, skip := exclude[normalized]
-	return skip
+func shouldSkipTorrent(hash string, exclude map[infohash.Hash]struct{}) bool {
+	parsed, err := infohash.Parse(hash)
+	_, skip := exclude[parsed]
+	return err == nil && skip
 }
 
 func (s *Service) loadTorrentBlobData(blobPath string) ([]byte, error) {

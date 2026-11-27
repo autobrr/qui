@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,11 +31,11 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
-// Consumer slices of the sync manager and the indexer service. ADR 0005.
 type torrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error)
@@ -64,39 +65,35 @@ type TorrentsHandler struct {
 	instanceStore *models.InstanceStore
 
 	torrentAdder      torrentAdder
-	torrentDownloader torrentDownloader // nil when no indexer service is configured
+	torrentDownloader torrentDownloader
 	contentResolver   torrentContentResolver
 	archiveExporter   torrentArchiveExporter
 	deleteMatches     deleteMatchFinder
 	deleter           torrentDeleter
-	// held is nil until start-up sets it.
-	held heldTorrents
+	installPaths      installPaths
+	held              heldTorrents
 }
 
-// heldTorrents names the torrents that the UI must not delete, move, or
-// rename: the torrents that a Transfer holds, and the helper torrents. Hold
-// returns the reason, or nil for a torrent that qui does not hold.
 type heldTorrents interface {
-	Hold(instanceID int, hash string) error
+	Hold(instanceID int, hash infohash.Hash) error
 }
 
 func (h *TorrentsHandler) SetHeldTorrents(held heldTorrents) {
 	h.held = held
 }
 
-// bulkActionMoves holds the bulk actions that delete or can move a torrent. A
-// category or Auto TMM moves a torrent that qBittorrent manages.
 var bulkActionMoves = []string{"delete", "deleteWithFiles", "setLocation", "setCategory", "toggleAutoTMM"}
 
-// respondIfHeld writes a 409 with the reason when qui holds one of the
-// torrents. qBittorrent reads "|" in a hash as a list separator, so each part
-// counts.
 func (h *TorrentsHandler) respondIfHeld(w http.ResponseWriter, instanceID int, hashes ...string) bool {
 	if h.held == nil {
 		return false
 	}
 	for _, list := range hashes {
-		for hash := range strings.SplitSeq(list, "|") {
+		for raw := range strings.SplitSeq(list, "|") {
+			hash, err := infohash.Parse(raw)
+			if err != nil {
+				continue
+			}
 			if err := h.held.Hold(instanceID, hash); err != nil {
 				RespondError(w, http.StatusConflict, err.Error())
 				return true
@@ -106,7 +103,6 @@ func (h *TorrentsHandler) respondIfHeld(w http.ResponseWriter, instanceID int, h
 	return false
 }
 
-// truncateExpr truncates long filter expressions for cleaner logging
 func truncateExpr(expr string, maxLen int) string {
 	if len(expr) <= maxLen {
 		return expr
@@ -127,21 +123,17 @@ func validateTorrentFilePath(path string) error {
 	return nil
 }
 
-const addTorrentMaxFormMemory int64 = 256 << 20 // 256 MiB cap for multi-file uploads
+const addTorrentMaxFormMemory int64 = 256 << 20
 
-// SortedPeer represents a peer with its key for sorting
+const addTorrentMaxFormParts = 1000
+
 type SortedPeer struct {
 	Key string `json:"key"`
 	qbt.TorrentPeer
 }
 
-// SortedPeersResponse wraps the peers response with sorted peers
 type SortedPeersResponse struct {
 	*qbt.TorrentPeersResponse
-	// FullUpdate shadows the promoted qbt field so it never reaches the JSON:
-	// MergePeers never copies it into the cached response, so the endpoint has
-	// only ever sent false. *struct{} makes accidental promoted reads fail to
-	// compile.
 	FullUpdate  *struct{}    `json:"full_update,omitempty"`
 	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
@@ -162,22 +154,19 @@ func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *ja
 	return h
 }
 
-// ListTorrents returns paginated torrents for an instance with enhanced metadata
 func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Parse query parameters
-	limit := 300 // Default pagination size
+	limit := 300
 	page := 0
 	sort := "added_on"
 	order := "desc"
 	search := ""
-	sessionID := r.Header.Get("X-Session-ID") // Optional session tracking
+	sessionID := r.Header.Get("X-Session-ID")
 
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 2000 {
@@ -203,7 +192,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		search = q
 	}
 
-	// Parse filters
 	var filters qbittorrent.FilterOptions
 
 	if f := r.URL.Query().Get("filters"); f != "" {
@@ -212,7 +200,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Determine freshness preference
 	preferParam := strings.TrimSpace(r.URL.Query().Get("prefer"))
 	preferCached := strings.EqualFold(preferParam, "stale") ||
 		strings.EqualFold(preferParam, "cache") ||
@@ -220,7 +207,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Trace logging with truncated expression to prevent log bloat
 	logEvent := log.Trace().
 		Int("instanceID", instanceID).
 		Str("sort", sort).
@@ -231,7 +217,6 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		Bool("preferCached", preferCached).
 		Str("sessionID", sessionID)
 
-	// Log filters but truncate long expressions
 	if filters.Expr != "" {
 		logEvent = logEvent.Str("expr", truncateExpr(filters.Expr, 150))
 	}
@@ -247,30 +232,27 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	logEvent.Msg("Torrent list request parameters")
 
-	// Calculate offset from page
 	offset := page * limit
 
-	// Get torrents with search, sorting and filters
-	// The sync manager will handle stale-while-revalidate internally
 	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
-		InstanceID:        instanceID,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		SidebarCounts:     true,
-		CopyGroups:        groupCopiesParam(r),
-		UniqueSize:        uniqueSizeParam(r),
-		CacheOnly:         preferCached,
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		InstanceID:         instanceID,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		SidebarCounts:      true,
+		CopyGroups:         groupCopiesParam(r),
+		UniqueSize:         uniqueSizeParam(r),
+		CacheOnly:          preferCached,
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
 			return
 		}
-		// Record error for user visibility
 		errorStore := h.syncManager.GetErrorStore()
 		if recordErr := errorStore.RecordError(ctx, instanceID, err); recordErr != nil {
 			log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record torrent error")
@@ -290,7 +272,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Data-Source", "fresh")
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func groupCopiesParam(r *http.Request) bool {
@@ -303,8 +285,6 @@ func uniqueSizeParam(r *http.Request) bool {
 	return uniqueSize
 }
 
-// GetTorrentField returns field values for torrents matching either the current filters
-// or an explicit selection payload. Used for copy operations and tag baseline lookups.
 func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -365,7 +345,6 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	if len(req.Targets) > 0 || len(req.Hashes) > 0 {
 		targetsByInstance := explicitTargets(instanceID, req.Targets, req.Hashes)
 
-		// Bare hashes resolve across the scope here; BulkAction rejects them (#2530).
 		if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
 			seenTargets := make(map[int]map[string]struct{})
 			requestedHashes := buildExcludeHashSet(req.Hashes)
@@ -398,7 +377,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		requestedCount := 0
 		resolvedCount := 0
 		for _, targetInstanceID := range targetInstanceIDs {
-			torrents, fieldErr := h.syncManager.GetCachedInstanceTorrents(r.Context(), targetInstanceID)
+			torrents, fieldErr := h.syncManager.GetTorrentRefs(r.Context(), targetInstanceID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 			if fieldErr != nil {
 				if instanceID != allInstancesID {
 					if respondIfInstanceDisabled(w, fieldErr, targetInstanceID, "torrents:metadata") {
@@ -414,6 +393,9 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				return
 			}
 
+			slices.SortFunc(torrents, func(a, b *qbt.Torrent) int {
+				return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Hash, b.Hash))
+			})
 			requestedHashes := buildExcludeHashSet(targetsByInstance[targetInstanceID])
 			requestedCount += len(targetsByInstance[targetInstanceID])
 			for _, torrent := range torrents {
@@ -421,7 +403,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.Torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.ContentPath, torrent.Tags, torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -433,7 +415,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
+		RespondJSON(w, r, http.StatusOK, &qbittorrent.TorrentFieldResponse{
 			Values: values,
 			Total:  len(values),
 		})
@@ -457,7 +439,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, &qbittorrent.TorrentFieldResponse{
+	RespondJSON(w, r, http.StatusOK, &qbittorrent.TorrentFieldResponse{
 		Values: values,
 		Total:  len(values),
 	})
@@ -468,11 +450,10 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, contentPath, t
 	case "name":
 		return strings.TrimSpace(name)
 	case "hash":
-		return preferredHashValue(&qbt.Torrent{
-			Hash:       hash,
-			InfohashV1: infohashV1,
-			InfohashV2: infohashV2,
-		})
+		if preferred := preferredHash(hash, infohashV1, infohashV2); !preferred.IsZero() {
+			return preferred.Upper()
+		}
+		return ""
 	case "full_path":
 		return strings.TrimSpace(contentPath)
 	case "tags":
@@ -489,62 +470,52 @@ func shouldIncludeTorrentFieldValue(field, value string) bool {
 }
 
 func resolvedTorrentFieldHash(hash, infohashV1, infohashV2 string) string {
-	preferred := preferredHashValue(&qbt.Torrent{
-		Hash:       hash,
-		InfohashV1: infohashV1,
-		InfohashV2: infohashV2,
-	})
-	if preferred != "" {
-		return preferred
+	if preferred := preferredHash(hash, infohashV1, infohashV2); !preferred.IsZero() {
+		return preferred.Upper()
 	}
 	return strings.TrimSpace(hash)
 }
 
-func torrentFieldHashVariants(hash, infohashV1, infohashV2 string) []string {
-	candidates := []string{
-		hash,
-		infohashV1,
-		infohashV2,
-		resolvedTorrentFieldHash(hash, infohashV1, infohashV2),
+func preferredHash(hash, infohashV1, infohashV2 string) infohash.Hash {
+	hashes := torrentHashes(hash, infohashV1, infohashV2)
+	return cmp.Or(hashes[1], hashes[0], hashes[2])
+}
+
+func torrentHashes(hash, infohashV1, infohashV2 string) [3]infohash.Hash {
+	var hashes [3]infohash.Hash
+	for i, raw := range [3]string{hash, infohashV1, infohashV2} {
+		hashes[i], _ = infohash.Parse(raw)
 	}
-	seen := make(map[string]struct{}, len(candidates))
-	var variants []string
-	for _, candidate := range candidates {
-		normalized := normalizeHashValue(candidate)
-		if normalized == "" {
-			continue
-		}
-		if _, ok := seen[normalized]; ok {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		variants = append(variants, normalized)
-	}
-	return variants
+	return hashes
 }
 
 func hasTorrentFieldHash(hash, infohashV1, infohashV2 string) bool {
-	return normalizeHashValue(hash) != "" || normalizeHashValue(infohashV1) != "" || normalizeHashValue(infohashV2) != ""
+	return strings.TrimSpace(hash) != "" || strings.TrimSpace(infohashV1) != "" || strings.TrimSpace(infohashV2) != ""
 }
 
-func matchesRequestedHashSet(requestedHashes map[string]struct{}, hash, infohashV1, infohashV2 string) bool {
+func matchesRequestedHashSet(requestedHashes map[infohash.Hash]struct{}, hash, infohashV1, infohashV2 string) bool {
 	if len(requestedHashes) == 0 {
 		return false
 	}
-	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
-		if _, ok := requestedHashes[candidate]; ok {
+	for _, candidate := range torrentHashes(hash, infohashV1, infohashV2) {
+		if _, ok := requestedHashes[candidate]; ok && !candidate.IsZero() {
 			return true
 		}
 	}
 	return false
 }
 
-func matchesExcludedTargetSet(excludeTargets map[string]struct{}, instanceID int, hash, infohashV1, infohashV2 string) bool {
+type instanceHash struct {
+	instanceID int
+	hash       infohash.Hash
+}
+
+func matchesExcludedTargetSet(excludeTargets map[instanceHash]struct{}, instanceID int, hash, infohashV1, infohashV2 string) bool {
 	if len(excludeTargets) == 0 {
 		return false
 	}
-	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
-		if _, ok := excludeTargets[fmt.Sprintf("%d:%s", instanceID, candidate)]; ok {
+	for _, candidate := range torrentHashes(hash, infohashV1, infohashV2) {
+		if _, ok := excludeTargets[instanceHash{instanceID: instanceID, hash: candidate}]; ok && !candidate.IsZero() {
 			return true
 		}
 	}
@@ -561,7 +532,6 @@ func respondTorrentFieldSelectionError(w http.ResponseWriter, err error, field s
 	RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
 }
 
-// CheckDuplicates validates if any of the provided hashes already exist in qBittorrent.
 func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -579,7 +549,7 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 	}
 
 	if len(req.Hashes) == 0 {
-		RespondJSON(w, http.StatusOK, struct {
+		RespondJSON(w, r, http.StatusOK, struct {
 			Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
 		}{Duplicates: []qbittorrent.DuplicateTorrentMatch{}})
 		return
@@ -590,7 +560,8 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	syncManager, err := h.syncManager.GetSyncOwner(r.Context(), instanceID)
+	hashes := infohash.ParseAll(req.Hashes)
+	torrents, err := h.syncManager.GetTorrentRefs(r.Context(), instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:checkDuplicates") {
 			return
@@ -600,17 +571,11 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// The matches keep the order of the Sync snapshot.
-	var torrents []*qbt.Torrent
-	if snapshot := syncManager.Snapshot(); snapshot != nil {
-		wanted := make(map[string]struct{}, len(req.Hashes))
-		for _, hash := range req.Hashes {
-			wanted[hash] = struct{}{}
+	requested := make(map[infohash.Hash][]string, len(req.Hashes))
+	for i, hash := range hashes {
+		if !hash.IsZero() && !slices.Contains(requested[hash], req.Hashes[i]) {
+			requested[hash] = append(requested[hash], req.Hashes[i])
 		}
-		torrents = snapshot.Matching(func(t *qbt.Torrent) bool {
-			_, ok := wanted[t.Hash]
-			return ok
-		})
 	}
 
 	matches := make([]qbittorrent.DuplicateTorrentMatch, len(torrents))
@@ -620,51 +585,63 @@ func (h *TorrentsHandler) CheckDuplicates(w http.ResponseWriter, r *http.Request
 			InfohashV1:    strings.TrimSpace(torrent.InfohashV1),
 			InfohashV2:    strings.TrimSpace(torrent.InfohashV2),
 			Name:          torrent.Name,
-			MatchedHashes: []string{torrent.Hash},
+			MatchedHashes: matchedHashes(requested, torrent),
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, struct {
+	RespondJSON(w, r, http.StatusOK, struct {
 		Duplicates []qbittorrent.DuplicateTorrentMatch `json:"duplicates"`
 	}{Duplicates: matches})
 }
 
-// AddTorrent adds a new torrent
+func matchedHashes(requested map[infohash.Hash][]string, torrent *qbt.Torrent) []string {
+	var matched []string
+	hashes := torrentHashes(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2)
+	for i, hash := range hashes {
+		switch {
+		case slices.Contains(hashes[:i], hash):
+		case matched == nil:
+			matched = requested[hash]
+		default:
+			matched = append(slices.Clip(matched), requested[hash]...)
+		}
+	}
+	return matched
+}
+
 func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
-	// Set a reasonable timeout for the entire operation
-	// With multiple files, we allow 60 seconds total (not per file)
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Parse multipart form
 	err = r.ParseMultipartForm(addTorrentMaxFormMemory)
 	if err != nil {
 		if errors.Is(err, multipart.ErrMessageTooLarge) {
-			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload exceeded %d MB limit", addTorrentMaxFormMemory>>20))
+			RespondError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload too large: send at most %d files and fields per request", addTorrentMaxFormParts))
 			return
 		}
 		RespondError(w, http.StatusBadRequest, "Failed to parse form data")
 		return
 	}
 
-	var torrentFiles [][]byte
+	type uploadedTorrent struct {
+		filename string
+		content  []byte
+	}
+	var torrentFiles []uploadedTorrent
 	var urls []string
 
-	// Track file processing failures for response
 	type fileReadFailure struct {
 		filename string
 		err      string
 	}
 	var fileReadFailures []fileReadFailure
 
-	// Check for torrent files (multiple files supported)
 	if r.MultipartForm != nil && r.MultipartForm.File != nil {
 		fileHeaders := r.MultipartForm.File["torrent"]
 		if len(fileHeaders) > 0 {
@@ -683,17 +660,15 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					fileReadFailures = append(fileReadFailures, fileReadFailure{filename: fileHeader.Filename, err: "Failed to read file"})
 					continue
 				}
-				torrentFiles = append(torrentFiles, fileContent)
+				torrentFiles = append(torrentFiles, uploadedTorrent{filename: fileHeader.Filename, content: fileContent})
 			}
 		}
 	}
 
-	// Check for URLs/magnet links if no files
 	var indexerID int
 	if len(torrentFiles) == 0 {
 		urlsParam := r.FormValue("urls")
 		if urlsParam != "" {
-			// Support both comma and newline separated URLs
 			urlsParam = strings.ReplaceAll(urlsParam, "\n", ",")
 			urls = strings.Split(urlsParam, ",")
 		} else {
@@ -701,7 +676,6 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Parse indexer_id if provided (for downloading torrent from indexer)
 		if indexerIDStr := r.FormValue("indexer_id"); indexerIDStr != "" {
 			var err error
 			indexerID, err = strconv.Atoi(indexerIDStr)
@@ -718,7 +692,6 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Parse options from form
 	options := make(map[string]string)
 
 	if category := r.FormValue("category"); category != "" {
@@ -729,7 +702,6 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["tags"] = tags
 	}
 
-	// Always send the choice: qBittorrent 4.x reads paused, 5.x reads stopped.
 	if pausedStr := r.FormValue("paused"); pausedStr != "" {
 		paused := strconv.FormatBool(pausedStr == "true")
 		options["paused"] = paused
@@ -749,14 +721,12 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if upLimit := r.FormValue("upLimit"); upLimit != "" {
-		// Convert from KB/s to bytes/s (qBittorrent API expects bytes/s)
 		if upLimitInt, err := strconv.ParseInt(upLimit, 10, 64); err == nil && upLimitInt > 0 {
 			options["upLimit"] = strconv.FormatInt(upLimitInt*1024, 10)
 		}
 	}
 
 	if dlLimit := r.FormValue("dlLimit"); dlLimit != "" {
-		// Convert from KB/s to bytes/s (qBittorrent API expects bytes/s)
 		if dlLimitInt, err := strconv.ParseInt(dlLimit, 10, 64); err == nil && dlLimitInt > 0 {
 			options["dlLimit"] = strconv.FormatInt(dlLimitInt*1024, 10)
 		}
@@ -780,12 +750,9 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	if savePath := r.FormValue("savepath"); savePath != "" {
 		options["savepath"] = savePath
-		// When savepath is provided, disable autoTMM
 		options["autoTMM"] = "false"
 	}
 
-	// useDownloadPath and downloadPath are not officially documented by the qBittorrent API, but are defined here:
-	// https://github.com/qbittorrent/qBittorrent/blob/f68bc3fef9a64e2fa81225c4661b713a10017dee/src/webui/api/torrentscontroller.cpp#L1019-L1020
 	if useDownloadPath := r.FormValue("useDownloadPath"); useDownloadPath != "" {
 		options["useDownloadPath"] = useDownloadPath
 	}
@@ -794,10 +761,8 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		options["downloadPath"] = downloadPath
 	}
 
-	// Handle autoTMM explicitly if provided
 	if autoTMM := r.FormValue("autoTMM"); autoTMM != "" {
 		options["autoTMM"] = autoTMM
-		// If autoTMM is true, remove savepath to let qBittorrent handle it
 		if autoTMM == "true" {
 			delete(options, "savepath")
 			delete(options, "useDownloadPath")
@@ -805,7 +770,6 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Track results for multiple files/URLs
 	var addedCount int
 	var failedCount int
 	var lastError error
@@ -820,37 +784,30 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	}
 	var failedFiles []failedFile
 
-	// Add torrent(s)
 	if len(torrentFiles) > 0 {
-		// Add from files
-		for i, fileContent := range torrentFiles {
-			// Check if context is already cancelled (timeout or client disconnect)
+		for i, torrentFile := range torrentFiles {
 			if ctx.Err() != nil {
 				log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
 				break
 			}
 
-			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options); err != nil {
+			if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, torrentFile.content, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
 				log.Debug().Err(err).Int("instanceID", instanceID).Int("fileIndex", i).Msg("Failed to add torrent file")
-				failedFiles = append(failedFiles, failedFile{Filename: fmt.Sprintf("file_%d", i), Error: err.Error()})
+				failedFiles = append(failedFiles, failedFile{Filename: torrentFile.filename, Error: err.Error()})
 				failedCount++
 				lastError = err
 			} else {
 				addedCount++
 			}
 		}
-		// Include file read failures in the count and response
 		for _, f := range fileReadFailures {
 			failedFiles = append(failedFiles, failedFile{Filename: f.filename, Error: f.err})
 			failedCount++
 		}
 	} else if len(urls) > 0 {
-		// Add from URLs
-		// If indexer_id is provided, download torrent files from the indexer first
-		// (needed for remote qBittorrent instances that can't reach the indexer)
 		if indexerID > 0 {
 			if h.torrentDownloader == nil {
 				log.Error().Int("indexerID", indexerID).Int("instanceID", instanceID).
@@ -867,13 +824,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				// Check if context is already cancelled
 				if ctx.Err() != nil {
 					log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
 					break
 				}
 
-				// Magnet links can be added directly to qBittorrent
 				if strings.HasPrefix(strings.ToLower(url), "magnet:") {
 					resp, err := h.torrentAdder.AddTorrentFromURLs(ctx, instanceID, []string{url}, options)
 					if err != nil {
@@ -901,7 +856,6 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				// Download torrent file from indexer
 				torrentBytes, err := h.torrentDownloader.DownloadTorrent(ctx, jackett.TorrentDownloadRequest{
 					IndexerID:   indexerID,
 					DownloadURL: url,
@@ -942,7 +896,6 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				// Add torrent from downloaded file content
 				if _, err := h.torrentAdder.AddTorrent(ctx, instanceID, torrentBytes, options); err != nil {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 						return
@@ -960,8 +913,6 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					Msg("Skipped empty URLs in add torrent request")
 			}
 		} else {
-			// No indexer_id - use URL method directly
-			// (works for local qBittorrent instances or magnet links)
 			var skippedEmpty int
 			for _, url := range urls {
 				url = strings.TrimSpace(url)
@@ -1015,17 +966,13 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 			Msg("Failed to add torrents")
 	}
 
-	// Check if any torrents failed
 	if failedCount > 0 && addedCount == 0 {
-		// All failed
 		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to add all torrents: %v", lastError))
 		return
 	}
 
-	// Data will be fresh on next request from sync manager
 	log.Debug().Int("instanceID", instanceID).Msg("Torrent added - next request will get fresh data from sync manager")
 
-	// Build response message
 	var message string
 	if failedCount > 0 {
 		message = fmt.Sprintf("Added %d torrent(s), %d failed", addedCount, failedCount)
@@ -1046,7 +993,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	if len(failedFiles) > 0 {
 		response["failedFiles"] = failedFiles
 	}
-	RespondJSON(w, http.StatusCreated, response)
+	RespondJSON(w, r, http.StatusCreated, response)
 }
 
 func torrentURLAddFailureError(resp *qbt.TorrentAddResponse) error {
@@ -1056,33 +1003,32 @@ func torrentURLAddFailureError(resp *qbt.TorrentAddResponse) error {
 	return errors.New("qBittorrent rejected torrent URL")
 }
 
-// BulkActionRequest represents a bulk action request
 type BulkActionRequest struct {
 	Hashes                   []string                   `json:"hashes"`
-	Targets                  []BulkActionTarget         `json:"targets,omitempty"` // Optional explicit instance/hash targets (used by unified view)
+	Targets                  []BulkActionTarget         `json:"targets,omitempty"`
 	Action                   string                     `json:"action"`
-	DeleteFiles              bool                       `json:"deleteFiles,omitempty"`              // For delete action
-	Tags                     string                     `json:"tags,omitempty"`                     // For tag operations (comma-separated)
-	Comment                  string                     `json:"comment,omitempty"`                  // For setComment action
-	Category                 string                     `json:"category,omitempty"`                 // For category operations
-	Enable                   bool                       `json:"enable,omitempty"`                   // For toggleAutoTMM action
-	SelectAll                bool                       `json:"selectAll,omitempty"`                // When true, apply to all torrents matching filters
-	InstanceIDs              []int                      `json:"instanceIds,omitempty"`              // Optional unified instance scope
-	Filters                  *qbittorrent.FilterOptions `json:"filters,omitempty"`                  // Filters to apply when selectAll is true
-	Search                   string                     `json:"search,omitempty"`                   // Search query when selectAll is true
-	ExcludeHashes            []string                   `json:"excludeHashes,omitempty"`            // Hashes to exclude when selectAll is true
-	ExcludeTargets           []BulkActionTarget         `json:"excludeTargets,omitempty"`           // Optional explicit targets to exclude when selectAll is true
-	RatioLimit               float64                    `json:"ratioLimit,omitempty"`               // For setShareLimit action
-	SeedingTimeLimit         int64                      `json:"seedingTimeLimit,omitempty"`         // For setShareLimit action
-	InactiveSeedingTimeLimit int64                      `json:"inactiveSeedingTimeLimit,omitempty"` // For setShareLimit action
-	ShareLimitAction         string                     `json:"shareLimitAction,omitempty"`         // For setShareLimit action (qBittorrent 5.2+)
-	ShareLimitsMode          string                     `json:"shareLimitsMode,omitempty"`          // MatchAny/MatchAll; Web API 2.16.0+ (ignored below that; see supportsShareLimitsMode)
-	UploadLimit              int64                      `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
-	DownloadLimit            int64                      `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
-	Location                 string                     `json:"location,omitempty"`                 // For setLocation action
-	TrackerOldURL            string                     `json:"trackerOldURL,omitempty"`            // For editTrackers action
-	TrackerNewURL            string                     `json:"trackerNewURL,omitempty"`            // For editTrackers action
-	TrackerURLs              string                     `json:"trackerURLs,omitempty"`              // For addTrackers/removeTrackers actions
+	DeleteFiles              bool                       `json:"deleteFiles,omitempty"`
+	Tags                     string                     `json:"tags,omitempty"`
+	Comment                  string                     `json:"comment,omitempty"`
+	Category                 string                     `json:"category,omitempty"`
+	Enable                   bool                       `json:"enable,omitempty"`
+	SelectAll                bool                       `json:"selectAll,omitempty"`
+	InstanceIDs              []int                      `json:"instanceIds,omitempty"`
+	Filters                  *qbittorrent.FilterOptions `json:"filters,omitempty"`
+	Search                   string                     `json:"search,omitempty"`
+	ExcludeHashes            []string                   `json:"excludeHashes,omitempty"`
+	ExcludeTargets           []BulkActionTarget         `json:"excludeTargets,omitempty"`
+	RatioLimit               float64                    `json:"ratioLimit,omitempty"`
+	SeedingTimeLimit         int64                      `json:"seedingTimeLimit,omitempty"`
+	InactiveSeedingTimeLimit int64                      `json:"inactiveSeedingTimeLimit,omitempty"`
+	ShareLimitAction         string                     `json:"shareLimitAction,omitempty"`
+	ShareLimitsMode          string                     `json:"shareLimitsMode,omitempty"`
+	UploadLimit              int64                      `json:"uploadLimit,omitempty"`
+	DownloadLimit            int64                      `json:"downloadLimit,omitempty"`
+	Location                 string                     `json:"location,omitempty"`
+	TrackerOldURL            string                     `json:"trackerOldURL,omitempty"`
+	TrackerNewURL            string                     `json:"trackerNewURL,omitempty"`
+	TrackerURLs              string                     `json:"trackerURLs,omitempty"`
 }
 
 type BulkActionTarget struct {
@@ -1092,16 +1038,16 @@ type BulkActionTarget struct {
 
 const allInstancesID = 0
 
-func normalizeHashValue(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
-}
-
 func addBulkTarget(targetsByInstance map[int][]string, seen map[int]map[string]struct{}, instanceID int, hash string) {
 	if instanceID <= 0 {
 		return
 	}
 
-	normalized := normalizeHashValue(hash)
+	hash = strings.TrimSpace(hash)
+	normalized := hash
+	if id, err := infohash.Parse(hash); err == nil {
+		normalized = id.String()
+	}
 	if normalized == "" {
 		return
 	}
@@ -1115,18 +1061,11 @@ func addBulkTarget(targetsByInstance map[int][]string, seen map[int]map[string]s
 	}
 
 	seen[instanceID][normalized] = struct{}{}
-	targetsByInstance[instanceID] = append(targetsByInstance[instanceID], strings.TrimSpace(hash))
+	targetsByInstance[instanceID] = append(targetsByInstance[instanceID], hash)
 }
 
-// errPartialResults reports a select-all read that could not reach every scoped
-// instance. A truncated value list or a half-applied action behind a 200 reads
-// as complete, so each handler maps it to a 503 (ADR 0009).
 var errPartialResults = errors.New("selection read returned partial results")
 
-// explicitTargets turns a request's targets and hashes into hashes per instance.
-// A target with no instance ID takes the scope instance. Bare hashes are dropped
-// in the unified scope: BulkAction rejects them before this runs (#2530) and
-// GetTorrentField resolves them across the scope itself.
 func explicitTargets(scope int, targets []BulkActionTarget, hashes []string) map[int][]string {
 	targetsByInstance := make(map[int][]string)
 	seenTargets := make(map[int]map[string]struct{})
@@ -1154,20 +1093,17 @@ func explicitTargets(scope int, targets []BulkActionTarget, hashes []string) map
 	return targetsByInstance
 }
 
-// selectAllTorrents reads every torrent the scope, search, and filters select,
-// drops the excluded ones, and drops the ones with no hash, which nothing can
-// address. It returns errPartialResults when a scoped instance could not be read.
-// With cacheOnly, the read starts no sync.
 func (h *TorrentsHandler) selectAllTorrents(r *http.Request, cacheOnly bool, scope int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int, excludeHashes []string, excludeTargets []BulkActionTarget) ([]qbittorrent.CrossInstanceTorrentView, error) {
 	ctx := r.Context()
 	view := qbittorrent.TorrentListView{
-		InstanceID:        scope,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		CacheOnly:         cacheOnly,
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		InstanceID:         scope,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		CacheOnly:          cacheOnly,
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	}
 	var torrents []qbittorrent.CrossInstanceTorrentView
 	if scope == allInstancesID {
@@ -1203,23 +1139,20 @@ func (h *TorrentsHandler) selectAllTorrents(r *http.Request, cacheOnly bool, sco
 	}), nil
 }
 
-// selectionExcluded matches an exclude against the hash, infohash v1, and
-// infohash v2, so an exclude by any of a hybrid torrent's hashes holds.
-func selectionExcluded(excludeHashes, excludeTargets map[string]struct{}, torrent qbittorrent.CrossInstanceTorrentView) bool {
+func selectionExcluded(excludeHashes map[infohash.Hash]struct{}, excludeTargets map[instanceHash]struct{}, torrent qbittorrent.CrossInstanceTorrentView) bool {
 	return matchesRequestedHashSet(excludeHashes, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) ||
 		matchesExcludedTargetSet(excludeTargets, torrent.InstanceID, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2)
 }
 
-func buildExcludeHashSet(excludeHashes []string) map[string]struct{} {
+func buildExcludeHashSet(excludeHashes []string) map[infohash.Hash]struct{} {
 	if len(excludeHashes) == 0 {
 		return nil
 	}
 
-	result := make(map[string]struct{}, len(excludeHashes))
-	for _, hash := range excludeHashes {
-		normalized := normalizeHashValue(hash)
-		if normalized != "" {
-			result[normalized] = struct{}{}
+	result := make(map[infohash.Hash]struct{}, len(excludeHashes))
+	for _, hash := range infohash.ParseAll(excludeHashes) {
+		if !hash.IsZero() {
+			result[hash] = struct{}{}
 		}
 	}
 
@@ -1230,18 +1163,18 @@ func buildExcludeHashSet(excludeHashes []string) map[string]struct{} {
 	return result
 }
 
-func buildExcludeTargetSet(excludeTargets []BulkActionTarget) map[string]struct{} {
+func buildExcludeTargetSet(excludeTargets []BulkActionTarget) map[instanceHash]struct{} {
 	if len(excludeTargets) == 0 {
 		return nil
 	}
 
-	result := make(map[string]struct{}, len(excludeTargets))
+	result := make(map[instanceHash]struct{}, len(excludeTargets))
 	for _, target := range excludeTargets {
-		normalized := normalizeHashValue(target.Hash)
-		if target.InstanceID <= 0 || normalized == "" {
+		hash, err := infohash.Parse(target.Hash)
+		if target.InstanceID <= 0 || err != nil {
 			continue
 		}
-		result[fmt.Sprintf("%d:%s", target.InstanceID, normalized)] = struct{}{}
+		result[instanceHash{instanceID: target.InstanceID, hash: hash}] = struct{}{}
 	}
 
 	if len(result) == 0 {
@@ -1302,8 +1235,8 @@ func appendTargetsFromCrossInstanceTorrents(
 	targetsByInstance map[int][]string,
 	seen map[int]map[string]struct{},
 	torrents []qbittorrent.CrossInstanceTorrentView,
-	excludeHashes map[string]struct{},
-	excludeTargets map[string]struct{},
+	excludeHashes map[infohash.Hash]struct{},
+	excludeTargets map[instanceHash]struct{},
 ) {
 	for _, torrent := range torrents {
 		if selectionExcluded(excludeHashes, excludeTargets, torrent) {
@@ -1313,27 +1246,7 @@ func appendTargetsFromCrossInstanceTorrents(
 	}
 }
 
-func preferredHashValue(torrent *qbt.Torrent) string {
-	infoHashV1 := strings.TrimSpace(torrent.InfohashV1)
-	if infoHashV1 != "" {
-		return strings.ToUpper(infoHashV1)
-	}
-
-	hash := strings.TrimSpace(torrent.Hash)
-	infoHashV2 := strings.TrimSpace(torrent.InfohashV2)
-	if hash != "" && (infoHashV2 == "" || !strings.EqualFold(infoHashV2, hash)) {
-		return strings.ToUpper(hash)
-	}
-	if infoHashV2 != "" {
-		return strings.ToUpper(infoHashV2)
-	}
-
-	return ""
-}
-
-// BulkAction performs bulk operations on torrents
 func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -1428,14 +1341,11 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		Int("targetCount", len(flattenTargetHashes(targetsByInstance))).
 		Msg("Bulk action completed with optimistic cache update")
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Bulk action completed successfully",
 	})
 }
 
-// torrentSelectionError returns the response message for a request that does
-// not name its torrents with explicit hashes or targets, or with selectAll, or
-// that names them both ways. It returns "" for a valid selection.
 func torrentSelectionError(instanceID int, req BulkActionRequest) string {
 	if !req.SelectAll && len(req.Hashes) == 0 && len(req.Targets) == 0 {
 		return "No torrents selected"
@@ -1443,15 +1353,12 @@ func torrentSelectionError(instanceID int, req BulkActionRequest) string {
 	if req.SelectAll && (len(req.Hashes) > 0 || len(req.Targets) > 0) {
 		return "Cannot specify hashes/targets together with selectAll"
 	}
-	// A hash names a torrent, not an instance. In the unified scope only targets can.
 	if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
 		return "targets is required when addressing torrents by hash in the unified scope"
 	}
 	return ""
 }
 
-// resolveTorrentSelection returns the hashes of the selected torrents per
-// instance. When it returns false, it has written the error response.
 func (h *TorrentsHandler) resolveTorrentSelection(w http.ResponseWriter, r *http.Request, instanceID int, req BulkActionRequest) (map[int][]string, bool) {
 	var targetsByInstance map[int][]string
 	if req.SelectAll {
@@ -1475,7 +1382,6 @@ func (h *TorrentsHandler) resolveTorrentSelection(w http.ResponseWriter, r *http
 			return nil, false
 		}
 
-		// selectAllTorrents already dropped the excluded torrents.
 		appendTargetsFromCrossInstanceTorrents(targetsByInstance, make(map[int]map[string]struct{}), torrents, nil, nil)
 
 		log.Debug().
@@ -1497,9 +1403,6 @@ func (h *TorrentsHandler) resolveTorrentSelection(w http.ResponseWriter, r *http
 	return targetsByInstance, true
 }
 
-// GetDeleteCrossSeeds returns the torrents that a delete of the selected
-// torrents with their files affects. It takes the selection of a bulk action,
-// so a select-all delete checks every selected torrent in one request.
 func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -1530,7 +1433,6 @@ func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Req
 
 	response, findErr := h.deleteMatches.FindDeleteMatches(r.Context(), targetsByInstance)
 	if findErr != nil {
-		// The dialog closed and the browser cancelled the request.
 		if r.Context().Err() != nil {
 			return
 		}
@@ -1540,7 +1442,7 @@ func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Req
 	}
 
 	hideMatchPasskeys(r, response.Matches)
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func flattenTargetHashes(targetsByInstance map[int][]string) []string {
@@ -1597,7 +1499,6 @@ func (h *TorrentsHandler) executeBulkActionForInstance(ctx context.Context, inst
 		}
 		return h.syncManager.RemoveTags(ctx, instanceID, hashes, req.Tags)
 	case "setTags":
-		// allow empty tags to clear all tags from torrents
 		return h.syncManager.SetTags(ctx, instanceID, hashes, req.Tags)
 	case "setComment":
 		return h.syncManager.SetComment(ctx, instanceID, hashes, req.Comment)
@@ -1641,16 +1542,13 @@ func (h *TorrentsHandler) executeBulkActionForInstance(ctx context.Context, inst
 	}
 }
 
-// GetCategories returns all categories
 func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Get categories
 	categories, err := h.syncManager.GetCategories(r.Context(), instanceID)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getCategories") {
@@ -1661,12 +1559,10 @@ func (h *TorrentsHandler) GetCategories(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, categories)
+	RespondJSON(w, r, http.StatusOK, categories)
 }
 
-// CreateCategory creates a new category
 func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -1696,14 +1592,12 @@ func (h *TorrentsHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]string{
+	RespondJSON(w, r, http.StatusCreated, map[string]string{
 		"message": "Category created successfully",
 	})
 }
 
-// EditCategory edits an existing category
 func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -1733,14 +1627,12 @@ func (h *TorrentsHandler) EditCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Category updated successfully",
 	})
 }
 
-// RemoveCategories removes categories
 func (h *TorrentsHandler) RemoveCategories(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -1769,21 +1661,18 @@ func (h *TorrentsHandler) RemoveCategories(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Categories removed successfully",
 	})
 }
 
-// GetTags returns all tags
 func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Get tags
 	tags, err := h.syncManager.GetTags(r.Context(), instanceID)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getTags") {
@@ -1794,19 +1683,16 @@ func (h *TorrentsHandler) GetTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, tags)
+	RespondJSON(w, r, http.StatusOK, tags)
 }
 
-// GetActiveTrackers returns all active tracker domains with their URLs
 func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Get active trackers
 	trackers, err := h.syncManager.GetActiveTrackers(r.Context(), instanceID)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getActiveTrackers") {
@@ -1822,12 +1708,10 @@ func (h *TorrentsHandler) GetActiveTrackers(w http.ResponseWriter, r *http.Reque
 			trackers[domain] = qbittorrent.TrackerOrigin(trackerURL)
 		}
 	}
-	RespondJSON(w, http.StatusOK, trackers)
+	RespondJSON(w, r, http.StatusOK, trackers)
 }
 
-// CreateTags creates new tags
 func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -1856,14 +1740,12 @@ func (h *TorrentsHandler) CreateTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, map[string]string{
+	RespondJSON(w, r, http.StatusCreated, map[string]string{
 		"message": "Tags created successfully",
 	})
 }
 
-// DeleteTags deletes tags
 func (h *TorrentsHandler) DeleteTags(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -1892,14 +1774,12 @@ func (h *TorrentsHandler) DeleteTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{
+	RespondJSON(w, r, http.StatusOK, map[string]string{
 		"message": "Tags deleted successfully",
 	})
 }
 
-// GetTorrentProperties returns detailed properties for a specific torrent
 func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -1912,7 +1792,6 @@ func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Get properties
 	properties, err := h.syncManager.GetTorrentProperties(r.Context(), instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getProperties") {
@@ -1923,12 +1802,10 @@ func (h *TorrentsHandler) GetTorrentProperties(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, properties)
+	RespondJSON(w, r, http.StatusOK, properties)
 }
 
-// GetTorrentTrackers returns trackers for a specific torrent
 func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -1941,7 +1818,6 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Get trackers
 	trackers, err := h.syncManager.GetTorrentTrackers(r.Context(), instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getTrackers") {
@@ -1955,10 +1831,9 @@ func (h *TorrentsHandler) GetTorrentTrackers(w http.ResponseWriter, r *http.Requ
 	if !middleware.CanReadTrackerPasskeys(r) {
 		trackers = qbittorrent.TrackersWithoutPasskeys(trackers)
 	}
-	RespondJSON(w, http.StatusOK, trackers)
+	RespondJSON(w, r, http.StatusOK, trackers)
 }
 
-// GetTorrentWebSeeds returns the web seeds (HTTP sources) for a torrent
 func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -1982,13 +1857,14 @@ func (h *TorrentsHandler) GetTorrentWebSeeds(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, webseeds)
+	if !middleware.CanReadTrackerPasskeys(r) {
+		for i := range webseeds {
+			webseeds[i].URL = qbittorrent.TrackerOrigin(webseeds[i].URL)
+		}
+	}
+	RespondJSON(w, r, http.StatusOK, webseeds)
 }
 
-// GetTorrentPieceStates returns the download state of each piece for a torrent.
-// States: 0 = not downloaded, 1 = downloading, 2 = downloaded
-//
-//nolint:dupl // Handler pattern is intentionally similar to other torrent detail handlers
 func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2012,18 +1888,15 @@ func (h *TorrentsHandler) GetTorrentPieceStates(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, pieceStates)
+	RespondJSON(w, r, http.StatusOK, pieceStates)
 }
 
-// EditTrackerRequest represents a tracker edit request
 type EditTrackerRequest struct {
 	OldURL string `json:"oldURL"`
 	NewURL string `json:"newURL"`
 }
 
-// EditTorrentTracker edits a tracker URL for a specific torrent
 func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -2047,7 +1920,6 @@ func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Edit tracker
 	err = h.syncManager.EditTorrentTracker(r.Context(), instanceID, hash, req.OldURL, req.NewURL)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:editTracker") {
@@ -2058,17 +1930,14 @@ func (h *TorrentsHandler) EditTorrentTracker(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
-// AddTrackerRequest represents a tracker add request
 type AddTrackerRequest struct {
-	URLs string `json:"urls"` // Newline-separated URLs
+	URLs string `json:"urls"`
 }
 
-// AddTorrentTrackers adds trackers to a specific torrent
 func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -2092,7 +1961,6 @@ func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Add trackers
 	err = h.syncManager.AddTorrentTrackers(r.Context(), instanceID, hash, req.URLs)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:addTrackers") {
@@ -2103,17 +1971,14 @@ func (h *TorrentsHandler) AddTorrentTrackers(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
-// RemoveTrackerRequest represents a tracker remove request
 type RemoveTrackerRequest struct {
-	URLs string `json:"urls"` // Newline-separated URLs
+	URLs string `json:"urls"`
 }
 
-// RemoveTorrentTrackers removes trackers from a specific torrent
 func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -2137,7 +2002,6 @@ func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Remove trackers
 	err = h.syncManager.RemoveTorrentTrackers(r.Context(), instanceID, hash, req.URLs)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:removeTrackers") {
@@ -2148,10 +2012,9 @@ func (h *TorrentsHandler) RemoveTorrentTrackers(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "success"})
 }
 
-// RenameTorrent updates the display name for a torrent
 func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2192,10 +2055,9 @@ func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent renamed successfully"})
 }
 
-// RenameTorrentFile renames a file within a torrent
 func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2237,10 +2099,9 @@ func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent file renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent file renamed successfully"})
 }
 
-// RenameTorrentFolder renames a folder within a torrent
 func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2282,12 +2143,10 @@ func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent folder renamed successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent folder renamed successfully"})
 }
 
-// GetTorrentFiles returns files information for a specific torrent
 func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -2300,7 +2159,6 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get peers (backend handles incremental updates internally)
 	peers, err := h.syncManager.GetTorrentPeers(r.Context(), instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getPeers") {
@@ -2311,7 +2169,6 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Create sorted peers array
 	sortedPeers := make([]SortedPeer, 0, len(peers.Peers))
 	for key, peer := range peers.Peers {
 		sortedPeers = append(sortedPeers, SortedPeer{
@@ -2320,53 +2177,44 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	// Sort peers: seeders first (progress = 1.0), then by download speed, then upload speed
 	sort.Slice(sortedPeers, func(i, j int) bool {
-		// Seeders (100% progress) always come first
 		iIsSeeder := sortedPeers[i].Progress == 1.0
 		jIsSeeder := sortedPeers[j].Progress == 1.0
 
 		if iIsSeeder != jIsSeeder {
-			return iIsSeeder // Seeders first
+			return iIsSeeder
 		}
 
-		// Then sort by progress (higher progress first)
 		if sortedPeers[i].Progress != sortedPeers[j].Progress {
 			return sortedPeers[i].Progress > sortedPeers[j].Progress
 		}
 
-		// Then by download speed (active downloading peers)
 		if sortedPeers[i].DownSpeed != sortedPeers[j].DownSpeed {
 			return sortedPeers[i].DownSpeed > sortedPeers[j].DownSpeed
 		}
 
-		// Then by upload speed
 		if sortedPeers[i].UpSpeed != sortedPeers[j].UpSpeed {
 			return sortedPeers[i].UpSpeed > sortedPeers[j].UpSpeed
 		}
 
-		// Finally by canonical peer address for stable sorting.
 		return sortedPeers[i].Key < sortedPeers[j].Key
 	})
 
-	// Create response with sorted peers
 	response := &SortedPeersResponse{
 		TorrentPeersResponse: peers,
 		SortedPeers:          sortedPeers,
 	}
 
-	// Debug logging
 	log.Trace().
 		Int("instanceID", instanceID).
 		Str("hash", hash).
 		Int("peerCount", len(sortedPeers)).
 		Msg("Torrent peers response with sorted peers")
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID and hash from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
@@ -2379,7 +2227,6 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Optional cache bypass for callers that need the freshest file list (e.g., rename dialogs)
 	refreshParam := strings.TrimSpace(r.URL.Query().Get("refresh"))
 	forceRefresh := refreshParam != "" && refreshParam != "0" && !strings.EqualFold(refreshParam, "false")
 	ctx := r.Context()
@@ -2387,7 +2234,6 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		ctx = qbittorrent.WithForceFilesRefresh(ctx)
 	}
 
-	// Get files
 	files, err := h.syncManager.GetTorrentFiles(ctx, instanceID, hash)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:getFiles") {
@@ -2403,16 +2249,14 @@ func (h *TorrentsHandler) GetTorrentFiles(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, files)
+	RespondJSON(w, r, http.StatusOK, files)
 }
 
-// SetTorrentFilePriorityRequest represents a request to update torrent file priorities.
 type SetTorrentFilePriorityRequest struct {
 	Indices  []int `json:"indices"`
 	Priority int   `json:"priority"`
 }
 
-// SetTorrentFilePriority updates the download priority for one or more files in a torrent.
 func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2461,7 +2305,6 @@ func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ExportTorrent streams the .torrent file for a specific torrent
 func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2507,16 +2350,13 @@ func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// AddPeers adds peers to torrents
 func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Parse request body
 	var req struct {
 		Hashes []string `json:"hashes"`
 		Peers  []string `json:"peers"`
@@ -2532,7 +2372,6 @@ func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add peers
 	err = h.syncManager.AddPeersToTorrents(r.Context(), instanceID, req.Hashes, req.Peers)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:addPeers") {
@@ -2543,19 +2382,16 @@ func (h *TorrentsHandler) AddPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"success": true})
 }
 
-// BanPeers bans peers permanently
 func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
-	// Get instance ID from URL
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
 		return
 	}
 
-	// Parse request body
 	var req struct {
 		Peers []string `json:"peers"`
 	}
@@ -2570,7 +2406,6 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ban peers
 	err = h.syncManager.BanPeers(r.Context(), instanceID, req.Peers)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:banPeers") {
@@ -2581,10 +2416,9 @@ func (h *TorrentsHandler) BanPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]bool{"success": true})
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"success": true})
 }
 
-// CreateTorrent creates a new torrent file from source path
 func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2625,10 +2459,9 @@ func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, resp)
+	RespondJSON(w, r, http.StatusCreated, resp)
 }
 
-// GetTorrentCreationStatus gets status of torrent creation tasks
 func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2659,13 +2492,12 @@ func (h *TorrentsHandler) GetTorrentCreationStatus(w http.ResponseWriter, r *htt
 	if !middleware.CanReadTrackerPasskeys(r) {
 		for i := range tasks {
 			qbittorrent.HideTrackerURLs(tasks[i].Trackers)
+			qbittorrent.HideTrackerURLs(tasks[i].URLSeeds)
 		}
 	}
-	RespondJSON(w, http.StatusOK, tasks)
+	RespondJSON(w, r, http.StatusOK, tasks)
 }
 
-// GetActiveTaskCount returns the number of active torrent creation tasks
-// This is a lightweight endpoint optimized for polling the badge count
 func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2674,10 +2506,9 @@ func (h *TorrentsHandler) GetActiveTaskCount(w http.ResponseWriter, r *http.Requ
 	}
 
 	count := h.syncManager.GetActiveTaskCount(r.Context(), instanceID)
-	RespondJSON(w, http.StatusOK, map[string]int{"count": count})
+	RespondJSON(w, r, http.StatusOK, map[string]int{"count": count})
 }
 
-// DownloadTorrentCreationFile downloads the torrent file for a completed task
 func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2729,7 +2560,6 @@ func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *
 	}
 }
 
-// DeleteTorrentCreationTask deletes a torrent creation task
 func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -2761,13 +2591,11 @@ func (h *TorrentsHandler) DeleteTorrentCreationTask(w http.ResponseWriter, r *ht
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"message": "Torrent creation task deleted successfully"})
 }
 
-// ListCrossInstanceTorrents returns torrents from all instances matching the filter expression
 func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *http.Request) {
-	// Parse query parameters
-	limit := 300 // Default pagination size
+	limit := 300
 	page := 0
 	sort := "added_on"
 	order := "desc"
@@ -2803,7 +2631,6 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
-	// Parse filters
 	var filters qbittorrent.FilterOptions
 	if f := r.URL.Query().Get("filters"); f != "" {
 		if err := json.Unmarshal([]byte(f), &filters); err != nil {
@@ -2811,8 +2638,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		}
 	}
 
-	// Debug logging with truncated expression to prevent log bloat
-	logEvent := log.Debug().
+	logEvent := log.Trace().
 		Str("sort", sort).
 		Str("order", order).
 		Int("page", page).
@@ -2822,7 +2648,6 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		logEvent = logEvent.Ints("instanceIDs", instanceIDs)
 	}
 
-	// Log filters but truncate long expressions
 	if filters.Expr != "" {
 		logEvent = logEvent.Str("expr", truncateExpr(filters.Expr, 150))
 	}
@@ -2838,26 +2663,23 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 
 	logEvent.Msg("Cross-instance torrent list request parameters")
 
-	// Calculate offset from page
 	offset := page * limit
 
-	// A poll stands in for the stream, so it starts background syncs. The
-	// stream itself reads the same view with CacheOnly.
 	response, err := h.syncManager.ListTorrents(r.Context(), qbittorrent.TorrentListView{
-		Unified:           true,
-		InstanceIDs:       instanceIDs,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		SidebarCounts:     true,
-		CopyGroups:        groupCopiesParam(r),
-		FullPasskeyAccess: middleware.CanReadTrackerPasskeys(r),
+		Unified:            true,
+		InstanceIDs:        instanceIDs,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		SidebarCounts:      true,
+		CopyGroups:         groupCopiesParam(r),
+		FullPasskeyAccess:  middleware.CanReadTrackerPasskeys(r),
+		WithHelperTorrents: true,
 	})
 	if err != nil {
-		// Note: Cross-instance queries don't have a single instanceID, so we pass 0 for logging purposes
 		if respondIfInstanceDisabled(w, err, 0, "torrents:listCrossInstance") {
 			return
 		}
@@ -2866,7 +2688,7 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
 func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Request) {
@@ -2908,10 +2730,9 @@ func (h *TorrentsHandler) GetDirectoryContent(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, response)
+	RespondJSON(w, r, http.StatusOK, response)
 }
 
-// An absent mode keeps the dirs-only listing older clients expect; qBittorrent itself would default to all.
 func parseDirectoryContentMode(raw string) (qbt.DirectoryContentMode, bool) {
 	switch mode := qbt.DirectoryContentMode(strings.TrimSpace(raw)); mode {
 	case "":
@@ -2923,7 +2744,6 @@ func parseDirectoryContentMode(raw string) (qbt.DirectoryContentMode, bool) {
 	}
 }
 
-// requireContentAccess checks that qui may read the instance's file content.
 func (h *TorrentsHandler) requireContentAccess(w http.ResponseWriter, r *http.Request, instanceID int) bool {
 	if h.instanceStore == nil {
 		log.Error().Msg("Instance store not configured")
@@ -2952,9 +2772,6 @@ func (h *TorrentsHandler) requireContentAccess(w http.ResponseWriter, r *http.Re
 	return true
 }
 
-// resolveTorrentFilePath joins basePath with relativePath and validates against
-// directory traversal, including symlink escapes. Returns the resolved absolute
-// path or an error.
 func resolveTorrentFilePath(basePath, relativePath string) (string, error) {
 	cleanBase := filepath.Clean(basePath)
 	if !filepath.IsAbs(cleanBase) {
@@ -3015,8 +2832,6 @@ func appendUniqueCandidate(candidates []string, seen map[string]struct{}, candid
 	return append(candidates, cleanCandidate)
 }
 
-// filePathCandidates returns resolved absolute paths to try, preferring
-// contentPath, then savePath, then downloadPath.
 func filePathCandidates(savePath, downloadPath, contentPath, relativePath string, singleFile bool) []string {
 	var candidates []string
 	seen := make(map[string]struct{})
@@ -3124,7 +2939,7 @@ func fetchTorrentFilesAndPropsForContentFile(ctx context.Context, resolver torre
 
 func resolveTorrentContentFilePathOnDisk(ctx context.Context, resolver torrentContentResolver, instanceID int, hash string, props *qbt.TorrentProperties, targetFileName string, filesLen int, w http.ResponseWriter) (string, bool) {
 	contentPath := ""
-	if torrents, err := resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}}); err != nil {
+	if torrents, err := resolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll([]string{hash})}); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to get torrent content path for fallback resolution")
 	} else if len(torrents) > 0 {
 		contentPath = torrents[0].ContentPath
@@ -3202,8 +3017,6 @@ func (h *TorrentsHandler) resolveTorrentContentFile(w http.ResponseWriter, r *ht
 	}, true
 }
 
-// DownloadTorrentContentFile serves a single file from a torrent's content on disk.
-// GET /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download
 func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *http.Request) {
 	resolved, ok := h.resolveTorrentContentFile(w, r, "Download service unavailable", "torrents:downloadContentFile")
 	if !ok {
@@ -3221,6 +3034,10 @@ func (h *TorrentsHandler) DownloadTorrentContentFile(w http.ResponseWriter, r *h
 	info, err := file.Stat()
 	if err != nil || info.IsDir() {
 		RespondError(w, http.StatusNotFound, "File not found on disk")
+		return
+	}
+	if h.isInstallFile(info) {
+		RespondError(w, http.StatusForbidden, "qui does not serve its own config or database files")
 		return
 	}
 
@@ -3358,8 +3175,6 @@ func findExistingContentFile(candidates []string) (string, bool) {
 	return "", false
 }
 
-// GetTorrentFileMediaInfo returns MediaInfo output for a single torrent content file on disk.
-// GET /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/mediainfo
 func (h *TorrentsHandler) GetTorrentFileMediaInfo(w http.ResponseWriter, r *http.Request) {
 	resolved, ok := h.resolveTorrentContentFile(w, r, "MediaInfo service unavailable", "torrents:getFileMediaInfo")
 	if !ok {
@@ -3381,7 +3196,7 @@ func (h *TorrentsHandler) GetTorrentFileMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, torrentFileMediaInfoResponse{
+	RespondJSON(w, r, http.StatusOK, torrentFileMediaInfoResponse{
 		FileIndex:    resolved.FileIndex,
 		RelativePath: resolved.RelativePath,
 		Streams:      mapReportToMediaInfoStreams(report),
@@ -3389,8 +3204,6 @@ func (h *TorrentsHandler) GetTorrentFileMediaInfo(w http.ResponseWriter, r *http
 	})
 }
 
-// GetContentPathMediaInfo returns MediaInfo summary text and JSON for an instance-relative content path.
-// GET /api/instances/{instanceID}/mediainfo?contentPath=...
 func (h *TorrentsHandler) GetContentPathMediaInfo(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -3457,7 +3270,7 @@ func (h *TorrentsHandler) GetContentPathMediaInfo(w http.ResponseWriter, r *http
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, contentPathMediaInfoResponse{
+	RespondJSON(w, r, http.StatusOK, contentPathMediaInfoResponse{
 		ContentPath:   relativePath,
 		SummaryTxt:    summaryTxt,
 		MediaInfoJSON: json.RawMessage(rawJSON),

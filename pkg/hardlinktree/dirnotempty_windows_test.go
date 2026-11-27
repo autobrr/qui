@@ -14,8 +14,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Windows reports a folder that is not empty by its code. The message text is
-// translated on a non-English install, so only the code is checked.
 func TestIsDirNotEmptyMatchesWindowsCode(t *testing.T) {
 	t.Parallel()
 	err := fmt.Errorf("rollback: %w", &fs.PathError{Op: "remove", Path: `D:\data\x`, Err: windows.ERROR_DIR_NOT_EMPTY})

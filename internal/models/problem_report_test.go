@@ -60,9 +60,6 @@ func checkProblemReportStore(t *testing.T, db dbinterface.Querier) {
 	require.NoError(t, err)
 	assert.Nil(t, signIn)
 
-	// A new session secret cannot decrypt the key or the token: qui makes a
-	// new key and the Sender is anonymous. Sends at the same time all get
-	// the one new key.
 	require.NoError(t, store.SaveSignIn(ctx, models.ProblemReportSignIn{Token: "token-123", Provider: "github", Name: "someone"}))
 	rekeyed, err := models.NewProblemReportStore(db, otherProblemReportKey)
 	require.NoError(t, err)

@@ -14,7 +14,6 @@ const SETTING = {
   },
 }
 
-/** The preset period of the Statistics page that the user picked last, a Client setting. A custom range is never saved. */
 export function useStatisticsPeriod(): [PeriodPreset, (value: PeriodPreset) => void] {
   return useClientSetting<PeriodPreset>("qui-statistics-period", SETTING)
 }

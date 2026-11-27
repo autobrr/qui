@@ -14,10 +14,6 @@ interface PathCellProps {
   className?: string
 }
 
-/**
- * A table cell component for displaying file paths with truncation and copy-to-clipboard.
- * Shows "-" when no path is provided.
- */
 export function PathCell({ path, className }: PathCellProps) {
   const { t } = useTranslation("common")
 

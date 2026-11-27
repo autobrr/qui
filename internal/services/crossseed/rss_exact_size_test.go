@@ -23,9 +23,6 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// TestProcessAutomationCandidateBindsExactSize catches a fallback that
-// downloads the result but loses the source-specific authority required by the
-// later CrossSeed replay.
 func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 	const (
 		instanceID = 7
@@ -50,12 +47,12 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 		return []byte("torrent"), nil
 	}
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{
 			InstanceID: instanceID, InstanceName: instance.Name, Success: true, Status: "added",
 		}}}, nil
-	}
+	})
 
 	status, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:            []int{instanceID},
@@ -80,7 +77,7 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 	require.Equal(t, []int{instanceID}, captured.TargetInstanceIDs)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
-	require.Equal(t, normalizeHash(sourceHash), captured.SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, sourceHash), captured.SearchDecision.SourceHash)
 	require.Equal(t, differencesOf(differenceCodec), captured.SearchDecision.Relaxed)
 	require.Empty(t, captured.Category)
 	require.Equal(t, []string{"rss"}, captured.Tags)
@@ -127,10 +124,10 @@ func TestProcessAutomationCandidateExactSizeFallbackRequiresPositiveEqualSizes(t
 				downloadCalls++
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				crossSeedCalls++
 				return nil, nil
-			}
+			})
 
 			_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs: []int{instanceID},
@@ -162,10 +159,10 @@ func TestProcessAutomationCandidateStrict(t *testing.T) {
 	}
 	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{instanceID},
@@ -211,7 +208,7 @@ func TestProcessAutomationCandidateRecheck(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			source := qbt.Torrent{Hash: "recheck-" + tt.name, Name: tt.sourceName, TotalSize: size, Progress: 1}
+			source := qbt.Torrent{Hash: fakeHash("recheck-" + tt.name), Name: tt.sourceName, TotalSize: size, Progress: 1}
 			instance := &models.Instance{ID: instanceID, Name: "main"}
 			service := &Service{
 				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -225,10 +222,10 @@ func TestProcessAutomationCandidateRecheck(t *testing.T) {
 				downloadCalls++
 				return []byte("torrent"), nil
 			}
-			service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				crossSeedCalls++
 				return nil, nil
-			}
+			})
 			matches, err := service.findRSSAnnouncementMatches(context.Background(), jackett.SearchResult{Title: tt.announcement, Size: size}, &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs:     []int{instanceID},
 				RescueTitleMismatches: tt.rescueTitles,
@@ -257,8 +254,8 @@ func TestFindRSSAnnouncementMatches(t *testing.T) {
 		resultName = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	strict := qbt.Torrent{Hash: "strict", Name: resultName, Size: size - 1, TotalSize: size, Progress: 1}
-	relaxed := qbt.Torrent{Hash: "relaxed", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	strict := qbt.Torrent{Hash: "c0de000000000000000000000000000000000001", Name: resultName, Size: size - 1, TotalSize: size, Progress: 1}
+	relaxed := qbt.Torrent{Hash: "c0de000000000000000000000000000000000002", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -278,7 +275,7 @@ func TestFindRSSAnnouncementMatches(t *testing.T) {
 	require.Len(t, matches, 2)
 	require.Equal(t, strict.Hash, matches[0].torrent.Hash, "the strict match must outrank the exact-size fallback")
 	require.Equal(t, searchCandidateClassStrict, matches[0].decision.Class)
-	require.Equal(t, normalizeHash(strict.Hash), matches[0].decision.SourceHash)
+	require.Equal(t, mustParseHash(t, strict.Hash), matches[0].decision.SourceHash)
 	require.Equal(t, relaxed.Hash, matches[1].torrent.Hash)
 }
 
@@ -289,8 +286,8 @@ func TestFindRSSAnnouncementMatchesPrefersCodecFallbackOverTitleRescue(t *testin
 		resultName = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	codec := qbt.Torrent{Hash: "codec", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	title := qbt.Torrent{Hash: "title", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	codec := qbt.Torrent{Hash: "c0de000000000000000000000000000000000003", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	title := qbt.Torrent{Hash: "c0de000000000000000000000000000000000004", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -320,10 +317,10 @@ func TestFindRSSAnnouncementMatchesPrefersCodecFallbackOverTitleRescue(t *testin
 		downloadCalls++
 		return []byte("torrent"), nil
 	}
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err = service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:     []int{instanceID},
@@ -334,7 +331,7 @@ func TestFindRSSAnnouncementMatchesPrefersCodecFallbackOverTitleRescue(t *testin
 	require.NoError(t, err)
 	require.Equal(t, 1, downloadCalls)
 	require.NotNil(t, captured)
-	require.Equal(t, codec.Hash, captured.SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, codec.Hash), captured.SearchDecision.SourceHash)
 	require.False(t, searchDecisionRequiresVerification(captured.SearchDecision))
 }
 
@@ -379,7 +376,7 @@ func TestFindRSSAnnouncementMatchesIncludesOnlyConfiguredCategoryAndTag(t *testi
 
 	wrongCategory := qbt.Torrent{Hash: "wrong-category", Name: sourceName, TotalSize: size, Progress: 1, Category: "movies", Tags: "keep"}
 	wrongTag := qbt.Torrent{Hash: "wrong-tag", Name: sourceName, TotalSize: size, Progress: 1, Category: "tv", Tags: "ignore"}
-	included := qbt.Torrent{Hash: "included", Name: sourceName, TotalSize: size, Progress: 1, Category: "tv", Tags: "keep"}
+	included := qbt.Torrent{Hash: fakeHash("included"), Name: sourceName, TotalSize: size, Progress: 1, Category: "tv", Tags: "keep"}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -446,7 +443,7 @@ func TestProcessAutomationCandidateDuplicateComment(t *testing.T) {
 		commentURL = "https://example.invalid/torrents/42"
 	)
 
-	source := qbt.Torrent{Hash: "comment-source", Name: sourceName, TotalSize: size, Progress: 1, Comment: "uploaded from " + commentURL}
+	source := qbt.Torrent{Hash: fakeHash("comment-source"), Name: sourceName, TotalSize: size, Progress: 1, Comment: "uploaded from " + commentURL}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -477,7 +474,7 @@ func TestProcessAutomationCandidateExactSizeDoesNotReuseDifferentReportedSize(t 
 		resultName = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	source := qbt.Torrent{Hash: "cached-source", Name: sourceName, TotalSize: size, Progress: 1}
+	source := qbt.Torrent{Hash: fakeHash("cached-source"), Name: sourceName, TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -490,9 +487,9 @@ func TestProcessAutomationCandidateExactSizeDoesNotReuseDifferentReportedSize(t 
 		downloadCalls++
 		return []byte("torrent"), nil
 	}
-	service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 	autoCtx := &automationContext{candidateCache: make(map[string]*FindCandidatesResponse)}
 	settings := &models.CrossSeedAutomationSettings{TargetInstanceIDs: []int{instanceID}}
 
@@ -512,7 +509,7 @@ func TestProcessAutomationCandidateBindsRecheckDecision(t *testing.T) {
 		resultName = "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI"
 	)
 
-	source := qbt.Torrent{Hash: "split-group-source", Name: sourceName, TotalSize: size, Progress: 1}
+	source := qbt.Torrent{Hash: "c0de000000000000000000000000000000000005", Name: sourceName, TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -522,10 +519,10 @@ func TestProcessAutomationCandidateBindsRecheckDecision(t *testing.T) {
 	}
 	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
 	var captured *CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{instanceID},
@@ -536,7 +533,7 @@ func TestProcessAutomationCandidateBindsRecheckDecision(t *testing.T) {
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
 	require.True(t, searchDecisionRequiresVerification(captured.SearchDecision))
 	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
-	require.Equal(t, normalizeHash(source.Hash), captured.SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, source.Hash), captured.SearchDecision.SourceHash)
 }
 
 func TestProcessAutomationCandidateExactSizeAcrossInstances(t *testing.T) {
@@ -548,14 +545,14 @@ func TestProcessAutomationCandidateExactSizeAcrossInstances(t *testing.T) {
 		resultName       = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	first := qbt.Torrent{Hash: "first-source", Name: sourceName, TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second-source", Name: sourceName, TotalSize: size, Progress: 1}
+	first := qbt.Torrent{Hash: "c0de000000000000000000000000000000000006", Name: sourceName, TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: "c0de000000000000000000000000000000000007", Name: sourceName, TotalSize: size, Progress: 1}
 	firstInstance := &models.Instance{ID: firstInstanceID, Name: "first"}
 	secondInstance := &models.Instance{ID: secondInstanceID, Name: "second"}
 	sync := newFakeSyncManager(firstInstance, []qbt.Torrent{first}, map[string]qbt.TorrentFiles{first.Hash: {{Name: sourceName + ".mkv", Size: size}}})
 	sync.all[secondInstanceID] = []qbt.Torrent{second}
 	sync.cached[secondInstanceID] = buildCrossInstanceViews(secondInstance, []qbt.Torrent{second})
-	sync.files[normalizeHash(second.Hash)] = qbt.TorrentFiles{{Name: sourceName + ".mkv", Size: size}}
+	sync.files[second.Hash] = qbt.TorrentFiles{{Name: sourceName + ".mkv", Size: size}}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{firstInstanceID: firstInstance, secondInstanceID: secondInstance}},
 		syncManager:      sync,
@@ -568,10 +565,10 @@ func TestProcessAutomationCandidateExactSizeAcrossInstances(t *testing.T) {
 		return []byte("torrent"), nil
 	}
 	var requests []*CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		requests = append(requests, req)
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: req.TargetInstanceIDs[0], Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{firstInstanceID, secondInstanceID},
@@ -581,9 +578,9 @@ func TestProcessAutomationCandidateExactSizeAcrossInstances(t *testing.T) {
 	require.Equal(t, 1, downloadCalls)
 	require.Len(t, requests, 2)
 	require.Equal(t, []int{firstInstanceID}, requests[0].TargetInstanceIDs)
-	require.Equal(t, normalizeHash(first.Hash), requests[0].SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, first.Hash), requests[0].SearchDecision.SourceHash)
 	require.Equal(t, []int{secondInstanceID}, requests[1].TargetInstanceIDs)
-	require.Equal(t, normalizeHash(second.Hash), requests[1].SearchDecision.SourceHash)
+	require.Equal(t, mustParseHash(t, second.Hash), requests[1].SearchDecision.SourceHash)
 }
 
 func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t *testing.T) {
@@ -593,8 +590,8 @@ func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t
 		resultName = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	high := qbt.Torrent{Hash: "high", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	lower := qbt.Torrent{Hash: "lower", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	high := qbt.Torrent{Hash: "c0de000000000000000000000000000000000008", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	lower := qbt.Torrent{Hash: "c0de000000000000000000000000000000000009", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -611,13 +608,13 @@ func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t
 		return []byte("torrent"), nil
 	}
 	var sourceHashes []string
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
-		sourceHashes = append(sourceHashes, req.SearchDecision.SourceHash)
-		if req.SearchDecision.SourceHash == high.Hash {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+		sourceHashes = append(sourceHashes, req.SearchDecision.SourceHash.String())
+		if req.SearchDecision.SourceHash.Is(high.Hash) {
 			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "no_match"}}}, nil
 		}
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 	run := &models.CrossSeedRun{}
 
 	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
@@ -641,13 +638,13 @@ func TestInvokeBoundAnnouncementMatchesStopsOnTopLevelSuccess(t *testing.T) {
 	}
 	calls := 0
 	service := &Service{
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			calls++
 			if calls > 1 {
 				t.Fatal("a top-level successful response must stop source retries")
 			}
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 
 	response, err := service.invokeBoundAnnouncementMatches(context.Background(), matches, func(boundAnnouncementMatch) *CrossSeedRequest {
@@ -668,14 +665,14 @@ func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T
 		resultName       = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	first := qbt.Torrent{Hash: "first", Name: sourceName, TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second", Name: sourceName, TotalSize: size, Progress: 1}
+	first := qbt.Torrent{Hash: fakeHash("first"), Name: sourceName, TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: fakeHash("second"), Name: sourceName, TotalSize: size, Progress: 1}
 	firstInstance := &models.Instance{ID: firstInstanceID, Name: "first"}
 	secondInstance := &models.Instance{ID: secondInstanceID, Name: "second"}
 	sync := newFakeSyncManager(firstInstance, []qbt.Torrent{first}, map[string]qbt.TorrentFiles{first.Hash: {{Name: sourceName + ".mkv", Size: size}}})
 	sync.all[secondInstanceID] = []qbt.Torrent{second}
 	sync.cached[secondInstanceID] = buildCrossInstanceViews(secondInstance, []qbt.Torrent{second})
-	sync.files[normalizeHash(second.Hash)] = qbt.TorrentFiles{{Name: sourceName + ".mkv", Size: size}}
+	sync.files[second.Hash] = qbt.TorrentFiles{{Name: sourceName + ".mkv", Size: size}}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{firstInstanceID: firstInstance, secondInstanceID: secondInstance}},
 		syncManager:      sync,
@@ -692,7 +689,6 @@ func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T
 	}
 	unavailable := func(int, string) (*CrossSeedResponse, error) { return nil, errors.New("instance unavailable") }
 
-	// One feed item is one candidate, whatever the instance count.
 	tests := []struct {
 		name        string
 		first       func(int, string) (*CrossSeedResponse, error)
@@ -709,12 +705,12 @@ func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				if req.TargetInstanceIDs[0] == firstInstanceID {
 					return tt.first(firstInstanceID, firstInstance.Name)
 				}
 				return tt.second(secondInstanceID, secondInstance.Name)
-			}
+			})
 			run := &models.CrossSeedRun{}
 
 			status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
@@ -747,14 +743,14 @@ func TestProcessAutomationCandidateExactSizeSkipRecheckKeepsSafeInstances(t *tes
 		resultName     = "Azure.Compass.S01.1080p.WEB-DL.H.264-KIRI"
 	)
 
-	safe := qbt.Torrent{Hash: "safe", Name: "Azure.Compass.S01.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
-	hard := qbt.Torrent{Hash: "hard", Name: "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", TotalSize: size, Progress: 1}
+	safe := qbt.Torrent{Hash: fakeHash("safe"), Name: "Azure.Compass.S01.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	hard := qbt.Torrent{Hash: fakeHash("hard"), Name: "Azure Compass S01 [Web][MKV][h264][1080p][Softsubs (KIRI)][Batch][KIRI]", TotalSize: size, Progress: 1}
 	safeInstance := &models.Instance{ID: safeInstanceID, Name: "safe"}
 	hardInstance := &models.Instance{ID: hardInstanceID, Name: "hard"}
 	sync := newFakeSyncManager(safeInstance, []qbt.Torrent{safe}, map[string]qbt.TorrentFiles{safe.Hash: {{Name: safe.Name + ".mkv", Size: size}}})
 	sync.all[hardInstanceID] = []qbt.Torrent{hard}
 	sync.cached[hardInstanceID] = buildCrossInstanceViews(hardInstance, []qbt.Torrent{hard})
-	sync.files[normalizeHash(hard.Hash)] = qbt.TorrentFiles{{Name: hard.Name + ".mkv", Size: size}}
+	sync.files[hard.Hash] = qbt.TorrentFiles{{Name: hard.Name + ".mkv", Size: size}}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{safeInstanceID: safeInstance, hardInstanceID: hardInstance}},
 		syncManager:      sync,
@@ -767,10 +763,10 @@ func TestProcessAutomationCandidateExactSizeSkipRecheckKeepsSafeInstances(t *tes
 		return []byte("torrent"), nil
 	}
 	var requests []*CrossSeedRequest
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		requests = append(requests, req)
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: safeInstanceID, Success: true, Status: "added"}}}, nil
-	}
+	})
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{safeInstanceID, hardInstanceID},
@@ -793,7 +789,7 @@ func TestProcessAutomationCandidateExactSizeInfohashPrecheckGroupsSourcesByInsta
 	)
 
 	first := qbt.Torrent{Hash: hash, Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: fakeHash("second"), Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -831,8 +827,8 @@ func TestProcessAutomationCandidateExactSizeCommentPrecheckGroupsSourcesByInstan
 		commentURL = "https://example.invalid/torrents/99"
 	)
 
-	first := qbt.Torrent{Hash: "first", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1, Comment: "source " + commentURL}
+	first := qbt.Torrent{Hash: fakeHash("first"), Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: fakeHash("second"), Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1, Comment: "source " + commentURL}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -869,8 +865,8 @@ func TestProcessAutomationCandidateExactSizeNoMatchThenErrorFailsInstance(t *tes
 		resultName = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 	)
 
-	first := qbt.Torrent{Hash: "first", Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	second := qbt.Torrent{Hash: "second", Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	first := qbt.Torrent{Hash: fakeHash("first"), Name: "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	second := qbt.Torrent{Hash: fakeHash("second"), Name: "Different.Voyage.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -882,12 +878,12 @@ func TestProcessAutomationCandidateExactSizeNoMatchThenErrorFailsInstance(t *tes
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
-		if req.SearchDecision.SourceHash == first.Hash {
+	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+		if req.SearchDecision.SourceHash.Is(first.Hash) {
 			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "no_match"}}}, nil
 		}
 		return nil, errors.New("second source unavailable")
-	}
+	})
 	run := &models.CrossSeedRun{}
 
 	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
@@ -912,9 +908,6 @@ func TestMergeCrossSeedResponsesPreservesAggregateSuccess(t *testing.T) {
 	require.True(t, destination.titleRescueUsed)
 }
 
-// TestFindRSSAnnouncementMatchesARRAlternateTitles catches an RSS fallback that
-// ignores ARR alternate titles the webhook and autobrr paths already use, and
-// an eager lookup that touches ARR for feed items with no byte-size collision.
 func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 	t.Parallel()
 
@@ -928,6 +921,7 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 		Titles:      []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"},
 		TitlesKnown: true,
 	}
+	partialResult := &arr.ExternalIDsResult{Titles: aliasResult.Titles, TitlesKnown: true, Incomplete: true}
 
 	tests := []struct {
 		name       string
@@ -937,6 +931,7 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 		wantCalls  int
 	}{
 		{name: "aliases recover the match with one lookup", spy: &spyARRLookupService{result: aliasResult}, sourceSize: size, wantMatch: true, wantCalls: 1},
+		{name: "aliases of a partial answer match the same", spy: &spyARRLookupService{result: partialResult}, sourceSize: size, wantMatch: true, wantCalls: 1},
 		{name: "no size collision skips the lookup", spy: &spyARRLookupService{result: aliasResult}, sourceSize: size + 1},
 		{name: "no arr service keeps rejecting", sourceSize: size},
 		{name: "lookup error keeps rejecting", spy: &spyARRLookupService{err: errors.New("arr down")}, sourceSize: size, wantCalls: 1},
@@ -944,7 +939,7 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			source := qbt.Torrent{Hash: "frieren-source", Name: sourceName, TotalSize: tt.sourceSize, Progress: 1}
+			source := qbt.Torrent{Hash: fakeHash("frieren-source"), Name: sourceName, TotalSize: tt.sourceSize, Progress: 1}
 			unrelated := qbt.Torrent{Hash: "unrelated-source", Name: "Quiet.Signal.2025.1080p.WEB-DL.H.264-LUMA", TotalSize: tt.sourceSize, Progress: 1}
 			instance := &models.Instance{ID: instanceID, Name: "main"}
 			service := &Service{
@@ -969,8 +964,6 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 			}
 			if tt.wantMatch {
 				require.Len(t, matches, 1)
-				// The decision must carry the aliases so the apply-time
-				// revalidation inside CrossSeed accepts the same pair.
 				require.Equal(t, aliasResult.Titles, matches[0].decision.CandidateTitles)
 			} else {
 				require.Empty(t, matches)
@@ -979,7 +972,6 @@ func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
 	}
 }
 
-// regression: #3626
 func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 	const (
 		instanceID = 9
@@ -987,13 +979,10 @@ func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 		name       = "Quiet.Harbor.2025.1080p.WEB-DL.H.264-LUMA"
 		size       = int64(4 << 20)
 	)
-	// The candidate lookup takes the same name. Only the exact-size fallback
-	// takes the other codec.
 	for _, feedName := range []string{name, "Quiet.Harbor.2025.1080p.WEB-DL.H.265-LUMA"} {
 		t.Run(feedName, func(t *testing.T) {
 			torrentBytes := createNamedFileTestTorrent(t, feedName, name+".mkv", size)
 			instance := &models.Instance{ID: instanceID, Name: "main"}
-			// qBittorrent reports the content path under the download path until the move ends.
 			source := qbt.Torrent{
 				Hash: sourceHash, Name: name, Size: size, TotalSize: size, Progress: 1, State: qbt.TorrentStateMoving,
 				SavePath: "/data/movies", DownloadPath: "/data/incomplete", ContentPath: "/data/incomplete/" + name + ".mkv",
@@ -1009,6 +998,7 @@ func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 					return models.DefaultCrossSeedAutomationSettings(), nil
 				},
 			}
+			service.injection = service
 			downloads := 0
 			service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 				downloads++
@@ -1043,12 +1033,6 @@ func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 	}
 }
 
-// TestAutomationRunRetriesStrandedAddOnNextPoll runs two RSS polls. A stranded
-// add on the first bound source must fail the feed item, not let a later
-// source's "exists" mark it processed, so the run shows the failure. The next
-// poll reports "exists" and marks the item processed, so it is not retried
-// forever.
-// regression: #3824
 func TestAutomationRunRetriesStrandedAddOnNextPoll(t *testing.T) {
 	const (
 		instanceID = 21
@@ -1088,8 +1072,8 @@ func TestAutomationRunRetriesStrandedAddOnNextPoll(t *testing.T) {
 		</item></channel></rss>`, resultName, guid, size, feed.URL, size)
 	})
 
-	high := qbt.Torrent{Hash: "high", Name: "Amber.Lantern.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
-	lower := qbt.Torrent{Hash: "lower", Name: "Distant.Harbor.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
+	high := qbt.Torrent{Hash: fakeHash("high"), Name: "Amber.Lantern.S01E05.1080p.WEB-DL.H.264-KIRI", TotalSize: size, Progress: 1}
+	lower := qbt.Torrent{Hash: fakeHash("lower"), Name: "Distant.Harbor.S01E05.1080p.WEB-DL.H.265-KIRI", TotalSize: size, Progress: 1}
 	instance := &models.Instance{ID: instanceID, Name: "main", IsActive: true}
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
@@ -1104,16 +1088,14 @@ func TestAutomationRunRetriesStrandedAddOnNextPoll(t *testing.T) {
 			{ID: indexerID, Name: "Indexer", Enabled: true, BaseURL: feed.URL, Backend: models.TorznabBackendNative},
 		}}, jackett.WithMinRequestInterval(time.Millisecond)),
 	}
-	// The first add leaves the torrent stranded in qBittorrent, so each later
-	// attempt finds it there.
 	added := false
-	service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		if !added {
 			added = true
 			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "alignment_failed"}}}, nil
 		}
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "exists"}}}, nil
-	}
+	})
 	settings := &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:     []int{instanceID},
 		TargetIndexerIDs:      []int{indexerID},

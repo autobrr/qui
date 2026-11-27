@@ -14,12 +14,12 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// localMatchSyncManager is a minimal fake for testing file overlap logic.
 type localMatchSyncManager struct {
 	files        map[string]qbt.TorrentFiles
-	errorOnFetch error // If set, GetTorrentFilesBatch returns this error
+	errorOnFetch error
 }
 
 func (m *localMatchSyncManager) GetTorrentRefs(_ context.Context, _ int, _ qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
@@ -32,7 +32,7 @@ func (m *localMatchSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, h
 	}
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		normalized := normalizeHash(h)
+		normalized := h
 		if files, ok := m.files[normalized]; ok {
 			result[normalized] = files
 		} else if files, ok := m.files[strings.ToLower(h)]; ok {
@@ -46,7 +46,7 @@ func (*localMatchSyncManager) ExportTorrent(context.Context, int, string) ([]byt
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (m *localMatchSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
+func (m *localMatchSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, _ []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -103,13 +103,11 @@ func (m *localMatchSyncManager) CreateCategory(_ context.Context, _ int, _, _ st
 }
 
 func TestGetSourceFiles_EmptyFileListReturnsError(t *testing.T) {
-	// When qBittorrent returns an empty file list for a valid torrent,
-	// getSourceFiles should return an error to avoid silent false-negatives.
 	sourceHash := "7777777777777777777777777777777777777777"
 
 	mockSync := &localMatchSyncManager{
 		files: map[string]qbt.TorrentFiles{
-			normalizeHash(sourceHash): {}, // Empty file list
+			sourceHash: {},
 		},
 	}
 

@@ -138,10 +138,6 @@ func orderPostgresImportTables(ctx context.Context, tx pgx.Tx, tables []string) 
 		depsByName[table] = make(map[string]struct{})
 	}
 
-	// Both ends are read as bare relnames from the catalog and both are pinned
-	// to the active schema. regclass text output only qualifies what search_path
-	// cannot reach, so a foreign key referencing another schema's same-named
-	// table would otherwise read as a local dependency and can invent a cycle.
 	rows, err := tx.Query(ctx, `
 		SELECT child.relname, parent.relname
 		FROM pg_constraint c
@@ -622,14 +618,8 @@ type postgresForeignKey struct {
 }
 
 func postgresForeignKeysForTable(ctx context.Context, tx pgx.Tx, table string) ([]postgresForeignKey, error) {
-	// Unqualified so the regclass cast resolves against the connection's
-	// search_path rather than assuming the tables live in public.
 	regclassName := quoteIdent(table)
 
-	// The parent name comes back as a bare relname pinned to the active schema:
-	// it is used as a SQLite table name in the row filter below, so a foreign key
-	// referencing another schema must not be stripped down to a local-looking
-	// name and filter the copy against an unrelated table.
 	rows, err := tx.Query(ctx, `
 		SELECT parent.relname,
 			   ARRAY_AGG(child_col.attname ORDER BY ck.ord),
@@ -843,8 +833,6 @@ func resetPostgresIdentities(ctx context.Context, tx pgx.Tx) error {
 	rows.Close()
 
 	for _, identity := range identityColumns {
-		// Unqualified so pg_get_serial_sequence resolves it against the
-		// connection's search_path, same as every other statement here.
 		fullTable := quoteIdent(identity.table)
 		query := fmt.Sprintf(`
 			SELECT setval(

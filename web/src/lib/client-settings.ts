@@ -16,21 +16,6 @@ import {
   type DisplayProfileEntry
 } from "@/lib/display-profiles"
 
-/**
- * DB-backed client settings (issue #2406).
- *
- * localStorage stays as the instant-boot cache; the server's client_settings
- * table is the source of truth. Every write goes to localStorage immediately
- * and is queued for a debounced bulk PUT. useClientSettingsSync pulls the
- * server state, applies it locally, seeds missing keys from localStorage and
- * opens the push gate.
- *
- * Values are raw strings end to end; each setting keeps the exact encoding it
- * always had in localStorage, and the backend never parses them. A cleared
- * setting stores "" instead of removing the key, so "absent on the server"
- * always means "never synced".
- */
-
 const CHANGE_EVENT = "qui-client-setting-changed"
 const FLUSH_DELAY_MS = 800
 
@@ -49,8 +34,6 @@ const LEGACY_TORRENT_VIEW_MODES = {
   "ultra-compact": { mobile: "ultra-compact", desktop: "dense" },
 } as const
 
-// Keys synced to the server. Grown as hooks convert; keys not listed here
-// (theme boot caches, dismissed banners, sessionStorage) stay local-only.
 const SYNCED_KEYS = new Set<string>([
   "qui-delete-files-default",
   "qui-delete-files-lock",
@@ -84,7 +67,6 @@ const SYNCED_KEYS = new Set<string>([
 ])
 const SYNCED_PREFIXES = [
   "qui-cross-seed-blocklist-",
-  // "qui-filters-" covers "qui-filters-global" and the per-instance keys.
   "qui-column-visibility:",
   "qui-column-order:",
   "qui-column-sorting:",
@@ -97,7 +79,6 @@ const SYNCED_PREFIXES = [
   "qui-show-empty-",
   "qui-selected-instance-",
   "qui-feature-notice-seen:",
-  // The values, the entries, and the tombstones of Display profiles.
   "qui-display-profile:",
   "qui-display-profile-entry:",
   "qui-display-profile-deleted:",
@@ -107,12 +88,9 @@ function isSyncedKey(key: string): boolean {
   return SYNCED_KEYS.has(key) || SYNCED_PREFIXES.some((prefix) => key.startsWith(prefix))
 }
 
-// The keys of a Column setup. Each ends in ":" and the instance id (0 is the Unified view), or in
-// ":" + SHARED_COLUMN_SETUP for the one setup that every instance reads when Same columns is on.
 const COLUMN_SETUP_PREFIXES = ["qui-column-visibility:", "qui-column-order:", "qui-column-sizing:", "qui-stretch-name-column:"]
 const SHARED_COLUMN_SETUP = "every-instance"
 
-// Every key outside these two groups is a Shared setting: one value for every Display profile.
 export type SettingGroup = "display" | "sortAndFilters" | "shared"
 
 const SETTING_GROUPS: Record<Exclude<SettingGroup, "shared">, { keys: readonly string[]; prefixes: readonly string[] }> = {
@@ -141,17 +119,14 @@ const SETTING_GROUPS: Record<Exclude<SettingGroup, "shared">, { keys: readonly s
   },
 }
 
-/** The prefix of a Column setup key of one instance, or undefined for any other key. */
 function instanceColumnSetupPrefix(key: string): string | undefined {
   const prefix = COLUMN_SETUP_PREFIXES.find((candidate) => key.startsWith(candidate))
   if (prefix === undefined || key.length === prefix.length || key.slice(prefix.length) === SHARED_COLUMN_SETUP) return undefined
   return prefix
 }
 
-// A few hundred keys at most, and resolveKey asks for each one on every read.
 const settingGroups = new Map<string, SettingGroup>()
 
-/** The group of a setting key of today (not of a profile copy). */
 export function settingGroup(key: string): SettingGroup {
   let group = settingGroups.get(key)
   if (group === undefined) {
@@ -172,7 +147,6 @@ export function readRaw(key: string): string | null {
   }
 }
 
-/** Every key in localStorage. A read that fails ends the list. */
 function storedKeys(): string[] {
   const keys: string[] = []
   try {
@@ -186,15 +160,11 @@ function storedKeys(): string[] {
   return keys
 }
 
-// Marks a value that a tab copied from the server into the shared
-// localStorage, so another tab's flush does not push it back as an edit.
-// Local-only: the prefix matches no synced key.
 const SERVER_COPY_PREFIX = "qui-client-settings-server-copy:"
 
 function writeLocal(key: string, raw: string, fromServer = false): boolean {
   const profilesChange = changesDisplayProfiles(key)
   try {
-    // Mark before value, so another tab never reads a server copy without its mark.
     if (fromServer) localStorage.setItem(SERVER_COPY_PREFIX + key, "1")
     else localStorage.removeItem(SERVER_COPY_PREFIX + key)
     localStorage.setItem(key, raw)
@@ -207,10 +177,6 @@ function writeLocal(key: string, raw: string, fromServer = false): boolean {
   return true
 }
 
-/**
- * Calls back after a write of a key that matches, in this tab or another one, and after localStorage.clear() in
- * another tab. Returns the unsubscribe.
- */
 function subscribeToKeys(callback: () => void, matches: (key: string) => boolean): () => void {
   const onStorage = (event: StorageEvent) => {
     if (event.key == null || matches(event.key)) callback()
@@ -227,19 +193,12 @@ function subscribeToKeys(callback: () => void, matches: (key: string) => boolean
   }
 }
 
-/**
- * Store a setting locally and queue it for the server. No-op when the value
- * is unchanged, which also breaks server-apply echo loops.
- */
 export function writeRaw(key: string, raw: string): void {
   if (readRaw(key) === raw) return
   if (writeLocal(key, raw)) enqueuePush(key, raw)
 }
 
-// --- push queue ---
-
 const pending = new Map<string, string>()
-// Grows each time a key is queued. A PUT drops a key only when nothing queued it again after the PUT read it.
 const queuedGeneration = new Map<string, number>()
 let generation = 0
 
@@ -253,7 +212,6 @@ function unqueue(key: string): void {
   queuedGeneration.delete(key)
 }
 let flushTimer: ReturnType<typeof setTimeout> | null = null
-// Opens after the first successful GET, so nothing fires while logged out.
 let syncReady = false
 const syncReadyListeners = new Set<() => void>()
 
@@ -268,37 +226,22 @@ function subscribeSyncReady(callback: () => void): () => void {
   return () => syncReadyListeners.delete(callback)
 }
 
-/** True once the first server snapshot is in localStorage, so a read returns the server value. */
 export function useClientSettingsLoaded(): boolean {
   return useSyncExternalStore(subscribeSyncReady, () => syncReady)
 }
 
-// Set when the first read of the server failed. The push gate stays closed.
 let snapshotFailed = false
 
-/** Records that the first read of the server failed, so that pages stop waiting for it and use the local values. */
 export function markClientSettingsUnavailable(): void {
   if (snapshotFailed) return
   snapshotFailed = true
   for (const listener of syncReadyListeners) listener()
 }
 
-/**
- * True once the first read of the server ended, with or without success. Before that, a setting can show the default
- * or an old local value that the read then replaces, so a pick of the value that looks selected is lost.
- */
 export function useClientSettingsSettled(): boolean {
   return useSyncExternalStore(subscribeSyncReady, () => syncReady || snapshotFailed)
 }
 
-// Durable outbox: the dirty key list mirrored to localStorage. The pagehide
-// keepalive PUT is not reliable (Chrome drops keepalive fetches from
-// service-worker-controlled pages on unload), so unacked writes must survive
-// the page. The next boot loads them back into pending, which both blocks the
-// stale server snapshot from reverting them and replays their push. Only keys
-// are stored; the values already live in localStorage under those keys.
-// ponytail: single outbox key is last-writer-wins across tabs, so one tab's
-// crash can drop another tab's unacked key; read-merge-write if that bites.
 const OUTBOX_KEY = "qui-client-settings-outbox"
 
 function persistPending(): void {
@@ -306,7 +249,7 @@ function persistPending(): void {
     if (pending.size === 0) localStorage.removeItem(OUTBOX_KEY)
     else localStorage.setItem(OUTBOX_KEY, JSON.stringify([...pending.keys()]))
   } catch {
-    // Best effort; losing the outbox only reopens the unload race.
+    return
   }
 }
 
@@ -315,13 +258,11 @@ function loadPersistedPending(): void {
     const raw = localStorage.getItem(OUTBOX_KEY)
     if (!raw) return
     for (const key of JSON.parse(raw) as string[]) {
-      // A key gone from localStorage has no value to replay; "" would push
-      // the cleared sentinel, so skip it.
       const value = readRaw(key)
       if (value !== null) queue(key, value)
     }
   } catch {
-    // Corrupt outbox: drop it, the values themselves are still in localStorage.
+    return
   }
 }
 
@@ -344,21 +285,16 @@ function scheduleFlush(): void {
 
 let flushInFlight = false
 let keepaliveInFlight = false
-// A flush needed after the current PUT, either requested while in flight or
-// after another tab replaces a batch value.
 let flushRequestedInFlight = false
-// PUTs in flight: page hide can start one beside a debounced one.
 let putsInFlight = 0
 
-// Chrome refuses a keepalive body over 64 KiB, so no PUT body is larger.
 const MAX_PUT_BODY_BYTES = 64 * 1024
 const utf8 = new TextEncoder()
 
-/** Splits entries into PUT bodies of at most MAX_PUT_BODY_BYTES; an entry over the limit gets a body of its own. */
 function splitIntoBodies(entries: [string, string][]): [string, string][][] {
   const chunks: [string, string][][] = []
   let chunk: [string, string][] = []
-  let bytes = 2 // "{}"
+  let bytes = 2
   for (const entry of entries) {
     const entryBytes = utf8.encode(`${JSON.stringify(entry[0])}:${JSON.stringify(entry[1])}`).length
     if (chunk.length > 0 && bytes + 1 + entryBytes > MAX_PUT_BODY_BYTES) {
@@ -373,19 +309,12 @@ function splitIntoBodies(entries: [string, string][]): [string, string][][] {
   return chunks
 }
 
-/**
- * Sends the pending entries in PUT bodies of at most MAX_PUT_BODY_BYTES, and drops each entry that a PUT delivered.
- * Keys stay in pending while their PUT is in flight, so a concurrent server apply cannot clobber the newer local value
- * (the echo guard checks pending). Throws at the first failed PUT; the rest stays queued for the next flush.
- */
 async function putPending(keepalive: boolean): Promise<void> {
   if (keepalive) keepaliveInFlight = true
   putsInFlight++
   try {
     const sentGeneration = new Map(queuedGeneration)
-    // One PUT at a time: Chrome counts every keepalive body in flight against the same 64 KiB.
     for (const chunk of splitIntoBodies([...pending])) {
-      // Plain fetch instead of the api client: this module must stay import-light (i18n boots on it).
       const response = await fetch(`${getApiBaseUrl()}/client-settings`, {
         method: "PUT",
         headers: {
@@ -393,21 +322,15 @@ async function putPending(keepalive: boolean): Promise<void> {
           "X-Requested-With": "XMLHttpRequest",
         },
         body: JSON.stringify(Object.fromEntries(chunk)),
-        // keepalive lets the PUT outlive the page; Chrome caps its body, so other saves leave it off.
         keepalive,
       })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      // Drop what this PUT delivered. Entries replaced in this tab stay queued;
-      // a newer edit from another tab is copied from the shared localStorage.
-      // A server copy is not an edit: pushing it back can be one write old, and
-      // two tabs then flip the value forever (#3424).
       for (const [key, raw] of chunk) {
         const latest = readRaw(key)
         if (latest !== null && latest !== raw && readRaw(SERVER_COPY_PREFIX + key) === null) {
           queue(key, latest)
           flushRequestedInFlight = true
         } else if (pending.get(key) === raw && queuedGeneration.get(key) === sentGeneration.get(key)) {
-          // The other PUT can land an older value after this one, so the key stays queued and goes out once more.
           if (putsInFlight > 1) flushRequestedInFlight = true
           else unqueue(key)
         }
@@ -420,8 +343,6 @@ async function putPending(keepalive: boolean): Promise<void> {
   }
 }
 
-// No self-retry, on purpose: a failed batch stays pending until the next write
-// or tab hide. After logout the push gate stays open, and those PUTs fail harmlessly.
 function logPushError(error: unknown): void {
   console.error("Failed to push client settings:", error)
 }
@@ -429,7 +350,6 @@ function logPushError(error: unknown): void {
 async function flushPending(atPageHide = false): Promise<void> {
   if (flushInFlight) {
     flushRequestedInFlight = true
-    // The page can cancel the PUT in flight, which has no keepalive. A PUT sets values, so sending them twice is safe.
     if (atPageHide && !keepaliveInFlight) void putPending(true).catch(logPushError).finally(flushIfRequested)
     return
   }
@@ -445,7 +365,6 @@ async function flushPending(atPageHide = false): Promise<void> {
   }
 }
 
-/** Schedules the flush that a finished PUT asked for, unless a flush is in flight and does it at its end. */
 function flushIfRequested(): void {
   if (flushInFlight || !flushRequestedInFlight) return
   flushRequestedInFlight = false
@@ -464,23 +383,13 @@ if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushAtPageHide()
   })
-  // Chrome does not fire visibilitychange on a same-tab reload or navigation,
-  // so a write inside the debounce window would die with the page and the
-  // stale server snapshot would revert it at next boot. keepalive lets the
-  // PUT outlive the page.
   window.addEventListener("pagehide", flushAtPageHide)
 }
 
-// Display profiles: Default keeps the keys of today. Another profile keeps the copy of a Display setting under
-// PROFILE_VALUE_PREFIX + id + ":" + key, and its entry under PROFILE_ENTRY_PREFIX + id. The pick of
-// this browser is local only and never synced.
-
 const PROFILE_VALUE_PREFIX = "qui-display-profile:"
 const PROFILE_ENTRY_PREFIX = "qui-display-profile-entry:"
-// No edit writes a tombstone, so an edit from a browser that missed the delete cannot bring the profile back.
 const PROFILE_TOMBSTONE_PREFIX = "qui-display-profile-deleted:"
 const ACTIVE_PROFILE_KEY = "qui-display-profile-active"
-// The last instance that a torrent table of this browser showed. Local only, like the pick.
 const LAST_INSTANCE_KEY = "qui-display-profile-last-instance"
 
 function isProfileStateKey(key: string): boolean {
@@ -499,12 +408,10 @@ function profileTombstoneKey(profileId: string): string {
   return PROFILE_TOMBSTONE_PREFIX + profileId
 }
 
-/** The storage key of a setting of today in a profile. Default keeps the key of today. */
 function profileStorageKey(profile: DisplayProfile, key: string): string {
   return profile.isDefault ? key : profileValueKey(profile.id, key)
 }
 
-/** The profile and the key prefix of a stored Column setup of one instance, or null for any other storage key. */
 function instanceColumnSetupOwner(storageKey: string): { profileId: string; prefix: string } | null {
   let profileId = DEFAULT_DISPLAY_PROFILE_ID
   let key = storageKey
@@ -520,14 +427,11 @@ function instanceColumnSetupOwner(storageKey: string): { profileId: string; pref
 }
 
 export interface DisplayProfilesState {
-  /** Default first, then the other profiles by name. */
   profiles: readonly DisplayProfile[]
-  /** The profile of this browser. Default when the browser never picked one, or when its pick has no entry. */
   active: DisplayProfile
 }
 
 let profilesState: DisplayProfilesState | null = null
-// The profile of this tab at the last read, so a storage event can show that another tab applied its delete.
 let lastActiveProfile: DisplayProfile | null = null
 const displayProfileListeners = new Set<() => void>()
 
@@ -540,10 +444,6 @@ function displayProfilesChanged(): void {
   for (const listener of displayProfileListeners) listener()
 }
 
-/**
- * True when a write of the key can change the profiles: the pick, an entry, a tombstone, or the first Column setup of
- * an instance in a profile whose Same columns is computed. Call it before the write.
- */
 function changesDisplayProfiles(key: string): boolean {
   if (isProfileStateKey(key)) return true
   const owner = instanceColumnSetupOwner(key)
@@ -589,7 +489,6 @@ function loadDisplayProfiles(): DisplayProfilesState {
   return { profiles, active: profiles.find((profile) => profile.id === activeId) ?? profiles[0] }
 }
 
-/** The profiles and the profile of this browser. The object stays the same until a profile or the pick changes. */
 export function getDisplayProfiles(): DisplayProfilesState {
   if (profilesState === null) {
     profilesState = loadDisplayProfiles()
@@ -602,23 +501,17 @@ function findDisplayProfile(profileId: string, { profiles } = getDisplayProfiles
   return profiles.find((profile) => profile.id === profileId)
 }
 
-/** True when the profile keeps its own copy of the setting instead of the key of today. */
 function keepsOwnCopy(profile: DisplayProfile, key: string): boolean {
   const group = settingGroup(key)
   return group === "display" || (group === "sortAndFilters" && profile.ownSortAndFilters)
 }
 
-/** The storage key that a write of a setting goes to, by default for the profile of this browser. */
 function resolveKey(key: string, profile: DisplayProfile = getDisplayProfiles().active): string {
   if (!keepsOwnCopy(profile, key)) return key
   const prefix = profile.usesSameColumns ? instanceColumnSetupPrefix(key) : undefined
   return profileStorageKey(profile, prefix === undefined ? key : prefix + SHARED_COLUMN_SETUP)
 }
 
-/**
- * The storage key that a read of a setting comes from. It differs from resolveKey only for an instance that has no
- * Column setup of its own while Same columns is off: that instance reads the shared setup, the last one it showed.
- */
 function resolveReadKey(key: string, profile: DisplayProfile = getDisplayProfiles().active): string {
   const storageKey = resolveKey(key, profile)
   const prefix = instanceColumnSetupPrefix(key)
@@ -626,24 +519,17 @@ function resolveReadKey(key: string, profile: DisplayProfile = getDisplayProfile
   return profileStorageKey(profile, prefix + SHARED_COLUMN_SETUP)
 }
 
-/** Makes this browser use the profile. Only this browser remembers the pick. Every live setting re-reads at once. */
 export function pickDisplayProfile(profileId: string): void {
   writeLocal(ACTIVE_PROFILE_KEY, profileId)
 }
 
 function randomProfileId(): string {
-  // getRandomValues, not randomUUID: randomUUID needs a secure context, and qui often runs on plain http.
   const bytes = crypto.getRandomValues(new Uint8Array(12))
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
 }
 
 export type DisplayProfileLook = Partial<Pick<DisplayProfileEntry, "icon" | "color">>
 
-/**
- * Makes a profile from the Display settings of the active profile, for every instance, and makes this browser use
- * it. The icon and the color come from look, not from the source; with no look the icon is bookmark and the color
- * None. Throws when validateDisplayProfileName rejects the name. Returns the id of the new profile.
- */
 export function createDisplayProfile(name: string, look: DisplayProfileLook = {}): string {
   const { profiles, active } = getDisplayProfiles()
   const error = validateDisplayProfileName(name, profiles)
@@ -670,7 +556,6 @@ export function createDisplayProfile(name: string, look: DisplayProfileLook = {}
   return id
 }
 
-/** Renames a profile for every browser. Default can be renamed too. Throws when validateDisplayProfileName rejects the name. */
 export function renameDisplayProfile(profileId: string, name: string): void {
   const { profiles } = getDisplayProfiles()
   const profile = findDisplayProfile(profileId)
@@ -680,14 +565,9 @@ export function renameDisplayProfile(profileId: string, name: string): void {
   updateDisplayProfileEntry(profile, { name: name.trim() })
 }
 
-/**
- * Deletes a profile for every browser: its entry and its values become "". A browser that uses it moves to Default.
- * Throws for Default.
- */
 export function deleteDisplayProfile(profileId: string): void {
   if (profileId === DEFAULT_DISPLAY_PROFILE_ID) throw new Error("the Default Display profile cannot be deleted")
   const wasActive = readRaw(ACTIVE_PROFILE_KEY) === profileId
-  // The tombstone and the entry first, so another browser on this profile moves to Default before it reads blank values.
   writeRaw(profileTombstoneKey(profileId), "1")
   writeRaw(profileEntryKey(profileId), "")
   const valuePrefix = profileValueKey(profileId, "")
@@ -695,10 +575,6 @@ export function deleteDisplayProfile(profileId: string): void {
   if (wasActive) pickDisplayProfile(DEFAULT_DISPLAY_PROFILE_ID)
 }
 
-/**
- * Writes the change over the stored entry of the profile. The fields that this version does not know stay, and the
- * entry of Default starts from the defaults while it has none.
- */
 function updateDisplayProfileEntry(profile: DisplayProfile, change: Partial<DisplayProfileEntry>): void {
   const key = profileEntryKey(profile.id)
   const raw = readRaw(key) ?? ""
@@ -711,7 +587,6 @@ export function setDisplayProfileIcon(profileId: string, icon: string): void {
   if (profile) updateDisplayProfileEntry(profile, { icon })
 }
 
-/** Saves the color of a profile. null is the color None. */
 export function setDisplayProfileColor(profileId: string, color: DisplayProfileColor | null): void {
   const profile = findDisplayProfile(profileId)
   if (profile) updateDisplayProfileEntry(profile, { color })
@@ -723,7 +598,6 @@ function readLastInstance(): number | null {
   return Number.isInteger(id) ? id : null
 }
 
-/** Records the instance that a torrent table shows (0 is the Unified view), so Settings can name and copy it. */
 export function recordColumnSetupInstance(instanceId: number): void {
   if (readLastInstance() !== instanceId) writeLocal(LAST_INSTANCE_KEY, String(instanceId))
 }
@@ -732,16 +606,10 @@ function subscribeLastInstance(callback: () => void): () => void {
   return subscribeToKeys(callback, (key) => key === LAST_INSTANCE_KEY)
 }
 
-/** The last instance that a torrent table of this browser showed, or null when none did. */
 export function useLastColumnSetupInstance(): number | null {
   return useSyncExternalStore(subscribeLastInstance, readLastInstance)
 }
 
-/**
- * Sets Same columns on every instance for a profile. Turning it on copies the Column setup of instanceId (by default
- * the last instance that this browser showed) to the shared setup. Turning it off copies the shared setup to every
- * instance, so no instance changes on screen.
- */
 export function setDisplayProfileSameColumns(profileId: string, on: boolean, instanceId: number | null = readLastInstance()): void {
   const profile = findDisplayProfile(profileId)
   if (!profile) return
@@ -752,7 +620,6 @@ export function setDisplayProfileSameColumns(profileId: string, on: boolean, ins
     }
   }
   if (!on && profile.usesSameColumns) {
-    // An instance with no setup of its own already reads the shared setup.
     for (const storageKey of storedKeys()) {
       const owner = instanceColumnSetupOwner(storageKey)
       if (owner?.profileId === profile.id) writeRaw(storageKey, readRaw(profileStorageKey(profile, owner.prefix + SHARED_COLUMN_SETUP)) ?? "")
@@ -761,7 +628,6 @@ export function setDisplayProfileSameColumns(profileId: string, on: boolean, ins
   updateDisplayProfileEntry(profile, { sameColumns: on })
 }
 
-/** The Sort and filters values stored under the prefix, as pairs of the key of today and the raw value. */
 function storedSortAndFilters(prefix: string): [string, string][] {
   const values: [string, string][] = []
   for (const storageKey of storedKeys()) {
@@ -773,17 +639,11 @@ function storedSortAndFilters(prefix: string): [string, string][] {
   return values
 }
 
-/**
- * Sets "Own sort and filters" of a profile. On copies the shared values to the profile, so nothing changes at that
- * moment. Off writes "" to the own values, and the profile reads the shared values again. Throws for Default, which
- * always shares.
- */
 export function setDisplayProfileOwnSortAndFilters(profileId: string, on: boolean): void {
   const profile = findDisplayProfile(profileId)
   if (!profile || profile.isDefault) throw new Error(`Display profile ${profileId} cannot keep its own sort and filters`)
   if (profile.ownSortAndFilters === on) return
 
-  // The entry flips last on the way in and first on the way out, so the profile never reads blank own values.
   if (on) {
     for (const [key, raw] of storedSortAndFilters("")) writeRaw(profileValueKey(profileId, key), raw)
     updateDisplayProfileEntry(profile, { ownSortAndFilters: true })
@@ -799,10 +659,6 @@ function subscribeDisplayProfiles(callback: () => void): () => void {
 }
 
 export interface DisplayProfilesApi extends DisplayProfilesState {
-  /**
-   * False until the first read of the server ends. Until then the actions can copy old local values over newer
-   * values of the server, so the UI keeps them disabled.
-   */
   settled: boolean
   pick: (profileId: string) => void
   create: (name: string, look?: DisplayProfileLook) => string
@@ -831,14 +687,8 @@ export function useDisplayProfiles(): DisplayProfilesApi {
   }), [state, settled])
 }
 
-// --- server sync (called by useClientSettingsSync) ---
-
 const activeProfileDeletedListeners = new Set<(profile: DisplayProfile) => void>()
 
-/**
- * Calls back when a server snapshot deletes the profile of this browser, after the browser moved to Default. The
- * listener gets the deleted profile. Returns the unsubscribe.
- */
 export function onActiveDisplayProfileDeleted(listener: (profile: DisplayProfile) => void): () => void {
   activeProfileDeletedListeners.add(listener)
   return () => activeProfileDeletedListeners.delete(listener)
@@ -872,12 +722,10 @@ function notifyActiveProfileDeleted(profile: DisplayProfile): void {
 }
 
 if (typeof window !== "undefined") {
-  // Registered before any hook subscribes, so a hook that re-reads after a storage event sees the new profiles.
   window.addEventListener("storage", (event) => {
     if (event.key != null && !changesDisplayProfiles(event.key)) return
     const before = lastActiveProfile
     displayProfilesChanged()
-    // Another tab of this browser applied a server delete of the profile that this tab uses.
     if (event.key === null || !before || before.isDefault || readRaw(SERVER_COPY_PREFIX + event.key) === null) return
     if (getDisplayProfiles().active.id !== before.id && isProfileDeleted(before.id)) notifyActiveProfileDeleted(before)
   })
@@ -893,14 +741,9 @@ function dropPendingOfProfile(profileId: string): void {
   if (dropped) persistPending()
 }
 
-/**
- * Apply a server snapshot to localStorage. Keys with a pending local push and
- * keys already equal are skipped. Returns the keys that changed.
- */
 export function applyServerSettings(settings: Record<string, string>): string[] {
   const { active } = getDisplayProfiles()
   const deletedIds = deletedProfileIds(settings)
-  // A delete wins over the unsaved writes of this browser, so they cannot bring the profile back.
   for (const id of deletedIds) dropPendingOfProfile(id)
 
   const changed: string[] = []
@@ -917,10 +760,6 @@ export function applyServerSettings(settings: Record<string, string>): string[] 
   return changed
 }
 
-/**
- * Queue every synced localStorage key the server does not know yet, then open
- * the push gate. Idempotent: after one push the server has the key.
- */
 export function seedAndMarkReady(serverSettings: Record<string, string>): void {
   const legacyMode = readRaw(TORRENT_VIEW_MODE_KEYS.legacy)
   const migratedModes = legacyMode
@@ -944,8 +783,6 @@ export function seedAndMarkReady(serverSettings: Record<string, string>): void {
   scheduleFlush()
 }
 
-// Test-only: reset module state between vitest cases. Mirrors a fresh page
-// boot: in-memory state resets, then the persisted outbox loads back in.
 export function _resetClientSettingsForTests(): void {
   pending.clear()
   queuedGeneration.clear()
@@ -962,9 +799,6 @@ export function _resetClientSettingsForTests(): void {
   loadPersistedPending()
 }
 
-// --- React hook ---
-
-/** JSON-parse a raw value, accepting only a real boolean. */
 export function parseJsonBoolean(raw: string): boolean {
   const parsed = JSON.parse(raw)
   if (typeof parsed !== "boolean") throw new Error("not a boolean")
@@ -977,14 +811,8 @@ export function parseJsonNumber(raw: string): number {
   return parsed
 }
 
-// Module-level so the setter's useCallback identity stays stable when no
-// custom serializer is passed.
 const defaultSerialize = (value: unknown): string => JSON.stringify(value)
 
-/**
- * Drop a pre-instance-scoping shared localStorage key once the caller uses
- * instance-scoped keys. Local-only: legacy keys are never synced.
- */
 export function useDropLegacyKey(baseKey: string, enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return
@@ -996,10 +824,6 @@ export function useDropLegacyKey(baseKey: string, enabled: boolean): void {
   }, [baseKey, enabled])
 }
 
-/**
- * Moves the value of a local-only legacy key into a setting of the active profile, when the setting has no value and
- * isValid accepts the legacy value. Drops the legacy key, except when the storage refuses the move.
- */
 export function migrateLegacyLocalValue(legacyKey: string, key: string, isValid: (raw: string) => boolean): void {
   try {
     const legacy = localStorage.getItem(legacyKey)
@@ -1016,14 +840,11 @@ export function migrateLegacyLocalValue(legacyKey: string, key: string, isValid:
 
 interface ClientSettingOptions<T> {
   defaultValue: T
-  /** Raw string to value; throw to fall back to defaultValue. Pass a stable function. */
   parse: (raw: string) => T
-  /** Value to raw string; defaults to JSON.stringify. Pass a stable function. */
   serialize?: (value: T) => string
 }
 
 function decode<T>(raw: string | null, { defaultValue, parse }: ClientSettingOptions<T>): T {
-  // "" is the cleared sentinel (settings never remove their key).
   if (raw == null || raw === "") return defaultValue
   try {
     return parse(raw)
@@ -1032,17 +853,14 @@ function decode<T>(raw: string | null, { defaultValue, parse }: ClientSettingOpt
   }
 }
 
-/** The current value of one setting, for code outside a component. */
 export function readClientSetting<T>(key: string, options: ClientSettingOptions<T>): T {
   return decode(readRaw(resolveReadKey(key)), options)
 }
 
-/** Stores one setting and queues it for the server, for code outside a component. The setter of useClientSetting calls it too. */
 export function writeClientSetting<T>(key: string, value: T, serialize: (value: T) => string = defaultSerialize): void {
   writeRaw(resolveKey(key), serialize(value))
 }
 
-/** Calls back after any setting changes, in this tab or another one. Returns the unsubscribe. */
 export function subscribeClientSettings(callback: () => void): () => void {
   window.addEventListener("storage", callback)
   window.addEventListener(CHANGE_EVENT, callback)
@@ -1052,10 +870,6 @@ export function subscribeClientSettings(callback: () => void): () => void {
   }
 }
 
-/**
- * The value of one setting as a profile sees it, whatever profile this browser uses, for a place that shows
- * profiles side by side, such as Settings. A profile that does not exist reads the default.
- */
 export function useDisplayProfileSetting<T>(profileId: string, key: string, { defaultValue, parse }: ClientSettingOptions<T>): T {
   const raw = useSyncExternalStore(subscribeClientSettings, () => {
     const profile = findDisplayProfile(profileId)
@@ -1064,11 +878,6 @@ export function useDisplayProfileSetting<T>(profileId: string, key: string, { de
   return useMemo(() => decode(raw, { defaultValue, parse }), [raw, parse, defaultValue])
 }
 
-/**
- * One DB-backed setting as React state. All hook instances for a key stay in
- * sync in the same tab (change event) and across tabs (storage event); writes
- * persist to localStorage and queue a debounced server push.
- */
 export function useClientSetting<T>(
   key: string,
   { defaultValue, parse, serialize = defaultSerialize }: ClientSettingOptions<T>
@@ -1076,7 +885,6 @@ export function useClientSetting<T>(
   const subscribe = useCallback(
     (callback: () => void) => {
       const unsubscribeKey = subscribeToKeys(callback, (changed) => changed === resolveKey(key) || changed === resolveReadKey(key))
-      // A profile change can move the key to another storage key.
       const unsubscribeProfiles = subscribeDisplayProfiles(callback)
       return () => {
         unsubscribeKey()
@@ -1093,9 +901,6 @@ export function useClientSetting<T>(
   const valueRef = useRef(value)
   valueRef.current = value
 
-  // valueRef changes only on render, so two functional updates of one key in the
-  // same tick both read the old value and the last one wins. Nothing writes on
-  // mount: corrupt stored JSON renders as the default until the first edit.
   const set = useCallback(
     (next: T | ((prev: T) => T)) => {
       const resolved = typeof next === "function" ? (next as (prev: T) => T)(valueRef.current) : next

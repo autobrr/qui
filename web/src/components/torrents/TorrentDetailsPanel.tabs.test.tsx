@@ -5,7 +5,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { SortedPeer, Torrent, TorrentFile, TorrentProperties, TorrentTracker, WebSeed } from "@/types"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -13,7 +13,6 @@ import "@/i18n"
 import { makeTorrent } from "@/test/mockTorrent"
 import { TorrentDetailsPanel } from "./TorrentDetailsPanel"
 
-// Every mock returns a stable object: a fresh one per render loops the panel's effects.
 const mocks = vi.hoisted(() => ({
   tabs: {
     general: {
@@ -37,7 +36,6 @@ const mocks = vi.hoisted(() => ({
     },
     webseeds: { data: [{ url: "https://example.invalid/a" }, { url: "https://example.invalid/b" }] as WebSeed[], isLoading: false, error: null },
   } as Record<string, unknown>,
-  // The real hook fetches nothing for a null hash, as before the 150 ms ready delay ends.
   noHash: { data: undefined, isLoading: false, error: null },
   capabilities: { data: {} },
   matches: { matchingTorrents: [], isLoadingMatches: false, allInstances: [] },
@@ -77,14 +75,6 @@ vi.mock("./details", () => ({
   TrackersTable: ({ trackers }: { trackers?: TorrentTracker[] }) => <div data-testid="trackers">{trackers?.map(tracker => tracker.url).join(",")}</div>,
   WebSeedsTable: ({ webseeds }: { webseeds?: WebSeed[] }) => <div data-testid="webseeds">{webseeds?.map(seed => seed.url).join(",")}</div>,
 }))
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()
@@ -156,7 +146,6 @@ describe("TorrentDetailsPanel stream subscription", () => {
     )
     mocks.liveHashes.length = 0
     const { rerender } = render(view("a"))
-    // The live row does not wait for the 150 ms ready delay.
     expect(mocks.liveHashes).toEqual(expect.arrayContaining(["a"]))
     expect(mocks.liveHashes).not.toContain(null)
 
@@ -239,8 +228,6 @@ describe("TorrentDetailsPanel mobile layout", () => {
 describe("TorrentDetailsPanel Reannounce In row", () => {
   const keptGeneral = mocks.tabs.general
 
-  // The server leaves reannounce out of the rows of an instance before qBittorrent 5.0.
-  // qBittorrent still sends it one time in the properties.
   function setGeneral(state: string, reannounce: number | undefined) {
     mocks.tabs.general = {
       data: { row: { progress: 1, state, reannounce } as Torrent, properties: { seeds: 1, seeds_total: 2, reannounce: 600 } as TorrentProperties },
@@ -261,7 +248,6 @@ describe("TorrentDetailsPanel Reannounce In row", () => {
     )
   }
 
-  // The value next to the label in the mobile layout, or null when the row is absent.
   function mobileReannounce(container: HTMLElement): string | null {
     const label = Array.from(container.querySelectorAll("span")).find(span => span.textContent === "Reannounce")
     return label ? label.nextElementSibling?.textContent ?? "" : null

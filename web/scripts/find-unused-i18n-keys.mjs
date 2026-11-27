@@ -4,19 +4,13 @@ import ts from "typescript"
 
 import { walkFiles } from "./find-hardcoded-i18n-literals.mjs"
 
-// With --preserve-symlinks-main, import.meta.filename can be a symlink outside the repository, so the root comes from
-// the real path.
 const scriptPath = fs.realpathSync(import.meta.filename)
 const webRoot = path.resolve(path.dirname(scriptPath), "..")
 const srcRoot = path.join(webRoot, "src")
 const englishLocaleRoot = path.join(srcRoot, "i18n", "locales", "en")
 
-// i18next v4 CLDR plural suffixes. A locale leaf carrying one of these is part of a
-// plural group; code references the group by its base key, never by a suffixed leaf.
 const pluralSuffixPattern = /_(?:ordinal_)?(?:zero|one|two|few|many|other)$/
 
-// Only literals shaped like a key path are worth matching. Keeps CSS values, URLs and
-// prose out of the reference set.
 const keyPathPattern = /^[A-Za-z0-9_$-]+(?::[A-Za-z0-9_$-]+)?(?:\.[A-Za-z0-9_$-]+)*$/
 
 function collectLeafKeys(node, prefix, leaves) {
@@ -54,26 +48,6 @@ export function collectLocaleKeys(namespaceBundles) {
   return keys
 }
 
-/**
- * Pulls every key reference a source file can contribute, in two flavours:
- *
- * - `literals`: whole key paths written out. Matching whole paths (never substrings)
- *   is what keeps `detailsPanel.banPeer` dead while `detailsPanel.banPeerPermanent`
- *   is live, and what keeps the three separate `shareLimit.*` subtrees apart.
- * - `prefixes`: the static head of a template like `dateTime.units.${unit}`, which
- *   reaches every leaf below it. Without this the whole block reads as dead.
- *
- * A template that starts with a variable, as in `` `${s}.dryRun` ``, counts only when the
- * variable is a string `const` in scope. Its value stands in for the head; a further
- * interpolation after it is filled from the string literals of the enclosing function,
- * which is where `` `${s}.${outcome ? "executed" : "failed"}` `` and lookup maps keep them.
- *
- * Literals are collected from anywhere in the file, not just inside `t(...)`: keys
- * travel through `labelKey` fields and `<Trans i18nKey>` attributes as often as they
- * are passed directly. Literals and prefixes keep a `namespace:` qualifier when the
- * source writes one. Test files are not scanned, so a key a test names but the UI
- * does not still reads as dead.
- */
 export function collectKeyReferencesFromSource(source, fileName) {
   const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true)
   const literals = new Set()
@@ -175,8 +149,6 @@ function segmentLiteralsInEnclosingFunction(node) {
   return segments
 }
 
-// A `namespace:` reference reaches only that namespace. An unqualified one may resolve in
-// any namespace, because its default comes from the caller's useTranslation or `ns` option.
 function isReachable(namespace, key, references) {
   const qualifiedKey = `${namespace}:${key}`
   if (references.literals.has(key) || references.literals.has(qualifiedKey)) {
@@ -226,8 +198,6 @@ function loadEnglishBundles() {
   return bundles
 }
 
-// A path through a symlink, such as /var on macOS, resolves before the compare. The test runner can pass a glob that
-// names no file.
 if (fs.existsSync(process.argv[1] ?? "") && fs.realpathSync(process.argv[1]) === scriptPath) {
   const localeKeys = collectLocaleKeys(loadEnglishBundles())
   const references = mergeReferences(

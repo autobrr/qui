@@ -96,9 +96,9 @@ func TestAddBulkTarget_DeduplicatesByInstanceAndHash(t *testing.T) {
 	targetsByInstance := make(map[int][]string)
 	seen := make(map[int]map[string]struct{})
 
-	addBulkTarget(targetsByInstance, seen, 1, "ABC")
-	addBulkTarget(targetsByInstance, seen, 1, "abc")
-	addBulkTarget(targetsByInstance, seen, 2, "abc")
+	addBulkTarget(targetsByInstance, seen, 1, "ABC0000000000000000000000000000000000000")
+	addBulkTarget(targetsByInstance, seen, 1, "abc0000000000000000000000000000000000000")
+	addBulkTarget(targetsByInstance, seen, 2, "abc0000000000000000000000000000000000000")
 
 	if len(targetsByInstance[1]) != 1 {
 		t.Fatalf("expected one hash for instance 1, got %d", len(targetsByInstance[1]))
@@ -113,35 +113,33 @@ func TestAppendTargetsFromCrossInstanceTorrents_RespectsExclusions(t *testing.T)
 
 	torrents := []qbittorrent.CrossInstanceTorrentView{
 		{
-			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "aaa"}},
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "aaa0000000000000000000000000000000000000"}},
 			InstanceID:  1,
 		},
 		{
-			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "bbb"}},
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "bbb0000000000000000000000000000000000000"}},
 			InstanceID:  1,
 		},
 		{
-			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ccc"}},
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ccc0000000000000000000000000000000000000"}},
 			InstanceID:  2,
 		},
-		// A hybrid torrent excluded by its v1 hash: the row lists it under Hash
-		// (the v2 hash), so a Hash-only match would still act on it (#1481, #1571).
 		{
-			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ddd", InfohashV1: "eee"}},
+			TorrentView: &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "ddd0000000000000000000000000000000000000", InfohashV1: "eee0000000000000000000000000000000000000"}},
 			InstanceID:  1,
 		},
 	}
 
 	targetsByInstance := make(map[int][]string)
 	seen := make(map[int]map[string]struct{})
-	excludeHashes := map[string]struct{}{"bbb": {}, "eee": {}}
+	excludeHashes := buildExcludeHashSet([]string{"bbb0000000000000000000000000000000000000", "eee0000000000000000000000000000000000000"})
 	excludeTargets := buildExcludeTargetSet([]BulkActionTarget{
-		{InstanceID: 2, Hash: "ccc"},
+		{InstanceID: 2, Hash: "ccc0000000000000000000000000000000000000"},
 	})
 
 	appendTargetsFromCrossInstanceTorrents(targetsByInstance, seen, torrents, excludeHashes, excludeTargets)
 
-	if len(targetsByInstance[1]) != 1 || targetsByInstance[1][0] != "aaa" {
+	if len(targetsByInstance[1]) != 1 || targetsByInstance[1][0] != "aaa0000000000000000000000000000000000000" {
 		t.Fatalf("expected only hash aaa for instance 1, got %+v", targetsByInstance[1])
 	}
 	if len(targetsByInstance[2]) != 0 {
@@ -223,9 +221,6 @@ func TestParseInstanceIDsParam(t *testing.T) {
 	}
 }
 
-// TestBulkAction_UnifiedScopeRejectsBareHashes pins the unified-scope contract:
-// a hash names a torrent, not an instance, so hashes without targets are a 400
-// instead of a fan-out to every instance that holds the hash (issue #2527).
 func TestBulkAction_UnifiedScopeRejectsBareHashes(t *testing.T) {
 	t.Parallel()
 
@@ -242,9 +237,6 @@ func TestBulkAction_UnifiedScopeRejectsBareHashes(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "targets")
 }
 
-// TestBulkAction_UnifiedScopeTargetsReachOneInstance is the mirror case: the same
-// payload with targets for one instance reaches only that instance, even though
-// the other instance holds the same hash.
 func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	t.Parallel()
 
@@ -255,7 +247,7 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = clientPool.Close() })
 
-	shared := []qbt.Torrent{{Name: "Shared", Hash: "shared", AddedOn: 1}}
+	shared := []qbt.Torrent{{Name: "Shared", Hash: "5ba7ed0000000000000000000000000000000000", AddedOn: 1}}
 	clients := make(map[int]*qbittorrent.Client, 2)
 	instanceIDs := make(map[string]int, 2)
 	recheckHits := map[string]*atomic.Int64{"alpha": {}, "beta": {}}
@@ -265,7 +257,7 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 			case "/api/v2/torrents/recheck":
 				hits.Add(1)
 			case "/api/v2/sync/maindata":
-				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"shared":{"name":"Shared","hash":"shared","added_on":1}}}`))
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"5ba7ed0000000000000000000000000000000000":{"name":"Shared","hash":"5ba7ed0000000000000000000000000000000000","added_on":1}}}`))
 				return
 			}
 			_, _ = w.Write([]byte("Ok."))
@@ -282,8 +274,8 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
 	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
 		"action":      "recheck",
-		"hashes":      []string{"shared"},
-		"targets":     []map[string]any{{"instanceId": instanceIDs["alpha"], "hash": "shared"}},
+		"hashes":      []string{"5ba7ed0000000000000000000000000000000000"},
+		"targets":     []map[string]any{{"instanceId": instanceIDs["alpha"], "hash": "5ba7ed0000000000000000000000000000000000"}},
 		"instanceIds": []int{instanceIDs["alpha"], instanceIDs["beta"]},
 	})
 
@@ -295,9 +287,6 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 	require.EqualValues(t, 0, recheckHits["beta"].Load())
 }
 
-// TestBulkAction_SelectAllExcludesHybridByV1Hash drives story 7 of #2749 through
-// the handler: a unified select-all skips a hybrid torrent excluded by its v1
-// hash, the same rule the copy route applies.
 func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	t.Parallel()
 
@@ -318,7 +307,7 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 			rechecked = append(rechecked, r.Form.Get("hashes"))
 			mu.Unlock()
 		case "/api/v2/sync/maindata":
-			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aaa":{"name":"Plain","hash":"aaa","added_on":2},"ddd":{"name":"Hybrid","hash":"ddd","infohash_v1":"eee","added_on":1}}}`))
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"aaa0000000000000000000000000000000000000":{"name":"Plain","hash":"aaa0000000000000000000000000000000000000","added_on":2},"ddd0000000000000000000000000000000000000":{"name":"Hybrid","hash":"ddd0000000000000000000000000000000000000","infohash_v1":"eee0000000000000000000000000000000000000","added_on":1}}}`))
 			return
 		}
 		_, _ = w.Write([]byte("Ok."))
@@ -328,8 +317,8 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
-		{Name: "Plain", Hash: "aaa", AddedOn: 2},
-		{Name: "Hybrid", Hash: "ddd", InfohashV1: "eee", AddedOn: 1},
+		{Name: "Plain", Hash: "aaa0000000000000000000000000000000000000", AddedOn: 2},
+		{Name: "Hybrid", Hash: "ddd0000000000000000000000000000000000000", InfohashV1: "eee0000000000000000000000000000000000000", AddedOn: 1},
 	})})
 
 	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
@@ -337,7 +326,7 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 		"action":        "recheck",
 		"selectAll":     true,
 		"instanceIds":   []int{instance.ID},
-		"excludeHashes": []string{"EEE"},
+		"excludeHashes": []string{"EEE0000000000000000000000000000000000000"},
 	})
 
 	rec := httptest.NewRecorder()
@@ -346,22 +335,64 @@ func TestBulkAction_SelectAllExcludesHybridByV1Hash(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	mu.Lock()
 	defer mu.Unlock()
-	require.Equal(t, []string{"aaa"}, rechecked)
+	require.Equal(t, []string{"aaa0000000000000000000000000000000000000"}, rechecked)
 }
 
-// regression: #3868
-// TestBulkAction_SelectAllFollowsTheTorrentListRule drives Select all mode
-// through the handler: it acts on the rows that its filters show, and a filter
-// value that qui does not know touches nothing.
+func TestBulkAction_SelectAllLeavesOutTheTorrentsOfAnExcludedTerm(t *testing.T) {
+	t.Parallel()
+
+	db := testdb.NewMigratedSQLite(t, "torrents-bulk-action-excluded-term")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	var mu sync.Mutex
+	var rechecked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/torrents/recheck" {
+			_ = r.ParseForm()
+			mu.Lock()
+			rechecked = append(rechecked, r.Form.Get("hashes"))
+			mu.Unlock()
+		}
+		_, _ = w.Write([]byte("Ok."))
+	}))
+	t.Cleanup(srv.Close)
+
+	instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
+		{Name: "Some.Movie.2020.1080p.x264-GRPA", Hash: "aaa0000000000000000000000000000000000000", AddedOn: 2},
+		{Name: "Some.Movie.2020.1080p.x265-GRPA", Hash: "bbb0000000000000000000000000000000000000", AddedOn: 1},
+	})})
+
+	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
+	req := newTorrentFieldRequest(t, instance.ID, map[string]any{
+		"action":    "recheck",
+		"selectAll": true,
+		"search":    "-x265",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.BulkAction(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []string{"aaa0000000000000000000000000000000000000"}, rechecked)
+}
+
 func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		name    string
 		filters map[string]any
-		want    []string // the rechecked hashes; nil when the action touches nothing
+		want    []string
 	}{
-		{"running leaves out a paused torrent of qBittorrent 4.x", map[string]any{"status": []string{"running"}}, []string{"aaa"}},
+		{"running leaves out a paused torrent of qBittorrent 4.x", map[string]any{"status": []string{"running"}}, []string{"aaa0000000000000000000000000000000000000"}},
 		{"an unknown excludeStatus value", map[string]any{"excludeStatus": []string{"tpyo"}}, nil},
 		{"an unknown status next to a known one", map[string]any{"status": []string{"running", "tpyo"}}, nil},
 		{"an expression that does not compile", map[string]any{"expr": "Ratio >"}, nil},
@@ -392,8 +423,8 @@ func TestBulkAction_SelectAllFollowsTheTorrentListRule(t *testing.T) {
 			instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
 			require.NoError(t, err)
 			testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, []qbt.Torrent{
-				{Name: "Seeding", Hash: "aaa", State: qbt.TorrentStateUploading, AddedOn: 2},
-				{Name: "Paused", Hash: "bbb", State: qbt.TorrentStatePausedUp, AddedOn: 1},
+				{Name: "Seeding", Hash: "aaa0000000000000000000000000000000000000", State: qbt.TorrentStateUploading, AddedOn: 2},
+				{Name: "Paused", Hash: "bbb0000000000000000000000000000000000000", State: qbt.TorrentStatePausedUp, AddedOn: 1},
 			})})
 
 			handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
@@ -427,7 +458,6 @@ func (d *recordingDeleter) DeleteTorrents(_ context.Context, _ int, _ []string, 
 	return nil
 }
 
-// A delete from the web UI or the API names the user in qui.
 func TestBulkAction_DeleteNamesTheUser(t *testing.T) {
 	t.Parallel()
 

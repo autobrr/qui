@@ -22,11 +22,12 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
-	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -61,25 +62,19 @@ const (
 	partialPoolReflinkProbeDestination = ".reflink_probe_dst_"
 )
 
-// Tests shorten these timers.
 var (
 	partialPoolRecheckPollInterval = 100 * time.Millisecond
 	partialPoolAdmissionHold       = 2 * time.Second
 )
 
-// partialPoolSync is the part of the sync manager that the partial pool calls.
 type partialPoolSync interface {
 	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
-	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
+	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []infohash.Hash) (*qbt.Torrent, bool, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	GetSyncOwner(ctx context.Context, instanceID int) (*syncowner.Owner, error)
 }
 
-// partialPoolCoordinator owns durable partial link-mode completion. Code
-// outside this file uses only run, wake, joinEnabled, and join. A nil
-// coordinator means that the pool is off, so a test that expects a pooled
-// add must set Service.partialPool and assert that the add joined a pool.
 type partialPoolCoordinator struct {
 	automationStore     *models.CrossSeedStore
 	instanceStore       instanceProvider
@@ -92,11 +87,8 @@ type partialPoolCoordinator struct {
 	partialPoolAdmissionMaterializationMu sync.Mutex
 	partialPoolCreatedMu                  sync.Mutex
 	partialPoolCreated                    map[int64]*hardlinktree.Created
-	// partialPoolRejectedPairs prevents repeated cross-filesystem attempts for
-	// one source/target file pair until either root path changes or qui restarts.
-	partialPoolRejectedPairs sync.Map
+	partialPoolRejectedPairs              sync.Map
 
-	// test hooks
 	partialPoolPropagationRollback func(*hardlinktree.Created) error
 	partialPoolTorrentRefresher    func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
 }
@@ -107,9 +99,6 @@ type partialPoolWake struct {
 	hash       string
 }
 
-// partialPoolPropagationPair identifies one source/target file pairing for
-// the current root paths. Including the roots lets a later path change retry
-// the same durable file IDs.
 type partialPoolPropagationPair struct {
 	sourceFileID int64
 	targetFileID int64
@@ -117,8 +106,6 @@ type partialPoolPropagationPair struct {
 	targetRoot   string
 }
 
-// partialPoolPropagationPairKey returns the process-local rejection key for a
-// claimed source and target.
 func partialPoolPropagationPairKey(
 	sourceMember *models.CrossSeedPartialPoolMember,
 	sourceFile *models.CrossSeedPartialPoolMemberFile,
@@ -133,8 +120,6 @@ func partialPoolPropagationPairKey(
 	}
 }
 
-// rejectPartialPoolPropagationPair prevents a known cross-filesystem pairing
-// from being selected again during this service process.
 func (s *partialPoolCoordinator) rejectPartialPoolPropagationPair(
 	sourceMember *models.CrossSeedPartialPoolMember,
 	sourceFile *models.CrossSeedPartialPoolMemberFile,
@@ -144,8 +129,6 @@ func (s *partialPoolCoordinator) rejectPartialPoolPropagationPair(
 	s.partialPoolRejectedPairs.Store(partialPoolPropagationPairKey(sourceMember, sourceFile, targetMember, targetFile), struct{}{})
 }
 
-// partialPoolPropagationPairRejected reports whether this process already
-// observed a cross-filesystem failure for the current file roots.
 func (s *partialPoolCoordinator) partialPoolPropagationPairRejected(
 	sourceMember *models.CrossSeedPartialPoolMember,
 	sourceFile *models.CrossSeedPartialPoolMemberFile,
@@ -156,8 +139,6 @@ func (s *partialPoolCoordinator) partialPoolPropagationPairRejected(
 	return rejected
 }
 
-// isCrossDeviceLinkError reports errors that prove only this source and target
-// cannot be linked across their filesystems.
 func isCrossDeviceLinkError(err error) bool {
 	return errors.Is(err, syscall.EXDEV) || partialPoolPlatformCrossDeviceError(err)
 }
@@ -169,14 +150,10 @@ func (s *partialPoolCoordinator) wake(wake partialPoolWake) {
 	select {
 	case s.partialPoolWake <- wake:
 	default:
-		// A queued wake will release the coordinator. Preserve the dropped
-		// scope as one coalesced full scan so dormant pools cannot be missed.
 		s.partialPoolFullScanPending.Store(true)
 	}
 }
 
-// joinEnabled requires local mode, not Write, because pool members are linked
-// and renamed with host calls.
 func (s *partialPoolCoordinator) joinEnabled(ctx context.Context, instance *models.Instance, hasExtras bool, req *CrossSeedRequest, requireComplete bool) bool {
 	if s == nil || s.automationStore == nil || instance == nil || req == nil || !hasExtras || requireComplete ||
 		req.SkipRecheck || req.SkipAutoResume || models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
@@ -190,10 +167,8 @@ func partialPoolCanonicalTorrentKey(torrent *qbt.Torrent) string {
 	if torrent == nil {
 		return ""
 	}
-	for _, hash := range []string{torrent.InfohashV1, torrent.InfohashV2, torrent.Hash} {
-		if normalized := normalizeHash(hash); normalized != "" {
-			return normalized
-		}
+	if hashes := parseHashes(torrent.InfohashV1, torrent.InfohashV2, torrent.Hash); len(hashes) > 0 {
+		return hashes[0].String()
 	}
 	return ""
 }
@@ -202,7 +177,7 @@ func partialPoolTorrentAliases(torrent *qbt.Torrent) []string {
 	if torrent == nil {
 		return nil
 	}
-	return normalizedHashes(torrent.InfohashV1, torrent.InfohashV2, torrent.Hash)
+	return hashAliases(torrent.InfohashV1, torrent.InfohashV2, torrent.Hash)
 }
 
 func partialPoolParsedIdentity(torrentBytes []byte) (key, infohashV1, infohashV2 string, descriptors []partialPoolFileDescriptor, err error) {
@@ -215,10 +190,10 @@ func partialPoolParsedIdentity(torrentBytes []byte) (key, infohashV1, infohashV2
 		return "", "", "", nil, err
 	}
 	if meta.Info != nil && meta.Info.HasV1() {
-		infohashV1 = normalizeHash(meta.HashV1)
+		infohashV1 = meta.HashV1.String()
 	}
 	if meta.Info != nil && meta.Info.HasV2() {
-		infohashV2 = normalizeHash(meta.HashV2)
+		infohashV2 = meta.HashV2.String()
 	}
 	key = infohashV1
 	if key == "" {
@@ -230,10 +205,6 @@ func partialPoolParsedIdentity(torrentBytes []byte) (key, infohashV1, infohashV2
 	return key, infohashV1, infohashV2, descriptors, nil
 }
 
-// join loads qBittorrent's authoritative file list, merges it with the parsed
-// and materialized file evidence, and atomically persists the pool member
-// before any recheck is requested. Added torrent IDs are lookup hints only;
-// metainfo hashes remain the durable member identity.
 func (s *partialPoolCoordinator) join(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
@@ -257,17 +228,17 @@ func (s *partialPoolCoordinator) join(
 		descriptors = parsedDescriptors
 	}
 
-	memberAliases := normalizedHashes(memberKey, infohashV1, infohashV2)
+	memberAliases := hashAliases(memberKey, infohashV1, infohashV2)
 	fetchHash := ""
-	if responseIDs := normalizedHashes(addedTorrentIDs...); len(responseIDs) > 0 {
+	if responseIDs := hashAliases(addedTorrentIDs...); len(responseIDs) > 0 {
 		fetchHash = responseIDs[0]
 	} else {
-		addedTorrent, found, resolveErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, memberAliases)
+		addedTorrent, found, resolveErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, infohash.ParseAll(memberAliases))
 		if resolveErr != nil {
 			return nil, nil, fmt.Errorf("resolve added partial pool torrent: %w", resolveErr)
 		}
 		if found && addedTorrent != nil {
-			fetchHash = normalizeHash(addedTorrent.Hash)
+			fetchHash = addedTorrent.Hash
 			if fetchHash == "" {
 				fetchHash = partialPoolCanonicalTorrentKey(addedTorrent)
 			}
@@ -281,9 +252,9 @@ func (s *partialPoolCoordinator) join(
 	if err != nil {
 		return nil, nil, fmt.Errorf("refresh added partial pool files: %w", err)
 	}
-	files := filesByHash[normalizeHash(fetchHash)]
+	files := filesByHash[fetchHash]
 	if len(files) == 0 {
-		for _, alias := range normalizedHashes(fetchHash, memberKey, infohashV1, infohashV2) {
+		for _, alias := range hashAliases(fetchHash, memberKey, infohashV1, infohashV2) {
 			if len(filesByHash[alias]) > 0 {
 				files = filesByHash[alias]
 				break
@@ -315,11 +286,11 @@ func (s *partialPoolCoordinator) join(
 	sourceInstanceID := 0
 	sourceKey := ""
 	var sourceAliases []string
-	if req.SearchDecision.SourceInstanceID > 0 && normalizeHash(req.SearchDecision.SourceHash) != "" {
+	if sourceHash := req.SearchDecision.SourceHash; req.SearchDecision.SourceInstanceID > 0 && !sourceHash.IsZero() {
 		sourceInstanceID = req.SearchDecision.SourceInstanceID
-		sourceKey = normalizeHash(req.SearchDecision.SourceHash)
+		sourceKey = sourceHash.String()
 		sourceAliases = []string{sourceKey}
-		if sourceTorrent, sourceFound, sourceErr := s.syncManager.HasTorrentByAnyHash(ctx, sourceInstanceID, sourceAliases); sourceErr == nil && sourceFound {
+		if sourceTorrent, sourceFound, sourceErr := s.syncManager.HasTorrentByAnyHash(ctx, sourceInstanceID, []infohash.Hash{sourceHash}); sourceErr == nil && sourceFound {
 			sourceKey = partialPoolCanonicalTorrentKey(sourceTorrent)
 			sourceAliases = partialPoolTorrentAliases(sourceTorrent)
 		}
@@ -349,8 +320,6 @@ func (s *partialPoolCoordinator) join(
 	})
 }
 
-// recordPartialPoolRecheckRequested durably claims a member's recheck before the
-// qBittorrent side effect. It returns false when the claim was not persisted.
 func (s *partialPoolCoordinator) recordPartialPoolRecheckRequested(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember) bool {
 	if s == nil || s.automationStore == nil || member == nil {
 		return false
@@ -368,8 +337,6 @@ func (s *partialPoolCoordinator) recordPartialPoolRecheckRequested(ctx context.C
 	return true
 }
 
-// recordPartialPoolRecheckObserved persists that qBittorrent reported an
-// actual piece-checking state for this verification-owned member.
 func (s *partialPoolCoordinator) recordPartialPoolRecheckObserved(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember) bool {
 	if s == nil || s.automationStore == nil || member == nil {
 		return false
@@ -385,25 +352,10 @@ func (s *partialPoolCoordinator) recordPartialPoolRecheckObserved(ctx context.Co
 	return true
 }
 
-func normalizedHashes(values ...string) []string {
-	seen := make(map[string]struct{}, len(values))
-	hashes := make([]string, 0, len(values))
-	for _, value := range values {
-		value = normalizeHash(value)
-		if value == "" {
-			continue
-		}
-		if _, exists := seen[value]; exists {
-			continue
-		}
-		seen[value] = struct{}{}
-		hashes = append(hashes, value)
-	}
-	return hashes
+func hashAliases(values ...string) []string {
+	return hashStrings(parseHashes(values...))
 }
 
-// markPartialPoolMemberManual reports whether the manual transition was
-// durably persisted and updates the in-memory member only after that success.
 func (s *partialPoolCoordinator) markPartialPoolMemberManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, reason string) bool {
 	return s.markPartialPoolMemberManualWithPause(ctx, member, reason, false)
 }
@@ -421,8 +373,6 @@ func (s *partialPoolCoordinator) markPartialPoolMemberManualWithPause(ctx contex
 	})
 }
 
-// pausePartialPoolMemberForReview persists manual review immediately but only
-// reports settlement after a later inventory observes the torrent stopped.
 func (s *partialPoolCoordinator) pausePartialPoolMemberForReview(ctx context.Context, member *models.CrossSeedPartialPoolMember, torrent qbt.Torrent, reason string) bool {
 	if s == nil || member == nil || ctx.Err() != nil {
 		return false
@@ -448,8 +398,6 @@ func (s *partialPoolCoordinator) pausePartialPoolMemberForReview(ctx context.Con
 	return persisted && settled
 }
 
-// partialPoolReviewPauseReason returns the final manual-review reason while a
-// durable pause request still awaits a non-transferring torrent observation.
 func partialPoolReviewPauseReason(member *models.CrossSeedPartialPoolMember) (string, bool) {
 	if member == nil || member.Status != models.CrossSeedPartialPoolMemberStatusManual {
 		return "", false
@@ -458,8 +406,6 @@ func partialPoolReviewPauseReason(member *models.CrossSeedPartialPoolMember) (st
 	return reason, member.ReviewPausePending && reason != ""
 }
 
-// reconcilePartialPoolReviewPauses retries durable manual-review pauses before
-// file evidence can short-circuit the pass.
 func (s *partialPoolCoordinator) reconcilePartialPoolReviewPauses(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot) {
 	for _, member := range pool.Members {
 		reason, pending := partialPoolReviewPauseReason(member)
@@ -490,8 +436,6 @@ type partialPoolMemberSnapshot struct {
 	noLocalAccess      bool
 }
 
-// RunPartialPoolCoordinator reconciles durable partial completion work until
-// ctx is canceled. It owns no child goroutines.
 func (s *Service) RunPartialPoolCoordinator(ctx context.Context) {
 	s.partialPool.run(ctx)
 }
@@ -573,9 +517,6 @@ func (s *partialPoolCoordinator) reconcilePartialPools(ctx context.Context, now 
 	return pending
 }
 
-// reconcilePartialPoolsScheduled returns whether recheck observation is
-// pending, the next persisted admission deadline, and whether all pools need
-// another recovery pass.
 func (s *partialPoolCoordinator) reconcilePartialPoolsScheduled(ctx context.Context, now time.Time, wake partialPoolWake, scanAll bool) (bool, time.Time, bool) {
 	if ctx.Err() != nil {
 		return false, time.Time{}, false
@@ -745,8 +686,6 @@ func (s *partialPoolCoordinator) reconcilePartialPoolsScheduled(ctx context.Cont
 	return pendingObservation, nextAdmission, retryFullScan
 }
 
-// partialPoolInventoriesComplete reports whether every durable member resolved
-// in the current qBittorrent inventory, not merely whether its instance loaded.
 func partialPoolInventoriesComplete(pool *models.CrossSeedPartialPool, inventories map[int]partialPoolTorrentInventory) bool {
 	if pool == nil {
 		return false
@@ -832,8 +771,6 @@ func (s *partialPoolCoordinator) loadPartialPoolTorrentInventories(ctx context.C
 	return inventories
 }
 
-// observeRequestedPartialPoolRechecks polls every requested member in batches
-// by qBittorrent instance and persists the first observed piece-check state.
 func (s *partialPoolCoordinator) observeRequestedPartialPoolRechecks(ctx context.Context, now time.Time) bool {
 	if ctx.Err() != nil {
 		return false
@@ -856,11 +793,11 @@ func (s *partialPoolCoordinator) observeRequestedPartialPoolRechecks(ctx context
 		for _, member := range targets {
 			hashes = append(hashes, partialPoolMemberHashes(member)...)
 		}
-		hashes = normalizedHashes(hashes...)
+		hashes = hashAliases(hashes...)
 		torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, instanceID, hashes)
 		if !fresh {
 			var loadErr error
-			torrents, loadErr = s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+			torrents, loadErr = s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 			if loadErr != nil {
 				for _, member := range targets {
 					if !s.expirePartialPoolRecheckObservation(ctx, now, member) {
@@ -906,8 +843,6 @@ func (s *partialPoolCoordinator) observeRequestedPartialPoolRechecks(ctx context
 	return pending
 }
 
-// forcePartialPoolTorrentSnapshot refreshes and immediately reads raw state so
-// a later sync cannot overwrite a brief checking transition before inspection.
 func (s *partialPoolCoordinator) forcePartialPoolTorrentSnapshot(ctx context.Context, instanceID int, hashes []string) ([]*qbt.Torrent, bool) {
 	if s == nil || s.syncManager == nil {
 		return nil, false
@@ -926,12 +861,9 @@ func (s *partialPoolCoordinator) forcePartialPoolTorrentSnapshot(ctx context.Con
 	if snapshot == nil {
 		return nil, false
 	}
-	return qbittorrent.TorrentRefFilter{Hashes: hashes}.Select(snapshot), true
+	return qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)}.Select(snapshot), true
 }
 
-// refreshPartialPoolTorrentStates force-refreshes raw qBittorrent state for
-// every supplied member. Members on the same instance share one sync so a
-// propagation decision compares a coherent source and target snapshot.
 func (s *partialPoolCoordinator) refreshPartialPoolTorrentStates(
 	ctx context.Context,
 	snapshots map[int64]*partialPoolMemberSnapshot,
@@ -959,7 +891,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolTorrentStates(
 				hashes = append(hashes, partialPoolMemberHashes(candidate)...)
 			}
 		}
-		torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, member.InstanceID, normalizedHashes(hashes...))
+		torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, member.InstanceID, hashAliases(hashes...))
 		if !fresh {
 			return false
 		}
@@ -976,19 +908,18 @@ func (s *partialPoolCoordinator) refreshPartialPoolTorrentStates(
 	return true
 }
 
-// newPartialPoolTorrentInventory indexes canonical and hybrid hash aliases.
 func newPartialPoolTorrentInventory(torrents []*qbt.Torrent, authoritative bool) partialPoolTorrentInventory {
 	inventory := partialPoolTorrentInventory{loaded: true, authoritative: authoritative, byAlias: make(map[string]*qbt.Torrent, len(torrents)*2)}
 	for _, torrent := range torrents {
-		for _, alias := range normalizedHashes(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
-			inventory.byAlias[alias] = torrent
+		for _, raw := range [...]string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
+			if hash := parseHash(raw); !hash.IsZero() {
+				inventory.byAlias[hash.String()] = torrent
+			}
 		}
 	}
 	return inventory
 }
 
-// partialPoolRecheckObservationPending reports whether any pool member needs
-// short-interval raw qBittorrent polling to witness a piece-check transition.
 func partialPoolRecheckObservationPending(pool *models.CrossSeedPartialPool) bool {
 	if pool == nil {
 		return false
@@ -996,8 +927,6 @@ func partialPoolRecheckObservationPending(pool *models.CrossSeedPartialPool) boo
 	return slices.ContainsFunc(pool.Members, partialPoolRecheckObservationOwned)
 }
 
-// partialPoolRecheckObservationOwned identifies verification state waiting for
-// an affirmative piece-check observation.
 func partialPoolRecheckObservationOwned(member *models.CrossSeedPartialPoolMember) bool {
 	return member != nil &&
 		(member.Status == models.CrossSeedPartialPoolMemberStatusVerifying || member.Status == models.CrossSeedPartialPoolMemberStatusRechecking) &&
@@ -1008,7 +937,7 @@ func partialPoolInventoryTorrent(inventory partialPoolTorrentInventory, member *
 	if !inventory.loaded || member == nil {
 		return nil, false
 	}
-	for _, alias := range normalizedHashes(member.TorrentKey, member.InfoHashV1, member.InfoHashV2) {
+	for _, alias := range hashAliases(member.TorrentKey, member.InfoHashV1, member.InfoHashV2) {
 		if torrent, ok := inventory.byAlias[alias]; ok {
 			return torrent, true
 		}
@@ -1016,10 +945,6 @@ func partialPoolInventoryTorrent(inventory partialPoolTorrentInventory, member *
 	return nil, false
 }
 
-// observePartialPoolMembers resolves durable members against the current
-// qBittorrent inventory and removes confirmed absences. A newly admitted
-// verifying member remains durable through the recheck grace so a stale
-// post-add inventory cannot remove it prematurely.
 func (s *partialPoolCoordinator) observePartialPoolMembers(
 	ctx context.Context,
 	now time.Time,
@@ -1080,8 +1005,6 @@ func (s *partialPoolCoordinator) observePartialPoolMembers(
 	return observed
 }
 
-// refreshPartialPoolFiles populates current file evidence and reports whether
-// every observed member returned a usable file list.
 func (s *partialPoolCoordinator) refreshPartialPoolFiles(
 	ctx context.Context,
 	pool *models.CrossSeedPartialPool,
@@ -1107,7 +1030,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolFiles(
 			}
 			continue
 		}
-		hash := normalizeHash(snapshot.torrent.Hash)
+		hash := snapshot.torrent.Hash
 		if hash == "" {
 			hash = member.TorrentKey
 		}
@@ -1135,9 +1058,9 @@ func (s *partialPoolCoordinator) refreshPartialPoolFiles(
 			continue
 		}
 		for _, request := range requests {
-			files := filesByHash[normalizeHash(request.hash)]
+			files := filesByHash[request.hash]
 			if len(files) == 0 {
-				for _, alias := range normalizedHashes(request.member.TorrentKey, request.member.InfoHashV1, request.member.InfoHashV2) {
+				for _, alias := range hashAliases(request.member.TorrentKey, request.member.InfoHashV1, request.member.InfoHashV2) {
 					if len(filesByHash[alias]) > 0 {
 						files = filesByHash[alias]
 						break
@@ -1165,8 +1088,6 @@ func (s *partialPoolCoordinator) refreshPartialPoolFiles(
 	return complete
 }
 
-// partialPoolRootsEqual compares normalized roots using local host path case
-// semantics. Unix roots remain case-sensitive; Windows roots use case folding.
 func partialPoolRootsEqual(left, right string) bool {
 	left = normalizePath(left)
 	right = normalizePath(right)
@@ -1200,7 +1121,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolMemberSnapshot(ctx context.Co
 	if ctx.Err() != nil || member == nil || snapshot == nil {
 		return false
 	}
-	hash := normalizeHash(snapshot.torrent.Hash)
+	hash := snapshot.torrent.Hash
 	if hash == "" {
 		hash = member.TorrentKey
 	}
@@ -1208,7 +1129,7 @@ func (s *partialPoolCoordinator) refreshPartialPoolMemberSnapshot(ctx context.Co
 	if err != nil {
 		return false
 	}
-	files := filesByHash[normalizeHash(hash)]
+	files := filesByHash[hash]
 	if len(files) == 0 {
 		for _, alias := range partialPoolMemberHashes(member) {
 			if len(filesByHash[alias]) > 0 {
@@ -1271,8 +1192,6 @@ func partialPoolTorrentComplete(torrent qbt.Torrent) bool {
 	return torrent.State != qbt.TorrentStateError && torrent.State != qbt.TorrentStateMissingFiles && torrent.Progress >= 1 && torrent.AmountLeft <= 0
 }
 
-// partialPoolCompletionPublishable prevents verification-owned or failed
-// manual members from turning optimistic qBittorrent progress into pool data.
 func partialPoolCompletionPublishable(member *models.CrossSeedPartialPoolMember) bool {
 	if member == nil {
 		return false
@@ -1287,30 +1206,21 @@ func partialPoolCompletionPublishable(member *models.CrossSeedPartialPoolMember)
 	}
 }
 
-// partialPoolInitialVerificationDeferred reports an admitted member whose
-// first piece check can wait until it is selected or receives propagated data.
 func partialPoolInitialVerificationDeferred(member *models.CrossSeedPartialPoolMember) bool {
 	return partialPoolInitialVerificationPending(member) &&
 		!partialPoolMemberHasVerificationWork(member)
 }
 
-// partialPoolInitialVerificationPending reports a first-check member whose
-// recheck has not been requested, including members with files already staged
-// for that check.
 func partialPoolInitialVerificationPending(member *models.CrossSeedPartialPoolMember) bool {
 	return member != nil &&
 		member.Status == models.CrossSeedPartialPoolMemberStatusVerifying &&
 		member.LastError == partialPoolRecheckPending
 }
 
-// partialPoolChecking reports any qBittorrent verification state, including
-// resume-data validation.
 func partialPoolChecking(state qbt.TorrentState) bool {
 	return partialPoolDataChecking(state) || state == qbt.TorrentStateCheckingResumeData
 }
 
-// partialPoolDataChecking reports only piece verification, which can satisfy a
-// pending pool recheck. Resume-data validation does not verify file contents.
 func partialPoolDataChecking(state qbt.TorrentState) bool {
 	return state == qbt.TorrentStateCheckingUp || state == qbt.TorrentStateCheckingDl
 }
@@ -1319,8 +1229,6 @@ func partialPoolTransferCapable(state qbt.TorrentState) bool {
 	return isDownloadingOrQueued(state)
 }
 
-// reconcileDisabledPartialPool stops pool-owned transfers and reports whether
-// another observation is required before the pool can become dormant.
 func (s *partialPoolCoordinator) reconcileDisabledPartialPool(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot) (bool, error) {
 	pending := false
 	var firstErr error
@@ -1402,8 +1310,6 @@ func (s *partialPoolCoordinator) reconcileDisabledPartialPool(ctx context.Contex
 	return pending, firstErr
 }
 
-// pauseUnownedPartialPoolTransfers stops live transfers that are not the
-// durable acquiring member so only one pool member can download at a time.
 func (s *partialPoolCoordinator) pauseUnownedPartialPoolTransfers(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot) bool {
 	pending := false
 	for _, member := range pool.Members {
@@ -1428,8 +1334,6 @@ func (s *partialPoolCoordinator) pauseUnownedPartialPoolTransfers(ctx context.Co
 	return pending
 }
 
-// reconcilePartialPool applies current pool evidence and returns any failure
-// to persist the pool's next scheduling state.
 func (s *partialPoolCoordinator) reconcilePartialPool(
 	ctx context.Context,
 	now time.Time,
@@ -1441,9 +1345,6 @@ func (s *partialPoolCoordinator) reconcilePartialPool(
 	stateRetryPending := s.reconcilePartialPoolManualFiles(ctx, pool)
 	stateRetryPending = s.pauseUnownedPartialPoolTransfers(ctx, pool, snapshots) || stateRetryPending
 	for _, member := range pool.Members {
-		// qBittorrent can optimistically report a newly added torrent as
-		// complete before its first recheck. Verification-owned members publish
-		// through their status handler after that recheck settles.
 		if !partialPoolCompletionPublishable(member) {
 			continue
 		}
@@ -1463,7 +1364,6 @@ func (s *partialPoolCoordinator) reconcilePartialPool(
 			continue
 		}
 		paused := snapshot.noLocalAccess && s.pausePartialPoolMemberWithoutLocalAccess(ctx, member, snapshot)
-		// Also after a restart or a failed write between the member update and the file updates.
 		if member.Status == models.CrossSeedPartialPoolMemberStatusManual && member.LastError == partialPoolLocalAccessLost {
 			s.markPartialPoolLinkWorkManual(ctx, member, snapshot)
 		}
@@ -1562,8 +1462,6 @@ func (s *partialPoolCoordinator) reconcilePartialPool(
 	return nil
 }
 
-// reconcilePartialPoolManualFiles repairs a file-first manual transition after
-// a failed member CAS and reports whether the durable retry is still pending.
 func (s *partialPoolCoordinator) reconcilePartialPoolManualFiles(ctx context.Context, pool *models.CrossSeedPartialPool) bool {
 	retryPending := false
 	for _, member := range pool.Members {
@@ -1753,8 +1651,6 @@ func (s *partialPoolCoordinator) reapplyPartialPoolGate(ctx context.Context, mem
 	s.transitionPartialPoolMember(ctx, member, status, models.PartialPoolMemberMutation{MissingBytes: &missing, LastError: choosePartialPoolError(status, reason, &empty)})
 }
 
-// requestPartialPoolRecheck persists ownership before issuing the qBittorrent
-// action and moves the member to manual intervention if that action fails.
 func (s *partialPoolCoordinator) requestPartialPoolRecheck(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember) {
 	if ctx.Err() != nil || member == nil || !s.partialPoolCoordinatorEnabled(ctx) {
 		return
@@ -1774,8 +1670,6 @@ func (s *partialPoolCoordinator) requestPartialPoolRecheck(ctx context.Context, 
 		Msg("Partial pool recheck requested")
 }
 
-// expirePartialPoolRecheckObservation fails closed when a successful request
-// never produces an observable piece-check state within the polling window.
 func (s *partialPoolCoordinator) expirePartialPoolRecheckObservation(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember) bool {
 	if member == nil || now.Before(member.UpdatedAt.Add(partialPoolRecheckObserveTimeout)) {
 		return false
@@ -1784,8 +1678,6 @@ func (s *partialPoolCoordinator) expirePartialPoolRecheckObservation(ctx context
 	return s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
 }
 
-// partialPoolRecheckSettled requires a durably observed piece-check transition
-// before verification-owned state can publish or consume qBittorrent progress.
 func (s *partialPoolCoordinator) partialPoolRecheckSettled(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot) bool {
 	if member == nil || snapshot == nil {
 		return false
@@ -1819,14 +1711,10 @@ func (s *partialPoolCoordinator) partialPoolRecheckSettled(ctx context.Context, 
 	return false
 }
 
-// partialPoolRecoveryPending reports whether a durable error-recovery attempt
-// sequence is active.
 func partialPoolRecoveryPending(member *models.CrossSeedPartialPoolMember) bool {
 	return member != nil && member.RecoveryAttempts != nil
 }
 
-// partialPoolResumePending reports whether a durable resume attempt sequence is
-// active.
 func partialPoolResumePending(member *models.CrossSeedPartialPoolMember) bool {
 	return member != nil && member.ResumeAttempts != nil
 }
@@ -1948,9 +1836,6 @@ func (s *partialPoolCoordinator) reconcilePartialPoolRechecking(
 	s.transitionPartialPoolMember(ctx, member, status, models.PartialPoolMemberMutation{MissingBytes: &missing, LastError: choosePartialPoolError(status, reason, &empty)})
 }
 
-// settlePartialPoolRecheckFiles durably resolves propagated files after a
-// settled piece check. It returns true only when every verifying file is
-// settled and no hardlink rollback requires another check.
 func (s *partialPoolCoordinator) settlePartialPoolRecheckFiles(
 	ctx context.Context,
 	now time.Time,
@@ -2003,11 +1888,6 @@ func (s *partialPoolCoordinator) settlePartialPoolRecheckFiles(
 	return true
 }
 
-// rollbackLivePartialPoolHardlink removes an owned target, or adopts an
-// already-absent target, before atomically recording the missing file and its
-// pending follow-up check. rolledBack is true only after that state commits;
-// retry asks the caller to retain verification ownership, while two false
-// results mean the live target cannot be removed safely.
 func (s *partialPoolCoordinator) rollbackLivePartialPoolHardlink(ctx context.Context, file *models.CrossSeedPartialPoolMemberFile, pool *models.CrossSeedPartialPool) (rolledBack, retry bool) {
 	targetMember := partialPoolMemberForFile(pool, file)
 	if targetMember == nil {
@@ -2046,7 +1926,7 @@ func (s *partialPoolCoordinator) rollbackLivePartialPoolHardlink(ctx context.Con
 			return false, true
 		}
 		sourcePath, err := partialPoolLocalPath(sourceMember, sourceFile)
-		if err != nil || !partialPoolCreatedContains(created, targetPath) || !partialPoolSameFile(sourcePath, targetPath) {
+		if err != nil || !partialPoolCreatedContains(created, targetPath) || !partialPoolSameFile(ctx, sourcePath, targetPath) {
 			return false, false
 		}
 		if err := created.Rollback(); err != nil {
@@ -2095,22 +1975,14 @@ func partialPoolCreatedContains(created *hardlinktree.Created, target string) bo
 	return slices.Contains(created.Files, target)
 }
 
-func partialPoolSameFile(sourcePath, targetPath string) bool {
-	sourceInfo, err := os.Lstat(sourcePath)
-	if err != nil || !sourceInfo.Mode().IsRegular() {
+func partialPoolSameFile(ctx context.Context, sourcePath, targetPath string) bool {
+	files := localbackend.NewBackend()
+	source, err := files.Lstat(ctx, sourcePath)
+	if err != nil || !source.Mode.IsRegular() {
 		return false
 	}
-	targetInfo, err := os.Lstat(targetPath)
-	if err != nil || !targetInfo.Mode().IsRegular() {
-		return false
-	}
-	sourceID, _, err := hardlink.GetFileID(sourceInfo, sourcePath)
-	if err != nil {
-		return false
-	}
-	targetID, _, err := hardlink.GetFileID(targetInfo, targetPath)
-	// Both paths are on the qui host; the pool hardlinks locally.
-	return err == nil && fsops.SameFile(sourceID, nil, targetID, nil)
+	target, err := files.Lstat(ctx, targetPath)
+	return err == nil && target.Mode.IsRegular() && fsops.SameFile(source.FileID, nil, target.FileID, nil)
 }
 
 func (s *partialPoolCoordinator) reconcilePartialPoolAcquiring(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {
@@ -2351,8 +2223,6 @@ func (s *partialPoolCoordinator) propagatePartialPoolFiles(ctx context.Context, 
 		if partialPoolChecking(targetSnapshot.torrent.State) {
 			continue
 		}
-		// The first recheck clears missingFiles in either mode. Only a reflink
-		// clone may take propagated data after that.
 		missingFilesRecovery := targetSnapshot.torrent.State == qbt.TorrentStateMissingFiles &&
 			(initialVerification || (targetMember.Mode == models.CrossSeedPartialPoolModeReflink && partialPoolMemberHasVerificationWork(targetMember)))
 		if targetSnapshot.torrent.State == qbt.TorrentStateError ||
@@ -2456,8 +2326,6 @@ func (s *partialPoolCoordinator) propagatePartialPoolFiles(ctx context.Context, 
 	}
 }
 
-// selectPartialPoolSourceFile returns the first live compatible source that
-// has not already failed against this target across filesystems.
 func (s *partialPoolCoordinator) selectPartialPoolSourceFile(
 	ctx context.Context,
 	pool *models.CrossSeedPartialPool,
@@ -2501,24 +2369,16 @@ func (s *partialPoolCoordinator) selectPartialPoolSourceFile(
 	return nil
 }
 
-// partialPoolReflinkStagingPaths returns deterministic staging paths adjacent
-// to the target so retries can find crash leftovers and replacement stays on
-// the same filesystem.
 func partialPoolReflinkStagingPaths(targetPath string) (string, string) {
 	digest := sha256.Sum256([]byte(filepath.Clean(targetPath)))
 	root := filepath.Join(filepath.Dir(targetPath), fmt.Sprintf("%s%x", partialPoolReflinkStagingPrefix, digest[:16]))
 	return root, filepath.Join(root, partialPoolReflinkStagingClone)
 }
 
-// partialPoolReflinkStagingOwnerPath returns the ownership marker beside a
-// staging root, where it remains discoverable if the root is missing.
 func partialPoolReflinkStagingOwnerPath(root string) string {
 	return root + partialPoolReflinkStagingOwner
 }
 
-// partialPoolReflinkStagingRootOwned reports whether root has the exact regular
-// ownership marker written by qui. A missing marker means unowned; an invalid
-// or unreadable marker returns an error.
 func partialPoolReflinkStagingRootOwned(root string) (bool, error) {
 	ownerPath := partialPoolReflinkStagingOwnerPath(root)
 	info, err := os.Lstat(ownerPath)
@@ -2541,10 +2401,6 @@ func partialPoolReflinkStagingRootOwned(root string) (bool, error) {
 	return true, nil
 }
 
-// ensurePartialPoolReflinkStagingRoot prepares the target parent and an owned
-// staging directory. It refuses pre-existing unowned paths and syncs a new
-// ownership marker before creating the directory so interrupted creation can
-// be recovered safely.
 func ensurePartialPoolReflinkStagingRoot(root string) error {
 	if err := os.MkdirAll(filepath.Dir(root), 0o755); err != nil {
 		return err
@@ -2601,9 +2457,6 @@ func ensurePartialPoolReflinkStagingRoot(root string) error {
 	return nil
 }
 
-// cleanPartialPoolReflinkStagingRoot removes recognized regular artifacts from
-// an owned staging root. Missing or unowned roots are preserved; unknown,
-// non-regular, or protected-file aliases are rejected.
 func cleanPartialPoolReflinkStagingRoot(root string, protectedPaths ...string) error {
 	owned, err := partialPoolReflinkStagingRootOwned(root)
 	if err != nil {
@@ -2668,9 +2521,6 @@ func cleanPartialPoolReflinkStagingRoot(root string, protectedPaths ...string) e
 	return nil
 }
 
-// releasePartialPoolReflinkStagingRoot removes an empty owned root before its
-// ownership marker. Unowned roots are preserved, and unsafe or failed removal
-// is returned for a later retry.
 func releasePartialPoolReflinkStagingRoot(root string) error {
 	owned, err := partialPoolReflinkStagingRootOwned(root)
 	if err != nil {
@@ -2703,9 +2553,6 @@ func releasePartialPoolReflinkStagingRoot(root string) error {
 	return os.Remove(ownerPath)
 }
 
-// cleanupPartialPoolMemberReflinkStaging removes owned crash artifacts for a
-// reflink member. Errors are returned so durable member removal can wait and
-// retry without abandoning full-size staging files.
 func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, member *models.CrossSeedPartialPoolMember) error {
 	if member == nil || member.Mode != models.CrossSeedPartialPoolModeReflink {
 		return nil
@@ -2713,7 +2560,7 @@ func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, m
 	for _, file := range member.Files {
 		targetPath, err := partialPoolLocalPath(member, file)
 		if errors.Is(err, hardlinktree.ErrUnstorableName) {
-			continue // Propagation rejects this name before staging, so nothing was staged for it.
+			continue
 		}
 		if err != nil {
 			return fmt.Errorf("resolve staging target: %w", err)
@@ -2724,7 +2571,6 @@ func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, m
 				sourcePath, sourceErr := partialPoolLocalPath(sourceMember, sourceFile)
 				switch {
 				case errors.Is(sourceErr, hardlinktree.ErrUnstorableName):
-					// Propagation never stages from such a source, so there is nothing to protect.
 				case sourceErr != nil:
 					return fmt.Errorf("resolve staging source: %w", sourceErr)
 				default:
@@ -2743,12 +2589,6 @@ func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, m
 	return nil
 }
 
-// finishPartialPoolPropagation validates and materializes one claimed pool
-// file. It reports success only when the target is ready for verification;
-// cross-filesystem failures reject only that source/target pair, unsafe inputs
-// or other filesystem failures move the file and member to manual handling,
-// and unavailable live state remains retryable. A failed durable transition
-// marks its snapshot so reconciliation retains the active schedule.
 func (s *partialPoolCoordinator) finishPartialPoolPropagation(
 	ctx context.Context,
 	pool *models.CrossSeedPartialPool,
@@ -2905,7 +2745,7 @@ func (s *partialPoolCoordinator) finishPartialPoolPropagation(
 			return false
 		}
 		if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
-			if !partialPoolSameFile(sourcePath, targetPath) {
+			if !partialPoolSameFile(ctx, sourcePath, targetPath) {
 				markManual("target_conflict", "a different target file already exists")
 				return false
 			}
@@ -2935,9 +2775,6 @@ func (s *partialPoolCoordinator) finishPartialPoolPropagation(
 		return false
 	}
 	if targetMember.Mode == models.CrossSeedPartialPoolModeReflink {
-		// Reuse an ownership-marked target staging path so retries and later
-		// registrations remove crash leftovers. Existing qBittorrent placeholders
-		// remain intact until the same-filesystem rename succeeds.
 		stagingRoot, stagingPath := partialPoolReflinkStagingPaths(targetPath)
 		if stagingErr := ensurePartialPoolReflinkStagingRoot(stagingRoot); stagingErr != nil {
 			markManual("staging_prepare_failed", "reflink staging could not be prepared: "+stagingErr.Error())
@@ -3056,7 +2893,6 @@ func partialPoolMemberFileAdmissionCurrent(
 		currentFile.CreatedAt.Equal(file.CreatedAt)
 }
 
-// partialPoolMemberLocalAccess leaves out a member whose instance lookup failed and then reports complete false.
 func (s *partialPoolCoordinator) partialPoolMemberLocalAccess(ctx context.Context, pool *models.CrossSeedPartialPool) (access map[int64]bool, complete bool) {
 	access = make(map[int64]bool, len(pool.Members))
 	if s.instanceStore == nil {
@@ -3088,7 +2924,6 @@ func (s *partialPoolCoordinator) partialPoolMemberLocalAccess(ctx context.Contex
 	return access, complete
 }
 
-// pausePartialPoolMemberWithoutLocalAccess reports false for a complete, manual, or removed member, whose handlers touch no files.
 func (s *partialPoolCoordinator) pausePartialPoolMemberWithoutLocalAccess(ctx context.Context, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot) bool {
 	switch member.Status {
 	case models.CrossSeedPartialPoolMemberStatusComplete, models.CrossSeedPartialPoolMemberStatusManual, models.CrossSeedPartialPoolMemberStatusRemoved:
@@ -3113,8 +2948,6 @@ func (s *partialPoolCoordinator) markPartialPoolLinkWorkManual(ctx context.Conte
 	}
 }
 
-// partialPoolMemberModeEnabled returns false without an error only when loaded
-// instance settings disable the member's local link mode. Lookup failures are retryable.
 func (s *partialPoolCoordinator) partialPoolMemberModeEnabled(ctx context.Context, member *models.CrossSeedPartialPoolMember) (bool, error) {
 	if member == nil {
 		return false, errors.New("partial pool member is required")
@@ -3129,7 +2962,6 @@ func (s *partialPoolCoordinator) partialPoolMemberModeEnabled(ctx context.Contex
 	if instance == nil {
 		return false, fmt.Errorf("load partial pool member instance %d: empty result", member.InstanceID)
 	}
-	// Local mode, not Write: propagation runs host os.Lstat, hardlinktree.Create and os.Rename.
 	if models.FilesystemAccessMode(instance) != models.FilesystemModeLocal {
 		return false, nil
 	}
@@ -3155,9 +2987,6 @@ func (s *partialPoolCoordinator) markPartialPoolPropagationManual(ctx context.Co
 	return s.markPartialPoolMemberManual(ctx, member, reason)
 }
 
-// preparePartialPoolRecheckForPropagation waits for an outstanding check to be
-// positively observed and settled before invalidating it. This prevents a
-// delayed pre-propagation request from starting during filesystem writes.
 func (s *partialPoolCoordinator) preparePartialPoolRecheckForPropagation(
 	ctx context.Context,
 	now time.Time,
@@ -3184,9 +3013,6 @@ func (s *partialPoolCoordinator) preparePartialPoolRecheckForPropagation(
 	return s.invalidatePartialPoolRecheckForPropagation(ctx, member)
 }
 
-// invalidatePartialPoolRecheckForPropagation resets a settled, observed check
-// before pending filesystem materialization makes its result stale. Persisting
-// the reset before the side effect keeps crash recovery safe.
 func (s *partialPoolCoordinator) invalidatePartialPoolRecheckForPropagation(ctx context.Context, member *models.CrossSeedPartialPoolMember) bool {
 	if member == nil || member.LastError != partialPoolRecheckObserved {
 		return false
@@ -3235,10 +3061,6 @@ type partialPoolSelection struct {
 	amountLeft    int64
 }
 
-// selectPartialPoolDownloader returns the highest-ranked member eligible to
-// own the pool download. It waits for admission and active transfers. During
-// lazy initial verification, it defers candidates with a live propagation
-// source so pool data can be materialized before the first piece check.
 func (s *partialPoolCoordinator) selectPartialPoolDownloader(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot, now time.Time) *models.CrossSeedPartialPoolMember {
 	if !partialPoolAdmissionReady(pool, now) {
 		return nil
@@ -3266,7 +3088,6 @@ func (s *partialPoolCoordinator) selectPartialPoolDownloader(ctx context.Context
 		if snapshot == nil || len(snapshot.files) == 0 {
 			continue
 		}
-		// Selecting a deferred member rechecks it, which is what clears missingFiles.
 		recheckFromMissingFiles := deferredVerification && snapshot.torrent.State == qbt.TorrentStateMissingFiles
 		if !recheckFromMissingFiles && !partialPoolMemberResumable(member, snapshot.torrent.State) {
 			continue
@@ -3333,8 +3154,6 @@ func (s *partialPoolCoordinator) selectPartialPoolDownloader(ctx context.Context
 	return selections[0].member
 }
 
-// partialPoolAdmissionWindowClosed reports whether every known admission has
-// remained in the pool for the full batching window.
 func partialPoolAdmissionWindowClosed(pool *models.CrossSeedPartialPool, now time.Time) bool {
 	if pool == nil {
 		return false
@@ -3347,9 +3166,6 @@ func partialPoolAdmissionWindowClosed(pool *models.CrossSeedPartialPool, now tim
 	return true
 }
 
-// partialPoolAdmissionReady holds downloader selection until the newest
-// admission window has closed and every requested check has settled. Initial
-// checks that have not been selected yet do not hold the pool.
 func partialPoolAdmissionReady(pool *models.CrossSeedPartialPool, now time.Time) bool {
 	if !partialPoolAdmissionWindowClosed(pool, now) {
 		return false
@@ -3408,9 +3224,6 @@ func partialPoolFilePairsAnotherMissing(pool *models.CrossSeedPartialPool, membe
 	return false
 }
 
-// partialPoolMemberHasPendingPropagationSource reports an eligible missing file
-// that should wait for pool data. Checking sources count because their durable
-// availability can be used after their current check settles.
 func (s *partialPoolCoordinator) partialPoolMemberHasPendingPropagationSource(
 	ctx context.Context,
 	pool *models.CrossSeedPartialPool,
@@ -3444,9 +3257,6 @@ func (s *partialPoolCoordinator) partialPoolMemberHasPendingPropagationSource(
 	return false
 }
 
-// partialPoolFileHasAvailableSource reports whether a live peer has a paired,
-// wanted file durably marked available or verified, currently complete or
-// checking, and not rejected for this target in the current process.
 func (s *partialPoolCoordinator) partialPoolFileHasAvailableSource(ctx context.Context, pool *models.CrossSeedPartialPool, targetMember *models.CrossSeedPartialPoolMember, targetFile *models.CrossSeedPartialPoolMemberFile, snapshots map[int64]*partialPoolMemberSnapshot) bool {
 	for _, sourceMember := range pool.Members {
 		if sourceMember.ID == targetMember.ID || sourceMember.Status == models.CrossSeedPartialPoolMemberStatusManual || sourceMember.Status == models.CrossSeedPartialPoolMemberStatusRemoved {
@@ -3500,8 +3310,6 @@ func partialPoolFilesUnlockMember(sourceMember *models.CrossSeedPartialPoolMembe
 	return len(targetFiles) > 0
 }
 
-// selectAndResumePartialPoolDownloader reports whether an eligible downloader
-// could not be durably claimed and needs the active recovery schedule.
 func (s *partialPoolCoordinator) selectAndResumePartialPoolDownloader(ctx context.Context, now time.Time, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot, budget int64) bool {
 	member := s.selectPartialPoolDownloader(ctx, pool, snapshots, now)
 	for _, snapshot := range snapshots {
@@ -3613,7 +3421,7 @@ func partialPoolMemberHashes(member *models.CrossSeedPartialPoolMember) []string
 	if member == nil {
 		return nil
 	}
-	return normalizedHashes(member.TorrentKey, member.InfoHashV1, member.InfoHashV2)
+	return hashAliases(member.TorrentKey, member.InfoHashV1, member.InfoHashV2)
 }
 
 func partialPoolMemberHasVerificationWork(member *models.CrossSeedPartialPoolMember) bool {

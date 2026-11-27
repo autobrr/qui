@@ -25,9 +25,6 @@ import (
 
 const bigPiece = 16 << 10
 
-// newBigShow is a torrent of two files of about 1 MiB in all, with pieces of
-// 16 KiB. One piece holds the end of the first file and the start of the
-// second.
 func newBigShow(t *testing.T) show {
 	t.Helper()
 	random := rand.New(rand.NewChaCha8([32]byte{1}))
@@ -48,11 +45,8 @@ func newBigShow(t *testing.T) show {
 	return show{data: data, hash: hash, files: files}
 }
 
-// span is the part of the torrent that one write covers.
 type span struct{ start, end int64 }
 
-// spans maps each write of the copy of s to its offsets in the torrent, also
-// a write into the .!qB name of a temporary file.
 func spans(t *testing.T, s show, id int64, writes []diskWrite) []span {
 	t.Helper()
 	first := int64(len(s.files["Show.S01E01.mkv"]))
@@ -75,8 +69,6 @@ func proven(bits []byte, piece int64) bool {
 	return int(piece/8) < len(bits) && bits[piece/8]&(0x80>>(piece%8)) != 0
 }
 
-// requireWholePieces fails unless the writes, in their order, write whole
-// pieces one after another.
 func requireWholePieces(t *testing.T, total int64, writes []span) {
 	t.Helper()
 	for i := 0; i < len(writes); {
@@ -92,10 +84,6 @@ func requireWholePieces(t *testing.T, total int64, writes []span) {
 	}
 }
 
-// A dropped connection to the source resumes the copy at once. qui copies
-// only the pieces that were not Proven pieces at the drop, writes them into
-// the temporary files that it made before, and copies a piece that crosses
-// two files whole.
 func TestTransferResumesAfterADroppedConnection(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
 	s := newBigShow(t)
@@ -105,8 +93,6 @@ func TestTransferResumesAfterADroppedConnection(t *testing.T) {
 		once  sync.Once
 		id    int64
 		count int
-		// drops holds the index of the write at each drop, and the Proven
-		// pieces at that moment.
 		drops []int
 		at    [][]byte
 	)
@@ -150,30 +136,28 @@ func TestTransferResumesAfterADroppedConnection(t *testing.T) {
 	}
 }
 
-// A Transfer that qui stops at several points of the copy resumes after each
-// restart, and copies only the pieces that were not Proven pieces at the
-// stop. Its progress counts the Proven pieces as passed.
 func TestTransferResumesAfterARestart(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
 	s := newBigShow(t)
 	r.seed(s)
 	ids := make(chan int64, 1)
 	var (
-		once  sync.Once
-		id    int64
-		count int
-		stops []int
-		at    [][]byte
-		// resumed is set for the first write after the first restart.
+		once     sync.Once
+		id       int64
+		count    int
+		stops    []int
+		at       [][]byte
 		resumed  bool
 		progress transfer.Progress
 		tracked  bool
 	)
+	restarted := make(chan struct{})
 	r.disk.onWrite = func(string) {
 		once.Do(func() { id = <-ids })
 		count++
 		if resumed {
 			resumed = false
+			<-restarted
 			progress, tracked = r.svc.Progress(id)
 		}
 		if count == 10 || count == 30 || count == 50 {
@@ -193,6 +177,9 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 		r.svc.Wait()
 		resumed = i == 0
 		r.restart()
+		if i == 0 {
+			close(restarted)
+		}
 	}
 	r.svc.Wait()
 
@@ -220,10 +207,6 @@ func TestTransferResumesAfterARestart(t *testing.T) {
 	}
 }
 
-// A target that did not confirm one flush gets no Proven pieces, also from a
-// later run in which it confirms its flushes. A resume after that run checks
-// the pieces of that run, and copies a piece that the target lost again.
-// regression: #4231
 func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
 	r := newRig(t, func(c *transfer.Config) { c.FlushBytes = 64 << 10 })
 	s := newBigShow(t)
@@ -244,8 +227,6 @@ func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
 	r.restart()
 	r.svc.Wait()
 	require.Equal(t, transfer.FlushUnconfirmed, r.get(id).FlushState)
-	// The target lost bytes of the first piece that the second run wrote
-	// and flushed.
 	writes, _ := r.disk.log()
 	require.Greater(t, len(writes), len(first)+10, "the second run flushed pieces")
 	at := spans(t, s, id, writes)[len(first)].start + 50
@@ -263,16 +244,14 @@ func TestTransferProvesNoPieceAfterAnUnconfirmedFlush(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 }
 
-// sent counts the requests that a stub answered, without the reads of
-// torrents/info: the tracker health loop of qui sends one at a random time
-// after qui connects to a client, and no Transfer reads it.
 func sent(s *qbtstub.Server) int { return s.RequestsWithout("torrents/info") }
 
-// requests counts the requests that both stubs answered.
+func sentWithoutResync(s *qbtstub.Server) int {
+	return s.RequestsWithout("torrents/info", "sync/maindata", "app/webapiVersion")
+}
+
 func (r *rig) requests() int { return sent(r.src) + sent(r.dst) }
 
-// A temporary failure keeps the partial data and the claim, and runs again
-// no sooner than an hour later.
 func TestTransferRetriesATemporaryFailureAfterAnHour(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -285,7 +264,7 @@ func TestTransferRetriesATemporaryFailureAfterAnHour(t *testing.T) {
 	require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
 	require.Equal(t, clock.Add(time.Hour), record.RetryAt)
 	require.True(t, record.FinishedAt.IsZero())
-	require.True(t, r.store.IsClaimed(r.source.ID, s.hash))
+	require.True(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the copy stays")
 	require.True(t, r.src.Has(s.hash))
 	require.False(t, r.src.Stopped(s.hash))
@@ -308,10 +287,6 @@ func TestTransferRetriesATemporaryFailureAfterAnHour(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
 }
 
-// A permanent failure removes what qui wrote, waits for the user, and never
-// runs again. Here the check on the target names the piece that failed, and
-// with qBittorrent's setting "Append .!qB extension to incomplete files", the
-// cleanup removes the temporary files under their .!qB names.
 func TestTransferNeverRetriesAPermanentFailure(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -327,7 +302,7 @@ func TestTransferNeverRetriesAPermanentFailure(t *testing.T) {
 	require.Equal(t, "The check on homelab failed 1 of 5 pieces: 3.", record.FailureReason, "pieces 0, 1, 2 and 4 passed")
 	require.True(t, record.RetryAt.IsZero())
 	require.False(t, record.FinishedAt.IsZero())
-	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+	require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	require.Empty(t, tree(t, r.dstDir))
 	r.requireNoHelpers(record)
 
@@ -339,8 +314,6 @@ func TestTransferNeverRetriesAPermanentFailure(t *testing.T) {
 	require.Equal(t, before, r.requests())
 }
 
-// startOnWrite starts a Transfer and runs change once at the first write of
-// the copy, with the ID of the Transfer.
 func (r *rig) startOnWrite(s show, change func(id int64)) int64 {
 	r.t.Helper()
 	ids := make(chan int64, 1)
@@ -360,8 +333,6 @@ func (r *rig) get(id int64) *transfer.Record {
 	return record
 }
 
-// A turned-off instance makes its Transfer wait with its partial data. Once
-// the instance is on again, the Transfer resumes.
 func TestTransferWaitsForATurnedOffInstance(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -395,8 +366,6 @@ func TestTransferWaitsForATurnedOffInstance(t *testing.T) {
 	require.False(t, r.src.Has(s.hash))
 }
 
-// A deleted instance fails the Transfer for good. qui cleans up what it
-// can still reach, and sends nothing to the deleted instance.
 func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 	t.Run("the source", func(t *testing.T) {
 		r := newRig(t)
@@ -414,7 +383,7 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 		require.Contains(t, record.FailureReason, "was deleted")
 		require.Empty(t, tree(t, r.dstDir), "qui removes what it wrote on the target")
 		require.Equal(t, before, sent(r.src))
-		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	})
 	t.Run("the target", func(t *testing.T) {
 		r := newRig(t)
@@ -436,8 +405,6 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 	})
 }
 
-// A new address of the target stops the Transfer for the user. qui cleans
-// up nothing against the new address.
 func TestTransferStopsWhenAnEndpointChanges(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -456,13 +423,9 @@ func TestTransferStopsWhenAnEndpointChanges(t *testing.T) {
 	require.Zero(t, moved.Requests(), "qui sends nothing to the new address")
 	require.NotEmpty(t, tree(t, r.dstDir), "qui removes nothing there")
 	require.True(t, r.src.Has(s.hash))
-	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+	require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 }
 
-// moveTheCrossSeedInstance runs a Transfer whose add on the Cross-seed
-// instance leaves the member there but fails, so that a retry waits. Then the
-// Cross-seed instance gets the address of another client that has a torrent
-// with the hash of the member, and qui starts again.
 func (r *rig) moveTheCrossSeedInstance() (show, int64, *qbtstub.Server) {
 	r.t.Helper()
 	cs := r.withCrossSeedInstance()
@@ -474,8 +437,6 @@ func (r *rig) moveTheCrossSeedInstance() (show, int64, *qbtstub.Server) {
 	return s, record.ID, r.moveCrossSeed(cs, s)
 }
 
-// seedRouted seeds a show and an older cross-seed of it on the source, so
-// that the show goes to the Cross-seed instance.
 func (r *rig) seedRouted() show {
 	r.t.Helper()
 	s := newShow(r.t, showName)
@@ -487,8 +448,6 @@ func (r *rig) seedRouted() show {
 	return s
 }
 
-// moveCrossSeed gives the Cross-seed instance the address of another client
-// that has a torrent with the hash of s, and starts qui again.
 func (r *rig) moveCrossSeed(cs *crossSeeds, s show) *qbtstub.Server {
 	r.t.Helper()
 	other := r.t.TempDir()
@@ -500,9 +459,6 @@ func (r *rig) moveCrossSeed(cs *crossSeeds, s show) *qbtstub.Server {
 	return moved
 }
 
-// restartWithNewClients starts qui again with a new pool of clients. The API
-// drops the client of an instance that it updates, and a new pool does the
-// same here. edit changes the dependencies before the start.
 func (r *rig) restartWithNewClients(edit ...func(*transfer.Deps)) {
 	r.t.Helper()
 	deps, _, sync := wire(r.t, r.db, r.disk, r.now)
@@ -514,9 +470,6 @@ func (r *rig) restartWithNewClients(edit ...func(*transfer.Deps)) {
 	r.restart()
 }
 
-// A new address of the Cross-seed instance stops the Transfer, as a new
-// address of the target does. qui sends nothing to the new address.
-// regression: #4231
 func TestTransferStopsWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
 	r := newRig(t)
 	s, id, moved := r.moveTheCrossSeedInstance()
@@ -536,9 +489,6 @@ func TestTransferStopsWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
 	require.True(t, moved.Has(s.hash))
 }
 
-// A cancel after the Cross-seed instance got a new address removes nothing
-// there: the torrent at the new address is not the one that qui added.
-// regression: #4231
 func TestTransferCancelRemovesNothingFromACrossSeedInstanceWithANewAddress(t *testing.T) {
 	r := newRig(t)
 	s, id, moved := r.moveTheCrossSeedInstance()
@@ -551,10 +501,6 @@ func TestTransferCancelRemovesNothingFromACrossSeedInstanceWithANewAddress(t *te
 	require.True(t, moved.Has(s.hash))
 }
 
-// A cancel after the Cross-seed instance got a new address during the run
-// removes nothing there, also when the run read the instance before the
-// change.
-// regression: #4231
 func TestTransferCancelRemovesNothingFromACrossSeedInstanceThatMovedDuringTheRun(t *testing.T) {
 	r := newRig(t)
 	cs := r.withCrossSeedInstance()
@@ -582,10 +528,6 @@ func TestTransferCancelRemovesNothingFromACrossSeedInstanceThatMovedDuringTheRun
 	require.True(t, cs.stub.Has(s.hash))
 }
 
-// A stop during the copy, and then a new address of the Cross-seed
-// instance, stops the Transfer, and the cleanup still removes the partial
-// copy on the target.
-// regression: #4231
 func TestTransferRemovesItsCopyWhenTheCrossSeedInstanceGetsANewAddress(t *testing.T) {
 	r := newRig(t)
 	cs := r.withCrossSeedInstance()
@@ -611,21 +553,10 @@ func TestTransferRemovesItsCopyWhenTheCrossSeedInstanceGetsANewAddress(t *testin
 	require.Zero(t, sent(moved), "qui sends nothing to the new address")
 }
 
-// A failure after qui stopped the source starts again only the torrents
-// that ran before. A member that was stopped before the Transfer stays
-// stopped, also when the cleanup runs after a restart, and when qui stopped
-// at the stop of the source and the resumed run finds every member stopped.
-// regression: #4231
 func TestTransferRollbackStartsOnlyWhatQuiStopped(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		// reject makes the target refuse the start of the torrent, a failure
-		// for a retry. Without it the target misses a file, a failure for
-		// good.
-		reject bool
-		// restart runs the Transfer in a qui that ends after it records the
-		// cleanup, and killAtStop in one that the parent kills at the stop of
-		// the source.
+		name                string
+		reject              bool
 		restart, killAtStop bool
 		class               transfer.FailureClass
 	}{
@@ -682,9 +613,6 @@ func TestTransferRollbackStartsOnlyWhatQuiStopped(t *testing.T) {
 	}
 }
 
-// Cancel stops a Transfer, removes the files that qui wrote and the torrents
-// that qui added, and starts the source again. Once the removal from the
-// source started, cancel no longer rolls back.
 func TestTransferCancel(t *testing.T) {
 	t.Run("during the copy", func(t *testing.T) {
 		r := newRig(t)
@@ -696,7 +624,7 @@ func TestTransferCancel(t *testing.T) {
 		record := r.get(id)
 		require.Equal(t, transfer.StateCancelled, record.State)
 		require.False(t, record.FinishedAt.IsZero())
-		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 		require.Empty(t, tree(t, r.dstDir))
 		require.True(t, r.src.Has(s.hash))
 		require.False(t, r.src.Stopped(s.hash))
@@ -771,7 +699,6 @@ func TestTransferCancel(t *testing.T) {
 		require.Equal(t, transfer.StateDone, r.get(id).State)
 		require.False(t, r.src.Has(s.hash))
 	})
-	// regression: #4231
 	t.Run("while the run records a temporary failure", func(t *testing.T) {
 		r := newRig(t)
 		s := newShow(t, showName)
@@ -801,7 +728,7 @@ func TestTransferCancel(t *testing.T) {
 		require.Empty(t, tree(t, r.dstDir))
 		require.True(t, r.src.Has(s.hash))
 		require.False(t, r.src.Stopped(s.hash))
-		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	})
 	t.Run("a Transfer that waits for its retry", func(t *testing.T) {
 		r := newRig(t)
@@ -820,13 +747,10 @@ func TestTransferCancel(t *testing.T) {
 		require.Empty(t, tree(t, r.dstDir), "qui removes the files that it placed")
 		require.False(t, r.dst.Has(s.hash))
 		require.True(t, r.src.Has(s.hash))
-		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	})
 }
 
-// When the add of the real torrent does not answer and the target has the
-// torrent, qui cannot tell who added it. It keeps the torrent and its files
-// on the target, leaves the source as it is, and says so.
 func TestTransferKeepsATorrentWhoseAddLostItsAnswer(t *testing.T) {
 	r := newRig(t)
 	s := newShow(t, showName)
@@ -845,7 +769,6 @@ func TestTransferKeepsATorrentWhoseAddLostItsAnswer(t *testing.T) {
 	require.Equal(t, contents(s, showName), tree(t, r.srcDir))
 }
 
-// onFind runs find before each search for the torrents that read the files.
 type onFind struct {
 	transfer.GroupFinder
 	find func()

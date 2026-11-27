@@ -22,9 +22,7 @@ describe("getCapabilityReason", () => {
     expect(getCapabilityReason("supportsListFieldsV5", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.qbittorrent50)
     expect(getCapabilityReason("supportsTrackerHealth", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.trackerHealth)
     expect(getCapabilityReason("supportsListCreatedBy", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.qbittorrent52)
-    // An instance without Read has no filesystem access, local or remote.
     expect(getCapabilityReason("read", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.filesystemAccess)
-    // Trusted identity needs local access, so a remote instance can never get it.
     expect(getCapabilityReason("trustedIdentity", i18n.t)).toBe(deAutomations.queryBuilder.capabilityReasons.localFilesystemAccess)
     expect(getCapabilityReason("trustedIdentity", i18n.t, true)).toBe(deAutomations.queryBuilder.capabilityReasons.remoteInstance)
   })
@@ -75,8 +73,6 @@ describe("getDisabledFields", () => {
   })
 })
 
-// The English labels in constants.ts are only defaultValues, so a missing key renders
-// English in every locale without failing any other check.
 describe("query-builder translation keys", () => {
   it("every label the helpers look up has an English key", () => {
     const requested = new Set<string>()
@@ -101,10 +97,8 @@ describe("query-builder translation keys", () => {
     const translatedHelpers = Object.entries(constants).flatMap(([name, value]) =>
       name.startsWith("getTranslated") && typeof value === "function" ? [[name, value] as const] : []
     )
-    // Fails when a module change hides the helpers, instead of passing with nothing checked.
     expect(translatedHelpers.length).toBeGreaterThanOrEqual(5)
     for (const [name, helper] of translatedHelpers) {
-      // A future per-field helper throws here rather than being skipped quietly.
       if (name.endsWith("ForField")) {
         for (const field of fields) {
           (helper as (field: string, t: TFunction) => unknown)(field, recordingT)

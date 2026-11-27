@@ -5,6 +5,4 @@
 
 package main
 
-// applyUmask is a no-op on platforms without a POSIX process umask (Windows).
-// Directory permissions there are governed by inherited ACLs, not a umask.
 func applyUmask() {}

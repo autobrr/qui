@@ -19,7 +19,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// walkCounter counts the walks of each root.
 type walkCounter struct {
 	fsops.Backend
 	walks map[string]int
@@ -53,8 +52,6 @@ func TestFreeSpaceLedgers_AllowanceMinusMeasuredUsage(t *testing.T) {
 		t.Skip("the allowance source refuses local access on Windows")
 	}
 
-	// 1000 + 200 + 300 bytes of files. The hardlink, the symlinks and the
-	// folder behind the symlink add nothing.
 	root := filepath.Join(t.TempDir(), "home")
 	outside := t.TempDir()
 	writeSized(t, filepath.Join(root, "a.bin"), 1000)
@@ -83,7 +80,6 @@ func TestFreeSpaceLedgers_AllowanceMinusMeasuredUsage(t *testing.T) {
 	require.Equal(t, map[string]int{root: 1, rootLink: 1}, backend.walks, "rules with one path share one walk")
 }
 
-// entriesBackend answers WalkDir with fixed entries, or with err.
 type entriesBackend struct {
 	fsops.Backend
 	entries []fsops.WalkEntry
@@ -164,9 +160,9 @@ func TestFreeSpaceLedgers_AllowanceFailures(t *testing.T) {
 			wantStart: 1000 - 100,
 		},
 		{
-			name: "a local file without identity counts as its own file", row: local,
-			backend:   entriesBackend{entries: []fsops.WalkEntry{file("/home/user/a.bin", 100), keyless}},
-			wantStart: 1000 - 400,
+			name: "a local walk that read no file identity", row: local,
+			backend: entriesBackend{entries: []fsops.WalkEntry{file("/home/user/a.bin", 100), keyless}},
+			wantErr: errNoIdentity, wantPath: "/home/user/odd.bin",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

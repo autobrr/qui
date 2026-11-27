@@ -23,7 +23,6 @@ interface DisplayProfileTileProps {
   className?: string
 }
 
-/** The icon of a profile on a tile in the profile color. An icon name that the list does not know shows the first letter of the name. */
 export function DisplayProfileTile({ profile, size = "md", className }: DisplayProfileTileProps) {
   const sizes = TILE_SIZES[size]
   const icon = findDisplayProfileIcon(profile.icon)
@@ -42,7 +41,6 @@ export function DisplayProfileTile({ profile, size = "md", className }: DisplayP
   )
 }
 
-/** The bare icon of a profile in the profile color, for tight places such as the status bar. */
 export function DisplayProfileGlyph({ profile, className }: { profile: ProfileLook; className?: string }) {
   const icon = findDisplayProfileIcon(profile.icon)
   if (!icon) return <DisplayProfileTile profile={profile} size="xs" className={className} />

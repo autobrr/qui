@@ -99,7 +99,6 @@ beforeEach(() => {
   mocks.getTorrents.mockResolvedValue({ torrents: [] })
   mocks.getTorrentFiles.mockResolvedValue(makeFiles(500))
   mocks.getTorrentPieceStates.mockResolvedValue(new Array(20000).fill(1))
-  // The app turns off the refetch on focus; the hidden-page tests rely on that.
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
 })
 
@@ -134,8 +133,25 @@ describe("useTorrentDetailTab general", () => {
       total_uploaded: 1500,
       time_elapsed: 100,
       seeding_time: 50,
+      save_path: "/downloads",
+      download_path: "",
+      dl_limit: 0,
+      up_limit: 0,
+      completion_date: -1,
     })
     expect(result.current.data?.row?.dlspeed).toBe(500)
+  })
+
+  it("shows a move, new speed limits, and the completion from the live row without a new fetch", async () => {
+    const { result } = renderTab("general")
+    await waitFor(() => expect(result.current.data?.properties).toBeDefined())
+    sendRow({ state: "downloading", save_path: "/data/seeding", completion_on: 0 })
+    sendRow({ state: "uploading", save_path: "/data/moved", download_path: "/data/incomplete", dl_limit: 2048, up_limit: 1024, completion_on: 1700000000 })
+
+    const properties = result.current.data?.properties
+    expect([properties?.save_path, properties?.download_path, properties?.dl_limit, properties?.up_limit, properties?.completion_date])
+      .toEqual(["/data/moved", "/data/incomplete", 2048, 1024, 1700000000])
+    expect(mocks.getTorrentProperties).toHaveBeenCalledTimes(1)
   })
 
   it("shows live piece counts from a qBittorrent 5.2 row", async () => {
@@ -152,7 +168,6 @@ describe("useTorrentDetailTab general", () => {
   it("keeps the loaded piece counts with a row from before qBittorrent 5.2", async () => {
     const { result } = renderTab("general")
     await waitFor(() => expect(result.current.data?.properties).toBeDefined())
-    // qui sends 0 for both fields when qBittorrent does not send them.
     sendRow({ state: "downloading", pieces_have: 0, pieces_num: 0 })
     expect([result.current.data?.properties?.pieces_have, result.current.data?.properties?.pieces_num]).toEqual([40, 100])
     expect(mocks.getTorrentProperties).toHaveBeenCalledTimes(1)
@@ -232,8 +247,6 @@ describe("useTorrentDetailTab general", () => {
 })
 
 describe("useTorrentDetailTab content and piece bar", () => {
-  // Opens the tab on a downloading torrent, and returns once the first fetch
-  // and the first row are in.
   async function openDownloading(tab: "content" | "pieces") {
     vi.useFakeTimers()
     const view = renderTab(tab)
@@ -258,11 +271,9 @@ describe("useTorrentDetailTab content and piece bar", () => {
     await advance(100)
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
     expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: true })
-    // React Query hands the result to the hook on the next timer.
     await advance(1)
     expect(result.current.data).toEqual(reloaded)
 
-    // The next change waits a full gap after the reload.
     sendRow({ progress: 0.3, state: "downloading" })
     await advance(gap - 100)
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(2)
@@ -342,7 +353,6 @@ describe("useTorrentDetailTab content and piece bar", () => {
     await openDownloading("content")
     mocks.getTorrentFiles.mockRejectedValueOnce(new Error("bad gateway"))
     sendRow({ progress: 1, state: "stalledUP" })
-    // React Query retries the failed reload one time.
     await advance(6000)
     expect(mocks.getTorrentFiles).toHaveBeenCalledTimes(3)
     expect(mocks.getTorrentFiles).toHaveBeenLastCalledWith(1, "a", { refresh: true })
@@ -376,7 +386,6 @@ describe("useTorrentDetailTab content and piece bar", () => {
     await advance(100)
     expect(mocks.getTorrentPieceStates).toHaveBeenCalledTimes(2)
     expect(mocks.getTorrentPieceStates).toHaveBeenLastCalledWith(1, "a")
-    // React Query hands the result to the hook on the next timer.
     await advance(1)
     expect(result.current.data).toEqual(reloaded)
   })
@@ -518,7 +527,6 @@ describe("useTorrentDetailTab trackers", () => {
     rerender({ instanceId: 1, hash: "b" })
     await advance(0)
     act(() => mocks.onMessage?.({ type: "update", data: { torrents: [makeTorrent({ hash: "b", trackers_count: 5 })], total: 1 } }))
-    // The list of a is still fresh, so the return alone does not fetch it.
     rerender({ instanceId: 1, hash: "a" })
     await advance(0)
     sendRow({ trackers_count: 2, tracker_health: "unregistered" })

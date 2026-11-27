@@ -725,7 +725,7 @@ paths:
       tags:
         - Notifications
       summary: List notification targets
-      description: Get configured notification targets
+      description: Get configured notification targets. A key without write access to notifications gets each URL as its scheme only.
       responses:
         '200':
           description: List of notification targets
@@ -2077,6 +2077,12 @@ paths:
       responses:
         '201':
           description: Torrent added successfully
+        '413':
+          description: The form has more than 1000 parts. Send at most 1000 files and fields per request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
 
   /api/instances/{instanceID}/torrents/check-duplicates:
@@ -2521,7 +2527,7 @@ paths:
       tags:
         - Torrent Details
       summary: Get torrent web seeds
-      description: Get list of web seeds (HTTP sources) for a torrent
+      description: Get list of web seeds (HTTP sources) for a torrent. A key without write access to torrents gets each URL as its scheme and host.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -2638,6 +2644,8 @@ paths:
       description: >
         Streams a single file from the torrent's content on the local filesystem.
         Requires the instance to have local filesystem access enabled.
+        Refuses the config file, the database, and the SQLite sidecar files of the running qui,
+        also through a symlink or a hard link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -2653,7 +2661,7 @@ paths:
         '400':
           description: Invalid instance ID, hash, or file index
         '403':
-          description: Instance does not have local filesystem access
+          description: Instance does not have local filesystem access, or the file is a config or database file of the running qui
         '404':
           description: Torrent, file index, or file on disk not found
         '500':
@@ -4055,7 +4063,8 @@ paths:
         Get the preference catalog view of the qBittorrent preferences. The list holds
         each preference that this qBittorrent sent and that qui shows, in display order.
         A preference is left out when its libtorrent or platform gate does not match the
-        qBittorrent build. The view never holds the qBittorrent API key.
+        qBittorrent build. The view never holds the qBittorrent API key. A password field
+        always has an empty value.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -4077,7 +4086,7 @@ paths:
         value has the wrong type. It does not check ranges. The server accepts a key that the
         GET view leaves out because qBittorrent did not send it, or because its libtorrent
         or platform gate does not match. qBittorrent ignores or stores that value, and the
-        value has no effect.
+        value has no effect. An empty password field keeps the saved password.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -4860,6 +4869,7 @@ paths:
       tags:
         - Torznab
       summary: Search configured Torznab indexers
+      description: A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       requestBody:
         required: true
         content:
@@ -4885,6 +4895,7 @@ paths:
       tags:
         - Torznab
       summary: Search configured Torznab indexers for cross-seeds
+      description: A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       requestBody:
         required: true
         content:
@@ -5263,11 +5274,22 @@ paths:
         Accepts a plain `path` payload or native Sonarr, Radarr, Lidarr, or Readarr webhook payloads.
         qui accepts `eventType: test` payloads as a no-op health check. For real events,
         it extracts the path, matches it against enabled scan directories using longest-prefix matching,
-        and starts a scan rooted at the provided path subtree.
+        and starts a scan rooted at the provided path subtree. Two instances can have a directory with
+        the same path. `instanceId` picks the instance.
       security:
         - ApiKeyAuth: []
         - SessionAuth: []
         - ApiKeyQuery: []
+      parameters:
+        - in: query
+          name: instanceId
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: |
+            Match only the scan directories of this instance. A test payload with `instanceId`
+            passes only when the instance has an enabled scan directory.
       requestBody:
         required: true
         content:
@@ -5378,11 +5400,11 @@ paths:
         '204':
           description: Test webhook accepted; no scan started
         '400':
-          description: Invalid request body or no supported path found in payload
+          description: Invalid request body, no supported path found in payload, or `instanceId` is not a positive integer
         '404':
-          description: No enabled directory matched the provided path
+          description: No enabled directory matched the provided path, or the instance of `instanceId` has no such directory
         '409':
-          description: More than one enabled directory matches the path
+          description: More than one enabled directory matches the path. When they belong to different instances, the message lists the instance IDs, and `instanceId` picks one
         '500':
           description: Failed to start scan
 
@@ -5758,10 +5780,12 @@ paths:
                   type: array
                   items:
                     type: integer
-                  description: Specific indexers to search
-                disableTorznab:
-                  type: boolean
-                  description: Disable Torznab searches (Gazelle-only for OPS/RED torrents; other torrents will be skipped)
+                  description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+                gazelleSites:
+                  type: array
+                  items:
+                    type: string
+                  description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent
@@ -6195,10 +6219,11 @@ paths:
         Performs a stateless, advisory check with release data that autobrr already has. This endpoint never downloads the torrent file.
         A positive exact reported size can activate approved reported-size matching. A rounded size can pass only normal strict matching within tolerance. A zero or omitted size uses a narrow metadata-only preflight and grants no authority to add a torrent.
         The HTTP status describes whether the match is ready:
-        * `200 OK` – at least one matching torrent is fully downloaded and ready for cross-seeding
+        * `200 OK` – at least one matching torrent is fully downloaded and ready for cross-seeding, or the release is a season pack that qui can assemble from episodes that it holds
         * `202 Accepted` – matching torrents exist but the data is still downloading; retry `/check` until it returns `200` (ready) or `404`
         * `404 Not Found` – no matches exist (recommendation `skip`)
         When `instanceIds` is omitted or empty, qui searches every configured instance. Provide a subset of IDs to restrict the scan.
+        A season pack without a direct match is checked against the held episodes when season packs are enabled for the webhook and the Held titles experimental feature is ready. This check ignores `size`.
       parameters:
         - name: apikey
           in: query
@@ -6238,7 +6263,7 @@ paths:
                   description: Optional override for matching season packs vs episodes. Defaults to the Cross-Seed automation setting when omitted.
       responses:
         '200':
-          description: Webhook check completed successfully with one or more matches
+          description: Webhook check completed successfully with one or more matches, or with a season pack that qui can assemble
           content:
             application/json:
               schema:
@@ -6268,6 +6293,7 @@ paths:
       description: |
         Accepts a torrent file from autobrr and calculates its actual total size from the metainfo.
         When `torrentName` is present, qui repeats classification against live local sources and checks the downloaded metadata against the original announcement.
+        When no torrent matches, qui assembles a season pack from held episodes under the same conditions as the webhook check. Without `torrentName`, qui uses the name in the torrent. While a torrent that matches the release is still downloading, qui assembles nothing. An assembled pack gets the season pack category and tags from the settings, not `category`, `tags`, or `startPaused`. An assembly that fails on an instance is an entry in `results`.
         When `torrentName` is omitted, qui keeps the legacy strict apply behavior.
         When `instanceIds` is omitted or empty, qui attempts to inject the torrent into every configured instance that has a match.
       parameters:
@@ -6556,7 +6582,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Search cross-seed candidates for a torrent
-      description: Query configured Torznab indexers for releases matching an existing torrent
+      description: Query configured Torznab indexers for releases matching an existing torrent. A key without write access to torrents gets each result with an empty download_url, info_url as its scheme and host, and guid as a hash.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -6585,7 +6611,7 @@ paths:
       tags:
         - Cross-Seed
       summary: Add torrents found via cross-seed search
-      description: Downloads selected results and queues them for cross-seeding on the specified instance
+      description: Downloads selected results and queues them for cross-seeding on the specified instance. Each selection names a result of the last search for this torrent by its guid or download_url, as the search returned them.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
@@ -7360,13 +7386,13 @@ paths:
           required: false
           schema:
             type: string
-          description: The comma-separated Torznab indexer IDs of the search. Empty means every enabled indexer.
+          description: The comma-separated Torznab indexer IDs of the search. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         - name: gazelleSites
           in: query
           required: false
           schema:
             type: string
-          description: The comma-separated RED/OPS sites of the search. Present and empty means none.
+          description: The comma-separated RED/OPS API hosts of the search. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         - name: findIndividualEpisodes
           in: query
           required: false
@@ -7407,10 +7433,11 @@ paths:
       summary: Send a Problem report
       description: >-
         Sends one Problem report to brrbin. qui cleans every text part again, cuts the oldest log lines when the report
-        is over 4 MiB, adds the Install key and the sign-in, and stores a Sent reports row when brrbin takes the report.
-        A second Send with the same submissionId stores no second row. Only a signed-in Sender can attach an image. It
-        answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in the
-        config. Only a signed-in browser can use this route.
+        is over 4 MiB, adds the Install key, adds the sign-in when the sender part names it, and stores a Sent reports
+        row when brrbin takes the report. A second Send with the same submissionId stores no second row. Only a
+        report whose sender part names the sign-in can attach an image. It answers 404 while the problemReports
+        Experimental feature is off, and 403 while `problemReports` is false in the config. Only a signed-in browser
+        can use this route.
       security:
         - SessionAuth: []
       requestBody:
@@ -7429,8 +7456,16 @@ paths:
                   type: string
                   format: binary
                   description: A PNG, JPEG, or WebP image of at most 10 MiB.
+                sender:
+                  type: string
+                  description: >-
+                    The Sender that the dialog showed, as JSON in the form of ProblemReportSender. Without it, the
+                    report goes out as Anonymous, also when qui holds a sign-in. When it names a sign-in that qui does
+                    not hold, qui sends nothing to brrbin and answers 409 token_rejected.
             encoding:
               report:
+                contentType: application/json
+              sender:
                 contentType: application/json
       responses:
         '201':
@@ -7440,7 +7475,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SentProblemReport'
         '400':
-          description: The body is invalid, or an anonymous Sender attached an image
+          description: The body is invalid, or an anonymous report carries an image
           content:
             application/json:
               schema:
@@ -7454,7 +7489,9 @@ paths:
         '404':
           description: The problemReports Experimental feature is off
         '409':
-          description: The Reporter is full (reporter_full), or brrbin refused the token (token_rejected) and the Sender is anonymous again
+          description: >-
+            The Reporter is full (reporter_full), brrbin refused the token (token_rejected) and the Sender is anonymous
+            again, or the sender part names a sign-in that qui does not hold (token_rejected)
           content:
             application/json:
               schema:
@@ -7561,6 +7598,154 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '502':
           description: brrbin did not answer, or answered with an error (unavailable). The row stays.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/problem-reports/sender:
+    get:
+      tags:
+        - Problem Reports
+      summary: Read the Sender
+      description: >-
+        Returns who the next Problem report comes from: Anonymous, or the GitHub or Discord name of the sign-in that
+        qui holds. qui makes no request to brrbin for it, and never returns the sign-in token. A token that qui can
+        no longer decrypt is dropped, and the Sender is anonymous. It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in
+        the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: The Sender
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemReportSender'
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '500':
+          description: Failed to read the sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/problem-reports/sign-in:
+    post:
+      tags:
+        - Problem Reports
+      summary: Start a sign-in with GitHub or Discord
+      description: >-
+        Asks brrbin for a sign-in and returns the URL of its page, which the browser opens in a popup. qui makes the
+        Install key first when none exists. qui's server then polls brrbin at the interval that brrbin gave, until
+        the sign-in is done, refused or expired, and stores the token encrypted. A new start replaces a pending
+        sign-in. It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in
+        the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider:
+                  type: string
+                  enum: [github, discord]
+      responses:
+        '200':
+          description: The sign-in started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    description: The URL of the sign-in page on brrbin
+        '400':
+          description: The body is not JSON, or the provider is not github or discord
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '500':
+          description: Failed to read or make the Install key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: brrbin did not answer, or answered with an error (unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - Problem Reports
+      summary: Read the state of the sign-in
+      description: >-
+        Returns the state of the sign-in that the last start began. qui makes no request to brrbin for it. The state
+        is expired when qui holds no sign-in, as after a restart. It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in
+        the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: The state of the sign-in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemReportSignInState'
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+    delete:
+      tags:
+        - Problem Reports
+      summary: Sign out
+      description: >-
+        Stops a pending sign-in, ends the sign-in on brrbin, and forgets it, so the Sender is anonymous. qui forgets
+        the sign-in also when brrbin does not answer. An anonymous Sender gets 204 and qui makes no request to brrbin.
+        It answers 404 while the problemReports Experimental feature is off, and 403 while `problemReports` is false in
+        the config. Only a signed-in browser can use this route.
+      security:
+        - SessionAuth: []
+      responses:
+        '204':
+          description: The Sender is anonymous
+        '403':
+          description: Problem reports are off in the qui config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: The problemReports Experimental feature is off
+        '500':
+          description: Failed to read or forget the sign-in
           content:
             application/json:
               schema:
@@ -8476,7 +8661,7 @@ paths:
       tags:
         - RSS
       summary: RSS events stream (SSE)
-      description: Server-Sent Events stream for real-time RSS feed updates
+      description: Server-Sent Events stream for real-time RSS feed updates. A key without write access to torrents gets the download link and page link of each article as their scheme and host, each feed URL, each feed or folder name that holds a link, and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8499,7 +8684,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS items
-      description: Retrieve all RSS feeds and folders for an instance
+      description: Retrieve all RSS feeds and folders for an instance. A key without write access to torrents gets the download link and page link of each article as their scheme and host, each feed URL, each feed or folder name that holds a link, and each article ID that holds a link as its scheme and host and a short code, and each other feed or article field that holds a link or HTML, such as a feed title, as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: withData
@@ -8545,7 +8730,7 @@ paths:
         '200':
           description: Item removed successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8578,7 +8763,7 @@ paths:
         '200':
           description: Item moved successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one, or the last part of the destination in the short form is not the name of the moved item
         '409':
           description: Instance is disabled
         '500':
@@ -8608,7 +8793,7 @@ paths:
         '200':
           description: Refresh triggered successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8638,7 +8823,7 @@ paths:
         '201':
           description: Folder created successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8676,7 +8861,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/WarningResponse'
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8706,12 +8891,12 @@ paths:
                 url:
                   type: string
                   format: uri
-                  description: New URL for the feed
+                  description: New URL for the feed. For a key without write access to torrents, a URL given as a scheme and host and a short code, as the feed list shows it, becomes the full URL of that feed again.
       responses:
         '200':
           description: Feed URL updated successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one, or a URL in the short form matches no RSS feed or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8744,7 +8929,7 @@ paths:
         '200':
           description: Articles marked as read successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a name in the short form matches no RSS feed or folder or more than one, or an article ID in the short form matches no article of the feed or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8756,7 +8941,7 @@ paths:
       tags:
         - RSS
       summary: Get RSS rules
-      description: Retrieve all RSS auto-download rules
+      description: Retrieve all RSS auto-download rules. A key without write access to torrents gets each feed of a rule as its scheme and host and a short code, and it can send the rule back to the create or update route in this form.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -8778,7 +8963,7 @@ paths:
       tags:
         - RSS
       summary: Create or update RSS rule
-      description: Create a new rule or update an existing one
+      description: Create a new rule or update an existing one. For a key without write access to torrents, each feed given as a scheme and host and a short code, as the rules list shows it, becomes the full URL of that feed again.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -8800,7 +8985,7 @@ paths:
         '201':
           description: Rule created/updated successfully
         '400':
-          description: Invalid request
+          description: Invalid request, or a feed in the short form matches no RSS feed or more than one
         '409':
           description: Instance is disabled
         '500':
@@ -8889,7 +9074,7 @@ paths:
       tags:
         - RSS
       summary: Preview RSS rule matches
-      description: Get articles that would match an RSS rule
+      description: Get articles that would match an RSS rule. A key without write access to torrents gets each feed name that holds a link as its scheme and host and a short code, and each title that holds a link as at most the scheme and host of a link.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - name: ruleName
@@ -9784,7 +9969,8 @@ components:
         canCrossSeed:
           type: boolean
           description: >-
-            True only when at least one matching torrent is fully downloaded (progress 1.0).
+            True when at least one matching torrent is fully downloaded (progress 1.0), or when
+            qui can assemble the season pack from episodes that it holds (seasonPack is present).
             Pending-only matches return HTTP 202 with recommendation "download" while
             canCrossSeed remains false so clients rely on status and progress.
         matches:
@@ -9794,7 +9980,33 @@ components:
         recommendation:
           type: string
           enum: ["download", "skip"]
-          description: Recommendation - "download" if matches were found (ready or pending) or "skip" if no matches
+          description: Recommendation - "download" if matches were found (ready or pending) or if the season pack can be assembled, or "skip" otherwise
+        seasonPack:
+          $ref: '#/components/schemas/CrossSeedWebhookSeasonPack'
+
+    CrossSeedWebhookSeasonPack:
+      type: object
+      description: >-
+        Present only when no torrent matches the release directly and qui can assemble the season
+        pack from episodes that one instance holds.
+      required: [instanceId, matchedEpisodes, totalEpisodes, coverage, thresholdSkipped]
+      properties:
+        instanceId:
+          type: integer
+          description: Instance that holds the most episodes of the pack
+        matchedEpisodes:
+          type: integer
+          description: Number of episodes of the pack that the instance holds
+        totalEpisodes:
+          type: integer
+          description: Number of episodes in the season, or 0 when no metadata source knows it
+        coverage:
+          type: number
+          format: double
+          description: Matched episodes divided by total episodes, or 0 when the total is unknown
+        thresholdSkipped:
+          type: boolean
+          description: True when the episode total is unknown, so the coverage threshold was not applied
 
     PathMapping:
       type: object
@@ -10149,7 +10361,7 @@ components:
           type: string
           description: The qBittorrent preference key.
         value:
-          description: The value that qBittorrent sent, in the wire unit.
+          description: The value that qBittorrent sent, in the wire unit. A password field has an empty value.
         tab:
           type: string
           enum: [behavior, downloads, connection, speed, bittorrent, rss, webui, advanced]
@@ -11222,6 +11434,33 @@ components:
           format: date-time
           description: When qui last saw the status change. A new report has its sentAt.
 
+    ProblemReportSender:
+      type: object
+      description: Who a Problem report comes from
+      required: [anonymous]
+      properties:
+        anonymous:
+          type: boolean
+          description: true while qui holds no sign-in
+        provider:
+          type: string
+          enum: [github, discord]
+          description: Present when the Sender is signed in
+        name:
+          type: string
+          description: The display name that the maintainers see. Present when the Sender is signed in.
+    ProblemReportSignInState:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [pending, done, refused, expired]
+          description: pending while qui polls brrbin, done once qui stored the sign-in, refused when brrbin refused it, expired when it ran out or qui holds none
+        reason:
+          type: string
+          description: Why brrbin refused the sign-in, for example discord_not_member. Present when the state is refused.
+
     VersionResponse:
       type: object
       description: The version qui is currently running and whether a newer release is available
@@ -11573,7 +11812,12 @@ components:
           type: array
           items:
             type: integer
-          description: Limit completion searches to these Torznab indexer IDs (empty means all)
+          description: The Torznab indexer IDs of the Site pick of completion searches. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick of completion searches, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         bypassTorznabCache:
           type: boolean
           default: false
@@ -11616,7 +11860,12 @@ components:
           type: array
           items:
             type: integer
-          description: Limit completion searches to these Torznab indexer IDs (empty means all)
+          description: The Torznab indexer IDs of the Site pick of completion searches. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick of completion searches, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         bypassTorznabCache:
           type: boolean
           default: false
@@ -12302,6 +12551,7 @@ components:
 
     CrossSeedSearchSettingsPatch:
       type: object
+      description: Each field left out keeps its value. A patch with indexerIds or gazelleSites replaces the whole Site pick, and a list left out of it becomes empty.
       properties:
         instanceId:
           type: integer
@@ -12328,9 +12578,15 @@ components:
           type: array
           items:
             type: integer
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         intervalSeconds:
           type: integer
-          description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
+          description: Wait between torrents. At least 5 seconds when the Site pick lists only RED/OPS sites, otherwise at least 60 seconds.
         cooldownMinutes:
           type: integer
         maxAddedAgeDays:
@@ -12339,9 +12595,6 @@ components:
           description: An indexer that already searched a torrent does not search it again after this many days. 0 disables this rule.
         skipIndividualEpisodes:
           type: boolean
-        torznabEnabled:
-          type: boolean
-          description: The Torznab switch of the Library card. With Torznab off, runs ask only RED/OPS.
         scheduleEnabled:
           type: boolean
           description: Turns the Library Scan schedule on. Off by default.
@@ -12386,9 +12639,15 @@ components:
           type: array
           items:
             type: integer
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
+        gazelleSites:
+          type: array
+          items:
+            type: string
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
         intervalSeconds:
           type: integer
-          description: Wait between torrents. At least 60 seconds with Torznab on, 5 seconds with Torznab off.
+          description: Wait between torrents. At least 5 seconds when the Site pick lists only RED/OPS sites, otherwise at least 60 seconds.
         cooldownMinutes:
           type: integer
         maxAddedAgeDays:
@@ -12397,9 +12656,6 @@ components:
           description: An indexer that already searched a torrent does not search it again after this many days. 0 disables this rule.
         skipIndividualEpisodes:
           type: boolean
-        torznabEnabled:
-          type: boolean
-          description: The Torznab switch of the Library card. With Torznab off, runs ask only RED/OPS.
         scheduleEnabled:
           type: boolean
           description: Turns the Library Scan schedule on. Off by default.
@@ -12672,7 +12928,7 @@ components:
           description: The marker directory name (e.g., "BDMV" or "VIDEO_TS") if disc_layout is true
         gazellePlan:
           type: array
-          description: For the search dialog, what a search asks each RED/OPS site. The status is will_ask or not_asked.
+          description: For the search dialog, what a search asks each RED/OPS site that has an API key. The status is will_ask or not_asked. The list is empty when RED/OPS is off or no site has an API key.
           items:
             $ref: '#/components/schemas/CrossSeedGazelleLookup'
 
@@ -12696,7 +12952,7 @@ components:
         reason:
           type: string
           description: Why the search did not ask the site, or why the lookup failed
-          enum: [disabled, no_api_key, cooldown, not_selected, source_site, already_seeded, not_music, key_rejected, timed_out, error]
+          enum: [cooldown, not_selected, source_site, already_seeded, not_music, key_rejected, timed_out, error]
         detail:
           type: string
           description: Error text of a failed lookup
@@ -12757,11 +13013,12 @@ components:
           minimum: 1
         indexer_ids:
           type: array
+          description: The Torznab indexer IDs of the Site pick. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
           items:
             type: integer
         gazelle_sites:
           type: array
-          description: API hosts of the RED/OPS sites to ask. Absent means every site. A list with no indexer_ids asks no Torznab indexer.
+          description: The RED/OPS API hosts of the Site pick, for example redacted.sh. Both lists empty means every site. Otherwise the search asks exactly the listed Torznab indexers and RED/OPS sites.
           items:
             type: string
 
@@ -12846,7 +13103,7 @@ components:
             - arr_no_ids
         gazelleLookups:
           type: array
-          description: One RED/OPS lookup for each site, in a fixed site order. A site that timed out or failed has the status failed; the results hold the matches of the other sites and of Torznab.
+          description: One RED/OPS lookup for each site that has an API key, in a fixed site order. The list is empty when RED/OPS is off. A site that timed out or failed has the status failed; the results hold the matches of the other sites and of Torznab.
           items:
             $ref: '#/components/schemas/CrossSeedGazelleLookup'
         torznab_failed:
@@ -12928,7 +13185,6 @@ components:
       required:
         - indexer_id
         - indexer
-        - download_url
         - title
       properties:
         indexer_id:
@@ -13749,6 +14005,13 @@ components:
           type: array
           items:
             type: string
+        title_seasons:
+          type: object
+          description: The titles that Sonarr gives only to some seasons, keyed by the lower-case title, with the seasons that each one names. An empty list means that the title names no season.
+          additionalProperties:
+            type: array
+            items:
+              type: integer
         has_titles:
           type: boolean
         episode_map:

@@ -3,16 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-/**
- * Reconcile the expanded-folder set after the file tree rebuilds.
- *
- * Folder expansion is keyed by path, so a rename changes the id of the folder
- * and all its descendants. Dropping vanished ids and auto-expanding ids that
- * were not previously known keeps a renamed folder expanded, while folders the
- * user collapsed stay collapsed across refetches (their id persists).
- *
- * Returns the original set unchanged when nothing needs to change.
- */
 export function reconcileExpandedFolders(
   expanded: Set<string>,
   previousIds: Set<string>,

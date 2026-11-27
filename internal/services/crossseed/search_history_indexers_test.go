@@ -68,7 +68,6 @@ func TestIndexerSearchHistoryRoundTrip(t *testing.T) {
 		require.WithinDuration(t, first, history[id], time.Second)
 	}
 
-	// Upsert refreshes the stamp for a subset without touching the rest.
 	second := time.Now().UTC().Truncate(time.Second)
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, hash, env.indexerIDs[:1], second))
 	history, err = env.store.GetIndexerSearchHistory(ctx, env.instanceID, hash)
@@ -76,7 +75,6 @@ func TestIndexerSearchHistoryRoundTrip(t *testing.T) {
 	require.WithinDuration(t, second, history[env.indexerIDs[0]], time.Second)
 	require.WithinDuration(t, first, history[env.indexerIDs[1]], time.Second)
 
-	// Empty indexer list is a no-op, not an error.
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, hash, nil, second))
 }
 
@@ -88,18 +86,17 @@ func TestStaleSearchWork(t *testing.T) {
 	expiredHash := "cccccccccccccccccccccccccccccccccccccccc"
 	partialHash := "dddddddddddddddddddddddddddddddddddddddd"
 	virginHash := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	torznabPickHash := "ffffffffffffffffffffffffffffffffffffffff"
 
 	now := time.Now().UTC()
 	stale := now.Add(-24 * time.Hour)
 
-	// freshHash: both indexers and the gazelle stamp are inside the cooldown.
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, freshHash, env.indexerIDs, now))
 	require.NoError(t, env.store.UpsertSearchHistory(ctx, env.instanceID, freshHash, now))
-	// expiredHash: everything stamped before the cooldown window.
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, expiredHash, env.indexerIDs, stale))
 	require.NoError(t, env.store.UpsertSearchHistory(ctx, env.instanceID, expiredHash, stale))
-	// partialHash: only the first indexer ever searched it (fresh).
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, partialHash, env.indexerIDs[:1], now))
+	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, torznabPickHash, env.indexerIDs, now))
 
 	gazelleClients := &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"redacted.sh": nil}}
 
@@ -113,6 +110,7 @@ func TestStaleSearchWork(t *testing.T) {
 		opts         SearchRunOptions
 		gazelle      *gazelleClientSet
 		duplicates   []string
+		gazelleOnly  bool
 		wantIndexers []int
 		wantGazelle  bool
 	}{
@@ -179,15 +177,24 @@ func TestStaleSearchWork(t *testing.T) {
 			wantGazelle:  true,
 		},
 		{
-			name:         "disable torznab leaves only gazelle work",
+			name:         "a RED/OPS-only run leaves only gazelle work",
 			hash:         expiredHash,
 			addedOn:      recentAdded,
-			opts:         SearchRunOptions{CooldownMinutes: 720, DisableTorznab: true},
+			opts:         SearchRunOptions{CooldownMinutes: 720, SitePick: models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{"orpheus.network", "redacted.sh"}}},
+			gazelleOnly:  true,
 			gazelle:      gazelleClients,
 			wantIndexers: nil,
 			wantGazelle:  true,
 		},
-		// regression: #4246
+		{
+			name:         "a Torznab-only pick leaves out RED/OPS work",
+			hash:         torznabPickHash,
+			addedOn:      recentAdded,
+			opts:         SearchRunOptions{CooldownMinutes: 720, SitePick: models.SitePick{IndexerIDs: env.indexerIDs, GazelleSites: []string{}}},
+			gazelle:      gazelleClients,
+			wantIndexers: nil,
+			wantGazelle:  false,
+		},
 		{
 			name:         "a newer search of another copy counts",
 			hash:         expiredHash,
@@ -214,9 +221,13 @@ func TestStaleSearchWork(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := tt.opts
 			opts.InstanceID = env.instanceID
+			resolved := env.indexerIDs
+			if tt.gazelleOnly {
+				resolved = nil
+			}
 			state := &searchRunState{
 				opts:                      opts,
-				resolvedTorznabIndexerIDs: env.indexerIDs,
+				resolvedTorznabIndexerIDs: resolved,
 				gazelleClients:            tt.gazelle,
 				duplicateHashes:           map[string][]string{tt.hash: tt.duplicates},
 			}
@@ -248,14 +259,12 @@ func TestShouldSkipCandidatePseudoKeyKeepsWholeEntryGate(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, skip, "fresh pseudo-key must skip even though its per-indexer table is empty")
 
-	// A real hash with no history stays eligible and records its stale work.
 	virgin := "ffffffffffffffffffffffffffffffffffffffff"
 	skip, err = service.shouldSkipCandidate(ctx, state, &qbt.Torrent{Hash: virgin, Progress: 1.0})
 	require.NoError(t, err)
 	require.False(t, skip)
 	require.Equal(t, env.indexerIDs, state.staleWork[strings.ToLower(virgin)].indexerIDs)
 
-	// A real hash whose every indexer stamp is fresh skips without stale work.
 	fresh := "1111111111111111111111111111111111111111"
 	require.NoError(t, env.store.UpsertIndexerSearchHistory(ctx, env.instanceID, fresh, env.indexerIDs, time.Now().UTC()))
 	skip, err = service.shouldSkipCandidate(ctx, state, &qbt.Torrent{Hash: fresh, Progress: 1.0})
@@ -292,15 +301,11 @@ func TestPropagateDuplicateIndexerSearchHistory(t *testing.T) {
 	require.Len(t, history, 1)
 	require.WithinDuration(t, now, history[env.indexerIDs[0]], time.Second)
 
-	// gazelleStamped=false must not create a per-torrent stamp.
 	_, found, err := env.store.GetSearchHistory(ctx, env.instanceID, "dup-hash-a")
 	require.NoError(t, err)
 	require.False(t, found)
 }
 
-// TestMigrationSeedsPerIndexerHistory replays the 082 seed statement against a
-// migrated database to prove old per-torrent stamps fan out to every indexer
-// while pseudo-keys stay behind (no post-upgrade thundering herd).
 func TestMigrationSeedsPerIndexerHistory(t *testing.T) {
 	ctx, env := newSearchHistoryTestEnv(t, "crossseed-migration-seed", 2)
 

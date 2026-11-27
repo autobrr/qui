@@ -37,7 +37,6 @@ func remoteID(ino byte) hardlink.FileID {
 	return hardlink.RemoteFileID(raw[:])
 }
 
-// answerBackend is a remote host with slash paths, recorded batches and one answer per path.
 type answerBackend struct {
 	*recordingBackend
 	answer func(p string) (*fsops.LstatInfo, error)
@@ -62,7 +61,6 @@ func newAnswerBackend(answer func(p string) (*fsops.LstatInfo, error), walk ...f
 	return answerBackend{recordingBackend: newRecordingBackend(walk...), answer: answer}
 }
 
-// seededTorrents is qBittorrent for the seeding index, by torrent hash.
 type seededTorrents struct {
 	savePaths map[string]string
 	files     map[string]qbt.TorrentFiles
@@ -91,19 +89,17 @@ func onlyTorrent(savePath string, names ...string) *seededTorrents {
 		files = append(files, qbt.TorrentFile{Name: name, Priority: 1})
 	}
 	return &seededTorrents{
-		savePaths: map[string]string{"aaaa": savePath},
-		files:     map[string]qbt.TorrentFiles{"aaaa": files},
+		savePaths: map[string]string{indexHashA: savePath},
+		files:     map[string]qbt.TorrentFiles{indexHashA: files},
 	}
 }
 
-// answerWithID gives every path the same identity.
 func answerWithID(id hardlink.FileID) func(string) (*fsops.LstatInfo, error) {
 	return func(p string) (*fsops.LstatInfo, error) {
 		return &fsops.LstatInfo{Path: p, Size: 1, FileID: id, Nlinks: 1}, nil
 	}
 }
 
-// remoteFileModTime is the mtime both trackRemoteFile and scanOfRemoteFile use, so a scan reads the file as unchanged.
 var remoteFileModTime = time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
 
 func trackRemoteFile(t *testing.T, store *models.DirScanStore, dirID int, filePath string, status models.DirScanFileStatus) {
@@ -121,7 +117,6 @@ func scanOfRemoteFile(filePath string) *ScanResult {
 	}}}}
 }
 
-// An index built without its instance has no key for a remote identity, so every file reads as unknown.
 func TestSeedingIndexScopesRemoteIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -134,7 +129,7 @@ func TestSeedingIndexScopesRemoteIdentity(t *testing.T) {
 	require.True(t, index.complete, index.incompleteReason)
 	hash, ok := index.hash(remoteID(1))
 	require.True(t, ok)
-	require.Equal(t, "aaaa", hash)
+	require.Equal(t, indexHashA, hash)
 	require.True(t, index.knowsNotSeeding(remoteID(2)), "a file outside a complete index does not seed")
 }
 
@@ -164,7 +159,6 @@ func TestRemoteIdentityFromAnotherHostDoesNotMatch(t *testing.T) {
 	}
 }
 
-// A complete index without the file shows the torrent is gone, which needs a key for the remote identity.
 func TestTorrentGoneClearsRemoteAlreadySeeding(t *testing.T) {
 	row := remoteInstance(models.SSHTierExec)
 	key, ok := fsops.FileKeyOf(remoteID(1), row)
@@ -215,7 +209,6 @@ func TestRemoteRenameKeepsVerdictByFileID(t *testing.T) {
 	require.Equal(t, models.DirScanFileStatusNoMatch, files[0].Status)
 }
 
-// Three torrents under two save paths take two finds, and a missing save path costs none of its files.
 func TestFileIDIndexBatchesAcrossTorrents(t *testing.T) {
 	t.Parallel()
 
@@ -226,11 +219,11 @@ func TestFileIDIndexBatchesAcrossTorrents(t *testing.T) {
 		"/data/b/four.mkv":  remoteID(4),
 	}
 	torrents := &seededTorrents{
-		savePaths: map[string]string{"aaaa": "/data/a", "bbbb": "/data/a", "cccc": "/data/b"},
+		savePaths: map[string]string{indexHashA: "/data/a", indexHashB: "/data/a", indexHashC: "/data/b"},
 		files: map[string]qbt.TorrentFiles{
-			"aaaa": {{Name: "one.mkv", Priority: 1}, {Name: "two.mkv", Priority: 1}},
-			"bbbb": {{Name: "three.mkv", Priority: 1}},
-			"cccc": {{Name: "four.mkv", Priority: 1}},
+			indexHashA: {{Name: "one.mkv", Priority: 1}, {Name: "two.mkv", Priority: 1}},
+			indexHashB: {{Name: "three.mkv", Priority: 1}},
+			indexHashC: {{Name: "four.mkv", Priority: 1}},
 		},
 	}
 	answer := func(p string) (*fsops.LstatInfo, error) {
@@ -283,7 +276,6 @@ func TestFileIDIndexBatchesAcrossTorrents(t *testing.T) {
 	})
 }
 
-// Without identity qui reads no torrent list or stat, and the index cannot clear an already seeding file.
 func TestFileIDIndexSkippedWithoutIdentity(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
@@ -323,7 +315,6 @@ func TestFileIDIndexSkippedWithoutIdentity(t *testing.T) {
 	}
 }
 
-// A name with a .. element climbs out of a missing save path, so its file is still read.
 func TestDotDotNameUnderMissingSavePath(t *testing.T) {
 	const seeded = "/other/f.bin"
 	row := remoteInstance(models.SSHTierExec)
@@ -344,8 +335,8 @@ func TestDotDotNameUnderMissingSavePath(t *testing.T) {
 			ctx := t.Context()
 			svc, store, dir := newDirScanTestService(t)
 			svc.torrentFiles = &seededTorrents{
-				savePaths: map[string]string{"aaaa": tt.savePath},
-				files:     map[string]qbt.TorrentFiles{"aaaa": {{Name: tt.fileName}}},
+				savePaths: map[string]string{indexHashA: tt.savePath},
+				files:     map[string]qbt.TorrentFiles{indexHashA: {{Name: tt.fileName}}},
 			}
 			backend := newAnswerBackend(func(p string) (*fsops.LstatInfo, error) {
 				switch p {
@@ -376,7 +367,6 @@ func TestDotDotNameUnderMissingSavePath(t *testing.T) {
 	}
 }
 
-// Each file under a missing save path answers for itself, so a skipped file listed first can't hide a wanted one.
 func TestMixedPrioritiesUnderMissingSavePath(t *testing.T) {
 	t.Parallel()
 
@@ -421,7 +411,6 @@ func TestMissingSavePathEdges(t *testing.T) {
 	}
 }
 
-// One StatAll keeps each file's verdict: a missing skipped file says nothing, a missing wanted one marks incomplete.
 func TestSkippedFileStaysCompleteThroughStatAll(t *testing.T) {
 	t.Parallel()
 
@@ -471,9 +460,6 @@ func TestSkippedFileStaysCompleteThroughStatAll(t *testing.T) {
 	}
 }
 
-// A connection lost in the index fails the run, from a stat or its identity read, and other errors stay best effort.
-//
-// regression: #2919
 func TestScanFailsWhenIndexBuildLosesConnection(t *testing.T) {
 	lost := fmt.Errorf("stat: %w", fsops.ErrConnectionLost)
 	saveDir := &fsops.LstatInfo{Path: "/data/torrents", IsDir: true, FileID: remoteID(9)}

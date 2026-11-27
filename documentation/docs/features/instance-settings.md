@@ -49,7 +49,7 @@ HTTP Basic Authentication is separate from qBittorrent's built-in authentication
 
 If enabled, qui reads the same filesystem as qBittorrent. This setting turns on these features:
 
-- **Content file download**: Download single files from a torrent through the browser. Right-click a file in the Content tab.
+- **Content file download**: Download single files from a torrent through the browser. Right-click a file in the Content tab. qui refuses to send its own `config.toml` and database files, also through a symlink or a hard link.
 - **Hardlink detection**: Automations detect whether torrent files have hardlinks into your media library.
 - **Orphan scan**: Find files on disk that no torrent references.
 - **Free space (path on the qui host)**: Automation rules check free space on a specific mount point instead of the value that qBittorrent reports. On qBittorrent 5.3 and later you can instead read a path on the qBittorrent host, which needs no local access.
@@ -125,6 +125,8 @@ After the **Instance** tab, the settings dialog shows the tabs of the qBittorren
 qui shows a preference only when your qBittorrent version sends it and your libtorrent version and platform use it. qui hides a tab that has no preferences.
 
 Some preferences are read-only. qui shows the value, and you change it in qBittorrent.
+
+qui does not show the saved proxy and email passwords. Leave a password box empty to keep the saved password, or type a new password to replace it.
 
 All tabs share one form. When you click **Save Changes** on any tab, qui sends only the preferences that you changed, on all tabs. If the save fails, qui shows an error and keeps your changes in the form.
 

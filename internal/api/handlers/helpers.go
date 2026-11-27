@@ -4,67 +4,65 @@
 package handlers
 
 import (
-	"encoding/json"
+	"bytes"
 	"errors"
 	"net/http"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/api/secretshapes"
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/secrets"
 	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
-// ErrorResponse represents an API error response
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-// WarningResponse represents a success response with optional warnings
 type WarningResponse struct {
 	Warning string `json:"warning,omitempty"`
 }
 
-// RespondJSON sends a JSON response.
-// For 204 No Content and 304 Not Modified, no body or Content-Type is sent per HTTP spec.
-func RespondJSON(w http.ResponseWriter, status int, data any) {
-	// 204 and 304 must not have a body per RFC 7230/9110
-	if status == http.StatusNoContent || status == http.StatusNotModified {
-		w.WriteHeader(status)
-		return
-	}
-
-	if data != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		if err := json.NewEncoder(w).Encode(data); err != nil {
-			// The encoder writes straight to the socket, so a peer that went away
-			// mid-response shows up here even though the JSON itself was valid.
-			if !isEncodeFailure(err) && httphelpers.IsClientDisconnect(err) {
-				log.Debug().Err(err).Msg("Client disconnected before the JSON response was written")
-				return
-			}
-			log.Error().Err(err).Msg("Failed to encode JSON response")
-		}
-		return
-	}
-
-	w.WriteHeader(status)
+func RespondJSON(w http.ResponseWriter, r *http.Request, status int, data any) {
+	writeJSON(w, middleware.AudienceOf(r), status, data)
 }
 
-// isEncodeFailure reports whether err came from serializing the payload rather
-// than from writing it to the client.
-func isEncodeFailure(err error) bool {
-	_, marshaler := errors.AsType[*json.MarshalerError](err)
-	_, unsupportedType := errors.AsType[*json.UnsupportedTypeError](err)
-	_, unsupportedValue := errors.AsType[*json.UnsupportedValueError](err)
-	return marshaler || unsupportedType || unsupportedValue
-}
-
-// RespondError sends an error response
 func RespondError(w http.ResponseWriter, status int, message string) {
-	RespondJSON(w, status, ErrorResponse{
+	writeJSON(w, secrets.Audience{}, status, ErrorResponse{
 		Error: message,
 	})
+}
+
+var jsonBuffers = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
+func writeJSON(w http.ResponseWriter, audience secrets.Audience, status int, data any) {
+	if status == http.StatusNoContent || status == http.StatusNotModified || data == nil {
+		w.WriteHeader(status)
+		return
+	}
+
+	buf := jsonBuffers.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer jsonBuffers.Put(buf)
+	if err := secretshapes.Encoder.Write(buf, audience, data); err != nil {
+		log.Error().Err(err).Msg("Failed to encode JSON response")
+		writeJSON(w, secrets.Audience{}, http.StatusInternalServerError, ErrorResponse{Error: "Failed to encode response"})
+		return
+	}
+	buf.WriteByte('\n')
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		if httphelpers.IsClientDisconnect(err) {
+			log.Debug().Err(err).Msg("Client disconnected before the JSON response was written")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to write JSON response")
+	}
 }
 
 func respondIfInstanceDisabled(w http.ResponseWriter, err error, instanceID int, context string) bool {

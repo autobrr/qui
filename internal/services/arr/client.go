@@ -61,7 +61,7 @@ func (c *Client) Ping(ctx context.Context) error {
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("connection failed: %w", err)
 	}
@@ -114,7 +114,7 @@ func (c *Client) ParseTitleLookupResult(ctx context.Context, title string) (*Ext
 
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -168,6 +168,9 @@ func (c *Client) hydrateSonarrSeries(ctx context.Context, result *ExternalIDsLoo
 
 	fullSeries, err := c.sonarrSeriesByID(ctx, series.ID)
 	if err != nil {
+		if result != nil {
+			result.Incomplete = true
+		}
 		return result
 	}
 
@@ -194,6 +197,9 @@ func (c *Client) radarrMovieLookupResult(ctx context.Context, parseResp *RadarrP
 
 	fullMovie, err := c.radarrMovieByID(ctx, parseResp.Movie.ID)
 	if err != nil {
+		if result != nil {
+			result.Incomplete = true
+		}
 		return result
 	}
 
@@ -224,6 +230,7 @@ func mergeLookupResults(base, hydrated *ExternalIDsLookupResult) *ExternalIDsLoo
 	for _, title := range hydrated.Titles {
 		addUniqueTitle(&result.Titles, title)
 	}
+	result.TitleSeasons = hydrated.TitleSeasons
 	if result.IDs == nil && len(result.Titles) == 0 {
 		return nil
 	}
@@ -307,7 +314,7 @@ func (c *Client) getJSON(ctx context.Context, path string, params url.Values, ta
 	}
 	c.setHeaders(req)
 
-	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}

@@ -12,32 +12,36 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// Regular, hardlink and reflink mode all read this one predicate, so it is the
-// single place the verify-before-seed policy can be got wrong.
 func TestCandidateRequiresVerification(t *testing.T) {
 	t.Parallel()
 
+	const (
+		bound  = "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
+		strict = "5757575757575757575757575757575757575757"
+	)
+	boundHash := mustParseHash(t, bound)
 	for _, tt := range []struct {
 		name           string
 		candidate      CrossSeedCandidate
 		selectedHash   string
 		sourceInstance int
-		sourceHash     string
+		sourceHash     infohash.Hash
 		relaxed        matchDifferences
 		want           bool
 	}{
 		{name: "title rescue", candidate: CrossSeedCandidate{titleRescue: true}, want: true},
-		{name: "bound relaxed season", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceSeason), want: true},
-		{name: "bound relaxed episode", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceEpisode), want: true},
-		{name: "bound relaxed group", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceGroup), want: true},
-		{name: "bound relaxed group and codec", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceGroup, differenceCodec), want: true},
-		{name: "strict alternative hash", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "strict", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceGroup)},
-		{name: "same hash on another instance", candidate: CrossSeedCandidate{InstanceID: 2}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceGroup)},
-		{name: "empty bound hash", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, relaxed: differencesOf(differenceGroup)},
-		{name: "bound relaxed codec", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound", relaxed: differencesOf(differenceCodec)},
-		{name: "no relaxation", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: "bound", sourceInstance: 1, sourceHash: "bound"},
+		{name: "bound relaxed season", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: bound, sourceInstance: 1, sourceHash: boundHash, relaxed: differencesOf(differenceSeason), want: true},
+		{name: "bound relaxed episode", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: bound, sourceInstance: 1, sourceHash: boundHash, relaxed: differencesOf(differenceEpisode), want: true},
+		{name: "bound relaxed group", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: bound, sourceInstance: 1, sourceHash: boundHash, relaxed: differencesOf(differenceGroup), want: true},
+		{name: "bound relaxed group and codec", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: bound, sourceInstance: 1, sourceHash: boundHash, relaxed: differencesOf(differenceGroup, differenceCodec), want: true},
+		{name: "strict alternative hash", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: strict, sourceInstance: 1, sourceHash: boundHash, relaxed: differencesOf(differenceGroup)},
+		{name: "same hash on another instance", candidate: CrossSeedCandidate{InstanceID: 2}, selectedHash: bound, sourceInstance: 1, sourceHash: boundHash, relaxed: differencesOf(differenceGroup)},
+		{name: "empty bound hash", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: bound, sourceInstance: 1, relaxed: differencesOf(differenceGroup)},
+		{name: "bound relaxed codec", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: bound, sourceInstance: 1, sourceHash: boundHash, relaxed: differencesOf(differenceCodec)},
+		{name: "no relaxation", candidate: CrossSeedCandidate{InstanceID: 1}, selectedHash: bound, sourceInstance: 1, sourceHash: boundHash},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, candidateRequiresVerification(
@@ -55,15 +59,10 @@ func TestCandidateRequiresVerification(t *testing.T) {
 	}
 }
 
-// A season, episode or group relaxed by the exact-size fallback rests on equal
-// reported total sizes, which cannot prove which episode the files hold or which group
-// packed them. The add must be hashed before it seeds, and must be dropped when
-// the user disabled rechecks. The layout here is perfect (identical names and
-// sizes), so nothing except the relaxation can demand a recheck.
 func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 	t.Parallel()
 
-	const newHash = "newhash"
+	const newHash = "feedfacefeedfacefeedfacefeedfacefeedface"
 	files := func() qbt.TorrentFiles {
 		return qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
 	}
@@ -75,7 +74,7 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 			SearchDecision: searchDecisionProvenance{
 				Class:            searchCandidateClassExactSizeFallback,
 				SourceInstanceID: 1,
-				SourceHash:       "matchedhash",
+				SourceHash:       mustParseHash(t, "c0de000000000000000000000000000000000002"),
 				Relaxed:          differencesOf(differenceSeason),
 			},
 		}
@@ -84,10 +83,10 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 	run := func(t *testing.T, req *CrossSeedRequest) (InstanceCrossSeedResult, *renameOnlySyncManager) {
 		t.Helper()
 		instance := &models.Instance{ID: 1}
-		service, sync, candidate := newRenameOnlyService(t, instance, "matchedhash", renameOnlySourceFile, files(), newHash, files())
+		service, sync, candidate := newRenameOnlyService(t, instance, "c0de000000000000000000000000000000000002", renameOnlySourceFile, files(), newHash, files())
 		withAdder(service)
 		result := service.processCrossSeedCandidate(
-			context.Background(), candidate, []byte("torrent"), newHash, "",
+			context.Background(), candidate, []byte("torrent"), mustParseHash(t, newHash), infohash.Hash{},
 			renameOnlySourceFile, req, service.releaseCache.Parse(renameOnlySourceFile), files(), nil, nil,
 		)
 		return result, sync
@@ -97,7 +96,7 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		result, sync := run(t, newRequest())
 
 		require.Equal(t, "added", result.Status, "message: %s", result.Message)
-		require.Contains(t, sync.bulkActions, "recheck:"+normalizeHash(newHash))
+		require.Contains(t, sync.bulkActions, "recheck:"+newHash)
 	})
 
 	t.Run("relaxed episode is dropped when rechecks are disabled", func(t *testing.T) {
@@ -119,7 +118,7 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		result, sync := run(t, req)
 
 		require.Equal(t, "added", result.Status, "message: %s", result.Message)
-		require.Contains(t, sync.bulkActions, "recheck:"+normalizeHash(newHash))
+		require.Contains(t, sync.bulkActions, "recheck:"+newHash)
 	})
 
 	t.Run("relaxed group is dropped when rechecks are disabled", func(t *testing.T) {
@@ -134,8 +133,6 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedMatches(t *testing.T) {
 		require.Empty(t, sync.addTorrentOpts, "the torrent must never be added")
 	})
 
-	// A HYBRID copy passes the same size checks as any other encode difference,
-	// so an exact layout keeps the fast path, also with Skip recheck on.
 	t.Run("HYBRID tolerance keeps the unverified fast path", func(t *testing.T) {
 		for _, skipRecheck := range []bool{false, true} {
 			req := newRequest()
@@ -179,9 +176,9 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			const (
-				boundHash  = "bound"
+				boundHash  = "c0de000000000000000000000000000000000001"
 				strictHash = "strict"
-				newHash    = "newhash"
+				newHash    = "feedfacefeedfacefeedfacefeedfacefeedface"
 			)
 			downloadsDir := filepath.Join(t.TempDir(), "downloads", "movies")
 			sourceFiles := qbt.TorrentFiles{{Name: renameOnlySourceFile, Size: renameOnlySize}}
@@ -213,8 +210,8 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 				context.Background(),
 				candidate,
 				[]byte("torrent"),
-				newHash,
-				"",
+				mustParseHash(t, newHash),
+				infohash.Hash{},
 				renameOnlySourceFile,
 				&CrossSeedRequest{
 					StartPaused: &startPaused,
@@ -222,7 +219,7 @@ func TestProcessCrossSeedCandidate_StrictAlternativeDoesNotSpendBoundRelaxation(
 					SearchDecision: searchDecisionProvenance{
 						Class:            searchCandidateClassExactSizeFallback,
 						SourceInstanceID: 1,
-						SourceHash:       boundHash,
+						SourceHash:       mustParseHash(t, boundHash),
 						Relaxed:          differencesOf(differenceGroup),
 					},
 				},

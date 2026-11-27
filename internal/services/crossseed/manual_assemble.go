@@ -10,15 +10,15 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// ManualAssembleRequest selects episode torrents from one instance.
-// An empty selection asks the check endpoint to suggest targets.
 type ManualAssembleRequest struct {
 	InstanceID   int      `json:"instance_id"`
 	TorrentData  string   `json:"torrent_data"`
@@ -67,13 +67,11 @@ type manualAssemblePlan struct {
 	response *ManualAssembleResponse
 	prep     *seasonPackPrep
 	instance *models.Instance
-	// route sends the add to the Cross-seed instance (ADR 0035), or nil.
 	route    *candidateRoute
 	build    *seasonPackPlanBuild
 	episodes map[episodeIdentity]episodeMatch
 }
 
-// CheckManualAssemble resolves the selected files without creating links or adding a torrent.
 func (s *Service) CheckManualAssemble(ctx context.Context, req *ManualAssembleRequest) (*ManualAssembleResponse, error) {
 	plan, err := s.planManualAssemble(ctx, req)
 	if err != nil {
@@ -83,7 +81,7 @@ func (s *Service) CheckManualAssemble(ctx context.Context, req *ManualAssembleRe
 }
 
 func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRequest) (*ManualAssembleResponse, error) {
-	if len(normalizedHashes(req.TargetHashes...)) < 2 {
+	if len(targetHashKeys(req.TargetHashes)) < 2 {
 		return nil, fmt.Errorf("%w: assembly requires at least two target hashes", ErrInvalidRequest)
 	}
 	planned, err := s.planManualAssemble(ctx, req)
@@ -110,13 +108,12 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, receiverID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil //nolint:nilerr // resp reports the link failure as link_failed
 	}
-	// A cross-device retry may have moved the tree to another base dir.
 	resp.Destination, _ = seasonPackSavePath(planned.route, planned.build)
 	result, err := s.addSeasonPack(ctx, prep, inst, planned.route, check, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
 	if err != nil {
 		return nil, err
 	}
-	resp.Applied, resp.Reason, resp.Message = result.Applied, result.Reason, result.Message
+	resp.Applied, resp.Reason, resp.Message = result.applied, result.reason, result.message
 	return resp, nil
 }
 
@@ -147,14 +144,10 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if err != nil {
 		return nil, err
 	}
-	// A route sends the add to the Cross-seed instance (ADR 0035). Its rule
-	// check, the availability check, and the Source instance row come before
-	// the plan, so the plan and its destination use them.
 	route, routeErr := s.routeOf(ctx, inst.ID)
 	var routeStatus, routeMessage string
 	switch {
 	case routeErr != nil && route == nil:
-		// A failed read, not a broken route.
 		return nil, routeErr
 	case routeErr != nil:
 		routeStatus, routeMessage = routeFailure(routeErr)
@@ -192,17 +185,16 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	torrents := make(map[string]*qbt.Torrent, len(cached))
 	for _, view := range cached {
 		if view.Torrent != nil {
-			torrents[normalizeHash(view.Hash)] = view.Torrent
+			torrents[view.Hash] = view.Torrent
 		}
 	}
-	hashes := normalizedHashes(req.TargetHashes...)
+	hashes := targetHashKeys(req.TargetHashes)
 	var candidates map[episodeIdentity][]episodeMatch
 	if len(hashes) == 0 {
-		proposals, err := s.ManualMatchProposals(ctx, inst.ID, torrentBytes, "")
+		proposals, err := s.ManualMatchProposals(ctx, inst.ID, torrentBytes, infohash.Hash{})
 		if err != nil {
 			return nil, err
 		}
-		// Use the apply's file pairing, including its ignored sidecars.
 		usableFiles := func(files qbt.TorrentFiles) qbt.TorrentFiles {
 			return slices.DeleteFunc(slices.Clone(files), func(file qbt.TorrentFile) bool {
 				return shouldIgnoreFile(file.Name, normalizerForService(s))
@@ -214,8 +206,8 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 			if err != nil {
 				return nil, err
 			}
-			match := s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(proposal.Name), packRelease, files[normalizeHash(proposal.Hash)], meta.Files, defaultSizeMismatchTolerancePercent)
-			_, unmatched := matchSourceFilesToCandidates(uploadFiles, usableFiles(files[normalizeHash(proposal.Hash)]))
+			match := s.matcher().getMatchTypeWithReason(s.releaseCache.Parse(proposal.Name), packRelease, files[proposal.Hash], meta.Files, defaultSizeMismatchTolerancePercent)
+			_, unmatched := matchSourceFilesToCandidates(uploadFiles, usableFiles(files[proposal.Hash]))
 			if match.MatchType != "" && len(uploadFiles) > 0 && len(unmatched) == 0 {
 				resp.Targets = append(resp.Targets, ManualAssembleTarget{Hash: proposal.Hash, Name: proposal.Name})
 				resp.DefaultCategory = proposal.Category
@@ -274,7 +266,7 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	}
 	selected := make(map[string]struct{}, len(episodes))
 	for _, episode := range episodes {
-		selected[normalizeHash(episode.torrentHash)] = struct{}{}
+		selected[episode.torrentHash] = struct{}{}
 	}
 	if len(hashes) == 0 {
 		hashes = slices.Sorted(maps.Keys(selected))
@@ -308,4 +300,21 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	}
 	planned.build, planned.episodes = plan, episodes
 	return planned, nil
+}
+
+func targetHashKeys(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	keys := make([]string, 0, len(values))
+	for _, value := range values {
+		key := strings.TrimSpace(value)
+		if hash, err := infohash.Parse(key); err == nil {
+			key = hash.String()
+		}
+		if _, dup := seen[key]; dup || key == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys
 }

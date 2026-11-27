@@ -29,24 +29,20 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 	t.Parallel()
 
-	// A hybrid torrent carries both hashes, so one fixture covers a v1 and a v2 entry.
 	tests := []struct {
 		name         string
 		blockHash    func(*ParsedTorrent) string
 		blocklistErr bool
 		existing     bool
-		// link stores a route between the target, instance 1, and instance 2,
-		// and puts the existing torrent on instance 2 only.
-		link *dirScanLink
-		// skipped is set when the Pre-add check refuses the add without a match.
-		skipped bool
-		// retry is set when the searchee must stay pending for the next scan.
-		retry bool
+		link         *dirScanLink
+		skipped      bool
+		retry        bool
 	}{
 		{name: "not blocked"},
 		{name: "v1 blocked", blockHash: func(p *ParsedTorrent) string { return p.InfoHash }, skipped: true},
@@ -77,7 +73,6 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			indexer, err := indexerStore.Create(ctx, "Indexer", "http://indexer.example.invalid", "api-key", nil, nil, true, 0, 30)
 			require.NoError(t, err)
 
-			// No content type, so the indexer filter needs no capability lookup.
 			const name = "example-data-archive.bin"
 			torrentBytes := buildTorrentBytes(t, &metainfo.Info{
 				Name:        name,
@@ -93,8 +88,6 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			require.NoError(t, err)
 			require.NotEmpty(t, parsed.InfoHashV2)
 
-			// A cache hit keeps the download off the network; the nil indexer store
-			// makes a miss panic instead of calling a real host.
 			result := &jackett.SearchResult{Title: name, IndexerID: indexer.ID, DownloadURL: "http://indexer.example.invalid/dl", GUID: "guid", Size: 4}
 			cache := models.NewTorznabTorrentCacheStore(db)
 			require.NoError(t, cache.Store(ctx, &models.TorznabTorrentCacheEntry{
@@ -103,7 +96,9 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 
 			blocklist := models.NewCrossSeedBlocklistStore(db)
 			if tt.blockHash != nil {
-				_, err = blocklist.Upsert(ctx, &models.CrossSeedBlocklistEntry{InstanceID: instance.ID, InfoHash: tt.blockHash(parsed)})
+				hash, parseErr := infohash.Parse(tt.blockHash(parsed))
+				require.NoError(t, parseErr)
+				_, err = blocklist.Upsert(ctx, instance.ID, hash, "")
 				require.NoError(t, err)
 			}
 			if tt.blocklistErr {
@@ -139,7 +134,6 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 				injector:       NewInjector(nil, crossseed.NewAligner(manager), adder, qbit, nil, testBackendPool(instance)),
 			}
 			if tt.link != nil && tt.existing {
-				// The search precheck before the download checks the target only.
 				exists, checked := svc.searchResultAlreadyExists(ctx, instance.ID, &jackett.SearchResult{InfoHashV1: parsed.InfoHash}, nil)
 				require.True(t, checked)
 				require.False(t, exists)
@@ -154,7 +148,6 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			dir := &models.DirScanDirectory{ID: 1, TargetInstanceID: instance.ID}
 			settings := &models.DirScanSettings{MatchMode: models.MatchModeStrict}
 			report := svc.processSearchee(ctx, dir, localScanTarget(), searchee, settings, NewMatcher(MatchModeStrict, 0), 0, map[int]struct{}{indexer.ID: {}}, nil, &l)
-			// Fetch starts a detached cache touch; join it before SQLite and TempDir cleanup.
 			select {
 			case <-cacheDB.done:
 			case <-time.After(10 * time.Second):
@@ -165,7 +158,6 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			cleared := !tt.skipped && !found
 			require.Equal(t, cleared, manager.called, "AddTorrent must run only for a torrent that the Pre-add check clears")
 
-			// A file that stays pending gets no decision, and the next scan tries it again.
 			report.files = []string{sourceFile}
 			decisions := decideSearcheeOutcome([]searcheeFile{{path: sourceFile}}, []int{indexer.ID}, false, []workItemReport{report})
 			decision, decided := decisions[sourceFile]
@@ -176,24 +168,17 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			case cleared:
 				require.Equal(t, models.DirScanFileStatusError, decision.status, "the add fails in this test")
 			case tt.skipped && !tt.retry:
-				// A skipped match is neither injected nor failed.
 				require.Equal(t, models.DirScanFileStatusNoMatch, decision.status)
 			}
 		})
 	}
 }
 
-// dirScanLink is a route between the Dir Scan target, instance 1, and instance 2.
 type dirScanLink struct {
-	// fromSource makes instance 2 a Source instance that routes to the target.
-	// Otherwise the target routes to instance 2.
 	fromSource bool
-	// state of instance 2: online when empty, "disabled", or "offline".
-	state string
+	state      string
 }
 
-// dirScanRoutes adds instance 2 to db on a local fake qBittorrent, stores the
-// route of link, and returns the route service.
 func dirScanRoutes(t *testing.T, db *database.DB, link dirScanLink) *crossseedroute.Service {
 	t.Helper()
 	ctx := t.Context()

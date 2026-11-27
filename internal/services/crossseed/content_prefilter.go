@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -13,12 +14,10 @@ import (
 	"github.com/rs/zerolog/log"
 
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// contentPrefilterPolicy is the Match policy of the content prefilter. The file
-// layout check after the verdict compares the file sizes with the same
-// tolerance, so the verdict skips its own size check.
 var contentPrefilterPolicy = matchPolicy{SizeTolerancePercent: 0, SkipSizeCheck: true}
 
 type contentPrefilterCandidate struct {
@@ -46,7 +45,7 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 	sourceTorrent *qbt.Torrent,
 	sourceRelease *rls.Release,
 	instanceTorrents []internalqb.CrossInstanceTorrentView,
-) ([]contentPrefilterMatchedTorrent, []string, map[string]contentPrefilterRejectedTorrent, error) {
+) ([]contentPrefilterMatchedTorrent, []string, map[infohash.Hash]contentPrefilterRejectedTorrent, error) {
 	sourceFiles, err := s.getTorrentFilesCached(ctx, instanceID, sourceHash)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to load source torrent files for content filtering: %w", err)
@@ -73,11 +72,10 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 
 	matchedContent := make([]contentPrefilterMatchedTorrent, 0, len(candidates))
 	contentMatches := make([]string, 0, len(candidates))
-	rejectedContent := make(map[string]contentPrefilterRejectedTorrent)
+	rejectedContent := make(map[infohash.Hash]contentPrefilterRejectedTorrent)
 	var partialContent []string
 	for _, candidate := range candidates {
-		hashKey := normalizeHash(candidate.view.Hash)
-		candidateFiles, ok := filesByHash[hashKey]
+		candidateFiles, ok := filesByHash[candidate.view.Hash]
 		if !ok || len(candidateFiles) == 0 {
 			log.Debug().
 				Str("sourceHash", sourceHash).
@@ -89,8 +87,6 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 			continue
 		}
 
-		// The source is the local side. The other local torrent takes the new
-		// side, in place of a search result from its tracker.
 		matchResult := s.matcher().getMatchTypeWithReason(sourceRead.release, candidate.read.release, sourceFiles, candidateFiles, contentPrefilterPolicy.SizeTolerancePercent)
 		candidateLayout := contentPrefilterLayoutSummary(candidateFiles, normalizer)
 		if contentPrefilterAcceptsMatchType(matchResult.MatchType) && !holdsEveryUsableFile(candidateFiles, sourceFiles, normalizer) {
@@ -206,47 +202,30 @@ func (s *Service) contentPrefilterReleasesMatch(source namedRelease, sourceFiles
 }
 
 func contentPrefilterSameTorrent(sourceHash string, sourceTorrent, candidateTorrent *qbt.Torrent) bool {
-	sourceHashes := []string{sourceHash}
+	sourceHashes := [4]string{sourceHash}
 	if sourceTorrent != nil {
-		sourceHashes = append(sourceHashes, sourceTorrent.Hash, sourceTorrent.InfohashV1, sourceTorrent.InfohashV2)
+		sourceHashes = [4]string{sourceHash, sourceTorrent.Hash, sourceTorrent.InfohashV1, sourceTorrent.InfohashV2}
 	}
-	candidateHashes := []string{candidateTorrent.Hash, candidateTorrent.InfohashV1, candidateTorrent.InfohashV2}
+	candidateHashes := [3]string{candidateTorrent.Hash, candidateTorrent.InfohashV1, candidateTorrent.InfohashV2}
 
 	for _, source := range sourceHashes {
-		normalizedSource := normalizeHash(source)
-		if normalizedSource == "" {
+		hash := parseHash(source)
+		if hash.IsZero() {
 			continue
 		}
-		for _, candidate := range candidateHashes {
-			if normalizedSource == normalizeHash(candidate) {
-				return true
-			}
+		if slices.ContainsFunc(candidateHashes[:], hash.Is) {
+			return true
 		}
 	}
 
 	return false
 }
 
-func contentPrefilterHashKeys(view internalqb.CrossInstanceTorrentView) []string {
+func contentPrefilterHashKeys(view internalqb.CrossInstanceTorrentView) []infohash.Hash {
 	if view.TorrentView == nil || view.Torrent == nil {
 		return nil
 	}
-	values := []string{view.Hash, view.InfohashV1, view.InfohashV2}
-
-	seen := make(map[string]struct{}, len(values))
-	keys := make([]string, 0, len(values))
-	for _, value := range values {
-		key := normalizeHash(value)
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		keys = append(keys, key)
-	}
-	return keys
+	return parseHashes(view.Hash, view.InfohashV1, view.InfohashV2)
 }
 
 func contentPrefilterAcceptsMatchType(matchType string) bool {

@@ -8,7 +8,6 @@ import { useClientSetting } from "@/lib/client-settings"
 
 const NO_IDS: readonly number[] = []
 
-// An empty selection stores "" (the cleared sentinel); parse never sees it.
 const serializeIds = (ids: readonly number[]): string => encodeUnifiedInstanceIds(ids) ?? ""
 
 export function usePersistedUnifiedInstanceFilter(): [

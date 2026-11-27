@@ -13,14 +13,12 @@ export interface JsonEditorProps {
   "aria-label": string
 }
 
-// CodeMirror is its own chunk; the plain textarea stands in while it loads.
 let loadedCodeMirror: typeof import("./json-editor-codemirror") | undefined
 // eslint-disable-next-line react-refresh/only-export-components
 export const preloadJsonEditor = () => import("./json-editor-codemirror").then((m) => (loadedCodeMirror = m))
 const JsonEditorCodeMirror = lazy(preloadJsonEditor)
 
 export function JsonEditor(props: JsonEditorProps) {
-  // lazy() suspends on first render even with the chunk cached; picked once per mount, as a switch would remount CodeMirror.
   const [PreloadedEditor] = useState(() => loadedCodeMirror?.default)
   if (PreloadedEditor) return <PreloadedEditor {...props} />
 

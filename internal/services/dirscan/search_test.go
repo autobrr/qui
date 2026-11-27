@@ -19,10 +19,6 @@ func TestCalculateSizeRange_NonPositiveSize_IsZero(t *testing.T) {
 	}
 }
 
-// TestBuildSearchQuery pins the q dir scan sends to indexers. Dir scan used to
-// append the year for movies, which returned zero results on trackers that
-// search a movie database rather than release names. The year travels as the
-// separate year parameter instead.
 func TestBuildSearchQuery(t *testing.T) {
 	tests := []struct {
 		name string

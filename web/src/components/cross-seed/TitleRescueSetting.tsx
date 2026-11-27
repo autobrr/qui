@@ -13,7 +13,7 @@ export function TitleRescueSetting({ checked, disabled = false, onCheckedChange 
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="space-y-0.5">
-        <Label htmlFor="rescue-title-mismatches" className="font-medium">{t("rules.safety.rescueTitleMismatches")}</Label>
+        <Label htmlFor="rescue-title-mismatches">{t("rules.safety.rescueTitleMismatches")}</Label>
         <p className="text-xs text-muted-foreground">{t("rules.safety.rescueTitleMismatchesDescription")}</p>
       </div>
       <Switch id="rescue-title-mismatches" checked={checked} disabled={disabled} onCheckedChange={value => onCheckedChange(!!value)} />

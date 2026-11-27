@@ -15,7 +15,6 @@ import { server } from "@/test/msw/server"
 import type { DatabaseShrinkStatus } from "@/types"
 
 const i18n = vi.hoisted(() => ({ t: (key: string) => key }))
-// The byte units come from the loaded locale, and the toast text stays as keys.
 vi.mock("react-i18next", async (importOriginal) => ({ ...(await importOriginal<typeof import("react-i18next")>()), useTranslation: () => i18n }))
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
@@ -31,7 +30,6 @@ afterEach(() => {
 const base: DatabaseShrinkStatus = { available: true, fileBytes: 1024, freeBytes: 1 << 30, needBytes: 2048, restartAvailable: true, pending: false }
 
 describe("DatabaseShrinkProvider", () => {
-  // regression: #4109
   it("shows each shrink result one time and dismisses it", async () => {
     let status: DatabaseShrinkStatus = { ...base, result: { beforeBytes: 300, afterBytes: 100 } }
     let dismissals = 0
@@ -54,11 +52,42 @@ describe("DatabaseShrinkProvider", () => {
     await waitFor(() => expect(queryClient.getQueryData<DatabaseShrinkStatus>(databaseShrinkQueryKey)?.result).toBeUndefined())
     expect(toast.success).toHaveBeenCalledTimes(1)
 
-    // A shrink at a later start, while the tab stays open.
     status = { ...base, result: { beforeBytes: 500, afterBytes: 200 } }
     await act(() => queryClient.invalidateQueries({ queryKey: databaseShrinkQueryKey }))
 
     await waitFor(() => expect(dismissals).toBe(2))
     expect(toast.success).toHaveBeenCalledTimes(2)
+  })
+
+  it("shows no toast for a fetch that a refetch cancels", async () => {
+    const status: DatabaseShrinkStatus = { ...base, result: { beforeBytes: 300, afterBytes: 100 } }
+    const gates: Array<() => void> = []
+    let dismissals = 0
+    server.use(
+      http.get("*/api/database/shrink", async () => {
+        await new Promise<void>((resolve) => gates.push(resolve))
+        return HttpResponse.json(status)
+      }),
+      http.delete("*/api/database/shrink/result", () => {
+        dismissals++
+        return new HttpResponse(null, { status: 204 })
+      })
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    queryClient.setQueryData<DatabaseShrinkStatus>(databaseShrinkQueryKey, base)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DatabaseShrinkProvider>{null}</DatabaseShrinkProvider>
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => expect(gates).toHaveLength(1))
+    void queryClient.invalidateQueries({ queryKey: databaseShrinkQueryKey })
+    await waitFor(() => expect(gates).toHaveLength(2))
+    gates.forEach((open) => open())
+
+    await waitFor(() => expect(dismissals).toBe(1))
+    await waitFor(() => expect(queryClient.getQueryData<DatabaseShrinkStatus>(databaseShrinkQueryKey)?.result).toBeDefined())
+    expect(toast.success).toHaveBeenCalledTimes(1)
   })
 })

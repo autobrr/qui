@@ -24,10 +24,9 @@ import (
 	"github.com/autobrr/qui/internal/services/peeraddress"
 	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// Request is the Share of one whole torrent. A zero Days and a nil field
-// take the default of the settings.
 type Request struct {
 	InstanceID          int
 	Hash                string
@@ -72,7 +71,7 @@ func (s *Service) Start(ctx context.Context, req Request) (*Share, error) {
 	res := s.adder.Add(ctx, torrentadd.Request{
 		InstanceID: sh.InstanceID,
 		Torrent:    sh.ownerTorrent,
-		Hash:       sh.HelperHash,
+		Hash:       sh.HelperHash.String(),
 		Settings: torrentadd.Settings{
 			SavePath:        sh.SavePath,
 			Tags:            []string{transfer.ShareHelperTag},
@@ -91,7 +90,7 @@ func (s *Service) Start(ctx context.Context, req Request) (*Share, error) {
 		s.fail(ctx, &sh.Share, reason)
 		return nil, refuse("%s", reason)
 	}
-	log.Info().Int64("share", sh.ID).Int("instanceID", sh.InstanceID).Str("hash", sh.Hash).Str("tracker", string(sh.Tracker)).
+	log.Info().Int64("share", sh.ID).Int("instanceID", sh.InstanceID).Str("hash", sh.Hash.String()).Str("tracker", string(sh.Tracker)).
 		Msg("share: started by the user")
 	return &sh.Share, nil
 }
@@ -106,7 +105,6 @@ func describe(res torrentadd.Result) string {
 	return "qBittorrent does not list the torrent"
 }
 
-// fail ends a Share that did not start, also after the caller left.
 func (s *Service) fail(ctx context.Context, sh *Share, reason string) {
 	if err := s.end(context.WithoutCancel(ctx), sh, reason, "a failed start"); err != nil {
 		log.Error().Err(err).Int64("share", sh.ID).Msg("share: cannot end the Share that did not start")
@@ -122,10 +120,10 @@ type prepared struct {
 }
 
 func (s *Service) prepare(ctx context.Context, req Request) (*prepared, error) {
-	hash := lower(req.Hash)
-	if hash == "" {
+	if strings.TrimSpace(req.Hash) == "" {
 		return nil, refuse("Name the torrent to share.")
 	}
+	hash, _ := infohash.Parse(req.Hash)
 	options, err := s.deps.Settings.Settings(ctx)
 	if err != nil {
 		return nil, err
@@ -162,6 +160,9 @@ func (s *Service) prepare(ctx context.Context, req Request) (*prepared, error) {
 		return nil, err
 	}
 
+	if hash.IsZero() {
+		return nil, refuse("%s has no torrent %s.", inst.Name, strings.TrimSpace(req.Hash))
+	}
 	src, err := s.readTorrent(ctx, inst, hash)
 	if err != nil {
 		return nil, err
@@ -212,11 +213,11 @@ func (s *Service) prepare(ctx context.Context, req Request) (*prepared, error) {
 	}, nil
 }
 
-func (s *Service) admit(ctx context.Context, inst *models.Instance, hash string, options Options, kind TrackerKind) error {
+func (s *Service) admit(ctx context.Context, inst *models.Instance, hash infohash.Hash, options Options, kind TrackerKind) error {
 	if err := s.supported(ctx, inst); err != nil {
 		return err
 	}
-	if s.deps.Helpers.IsHelper(inst.ID, hash) {
+	if s.deps.Helpers.IsHelper(inst.ID, hash.String()) {
 		return refuse("qui added this torrent for a Transfer or a Share.")
 	}
 	unfinished, err := s.deps.Store.Unfinished(ctx)
@@ -248,9 +249,6 @@ func (s *Service) admit(ctx context.Context, inst *models.Instance, hash string,
 	return nil
 }
 
-// trackerOf picks the Share tracker: qui's own tracker when it has a port
-// and a public address, else the outside tracker URL. base is the announce
-// URL, to which qui's own tracker adds the secret.
 func trackerOf(trackerSettings sharetracker.Settings, options Options) (TrackerKind, string, error) {
 	if trackerSettings.Port != 0 && trackerSettings.PublicAddress != "" {
 		return TrackerOwn, strings.TrimSuffix(trackerSettings.PublicAddress, "/") + "/announce/", nil
@@ -261,7 +259,6 @@ func trackerOf(trackerSettings sharetracker.Settings, options Options) (TrackerK
 	return "", "", refuse("Set a tracker in Settings → Shares: the port and the public address of qui's tracker, or a tracker URL.")
 }
 
-// supported refuses an instance before qBittorrent 5.1.
 func (s *Service) supported(ctx context.Context, inst *models.Instance) error {
 	client, err := s.deps.Sync.GetClient(ctx, inst.ID)
 	if err != nil {
@@ -280,8 +277,8 @@ type source struct {
 	export  []byte
 }
 
-func (s *Service) readTorrent(ctx context.Context, inst *models.Instance, hash string) (*source, error) {
-	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+func (s *Service) readTorrent(ctx context.Context, inst *models.Instance, hash infohash.Hash) (*source, error) {
+	torrents, err := s.deps.Sync.GetTorrentRefsFresh(ctx, inst.ID, qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{hash}})
 	if err != nil {
 		return nil, fmt.Errorf("read the torrents of %s: %w", inst.Name, err)
 	}
@@ -289,7 +286,7 @@ func (s *Service) readTorrent(ctx context.Context, inst *models.Instance, hash s
 		return nil, refuse("%s has no torrent %s.", inst.Name, hash)
 	}
 	torrent := *torrents[0]
-	files, err := s.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), inst.ID, hash)
+	files, err := s.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), inst.ID, hash.String())
 	if err != nil {
 		return nil, fmt.Errorf("read the files of the torrent: %w", err)
 	}
@@ -308,14 +305,12 @@ func (s *Service) readTorrent(ctx context.Context, inst *models.Instance, hash s
 		src.names = append(src.names, f.Name)
 		src.size += f.Size
 	}
-	if src.export, _, _, err = s.deps.Sync.ExportTorrent(ctx, inst.ID, hash); err != nil {
+	if src.export, _, _, err = s.deps.Sync.ExportTorrent(ctx, inst.ID, hash.String()); err != nil {
 		return nil, fmt.Errorf("export the torrent: %w", err)
 	}
 	return src, nil
 }
 
-// withAnnounce returns the .torrent with announce as its only tracker. The
-// announce URL is outside the info dictionary, so the infohash stays.
 func withAnnounce(torrent []byte, announce string) ([]byte, error) {
 	var in struct {
 		Info bencode.Bytes `bencode:"info"`

@@ -22,8 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// walkSpy is the local backend, and it records the roots it is asked to walk
-// and the directories it is asked to list.
 type walkSpy struct {
 	fsops.Backend
 	mu        sync.Mutex
@@ -62,8 +60,6 @@ func symlinkOrSkip(t *testing.T, target, link string) {
 	require.NoError(t, err)
 }
 
-// describeScan renders a scan result relative to root, one line per searchee
-// and one per file, so two results compare as text.
 func describeScan(root string, result *ScanResult) []string {
 	var lines []string
 	for _, s := range result.Searchees {
@@ -77,20 +73,16 @@ func describeScan(root string, result *ScanResult) []string {
 	return append(lines, fmt.Sprintf("total files=%d size=%d skipped=%d", result.TotalFiles, result.TotalSize, result.SkippedFiles))
 }
 
-// A scan makes one searchee per top-level folder or media file, and pins
-// which files, disc layouts and links each searchee holds.
 func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
 
-	// A folder: media files at any depth, hidden entries and other files left out.
 	writeTestFile(t, filepath.Join(root, "Alpha.Movie.2024", "alpha.mkv"), 5)
 	writeTestFile(t, filepath.Join(root, "Alpha.Movie.2024", "alpha.nfo"), 2)
 	writeTestFile(t, filepath.Join(root, "Alpha.Movie.2024", "poster.jpg"), 3)
 	writeTestFile(t, filepath.Join(root, "Alpha.Movie.2024", ".hidden.mkv"), 4)
 	writeTestFile(t, filepath.Join(root, "Alpha.Movie.2024", ".git", "object.mkv"), 4)
 	writeTestFile(t, filepath.Join(root, "Alpha.Movie.2024", "Sample", "sample.mkv"), 1)
-	// A disc layout keeps every file, also the ones listed before its marker.
 	writeTestFile(t, filepath.Join(root, "Disc.Film.2023", "AACS", "Unit_Key_RO.inf"), 6)
 	writeTestFile(t, filepath.Join(root, "Disc.Film.2023", "BDMV", "index.bdmv"), 7)
 	writeTestFile(t, filepath.Join(root, "Disc.Film.2023", "BDMV", "STREAM", "00000.m2ts"), 8)
@@ -98,20 +90,14 @@ func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "Disc.Film.2023", "cover.jpg"), 1)
 	writeTestFile(t, filepath.Join(root, "lower.disc", "video_ts", "VTS_01_1.VOB"), 2)
 	writeTestFile(t, filepath.Join(root, "lower.disc", "info.txt"), 1)
-	// A file named like a marker does not make a disc either.
 	writeTestFile(t, filepath.Join(root, "File.Marker", "BDMV"), 1)
 	writeTestFile(t, filepath.Join(root, "File.Marker", "movie.mkv"), 2)
-	// A marker below the top level does not make a disc.
 	writeTestFile(t, filepath.Join(root, "Deep.Folder", "Extras", "BDMV", "x.m2ts"), 3)
 	writeTestFile(t, filepath.Join(root, "Deep.Folder", "extra.txt"), 1)
-	// No media, no searchee.
 	writeTestFile(t, filepath.Join(root, "Empty.Folder", "readme.txt"), 1)
-	// Root-level files.
 	writeTestFile(t, filepath.Join(root, "Single.Episode.S01E01.mkv"), 11)
 	writeTestFile(t, filepath.Join(root, "notes.txt"), 1)
 	writeTestFile(t, filepath.Join(root, ".Hidden.Movie.mkv"), 1)
-	// Links: a root-level link is read through its target, a link inside a
-	// folder and a link to a folder are left out.
 	writeTestFile(t, filepath.Join(outside, "target.mkv"), 13)
 	symlinkOrSkip(t, filepath.Join(outside, "target.mkv"), filepath.Join(root, "Linked.Film.2022.mkv"))
 	symlinkOrSkip(t, filepath.Join(outside, "target.mkv"), filepath.Join(root, "Alpha.Movie.2024", "link.mkv"))
@@ -146,8 +132,6 @@ func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 		`total files=14 size=71 skipped=0`,
 	}, describeScan(root, result))
 
-	// A scan root that is a link to the folder finds the same searchees
-	// under the link.
 	aliasRoot := filepath.Join(outside, "alias")
 	symlinkOrSkip(t, root, aliasRoot)
 	viaAlias, err := NewScanner(local.NewBackend()).ScanDirectory(t.Context(), aliasRoot)
@@ -155,9 +139,6 @@ func TestScanDirectory_SingleWalkKeepsTheSearchees(t *testing.T) {
 	require.Equal(t, describeScan(root, result), describeScan(aliasRoot, viaAlias))
 }
 
-// failingDirBackend is the local backend, and it reports a read error for
-// one directory after that directory's own entry, as a walk does when it
-// cannot list a directory.
 type failingDirBackend struct {
 	fsops.Backend
 	dir string
@@ -188,11 +169,6 @@ func (b failingDirBackend) WalkDir(ctx context.Context, root string, opts fsops.
 	return out, nil
 }
 
-// A local walk that races a rename can list a root-level name as a file
-// that is no searchee and then list more entries under it. Those entries are
-// ignored, and the other searchees are kept.
-//
-// regression: #3613
 func TestScanDirectory_RootNameSwappedDuringTheWalk(t *testing.T) {
 	t.Parallel()
 
@@ -233,8 +209,6 @@ func TestScanDirectory_RootNameSwappedDuringTheWalk(t *testing.T) {
 	}
 }
 
-// A denied subfolder inside a searchee is skipped, and any other read error
-// drops the searchee.
 func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -244,7 +218,6 @@ func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 	}{
 		{name: "permission denied", err: &fs.PathError{Op: "open", Err: fs.ErrPermission}, want: []string{"Film", "Other"}},
 		{name: "input/output error", err: &fs.PathError{Op: "readdirent", Err: syscall.EIO}, want: []string{"Other"}},
-		// regression: #3613
 		{name: "connection lost", err: fmt.Errorf("read directory: %w", fsops.ErrConnectionLost), wantErr: fsops.ErrConnectionLost},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -271,16 +244,12 @@ func TestScanDirectory_ReadErrorInsideASearchee(t *testing.T) {
 	}
 }
 
-// lostStatBackend loses the connection on every Stat, as a remote backend
-// does when the link drops between the walk and the batch stat.
 type lostStatBackend struct{ fsops.Backend }
 
 func (lostStatBackend) Stat(context.Context, string) (*fsops.LstatInfo, error) {
 	return nil, fmt.Errorf("stat: %w", fsops.ErrConnectionLost)
 }
 
-// lostIdentityBackend answers every Stat and loses the connection on its
-// identity read, which a remote backend reports only in FileIDErr.
 type lostIdentityBackend struct{ fsops.Backend }
 
 func (lostIdentityBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, error) {
@@ -290,9 +259,6 @@ func (lostIdentityBackend) Stat(_ context.Context, p string) (*fsops.LstatInfo, 
 	}, nil
 }
 
-// A lost connection while the root links are read fails the scan, where the
-// links would otherwise be dropped as if they led nowhere, or kept with no
-// identity.
 func TestScanDirectory_LostConnectionReadingRootLinks(t *testing.T) {
 	t.Parallel()
 
@@ -300,9 +266,7 @@ func TestScanDirectory_LostConnectionReadingRootLinks(t *testing.T) {
 		name    string
 		backend fsops.Backend
 	}{
-		// regression: #3613
 		{name: "stat", backend: lostStatBackend{Backend: local.NewBackend()}},
-		// regression: #3755
 		{name: "identity read", backend: lostIdentityBackend{Backend: local.NewBackend()}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -321,8 +285,6 @@ func TestScanDirectory_LostConnectionReadingRootLinks(t *testing.T) {
 	}
 }
 
-// A Full scan of N searchees walks the backend once and lists no folder for
-// the disc check.
 func TestScanDirectory_WalksTheRootOnce(t *testing.T) {
 	t.Parallel()
 
@@ -341,7 +303,6 @@ func TestScanDirectory_WalksTheRootOnce(t *testing.T) {
 	require.Empty(t, spy.readDirs)
 }
 
-// A Webhook scan walks only the imported folder, and tracks only its files.
 func TestWebhookScanWalksOnlyTheImportedFolder(t *testing.T) {
 	ctx := t.Context()
 	svc, store, dir := newDirScanTestService(t)

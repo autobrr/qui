@@ -12,11 +12,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-// trackerDetailChunkSize is the number of hashes in one torrents/info request.
 const trackerDetailChunkSize = 100
 
-// announceFlags are the per-torrent announce flags that qBittorrent 5.2+ sends
-// in sync/maindata. The zero value means no tracker problem.
 type announceFlags struct {
 	trackerWarning     bool
 	trackerError       bool
@@ -31,13 +28,8 @@ func announceFlagsOf(t *qbt.Torrent) announceFlags {
 	}
 }
 
-// TrackerLookup holds the tracker entries of torrents by hash. The torrents of
-// a Sync snapshot are shared, so tracker details live here and not on the
-// torrents. A reader must not change the slices.
 type TrackerLookup map[string][]qbt.TorrentTracker
 
-// Trackers returns the tracker entries of the torrent with the given hash, or
-// nil when the lookup has none.
 func (l TrackerLookup) Trackers(hash string) []qbt.TorrentTracker {
 	return l[hash]
 }
@@ -48,14 +40,9 @@ type trackerDetail struct {
 	fetchedAt time.Time
 }
 
-// trackerDetails caches the tracker details of the torrents of one instance.
-// mu also keeps two hydrations of the same cache from running at once.
 type trackerDetails struct {
 	mu     sync.Mutex
 	byHash map[string]trackerDetail
-	// edited holds the hashes whose trackers changed in qui since the last
-	// hydration, so their details are fetched again. SyncManager.trackerHealthMu
-	// guards it, so a tracker edit does not wait for a hydration to finish.
 	edited map[string]struct{}
 }
 
@@ -70,12 +57,6 @@ func (sm *SyncManager) trackerDetailsFor(caches map[int]*trackerDetails, instanc
 	return cache
 }
 
-// hydrateTrackerDetails returns the tracker details of the torrents from cache.
-// It fetches details only for a torrent whose flags changed since the last
-// hydration, or whose details are older than trackerHealthDetailMaxAge. With
-// flaggedOnly, a torrent without an announce flag gets no entry, so its tracker
-// health is healthy. When the fetch fails, it keeps and returns the details
-// that it fetched before the error.
 func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client, cache *trackerDetails, torrents []*qbt.Torrent, flaggedOnly bool) (TrackerLookup, error) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -107,8 +88,6 @@ func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client
 	for _, hash := range stale {
 		trackers, ok := fetched[hash]
 		if !ok {
-			// Either deleted after the sync, or not fetched before an error.
-			// Both leave no entry, so the next hydration fetches it.
 			delete(next, hash)
 			continue
 		}
@@ -117,8 +96,6 @@ func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client
 		entry.fetchedAt = now
 		next[hash] = entry
 	}
-	// Keep the fetched details also after an error, so a large first hydration
-	// that times out continues where it stopped.
 	cache.byHash = next
 
 	lookup := make(TrackerLookup, len(next))
@@ -128,11 +105,6 @@ func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client
 	return lookup, fetchErr
 }
 
-// fetchTrackerDetails fetches the trackers of the given torrents in requests of
-// trackerDetailChunkSize hashes. Each request names its hashes: a request
-// without a hash filter returns the whole library and blocks qBittorrent for
-// seconds in one stretch, while a request of 100 hashes blocks it for about
-// 70 ms at 50,000 torrents. After an error it returns what it fetched so far.
 func fetchTrackerDetails(ctx context.Context, client *Client, hashes []string) (map[string][]qbt.TorrentTracker, error) {
 	fetched := make(map[string][]qbt.TorrentTracker, len(hashes))
 	for chunk := range slices.Chunk(hashes, trackerDetailChunkSize) {

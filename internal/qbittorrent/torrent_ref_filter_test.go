@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,20 +13,29 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// newRefRig is a sync manager over a qBittorrent stub that holds torrents in
-// several states, categories, and tags.
+const (
+	refRigHash1   = "aa01aa01aa01aa01aa01aa01aa01aa01aa01aa01"
+	refRigHash2   = "aa02aa02aa02aa02aa02aa02aa02aa02aa02aa02"
+	refRigHash3   = "aa03aa03aa03aa03aa03aa03aa03aa03aa03aa03"
+	refRigHash4   = "aa04aa04aa04aa04aa04aa04aa04aa04aa04aa04"
+	refRigHash5   = "aa05aa05aa05aa05aa05aa05aa05aa05aa05aa05"
+	refRigMissing = "ffffffffffffffffffffffffffffffffffffffff"
+)
+
 func newRefRig(t *testing.T) (*SyncManager, *Client) {
 	t.Helper()
 
-	const maindata = `{"rid":1,"full_update":true,"torrents":{
-		"aa01":{"name":"Show.S01E01-GRP","state":"stalledUP","category":"tv","tags":"keep, cross-seed"},
-		"aa02":{"name":"Show.S01E02-GRP","state":"downloading","category":"tv","tags":"keep"},
-		"aa03":{"name":"Film.2024-GRP","state":"pausedUP","category":"movies","tags":""},
-		"aa04":{"name":"Film.2025-GRP","state":"missingFiles","category":"movies","tags":"cross-seed"},
-		"aa05":{"name":"Album-GRP","state":"checkingUP","category":"","tags":"keeper"}
-	}}`
+	maindata := fmt.Sprintf(`{"rid":1,"full_update":true,"torrents":{
+		%q:{"name":"Show.S01E01-GRP","state":"stalledUP","category":"tv","tags":"keep, cross-seed"},
+		%q:{"name":"Show.S01E02-GRP","state":"downloading","category":"tv","tags":"keep"},
+		%q:{"name":"Film.2024-GRP","state":"pausedUP","category":"movies","tags":""},
+		%q:{"name":"Film.2025-GRP","state":"missingFiles","category":"movies","tags":"cross-seed"},
+		%q:{"name":"Album-GRP","state":"checkingUP","category":"","tags":"keeper"}
+	}}`, refRigHash1, refRigHash2, refRigHash3, refRigHash4, refRigHash5)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v2/app/webapiVersion":
@@ -52,21 +62,19 @@ func TestGetTorrentRefsSelectsSyncSnapshotTorrents(t *testing.T) {
 	sm, client := newRefRig(t)
 	snapshot := client.SyncOwner().SnapshotUnchecked()
 
-	// Each want holds what the qBittorrent filter of go-qbittorrent selects for
-	// the same options, except that a read by hash keeps the order of the hashes.
 	for _, tc := range []struct {
 		name   string
 		filter TorrentRefFilter
 		want   []string
 	}{
-		{"all", TorrentRefFilter{}, []string{"aa01", "aa02", "aa03", "aa04", "aa05"}},
-		{"one hash", TorrentRefFilter{Hashes: []string{"aa03"}}, []string{"aa03"}},
-		{"hashes out of order, a repeat, and a missing one", TorrentRefFilter{Hashes: []string{"aa04", "aa01", "ffff", "aa04"}}, []string{"aa04", "aa01"}},
-		{"a missing hash", TorrentRefFilter{Hashes: []string{"ffff"}}, []string{}},
-		{"category", TorrentRefFilter{Category: "movies"}, []string{"aa03", "aa04"}},
-		{"tag", TorrentRefFilter{Tag: "keep"}, []string{"aa01", "aa02"}},
-		{"completed", TorrentRefFilter{Completed: true}, []string{"aa01", "aa03", "aa05"}},
-		{"completed in a category", TorrentRefFilter{Category: "tv", Completed: true}, []string{"aa01"}},
+		{"all", TorrentRefFilter{}, []string{refRigHash1, refRigHash2, refRigHash3, refRigHash4, refRigHash5}},
+		{"one hash", TorrentRefFilter{Hashes: infohash.ParseAll([]string{refRigHash3})}, []string{refRigHash3}},
+		{"hashes out of order, a repeat, and a missing one", TorrentRefFilter{Hashes: infohash.ParseAll([]string{refRigHash4, refRigHash1, refRigMissing, refRigHash4})}, []string{refRigHash4, refRigHash1}},
+		{"a missing hash", TorrentRefFilter{Hashes: infohash.ParseAll([]string{refRigMissing})}, []string{}},
+		{"category", TorrentRefFilter{Category: "movies"}, []string{refRigHash3, refRigHash4}},
+		{"tag", TorrentRefFilter{Tag: "keep"}, []string{refRigHash1, refRigHash2}},
+		{"completed", TorrentRefFilter{Completed: true}, []string{refRigHash1, refRigHash3, refRigHash5}},
+		{"completed in a category", TorrentRefFilter{Category: "tv", Completed: true}, []string{refRigHash1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

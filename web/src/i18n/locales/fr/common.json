@@ -106,7 +106,28 @@
     },
     "privacy": {
       "anonymous": "Anonyme : aucun nom, aucun compte. brrbin ne conserve aucune adresse IP.",
+      "signedIn": "Les mainteneurs voient votre nom {{provider}} ({{name}}) et peuvent vous contacter.",
       "link": "Confidentialité"
+    },
+    "sender": {
+      "label": "Envoyer en tant que",
+      "anonymous": "Anonyme",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Se connecter avec {{provider}}",
+      "signOut": "Se déconnecter",
+      "waiting": "En attente de {{provider}}",
+      "errors": {
+        "discordNotMember": "Votre compte Discord n'est pas sur le serveur Discord d'autobrr. Rejoignez le serveur et reconnectez-vous, connectez-vous avec GitHub ou envoyez anonymement.",
+        "refused": "Connexion refusée : {{reason}}",
+        "expired": "La connexion a expiré. Reconnectez-vous.",
+        "popupBlocked": "Votre navigateur a bloqué la fenêtre de connexion. Autorisez les fenêtres pop-up pour qui, puis reconnectez-vous.",
+        "unavailable": "brrbin ne peut pas vous connecter pour le moment. Réessayez plus tard.",
+        "startFailed": "Impossible de démarrer la connexion : {{message}}",
+        "signOutFailed": "Impossible de vous déconnecter : {{message}}"
+      }
     },
     "newerRelease": "Vous utilisez {{running}}. <release>{{newer}}</release> est disponible.",
     "send": "Envoyer",
@@ -136,7 +157,8 @@
         "issue": "Devenu le ticket #{{number}}",
         "issueClosed": "Ticket #{{number}} fermé",
         "closed": "Fermé : {{reason}}",
-        "closedNoReason": "Fermé"
+        "closedNoReason": "Fermé",
+        "notSent": "Non envoyé"
       },
       "delete": "Supprimer le rapport",
       "deleteUnavailable": "brrbin ne peut pas supprimer de rapports pour le moment. Réessayez plus tard.",
@@ -165,6 +187,8 @@
     "smartSearchTitle": "Fonctionnalités de recherche intelligente :",
     "smartSearchGlob": "Motifs Glob :",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Masquer les correspondances :",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Recherche floue :",
     "smartSearchFuzzyExample": "\"breaking bad\" trouve \"Breaking.Bad\"",
     "smartSearchDots": "Gère les points, tirets bas et crochets",
@@ -367,9 +391,13 @@
         "menuFix": "Vérifier les paramètres de l’analyse",
         "action": "Ouvrir les paramètres de l’analyse de la bibliothèque",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab est désactivé dans les paramètres de l’analyse de la bibliothèque, et aucune clé API RED ou OPS n’est définie. Activez Torznab, ou ajoutez une clé RED ou OPS dans les paramètres Gazelle (OPS/RED). qui réessaie toutes les heures.",
-            "menuFix": "Activer Torznab, ou ajouter une clé RED ou OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "Les paramètres de l’analyse de la bibliothèque ne choisissent que des indexeurs Torznab, et aucun indexeur Torznab n’est activé. Activez un indexeur Torznab, ou choisissez d’autres sites dans les paramètres de l’analyse de la bibliothèque. qui réessaie toutes les heures.",
+            "menuFix": "Activer un indexeur Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "Les paramètres de l’analyse de la bibliothèque ne choisissent que RED ou OPS, et aucun site choisi n’a de clé API. Ajoutez la clé dans les paramètres Gazelle (OPS/RED), ou choisissez d’autres sites dans les paramètres de l’analyse de la bibliothèque. qui réessaie toutes les heures.",
+            "menuFix": "Ajouter la clé RED ou OPS"
           },
           "no_indexer": {
             "fix": "Aucun indexeur n’est activé. Activez un indexeur Torznab, ou ajoutez une clé RED ou OPS dans les paramètres Gazelle (OPS/RED). qui réessaie toutes les heures.",

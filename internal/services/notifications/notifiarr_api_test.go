@@ -28,8 +28,6 @@ func TestValidateNotifiarrAPIKeySkipsNonNotifiarrAPI(t *testing.T) {
 }
 
 func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
-	t.Parallel()
-
 	var (
 		hits atomic.Int32
 		ch   = make(chan struct {
@@ -67,8 +65,6 @@ func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
 }
 
 func TestValidateNotifiarrAPIKeyInvalid(t *testing.T) {
-	t.Parallel()
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte("invalid key"))
@@ -214,8 +210,6 @@ func TestBuildNotifiarrTestPayload(t *testing.T) {
 }
 
 func TestSendTestNotifiarrAPIUsesConfiguredEventType(t *testing.T) {
-	t.Parallel()
-
 	type receivedPayload struct {
 		payload notifiarrAPIPayload
 		err     error
@@ -255,8 +249,6 @@ func TestSendTestNotifiarrAPIUsesConfiguredEventType(t *testing.T) {
 }
 
 func TestSendTestNotifiarrAPIRequiresConfiguredEventType(t *testing.T) {
-	t.Parallel()
-
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)

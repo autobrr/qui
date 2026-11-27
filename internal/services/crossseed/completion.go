@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type completionLane struct {
@@ -79,9 +80,8 @@ func (s *Service) getCompletionMaxAttempts() int {
 	return maxCompletionCheckingAttempts
 }
 
-// HandleTorrentCompletion evaluates completed torrents for cross-seed opportunities.
 func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-	if s == nil || instanceID <= 0 || s.isHelper(instanceID, torrent.Hash) {
+	if s == nil || instanceID <= 0 {
 		return
 	}
 	s.partialPool.wake(partialPoolWake{instanceID: instanceID, hash: partialPoolCanonicalTorrentKey(&torrent)})
@@ -92,7 +92,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		ctx = context.WithoutCancel(ctx)
 	}
 
-	// Load per-instance completion settings
 	if s.completionStore == nil {
 		log.Error().
 			Int("instanceID", instanceID).
@@ -112,7 +111,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	}
 
 	if !completionSettings.Enabled {
-		logCompletionSkip(instanceID, &torrent, "[CROSSSEED-COMPLETION] Completion search disabled for this instance")
 		return
 	}
 
@@ -140,7 +138,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			return
 		}
 		if !completionSettings.Enabled {
-			logCompletionSkip(instanceID, &torrent, "[CROSSSEED-COMPLETION] Completion search disabled during delay")
 			return
 		}
 		if s.shouldSkipCompletionTorrent(instanceID, &torrent, completionSettings) {
@@ -173,7 +170,6 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			Msg("[CROSSSEED-COMPLETION] Failed to reload completion torrent")
 		return
 	}
-	// An errored torrent goes on to the refusal in content analysis.
 	switch s.sourceGate().check(readyTorrent, sourceFilter{}) {
 	case sourceMovingOrChecking:
 		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Torrent resumed checking before completion search")
@@ -194,14 +190,12 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 	if !completionSettings.Enabled {
-		logCompletionSkip(instanceID, readyTorrent, "[CROSSSEED-COMPLETION] Completion search disabled for this instance")
 		return
 	}
 	if s.shouldSkipCompletionTorrent(instanceID, readyTorrent, completionSettings) {
 		return
 	}
 
-	// Load global automation settings for cross-seed configuration (indexers, tags, etc.)
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		log.Warn().
@@ -232,7 +226,6 @@ func (s *Service) shouldSkipCompletionTorrent(instanceID int, torrent *qbt.Torre
 	}
 
 	if torrent.CompletionOn <= 0 || torrent.Hash == "" {
-		// Safety check – the qbittorrent completion hook should only fire for completed torrents.
 		return true
 	}
 
@@ -317,7 +310,7 @@ func (s *Service) registerCompletionWaitLocked(
 		lane.waits = make(map[string]*completionWaitState)
 	}
 
-	hash := normalizeHash(eventTorrent.Hash)
+	hash := eventTorrent.Hash
 	timeout := s.getCompletionTimeout()
 	now := time.Now()
 	deadline := now.Add(timeout)
@@ -679,7 +672,7 @@ func (s *Service) getCompletionTorrent(ctx context.Context, instanceID int, hash
 		return nil, err
 	}
 
-	torrent, ok := torrents[normalizeHash(hash)]
+	torrent, ok := torrents[hash]
 	if !ok {
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
@@ -690,14 +683,14 @@ func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, has
 	apiCtx, cancel := context.WithTimeout(ctx, recheckAPITimeout)
 	defer cancel()
 
-	torrents, err := s.syncManager.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: hashes})
+	torrents, err := s.syncManager.GetTorrentRefs(apiCtx, instanceID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(hashes)})
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
 
 	result := make(map[string]*qbt.Torrent, len(torrents))
 	for _, torrent := range torrents {
-		result[normalizeHash(torrent.Hash)] = torrent
+		result[torrent.Hash] = torrent
 	}
 
 	return result, nil
@@ -734,20 +727,19 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	if gazelleErr != nil {
 		log.Warn().Err(gazelleErr).Msg("[CROSSSEED-COMPLETION] Failed to initialize Gazelle clients; continuing without Gazelle")
 	}
-	var requestedIndexerIDs []int
+	var pick models.SitePick
 	cacheMode := ""
 	if completionSettings != nil {
-		requestedIndexerIDs = completionSettings.IndexerIDs
+		pick = completionSettings.SitePick
 		if completionSettings.BypassTorznabCache {
 			cacheMode = jackett.CacheModeBypass
 		}
 	}
-	scope := s.collectSearchScope(ctx, instanceID, torrent, searchScopeFacts{
-		requestedIndexerIDs: requestedIndexerIDs,
-		picked:              len(uniquePositiveInts(requestedIndexerIDs)) > 0,
-		gazelleOff:          gazelleClients.disabled(),
-		gazelleKeys:         gazelleClients.hosts(),
-	}, true)
+	sites := s.resolveSitePick(ctx, pick, gazelleClients.hosts())
+	scope := s.collectSearchScope(ctx, instanceID, torrent, sites, searchScopeFacts{
+		gazelleOff:  gazelleClients.disabled(),
+		gazelleKeys: gazelleClients.hosts(),
+	})
 	if scope.err != nil {
 		return scope.err
 	}
@@ -769,7 +761,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}, scope, gazelleClients)
 	if searchResp != nil {
 		logCompletionGazelleLookups(instanceID, torrent, searchResp.GazelleLookups)
-		s.stampCompletionSearchHistory(ctx, instanceID, torrent.Hash, startedAt, searchResp)
+		s.stampCompletionSearchHistory(ctx, instanceID, torrent.Hash, startedAt, searchResp, scope.gazelleKeyMissing)
 	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -800,7 +792,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	defaults := defaultsFor(triggerCompletion, settings)
-	// Pass completion source filters to ensure CrossSeed respects them when finding candidates
 	if completionSettings != nil {
 		defaults.sourceFilter = completionSourceFilter(completionSettings)
 	}
@@ -875,8 +866,6 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	return nil
 }
 
-// logCompletionGazelleLookups writes one line for each RED/OPS site: Info for a
-// match, Warn for a failure, and Debug for the rest.
 func logCompletionGazelleLookups(instanceID int, torrent *qbt.Torrent, lookups []GazelleLookup) {
 	for _, l := range lookups {
 		var event *zerolog.Event
@@ -901,8 +890,6 @@ func logCompletionGazelleLookups(instanceID int, torrent *qbt.Torrent, lookups [
 	}
 }
 
-// logCompletionSearchSummary emits every outcome count and promotes runs with
-// at least one addition from debug to info level.
 func logCompletionSearchSummary(instanceID int, torrent *qbt.Torrent, added, failed, skipped int) {
 	event := log.Debug()
 	message := "[CROSSSEED-COMPLETION] Completion search executed with no additions"
@@ -924,13 +911,9 @@ func hasCrossSeedTag(rawTags string) bool {
 	return slices.Contains(splitTags(rawTags), "cross-seed")
 }
 
-// stampCompletionSearchHistory marks the Torznab indexers that answered every
-// pass of a completion search, and the RED/OPS lookups that need no retry, as
-// the Library Scan does. A failed or rate-limited indexer stays unmarked, so
-// the next scheduled run asks it again.
-func (s *Service) stampCompletionSearchHistory(ctx context.Context, instanceID int, hash string, searchedAt time.Time, resp *TorrentSearchResponse) {
+func (s *Service) stampCompletionSearchHistory(ctx context.Context, instanceID int, hash string, searchedAt time.Time, resp *TorrentSearchResponse, gazelleKeyMissing bool) {
 	if s.automationStore == nil || ctx.Err() != nil {
 		return
 	}
-	s.stampTorrentSearchHistory(ctx, instanceID, hash, searchedAt, resp.CoveredIndexerIDs, resp.GazelleLookups)
+	s.stampTorrentSearchHistory(ctx, instanceID, hash, searchedAt, resp.CoveredIndexerIDs, resp.GazelleLookups, gazelleKeyMissing)
 }

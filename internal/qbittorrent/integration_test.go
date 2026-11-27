@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,13 +17,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestSyncManager_FilteringAndSorting tests the filtering and sorting logic
 func TestSyncManager_FilteringAndSorting(t *testing.T) {
 	sm := &SyncManager{}
 
-	// Create test torrents with different states
 	torrents := createTestTorrents(10)
-	// Set different states for testing
 	torrents[0].State = "downloading"
 	torrents[1].State = "uploading"
 	torrents[2].State = "pausedDL"
@@ -43,7 +41,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 	t.Run("each status matches its states", func(t *testing.T) {
 		testCases := []struct {
 			status   string
-			expected int // Expected number of matches
+			expected int
 		}{
 			{"all", 10},
 			{"downloading", 4},
@@ -70,10 +68,9 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 	})
 
 	t.Run("calculateStats computes correctly", func(t *testing.T) {
-		// Set known download/upload speeds for testing
 		for i := range torrents {
-			torrents[i].DlSpeed = int64(i * 1000) // 0, 1000, 2000, ...
-			torrents[i].UpSpeed = int64(i * 500)  // 0, 500, 1000, ...
+			torrents[i].DlSpeed = int64(i * 1000)
+			torrents[i].UpSpeed = int64(i * 500)
 		}
 
 		stats := sm.calculateStats(torrentRefs(torrents), nil)
@@ -85,12 +82,9 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		assert.Positive(t, stats.TotalDownloadData, "Should have session download data")
 		assert.Positive(t, stats.TotalUploadData, "Should have session upload data")
 
-		// Verify state counts are reasonable - only actively downloading/seeding torrents are counted
-		// Stalled and queued torrents are not counted in Downloading/Seeding
 		totalStates := stats.Downloading + stats.Seeding + stats.Paused + stats.Error + stats.Checking
 		assert.Equal(t, 7, totalStates, "Actively downloading/seeding/paused/errored/checking torrents should be categorized")
 
-		// Specifically check the active counts
 		assert.Equal(t, 2, stats.Downloading, "Should have 2 actively downloading torrents")
 		assert.Equal(t, 2, stats.Seeding, "Should have 2 actively seeding torrents")
 	})
@@ -146,7 +140,6 @@ func TestSyncManager_ClearTrackerHealthAndRefetch(t *testing.T) {
 				} else {
 					assert.Equal(t, health, after.Health(hash), "kept hash %s keeps its label", hash)
 				}
-				// A reader that took the snapshot before the delete sees no change.
 				assert.Equal(t, health, before.Health(hash), "the old snapshot must not change")
 			}
 		})
@@ -175,10 +168,6 @@ func TestSyncManager_ClearTrackerHealthAndRefetch_NotifiesOnlyOnChange(t *testin
 }
 
 func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
-	// This test verifies that concurrent reads (GetTrackerHealthSnapshot) and writes
-	// (clearTrackerHealthAndRefetch) don't cause data races.
-	// Run with: go test -race ./internal/qbittorrent/...
-
 	byHash := make(map[string]TrackerHealth)
 	for i := range 100 {
 		byHash[fmt.Sprintf("hash%d", i)] = TrackerHealthUnregistered
@@ -195,7 +184,6 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	// Launch concurrent readers
 	for range 10 {
 		wg.Go(func() {
 			for i := range 100 {
@@ -208,7 +196,6 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 		})
 	}
 
-	// Launch concurrent writers
 	for i := range 5 {
 		wg.Go(func() {
 			for j := range 20 {
@@ -218,24 +205,30 @@ func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
-	// If we reach here without race detector complaints, the test passes
 }
+
+const (
+	listRuleHash1 = "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+	listRuleHash2 = "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b"
+	listRuleHash3 = "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+	listRuleHash4 = "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
+)
 
 func TestListRules_Exclusions(t *testing.T) {
 	sm := &SyncManager{}
 
 	torrents := []qbt.Torrent{
-		{Hash: "hash1", State: qbt.TorrentStateUploading, Category: "movies", Tags: "tagA, tagB", Tracker: "http://trackerA.com/announce"},
-		{Hash: "hash2", State: qbt.TorrentStateDownloading, Category: "tv", Tags: "", Tracker: ""},
-		{Hash: "hash3", State: qbt.TorrentStateUploading, Category: "documentary", Tags: "tagC", Tracker: "udp://trackerb.com:80/announce"},
-		{Hash: "hash4", State: qbt.TorrentStateDownloading, Category: "movies", Tags: "tagC, tagD", Tracker: "https://trackerc.com/announce"},
+		{Hash: listRuleHash1, State: qbt.TorrentStateUploading, Category: "movies", Tags: "tagA, tagB", Tracker: "http://trackerA.com/announce"},
+		{Hash: listRuleHash2, State: qbt.TorrentStateDownloading, Category: "tv", Tags: "", Tracker: ""},
+		{Hash: listRuleHash3, State: qbt.TorrentStateUploading, Category: "documentary", Tags: "tagC", Tracker: "udp://trackerb.com:80/announce"},
+		{Hash: listRuleHash4, State: qbt.TorrentStateDownloading, Category: "movies", Tags: "tagC, tagD", Tracker: "https://trackerc.com/announce"},
 	}
 
 	mainData := &qbt.MainData{
 		Trackers: map[string][]string{
-			"http://trackerA.com/announce":   {"hash1"},
-			"udp://trackerb.com:80/announce": {"hash3"},
-			"https://trackerc.com/announce":  {"hash4"},
+			"http://trackerA.com/announce":   {listRuleHash1},
+			"udp://trackerb.com:80/announce": {listRuleHash3},
+			"https://trackerc.com/announce":  {listRuleHash4},
 		},
 	}
 
@@ -255,37 +248,37 @@ func TestListRules_Exclusions(t *testing.T) {
 		{
 			name:     "exclude status uploading",
 			filters:  FilterOptions{ExcludeStatus: []string{"uploading"}},
-			expected: []string{"hash2", "hash4"},
+			expected: []string{listRuleHash2, listRuleHash4},
 		},
 		{
 			name:     "exclude category movies",
 			filters:  FilterOptions{ExcludeCategories: []string{"movies"}},
-			expected: []string{"hash2", "hash3"},
+			expected: []string{listRuleHash2, listRuleHash3},
 		},
 		{
 			name:     "exclude tracker domain",
 			filters:  FilterOptions{ExcludeTrackers: []string{"trackerb.com"}},
-			expected: []string{"hash1", "hash2", "hash4"},
+			expected: []string{listRuleHash1, listRuleHash2, listRuleHash4},
 		},
 		{
 			name:     "exclude no tracker",
 			filters:  FilterOptions{ExcludeTrackers: []string{""}},
-			expected: []string{"hash1", "hash3", "hash4"},
+			expected: []string{listRuleHash1, listRuleHash3, listRuleHash4},
 		},
 		{
 			name:     "exclude tag removes matching",
 			filters:  FilterOptions{ExcludeTags: []string{"tagD"}},
-			expected: []string{"hash1", "hash2", "hash3"},
+			expected: []string{listRuleHash1, listRuleHash2, listRuleHash3},
 		},
 		{
 			name:     "combined include and exclude",
 			filters:  FilterOptions{Categories: []string{"movies"}, ExcludeTrackers: []string{"trackerc.com"}},
-			expected: []string{"hash1"},
+			expected: []string{listRuleHash1},
 		},
 		{
 			name:     "hash filters include subset",
-			filters:  FilterOptions{Hashes: []string{"hash1", "HASH3"}},
-			expected: []string{"hash1", "hash3"},
+			filters:  FilterOptions{Hashes: []string{listRuleHash1, strings.ToUpper(listRuleHash3)}},
+			expected: []string{listRuleHash1, listRuleHash3},
 		},
 	}
 
@@ -421,7 +414,6 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 	unsupportedTorrents := []qbt.Torrent{
 		{Hash: "unregistered", Name: "Delta", State: qbt.TorrentStateDownloading, AddedOn: 100},
 		{Hash: "down", Name: "Charlie", State: qbt.TorrentStateDownloading, AddedOn: 100},
-		// Lower case on purpose: a case sensitive tiebreak would sort this last, not second.
 		{Hash: "error", Name: "bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
 		{Hash: "healthy", Name: "Alpha", State: qbt.TorrentStateDownloading, AddedOn: 100},
 	}
@@ -483,9 +475,7 @@ func TestSyncManager_SortTorrentsByStatus_StoppedAfterSeeding(t *testing.T) {
 	assert.Equal(t, []string{"seeding", "stopped", "stalled"}, hashes(torrents))
 }
 
-// regression: #2538
-func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
-	sm := &SyncManager{}
+func TestTorrentSearch_BracketsAndGlobs(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Name: "[Grp] Some Show - 05 [1080p].mkv", Category: "anime", Tags: "fansub, weekly"},
 		{Name: "Who Is It? [Grp]", Category: "music"},
@@ -513,7 +503,7 @@ func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got []string
-			for _, torrent := range sm.filterTorrentsBySearch(torrentRefs(torrents), tt.search) {
+			for _, torrent := range searchTorrents(torrentRefs(torrents), tt.search) {
 				got = append(got, torrent.Name)
 			}
 			assert.Equal(t, tt.want, got)
@@ -521,12 +511,7 @@ func TestSyncManager_FilterTorrentsBySearch_BracketsAndGlobs(t *testing.T) {
 	}
 }
 
-// TestSyncManager_SearchFunctionality tests the search and filtering logic
 func TestSyncManager_SearchFunctionality(t *testing.T) {
-	sm := &SyncManager{}
-
-	// Create test torrents with different names and properties using proper qbt.Torrent struct
-	// Hashes are hex like real infohashes; the search fast path relies on that.
 	torrents := []qbt.Torrent{
 		{Name: "Ubuntu.20.04.LTS.Desktop.amd64.iso", Category: "linux", Tags: "ubuntu,desktop", Hash: "aa11aa11"},
 		{Name: "Windows.10.Pro.x64.iso", Category: "windows", Tags: "microsoft,os", Hash: "bb22bb22"},
@@ -536,37 +521,32 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 		{Name: "Music.Album.2023.FLAC", Category: "music", Tags: "flac,2023", Hash: "ff66ff66"},
 	}
 
-	t.Run("filterTorrentsBySearch exact match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "ubuntu")
+	t.Run("search exact match", func(t *testing.T) {
+		results := searchTorrents(torrentRefs(torrents), "ubuntu")
 
-		// Should find 2 ubuntu torrents
 		assert.Len(t, results, 2, "Should find 2 Ubuntu torrents")
 
 		for _, result := range results {
-			// Should contain ubuntu in name or tags
 			assert.True(t,
 				contains(result.Name, "ubuntu") || contains(result.Tags, "ubuntu"),
 				"Result should contain 'ubuntu': %s", result.Name)
 		}
 	})
 
-	t.Run("filterTorrentsBySearch hash match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "dd44")
+	t.Run("search hash match", func(t *testing.T) {
+		results := searchTorrents(torrentRefs(torrents), "dd44")
 
 		assert.Len(t, results, 1, "Should find torrent by hash")
 		assert.Equal(t, "Movie.2023.1080p.BluRay.x264", results[0].Name)
 	})
 
-	t.Run("filterTorrentsBySearch non-hex search skips hash fields", func(t *testing.T) {
-		// "x264" cannot be part of a hex infohash, so the hash fields are not
-		// scanned; the name still matches.
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "x264")
+	t.Run("search non-hex search skips hash fields", func(t *testing.T) {
+		results := searchTorrents(torrentRefs(torrents), "x264")
 		assert.Len(t, results, 2, "Should match names, not hashes")
 	})
 
-	t.Run("filterTorrentsBySearch glob episode example skips season packs", func(t *testing.T) {
-		// The search help offers this pattern; ? would also hit a season-only name.
-		results := sm.filterTorrentsBySearch([]*qbt.Torrent{
+	t.Run("search glob episode example skips season packs", func(t *testing.T) {
+		results := searchTorrents([]*qbt.Torrent{
 			{Name: "Some.Show.S02E03.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 			{Name: "Some.Show.S01.1080p.WEB-DL.DDP5.1.H.264-GRP"},
 		}, "*S[0-9][0-9]E[0-9][0-9]*")
@@ -595,7 +575,6 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	})
 }
 
-// Helper function for string contains check (case insensitive)
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) &&
 		(s == substr ||
@@ -626,18 +605,15 @@ func toLower(s string) string {
 	return string(result)
 }
 
-// Benchmark tests for cache-related operations
 func BenchmarkSyncManager_FilterTorrentsBySearch(b *testing.B) {
-	// Disable logging for benchmarks
 	oldLevel := zerolog.GlobalLevel()
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 	defer zerolog.SetGlobalLevel(oldLevel)
 
-	sm := &SyncManager{}
-	torrents := createTestTorrents(1000) // 1k torrents
+	torrents := createTestTorrents(1000)
 
 	for b.Loop() {
-		results := sm.filterTorrentsBySearch(torrentRefs(torrents), "test-torrent-5")
+		results := searchTorrents(torrentRefs(torrents), "test-torrent-5")
 		if len(results) == 0 {
 			b.Fatal("Should find at least one match")
 		}
@@ -645,13 +621,12 @@ func BenchmarkSyncManager_FilterTorrentsBySearch(b *testing.B) {
 }
 
 func BenchmarkSyncManager_CalculateStats(b *testing.B) {
-	// Disable logging for benchmarks
 	oldLevel := zerolog.GlobalLevel()
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 	defer zerolog.SetGlobalLevel(oldLevel)
 
 	sm := &SyncManager{}
-	torrents := createTestTorrents(10000) // 10k torrents
+	torrents := createTestTorrents(10000)
 
 	for b.Loop() {
 		stats := sm.calculateStats(torrentRefs(torrents), nil)
@@ -661,7 +636,6 @@ func BenchmarkSyncManager_CalculateStats(b *testing.B) {
 	}
 }
 
-// TestSyncManager_GetDomainsForTorrent tests the domain extraction from torrent trackers.
 func TestSyncManager_ExtractDomainFromURL_IgnoresPseudoTrackers(t *testing.T) {
 	sm := &SyncManager{}
 
@@ -684,35 +658,30 @@ func TestSyncManager_ExtractDomainFromURL_IgnoresPseudoTrackers(t *testing.T) {
 	}
 }
 
-// TestSyncManager_ValidatedTrackerMapping_Updates tests add/remove/edit operations on the mapping.
 func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 	t.Run("addHashToTrackerMapping adds to both maps", func(t *testing.T) {
 		sm := &SyncManager{
 			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
 		}
 
-		// Initialize empty mapping
 		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
 			HashToDomains:  make(map[string]map[string]struct{}),
 			DomainToHashes: make(map[string]map[string]struct{}),
 			UpdatedAt:      time.Now(),
 		}
 
-		// Add hash to domain
 		sm.addHashToTrackerMapping(1, "hash1", "tracker.com")
 		sm.addHashToTrackerMapping(1, "hash2", "tracker.com")
 		sm.addHashToTrackerMapping(1, "hash1", "another.com")
 
 		mapping := sm.validatedTrackerMapping[1]
 
-		// Verify HashToDomains
 		assert.Contains(t, mapping.HashToDomains, "hash1")
 		assert.Contains(t, mapping.HashToDomains["hash1"], "tracker.com")
 		assert.Contains(t, mapping.HashToDomains["hash1"], "another.com")
 		assert.Contains(t, mapping.HashToDomains, "hash2")
 		assert.Contains(t, mapping.HashToDomains["hash2"], "tracker.com")
 
-		// Verify DomainToHashes
 		assert.Contains(t, mapping.DomainToHashes, "tracker.com")
 		assert.Contains(t, mapping.DomainToHashes["tracker.com"], "hash1")
 		assert.Contains(t, mapping.DomainToHashes["tracker.com"], "hash2")
@@ -725,7 +694,6 @@ func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
 		}
 
-		// Initialize with some data
 		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
 			HashToDomains: map[string]map[string]struct{}{
 				"hash1": {"tracker.com": {}, "another.com": {}},
@@ -738,25 +706,19 @@ func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 
-		// Remove hash1 from tracker.com
 		sm.removeHashFromTrackerMapping(1, "hash1", "tracker.com")
 
 		mapping := sm.validatedTrackerMapping[1]
 
-		// hash1 should still have another.com
 		assert.Contains(t, mapping.HashToDomains["hash1"], "another.com")
 		assert.NotContains(t, mapping.HashToDomains["hash1"], "tracker.com")
 
-		// tracker.com should still have hash2
 		assert.Contains(t, mapping.DomainToHashes["tracker.com"], "hash2")
 		assert.NotContains(t, mapping.DomainToHashes["tracker.com"], "hash1")
 
-		// Now remove hash2 from tracker.com (should clean up the empty domain entry)
 		sm.removeHashFromTrackerMapping(1, "hash2", "tracker.com")
 
-		// tracker.com should be completely removed
 		assert.NotContains(t, mapping.DomainToHashes, "tracker.com")
-		// hash2 entry should be removed (empty)
 		assert.NotContains(t, mapping.HashToDomains, "hash2")
 	})
 
@@ -765,7 +727,6 @@ func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
 		}
 
-		// Initialize with data
 		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
 			HashToDomains: map[string]map[string]struct{}{
 				"hash1": {"old-tracker.com": {}},
@@ -776,16 +737,13 @@ func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 
-		// Edit tracker from old to new
 		sm.updateTrackerMappingForEdit(1, "hash1", "old-tracker.com", "new-tracker.com")
 
 		mapping := sm.validatedTrackerMapping[1]
 
-		// Old domain should be gone
 		assert.NotContains(t, mapping.DomainToHashes, "old-tracker.com")
 		assert.NotContains(t, mapping.HashToDomains["hash1"], "old-tracker.com")
 
-		// New domain should be present
 		assert.Contains(t, mapping.DomainToHashes, "new-tracker.com")
 		assert.Contains(t, mapping.DomainToHashes["new-tracker.com"], "hash1")
 		assert.Contains(t, mapping.HashToDomains["hash1"], "new-tracker.com")
@@ -802,12 +760,10 @@ func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 			UpdatedAt:      time.Now(),
 		}
 
-		// Try to add with Unknown domain - should be skipped
 		sm.updateTrackerMappingForEdit(1, "hash1", "", "Unknown")
 
 		mapping := sm.validatedTrackerMapping[1]
 
-		// Nothing should be added
 		assert.Empty(t, mapping.HashToDomains)
 		assert.Empty(t, mapping.DomainToHashes)
 	})
@@ -817,7 +773,6 @@ func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
 		}
 
-		// Initialize with hash1 in multiple domains
 		sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
 			HashToDomains: map[string]map[string]struct{}{
 				"hash1": {"tracker1.com": {}, "tracker2.com": {}, "tracker3.com": {}},
@@ -831,20 +786,16 @@ func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 			UpdatedAt: time.Now(),
 		}
 
-		// Remove hash1 from all domains
 		sm.removeHashFromAllTrackerMappings(1, []string{"hash1"})
 
 		mapping := sm.validatedTrackerMapping[1]
 
-		// hash1 should be completely gone
 		assert.NotContains(t, mapping.HashToDomains, "hash1")
 		assert.NotContains(t, mapping.DomainToHashes["tracker1.com"], "hash1")
 
-		// Domains that only had hash1 should be cleaned up
 		assert.NotContains(t, mapping.DomainToHashes, "tracker2.com")
 		assert.NotContains(t, mapping.DomainToHashes, "tracker3.com")
 
-		// hash2 and tracker1.com (which still has hash2) should remain
 		assert.Contains(t, mapping.HashToDomains, "hash2")
 		assert.Contains(t, mapping.DomainToHashes, "tracker1.com")
 		assert.Contains(t, mapping.DomainToHashes["tracker1.com"], "hash2")
@@ -855,23 +806,18 @@ func TestSyncManager_ValidatedTrackerMapping_Updates(t *testing.T) {
 			validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
 		}
 
-		// These should not panic when no mapping exists
 		sm.addHashToTrackerMapping(999, "hash1", "tracker.com")
 		sm.removeHashFromTrackerMapping(999, "hash1", "tracker.com")
 		sm.updateTrackerMappingForEdit(999, "hash1", "old.com", "new.com")
 		sm.removeHashFromAllTrackerMappings(999, []string{"hash1"})
-
-		// If we get here without panic, the test passes
 	})
 }
 
-// TestSyncManager_ValidatedTrackerMapping_DeepCopy tests that getValidatedTrackerMapping returns a deep copy.
 func TestSyncManager_ValidatedTrackerMapping_DeepCopy(t *testing.T) {
 	sm := &SyncManager{
 		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
 	}
 
-	// Initialize with data
 	sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
 		HashToDomains: map[string]map[string]struct{}{
 			"hash1": {"tracker.com": {}},
@@ -882,30 +828,22 @@ func TestSyncManager_ValidatedTrackerMapping_DeepCopy(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	// Get a mappingCopy
 	mappingCopy := sm.getValidatedTrackerMapping(1)
 	assert.NotNil(t, mappingCopy)
 
-	// Modify the mappingCopy
 	mappingCopy.HashToDomains["hash1"]["modified.com"] = struct{}{}
 	mappingCopy.DomainToHashes["modified.com"] = map[string]struct{}{"hash1": {}}
 
-	// Original should be unchanged
 	original := sm.validatedTrackerMapping[1]
 	assert.NotContains(t, original.HashToDomains["hash1"], "modified.com")
 	assert.NotContains(t, original.DomainToHashes, "modified.com")
 }
 
-// TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess tests concurrent reads/writes.
 func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
-	// This test verifies that concurrent reads and writes to ValidatedTrackerMapping
-	// don't cause data races. Run with: go test -race ./internal/qbittorrent/...
-
 	sm := &SyncManager{
 		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
 	}
 
-	// Initialize with some data
 	sm.validatedTrackerMapping[1] = &ValidatedTrackerMapping{
 		HashToDomains: map[string]map[string]struct{}{
 			"hash1": {"tracker1.com": {}},
@@ -918,13 +856,11 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	// Launch concurrent readers
 	for range 10 {
 		wg.Go(func() {
 			for range 100 {
 				mapping := sm.getValidatedTrackerMapping(1)
 				if mapping != nil {
-					// Access the returned copy to ensure it's safe
 					_ = len(mapping.HashToDomains)
 					_ = len(mapping.DomainToHashes)
 					for hash := range mapping.HashToDomains {
@@ -939,7 +875,6 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 		})
 	}
 
-	// Launch concurrent writers (add)
 	for i := range 5 {
 		wg.Add(1)
 		go func(id int) {
@@ -951,7 +886,6 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 
-	// Launch concurrent writers (remove)
 	for i := range 3 {
 		wg.Add(1)
 		go func(id int) {
@@ -963,7 +897,6 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 
-	// Launch concurrent full updates (setValidatedTrackerMapping)
 	for range 2 {
 		wg.Go(func() {
 			for range 5 {
@@ -978,5 +911,4 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
-	// If we reach here without race detector complaints, the test passes
 }

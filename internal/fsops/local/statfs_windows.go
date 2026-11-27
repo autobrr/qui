@@ -21,10 +21,6 @@ func (b *Backend) Statfs(ctx context.Context, path string) (*fsops.StatfsResult,
 		return nil, err
 	}
 
-	// GetDiskFreeSpaceEx requires a directory, while the unix reference
-	// (unix.Statfs) accepts files. Stat first so a missing path keeps its
-	// portable fs.ErrNotExist, then query the containing directory for
-	// non-directories.
 	fi, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -45,7 +41,6 @@ func (b *Backend) Statfs(ctx context.Context, path string) (*fsops.StatfsResult,
 		return nil, fmt.Errorf("GetDiskFreeSpaceEx %s: %w", path, err)
 	}
 
-	//nolint:gosec // uint64 to int64: disk sizes won't exceed int64 max
 	return &fsops.StatfsResult{
 		BytesAvailable: int64(freeBytesAvailable),
 		BytesTotal:     int64(totalBytes),

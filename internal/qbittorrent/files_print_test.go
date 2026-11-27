@@ -15,9 +15,10 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// Backstops of these hashes: longHash 21h34m53s, shortHash 13h22m13s.
 const (
 	longHash  = "0000000000000000000000000000000000000000"
 	shortHash = "3333333333333333333333333333333333333333"
@@ -63,7 +64,6 @@ func TestFilesBackstopSpreadsByHash(t *testing.T) {
 	require.Equal(t, 13*time.Hour+22*time.Minute+13*time.Second, filesBackstopFor(shortHash))
 }
 
-// maindataFilesClient is a qBittorrent with maindata entries and file lists.
 type maindataFilesClient struct {
 	mu           sync.Mutex
 	maindata     map[string]qbt.Torrent
@@ -71,23 +71,22 @@ type maindataFilesClient struct {
 	fileRequests []string
 	checkedReads int
 	visited      int
-	// onFetch runs after each file request, outside the lock.
-	onFetch func()
+	onFetch      func()
 }
 
-func (c *maindataFilesClient) getTorrentsByHashes(hashes []string) []*qbt.Torrent {
+func (c *maindataFilesClient) getTorrentsByHashes(hashes []infohash.Hash) []*qbt.Torrent {
 	c.mu.Lock()
 	c.checkedReads++
 	c.mu.Unlock()
 	return c.getTorrentsByHashesUnchecked(hashes)
 }
 
-func (c *maindataFilesClient) getTorrentsByHashesUnchecked(hashes []string) []*qbt.Torrent {
+func (c *maindataFilesClient) getTorrentsByHashesUnchecked(hashes []infohash.Hash) []*qbt.Torrent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var torrents []*qbt.Torrent
 	for _, hash := range hashes {
-		if torrent, ok := c.maindata[hash]; ok {
+		if torrent, ok := c.maindata[hash.String()]; ok {
 			c.visited++
 			torrents = append(torrents, &torrent)
 		}
@@ -130,8 +129,6 @@ func seededFiles() qbt.TorrentFiles {
 	return qbt.TorrentFiles{{Name: "Show.S01/e01.mkv", Size: 2048}}
 }
 
-// filesModeRig is a SyncManager over a fake qBittorrent with one maindata
-// entry per hash and a fake files cache. Ages count back from now.
 type filesModeRig struct {
 	sm     *SyncManager
 	client *maindataFilesClient
@@ -153,7 +150,6 @@ func newFilesModeRig(hashes ...string) *filesModeRig {
 	return rig
 }
 
-// useFilesManager rebuilds the SyncManager over fm.
 func (r *filesModeRig) useFilesManager(fm FilesManager) {
 	r.sm = &SyncManager{
 		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
@@ -163,7 +159,6 @@ func (r *filesModeRig) useFilesManager(fm FilesManager) {
 	r.sm.SetFilesManager(fm)
 }
 
-// store puts a row of age into the fake cache. A nil print stores none.
 func (r *filesModeRig) store(hash string, p *int64, age time.Duration) {
 	r.fm.cached[hash] = seededFiles()
 	r.fm.prints[hash] = p
@@ -287,9 +282,6 @@ func TestGetTorrentFilesBatch_UntilChangedFetchesNoPrintOnce(t *testing.T) {
 func TestGetTorrentFilesBatch_FilesModePrecedence(t *testing.T) {
 	t.Parallel()
 
-	// Each row is 30 h old. A moved print is fetched by each mode and served by
-	// a max age of 100 h. A matching print is served by WithFilesUntilChanged
-	// and fetched by WithFilesUntilChangedOrStale, past its backstop.
 	matchingPrint := new(FilesPrint(seededTorrent(longHash)))
 	movedPrint := new(*matchingPrint + 1)
 	tests := []struct {
@@ -388,7 +380,7 @@ func TestGetTorrentFilesBatch_RenameDuringFetchDropsOldList(t *testing.T) {
 		rig.client.mu.Lock()
 		rig.client.files[longHash] = renamed
 		rig.client.mu.Unlock()
-		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, testHash(longHash)))
 	})
 
 	first := rig.read(WithFilesUntilChanged(t.Context()), t, longHash)
@@ -404,10 +396,10 @@ func TestFileCacheDropsKeepNoHashOnceNoFetchRuns(t *testing.T) {
 	t.Parallel()
 	rig := newFilesModeRig(longHash)
 	rig.client.onFetch = sync.OnceFunc(func() {
-		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+		require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, testHash(longHash)))
 	})
 	rig.read(WithFilesUntilChanged(t.Context()), t, longHash)
-	require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, longHash))
+	require.NoError(t, rig.sm.InvalidateFileCache(t.Context(), 1, testHash(longHash)))
 
 	require.Empty(t, rig.sm.filesInvalidations.dropped, "a deleted torrent must not stay in memory")
 }

@@ -21,12 +21,10 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 	"github.com/autobrr/qui/internal/services/peeraddress"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
-	// stepTorrent comes before qui adds the Transfer torrent of a member, with
-	// its hash, and stepTorrentDone once the target has every piece, with the
-	// bytes that the target downloaded.
 	stepTorrent     = "pass by BitTorrent"
 	stepTorrentDone = "passed by BitTorrent"
 	stepFallBack    = "fall back to SFTP"
@@ -92,8 +90,6 @@ func (j *job) fallBack(ctx context.Context, why *noConnectionError) error {
 	return nil
 }
 
-// pass passes the files of p by a Transfer torrent, after base bytes of the
-// parts before.
 func (j *job) pass(ctx context.Context, p *part, base int64) error {
 	if !j.blind {
 		defer j.unlink(context.WithoutCancel(ctx), p)
@@ -122,7 +118,7 @@ func (j *job) pass(ctx context.Context, p *part, base int64) error {
 	if err != nil {
 		return permanent("qui cannot build the Transfer torrent: %v", err)
 	}
-	if err := j.stepWith(ctx, StateCopying, stepTorrent, helper.InfoHash); err != nil {
+	if err := j.stepWith(ctx, StateCopying, stepTorrent, helper.InfoHash.String()); err != nil {
 		return err
 	}
 	if err := j.addHelper(ctx, j.target, helper, random, torrentadd.Settings{
@@ -132,12 +128,9 @@ func (j *job) pass(ctx context.Context, p *part, base int64) error {
 	}); err != nil {
 		return err
 	}
-	torrent, checked, err := j.await(ctx, j.target, helper.InfoHash, j.svc.deps.Config.CheckPolls, func(t *qbt.Torrent) bool { return !isChecking(t.State) })
-	switch {
-	case err != nil:
+	torrent, err := j.awaitCheck(ctx, j.target, helper.InfoHash)
+	if err != nil {
 		return err
-	case !checked:
-		return temporary("The check of the Transfer torrent on %s did not end.", j.target.Name)
 	}
 	seeded := torrent.Progress < 1
 	var left int64
@@ -159,29 +152,19 @@ func (j *job) pass(ctx context.Context, p *part, base int64) error {
 		if inst == j.source && !seeded {
 			continue
 		}
-		if err := j.svc.deps.Sync.DeleteTorrents(ctx, inst.ID, []string{helper.InfoHash}, false, j.actor()); err != nil {
+		if err := j.svc.deps.Sync.DeleteTorrents(ctx, inst.ID, []string{helper.InfoHash.String()}, false, j.actor()); err != nil {
 			return temporary("qui cannot remove the Transfer torrent from %s: %v", inst.Name, err)
 		}
 	}
-	// A failed pass leaves its reservation to the end of the run.
 	j.unclaim(left)
-	// The fresh read of the source also drops the Transfer torrent from
-	// what qui knows of it.
 	if err := j.checkSource(ctx); err != nil {
 		return err
 	}
 	p.passed = true
-	// qBittorrent counts the bytes of a session as they arrive, and adds
-	// them to its count of all sessions about once a second. So that count
-	// misses the last bytes when the download ends, and the count of the
-	// session misses the bytes from before a restart of the client.
 	got := max(torrent.Downloaded, torrent.DownloadedSession)
 	return j.stepWith(ctx, StateCopying, stepTorrentDone, strconv.FormatInt(got, 10))
 }
 
-// blindFreeSpace reads the free space on a target without file access
-// before the add of a Transfer torrent: qBittorrent can allocate its files
-// at once.
 func (j *job) blindFreeSpace(ctx context.Context) (space, error) {
 	if !j.blind {
 		return space{}, nil
@@ -189,8 +172,6 @@ func (j *job) blindFreeSpace(ctx context.Context) (space, error) {
 	return j.freeSpace(ctx)
 }
 
-// claimLeft reserves the bytes that a checked Transfer torrent still needs,
-// when blindFreeSpace knew the free space.
 func (j *job) claimLeft(torrent *qbt.Torrent, read space) (int64, error) {
 	if !read.known {
 		return 0, nil
@@ -211,7 +192,7 @@ func (j *job) addHelper(ctx context.Context, inst *models.Instance, helper helpe
 	res := j.svc.adder.Add(ctx, torrentadd.Request{
 		InstanceID:   inst.ID,
 		Torrent:      helper.TorrentFile,
-		Hash:         helper.InfoHash,
+		Hash:         helper.InfoHash.String(),
 		Settings:     settings,
 		Polls:        1,
 		PollInterval: j.svc.deps.Config.PollInterval,
@@ -222,10 +203,6 @@ func (j *job) addHelper(ctx context.Context, inst *models.Instance, helper helpe
 	return nil
 }
 
-// seedFromSource renames the files of the stopped Transfer torrent to the
-// files of the source: a rename of a missing file changes only its name. A
-// file at an old name is a conflict: qBittorrent would move it over the file
-// of the source.
 func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.Helper, random string, targetNames []string) error {
 	sourceNames := names(p.plan)
 	if err := j.noFileOnSource(ctx, p, targetNames, sourceNames); err != nil {
@@ -243,11 +220,11 @@ func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.
 		if name == sourceNames[i] {
 			continue
 		}
-		if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.source.ID, helper.InfoHash, name, sourceNames[i]); err != nil {
+		if err := j.svc.deps.Sync.RenameTorrentFile(ctx, j.source.ID, helper.InfoHash.String(), name, sourceNames[i]); err != nil {
 			return temporary("qui cannot rename %s in the Transfer torrent on %s: %v", sourceNames[i], j.source.Name, err)
 		}
 	}
-	if err := j.svc.deps.Sync.SetForceStart(ctx, j.source.ID, []string{helper.InfoHash}, true); err != nil {
+	if err := j.svc.deps.Sync.SetForceStart(ctx, j.source.ID, []string{helper.InfoHash.String()}, true); err != nil {
 		return temporary("qui cannot start the Transfer torrent on %s: %v", j.source.Name, err)
 	}
 	seeding := func(t *qbt.Torrent) bool { return t.Progress >= 1 && !isChecking(t.State) }
@@ -265,8 +242,6 @@ func (j *job) seedFromSource(ctx context.Context, p *part, helper helpertorrent.
 	return nil
 }
 
-// noFileOnSource fails when the source has a file at an old name of a
-// rename in seedFromSource.
 func (j *job) noFileOnSource(ctx context.Context, p *part, targetNames, sourceNames []string) error {
 	if j.srcFiles == nil {
 		return nil
@@ -289,7 +264,7 @@ func (j *job) noFileOnSource(ctx context.Context, p *part, targetNames, sourceNa
 	return nil
 }
 
-func (j *job) connect(ctx context.Context, hash string) error {
+func (j *job) connect(ctx context.Context, hash infohash.Hash) error {
 	var why []string
 	for i, dir := range []struct{ from, to *models.Instance }{{j.target, j.source}, {j.source, j.target}} {
 		if i > 0 {
@@ -304,7 +279,7 @@ func (j *job) connect(ctx context.Context, hash string) error {
 			why = append(why, fmt.Sprintf("qui cannot read the public peer address of %s: %v", dir.to.Name, err))
 			continue
 		}
-		if err := j.svc.deps.Sync.AddPeersToTorrents(qbittorrent.WithPostAddBulkActionRetry(ctx), dir.from.ID, []string{hash}, []string{address}); err != nil {
+		if err := j.svc.deps.Sync.AddPeersToTorrents(qbittorrent.WithPostAddBulkActionRetry(ctx), dir.from.ID, []string{hash.String()}, []string{address}); err != nil {
 			why = append(why, fmt.Sprintf("%s did not take the address %s of %s: %v", dir.from.Name, address, dir.to.Name, err))
 			continue
 		}
@@ -320,9 +295,7 @@ func (j *job) connect(ctx context.Context, hash string) error {
 	return &noConnectionError{reason: "The clients did not connect: " + strings.Join(why, ", and ") + "."}
 }
 
-// download waits until the target has every piece of the Transfer torrent of
-// size bytes, after base bytes of the parts before.
-func (j *job) download(ctx context.Context, hash string, base, size int64) (*qbt.Torrent, error) {
+func (j *job) download(ctx context.Context, hash infohash.Hash, base, size int64) (*qbt.Torrent, error) {
 	cfg := j.svc.deps.Config
 	last, idle := int64(-1), 0
 	for poll := 0; ; poll++ {
@@ -335,6 +308,12 @@ func (j *job) download(ctx context.Context, hash string, base, size int64) (*qbt
 			return nil, err
 		case torrent == nil:
 			return nil, temporary("The Transfer torrent left %s.", j.target.Name)
+		case isChecking(torrent.State):
+			if _, err := j.awaitCheck(ctx, j.target, hash); err != nil {
+				return nil, err
+			}
+			idle = 0
+			continue
 		}
 		j.meter.reach(base + int64(torrent.Progress*float64(size)))
 		switch {
@@ -350,7 +329,18 @@ func (j *job) download(ctx context.Context, hash string, base, size int64) (*qbt
 	}
 }
 
-func (j *job) await(ctx context.Context, inst *models.Instance, hash string, polls int, done func(*qbt.Torrent) bool) (*qbt.Torrent, bool, error) {
+func (j *job) awaitCheck(ctx context.Context, inst *models.Instance, hash infohash.Hash) (*qbt.Torrent, error) {
+	torrent, checked, err := j.await(ctx, inst, hash, j.svc.deps.Config.CheckPolls, func(t *qbt.Torrent) bool { return !isChecking(t.State) })
+	switch {
+	case err != nil:
+		return nil, err
+	case !checked:
+		return nil, temporary("The check of the Transfer torrent on %s did not end.", inst.Name)
+	}
+	return torrent, nil
+}
+
+func (j *job) await(ctx context.Context, inst *models.Instance, hash infohash.Hash, polls int, done func(*qbt.Torrent) bool) (*qbt.Torrent, bool, error) {
 	var torrent *qbt.Torrent
 	for poll := range polls {
 		if err := j.pause(ctx, poll); err != nil {
@@ -367,12 +357,9 @@ func (j *job) await(ctx context.Context, inst *models.Instance, hash string, pol
 	return torrent, false, nil
 }
 
-// eagerPolls is how many polls of a wait read a fresh sync, so that a short
-// wait ends as fast as qBittorrent allows. The poll that can end a wait
-// without success is fresh too.
 const eagerPolls = 5
 
-func (j *job) helperOn(ctx context.Context, inst *models.Instance, hash string, fresh bool) (*qbt.Torrent, error) {
+func (j *job) helperOn(ctx context.Context, inst *models.Instance, hash infohash.Hash, fresh bool) (*qbt.Torrent, error) {
 	torrent, err := j.svc.read(ctx, inst.ID, hash, fresh)
 	switch {
 	case err != nil:

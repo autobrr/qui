@@ -333,8 +333,6 @@ func TestDiscLayoutDominantAudioKeepsTVSearchShape(t *testing.T) {
 	require.Equal(t, 3, *query.Episode)
 }
 
-// Regression: parsing the full torrent-relative path invented a group and hard-rejected
-// byte-identical candidates with "group/site mismatch". See selectContentDetectionRelease.
 func TestSelectContentDetectionRelease_RepeatedFolderNameKeepsGroup(t *testing.T) {
 	svc := &Service{
 		releaseCache:     NewReleaseCache(),
@@ -373,7 +371,6 @@ func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.
 	source := svc.releaseCache.Parse(sourceName)
 	require.NotNil(t, source)
 
-	// File names must share the torrent title or content detection discards them as unrelated.
 	files := qbt.TorrentFiles{
 		{
 			Name: "Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA/" +
@@ -407,13 +404,11 @@ func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.
 	require.True(t, comparison.matched(), "season pack candidate should not be rejected by file-level identity, got %q", comparison.reason())
 }
 
-// fileRequestRecorder records the hashes whose file lists a test asks for.
 type fileRequestRecorder struct {
 	*fakeSyncManager
 	mu        sync.Mutex
 	requested []string
-	// serve, when set, answers in place of the file lists of the fake.
-	serve func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error)
+	serve     func(ctx context.Context, hashes []string) (map[string]qbt.TorrentFiles, error)
 }
 
 func (r *fileRequestRecorder) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -466,7 +461,6 @@ func TestReadLocalTorrentsReadsOnlyNamesThatNeedFiles(t *testing.T) {
 	require.Equal(t, 2, folder.release.Series)
 	batch := reads.read(svc.matcher(), instance.ID, &torrents[1])
 	require.True(t, isTVSeasonPack(batch.release), "the batch files give the season pack")
-	// A torrent whose files did not load keeps its name read.
 	require.Empty(t, reads.read(svc.matcher(), instance.ID, &torrents[5]).release.Title)
 	require.Equal(t, pack, reads.read(svc.matcher(), instance.ID, &torrents[2]).rawName)
 }

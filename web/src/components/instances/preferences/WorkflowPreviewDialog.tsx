@@ -30,7 +30,6 @@ import { useId, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
 
-// Tabs component for needed/eligible toggle
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface WorkflowPreviewDialogProps {
@@ -39,34 +38,22 @@ interface WorkflowPreviewDialogProps {
   title: string
   description: React.ReactNode
   preview: AutomationPreviewResult | null
-  /** Condition used to filter - used to show relevant columns */
   condition?: RuleCondition | null
   onConfirm: () => void
   confirmLabel: string
   isConfirming: boolean
   onLoadMore?: () => void
   isLoadingMore?: boolean
-  /** Use destructive styling (red button) */
   destructive?: boolean
-  /** Use warning styling (amber button) for category changes */
   warning?: boolean
-  /** Current preview view mode (only shown for delete rules with FREE_SPACE) */
   previewView?: PreviewView
-  /** Callback when user switches preview view */
   onPreviewViewChange?: (view: PreviewView) => void
-  /** Whether to show the preview view toggle (only for FREE_SPACE delete rules) */
   showPreviewViewToggle?: boolean
-  /** Whether the preview is currently loading (e.g., when switching views) */
   isLoadingPreview?: boolean
-  /** Callback to export all preview data to CSV */
   onExport?: () => void
-  /** Whether export is in progress */
   isExporting?: boolean
-  /** Whether the initial preview is loading (dialog just opened, waiting for first results) */
   isInitialLoading?: boolean
-  /** Show score column for score-based sorting previews */
   showScore?: boolean
-  /** Error message when the preview request failed; the dialog still allows saving */
   previewError?: string | null
   dryRun?: boolean
   onDryRunChange?: (dryRun: boolean) => void
@@ -83,7 +70,6 @@ export function DryRunToggle({ checked, onCheckedChange }: { checked: boolean; o
   )
 }
 
-// Extract all field names from a condition tree
 function extractConditionFields(cond: RuleCondition | null | undefined): Set<string> {
   const fields = new Set<string>()
   if (!cond) return fields
@@ -103,12 +89,10 @@ function extractConditionFields(cond: RuleCondition | null | undefined): Set<str
   return fields
 }
 
-// Column definitions for dynamic columns
 type ColumnDef = {
   key: string
   header: string
   align: "left" | "right" | "center"
-  // Fields that trigger this column to appear
   triggerFields: string[]
   render: (t: AutomationPreviewTorrent) => React.ReactNode
 }
@@ -303,7 +287,6 @@ export function WorkflowPreviewDialog({
     [i18n, t, tTorrents]
   )
 
-  // Determine which dynamic columns to show based on condition fields
   const visibleDynamicColumns = useMemo(() => {
     const fields = extractConditionFields(condition)
     return dynamicColumns.filter(col =>
@@ -311,12 +294,11 @@ export function WorkflowPreviewDialog({
     )
   }, [condition, dynamicColumns])
 
-  const confirmClassName = destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
+  const confirmVariant = destructive ? "destructive" : "default"
+  const confirmClassName = !destructive && warning ? "bg-warning text-background hover:bg-warning/90" : undefined
 
   const dryRunToggle = onDryRunChange && <DryRunToggle checked={dryRun} onCheckedChange={onDryRunChange} />
 
-  // Show loading state when initial preview is being fetched.
-  // Save stays reachable so a slow preview never blocks enabling the rule.
   if (isInitialLoading) {
     return (
       <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -329,7 +311,7 @@ export function WorkflowPreviewDialog({
           {dryRunToggle}
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} variant={confirmVariant} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {t("preferences.workflowPreview.saveWithoutPreview")}
             </AlertDialogAction>
@@ -378,7 +360,7 @@ export function WorkflowPreviewDialog({
         </AlertDialogHeader>
 
         {preview?.skipped && (
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-500">
+          <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             {getRuleSkipReason(preview.skipped, t)}
           </p>
         )}
@@ -435,10 +417,9 @@ export function WorkflowPreviewDialog({
                             <TruncatedText className="block flex-1 min-w-0">
                               {torrent.name}
                             </TruncatedText>
-                            {/* Single cross-seed badge with appropriate variant based on expansion type */}
                             {(torrent.isCrossSeed || torrent.isHardlinkCopy) && (
-                              <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
-                                torrent.isHardlinkCopy? "bg-violet-500/10 text-violet-600": "bg-blue-500/10 text-blue-600"
+                              <span className={`shrink-0 text-10 px-1.5 py-0.5 rounded ${
+                                torrent.isHardlinkCopy? "bg-chart-2/10": "bg-chart-4/10"
                               }`}>
                                 {torrent.isHardlinkCopy ? t("preferences.workflowPreview.crossSeedHardlinked") : t("preferences.workflowPreview.crossSeedSameFiles")}
                               </span>
@@ -523,7 +504,7 @@ export function WorkflowPreviewDialog({
           </div>
           <div className="flex gap-2">
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} variant={confirmVariant} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {confirmLabel}
             </AlertDialogAction>

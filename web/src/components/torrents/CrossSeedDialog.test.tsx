@@ -44,7 +44,6 @@ const baseProps = {
 
 const red = { site: "redacted.sh", name: "Redacted (API)", shortName: "Redacted", indexerId: -1001 }
 const ops = { site: "orpheus.network", name: "Orpheus (API)", shortName: "Orpheus", indexerId: -1002 }
-// The dialog renders in a portal, outside the render container.
 const entryRow = (name: string) =>
   [...document.body.querySelectorAll("li[data-status]")].find(row => row.textContent?.includes(name))
 const openScope = () =>
@@ -133,7 +132,6 @@ describe("CrossSeedDialog copy report", () => {
   it("copies the report on plain HTTP, where navigator.clipboard does not exist", async () => {
     vi.stubGlobal("isSecureContext", false)
     vi.stubGlobal("navigator", { ...navigator, clipboard: undefined })
-    // jsdom has no execCommand, so the test defines it and afterEach deletes it.
     const execCommand = vi.fn().mockReturnValue(true)
     document.execCommand = execCommand
 
@@ -411,7 +409,6 @@ describe("CrossSeedDialog search scope", () => {
     expect(onToggleSelection).toHaveBeenCalledTimes(1)
   })
 
-  // regression: #4126
   it("offers Retry when the analysis fails before any search", () => {
     const onRetry = vi.fn()
     const { getByText } = render(<CrossSeedDialog {...baseProps} error="analyze failed" onRetry={onRetry} />)
@@ -427,13 +424,11 @@ describe("CrossSeedDialog search scope", () => {
     expect(entryRow("Orpheus (API)")?.textContent).toContain("crossSeedDialog.gazelle.willAskRejected")
   })
 
-  it("links a site with no API key to the RED/OPS settings", () => {
-    const plan: CrossSeedGazelleLookup[] = [{ ...red, status: "will_ask" }, { ...ops, status: "not_asked", reason: "no_api_key" }]
-    render(<CrossSeedDialog {...baseProps} gazelleEntries={plan} />)
+  it("links to the RED/OPS settings when RED/OPS is on and no site has an API key", () => {
+    render(<CrossSeedDialog {...baseProps} gazelleKeysMissing />)
 
-    const link = entryRow("Orpheus (API)")?.querySelector("a")
+    const link = entryRow("crossSeedDialog.gazelle.noApiKeys")?.querySelector("a")
     expect(link?.getAttribute("data-tab")).toBe("indexers")
-    expect(entryRow("Redacted (API)")?.querySelector("a")).toBeNull()
   })
 
   it("shows the outcome of each site after the search, and the RED/OPS section without a decision trace", () => {

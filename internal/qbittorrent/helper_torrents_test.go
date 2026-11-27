@@ -14,8 +14,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
 )
 
-// fakeHelpers is the helper registry: the kind of each helper torrent of
-// instance 1.
 type fakeHelpers map[string]string
 
 func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
@@ -25,8 +23,6 @@ func (f fakeHelpers) HelperKinds(instanceID int) map[string]string {
 	return f
 }
 
-// newHelperRig has a helper torrent (hashA) and a torrent of the user with
-// the same tag and no registry row (hashB) on instance 1.
 func newHelperRig(t *testing.T) (*SyncManager, *qbtstub.Server, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -58,12 +54,11 @@ func TestDeleteWithFilesRefusesAHelperTorrent(t *testing.T) {
 	require.FileExists(t, filepath.Join(root, hashA, "Show.S01E01.mkv"))
 }
 
-// Only the registry makes a helper torrent: the tag of a torrent proves nothing.
 func TestATaggedTorrentWithoutARegistryRowIsNoHelper(t *testing.T) {
 	t.Parallel()
 	sm, _, root := newHelperRig(t)
 
-	resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1})
+	resp, err := sm.ListTorrents(t.Context(), TorrentListView{InstanceID: 1, WithHelperTorrents: true})
 	require.NoError(t, err)
 	badges := map[string]string{}
 	for _, row := range resp.Torrents {
@@ -78,7 +73,7 @@ func TestATaggedTorrentWithoutARegistryRowIsNoHelper(t *testing.T) {
 	for _, view := range views {
 		badges[view.Hash] = view.QuiHelper
 	}
-	require.Equal(t, map[string]string{hashA: "transfer", hashB: ""}, badges)
+	require.Equal(t, map[string]string{hashB: ""}, badges)
 
 	require.NoError(t, sm.DeleteTorrents(t.Context(), 1, []string{hashB}, true, DeleteActor{Kind: DeleteActorUser}))
 	require.NoFileExists(t, filepath.Join(root, hashB, "Show.S01E01.mkv"))

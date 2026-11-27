@@ -10,18 +10,20 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/rls"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func (s *Service) catalogAddPlan(candidate CrossSeedCandidate, incomingRelease *rls.Release, incoming qbt.TorrentFiles, filesByHash map[string]qbt.TorrentFiles, req *CrossSeedRequest) (*crossSeedAddPlan, string) {
 	p := req.SearchDecision
-	if candidate.InstanceID != p.SourceInstanceID || len(candidate.Torrents) != 1 || normalizeHash(candidate.Torrents[0].Hash) != p.SourceHash {
+	if candidate.InstanceID != p.SourceInstanceID || len(candidate.Torrents) != 1 || !p.SourceHash.Is(candidate.Torrents[0].Hash) {
 		return nil, "file-evidence source binding mismatch"
 	}
 	torrent := candidate.Torrents[0]
 	if s.sourceGate().check(torrent, req.sourceFilter) != sourcePass {
 		return nil, "bound source incomplete or ineligible"
 	}
-	files := filesByHash[p.SourceHash]
+	files := filesByHash[p.SourceHash.String()]
 	if err := validateCatalogSource(p, torrent, files); err != nil {
 		return nil, err.Error()
 	}
@@ -47,8 +49,8 @@ func (s *Service) catalogAddPlan(candidate CrossSeedCandidate, incomingRelease *
 	return &plan, ""
 }
 
-func (s *Service) alignCatalogFiles(ctx context.Context, instanceID int, hash, hashV2 string, plan *crossSeedAddPlan) (bool, string) {
-	active, visible, ok := s.aligner.WaitForFiles(ctx, instanceID, dedupeHashes(hash, hashV2))
+func (s *Service) alignCatalogFiles(ctx context.Context, instanceID int, hash, hashV2 infohash.Hash, plan *crossSeedAddPlan) (bool, string) {
+	active, visible, ok := s.aligner.WaitForFiles(ctx, instanceID, []infohash.Hash{hash, hashV2})
 	if !ok {
 		return false, active
 	}

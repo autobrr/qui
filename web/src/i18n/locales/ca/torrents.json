@@ -1486,9 +1486,8 @@
       "match": "coincidència",
       "noMatch": "cap coincidència",
       "openSettings": "Obre la configuració",
+      "noApiKeys": "RED/OPS està activat, però no hi ha cap clau API configurada",
       "notAsked": {
-        "disabled": "no consultat: desactivat",
-        "noApiKey": "no consultat: sense clau API",
         "cooldown": "no consultat: cercat fa poc",
         "notSelected": "no consultat: no seleccionat",
         "sourceSite": "no consultat: el torrent ve de {{site}}",
@@ -1680,6 +1679,7 @@
     },
     "footer": {
       "adding": "S'està afegint...",
+      "addingBatch": "S'està afegint el lot {{current}} de {{total}}...",
       "add": "Afegeix el torrent",
       "cancel": "Cancel·la",
       "addCount_one": "Afegeix {{count}} torrent",
@@ -1692,6 +1692,8 @@
       "addedMany": "S'han afegit {{count}} torrents correctament",
       "failedMany": "No s'han pogut afegir {{count}} torrent(s)",
       "partialSuccess": "Se n'han afegit {{added}} i {{failed}} han fallat",
+      "batchFailed": "S'han afegit {{added}} de {{total}} torrents",
+      "batchFailedDescription": "El lot {{batch}} de {{batches}} ha fallat: {{error}}. La resta queden a la llista per tornar-los a afegir.",
       "rejectedOne": "S'ha rebutjat 1 fitxer (no és un fitxer .torrent)",
       "rejectedMany": "S'han rebutjat {{count}} fitxers (no són fitxers .torrent)"
     }

@@ -77,11 +77,8 @@ func seedInstance(ctx context.Context, t *testing.T, db *database.DB) {
 	require.NoError(t, err)
 }
 
-// sentinel is far enough in the past that a real write can never land on it.
 var sentinel = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// markCachedAt stamps every cached file row with the sentinel so a later upsert
-// that actually writes is visible: the row moves off the sentinel.
 func markCachedAt(ctx context.Context, t *testing.T, db *database.DB) {
 	t.Helper()
 	_, err := db.ExecContext(ctx, `UPDATE torrent_files_cache SET cached_at = ?`, sentinel)
@@ -98,7 +95,7 @@ func countAtSentinel(ctx context.Context, t *testing.T, db *database.DB) int {
 func baseFile() CachedFile {
 	return CachedFile{
 		InstanceID:      1,
-		TorrentHash:     "guard-hash",
+		TorrentHash:     testHash("guard-hash"),
 		FileIndex:       0,
 		Name:            "season.pack/episode.mkv",
 		Size:            1 << 30,
@@ -111,8 +108,6 @@ func baseFile() CachedFile {
 	}
 }
 
-// A complete, seeding torrent re-synced with identical data must produce no row
-// writes at all. This is the case that dominates a steady-state library.
 func testUpsertFilesSkipsUnchangedRows(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -161,9 +156,9 @@ func testUpsertFilesWritesChangedRows(t *testing.T, open testDBOpener) {
 
 				require.Zero(t, countAtSentinel(ctx, t, db), "changed %s should have been written", tt.name)
 
-				batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+				batch, err := repo.GetFilesBatch(ctx, 1, []string{testHash("guard-hash")})
 				require.NoError(t, err)
-				stored := batch["guard-hash"]
+				stored := batch[testHash("guard-hash")]
 				require.Len(t, stored, 1)
 				require.Equal(t, changed.Name, stored[0].Name)
 				require.Equal(t, changed.Size, stored[0].Size)
@@ -178,8 +173,6 @@ func testUpsertFilesWritesChangedRows(t *testing.T, open testDBOpener) {
 	}
 }
 
-// is_seed is nullable, so the guard must be null-safe. A plain `<>` would yield
-// NULL for these comparisons and silently drop the change.
 func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -213,9 +206,9 @@ func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{baseFile()}, nil))
 			require.Zero(t, countAtSentinel(ctx, t, db), "null-to-value should have been written")
 
-			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+			batch, err := repo.GetFilesBatch(ctx, 1, []string{testHash("guard-hash")})
 			require.NoError(t, err)
-			stored := batch["guard-hash"]
+			stored := batch[testHash("guard-hash")]
 			require.Len(t, stored, 1)
 			require.Equal(t, new(true), stored[0].IsSeed)
 		})
@@ -235,9 +228,9 @@ func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
 			require.Zero(t, countAtSentinel(ctx, t, db), "value-to-null should have been written")
 
-			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+			batch, err := repo.GetFilesBatch(ctx, 1, []string{testHash("guard-hash")})
 			require.NoError(t, err)
-			stored := batch["guard-hash"]
+			stored := batch[testHash("guard-hash")]
 			require.Len(t, stored, 1)
 			require.Nil(t, stored[0].IsSeed)
 		})
@@ -250,8 +243,6 @@ func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) 
 	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 		repo := NewRepository(db)
 
-		// Span more than one batch so the guard is exercised on a full-batch query
-		// and on the partial trailing one.
 		const total = fileBatchSize*2 + 5
 		files := make([]CachedFile, total)
 		for i := range files {
@@ -274,8 +265,6 @@ func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) 
 	})
 }
 
-// A guarded ON CONFLICT DO UPDATE on Postgres locks every conflicting row even when
-// the guard skips it, and each lock writes WAL. A tuple lock leaves its xid in xmax.
 func testUpsertFilesUnchangedRowsTakeNoRowLocks(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -304,8 +293,6 @@ func testUpsertFilesUnchangedRowsTakeNoRowLocks(t *testing.T, open testDBOpener)
 	})
 }
 
-// dropUnchangedRows reads before the upsert, so a concurrent writer can store the
-// same values in between. The SQL guard must still skip those rows.
 func testUpsertFileRowsGuardSkipsRowsAlreadyStored(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -346,8 +333,6 @@ func testUpsertFileRowsGuardSkipsRowsAlreadyStored(t *testing.T, open testDBOpen
 	})
 }
 
-// Cross-seeded torrents share a hash across instances. Each instance's rows must be
-// compared only against that instance's stored rows.
 func testUpsertFilesComparesWithinInstance(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -377,9 +362,6 @@ func testUpsertFilesComparesWithinInstance(t *testing.T, open testDBOpener) {
 	})
 }
 
-// Cross-seed, automations and the UI can cache the same torrents at once. On
-// Postgres, writers that lock the same rows in different orders deadlock
-// (SQLSTATE 40P01), so every overlapping call must succeed.
 func testCacheFilesBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -393,7 +375,6 @@ func testCacheFilesBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 			perTorr  = 20
 		)
 
-		// Alternate availability so every call rewrites rows and takes their locks.
 		batches := [2]map[string]qbt.TorrentFiles{}
 		for v := range batches {
 			batches[v] = make(map[string]qbt.TorrentFiles, torrents)
@@ -408,7 +389,7 @@ func testCacheFilesBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 						Availability: float32(v + 1),
 					}
 				}
-				batches[v][fmt.Sprintf("overlap-hash-%d", h)] = files
+				batches[v][testHash(fmt.Sprintf("overlap-hash-%d", h))] = files
 			}
 		}
 
@@ -418,8 +399,6 @@ func testCacheFilesBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 	})
 }
 
-// In CacheFilesBatch the file upsert dominates, so overlapping sync-info writes
-// are rare there; call the repository directly to overlap them every time.
 func testUpsertSyncInfoBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
@@ -428,11 +407,10 @@ func testUpsertSyncInfoBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 
 		hashes := make(map[string]struct{}, 20)
 		for h := range 20 {
-			hashes[fmt.Sprintf("overlap-hash-%d", h)] = struct{}{}
+			hashes[testHash(fmt.Sprintf("overlap-hash-%d", h))] = struct{}{}
 		}
 
 		require.NoError(t, runOverlapping(ctx, 4, 10, func(ctx context.Context, _, _ int) error {
-			// Built from a map like CacheFilesBatch does, so each call has its own order.
 			infos := make([]SyncInfo, 0, len(hashes))
 			for h := range hashes {
 				infos = append(infos, SyncInfo{InstanceID: 1, TorrentHash: h, LastSyncedAt: time.Now(), FileCount: 1})

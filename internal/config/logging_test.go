@@ -20,8 +20,6 @@ func (failingWriter) Write([]byte) (int, error) {
 	return 0, errors.New("the handle is invalid")
 }
 
-// Without a console, as in qui-tray.exe, stderr is not a valid handle. The log
-// file and the log stream must still get every line.
 func TestLogWriterKeepsFileAndHubWhenStderrFails(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "qui.log")
 	lm := NewLogManager("1.30.0")

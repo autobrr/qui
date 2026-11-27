@@ -28,9 +28,8 @@ export interface ProblemReportIndexer {
 export interface ProblemReportSearchScope {
   torznabIndexers: ProblemReportIndexer[]
   torznabSkipped: ProblemReportIndexer[]
-  /** Why the search asks no Torznab indexer. */
   torznabSkipReason?: string
-  gazelleSites: { site: string; status: CrossSeedGazelleLookupStatus; reason?: CrossSeedGazelleLookupReason }[]
+  gazelleSites: { site: string; status: CrossSeedGazelleLookupStatus; reason?: CrossSeedGazelleLookupReason | "disabled" | "no_api_key" }[]
 }
 
 export type ProblemReportStartedFrom = "menu" | "notice" | "search"
@@ -97,17 +96,25 @@ export interface ProblemReportPayload {
   searchScope?: ProblemReportSearchScope
 }
 
+export type ProblemReportProvider = "github" | "discord"
+
+export type ProblemReportSender =
+  | { anonymous: true }
+  | { anonymous: false; provider: ProblemReportProvider; name: string }
+
+export type ProblemReportSignInState =
+  | { state: "pending" | "done" | "expired" }
+  | { state: "refused"; reason?: string }
+
 export interface SentProblemReport {
   id: string
   submissionId: string
   title: string
   sentAt: string
   status: "received"
-  /** The text after the server removed secrets from it. */
   text: string
 }
 
-/** Where a Problem report stands, as brrbin last answered. */
 export type ProblemReportStatus = "received" | "issue" | "closed"
 
 export interface ListedProblemReport {
@@ -115,10 +122,7 @@ export interface ListedProblemReport {
   title: string
   sentAt: string
   status: ProblemReportStatus
-  /** Present while the status is issue. The URL is empty when brrbin sent no https URL. */
   issue?: { number: number; url: string; closed: boolean }
-  /** Can be present while the status is closed. */
   reason?: string
-  /** When qui last saw the status change. A new report has its sentAt. */
   statusChangedAt: string
 }

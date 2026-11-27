@@ -11,12 +11,9 @@ import type { Category } from "@/types"
 export interface InstanceMetadata {
   categories: Record<string, Category>
   tags: string[]
-  // Set only on the entry that holds the place until the torrent list or the fallback loads the metadata.
   placeholder?: true
 }
 
-// The flag, not the object identity, marks the placeholder: React Query keeps the old object when
-// the new data is deep-equal, for example an instance with no categories and no tags.
 const EMPTY_METADATA: InstanceMetadata = { categories: {}, tags: [], placeholder: true }
 
 const DEFAULT_FALLBACK_DELAY_MS = 400
@@ -25,11 +22,6 @@ interface UseInstanceMetadataOptions {
   fallbackDelayMs?: number
 }
 
-/**
- * Shared hook for fetching instance metadata (categories, tags)
- * This prevents duplicate API calls when multiple components need the same data
- * Note: Counts are now included in the torrents response, so we don't fetch them separately
- */
 export function useInstanceMetadata(instanceId: number, options: UseInstanceMetadataOptions = {}) {
   const queryClient = useQueryClient()
   const queryKey = useMemo(() => ["instance-metadata", instanceId] as const, [instanceId])
@@ -102,10 +94,6 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
       fallbackRef.current.inflight = true
 
       try {
-        // The torrent-list stream normally hydrates this cache. When no stream has
-        // populated it (e.g. add-torrent / RSS / workflow / dir-scan opened before
-        // the torrents view), fetch categories and tags directly too, otherwise those
-        // selectors render permanently empty.
         const [categories, tags] = await Promise.all([
           api.getCategories(instanceId),
           api.getTags(instanceId),

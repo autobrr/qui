@@ -9,22 +9,21 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// lateTorrentSyncManager lists one torrent under its qBittorrent hash, and only
-// after the first lookups miss, as for a torrent that qui has not synced yet.
 type lateTorrentSyncManager struct {
 	*rootlessSavePathSyncManager
 	torrent qbt.Torrent
 	misses  int
 }
 
-func (m *lateTorrentSyncManager) listed(hashes []string) bool {
+func (m *lateTorrentSyncManager) listed(hashes []infohash.Hash) bool {
 	if m.misses > 0 {
 		m.misses--
 		return false
 	}
-	return slices.Contains(hashes, m.torrent.Hash)
+	return slices.ContainsFunc(hashes, func(h infohash.Hash) bool { return h.Is(m.torrent.Hash) })
 }
 
 func (m *lateTorrentSyncManager) GetTorrentRefs(_ context.Context, _ int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
@@ -34,7 +33,7 @@ func (m *lateTorrentSyncManager) GetTorrentRefs(_ context.Context, _ int, filter
 	return nil, nil
 }
 
-func (m *lateTorrentSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (m *lateTorrentSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if m.listed(hashes) {
 		torrent := m.torrent
 		return &torrent, true, nil
@@ -43,8 +42,6 @@ func (m *lateTorrentSyncManager) HasTorrentByAnyHash(_ context.Context, _ int, h
 }
 
 func TestFindAddedTorrent_WaitsForSyncAndUsesQbitHash(t *testing.T) {
-	// A hybrid torrent as qBittorrent 5.1 with libtorrent 2.0.15 lists it: under
-	// the first 40 characters of the v2 hash.
 	v1 := "6fa734f86d0dda275bfd134e84271c0c261f75fe"
 	v2 := "aed4769c0a376d677ff697b66cbf88fea4c1c2b581bbacb4e017db9c324d47a3"
 	listedAs := "aed4769c0a376d677ff697b66cbf88fea4c1c2b5"

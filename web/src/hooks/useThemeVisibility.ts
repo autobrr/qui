@@ -21,11 +21,6 @@ function parseThemeVisibility(raw: string): ThemeVisibility {
   return Object.fromEntries(Object.entries(parsed).filter(([, shown]) => typeof shown === "boolean"))
 }
 
-/**
- * The user's Show and Hide choices for the quick theme pickers, a setter that
- * shows or hides a list of themes in one write, and a setter that replaces all
- * choices at once ({} restores the defaults).
- */
 export function useThemeVisibility(): [
   ThemeVisibility,
   (themes: readonly Theme[], shown: boolean) => void,
@@ -40,7 +35,6 @@ export function useThemeVisibility(): [
     setVisibility((prev) => {
       const next = { ...prev }
       for (const theme of themes) {
-        // Keep only the changes: a choice equal to the default drops its entry.
         if (shown === isThemeShownByDefault(theme)) delete next[theme.id]
         else next[theme.id] = shown
       }

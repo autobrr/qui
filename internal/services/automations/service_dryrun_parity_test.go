@@ -34,17 +34,13 @@ const (
 	parityCheckingHash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 )
 
-// parityFixture is the qBittorrent state that the stub serves.
 type parityFixture struct {
-	torrents map[string]map[string]any
-	files    map[string]qbt.TorrentFiles
-	// sameContent is the cross-seed snapshot: the torrents that share files with each torrent.
+	torrents    map[string]map[string]any
+	files       map[string]qbt.TorrentFiles
 	sameContent map[string][]string
 	localFS     bool
 }
 
-// defaultParityFixture holds one seeded torrent and one torrent in a check, which matches
-// the condition but must not be deleted.
 func defaultParityFixture() parityFixture {
 	return parityFixture{torrents: map[string]map[string]any{
 		parityHash:         {"name": "parity", "ratio": 2, "progress": 1, "size": 10, "state": "stalledUP", "save_path": "/data", "content_path": "/data/parity"},
@@ -62,7 +58,6 @@ func (m parityCrossMatcher) OpenCrossMatchSession(ctx context.Context, instanceI
 	return cannedSession{m.BuildCrossMatchSets(ctx, instanceID, needs)}, nil
 }
 
-// newDryRunParityService boots a Service against a stub qBittorrent that serves the fixture.
 func newDryRunParityService(t *testing.T, fixture parityFixture) (*Service, int) {
 	t.Helper()
 
@@ -80,32 +75,25 @@ func newDryRunParityService(t *testing.T, fixture parityFixture) (*Service, int)
 	return svc, instanceIDs[0]
 }
 
-// stubWrite is one write request a stubQbt received.
 type stubWrite struct {
 	path string
 	form url.Values
 }
 
-// stubQbt is a stub qBittorrent that serves a fixed torrent list and records every write in arrival order.
 type stubQbt struct {
 	url string
 
-	mu       sync.Mutex
-	torrents string            // JSON object keyed by hash, as in sync/maindata
-	files    map[string]string // torrents/files answer by hash; other hashes get no files
-	writes   []stubWrite
-	localFS  bool // the instance has local filesystem access
-	// torrentsAfterAdd replaces torrents on torrents/add, so an export's verification finds the torrent.
+	mu               sync.Mutex
+	torrents         string
+	files            map[string]string
+	writes           []stubWrite
+	localFS          bool
 	torrentsAfterAdd string
-	// refuse makes the stub answer a write with 409 Conflict, as qBittorrent does when it refuses a request.
-	refuse func(path string, form url.Values) bool
-	// webAPIVersion replaces the default Web API version 2.10.0.
-	webAPIVersion string
-	fileReads     int // torrents/files requests
-	// trackers is the sync/maindata trackers map, as JSON.
-	trackers string
-	// trackerInfo is the torrents/info answer, as JSON.
-	trackerInfo string
+	refuse           func(path string, form url.Values) bool
+	webAPIVersion    string
+	fileReads        int
+	trackers         string
+	trackerInfo      string
 }
 
 func newStubQbt(t *testing.T, torrents string) *stubQbt {
@@ -182,14 +170,12 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// recordedWrites returns the writes received so far, in arrival order.
 func (s *stubQbt) recordedWrites() []stubWrite {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Clone(s.writes)
 }
 
-// newStubService boots a Service with one instance per stub, in order, and returns the activity database.
 func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) (*Service, *database.DB, []int) {
 	t.Helper()
 
@@ -260,9 +246,14 @@ func parityTagRule(action models.TagAction) *models.Automation {
 	}
 }
 
-// A manual dry run must report the same torrents the live impact preview shows.
-// Both take the same payload; only service-side state can split them.
 func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
+	const (
+		copyHash      = "1111111111111111111111111111111111111111"
+		sourceHash    = "2222222222222222222222222222222222222222"
+		unrelatedHash = "3333333333333333333333333333333333333333"
+		firstHash     = "4444444444444444444444444444444444444444"
+		secondHash    = "5555555555555555555555555555555555555555"
+	)
 	tests := []struct {
 		name           string
 		fixture        func(t *testing.T) parityFixture
@@ -314,14 +305,14 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "c", "y.mkv"), []byte("unrelated"), 0o600))
 				return parityFixture{
 					torrents: map[string]map[string]any{
-						"source":    {"name": "source", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": dir + "/a", "content_path": dir + "/a/x.mkv"},
-						"copy":      {"name": "copy", "size": 10, "progress": 1, "state": "stalledUP", "save_path": dir + "/b", "content_path": dir + "/b/x.mkv"},
-						"unrelated": {"name": "unrelated", "size": 9, "progress": 1, "state": "stalledUP", "save_path": dir + "/c", "content_path": dir + "/c/y.mkv"},
+						sourceHash:    {"name": "source", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": dir + "/a", "content_path": dir + "/a/x.mkv"},
+						copyHash:      {"name": "copy", "size": 10, "progress": 1, "state": "stalledUP", "save_path": dir + "/b", "content_path": dir + "/b/x.mkv"},
+						unrelatedHash: {"name": "unrelated", "size": 9, "progress": 1, "state": "stalledUP", "save_path": dir + "/c", "content_path": dir + "/c/y.mkv"},
 					},
 					files: map[string]qbt.TorrentFiles{
-						"source":    {{Name: "x.mkv", Size: 10, Progress: 1, Priority: 1}},
-						"copy":      {{Name: "x.mkv", Size: 10, Progress: 1, Priority: 1}},
-						"unrelated": {{Name: "y.mkv", Size: 9, Progress: 1, Priority: 1}},
+						sourceHash:    {{Name: "x.mkv", Size: 10, Progress: 1, Priority: 1}},
+						copyHash:      {{Name: "x.mkv", Size: 10, Progress: 1, Priority: 1}},
+						unrelatedHash: {{Name: "y.mkv", Size: 9, Progress: 1, Priority: 1}},
 					},
 					localFS: true,
 				}
@@ -331,7 +322,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 				rule.Conditions.Delete.IncludeHardlinks = true
 				return rule
 			}(),
-			want: []string{"source", "copy"},
+			want: []string{sourceHash, copyHash},
 		},
 		{
 			name: "keep-files group with an ambiguous content path",
@@ -339,10 +330,10 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 				files := qbt.TorrentFiles{{Name: "pack/01.mkv", Size: 10}}
 				return parityFixture{
 					torrents: map[string]map[string]any{
-						"first":  {"name": "first", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": "/data/pack", "content_path": "/data/pack"},
-						"second": {"name": "second", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": "/data/pack", "content_path": "/data/pack"},
+						firstHash:  {"name": "first", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": "/data/pack", "content_path": "/data/pack"},
+						secondHash: {"name": "second", "tags": "delete", "size": 10, "progress": 1, "state": "stalledUP", "save_path": "/data/pack", "content_path": "/data/pack"},
 					},
-					files: map[string]qbt.TorrentFiles{"first": files, "second": files},
+					files: map[string]qbt.TorrentFiles{firstHash: files, secondHash: files},
 				}
 			},
 			rule: func() *models.Automation {
@@ -350,7 +341,7 @@ func TestApplyRuleDryRun_MatchesPreview(t *testing.T) {
 				rule.Conditions.Delete.GroupID = GroupCrossSeedContentPath
 				return rule
 			}(),
-			want: []string{"first", "second"},
+			want: []string{firstHash, secondHash},
 		},
 		{
 			name: "preserve cross-seeds",

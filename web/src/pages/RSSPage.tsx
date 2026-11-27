@@ -222,7 +222,7 @@ export function RSSPage({
             <div className="flex items-center max-w-40 gap-2">
               <span className="truncate">{inst.name}</span>
               <span
-                className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${inst.connected? "bg-green-500": "bg-red-500"
+                className={`ml-auto h-2 w-2 rounded-full flex-shrink-0 ${inst.connected? "bg-success": "bg-destructive"
                 }`}
               />
             </div>
@@ -350,13 +350,13 @@ export function RSSPage({
               {sseStatus !== "disabled" && isRSSProcessingEnabled && feedsData && Object.keys(feedsData).length > 0 && (
                 <Badge
                   variant="outline"
-                  className={`gap-2 ${sseStatus === "live"? "border-green-500/50 bg-green-500/10 text-green-600 dark:text-green-400": sseStatus === "reconnecting" || sseStatus === "connecting"? "border-yellow-500/50 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400": "border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400"
+                  className={`gap-2 ${sseStatus === "live"? "border-success/50 bg-success/10 text-success": sseStatus === "reconnecting" || sseStatus === "connecting"? "border-warning/50 bg-warning/10 text-warning": "border-destructive/50 bg-destructive/10 text-destructive"
                   }`}
                 >
                   {sseStatus === "connecting" && <Loader2 className="h-3 w-3 animate-spin" />}
                   {sseStatus === "reconnecting" && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {sseStatus === "live" && <span className="h-2 w-2 rounded-full bg-green-500" />}
-                  {sseStatus === "disconnected" && <span className="h-2 w-2 rounded-full bg-red-500" />}
+                  {sseStatus === "live" && <span className="h-2 w-2 rounded-full bg-success" />}
+                  {sseStatus === "disconnected" && <span className="h-2 w-2 rounded-full bg-destructive" />}
                   <span className="text-xs">
                     {sseStatus === "live"
                       ? t("sseStatus.live")
@@ -1452,12 +1452,12 @@ function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove
             {name}
           </span>
           {rule.useRegex && (
-            <Badge variant="outline" className="h-5 px-1 text-[10px]">
+            <Badge variant="outline" className="h-5 px-1 text-10">
               <Regex className="h-3 w-3" />
             </Badge>
           )}
           {rule.smartFilter && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{t("rules.smartBadge")}</Badge>
+            <Badge variant="secondary" className="h-5 px-1.5 text-10">{t("rules.smartBadge")}</Badge>
           )}
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -90,11 +90,6 @@ func TestParser_EnrichesHDRAliases(t *testing.T) {
 func TestParser_HandlesInvalidUTF8WithoutPanicking(t *testing.T) {
 	t.Parallel()
 
-	// "á" encoded as Latin-1 (0xe1) rather than UTF-8 (0xc3 0xa1) is invalid UTF-8.
-	//
-	// Position matters: a bad byte landing in the parsed group/site token reaches
-	// trailingTokenRegexes, where regexp.MustCompile rejects invalid-UTF-8 patterns and
-	// panics. A bad byte in the title is only carried through. Cover both.
 	tests := []struct {
 		name  string
 		input string
@@ -159,7 +154,6 @@ func TestTrimTrailingGroupOrSite_RemovesTrailingTokenWithoutExtension(t *testing
 	require.Equal(t, "Movie.2024.2160p.BluRay.x265", trimmed)
 }
 
-// rls reports "S00E02-E05" as episode 2 and drops the range.
 func TestParser_EpisodeRangeBecomesPack(t *testing.T) {
 	t.Parallel()
 
@@ -205,8 +199,6 @@ func TestParser_EpisodeRangeBecomesPack(t *testing.T) {
 	}
 }
 
-// The Audio.Description row lives in the fork's taginfo.csv. It stopped loading
-// once when the module path changed under a replace directive, so pin it here.
 func TestParser_AudioDescriptionIsOtherTag(t *testing.T) {
 	t.Parallel()
 
@@ -236,7 +228,6 @@ func TestIsEpisodeRange(t *testing.T) {
 	require.True(t, IsEpisodeRange(parser.Parse("[Grp] Show Name - 01 - 12 [1080p]")))
 }
 
-// regression: #3286
 func TestParser_ReadsWebSourceAfterUHDAndAnotherTag(t *testing.T) {
 	t.Parallel()
 
@@ -274,11 +265,9 @@ func TestParser_KeepsATagListOfTheExactSize(t *testing.T) {
 	release := NewDefaultParser().Parse("Harbor.Watch.S01E02.The.Quiet.Tide.2160p.WEB-DL.DDP5.1.DV.HDR.H.265-GRP")
 	tags := release.Tags()
 	require.NotEmpty(t, tags)
-	// A copy of the tags can get room for some more, up to the next allocation size.
 	require.LessOrEqual(t, cap(tags), len(tags)+len(tags)/8+1)
 }
 
-// regression: #4289
 func TestParser_ReadsAKGListingAsItsDownloadName(t *testing.T) {
 	t.Parallel()
 
@@ -302,7 +291,6 @@ func TestParser_ReadsAKGListingAsItsDownloadName(t *testing.T) {
 	}
 }
 
-// regression: #4289
 func TestParser_KeepsABracketTagThatIsNoKGDownloadName(t *testing.T) {
 	t.Parallel()
 

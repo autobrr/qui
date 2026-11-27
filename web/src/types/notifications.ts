@@ -14,7 +14,6 @@ export interface NotificationTarget {
   name: string
   url: string
   enabled: boolean
-  /** Null when the database holds no list, which only a hand edit of the row makes: it gets each event except the system notice. */
   eventTypes: string[] | null
   createdAt: string
   updatedAt: string
@@ -24,7 +23,6 @@ export interface NotificationTargetRequest {
   name: string
   url: string
   enabled: boolean
-  /** Left out, the server keeps the list that the target has. */
   eventTypes?: string[]
 }
 

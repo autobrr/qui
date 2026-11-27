@@ -144,6 +144,37 @@
       "submit": "변경 사항 저장",
       "saving": "저장 중..."
     },
+    "templates": {
+      "title": "템플릿",
+      "help": "아래 권한을 도구에 필요한 권한으로 바꾸고, 필요하면 인스턴스 제한도 지웁니다. 이후에도 각 항목을 바꿀 수 있습니다.",
+      "pick": "템플릿 선택",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Cross-Seed 및 시즌 팩 웹훅 (다운로드 클라이언트 제외)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "인스턴스 목록 및 전송 합계 (dashbrr 0.5.0 이상)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "qui 위젯. 위젯에 instance를 설정한 경우에만 키를 인스턴스로 제한하세요"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "디렉터리 스캐너 웹훅 전용; 다운로드 클라이언트는 클라이언트 프록시 사용"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "토렌트를 추가하는 브라우저 확장 프로그램"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (Cross-Seed)",
+          "description": "토렌트 추가, 수동 매칭, 시즌 팩 조립"
+        }
+      }
+    },
     "permissions": {
       "title": "권한",
       "help": "쓰기에는 읽기와 실행이 포함됩니다. 설정에 자격 증명이 있으므로 실행에는 읽기가 포함되지 않습니다.",

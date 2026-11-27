@@ -181,14 +181,13 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 	run.TorrentsWithCrossSeeds = 1
 	run.CrossSeedsAdded = 1
 	run.Results = []models.CrossSeedSearchResult{{
-		TorrentHash:  "abc123",
-		TorrentName:  "Source.Release",
-		IndexerName:  "Indexer",
-		ReleaseTitle: "Target.Release",
-		Status:       models.CrossSeedSearchResultStatusAdded,
-		Message:      "added via Indexer",
-		ProcessedAt:  now,
-		// A routed add names the Cross-seed instance that received it.
+		TorrentHash:           "abc123",
+		TorrentName:           "Source.Release",
+		IndexerName:           "Indexer",
+		ReleaseTitle:          "Target.Release",
+		Status:                models.CrossSeedSearchResultStatusAdded,
+		Message:               "added via Indexer",
+		ProcessedAt:           now,
 		CrossSeedInstanceID:   7,
 		CrossSeedInstanceName: "Seeds",
 	}}
@@ -337,11 +336,6 @@ func TestCrossSeedStore_FeedItems(t *testing.T) {
 	assert.Equal(t, int64(1), removed)
 }
 
-// Regression test for discussion #2375: MarkFeedItem used to rewrite
-// last_seen_at with a fresh, millisecond-precision timestamp on every poll,
-// which defeats Postgres HOT updates on an indexed column that changes on
-// every write. Truncating to day precision means same-day polls write an
-// identical value, so only the first poll of a new day touches the index.
 func TestCrossSeedStore_MarkFeedItemTruncatesLastSeenToDayPrecision(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
 	key := make([]byte, 32)
@@ -374,8 +368,6 @@ func TestCrossSeedStore_MarkFeedItemTruncatesLastSeenToDayPrecision(t *testing.T
 	first := readLastSeen()
 	assert.True(t, first.Equal(base.Truncate(24*time.Hour)), "expected last_seen_at truncated to day precision, got %v", first)
 
-	// A second poll later the same UTC day must write the identical value so
-	// Postgres can treat the update as HOT-eligible.
 	require.NoError(t, store.MarkFeedItem(ctx, &models.CrossSeedFeedItem{
 		GUID:       guid,
 		IndexerID:  indexerID,
@@ -387,7 +379,6 @@ func TestCrossSeedStore_MarkFeedItemTruncatesLastSeenToDayPrecision(t *testing.T
 	second := readLastSeen()
 	assert.True(t, second.Equal(first), "expected same-day poll to leave last_seen_at unchanged, got %v vs %v", second, first)
 
-	// A poll on the next day must advance last_seen_at.
 	require.NoError(t, store.MarkFeedItem(ctx, &models.CrossSeedFeedItem{
 		GUID:       guid,
 		IndexerID:  indexerID,
@@ -417,7 +408,7 @@ func runTouchFeedItemTests(t *testing.T, newDB func(testing.TB, string) *databas
 	tests := []struct {
 		name         string
 		storedSeen   time.Time
-		legacy       bool // stored untruncated, as MarkFeedItem wrote it before #2456
+		legacy       bool
 		touchAt      time.Time
 		wantSeen     time.Time
 		wantRewrites bool
@@ -452,9 +443,6 @@ func runTouchFeedItemTests(t *testing.T, newDB func(testing.TB, string) *databas
 				require.NoError(t, err)
 			}
 
-			// Postgres writes a new row version, and a new xmin, even for an
-			// update that rewrites identical values. SQLite has no row version,
-			// so a trigger counts updates instead.
 			if !postgres {
 				for _, stmt := range []string{
 					"CREATE TABLE touch_writes (n INTEGER NOT NULL)",
@@ -483,7 +471,6 @@ func runTouchFeedItemTests(t *testing.T, newDB func(testing.TB, string) *databas
 			assert.True(t, seen.Equal(tt.wantSeen), "last_seen_at = %v, want %v", seen, tt.wantSeen)
 			assert.Equal(t, tt.wantRewrites, rowVersion() != versionBefore, "row rewritten")
 
-			// The same cutoff the automation run passes after the poll.
 			cutoff := tt.touchAt.UTC().Truncate(24 * time.Hour).Add(-30 * 24 * time.Hour)
 			removed, err := store.PruneFeedItems(ctx, cutoff)
 			require.NoError(t, err)
@@ -492,9 +479,6 @@ func runTouchFeedItemTests(t *testing.T, newDB func(testing.TB, string) *databas
 	}
 }
 
-// A rule stored before a rule could carry several categories decodes with none.
-// It must not reach the API, where a nil list marshals to null and breaks a
-// client that expects the array the schema promises.
 func TestCrossSeedStore_SettingsDropsLegacySingleCategoryRules(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
 	key := make([]byte, 32)
@@ -511,7 +495,6 @@ func TestCrossSeedStore_SettingsDropsLegacySingleCategoryRules(t *testing.T) {
 	_, err = store.UpsertSettings(ctx, settings)
 	require.NoError(t, err)
 
-	// Rewrite the column in the shape the previous release wrote.
 	_, err = db.ExecContext(ctx,
 		`UPDATE cross_seed_settings SET category_mapping_rules = ?`,
 		`[{"category":"ebooks","contentType":"book"},{"categories":["films"],"contentType":"movie"}]`)

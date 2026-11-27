@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/alexedwards/scs/v2"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -75,9 +76,6 @@ import (
 func main() {
 	config.InitDefaultLogger(buildinfo.Version)
 
-	// Honor the UMASK env var before any command creates files/dirs, so the
-	// process umask controls the final permissions of content directories
-	// (see discussion #1704). No-op when UMASK is unset or on Windows.
 	applyUmask()
 
 	if buildinfo.Tray == "true" {
@@ -129,7 +127,6 @@ func RunServeCommand() *cobra.Command {
 
 	command.Run = func(cmd *cobra.Command, args []string) {
 		if buildinfo.Tray != "true" {
-			// On Windows the first process only supervises; the child returns here.
 			update.Supervise(nil)
 			NewApplication(configDir, dataDir, logPath, pprofFlag).runServer()
 			return
@@ -139,10 +136,7 @@ func RunServeCommand() *cobra.Command {
 		app.tray = make(chan tray.Menu, 1)
 		app.quit = make(chan struct{}, 1)
 		go app.runServer()
-		// The tray library needs the main goroutine's OS thread.
 		tray.Run(<-app.tray)
-		// Run returns after Remove, while the serve loop still shuts down. The
-		// serve loop sets the exit code: 75 asks the supervisor for a Restart.
 		select {}
 	}
 
@@ -515,10 +509,8 @@ type Application struct {
 	dataDir   string
 	logPath   string
 	pprofFlag bool
-	// tray receives the Tray menu once qui listens, and quit carries the Tray's
-	// Quit. Both are nil outside qui-tray.exe.
-	tray chan tray.Menu
-	quit chan struct{}
+	tray      chan tray.Menu
+	quit      chan struct{}
 }
 
 func NewApplication(configDir, dataDir, logPath string, pprofFlag bool) *Application {
@@ -549,7 +541,6 @@ func (app *Application) runServer() {
 		cfg.Config.PprofEnabled = true
 	}
 	if app.tray != nil {
-		// qui-tray.exe has no console, so it keeps a log file for bug reports.
 		cfg.SetDefaultLogPath("log/qui.log")
 	}
 
@@ -597,8 +588,6 @@ func (app *Application) runServer() {
 	}
 	peerClientIconService.SetFetchEnabled(cfg.Config.TrackerIconsFetchEnabled)
 
-	// Ensure the custom themes directory exists so users have a place to drop
-	// sideloaded *.css files. Non-fatal: the themes handler also ensures lazily.
 	if themesDir, err := cfg.EnsureCustomThemesDir(); err != nil {
 		log.Warn().Err(err).Str("dir", themesDir).Msg("Failed to create custom themes directory")
 	}
@@ -697,7 +686,6 @@ func (app *Application) runServer() {
 	go lowdisk.New(db, systemNotices).Run(lowDiskCtx)
 	transferHistory := transferhistory.New(db, trackerCustomizationStore, systemNotices)
 	transferHistoryAdapter := transferhistory.NewAdapter(transferHistory, syncManager)
-	transferHistoryAdapter.SetHelperTorrents(transfers)
 	clientPool.AddSyncEventSink(transferHistoryAdapter)
 	syncManager.SetDeleteNoter(transferHistoryAdapter)
 	liveSamples := livesamples.New(clientPool)
@@ -743,8 +731,8 @@ func (app *Application) runServer() {
 		jackett.WithSearchCache(torznabSearchCache, jackett.SearchCacheConfig{
 			TTL: cacheTTL,
 		}),
-		jackett.WithSearchHistory(0),   // Use default capacity (500 entries)
-		jackett.WithIndexerOutcomes(0), // Use default capacity (1000 entries)
+		jackett.WithSearchHistory(0),
+		jackett.WithIndexerOutcomes(0),
 	)
 	log.Info().Msg("Torznab/Jackett service initialized")
 
@@ -755,10 +743,6 @@ func (app *Application) runServer() {
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
 	externalProgramService.SetHelperTorrents(transfers)
 
-	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
-	// backups, automations, indexer activity, etc.) onto the SSE stream so the
-	// frontend can stop polling those endpoints. Background services publish to it;
-	// the StreamManager (wired via api.Dependencies) forwards events to clients.
 	activityHub := activity.NewHub()
 	defer activityHub.Close()
 
@@ -770,9 +754,6 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize cross-seed store")
 	}
 
-	// Runs once the four credential stores exist rather than next to each one.
-	// Placement is free: consumers built earlier decrypt either format through
-	// the legacy key, and nothing before this point writes a credential column.
 	rewriteLegacyCredentials(context.Background(), []legacyCredentialStore{
 		{table: "instances", store: instanceStore},
 		{table: "arr_instances", store: arrInstanceStore},
@@ -825,7 +806,7 @@ func (app *Application) runServer() {
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
 	automationService.SetCrossSeedRoutes(crossSeedRoutes)
-	automationService.SetHeldTorrents(transfers)
+	automationService.SetClaimedTorrents(transfers)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
@@ -862,7 +843,6 @@ func (app *Application) runServer() {
 	})
 	automationService.SetExportRunner(transferService)
 	automationService.SetTransferRunner(transferService)
-	// qui's own Share tracker listens only while a Share on it is active.
 	shareService := share.NewService(share.Deps{
 		Store:           share.NewStore(db),
 		Settings:        share.NewSettingsStore(db),
@@ -879,11 +859,11 @@ func (app *Application) runServer() {
 	go shareService.Run(shareCtx)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		notifyTorrentCompleted(ctx, syncManager, notificationService, transfers, instanceID, torrent)
+		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 	}, crossSeedService.HandleTorrentCompletion)
 
 	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrents []*qbt.Torrent) {
-		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, transfers, instanceID, torrents, torrentAddedNotificationDelay)
+		notifyTorrentsAddedAfter(ctx, syncManager, notificationService, instanceID, torrents, torrentAddedNotificationDelay)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -920,7 +900,6 @@ func (app *Application) runServer() {
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
 	backupService.SetActivityPublisher(activityHub)
-	backupService.SetHelperTorrents(transfers)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -955,8 +934,6 @@ func (app *Application) runServer() {
 				connCtx, connCancel := context.WithTimeout(context.Background(), 60*time.Second)
 				defer connCancel()
 
-				// Trigger connection by trying to get client
-				// This will populate the pool for GetClientOffline calls
 				if _, err := clientPool.GetClient(connCtx, instanceID); err != nil {
 					log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance on startup")
 				}
@@ -1089,11 +1066,10 @@ func (app *Application) runServer() {
 		ShareService:                     shareService,
 	})
 
-	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
-	// Use a short timeout so a locked DB can't hang startup.
 	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer reconcileCancel()
 	crossSeedService.ReconcileInterruptedRuns(reconcileCtx)
+	crossSeedService.StartHeldTitles(automationCtx, syncManager, clientPool, crossseed.NewArrAlternateTitles(arrService))
 
 	errorChannel := make(chan error)
 	serverReady := make(chan struct{}, 1)
@@ -1135,9 +1111,6 @@ func (app *Application) runServer() {
 	}
 
 	if cfg.Config.PprofEnabled {
-		// Bind to loopback by default so pprof never collides with another listener
-		// sharing the network namespace (e.g. a Tailscale sidecar already serving
-		// :6060) and is not exposed on a wildcard address. Override with QUI__PPROF_ADDR.
 		pprofAddr := cfg.Config.PprofAddr
 		if pprofAddr == "" {
 			pprofAddr = "127.0.0.1:6060"
@@ -1173,8 +1146,6 @@ func (app *Application) runServer() {
 			log.Error().Err(err).Msg("failed to write the transfer history at shutdown")
 		}
 
-		// Deferred so it also runs when Shutdown returns an error. Stop
-		// ignores snapshots a request still hands in.
 		defer folderCleanup.Stop()
 		if err := httpServer.Shutdown(ctx); err != nil {
 			return err
@@ -1217,7 +1188,6 @@ func (a *instanceListerAdapter) ListInstanceIDs(ctx context.Context) ([]int, err
 	if err != nil {
 		return nil, fmt.Errorf("list instances: %w", err)
 	}
-	// Only return active instances - disabled ones can't be queried for current hashes
 	ids := make([]int, 0, len(instances))
 	for _, inst := range instances {
 		if inst.IsActive {
@@ -1232,7 +1202,7 @@ type torrentHashAdapter struct {
 }
 
 func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error) {
-	torrents, err := a.syncManager.GetAllTorrentRefs(ctx, instanceID)
+	torrents, err := a.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{WithHelperTorrents: true})
 	if err != nil {
 		return nil, fmt.Errorf("get torrents: %w", err)
 	}
@@ -1243,8 +1213,6 @@ func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID
 	return hashes, nil
 }
 
-// legacyCredentialRewriter is implemented by every store that seals credentials
-// with the key derived from sessionSecret.
 type legacyCredentialRewriter interface {
 	RewriteLegacyCredentials(ctx context.Context) (int, error)
 }
@@ -1254,9 +1222,6 @@ type legacyCredentialStore struct {
 	store legacyCredentialRewriter
 }
 
-// rewriteLegacyCredentials moves stored credentials to the versioned ciphertext
-// format. A failure leaves readable legacy rows behind, so it logs the rows that
-// did commit and lets startup continue.
 func rewriteLegacyCredentials(ctx context.Context, stores []legacyCredentialStore) {
 	for _, s := range stores {
 		rewritten, err := s.store.RewriteLegacyCredentials(ctx)

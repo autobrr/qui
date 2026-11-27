@@ -5,6 +5,7 @@
 
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
+import { GAZELLE_SITES_KEY } from "@/lib/site-pick"
 import type { Category, CrossSeedAutomationSettingsPatch } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useMemo } from "react"
@@ -41,7 +42,6 @@ export function useCrossSeedSearchSettings() {
   })
 }
 
-/** Saves one card's fields. The PATCH keeps every field the payload leaves out. */
 export function usePatchCrossSeedSettings() {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
@@ -55,6 +55,7 @@ export function usePatchCrossSeedSettings() {
       }
       queryClient.setQueryData(CROSS_SEED_SETTINGS_KEY, data)
       void queryClient.refetchQueries({ queryKey: CROSS_SEED_STATUS_KEY })
+      void queryClient.invalidateQueries({ queryKey: GAZELLE_SITES_KEY })
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -66,7 +67,6 @@ export function useCrossSeedSearchStatus() {
   return useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
-    // Poll only while a search is actively running for smooth live progress; events drive idle transitions.
     refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
   })
 }
@@ -84,17 +84,8 @@ export function useActiveInstances() {
   return { instances, activeInstances, activeInstanceIds }
 }
 
-export function useEnabledIndexers() {
-  const { data: indexers } = useQuery({
-    queryKey: ["torznab", "indexers"],
-    queryFn: () => api.listTorznabIndexers(),
-  })
-  return useMemo(() => (indexers ?? []).filter(indexer => indexer.enabled), [indexers])
-}
-
 type AggregatedInstanceMetadata = { categories: Record<string, Category>; tags: string[] }
 
-/** Categories and tags merged across the given instances, for source filter pickers. */
 export function useAggregatedInstanceMetadata(instanceIds: number[]) {
   return useQuery({
     queryKey: ["cross-seed", "instance-metadata", instanceIds],

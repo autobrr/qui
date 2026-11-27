@@ -8,12 +8,10 @@ import { cn } from "@/lib/utils"
 
 interface ThemeThumbnailProps {
   palette: ThemeThumbnailPalette
-  /** compact draws the picture as one element with fewer details, for a list of many small pictures. */
   detail?: "full" | "compact"
   className?: string
 }
 
-// The parts of the compact picture, top layer first: [color, width and height, position], in percent of the picture.
 const COMPACT_LAYERS = [
   ["primary", "16% 8%", "4.8% 12.8%"],
   ["primary", "40% 8%", "60% 78%"],
@@ -22,7 +20,6 @@ const COMPACT_LAYERS = [
   ["sidebar", "24% 100%", "0 0"],
 ] as const
 
-/** A small picture of the qui layout (sidebar, torrent list, progress bar) in the colors of one theme. */
 export function ThemeThumbnail({ palette, detail = "full", className }: ThemeThumbnailProps) {
   const frame = cn("block aspect-[16/10] w-full overflow-hidden rounded-md border", className)
 
@@ -42,13 +39,11 @@ export function ThemeThumbnail({ palette, detail = "full", className }: ThemeThu
         backgroundRepeat: "no-repeat",
       }
       : {
-        // A locked theme sends only its accent colors, so it shows them as stripes.
         backgroundImage: `linear-gradient(to right, ${palette.primary ?? "var(--muted)"} 0 33.4%, ${palette.secondary ?? "var(--muted)"} 33.4% 66.7%, ${palette.accent ?? "var(--muted)"} 66.7%)`,
       }
     return <span aria-hidden="true" className={frame} style={style} />
   }
 
-  // A locked theme sends only its accent colors, so it shows them as stripes.
   if (!palette.background) {
     return (
       <span aria-hidden="true" className={cn(frame, "flex")}>

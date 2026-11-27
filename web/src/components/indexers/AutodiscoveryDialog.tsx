@@ -41,7 +41,6 @@ const EMPTY_MANUAL: ManualValues = { baseUrl: DEFAULT_URL, apiKey: "", basicAuth
 
 type ManualErrors = Partial<Record<"baseUrl" | "apiKey" | "basicUsername" | "basicPassword", string>>
 
-/** The server and the credentials of one discovery. The import reuses them. */
 interface DiscoveryRequest {
   baseUrl: string
   apiKey: string
@@ -72,7 +71,6 @@ function isAbsoluteUrl(value: string) {
   }
 }
 
-/** Pairs each discovered indexer with the saved indexer that an import updates, if one matches. */
 function matchDiscovered(discovered: readonly JackettIndexer[], existing: readonly TorznabIndexer[], baseUrl: string): DiscoveredIndexer[] {
   return discovered.flatMap((indexer, rowIndex) => {
     const id = indexer.id.trim()
@@ -91,7 +89,6 @@ function matchDiscovered(discovered: readonly JackettIndexer[], existing: readon
   })
 }
 
-/** Finds the indexers of a Jackett or Prowlarr server, then imports the ones that the user selects. */
 export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDialogProps) {
   const { t } = useTranslation("settings")
   const savedConnections = deriveSavedConnections(indexers)
@@ -101,7 +98,6 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
   const [discovery, setDiscovery] = useState<Discovery | null>(null)
   const [pending, setPending] = useState(false)
   const inputs = useRef<Partial<Record<keyof ManualErrors, HTMLInputElement | null>>>({})
-  // Without saved connections, the manual fields are the only way in.
   const manual = savedConnections.length === 0 || source === "manual"
   const connection = typeof source === "object" ? source : null
 
@@ -136,7 +132,6 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
   }
 
   const discover = async () => {
-    // A saved connection sends no key: the server uses the key of the source indexer.
     const request = connection
       ? { baseUrl: normalizeBaseUrl(connection.baseUrl), apiKey: "", sourceId: connection.sourceIndexerId }
       : manualRequest()
@@ -185,10 +180,8 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
       try {
         let warnings: string[] | undefined
         if (indexer.existing) {
-          // The update leaves out enabled, so the indexer stays on or off as the user set it.
           const data: TorznabIndexerUpdate = {
             base_url: request.baseUrl,
-            // An empty key with a source copies the credentials of the saved connection.
             api_key: request.apiKey,
             source_indexer_id: request.sourceId,
             backend,
@@ -273,7 +266,7 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
           autoCapitalize="off"
           spellCheck={false}
           placeholder={t("indexers.autodiscovery.placeholders.indexerUrl")}
-          className="font-mono text-[13px]"
+          className="font-mono text-13"
         />
       </Field>
       <Field label={t("indexers.autodiscovery.labels.apiKey")} error={errors.apiKey}>
@@ -378,7 +371,7 @@ function SavedConnectionPicker({ connections, selected, onSelect }: SavedConnect
                 aria-pressed={active}
                 onClick={() => onSelect(connection)}
                 className={cn(
-                  "flex min-h-14 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  "flex min-h-14 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50",
                   active && "border-primary bg-accent/50"
                 )}
               >
@@ -386,7 +379,7 @@ function SavedConnectionPicker({ connections, selected, onSelect }: SavedConnect
                   <Server className="size-4" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-mono text-[13px] [overflow-wrap:anywhere] pointer-fine:truncate">{connection.baseUrl}</span>
+                  <span className="block font-mono text-13 [overflow-wrap:anywhere] pointer-fine:truncate">{connection.baseUrl}</span>
                   <span className="block text-xs text-muted-foreground">
                     {t(`indexers.dialog.backends.${connection.backend}`)} · {t("indexers.autodiscovery.savedConnections.indexerCount", { count: connection.indexerCount })}
                   </span>

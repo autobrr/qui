@@ -11,7 +11,6 @@ import { useTranslation } from "react-i18next"
 import { openSupport } from "./open"
 import { setReminderOff, setShortcutHidden, useSupportReminder } from "./reminder"
 
-/** The Support qui section of the Application tab. It brings back the heart and the reminder, and opens the dialog without the heart. */
 export function SupportSettings() {
   const { t } = useTranslation("settings")
   const { settled, isSupporter, shortcutHidden, reminderOff } = useSupportReminder()

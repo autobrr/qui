@@ -144,6 +144,37 @@
       "submit": "Uložit změny",
       "saving": "Ukládání..."
     },
+    "templates": {
+      "title": "Šablona",
+      "help": "Nahradí oprávnění níže tím, co nástroj potřebuje, a podle potřeby vymaže omezení instancí. Poté můžete změnit jakékoli pole.",
+      "pick": "Vybrat šablonu",
+      "items": {
+        "autobrr": {
+          "name": "autobrr",
+          "description": "Webhooky pro křížové sdílení a sezónní balíčky (ne klient)"
+        },
+        "dashbrr": {
+          "name": "dashbrr",
+          "description": "Seznam instancí a součty přenosů (dashbrr 0.5.0 nebo novější)"
+        },
+        "homepage": {
+          "name": "Homepage",
+          "description": "Widget qui. Omezte klíč na instanci, jen když widget nastavuje instance"
+        },
+        "arrDirScan": {
+          "name": "Sonarr, Radarr, Lidarr, Readarr",
+          "description": "Jen webhook skenovače adresářů; klienti používají Klient proxy"
+        },
+        "quiExtension": {
+          "name": "qui-extension",
+          "description": "Rozšíření prohlížeče pro přidávání torrentů"
+        },
+        "quiExtensionCrossSeed": {
+          "name": "qui-extension (křížové sdílení)",
+          "description": "Přidávání torrentů, ruční shoda a sestavení sezónních balíčků"
+        }
+      }
+    },
     "permissions": {
       "title": "Oprávnění",
       "help": "Zápis zahrnuje čtení a spuštění. Spuštění nezahrnuje čtení, protože nastavení obsahuje přihlašovací údaje.",

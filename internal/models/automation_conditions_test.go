@@ -46,7 +46,6 @@ func TestActionConditionsConditions(t *testing.T) {
 		{Path: "/conditions/category/condition", Enabled: true},
 		{Path: "/conditions/move/condition", Enabled: true},
 		{Path: "/conditions/externalProgram/condition", Enabled: true},
-		// AutoManagement.Enabled is the ATM value the action sets, so the action counts as enabled.
 		{Path: "/conditions/autoManagement/condition", Enabled: true, Condition: ac.AutoManagement.Condition},
 		{Path: "/conditions/exportToInstance/condition", Enabled: true},
 		{Path: "/conditions/transferToInstance/condition", Condition: ac.TransferToInstance.Condition},

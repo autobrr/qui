@@ -20,7 +20,7 @@ import (
 const (
 	tvdbBaseURL       = "https://api4.thetvdb.com/v4"
 	tvdbTokenBuffer   = 24 * time.Hour
-	tvdbTokenLifetime = 30 * 24 * time.Hour // TVDB tokens are valid ~30 days
+	tvdbTokenLifetime = 30 * 24 * time.Hour
 )
 
 type tvdbProvider struct {

@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type seasonPackHandlerInstanceStore struct {
@@ -85,7 +86,7 @@ func (*seasonPackHandlerSyncManager) ExportTorrent(context.Context, int, string)
 	return nil, "", "", errors.New("not implemented")
 }
 
-func (*seasonPackHandlerSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (*seasonPackHandlerSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -165,8 +166,6 @@ func createSeasonPackHandlerTorrent(t *testing.T, rootName string, files []strin
 			Length: int64(len(content)),
 		})
 	}
-	// Order files by full path, the shape every real torrent-creation tool
-	// produces.
 	slices.SortFunc(info.Files, func(a, b metainfo.FileInfo) int {
 		return strings.Compare(strings.Join(a.Path, "/"), strings.Join(b.Path, "/"))
 	})
@@ -187,9 +186,6 @@ func createSeasonPackHandlerTorrent(t *testing.T, rootName string, files []strin
 func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	packFile := "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"
-	// Single-file pack: an unmatched extra like notes.txt would be a pending
-	// file sharing a piece with the episode, and the piece-boundary safety
-	// check would fail assembly before the AddTorrent call under test.
 	torrentData := createSeasonPackHandlerTorrent(t, packName, []string{packFile})
 
 	metaBytes, err := base64.StdEncoding.DecodeString(torrentData)
@@ -206,9 +202,6 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 		HardlinkBaseDir:          t.TempDir(),
 	}
 
-	// The episode must exist on disk with the pack file's exact size, on the
-	// same filesystem as the hardlink base dir, so assembly succeeds and the
-	// apply reaches AddTorrent.
 	episodePath := filepath.Join(t.TempDir(), "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv")
 	require.NoError(t, os.WriteFile(episodePath, make([]byte, meta.Files[0].Size), 0o600))
 
@@ -270,6 +263,7 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 func TestAutobrrApplyAcceptsOptionalAnnouncementName(t *testing.T) {
 	instance := &models.Instance{ID: 8, Name: "primary", IsActive: true}
 	svc := &crossseed.Service{}
+	testutil.SetUnexportedField(t, svc, "injection", svc)
 	testutil.SetUnexportedField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
 	testutil.SetUnexportedField(t, svc, "syncManager", &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}})
 	testutil.SetUnexportedField(t, svc, "releaseCache", crossseed.NewReleaseCache())

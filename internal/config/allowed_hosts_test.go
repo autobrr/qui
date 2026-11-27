@@ -65,6 +65,7 @@ func TestAllowedHostsRequiresRestart(t *testing.T) {
 			require.NoError(t, os.WriteFile(path, []byte(`allowedHosts = ["qui.test"]`), 0o600))
 			cfg, err := New(path)
 			require.NoError(t, err)
+			t.Cleanup(cfg.StopWatching)
 			reloaded := make(chan []string, 1)
 			cfg.RegisterReloadListener(func(conf *domain.Config) {
 				select {
@@ -86,5 +87,5 @@ func TestAllowedHostsRequiresRestart(t *testing.T) {
 func TestWithLocalHosts(t *testing.T) {
 	hosts := withLocalHosts([]string{"qui.test", "localhost"})
 	require.Equal(t, []string{"qui.test", "localhost", "127.0.0.1", "::1"}, hosts[:4])
-	require.LessOrEqual(t, len(hosts), 5) // the machine hostname, when valid
+	require.LessOrEqual(t, len(hosts), 5)
 }

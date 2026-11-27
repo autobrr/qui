@@ -44,8 +44,8 @@ func TestBuildGivesTheHelperItsOwnInfoHash(t *testing.T) {
 			helper, err := helpertorrent.Build(original, []string{"Some.Movie.2024.mkv"}, "salt-1")
 			require.NoError(t, err)
 
-			assert.NotEqual(t, infoHashOf(t, original), helper.InfoHash)
-			assert.Equal(t, infoHashOf(t, helper.TorrentFile), helper.InfoHash)
+			assert.NotEqual(t, infoHashOf(t, original), helper.InfoHash.String())
+			assert.Equal(t, infoHashOf(t, helper.TorrentFile), helper.InfoHash.String())
 			assert.Equal(t, int64(1), decodeDict(t, helper.TorrentFile)["info"].(map[string]any)["private"])
 		})
 	}
@@ -280,6 +280,7 @@ func TestBuildRefusesInputThatGivesAWrongHelper(t *testing.T) {
 		{name: "Windows separator", fileNames: []string{"Some.Show.S01/E01.mkv", `Some.Show.S01\E02.mkv`}, salt: "salt-1"},
 		{name: "Windows drive", fileNames: []string{"Some.Show.S01/E01.mkv", "C:/E02.mkv"}, salt: "salt-1"},
 		{name: "empty folder name", fileNames: []string{"Some.Show.S01/E01.mkv", "Some.Show.S01//E02.mkv"}, salt: "salt-1"},
+		{name: "dot as a file name", fileNames: []string{"Some.Show.S01/E01.mkv", "."}, salt: "salt-1"},
 		{name: "no salt", fileNames: []string{"Some.Show.S01/E01.mkv", "Some.Show.S01/E02.mkv"}, salt: ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -311,9 +312,6 @@ func encodeTorrent(t *testing.T, torrent map[string]any) []byte {
 	return data
 }
 
-// placedFileNames returns where qBittorrent puts each file of the helper,
-// relative to the save path, when it adds the helper with the helper's content
-// layout. It follows TorrentInfo and Path::stripRootFolder in qBittorrent.
 func placedFileNames(t *testing.T, helper helpertorrent.Helper) []string {
 	t.Helper()
 	info := decodeInfo(t, helper.TorrentFile)

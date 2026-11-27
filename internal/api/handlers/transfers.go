@@ -21,8 +21,6 @@ import (
 	"github.com/autobrr/qui/internal/services/transfer"
 )
 
-// RuleReader reads an automation rule, to name the rule that started a
-// Transfer.
 type RuleReader interface {
 	Get(ctx context.Context, instanceID, id int) (*models.Automation, error)
 }
@@ -37,7 +35,6 @@ func NewTransfersHandler(service *transfer.Service, store *transfer.Store, rules
 	return &TransfersHandler{service: service, store: store, rules: rules}
 }
 
-// Routes adds the routes below /api/transfers.
 func (h *TransfersHandler) Routes(r chi.Router) {
 	r.Post("/", h.Start)
 	r.Get("/", h.List)
@@ -65,9 +62,6 @@ type startTransferResponse struct {
 	ID int64 `json:"id"`
 }
 
-// Start starts the Transfer of one torrent. It answers before the copy
-// starts.
-// POST /api/transfers
 func (h *TransfersHandler) Start(w http.ResponseWriter, r *http.Request) {
 	req, ok := readTransferRequest(w, r)
 	if !ok {
@@ -82,12 +76,10 @@ func (h *TransfersHandler) Start(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("transfer: failed to start the Transfer")
 		RespondError(w, http.StatusInternalServerError, "Failed to start the Transfer")
 	default:
-		RespondJSON(w, http.StatusAccepted, startTransferResponse{ID: id})
+		RespondJSON(w, r, http.StatusAccepted, startTransferResponse{ID: id})
 	}
 }
 
-// readTransferRequest reads the body of the Transfer dialog. It answers 400
-// and returns false for a body that names no torrent or way.
 func readTransferRequest(w http.ResponseWriter, r *http.Request) (transfer.Request, bool) {
 	var req startTransferRequest
 	if err := json.UnmarshalRead(r.Body, &req); err != nil {
@@ -116,7 +108,6 @@ func readTransferRequest(w http.ResponseWriter, r *http.Request) (transfer.Reque
 type transferProgress struct {
 	Done  int64 `json:"done"`
 	Total int64 `json:"total"`
-	// Speed is bytes a second.
 	Speed int64 `json:"speed"`
 }
 
@@ -173,15 +164,11 @@ type transferDetail struct {
 	Members []transferMember   `json:"members"`
 }
 
-// transferPageSize is the number of rows on a page of the list when the
-// request names no limit. transferPageMax is the largest limit.
 const (
 	transferPageSize = 50
 	transferPageMax  = 500
 )
 
-// ruleNames names the rules of the rows of one request, each rule once. A
-// rule that is gone has no name.
 type ruleNames struct {
 	rules RuleReader
 	names map[[2]int]string
@@ -228,9 +215,6 @@ func (h *TransfersHandler) row(ctx context.Context, row transfer.Row, names *rul
 	return out
 }
 
-// List returns one page of the Transfers and Export runs behind a filter
-// chip, the newest first, with the counts of every chip.
-// GET /api/transfers?filter=active|waiting|finished|failed&limit=50&offset=0
 func (h *TransfersHandler) List(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	filter, ok := transfer.Filters[query.Get("filter")]
@@ -259,10 +243,9 @@ func (h *TransfersHandler) List(w http.ResponseWriter, r *http.Request) {
 	for _, row := range list.Rows {
 		res.Rows = append(res.Rows, h.row(r.Context(), row, names))
 	}
-	RespondJSON(w, http.StatusOK, res)
+	RespondJSON(w, r, http.StatusOK, res)
 }
 
-// queryNumber reads a number of the query. An empty value gives fallback.
 func queryNumber(value string, fallback int) (int, error) {
 	if value == "" {
 		return fallback, nil
@@ -270,8 +253,6 @@ func queryNumber(value string, fallback int) (int, error) {
 	return strconv.Atoi(value)
 }
 
-// transferID reads the id of the path. It answers 400 and returns false for
-// an id that is not a number.
 func transferID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "transferID"), 10, 64)
 	if err != nil {
@@ -281,8 +262,6 @@ func transferID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// Get returns one Transfer or Export run with its steps, log, and torrents.
-// GET /api/transfers/{transferID}
 func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, ok := transferID(w, r)
 	if !ok {
@@ -296,7 +275,7 @@ func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 	row := transfer.Row{
 		ID: record.ID, Kind: record.Kind, Way: record.Way, State: record.State, StartedBy: record.StartedBy,
 		RuleID: record.RuleID, SourceInstanceID: record.SourceInstanceID, TargetInstanceID: record.TargetInstanceID,
-		Hash: record.Members[0].Hash, Name: record.Members[0].Name, Torrents: len(record.Members), Size: record.Size, Options: record.Options,
+		Hash: record.Members[0].Hash.String(), Name: record.Members[0].Name, Torrents: len(record.Members), Size: record.Size, Options: record.Options,
 		RetryAt: record.RetryAt, FailureClass: record.FailureClass, FailureReason: record.FailureReason,
 		CreatedAt: record.CreatedAt, FinishedAt: record.FinishedAt,
 	}
@@ -318,10 +297,10 @@ func (h *TransfersHandler) Get(w http.ResponseWriter, r *http.Request) {
 		if tags == nil {
 			tags = []string{}
 		}
-		res.Members[i] = transferMember{Hash: m.Hash, Name: m.Name, TargetInstanceID: m.TargetInstanceID,
+		res.Members[i] = transferMember{Hash: m.Hash.String(), Name: m.Name, TargetInstanceID: m.TargetInstanceID,
 			SavePath: m.Placement.SavePath, Category: m.Placement.Category, Tags: tags}
 	}
-	RespondJSON(w, http.StatusOK, res)
+	RespondJSON(w, r, http.StatusOK, res)
 }
 
 type transferSummaryResponse struct {
@@ -335,8 +314,6 @@ type transferSummaryResponse struct {
 	Hints        []transfer.Hint  `json:"hints"`
 }
 
-// Summary plans the Transfer of the dialog and starts nothing.
-// POST /api/transfers/summary
 func (h *TransfersHandler) Summary(w http.ResponseWriter, r *http.Request) {
 	req, ok := readTransferRequest(w, r)
 	if !ok {
@@ -364,13 +341,12 @@ func (h *TransfersHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		if tags == nil {
 			tags = []string{}
 		}
-		res.Members[i] = transferMember{Hash: m.Hash, Name: m.Name, TargetInstanceID: m.TargetInstanceID,
+		res.Members[i] = transferMember{Hash: m.Hash.String(), Name: m.Name, TargetInstanceID: m.TargetInstanceID,
 			SavePath: m.Placement.SavePath, Category: m.Placement.Category, Tags: tags}
 	}
-	RespondJSON(w, http.StatusOK, res)
+	RespondJSON(w, r, http.StatusOK, res)
 }
 
-// respondActionError answers an error of an action on one Transfer.
 func (h *TransfersHandler) respondActionError(w http.ResponseWriter, err error, action string) {
 	switch {
 	case errors.Is(err, transfer.ErrNotFound):
@@ -383,17 +359,12 @@ func (h *TransfersHandler) respondActionError(w http.ResponseWriter, err error, 
 	}
 }
 
-// actionDoesNotFit reports whether err says that the action does not fit the
-// Transfer as it is now, for example a cancel of a finished Transfer.
 func actionDoesNotFit(err error) bool {
 	_, refused := errors.AsType[*transfer.RefusalError](err)
 	return refused || errors.Is(err, transfer.ErrClaimed) || errors.Is(err, transfer.ErrNotRetryable) ||
 		errors.Is(err, transfer.ErrFinished) || errors.Is(err, transfer.ErrCancelTooLate) || errors.Is(err, transfer.ErrNotFinished)
 }
 
-// Retry runs a failed or cancelled Transfer or Export run again, and returns
-// the id of the run: the same id for a Transfer that waited for its retry.
-// POST /api/transfers/{transferID}/retry
 func (h *TransfersHandler) Retry(w http.ResponseWriter, r *http.Request) {
 	id, ok := transferID(w, r)
 	if !ok {
@@ -404,12 +375,9 @@ func (h *TransfersHandler) Retry(w http.ResponseWriter, r *http.Request) {
 		h.respondActionError(w, err, "retry")
 		return
 	}
-	RespondJSON(w, http.StatusAccepted, startTransferResponse{ID: newID})
+	RespondJSON(w, r, http.StatusAccepted, startTransferResponse{ID: newID})
 }
 
-// Cancel stops a Transfer or Export run and takes back what it did. The
-// cleanup runs in the background.
-// POST /api/transfers/{transferID}/cancel
 func (h *TransfersHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	id, ok := transferID(w, r)
 	if !ok {
@@ -422,8 +390,6 @@ func (h *TransfersHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// Remove deletes the row of a finished Transfer or Export run.
-// DELETE /api/transfers/{transferID}
 func (h *TransfersHandler) Remove(w http.ResponseWriter, r *http.Request) {
 	id, ok := transferID(w, r)
 	if !ok {
@@ -439,29 +405,16 @@ func (h *TransfersHandler) Remove(w http.ResponseWriter, r *http.Request) {
 type bulkTransfersRequest struct {
 	Action string  `json:"action"`
 	IDs    []int64 `json:"ids"`
-	// Filter, when set, picks every row behind the chip in place of IDs. A
-	// retry takes IDs only: each retry plans a Transfer, so a chip of many
-	// rows would hold the request open too long.
 	Filter *string `json:"filter"`
 }
 
 type bulkTransfersResponse struct {
-	// Done counts the rows that took the action.
-	Done int `json:"done"`
-	// Skipped counts the rows that the action does not fit, for example a
-	// cancel of a finished Transfer.
-	Skipped int `json:"skipped"`
-	// Failed counts the rows where qui refused the action or an error stopped it.
-	Failed int `json:"failed"`
-	// Reasons holds each reason of a refusal once, for example a target
-	// that runs an old qBittorrent.
+	Done    int      `json:"done"`
+	Skipped int      `json:"skipped"`
+	Failed  int      `json:"failed"`
 	Reasons []string `json:"reasons"`
 }
 
-// Bulk retries, cancels, or removes many Transfers and Export runs: the rows
-// of ids, or every row behind a filter chip. It acts on one row after the
-// other, and skips a row that the action does not fit.
-// POST /api/transfers/bulk
 func (h *TransfersHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	var req bulkTransfersRequest
 	if err := json.UnmarshalRead(r.Body, &req); err != nil {
@@ -513,7 +466,6 @@ func (h *TransfersHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 			if !slices.Contains(res.Reasons, refusal.Reason) {
 				res.Reasons = append(res.Reasons, refusal.Reason)
 			}
-		// A row that ended or went away since the page loaded is skipped too.
 		case errors.Is(err, transfer.ErrNotFound), actionDoesNotFit(err):
 			res.Skipped++
 		default:
@@ -525,5 +477,5 @@ func (h *TransfersHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	if errored > 0 {
 		log.Error().Err(lastErr).Int("rows", errored).Str("action", req.Action).Msg("transfer: a bulk action failed on some rows")
 	}
-	RespondJSON(w, http.StatusOK, res)
+	RespondJSON(w, r, http.StatusOK, res)
 }

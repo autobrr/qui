@@ -23,10 +23,8 @@ func TestGetAppPreferencesServesStaleCacheWhenRefreshFails(t *testing.T) {
 		instanceID: 1,
 	}
 	c.preferencesCache = &qbt.AppPreferences{AnnounceIP: "203.0.113.7"}
-	c.preferencesFetchedAt = time.Now().Add(-2 * appPreferencesCacheTTL) // force the cache stale
+	c.preferencesFetchedAt = time.Now().Add(-2 * appPreferencesCacheTTL)
 
-	// A canceled context makes the refresh fail immediately, standing in for a
-	// saturated qBittorrent WebUI that times out every request.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -36,10 +34,6 @@ func TestGetAppPreferencesServesStaleCacheWhenRefreshFails(t *testing.T) {
 	require.Equal(t, "203.0.113.7", prefs.AnnounceIP)
 }
 
-// regression: #4242
-// The list of instances reads the listen port from the preferences that qui
-// read last, of any age, so that a slow qBittorrent does not hold up the list.
-// qui asks qBittorrent only while it has no preferences yet.
 func TestGetLastAppPreferencesAsksOnlyWithoutACache(t *testing.T) {
 	var asked atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -20,6 +20,11 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 )
 
+const (
+	keepHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	dropHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
 func TestCleanupUnusedStringsPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -30,8 +35,6 @@ func TestCleanupUnusedStringsPostgresIntegration(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count))
 	require.Positive(t, count)
 
-	// Through the DB wrapper, not db.Conn(): the raw handle skips the ?-to-$n
-	// rebinding, so every placeholder below would reach Postgres verbatim.
 	var referencedID, orphanID int64
 	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_referenced").Scan(&referencedID))
 	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_orphan").Scan(&orphanID))
@@ -62,9 +65,6 @@ func TestMigratedSQLiteFilesmanagerCleanupPostgresIntegration(t *testing.T) {
 
 	_, testDSN := openPostgresTestSchema(t)
 
-	// This test runs both migration chains plus a data copy, and under -race on
-	// a shared CI runner the SQLite chain alone has crossed the 30s default
-	// since this package gained a second migrated-SQLite test running beside it.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
 
@@ -85,8 +85,8 @@ func TestMigratedSQLiteFilesmanagerCleanupPostgresIntegration(t *testing.T) {
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-name").Scan(&instanceNameID))
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-host").Scan(&hostID))
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-user").Scan(&usernameID))
-	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "keep-hash").Scan(&keepHashID))
-	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "drop-hash").Scan(&dropHashID))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", keepHash).Scan(&keepHashID))
+	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", dropHash).Scan(&dropHashID))
 	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "file.mkv").Scan(&fileNameID))
 
 	_, err = conn.ExecContext(ctx, `
@@ -139,16 +139,16 @@ func TestMigratedSQLiteFilesmanagerCleanupPostgresIntegration(t *testing.T) {
 	})
 
 	repo := filesmanager.NewRepository(pgDB)
-	deleted, err := repo.DeleteCacheForRemovedTorrents(ctx, 1, []string{"keep-hash"})
+	deleted, err := repo.DeleteCacheForRemovedTorrents(ctx, 1, []string{keepHash})
 	require.NoError(t, err)
 	require.Equal(t, 1, deleted)
 
 	var count int
-	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_cache_view WHERE instance_id = ? AND torrent_hash = ?", 1, "keep-hash").Scan(&count))
+	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_cache_view WHERE instance_id = ? AND torrent_hash = ?", 1, keepHash).Scan(&count))
 	require.Equal(t, 1, count)
-	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_cache_view WHERE instance_id = ? AND torrent_hash = ?", 1, "drop-hash").Scan(&count))
+	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_cache_view WHERE instance_id = ? AND torrent_hash = ?", 1, dropHash).Scan(&count))
 	require.Zero(t, count)
-	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_sync_view WHERE instance_id = ? AND torrent_hash = ?", 1, "drop-hash").Scan(&count))
+	require.NoError(t, pgDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM torrent_files_sync_view WHERE instance_id = ? AND torrent_hash = ?", 1, dropHash).Scan(&count))
 	require.Zero(t, count)
 }
 
@@ -178,8 +178,6 @@ func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 		t.Skip("QUI_TEST_POSTGRES_DSN not set")
 	}
 
-	// One migration chain on a shared CI runner. A test that does more than
-	// that brings its own context.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
@@ -187,8 +185,6 @@ func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 	require.NoError(t, err)
 	t.Cleanup(adminPool.Close)
 
-	// UnixNano alone collides: the clock is coarse enough that two tests
-	// starting together get the same value, and these all run in parallel.
 	schemaName := fmt.Sprintf("qui_test_%d_%d", time.Now().UnixNano(), testSchemaSeq.Add(1))
 	_, err = adminPool.Exec(ctx, "CREATE SCHEMA "+quoteIdent(schemaName))
 	require.NoError(t, err)
@@ -217,12 +213,6 @@ func dsnWithParam(t *testing.T, dsn string, key string, value string) string {
 	return parsed.String()
 }
 
-// TestImportForeignKeysIgnoreOtherSchemasPostgresIntegration pins both catalog queries to
-// the active schema. A foreign key referencing another schema's same-named
-// table used to survive: regclass text output qualifies only what search_path
-// cannot reach, and stripping that qualifier turned the reference into a local
-// one. That invents an import dependency (here a cycle, which fails the order)
-// and hands the row filter a parent table that is not the one being referenced.
 func TestImportForeignKeysIgnoreOtherSchemasPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
@@ -252,8 +242,6 @@ func TestImportForeignKeysIgnoreOtherSchemasPostgresIntegration(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
 
-	// linker -> decoy.orphan_target is the cross-schema edge. Read as local it
-	// pairs with orphan_target -> linker into a cycle and the sort fails.
 	ordered, err := orderPostgresImportTables(ctx, tx, []string{"linker", "orphan_target"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"linker", "orphan_target"}, ordered)

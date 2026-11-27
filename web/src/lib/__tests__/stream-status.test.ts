@@ -1,5 +1,7 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
-// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
 
 import { describe, expect, it } from "vitest"
 
@@ -13,8 +15,6 @@ describe("resolveStreamFallbackStatus", () => {
   })
 
   it("ignores a known sync time when there is no data to show", () => {
-    // A last-good-sync without rows still means nothing is on screen, so do not
-    // promise a stale-age line we cannot anchor to visible data.
     expect(
       resolveStreamFallbackStatus({ hasData: false, hasLastSuccessfulSync: true })
     ).toEqual({ tone: "error", variant: "offline", showStaleAge: false })

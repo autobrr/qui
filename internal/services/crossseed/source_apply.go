@@ -16,33 +16,15 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// sourceApplyEntry is one attempt to add a search result for a source torrent.
 type sourceApplyEntry struct {
 	result    models.CrossSeedSearchResult
 	indexerID int
-	// err is set when the download or the add returned an error.
-	err error
+	err       error
 }
 
-// applySourceSearchResults applies the search results for one source torrent.
-// It tries the normal matches first, then at most
-// maxTitleRescueAttemptsPerSearch title rescue matches. Title rescue skips an
-// indexer that gave a normal add, and an info hash that is already in the
-// client or already added in this search. It returns one entry for each
-// attempt and reports the indexer outcomes to Search history under
-// resp.JobID. When ctx is canceled, it returns the entries for the attempts
-// that it made, together with the error.
-//
-// The Library Scan and the completion search use it. Two paths do not:
-//   - The season ensemble accepts only season packs with the same title and
-//     season, so no title rescue result reaches it. It stops at the first add
-//     on purpose: the pack is then a real torrent, and the next Library Scan
-//     cross-seeds it through the normal search.
-//   - The interactive apply in the search dialog applies the results that the
-//     user picked, so the indexer rules of title rescue do not apply. Its
-//     rescue limit counts over all Apply clicks of one search.
 func (s *Service) applySourceSearchResults(ctx context.Context, instanceID int, torrent *qbt.Torrent, resp *TorrentSearchResponse, defaults triggerDefaults, processedAt time.Time) ([]sourceApplyEntry, error) {
 	entries := make([]sourceApplyEntry, 0, len(resp.Results))
 	attempt := func(match TorrentSearchResult) models.CrossSeedSearchResultStatus {
@@ -53,7 +35,7 @@ func (s *Service) applySourceSearchResults(ctx context.Context, instanceID int, 
 
 	normalMatches, rescueMatches := splitTitleRescueResults(resp.Results)
 	normalAddedIndexers := make(map[int]struct{})
-	normalAddedHashes := make(map[string]struct{})
+	normalAddedHashes := make(map[infohash.Hash]struct{})
 	var err error
 	for _, match := range normalMatches {
 		if err = ctx.Err(); err != nil {
@@ -85,14 +67,10 @@ func (s *Service) applySourceSearchResults(ctx context.Context, instanceID int, 
 	return entries, err
 }
 
-// sourceApplyCounts sums up the entries of one source torrent.
 type sourceApplyCounts struct {
 	added, failed, skipped int
-	// firstErr is the first attempt error, else the first failed entry. It is
-	// nil when no attempt failed.
-	firstErr error
-	// errorSamples holds up to three distinct failure messages.
-	errorSamples []string
+	firstErr               error
+	errorSamples           []string
 }
 
 func countSourceApplyEntries(entries []sourceApplyEntry) sourceApplyCounts {
@@ -180,9 +158,9 @@ func selectTitleRescueAttempts(results []TorrentSearchResult, blockedIndexers ma
 	return selected
 }
 
-func (s *Service) attemptTitleRescueResults(ctx context.Context, instanceID int, results []TorrentSearchResult, blockedIndexers map[int]struct{}, knownHashes map[string]struct{}, attempt func(TorrentSearchResult)) error {
+func (s *Service) attemptTitleRescueResults(ctx context.Context, instanceID int, results []TorrentSearchResult, blockedIndexers map[int]struct{}, knownHashes map[infohash.Hash]struct{}, attempt func(TorrentSearchResult)) error {
 	eligible := make([]TorrentSearchResult, 0, len(results))
-	seenHashes := make(map[string]struct{}, len(knownHashes))
+	seenHashes := make(map[infohash.Hash]struct{}, len(knownHashes))
 	maps.Copy(seenHashes, knownHashes)
 	for _, result := range results {
 		if _, blocked := blockedIndexers[result.IndexerID]; blocked {
@@ -225,7 +203,7 @@ func (s *Service) attemptTitleRescueResults(ctx context.Context, instanceID int,
 	return nil
 }
 
-func addTorrentSearchResultHashes(hashes map[string]struct{}, result TorrentSearchResult) {
+func addTorrentSearchResultHashes(hashes map[infohash.Hash]struct{}, result TorrentSearchResult) {
 	for _, hash := range torrentSearchResultInfoHashes(result.InfoHashV1, result.InfoHashV2) {
 		hashes[hash] = struct{}{}
 	}
@@ -249,7 +227,7 @@ func (s *Service) titleRescueResultExists(ctx context.Context, instanceID int, r
 		Int("indexerID", result.IndexerID).
 		Str("indexer", result.Indexer).
 		Str("title", result.Title).
-		Strs("infoHashes", hashes).
+		Strs("infoHashes", hashStrings(hashes)).
 		Msg("[CROSSSEED-SEARCH] Failed title rescue duplicate check; keeping result")
 	return false, nil
 }

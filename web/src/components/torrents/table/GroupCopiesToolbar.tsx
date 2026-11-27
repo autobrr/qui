@@ -16,7 +16,6 @@ interface GroupCopiesToolbarProps {
   onToggleGroupCopies: () => void
 }
 
-/** The Group copies switch as a toolbar button. The demo shows none. */
 export function GroupCopiesToolbar({ groupCopies, onToggleGroupCopies }: GroupCopiesToolbarProps) {
   const { t } = useTranslation("torrents")
   if (isDemo) return null

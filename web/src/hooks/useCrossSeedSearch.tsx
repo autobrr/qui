@@ -12,13 +12,13 @@ import { CrossSeedDialog, type CrossSeedApplySummary } from "@/components/torren
 import { useCrossSeedInstanceOf } from "@/hooks/useCrossSeedInstanceOf"
 import { useIsPhone } from "@/hooks/useMediaQuery"
 import { api } from "@/lib/api"
+import { sitePickFromIds, sitePickOptions, useSitePickSources } from "@/lib/site-pick"
 import type {
   CrossSeedApplyResponse,
   CrossSeedGazelleLookup,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
-  Torrent,
-  TorznabIndexer
+  Torrent
 } from "@/types"
 
 const CROSS_SEED_REFRESH_COOLDOWN_MS = 30_000
@@ -27,29 +27,7 @@ export function useCrossSeedSearch(instanceId: number) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
 
-  const { data: torznabIndexers } = useQuery({
-    queryKey: ["torznab", "indexers"],
-    queryFn: () => api.listTorznabIndexers(),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const enabledTorznabIndexers = useMemo(
-    () => (torznabIndexers ?? []).filter(indexer => indexer.enabled),
-    [torznabIndexers]
-  )
-
-  const sortedEnabledIndexers = useMemo(() => {
-    if (enabledTorznabIndexers.length === 0) {
-      return [] as TorznabIndexer[]
-    }
-
-    return [...enabledTorznabIndexers].sort((a, b) => {
-      if (b.priority !== a.priority) {
-        return b.priority - a.priority
-      }
-      return a.name.localeCompare(b.name)
-    })
-  }, [enabledTorznabIndexers])
+  const { indexers: sortedEnabledIndexers, isPending: indexersPending, isError: indexersFailed } = useSitePickSources("manual")
 
   const [crossSeedDialogOpen, setCrossSeedDialogOpen] = useState(false)
   const crossSeedInstance = useCrossSeedInstanceOf(instanceId, crossSeedDialogOpen)
@@ -69,14 +47,10 @@ export function useCrossSeedSearch(instanceId: number) {
   const [crossSeedHasSearched, setCrossSeedHasSearched] = useState(false)
   const [crossSeedRefreshCooldownUntil, setCrossSeedRefreshCooldownUntil] = useState(0)
   const isPhone = useIsPhone()
-  // The plan of the analysis. It stays after a search, so a site that one search left out stays selectable.
   const [gazellePlan, setGazellePlan] = useState<CrossSeedGazelleLookup[] | undefined>(undefined)
-  // The scope pick of the last search. The outcomes describe that pick only.
   const [searchedPick, setSearchedPick] = useState<string | null>(null)
   const currentPick = `${crossSeedIndexerMode}:${[...crossSeedIndexerSelection].sort((a, b) => a - b).join(",")}`
-  // Each opening and each close of the dialog changes the number. A late answer for an earlier opening is ignored.
   const openingRef = useRef(0)
-  // A search answer holds the source torrent too, so a failed analysis no longer matters after a search starts.
   const searchStartedRef = useRef(false)
 
   const { data: crossSeedSettings } = useQuery({
@@ -86,14 +60,11 @@ export function useCrossSeedSearch(instanceId: number) {
   })
 
   const gazelleLookups = crossSeedSearchResponse?.gazelleLookups
-  // The Torznab indexers of a RED/OPS site with a key, which the search asks through its API.
-  const replacedIndexerIds = useMemo(
-    () => new Set((gazellePlan ?? []).flatMap(entry => entry.replacedIndexerIds ?? [])),
-    [gazellePlan]
-  )
   const searchableIndexers = useMemo(
-    () => sortedEnabledIndexers.filter(indexer => !replacedIndexerIds.has(indexer.id)),
-    [sortedEnabledIndexers, replacedIndexerIds]
+    () => sitePickOptions("manual", sortedEnabledIndexers, gazellePlan ?? [])
+      .filter(option => option.id > 0)
+      .map(option => ({ id: option.id, name: option.label })),
+    [sortedEnabledIndexers, gazellePlan]
   )
   const selectableGazelleIds = useMemo(
     () => (gazellePlan ?? []).filter(entry => entry.status === "will_ask").map(entry => entry.indexerId),
@@ -204,28 +175,20 @@ export function useCrossSeedSearch(instanceId: number) {
   }, [])
 
   const runCrossSeedSearch = useCallback(
-    (torrent: Torrent, indexerOverride?: number[] | null, options?: { bypassCache?: boolean }) => {
+    (torrent: Torrent, options?: { bypassCache?: boolean }) => {
       if (!torrent) {
         return
       }
 
-      let resolvedIndexerIds: number[] | null | undefined
-      // A custom selection holds the RED/OPS entries by their pseudo indexer IDs.
-      let gazelleSites: string[] | undefined
-      if (indexerOverride !== undefined) {
-        resolvedIndexerIds = indexerOverride
-      } else if (crossSeedIndexerMode === "custom") {
-        resolvedIndexerIds = crossSeedIndexerSelection.filter(id => id > 0)
-        gazelleSites = (gazellePlan ?? [])
-          .filter(entry => crossSeedIndexerSelection.includes(entry.indexerId))
-          .map(entry => entry.site)
-      } else {
-        resolvedIndexerIds = searchableIndexers.map(indexer => indexer.id)
-      }
-
-      if (Array.isArray(resolvedIndexerIds) && excludedIndexerIds.length > 0) {
-        resolvedIndexerIds = resolvedIndexerIds.filter(id => !excludedIndexerIds.includes(id))
-      }
+      const plan = gazellePlan ?? []
+      const analyzed = Boolean(crossSeedSearchResponse?.sourceTorrent)
+      const pickedIds = crossSeedIndexerMode === "custom"
+        ? crossSeedIndexerSelection
+        : analyzed ? [...searchableIndexers.map(indexer => indexer.id), ...plan.map(entry => entry.indexerId)] : []
+      const indexersUnknown = crossSeedIndexerMode === "all" && (indexersPending || indexersFailed || gazellePlan === undefined)
+      const pick = indexersUnknown
+        ? { indexerIds: [], gazelleSites: [] }
+        : sitePickFromIds(pickedIds.filter(id => !excludedIndexerIds.includes(id)), plan)
 
       setCrossSeedSearchLoading(true)
       setCrossSeedSearchError(null)
@@ -240,8 +203,7 @@ export function useCrossSeedSearch(instanceId: number) {
       void api
         .searchCrossSeedTorrent(instanceId, torrent.hash, {
           findIndividualEpisodes: crossSeedSettings?.findIndividualEpisodes ?? false,
-          indexerIds: Array.isArray(resolvedIndexerIds) && resolvedIndexerIds.length > 0 ? resolvedIndexerIds : undefined,
-          gazelleSites,
+          ...pick,
           cacheMode: options?.bypassCache ? "bypass" : undefined,
         })
         .then(response => {
@@ -283,10 +245,13 @@ export function useCrossSeedSearch(instanceId: number) {
     [
       crossSeedIndexerMode,
       crossSeedIndexerSelection,
+      crossSeedSearchResponse?.sourceTorrent,
       crossSeedSettings?.findIndividualEpisodes,
       getCrossSeedResultKey,
       excludedIndexerIds,
       gazellePlan,
+      indexersFailed,
+      indexersPending,
       searchableIndexers,
       instanceId,
       t,
@@ -304,10 +269,9 @@ export function useCrossSeedSearch(instanceId: number) {
       return
     }
     setCrossSeedRefreshCooldownUntil(Date.now() + CROSS_SEED_REFRESH_COOLDOWN_MS)
-    runCrossSeedSearch(crossSeedTorrent, undefined, { bypassCache: true })
+    runCrossSeedSearch(crossSeedTorrent, { bypassCache: true })
   }, [crossSeedTorrent, runCrossSeedSearch])
 
-  // Before the dialog opens there is no plan. With RED/OPS on, the dialog says which site lacks a key.
   const canCrossSeedSearch = sortedEnabledIndexers.length > 0 || Boolean(crossSeedSettings?.gazelleEnabled)
 
   const loadAnalysis = useCallback(
@@ -318,9 +282,8 @@ export function useCrossSeedSearch(instanceId: number) {
           if (opening !== openingRef.current) {
             return
           }
-          // A search that answered first already holds the source torrent.
           setCrossSeedSearchResponse(prev => prev ?? { sourceTorrent: torrentInfo, results: [] })
-          setGazellePlan(torrentInfo.gazellePlan)
+          setGazellePlan(torrentInfo.gazellePlan ?? [])
         })
         .catch((error: unknown) => {
           if (opening !== openingRef.current || searchStartedRef.current) {
@@ -523,7 +486,6 @@ export function useCrossSeedSearch(instanceId: number) {
         }
       }
 
-      // Build toast message based on results
       const hasAdded = addedCount > 0
       const hasFailed = failedCount > 0
       const hasCompleted = completedWithoutDetails > 0
@@ -552,7 +514,6 @@ export function useCrossSeedSearch(instanceId: number) {
         toast[summary.level](summary.message)
       }
 
-      // A routed add lands on the Cross-seed instance, so refresh its list too.
       const refreshIds = new Set([instanceId])
       for (const result of response.results) {
         for (const ir of result.instanceResults ?? []) {
@@ -631,6 +592,7 @@ export function useCrossSeedSearch(instanceId: number) {
       partial={crossSeedSearchResponse?.partial ?? false}
       queryDegraded={crossSeedSearchResponse?.queryDegraded}
       gazelleEntries={gazelleLookups && searchedPick === currentPick ? gazelleLookups : gazellePlan ?? []}
+      gazelleKeysMissing={Boolean(crossSeedSettings?.gazelleEnabled) && gazellePlan?.length === 0}
       gazelleLookups={gazelleLookups}
       selectableGazelleIds={selectableGazelleIds}
       torznabFailed={crossSeedSearchResponse?.torznabFailed ?? false}

@@ -33,7 +33,6 @@ export function FieldCombobox({ value, onChange, disabledFields }: FieldCombobox
 
   const selectedLabel = value ? getFieldLabel(value, t) : null;
 
-  // Check if a field is disabled and get its reason
   const getDisabledReason = (field: string): string | null => {
     const disabled = disabledFields?.find(d => d.field === field);
     return disabled?.reason ?? null;
@@ -115,7 +114,7 @@ function FieldComboboxContent({
                         <span>{fieldLabel}</span>
                         <span className={cn(
                           "ml-auto text-muted-foreground",
-                          isMobile ? "text-xs" : "text-[10px]"
+                          isMobile ? "text-xs" : "text-10"
                         )}>
                           {fieldType}
                         </span>
@@ -146,7 +145,7 @@ function FieldComboboxContent({
                     <span className={cn(
                       "ml-auto",
                       isSelected ? "text-primary/70" : "text-muted-foreground",
-                      isMobile ? "text-xs" : "text-[10px]"
+                      isMobile ? "text-xs" : "text-10"
                     )}>
                       {fieldType}
                     </span>

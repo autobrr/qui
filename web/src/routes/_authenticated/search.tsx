@@ -7,5 +7,8 @@ import { createFileRoute } from "@tanstack/react-router"
 import { Search } from "@/pages/Search"
 
 export const Route = createFileRoute("/_authenticated/search")({
+  staticData: {
+    title: { titleKey: "nav.search", titleNs: "common" },
+  },
   component: Search,
 })

@@ -24,7 +24,7 @@ func TestAddBlocklistEntryReturnsNotFoundWhenInstanceMissing(t *testing.T) {
 	require.NoError(t, err)
 
 	handler := &CrossSeedHandler{
-		service:       nil, // Should not be called for a missing instance
+		service:       nil,
 		instanceStore: instanceStore,
 	}
 

@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/pkg/httphelpers"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/redact"
 )
 
@@ -44,6 +46,7 @@ type Handler struct {
 	syncManager       *qbittorrent.SyncManager
 	writeNoter        writeNoter
 	deleteNoter       deleteNoter
+	addNoter          addNoter
 	reannounceCache   *reannounce.SettingsCache
 	reannounceService *reannounce.Service
 	bufferPool        *BufferPool
@@ -69,8 +72,6 @@ type writeNoter interface {
 	NoteWrite(instanceID int)
 }
 
-// deleteNoter learns who deletes which torrents through the proxy, before
-// qBittorrent gets the delete.
 type deleteNoter interface {
 	NoteProxiedDelete(ctx context.Context, instanceID int, hashes []string, keyName string)
 }
@@ -129,12 +130,12 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 		syncManager:       syncManager,
 		writeNoter:        syncManager,
 		deleteNoter:       syncManager,
+		addNoter:          syncManager,
 		reannounceCache:   cache,
 		reannounceService: svc,
 		bufferPool:        bufferPool,
 	}
 
-	// Fallback when an instance has no client transport. Tuned from autobrr's sharedhttp.Transport.
 	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
 	baseTransport.MaxIdleConnsPerHost = 10
 	baseTransport.ResponseHeaderTimeout = 120 * time.Second
@@ -181,8 +182,6 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 
 	proxyCtx.applyAuthHeaders(pr.Out)
 
-	// qBittorrent's CSRF check rejects a Referer or Origin that does not match its own host
-	// with 401. The values come from the calling app, not the instance, so drop them.
 	pr.Out.Header.Del("Referer")
 	pr.Out.Header.Del("Origin")
 
@@ -249,11 +248,6 @@ func combineInstanceAndRequestPath(instanceBasePath, strippedPath string) string
 	}
 }
 
-// bufferRequestBody reads the request body, restores it for ParseForm, and returns the buffered bytes.
-// This allows both parsing form data and forwarding the request body to the proxy.
-//
-// IMPORTANT: Limits body size to 10MB to prevent OOM attacks. Larger requests will be rejected.
-// This limit is appropriate for torrent operations which use small form data payloads.
 func bufferRequestBody(r *http.Request) ([]byte, error) {
 	const maxBodySize = 10 * 1024 * 1024
 
@@ -423,8 +417,8 @@ func (h *Handler) Routes(r chi.Router) {
 		pr.Post("/api/v2/torrents/renameFile", h.handleRenameFile)
 		pr.Post("/api/v2/torrents/renameFolder", h.handleRenameFolder)
 		pr.Post("/api/v2/torrents/delete", h.handleDeleteTorrents)
+		pr.Post("/api/v2/torrents/add", h.handleAddTorrents)
 
-		// Intercepted only to clean up the folders a move leaves behind
 		pr.Post("/api/v2/torrents/setCategory", h.handleSetCategory)
 		pr.Post("/api/v2/torrents/setAutoManagement", h.handleSetAutoManagement)
 		pr.Post("/api/v2/torrents/editCategory", h.handleEditCategory)
@@ -581,40 +575,24 @@ func restoreBody(r *http.Request, body []byte) {
 	r.ContentLength = int64(len(body))
 }
 
-func normalizeHashes(hashes []string) []string {
-	result := make([]string, 0, len(hashes))
-	seen := make(map[string]struct{}, len(hashes))
-	for _, hash := range hashes {
-		trimmed := strings.ToUpper(strings.TrimSpace(hash))
-		if trimmed == "" {
+func uniqueHashesKeepingText(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		key := strings.TrimSpace(value)
+		if hash, err := infohash.Parse(key); err == nil {
+			key = hash.String()
+		}
+		if key == "" {
 			continue
 		}
-		if _, ok := seen[trimmed]; ok {
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[trimmed] = struct{}{}
-		result = append(result, trimmed)
+		seen[key] = struct{}{}
+		result = append(result, key)
 	}
 	return result
-}
-
-func difference(all, subset []string) []string {
-	if len(subset) == 0 {
-		return append([]string{}, all...)
-	}
-	remaining := make([]string, 0, len(all))
-	set := make(map[string]int, len(subset))
-	for _, val := range subset {
-		set[val]++
-	}
-	for _, val := range all {
-		if count, ok := set[val]; ok && count > 0 {
-			set[val] = count - 1
-			continue
-		}
-		remaining = append(remaining, val)
-	}
-	return remaining
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
@@ -952,8 +930,6 @@ func isHTTPSRequest(r *http.Request) bool {
 	return false
 }
 
-// validateQueryParams checks if all query parameters are in the allowed list
-// Returns true if validation passes, false if validation fails (and proxies upstream)
 func (h *Handler) validateQueryParams(w http.ResponseWriter, r *http.Request, allowedParams map[string]struct{}, endpoint string) bool {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
@@ -1038,7 +1014,7 @@ func parseHashesQueryValues(queryParams url.Values) []string {
 		return nil
 	}
 
-	return normalizeHashes(rawHashes)
+	return uniqueHashesKeepingText(rawHashes)
 }
 
 func mergeUniqueStringSlices(valueSets ...[]string) []string {
@@ -1146,9 +1122,6 @@ func buildTorrentSearchFilters(queryParams url.Values) qbittorrent.FilterOptions
 	return filters
 }
 
-// parseInfoQueryValues reads a category or tag parameter of torrents/info. As
-// in qBittorrent, a present parameter with no value (category=) asks for the
-// torrents with no category or no tag, which the value "" selects.
 func parseInfoQueryValues(queryParams url.Values, key string) []string {
 	values := parseCSVQueryValues(queryParams, key)
 	if _, present := queryParams[key]; present && len(values) == 0 {
@@ -1245,13 +1218,14 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		Msg("Handling torrents/info request via qui sync manager")
 
 	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
-		InstanceID:        instanceID,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Filters:           filters,
-		FullPasskeyAccess: true,
+		InstanceID:         instanceID,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Filters:            filters,
+		FullPasskeyAccess:  true,
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		log.Error().
@@ -1356,15 +1330,16 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		Msg("Handling torrents/qui request with qui sync manager")
 
 	response, err := h.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{
-		InstanceID:        instanceID,
-		Limit:             limit,
-		Offset:            offset,
-		Sort:              sort,
-		Order:             order,
-		Search:            search,
-		Filters:           filters,
-		SidebarCounts:     true,
-		FullPasskeyAccess: true,
+		InstanceID:         instanceID,
+		Limit:              limit,
+		Offset:             offset,
+		Sort:               sort,
+		Order:              order,
+		Search:             search,
+		Filters:            filters,
+		SidebarCounts:      true,
+		FullPasskeyAccess:  true,
+		WithHelperTorrents: true,
 	})
 	if err != nil {
 		log.Error().
@@ -1663,7 +1638,6 @@ func (h *Handler) handleTorrentMediaInfo(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// handleAuthLogin handles /api/v2/auth/login requests (ceremonial - proxy already authenticated)
 func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	instanceID := GetInstanceIDFromContext(ctx)
@@ -1742,8 +1716,6 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		Str("hashes", hashes).
 		Msg("Intercepting setLocation request for cache invalidation")
 
-	// Defer cache invalidation to ensure it happens even if proxy panics
-	// Use background context with timeout to avoid cancellation issues
 	defer func() {
 		panicValue := recover()
 		if panicValue != nil {
@@ -1757,14 +1729,13 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 
 			hashList := strings.Split(hashes, "|")
 			failedInvalidations := 0
-			for _, hash := range hashList {
-				hash = strings.TrimSpace(hash)
-				if hash == "" {
+			for _, hash := range infohash.ParseAll(hashList) {
+				if hash.IsZero() {
 					continue
 				}
 				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
 					failedInvalidations++
-					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash.String()).
 						Msg("Failed to invalidate file cache after setLocation")
 				}
 			}
@@ -1780,8 +1751,8 @@ func (h *Handler) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation, Hashes: splitHashes(form.get("hashes")),
-			Path: strings.TrimSpace(form.get("location"))}, true
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupSetLocation,
+			Path: strings.TrimSpace(form.get("location"))}.On(splitHashes(form.get("hashes"))), true
 	})
 }
 
@@ -1808,22 +1779,23 @@ func (h *Handler) handleReannounce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw := r.Form.Get("hashes")
-	normalized := normalizeHashes(strings.Split(raw, "|"))
-	if len(normalized) == 0 {
+	requested := uniqueHashesKeepingText(strings.Split(r.Form.Get("hashes"), "|"))
+	if len(requested) == 0 {
 		restoreBody(r, bodyBytes)
 		h.proxy.ServeHTTP(w, r)
 		return
 	}
 
-	handled := h.reannounceService.RequestReannounce(ctx, instanceID, normalized)
+	handled := h.reannounceService.RequestReannounce(ctx, instanceID, infohash.ParseAll(requested))
 	if len(handled) == 0 {
 		restoreBody(r, bodyBytes)
 		h.proxy.ServeHTTP(w, r)
 		return
 	}
 
-	remaining := difference(normalized, handled)
+	remaining := slices.DeleteFunc(requested, func(hash string) bool {
+		return slices.ContainsFunc(handled, func(id infohash.Hash) bool { return id.Is(hash) })
+	})
 	if len(remaining) > 0 {
 		form := url.Values{}
 		form.Set("hashes", strings.Join(remaining, "|"))
@@ -1874,11 +1846,11 @@ func (h *Handler) handleRenameFile(w http.ResponseWriter, r *http.Request) {
 				Msg("Recovered from panic during renameFile cache invalidation")
 		}
 
-		if hash != "" {
+		if id, err := infohash.Parse(hash); err == nil {
 			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, id); err != nil {
 				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
 					Msg("CRITICAL: Failed to invalidate file cache after renameFile - cache is now stale")
 			}
@@ -1927,11 +1899,11 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 				Msg("Recovered from panic during renameFolder cache invalidation")
 		}
 
-		if hash != "" {
+		if id, err := infohash.Parse(hash); err == nil {
 			invalidateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
+			if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, id); err != nil {
 				log.Error().Err(err).Int("instanceId", instanceID).Str("hash", hash).
 					Msg("CRITICAL: Failed to invalidate file cache after renameFolder - cache is now stale")
 			}
@@ -1947,10 +1919,6 @@ func (h *Handler) handleRenameFolder(w http.ResponseWriter, r *http.Request) {
 	h.proxy.ServeHTTP(w, r)
 }
 
-// deleteHashes returns the torrents that a torrents/delete request names and
-// whether it deletes their files, as qBittorrent reads them from a urlencoded
-// or a multipart body (RequestParser::parsePostMessage): the last value of
-// each field.
 func deleteHashes(r *http.Request, body []byte) (hashes []string, deleteFiles bool, ok bool) {
 	if form, ok := parseQBTForm(r, body); ok {
 		return splitHashes(form.get("hashes")), strings.EqualFold(form.get("deleteFiles"), "true"), true
@@ -2031,14 +1999,13 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 			hashList := strings.Split(hashes, "|")
 			failedInvalidations := 0
-			for _, hash := range hashList {
-				hash = strings.TrimSpace(hash)
-				if hash == "" {
+			for _, hash := range infohash.ParseAll(hashList) {
+				if hash.IsZero() {
 					continue
 				}
 				if err := h.syncManager.InvalidateFileCache(invalidateCtx, instanceID, hash); err != nil {
 					failedInvalidations++
-					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash).
+					log.Warn().Err(err).Int("instanceId", instanceID).Str("hash", hash.String()).
 						Msg("Failed to invalidate file cache after delete")
 				}
 			}
@@ -2055,7 +2022,7 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 	h.deleteNoter.NoteProxiedDelete(ctx, instanceID, noted, clientAPIKey.ClientName)
 	h.forwardWithFolderCleanup(w, r, bodyBytes, func(form qbtForm) (qbittorrent.FolderCleanupOp, bool) {
-		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete, Hashes: splitHashes(form.get("hashes"))},
+		return qbittorrent.FolderCleanupOp{Kind: qbittorrent.FolderCleanupDelete}.On(splitHashes(form.get("hashes"))),
 			strings.EqualFold(form.get("deleteFiles"), "true")
 	})
 }

@@ -14,7 +14,6 @@ import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { api } from "@/lib/api"
 import { server } from "@/test/msw/server"
 
-// Appends the interpolation values, so a test can find the backupError text.
 const i18n = vi.hoisted(() => ({
   t: (key: string, options?: Record<string, unknown>) => [key, ...Object.values(options ?? {})].join(" "),
 }))
@@ -121,7 +120,6 @@ async function advance(ms: number) {
 }
 
 describe("Install update", () => {
-  // regression: #4355
   it("sends Install to the dialog in Settings when installInSettings is set", async () => {
     renderBanner({ installInSettings: true })
     const install = await screen.findByRole("link", { name: "settings:application.update.button" })
@@ -200,7 +198,6 @@ describe("Install update", () => {
   it("shows both versions and the release notes, and installs the tag it showed", async () => {
     renderBanner()
     await openDialog()
-    // The dialog links the release notes, so the banner drops View Release.
     expect(screen.queryByText("updateBanner.viewRelease")).toBeNull()
 
     expect(await screen.findByText("v1.30.0")).toBeTruthy()
@@ -238,16 +235,13 @@ describe("Install update", () => {
     await confirmInstall()
     await screen.findByText("application.restart.overlay.restartingTitle")
 
-    // The old process still answers while its graceful shutdown waits.
     await advance(3_000)
     expect(location.reload).not.toHaveBeenCalled()
     expect(screen.queryByText("application.update.overlay.notAppliedTitle")).toBeNull()
 
     qui = "down"
-    // Without the pause, the SSO recovery sends the tab to "/" and the overlay is gone.
     await expect(api.getApplicationInfo()).rejects.toThrow(TypeError)
     expect(location.assign).not.toHaveBeenCalled()
-    // The update check fails while qui is down, and the banner unmounts.
     await act(async () => {
       await queryClient.refetchQueries({ queryKey: ["latest-version"] })
     })
@@ -277,7 +271,6 @@ describe("Install update", () => {
     expect(location.reload).not.toHaveBeenCalled()
     expect(serviceWorker.getRegistrations).not.toHaveBeenCalled()
 
-    // The 60-second text must not replace the result.
     await advance(60_000)
     expect(screen.getByText("application.update.overlay.notAppliedTitle")).toBeTruthy()
 

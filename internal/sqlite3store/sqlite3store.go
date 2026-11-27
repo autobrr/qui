@@ -15,16 +15,12 @@ import (
 
 type OptFunc func(*SQLite3Store)
 
-// SQLite3Store represents the session store.
-// Despite the package name, queries are portable across SQLite and Postgres.
 type SQLite3Store struct {
 	db              dbinterface.Querier
 	stopCleanup     chan bool
 	cleanupInterval time.Duration
 }
 
-// New returns a new SQLite3Store instance, with a background cleanup goroutine
-// that runs every 5 minutes to remove expired session data.
 func New(db dbinterface.Querier, opts ...OptFunc) *SQLite3Store {
 	p := &SQLite3Store{
 		db:              db,
@@ -43,16 +39,10 @@ func New(db dbinterface.Querier, opts ...OptFunc) *SQLite3Store {
 	return p
 }
 
-// Find returns the data for a given session token from the SQLite3Store instance.
-// If the session token is not found or is expired, the returned exists flag will
-// be set to false.
 func (p *SQLite3Store) Find(token string) (b []byte, exists bool, err error) {
 	return p.FindCtx(context.Background(), token)
 }
 
-// FindCtx returns the data for a given session token from the SQLite3Store instance.
-// If the session token is not found or is expired, the returned exists flag will
-// be set to false.
 func (p *SQLite3Store) FindCtx(ctx context.Context, token string) (b []byte, exists bool, err error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -76,16 +66,10 @@ func (p *SQLite3Store) FindCtx(ctx context.Context, token string) (b []byte, exi
 	return b, true, nil
 }
 
-// Commit adds a session token and data to the SQLite3Store instance with the
-// given expiry time. If the session token already exists, then the data and expiry
-// time are updated.
 func (p *SQLite3Store) Commit(token string, b []byte, expiry time.Time) error {
 	return p.CommitCtx(context.Background(), token, b, expiry)
 }
 
-// CommitCtx adds a session token and data to the SQLite3Store instance with the
-// given expiry time. If the session token already exists, then the data and expiry
-// time are updated.
 func (p *SQLite3Store) CommitCtx(ctx context.Context, token string, b []byte, expiry time.Time) error {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -111,14 +95,10 @@ func (p *SQLite3Store) CommitCtx(ctx context.Context, token string, b []byte, ex
 	return nil
 }
 
-// Delete removes a session token and corresponding data from the SQLite3Store
-// instance.
 func (p *SQLite3Store) Delete(token string) error {
 	return p.DeleteCtx(context.Background(), token)
 }
 
-// DeleteCtx removes a session token and corresponding data from the SQLite3Store
-// instance.
 func (p *SQLite3Store) DeleteCtx(ctx context.Context, token string) error {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -138,14 +118,10 @@ func (p *SQLite3Store) DeleteCtx(ctx context.Context, token string) error {
 	return nil
 }
 
-// All returns a map containing the token and data for all active (i.e.
-// not expired) sessions in the SQLite3Store instance.
 func (p *SQLite3Store) All() (map[string][]byte, error) {
 	return p.AllCtx(context.Background())
 }
 
-// AllCtx returns a map containing the token and data for all active (i.e.
-// not expired) sessions in the SQLite3Store instance.
 func (p *SQLite3Store) AllCtx(ctx context.Context) (map[string][]byte, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -203,16 +179,6 @@ func (p *SQLite3Store) startCleanup(interval time.Duration) {
 	}
 }
 
-// StopCleanup terminates the background cleanup goroutine for the SQLite3Store
-// instance. It's rare to terminate this; generally SQLite3Store instances and
-// their cleanup goroutines are intended to be long-lived and run for the lifetime
-// of your application.
-//
-// There may be occasions though when your use of the SQLite3Store is transient.
-// An example is creating a new SQLite3Store instance in a test function. In this
-// scenario, the cleanup goroutine (which will run forever) will prevent the
-// SQLite3Store object from being garbage collected even after the test function
-// has finished. You can prevent this by manually calling StopCleanup.
 func (p *SQLite3Store) StopCleanup() {
 	if p.stopCleanup != nil {
 		p.stopCleanup <- true

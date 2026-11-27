@@ -4,7 +4,10 @@
 package crossseed
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,11 +15,9 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/linktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// eachDialect runs fn with the slash dialect and, when hostToo is set, with the
-// host dialect. conv turns a slash path into the dialect's own form, so a host
-// row asserts what filepath gives for the same path.
 func eachDialect(t *testing.T, hostToo bool, fn func(t *testing.T, d fsops.PathDialect, conv func(string) string)) {
 	t.Helper()
 	t.Run("slash", func(t *testing.T) { fn(t, fsops.SlashPaths, func(p string) string { return p }) })
@@ -48,21 +49,18 @@ func TestPathDialect_CategoryAndSeasonPackDirs(t *testing.T) {
 				instance := &models.Instance{Name: "qbt1", HardlinkDirPreset: tt.preset}
 				presetDir := conv(tt.wantCategory)
 
-				// pathcmp keys the category path with "/" on every host.
 				wantCategory := normalizePath(tt.wantCategory)
 				if tt.preset == "flat" {
 					wantCategory = conv(tt.wantCategory)
 				}
 				require.Equal(t, wantCategory, linkCategorySavePath(d, &linktree.Tree{BaseDir: conv(tt.baseDir), PresetDir: presetDir}, nil))
 
-				// A season pack's own root folder isolates it, so its dest dir is the category path unnormalized.
 				require.Equal(t, conv(tt.wantCategory), s.seasonPackDestDir(t.Context(), d, instance, instance.Name, conv(tt.baseDir), nil, "Tracker"))
 			})
 		})
 	}
 }
 
-// Host Clean on Windows splits "a\b" into two segments.
 func TestPathDialect_SharedPathComponents(t *testing.T) {
 	t.Parallel()
 
@@ -90,7 +88,7 @@ func TestPathDialect_ResolveLocalTorrentFile(t *testing.T) {
 
 	tests := []struct {
 		name string
-		want string // "" means refused
+		want string
 	}{
 		{name: "Show/ep.mkv", want: "/data/tv/Show/ep.mkv"},
 		{name: "sub/../ep.mkv", want: "/data/tv/ep.mkv"},
@@ -114,14 +112,12 @@ func TestPathDialect_ResolveLocalTorrentFile(t *testing.T) {
 	}
 }
 
-// Host Rel on Windows accepts two rooted paths, so a remote join used to come
-// back backslashed with ok=true.
 func TestPathDialect_SafeSeasonPackJoin(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		root, name string
-		want       string // "" means refused
+		want       string
 		hostToo    bool
 	}{
 		{root: "/data/tv", name: "ep.mkv", want: "/data/tv/ep.mkv", hostToo: true},
@@ -146,3 +142,18 @@ func TestPathDialect_SafeSeasonPackJoin(t *testing.T) {
 		})
 	}
 }
+
+func mustParseHash(t testing.TB, s string) infohash.Hash {
+	t.Helper()
+	hash, err := infohash.Parse(s)
+	require.NoError(t, err)
+	return hash
+}
+
+func fakeHash(label string) string {
+	prefix := hex.EncodeToString([]byte(label)[:min(len(label), 12)])
+	sum := sha1.Sum([]byte(label))
+	return prefix + strings.Repeat("0", 24-len(prefix)) + hex.EncodeToString(sum[:8])
+}
+
+const hash123 = "0123012301230123012301230123012301230123"

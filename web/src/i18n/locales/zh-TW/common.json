@@ -99,7 +99,28 @@
     },
     "privacy": {
       "anonymous": "匿名：無姓名，無帳號。brrbin 不保留 IP 位址。",
+      "signedIn": "維護者可以看到你的 {{provider}} 名稱（{{name}}），並可能會聯絡你。",
       "link": "隱私權政策"
+    },
+    "sender": {
+      "label": "傳送身分",
+      "anonymous": "匿名",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "使用 {{provider}} 登入",
+      "signOut": "登出",
+      "waiting": "正在等待 {{provider}}",
+      "errors": {
+        "discordNotMember": "你的 Discord 帳號不在 autobrr Discord 伺服器中。請加入該伺服器後重新登入，使用 GitHub 登入，或匿名傳送。",
+        "refused": "登入遭拒絕：{{reason}}",
+        "expired": "登入已過期。請重新登入。",
+        "popupBlocked": "你的瀏覽器封鎖了登入視窗。請允許 qui 開啟彈出式視窗，然後重新登入。",
+        "unavailable": "brrbin 現在無法為你登入。請稍後再試。",
+        "startFailed": "無法開始登入：{{message}}",
+        "signOutFailed": "無法登出：{{message}}"
+      }
     },
     "newerRelease": "目前執行 {{running}}。新版本 <release>{{newer}}</release> 已發布。",
     "send": "傳送",
@@ -128,7 +149,8 @@
         "issue": "已轉為 Issue #{{number}}",
         "issueClosed": "Issue #{{number}} 已關閉",
         "closed": "已關閉：{{reason}}",
-        "closedNoReason": "已關閉"
+        "closedNoReason": "已關閉",
+        "notSent": "未傳送"
       },
       "delete": "刪除回報",
       "deleteUnavailable": "brrbin 現在無法刪除回報。請稍後再試。",
@@ -157,6 +179,8 @@
     "smartSearchTitle": "智慧搜尋功能：",
     "smartSearchGlob": "Glob 模式：",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "隱藏符合項目：",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "模糊匹配：",
     "smartSearchFuzzyExample": "\"breaking bad\" 可匹配 \"Breaking.Bad\"",
     "smartSearchDots": "自動處理點號、底線和方括號",
@@ -358,9 +382,13 @@
         "menuFix": "檢查做種庫掃描設定",
         "action": "開啟做種庫掃描設定",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "做種庫掃描設定中的 Torznab 已關閉，且未設定 RED 或 OPS API 金鑰。請開啟 Torznab，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",
-            "menuFix": "開啟 Torznab，或新增 RED 或 OPS 金鑰"
+          "torznab_pick_no_indexer": {
+            "fix": "做種庫掃描設定只選擇了 Torznab 索引器，且沒有已啟用的 Torznab 索引器。請啟用一個 Torznab 索引器，或在做種庫掃描設定中選擇其他站點。qui 會每小時重試一次。",
+            "menuFix": "啟用一個 Torznab 索引器"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "做種庫掃描設定只選擇了 RED 或 OPS，且所選站點都沒有 API 金鑰。請在 Gazelle (OPS/RED) 設定中新增金鑰，或在做種庫掃描設定中選擇其他站點。qui 會每小時重試一次。",
+            "menuFix": "新增 RED 或 OPS 金鑰"
           },
           "no_indexer": {
             "fix": "沒有已啟用的索引器。請啟用一個 Torznab 索引器，或在 Gazelle (OPS/RED) 設定中新增 RED 或 OPS 金鑰。qui 會每小時重試一次。",

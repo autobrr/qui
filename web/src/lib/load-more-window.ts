@@ -3,30 +3,18 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// The load-more window of the torrent list: how many of the rows in memory the
-// Layout shows. useTorrentListController holds it in a useReducer. Each event
-// names who caused it, so a data update never resets the window.
-
 export const LOAD_MORE_STEP = 100
 
 export interface LoadMoreWindow {
-  // The rows that the Layout shows. Never more than listLength.
   loadedRows: number
-  // The rows in memory.
   listLength: number
-  // The window asked for a server page whose rows have not arrived yet.
   pageRequested: boolean
 }
 
 export type LoadMoreWindowEvent =
-  // The user changed the instance, the filters, the search or the sort.
   | { type: "queryChanged" }
-  // A stream update, a poll or a server page changed the number of rows in memory.
   | { type: "dataArrived"; length: number }
-  // The user reached the end of the loaded rows. hasMorePages: the server has
-  // more rows, also while a page loads.
   | { type: "nearEnd"; hasMorePages: boolean }
-  // A server page finished loading and its rows are in memory.
   | { type: "pageLoaded" }
 
 export const EMPTY_LOAD_MORE_WINDOW: LoadMoreWindow = {

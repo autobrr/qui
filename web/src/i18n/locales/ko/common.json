@@ -99,7 +99,28 @@
     },
     "privacy": {
       "anonymous": "익명: 이름도 계정도 없습니다. brrbin은 IP 주소를 보관하지 않습니다.",
+      "signedIn": "관리자가 {{provider}} 이름({{name}})을 확인하고 연락할 수 있습니다.",
       "link": "개인정보 처리방침"
+    },
+    "sender": {
+      "label": "다음으로 보내기",
+      "anonymous": "익명",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "{{provider}}로 로그인",
+      "signOut": "로그아웃",
+      "waiting": "{{provider}} 대기 중",
+      "errors": {
+        "discordNotMember": "Discord 계정이 autobrr Discord 서버에 없습니다. 서버에 가입한 뒤 다시 로그인하거나, GitHub로 로그인하거나 익명으로 보내세요.",
+        "refused": "로그인이 거부되었습니다: {{reason}}",
+        "expired": "로그인이 만료되었습니다. 다시 로그인하세요.",
+        "popupBlocked": "브라우저가 로그인 창을 차단했습니다. qui에서 팝업을 허용한 뒤 다시 로그인하세요.",
+        "unavailable": "brrbin이 지금은 로그인을 처리할 수 없습니다. 나중에 다시 시도하세요.",
+        "startFailed": "로그인을 시작하지 못했습니다: {{message}}",
+        "signOutFailed": "로그아웃하지 못했습니다: {{message}}"
+      }
     },
     "newerRelease": "현재 {{running}} 버전을 사용 중입니다. <release>{{newer}}</release> 버전이 나왔습니다.",
     "send": "보내기",
@@ -128,7 +149,8 @@
         "issue": "이슈 #{{number}} 등록됨",
         "issueClosed": "이슈 #{{number}} 닫힘",
         "closed": "닫힘: {{reason}}",
-        "closedNoReason": "닫힘"
+        "closedNoReason": "닫힘",
+        "notSent": "전송되지 않음"
       },
       "delete": "신고 삭제",
       "deleteUnavailable": "brrbin이 지금은 신고를 삭제할 수 없습니다. 나중에 다시 시도하세요.",
@@ -157,6 +179,8 @@
     "smartSearchTitle": "스마트 검색 기능:",
     "smartSearchGlob": "Glob 패턴:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "일치 항목 숨기기:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "유사 일치:",
     "smartSearchFuzzyExample": "\"breaking bad\"로 \"Breaking.Bad\"를 찾습니다",
     "smartSearchDots": "점, 밑줄, 대괄호를 처리합니다",
@@ -358,9 +382,13 @@
         "menuFix": "라이브러리 스캔 설정 확인",
         "action": "라이브러리 스캔 설정 열기",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "라이브러리 스캔 설정에서 Torznab이 꺼져 있고, RED 또는 OPS API 키가 설정되어 있지 않습니다. Torznab을 켜거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",
-            "menuFix": "Torznab을 켜거나 RED 또는 OPS 키 추가"
+          "torznab_pick_no_indexer": {
+            "fix": "라이브러리 스캔 설정에서 Torznab 인덱서만 선택했고, 활성화된 Torznab 인덱서가 없습니다. Torznab 인덱서를 활성화하거나 라이브러리 스캔 설정에서 다른 사이트를 선택하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "Torznab 인덱서 활성화"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "라이브러리 스캔 설정에서 RED 또는 OPS만 선택했고, 선택한 사이트에 API 키가 없습니다. Gazelle (OPS/RED) 설정에 키를 추가하거나 라이브러리 스캔 설정에서 다른 사이트를 선택하세요. qui는 매시간 다시 시도합니다.",
+            "menuFix": "RED 또는 OPS 키 추가"
           },
           "no_indexer": {
             "fix": "활성화된 인덱서가 없습니다. Torznab 인덱서를 활성화하거나 Gazelle (OPS/RED) 설정에 RED 또는 OPS 키를 추가하세요. qui는 매시간 다시 시도합니다.",

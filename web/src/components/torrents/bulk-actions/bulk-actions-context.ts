@@ -9,7 +9,6 @@ import type { BulkActionPick } from "./bulk-action-state"
 
 interface BulkActions {
   pick: (pick: BulkActionPick) => void
-  // The busy state of the requests. A running export does not set it.
   isPending: boolean
   isExporting: boolean
 }
@@ -20,10 +19,8 @@ interface BulkActionCategories {
 }
 
 export const BulkActionsContext = createContext<BulkActions | null>(null)
-// A separate context, so a new category list does not render the table and each row menu again.
 export const BulkActionCategoriesContext = createContext<BulkActionCategories | null>(null)
 
-// What an Action surface reads from the bulk action module.
 export function useBulkActions(): BulkActions {
   const context = useContext(BulkActionsContext)
   if (!context) {
@@ -32,7 +29,6 @@ export function useBulkActions(): BulkActions {
   return context
 }
 
-// The categories of the Set category dialog, for the category submenu.
 export function useBulkActionCategories(): BulkActionCategories {
   const context = useContext(BulkActionCategoriesContext)
   if (!context) {

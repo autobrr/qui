@@ -22,7 +22,6 @@ function Row({ pill }: { pill?: string }) {
   )
 }
 
-/** The picture of the Group copies notice: three copies of one torrent become one row with the "+2" pill. */
 export function GroupCopiesNoticePicture() {
   const { t } = useTranslation("torrents")
   return (

@@ -13,6 +13,9 @@ import type {
   ListedProblemReport,
   ProblemReportFacts,
   ProblemReportPayload,
+  ProblemReportProvider,
+  ProblemReportSender,
+  ProblemReportSignInState,
   ProblemReportStartedFrom,
   SentProblemReport,
   AppPreferences,
@@ -121,6 +124,7 @@ import type {
   SearchHistoryResponse,
   SetRSSFeedURLRequest,
   SetRSSRuleRequest,
+  SitePick,
   SortedPeersResponse,
   TorrentCreationParams,
   TorrentCreationTask,
@@ -176,15 +180,10 @@ import { getApiBaseUrl, withBasePath } from "./base-url"
 import { recordFailedRequest } from "./failed-requests"
 import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
 import type { CustomThemeFile } from "./custom-themes"
-// The instance "@/i18n" initializes. Importing "@/i18n" here instead splits the bundled
-// English namespaces out of the entry chunk into eight extra initial requests.
 import i18n from "i18next"
 
 const API_BASE = getApiBaseUrl()
 
-// The backend FilterOptions has no expandedCategories field. The sidebar keeps
-// categories as the user's selection and expandedCategories as the subcategory
-// expansion, so the wire gets the expanded list under categories (ADR 0010).
 function serializeFilters(filters: TorrentFilters | null | undefined): TorrentFilters | undefined {
   if (!filters) {
     return undefined
@@ -219,14 +218,10 @@ const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<
   return Object.fromEntries(normalizedEntries) as Record<number, string>
 }
 
-// Session storage keys for SSO recovery loop prevention.
 const SSO_RECOVERY_GUARD_KEY = "qui_sso_recovery_attempted"
 const SSO_RECOVERY_TS_KEY = "qui_sso_recovery_ts"
-const SSO_RECOVERY_COOLDOWN_MS = 10_000 // 10 seconds between recovery attempts
+const SSO_RECOVERY_COOLDOWN_MS = 10_000
 
-// On module init, clear the guard if enough time has passed since the last
-// recovery attempt. This lets a fresh page load (after SSO re-authentication)
-// try recovery again, while preventing rapid navigation loops.
 if (typeof sessionStorage !== "undefined") {
   const lastAttempt = parseInt(sessionStorage.getItem(SSO_RECOVERY_TS_KEY) || "0", 10)
   if (Date.now() - lastAttempt > SSO_RECOVERY_COOLDOWN_MS) {
@@ -235,17 +230,6 @@ if (typeof sessionStorage !== "undefined") {
   }
 }
 
-/**
- * Detect network errors that indicate an SSO redirect was blocked by CORS.
- * When an upstream SSO proxy session expires, it often returns a cross-origin
- * redirect that fetch() cannot follow, resulting in a TypeError or DOMException.
- *
- * This check is intentionally broad because browsers hide redirect details for
- * security reasons - we can't distinguish "CORS-blocked SSO redirect" from other
- * network failures at this level. The sessionStorage recovery guard in
- * attemptSSORecoveryNavigation() prevents infinite loops if this misclassifies a
- * genuine network outage.
- */
 function isSSOBlockedNetworkError(error: unknown): boolean {
   if (typeof DOMException !== "undefined" && error instanceof DOMException) {
     if (error.name === "NetworkError") {
@@ -275,22 +259,11 @@ function isSSOBlockedNetworkError(error: unknown): boolean {
     normalized.includes("request failed")
 }
 
-/**
- * Check if a response appears to be an SSO login/error page rather than a JSON API response.
- * SSO proxies typically return HTML with these status codes:
- * - 200 OK with HTML login page (some Pangolin setups)
- * - 401/403 with HTML error page (Cloudflare Access)
- *
- * We explicitly exclude 5xx errors to avoid triggering reload on legitimate
- * reverse proxy error pages (e.g., nginx 502 Bad Gateway).
- */
 function isSSOHTMLResponse(response: Response): boolean {
   const contentType = response.headers.get("content-type") || ""
   if (!contentType.includes("text/html")) {
     return false
   }
-  // Only treat as SSO if it's a 2xx/4xx response with HTML.
-  // 5xx with HTML is likely a reverse proxy error page, not SSO.
   const status = response.status
   return status < 500
 }
@@ -345,11 +318,7 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
         }
       }
     } finally {
-      try {
-        await reader.cancel()
-      } catch {
-        // ignore cancel errors
-      }
+      await reader.cancel().catch(() => undefined)
       reader.releaseLock()
     }
     snippet += decoder.decode()
@@ -365,54 +334,40 @@ async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
 
 let ssoRecoveryPaused = false
 
-// While qui restarts, every request fails with "Failed to fetch", and the SSO
-// recovery would send the tab to "/", where the browser shows its own error page.
 export function setSSORecoveryPaused(paused: boolean): void {
   ssoRecoveryPaused = paused
 }
 
-/**
- * Unregister qui's service worker and delete qui's Cache Storage entries, so
- * the next navigation loads the frontend from the network. The SW re-registers
- * on the next page load via pwa.ts. localStorage stays: it holds the theme
- * that index.html paints before the app loads.
- */
 export async function clearQuiServiceWorker(): Promise<void> {
-  // Scope cleanup to qui's own service worker and caches to avoid disrupting
-  // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
   const quiScope = new URL(withBasePath("/"), window.location.origin).href
+  await unregisterServiceWorkers(quiScope)
+  await deleteCaches(quiScope)
+}
 
-  if ("serviceWorker" in navigator) {
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(
-        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
-      )
-    } catch {
-      // ignore unregister errors
-    }
-  }
-
-  // Workbox names its precache after the SW scope, so filtering by quiScope
-  // avoids touching other apps' caches.
-  if ("caches" in window) {
-    try {
-      const names = await caches.keys()
-      await Promise.all(
-        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
-      )
-    } catch {
-      // ignore cache clear errors
-    }
+async function unregisterServiceWorkers(quiScope: string): Promise<void> {
+  if (!("serviceWorker" in navigator)) return
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations()
+    await Promise.all(
+      registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
+    )
+  } catch {
+    return
   }
 }
 
-/**
- * Attempt a single hard navigation to let the browser follow the SSO redirect
- * at the top level. Uses sessionStorage to prevent infinite navigation loops.
- * Skips navigation when offline or in background tabs to avoid pointless refreshes.
- * Returns true if navigation was triggered, false if blocked.
- */
+async function deleteCaches(quiScope: string): Promise<void> {
+  if (!("caches" in window)) return
+  try {
+    const names = await caches.keys()
+    await Promise.all(
+      names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
+    )
+  } catch {
+    return
+  }
+}
+
 async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): Promise<boolean> {
   if (ssoRecoveryPaused || typeof window === "undefined" || typeof sessionStorage === "undefined") {
     return false
@@ -429,12 +384,6 @@ async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; t
   sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
   sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
 
-  // Unregister qui's service worker so its NavigationRoute cannot intercept the
-  // recovery navigation. Without this, Workbox's createHandlerBoundToURL tries
-  // to fetch index.html from the network on cache miss, which Badger/Pangolin
-  // redirect cross-origin — the SW can't handle that response for a navigation
-  // request, and some mobile browsers don't fall back to the network properly.
-  // The caches go too, so the navigation reaches the network and the SSO proxy.
   await clearQuiServiceWorker()
 
   sessionStorage.setItem("qui_sso_recovered", "1")
@@ -444,7 +393,6 @@ async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; t
   return true
 }
 
-/** Clear the SSO recovery guard after a successful request. */
 function clearSSORecoveryGuard(): void {
   if (typeof sessionStorage !== "undefined") {
     sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
@@ -463,24 +411,18 @@ async function extractErrorData(response: Response): Promise<{ message: string; 
       return { message: fallbackMessage }
     }
 
-    // Try to parse as JSON first
     try {
       const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: unknown }
       const parsedMessage = errorData?.error ?? errorData?.message
       if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
-        // Return both the message and the full data (for 409 conflicts with automations, etc.)
         return { message: parsedMessage, data: errorData }
       }
-      // Even if no message, return the data for potential use
       return { message: fallbackMessage, data: errorData }
     } catch {
-      // JSON parse failed - check if it's HTML (e.g., reverse proxy error page)
       if (contentType.includes("text/html") || rawBody.trimStart().startsWith("<")) {
-        // Don't show raw HTML to user, provide a readable message
         return { message: i18n.t("errors.httpStatusHtml", { ns: "common", status: response.status }) }
       }
 
-      // Plain text error
       const trimmed = rawBody.trim()
       if (trimmed.length > 0 && trimmed.length < 500) {
         return { message: trimmed }
@@ -493,13 +435,6 @@ async function extractErrorData(response: Response): Promise<{ message: string; 
   }
 }
 
-/**
- * SSO-safe fetch wrapper. Handles network errors and HTML responses that indicate
- * an expired SSO session by triggering a top-level navigation.
- *
- * Every request of the API client goes through it, so it keeps each failure in the
- * failed-request list that a Problem report sends.
- */
 async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
   const isLoginRequest = url.includes("/api/auth/login")
 
@@ -514,7 +449,6 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
       credentials: "include",
     })
   } catch (error) {
-    // Only attempt SSO recovery for API endpoints (not other fetches)
     if (isSSOBlockedNetworkError(error) && url.includes("/api/")) {
       if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
         return new Promise<Response>(() => {})
@@ -526,8 +460,6 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
     throw error
   }
 
-  // If we got an HTML response on an API endpoint, it's likely an SSO login page.
-  // Only trigger for 2xx/4xx - 5xx HTML is likely a reverse proxy error, not SSO.
   if (await isLikelySSOHTMLResponse(response)) {
     if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
       return new Promise<Response>(() => {})
@@ -539,19 +471,16 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
 
   clearSSORecoveryGuard()
   if (!response.ok) {
-    // The caller gets the response now. The error lands in the list when its body is in.
     const time = new Date().toISOString()
     void extractErrorData(response.clone()).then(({ message }) => recordFailedRequest(url, options.method, response.status, message, time))
   }
   return response
 }
 
-/** A request that its caller aborted did not fail. An abort for a timeout did. */
 function cancelledByCaller(signal: AbortSignal | null | undefined): boolean {
   return signal?.aborted === true && (signal.reason as Error | undefined)?.name !== "TimeoutError"
 }
 
-// Custom error class for API errors with status and additional data
 export class APIError extends Error {
   status: number
   data?: unknown
@@ -691,7 +620,6 @@ class ApiClient {
       throw new APIError(message, response.status, data)
     }
 
-    // Handle empty responses (like 204 No Content)
     if (response.status === 204 || response.headers.get("content-length") === "0") {
       return undefined as T
     }
@@ -738,7 +666,6 @@ class ApiClient {
     return endpoint === "/auth/me" || endpoint === "/auth/validate"
   }
 
-  // Auth endpoints
   async checkAuth(): Promise<User> {
     return this.request<User>("/auth/me")
   }
@@ -751,7 +678,6 @@ class ApiClient {
       const data = await response.json()
       return data.setupRequired || false
     } catch {
-      // ssoSafeFetch handles SSO recovery internally
       return false
     }
   }
@@ -798,7 +724,6 @@ class ApiClient {
       }>("/auth/oidc/config")
       return { ...config, providerUnavailable: false }
     } catch (error) {
-      // 503: OIDC is configured, but qui has not reached the identity provider yet.
       if (error instanceof APIError && error.status === 503) {
         const data = error.data as { disableBuiltInLogin?: boolean } | undefined
         return {
@@ -809,7 +734,6 @@ class ApiClient {
           providerUnavailable: true,
         }
       }
-      // OIDC is off: 404 when the routes are not registered, 428 before setup (RequireSetup skips it when OIDC is on).
       if (error instanceof APIError && (error.status === 404 || error.status === 428)) {
         return {
           enabled: false,
@@ -819,12 +743,10 @@ class ApiClient {
           providerUnavailable: false,
         }
       }
-      // A 429 from the /auth throttle or a network error says nothing about the login policy.
       throw error
     }
   }
 
-  // Instance endpoints
   async getInstances(): Promise<InstanceResponse[]> {
     return this.request<InstanceResponse[]>("/instances")
   }
@@ -896,7 +818,6 @@ class ApiClient {
     return this.request<InstanceDisk>(`/instances/${id}/disk`)
   }
 
-  // bytes is null when qBittorrent cannot measure the path.
   async getFreeSpaceAtPath(id: number, path: string): Promise<{ path: string; bytes: number | null }> {
     return this.request<{ path: string; bytes: number | null }>(
       `/instances/${id}/free-space?path=${encodeURIComponent(path)}`
@@ -1109,7 +1030,6 @@ class ApiClient {
     )
   }
 
-  // Disc scan (BDInfo) endpoints
   async listDiscScans(instanceId: number, hash: string): Promise<DiscScanRun[]> {
     return this.request<DiscScanRun[]>(`/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/disc-scans`)
   }
@@ -1129,7 +1049,6 @@ class ApiClient {
     return this.request<DiscScanRun>(`/instances/${instanceId}/disc-scans/${runId}/cancel`, { method: "POST" })
   }
 
-  // Torrent endpoints
   async getTorrents(
     instanceId: number,
     params: {
@@ -1172,9 +1091,6 @@ class ApiClient {
       params.set("streams", JSON.stringify(streams.map(normalizeStreamSubscription)))
     }
 
-    // Activity events (qui-owned server signals) ride the same multiplexed
-    // EventSource; the flag lets a connection with no torrent streams stay open
-    // purely to receive them.
     if (options.activity) {
       params.set("activity", "1")
     }
@@ -1182,8 +1098,6 @@ class ApiClient {
     return withBasePath(`/api/stream?${params.toString()}`)
   }
 
-  // changeStreamSubscriptions adds and removes subscriptions on the open stream
-  // that the connection event named.
   async changeStreamSubscriptions(connectionId: string, add: StreamSubscription[], remove: string[], signal?: AbortSignal): Promise<void> {
     return this.request("/stream/subscriptions", {
       method: "POST",
@@ -1296,7 +1210,6 @@ class ApiClient {
     }
   ): Promise<AddTorrentResponse> {
     const formData = new FormData()
-    // Append each file with the same field name "torrent"
     if (data.torrentFiles) {
       data.torrentFiles.forEach(file => formData.append("torrent", file))
     }
@@ -1314,7 +1227,6 @@ class ApiClient {
     if (data.limitSeedTime !== undefined && data.limitSeedTime > 0) formData.append("seedingTimeLimit", data.limitSeedTime.toString())
     if (data.contentLayout) formData.append("contentLayout", data.contentLayout)
     if (data.rename) formData.append("rename", data.rename)
-    // Only send savePath if autoTMM is false or undefined
     if (data.savePath && !data.autoTMM) formData.append("savepath", data.savePath)
     if (data.useDownloadPath !== undefined) formData.append("useDownloadPath", data.useDownloadPath.toString())
     if (data.downloadPath) formData.append("downloadPath", data.downloadPath)
@@ -1326,19 +1238,13 @@ class ApiClient {
     })
 
     if (!response.ok) {
-      // Stays English: AddTorrentDialog.tsx:550 prefix-matches this text to tell
-      // "the server sent no message" from a real one, and shows its own hint instead.
       let errorMessage = `HTTP error! status: ${response.status}`
       try {
         const errorData = await response.json()
         errorMessage = errorData.error || errorData.message || errorMessage
       } catch {
-        try {
-          const errorText = await response.text()
-          errorMessage = errorText || errorMessage
-        } catch {
-          // nothing to see here
-        }
+        const errorText = await response.text().catch(() => "")
+        errorMessage = errorText || errorMessage
       }
       throw new Error(errorMessage)
     }
@@ -1362,26 +1268,26 @@ class ApiClient {
       action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "setComment" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
-      tags?: string  // Comma-separated tags string
-      comment?: string  // For setComment action
-      enable?: boolean  // For toggleAutoTMM
-      selectAll?: boolean  // When true, apply to all torrents matching filters
+      tags?: string
+      comment?: string
+      enable?: boolean
+      selectAll?: boolean
       filters?: TorrentFilters
-      search?: string  // Search query when selectAll is true
-      excludeHashes?: string[]  // Hashes to exclude when selectAll is true
+      search?: string
+      excludeHashes?: string[]
       excludeTargets?: Array<{ instanceId: number; hash: string }>
       instanceIds?: number[]
-      ratioLimit?: number  // For setShareLimit action
-      seedingTimeLimit?: number  // For setShareLimit action (minutes)
-      inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
-      shareLimitAction?: string  // setShareLimit: Qt enum Stop, Remove, etc.; omit for default
-      shareLimitsMode?: string  // setShareLimit: Qt enum MatchAny, MatchAll; omit for default
-      uploadLimit?: number  // For setUploadLimit action (KB/s)
-      downloadLimit?: number  // For setDownloadLimit action (KB/s)
-      location?: string  // For setLocation action
-      trackerOldURL?: string  // For editTrackers action
-      trackerNewURL?: string  // For editTrackers action
-      trackerURLs?: string  // For addTrackers/removeTrackers actions (newline-separated)
+      ratioLimit?: number
+      seedingTimeLimit?: number
+      inactiveSeedingTimeLimit?: number
+      shareLimitAction?: string
+      shareLimitsMode?: string
+      uploadLimit?: number
+      downloadLimit?: number
+      location?: string
+      trackerOldURL?: string
+      trackerNewURL?: string
+      trackerURLs?: string
     }
   ): Promise<void> {
     return this.request(`/instances/${instanceId}/torrents/bulk-action`, {
@@ -1448,10 +1354,6 @@ class ApiClient {
     }
   }
 
-  /**
-   * Get the cross-seeds of a torrent on every active instance, from the batch matcher.
-   * Rejects when a file list or a link check cannot be read.
-   */
   async getLocalCrossSeedMatches(
     instanceId: number,
     hash: string
@@ -1463,12 +1365,6 @@ class ApiClient {
     return toLocalCrossSeedMatches(raw)
   }
 
-  /**
-   * Get the torrents that a delete of the selected torrents with their files affects.
-   * Takes the selection of a bulk action, so a select-all delete checks every selected
-   * torrent in one request. The selected torrents are not in the result.
-   * uncheckedInstances names the instances that the check could not read.
-   */
   async getDeleteCrossSeeds(
     instanceId: number,
     selection: {
@@ -1501,7 +1397,6 @@ class ApiClient {
       query?: string
       limit?: number
       indexerIds?: number[]
-      /** API hosts of the RED/OPS sites to ask. Undefined means every site. */
       gazelleSites?: string[]
       findIndividualEpisodes?: boolean
       cacheMode?: "bypass"
@@ -1581,10 +1476,8 @@ class ApiClient {
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
-      // Already camelCase over the wire, like decisionTrace.
       gazelleLookups?: CrossSeedGazelleLookup[]
       torznab_failed?: boolean
-      // Already camelCase over the wire, like cache.
       decisionTrace?: CrossSeedSearchDecisionTrace
     }
 
@@ -1972,15 +1865,13 @@ class ApiClient {
     return this.request<CrossSeedSearchStatus>("/cross-seed/search/status")
   }
 
-  async startCrossSeedSearchRun(payload: {
+  async startCrossSeedSearchRun(payload: SitePick & {
     instanceId: number
     categories: string[]
     tags: string[]
     excludeCategories: string[]
     excludeTags: string[]
     intervalSeconds: number
-    indexerIds: number[]
-    disableTorznab?: boolean
     cooldownMinutes: number
     skipIndividualEpisodes?: boolean
     maxAddedAgeDays?: number
@@ -1991,7 +1882,6 @@ class ApiClient {
     })
   }
 
-  /** Starts a scheduled run with the saved settings and restarts the schedule clock. Fails with 409 while a run is active. */
   async runCrossSeedSearchScheduleNow(): Promise<CrossSeedSearchRun> {
     return this.request<CrossSeedSearchRun>("/cross-seed/search/schedule/run", { method: "POST" })
   }
@@ -2026,7 +1916,6 @@ class ApiClient {
     })
   }
 
-  // Torrent Details
   async getTorrentProperties(instanceId: number, hash: string): Promise<TorrentProperties> {
     return this.request<TorrentProperties>(`/instances/${instanceId}/torrents/${hash}/properties`)
   }
@@ -2120,7 +2009,6 @@ class ApiClient {
     return this.request<WebSeed[]>(`/instances/${instanceId}/torrents/${hash}/webseeds`)
   }
 
-  // Piece states: 0 = not downloaded, 1 = downloading, 2 = downloaded
   async getTorrentPieceStates(instanceId: number, hash: string): Promise<number[]> {
     return this.request<number[]>(`/instances/${instanceId}/torrents/${hash}/pieces`)
   }
@@ -2139,7 +2027,6 @@ class ApiClient {
     })
   }
 
-  // Torrent Creator
   async createTorrent(instanceId: number, params: TorrentCreationParams): Promise<TorrentCreationTaskResponse> {
     return this.request(`/instances/${instanceId}/torrent-creator`, {
       method: "POST",
@@ -2167,7 +2054,6 @@ class ApiClient {
       throw new Error(i18n.t("errors.torrentFileDownloadFailed", { ns: "common", status: response.statusText }))
     }
 
-    // Get filename from Content-Disposition header
     const contentDisposition = response.headers.get("Content-Disposition")
     let filename = `${taskID}.torrent`
     if (contentDisposition) {
@@ -2177,7 +2063,6 @@ class ApiClient {
       }
     }
 
-    // Create blob and download
     const blob = await response.blob()
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -2195,7 +2080,6 @@ class ApiClient {
     })
   }
 
-  // Categories & Tags
   async getCategories(instanceId: number): Promise<Record<string, Category>> {
     return this.request(`/instances/${instanceId}/categories`)
   }
@@ -2345,7 +2229,6 @@ class ApiClient {
     })
   }
 
-  // User endpoints
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     return this.request("/auth/change-password", {
       method: "PUT",
@@ -2353,7 +2236,6 @@ class ApiClient {
     })
   }
 
-  // API Key endpoints
   async getApiKeys(): Promise<ApiKey[]> {
     return this.request("/api-keys")
   }
@@ -2376,7 +2258,6 @@ class ApiClient {
     return this.request(`/api-keys/${id}`, { method: "DELETE" })
   }
 
-  // Client API Keys for proxy authentication
   async getClientApiKeys(): Promise<{
     id: number
     clientName: string
@@ -2420,7 +2301,6 @@ class ApiClient {
     return this.request(`/client-api-keys/${id}`, { method: "DELETE" })
   }
 
-  // License endpoints
   async activateLicense(licenseKey: string): Promise<{
     valid: boolean
     productName?: string
@@ -2451,12 +2331,10 @@ class ApiClient {
     return this.request(`/license/${licenseKey}`, { method: "DELETE" })
   }
 
-  // Built-in themes (public; premium CSS license-gated server-side)
   async getBuiltinThemes(signal?: AbortSignal): Promise<{ themes: BuiltinTheme[] }> {
     return this.request("/themes", { signal })
   }
 
-  // Custom themes (CSS files in the custom themes folder; premium-gated server-side)
   async getCustomThemes(): Promise<{
     directory: string
     themes: CustomThemeFile[]
@@ -2482,7 +2360,6 @@ class ApiClient {
     return this.request(`/themes/custom/${encodeURIComponent(id)}`, { method: "DELETE" })
   }
 
-  // Theme settings (theme selection stored in the database; writes premium-gated server-side)
   async getThemeSettings(): Promise<ThemeSlots> {
     return this.request<ThemeSlots>("/themes/settings")
   }
@@ -2498,13 +2375,10 @@ class ApiClient {
     return this.request("/themes/settings?slot=mobile", { method: "DELETE" })
   }
 
-  // Client settings (frontend user settings stored in the database as opaque key-value pairs;
-  // writes go through the debounced push queue in lib/client-settings.ts, not this client)
   async getClientSettings(): Promise<Record<string, string>> {
     return this.request<Record<string, string>>("/client-settings")
   }
 
-  // Preferences endpoints. Both return the catalog view of the preferences.
   async getInstancePreferenceView(instanceId: number): Promise<PreferenceField[]> {
     return this.request<PreferenceField[]>(`/instances/${instanceId}/preferences`)
   }
@@ -2541,16 +2415,15 @@ class ApiClient {
     return this.request<ApplicationInfo>("/application/info")
   }
 
-  // A search report also needs the instance, the torrent and the search inputs, which #4255 adds. Without them the server answers 400.
   async getProblemReportFacts(startedFrom: ProblemReportStartedFrom): Promise<ProblemReportFacts> {
     return this.request<ProblemReportFacts>(`/problem-reports/facts?startedFrom=${startedFrom}`)
   }
 
-  /** Throws an APIError whose message is the refusal reason from the server, for example `anonymous_full`. */
-  async sendProblemReport(report: ProblemReportPayload): Promise<SentProblemReport> {
+  async sendProblemReport(report: ProblemReportPayload, sender: ProblemReportSender): Promise<SentProblemReport> {
     const endpoint = "/problem-reports"
     const formData = new FormData()
     formData.append("report", JSON.stringify(report))
+    formData.append("sender", JSON.stringify(sender))
 
     const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
       method: "POST",
@@ -2566,14 +2439,28 @@ class ApiClient {
     return response.json()
   }
 
-  /** Sent reports, the newest first. The server asks brrbin for fresh Report statuses first. */
   async getSentProblemReports(): Promise<ListedProblemReport[]> {
     return this.request<ListedProblemReport[]>("/problem-reports")
   }
 
-  /** Throws an APIError whose message is `unavailable` when brrbin cannot delete the report. */
   async deleteProblemReport(id: string): Promise<void> {
     await this.request<void>(`/problem-reports/${encodeURIComponent(id)}`, { method: "DELETE" })
+  }
+
+  async getProblemReportSender(): Promise<ProblemReportSender> {
+    return this.request<ProblemReportSender>("/problem-reports/sender")
+  }
+
+  async startProblemReportSignIn(provider: ProblemReportProvider): Promise<{ url: string }> {
+    return this.request<{ url: string }>("/problem-reports/sign-in", { method: "POST", body: JSON.stringify({ provider }) })
+  }
+
+  async getProblemReportSignInState(): Promise<ProblemReportSignInState> {
+    return this.request<ProblemReportSignInState>("/problem-reports/sign-in")
+  }
+
+  async signOutOfProblemReports(): Promise<void> {
+    await this.request<void>("/problem-reports/sign-in", { method: "DELETE" })
   }
 
   async getVersion(): Promise<VersionInfo> {
@@ -2605,10 +2492,8 @@ class ApiClient {
         published_at: string
       } | null>("/version/latest")
 
-      // Treat empty responses as no update available
       return response ?? null
     } catch {
-      // Return null if no update available (204 status) or any error
       return null
     }
   }
@@ -2625,7 +2510,6 @@ class ApiClient {
     return this.request<DatabaseShrinkStatus>("/database/shrink")
   }
 
-  /** Stores the "shrink pending" mark. restarting is false where qui cannot restart itself. */
   async requestDatabaseShrink(): Promise<{ restarting: boolean }> {
     return this.request<{ restarting: boolean }>("/database/shrink", { method: "POST" })
   }
@@ -2638,7 +2522,6 @@ class ApiClient {
     return this.request<Record<string, string>>("/tracker-icons")
   }
 
-  // External Programs endpoints
   async listExternalPrograms(): Promise<ExternalProgram[]> {
     return this.request<ExternalProgram[]>("/external-programs")
   }
@@ -2671,7 +2554,6 @@ class ApiClient {
     })
   }
 
-  // Notifications endpoints
   async listNotificationEvents(): Promise<NotificationEventDefinition[]> {
     return this.request<NotificationEventDefinition[]>("/notifications/events")
   }
@@ -2707,7 +2589,6 @@ class ApiClient {
     })
   }
 
-  // Tracker Customization endpoints
   async listTrackerCustomizations(): Promise<TrackerCustomization[]> {
     return this.request<TrackerCustomization[]>("/tracker-customizations")
   }
@@ -2732,7 +2613,6 @@ class ApiClient {
     })
   }
 
-  // Filter Views endpoints
   async listFilterViews(): Promise<FilterView[]> {
     return this.request<FilterView[]>("/filter-views")
   }
@@ -2757,7 +2637,6 @@ class ApiClient {
     })
   }
 
-  // Dashboard Settings endpoints
   async getDashboardSettings(): Promise<DashboardSettings> {
     return this.request<DashboardSettings>("/dashboard-settings")
   }
@@ -2780,7 +2659,6 @@ class ApiClient {
     })
   }
 
-  /** Deletes the history of one instance or of all instances: everything, or the UTC days before the day of `before`. */
   async deleteTransferHistory(target: { instanceId: number | "all"; before?: Date }): Promise<void> {
     const params = new URLSearchParams({ instanceId: String(target.instanceId) })
     if (target.before) {
@@ -2789,7 +2667,6 @@ class ApiClient {
     return this.request<void>(`/transfer-history?${params}`, { method: "DELETE" })
   }
 
-  // Log Exclusions endpoints
   async getLogExclusions(): Promise<LogExclusions> {
     return this.request<LogExclusions>("/log-exclusions")
   }
@@ -2801,13 +2678,10 @@ class ApiClient {
     })
   }
 
-  // Torznab Indexer endpoints
   async listTorznabIndexers(): Promise<TorznabIndexer[]> {
     return this.request<TorznabIndexer[]>("/torznab/indexers")
   }
 
-  // Returns tracker domains derived from enabled indexers whose domain can be
-  // resolved reliably (native + Prowlarr backends; Jackett is omitted server-side).
   async getIndexerTrackerDomains(): Promise<string[]> {
     return this.request<string[]>("/torznab/indexers/tracker-domains")
   }
@@ -2948,7 +2822,6 @@ class ApiClient {
     })
   }
 
-  // Orphan Scan endpoints
   async getOrphanScanSettings(instanceId: number): Promise<OrphanScanSettings> {
     return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`)
   }
@@ -3017,7 +2890,6 @@ class ApiClient {
     )
   }
 
-  // ARR Instance endpoints
   async listArrInstances(): Promise<ArrInstance[]> {
     return this.request<ArrInstance[]>("/arr/instances")
   }
@@ -3053,7 +2925,6 @@ class ApiClient {
     })
   }
 
-  // Log Settings endpoints
   async getLogSettings(): Promise<LogSettings> {
     return this.request<LogSettings>("/log-settings")
   }
@@ -3065,7 +2936,6 @@ class ApiClient {
     })
   }
 
-  // Get the SSE log stream URL for EventSource
   getLogStreamUrl(limit = 1000): string {
     return `${API_BASE}/logs/stream?limit=${limit}`
   }
@@ -3092,7 +2962,6 @@ class ApiClient {
     window.URL.revokeObjectURL(url)
   }
 
-  // Directory Scanner endpoints
   async getDirScanSettings(): Promise<DirScanSettings> {
     return this.request<DirScanSettings>("/dir-scan/settings")
   }
@@ -3183,8 +3052,6 @@ class ApiClient {
     )
   }
 
-  // RSS Feed Management
-
   async getRSSItems(instanceId: number, withData = true): Promise<RSSItems> {
     return this.request<RSSItems>(`/instances/${instanceId}/rss/items?withData=${withData}`)
   }
@@ -3238,8 +3105,6 @@ class ApiClient {
     })
   }
 
-  // RSS Auto-Download Rules
-
   async getRSSRules(instanceId: number): Promise<RSSRules> {
     return this.request<RSSRules>(`/instances/${instanceId}/rss/rules`)
   }
@@ -3268,7 +3133,6 @@ class ApiClient {
   }
 }
 
-/** Sends a JSON request through the shared API client (auth, SSO, errors). */
 export function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
   return api.request<T>(endpoint, options)
 }

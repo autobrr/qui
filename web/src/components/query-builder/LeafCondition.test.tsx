@@ -8,8 +8,6 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { RuleCondition } from "@/types"
 
-// Return the key, plus the interpolated value when there is one. A stable function
-// keeps renders from looping.
 const mocks = vi.hoisted(() => ({
   t: (key: string, options?: { value?: string }) => (options?.value ? `${key}:${options.value}` : key),
 }))

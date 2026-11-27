@@ -63,7 +63,6 @@ describe("getStatusBadgeProps", () => {
     const props = getStatusBadgeProps(torrent, false, t)
     expect(props.variant).toBe("default")
     expect(props.className).toBe("")
-    // Label comes from getStateLabel's English fallback (not a tracker-health override).
     expect(props.label).toBe("Downloading")
   })
 
@@ -72,7 +71,7 @@ describe("getStatusBadgeProps", () => {
     const props = getStatusBadgeProps(torrent, true, t)
     expect(props.label).toBe(enTorrents.tableColumns.trackerDown)
     expect(props.variant).toBe("outline")
-    expect(props.className).toContain("text-yellow-500")
+    expect(props.className).toContain("text-warning")
   })
 
   it("overrides for tracker_error", () => {

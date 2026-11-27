@@ -234,7 +234,7 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 			continue
 		}
 
-		response, err := c.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{InstanceID: instance.ID, NoRows: true, SidebarCounts: true})
+		response, err := c.syncManager.ListTorrents(ctx, qbittorrent.TorrentListView{InstanceID: instance.ID, NoRows: true, SidebarCounts: true, WithHelperTorrents: true})
 		if err != nil {
 			log.Warn().
 				Err(err).
@@ -246,132 +246,12 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 
 		if response != nil && response.Counts != nil && response.Counts.Status != nil {
-			counts := response.Counts
-			if downloading, ok := counts.Status["downloading"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsDownloadingDesc,
-					prometheus.GaugeValue,
-					float64(downloading),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
-			if seeding, ok := counts.Status["seeding"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsSeedingDesc,
-					prometheus.GaugeValue,
-					float64(seeding),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
-			if paused, ok := counts.Status["paused"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsPausedDesc,
-					prometheus.GaugeValue,
-					float64(paused),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
-			if errored, ok := counts.Status["errored"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsErrorDesc,
-					prometheus.GaugeValue,
-					float64(errored),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
-			if checking, ok := counts.Status["checking"]; ok {
-				ch <- prometheus.MustNewConstMetric(
-					c.torrentsCheckingDesc,
-					prometheus.GaugeValue,
-					float64(checking),
-					instanceIDStr,
-					instanceName,
-				)
-			}
-
-			groups, groupsErr := c.syncManager.TrackerGroups(ctx, instance.ID, mapper)
-			if groupsErr != nil {
-				log.Warn().
-					Err(groupsErr).
-					Int("instanceID", instance.ID).
-					Str("instanceName", instanceName).
-					Msg("Failed to group torrents by tracker for metrics")
-				c.reportError(ch, instanceIDStr, instanceName, "tracker_groups")
-			}
-			for trackerName, stats := range mergeByName(groups) {
-				ch <- prometheus.MustNewConstMetric(
-					c.trackerTorrentsDesc,
-					prometheus.GaugeValue,
-					float64(stats.Count),
-					instanceIDStr,
-					instanceName,
-					trackerName,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					c.trackerUploadedDesc,
-					prometheus.GaugeValue,
-					float64(stats.Uploaded),
-					instanceIDStr,
-					instanceName,
-					trackerName,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					c.trackerDownloadedDesc,
-					prometheus.GaugeValue,
-					float64(stats.Downloaded),
-					instanceIDStr,
-					instanceName,
-					trackerName,
-				)
-				ch <- prometheus.MustNewConstMetric(
-					c.trackerTotalSizeDesc,
-					prometheus.GaugeValue,
-					float64(stats.TotalSize),
-					instanceIDStr,
-					instanceName,
-					trackerName,
-				)
-			}
+			c.collectStatusCounts(ch, response.Counts.Status, instanceIDStr, instanceName)
+			c.collectTrackerGroups(ctx, ch, instance.ID, mapper, instanceIDStr, instanceName)
 		}
 
 		if response != nil && response.ServerState != nil {
-			stats := response.ServerState
-			ch <- prometheus.MustNewConstMetric(
-				c.sessionDownload,
-				prometheus.CounterValue,
-				float64(stats.DlInfoData),
-				instanceIDStr,
-				instanceName,
-			)
-			ch <- prometheus.MustNewConstMetric(
-				c.sessionUpload,
-				prometheus.CounterValue,
-				float64(stats.UpInfoData),
-				instanceIDStr,
-				instanceName,
-			)
-			ch <- prometheus.MustNewConstMetric(
-				c.allTimeDownload,
-				prometheus.CounterValue,
-				float64(stats.AlltimeDl),
-				instanceIDStr,
-				instanceName,
-			)
-			ch <- prometheus.MustNewConstMetric(
-				c.allTimeUpload,
-				prometheus.CounterValue,
-				float64(stats.AlltimeUl),
-				instanceIDStr,
-				instanceName,
-			)
+			c.collectServerState(ch, response, instanceIDStr, instanceName)
 		}
 
 		log.Debug().
@@ -381,8 +261,136 @@ func (c *TorrentCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-// mergeByName adds the groups that share one label, because a duplicate label
-// would fail the whole scrape. A customization named like a domain does this.
+func (c *TorrentCollector) collectStatusCounts(ch chan<- prometheus.Metric, status map[string]int, instanceIDStr, instanceName string) {
+	if downloading, ok := status["downloading"]; ok {
+		ch <- prometheus.MustNewConstMetric(
+			c.torrentsDownloadingDesc,
+			prometheus.GaugeValue,
+			float64(downloading),
+			instanceIDStr,
+			instanceName,
+		)
+	}
+
+	if seeding, ok := status["seeding"]; ok {
+		ch <- prometheus.MustNewConstMetric(
+			c.torrentsSeedingDesc,
+			prometheus.GaugeValue,
+			float64(seeding),
+			instanceIDStr,
+			instanceName,
+		)
+	}
+
+	if paused, ok := status["paused"]; ok {
+		ch <- prometheus.MustNewConstMetric(
+			c.torrentsPausedDesc,
+			prometheus.GaugeValue,
+			float64(paused),
+			instanceIDStr,
+			instanceName,
+		)
+	}
+
+	if errored, ok := status["errored"]; ok {
+		ch <- prometheus.MustNewConstMetric(
+			c.torrentsErrorDesc,
+			prometheus.GaugeValue,
+			float64(errored),
+			instanceIDStr,
+			instanceName,
+		)
+	}
+
+	if checking, ok := status["checking"]; ok {
+		ch <- prometheus.MustNewConstMetric(
+			c.torrentsCheckingDesc,
+			prometheus.GaugeValue,
+			float64(checking),
+			instanceIDStr,
+			instanceName,
+		)
+	}
+}
+
+func (c *TorrentCollector) collectTrackerGroups(ctx context.Context, ch chan<- prometheus.Metric, instanceID int, mapper *trackergroup.Mapper, instanceIDStr, instanceName string) {
+	groups, groupsErr := c.syncManager.TrackerGroups(ctx, instanceID, mapper)
+	if groupsErr != nil {
+		log.Warn().
+			Err(groupsErr).
+			Int("instanceID", instanceID).
+			Str("instanceName", instanceName).
+			Msg("Failed to group torrents by tracker for metrics")
+		c.reportError(ch, instanceIDStr, instanceName, "tracker_groups")
+	}
+	for trackerName, stats := range mergeByName(groups) {
+		ch <- prometheus.MustNewConstMetric(
+			c.trackerTorrentsDesc,
+			prometheus.GaugeValue,
+			float64(stats.Count),
+			instanceIDStr,
+			instanceName,
+			trackerName,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.trackerUploadedDesc,
+			prometheus.GaugeValue,
+			float64(stats.Uploaded),
+			instanceIDStr,
+			instanceName,
+			trackerName,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.trackerDownloadedDesc,
+			prometheus.GaugeValue,
+			float64(stats.Downloaded),
+			instanceIDStr,
+			instanceName,
+			trackerName,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.trackerTotalSizeDesc,
+			prometheus.GaugeValue,
+			float64(stats.TotalSize),
+			instanceIDStr,
+			instanceName,
+			trackerName,
+		)
+	}
+}
+
+func (c *TorrentCollector) collectServerState(ch chan<- prometheus.Metric, response *qbittorrent.TorrentResponse, instanceIDStr, instanceName string) {
+	stats := response.ServerState
+	ch <- prometheus.MustNewConstMetric(
+		c.sessionDownload,
+		prometheus.CounterValue,
+		float64(stats.DlInfoData),
+		instanceIDStr,
+		instanceName,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.sessionUpload,
+		prometheus.CounterValue,
+		float64(stats.UpInfoData),
+		instanceIDStr,
+		instanceName,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.allTimeDownload,
+		prometheus.CounterValue,
+		float64(stats.AlltimeDl),
+		instanceIDStr,
+		instanceName,
+	)
+	ch <- prometheus.MustNewConstMetric(
+		c.allTimeUpload,
+		prometheus.CounterValue,
+		float64(stats.AlltimeUl),
+		instanceIDStr,
+		instanceName,
+	)
+}
+
 func mergeByName(groups map[trackergroup.Group]qbittorrent.TrackerTransferStats) map[string]qbittorrent.TrackerTransferStats {
 	byName := make(map[string]qbittorrent.TrackerTransferStats, len(groups))
 	for group, stats := range groups {

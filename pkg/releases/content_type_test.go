@@ -40,7 +40,6 @@ func TestDetermineContentType(t *testing.T) {
 		{name: "untyped release with a year is a movie", release: &rls.Release{Year: 2020}, want: ContentTypeMovie},
 		{name: "untyped release with nothing to go on", release: &rls.Release{}, want: ContentTypeUnknown},
 		{name: "xxx token", release: &rls.Release{Title: "Some Studio XXX Scene"}, want: ContentTypeAdult},
-		// The 3rd letter must not be a RIAJ medium, or the code reads as a music release.
 		{name: "jav code alone", release: &rls.Release{Title: "ABQD-123"}, want: ContentTypeAdult},
 		{name: "jav-shaped riaj code is music", release: &rls.Release{Title: "ABCD-123"}, want: ContentTypeMusic},
 		{name: "xxx film franchise is not adult", release: &rls.Release{Type: rls.Movie, Title: "xXx", Year: 2002}, want: ContentTypeMovie},
@@ -73,8 +72,6 @@ func TestClassifyAsSkipsMusicToVideoRescue(t *testing.T) {
 	assert.Equal(t, ContentTypeMusic, ClassifyAs(release, release.Type).ContentType)
 }
 
-// The cases above cannot cover a branch nobody wrote a case for, and a named
-// string type still accepts an untyped literal, so check the source directly.
 func TestDetermineContentTypeAssignsOnlyKnownTypes(t *testing.T) {
 	t.Parallel()
 

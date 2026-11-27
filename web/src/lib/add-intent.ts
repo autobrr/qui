@@ -47,16 +47,11 @@ export function clearAddIntent(): void {
   }
 }
 
-/**
- * Navigate to the appropriate route after successful authentication.
- * Checks for stored add intent (from PWA protocol/file handler) and routes accordingly.
- */
 export function navigateAfterAuth(navigate: NavigateFn, defaultRoute: string = "/dashboard"): void {
   const addIntent = getAndClearAddIntent()
   if (addIntent?.magnet) {
     navigate({ to: "/add", search: { magnet: addIntent.magnet } })
   } else if (addIntent?.hasFiles) {
-    // Pass expectingFiles flag so /add can show appropriate error if launchQueue doesn't fire
     navigate({ to: "/add", search: { expectingFiles: "true" } })
   } else if (addIntent?.openAdd) {
     navigate({ to: "/add" })

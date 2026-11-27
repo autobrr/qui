@@ -61,7 +61,6 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			var torrents []qbt.Torrent
 			for i := 1; i <= 4; i++ {
 				packFile := fmt.Sprintf("Cedar.Harbor.S02E%02d.1080p.WEB.x264-PINE.mkv", i)
-				// Title, source, and numbering differ from the uploaded pack.
 				localName := fmt.Sprintf("Maple.Coast - %02d - 720p HDTV x265-OAK", i)
 				fileName := localName + ".mkv"
 				data := bytes.Repeat([]byte{byte(i)}, i*64)
@@ -72,15 +71,15 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				require.NoError(t, os.WriteFile(source, data, 0o600))
 				torrents = append(torrents, qbt.Torrent{Hash: hash, Name: localName, ContentPath: source, Progress: 1, Category: "excluded"})
 			}
-			torrentData := base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 64, contents))
+			packBytes := buildMultiFileTorrent(t, packName, 64, contents)
+			torrentData := base64.StdEncoding.EncodeToString(packBytes)
 			sm := &seasonPackSyncManager{fakeSyncManager: newFakeSyncManager(inst, torrents, files)}
 			runs := &stubSeasonPackRunStore{}
 			svc := &Service{
 				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{1: inst}},
 				syncManager:   sm, releaseCache: NewReleaseCache(), stringNormalizer: stringutils.DefaultNormalizer,
 				seasonPackRunStore: runs,
-				// Manual assemble is a deliberate user action and overrides the blocklist.
-				blocklistStore: blocklistWithPack(t, torrentData),
+				blocklistStore:     blocklistWithPack(t, torrentData),
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{
 						SeasonPackCoverageThreshold: 1, SkipRecheck: true,
@@ -89,13 +88,11 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 					}, nil
 				},
 			}
-			var hookRuns []string
-			svc.postInjectionHook = func(_ context.Context, _ int, hashes []string) {
-				hookRuns = append(hookRuns, strings.Join(hashes, ","))
-			}
+			packMeta, err := ParseTorrentMetadataWithInfo(packBytes)
+			require.NoError(t, err)
+			programs := runProgramAfterAdd(svc, qbt.Torrent{Hash: packMeta.HashV1.String()})
 			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 			if mode == "reflink" {
-				// Exercise the same tree on hosts without reflink support.
 				svc.seasonPackLinkCreator = local.NewBackend().HardlinkTree
 			}
 			req := &ManualAssembleRequest{InstanceID: 1, TorrentData: torrentData, TargetHashes: []string{"e01", "e02", "e03"}, Category: "chosen", Tags: []string{"chosen"}}
@@ -111,7 +108,7 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			_, err = os.Stat(inst.HardlinkBaseDir)
 			require.True(t, os.IsNotExist(err), "check must not create a tree")
 			require.Empty(t, runs.runs)
-			require.Empty(t, hookRuns, "check must not run the External Program")
+			require.Empty(t, programs.ran(), "check must not run the External Program")
 
 			unalignedReq := *req
 			unalignedReq.TorrentData = base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 1024, contents))
@@ -125,17 +122,11 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				require.True(t, boundaryPreview.Ready)
 			}
 
-			// The blocklist database runs outside the bubble; the apply and the
-			// settle worker run inside it.
 			synctest.Test(t, func(t *testing.T) {
-				// The resume gate is the linked byte fraction: 256 of 640 bytes, with
-				// the slack. No bytes left keeps the linked-file check, which
-				// TestSettle covers, out of this test.
 				script := startSettleScript(t, svc,
 					&qbt.Torrent{State: qbt.TorrentStateCheckingDl},
 					&qbt.Torrent{State: qbt.TorrentStatePausedDl, Progress: 256.0 / 640.0 * seasonPackResumeSlack},
 				)
-				// A moved file must not discard the two remaining selected episodes.
 				require.NoError(t, os.Remove(torrents[1].ContentPath))
 				adds := withLinkAdder(svc)
 				applied, err := svc.ApplyManualAssemble(t.Context(), req)
@@ -145,7 +136,8 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 				require.Equal(t, "local_file_unavailable", applied.Targets[1].Reason)
 				require.Equal(t, "e02", applied.Targets[1].Hash)
 				require.Len(t, adds.added, 1)
-				require.Len(t, hookRuns, 1, "apply runs the External Program once")
+				synctest.Wait()
+				require.Equal(t, []string{programRun(testProgramID, 1, packMeta.HashV1.String())}, programs.ran(), "apply runs the External Program once for the pack")
 				require.NotContains(t, adds.added[0], "skip_checking")
 				require.Equal(t, "true", adds.added[0]["paused"])
 				require.Equal(t, "true", adds.added[0]["stopped"])
@@ -166,8 +158,6 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 	}
 }
 
-// A pack named only with a Season numeral reads the season that the numeral
-// names, so its seasonless files pair with the seasoned local episodes.
 func TestManualAssembleSeasonNumeralPack(t *testing.T) {
 	const packName = "[PINE] Cedar Harbor II [BD 1080p]"
 	root := t.TempDir()
@@ -224,10 +214,7 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	require.Len(t, preview.Targets, 4)
 	require.True(t, preview.Ready)
 
-	// The fixture caches run outside the bubble; the apply and the settle
-	// worker run inside it.
 	synctest.Test(t, func(t *testing.T) {
-		// A complete pack resumes at the full fraction with the slack.
 		script := startSettleScript(t, svc,
 			&qbt.Torrent{State: qbt.TorrentStateCheckingDl},
 			&qbt.Torrent{State: qbt.TorrentStatePausedUp, Progress: seasonPackResumeSlack},
@@ -245,7 +232,6 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 		require.Equal(t, []string{"recheck", "resume"}, actionNames(actions))
 	})
 
-	// regression: #3626
 	torrents[2].State = qbt.TorrentStateMoving
 	req.TargetHashes = []string{"e01", "e03"}
 	preview, err = svc.CheckManualAssemble(t.Context(), req)
@@ -253,7 +239,6 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	require.Equal(t, "not_settled", preview.Targets[1].Reason)
 	torrents[2].State = qbt.TorrentStateStalledUp
 
-	// regression: #3707
 	torrents[2].State = qbt.TorrentStateMissingFiles
 	preview, err = svc.CheckManualAssemble(t.Context(), req)
 	require.NoError(t, err)
@@ -273,7 +258,7 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	require.Equal(t, 1, preview.MatchedEpisodes)
 	require.Equal(t, "size_mismatch", preview.Targets[1].Reason)
 	require.Equal(t, "target_not_found", preview.Targets[2].Reason)
-	_, err = svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: 1, TorrentData: fix.torrentData, TargetHashes: []string{"e01", " E01 "}})
+	_, err = svc.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{InstanceID: 1, TorrentData: fix.torrentData, TargetHashes: []string{"abcdefabcdefabcdefabcdefabcdefabcdefabcd", " ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD "}})
 	require.ErrorIs(t, err, ErrInvalidRequest)
 
 	data, err := base64.StdEncoding.DecodeString(fix.torrentData)

@@ -58,7 +58,6 @@ func (h *OrphanScanHandler) requireFilesystemAccess(w http.ResponseWriter, r *ht
 	return true
 }
 
-// OrphanScanSettingsPayload is the request body for creating/updating orphan scan settings.
 type OrphanScanSettingsPayload struct {
 	Enabled             *bool    `json:"enabled"`
 	GracePeriodMinutes  *int     `json:"gracePeriodMinutes"`
@@ -73,7 +72,6 @@ type OrphanScanSettingsPayload struct {
 	DeleteAbandonedDirs *bool    `json:"deleteAbandonedDirs"`
 }
 
-// GetSettings returns the orphan scan settings for an instance.
 func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -91,7 +89,6 @@ func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Return default settings if none exist
 	if settings == nil {
 		defaults := orphanscan.DefaultSettings()
 		settings = &models.OrphanScanSettings{
@@ -110,10 +107,9 @@ func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
-// UpdateSettings updates the orphan scan settings for an instance.
 func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -131,7 +127,6 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Get existing settings or create defaults
 	settings, err := h.store.GetSettings(r.Context(), instanceID)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("orphanscan: failed to get existing settings")
@@ -162,13 +157,11 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Validate and normalize ignore paths
 	if len(settings.IgnorePaths) > 0 {
 		if h.service == nil {
 			RespondError(w, http.StatusServiceUnavailable, "Orphan scan service not available")
 			return
 		}
-		// Checked in the grammar of the instance's backend, which is how the scan reads them.
 		dialect, err := h.service.PathDialect(r.Context(), instanceID)
 		if err != nil {
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("orphanscan: failed to resolve the instance's filesystem")
@@ -190,10 +183,9 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, savedSettings)
+	RespondJSON(w, r, http.StatusOK, savedSettings)
 }
 
-// It returns a validation error message, or "" when every field is valid.
 func applyOrphanScanSettingsPayload(settings *models.OrphanScanSettings, payload *OrphanScanSettingsPayload) string {
 	if payload.Enabled != nil {
 		settings.Enabled = *payload.Enabled
@@ -214,7 +206,6 @@ func applyOrphanScanSettingsPayload(settings *models.OrphanScanSettings, payload
 		settings.ScanIntervalHours = *payload.ScanIntervalHours
 	}
 	if payload.PreviewSort != nil {
-		// Empty is treated as default.
 		if *payload.PreviewSort != "" && *payload.PreviewSort != previewSortSizeDesc && *payload.PreviewSort != previewSortDirectorySizeDesc {
 			return "Invalid preview sort: must be 'size_desc' or 'directory_size_desc'"
 		}
@@ -252,7 +243,6 @@ func applyOrphanScanSettingsPayload(settings *models.OrphanScanSettings, payload
 	return ""
 }
 
-// TriggerScan starts a manual orphan scan for an instance.
 func (h *OrphanScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -271,7 +261,6 @@ func (h *OrphanScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) 
 	runID, err := h.service.TriggerScan(r.Context(), instanceID, "manual")
 	if err != nil {
 		if errors.Is(err, orphanscan.ErrScanInProgress) {
-			// Provide actionable context for clients even if the runs list isn't showing the active run.
 			if active, aErr := h.store.GetMostRecentActiveRun(r.Context(), instanceID); aErr == nil && active != nil {
 				RespondError(w, http.StatusConflict,
 					fmt.Sprintf(
@@ -292,10 +281,9 @@ func (h *OrphanScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, map[string]int64{"runId": runID})
+	RespondJSON(w, r, http.StatusAccepted, map[string]int64{"runId": runID})
 }
 
-// ListRuns returns recent orphan scan runs for an instance.
 func (h *OrphanScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -324,10 +312,9 @@ func (h *OrphanScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		runs = []*models.OrphanScanRun{}
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
-// GetRun returns a specific orphan scan run with its file list.
 func (h *OrphanScanHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -356,13 +343,11 @@ func (h *OrphanScanHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify run belongs to this instance
 	if run.InstanceID != instanceID {
 		RespondError(w, http.StatusNotFound, "Run not found")
 		return
 	}
 
-	// Parse pagination
 	limit := 100
 	offset := 0
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
@@ -397,13 +382,12 @@ func (h *OrphanScanHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 		Files []*models.OrphanScanFile `json:"files"`
 	}
 
-	RespondJSON(w, http.StatusOK, RunWithFiles{
+	RespondJSON(w, r, http.StatusOK, RunWithFiles{
 		OrphanScanRun: run,
 		Files:         files,
 	})
 }
 
-// ConfirmDeletion confirms deletion of orphan files from a preview_ready run.
 func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -421,7 +405,6 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Verify run exists and belongs to this instance
 	run, err := h.store.GetRun(r.Context(), runID)
 	if err != nil {
 		log.Error().Err(err).Int64("runID", runID).Msg("orphanscan: failed to get run for confirmation")
@@ -469,10 +452,9 @@ func (h *OrphanScanHandler) ConfirmDeletion(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, map[string]string{"status": "deleting"})
+	RespondJSON(w, r, http.StatusAccepted, map[string]string{"status": "deleting"})
 }
 
-// CancelRun cancels a pending, scanning, or preview_ready run.
 func (h *OrphanScanHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -490,7 +472,6 @@ func (h *OrphanScanHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify run exists and belongs to this instance
 	run, err := h.store.GetRun(r.Context(), runID)
 	if err != nil {
 		log.Error().Err(err).Int64("runID", runID).Msg("orphanscan: failed to get run for cancellation")
@@ -530,5 +511,5 @@ func (h *OrphanScanHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, map[string]string{"status": "canceled"})
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "canceled"})
 }

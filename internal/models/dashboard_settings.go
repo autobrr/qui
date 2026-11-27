@@ -15,10 +15,8 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// Default section order
 var DefaultSectionOrder = []string{"server-stats", "global-stats", "instances"}
 
-// Default section visibility (all visible)
 var DefaultSectionVisibility = map[string]bool{
 	"server-stats": true,
 	"global-stats": true,
@@ -49,7 +47,6 @@ func NewDashboardSettingsStore(db dbinterface.Querier) *DashboardSettingsStore {
 	return &DashboardSettingsStore{db: db}
 }
 
-// GetByUserID returns settings for a user, creating defaults if none exist
 func (s *DashboardSettingsStore) GetByUserID(ctx context.Context, userID int) (*DashboardSettings, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, user_id, section_visibility, section_order, section_collapsed,
@@ -67,14 +64,12 @@ func (s *DashboardSettingsStore) GetByUserID(ctx context.Context, userID int) (*
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		// Create default settings for this user
 		return s.createDefault(ctx, userID)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse JSON fields
 	if visibilityJSON != "" && visibilityJSON != "{}" {
 		if err := json.Unmarshal([]byte(visibilityJSON), &ds.SectionVisibility); err != nil {
 			ds.SectionVisibility = copyVisibilityMap(DefaultSectionVisibility)
@@ -102,19 +97,16 @@ func (s *DashboardSettingsStore) GetByUserID(ctx context.Context, userID int) (*
 	return &ds, nil
 }
 
-// Update updates settings for a user (partial update - merges with existing)
 func (s *DashboardSettingsStore) Update(ctx context.Context, userID int, input *DashboardSettingsInput) (*DashboardSettings, error) {
 	if input == nil {
 		return nil, errors.New("input is nil")
 	}
 
-	// Get existing settings (creates if none)
 	existing, err := s.GetByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Merge input with existing
 	if input.SectionVisibility != nil {
 		existing.SectionVisibility = input.SectionVisibility
 	}
@@ -125,7 +117,6 @@ func (s *DashboardSettingsStore) Update(ctx context.Context, userID int, input *
 		existing.SectionCollapsed = input.SectionCollapsed
 	}
 
-	// Serialize JSON fields
 	visibilityJSON, err := json.Marshal(existing.SectionVisibility)
 	if err != nil {
 		return nil, err
@@ -139,7 +130,6 @@ func (s *DashboardSettingsStore) Update(ctx context.Context, userID int, input *
 		return nil, err
 	}
 
-	// Update in database
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE dashboard_settings
 		SET section_visibility = ?,
@@ -159,7 +149,6 @@ func (s *DashboardSettingsStore) Update(ctx context.Context, userID int, input *
 	return s.GetByUserID(ctx, userID)
 }
 
-// createDefault creates default settings for a user
 func (s *DashboardSettingsStore) createDefault(ctx context.Context, userID int) (*DashboardSettings, error) {
 	visibilityJSON, err := json.Marshal(DefaultSectionVisibility)
 	if err != nil {

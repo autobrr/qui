@@ -45,8 +45,6 @@ func NewHub(size int) *Hub {
 	}
 }
 
-// Write appends a log line to the ring buffer and broadcasts to subscribers.
-// Lines that exceed subscriber buffer capacity are dropped (slow consumer protection).
 func (h *Hub) Write(line string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -57,9 +55,6 @@ func (h *Hub) Write(line string) {
 		h.count++
 	}
 
-	// Broadcast to subscribers (non-blocking, drop on full)
-	// Must be inside lock to prevent send-on-closed-channel panic
-	// when Unsubscribe closes a channel concurrently.
 	for sub := range h.subscribers {
 		select {
 		case sub.ch <- line:
@@ -87,10 +82,6 @@ func (h *Hub) History(n int) []string {
 	return result
 }
 
-// HistoryFrom returns the last n lines at minLevel or above, oldest first.
-// It filters before it counts, so n is the number of matching lines returned
-// when the buffer holds that many. If n <= 0, it returns every matching line.
-// A line whose level it cannot read is always kept.
 func (h *Hub) HistoryFrom(minLevel zerolog.Level, n int) []string {
 	lines := h.History(0)
 	var result []string
@@ -117,8 +108,6 @@ var consoleLevels = func() map[string]zerolog.Level {
 	return levels
 }()
 
-// lineLevel reads the level field of a zerolog JSON line, or the level word
-// of a line in zerolog's console format (timestamp, then level word).
 func lineLevel(line string) (zerolog.Level, bool) {
 	if strings.HasPrefix(line, "{") {
 		var entry struct {

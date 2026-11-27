@@ -112,7 +112,6 @@ interface DirScanTabProps {
   instances: Instance[]
 }
 
-// Helper to format relative time from a string or Date
 function formatRelativeTimeStr(date: string | Date): string {
   return formatRelativeTime(typeof date === "string" ? new Date(date) : date)
 }
@@ -155,12 +154,10 @@ export function DirScanTab({ instances }: DirScanTabProps) {
   const [editingDirectory, setEditingDirectory] = useState<DirScanDirectory | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
-  // Queries
   const { data: settings, isLoading: settingsLoading } = useDirScanSettings()
   const { data: directories = [], isLoading: directoriesLoading } = useDirScanDirectories()
   const updateSettings = useUpdateDirScanSettings()
 
-  // Get status for each directory
   const scanTargets = useMemo(
     () => instances.filter((i) => i.capabilities.read),
     [instances]
@@ -203,7 +200,6 @@ export function DirScanTab({ instances }: DirScanTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header with Enable Switch */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -239,11 +235,10 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         </CardHeader>
       </Card>
 
-      {/* No Local Access Warning */}
       {scanTargets.length === 0 && (
-        <Card className="border-yellow-500/50 bg-yellow-500/5">
+        <Card className="border-warning/50 bg-warning/5">
           <CardContent className="flex items-center gap-3 py-4">
-            <AlertTriangle className="size-5 text-yellow-500" />
+            <AlertTriangle className="size-5 text-warning" />
             <p className="text-sm text-muted-foreground">
               {t("dirScan.noLocalAccessWarning")}
             </p>
@@ -251,7 +246,6 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         </Card>
       )}
 
-      {/* Directories List */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="space-y-1.5">
@@ -294,7 +288,6 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         </CardContent>
       </Card>
 
-      {/* Selected Directory Details */}
       {selectedDirectoryId && (
         <DirectoryDetails
           directoryId={selectedDirectoryId}
@@ -303,7 +296,6 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         />
       )}
 
-      {/* Settings Dialog */}
       <SettingsDialog
         open={showSettingsDialog}
         onOpenChange={setShowSettingsDialog}
@@ -311,7 +303,6 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         instances={scanTargets}
       />
 
-      {/* Directory Dialog */}
       <DirectoryDialog
         open={showDirectoryDialog}
         onOpenChange={setShowDirectoryDialog}
@@ -319,7 +310,6 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         instances={scanTargets}
       />
 
-      {/* Delete Confirmation */}
       <DeleteDirectoryDialog
         directoryId={deleteConfirmId}
         onOpenChange={(open) => !open && setDeleteConfirmId(null)}
@@ -328,7 +318,6 @@ export function DirScanTab({ instances }: DirScanTabProps) {
   )
 }
 
-// Directory Card Component
 interface DirectoryCardProps {
   directory: DirScanDirectory
   instances: Instance[]
@@ -360,7 +349,6 @@ function DirectoryCard({
 
   const runs = useMemo(() => status?.runs ?? [], [status])
   const activeRuns = useMemo(() => runs.filter(isRunActive), [runs])
-  // A webhook scan runs beside a full scan, so the card can show Scan and Pause at once.
   const fullScanActive = activeRuns.some((run) => run.triggeredBy !== "webhook")
 
   const handleTrigger = useCallback(() => {
@@ -389,7 +377,7 @@ function DirectoryCard({
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm truncate">{directory.path}</span>
             {!directory.enabled && (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary">
                 {t("dirScan.disabled")}
               </Badge>
             )}
@@ -455,17 +443,16 @@ function DirectoryCard({
   )
 }
 
-// Status Badge Component
 function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
   const { t } = useTranslation("crossseed")
   const statusConfig: Record<DirScanRunStatus, { icon: React.ReactNode; color: string; label: string }> = {
-    queued: { icon: <Clock className="size-3" />, color: "text-blue-500", label: t("dirScan.statusLabels.queued") },
-    scanning: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: t("dirScan.statusLabels.scanning") },
-    searching: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: t("dirScan.statusLabels.searching") },
-    injecting: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: t("dirScan.statusLabels.injecting") },
-    success: { icon: <CheckCircle2 className="size-3" />, color: "text-green-500", label: t("dirScan.statusLabels.success") },
-    failed: { icon: <XCircle className="size-3" />, color: "text-red-500", label: t("dirScan.statusLabels.failed") },
-    canceled: { icon: <Clock className="size-3" />, color: "text-yellow-500", label: t("dirScan.statusLabels.canceled") },
+    queued: { icon: <Clock className="size-3" />, color: "text-info", label: t("dirScan.statusLabels.queued") },
+    scanning: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-info", label: t("dirScan.statusLabels.scanning") },
+    searching: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-info", label: t("dirScan.statusLabels.searching") },
+    injecting: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-info", label: t("dirScan.statusLabels.injecting") },
+    success: { icon: <CheckCircle2 className="size-3" />, color: "text-success", label: t("dirScan.statusLabels.success") },
+    failed: { icon: <XCircle className="size-3" />, color: "text-destructive", label: t("dirScan.statusLabels.failed") },
+    canceled: { icon: <Clock className="size-3" />, color: "text-warning", label: t("dirScan.statusLabels.canceled") },
   }
 
   const config = statusConfig[run.status]
@@ -491,7 +478,6 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
   )
 }
 
-// Directory Details Component
 interface DirectoryDetailsProps {
   directoryId: number
   formatDateTime: (date: string) => string
@@ -511,7 +497,7 @@ function InjectionStatusBadge({ injection }: { injection: DirScanRunInjection })
   const { t } = useTranslation("crossseed")
   const isFailed = injection.status === "failed"
   return (
-    <span className={`inline-flex items-center gap-1 text-xs ${isFailed ? "text-red-500" : "text-green-500"}`}>
+    <span className={`inline-flex items-center gap-1 text-xs ${isFailed ? "text-destructive" : "text-success"}`}>
       {isFailed ? <XCircle className="size-3" /> : <CheckCircle2 className="size-3" />}
       <span>{isFailed ? t("dirScan.statusLabels.failed") : t("dirScan.statusLabels.added")}</span>
     </span>
@@ -811,7 +797,6 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
   )
 }
 
-// Settings Dialog
 interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -944,8 +929,6 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* The first focusable element is the Match Mode FieldHelp trigger; default auto-focus would open its tooltip on every dialog open.
-          Focus the dialog itself so the focus trap keeps an anchor. */}
       <DialogContent
         className="max-w-lg max-h-[90dvh] flex flex-col"
         onOpenAutoFocus={(event) => {
@@ -1218,7 +1201,6 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
   )
 }
 
-// Directory Dialog
 interface DirectoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1246,12 +1228,10 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     skipIndividualEpisodes: directory?.skipIndividualEpisodes ?? false,
   }))
 
-  // Track acknowledgment of regular mode warning
   const [regularModeAcknowledged, setRegularModeAcknowledged] = useState(false)
 
   const { data: targetInstanceMetadata, isError: targetInstanceMetadataError } = useInstanceMetadata(form.targetInstanceId)
 
-  // Check if target instance is in regular mode (not using hardlinks or reflinks)
   const targetInstance = useMemo(
     () => instances.find((i) => i.id === form.targetInstanceId),
     [instances, form.targetInstanceId]
@@ -1268,10 +1248,8 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     [targetInstanceMetadata?.tags, form.tags]
   )
 
-  // Reset form when directory or dialog state changes
   useEffect(() => {
     if (!open) return
-    // Reset acknowledgment when dialog opens
     setRegularModeAcknowledged(false)
     if (directory) {
       setForm({
@@ -1300,7 +1278,6 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     }
   }, [open, directory, defaultTargetInstanceId])
 
-  // Reset acknowledgment when instance changes to regular mode
   useEffect(() => {
     if (isRegularMode) {
       setRegularModeAcknowledged(false)
@@ -1308,7 +1285,6 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
   }, [form.targetInstanceId, isRegularMode])
 
   const handleSave = useCallback(() => {
-    // Ensure scanIntervalMinutes is clamped to minimum 60
     const clampedForm = {
       ...form,
       scanIntervalMinutes: Math.max(form.scanIntervalMinutes ?? 1440, 60),
@@ -1518,11 +1494,10 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
             <Label htmlFor="dir-enabled">{t("dirScan.directoryDialog.enabledLabel")}</Label>
           </div>
 
-          {/* Regular mode warning */}
           {isRegularMode && (
-            <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/5 p-4 space-y-3">
+            <div className="rounded-lg border border-warning/50 bg-warning/5 p-4 space-y-3">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="size-5 text-yellow-500 shrink-0 mt-0.5" />
+                <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-foreground">
                     {t("dirScan.directoryDialog.regularModeTitle")}
@@ -1577,7 +1552,6 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
   )
 }
 
-// Delete Confirmation Dialog
 interface DeleteDirectoryDialogProps {
   directoryId: number | null
   onOpenChange: (open: boolean) => void
@@ -1613,7 +1587,7 @@ function DeleteDirectoryDialog({ directoryId, onOpenChange }: DeleteDirectoryDia
           <AlertDialogCancel>{t("dirScan.deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
           >
             {deleteDirectory.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
             {t("dirScan.deleteDialog.delete")}
@@ -1624,7 +1598,6 @@ function DeleteDirectoryDialog({ directoryId, onOpenChange }: DeleteDirectoryDia
   )
 }
 
-// Helper function
 function formatDuration(ms: number): string {
   if (ms < 1000) return "<1s"
   const seconds = Math.floor(ms / 1000)

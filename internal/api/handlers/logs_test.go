@@ -18,7 +18,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
@@ -27,7 +26,6 @@ import (
 )
 
 func TestLogsHandler_GetLogSettings(t *testing.T) {
-	// Create a minimal config for testing
 	appConfig := createTestConfig(t)
 
 	handler := NewLogsHandler(appConfig, nil)
@@ -173,7 +171,7 @@ func TestLogsHandler_UpdateLogSettings_Path(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			handler, logDir := createTestConfigWithLogDir(t)
-			restoreGlobalLogger(t, handler)
+			stopLogSettings(t, handler)
 			router := logsTestRouter(handler)
 
 			update := map[string]string{"path": logsTestPath(logDir, tt.file)}
@@ -209,7 +207,6 @@ func TestLogsHandler_StreamLogs_SSEHeaders(t *testing.T) {
 	appConfig := createTestConfig(t)
 	handler := NewLogsHandler(appConfig, nil)
 
-	// A cancelled context ends the stream after the history, so the call returns.
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	req := httptest.NewRequest(http.MethodGet, "/logs/stream", http.NoBody).WithContext(ctx)
@@ -217,7 +214,6 @@ func TestLogsHandler_StreamLogs_SSEHeaders(t *testing.T) {
 
 	handler.StreamLogs(rec, req)
 
-	// Check headers were set
 	headers := rec.Header()
 	if ct := headers.Get("Content-Type"); ct != "text/event-stream" {
 		t.Errorf("expected Content-Type 'text/event-stream', got %q", ct)
@@ -235,11 +231,9 @@ func TestLogsHandler_StreamLogs_WritesToHub(t *testing.T) {
 	handler := NewLogsHandler(appConfig, nil)
 	hub := handler.GetHub()
 
-	// Write some log lines before connecting
 	hub.Write("test line 1")
 	hub.Write("test line 2")
 
-	// A cancelled context ends the stream after the history, so the call returns.
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	req := httptest.NewRequest(http.MethodGet, "/logs/stream?limit=10", http.NoBody).WithContext(ctx)
@@ -260,7 +254,6 @@ func TestLogsHandler_StreamLogs_EndsOnShutdown(t *testing.T) {
 	shutdown := make(chan struct{})
 	handler := NewLogsHandler(createTestConfig(t), shutdown)
 
-	// The request context stays open: http.Server.Shutdown does not cancel it.
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/logs/stream", http.NoBody)
 	done := make(chan struct{})
 	go func() {
@@ -326,7 +319,6 @@ func TestLogsHandler_ListLogFiles(t *testing.T) {
 	writeLogsTestFile(t, logDir, "qui.log", "active")
 	writeLogsTestFile(t, logDir, "qui-2026-01-01T00-00-00.000.log", "rotated")
 	writeLogsTestFile(t, logDir, "notes.txt", "not a log")
-	// .log files in the same directory that are not qui's must not be served.
 	writeLogsTestFile(t, logDir, "other-service.log", "someone else's log")
 	writeLogsTestFile(t, logDir, "qui-manual-backup.log", "prefix but not a rotation")
 	if err := os.Mkdir(filepath.Join(logDir, "nested.log"), 0o750); err != nil {
@@ -388,7 +380,6 @@ func TestLogsHandler_ListLogFiles_NonLogExtension(t *testing.T) {
 func TestLogsHandler_ListLogFiles_RejectsSymlinks(t *testing.T) {
 	handler, logDir := createTestConfigWithLogDir(t)
 	writeLogsTestFile(t, logDir, "qui.log", "active")
-	// A symlink named like a rotation, pointing outside the log directory.
 	writeLogsTestFile(t, filepath.Dir(logDir), "target.log", "outside")
 	linkName := "qui-2026-01-01T00-00-00.000.log"
 	if err := os.Symlink(filepath.Join(filepath.Dir(logDir), "target.log"), filepath.Join(logDir, linkName)); err != nil {
@@ -440,7 +431,6 @@ func TestLogsHandler_DownloadLogFile_Rejected(t *testing.T) {
 	writeLogsTestFile(t, logDir, "qui.log", "log content")
 	writeLogsTestFile(t, logDir, "notes.txt", "not a log")
 	writeLogsTestFile(t, logDir, "other-service.log", "someone else's log")
-	// A .log file outside the log directory that traversal must not reach.
 	writeLogsTestFile(t, filepath.Dir(logDir), "secret.log", "secret")
 
 	tests := []struct {
@@ -471,13 +461,9 @@ func TestLogsHandler_DownloadLogFile_Rejected(t *testing.T) {
 	}
 }
 
-// TestLogsHandler_DownloadLogFile_RejectedDirectParam invokes the handler with
-// pre-decoded URL params, independent of how the router escapes path segments,
-// to prove the handler's own validation rejects traversal on every OS.
 func TestLogsHandler_DownloadLogFile_RejectedDirectParam(t *testing.T) {
 	handler, logDir := createTestConfigWithLogDir(t)
 	writeLogsTestFile(t, logDir, "qui.log", "log content")
-	// A .log file outside the log directory that traversal must not reach.
 	writeLogsTestFile(t, filepath.Dir(logDir), "secret.log", "secret")
 
 	tests := []struct {
@@ -523,13 +509,13 @@ func logsTestPath(logDir, file string) string {
 	return filepath.Join(logDir, file)
 }
 
-func restoreGlobalLogger(t *testing.T, handler *LogsHandler) {
+func stopLogSettings(t *testing.T, handler *LogsHandler) {
 	t.Helper()
 
-	logger, level := log.Logger, zerolog.GlobalLevel()
+	level := zerolog.GlobalLevel()
 	t.Cleanup(func() {
-		_ = handler.appConfig.GetLogManager().Apply("info", "", 0, 0)
-		log.Logger = logger
+		handler.appConfig.StopWatching()
+		require.NoError(t, handler.appConfig.GetLogManager().Apply("info", "", 0, 0))
 		zerolog.SetGlobalLevel(level)
 	})
 }
@@ -541,15 +527,11 @@ func writeLogsTestFile(t *testing.T, dir, name, content string) {
 	}
 }
 
-// createTestConfigWithLogDir creates a LogsHandler with file logging
-// configured under a temp directory and returns the log directory.
 func createTestConfigWithLogDir(t *testing.T) (*LogsHandler, string) {
 	t.Helper()
 	return createTestConfigWithLogPath(t, "logs/qui.log")
 }
 
-// createTestConfigWithLogPath is like createTestConfigWithLogDir but with a
-// caller-chosen logPath (slash-relative, under a "logs" subdirectory).
 func createTestConfigWithLogPath(t *testing.T, logPath string) (*LogsHandler, string) {
 	t.Helper()
 
@@ -576,14 +558,11 @@ logPath = "` + logPath + `"
 	return NewLogsHandler(cfg, nil), logDir
 }
 
-// createTestConfig creates a minimal AppConfig for testing.
 func createTestConfig(t *testing.T) *config.AppConfig {
 	t.Helper()
 
-	// Create a temp dir for config
 	tempDir := t.TempDir()
 
-	// Create a minimal config.toml file
 	configPath := tempDir + "/config.toml"
 	configContent := `host = "127.0.0.1"
 port = 8080

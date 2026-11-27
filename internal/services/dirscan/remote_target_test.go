@@ -35,12 +35,10 @@ import (
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
-// rowPool answers every read with row, and any remote backend it builds counts as an unexpected read.
 func rowPool(row *models.Instance) *fsops.Pool {
 	return fsops.NewPoolWithRemote(&fakeInstanceStore{instance: row}, local.NewBackend(), func(*models.Instance) fsops.Backend { return &remoteSpy{} })
 }
 
-// An exec walk that fell back to sftp reads no identity, which a row claiming Identity should explain once.
 func TestScanLogsFilesWithoutIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -78,10 +76,6 @@ func TestScanLogsFilesWithoutIdentity(t *testing.T) {
 	}
 }
 
-// A stored identity only names a file on the endpoint that read it, so another server's file with the
-// same device and inode is a new file, even after the status write of the search phase.
-//
-// regression: #2919
 func TestStoredIdentityFollowsTheEndpoint(t *testing.T) {
 	base := remoteInstance(models.SSHTierExec)
 	base.SSHUsername = "seed"
@@ -142,7 +136,6 @@ func TestStoredIdentityFollowsTheEndpoint(t *testing.T) {
 	}
 }
 
-// Identity stored in local mode keeps its exact bytes, and never matches a remote file.
 func TestStoredIdentityOfALocalRowIsUnchanged(t *testing.T) {
 	t.Parallel()
 
@@ -160,9 +153,6 @@ func TestStoredIdentityOfALocalRowIsUnchanged(t *testing.T) {
 	require.False(t, ok)
 }
 
-// A dial reads the row, not the run's copy, so an SSH edit during the walk can read the new server under the old scope.
-//
-// regression: #2919
 func TestScanFailsWhenTheEndpointChangesDuringTheWalk(t *testing.T) {
 	walked := remoteInstance(models.SSHTierExec)
 	otherHost := *walked
@@ -217,7 +207,6 @@ type instanceGetter interface {
 	Get(ctx context.Context, id int) (*models.Instance, error)
 }
 
-// rowEditedDuringWalk runs edit when the walk starts, so a read of the row before the walk sees the old one.
 type rowEditedDuringWalk struct {
 	*recordingBackend
 	edit func()
@@ -230,7 +219,6 @@ func (b *rowEditedDuringWalk) WalkDir(ctx context.Context, root string, opts fso
 	return b.recordingBackend.WalkDir(ctx, root, opts)
 }
 
-// remoteRunSearcher answers by search query and records every query.
 type remoteRunSearcher struct {
 	noIDSearchCaps
 	indexerID int
@@ -257,7 +245,6 @@ func (s *remoteRunSearcher) SearchWithScope(_ context.Context, req *jackett.Torz
 	return nil
 }
 
-// countingInstanceStore answers with first for the first reads, then with later.
 type countingInstanceStore struct {
 	first, later *models.Instance
 	firstReads   int32
@@ -289,9 +276,6 @@ type remoteRunFixture struct {
 	d        fsops.PathDialect
 }
 
-// newRemoteRun is every piece of a run on a remote instance over a fake host, in dialect d. The library
-// holds a season folder with no results, a film with one result, a film in a folder with no useful name, a
-// file a torrent seeds by inode, and a file renamed since its verdict.
 func newRemoteRun(t *testing.T, d fsops.PathDialect, store func(row *models.Instance) instanceGetter) *remoteRunFixture {
 	t.Helper()
 	ctx := t.Context()
@@ -384,7 +368,6 @@ func newRemoteRun(t *testing.T, d fsops.PathDialect, store func(row *models.Inst
 	return &remoteRunFixture{svc: svc, store: dirStore, dir: dir, row: row, backend: backend, searcher: searcher, manager: manager, cacheDB: cacheDB, d: d}
 }
 
-// run runs one scan to its end, and joins the detached touch of each cached download before cleanup.
 func (f *remoteRunFixture) run(t *testing.T) *models.DirScanRun {
 	t.Helper()
 	ctx := t.Context()
@@ -416,7 +399,6 @@ func (f *remoteRunFixture) statuses(t *testing.T) map[string]models.DirScanFileS
 	return statuses
 }
 
-// sshCreds is the credential source of a pool that reaches one test server.
 type sshCreds struct {
 	row *models.Instance
 	pin []byte
@@ -431,8 +413,6 @@ func (sshCreds) SetSSHProbe(context.Context, *models.Instance, models.SSHTier, b
 	return nil
 }
 
-// Sftp can redial here, so only the walk's cut keeps a seeded file with no row from reading as new and going to the indexers.
-// regression: #3838
 func TestScanFailsWhenFindLosesTheConnection(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the fake exec handler runs the local GNU find and stat")
@@ -475,7 +455,6 @@ func TestScanFailsWhenFindLosesTheConnection(t *testing.T) {
 	require.Empty(t, f.searcher.queries, "a failed walk must reach no indexer")
 	require.Equal(t, before, f.statuses(t))
 
-	// The pool hands out the dropped client until its watcher clears the entry.
 	backend, _, err := f.svc.backendPool.Require(ctx, f.row.ID, models.CapabilityRead)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
@@ -488,8 +467,6 @@ func TestScanFailsWhenFindLosesTheConnection(t *testing.T) {
 	require.Equal(t, models.DirScanFileStatusAlreadySeeding, f.statuses(t)[filepath.Join(lib, name)], "the next run reads the identity again")
 }
 
-// One run on a remote instance in each dialect: the walk, the seeding index, a rename kept by identity, the
-// TV grouping, the search metadata read from a file name, and an add aligned to the on-disk folder.
 func TestExecuteScanWalksRemoteInstance(t *testing.T) {
 	for _, tt := range dialects() {
 		t.Run(tt.name, func(t *testing.T) {
@@ -515,8 +492,6 @@ func TestExecuteScanWalksRemoteInstance(t *testing.T) {
 	}
 }
 
-// The row changes after the walk's recheck, so the search phase runs and only its add is refused, with
-// nothing read on the new server.
 func TestAddRefusedWhenEndpointChangesDuringRun(t *testing.T) {
 	f := newRemoteRun(t, fsops.SlashPaths, func(row *models.Instance) instanceGetter {
 		other := *row

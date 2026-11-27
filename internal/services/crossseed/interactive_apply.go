@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,9 +18,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
-	"github.com/autobrr/qui/pkg/stringutils"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type cachedTorrentSearchResults struct {
@@ -27,20 +27,21 @@ type cachedTorrentSearchResults struct {
 	titleRescueAttempts *atomic.Int32
 }
 
-// ApplyTorrentSearchResults downloads and adds torrents selected from search results for cross-seeding.
-func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, hash string, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
+func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int, requested infohash.Hash, req *ApplyTorrentSearchRequest) (*ApplyTorrentSearchResponse, error) {
 	ctx = withRouteRun(ctx)
 	if req == nil || len(req.Selections) == 0 {
 		return nil, fmt.Errorf("%w: no selections provided", ErrInvalidRequest)
 	}
 
-	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []string{hash}})
+	torrents, err := s.syncManager.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{requested}})
 	if err != nil {
 		return nil, err
 	}
-	if len(torrents) == 0 {
-		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+	if len(torrents) == 0 || s.isHelper(instanceID, torrents[0].Hash) {
+		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, requested, instanceID)
 	}
+	hash := torrents[0].Hash
+	sourceID := parseHash(hash)
 
 	cachedSearchResults := s.getCachedSearchResults(instanceID, hash)
 	if cachedSearchResults == nil || len(cachedSearchResults.results) == 0 {
@@ -60,7 +61,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		tagName = "cross-seed"
 	}
 
-	// Process all selections in parallel - don't wait for one to finish before starting the next
 	type selectionResult struct {
 		index  int
 		result TorrentSearchAddResult
@@ -77,19 +77,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 
 			downloadURL := strings.TrimSpace(sel.DownloadURL)
 			guid := strings.TrimSpace(sel.GUID)
-			isGazelle := gazellemusic.IsDownloadURL(downloadURL)
-
-			if isGazelle {
-				if sel.IndexerID == 0 || downloadURL == "" {
-					resultChan <- selectionResult{idx, TorrentSearchAddResult{
-						Title:   sel.Title,
-						Indexer: sel.Indexer,
-						Success: false,
-						Error:   "invalid selection",
-					}, nil}
-					return
-				}
-			} else if sel.IndexerID <= 0 || (downloadURL == "" && guid == "") {
+			if sel.IndexerID == 0 || (downloadURL == "" && guid == "") {
 				resultChan <- selectionResult{idx, TorrentSearchAddResult{
 					Title:   sel.Title,
 					Indexer: sel.Indexer,
@@ -110,7 +98,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 
-			if !cachedResult.SearchDecision.matchesSource(instanceID, hash) {
+			if !cachedResult.SearchDecision.matchesSource(instanceID, sourceID) {
 				resultChan <- selectionResult{idx, TorrentSearchAddResult{Title: cachedResult.Title, Indexer: cachedResult.Indexer, Error: "file-evidence source binding mismatch"}, nil}
 				return
 			}
@@ -143,9 +131,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				return
 			}
 			if cachedResult.SearchDecision.Class == searchCandidateClassTitleRescue {
-				// Skip recheck blocks cached rescue results before a slot is
-				// reserved or the .torrent is downloaded; the guaranteed
-				// skipped_recheck verdict must not cost either.
 				if defaults.skipRecheck {
 					resultChan <- selectionResult{idx, TorrentSearchAddResult{
 						Title:   title,
@@ -192,9 +177,9 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				payload.Tags = []string{tagName}
 			}
 			payload.FindIndividualEpisodes = req.FindIndividualEpisodes
-			payload.SearchDecision = cachedResult.SearchDecision.bindSource(instanceID, hash)
+			payload.SearchDecision = cachedResult.SearchDecision.bindSource(instanceID, sourceID)
 
-			resp, err := s.invokeCrossSeed(ctx, payload)
+			resp, err := s.injection.CrossSeed(ctx, payload)
 			if err != nil {
 				resultChan <- selectionResult{idx, TorrentSearchAddResult{
 					Title:   title,
@@ -223,13 +208,11 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		}(i, selection)
 	}
 
-	// Wait for all goroutines to finish
 	go func() {
 		wg.Wait()
 		close(resultChan)
 	}()
 
-	// Collect results in order
 	results := make([]TorrentSearchAddResult, len(req.Selections))
 	var applyErr error
 	for res := range resultChan {
@@ -268,7 +251,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 			Int("indexerID", cachedResult.IndexerID).
 			Str("indexer", indexerName).
 			Str("title", title).
-			Strs("infoHashes", hashes).
+			Strs("infoHashes", hashStrings(hashes)).
 			Msg("[CROSSSEED-APPLY] Failed cached-selection duplicate infohash check; continuing with download")
 		return TorrentSearchAddResult{}, false, nil
 	}
@@ -277,9 +260,9 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 	}
 
 	const existsMessage = "Torrent already exists in this instance"
-	resultHashes := append([]string(nil), hashes...)
+	resultHashes := slices.Clone(hashes)
 	if existing != nil {
-		resultHashes = append(resultHashes, existing.Hash, existing.InfohashV1, existing.InfohashV2)
+		resultHashes = append(resultHashes, parseHashes(existing.Hash, existing.InfohashV1, existing.InfohashV2)...)
 	}
 	if rejection, rejected := s.contentPrefilterRejectionForHashes(instanceID, sourceHash, cachedResult.IndexerID, resultHashes); cachedResult.SearchDecision.Class != searchCandidateClassTitleRescue && rejected {
 		message := contentPrefilterRejectedExistingMessage(rejection)
@@ -306,7 +289,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 				Size:     existing.Size,
 			}
 		} else if len(hashes) > 0 {
-			result.InfoHash = hashes[0]
+			result.InfoHash = hashes[0].String()
 		}
 		result.InstanceResults = []InstanceCrossSeedResult{instanceResult}
 
@@ -315,7 +298,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 			Int("indexerID", cachedResult.IndexerID).
 			Str("indexer", indexerName).
 			Str("title", title).
-			Strs("infoHashes", hashes).
+			Strs("infoHashes", hashStrings(hashes)).
 			Str("sourceHash", sourceHash).
 			Str("rejectionReason", rejection.Reason)
 		if existing != nil {
@@ -351,7 +334,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 			Size:     existing.Size,
 		}
 	} else if len(hashes) > 0 {
-		result.InfoHash = hashes[0]
+		result.InfoHash = hashes[0].String()
 	}
 	result.InstanceResults = []InstanceCrossSeedResult{instanceResult}
 
@@ -360,7 +343,7 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 		Int("indexerID", cachedResult.IndexerID).
 		Str("indexer", indexerName).
 		Str("title", title).
-		Strs("infoHashes", hashes)
+		Strs("infoHashes", hashStrings(hashes))
 	if existing != nil {
 		event = event.
 			Str("existingHash", existing.Hash).
@@ -463,15 +446,18 @@ func (s *Service) resolveSelectionFromCache(cached []TorrentSearchResult, select
 		if downloadURL != "" && downloadURL == result.DownloadURL {
 			return result, nil
 		}
+
+		if guid != "" && guid == jackett.HiddenGUID(result.IndexerID, result.GUID, result.DownloadURL) {
+			return result, nil
+		}
 	}
 
 	return nil, fmt.Errorf("selection %s does not match cached search results", selection.Title)
 }
 
 func searchResultCacheKey(instanceID int, hash string) string {
-	cleanHash := stringutils.DefaultNormalizer.Normalize(hash)
-	if cleanHash == "" {
+	if hash == "" {
 		return strconv.Itoa(instanceID)
 	}
-	return fmt.Sprintf("%d:%s", instanceID, cleanHash)
+	return fmt.Sprintf("%d:%s", instanceID, hash)
 }

@@ -10,13 +10,10 @@ import (
 )
 
 func resolvePartialPoolExistingPath(path string) (string, error) {
-	// Resolve the opened object once, including junctions and 8.3 aliases.
-	// filepath.EvalSymlinks does not follow junctions marked ModeIrregular.
 	pointer, err := pathutil.Win32PathPointer(path)
 	if err != nil {
 		return "", err
 	}
-	// Metadata access is sufficient; do not require read access to file contents.
 	handle, err := windows.CreateFile(pointer, windows.FILE_READ_ATTRIBUTES,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
 		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)

@@ -23,10 +23,10 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// testQuerier wraps sql.DB to implement dbinterface.Querier for store tests.
 type testQuerier struct {
 	*sql.DB
 }
@@ -93,7 +93,7 @@ func (m *completionGazelleSyncMock) GetTorrentRefs(_ context.Context, _ int, fil
 		return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 	}
 	for _, h := range filter.Hashes {
-		if normalizeHash(h) == normalizeHash(m.torrent.Hash) {
+		if h.Is(m.torrent.Hash) {
 			return testTorrentRefs([]qbt.Torrent{m.torrent}), nil
 		}
 	}
@@ -103,7 +103,7 @@ func (m *completionGazelleSyncMock) GetTorrentRefs(_ context.Context, _ int, fil
 func (m *completionGazelleSyncMock) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	out := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
-		out[normalizeHash(h)] = qbt.TorrentFiles{{Name: "01 - track.flac", Size: 123}}
+		out[h] = qbt.TorrentFiles{{Name: "01 - track.flac", Size: 123}}
 	}
 	return out, nil
 }
@@ -113,7 +113,7 @@ func (m *completionGazelleSyncMock) ExportTorrent(context.Context, int, string) 
 	return nil, "", "", nil
 }
 
-func (m *completionGazelleSyncMock) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (m *completionGazelleSyncMock) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -142,7 +142,6 @@ func (m *completionGazelleSyncMock) ExtractDomainFromURL(urlStr string) string {
 	if err == nil && u != nil && u.Host != "" {
 		return u.Hostname()
 	}
-	// best-effort: raw host fallback
 	urlStr = strings.TrimSpace(urlStr)
 	urlStr = strings.TrimPrefix(urlStr, "http://")
 	urlStr = strings.TrimPrefix(urlStr, "https://")
@@ -181,7 +180,6 @@ func (m *completionGazelleSyncMock) CreateCategory(context.Context, int, string,
 }
 
 func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
-	// Not parallel: the test stubs the package-level findGazelleMatch.
 	stubGazelleMatchLookup(t)
 
 	db, err := sql.Open("sqlite", "file:completion_gazelle_guard?mode=memory&cache=shared")
@@ -201,6 +199,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 			exclude_categories_json TEXT NOT NULL,
 			exclude_tags_json TEXT NOT NULL,
 			indexer_ids_json TEXT NOT NULL,
+			gazelle_sites_json TEXT NOT NULL DEFAULT '[]',
 			bypass_torznab_cache INTEGER NOT NULL DEFAULT 0,
 			completion_delay_seconds INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL
@@ -233,9 +232,8 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	syncMock := &completionGazelleSyncMock{torrent: src}
 
 	svc := &Service{
-		instanceStore: &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
-		syncManager:   syncMock,
-		// jackettService intentionally nil
+		instanceStore:   &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "music"}},
+		syncManager:     syncMock,
 		completionStore: completionStore,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
@@ -254,10 +252,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	}
 }
 
-// With only a RED key, a completion search for an OPS torrent asks RED one
-// time, through the API, and asks the other Torznab indexers.
 func TestExecuteCompletionSearch_OPSSourceAsksREDThroughTheAPIAndTorznab(t *testing.T) {
-	// Not parallel: the test replaces the package-level newGazelleClient.
 	const (
 		instanceID = 1
 		sourceHash = "0123456789abcdef0123456789abcdef01234567"

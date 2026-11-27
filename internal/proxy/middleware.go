@@ -15,6 +15,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/debounce"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 type contextKey string
@@ -40,7 +41,7 @@ var (
 )
 
 func userAgentOrUnknown(r *http.Request) string {
-	if ua := r.UserAgent(); ua != "" {
+	if ua := httphelpers.LoggedUserAgent(r); ua != "" {
 		return ua
 	}
 	return "unknown"

@@ -34,7 +34,6 @@ export function StatisticsSettingsCard() {
   const mutation = useMutation({
     mutationFn: (settings: TransferHistorySettings) => api.updateTransferHistorySettings(settings),
     onSuccess: async (settings) => {
-      // A status fetch that started before the save must not bring the old settings back.
       await queryClient.cancelQueries({ queryKey: TRANSFER_HISTORY_STATUS_QUERY_KEY })
       queryClient.setQueryData<TransferHistorySettingsStatus>(TRANSFER_HISTORY_STATUS_QUERY_KEY, (old) => old && { ...old, settings })
       toast.success(t("statistics.toasts.saved"))

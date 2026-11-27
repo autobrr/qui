@@ -33,8 +33,6 @@ func TestRestartExecsInPlace(t *testing.T) {
 	requireExecInPlace(t, "^TestRestartExecsInPlace$")
 }
 
-// A shutdown that hits the 30-second timeout must not leave qui down on an
-// install without a supervisor.
 func TestRestartExecsAfterShutdownTimeout(t *testing.T) {
 	if os.Getenv(restartChildEnv) == "1" {
 		restartChild(t, context.DeadlineExceeded)
@@ -60,8 +58,6 @@ func TestRestartRefusesBadBinary(t *testing.T) {
 	runRestartChild(t, "^TestRestartRefusesBadBinary$")
 }
 
-// restartChild prints its process ID and argv, then restarts once. The exec
-// keeps the environment, so the second run sees restartedEnv and stops.
 func restartChild(t *testing.T, shutdownErr error) {
 	fmt.Printf("run pid=%d args=%q\n", os.Getpid(), os.Args)
 

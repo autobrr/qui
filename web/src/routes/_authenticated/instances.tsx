@@ -6,5 +6,6 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/instances")({
+  staticData: { title: null },
   component: () => <Outlet />,
 })

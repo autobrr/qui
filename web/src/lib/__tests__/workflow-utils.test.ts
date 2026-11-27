@@ -51,10 +51,6 @@ function makeAutomation(overrides: Partial<Automation> = {}): Automation {
   }
 }
 
-// Intent: turn an internal Automation row into the clipboard JSON shape.
-// Strips id/instanceId/sortOrder/enabled (internal state that shouldn't
-// travel between deployments) and drops intervalSeconds when it equals the
-// default 900 (smaller, less surprising JSON for the common case).
 describe("toExportFormat", () => {
   it("omits id, instanceId, sortOrder, enabled", () => {
     const result = toExportFormat(makeAutomation({ id: 42, instanceId: 99, sortOrder: 7, enabled: true }))
@@ -101,10 +97,6 @@ describe("toExportFormat", () => {
   })
 })
 
-// Intent: turn clipboard JSON back into an AutomationInput. Two safety
-// invariants matter: imported automations always START disabled (so a paste
-// can't immediately fire side-effects) and an imported name that the
-// instance already has is uniquified, so two rules never share a name.
 describe("fromImportFormat", () => {
   const baseExport = (overrides: Partial<WorkflowImport> = {}): WorkflowImport => ({
     name: "Imported",
@@ -118,7 +110,6 @@ describe("fromImportFormat", () => {
     expect(fromImportFormat(baseExport({ enabled: true }), []).enabled).toBe(false)
   })
 
-  // A rule pasted from an API response carries its old position; the import must still go to the end.
   it("drops sortOrder so the backend appends the rule", () => {
     const result = fromImportFormat(baseExport({ sortOrder: 3 }), [])
     expect(JSON.parse(JSON.stringify(result))).not.toHaveProperty("sortOrder")
@@ -129,12 +120,10 @@ describe("fromImportFormat", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["MY WORKFLOW", "My workflow (copy)"]).name).toBe("My workflow (copy 2)")
   })
 
-  // regression: #4062
   it("keeps the name when the instance has no rule with that name", () => {
     expect(fromImportFormat(baseExport({ name: "My workflow" }), ["Other"]).name).toBe("My workflow")
   })
 
-  // The backend resolves the two fields: a non-empty trackerPattern wins.
   it("passes trackerPattern and trackerDomains through unchanged", () => {
     const result = fromImportFormat(baseExport({ trackerPattern: "a.com", trackerDomains: ["b.com"] }), [])
     expect(result.trackerPattern).toBe("a.com")
@@ -147,7 +136,6 @@ describe("fromImportFormat", () => {
     expect(result).not.toHaveProperty("trackerDomains")
   })
 
-  // The backend checks every key and lists each problem, so unknown keys must reach it.
   it("passes unknown top-level keys through to the backend", () => {
     const result = fromImportFormat(baseExport({ enabeld: true, extra: { a: 1 } }), [])
     expect(result).toHaveProperty("enabeld", true)
@@ -184,10 +172,6 @@ describe("getTrackerTokens", () => {
   })
 })
 
-// Intent: duplicate within the same instance — equivalent to export+import
-// round-tripping, except that the duplicate always gets a copy suffix, also
-// when the list of existing names is not loaded. It ships disabled, same as
-// a clipboard import.
 describe("toDuplicateInput", () => {
   it("round-trips through export -> import and produces a unique disabled copy", () => {
     const original = makeAutomation({ name: "Source", enabled: true, dryRun: true })
@@ -197,16 +181,11 @@ describe("toDuplicateInput", () => {
     expect(result.dryRun).toBe(true)
   })
 
-  // regression: #4062
   it("adds a copy suffix when no existing name is known", () => {
     expect(toDuplicateInput(makeAutomation({ name: "Source" }), []).name).toBe("Source (copy)")
   })
 })
 
-// Intent: "Copy to instance" names the copy for the target instance. The
-// name stays when the target has no rule with it, and a name that is taken
-// there gets the same suffix as a duplicate.
-// regression: #4062
 describe("toCopyInput", () => {
   it("keeps the name when the target instance has no rule with that name", () => {
     const result = toCopyInput(makeAutomation({ name: "Source", enabled: true }), ["Other"])
@@ -221,10 +200,6 @@ describe("toCopyInput", () => {
   })
 })
 
-// Intent: copy, duplicate, and import name the new rule against the rule
-// names of the instance. An instance whose rule list is not loaded must not
-// read as an instance with no rules, or the new rule takes a name in use.
-// regression: #4062
 describe("loadWorkflowNames", () => {
   afterEach(() => {
     listAutomations.mockReset()
@@ -254,9 +229,6 @@ describe("loadWorkflowNames", () => {
   })
 })
 
-// Intent: "Edit as JSON" sends the JSON as written and keeps the state the
-// JSON never carries: enabled and sortOrder. An omitted optional key resets to
-// its backend default, the same as an import would.
 describe("toEditInput", () => {
   it("keeps enabled and sortOrder from the rule and takes every other key from the JSON", () => {
     const rule = makeAutomation({ id: 5, enabled: true, sortOrder: 3, dryRun: true, intervalSeconds: 60, name: "Old" })
@@ -278,11 +250,6 @@ describe("toEditInput", () => {
   })
 })
 
-// Intent: copy-name generator used by import and duplicate. Must handle
-// re-duplicates (don't grow "(copy) (copy)"), avoid collisions
-// case-insensitively, and never produce a name that collides with an
-// existing one when used as advertised. Catches anyone who breaks the
-// stripping regex or the case-insensitive lookup.
 describe("generateUniqueName", () => {
   it("appends '(copy)' on first duplication", () => {
     expect(generateUniqueName("Foo", [])).toBe("Foo (copy)")
@@ -304,9 +271,6 @@ describe("generateUniqueName", () => {
 
 })
 
-// Intent: validate clipboard JSON before letting it through. Returns
-// {data, error} discriminated tuple. Catches anyone who weakens validation
-// such that a malformed paste could create a half-formed automation.
 describe("parseImportJSON", () => {
   const validJSON = JSON.stringify({
     name: "Test",
@@ -331,8 +295,6 @@ describe("parseImportJSON", () => {
   it("rejects non-object root values", () => {
     expect(parseImportJSON("123").error).toBe("preferences.workflowsOverview.importDialog.errors.notObject")
     expect(parseImportJSON("null").error).toBe("preferences.workflowsOverview.importDialog.errors.notObject")
-    // Arrays pass the typeof === "object" check, then fail on missing 'name'.
-    // Pinning this behavior so future readers know arrays aren't a special case.
     expect(parseImportJSON("[]").error).toBe("preferences.workflowsOverview.importDialog.errors.missingName")
   })
 
@@ -370,8 +332,6 @@ describe("parseImportJSON", () => {
 
 })
 
-// Intent: thin pretty-print wrapper. Pinning the indent so future readers
-// know the output is human-friendly clipboard JSON, not minified.
 describe("toExportJSON", () => {
   it("produces a 2-space indented JSON string", () => {
     const data: WorkflowExport = {
@@ -383,7 +343,6 @@ describe("toExportJSON", () => {
   })
 })
 
-// ACTION_RUN_ORDER copies the backend's actionRunOrder, so fail when the two drift.
 describe("ACTION_RUN_ORDER", () => {
   it("matches the backend's actionRunOrder", () => {
     const source = readFileSync(resolve(import.meta.dirname, "../../../../internal/services/automations/service.go"), "utf8")
@@ -422,19 +381,15 @@ describe("freeSpaceSourceOf", () => {
 
 describe("allowanceInputOf", () => {
   it("shows a saved allowance as the figure that the user typed", () => {
-    // 1.364 TiB is the 1.5 TB plan of the issue.
     expect(allowanceInputOf(1499733860286)).toEqual({ allowance: "1.364", allowanceUnit: 1024 ** 4 })
-    // 1397 GiB is 1.36426 TiB, which three decimals cannot hold.
     expect(allowanceInputOf(1397 * 1024 ** 3)).toEqual({ allowance: "1397", allowanceUnit: 1024 ** 3 })
     expect(allowanceInputOf(500 * 1024 ** 3)).toEqual({ allowance: "500", allowanceUnit: 1024 ** 3 })
     expect(allowanceInputOf(750 * 1024 ** 2)).toEqual({ allowance: "750", allowanceUnit: 1024 ** 2 })
-    // A plan in steps of 1000 keeps its own unit.
     expect(allowanceInputOf(1500000000000)).toEqual({ allowance: "1.5", allowanceUnit: 1000 ** 4 })
     expect(allowanceInputOf(500 * 1000 ** 3)).toEqual({ allowance: "500", allowanceUnit: 1000 ** 3 })
   })
 
   it("keeps the bytes of an allowance that no short figure holds", () => {
-    // One byte above 1.5 TB, as a rule saved through the API can hold it.
     const input = allowanceInputOf(1500000000001)
     expect(input).toEqual({ allowance: "1430511.4746103287", allowanceUnit: 1024 ** 2 })
     expect(freeSpaceSourceOf({ type: "allowance", path: "/home/user", ...input }))
@@ -442,7 +397,6 @@ describe("allowanceInputOf", () => {
   })
 })
 
-// regression: #3012
 describe("hasMixedActionConditions", () => {
   const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
   const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
@@ -460,7 +414,6 @@ describe("hasMixedActionConditions", () => {
   })
 })
 
-// regression: #4186
 describe("firstActionCondition", () => {
   const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
   const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }

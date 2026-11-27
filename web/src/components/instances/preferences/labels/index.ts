@@ -17,7 +17,6 @@ import { webUILabels } from "./webui"
 
 export type { FieldLabels, TabLabels } from "./types"
 
-// The qBittorrent tabs in the order of the qBittorrent WebUI.
 export const preferenceTabLabels: Record<PreferenceField["tab"], TabLabels> = {
   behavior: behaviorLabels,
   downloads: downloadsLabels,

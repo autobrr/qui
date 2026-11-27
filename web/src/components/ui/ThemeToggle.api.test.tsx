@@ -12,16 +12,12 @@ import { registerCustomThemes } from "@/config/themes"
 import { _resetClientSettingsForTests } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
 
-// The theme menu against a fake qui API: the real theme registry, built-in
-// and custom theme queries, and license check. Only applying a theme is stubbed.
-
 const applied = vi.hoisted(() => ({ customCss: null as string | null }))
 
 vi.mock("@/utils/theme", async () => {
   const { getThemeById } = await import("@/config/themes")
   return {
     getCurrentThemeMode: () => "dark",
-    // The stored theme when the registry resolves it, as in utils/theme.
     getCurrentTheme: () => getThemeById(localStorage.getItem("color-theme") ?? "") ?? { id: "minimal" },
     getThemeVariation: () => null,
     isDarkMode: () => true,
@@ -71,7 +67,6 @@ beforeEach(() => {
       themes: [
         ...freeNames.map((name) => ({ id: name.toLowerCase(), name, premium: false, css: css(name) })),
         ...formerPremiumIds.map(lockedStub),
-        // A community theme that is new to the build.
         lockedStub("gruvbox"),
       ],
     })),
@@ -95,12 +90,10 @@ async function openMenuNames(): Promise<string[]> {
     screen.getByRole("button", { name: "themeToggle.changeTheme" }),
     { button: 0, ctrlKey: false }
   )
-  // Wait for both theme lists.
   await screen.findByText("Local")
   await screen.findByText("Licensed tokyo-night")
   return screen.getAllByRole("menuitem")
     .map((item) => {
-      // The visible name only: a locked row also has screen reader text.
       const visible = item.cloneNode(true) as HTMLElement
       visible.querySelectorAll(".sr-only").forEach((element) => element.remove())
       return visible.textContent ?? ""
@@ -125,10 +118,7 @@ describe("ThemeToggle with the qui API", () => {
     expect(await openMenuNames()).toEqual(defaultMenu)
   })
 
-  // regression: #3790
   it("keeps a hidden custom theme in use after a reload", async () => {
-    // The boot paint already applied the custom theme, so registering the
-    // custom list applies nothing and sends no theme change.
     localStorage.setItem("color-theme", "custom:local")
     localStorage.setItem("qui-theme-visibility", JSON.stringify({ "custom:local": false }))
     applied.customCss = css("Local")

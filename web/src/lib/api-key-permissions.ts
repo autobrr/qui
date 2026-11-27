@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { API_KEY_PERMISSION_AREAS } from "./api-key-permissions.generated"
+import { API_KEY_PERMISSION_AREAS, API_KEY_TEMPLATES } from "./api-key-permissions.generated"
 
 // i18n-namespace: settings
 
@@ -15,6 +15,8 @@ export interface ApiKeyPermission {
   level: PermissionLevel
 }
 
+export type ApiKeyTemplateId = (typeof API_KEY_TEMPLATES)[number]["id"]
+
 export const PERMISSION_AREAS: readonly { area: PermissionArea; levels: readonly PermissionLevel[] }[] = API_KEY_PERMISSION_AREAS
 
 export const PERMISSION_LEVELS = ["read", "run", "write"] as const satisfies readonly PermissionLevel[]
@@ -25,7 +27,6 @@ export const PERMISSION_LEVEL_LABELS = {
   write: { labelKey: "apiKeys.permissions.levels.write" },
 } as const satisfies Record<PermissionLevel, { labelKey: string }>
 
-// The type check fails when the Go table adds an area.
 export const PERMISSION_AREA_LABELS = {
   instances: { labelKey: "apiKeys.permissions.areas.instances" },
   torrents: { labelKey: "apiKeys.permissions.areas.torrents" },
@@ -44,7 +45,6 @@ export const PERMISSION_AREA_LABELS = {
   system: { labelKey: "apiKeys.permissions.areas.system" },
 } as const satisfies Record<PermissionArea, { labelKey: string }>
 
-/** The routes of these areas refuse a key with an Instance limit, so a limited key gets nothing from them. */
 export function isAreaRefusedByInstanceLimit(area: PermissionArea, instanceIds: readonly number[]) {
   return instanceIds.length > 0 && (area === "crossSeed" || area === "dirScan")
 }
@@ -74,7 +74,6 @@ export function summarizePermissions(permissions: readonly ApiKeyPermission[]) {
     : { except, rows: [] }
 }
 
-// Areas that offer no write come last, so a dimmer block in a full key does not look like a gap.
 const AREAS_BY_TOP_LEVEL = [
   ...PERMISSION_AREAS.filter(({ levels }) => levels.includes("write")),
   ...PERMISSION_AREAS.filter(({ levels }) => !levels.includes("write")),
@@ -98,7 +97,6 @@ function permissionsByLevel(permissions: readonly ApiKeyPermission[]) {
     .filter(({ areas }) => areas.length > 0)
 }
 
-/** Write includes read and run, so a pick of write replaces the other levels of its area. */
 export function togglePermission(permissions: readonly ApiKeyPermission[], area: PermissionArea, level: PermissionLevel) {
   if (holdsLevel(permissions, area, level)) {
     return permissions.filter(p => p.area !== area || p.level !== level)
@@ -106,9 +104,57 @@ export function togglePermission(permissions: readonly ApiKeyPermission[], area:
   return [...permissions.filter(p => level !== "write" || p.area !== area), { area, level }]
 }
 
-/** The list to send, in table order. A greyed-out row stays picked in the dialog but is not saved. */
 export function permissionsToSave(permissions: readonly ApiKeyPermission[], instanceIds: readonly number[]) {
   return PERMISSION_AREAS
     .filter(({ area }) => !isAreaRefusedByInstanceLimit(area, instanceIds))
     .flatMap(({ area, levels }) => levels.filter(level => holdsLevel(permissions, area, level)).map(level => ({ area, level })))
+}
+
+export const API_KEY_TEMPLATE_LABELS = {
+  autobrr: { nameKey: "apiKeys.templates.items.autobrr.name", descriptionKey: "apiKeys.templates.items.autobrr.description" },
+  dashbrr: { nameKey: "apiKeys.templates.items.dashbrr.name", descriptionKey: "apiKeys.templates.items.dashbrr.description" },
+  homepage: { nameKey: "apiKeys.templates.items.homepage.name", descriptionKey: "apiKeys.templates.items.homepage.description" },
+  arrDirScan: { nameKey: "apiKeys.templates.items.arrDirScan.name", descriptionKey: "apiKeys.templates.items.arrDirScan.description" },
+  quiExtension: { nameKey: "apiKeys.templates.items.quiExtension.name", descriptionKey: "apiKeys.templates.items.quiExtension.description" },
+  quiExtensionCrossSeed: { nameKey: "apiKeys.templates.items.quiExtensionCrossSeed.name", descriptionKey: "apiKeys.templates.items.quiExtensionCrossSeed.description" },
+} as const satisfies Record<ApiKeyTemplateId, { nameKey: string; descriptionKey: string }>
+
+export const API_KEY_TEMPLATE_IDS: readonly ApiKeyTemplateId[] = API_KEY_TEMPLATES.map(({ id }) => id)
+
+export interface KeyAccess {
+  permissions: readonly ApiKeyPermission[]
+  instanceIds: readonly number[]
+  template: ApiKeyTemplateId | null
+}
+
+function templateById(id: ApiKeyTemplateId) {
+  return API_KEY_TEMPLATES.find(template => template.id === id)!
+}
+
+export type KeyAccessAction =
+  | { type: "togglePermission"; area: PermissionArea; level: PermissionLevel }
+  | { type: "toggleInstance"; id: number }
+  | { type: "applyTemplate"; id: ApiKeyTemplateId }
+
+export function keyAccessReducer(state: KeyAccess, action: KeyAccessAction): KeyAccess {
+  switch (action.type) {
+    case "togglePermission":
+      return { ...state, permissions: togglePermission(state.permissions, action.area, action.level), template: null }
+    case "toggleInstance":
+      return {
+        ...state,
+        template: state.template && templateById(state.template).allowsInstanceLimit ? state.template : null,
+        instanceIds: state.instanceIds.includes(action.id)
+          ? state.instanceIds.filter(id => id !== action.id)
+          : [...state.instanceIds, action.id],
+      }
+    case "applyTemplate": {
+      const template = templateById(action.id)
+      return {
+        permissions: template.permissions,
+        instanceIds: template.allowsInstanceLimit ? state.instanceIds : [],
+        template: action.id,
+      }
+    }
+  }
 }

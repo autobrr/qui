@@ -106,7 +106,28 @@
     },
     "privacy": {
       "anonymous": "Anònim: sense nom ni compte. brrbin no guarda cap adreça IP.",
+      "signedIn": "Els mantenidors veuen el teu nom de {{provider}} ({{name}}) i et poden contactar.",
       "link": "Política de privadesa"
+    },
+    "sender": {
+      "label": "Envia com a",
+      "anonymous": "Anònim",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Inicia la sessió amb {{provider}}",
+      "signOut": "Tanca la sessió",
+      "waiting": "S'està esperant {{provider}}",
+      "errors": {
+        "discordNotMember": "El teu compte de Discord no és al servidor de Discord d'autobrr. Uneix-te al servidor i torna a iniciar la sessió, inicia la sessió amb GitHub o envia de manera anònima.",
+        "refused": "Inici de sessió rebutjat: {{reason}}",
+        "expired": "L'inici de sessió ha caducat. Torna a iniciar la sessió.",
+        "popupBlocked": "El teu navegador ha bloquejat la finestra d'inici de sessió. Permet les finestres emergents per a qui i torna a iniciar la sessió.",
+        "unavailable": "brrbin no pot iniciar la sessió ara mateix. Torna-ho a provar més tard.",
+        "startFailed": "No s'ha pogut iniciar la sessió: {{message}}",
+        "signOutFailed": "No s'ha pogut tancar la sessió: {{message}}"
+      }
     },
     "newerRelease": "Fas servir {{running}}. Ja ha sortit <release>{{newer}}</release>.",
     "send": "Envia",
@@ -136,7 +157,8 @@
         "issue": "Convertit en incidència #{{number}}",
         "issueClosed": "Incidència #{{number}} tancada",
         "closed": "Tancat: {{reason}}",
-        "closedNoReason": "Tancat"
+        "closedNoReason": "Tancat",
+        "notSent": "No enviat"
       },
       "delete": "Esborra l'informe",
       "deleteUnavailable": "brrbin no pot esborrar informes ara mateix. Torna-ho a provar més tard.",
@@ -165,6 +187,8 @@
     "smartSearchTitle": "Funcions de cerca intel·ligent:",
     "smartSearchGlob": "Patrons glob:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Amaga les coincidències:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Coincidència aproximada:",
     "smartSearchFuzzyExample": "\"breaking bad\" troba \"Breaking.Bad\"",
     "smartSearchDots": "Gestiona punts, guions baixos i claudàtors",
@@ -367,9 +391,13 @@
         "menuFix": "Comprova la configuració de l'exploració",
         "action": "Obre la configuració de l'exploració de la biblioteca",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab està desactivat a la configuració de l'exploració de la biblioteca, i no hi ha cap clau API de RED ni d'OPS. Activa Torznab, o afegeix una clau de RED o d'OPS a la configuració Gazelle (OPS/RED). qui ho torna a provar cada hora.",
-            "menuFix": "Activa Torznab, o afegeix una clau de RED o d'OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "La configuració de l'exploració de la biblioteca només tria indexadors Torznab, i no hi ha cap indexador Torznab activat. Activa un indexador Torznab, o tria altres llocs a la configuració de l'exploració de la biblioteca. qui ho torna a provar cada hora.",
+            "menuFix": "Activa un indexador Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "La configuració de l'exploració de la biblioteca només tria RED o OPS, i cap lloc triat no té clau API. Afegeix la clau a la configuració Gazelle (OPS/RED), o tria altres llocs a la configuració de l'exploració de la biblioteca. qui ho torna a provar cada hora.",
+            "menuFix": "Afegeix la clau de RED o d'OPS"
           },
           "no_indexer": {
             "fix": "No hi ha cap indexador activat. Activa un indexador Torznab, o afegeix una clau de RED o d'OPS a la configuració Gazelle (OPS/RED). qui ho torna a provar cada hora.",

@@ -10,11 +10,9 @@ import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
-// Names that the backend gives to the Tracker groups without a tracker domain.
 const PUBLIC_GROUP = "Public"
 const NO_TRACKER_GROUP = "No tracker"
 
-/** Returns the name of a Tracker group as the Statistics charts show it. Incognito mode masks the tracker names. */
 export function useTrackerGroupName(): (group: string) => string {
   const { t } = useTranslation("statistics")
   const [incognitoMode] = useIncognitoMode()

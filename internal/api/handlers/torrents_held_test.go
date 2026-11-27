@@ -18,18 +18,15 @@ import (
 
 	"github.com/autobrr/qui/internal/services/transfer"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const (
-	claimedHash = "aaaa"
-	helperHash  = "ffff"
-	ownHash     = "bbbb"
+	claimedHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	helperHash  = "ffffffffffffffffffffffffffffffffffffffff"
+	ownHash     = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
-// newHeldHandler builds a handler for instance 1, where a Transfer holds
-// claimedHash and helperHash is a helper torrent. ownHash is a torrent of the
-// user. The handler has no sync manager, so an action that it lets through to
-// anything but the deleter panics.
 func newHeldHandler(t *testing.T) (*TorrentsHandler, *recordingDeleter) {
 	t.Helper()
 	store, err := transfer.NewStore(t.Context(), testdb.NewMigratedSQLite(t, "torrents-held"))
@@ -37,10 +34,10 @@ func newHeldHandler(t *testing.T) (*TorrentsHandler, *recordingDeleter) {
 	require.NoError(t, store.Create(t.Context(), &transfer.Record{
 		Kind: transfer.KindTransfer, State: "copying", StartedBy: transfer.StartedByUser,
 		SourceInstanceID: 1, TargetInstanceID: 2,
-		Members: []transfer.Member{{Hash: claimedHash, SourceSavePath: "/src", TargetInstanceID: 2}},
+		Members: []transfer.Member{{Hash: heldHash(t, claimedHash), SourceSavePath: "/src", TargetInstanceID: 2}},
 	}))
 	require.NoError(t, store.RegisterHelper(t.Context(), transfer.Helper{
-		InstanceID: 1, Hash: helperHash, Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1,
+		InstanceID: 1, Hash: heldHash(t, helperHash), Random: []byte("salt"), Owner: transfer.OwnerShare, OwnerID: 1,
 	}))
 	deleter := &recordingDeleter{}
 	handler := &TorrentsHandler{deleter: deleter}
@@ -55,15 +52,12 @@ func TestBulkAction_RefusesDeleteAndMoveOfHeldTorrents(t *testing.T) {
 		"delete":          {"action": "delete"},
 		"deleteWithFiles": {"action": "deleteWithFiles"},
 		"setLocation":     {"action": "setLocation", "location": "/data/elsewhere"},
-		// A category or Auto TMM moves a torrent that qBittorrent manages.
-		"setCategory":   {"action": "setCategory", "category": "tv"},
-		"toggleAutoTMM": {"action": "toggleAutoTMM", "enable": true},
+		"setCategory":     {"action": "setCategory", "category": "tv"},
+		"toggleAutoTMM":   {"action": "toggleAutoTMM", "enable": true},
 	}
 	held := map[string]string{
-		claimedHash: "a Transfer holds this torrent",
-		helperHash:  "qui added this torrent for a Transfer or a Share",
-		// qBittorrent reads "|" in a hash as a list separator.
-		// regression: #4231
+		claimedHash:           "a Transfer holds this torrent",
+		helperHash:            "qui added this torrent for a Transfer or a Share",
 		"cccc|" + claimedHash: "a Transfer holds this torrent",
 	}
 	for name, payload := range actions {
@@ -110,7 +104,6 @@ func TestRenameRefusesHeldTorrents(t *testing.T) {
 	}
 }
 
-// A torrent of the user with the helper tag and no registry row is no helper.
 func TestBulkAction_DeletesATorrentThatNoTransferHolds(t *testing.T) {
 	t.Parallel()
 	handler, deleter := newHeldHandler(t)
@@ -131,4 +124,11 @@ func newTorrentHashRequest(t *testing.T, instanceID int, hash string, payload ma
 	routeCtx.URLParams.Add("instanceID", strconv.Itoa(instanceID))
 	routeCtx.URLParams.Add("hash", hash)
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+}
+
+func heldHash(t *testing.T, s string) infohash.Hash {
+	t.Helper()
+	hash, err := infohash.Parse(s)
+	require.NoError(t, err)
+	return hash
 }

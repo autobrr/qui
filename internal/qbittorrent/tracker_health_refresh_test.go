@@ -19,13 +19,10 @@ import (
 
 const trackerHealthTestHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-// trackerHealthRig is a qBittorrent stub with one torrent whose tracker status
-// the test flips between passes. Its MainData also lists a torrent that
-// torrents/info no longer returns, as cached MainData does after a delete.
 type trackerHealthRig struct {
 	sm          *SyncManager
 	sink        *mockSyncEventSink
-	status      atomic.Int32 // qbt.TrackerStatus served by torrents/info
+	status      atomic.Int32
 	failInfo    atomic.Bool
 	infoFetches atomic.Int32
 }
@@ -62,7 +59,6 @@ func newTrackerHealthRig(t *testing.T) *trackerHealthRig {
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
-	// Later requests skip the network, so a synctest bubble can advance its clock.
 	serveInProcess(client.Client, handler)
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
 	require.True(t, client.Supports(CapTrackerHealth))
@@ -77,8 +73,6 @@ func (rig *trackerHealthRig) unhealthy() bool {
 	return health == TrackerHealthDown || health == TrackerHealthError
 }
 
-// A health pass must ask qBittorrent again rather than re-serve the tracker
-// cache, or the badge stays stale until the cache entry expires.
 func TestRefreshTrackerHealthCountsReadsFreshStatus(t *testing.T) {
 	t.Parallel()
 
@@ -93,8 +87,6 @@ func TestRefreshTrackerHealthCountsReadsFreshStatus(t *testing.T) {
 	require.False(t, rig.unhealthy(), "second pass sees the recovered tracker")
 }
 
-// A failed fetch must keep the previous snapshot instead of publishing a
-// library with no tracker data.
 func TestRefreshTrackerHealthCountsKeepsSnapshotWhenFetchFails(t *testing.T) {
 	t.Parallel()
 
@@ -120,13 +112,9 @@ func TestKickTrackerHealthRefreshRunsSettledRateLimitedPass(t *testing.T) {
 		rig.sm.StartTrackerHealthRefresh(1)
 		t.Cleanup(func() {
 			rig.sm.StopTrackerHealthRefresh(1)
-			// The clock of the go-qbittorrent tracker cache resets itself from a
-			// goroutine after a sleep of a quarter of the 5-minute cache TTL
-			// (trackerCacheTTL). Let it end before the bubble does.
 			time.Sleep(5 * time.Minute)
 		})
 
-		// Each pass on qBittorrent 5.1 fetches the library once.
 		passes := func() int { return int(rig.infoFetches.Load()) }
 		synctest.Wait()
 		require.Equal(t, 1, passes(), "initial pass")
@@ -144,8 +132,6 @@ func TestKickTrackerHealthRefreshRunsSettledRateLimitedPass(t *testing.T) {
 		require.Equal(t, 2, passes(), "a kick runs a pass")
 		require.False(t, rig.unhealthy(), "the kicked pass sees the new status")
 
-		// A burst inside the interval coalesces into one pass at the interval's end,
-		// which starts when the previous kicked pass started.
 		for range 5 {
 			rig.sm.KickTrackerHealthRefresh(1)
 		}

@@ -103,8 +103,6 @@ func TestFilterIndexersForCapabilities_MirrorsExecutorGate(t *testing.T) {
 	indexers := []*models.TorznabIndexer{
 		{ID: 1, Enabled: true, Capabilities: []string{"movie-search"}},
 		{ID: 2, Enabled: true, Capabilities: []string{"music-search"}},
-		// No stored caps or categories yet: the executor fetches metadata and
-		// applies its own gate, so the pre-filter must keep this indexer.
 		{ID: 3, Enabled: true},
 		{ID: 4, Enabled: true, Capabilities: []string{"audio-search"}},
 	}

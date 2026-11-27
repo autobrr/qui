@@ -22,16 +22,11 @@ export function useDynamicFavicon() {
       canvas.height = size
       const ctx = canvas.getContext("2d")
 
-      // Get the dark mode primary color from the current theme
       const currentTheme = getThemeById(theme)
       if (!currentTheme) return
 
-      // Use dark mode color
       const primaryColor = getThemeColors(currentTheme, "--primary", "dark")
 
-      // Spreadsheet disguise: a generic green sheet grid instead of the qui
-      // logo, so the tab icon doesn't out the app. Deliberately NOT an X or
-      // any Microsoft mark.
       const svg = SPREADSHEET_THEME_IDS.has(theme) ? `
         <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 32 32">
           <rect x="1" y="1" width="30" height="30" rx="6" fill="oklch(from ${primaryColor} l c h)" />
@@ -79,7 +74,6 @@ export function useDynamicFavicon() {
 
       const img = new Image()
       img.onload = () => {
-        // A theme switch superseded this load.
         if (cancelled) return
         ctx.clearRect(0, 0, size, size)
         ctx.drawImage(img, 0, 0, size, size)

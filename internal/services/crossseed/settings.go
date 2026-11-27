@@ -11,9 +11,9 @@ import (
 	"slices"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// SearchSettingsPatch captures optional updates to seeded search defaults.
 type SearchSettingsPatch struct {
 	InstanceIDSet          bool
 	InstanceID             *int
@@ -21,19 +21,17 @@ type SearchSettingsPatch struct {
 	Tags                   *[]string
 	ExcludeCategories      *[]string
 	ExcludeTags            *[]string
-	IndexerIDs             *[]int
+	SitePick               *models.SitePick
 	IntervalSeconds        *int
 	CooldownMinutes        *int
 	MaxAddedAgeDays        *int
 	SkipIndividualEpisodes *bool
-	TorznabEnabled         *bool
 	ScheduleEnabled        *bool
 	ScheduleIntervalHours  *int
 	ScheduleMaxSearches    *int
 	ScheduleMaxAgeDays     *int
 }
 
-// GetAutomationSettings returns the persisted automation configuration.
 func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -63,6 +61,35 @@ func (s *Service) GetAutomationSettings(ctx context.Context) (*models.CrossSeedA
 	return settings, nil
 }
 
+func (s *Service) savedAutomationSettings(ctx context.Context) (*models.CrossSeedAutomationSettings, error) {
+	if settings := s.automationSettings.Load(); settings != nil {
+		return settings, nil
+	}
+	load := s.automationSettingsLoad.DoChan("", func() (any, error) {
+		s.settingsMu.Lock()
+		defer s.settingsMu.Unlock()
+		if settings := s.automationSettings.Load(); settings != nil {
+			return settings, nil
+		}
+		settings, err := s.GetAutomationSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		s.automationSettings.Store(settings)
+		return settings, nil
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-load:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		settings, _ := result.Val.(*models.CrossSeedAutomationSettings)
+		return settings, nil
+	}
+}
+
 func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.CrossSeedBlocklistEntry, error) {
 	if s.blocklistStore == nil {
 		return nil, errors.New("blocklist store unavailable")
@@ -70,14 +97,14 @@ func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.
 	return s.blocklistStore.List(ctx, instanceID)
 }
 
-func (s *Service) UpsertBlocklistEntry(ctx context.Context, entry *models.CrossSeedBlocklistEntry) (*models.CrossSeedBlocklistEntry, error) {
+func (s *Service) UpsertBlocklistEntry(ctx context.Context, instanceID int, hash infohash.Hash, note string) (*models.CrossSeedBlocklistEntry, error) {
 	if s.blocklistStore == nil {
 		return nil, errors.New("blocklist store unavailable")
 	}
-	return s.blocklistStore.Upsert(ctx, entry)
+	return s.blocklistStore.Upsert(ctx, instanceID, hash, note)
 }
 
-func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash string) error {
+func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash infohash.Hash) error {
 	if s.blocklistStore == nil {
 		return errors.New("blocklist store unavailable")
 	}
@@ -90,13 +117,11 @@ func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, info
 	return nil
 }
 
-// UpdateAutomationSettings persists automation configuration and wakes the scheduler.
 func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models.CrossSeedAutomationSettings) (*models.CrossSeedAutomationSettings, error) {
 	if settings == nil {
 		return nil, errors.New("settings cannot be nil")
 	}
 
-	// Validate and normalize settings before checking store
 	s.validateAndNormalizeSettings(settings)
 
 	if s.automationStore == nil {
@@ -108,9 +133,10 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	previous, previousErr := s.GetAutomationSettings(ctx)
 	updated, err := s.automationStore.UpsertSettings(ctx, settings)
 	if err != nil {
+		s.automationSettings.Store(nil)
 		return nil, fmt.Errorf("persist automation settings: %w", err)
 	}
-	// Of all settings, only the category mapping rules change a read.
+	s.automationSettings.Store(updated)
 	if previousErr != nil || !slices.EqualFunc(previous.CategoryMappingRules, updated.CategoryMappingRules, func(a, b models.CategoryMappingRule) bool {
 		return a.ContentType == b.ContentType && slices.Equal(a.Categories, b.Categories)
 	}) {
@@ -123,16 +149,12 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	return updated, nil
 }
 
-// validateAndNormalizeSettings validates and normalizes automation settings.
-// These settings apply to RSS Automation only, not Seeded Torrent Search.
 func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomationSettings) {
-	// RSS Automation: minimum 30 minutes between RSS feed polls, default 120 minutes
 	if settings.RunIntervalMinutes <= 0 {
 		settings.RunIntervalMinutes = 120
 	} else if settings.RunIntervalMinutes < 30 {
 		settings.RunIntervalMinutes = 30
 	}
-	// RSS Automation: maximum number of RSS results to process per run
 	if settings.MaxResultsPerRun <= 0 {
 		settings.MaxResultsPerRun = 50
 	}
@@ -146,15 +168,14 @@ func (s *Service) normalizeSearchSettings(settings *models.CrossSeedSearchSettin
 	settings.Tags = normalizeStringSlice(settings.Tags)
 	settings.ExcludeCategories = normalizeStringSlice(settings.ExcludeCategories)
 	settings.ExcludeTags = normalizeStringSlice(settings.ExcludeTags)
-	settings.IndexerIDs = uniquePositiveInts(settings.IndexerIDs)
-	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, !settings.TorznabEnabled)
+	settings.SitePick = settings.Clean()
+	settings.IntervalSeconds, settings.CooldownMinutes = normalizeSearchRunTiming(settings.IntervalSeconds, settings.CooldownMinutes, redOpsOnlyPick(settings.SitePick))
 	settings.MaxAddedAgeDays = max(settings.MaxAddedAgeDays, 0)
 	settings.ScheduleIntervalHours = min(max(settings.ScheduleIntervalHours, 1), maxScheduleIntervalHours)
 	settings.ScheduleMaxSearches = max(settings.ScheduleMaxSearches, 1)
 	settings.ScheduleMaxAgeDays = min(max(settings.ScheduleMaxAgeDays, 1), maxScheduleMaxAgeDays)
 }
 
-// GetSearchSettings returns stored defaults for seeded torrent searches.
 func (s *Service) GetSearchSettings(ctx context.Context) (*models.CrossSeedSearchSettings, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -198,7 +219,6 @@ func (s *Service) GetSearchSettings(ctx context.Context) (*models.CrossSeedSearc
 	return settings, nil
 }
 
-// PatchSearchSettings merges updates into stored seeded search defaults.
 func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsPatch) (*models.CrossSeedSearchSettings, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -241,9 +261,6 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 		}
 	}
 
-	// The first scheduled run starts as soon as the user turns the schedule
-	// on. The clear comes first: while the saved schedule is still off, no
-	// run starts that the clear could forget.
 	if turnedOn {
 		if err := s.forgetLastScheduledStart(ctx); err != nil {
 			return nil, err
@@ -257,7 +274,6 @@ func (s *Service) PatchSearchSettings(ctx context.Context, patch SearchSettingsP
 	return saved, nil
 }
 
-// apply copies each field that the patch sets into settings.
 func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings) {
 	if patch.InstanceIDSet {
 		settings.InstanceID = patch.InstanceID
@@ -268,8 +284,8 @@ func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings)
 	if patch.Tags != nil {
 		settings.Tags = append([]string(nil), *patch.Tags...)
 	}
-	if patch.IndexerIDs != nil {
-		settings.IndexerIDs = append([]int(nil), *patch.IndexerIDs...)
+	if patch.SitePick != nil {
+		settings.SitePick = patch.SitePick.Clean()
 	}
 	if patch.IntervalSeconds != nil {
 		settings.IntervalSeconds = *patch.IntervalSeconds
@@ -288,9 +304,6 @@ func (patch SearchSettingsPatch) apply(settings *models.CrossSeedSearchSettings)
 	}
 	if patch.SkipIndividualEpisodes != nil {
 		settings.SkipIndividualEpisodes = *patch.SkipIndividualEpisodes
-	}
-	if patch.TorznabEnabled != nil {
-		settings.TorznabEnabled = *patch.TorznabEnabled
 	}
 	if patch.ScheduleEnabled != nil {
 		settings.ScheduleEnabled = *patch.ScheduleEnabled

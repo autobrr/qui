@@ -40,10 +40,8 @@ interface OrphanScanOverviewProps {
 function getStatusBadge(run: OrphanScanRun, t: (key: string) => string) {
   const { status, filesFound } = run
   if (run.partial && (status === "completed" || status === "preview_ready")) {
-    return { variant: "outline" as const, className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", label: t("preferences.orphanScanOverview.statusPartial") }
+    return { variant: "warning" as const, label: t("preferences.orphanScanOverview.statusPartial") }
   }
-  // Special case: "Clean" state for zero-file scans
-  // Handles both new (completed) and old DB rows (preview_ready) with no files
   if ((status === "completed" || status === "preview_ready") && filesFound === 0 && !run.errorMessage) {
     return { variant: "outline" as const, className: "bg-muted text-muted-foreground border-border/60", label: t("preferences.orphanScanOverview.statusClean") }
   }
@@ -51,13 +49,13 @@ function getStatusBadge(run: OrphanScanRun, t: (key: string) => string) {
   switch (status) {
     case "pending":
     case "scanning":
-      return { variant: "outline" as const, className: "bg-blue-500/10 text-blue-500 border-blue-500/20", label: status === "pending" ? t("preferences.orphanScanOverview.statusStarting") : t("preferences.orphanScanOverview.statusScanning") }
+      return { variant: "info" as const, label: status === "pending" ? t("preferences.orphanScanOverview.statusStarting") : t("preferences.orphanScanOverview.statusScanning") }
     case "preview_ready":
-      return { variant: "outline" as const, className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", label: t("preferences.orphanScanOverview.statusReadyForReview") }
+      return { variant: "warning" as const, label: t("preferences.orphanScanOverview.statusReadyForReview") }
     case "deleting":
       return { variant: "outline" as const, className: "bg-orange-500/10 text-orange-500 border-orange-500/20", label: t("preferences.orphanScanOverview.statusDeleting") }
     case "completed":
-      return { variant: "outline" as const, className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", label: t("preferences.orphanScanOverview.statusCompleted") }
+      return { variant: "success" as const, label: t("preferences.orphanScanOverview.statusCompleted") }
     case "failed":
       return { variant: "outline" as const, className: "bg-destructive/10 text-destructive border-destructive/30", label: t("preferences.orphanScanOverview.statusFailed") }
     case "canceled":
@@ -67,8 +65,6 @@ function getStatusBadge(run: OrphanScanRun, t: (key: string) => string) {
   }
 }
 
-// Exported for testing: renders one row of the Recent Scans list. A row expands
-// only when it has something to show, so it stays a plain row otherwise.
 export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
   const { t } = useTranslation("instances")
   const statusBadge = getStatusBadge(run, t)
@@ -83,20 +79,19 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
       ? { className: "text-destructive", text: t("preferences.orphanScanOverview.scanPathsLoadFailed") }
       : { className: "text-muted-foreground", text: t("preferences.orphanScanOverview.scanPathsLoading") }
 
-  // Show warning indicator for completed runs with errors (partial failures)
   const hasWarning = run.status === "completed" && hasError && !run.partial
 
   const rowContent = (
     <div className="p-3 flex items-center gap-3">
       <div className="flex flex-1 min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <div className="flex items-center gap-3">
-          <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
+          <Badge {...statusBadge} className={statusBadge.className}>
             {statusBadge.label}
           </Badge>
           {hasWarning && (
             <Tooltip>
               <TooltipTrigger asChild openOnTap>
-                <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
               </TooltipTrigger>
               <TooltipContent>
                 <p>{t("preferences.orphanScanOverview.partialFailureExpand")}</p>
@@ -113,11 +108,9 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
             <span>
               {t("preferences.orphanScanOverview.deletedStats", {
                 deleted: [
-                  // A dirs-only run drops the files fragment; a run that deleted nothing keeps "0 files".
                   ...run.filesDeleted > 0 || run.foldersDeleted === 0 ? [t("preferences.orphanScanOverview.deletedFiles", { count: run.filesDeleted })] : [],
                   ...run.foldersDeleted > 0 ? [t("preferences.orphanScanOverview.deletedDirs", { count: run.foldersDeleted })] : [],
                 ].join(t("preferences.orphanScanOverview.deletedSeparator")),
-                // A non-breaking space keeps the number with its unit when the stats wrap.
                 size: formatBytes(run.bytesReclaimed).replace(" ", "\u00a0"),
               })}
             </span>
@@ -147,7 +140,7 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
           {hasError && (
             <div className={cn(
               "relative p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
-              run.status === "failed"? "bg-destructive/10 text-destructive border border-destructive/20": "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
+              run.status === "failed"? "bg-destructive/10 text-destructive border border-destructive/20": "bg-warning/10 text-warning border border-warning/20"
             )}>
               <CopyButton value={run.errorMessage ?? ""} label={t("preferences.orphanScanOverview.errorMessage")} className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100" />
               {run.errorMessage}
@@ -163,7 +156,6 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
                   <CopyButton value={pathsBox.text} label={t("preferences.orphanScanOverview.scanPaths")} className="h-7 w-7 opacity-60 hover:opacity-100" />
                 )}
               </div>
-              {/* Roots are one per distinct save path, so a cross-seed link dir can produce hundreds. */}
               <div className={cn("p-3 rounded-md border bg-muted/40 text-xs whitespace-pre-wrap break-all max-h-48 overflow-y-auto", pathsBox.className)}>
                 {pathsBox.text}
               </div>
@@ -246,7 +238,6 @@ function InstanceOrphanScanItem({
     })
   }
 
-  // Compute status badge once for reuse in header
   const latestRunBadge = latestRun ? getStatusBadge(latestRun, t) : null
 
   if (!hasAccess) {
@@ -255,7 +246,7 @@ function InstanceOrphanScanItem({
         <div className="px-6 py-4 flex items-center justify-between opacity-60">
           <div className="flex items-center gap-3">
             <span className="font-medium">{instance.name}</span>
-            <Badge variant="outline" className="text-xs">{t("preferences.orphanScanOverview.noFilesystemAccess")}</Badge>
+            <Badge variant="outline">{t("preferences.orphanScanOverview.noFilesystemAccess")}</Badge>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -278,12 +269,12 @@ function InstanceOrphanScanItem({
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
               <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
               {latestRunBadge && (
-                <Badge {...latestRunBadge} className={cn("text-xs", latestRunBadge.className)}>
+                <Badge {...latestRunBadge} className={latestRunBadge.className}>
                   {latestRunBadge.label}
                 </Badge>
               )}
               {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline">
                   {t("preferences.orphanScanOverview.itemsSummary", {
                     count: latestRun.filesFound,
                     size: formatBytes(latestRun.bytesReclaimed || 0),
@@ -293,7 +284,7 @@ function InstanceOrphanScanItem({
               {latestRun?.status === "completed" && latestRun.errorMessage && !latestRun.partial && (
                 <Tooltip>
                   <TooltipTrigger asChild openOnTap>
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <AlertTriangle className="h-4 w-4 text-warning" />
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>{t("preferences.orphanScanOverview.partialFailure")}</p>
@@ -316,7 +307,7 @@ function InstanceOrphanScanItem({
           >
             <span className={cn(
               "text-xs font-medium",
-              isEnabled ? "text-emerald-500" : "text-muted-foreground"
+              isEnabled ? "text-success" : "text-muted-foreground"
             )}>
               {isEnabled ? t("preferences.orphanScanOverview.on") : t("preferences.orphanScanOverview.off")}
             </span>
@@ -340,9 +331,7 @@ function InstanceOrphanScanItem({
 
       <AccordionContent className="px-6 pb-4">
         <div className="space-y-4">
-          {/* Settings summary */}
           <div className="flex flex-wrap items-center justify-between gap-y-3 p-3 rounded-lg bg-muted/40 border">
-            {/* A zero basis without min-w-0 moves the buttons down only once the widest summary pair stops fitting beside them. */}
             <div className="space-y-0.5 flex-1">
               <p className="text-sm text-muted-foreground">
                 {settings? (
@@ -413,11 +402,10 @@ function InstanceOrphanScanItem({
 
           {instance.filesystemMode === "remote" && <OrphanScanRemoteLimits hasIdentity={instance.capabilities.identity} />}
 
-          {/* Preview ready actions */}
           {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
-            <div className="p-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 space-y-3">
+            <div className="p-4 rounded-lg border border-warning/40 bg-warning/10 space-y-3">
               <div className="flex items-start gap-3">
-                <Files className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                <Files className="h-5 w-5 text-warning shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">
                     {t("preferences.orphanScanOverview.orphanItemsFound", { count: latestRun.filesFound })}
@@ -452,7 +440,6 @@ function InstanceOrphanScanItem({
             </div>
           )}
 
-          {/* Mounted only while open, so every open starts from the first page. */}
           {previewOpen && latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
             <OrphanScanPreviewDialog
               open={previewOpen}
@@ -462,7 +449,6 @@ function InstanceOrphanScanItem({
             />
           )}
 
-          {/* Recent runs */}
           {runs.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-sm font-medium">{t("preferences.orphanScanOverview.recentScans")}</h4>
@@ -498,10 +484,8 @@ export function OrphanScanOverview({
   const { t } = useTranslation("instances")
   const { instances } = useInstances()
 
-  // Internal state for standalone usage
   const [internalExpanded, setInternalExpanded] = useState<string[]>([])
 
-  // Use controlled props if provided, otherwise internal state
   const expandedInstances = controlledExpanded ?? internalExpanded
   const setExpandedInstances = onExpandedInstancesChange ?? setInternalExpanded
 

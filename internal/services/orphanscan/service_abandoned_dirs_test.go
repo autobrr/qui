@@ -20,17 +20,11 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// TestExecuteScan_AbandonedDirsSurviveTheRoundTrip covers the whole path a
-// directory takes through a run: found by the walk, stored, and read back still
-// marked as a directory. An entry that loses that flag is deleted as a file and
-// never reaches the directory pass.
 func TestExecuteScan_AbandonedDirsSurviveTheRoundTrip(t *testing.T) {
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
 	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
 	categoryPath := filepath.Join(defaultSavePath, "movies")
-	// A category that inherits the default save path reports an empty savePath;
-	// its destination is still defaultSavePath/<name> and must be protected.
 	inheritedCategoryPath := filepath.Join(defaultSavePath, "test")
 	abandoned := filepath.Join(defaultSavePath, "leftover", "season")
 
@@ -56,10 +50,10 @@ func TestExecuteScan_AbandonedDirsSurviveTheRoundTrip(t *testing.T) {
 		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	stubSync(svc).getAllTorrents = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: hOwned, SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	stubSync(svc).getTorrentFilesBatch = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{hOwned: {{Name: "owned.mkv", Size: 1}}}, nil
 	}
 	stubSync(svc).folders(qbittorrent.InstanceFolders{DefaultSavePath: defaultSavePath, CategorySaveFolders: []string{categoryPath, inheritedCategoryPath}})
 

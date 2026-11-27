@@ -9,7 +9,6 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import type { SortedPeer } from "@/types"
 import "@/i18n"
 
-// Keep the real react-i18next module and swap only useTranslation for a passthrough translator.
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({ t: (key: string) => key }),
@@ -17,11 +16,6 @@ vi.mock("react-i18next", async (importOriginal) => ({
 
 import { PeersTable } from "./PeersTable"
 
-vi.stubGlobal("ResizeObserver", class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-})
 
 const peer = (key: string, client: string, peerIdClient: string) =>
   ({ key, ip: key, port: 1, client, peer_id_client: peerIdClient, progress: 0 }) as unknown as SortedPeer

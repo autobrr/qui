@@ -5,7 +5,6 @@
 
 import { useTranslation } from "react-i18next"
 
-/** The reason the torrent list is empty: filters, a search, or no torrents at all. */
 export function useTorrentListEmptyMessage(hasFilters: boolean, hasSearch: boolean): string {
   const { t } = useTranslation("torrents")
   if (hasFilters) return t("emptyState.noFilterMatches")

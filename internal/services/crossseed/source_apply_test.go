@@ -23,10 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// searchWithHistory runs one Torznab search over the indexers against a local
-// server, so that Search history has an entry for each indexer under the
-// returned job ID. The server also serves "/<title>.torrent" as a torrent
-// named <title>, and a 404 for a title that starts with "download-fail".
 func searchWithHistory(t *testing.T, indexerIDs []int) (*jackett.Service, uint64, string) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +74,6 @@ func searchWithHistory(t *testing.T, indexerIDs []int) (*jackett.Service, uint64
 	}
 }
 
-// historyBadges returns the outcome of each indexer in Search history for one job.
 func historyBadges(t *testing.T, service *jackett.Service, jobID uint64) map[int]string {
 	t.Helper()
 	history, err := service.GetSearchHistory(t.Context(), 100)
@@ -109,9 +104,8 @@ func TestApplySourceSearchResults(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		results []TorrentSearchResult
-		// cancelAfter cancels the context after the add of this title.
+		name        string
+		results     []TorrentSearchResult
 		cancelAfter string
 		wantEntries []string
 		wantCounts  sourceApplyCounts
@@ -160,8 +154,8 @@ func TestApplySourceSearchResults(t *testing.T) {
 			name: "title rescue skips an indexer with a normal add",
 			results: []TorrentSearchResult{
 				result("add-a", 1, "", searchDecisionProvenance{}),
-				result("rescue-a", 1, "hash-ra", rescue),
-				result("rescue-b", 2, "hash-rb", rescue),
+				result("rescue-a", 1, "ba00000000000000000000000000000000000001", rescue),
+				result("rescue-b", 2, "bb00000000000000000000000000000000000001", rescue),
 			},
 			wantEntries: []string{"add-a=added", "rescue-b=added"},
 			wantCounts:  sourceApplyCounts{added: 2},
@@ -170,10 +164,10 @@ func TestApplySourceSearchResults(t *testing.T) {
 		{
 			name: "at most three title rescue attempts",
 			results: []TorrentSearchResult{
-				result("rescue-a", 1, "hash-ra", rescue),
-				result("rescue-b", 2, "hash-rb", rescue),
-				result("rescue-c", 3, "hash-rc", rescue),
-				result("rescue-d", 4, "hash-rd", rescue),
+				result("rescue-a", 1, "ba00000000000000000000000000000000000001", rescue),
+				result("rescue-b", 2, "bb00000000000000000000000000000000000001", rescue),
+				result("rescue-c", 3, "bc00000000000000000000000000000000000001", rescue),
+				result("rescue-d", 4, "bd00000000000000000000000000000000000001", rescue),
 			},
 			wantEntries: []string{"rescue-a=added", "rescue-b=added", "rescue-c=added"},
 			wantCounts:  sourceApplyCounts{added: 3},
@@ -182,10 +176,10 @@ func TestApplySourceSearchResults(t *testing.T) {
 		{
 			name: "title rescue skips a duplicate info hash",
 			results: []TorrentSearchResult{
-				result("add-a", 1, "hash-a", searchDecisionProvenance{}),
-				result("rescue-same-as-add", 2, "hash-a", rescue),
-				result("rescue-b", 3, "hash-rb", rescue),
-				result("rescue-same-as-b", 4, "hash-rb", rescue),
+				result("add-a", 1, "aa00000000000000000000000000000000000001", searchDecisionProvenance{}),
+				result("rescue-same-as-add", 2, "aa00000000000000000000000000000000000001", rescue),
+				result("rescue-b", 3, "bb00000000000000000000000000000000000001", rescue),
+				result("rescue-same-as-b", 4, "bb00000000000000000000000000000000000001", rescue),
 			},
 			wantEntries: []string{"add-a=added", "rescue-b=added"},
 			wantCounts:  sourceApplyCounts{added: 2},
@@ -194,8 +188,8 @@ func TestApplySourceSearchResults(t *testing.T) {
 		{
 			name: "title rescue skips a result already in the client",
 			results: []TorrentSearchResult{
-				result("rescue-present", 1, "already-present", rescue),
-				result("rescue-b", 2, "hash-rb", rescue),
+				result("rescue-present", 1, "ee00000000000000000000000000000000000001", rescue),
+				result("rescue-b", 2, "bb00000000000000000000000000000000000001", rescue),
 			},
 			wantEntries: []string{"rescue-b=added"},
 			wantCounts:  sourceApplyCounts{added: 1},
@@ -206,7 +200,7 @@ func TestApplySourceSearchResults(t *testing.T) {
 			results: []TorrentSearchResult{
 				result("add-a", 1, "", searchDecisionProvenance{}),
 				result("add-b", 2, "", searchDecisionProvenance{}),
-				result("rescue-c", 3, "hash-rc", rescue),
+				result("rescue-c", 3, "bc00000000000000000000000000000000000001", rescue),
 			},
 			cancelAfter: "add-a",
 			wantEntries: []string{"add-a=added"},
@@ -228,10 +222,10 @@ func TestApplySourceSearchResults(t *testing.T) {
 			service := &Service{
 				jackettService: jackettService,
 				syncManager: newFakeSyncManager(instance, []qbt.Torrent{
-					{Hash: "source"},
-					{Hash: "already-present"},
+					{Hash: fakeHash("source")},
+					{Hash: "ee00000000000000000000000000000000000001"},
 				}, nil),
-				crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+				injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 					data, err := base64.StdEncoding.DecodeString(req.TorrentData)
 					require.NoError(t, err)
 					mi, err := metainfo.Load(bytes.NewReader(data))
@@ -252,10 +246,10 @@ func TestApplySourceSearchResults(t *testing.T) {
 						cancel()
 					}
 					return resp, nil
-				},
+				}),
 			}
 
-			entries, err := service.applySourceSearchResults(ctx, instanceID, &qbt.Torrent{Hash: "source", Name: "source"},
+			entries, err := service.applySourceSearchResults(ctx, instanceID, &qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
 				&TorrentSearchResponse{Results: tt.results, JobID: jobID}, triggerDefaults{}, time.Now())
 
 			if tt.wantErr != nil {

@@ -14,12 +14,9 @@ const icons: Record<TransferBulkAction, LucideIcon> = { retry: RotateCcw, cancel
 
 interface TransferSelectionBarProps {
   count: number
-  /** The selection holds every row behind the chip, also the rows of the other pages. */
   wholeChip: boolean
-  /** The number of rows behind the chip, when the whole page is picked and more rows exist. The bar then offers them all. */
   more: number | null
   actions: readonly TransferBulkAction[]
-  /** The step that waits for its answer: the bar takes no other step until then. */
   running: TransferBulkAction | null
   onPickAll: () => void
   onClear: () => void

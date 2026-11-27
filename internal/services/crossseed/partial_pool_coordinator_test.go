@@ -23,10 +23,9 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// recheckResumeSyncManager records bulk actions and answers file and piece
-// reads; the partial pool tests embed it.
 type recheckResumeSyncManager struct {
 	bulkActions             []string
 	resumeFailuresRemaining int
@@ -52,8 +51,8 @@ func (m *recheckResumeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int
 	}
 	out := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, hash := range hashes {
-		if files, ok := m.filesByHash[normalizeHash(hash)]; ok {
-			out[normalizeHash(hash)] = files
+		if files, ok := m.filesByHash[hash]; ok {
+			out[hash] = files
 		}
 	}
 	return out, nil
@@ -63,7 +62,7 @@ func (m *recheckResumeSyncManager) ExportTorrent(context.Context, int, string) (
 	return nil, "", "", nil
 }
 
-func (m *recheckResumeSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
+func (m *recheckResumeSyncManager) HasTorrentByAnyHash(context.Context, int, []infohash.Hash) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
 
@@ -391,7 +390,6 @@ func TestSelectPartialPoolDownloaderChecksMissingFilesHardlinkAdmission(t *testi
 	member.Status = models.CrossSeedPartialPoolMemberStatusVerifying
 	member.LastError = partialPoolRecheckPending
 	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{member}}
-	// qBittorrent 5.2 reports a stopped skip_checking add with a missing extra file as missingFiles.
 	snapshot := partialPoolTestSnapshot(member, 4)
 	snapshot.torrent.State = qbt.TorrentStateMissingFiles
 	snapshots := map[int64]*partialPoolMemberSnapshot{1: snapshot}
@@ -734,7 +732,7 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 		}
 		require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, member.Files[0].Status)
 	}
-	require.Equal(t, []string{"recheck:candidate-alpha"}, sync.bulkActions)
+	require.Equal(t, []string{"recheck:" + fakeHash("candidate-alpha")}, sync.bulkActions)
 
 	selected := partialPoolMemberByTorrentKey(pool, "candidate-alpha")
 	requirePartialPoolReconciled(t, service, selected.UpdatedAt.Add(partialPoolRecheckObserveTimeout), pool, snapshots, 0)
@@ -755,11 +753,9 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 			require.Equal(t, partialPoolRecheckPending, member.LastError)
 		}
 	}
-	require.Equal(t, []string{"recheck:candidate-alpha", "recheck:candidate-beta"}, sync.bulkActions)
+	require.Equal(t, []string{"recheck:" + fakeHash("candidate-alpha"), "recheck:" + fakeHash("candidate-beta")}, sync.bulkActions)
 }
 
-// startPartialPoolCoordinator runs the coordinator until the test ends, and
-// waits for it to stop before a cleanup restores a timer that it reads.
 func startPartialPoolCoordinator(t *testing.T, service *partialPoolCoordinator) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -2508,11 +2504,11 @@ func TestPartialPoolCompletedDependentResumesDurably(t *testing.T) {
 
 	_, member, err := store.RegisterPartialPoolMember(ctx, models.CrossSeedPartialPoolRegistration{
 		MatchedInstanceID: instance.ID,
-		MatchedTorrentKey: "source",
-		MatchedAliases:    []string{"source"},
+		MatchedTorrentKey: fakeHash("source"),
+		MatchedAliases:    []string{fakeHash("source")},
 		Member: models.CrossSeedPartialPoolMember{
 			InstanceID: instance.ID,
-			TorrentKey: "dependent",
+			TorrentKey: fakeHash("dependent"),
 			Mode:       models.CrossSeedPartialPoolModeReflink,
 			RootPath:   t.TempDir(),
 			Status:     models.CrossSeedPartialPoolMemberStatusVerifying,
@@ -2543,7 +2539,7 @@ func TestPartialPoolCompletedDependentResumesDurably(t *testing.T) {
 	}}
 
 	service.completeAndResumePartialPoolMember(ctx, member, snapshot)
-	require.Equal(t, []string{"resume:dependent"}, sync.bulkActions)
+	require.Equal(t, []string{"resume:" + fakeHash("dependent")}, sync.bulkActions)
 	reloaded, err := store.GetPartialPool(ctx, member.PoolID)
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusComplete, reloaded.Members[0].Status)
@@ -2553,7 +2549,7 @@ func TestPartialPoolCompletedDependentResumesDurably(t *testing.T) {
 	snapshot.torrent.State = qbt.TorrentStateMissingFiles
 	handled, _ := service.reconcilePartialPoolExceptionalState(ctx, time.Now(), reloaded.Members[0], snapshot)
 	require.True(t, handled)
-	require.Equal(t, []string{"resume:dependent", "resume:dependent"}, sync.bulkActions)
+	require.Equal(t, []string{"resume:" + fakeHash("dependent"), "resume:" + fakeHash("dependent")}, sync.bulkActions)
 	require.Empty(t, reloaded.Members[0].LastError)
 	require.Equal(t, int64(2), *reloaded.Members[0].ResumeAttempts)
 
@@ -2581,11 +2577,11 @@ func TestPartialPoolExceptionalStateRecovery(t *testing.T) {
 		t.Helper()
 		_, member, registerErr := store.RegisterPartialPoolMember(ctx, models.CrossSeedPartialPoolRegistration{
 			MatchedInstanceID: instance.ID,
-			MatchedTorrentKey: "source",
-			MatchedAliases:    []string{"source"},
+			MatchedTorrentKey: fakeHash("source"),
+			MatchedAliases:    []string{fakeHash("source")},
 			Member: models.CrossSeedPartialPoolMember{
 				InstanceID: instance.ID,
-				TorrentKey: torrentKey,
+				TorrentKey: fakeHash(torrentKey),
 				Mode:       mode,
 				RootPath:   t.TempDir(),
 				Status:     models.CrossSeedPartialPoolMemberStatusWaiting,
@@ -2626,9 +2622,9 @@ func TestPartialPoolExceptionalStateRecovery(t *testing.T) {
 	require.True(t, handled)
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, member.Status)
 	require.Equal(t, []string{
-		"pause:bounded", "recheck:bounded",
-		"pause:bounded", "recheck:bounded",
-		"pause:bounded", "recheck:bounded",
+		"pause:" + fakeHash("bounded"), "recheck:" + fakeHash("bounded"),
+		"pause:" + fakeHash("bounded"), "recheck:" + fakeHash("bounded"),
+		"pause:" + fakeHash("bounded"), "recheck:" + fakeHash("bounded"),
 	}, sync.bulkActions)
 
 	recovered := register("recovered", models.CrossSeedPartialPoolModeReflink)
@@ -2660,7 +2656,7 @@ func partialPoolTestMember(id int64, instanceID int, key string, files ...partia
 	member := &models.CrossSeedPartialPoolMember{
 		ID:         id,
 		InstanceID: instanceID,
-		TorrentKey: key,
+		TorrentKey: fakeHash(key),
 		Mode:       models.CrossSeedPartialPoolModeReflink,
 		Status:     models.CrossSeedPartialPoolMemberStatusWaiting,
 	}
@@ -2697,8 +2693,6 @@ func (*recheckResumeSyncManager) GetDirectoryContentCtx(context.Context, int, st
 	return nil, nil
 }
 
-// snapshotPartialPoolSyncManager answers GetSyncOwner with a sync owner over a
-// qBittorrent stub that holds the torrent with hash "source".
 type snapshotPartialPoolSyncManager struct {
 	recheckResumeSyncManager
 	owner *syncowner.Owner
@@ -2714,7 +2708,7 @@ func TestObservePartialPoolMembersKeepsMemberThatTheFreshSyncHolds(t *testing.T)
 		case "/api/v2/app/webapiVersion":
 			_, _ = io.WriteString(w, "2.11.4")
 		case "/api/v2/sync/maindata":
-			_, _ = io.WriteString(w, `{"rid":1,"full_update":true,"torrents":{"source":{"name":"Source","state":"stalledUP"}}}`)
+			_, _ = io.WriteString(w, `{"rid":1,"full_update":true,"torrents":{"`+fakeHash("source")+`":{"name":"Source","state":"stalledUP"}}}`)
 		default:
 			http.NotFound(w, r)
 		}

@@ -8,31 +8,20 @@ import (
 	"time"
 )
 
-// Progress is how far a running Transfer passed the bytes of its group.
 type Progress struct {
-	// Done counts the bytes that reached the target, of Total.
 	Done, Total int64
-	// Speed is the bytes a second over the last speedWindow, 0 until qui
-	// saw bytes pass.
-	Speed int64
+	Speed       int64
 }
 
-// speedWindow is how far back the speed of a Transfer looks.
 const speedWindow = 10 * time.Second
 
-// meter counts the bytes of one run. The streams of a copy add to it at
-// once. A nil meter counts nothing.
 type meter struct {
 	now func() time.Time
 
 	mu          sync.Mutex
 	done, total int64
-	// samples are the counts of done at most once a second, over the last
-	// speedWindow.
-	samples []sample
-	// moved is the count of done when it last changed, and when. A write
-	// within a second of the last sample leaves its count out of samples.
-	moved sample
+	samples     []sample
+	moved       sample
 }
 
 type sample struct {
@@ -40,7 +29,6 @@ type sample struct {
 	done int64
 }
 
-// set starts the count again at done of total, as a copy that resumes does.
 func (m *meter) set(done, total int64) {
 	if m == nil {
 		return
@@ -52,7 +40,6 @@ func (m *meter) set(done, total int64) {
 	m.sample()
 }
 
-// reach moves the count to done, as a poll of a download reads it.
 func (m *meter) reach(done int64) {
 	if m == nil {
 		return
@@ -63,7 +50,6 @@ func (m *meter) reach(done int64) {
 	m.sample()
 }
 
-// add counts n more bytes.
 func (m *meter) add(n int64) {
 	if m == nil {
 		return
@@ -85,10 +71,6 @@ func (m *meter) sample() {
 	m.age(now)
 }
 
-// age drops the samples that the speed at now no longer needs: it keeps the
-// last sample from before the speedWindow and each one after. When nothing
-// moved over the whole speedWindow, the last count is the only sample, so
-// the speed is 0.
 func (m *meter) age(now time.Time) {
 	if now.Sub(m.moved.at) >= speedWindow {
 		m.samples = append(m.samples[:0], m.moved)
@@ -115,8 +97,6 @@ func (m *meter) progress() Progress {
 	return p
 }
 
-// Progress returns the progress of a Transfer that passes its bytes now, and
-// false for any other Transfer.
 func (s *Service) Progress(id int64) (Progress, bool) {
 	s.mu.Lock()
 	var m *meter

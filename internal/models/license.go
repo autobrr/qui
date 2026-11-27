@@ -13,7 +13,6 @@ var (
 	ErrLicenseNotFound = errors.New("license not found")
 )
 
-// ProductLicense represents a product license in the database
 type ProductLicense struct {
 	ID             int        `json:"id"`
 	LicenseKey     string     `json:"licenseKey"`
@@ -29,7 +28,6 @@ type ProductLicense struct {
 	UpdatedAt      time.Time  `json:"updatedAt"`
 }
 
-// LicenseInfo contains license validation information
 type LicenseInfo struct {
 	Key          string     `json:"key"`
 	ProductName  string     `json:"productName"`
@@ -40,16 +38,12 @@ type LicenseInfo struct {
 	ErrorMessage string     `json:"errorMessage,omitempty"`
 }
 
-// LicenseStatus constants
 const (
 	LicenseStatusActive  = "active"
 	LicenseStatusInvalid = "invalid"
-	// LicenseStatusOffline marks a license that the server has not confirmed within the offline grace period.
-	// It gives no premium access. The background check and the manual refresh make it active again when the server confirms it.
 	LicenseStatusOffline = "offline"
 )
 
-// LicenseProvider constants
 const (
 	LicenseProviderDodo = "dodo"
 )

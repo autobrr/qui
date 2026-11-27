@@ -26,15 +26,12 @@ export interface CrossSeedTorrentInfo {
   filteredIndexers?: number[]
   excludedIndexers?: Record<number, string>
   contentMatches?: string[]
-  /** What a search asks each RED/OPS site: will_ask, or not_asked with its reason. */
   gazellePlan?: CrossSeedGazelleLookup[]
 }
 
 export type CrossSeedGazelleLookupStatus = "will_ask" | "match" | "no_match" | "not_asked" | "failed"
 
 export type CrossSeedGazelleLookupReason =
-  | "disabled"
-  | "no_api_key"
   | "cooldown"
   | "not_selected"
   | "source_site"
@@ -44,9 +41,7 @@ export type CrossSeedGazelleLookupReason =
   | "timed_out"
   | "error"
 
-/** The RED/OPS lookup of one site for one search: the plan before the search, or the outcome after it. */
 export interface CrossSeedGazelleLookup {
-  /** API host of the site. */
   site: string
   name: string
   shortName: string
@@ -54,7 +49,6 @@ export interface CrossSeedGazelleLookup {
   status: CrossSeedGazelleLookupStatus
   reason?: CrossSeedGazelleLookupReason
   detail?: string
-  /** Torznab indexers of the site that the search leaves out. */
   replacedIndexerIds?: number[]
 }
 
@@ -63,7 +57,6 @@ export interface CrossSeedGazelleSite {
   name: string
   shortName: string
   indexerId: number
-  /** RED/OPS is on and the site has an API key. */
   active: boolean
   replacedIndexerIds: number[]
 }
@@ -86,7 +79,6 @@ export interface CrossSeedInstanceResult {
   status: string
   class: CrossSeedResultClass
   message?: string
-  /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
   crossSeedInstanceId?: number
   crossSeedInstanceName?: string
   matchedTorrent?: {
@@ -120,7 +112,6 @@ export interface CrossSeedTorrentSearchResult {
   matchScore: number
 }
 
-/** Set when the ARR external-ID lookup could not supply IDs and the search ran title-only. */
 export type CrossSeedQueryDegradedReason = "arr_lookup_failed" | "arr_no_ids"
 
 export interface CrossSeedSearchRejectedCandidate {
@@ -140,7 +131,6 @@ export interface CrossSeedSearchIndexerOutcome {
   candidates: number
 }
 
-/** Explains why the Torznab passes accepted or rejected candidates. Absent when no Torznab search ran. */
 export interface CrossSeedSearchDecisionTrace {
   sourceSize: number
   tolerancePercent: number
@@ -151,7 +141,6 @@ export interface CrossSeedSearchDecisionTrace {
   duplicateFiltered: number
   finalMatches: number
   rejectionCounts?: Record<string, number>
-  /** Capped at 5 candidates per rejection reason; rejectionCounts holds the full totals. */
   rejectedCandidates?: CrossSeedSearchRejectedCandidate[]
   indexers?: CrossSeedSearchIndexerOutcome[]
 }
@@ -209,7 +198,6 @@ export interface ManualCrossSeedProposalsResponse {
   sourceSize: number
   sourceFileCount: number
   defaultTags: string[]
-  /** Set when settings pin every cross-seed to one category; the apply discards any pick. */
   pinnedCategory: string
   proposals: ManualCrossSeedProposal[]
 }
@@ -259,7 +247,6 @@ export interface CrossSeedRunResult {
   message?: string
   matchedTorrentHash?: string
   matchedTorrentName?: string
-  /** The Cross-seed instance that a routed add goes to. instanceId stays the instance that holds the match. */
   crossSeedInstanceId?: number
   crossSeedInstanceName?: string
 }
@@ -421,23 +408,24 @@ export interface CrossSeedSearchFilters {
   excludeTags?: string[]
 }
 
-export interface CrossSeedSearchSettings {
+export interface SitePick {
+  indexerIds: number[]
+  gazelleSites: string[]
+}
+
+export interface CrossSeedSearchSettings extends SitePick {
   instanceId?: number | null
   categories: string[]
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
-  indexerIds: number[]
   intervalSeconds: number
   cooldownMinutes: number
-  /** 0 turns the rule off. */
   maxAddedAgeDays: number
   skipIndividualEpisodes: boolean
-  torznabEnabled: boolean
   scheduleEnabled: boolean
   scheduleIntervalHours: number
   scheduleMaxSearches: number
-  /** A scheduled run searches only torrents added in this many last days. */
   scheduleMaxAgeDays: number
   createdAt?: string
   updatedAt?: string
@@ -483,7 +471,6 @@ export interface CrossSeedSearchRun {
   results: CrossSeedSearchResult[]
   gazelleSummary?: CrossSeedGazelleSiteSummary[]
   searchLimit?: number
-  /** Set when the run stopped at its cap: the torrents left for the next run. */
   waitingTorrents?: number
   createdAt: string
 }
@@ -501,7 +488,6 @@ export interface CrossSeedSearchStatus {
   currentTorrent?: CrossSeedSearchCandidate
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
-  /** Set while the Library Scan schedule is on. A time in the past means the run is due. */
   nextScheduledRunAt?: string
   effectiveIntervalSeconds?: number
 }
@@ -514,7 +500,6 @@ export interface SeasonPackRun {
   reason: string
   message: string
   instanceId?: number
-  /** The instance that gets the add: the Cross-seed instance of a routed apply, or instanceId. */
   addedInstanceId?: number
   matchedEpisodes: number
   totalEpisodes: number
@@ -523,7 +508,6 @@ export interface SeasonPackRun {
   createdAt: string
 }
 
-/** One base folder of a Source instance and where its Cross-seed instance sees it. An empty mappedPath means the same path. */
 export interface CrossSeedRouteRow {
   baseDir: string
   mappedPath: string
@@ -536,15 +520,12 @@ export interface CrossSeedRoute {
 }
 
 export interface CrossSeedRouteStatus extends CrossSeedRoute {
-  /** routedTorrents is null when the Cross-seed instance is unavailable. */
   rows: (CrossSeedRouteRow & { routedTorrents: number | null })[]
-  /** The route rule that the saved route breaks. Absent when it passes. */
   brokenRule?: string
 }
 
 export type CrossSeedRouteTestRowResult = "sees" | "seesFolderNotMarker" | "cannotSeeFolder" | "cannotWrite"
 
-/** The Test route result: one entry for each base folder, or crossSeedUnavailable with no rows. */
 export interface CrossSeedRouteTestResult {
   crossSeedUnavailable?: string
   rows: { baseDir: string; listedPath: string; result: CrossSeedRouteTestRowResult; error?: string }[]

@@ -19,13 +19,11 @@ import (
 	"github.com/autobrr/qui/internal/services/dirscan"
 )
 
-// DirScanHandler handles HTTP requests for directory scanning.
 type DirScanHandler struct {
 	service       *dirscan.Service
 	instanceStore *models.InstanceStore
 }
 
-// NewDirScanHandler creates a new DirScanHandler.
 func NewDirScanHandler(service *dirscan.Service, instanceStore *models.InstanceStore) *DirScanHandler {
 	return &DirScanHandler{
 		service:       service,
@@ -33,7 +31,6 @@ func NewDirScanHandler(service *dirscan.Service, instanceStore *models.InstanceS
 	}
 }
 
-// DirScanSettingsPayload is the request body for updating settings.
 type DirScanSettingsPayload struct {
 	Enabled                      *bool    `json:"enabled"`
 	MatchMode                    *string  `json:"matchMode"`
@@ -49,7 +46,6 @@ type DirScanSettingsPayload struct {
 	Tags                         []string `json:"tags"`
 }
 
-// GetSettings returns the global directory scanner settings.
 func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.service.GetSettings(r.Context())
 	if err != nil {
@@ -58,7 +54,6 @@ func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return default settings if none exist yet
 	if settings == nil {
 		settings = &models.DirScanSettings{
 			MatchMode:                    models.MatchModeStrict,
@@ -74,10 +69,9 @@ func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	RespondJSON(w, http.StatusOK, settings)
+	RespondJSON(w, r, http.StatusOK, settings)
 }
 
-// UpdateSettings updates the global directory scanner settings.
 func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var payload DirScanSettingsPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -85,7 +79,6 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Get current settings
 	settings, err := h.service.GetSettings(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("dirscan: failed to get settings for update")
@@ -97,7 +90,6 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		settings = &models.DirScanSettings{}
 	}
 
-	// Apply updates
 	if payload.Enabled != nil {
 		settings.Enabled = *payload.Enabled
 	}
@@ -157,10 +149,9 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, r, http.StatusOK, updated)
 }
 
-// DirScanDirectoryPayload is the request body for creating/updating directories.
 type DirScanDirectoryPayload struct {
 	Path                   *string   `json:"path"`
 	QbitPathPrefix         *string   `json:"qbitPathPrefix"`
@@ -174,7 +165,6 @@ type DirScanDirectoryPayload struct {
 	SkipIndividualEpisodes *bool     `json:"skipIndividualEpisodes"`
 }
 
-// ListDirectories returns all configured scan directories.
 func (h *DirScanHandler) ListDirectories(w http.ResponseWriter, r *http.Request) {
 	dirs, err := h.service.ListDirectories(r.Context())
 	if err != nil {
@@ -183,15 +173,13 @@ func (h *DirScanHandler) ListDirectories(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Return empty array instead of null when no directories exist
 	if dirs == nil {
 		dirs = []*models.DirScanDirectory{}
 	}
 
-	RespondJSON(w, http.StatusOK, dirs)
+	RespondJSON(w, r, http.StatusOK, dirs)
 }
 
-// CreateDirectory creates a new scan directory.
 func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 	var payload DirScanDirectoryPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -207,7 +195,7 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 	created, err := h.service.CreateDirectory(r.Context(), dir)
 	if err != nil {
 		if errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
-			RespondError(w, http.StatusConflict, "A directory with this path already exists")
+			RespondError(w, http.StatusConflict, "A directory with this path already exists on this instance")
 			return
 		}
 		log.Error().Err(err).Msg("dirscan: failed to create directory")
@@ -215,7 +203,7 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, created)
+	RespondJSON(w, r, http.StatusCreated, created)
 }
 
 func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *http.Request, payload *DirScanDirectoryPayload) (*models.DirScanDirectory, bool) {
@@ -276,7 +264,6 @@ func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *ht
 	return dir, true
 }
 
-// GetDirectory returns a specific scan directory.
 func (h *DirScanHandler) GetDirectory(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -294,10 +281,9 @@ func (h *DirScanHandler) GetDirectory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, dir)
+	RespondJSON(w, r, http.StatusOK, dir)
 }
 
-// UpdateDirectory updates a scan directory.
 func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -342,7 +328,7 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
-			RespondError(w, http.StatusConflict, "A directory with this path already exists")
+			RespondError(w, http.StatusConflict, "A directory with this path already exists on this instance")
 			return
 		}
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to update directory")
@@ -350,10 +336,9 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, updated)
+	RespondJSON(w, r, http.StatusOK, updated)
 }
 
-// DeleteDirectory deletes a scan directory.
 func (h *DirScanHandler) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -373,7 +358,6 @@ func (h *DirScanHandler) DeleteDirectory(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// TriggerScan starts a manual scan for a directory.
 func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -403,7 +387,7 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
+	RespondJSON(w, r, http.StatusAccepted, dirScanTriggerResponse{
 		RunID:         runID,
 		DirectoryID:   dirID,
 		DirectoryPath: dir.Path,
@@ -411,7 +395,6 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CancelScan cancels a running scan for a directory.
 func (h *DirScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -431,7 +414,6 @@ func (h *DirScanHandler) CancelScan(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ResetFiles deletes tracked scan progress for a directory.
 func (h *DirScanHandler) ResetFiles(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -466,7 +448,6 @@ type dirScanRequeueResponse struct {
 	Requeued int64 `json:"requeued"`
 }
 
-// RequeueNoMatch resets no_match files for a directory to pending.
 func (h *DirScanHandler) RequeueNoMatch(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -495,14 +476,13 @@ func (h *DirScanHandler) RequeueNoMatch(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, dirScanRequeueResponse{Requeued: requeued})
+	RespondJSON(w, r, http.StatusOK, dirScanRequeueResponse{Requeued: requeued})
 }
 
 type dirScanStatusResponse struct {
 	Runs []*models.DirScanRun `json:"runs"`
 }
 
-// GetStatus returns the queued and running scans, or the most recent scan.
 func (h *DirScanHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -523,10 +503,9 @@ func (h *DirScanHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 		runs = []*models.DirScanRun{}
 	}
 
-	RespondJSON(w, http.StatusOK, dirScanStatusResponse{Runs: runs})
+	RespondJSON(w, r, http.StatusOK, dirScanStatusResponse{Runs: runs})
 }
 
-// ListRuns returns recent scan runs for a directory.
 func (h *DirScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -555,10 +534,9 @@ func (h *DirScanHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 		runs = []*models.DirScanRun{}
 	}
 
-	RespondJSON(w, http.StatusOK, runs)
+	RespondJSON(w, r, http.StatusOK, runs)
 }
 
-// ListRunInjections returns injection attempts (added/failed) for a run.
 func (h *DirScanHandler) ListRunInjections(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -598,10 +576,9 @@ func (h *DirScanHandler) ListRunInjections(w http.ResponseWriter, r *http.Reques
 		injections = []*models.DirScanRunInjection{}
 	}
 
-	RespondJSON(w, http.StatusOK, injections)
+	RespondJSON(w, r, http.StatusOK, injections)
 }
 
-// ListFiles returns scanned files for a directory.
 func (h *DirScanHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	dirID, err := parseDirectoryID(w, r)
 	if err != nil {
@@ -653,10 +630,9 @@ func (h *DirScanHandler) ListFiles(w http.ResponseWriter, r *http.Request) {
 		files = []*models.DirScanFile{}
 	}
 
-	RespondJSON(w, http.StatusOK, files)
+	RespondJSON(w, r, http.StatusOK, files)
 }
 
-// parseDirectoryID extracts and validates the directory ID from the URL.
 func parseDirectoryID(w http.ResponseWriter, r *http.Request) (int, error) {
 	idStr := chi.URLParam(r, "directoryID")
 	id, err := strconv.Atoi(idStr)
@@ -677,8 +653,6 @@ func parseRunID(w http.ResponseWriter, r *http.Request) (int64, error) {
 	return id, nil
 }
 
-// validateTargetInstance validates that the target instance exists and qui can read its files.
-// Returns an error if validation fails (response is already written in that case).
 func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.Request, instanceID int) (*models.Instance, error) {
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
@@ -701,15 +675,10 @@ func (h *DirScanHandler) validateTargetInstance(w http.ResponseWriter, r *http.R
 
 const msgRemotePathNotAbsolute = "Path must be absolute on a remote instance"
 
-// remotePathIsRelative is a path a remote instance can't take, since find only
-// takes absolute ones and an sftp server resolves the rest against the login folder.
 func remotePathIsRelative(instance *models.Instance, path string) bool {
 	return models.FilesystemAccessMode(instance) == models.FilesystemModeRemote && !fsops.SlashPaths.IsAbs(path)
 }
 
-// validateUpdatedPathAndTarget checks the path and target an update leaves the
-// directory with, so a path-only update reads the directory's current target.
-// Returns false if validation fails (response is already written in that case).
 func (h *DirScanHandler) validateUpdatedPathAndTarget(w http.ResponseWriter, r *http.Request, dirID int, payload *DirScanDirectoryPayload) bool {
 	if payload.TargetInstanceID == nil && payload.Path == nil {
 		return true
@@ -767,26 +736,19 @@ func (h *DirScanHandler) requireDirectory(w http.ResponseWriter, r *http.Request
 	return false
 }
 
-// webhookTriggerScanPayload accepts both a direct {"path": "..."} and native
-// *arr webhook payloads (Sonarr, Radarr, Lidarr, Readarr).
 type webhookTriggerScanPayload struct {
 	EventType      string `json:"eventType"`
 	DownloadClient string `json:"downloadClient"`
-	// Direct path (simple mode)
-	Path string `json:"path"`
-	// Sonarr: series.path
-	Series *struct {
+	Path           string `json:"path"`
+	Series         *struct {
 		Path string `json:"path"`
 	} `json:"series"`
-	// Radarr: movie.folderPath
 	Movie *struct {
 		FolderPath string `json:"folderPath"`
 	} `json:"movie"`
-	// Lidarr: artist.path
 	Artist *struct {
 		Path string `json:"path"`
 	} `json:"artist"`
-	// Readarr: author.path
 	Author *struct {
 		Path string `json:"path"`
 	} `json:"author"`
@@ -804,7 +766,6 @@ type dirScanWebhookSkipResponse struct {
 	Reason  string `json:"reason"`
 }
 
-// resolvedPath extracts the path from whichever format was provided.
 func (p *webhookTriggerScanPayload) resolvedPath() string {
 	if p.Path != "" {
 		return p.Path
@@ -878,9 +839,6 @@ func downloadClientAllowed(allowed []string, downloadClient string) bool {
 	return false
 }
 
-// WebhookTriggerScan triggers a directory scan by matching the provided path
-// against configured scan directories. Accepts native Sonarr/Radarr/Lidarr/Readarr
-// webhook payloads or a simple {"path": "..."} body.
 func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Request) {
 	var payload webhookTriggerScanPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -888,14 +846,21 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if payload.isTestEvent() {
+	instanceID, err := webhookInstanceID(r)
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instanceId")
+		return
+	}
+
+	testEvent := payload.isTestEvent()
+	if testEvent && instanceID == 0 {
 		log.Debug().Msg("dirscan: webhook test payload accepted")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
 	resolvedPath := payload.resolvedPath()
-	if resolvedPath == "" {
+	if !testEvent && resolvedPath == "" {
 		RespondError(w, http.StatusBadRequest, "Could not determine path from request body (expected 'path', 'series.path', 'movie.folderPath', 'artist.path', or 'author.path')")
 		return
 	}
@@ -907,35 +872,24 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Find the best matching directory using longest-prefix match
-	var bestMatch *models.DirScanDirectory
-	var cleanPath string
-	bestLen := 0
-	ambiguous := false
-	for _, dir := range dirs {
-		if !dir.Enabled {
-			continue
+	if testEvent {
+		if !instanceHasEnabledDirectory(dirs, instanceID) {
+			RespondError(w, http.StatusNotFound, "No enabled directory found for the given instanceId")
+			return
 		}
-		dirPath, candidatePath, ok := dirscan.PathWithinDirectory(h.service.DirectoryPaths(r.Context(), dir), dir.Path, resolvedPath)
-		if !ok {
-			continue
-		}
-		if len(dirPath) > bestLen {
-			bestMatch = dir
-			cleanPath = candidatePath
-			bestLen = len(dirPath)
-			ambiguous = false
-		} else if len(dirPath) == bestLen {
-			ambiguous = true
-		}
+		log.Debug().Int("instanceID", instanceID).Msg("dirscan: webhook test payload accepted")
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 
+	match := h.matchWebhookDirectory(r, dirs, instanceID, resolvedPath)
+	bestMatch, cleanPath := match.dir, match.cleanPath
 	if bestMatch == nil {
 		RespondError(w, http.StatusNotFound, "No matching directory found for the given path")
 		return
 	}
-	if ambiguous {
-		RespondError(w, http.StatusConflict, "Multiple directories match the given path")
+	if len(match.tiedInstances) > 1 {
+		RespondError(w, http.StatusConflict, webhookConflictMessage(match.tiedInstances))
 		return
 	}
 	if !payload.isSimpleMode() && !downloadClientAllowed(bestMatch.AllowedDownloadClients, payload.DownloadClient) {
@@ -946,7 +900,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 			Strs("allowedDownloadClients", bestMatch.AllowedDownloadClients).
 			Msg("dirscan: webhook skipped due to download client filter")
 
-		RespondJSON(w, http.StatusOK, dirScanWebhookSkipResponse{
+		RespondJSON(w, r, http.StatusOK, dirScanWebhookSkipResponse{
 			Skipped: true,
 			Reason:  "download client not allowed",
 		})
@@ -968,7 +922,7 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 		Int64("runID", runID).
 		Msg("dirscan: webhook triggered scan")
 
-	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
+	RespondJSON(w, r, http.StatusAccepted, dirScanTriggerResponse{
 		RunID:         runID,
 		DirectoryID:   bestMatch.ID,
 		DirectoryPath: bestMatch.Path,

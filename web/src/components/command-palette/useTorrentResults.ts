@@ -32,42 +32,29 @@ import { useTranslation } from "react-i18next"
 import type { PaletteEntry } from "./palette"
 
 const RESULT_LIMIT = 6
-// One letter matches most of a library, so the search starts at two.
 const MIN_QUERY_LENGTH = 2
-// An instance without a first sync answers once the sync that the search starts on the server ends, which takes seconds.
 export const PARTIAL_RETRY_MS = 3_000
 const NO_TORRENTS: CrossInstanceTorrent[] = []
 const torrentKey = (torrent: CrossInstanceTorrent) => `${torrent.instanceId}:${torrent.hash}`
 
 export interface TorrentResults {
-  /** One row that filters a torrent list, then the newest torrents of that list that match. Empty without text. */
   entries: PaletteEntry[]
-  /** The search ended, and no torrent matches the text. */
   noMatch: boolean
 }
 
 const NO_RESULTS: TorrentResults = { entries: [], noMatch: false }
 
 export interface ListView {
-  /** The id of the instance, or ALL_INSTANCES_ID for the Unified view. */
   list: number
   sidebarFilters: TorrentFilters
   columnFilters: ColumnFilter[]
   phoneLayout: boolean
-  /** The instances of the Unified view. */
   unifiedInstanceIds: number[]
 }
 
-/**
- * The request that finds what a torrent list shows for the typed text, so the
- * count and the rows of the palette are those of the list.
- */
 export function listSearchScope({ list, sidebarFilters, columnFilters, phoneLayout, unifiedInstanceIds }: ListView) {
-  // The phone layout has no column filters. In Filter Cross-Seeds, the table applies
-  // them in the browser. The palette has no table, so the server applies them there too.
   const columnExpr = phoneLayout ? null : columnFiltersToExpr(columnFilters)
   const filters = { ...sidebarFilters, expr: combineFilterExpr(columnExpr, sidebarFilters.expr) }
-  // Filter Cross-Seeds lists the copies on each instance, one row for each copy.
   const crossSeeds = isCrossSeedExpr(sidebarFilters.expr)
   let instanceIds: number[] | undefined
   if (list === ALL_INSTANCES_ID) instanceIds = unifiedInstanceIds
@@ -75,11 +62,6 @@ export function listSearchScope({ list, sidebarFilters, columnFilters, phoneLayo
   return { filters, filtered: hasSidebarFilters(filters), instanceIds, groupCopies: !crossSeeds }
 }
 
-/**
- * The torrent rows for the typed text. The list that they search is the one
- * that is open. On another page, it is the Unified view, or the list of the
- * only active instance. The filters of that list apply.
- */
 export function useTorrentResults(query: string, close: () => void): TorrentResults {
   const { t } = useTranslation("common")
   const { t: tTorrents } = useTranslation("torrents")
@@ -102,7 +84,6 @@ export function useTorrentResults(query: string, close: () => void): TorrentResu
     sidebarFilters,
     columnFilters,
     phoneLayout,
-    // No id means each active instance, as in the Unified view without a pick.
     unifiedInstanceIds: normalizeUnifiedInstanceIds(unifiedPick, activeInstances.map(instance => instance.id)),
   })
 
@@ -112,7 +93,6 @@ export function useTorrentResults(query: string, close: () => void): TorrentResu
     queryKey: ["command-palette-torrents", debouncedQuery, instanceIds, filters, groupCopies],
     queryFn: ({ signal }) => api.getCrossInstanceTorrents({ search: debouncedQuery, limit: RESULT_LIMIT, sort: "added_on", order: "desc", filters, groupCopies, instanceIds }, signal),
     enabled: searches,
-    // While the user types, the rows of the text before stay in view, so the list does not flash empty.
     placeholderData: keepPreviousData,
     staleTime: 10_000,
     refetchInterval: ({ state }) => (state.data?.partialResults ? PARTIAL_RETRY_MS : false),
@@ -136,7 +116,6 @@ export function useTorrentResults(query: string, close: () => void): TorrentResu
   let noMatch = false
   if (searches && search.isError) matches = t("commandPalette.searchFailed")
   else if (searches && (found === undefined || !settled)) matches = t("commandPalette.searching")
-  // An instance that did not answer can hold a match.
   else if (found?.partialResults && found.total === 0) matches = t("commandPalette.searchFailed")
   else if (found !== undefined) {
     noMatch = found.total === 0
@@ -148,7 +127,6 @@ export function useTorrentResults(query: string, close: () => void): TorrentResu
     label: t("commandPalette.searchTorrentsFor", { query }),
     icon: TextSearch,
     trail: severalInstances ? (activeInstances.find(instance => instance.id === list)?.name ?? t("unifiedScope.unified")) : undefined,
-    // The palette shows no sidebar, so the row tells why the count is lower than the user expects.
     note: [matches, filtered && t("commandPalette.listFiltersApply")].filter(Boolean).join(" · ") || undefined,
     shortcut: "Enter",
     run: go(() => {
@@ -160,19 +138,15 @@ export function useTorrentResults(query: string, close: () => void): TorrentResu
   const trackerNames = buildTrackerCustomizationLookup(trackerCustomizations)
   const torrents: PaletteEntry[] = buildVisibleRows(rows, COLLAPSED_COPY_GROUPS).map((torrent) => {
     const listPath = `/instances/${torrent.instanceId}`
-    // A list that can show the torrent stays open, with its search and filters.
     const staysOnList = onUnifiedList || pathname === listPath
-    // Cross-seeds of one release have the same name, state, and size. The tracker tells them apart, with the name that the torrent list gives it.
     const tracker = resolveTrackerDisplay(incognito ? getLinuxTrackerDomain(torrent.hash) : extractTrackerHost(torrent.tracker), trackerNames).displayName
     return {
       id: `torrent.${torrentKey(torrent)}`,
       label: incognito ? getLinuxIsoName(torrent.hash) : torrent.name,
       icon: ArrowDownUp,
-      // The rows of the Unified view, and of Filter Cross-Seeds, come from more than one instance.
       trail: severalInstances && (list === ALL_INSTANCES_ID || !instanceIds) ? torrent.instanceName : undefined,
       note: [getStateLabel(torrent.state, tTorrents), formatBytes(torrent.size), tracker].filter(Boolean).join(" · "),
       copies: describeRow(torrent).copies,
-      // The list searches for the typed text, so it shows the rows of the palette, and selects the torrent and scrolls to it.
       run: go(() => navigateWithSearch({
         navigate,
         to: staysOnList ? undefined : listPath,

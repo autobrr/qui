@@ -62,7 +62,6 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	if len(existing.SeededSearchTags) != 1 || existing.SeededSearchTags[0] != "new-seeded" {
 		t.Fatalf("unexpected seeded search tags: %#v", existing.SeededSearchTags)
 	}
-	// CompletionSearchTags and WebhookTags were not patched, should remain unchanged
 	if len(existing.CompletionSearchTags) != 1 || existing.CompletionSearchTags[0] != "old" {
 		t.Fatalf("unexpected completion search tags: %#v", existing.CompletionSearchTags)
 	}
@@ -113,7 +112,7 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	}
 
 	patch := automationSettingsPatchRequest{
-		RunExternalProgramID: optionalInt{Set: true, Value: nil}, // explicit clear
+		RunExternalProgramID: optionalInt{Set: true, Value: nil},
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)

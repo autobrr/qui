@@ -47,16 +47,12 @@ describe("RenameTorrentFileDialog", () => {
     await waitFor(() => expect(input.selectionEnd).toBe(name.lastIndexOf(".")))
     expect(input.selectionStart).toBe(0)
     expect(input.value.slice(input.selectionEnd!)).toBe(".mkv")
-    // backward direction keeps the caret at the start, so engines that scroll
-    // the caret into view show the start of the name, not the dot boundary
     expect(input.selectionDirection).toBe("backward")
   })
 
   it("scrolls the input back to the start so the unselected extension is not hidden off-screen (#2107)", async () => {
     const name = "Movie.Name.2023.UHD.BluRay.2160p.DTS-HD.MA.5.1.HEVC.REMUX-GROUP.mkv"
     const input = renderDialog(`folder/${name}`)
-    // jsdom does no layout, so emulate the scroll a real browser performs when
-    // it brings the selection end of an overflowing value into view.
     let scrollLeft = 500
     Object.defineProperty(input, "scrollLeft", {
       configurable: true,
@@ -75,9 +71,6 @@ describe("RenameTorrentFileDialog", () => {
 })
 
 describe("TagEditorDialog", () => {
-  // The torrent list rebuilds the request on each stream update. The same
-  // selection in new arrays must not restart the tag read, or a read slower
-  // than the updates never ends.
   it("reads the tags of a Select all selection one time while the request contents stay the same", () => {
     const onOpenChange = () => {}
     const props = (filters = makeFilters()) => ({
@@ -96,8 +89,6 @@ describe("TagEditorDialog", () => {
     rerender(<TagEditorDialog {...props(makeFilters({ status: ["paused"] }))} />)
     expect(api.getTorrentField).toHaveBeenCalledTimes(2)
   })
-  // A live sort reorders the loaded rows. Their tags do not decide the tags of
-  // a selection past the loaded rows, so the reorder must not restart the read.
   it("keeps the Select all tag read when the loaded rows change order", () => {
     api.getTorrentField.mockClear()
     const onOpenChange = () => {}
@@ -129,7 +120,6 @@ describe("SetCategoryDialog", () => {
   }
   const row = (name: string) => screen.getByRole("button", { name })
 
-  // regression: #2512
   it("keeps a typed name that extends an existing category", async () => {
     const { input, onConfirm } = renderCategoryDialog()
     await userEvent.type(input, "anime")
@@ -147,7 +137,6 @@ describe("SetCategoryDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("anime.x")
   })
 
-  // regression: #2512
   it("selects a clicked row and empties the typed name", async () => {
     const { input, onConfirm } = renderCategoryDialog()
     await userEvent.type(input, "new")
@@ -162,11 +151,9 @@ describe("SetCategoryDialog", () => {
     expect(onConfirm).toHaveBeenCalledWith("anime")
   })
 
-  // regression: #4358
   it("shows the full path of a subcategory on a tap, and the tap still selects it", () => {
     const touchWindow = window as Window & { ontouchstart?: unknown }
     touchWindow.ontouchstart = null
-    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} })
     try {
       render(
         <SetCategoryDialog

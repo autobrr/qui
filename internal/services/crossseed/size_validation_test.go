@@ -19,43 +19,43 @@ func TestIsSizeWithinTolerance(t *testing.T) {
 	}{
 		{
 			name:             "Within 5% tolerance - slightly smaller",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    970000000,  // 970MB (3% smaller)
+			sourceSize:       1000000000,
+			candidateSize:    970000000,
 			tolerancePercent: 5.0,
 			expectedResult:   true,
 		},
 		{
 			name:             "Within 5% tolerance - slightly larger",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1030000000, // 1.03GB (3% larger)
+			sourceSize:       1000000000,
+			candidateSize:    1030000000,
 			tolerancePercent: 5.0,
 			expectedResult:   true,
 		},
 		{
 			name:             "Outside 5% tolerance - too small",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    940000000,  // 940MB (6% smaller)
+			sourceSize:       1000000000,
+			candidateSize:    940000000,
 			tolerancePercent: 5.0,
 			expectedResult:   false,
 		},
 		{
 			name:             "Outside 5% tolerance - too large",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1060000000, // 1.06GB (6% larger)
+			sourceSize:       1000000000,
+			candidateSize:    1060000000,
 			tolerancePercent: 5.0,
 			expectedResult:   false,
 		},
 		{
 			name:             "Zero tolerance requires exact match",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1000000001, // 1GB + 1 byte
+			sourceSize:       1000000000,
+			candidateSize:    1000000001,
 			tolerancePercent: 0.0,
 			expectedResult:   false,
 		},
 		{
 			name:             "Zero tolerance with exact match",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1000000000, // 1GB
+			sourceSize:       1000000000,
+			candidateSize:    1000000000,
 			tolerancePercent: 0.0,
 			expectedResult:   true,
 		},
@@ -75,22 +75,22 @@ func TestIsSizeWithinTolerance(t *testing.T) {
 		},
 		{
 			name:             "Large tolerance - 20%",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1150000000, // 1.15GB (15% larger)
+			sourceSize:       1000000000,
+			candidateSize:    1150000000,
 			tolerancePercent: 20.0,
 			expectedResult:   true,
 		},
 		{
 			name:             "Negative tolerance treated as zero",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1000000000, // 1GB
+			sourceSize:       1000000000,
+			candidateSize:    1000000000,
 			tolerancePercent: -5.0,
 			expectedResult:   true,
 		},
 		{
 			name:             "Negative tolerance with mismatch",
-			sourceSize:       1000000000, // 1GB
-			candidateSize:    1000000001, // 1GB + 1 byte
+			sourceSize:       1000000000,
+			candidateSize:    1000000001,
 			tolerancePercent: -5.0,
 			expectedResult:   false,
 		},

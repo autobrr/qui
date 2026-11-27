@@ -11,7 +11,6 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/pkg/fsutil"
-	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
 )
@@ -26,22 +25,14 @@ func (b *Backend) Stat(ctx context.Context, path string) (*fsops.LstatInfo, erro
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	return osFileInfoToLstat(fi, path, true), nil
+	return statPath(path)
 }
 
 func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	return osFileInfoToLstat(fi, path, false), nil
+	return lstatPath(path)
 }
 
 func (b *Backend) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
@@ -77,103 +68,17 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		return nil, err
 	}
 
-	// filepath.WalkDir does not descend a root that is a symlink, so a followed
-	// root walks its target and reports each entry under root.
-	walked := root
-	if opts.FollowRoot {
-		if fi, err := os.Lstat(root); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-			if walked, err = filepath.EvalSymlinks(root); err != nil {
-				return nil, err
-			}
-		}
+	walked, err := walkTarget(root, opts.FollowRoot)
+	if err != nil {
+		return nil, err
 	}
 
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
 		walkErr := filepath.WalkDir(walked, func(path string, d fs.DirEntry, walkErr error) error {
-			if ctx.Err() != nil {
-				return fs.SkipAll
-			}
-
-			// d is nil when filepath.WalkDir cannot stat the root (TOCTOU
-			// between our pre-check and the walk's internal stat).
-			if d == nil {
-				return walkErr
-			}
-
-			if walked != root {
-				rel, err := filepath.Rel(walked, path)
-				if err != nil {
-					return err
-				}
-				path = filepath.Join(root, rel)
-			}
-
-			if opts.Skip(d.Name(), path, d.IsDir(), path == root) {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-
-			entry := fsops.WalkEntry{
-				Path: path}
-
-			rel, err := filepath.Rel(root, path)
-			if err == nil {
-				entry.RelPath = rel
-			}
-
-			if walkErr != nil {
-				entry.Err = walkErr
-			} else if fi, err := d.Info(); err != nil {
-				// An entry that vanished or can't be stat'd is skipped by
-				// default, not surfaced: consumers (orphanscan, dirscan)
-				// skipped such files pre-migration, and emitting it as Err
-				// would read as a walk failure and abort whole scans. Err
-				// stays reserved for enumeration-level failures. Delete
-				// preflights opt in via EmitStatErrors so they can fail
-				// closed instead.
-				if !opts.EmitStatErrors {
-					return nil
-				}
-				entry.StatErr = err
-			} else {
-				entry.Size = fi.Size()
-				entry.ModTime = fi.ModTime()
-				entry.Mode = localFileMode(path, fi.Mode(), false)
-				entry.IsDir = fi.IsDir()
-				entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
-
-				if opts.WantFileID && entry.Mode.IsRegular() {
-					fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
-					if fidErr != nil {
-						// Identity failure must not read as an unreadable
-						// entry — that would abort whole scans over one odd
-						// file. Callers that need identity check FileIDErr.
-						entry.FileIDErr = fidErr
-					} else {
-						entry.FileID = fid
-						entry.Nlinks = nlinks
-					}
-				}
-			}
-
-			select {
-			case ch <- entry:
-			case <-ctx.Done():
-				return fs.SkipAll
-			}
-			return nil
+			return visitWalkEntry(ctx, ch, root, walked, opts, path, d, walkErr)
 		})
-		// Surface a walk abort as a final entry so the caller knows the walk
-		// did not complete. Per-entry enumeration errors (unreadable
-		// subdirectory, permission denied on a child) are emitted inline
-		// above and do NOT abort the walk, so this fires only when the walk
-		// itself returned an error — in practice the root-stat TOCTOU case,
-		// where the callback propagates walkErr. Context cancellation is not
-		// an error — the caller initiated it.
 		if walkErr != nil && ctx.Err() == nil {
 			entry := fsops.WalkEntry{Err: walkErr,
 				Path: root}
@@ -184,6 +89,81 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		}
 	}()
 	return ch, nil
+}
+
+func walkTarget(root string, followRoot bool) (string, error) {
+	if !followRoot {
+		return root, nil
+	}
+	if fi, err := os.Lstat(root); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return filepath.EvalSymlinks(root)
+	}
+	return root, nil
+}
+
+func visitWalkEntry(ctx context.Context, ch chan<- fsops.WalkEntry, root, walked string, opts fsops.WalkOptions, path string, d fs.DirEntry, walkErr error) error {
+	if ctx.Err() != nil {
+		return fs.SkipAll
+	}
+
+	if d == nil {
+		return walkErr
+	}
+
+	diskPath := path
+	if walked != root {
+		rel, err := filepath.Rel(walked, path)
+		if err != nil {
+			return err
+		}
+		path = filepath.Join(root, rel)
+	}
+
+	if opts.Skip(d.Name(), path, d.IsDir(), path == root) {
+		if d.IsDir() {
+			return filepath.SkipDir
+		}
+		return nil
+	}
+
+	entry, ok := newWalkEntry(root, path, diskPath, d, walkErr, opts)
+	if !ok {
+		return nil
+	}
+
+	select {
+	case ch <- entry:
+	case <-ctx.Done():
+		return fs.SkipAll
+	}
+	return nil
+}
+
+func newWalkEntry(root, path, diskPath string, d fs.DirEntry, walkErr error, opts fsops.WalkOptions) (fsops.WalkEntry, bool) {
+	entry := fsops.WalkEntry{
+		Path: path}
+
+	rel, err := filepath.Rel(root, path)
+	if err == nil {
+		entry.RelPath = rel
+	}
+
+	if walkErr != nil {
+		entry.Err = walkErr
+		return entry, true
+	}
+
+	info, err := lstatEntry(diskPath, d, opts.WantFileID)
+	if err != nil {
+		if !opts.EmitStatErrors {
+			return entry, false
+		}
+		entry.StatErr = err
+		return entry, true
+	}
+	entry.LstatInfo = *info
+	entry.Path = path
+	return entry, true
 }
 
 func (b *Backend) SameFilesystem(ctx context.Context, p1, p2 string) (bool, error) {
@@ -265,37 +245,6 @@ func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, strin
 	}
 	supported, reason := reflinktree.SupportsReflink(path)
 	return supported, reason, nil
-}
-
-func osFileInfoToFsops(fi os.FileInfo, path string, follow bool) *fsops.FileInfo {
-	return &fsops.FileInfo{
-		Path:      path,
-		Size:      fi.Size(),
-		ModTime:   fi.ModTime(),
-		IsDir:     fi.IsDir(),
-		IsSymlink: fi.Mode()&os.ModeSymlink != 0,
-		Mode:      localFileMode(path, fi.Mode(), follow),
-	}
-}
-
-// osFileInfoToLstat converts host metadata, following tags only for Stat results.
-// Identity failure degrades to FileIDErr rather than failing the conversion:
-// callers that only want size/mtime keep working, callers that need identity
-// check FileIDErr.
-func osFileInfoToLstat(fi os.FileInfo, path string, follow bool) *fsops.LstatInfo {
-	info := &fsops.LstatInfo{
-		FileInfo: *osFileInfoToFsops(fi, path, follow),
-	}
-	if info.Mode.IsRegular() || fi.IsDir() {
-		fid, nlinks, err := hardlink.GetFileID(fi, path)
-		if err != nil {
-			info.FileIDErr = err
-		} else {
-			info.FileID = fid
-			info.Nlinks = nlinks
-		}
-	}
-	return info
 }
 
 func (b *Backend) Paths() fsops.PathDialect { return fsops.HostPaths }

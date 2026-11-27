@@ -16,8 +16,6 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// newQbitPathLibraryRig serves a synthetic qBittorrent that answers
-// app/getFreeSpaceAtPath from a path-to-body map.
 func newQbitPathLibraryRig(t *testing.T, name string, bodies map[string]string) (*qbittorrent.SyncManager, *models.Instance) {
 	t.Helper()
 
@@ -32,8 +30,6 @@ func newQbitPathLibraryRig(t *testing.T, name string, bodies map[string]string) 
 			}
 			_, _ = w.Write([]byte(body))
 		case "/api/v2/sync/maindata":
-			// A failed first sync marks the client unhealthy, and the next read then
-			// fails with "health check already in progress".
 			_, _ = w.Write([]byte(`{"rid":1,"full_update":true}`))
 		default:
 			http.NotFound(w, r)
@@ -44,8 +40,6 @@ func newQbitPathLibraryRig(t *testing.T, name string, bodies map[string]string) 
 	return newQbitPathInstance(t, name, server.URL)
 }
 
-// newQbitPathRig serves a synthetic qBittorrent that answers app/getFreeSpaceAtPath
-// with body, and records the path it received.
 func newQbitPathRig(t *testing.T, name, apiVersion, body string, status int) (*qbittorrent.SyncManager, *models.Instance, <-chan string) {
 	t.Helper()
 
@@ -68,8 +62,6 @@ func newQbitPathRig(t *testing.T, name, apiVersion, body string, status int) (*q
 	return syncManager, instance, paths
 }
 
-// newQbitPathInstance stores a synthetic instance pointing at host and returns a
-// SyncManager over a real client pool, so capability gating runs as it does live.
 func newQbitPathInstance(t *testing.T, name, host string) (*qbittorrent.SyncManager, *models.Instance) {
 	t.Helper()
 
@@ -86,7 +78,6 @@ func newQbitPathInstance(t *testing.T, name, host string) (*qbittorrent.SyncMana
 	return qbittorrent.NewSyncManager(clientPool, nil), instance
 }
 
-// qbitPathRule is a delete rule that reads FREE_SPACE at path on the qBittorrent host.
 func qbitPathRule(id int, path string) *models.Automation {
 	return &models.Automation{
 		ID:              id,
@@ -99,7 +90,6 @@ func qbitPathRule(id int, path string) *models.Automation {
 }
 
 func TestFreeSpaceBytesQbitPathSource(t *testing.T) {
-	// A Windows-style path proves qui forwards the qBittorrent host's own semantics.
 	const path = `D:\downloads\complete`
 
 	tests := []struct {
@@ -121,7 +111,6 @@ func TestFreeSpaceBytesQbitPathSource(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			syncManager, instance, paths := newQbitPathRig(t, tt.name, tt.apiVersion, tt.body, tt.status)
 
-			// No backend pool: the read happens on the qBittorrent host.
 			service := &Service{syncManager: syncManager}
 			rule := qbitPathRule(1, path)
 			ledgers, err := service.freeSpaceLedgers(t.Context(), instance, []*models.Automation{rule}, false)
@@ -154,8 +143,6 @@ func TestGetFreeSpaceSourceKeySeparatesQbitPath(t *testing.T) {
 	require.Equal(t, FreeSpaceSourceKeyQBittorrent, GetFreeSpaceSourceKey(&models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath}))
 }
 
-// TestFreeSpaceBytesQbitPathReadsEachPath pins that two rules on one instance read
-// their own path. Preview and execution share freeSpaceLedgers, so both see these values.
 func TestFreeSpaceBytesQbitPathReadsEachPath(t *testing.T) {
 	const (
 		archive = "/mnt/archive"

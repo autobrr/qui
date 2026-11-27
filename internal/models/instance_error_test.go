@@ -65,7 +65,6 @@ func setupInstanceErrorTestDB(t *testing.T) (*mockQuerier, *InstanceErrorStore) 
 	`)
 	require.NoError(t, err)
 
-	// Wrap with mock that implements Querier
 	db := newMockQuerier(sqlDB)
 
 	t.Cleanup(func() {
@@ -87,7 +86,6 @@ func TestInstanceErrorStore_RecordError_SkipsMissingInstance(t *testing.T) {
 	ctx := context.Background()
 	db, store := setupInstanceErrorTestDB(t)
 
-	// Ensure no rows exist before recording
 	require.Equal(t, 0, countInstanceErrors(t, db, 99))
 
 	err := store.RecordError(ctx, 99, errors.New("connection refused"))
@@ -100,7 +98,6 @@ func TestInstanceErrorStore_RecordError_DeduplicatesWithinOneMinute(t *testing.T
 	ctx := context.Background()
 	db, store := setupInstanceErrorTestDB(t)
 
-	// Insert instance - intern strings first
 	var nameID, hostID, usernameID int64
 	err := db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) ON CONFLICT (value) DO UPDATE SET value = value RETURNING id", "test").Scan(&nameID)
 	require.NoError(t, err)
@@ -116,11 +113,9 @@ func TestInstanceErrorStore_RecordError_DeduplicatesWithinOneMinute(t *testing.T
 	require.NoError(t, store.RecordError(ctx, 1, firstErr))
 	require.Equal(t, 1, countInstanceErrors(t, db, 1))
 
-	// Duplicate error within a minute should be ignored
 	require.NoError(t, store.RecordError(ctx, 1, firstErr))
 	require.Equal(t, 1, countInstanceErrors(t, db, 1))
 
-	// Different error should be recorded
 	require.NoError(t, store.RecordError(ctx, 1, errors.New("authentication failed")))
 	require.Equal(t, 2, countInstanceErrors(t, db, 1))
 }

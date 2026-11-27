@@ -20,23 +20,19 @@ import (
 	"github.com/autobrr/qui/pkg/redact"
 )
 
-// RSSHandler handles RSS API endpoints
 type RSSHandler struct {
 	syncManager *qbittorrent.SyncManager
 }
 
-// NewRSSHandler creates a new RSS handler
 func NewRSSHandler(syncManager *qbittorrent.SyncManager) *RSSHandler {
 	return &RSSHandler{
 		syncManager: syncManager,
 	}
 }
 
-// Routes registers RSS routes on the given router
 func (h *RSSHandler) Routes(r chi.Router) {
 	rss := middleware.Permissions(models.AreaRSS)
 
-	// Feed and folder management
 	r.With(rss.Read).Get("/items", h.GetItems)
 	r.With(rss.Write).Post("/folders", h.AddFolder)
 	r.With(rss.Write).Post("/feeds", h.AddFeed)
@@ -45,10 +41,8 @@ func (h *RSSHandler) Routes(r chi.Router) {
 	r.With(rss.Write).Delete("/items", h.RemoveItem)
 	r.With(rss.Run).Post("/items/refresh", h.RefreshItem)
 
-	// Article management
 	r.With(rss.Write).Post("/articles/read", h.MarkAsRead)
 
-	// Auto-download rules
 	r.With(rss.Read).Get("/rules", h.GetRules)
 	r.With(rss.Write).Post("/rules", h.SetRule)
 	r.With(rss.Write).Put("/rules/{ruleName}/rename", h.RenameRule)
@@ -56,8 +50,6 @@ func (h *RSSHandler) Routes(r chi.Router) {
 	r.With(rss.Read).Get("/rules/{ruleName}/preview", h.GetMatchingArticles)
 	r.With(rss.Run).Post("/rules/reprocess", h.ReprocessRules)
 }
-
-// Request/Response types
 
 type AddFolderRequest struct {
 	Path string `json:"path"`
@@ -100,9 +92,6 @@ type RenameRuleRequest struct {
 	NewName string `json:"newName"`
 }
 
-// Handlers
-
-// GetItems retrieves all RSS feeds and folders
 func (h *RSSHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -124,10 +113,22 @@ func (h *RSSHandler) GetItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, items)
+	if middleware.CanReadTrackerPasskeys(r) {
+		RespondJSON(w, r, http.StatusOK, items)
+		return
+	}
+	full, err := json.Marshal(items)
+	if err == nil {
+		full, err = hideRSSLinks(full)
+	}
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("failed to hide RSS links")
+		RespondError(w, http.StatusInternalServerError, "Failed to get RSS items")
+		return
+	}
+	RespondJSON(w, r, http.StatusOK, json.RawMessage(full))
 }
 
-// AddFolder creates a new RSS folder
 func (h *RSSHandler) AddFolder(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -144,20 +145,22 @@ func (h *RSSHandler) AddFolder(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Path is required")
 		return
 	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{parent: &req.Path}) {
+		return
+	}
 
 	if err := h.syncManager.AddRSSFolder(r.Context(), instanceID, req.Path); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFolder") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("path", req.Path).Msg("failed to add RSS folder")
+		logRSSPaths(log.Error(), err, "path", req.Path).Int("instanceID", instanceID).Msg("failed to add RSS folder")
 		RespondError(w, http.StatusInternalServerError, "Failed to add RSS folder")
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, nil)
+	RespondJSON(w, r, http.StatusCreated, nil)
 }
 
-// AddFeed adds a new RSS feed
 func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -180,13 +183,15 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Invalid URL: must be a valid http or https URL")
 		return
 	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.Path}) {
+		return
+	}
 
 	if req.Path != "" {
 		h.addFeedToFolder(w, r, instanceID, req.URL, req.Path)
 		return
 	}
 
-	// No folder specified - add directly to root
 	if err := h.syncManager.AddRSSFeed(r.Context(), instanceID, req.URL, ""); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFeed") {
 			return
@@ -196,11 +201,9 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, nil)
+	RespondJSON(w, r, http.StatusCreated, nil)
 }
 
-// qBittorrent's path param is the full item path, not the parent folder, so
-// the feed goes to the root first and then moves into targetFolder.
 func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, instanceID int, feedURL, targetFolder string) {
 	ctx := r.Context()
 
@@ -229,7 +232,7 @@ func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, ins
 	newFeeds, err := h.syncManager.GetRSSItems(ctx, instanceID, false)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("failed to get RSS items after add")
-		RespondJSON(w, http.StatusCreated, WarningResponse{
+		RespondJSON(w, r, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not move to folder",
 		})
 		return
@@ -237,7 +240,7 @@ func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, ins
 
 	if !hasBaseline {
 		log.Warn().Int("instanceID", instanceID).Msg("RSS feed added to root; could not determine baseline to safely move into folder")
-		RespondJSON(w, http.StatusCreated, WarningResponse{
+		RespondJSON(w, r, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not move to folder",
 		})
 		return
@@ -246,31 +249,26 @@ func (h *RSSHandler) addFeedToFolder(w http.ResponseWriter, r *http.Request, ins
 	newFeedName := findNewRSSFeedName(newFeeds, existingNames, instanceID, feedURL)
 	if newFeedName == "" {
 		log.Warn().Int("instanceID", instanceID).Str("url", redact.URLString(feedURL)).Msg("could not identify RSS feed to move to folder")
-		RespondJSON(w, http.StatusCreated, WarningResponse{
+		RespondJSON(w, r, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not identify feed to move",
 		})
 		return
 	}
 
-	// destPath must be the full new path: "FolderName\FeedName"
 	destPath := targetFolder + "\\" + newFeedName
 	if err := h.syncManager.MoveRSSItem(ctx, instanceID, newFeedName, destPath); err != nil {
-		log.Warn().Err(err).
+		logRSSPaths(log.Warn(), err, "feedName", newFeedName, "destPath", destPath).
 			Int("instanceID", instanceID).
-			Str("feedName", newFeedName).
-			Str("destPath", destPath).
 			Msg("failed to move RSS feed to folder (feed was added to root)")
-		RespondJSON(w, http.StatusCreated, WarningResponse{
+		RespondJSON(w, r, http.StatusCreated, WarningResponse{
 			Warning: "Feed added to root - could not move to folder",
 		})
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, nil)
+	RespondJSON(w, r, http.StatusCreated, nil)
 }
 
-// findNewRSSFeedName returns the one feed that is not in existingNames and whose
-// URL matches feedURL, or "" when no feed or several feeds match.
 func findNewRSSFeedName(newFeeds qbt.RSSItems, existingNames map[string]bool, instanceID int, feedURL string) string {
 	type rssFeedMeta struct {
 		URL string `json:"url"`
@@ -288,7 +286,7 @@ func findNewRSSFeedName(newFeeds qbt.RSSItems, existingNames map[string]bool, in
 			continue
 		}
 		if meta.URL == "" {
-			continue // folder
+			continue
 		}
 		if !matchesRSSFeedURL(meta.URL, feedURL) {
 			continue
@@ -309,36 +307,6 @@ func findNewRSSFeedName(newFeeds qbt.RSSItems, existingNames map[string]bool, in
 	return ""
 }
 
-func matchesRSSFeedURL(feedURL, reqURL string) bool {
-	feedURL = strings.TrimSpace(feedURL)
-	reqURL = strings.TrimSpace(reqURL)
-	if feedURL == reqURL {
-		return true
-	}
-
-	feedParsed, feedErr := url.Parse(feedURL)
-	reqParsed, reqErr := url.Parse(reqURL)
-	if feedErr != nil || reqErr != nil {
-		return false
-	}
-
-	feedParsed.Fragment = ""
-	reqParsed.Fragment = ""
-
-	normalizePath := func(p string) string {
-		if p == "/" {
-			return ""
-		}
-		return strings.TrimRight(p, "/")
-	}
-
-	return strings.EqualFold(feedParsed.Scheme, reqParsed.Scheme) &&
-		strings.EqualFold(feedParsed.Host, reqParsed.Host) &&
-		normalizePath(feedParsed.Path) == normalizePath(reqParsed.Path) &&
-		feedParsed.RawQuery == reqParsed.RawQuery
-}
-
-// SetFeedURL changes the URL of an existing feed
 func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -361,20 +329,22 @@ func (h *RSSHandler) SetFeedURL(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Invalid URL: must be a valid http or https URL")
 		return
 	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.Path, feedURL: &req.URL}) {
+		return
+	}
 
 	if err := h.syncManager.SetRSSFeedURL(r.Context(), instanceID, req.Path, req.URL); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "SetRSSFeedURL") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("path", req.Path).Msg("failed to set RSS feed URL")
+		logRSSPaths(log.Error(), err, "path", req.Path).Int("instanceID", instanceID).Msg("failed to set RSS feed URL")
 		RespondError(w, http.StatusInternalServerError, "Failed to set RSS feed URL")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
-// MoveItem moves a feed or folder to a new location
 func (h *RSSHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -391,20 +361,22 @@ func (h *RSSHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "ItemPath is required")
 		return
 	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.ItemPath, dest: &req.DestPath}) {
+		return
+	}
 
 	if err := h.syncManager.MoveRSSItem(r.Context(), instanceID, req.ItemPath, req.DestPath); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "MoveRSSItem") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("itemPath", req.ItemPath).Msg("failed to move RSS item")
+		logRSSPaths(log.Error(), err, "itemPath", req.ItemPath, "destPath", req.DestPath).Int("instanceID", instanceID).Msg("failed to move RSS item")
 		RespondError(w, http.StatusInternalServerError, "Failed to move RSS item")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
-// RemoveItem removes a feed or folder
 func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -421,21 +393,22 @@ func (h *RSSHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Path is required")
 		return
 	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.Path}) {
+		return
+	}
 
 	if err := h.syncManager.RemoveRSSItem(r.Context(), instanceID, req.Path); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "RemoveRSSItem") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("path", req.Path).Msg("failed to remove RSS item")
+		logRSSPaths(log.Error(), err, "path", req.Path).Int("instanceID", instanceID).Msg("failed to remove RSS item")
 		RespondError(w, http.StatusInternalServerError, "Failed to remove RSS item")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
-// RefreshItem triggers a manual refresh of a feed or folder.
-// An empty ItemPath refreshes all feeds.
 func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -448,22 +421,23 @@ func (h *RSSHandler) RefreshItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trim whitespace - empty string is valid (refreshes all feeds)
 	itemPath := strings.TrimSpace(req.ItemPath)
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &itemPath}) {
+		return
+	}
 
 	if err := h.syncManager.RefreshRSSItem(r.Context(), instanceID, itemPath); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "RefreshRSSItem") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("itemPath", itemPath).Msg("failed to refresh RSS item")
+		logRSSPaths(log.Error(), err, "itemPath", itemPath).Int("instanceID", instanceID).Msg("failed to refresh RSS item")
 		RespondError(w, http.StatusInternalServerError, "Failed to refresh RSS item")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
-// MarkAsRead marks articles as read
 func (h *RSSHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -480,20 +454,22 @@ func (h *RSSHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "ItemPath is required")
 		return
 	}
+	if !h.restoreRSSNames(w, r, instanceID, rssNames{path: &req.ItemPath, articleID: &req.ArticleID}) {
+		return
+	}
 
 	if err := h.syncManager.MarkRSSItemAsRead(r.Context(), instanceID, req.ItemPath, req.ArticleID); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "MarkRSSItemAsRead") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("itemPath", req.ItemPath).Msg("failed to mark RSS item as read")
+		logRSSPaths(log.Error(), err, "itemPath", req.ItemPath).Int("instanceID", instanceID).Msg("failed to mark RSS item as read")
 		RespondError(w, http.StatusInternalServerError, "Failed to mark RSS item as read")
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
-// GetRules retrieves all RSS auto-download rules
 func (h *RSSHandler) GetRules(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -510,10 +486,10 @@ func (h *RSSHandler) GetRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, rules)
+	hideRSSRuleFeeds(r, rules)
+	RespondJSON(w, r, http.StatusOK, rules)
 }
 
-// SetRule creates or updates an auto-download rule
 func (h *RSSHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -530,6 +506,9 @@ func (h *RSSHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 		RespondError(w, http.StatusBadRequest, "Name is required")
 		return
 	}
+	if !h.restoreRSSRuleFeeds(w, r, instanceID, &req) {
+		return
+	}
 
 	if err := h.syncManager.SetRSSRule(r.Context(), instanceID, req.Name, req.Rule); err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "SetRSSRule") {
@@ -540,10 +519,9 @@ func (h *RSSHandler) SetRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, nil)
+	RespondJSON(w, r, http.StatusCreated, nil)
 }
 
-// RenameRule renames an existing rule
 func (h *RSSHandler) RenameRule(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -576,10 +554,9 @@ func (h *RSSHandler) RenameRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
-// RemoveRule deletes an auto-download rule
 func (h *RSSHandler) RemoveRule(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -601,10 +578,9 @@ func (h *RSSHandler) RemoveRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }
 
-// GetMatchingArticles gets articles matching a rule for preview
 func (h *RSSHandler) GetMatchingArticles(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -627,11 +603,12 @@ func (h *RSSHandler) GetMatchingArticles(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, articles)
+	if !middleware.CanReadTrackerPasskeys(r) {
+		articles = hideRSSMatchingArticles(articles)
+	}
+	RespondJSON(w, r, http.StatusOK, articles)
 }
 
-// ReprocessRules triggers qBittorrent to reprocess all unread articles against rules.
-// It does this by toggling auto-downloading off then on.
 func (h *RSSHandler) ReprocessRules(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := parseInstanceID(w, r)
 	if err != nil {
@@ -647,5 +624,5 @@ func (h *RSSHandler) ReprocessRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, nil)
+	RespondJSON(w, r, http.StatusOK, nil)
 }

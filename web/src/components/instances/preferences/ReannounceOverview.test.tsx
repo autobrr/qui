@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render } from "@testing-library/react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Instance, InstanceReannounceSettings } from "@/types"
@@ -23,12 +23,10 @@ vi.mock("@/components/instances/preferences/ReannounceEnableWarning", () => ({
   ReannounceEnableWarningDialog: () => null,
 }))
 
-// SettingsSummary.test.tsx covers the pair layout, so this file checks only the pairs the card passes in.
 vi.mock("@/components/instances/preferences/SettingsSummary", () => ({
   SettingsSummary: ({ parts }: { parts: string[] }) => <span data-testid="settings-summary">{JSON.stringify(parts)}</span>,
 }))
 
-// Stable singletons: a fresh object per render would rerun effects forever.
 const { instancesQuery, activityQueries, queryClient, formatters } = vi.hoisted(() => {
   const settings = {
     enabled: true,
@@ -85,15 +83,6 @@ import { ReannounceOverview } from "@/components/instances/preferences/Reannounc
 
 const baseSettings = instancesQuery.instances[0].reannounceSettings
 
-beforeEach(() => {
-  // Radix switch and tooltip measure through ResizeObserver, which jsdom lacks.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
-
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -106,7 +95,6 @@ function renderExpanded() {
       <ReannounceOverview />
     </TooltipProvider>
   )
-  // The card keeps its own expansion state and starts collapsed.
   fireEvent.click(view.getByRole("button", { name: "preferences.reannounceOverview.expand" }))
   return view
 }

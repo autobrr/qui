@@ -19,7 +19,6 @@ import {
 import { api } from "@/lib/api"
 import { getCurrentTheme, getCurrentThemeMode } from "@/utils/theme"
 
-/** The switches that choose where a theme applies: one theme for each layout, and a theme of this browser only. */
 export function ThemeLayoutSettings() {
   const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
@@ -34,11 +33,8 @@ export function ThemeLayoutSettings() {
   const setSplit = async (on: boolean) => {
     try {
       if (on) {
-        // The mobile layout starts from the current theme, so nothing changes
-        // until a new mobile theme is picked.
         const appliedId = getCurrentTheme().id
         const current = storedThemeSelection(getCurrentThemeMode(), appliedId, getStoredVariation(appliedId) ?? undefined)
-        // Turning the split off later pulls the default slot, so it must exist.
         if (!data?.default) await writeThemeSlot(current, "default")
         await writeThemeSlot(current, "mobile")
       } else {

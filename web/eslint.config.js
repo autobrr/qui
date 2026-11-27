@@ -1,4 +1,7 @@
+import path from 'node:path'
+
 import js from '@eslint/js'
+import { plugin as shadcn } from '@shadcn/lint'
 import stylistic from '@stylistic/eslint-plugin'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
@@ -6,7 +9,12 @@ import { globalIgnores } from 'eslint/config'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+import { disableReason } from './scripts/disable-reason-rule.mjs'
+import { effectHookShape } from './scripts/effect-hook-shape-rule.mjs'
+import { entryFiles } from './scripts/entry-files-rule.mjs'
+import { layerOrder } from './scripts/layer-order-rule.mjs'
 import { noComments } from './scripts/no-comments-rule.mjs'
+import { noDirectEffect } from './scripts/no-direct-effect-rule.mjs'
 import { noNativeTitle } from './scripts/no-native-title-rule.mjs'
 
 const copyGroupImportPattern = {
@@ -20,7 +28,6 @@ const torrentListImportPatterns = [{
   allowTypeImports: true,
   message: 'Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
 }, {
-  // The torrent-table hooks that moved into the controller. The hooks that stay outside it stay allowed.
   regex: '(^|/)torrent-table/(useBulkActionWrappers|useCrossSeedOrchestration|useFilterLifecycle)$',
   message: 'The list controller owns this. Use useTorrentListController from "@/hooks/useTorrentListController" instead.',
 }, copyGroupImportPattern]
@@ -33,7 +40,6 @@ const radixDialogImportPattern = {
 
 const bulkActionModuleMessage = 'The bulk action module in @/components/torrents/bulk-actions owns the Bulk actions. Send a pick with useBulkActions from "@/components/torrents/bulk-actions/bulk-actions-context" instead.'
 
-// Rename file, Rename folder, and the edit tracker dialog stay out: the details panel and the filter sidebar use them.
 const bulkActionDialogImportPattern = {
   regex: '(^|/)(TorrentDialogs|DeleteTorrentDialog)$',
   importNames: [
@@ -53,9 +59,33 @@ const bulkActionDialogImportPattern = {
 }
 
 const bulkActionModuleFiles = ['src/components/torrents/bulk-actions/**']
+const bulkActionCallerFiles = [
+  ...bulkActionModuleFiles,
+  'src/components/torrents/TorrentDetailsPanel.tsx',
+  'src/components/torrents/FilterSidebar.tsx',
+  'src/lib/__tests__/api.torrents.test.ts',
+  'src/lib/__tests__/api.mutations.test.ts',
+  'src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx',
+]
 
-// "<redacted>" and "gazelle.orpheusApiKey" are valid strings, so the string rule matches the full domains only.
-const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from api.getCrossSeedGazelleSites or the gazellePlan of a search.'
+const bulkActionRestriction = {
+  object: 'api',
+  property: 'bulkAction',
+  message: bulkActionModuleMessage,
+}
+
+const tabTitleRestriction = {
+  object: 'document',
+  property: 'title',
+  message: 'The tab title module in @/hooks/useTabTitle owns the browser tab title. Give the route its title in staticData, and pass the page detail or the speeds with usePageTitle from "@/hooks/usePageTitle" instead.',
+}
+
+const tabTitleModuleFiles = ['src/hooks/useTabTitle.ts', 'src/hooks/useTabTitle.test.tsx']
+
+const gazelleSiteMessage = 'The backend owns the RED/OPS site table. Read the sites from useSitePickSources in @/lib/site-pick or the gazellePlan of a search.'
+const sitePickMessage = 'The Site pick module in @/lib/site-pick owns which sites a search can ask (ADR 0098). Read the Torznab indexers and the RED/OPS sites with useSitePickOptions or useSitePickSources from "@/lib/site-pick", and turn a picked value into a request with sitePickChange or sitePickFromIds.'
+const sitePickRestrictions = ['listTorznabIndexers', 'getCrossSeedGazelleSites'].map(property => ({ object: 'api', property, message: sitePickMessage }))
+const sitePickOwnerFiles = ['src/lib/site-pick.ts', 'src/components/indexers/**', 'src/pages/Search.tsx', '**/*.test.{ts,tsx}', '**/__tests__/**']
 const gazelleSiteDomains = '/orpheus\\.network|opsfet\\.ch|flacsfor\\.me|redacted\\.sh/i'
 const pageShellMessage = 'A page renders Page from @/components/layout/Page, which owns the padding, the title, the description, and the controls. A page with sections renders SectionedPage, which renders Page.'
 const gazelleSiteSelectors = [
@@ -71,7 +101,6 @@ const settingsKitImportPatterns = [{
   allowTypeImports: true,
   message: settingsKitMessage,
 }, {
-  // The package under the drawer. The Radix dialog has its own pattern.
   regex: '^vaul$',
   allowTypeImports: true,
   message: settingsKitMessage,
@@ -81,8 +110,6 @@ const settingsKitImportPatterns = [{
   message: settingsKitMessage,
 }]
 
-// The tabs of Settings. Each file here builds its cards, forms, and questions from the kit. The instance dialog in
-// instances/preferences/ stays out: the header and the torrent list open it too, and it moves with the Feature pages.
 const settingsFiles = [
   'src/pages/Settings.tsx',
   'src/components/settings/**',
@@ -93,20 +120,13 @@ const settingsFiles = [
 ]
 
 const settingsKitAllowlist = [
-  // The API keys tab stays as it is.
   'src/components/settings/ApiKeysManager.tsx',
-  // The restart flow: the update banner shows InstallUpdateButton too, and the overlay covers the whole app.
   'src/components/settings/{RestartButton,InstallUpdateButton,RestartOverlay}.tsx',
-  // The torrent list opens these.
   'src/components/display-profiles/{NewDisplayProfileDialog,DisplayProfileSheet}.tsx',
-  // The theme editor is a sheet without a backdrop, so the page behind it shows the theme while the user edits it.
   'src/components/themes/CustomThemeEditor.tsx',
-  // The picker of the themes in the theme menus, with its own trigger button.
   'src/components/themes/ThemeMenuDialog.tsx',
 ]
 
-// A raw text field skips the default of Input, which keeps the password managers away. A field passes with a type that
-// takes no text, a sign-in token in autoComplete, or the attributes of passwordManagerAttributes.
 const rawTextFieldSelectors = [{
   selector: [
     'JSXOpeningElement[name.name=/^(input|textarea)$/]',
@@ -145,23 +165,27 @@ const clientSettingMessage = 'Read and write a UI preference with useClientSetti
 
 const clientSettingAllowlist = [
   'src/lib/client-settings.ts',
-  // The theme boot cache, which index.html reads before the bundle loads.
   'src/lib/theme-storage.ts',
-  // The "this browser only" switch of Theme sync stays local by design.
   'src/hooks/useThemeSettingsSync.ts',
-  // The dismissed protocol banner stays in one browser.
   'src/lib/protocol-handler.ts',
-  // i18n boots from the cached language before React mounts.
   'src/i18n/index.ts',
-  // The sync hook moves raw values between the server and the module.
   'src/hooks/useClientSettingsSync.ts',
-  // Bypass: the date and time format reader reads the raw key.
   'src/lib/dateTimeUtils.ts',
-  // Bypass: the lock of the delete-files default reads and clears the raw key.
   'src/hooks/usePersistedDeleteFiles.ts',
-  // Bypass: the theme variation keeps its own localStorage key.
   'src/hooks/usePersistedThemeVariation.ts',
+  'src/components/problem-reports/draft.ts',
 ]
+
+const layers = ['types', 'utils', 'config', 'i18n', 'lib', 'contexts', 'hooks', 'components', 'layouts', 'pages', 'routes']
+
+const effectHooks = {
+  'src/hooks/useDebounce.ts': 'Gives a value after it has stayed the same for a delay.',
+  'src/hooks/useDelayedVisibility.ts': 'Says when the tab has been hidden for a delay.',
+  'src/hooks/useLastDayPeriod.ts': 'Gives the last 24 hours, and moves them on after each history write while the tab is visible.',
+  'src/hooks/useNow.ts': 'Gives the time, and renders again each minute.',
+  'src/hooks/usePageTitle.ts': 'Passes the title detail and the speeds of the open page to the tab title.',
+  'src/hooks/useTabTitle.ts': 'Writes the browser tab title.',
+}
 
 export default tseslint.config([
   globalIgnores(['dist', '@web/pnpm-lock.yaml', 'vite.config.ts']),
@@ -181,9 +205,9 @@ export default tseslint.config([
       'react-hooks': reactHooks,
     },
     rules: {
-      '@stylistic/quotes': ['warn', 'double'],
+      '@stylistic/quotes': ['error', 'double'],
       '@stylistic/comma-dangle': [
-        'warn',
+        'error',
         {
           arrays: 'always-multiline',
           objects: 'always-multiline',
@@ -193,14 +217,14 @@ export default tseslint.config([
         },
       ],
       '@stylistic/indent': ['error', 2, { 'SwitchCase': 1 }],
-      '@stylistic/no-trailing-spaces': ['warn'],
+      '@stylistic/no-trailing-spaces': ['error'],
       '@stylistic/object-curly-spacing': ['error', 'always'],
-      '@typescript-eslint/no-unused-vars': ['warn', { ignoreRestSiblings: true }],
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
       '@typescript-eslint/no-explicit-any': 'error',
       'linebreak-style': ['error', 'unix'],
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'react-refresh/only-export-components': ['error', { allowConstantExport: true }],
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/exhaustive-deps': 'error',
     }
   },
   {
@@ -217,7 +241,6 @@ export default tseslint.config([
     },
   },
   {
-    // The block above skips these files, so they get only the dialog pattern.
     files: [
       'src/hooks/useTorrentListController.ts',
       'src/hooks/useTorrentListController.test.tsx',
@@ -228,7 +251,6 @@ export default tseslint.config([
     },
   },
   {
-    // The bulk action module renders the dialogs, and each dialog test renders its dialog.
     files: [...bulkActionModuleFiles, 'src/components/torrents/{TorrentDialogs,DeleteTorrentDialog}.test.tsx'],
     rules: {
       'no-restricted-imports': ['error', {
@@ -238,27 +260,31 @@ export default tseslint.config([
   },
   {
     files: ['**/*.{ts,tsx}'],
-    ignores: [
-      ...bulkActionModuleFiles,
-      // The details panel and the filter sidebar act on one torrent or one tracker, not on the selection.
-      'src/components/torrents/TorrentDetailsPanel.tsx',
-      'src/components/torrents/FilterSidebar.tsx',
-      // The API tests cover the request itself.
-      'src/lib/__tests__/api.torrents.test.ts',
-      'src/lib/__tests__/api.mutations.test.ts',
-      // The table smoke test reads the requests that the module sends.
-      'src/components/torrents/table/__tests__/TorrentTableOptimized.smoke.test.tsx',
-    ],
     rules: {
-      'no-restricted-properties': ['error', {
-        object: 'api',
-        property: 'bulkAction',
-        message: bulkActionModuleMessage,
-      }],
+      'no-restricted-properties': ['error', tabTitleRestriction, ...sitePickRestrictions],
     },
   },
   {
-    // The shared hook is the one reader of the Copy group summaries, so only that pattern is lifted here.
+    files: ['**/*.{ts,tsx}'],
+    ignores: bulkActionCallerFiles,
+    rules: {
+      'no-restricted-properties': ['error', bulkActionRestriction, tabTitleRestriction, ...sitePickRestrictions],
+    },
+  },
+  {
+    files: sitePickOwnerFiles,
+    ignores: bulkActionCallerFiles,
+    rules: {
+      'no-restricted-properties': ['error', bulkActionRestriction, tabTitleRestriction],
+    },
+  },
+  {
+    files: tabTitleModuleFiles,
+    rules: {
+      'no-restricted-properties': ['error', bulkActionRestriction, ...sitePickRestrictions],
+    },
+  },
+  {
     files: ['src/hooks/useCopyGroupRows.ts'],
     rules: {
       'no-restricted-imports': ['error', {
@@ -267,7 +293,6 @@ export default tseslint.config([
     },
   },
   {
-    // The shared dialog components wrap Radix, so only the Radix pattern is lifted here.
     files: ['src/components/ui/{dialog,alert-dialog,sheet}.tsx'],
     rules: {
       'no-restricted-imports': ['error', { patterns: [...torrentListImportPatterns, bulkActionDialogImportPattern] }],
@@ -281,7 +306,6 @@ export default tseslint.config([
     },
   },
   {
-    // The shared field components render the raw fields.
     files: ['src/components/ui/**'],
     ignores: ['**/*.test.{ts,tsx}'],
     rules: {
@@ -319,8 +343,6 @@ export default tseslint.config([
     },
   },
   {
-    // The kit owns the cards, forms, and questions of Settings. The patterns of the first block repeat here, because
-    // this block replaces its rule for these files.
     files: settingsFiles,
     ignores: settingsKitAllowlist,
     rules: {
@@ -330,7 +352,6 @@ export default tseslint.config([
     },
   },
   {
-    // Page owns the shell of a page: docs/standards/frontend-review.md, "Page layout".
     files: ['src/pages/*.tsx'],
     ignores: ['**/*.test.tsx', 'src/pages/{Login,NotFound,Setup,Torrents}.tsx'],
     rules: {
@@ -354,7 +375,6 @@ export default tseslint.config([
         globals: [{ name: 'localStorage', message: clientSettingMessage }],
         checkGlobalObject: true,
       }],
-      // The typescript-eslint rule, because one more block of the core rule would replace the five above.
       '@typescript-eslint/no-restricted-imports': ['error', {
         patterns: [{
           regex: '(^|/)client-settings$',
@@ -372,10 +392,79 @@ export default tseslint.config([
     },
   },
   {
-    plugins: { qui: { rules: { 'no-comments': noComments, 'no-native-title': noNativeTitle } } },
+    plugins: { qui: { rules: { 'disable-reason': disableReason, 'effect-hook-shape': effectHookShape, 'entry-files': entryFiles, 'layer-order': layerOrder, 'no-comments': noComments, 'no-direct-effect': noDirectEffect, 'no-native-title': noNativeTitle } } },
     rules: {
+      'qui/disable-reason': 'error',
       'qui/no-comments': 'error',
       'qui/no-native-title': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.generated.ts'],
+    rules: {
+      'qui/no-comments': 'off',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**', ...Object.keys(effectHooks)],
+    rules: {
+      'qui/no-direct-effect': 'error',
+    },
+  },
+  {
+    files: Object.keys(effectHooks),
+    rules: {
+      'qui/effect-hook-shape': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**'],
+    rules: {
+      '@typescript-eslint/consistent-type-assertions': ['error', { assertionStyle: 'never' }],
+      '@typescript-eslint/no-non-null-assertion': 'error',
+      'qui/entry-files': ['error', { root: path.join(import.meta.dirname, 'src'), features: 'components' }],
+      'qui/layer-order': ['error', { root: path.join(import.meta.dirname, 'src'), layers }],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}', '**/__tests__/**', 'src/test/**'],
+    plugins: { shadcn },
+    settings: {
+      shadcn: {
+        note: 'Ask the maintainer before you add an option to a primitive.',
+        ui: '@/components/ui',
+      },
+    },
+    rules: {
+      'shadcn/no-arbitrary-values': ['error', { allow: ['layout'] }],
+      'shadcn/no-restyle': ['error', {
+        deny: [],
+        contracts: [{
+          pattern: '^(Button|Badge|Label)$',
+          allow: ['layout'],
+          message: { typography: '"{{className}}" is not allowed on <{{component}}>: <{{component}}> owns its {{category}}. Use a size: {{sizes}}.' },
+        }],
+      }],
+      'shadcn/no-raw-colors': 'error',
+      'shadcn/no-unknown-classes': ['error', { allow: ['ss-*', 'fi', 'animated-logo-element', 'toaster'] }],
+      'shadcn/require-static-classes': 'error',
+    },
+  },
+  {
+    files: ['src/components/{ui,kit}/**/*.{ts,tsx}'],
+    rules: {
+      'shadcn/no-arbitrary-values': 'off',
+      'shadcn/no-restyle': 'off',
+      'shadcn/require-static-classes': 'off',
+    },
+  },
+  {
+    files: ['src/components/ui/{Logo,AnimatedLogo}.tsx'],
+    rules: {
+      'shadcn/no-raw-colors': 'off',
     },
   },
 ])

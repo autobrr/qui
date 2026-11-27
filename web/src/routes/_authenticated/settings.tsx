@@ -19,6 +19,9 @@ const settingsSearchSchema = z.object({
 export type SettingsSearch = z.infer<typeof settingsSearchSchema>
 
 export const Route = createFileRoute("/_authenticated/settings")({
+  staticData: {
+    title: { titleKey: "nav.settings", titleNs: "common" },
+  },
   validateSearch: settingsSearchSchema,
   component: SettingsRoute,
 })

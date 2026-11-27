@@ -5,7 +5,7 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Instance, SSHTestResponse } from "@/types"
 
 const mocks = vi.hoisted(() => ({
@@ -38,14 +38,6 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 import { APIError } from "@/lib/api"
 import { InstanceSSHPanel } from "./InstanceSSHPanel"
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
 
 afterEach(() => {
   cleanup()
@@ -145,7 +137,6 @@ describe("InstanceSSHPanel", () => {
     expect(screen.queryByText("preferences.ssh.validation.keyRequired")).toBeNull()
   })
 
-  // regression: #3732
   it("a saved host change leaves no stale key error behind", async () => {
     mocks.api.setSSHCredentials.mockResolvedValue(undefined)
     render(<InstanceSSHPanel instance={storedInstance} />)
@@ -191,13 +182,11 @@ describe("InstanceSSHPanel", () => {
     await waitFor(() => expect(document.querySelector("[data-ssh-status]")).toBeNull())
     expect(screen.getByText("preferences.ssh.test.saveFirst")).not.toBeNull()
     expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(true)
-    // typed back to the stored value: nothing unsaved, Test is back
     setValue("ssh-host", "box.example")
     await waitFor(() => expect((screen.getByText("preferences.ssh.buttons.test") as HTMLButtonElement).disabled).toBe(false))
     expect(screen.queryByText("preferences.ssh.test.saveFirst")).toBeNull()
   })
 
-  // regression: #3732
   it("the fields are off while a save runs", async () => {
     let finish: () => void = () => {}
     mocks.api.setSSHCredentials.mockReturnValue(new Promise<void>((resolve) => { finish = resolve }))
@@ -209,7 +198,6 @@ describe("InstanceSSHPanel", () => {
     await waitFor(() => expect((document.querySelector("fieldset") as HTMLFieldSetElement).disabled).toBe(false))
   })
 
-  // regression: #3732
   it("a host the server normalized is shown as stored, with no key error", async () => {
     mocks.api.setSSHCredentials.mockResolvedValue(undefined)
     const { rerender } = render(<InstanceSSHPanel instance={storedInstance} />)
@@ -217,7 +205,6 @@ describe("InstanceSSHPanel", () => {
     setValue("ssh-private-key", "KEY")
     submitForm()
     await waitFor(() => expect(mocks.api.setSSHCredentials).toHaveBeenCalledWith(7, { host: "Other.Example", port: 22, username: "qui", privateKey: "KEY" }))
-    // the refetched row carries the lowercased host
     rerender(<InstanceSSHPanel instance={{ ...storedInstance, sshHost: "other.example" }} />)
     await waitFor(() => expect((document.getElementById("ssh-host") as HTMLInputElement).value).toBe("other.example"))
     expect((document.getElementById("ssh-private-key") as HTMLTextAreaElement).value).toBe("")
@@ -265,7 +252,6 @@ describe("InstanceSSHPanel", () => {
     expect(document.querySelector("[data-ssh-status]")).toBeNull()
   })
 
-  // regression: #3732
   it("a failed test shows the error with no result panel", async () => {
     render(<InstanceSSHPanel instance={storedInstance} />)
     await runTest({ status: "pinned", fingerprint: "SHA256:abc" })
@@ -276,7 +262,6 @@ describe("InstanceSSHPanel", () => {
     expect(document.querySelector("[data-ssh-status]")).toBeNull()
   })
 
-  // regression: #3732
   it("an endpoint that changed under the panel drops the old endpoint's result", async () => {
     const { rerender } = render(<InstanceSSHPanel instance={{ ...storedInstance, sshHostKeyPinned: true }} />)
     await runTest({ status: "pinned", fingerprint: "SHA256:abc" })

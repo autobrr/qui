@@ -16,22 +16,14 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
-// Kind names a System notice. The web UI translates its title and fix by kind.
 type Kind string
 
 const (
-	RecordingStopped Kind = "recording_stopped"
-	ShrinkFailed     Kind = "shrink_failed"
-	// RedactedKeyRejected and OrpheusKeyRejected open when the site rejects the
-	// RED/OPS API key in a cross-seed search.
-	RedactedKeyRejected Kind = "redacted_key_rejected"
-	OrpheusKeyRejected  Kind = "orpheus_key_rejected"
-	// LowDisk opens on SQLite when the disk of the database file has little
-	// free space.
-	LowDisk Kind = "low_disk"
-	// LibraryScanScheduleBlocked opens when the saved Library settings keep
-	// the Library Scan schedule from starting a run. It closes when a
-	// scheduled run starts, or when the schedule is turned off.
+	RecordingStopped           Kind = "recording_stopped"
+	ShrinkFailed               Kind = "shrink_failed"
+	RedactedKeyRejected        Kind = "redacted_key_rejected"
+	OrpheusKeyRejected         Kind = "orpheus_key_rejected"
+	LowDisk                    Kind = "low_disk"
 	LibraryScanScheduleBlocked Kind = "library_scan_schedule_blocked"
 )
 
@@ -48,9 +40,7 @@ type definition struct {
 	severity    Severity
 	title       string
 	dismissible bool
-	// fixes holds the fix for each reason. The key "" is the fix for an
-	// unknown reason.
-	fixes map[string]string
+	fixes       map[string]string
 }
 
 var definitions = map[Kind]definition{
@@ -83,10 +73,11 @@ var definitions = map[Kind]definition{
 		severity: SeverityError,
 		title:    "Library Scan schedule cannot run",
 		fixes: map[string]string{
-			"":                       "qui cannot start the scheduled Library Scan run. qui tries again every hour.",
-			"torznab_off_no_gazelle": "Torznab is off in the Library Scan settings, and no RED or OPS API key is set. Turn Torznab on, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
-			"no_indexer":             "No indexer is enabled. Enable a Torznab indexer, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
-			"instance_missing":       "The instance in the saved Library Scan settings does not exist. Pick an instance in the Library Scan settings, then save. qui tries again every hour.",
+			"":                        "qui cannot start the scheduled Library Scan run. qui tries again every hour.",
+			"torznab_pick_no_indexer": "The Library Scan settings pick only Torznab indexers, and no Torznab indexer is enabled. Enable a Torznab indexer, or pick other sites in the Library Scan settings. qui tries again every hour.",
+			"gazelle_pick_no_key":     "The Library Scan settings pick only RED or OPS, and no picked site has an API key. Add the key in the Gazelle (OPS/RED) settings, or pick other sites in the Library Scan settings. qui tries again every hour.",
+			"no_indexer":              "No indexer is enabled. Enable a Torznab indexer, or add a RED or OPS key in the Gazelle (OPS/RED) settings. qui tries again every hour.",
+			"instance_missing":        "The instance in the saved Library Scan settings does not exist. Pick an instance in the Library Scan settings, then save. qui tries again every hour.",
 		},
 	},
 	RedactedKeyRejected: keyRejected("Redacted"),
@@ -106,10 +97,8 @@ func keyRejected(site string) definition {
 const notifyTimeout = 10 * time.Second
 
 type Notice struct {
-	Kind     Kind     `json:"kind"`
-	Severity Severity `json:"severity"`
-	// Reason selects the fix that the notice shows. It is empty when the kind
-	// has one fix, or when qui does not know the cause.
+	Kind     Kind      `json:"kind"`
+	Severity Severity  `json:"severity"`
 	Reason   string    `json:"reason,omitempty"`
 	Cause    string    `json:"cause"`
 	OpenedAt time.Time `json:"openedAt"`
@@ -129,8 +118,6 @@ func New(notifier notifications.Notifier) *Module {
 	return &Module{notifier: notifier, open: make(map[Kind]Notice), opened: make(map[Kind]uint64), onDismiss: make(map[Kind]func(context.Context) error)}
 }
 
-// Open opens the notice of kind with its cause. A notice that is already open
-// stays open with the new cause, and sends no second notification.
 func (m *Module) Open(kind Kind, cause string) {
 	m.OpenWithReason(kind, "", cause)
 }
@@ -158,9 +145,6 @@ func (m *Module) Close(kind Kind) {
 	delete(m.open, kind)
 }
 
-// Opening returns a number that changes each time the notice of kind opens,
-// also after it closed again, or 0 when it never opened. It also reports
-// whether the notice is open now.
 func (m *Module) Opening(kind Kind) (opening uint64, isOpen bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -168,9 +152,6 @@ func (m *Module) Opening(kind Kind) (opening uint64, isOpen bool) {
 	return m.opened[kind], isOpen
 }
 
-// OnDismiss sets fn to run in place of the close when the user dismisses the
-// notice of kind. fn closes the notice. When fn returns an error, Dismiss
-// returns that error.
 func (m *Module) OnDismiss(kind Kind, fn func(context.Context) error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -198,7 +179,6 @@ func (m *Module) List() []Notice {
 		return cmp.Or(a.OpenedAt.Compare(b.OpenedAt), strings.Compare(string(a.Kind), string(b.Kind)))
 	})
 	if notices == nil {
-		// The API answers [] when no notice is open, not null.
 		return []Notice{}
 	}
 	return notices

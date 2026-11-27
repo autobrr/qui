@@ -10,11 +10,6 @@ function subscribe(onChange: () => void) {
   return () => window.visualViewport?.removeEventListener("resize", onChange)
 }
 
-/**
- * The height in px of the part of the window that an on-screen keyboard does
- * not cover. A phone browser keeps `vh` at the full height while the keyboard
- * is open. Null when the browser does not give the height.
- */
 export function useVisibleHeight(): number | null {
   return useSyncExternalStore(subscribe, () => window.visualViewport?.height ?? null)
 }

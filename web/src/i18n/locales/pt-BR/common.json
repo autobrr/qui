@@ -106,7 +106,28 @@
     },
     "privacy": {
       "anonymous": "Anônimo: sem nome, sem conta. O brrbin não guarda endereço IP.",
+      "signedIn": "Os mantenedores veem seu nome no {{provider}} ({{name}}) e podem entrar em contato com você.",
       "link": "Política de privacidade"
+    },
+    "sender": {
+      "label": "Enviar como",
+      "anonymous": "Anônimo",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Entrar com {{provider}}",
+      "signOut": "Sair",
+      "waiting": "Aguardando {{provider}}",
+      "errors": {
+        "discordNotMember": "Sua conta do Discord não está no servidor do autobrr no Discord. Entre no servidor e faça login de novo, entre com GitHub ou envie anonimamente.",
+        "refused": "Login recusado: {{reason}}",
+        "expired": "O login expirou. Entre de novo.",
+        "popupBlocked": "Seu navegador bloqueou a janela de login. Permita pop-ups para o qui e entre de novo.",
+        "unavailable": "O brrbin não pode fazer seu login agora. Tente de novo mais tarde.",
+        "startFailed": "Não foi possível iniciar o login: {{message}}",
+        "signOutFailed": "Não foi possível sair: {{message}}"
+      }
     },
     "newerRelease": "Você usa {{running}}. <release>{{newer}}</release> já saiu.",
     "send": "Enviar",
@@ -136,7 +157,8 @@
         "issue": "Virou a issue #{{number}}",
         "issueClosed": "Issue #{{number}} fechada",
         "closed": "Fechado: {{reason}}",
-        "closedNoReason": "Fechado"
+        "closedNoReason": "Fechado",
+        "notSent": "Não enviado"
       },
       "delete": "Excluir relato",
       "deleteUnavailable": "O brrbin não pode excluir relatos agora. Tente de novo mais tarde.",
@@ -165,6 +187,8 @@
     "smartSearchTitle": "Recursos de Busca Inteligente:",
     "smartSearchGlob": "Padrões Glob:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Ocultar correspondências:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Busca Aproximada (Fuzzy):",
     "smartSearchFuzzyExample": "\"breaking bad\" encontra \"Breaking.Bad\"",
     "smartSearchDots": "Lida com pontos, sublinhados e colchetes",
@@ -367,9 +391,13 @@
         "menuFix": "Conferir as configurações da Busca na Biblioteca",
         "action": "Abrir as configurações da Busca na Biblioteca",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "O Torznab está desligado nas configurações da Busca na Biblioteca, e nenhuma chave de API do RED ou do OPS está definida. Ligue o Torznab, ou adicione uma chave do RED ou do OPS nas configurações Gazelle (OPS/RED). O qui tenta de novo a cada hora.",
-            "menuFix": "Ligar o Torznab, ou adicionar uma chave do RED ou do OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "As configurações da Busca na Biblioteca escolhem só indexadores Torznab, e nenhum indexador Torznab está ativado. Ative um indexador Torznab, ou escolha outros sites nas configurações da Busca na Biblioteca. O qui tenta de novo a cada hora.",
+            "menuFix": "Ativar um indexador Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "As configurações da Busca na Biblioteca escolhem só o RED ou o OPS, e nenhum site escolhido tem chave de API. Adicione a chave nas configurações Gazelle (OPS/RED), ou escolha outros sites nas configurações da Busca na Biblioteca. O qui tenta de novo a cada hora.",
+            "menuFix": "Adicionar a chave do RED ou do OPS"
           },
           "no_indexer": {
             "fix": "Nenhum indexador está ativado. Ative um indexador Torznab, ou adicione uma chave do RED ou do OPS nas configurações Gazelle (OPS/RED). O qui tenta de novo a cada hora.",

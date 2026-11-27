@@ -19,7 +19,6 @@ import type { SystemNotice } from "@/types"
 
 const fadeClassName = "transition-opacity duration-200 motion-reduce:transition-none"
 
-/** The open system notices of the sidebar. With iconOnly, each notice is its dot, and its text shows beside the dot on hover. */
 export function SystemNoticeList({ iconOnly = false }: { iconOnly?: boolean }) {
   const notices = useSystemNotices()
   const now = useNow()
@@ -56,20 +55,18 @@ function SystemNoticeRow({ notice, now, iconOnly }: { notice: SystemNotice; now:
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      {/* The tooltip stays shut while the detail is open, because both open on the same side. */}
       <Tooltip delayDuration={150} disabled={!iconOnly || open}>
         <PopoverTrigger asChild>
           <TooltipTrigger
             openOnTap={false}
             className={cn(
-              "group flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm font-medium short:py-1 short:text-[13px]/5 text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+              "group flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left text-sm font-medium short:py-1 short:text-13/5 text-sidebar-foreground outline-none transition-all duration-200 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
               iconOnly && "overflow-hidden whitespace-nowrap"
             )}
           >
             <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
               <SystemNoticeDot severity={notice.severity} fresh={isFreshSystemNotice(notice.openedAt, now)} />
             </span>
-            {/* The text keeps the width that it has in the full sidebar, so that it does not move while it fades. */}
             <span className={cn("flex min-w-0 flex-1 items-center gap-3", fadeClassName, iconOnly && "min-w-45 shrink-0 opacity-0")}>
               <span className="min-w-0 flex-1 truncate">{short}</span>
               <span className="text-xs font-normal tabular-nums text-sidebar-foreground/50 group-hover:hidden group-data-[state=open]:hidden">

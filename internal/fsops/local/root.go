@@ -22,8 +22,6 @@ const (
 	rootFileMode fs.FileMode = 0o664
 )
 
-// OpenRoot writes through os.Root, which refuses every name that leaves dir,
-// also through a symlink.
 func (b *Backend) OpenRoot(ctx context.Context, dir string) (fsops.Root, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -63,11 +61,7 @@ func (r *root) Lstat(ctx context.Context, name string) (*fsops.LstatInfo, error)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	fi, err := r.r.Lstat(filepath.FromSlash(name))
-	if err != nil {
-		return nil, err
-	}
-	return osFileInfoToLstat(fi, name, false), nil
+	return lstatIn(r.r, name)
 }
 
 func (r *root) Create(ctx context.Context, name string) (fsops.FileWriter, error) {
@@ -118,9 +112,6 @@ func (r *root) mkdirs(dir string) error {
 	return nil
 }
 
-// RenameNoReplace links the file under its new name and removes the old
-// name. Where the filesystem cannot link, it renames only when newName is
-// free.
 func (r *root) RenameNoReplace(ctx context.Context, oldName, newName string) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -17,10 +17,6 @@ func TestSearchSourceSize(t *testing.T) {
 		want    int64
 	}{
 		{
-			// A torrent with deselected files reports the smaller wanted size
-			// in Size while Progress still reads 1.0. Torznab candidates
-			// advertise the full release size, so the band must compare
-			// against TotalSize.
 			name:    "deselected files use the full size",
 			torrent: qbt.Torrent{Size: 7 << 30, TotalSize: 10 << 30},
 			want:    10 << 30,

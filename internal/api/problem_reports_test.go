@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"net/url"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -82,9 +83,6 @@ type reportRigOptions struct {
 	client            *http.Client
 }
 
-// newReportRig starts qui's API with the real problem report service and
-// store against a fake brrbin, a stub qBittorrent instance with two torrents,
-// and a second instance that never connected.
 func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 	t.Helper()
 	deps, db := newTestDependenciesWithDB(t)
@@ -168,8 +166,7 @@ func newReportRig(t *testing.T, opts reportRigOptions) *reportRig {
 		},
 	})
 
-	rig.apiKey, _, err = deps.AuthService.CreateAPIKey(t.Context(), "script", models.AllPermissions(), nil)
-	require.NoError(t, err)
+	rig.apiKey = newUsedAPIKey(t, db, "script", models.AllPermissions(), nil)
 
 	router, err := NewServer(deps).Handler()
 	require.NoError(t, err)
@@ -214,22 +211,31 @@ func (rig *reportRig) facts(query string) (int, problemreport.Facts) {
 	return status, facts
 }
 
-// send posts a report JSON, and an image when image is not nil.
 func (rig *reportRig) send(report map[string]any, image []byte) (int, map[string]any) {
 	rig.t.Helper()
-	status, raw := rig.do(rig.sendRequest(rig.t.Context(), report, image))
+	return rig.sendAs(nil, report, image)
+}
+
+func (rig *reportRig) sendAs(shown *problemreport.Sender, report map[string]any, image []byte) (int, map[string]any) {
+	rig.t.Helper()
+	status, raw := rig.do(rig.sendRequest(rig.t.Context(), shown, report, image))
 	var answer map[string]any
 	require.NoError(rig.t, json.Unmarshal(raw, &answer), string(raw))
 	return status, answer
 }
 
-func (rig *reportRig) sendRequest(ctx context.Context, report map[string]any, image []byte) *http.Request {
+func (rig *reportRig) sendRequest(ctx context.Context, shown *problemreport.Sender, report map[string]any, image []byte) *http.Request {
 	rig.t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="report"`}, "Content-Type": {"application/json"}})
 	require.NoError(rig.t, err)
 	require.NoError(rig.t, json.NewEncoder(part).Encode(report))
+	if shown != nil {
+		part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="sender"`}, "Content-Type": {"application/json"}})
+		require.NoError(rig.t, err)
+		require.NoError(rig.t, json.NewEncoder(part).Encode(shown))
+	}
 	if image != nil {
 		part, err := writer.CreateFormFile("image", "screen.png")
 		require.NoError(rig.t, err)
@@ -245,7 +251,6 @@ func (rig *reportRig) sendRequest(ctx context.Context, report map[string]any, im
 	return req
 }
 
-// sentReport returns the report JSON of the only report the fake received.
 func (rig *reportRig) sentReport() map[string]any {
 	rig.t.Helper()
 	requests := rig.fake.Requests()
@@ -338,12 +343,9 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 
 	text := "Uploads stall.\nMy announce is udp://tracker.example.invalid:6969/" + reportPasskey + "/announce and my key " + rig.apiKey +
 		"\nqui reaches " + rig.stub.URL + " as " + reportInstanceUser + ", and http://localhost/ answers, and so does localhost." +
-		// regression: #4288
 		"\nThe files sit on " + reportSSHHost + " for " + reportSSHUser + " with this key:\n" + rig.sshKey +
 		"\nRED/OPS is off, its key was " + reportREDKey +
-		// regression: #4288
 		"\nMy notification tokens are " + reportWebhookToken + ", " + reportGotifyToken + " and " + reportPushoverUser +
-		// regression: #4288
 		"\nPeers reach me at " + reportPeerAddress + ", my webhooks use " + reportHookToken + " and ntfy topic " + reportNtfyTopic
 	status, answer := rig.send(menuReport(text, facts, "warnings", facts.Logs.Warnings), nil)
 	require.Equal(t, http.StatusCreated, status, answer)
@@ -357,11 +359,8 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 	assert.Empty(t, request.Header.Get("Authorization"), "an anonymous report carries no token")
 	raw := string(request.Report)
 	for _, private := range []string{reportPasskey, rig.apiKey, reportInstanceUser, reportBasicUser, stubHost, "127.0.0.1", reportIndexerKey,
-		// regression: #4288
 		reportSSHHost, reportSSHUser, strings.TrimSpace(rig.sshKey), reportREDKey,
-		// regression: #4288
 		reportWebhookToken, reportGotifyToken, reportPushoverUser,
-		// regression: #4288
 		reportPeerAddress, "203.0.113.7", reportHookToken, reportNtfyTopic} {
 		assert.NotContains(t, raw, private)
 	}
@@ -384,12 +383,10 @@ func TestProblemReportSendCleansEveryTextPart(t *testing.T) {
 
 func TestProblemReportSendCleansALicenseKeyFromAFailedRequest(t *testing.T) {
 	tests := []struct {
-		name string
-		// removed: a retry removed the license before Send, so qui no longer stores the key.
+		name    string
 		removed bool
 	}{
 		{name: "the key is still stored"},
-		// regression: #4299
 		{name: "a retry removed the license", removed: true},
 	}
 	for _, tt := range tests {
@@ -410,7 +407,6 @@ func TestProblemReportSendCleansALicenseKeyFromAFailedRequest(t *testing.T) {
 				text = "Removing my license " + licenseKey + " fails."
 			}
 			report := menuReport(text, facts, "none", nil)
-			// The web app removes a license with the key in the path.
 			report["failedRequests"] = []any{
 				map[string]any{"method": "DELETE", "path": "/api/license/" + licenseKey, "status": 500, "error": "remove failed", "time": now.UTC().Format(time.RFC3339)},
 				map[string]any{"method": "POST", "path": "/api/license/activate", "status": 403, "error": "activation failed", "time": now.UTC().Format(time.RFC3339)},
@@ -448,7 +444,6 @@ func TestProblemReportSendLogScopes(t *testing.T) {
 	require.Len(t, sentLines, 200)
 	assert.Contains(t, sentLines[199], "line 249")
 
-	// A buffer larger than the limit loses its oldest lines.
 	rig = newReportRig(t, reportRigOptions{})
 	big := make([]string, 6000)
 	for i := range big {
@@ -506,7 +501,6 @@ func TestProblemReportSearch(t *testing.T) {
 	assert.Contains(t, report, "searchScope")
 	assert.NotContains(t, string(rig.fake.Requests()[0].Report), reportIndexerKey)
 
-	// A RED/OPS-only search has lookups and no trace.
 	rig = newReportRig(t, reportRigOptions{})
 	status, _ = rig.send(searchReport(map[string]any{
 		"torrentName":    "Example.Album.2024.FLAC-GRP",
@@ -575,13 +569,19 @@ func TestProblemReportSendRefusals(t *testing.T) {
 }
 
 func TestProblemReportSendTimeoutIsUnavailable(t *testing.T) {
-	rig := newReportRig(t, reportRigOptions{client: &http.Client{Timeout: 200 * time.Millisecond}})
+	rig := newReportRig(t, reportRigOptions{client: &http.Client{Timeout: time.Second}})
 	_, facts := rig.facts("startedFrom=menu")
-	rig.fake.Hold()
+	received, release := rig.fake.Hold()
+	t.Cleanup(release)
 
 	status, answer := rig.send(menuReport("text", facts, "none", nil), nil)
 	assert.Equal(t, http.StatusBadGateway, status)
 	assert.Equal(t, "unavailable", answer["error"])
+	select {
+	case <-received:
+	default:
+		t.Fatal("the report did not reach brrbin")
+	}
 }
 
 func TestProblemReportSendSurvivesAClosedTab(t *testing.T) {
@@ -592,7 +592,7 @@ func TestProblemReportSendSurvivesAClosedTab(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		resp, err := http.DefaultClient.Do(rig.sendRequest(ctx, menuReport("text", facts, "none", nil), nil))
+		resp, err := http.DefaultClient.Do(rig.sendRequest(ctx, nil, menuReport("text", facts, "none", nil), nil))
 		if err == nil {
 			resp.Body.Close()
 		}
@@ -602,7 +602,7 @@ func TestProblemReportSendSurvivesAClosedTab(t *testing.T) {
 	cancel()
 	require.ErrorIs(t, <-done, context.Canceled)
 	release()
-	rig.srv.Close() // waits for the Send handler to finish
+	rig.srv.Close()
 
 	reports, err := rig.store.SentReports(t.Context())
 	require.NoError(t, err)
@@ -611,18 +611,20 @@ func TestProblemReportSendSurvivesAClosedTab(t *testing.T) {
 }
 
 func TestProblemReportSignedInSend(t *testing.T) {
-	rig := newReportRig(t, reportRigOptions{})
+	rig := signInRig(t)
 	_, facts := rig.facts("startedFrom=menu")
-	require.NoError(t, rig.store.SaveSignIn(t.Context(), models.ProblemReportSignIn{Token: "brrbin-token-123", Provider: "github", Name: "someone"}))
+	token := rig.signIn("github", "someone")
+	signedIn := len(rig.fake.Requests())
+	shown := &problemreport.Sender{Provider: "github", Name: "someone"}
 
-	status, _ := rig.send(menuReport("text", facts, "none", nil), nil)
+	status, _ := rig.sendAs(shown, menuReport("text", facts, "none", nil), nil)
 	require.Equal(t, http.StatusCreated, status)
-	assert.Equal(t, "Bearer brrbin-token-123", rig.fake.Requests()[0].Header.Get("Authorization"))
+	assert.Equal(t, "Bearer "+token, rig.brrbinRequests(signedIn)[0].Header.Get("Authorization"))
 
 	rig.fake.Refuse(http.StatusUnauthorized, "token_rejected")
 	report := menuReport("text", facts, "none", nil)
 	report["submissionId"] = "7d1e0c4b-2a39-4f5e-8b6c-9a0d1e2f3a4b"
-	status, answer := rig.send(report, nil)
+	status, answer := rig.sendAs(shown, report, nil)
 	assert.Equal(t, http.StatusConflict, status)
 	assert.Equal(t, "token_rejected", answer["error"])
 	signIn, err := rig.store.SignIn(t.Context())
@@ -632,26 +634,59 @@ func TestProblemReportSignedInSend(t *testing.T) {
 
 func TestProblemReportImageRefusedBeforeBrrbin(t *testing.T) {
 	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
-	rig := newReportRig(t, reportRigOptions{})
+	rig := signInRig(t)
 	_, facts := rig.facts("startedFrom=menu")
 
 	status, answer := rig.send(menuReport("text", facts, "none", nil), png)
 	assert.Equal(t, http.StatusBadRequest, status, answer)
 	assert.Empty(t, rig.fake.Requests(), "an anonymous image never reaches brrbin")
 
-	require.NoError(t, rig.store.SaveSignIn(t.Context(), models.ProblemReportSignIn{Token: "brrbin-token-123", Provider: "discord", Name: "someone"}))
+	rig.signIn("discord", "someone")
+	signedIn := len(rig.fake.Requests())
+	shown := &problemreport.Sender{Provider: "discord", Name: "someone"}
 	tooLarge := append(slices.Clone(png), make([]byte, problemreport.MaxImageSize)...)
-	status, answer = rig.send(menuReport("text", facts, "none", nil), tooLarge)
+	status, answer = rig.sendAs(shown, menuReport("text", facts, "none", nil), tooLarge)
 	assert.Equal(t, http.StatusRequestEntityTooLarge, status)
 	assert.Equal(t, "too_large", answer["error"])
-	assert.Empty(t, rig.fake.Requests())
+	assert.Empty(t, rig.brrbinRequests(signedIn))
 
-	status, _ = rig.send(menuReport("text", facts, "none", nil), png)
+	status, _ = rig.sendAs(shown, menuReport("text", facts, "none", nil), png)
 	require.Equal(t, http.StatusCreated, status)
-	assert.Equal(t, png, rig.fake.Requests()[0].Image)
+	assert.Equal(t, png, rig.brrbinRequests(signedIn)[0].Image)
 }
 
-// regression: #4288
+func TestProblemReportSendKeepsToTheSenderTheDialogShowed(t *testing.T) {
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
+	rig := signInRig(t)
+	_, facts := rig.facts("startedFrom=menu")
+	rig.signIn("github", "someone")
+	signedIn := len(rig.fake.Requests())
+
+	status, answer := rig.sendAs(&problemreport.Sender{Anonymous: true}, menuReport("text", facts, "none", nil), nil)
+	require.Equal(t, http.StatusCreated, status, answer)
+	sent := rig.brrbinRequests(signedIn)
+	require.Len(t, sent, 1)
+	assert.Empty(t, sent[0].Header.Get("Authorization"), "a report that the dialog showed as Anonymous carries no sign-in")
+
+	status, answer = rig.send(menuReport("text", facts, "none", nil), png)
+	assert.Equal(t, http.StatusBadRequest, status, answer)
+
+	for _, shown := range []problemreport.Sender{{Provider: "discord", Name: "someone"}, {Provider: "github", Name: "someone else"}} {
+		status, answer = rig.sendAs(&shown, menuReport("text", facts, "none", nil), nil)
+		assert.Equal(t, http.StatusConflict, status, shown)
+		assert.Equal(t, "token_rejected", answer["error"], shown)
+	}
+	signIn, err := rig.store.SignIn(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, signIn, "qui keeps the sign-in that it stores")
+
+	require.NoError(t, rig.store.ClearSignIn(t.Context()))
+	status, answer = rig.sendAs(&problemreport.Sender{Provider: "github", Name: "someone"}, menuReport("text", facts, "none", nil), nil)
+	assert.Equal(t, http.StatusConflict, status)
+	assert.Equal(t, "token_rejected", answer["error"])
+	assert.Len(t, rig.brrbinRequests(signedIn), 1, "only the anonymous report reached brrbin")
+}
+
 func TestProblemReportOversizedReportPartIsTooLarge(t *testing.T) {
 	rig := newReportRig(t, reportRigOptions{})
 	_, facts := rig.facts("startedFrom=menu")
@@ -662,9 +697,7 @@ func TestProblemReportOversizedReportPartIsTooLarge(t *testing.T) {
 	assert.Empty(t, rig.fake.Requests())
 }
 
-// regression: #4288
 func TestProblemReportTVDBReadFailure(t *testing.T) {
-	// A TVDB key that does not decrypt cannot reach a log line, so the report still sends.
 	rig := newReportRig(t, reportRigOptions{})
 	_, facts := rig.facts("startedFrom=menu")
 	_, err := rig.db.ExecContext(t.Context(), `UPDATE cross_seed_settings SET season_pack_tvdb_api_key_encrypted = 'not-a-ciphertext' WHERE id = 1`)
@@ -672,7 +705,6 @@ func TestProblemReportTVDBReadFailure(t *testing.T) {
 	status, _ := rig.send(menuReport("text", facts, "none", nil), nil)
 	assert.Equal(t, http.StatusCreated, status)
 
-	// A failed read could leave the TVDB key in the text, so nothing leaves qui.
 	rig = newReportRig(t, reportRigOptions{})
 	_, facts = rig.facts("startedFrom=menu")
 	_, err = rig.db.ExecContext(t.Context(), `ALTER TABLE cross_seed_settings DROP COLUMN season_pack_tvdb_pin_encrypted`)
@@ -700,6 +732,10 @@ func TestProblemReportRoutesWhenOff(t *testing.T) {
 				{http.MethodPost, "/api/problem-reports"},
 				{http.MethodGet, "/api/problem-reports"},
 				{http.MethodDelete, "/api/problem-reports/r1"},
+				{http.MethodGet, "/api/problem-reports/sender"},
+				{http.MethodPost, "/api/problem-reports/sign-in"},
+				{http.MethodGet, "/api/problem-reports/sign-in"},
+				{http.MethodDelete, "/api/problem-reports/sign-in"},
 			} {
 				req, err := http.NewRequestWithContext(t.Context(), route.Method, rig.srv.URL+route.Path, strings.NewReader("{}"))
 				require.NoError(t, err)
@@ -714,8 +750,6 @@ func TestProblemReportRoutesWhenOff(t *testing.T) {
 	}
 }
 
-// sendReport sends a menu report with its own submission id and returns the
-// brrbin id.
 func (rig *reportRig) sendReport(submissionID, text string) string {
 	rig.t.Helper()
 	_, facts := rig.facts("startedFrom=menu")
@@ -746,7 +780,6 @@ func (rig *reportRig) deleteReport(id string) (int, string) {
 	return status, string(body)
 }
 
-// brrbinRequests returns the requests that the fake received after the first skip.
 func (rig *reportRig) brrbinRequests(skip int) []fakebrrbin.Request {
 	rig.t.Helper()
 	requests := rig.fake.Requests()
@@ -762,6 +795,12 @@ func TestProblemReportSentReportsWithNoRowsAsksBrrbinNothing(t *testing.T) {
 }
 
 func TestProblemReportSentReportsStatuses(t *testing.T) {
+	waitForWallClockStep := func() {
+		before := time.Now().Round(0)
+		for !time.Now().Round(0).After(before) {
+			runtime.Gosched()
+		}
+	}
 	rig := newReportRig(t, reportRigOptions{})
 	first := rig.sendReport("11111111-1111-4111-8111-111111111111", "Torrents vanish\nafter a restart")
 	second := rig.sendReport("22222222-2222-4222-8222-222222222222", "Uploads stall")
@@ -776,6 +815,7 @@ func TestProblemReportSentReportsStatuses(t *testing.T) {
 	rig.fake.SetStatus(second, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 4321, URL: issueURL}})
 	rig.fake.SetStatus(old, fakebrrbin.Status{Status: "issue", Issue: &fakebrrbin.Issue{Number: 9999, URL: issueURL}})
 
+	waitForWallClockStep()
 	sent := len(rig.fake.Requests())
 	reports := rig.sentReports()
 
@@ -800,7 +840,7 @@ func TestProblemReportSentReportsStatuses(t *testing.T) {
 	assert.Equal(t, "received", reports[2].Status, "a report older than 90 days keeps its status")
 	assert.True(t, reports[2].StatusChangedAt.Equal(reports[2].SentAt))
 
-	// The same answer again changes no status.
+	waitForWallClockStep()
 	again := rig.sentReports()
 	assert.True(t, again[0].StatusChangedAt.Equal(reports[0].StatusChangedAt), "an unchanged status keeps its time")
 
@@ -809,12 +849,10 @@ func TestProblemReportSentReportsStatuses(t *testing.T) {
 	assert.Equal(t, &problemreport.Issue{Number: 4321, URL: issueURL, Closed: true}, closed[0].Issue)
 	assert.False(t, closed[0].StatusChangedAt.Equal(reports[0].StatusChangedAt), "a closed issue is a change")
 
-	// A report that brrbin no longer has keeps its last status.
 	rig.fake.Forget(second)
 	forgotten := rig.sentReports()
 	assert.Equal(t, closed[0], forgotten[0])
 
-	// A brrbin failure shows the stored statuses.
 	rig.fake.Unavailable(true)
 	asked2 := len(rig.fake.Requests())
 	down := rig.sentReports()
@@ -822,8 +860,6 @@ func TestProblemReportSentReportsStatuses(t *testing.T) {
 	assert.Equal(t, forgotten, down)
 }
 
-// holdFirstStatusRead holds the first status read before it reaches brrbin,
-// until release closes.
 type holdFirstStatusRead struct {
 	held, release chan struct{}
 	started       atomic.Bool
@@ -837,16 +873,14 @@ func (h *holdFirstStatusRead) RoundTrip(req *http.Request) (*http.Response, erro
 	return http.DefaultTransport.RoundTrip(req)
 }
 
-// regression: #4302
 func TestProblemReportSentReportsStampsAChangeWhenBrrbinAnswers(t *testing.T) {
 	hold := &holdFirstStatusRead{held: make(chan struct{}), release: make(chan struct{})}
 	rig := newReportRig(t, reportRigOptions{client: &http.Client{Transport: hold}})
 	release := sync.OnceFunc(func() { close(hold.release) })
-	t.Cleanup(release) // before the rig closes its server, which waits for the held list
+	t.Cleanup(release)
 	first := rig.sendReport("11111111-1111-4111-8111-111111111111", "Torrents vanish")
 	second := rig.sendReport("22222222-2222-4222-8222-222222222222", "Uploads stall")
 
-	// A list in a second browser starts first, and reads brrbin last.
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rig.srv.URL+"/api/problem-reports", nil)
 	require.NoError(t, err)
 	req.AddCookie(rig.cookie)
@@ -891,14 +925,12 @@ func TestProblemReportDelete(t *testing.T) {
 	assert.Equal(t, installKey, requests[0].Header.Get("X-Install-Key"))
 	assert.Empty(t, rig.sentReports())
 
-	// A report that brrbin no longer has loses only its row.
 	gone := rig.sendReport("22222222-2222-4222-8222-222222222222", "Uploads stall")
 	rig.fake.Forget(gone)
 	status, body = rig.deleteReport(gone)
 	require.Equal(t, http.StatusNoContent, status, body)
 	assert.Empty(t, rig.sentReports())
 
-	// A brrbin failure keeps the row.
 	kept := rig.sendReport("33333333-3333-4333-8333-333333333333", "Search finds nothing")
 	rig.fake.Unavailable(true)
 	status, body = rig.deleteReport(kept)
@@ -908,7 +940,6 @@ func TestProblemReportDelete(t *testing.T) {
 	require.Len(t, reports, 1)
 	assert.Equal(t, kept, reports[0].ID)
 
-	// An id with no row never reaches brrbin.
 	rig.fake.Unavailable(false)
 	asked := len(rig.fake.Requests())
 	status, _ = rig.deleteReport("r404")

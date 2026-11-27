@@ -67,15 +67,12 @@ func (i *UTorrentImport) Migrate() error {
 			continue
 		}
 
-		// v2 and hybrid torrents double the prio list and lose their merkle
-		// trees in this format
 		if metaInfo.MetaVersion == 2 {
 			log.Warn().Msgf("(%d/%d) %s is a BitTorrent v2 torrent, not supported by this importer, skipping", positionNum, totalJobs, metaInfo.BestName())
 			skipped++
 			continue
 		}
 
-		// qBittorrent requires BT_backup files named by infohash
 		torrentID := file.HashInfoBytes().HexString()
 
 		torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
@@ -86,16 +83,12 @@ func (i *UTorrentImport) Migrate() error {
 			continue
 		}
 
-		// resume data that does not belong to this torrent file would import
-		// piece state for different content
 		if !bytes.Equal(item.Info, file.HashInfoBytes().Bytes()) {
 			log.Warn().Msgf("(%d/%d) %s resume data does not match the torrent file, skipping", positionNum, totalJobs, torrentID)
 			skipped++
 			continue
 		}
 
-		// complete means every piece of every wanted (non-skip) file has its
-		// have-bit set; skipped files may legitimately be missing
 		pieces, complete := utorrentPieces(&item, &metaInfo)
 		if !complete {
 			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.BestName(), torrentPath)
@@ -103,8 +96,6 @@ func (i *UTorrentImport) Migrate() error {
 			continue
 		}
 
-		// also catches Windows save paths on a Unix host that no
-		// --replace-path rule maps
 		contentPath := filepath.Clean(replacePath(decodeCESU8(item.Path), i.opts.PathReplaces))
 		if !filepath.IsAbs(contentPath) {
 			log.Warn().Msgf("(%d/%d) %s save path %q is not an absolute path on this OS, skipping, map it with --replace-path", positionNum, totalJobs, metaInfo.BestName(), item.Path)
@@ -185,8 +176,6 @@ func (i *UTorrentImport) loadResume() (map[string]bencode.Bytes, error) {
 func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info *metainfo.Info, savePath string, mappedFiles []string, pieces string) Fastresume {
 	completedTime := firstNonZero(item.CompletedOn, item.AddedOn)
 
-	// stopped (0) and paused (3) stay paused out of auto-management;
-	// force-started (1) runs outside qBittorrent's queue like in uTorrent
 	paused := int64(0)
 	if item.Started == 0 || item.Started == 3 {
 		paused = 1
@@ -196,7 +185,6 @@ func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info 
 		autoManaged = 0
 	}
 
-	// wanted_ratio is already the ratio * 1000 that qBt-ratioLimit uses
 	ratioLimit := int64(-2000)
 	if item.OverrideSeedSettings != 0 {
 		ratioLimit = item.WantedRatio
@@ -261,7 +249,6 @@ func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info 
 
 	fr.Trackers = utorrentTrackers(file, item.Trackers)
 
-	// pieces overlapping only skipped files stay unset
 	fr.Pieces = pieces
 
 	fr.InfoHash = file.HashInfoBytes().Bytes()
@@ -269,10 +256,6 @@ func utorrentFastresume(item *UTorrentResumeItem, file *metainfo.MetaInfo, info 
 	return fr
 }
 
-// utorrentTorrentPath resolves a resume.dat key to its .torrent file. Keys are
-// relative to the uTorrent dir, or absolute when the torrent was stored
-// elsewhere; an absolute path that no longer resolves (moved dir, other OS)
-// falls back to the same file name inside the source dir
 func utorrentTorrentPath(sourceDir, key string) string {
 	p := key
 	if !filepath.IsAbs(p) {
@@ -285,9 +268,6 @@ func utorrentTorrentPath(sourceDir, key string) string {
 	return filepath.Join(sourceDir, key[strings.LastIndexAny(key, `/\`)+1:])
 }
 
-// utorrentPieces expands the resume entry's have bitfield (one bit per piece,
-// LSB-first within each byte) into a qBittorrent piece bitfield and reports
-// whether every piece of every wanted (non-skip) file is present
 func utorrentPieces(item *UTorrentResumeItem, info *metainfo.Info) (string, bool) {
 	numPieces := info.NumPieces()
 	if numPieces == 0 || info.PieceLength <= 0 {
@@ -328,9 +308,6 @@ func utorrentPieces(item *UTorrentResumeItem, info *metainfo.Info) (string, bool
 	return string(pieces), complete
 }
 
-// utorrentPriority maps a uTorrent file priority byte (0 skip, 1-8 normal,
-// 9-15 high, the 0x80 flag also marks skip) to qBittorrent values (0 skip,
-// 1 normal, 6 high)
 func utorrentPriority(p byte) int {
 	switch {
 	case p == 0 || p&0x80 != 0:
@@ -357,13 +334,6 @@ func utorrentFilePriorities(prio string, fileCount int) []int {
 	return prios
 }
 
-// utorrentLayout splits the content path into qBittorrent's save path and
-// mapped_files. path is the content root: the file itself for single-file
-// torrents, the torrent folder for multi-file ones. A renamed root and the
-// per-file targets renames only exist in the resume data, so the data on disk
-// needs mapped_files. Targets moved out of the content root are absolute and
-// go through the same --replace-path rules as the content path; one that stays
-// absolute for another OS is an error
 func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo.Info, rules []PathReplace) (string, []string, error) {
 	savePath := filepath.Dir(contentPath)
 	root := filepath.Base(contentPath)
@@ -375,8 +345,6 @@ func utorrentLayout(item *UTorrentResumeItem, contentPath string, info *metainfo
 		return savePath, nil, nil
 	}
 
-	// targets entries are [index, path...]; the path is relative to the
-	// content root or absolute when the file was moved out of it
 	targets := make(map[int]string)
 	for _, t := range item.Targets {
 		if len(t) < 2 {
@@ -432,8 +400,6 @@ func utorrentName(item *UTorrentResumeItem, info *metainfo.Info) string {
 	return caption
 }
 
-// utorrentLabel returns the uTorrent label as the qBittorrent category. 3.x
-// keeps a labels list next to the legacy label string
 func utorrentLabel(item *UTorrentResumeItem) string {
 	if item.Label != "" {
 		return decodeCESU8(item.Label)
@@ -446,8 +412,6 @@ func utorrentLabel(item *UTorrentResumeItem) string {
 	return ""
 }
 
-// utorrentSpeedLimit maps a per-torrent uTorrent speed limit in bytes/sec to
-// the qBittorrent rate limit field, -1 (no limit) when unset
 func utorrentSpeedLimit(limit int64) int64 {
 	if limit > 0 {
 		return limit
@@ -455,10 +419,6 @@ func utorrentSpeedLimit(limit int64) int64 {
 	return -1
 }
 
-// utorrentTrackers rebuilds the tracker tiers from the torrent's own
-// announce-list, dropping trackers the user removed in uTorrent, and appends
-// trackers that were added there. The resume list is a flat list of URLs (or
-// a whitespace-separated string), so it carries no tiers of its own
 func utorrentTrackers(file *metainfo.MetaInfo, raw any) [][]string {
 	var urls []string
 	var collect func(v any)
@@ -510,8 +470,6 @@ func utorrentTrackers(file *metainfo.MetaInfo, raw any) [][]string {
 	return tiers
 }
 
-// decodeCESU8 converts the CESU-8 surrogate pairs uTorrent writes for
-// characters outside the BMP (emoji and the like) into regular UTF-8
 func decodeCESU8(s string) string {
 	if !strings.Contains(s, "\xed") {
 		return s
@@ -533,9 +491,6 @@ func decodeCESU8(s string) string {
 	return b.String()
 }
 
-// decodeUTorrentResumeFile returns the raw resume entry per .torrent key.
-// resume.dat mixes torrent entries with meta keys like .fileguard and rec,
-// and magnet links without metadata have no .torrent to import
 func decodeUTorrentResumeFile(path string) (map[string]bencode.Bytes, error) {
 	dat, err := os.ReadFile(path)
 	if err != nil {

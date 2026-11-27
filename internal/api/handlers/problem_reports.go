@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -13,15 +14,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/problemreport"
 )
 
-// ProblemReportsOff is the answer of every report route while the config
-// turns Problem reports off.
 const ProblemReportsOff = "Problem reports are off in the qui config."
 
-// maxReportPart is the largest report part that qui reads. qui cuts the
-// report to problemreport.MaxReportSize before it sends it.
 const maxReportPart = 16 << 20
 
 type ProblemReportHandler struct {
@@ -32,8 +30,6 @@ func NewProblemReportHandler(service *problemreport.Service) *ProblemReportHandl
 	return &ProblemReportHandler{service: service}
 }
 
-// RequireProblemReports answers 403 on every report route while enabled
-// returns false.
 func RequireProblemReports(enabled func() bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +42,6 @@ func RequireProblemReports(enabled func() bool) func(http.Handler) http.Handler 
 	}
 }
 
-// Facts handles GET /api/problem-reports/facts.
 func (h *ProblemReportHandler) Facts(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	req := problemreport.FactsRequest{StartedFrom: query.Get("startedFrom"), Hash: strings.TrimSpace(query.Get("hash"))}
@@ -56,13 +51,12 @@ func (h *ProblemReportHandler) Facts(w http.ResponseWriter, r *http.Request) {
 			RespondError(w, http.StatusBadRequest, "instanceId must be a number")
 			return
 		}
-		if req.Search.IndexerIDs, err = parseIDList(query.Get("indexerIds")); err != nil {
+		indexerIDs, err := parseIDList(query.Get("indexerIds"))
+		if err != nil {
 			RespondError(w, http.StatusBadRequest, "indexerIds must be a comma-separated list of numbers")
 			return
 		}
-		if query.Has("gazelleSites") {
-			req.Search.GazelleSites = splitList(query.Get("gazelleSites"))
-		}
+		req.Search.SitePick = models.SitePick{IndexerIDs: indexerIDs, GazelleSites: splitList(query.Get("gazelleSites"))}
 		req.Search.FindIndividualEpisodes = query.Get("findIndividualEpisodes") == "true"
 	}
 
@@ -76,12 +70,10 @@ func (h *ProblemReportHandler) Facts(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Str("startedFrom", req.StartedFrom).Msg("Failed to read the Problem report facts")
 		RespondError(w, http.StatusInternalServerError, "read the facts: "+err.Error())
 	default:
-		RespondJSON(w, http.StatusOK, facts)
+		RespondJSON(w, r, http.StatusOK, facts)
 	}
 }
 
-// Send handles POST /api/problem-reports: a multipart body with a report
-// part and an optional image part.
 func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxReportPart+problemreport.MaxImageSize+1<<20)
 	reader, err := r.MultipartReader()
@@ -92,6 +84,7 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	var report *problemreport.Report
 	var image *problemreport.Image
+	shown := problemreport.Sender{Anonymous: true}
 	for {
 		part, err := reader.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -121,6 +114,11 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			image = &problemreport.Image{Data: data, ContentType: part.Header.Get("Content-Type")}
+		case "sender":
+			if err := json.UnmarshalRead(part, &shown); err != nil {
+				RespondError(w, http.StatusBadRequest, "the sender is not valid JSON: "+err.Error())
+				return
+			}
 		}
 	}
 	if report == nil {
@@ -128,7 +126,7 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sent, err := h.service.Send(r.Context(), *report, image)
+	sent, err := h.service.Send(r.Context(), *report, image, shown)
 	var refusal *problemreport.RefusalError
 	switch {
 	case errors.As(err, &refusal):
@@ -139,12 +137,10 @@ func (h *ProblemReportHandler) Send(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("Failed to send a Problem report")
 		RespondError(w, http.StatusInternalServerError, "send the report: "+err.Error())
 	default:
-		RespondJSON(w, http.StatusCreated, sent)
+		RespondJSON(w, r, http.StatusCreated, sent)
 	}
 }
 
-// SentReports handles GET /api/problem-reports: Sent reports, the newest
-// first, with the Report statuses that brrbin answers now.
 func (h *ProblemReportHandler) SentReports(w http.ResponseWriter, r *http.Request) {
 	reports, err := h.service.SentReports(r.Context())
 	if err != nil {
@@ -152,10 +148,9 @@ func (h *ProblemReportHandler) SentReports(w http.ResponseWriter, r *http.Reques
 		RespondError(w, http.StatusInternalServerError, "list the sent reports: "+err.Error())
 		return
 	}
-	RespondJSON(w, http.StatusOK, reports)
+	RespondJSON(w, r, http.StatusOK, reports)
 }
 
-// Delete handles DELETE /api/problem-reports/{id}.
 func (h *ProblemReportHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.service.Delete(r.Context(), chi.URLParam(r, "id"))
 	if refusal, ok := errors.AsType[*problemreport.RefusalError](err); ok {
@@ -171,6 +166,53 @@ func (h *ProblemReportHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func (h *ProblemReportHandler) Sender(w http.ResponseWriter, r *http.Request) {
+	sender, err := h.service.Sender(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read the Problem report Sender")
+		RespondError(w, http.StatusInternalServerError, "read the sender: "+err.Error())
+		return
+	}
+	RespondJSON(w, r, http.StatusOK, sender)
+}
+
+func (h *ProblemReportHandler) StartSignIn(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Provider string `json:"provider"`
+	}
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, 1<<10), &req); err != nil {
+		RespondError(w, http.StatusBadRequest, "the body must be JSON with a provider")
+		return
+	}
+	url, err := h.service.StartSignIn(r.Context(), req.Provider)
+	if refusal, ok := errors.AsType[*problemreport.RefusalError](err); ok {
+		RespondError(w, refusal.Status, refusal.Reason)
+		return
+	}
+	switch {
+	case errors.Is(err, problemreport.ErrInvalidRequest):
+		RespondError(w, http.StatusBadRequest, err.Error())
+	case err != nil:
+		log.Error().Err(err).Msg("Failed to start a Problem report sign-in")
+		RespondError(w, http.StatusInternalServerError, "start the sign-in: "+err.Error())
+	default:
+		RespondJSON(w, r, http.StatusOK, map[string]string{"url": url})
+	}
+}
+
+func (h *ProblemReportHandler) SignInState(w http.ResponseWriter, r *http.Request) {
+	RespondJSON(w, r, http.StatusOK, h.service.SignInState())
+}
+
+func (h *ProblemReportHandler) SignOut(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.SignOut(r.Context()); err != nil {
+		log.Error().Err(err).Msg("Failed to sign out of Problem reports")
+		RespondError(w, http.StatusInternalServerError, "sign out: "+err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func splitList(raw string) []string {

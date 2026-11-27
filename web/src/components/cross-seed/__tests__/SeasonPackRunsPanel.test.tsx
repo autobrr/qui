@@ -6,7 +6,7 @@
 import type { SeasonPackRun } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 vi.mock("react-i18next", async (importOriginal) => ({
@@ -22,18 +22,9 @@ vi.mock("@/lib/api", () => ({
 
 import { SeasonPackRunsPanel } from "../SeasonPackRunsPanel"
 
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
-
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  // The panel keeps its status filters in localStorage.
   localStorage.clear()
 })
 
@@ -72,7 +63,6 @@ describe("SeasonPackRunsPanel instances", () => {
 
   it("labels the reason of a failed routed apply", async () => {
     renderPanel(makeRun({ status: "failed", reason: "crossseed_instance_unavailable", instanceId: 1, addedInstanceId: 2 }))
-    // The panel shows only applied runs by default.
     fireEvent.click(screen.getByRole("button", { name: /^seasonPackRuns\.statusLabels\.failed / }))
 
     expect(screen.getByText("· crossseed:routeStatus.unavailable")).toBeTruthy()

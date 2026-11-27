@@ -40,6 +40,7 @@ func TestExternalProgramsSkipHelperTorrents(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			script := filepath.Join(dir, "record.sh")
+			//nolint:gosec // G306: the test runs this script, so it must be executable
 			require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\ntouch \"$(dirname \"$0\")/ran-$1\"\n"), 0o700))
 			s := NewService(nil, nil, &domain.Config{ExternalProgramAllowList: []string{dir}})
 			s.SetHelperTorrents(tc.helpers)

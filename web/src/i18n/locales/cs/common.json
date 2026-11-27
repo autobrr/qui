@@ -113,7 +113,28 @@
     },
     "privacy": {
       "anonymous": "Anonymně: bez jména a účtu. brrbin neukládá IP adresu.",
+      "signedIn": "Správci vidí vaše jméno účtu {{provider}} ({{name}}) a mohou vás kontaktovat.",
       "link": "Zásady ochrany soukromí"
+    },
+    "sender": {
+      "label": "Odeslat jako",
+      "anonymous": "Anonymně",
+      "providers": {
+        "github": "GitHub",
+        "discord": "Discord"
+      },
+      "signInWith": "Přihlásit se přes {{provider}}",
+      "signOut": "Odhlásit se",
+      "waiting": "Čekání na {{provider}}",
+      "errors": {
+        "discordNotMember": "Váš účet Discord není na Discord serveru autobrr. Připojte se na server a přihlaste se znovu, přihlaste se přes GitHub, nebo odešlete anonymně.",
+        "refused": "Přihlášení zamítnuto: {{reason}}",
+        "expired": "Přihlášení vypršelo. Přihlaste se znovu.",
+        "popupBlocked": "Váš prohlížeč zablokoval přihlašovací okno. Povolte vyskakovací okna pro qui a pak se přihlaste znovu.",
+        "unavailable": "brrbin vás teď nemůže přihlásit. Zkuste to později.",
+        "startFailed": "Přihlášení se nepodařilo spustit: {{message}}",
+        "signOutFailed": "Nepodařilo se odhlásit: {{message}}"
+      }
     },
     "newerRelease": "Používáte {{running}}. Vyšla verze <release>{{newer}}</release>.",
     "send": "Odeslat",
@@ -144,7 +165,8 @@
         "issue": "Převedeno na issue #{{number}}",
         "issueClosed": "Issue #{{number}} uzavřeno",
         "closed": "Uzavřeno: {{reason}}",
-        "closedNoReason": "Uzavřeno"
+        "closedNoReason": "Uzavřeno",
+        "notSent": "Neodesláno"
       },
       "delete": "Smazat hlášení",
       "deleteUnavailable": "brrbin teď nemůže mazat hlášení. Zkuste to později.",
@@ -173,6 +195,8 @@
     "smartSearchTitle": "Inteligentní hledání:",
     "smartSearchGlob": "Vzorové hledání:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Skrýt shody:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Hrubé hledání:",
     "smartSearchFuzzyExample": "\"breaking bad\" najde \"Breaking.Bad\"",
     "smartSearchDots": "Zpracovává tečky, podtržítka a závorky",
@@ -376,9 +400,13 @@
         "menuFix": "Zkontrolovat nastavení hledání ve sdílených",
         "action": "Otevřít nastavení hledání ve sdílených",
         "reasons": {
-          "torznab_off_no_gazelle": {
-            "fix": "Torznab je v nastavení hledání ve sdílených vypnutý a není nastaven žádný klíč API pro RED ani OPS. Zapněte Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",
-            "menuFix": "Zapnout Torznab, nebo přidat klíč pro RED nebo OPS"
+          "torznab_pick_no_indexer": {
+            "fix": "Nastavení hledání ve sdílených vybírá jen indexery Torznab a není zapnutý žádný indexer Torznab. Zapněte indexer Torznab, nebo vyberte jiné weby v nastavení hledání ve sdílených. qui to zkusí znovu každou hodinu.",
+            "menuFix": "Zapnout indexer Torznab"
+          },
+          "gazelle_pick_no_key": {
+            "fix": "Nastavení hledání ve sdílených vybírá jen RED nebo OPS a žádný vybraný web nemá klíč API. Přidejte klíč v nastavení Gazelle (OPS/RED), nebo vyberte jiné weby v nastavení hledání ve sdílených. qui to zkusí znovu každou hodinu.",
+            "menuFix": "Přidat klíč pro RED nebo OPS"
           },
           "no_indexer": {
             "fix": "Není zapnutý žádný indexer. Zapněte indexer Torznab, nebo přidejte klíč pro RED nebo OPS v nastavení Gazelle (OPS/RED). qui to zkusí znovu každou hodinu.",

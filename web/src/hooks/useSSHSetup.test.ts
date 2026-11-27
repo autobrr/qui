@@ -61,7 +61,6 @@ describe("useSSHSetup", () => {
     expect(result.current.state).toEqual({ kind: "idle", result: unpinned, error: null })
   })
 
-  // regression: #3732
   it("a 409 from a running delete is shown, not retried", async () => {
     mocks.testSSH.mockResolvedValue({ status: "mismatch", hostKey: "BBBB", fingerprint: "SHA256:new", pinnedFingerprint: "SHA256:old" })
     mocks.replaceSSHHostKey.mockRejectedValue(new APIError("An orphan scan is deleting files on this instance. Wait for it to finish before changing its SSH settings.", 409))

@@ -69,7 +69,6 @@ const CommandList = React.forwardRef<
     ref={ref}
     className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden pointer-events-auto", className)}
     onWheel={(e) => {
-      // Prevent scroll event propagation to parent elements to ensure the list scrolls
       e.stopPropagation()
     }}
     {...props}

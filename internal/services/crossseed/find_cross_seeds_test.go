@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -16,9 +17,29 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil"
 )
 
-// crossSeedsService puts the fixtures on two local instances.
+func newSecondMountFixture(t *testing.T, root string) (dataDir, linkDir, mountDir string) {
+	t.Helper()
+	const dataName, mountName = "data", "mount"
+	dataDir, linkDir, mountDir = filepath.Join(root, dataName), filepath.Join(root, "links"), filepath.Join(root, mountName)
+	for _, dir := range []string{dataDir, linkDir} {
+		require.NoError(t, os.Mkdir(dir, 0o755))
+	}
+	err := os.Symlink(dataDir, mountDir)
+	if testutil.IsWindowsSymlinkPrivilegeError(err) {
+		cmd := exec.CommandContext(t.Context(), "cmd.exe", "/d", "/c", "mklink", "/j", mountName, dataName)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s", out)
+		t.Cleanup(func() { require.NoError(t, os.Remove(mountDir)) })
+	} else {
+		require.NoError(t, err)
+	}
+	return dataDir, linkDir, mountDir
+}
+
 func crossSeedsService(torrents ...crossMatchFixture) (*Service, *tierSyncManager) {
 	svc, sm := deleteMatchService(torrents...)
 	svc.instanceStore = newOrderedInstanceStore(
@@ -29,8 +50,6 @@ func crossSeedsService(torrents ...crossMatchFixture) (*Service, *tierSyncManage
 	return svc, sm
 }
 
-// tabTiers keys each match by its instance and hash, because one torrent can
-// sit on two instances.
 func tabTiers(matches []LocalMatch) map[string]string {
 	tiers := make(map[string]string, len(matches))
 	for _, match := range matches {
@@ -41,14 +60,11 @@ func tabTiers(matches []LocalMatch) map[string]string {
 
 func findCrossSeeds(t *testing.T, svc *Service, hash string) map[string]string {
 	t.Helper()
-	response, err := svc.FindCrossSeeds(t.Context(), 1, hash)
+	response, err := svc.FindCrossSeeds(t.Context(), 1, mustParseHash(t, hash))
 	require.NoError(t, err)
 	return tabTiers(response.Matches)
 }
 
-// The tab lists more than a delete touches: a copy with its own files, and
-// the copies on other instances.
-// regression: #3853
 func TestFindCrossSeedsListsCopiesThatKeepTheirFiles(t *testing.T) {
 	t.Parallel()
 
@@ -56,26 +72,23 @@ func TestFindCrossSeedsListsCopiesThatKeepTheirFiles(t *testing.T) {
 	root := t.TempDir()
 	dataDir, otherDir := filepath.Join(root, "data"), filepath.Join(root, "other")
 	files := qbt.TorrentFiles{{Name: name + ".mkv", Size: 100}}
-	source := crossMatchTorrent(1, "aaaa", name, dataDir, filepath.Join(dataDir, name+".mkv"), files)
-	copyElsewhere := crossMatchTorrent(1, "bbbb", name, otherDir, filepath.Join(otherDir, name+".mkv"), files)
-	sameTorrentOnSecond := crossMatchTorrent(2, "aaaa", name, dataDir, filepath.Join(dataDir, name+".mkv"), files)
-	releaseOnSecond := crossMatchTorrent(2, "cccc", "Harbor Watch S01E01 1080p WEB h264-GRP", dataDir, filepath.Join(dataDir, name+".mkv"), files)
+	source := crossMatchTorrent(1, crossA, name, dataDir, filepath.Join(dataDir, name+".mkv"), files)
+	copyElsewhere := crossMatchTorrent(1, crossB, name, otherDir, filepath.Join(otherDir, name+".mkv"), files)
+	sameTorrentOnSecond := crossMatchTorrent(2, crossA, name, dataDir, filepath.Join(dataDir, name+".mkv"), files)
+	releaseOnSecond := crossMatchTorrent(2, crossC, "Harbor Watch S01E01 1080p WEB h264-GRP", dataDir, filepath.Join(dataDir, name+".mkv"), files)
 
 	svc, _ := crossSeedsService(source, copyElsewhere, sameTorrentOnSecond, releaseOnSecond)
 	require.Equal(t, map[string]string{
-		"1/bbbb": matchTypeName,
-		"2/aaaa": matchTypeName,
-		"2/cccc": matchTypeRelease,
-	}, findCrossSeeds(t, svc, "aaaa"))
+		"1/" + crossB: matchTypeName,
+		"2/" + crossA: matchTypeName,
+		"2/" + crossC: matchTypeRelease,
+	}, findCrossSeeds(t, svc, crossA))
 
-	matches, err := findDeleteMatches(t, svc, "aaaa")
+	matches, err := findDeleteMatches(t, svc, crossA)
 	require.NoError(t, err)
 	require.Empty(t, matches)
 }
 
-// For each torrent of one library, the delete check of that torrent is part
-// of its Cross-Seed tab.
-// regression: #3555
 func TestFindCrossSeedsHoldsTheDeleteCheck(t *testing.T) {
 	t.Parallel()
 
@@ -98,19 +111,15 @@ func TestFindCrossSeedsHoldsTheDeleteCheck(t *testing.T) {
 
 	packFiles := qbt.TorrentFiles{{Name: pack + "/" + episode + ".mkv", Size: 4}}
 	library := []crossMatchFixture{
-		withTotalSize(crossMatchTorrent(1, "aaaa", pack, dataDir, filepath.Join(dataDir, pack), packFiles)),
-		// A retitled cross-seed of the same folder.
-		withTotalSize(crossMatchTorrent(1, "bbbb", "Harbor Watch S01", dataDir, filepath.Join(dataDir, pack), packFiles)),
-		// An episode inside the folder of its season pack.
-		withTotalSize(crossMatchTorrent(1, "cccc", episode, filepath.Join(dataDir, pack), episodeFile,
+		withTotalSize(crossMatchTorrent(1, crossA, pack, dataDir, filepath.Join(dataDir, pack), packFiles)),
+		withTotalSize(crossMatchTorrent(1, crossB, "Harbor Watch S01", dataDir, filepath.Join(dataDir, pack), packFiles)),
+		withTotalSize(crossMatchTorrent(1, crossC, episode, filepath.Join(dataDir, pack), episodeFile,
 			qbt.TorrentFiles{{Name: episode + ".mkv", Size: 4}})),
-		withTotalSize(crossMatchTorrent(1, "dddd", movie, dataDir, movieFile, qbt.TorrentFiles{{Name: movie + ".mkv", Size: 5}})),
-		// A retitled hardlinked copy.
-		withTotalSize(crossMatchTorrent(1, "eeee", "Silent Shore 2020 1080p", linkDir, filepath.Join(linkDir, "Silent Shore 2020 1080p.mkv"),
+		withTotalSize(crossMatchTorrent(1, crossD, movie, dataDir, movieFile, qbt.TorrentFiles{{Name: movie + ".mkv", Size: 5}})),
+		withTotalSize(crossMatchTorrent(1, crossE, "Silent Shore 2020 1080p", linkDir, filepath.Join(linkDir, "Silent Shore 2020 1080p.mkv"),
 			qbt.TorrentFiles{{Name: "Silent Shore 2020 1080p.mkv", Size: 5}})),
-		// A copy with its own files.
-		withTotalSize(crossMatchTorrent(1, "ffff", movie, otherDir, filepath.Join(otherDir, movie+".mkv"), qbt.TorrentFiles{{Name: movie + ".mkv", Size: 5}})),
-		withTotalSize(crossMatchTorrent(2, "dddd", movie, dataDir, movieFile, qbt.TorrentFiles{{Name: movie + ".mkv", Size: 5}})),
+		withTotalSize(crossMatchTorrent(1, crossF, movie, otherDir, filepath.Join(otherDir, movie+".mkv"), qbt.TorrentFiles{{Name: movie + ".mkv", Size: 5}})),
+		withTotalSize(crossMatchTorrent(2, crossD, movie, dataDir, movieFile, qbt.TorrentFiles{{Name: movie + ".mkv", Size: 5}})),
 	}
 	svc, _ := crossSeedsService(library...)
 
@@ -128,16 +137,9 @@ func TestFindCrossSeedsHoldsTheDeleteCheck(t *testing.T) {
 			checked++
 		}
 	}
-	// aaaa, bbbb, and cccc share files; dddd and eeee are linked. dddd on
-	// instance 2 shares the file of dddd.
 	require.Equal(t, 9, checked)
 }
 
-// The tab labels a torrent on another local instance Content when it reads a
-// file of the source through the same folder entry, also through a second
-// mount. A hardlinked copy stays Hardlink, and an SSH instance never gets
-// Content.
-// regression: #3585
 func TestFindCrossSeedsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	t.Parallel()
 
@@ -147,13 +149,8 @@ func TestFindCrossSeedsFindsSharedFilesOnOtherInstances(t *testing.T) {
 		pack    = "Harbor.Watch.S01.1080p.WEB.h264-GRP"
 		episode = "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
 	)
-	root := t.TempDir()
-	dataDir, linkDir, mountDir := filepath.Join(root, "data"), filepath.Join(root, "links"), filepath.Join(root, "mount")
-	for _, dir := range []string{filepath.Join(dataDir, pack), linkDir} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-	// A symlinked folder stands in for a second mount of the data folder.
-	require.NoError(t, os.Symlink(dataDir, mountDir))
+	dataDir, linkDir, mountDir := newSecondMountFixture(t, t.TempDir())
+	require.NoError(t, os.Mkdir(filepath.Join(dataDir, pack), 0o755))
 	write := func(name, data string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dataDir, name), []byte(data), 0o600))
 	}
@@ -167,27 +164,20 @@ func TestFindCrossSeedsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	linkedFiles := qbt.TorrentFiles{{Name: linked + ".mkv", Size: 6}}
 	packDir := filepath.Join(dataDir, pack)
 	library := []crossMatchFixture{
-		crossMatchTorrent(1, "aaaa", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
-		crossMatchTorrent(1, "bbbb", linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
-		crossMatchTorrent(1, "cccc", pack, dataDir, packDir, qbt.TorrentFiles{
+		crossMatchTorrent(1, crossA, movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(1, crossB, linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
+		crossMatchTorrent(1, crossC, pack, dataDir, packDir, qbt.TorrentFiles{
 			{Name: pack + "/" + episode + ".mkv", Size: 4},
 			{Name: pack + "/Harbor.Watch.S01E02.1080p.WEB.h264-GRP.mkv", Size: 5},
 		}),
-		// One folder that both instances read.
-		crossMatchTorrent(2, "dddd", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
-		// The same folder through a second mount.
-		crossMatchTorrent(2, "eeee", movie, mountDir, filepath.Join(mountDir, movie+".mkv"), movieFiles),
-		// A shared file that also has a hardlink elsewhere.
-		crossMatchTorrent(2, "ffff", linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
-		// The hardlinked copy.
-		crossMatchTorrent(2, "gggg", linked, linkDir, filepath.Join(linkDir, linked+".mkv"), linkedFiles),
-		// An episode inside the folder of the season pack. Only the path finds it.
-		crossMatchTorrent(2, "hhhh", episode, packDir, filepath.Join(packDir, episode+".mkv"),
+		crossMatchTorrent(2, crossD, movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(2, crossE, movie, mountDir, filepath.Join(mountDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(2, crossF, linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
+		crossMatchTorrent(2, crossG, linked, linkDir, filepath.Join(linkDir, linked+".mkv"), linkedFiles),
+		crossMatchTorrent(2, crossH, episode, packDir, filepath.Join(packDir, episode+".mkv"),
 			qbt.TorrentFiles{{Name: episode + ".mkv", Size: 4}}),
-		// Another name and release through the second mount. Only the total size finds it.
-		crossMatchTorrent(2, "jjjj", "qc-home-encode", mountDir, filepath.Join(mountDir, movie+".mkv"), movieFiles),
-		// An SSH instance that reads the same folder.
-		crossMatchTorrent(3, "iiii", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(2, crossJ, "qc-home-encode", mountDir, filepath.Join(mountDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(3, crossI, movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
 	}
 	for i := range library {
 		library[i] = withTotalSize(library[i])
@@ -202,55 +192,41 @@ func TestFindCrossSeedsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 
 	for hash, want := range map[string]map[string]string{
-		"aaaa": {"2/dddd": matchTypeContentPath, "2/eeee": matchTypeContentPath, "2/jjjj": matchTypeContentPath, "3/iiii": matchTypeName},
-		"bbbb": {"2/ffff": matchTypeContentPath, "2/gggg": matchTypeHardlink},
-		"cccc": {"2/hhhh": matchTypeContentPath},
+		crossA: {"2/" + crossD: matchTypeContentPath, "2/" + crossE: matchTypeContentPath, "2/" + crossJ: matchTypeContentPath, "3/" + crossI: matchTypeName},
+		crossB: {"2/" + crossF: matchTypeContentPath, "2/" + crossG: matchTypeHardlink},
+		crossC: {"2/" + crossH: matchTypeContentPath},
 	} {
-		response, err := svc.FindCrossSeeds(t.Context(), 1, hash)
+		response, err := svc.FindCrossSeeds(t.Context(), 1, mustParseHash(t, hash))
 		require.NoError(t, err)
 		require.Equal(t, want, tabTiers(response.Matches), "torrent %s", hash)
 		require.Len(t, response.Matches, len(want), "torrent %s lists a match twice", hash)
 	}
 }
 
-// A source without trusted identity has no Shared file, so a torrent on another
-// instance that only shares the total size is no candidate. Its file list is
-// not read.
 func TestFindCrossSeedsSkipsSizeOnlyCandidatesWithoutTrustedSource(t *testing.T) {
 	t.Parallel()
 
 	files := qbt.TorrentFiles{{Name: "Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", Size: 5}}
 	svc, sm := deleteMatchService(
-		withTotalSize(crossMatchTorrent(1, "aaaa", "Quiet.Coast.2020.1080p.BluRay.x264-GRP", "/data", "/data/Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", files)),
-		withTotalSize(crossMatchTorrent(2, "kkkk", "qc-home-encode", "/data", "/data/Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", files)),
+		withTotalSize(crossMatchTorrent(1, crossA, "Quiet.Coast.2020.1080p.BluRay.x264-GRP", "/data", "/data/Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", files)),
+		withTotalSize(crossMatchTorrent(2, crossK, "qc-home-encode", "/data", "/data/Quiet.Coast.2020.1080p.BluRay.x264-GRP.mkv", files)),
 	)
-	sm.failHashes = map[string]bool{"kkkk": true}
+	sm.failHashes = map[string]bool{crossK: true}
 	svc.instanceStore = newOrderedInstanceStore(
 		&models.Instance{ID: 1, Name: "remote", IsActive: true},
 		&models.Instance{ID: 2, Name: "second", IsActive: true, HasLocalFilesystemAccess: true},
 	)
 
-	response, err := svc.FindCrossSeeds(t.Context(), 1, "aaaa")
+	response, err := svc.FindCrossSeeds(t.Context(), 1, mustParseHash(t, crossA))
 	require.NoError(t, err)
 	require.Empty(t, response.Matches)
 }
 
-// The automation sets hold each torrent on the instance that shares a file
-// with a torrent on another local instance, also through a second mount and
-// when the file has a hardlink elsewhere. A hardlinked copy is no Shared file.
-// An offline local instance makes every torrent unknown and is named. A
-// turned-off instance changes nothing.
-// regression: #3591
 func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	dataDir, linkDir, mountDir := filepath.Join(root, "data"), filepath.Join(root, "links"), filepath.Join(root, "mount")
-	for _, dir := range []string{dataDir, linkDir} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-	// A symlinked folder stands in for a second mount of the data folder.
-	require.NoError(t, os.Symlink(dataDir, mountDir))
+	dataDir, linkDir, mountDir := newSecondMountFixture(t, root)
 
 	var library []crossMatchFixture
 	add := func(instanceID int, hash, name, dir string) {
@@ -269,32 +245,26 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	for _, name := range []string{"Still.Harbor.2022.1080p.BluRay.x264-GRP", "Calm.Bay.2023.1080p.BluRay.x264-GRP"} {
 		require.NoError(t, os.Link(filepath.Join(dataDir, name+".mkv"), filepath.Join(linkDir, name+".mkv")))
 	}
-	add(1, "aaaa", "Quiet.Coast.2020.1080p.BluRay.x264-GRP", dataDir)
-	add(1, "bbbb", "Silent.Shore.2021.1080p.BluRay.x264-GRP", dataDir)
-	add(1, "cccc", "Still.Harbor.2022.1080p.BluRay.x264-GRP", dataDir)
-	add(1, "dddd", "Calm.Bay.2023.1080p.BluRay.x264-GRP", dataDir)
-	add(1, "eeee", "Lone.Pier.2024.1080p.BluRay.x264-GRP", dataDir)
-	// One folder that both instances read.
-	add(2, "ffff", "Quiet.Coast.2020.1080p.BluRay.x264-GRP", dataDir)
-	// The same folder through a second mount.
-	add(2, "gggg", "Silent.Shore.2021.1080p.BluRay.x264-GRP", mountDir)
-	// A shared file that also has a hardlink elsewhere.
-	add(2, "hhhh", "Still.Harbor.2022.1080p.BluRay.x264-GRP", dataDir)
-	// A hardlinked copy.
-	add(2, "iiii", "Calm.Bay.2023.1080p.BluRay.x264-GRP", linkDir)
-	// An episode inside the folder of a season pack. Only the path finds it.
+	add(1, crossA, "Quiet.Coast.2020.1080p.BluRay.x264-GRP", dataDir)
+	add(1, crossB, "Silent.Shore.2021.1080p.BluRay.x264-GRP", dataDir)
+	add(1, crossC, "Still.Harbor.2022.1080p.BluRay.x264-GRP", dataDir)
+	add(1, crossD, "Calm.Bay.2023.1080p.BluRay.x264-GRP", dataDir)
+	add(1, crossE, "Lone.Pier.2024.1080p.BluRay.x264-GRP", dataDir)
+	add(2, crossF, "Quiet.Coast.2020.1080p.BluRay.x264-GRP", dataDir)
+	add(2, crossG, "Silent.Shore.2021.1080p.BluRay.x264-GRP", mountDir)
+	add(2, crossH, "Still.Harbor.2022.1080p.BluRay.x264-GRP", dataDir)
+	add(2, crossI, "Calm.Bay.2023.1080p.BluRay.x264-GRP", linkDir)
 	const pack, episode = "Harbor.Watch.S01.1080p.WEB.h264-GRP", "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
 	packDir := filepath.Join(dataDir, pack)
 	require.NoError(t, os.MkdirAll(packDir, 0o755))
 	for _, name := range []string{episode, "Harbor.Watch.S01E02.1080p.WEB.h264-GRP"} {
 		require.NoError(t, os.WriteFile(filepath.Join(packDir, name+".mkv"), []byte(name), 0o600))
 	}
-	library = append(library, withTotalSize(crossMatchTorrent(1, "kkkk", pack, dataDir, packDir, qbt.TorrentFiles{
+	library = append(library, withTotalSize(crossMatchTorrent(1, crossK, pack, dataDir, packDir, qbt.TorrentFiles{
 		{Name: pack + "/" + episode + ".mkv", Size: 4},
 		{Name: pack + "/Harbor.Watch.S01E02.1080p.WEB.h264-GRP.mkv", Size: 5},
 	})))
 	add(2, "llll", episode, packDir)
-	// Two flat torrents in one save path that share only a subtitle.
 	flatDir := filepath.Join(root, "flat")
 	require.NoError(t, os.MkdirAll(flatDir, 0o755))
 	for _, name := range []string{"Night.Ferry.mkv", "Night.Ferry.REPACK.mkv", "Night.Ferry.srt"} {
@@ -310,7 +280,7 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	)
 
 	needs := CrossMatchNeeds{OtherShared: true}
-	shared := map[string]struct{}{"aaaa": {}, "bbbb": {}, "cccc": {}, "kkkk": {}, "mmmm": {}}
+	shared := map[string]struct{}{crossA: {}, crossB: {}, crossC: {}, crossK: {}, "mmmm": {}}
 	for _, tt := range []struct {
 		name        string
 		third       *models.Instance
@@ -321,7 +291,7 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 		{
 			name:        "offline local instance",
 			third:       &models.Instance{ID: 3, Name: "third", IsActive: true, HasLocalFilesystemAccess: true},
-			wantUnknown: map[string]struct{}{"aaaa": {}, "bbbb": {}, "cccc": {}, "dddd": {}, "eeee": {}, "kkkk": {}, "mmmm": {}},
+			wantUnknown: map[string]struct{}{crossA: {}, crossB: {}, crossC: {}, crossD: {}, crossE: {}, crossK: {}, "mmmm": {}},
 			wantOffline: []string{"third"},
 		},
 		{
@@ -354,12 +324,6 @@ func TestBuildCrossMatchSetsFindsSharedFilesOnOtherInstances(t *testing.T) {
 	}
 }
 
-// The delete check lists a torrent on another local instance only for a
-// Shared file, also through a second mount and when the file has a hardlink
-// elsewhere. A hardlinked copy and an SSH instance stay out. An offline local
-// instance and a turned-off local instance are named, and the other matches
-// are still returned. A torrent of the selection is never a match.
-// regression: #3592
 func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 	t.Parallel()
 
@@ -369,13 +333,8 @@ func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 		pack    = "Harbor.Watch.S01.1080p.WEB.h264-GRP"
 		episode = "Harbor.Watch.S01E01.1080p.WEB.h264-GRP"
 	)
-	root := t.TempDir()
-	dataDir, linkDir, mountDir := filepath.Join(root, "data"), filepath.Join(root, "links"), filepath.Join(root, "mount")
-	for _, dir := range []string{filepath.Join(dataDir, pack), linkDir} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-	// A symlinked folder stands in for a second mount of the data folder.
-	require.NoError(t, os.Symlink(dataDir, mountDir))
+	dataDir, linkDir, mountDir := newSecondMountFixture(t, t.TempDir())
+	require.NoError(t, os.Mkdir(filepath.Join(dataDir, pack), 0o755))
 	write := func(name, data string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dataDir, name), []byte(data), 0o600))
 	}
@@ -389,25 +348,19 @@ func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 	linkedFiles := qbt.TorrentFiles{{Name: linked + ".mkv", Size: 6}}
 	packDir := filepath.Join(dataDir, pack)
 	library := []crossMatchFixture{
-		crossMatchTorrent(1, "aaaa", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
-		crossMatchTorrent(1, "bbbb", linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
-		crossMatchTorrent(1, "cccc", pack, dataDir, packDir, qbt.TorrentFiles{
+		crossMatchTorrent(1, crossA, movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(1, crossB, linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
+		crossMatchTorrent(1, crossC, pack, dataDir, packDir, qbt.TorrentFiles{
 			{Name: pack + "/" + episode + ".mkv", Size: 4},
 			{Name: pack + "/Harbor.Watch.S01E02.1080p.WEB.h264-GRP.mkv", Size: 5},
 		}),
-		// One folder that both instances read.
-		crossMatchTorrent(2, "dddd", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
-		// The same folder through a second mount.
-		crossMatchTorrent(2, "eeee", movie, mountDir, filepath.Join(mountDir, movie+".mkv"), movieFiles),
-		// A shared file that also has a hardlink elsewhere.
-		crossMatchTorrent(2, "ffff", linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
-		// The hardlinked copy.
-		crossMatchTorrent(2, "gggg", linked, linkDir, filepath.Join(linkDir, linked+".mkv"), linkedFiles),
-		// An episode inside the folder of the season pack.
-		crossMatchTorrent(2, "hhhh", episode, packDir, filepath.Join(packDir, episode+".mkv"),
+		crossMatchTorrent(2, crossD, movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(2, crossE, movie, mountDir, filepath.Join(mountDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(2, crossF, linked, dataDir, filepath.Join(dataDir, linked+".mkv"), linkedFiles),
+		crossMatchTorrent(2, crossG, linked, linkDir, filepath.Join(linkDir, linked+".mkv"), linkedFiles),
+		crossMatchTorrent(2, crossH, episode, packDir, filepath.Join(packDir, episode+".mkv"),
 			qbt.TorrentFiles{{Name: episode + ".mkv", Size: 4}}),
-		// An SSH instance that reads the same folder.
-		crossMatchTorrent(3, "iiii", movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
+		crossMatchTorrent(3, crossI, movie, dataDir, filepath.Join(dataDir, movie+".mkv"), movieFiles),
 	}
 	for i := range library {
 		library[i] = withTotalSize(library[i])
@@ -419,10 +372,10 @@ func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 			SSHHostKeyEncrypted: "enc-hostkey", SSHTier: models.SSHTierExec},
 	}
 	shared := map[string]string{
-		"2/dddd": matchTypeContentPath,
-		"2/eeee": matchTypeContentPath,
-		"2/ffff": matchTypeContentPath,
-		"2/hhhh": matchTypeContentPath,
+		"2/" + crossD: matchTypeContentPath,
+		"2/" + crossE: matchTypeContentPath,
+		"2/" + crossF: matchTypeContentPath,
+		"2/" + crossH: matchTypeContentPath,
 	}
 
 	for _, tt := range []struct {
@@ -434,7 +387,7 @@ func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 	}{
 		{
 			name:          "two local instances",
-			selection:     map[int][]string{1: {"aaaa", "bbbb", "cccc"}},
+			selection:     map[int][]string{1: {crossA, crossB, crossC}},
 			wantMatches:   shared,
 			wantUnchecked: []UncheckedInstance{},
 		},
@@ -443,7 +396,7 @@ func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 			extra: []*models.Instance{
 				{ID: 4, Name: "offline", IsActive: true, HasLocalFilesystemAccess: true},
 			},
-			selection:     map[int][]string{1: {"aaaa", "bbbb", "cccc"}},
+			selection:     map[int][]string{1: {crossA, crossB, crossC}},
 			wantMatches:   shared,
 			wantUnchecked: []UncheckedInstance{{InstanceID: 4, InstanceName: "offline", Reason: UncheckedOffline}},
 		},
@@ -453,13 +406,13 @@ func TestFindDeleteMatchesFindsSharedFilesOnOtherInstances(t *testing.T) {
 				{ID: 5, Name: "off-local", HasLocalFilesystemAccess: true},
 				{ID: 6, Name: "off-api-only"},
 			},
-			selection:     map[int][]string{1: {"aaaa", "bbbb", "cccc"}},
+			selection:     map[int][]string{1: {crossA, crossB, crossC}},
 			wantMatches:   shared,
 			wantUnchecked: []UncheckedInstance{{InstanceID: 5, InstanceName: "off-local", Reason: UncheckedDisabled}},
 		},
 		{
 			name:          "selection on both instances",
-			selection:     map[int][]string{1: {"aaaa"}, 2: {"dddd", "eeee"}},
+			selection:     map[int][]string{1: {crossA}, 2: {crossD, crossE}},
 			wantMatches:   map[string]string{},
 			wantUnchecked: []UncheckedInstance{},
 		},

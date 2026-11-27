@@ -10,9 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The limit comes from the request, so a limit far above the number of groups
-// must not size what top allocates.
-// regression: #4113
 func TestALimitAboveTheGroupsAllocatesForTheGroupsOnly(t *testing.T) {
 	rows := []TransferRow{{Group: "a", Uploaded: 2}, {Group: "b", Uploaded: 1}}
 	var before, after runtime.MemStats

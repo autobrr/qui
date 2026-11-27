@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 func testBackendPool(instance *models.Instance) *fsops.Pool {
@@ -48,7 +49,6 @@ type torrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 }
 
-// torrentManager is a test qBittorrent that adds torrents and aligns their paths.
 type torrentManager interface {
 	torrentAdder
 	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
@@ -56,16 +56,13 @@ type torrentManager interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 }
 
-// adderQbit is the three-method qBittorrent seam of the Adder. It sends each add
-// to the test manager and finds only the existing torrent.
 type adderQbit struct {
 	torrentAdder
-	existing *qbt.Torrent
-	// existingOn limits existing to one instance when it is set.
+	existing   *qbt.Torrent
 	existingOn int
 }
 
-func (q adderQbit) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []string) (*qbt.Torrent, bool, error) {
+func (q adderQbit) HasTorrentByAnyHash(_ context.Context, instanceID int, _ []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if q.existingOn != 0 && instanceID != q.existingOn {
 		return nil, false, nil
 	}
@@ -76,8 +73,6 @@ func (adderQbit) BulkAction(context.Context, int, []string, string) error {
 	return nil
 }
 
-// testAdder is the real Adder over the three-method qBittorrent fake and the
-// Settle module of the test.
 func testAdder(manager torrentAdder, settler *crossseed.Settler, runExternalProgram func(context.Context, int, []string)) *crossseed.Adder {
 	if runExternalProgram == nil {
 		runExternalProgram = func(context.Context, int, []string) {}
@@ -85,10 +80,9 @@ func testAdder(manager torrentAdder, settler *crossseed.Settler, runExternalProg
 	return crossseed.NewAdder(adderQbit{torrentAdder: manager}, nil, settler, func(context.Context) int64 { return 0 }, runExternalProgram)
 }
 
-// inject runs the Pre-add check for req, as tryMatchAndInject does, and then the injection.
 func inject(ctx context.Context, t *testing.T, injector *Injector, req *InjectRequest) (*InjectResult, error) {
 	t.Helper()
-	check, refusal := injector.adder.Check(ctx, req.InstanceID, crossseed.AddFacts{}, req.ParsedTorrent.InfoHash, req.ParsedTorrent.InfoHashV2)
+	check, refusal := injector.adder.Check(ctx, req.InstanceID, crossseed.AddFacts{}, infohash.ParseAll([]string{req.ParsedTorrent.InfoHash, req.ParsedTorrent.InfoHashV2})...)
 	if refusal != nil {
 		t.Fatalf("pre-add check refused: %+v", refusal)
 	}
@@ -121,18 +115,12 @@ func (a *failingTorrentAdder) GetTorrentFilesBatch(_ context.Context, _ int, _ [
 	return nil, nil
 }
 
-// injectFixture is the on-disk source file, instance and partial-match request
-// shared by the partial-link-tree tests.
 type injectFixture struct {
 	hardlinkBase string
 	instance     *models.Instance
 	req          *InjectRequest
 }
 
-// newInjectFixture builds a partial match that reaches AddTorrent. Without
-// DownloadMissingFiles the partial match is rejected before the add, so the
-// add-failure rollbacks would never be exercised; the rejection test flips the
-// flag back off to take that earlier path.
 func newInjectFixture(t *testing.T) injectFixture {
 	t.Helper()
 	tmp := t.TempDir()
@@ -162,7 +150,7 @@ func newInjectFixture(t *testing.T) injectFixture {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Example.Release",
-			InfoHash: "deadbeef",
+			InfoHash: "deadbeef00000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
@@ -217,11 +205,6 @@ func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 	}
 }
 
-// cancellingTorrentAdder cancels the run's context from inside AddTorrent, so
-// the rollback that follows sees a cancelled ctx. It records how many entries
-// the link base held at that moment, which keeps the "tree is gone" assertion
-// non-vacuous. It also records whether the add saw the cancel. Every other
-// method is failingTorrentAdder's no-op.
 type cancellingTorrentAdder struct {
 	*failingTorrentAdder
 	cancel       context.CancelFunc
@@ -259,11 +242,9 @@ func TestInjector_Inject_RollsBackLinkTreeWhenAddFailsUnderCancelledContext(t *t
 	if !errors.Is(err, addErr) {
 		t.Fatalf("expected the add failure to surface, got %v", err)
 	}
-	// A paused or stopped scan must stop an add that qBittorrent has not taken yet.
 	if !errors.Is(adder.addCtxErr, context.Canceled) {
 		t.Fatalf("expected AddTorrent to see the cancelled run, got %v", adder.addCtxErr)
 	}
-	// One entry: the tree root the injector created under the base dir.
 	if adder.entriesAtAdd != 1 {
 		t.Fatalf("expected the link tree to exist when AddTorrent ran, got %d entries; the rollback assertion would be vacuous", adder.entriesAtAdd)
 	}
@@ -357,7 +338,7 @@ func TestInjector_Inject_PausedPartial_RechecksWithoutResume(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Example.Release",
-			InfoHash: "deadbeef",
+			InfoHash: "deadbeef00000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
@@ -397,14 +378,11 @@ func TestInjector_Inject_PausedPartial_RechecksWithoutResume(t *testing.T) {
 		t.Fatalf("useDownloadPath = %q, want false so the recheck keeps the files at the save path", got)
 	}
 
-	// StartPaused leaves nothing to watch, so the module only sends the recheck.
-	if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef"}) {
-		t.Fatalf("settle calls = %v, want recheck:deadbeef", got)
+	if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef00000000000000000000000000000000"}) {
+		t.Fatalf("settle calls = %v, want recheck:deadbeef00000000000000000000000000000000", got)
 	}
 }
 
-// crossDeviceBackend fails HardlinkTree with EXDEV under the listed base dirs,
-// the way link() fails on a host whose disks share one device ID.
 type crossDeviceBackend struct {
 	*local.Backend
 	crossDevice []string
@@ -463,7 +441,7 @@ func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedLi
 				TorrentBytes: []byte("x"),
 				ParsedTorrent: &ParsedTorrent{
 					Name:     "Example.Release",
-					InfoHash: "deadbeef",
+					InfoHash: "deadbeef00000000000000000000000000000000",
 					Files: []TorrentFile{
 						{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 					},
@@ -500,8 +478,6 @@ func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedLi
 			if strings.Contains(res.SavePath, ",") {
 				t.Fatalf("save path should use one base dir, got %q", res.SavePath)
 			}
-			// The torrent's root folder is free, so it goes into the base dir
-			// with no isolation folder.
 			if res.SavePath != tt.wantBase {
 				t.Fatalf("expected save path %q, got %q", tt.wantBase, res.SavePath)
 			}
@@ -528,7 +504,7 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Example.Release",
-			InfoHash: "deadbeef",
+			InfoHash: "deadbeef00000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 			},
@@ -576,12 +552,11 @@ func TestInjector_Inject_DiscLayoutPerfect_StaysPausedUntilComplete(t *testing.T
 	manager := &recordingTorrentManager{}
 
 	synctest.Test(t, func(t *testing.T) {
-		// The recheck ends 1 MiB short: a disc layout resumes only when nothing is left.
 		settle := &settleFake{polls: []*qbt.Torrent{
-			{Hash: "deadbeef", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
-			{Hash: "deadbeef", State: qbt.TorrentStatePausedDl, Progress: 0.99, Completed: 4, AmountLeft: 1 << 20},
-			{Hash: "deadbeef", State: qbt.TorrentStatePausedUp, Progress: 1},
-			{Hash: "deadbeef", State: qbt.TorrentStatePausedUp, Progress: 1},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStateCheckingUp, Progress: 0.5},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStatePausedDl, Progress: 0.99, Completed: 4, AmountLeft: 1 << 20},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStatePausedUp, Progress: 1},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStatePausedUp, Progress: 1},
 		}}
 		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.start(t), nil), nil, nil, testBackendPool(instance))
 
@@ -598,13 +573,12 @@ func TestInjector_Inject_DiscLayoutPerfect_StaysPausedUntilComplete(t *testing.T
 		}
 		time.Sleep(time.Minute)
 		synctest.Wait()
-		if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef"}) {
+		if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef00000000000000000000000000000000"}) {
 			t.Fatalf("settle calls = %v, want only the recheck of deadbeef", got)
 		}
 	})
 }
 
-// discLayoutRequest is a perfect match of a disc layout, which the add policy force-pauses.
 func discLayoutRequest(t *testing.T) (*models.Instance, *InjectRequest) {
 	t.Helper()
 	sourceDir := t.TempDir()
@@ -627,15 +601,12 @@ func discLayoutRequest(t *testing.T) (*models.Instance, *InjectRequest) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:        "Movie",
-			InfoHash:    "deadbeef",
+			InfoHash:    "deadbeef00000000000000000000000000000000",
 			Files:       []TorrentFile{{Path: "Movie/BDMV/index.bdmv", Size: 4, Offset: 0}},
 			PieceLength: 16384,
 		},
 		Searchee: &Searchee{
 			Name: "Movie",
-			// A real searchee's Path is the release directory itself, with file RelPaths relative to
-			// it (Scanner.ScanDirectory), so the on-disk folder name matches the torrent root and
-			// no content-path alignment is needed here.
 			Path: filepath.Join(sourceDir, "Movie"),
 			Files: []*ScannedFile{{
 				Path:    sourceFile,
@@ -657,7 +628,6 @@ func discLayoutRequest(t *testing.T) (*models.Instance, *InjectRequest) {
 	return instance, req
 }
 
-// safeRecordingManager records the add options under a lock.
 type safeRecordingManager struct {
 	mu         sync.Mutex
 	addOptions map[string]string
@@ -717,7 +687,7 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T)
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Example.Release",
-			InfoHash: "deadbeef",
+			InfoHash: "deadbeef00000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
@@ -749,13 +719,12 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T)
 
 	manager := &safeRecordingManager{}
 	synctest.Test(t, func(t *testing.T) {
-		// A fast recheck finishes between polls; completed bytes prove it ran.
-		partial := &qbt.Torrent{Hash: "deadbeef", State: qbt.TorrentStatePausedDl, Progress: 0.8, Completed: 4, AmountLeft: 1}
+		partial := &qbt.Torrent{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStatePausedDl, Progress: 0.8, Completed: 4, AmountLeft: 1}
 		settle := &settleFake{
 			polls: []*qbt.Torrent{
 				partial, partial,
-				{Hash: "deadbeef", State: qbt.TorrentStateDownloading, Progress: 0.8, AmountLeft: 1},
-				{Hash: "deadbeef", State: qbt.TorrentStateDownloading, Progress: 0.8, AmountLeft: 1},
+				{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStateDownloading, Progress: 0.8, AmountLeft: 1},
+				{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStateDownloading, Progress: 0.8, AmountLeft: 1},
 			},
 			files: qbt.TorrentFiles{
 				{Name: "Example.Release/file.mkv", Size: 4, PieceRange: []int{0, 0}, Progress: 1},
@@ -776,7 +745,6 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T)
 			t.Fatalf("expected hardlink mode, got %q", res.Mode)
 		}
 
-		// Torrent must be forced paused for the recheck, even though StartPaused=false.
 		opts := manager.getAddOptions()
 		if opts["paused"] != "true" || opts["stopped"] != "true" {
 			t.Fatalf("expected forced paused/stopped for partial link tree, got paused=%q stopped=%q",
@@ -822,7 +790,7 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_Paused(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Example.Release",
-			InfoHash: "deadbeef",
+			InfoHash: "deadbeef00000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
@@ -884,13 +852,11 @@ func TestInjector_PartialLinkTree_DownloadMissingDisabled(t *testing.T) {
 		t.Fatalf("expected 'missing files' in error, got: %v", err)
 	}
 
-	// No torrent should have been added.
 	calls := settle.calls()
 	if len(calls) != 0 {
 		t.Fatalf("expected no bulk calls, got %d", len(calls))
 	}
 
-	// Link tree should have been cleaned up.
 	entries, readErr := os.ReadDir(fx.hardlinkBase)
 	if readErr != nil {
 		t.Fatalf("readdir: %v", readErr)
@@ -931,7 +897,7 @@ func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Example.Release",
-			InfoHash: "deadbeef",
+			InfoHash: "deadbeef00000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 			},
@@ -955,7 +921,7 @@ func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
 			IsPerfectMatch: true,
 		},
 		SearchResult:         &jackett.SearchResult{Indexer: "Test"},
-		DownloadMissingFiles: false, // Should not matter for perfect match.
+		DownloadMissingFiles: false,
 	}
 
 	res, err := inject(context.Background(), t, injector, req)
@@ -973,7 +939,6 @@ func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
 	if opts["skip_checking"] != "true" {
 		t.Fatalf("expected skip_checking=true for perfect match, got %q", opts["skip_checking"])
 	}
-	// qBittorrent 4.3.2 and later read contentLayout, so the add sends no root_folder.
 	if _, ok := opts["root_folder"]; ok {
 		t.Fatalf("expected no root_folder option, got %+v", opts)
 	}
@@ -998,7 +963,7 @@ func TestInjector_Inject_RunningPartial_RechecksAndResumesWhenComplete(t *testin
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Example.Release",
-			InfoHash: "deadbeef",
+			InfoHash: "deadbeef00000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
@@ -1029,11 +994,11 @@ func TestInjector_Inject_RunningPartial_RechecksAndResumesWhenComplete(t *testin
 
 	synctest.Test(t, func(t *testing.T) {
 		settle := &settleFake{polls: []*qbt.Torrent{
-			{Hash: "deadbeef", State: qbt.TorrentStateCheckingDl, Progress: 0.5, AmountLeft: 1},
-			{Hash: "deadbeef", State: qbt.TorrentStateDownloading, Progress: 0.9, AmountLeft: 1},
-			{Hash: "deadbeef", State: qbt.TorrentStateUploading, Progress: 1},
-			{Hash: "deadbeef", State: qbt.TorrentStateUploading, Progress: 1},
-			{Hash: "deadbeef", State: qbt.TorrentStateUploading, Progress: 1},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStateCheckingDl, Progress: 0.5, AmountLeft: 1},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStateDownloading, Progress: 0.9, AmountLeft: 1},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStateUploading, Progress: 1},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStateUploading, Progress: 1},
+			{Hash: "deadbeef00000000000000000000000000000000", State: qbt.TorrentStateUploading, Progress: 1},
 		}}
 		injector := NewInjector(nil, crossseed.NewAligner(manager), testAdder(manager, settle.start(t), nil), nil, nil, testBackendPool(instance))
 
@@ -1053,15 +1018,12 @@ func TestInjector_Inject_RunningPartial_RechecksAndResumesWhenComplete(t *testin
 		if settle.recheckCtxErr != nil {
 			t.Fatalf("expected background recheck context, got ctx err %v", settle.recheckCtxErr)
 		}
-		// The torrent downloads its missing file and resumes once nothing is left.
-		if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef", "resume:deadbeef"}) {
+		if got := settle.hashedCalls(); !slices.Equal(got, []string{"recheck:deadbeef00000000000000000000000000000000", "resume:deadbeef00000000000000000000000000000000"}) {
 			t.Fatalf("settle calls = %v, want recheck then resume of deadbeef", got)
 		}
 	})
 }
 
-// partialLinkTreeRequest returns a partial match of file.mkv, with extras.nfo
-// left to download.
 func partialLinkTreeRequest(t *testing.T) (*models.Instance, *InjectRequest) {
 	t.Helper()
 	tmp := t.TempDir()
@@ -1087,7 +1049,7 @@ func partialLinkTreeRequest(t *testing.T) (*models.Instance, *InjectRequest) {
 		TorrentBytes: []byte("x"),
 		ParsedTorrent: &ParsedTorrent{
 			Name:     "Example.Release",
-			InfoHash: "deadbeef",
+			InfoHash: "deadbeef00000000000000000000000000000000",
 			Files: []TorrentFile{
 				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
 				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
@@ -1107,23 +1069,17 @@ func partialLinkTreeRequest(t *testing.T) (*models.Instance, *InjectRequest) {
 	return instance, req
 }
 
-// TestInjector_PartialHardlinkResumeLinkedFileCheck covers the ADR 0004 check
-// before a partial hardlink add resumes after its recheck.
-// partialSettle lists a partial link tree add under its v2 hash, as qBittorrent
-// lists a hybrid torrent, with the parsed v1 hash as a variant.
 func partialSettle(states ...qbt.TorrentState) []*qbt.Torrent {
 	polls := make([]*qbt.Torrent, len(states))
 	for i, state := range states {
 		polls[i] = &qbt.Torrent{
-			Hash: "cafef00d", InfohashV1: "deadbeef", InfohashV2: "cafef00d",
+			Hash: "cafef00d00000000000000000000000000000000", InfohashV1: "deadbeef00000000000000000000000000000000", InfohashV2: "cafef00d00000000000000000000000000000000",
 			State: state, Progress: 0.8, Completed: 4, AmountLeft: 1,
 		}
 	}
 	return polls
 }
 
-// TestInjector_PartialHardlinkResumeLinkedFileCheck covers the ADR 0004 check
-// before a partial hardlink add resumes after its recheck.
 func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 	const (
 		missing = qbt.PieceStateNotDownloadYet
@@ -1143,8 +1099,7 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 				{Name: "Example.Release/file.mkv", Size: 4, PieceRange: []int{0, 1}, Progress: 0.5},
 				{Name: "Example.Release/extras.nfo", Size: 1, PieceRange: []int{2, 2}},
 			},
-			pieces: []qbt.PieceState{missing, have, missing},
-			// One read, then the torrent stays paused: a failed read would retry.
+			pieces:    []qbt.PieceState{missing, have, missing},
 			wantReads: 1,
 		},
 		{
@@ -1155,9 +1110,7 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 			},
 			pieces:     []qbt.PieceState{have, missing},
 			wantResume: true,
-			// The check runs on each poll that can resume: the stable poll, the
-			// resume, and the retry while qBittorrent still shows it paused.
-			wantReads: 3,
+			wantReads:  3,
 		},
 		{
 			name: "piece state read fails once then succeeds",
@@ -1180,7 +1133,7 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 						qbt.TorrentStatePausedDl, qbt.TorrentStatePausedDl, qbt.TorrentStatePausedDl,
 						qbt.TorrentStateDownloading, qbt.TorrentStateDownloading,
 					),
-					qbitHash:      "cafef00d",
+					qbitHash:      "cafef00d00000000000000000000000000000000",
 					files:         tt.files,
 					pieces:        tt.pieces,
 					pieceFailures: tt.pieceFailures,
@@ -1209,14 +1162,12 @@ func TestInjector_PartialHardlinkResumeLinkedFileCheck(t *testing.T) {
 func TestInjector_PartialReflinkResumeSkipsLinkedFileCheck(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		_, req := partialLinkTreeRequest(t)
-		// Every piece state read fails, so only a skipped check resumes.
 		settle := &settleFake{
 			polls:         partialSettle(qbt.TorrentStatePausedDl, qbt.TorrentStatePausedDl, qbt.TorrentStateDownloading, qbt.TorrentStateDownloading),
 			pieceFailures: 1 << 30,
 		}
-		// The test filesystem cannot clone, so the add gets the facts that a reflink add gives.
 		adder := testAdder(&safeRecordingManager{}, settle.start(t), nil)
-		check, refusal := adder.Check(t.Context(), req.InstanceID, crossseed.AddFacts{}, req.ParsedTorrent.InfoHash)
+		check, refusal := adder.Check(t.Context(), req.InstanceID, crossseed.AddFacts{}, infohash.ParseAll([]string{req.ParsedTorrent.InfoHash})...)
 		if refusal != nil {
 			t.Fatalf("pre-add check refused: %+v", refusal)
 		}
@@ -1246,8 +1197,8 @@ func TestInjector_Inject_RunsExternalProgramOnSuccessOnly(t *testing.T) {
 	addErr := errors.New("add failed")
 	tests := []struct {
 		name    string
-		perfect bool // drop the unmatched file so the add is a full match
-		refuse  bool // a partial link tree without 'Download missing files'
+		perfect bool
+		refuse  bool
 		addErr  error
 		ran     bool
 	}{
@@ -1283,7 +1234,7 @@ func TestInjector_Inject_RunsExternalProgramOnSuccessOnly(t *testing.T) {
 
 			var want []string
 			if tt.ran {
-				want = []string{"1/deadbeef"}
+				want = []string{"1/deadbeef00000000000000000000000000000000"}
 			}
 			if !slices.Equal(runs, want) {
 				t.Fatalf("External Program runs = %v, want %v", runs, want)

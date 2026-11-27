@@ -22,7 +22,7 @@ import { cn, formatErrorReason } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ComponentProps } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -95,11 +95,8 @@ export function ReannounceOverview({
     [instances]
   )
 
-  // Reannounce activity is pushed via SSE (reannounce.activity events invalidate
-  // ["instance-reannounce-activity", id]), so there is no polling interval.
   useActivityStream()
 
-  // Fetch activity for all instances with enabled reannounce
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["instance-reannounce-activity", instance.id],
@@ -157,11 +154,11 @@ export function ReannounceOverview({
     setPendingEnableInstance(null)
   }
 
-  const outcomeClasses: Record<InstanceReannounceActivity["outcome"], string> = {
-    succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-    failed: "bg-destructive/10 text-destructive border-destructive/30",
-    skipped: "bg-muted text-muted-foreground border-border/60",
-    started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  const outcomeBadges: Record<InstanceReannounceActivity["outcome"], Pick<ComponentProps<typeof Badge>, "variant" | "className">> = {
+    succeeded: { variant: "success" },
+    failed: { variant: "outline", className: "bg-destructive/10 text-destructive border-destructive/30" },
+    skipped: { variant: "outline", className: "bg-muted text-muted-foreground border-border/60" },
+    started: { variant: "info" },
   }
 
   const getSettingsSummaryParts = (settings: InstanceReannounceSettings): string[] => {
@@ -227,7 +224,6 @@ export function ReannounceOverview({
               const isEnabled = settings?.enabled ?? false
               const hideSkipped = hideSkippedMap[instance.id] ?? true
               const searchTerm = (searchMap[instance.id] ?? "").toLowerCase().trim()
-              // Filter by outcome and search term, limit to 50 events for display
               const filteredEvents = events
                 .filter((e) => {
                   if (hideSkipped && e.outcome === "skipped") return false
@@ -249,12 +245,12 @@ export function ReannounceOverview({
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
                           <span className="font-medium min-w-0 wrap-anywhere">{instance.name}</span>
                           {isEnabled && stats.successToday > 0 && (
-                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                            <Badge variant="success">
                               {t("preferences.reannounceOverview.today", { count: stats.successToday })}
                             </Badge>
                           )}
                           {isEnabled && stats.failedToday > 0 && (
-                            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
+                            <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
                               {t("preferences.reannounceOverview.failed", { count: stats.failedToday })}
                             </Badge>
                           )}
@@ -274,7 +270,7 @@ export function ReannounceOverview({
                       >
                         <span className={cn(
                           "text-xs font-medium",
-                          isEnabled ? "text-emerald-500" : "text-muted-foreground"
+                          isEnabled ? "text-success" : "text-muted-foreground"
                         )}>
                           {isEnabled ? t("preferences.reannounceOverview.on") : t("preferences.reannounceOverview.off")}
                         </span>
@@ -305,9 +301,7 @@ export function ReannounceOverview({
 
                   <AccordionContent className="px-6 pb-4">
                     <div className="space-y-4">
-                      {/* Settings summary */}
                       <div className="flex flex-wrap items-center justify-between gap-y-3 p-3 rounded-lg bg-muted/40 border">
-                        {/* A zero basis without min-w-0 moves the button down only once the widest summary pair stops fitting beside it. */}
                         <div className="space-y-0.5 flex-1">
                           <p className="text-sm text-muted-foreground">
                             {settings ? <SettingsSummary parts={getSettingsSummaryParts(settings)} /> : t("preferences.reannounceOverview.notConfigured")}
@@ -333,7 +327,6 @@ export function ReannounceOverview({
                         )}
                       </div>
 
-                      {/* Activity log */}
                       {isEnabled && (
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
@@ -382,7 +375,6 @@ export function ReannounceOverview({
                             </div>
                           </div>
 
-                          {/* Search filter */}
                           <div className="relative">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
@@ -440,10 +432,10 @@ export function ReannounceOverview({
                                             </TooltipContent>
                                           </Tooltip>
                                           <Badge
-                                            variant="outline"
+                                            variant={outcomeBadges[event.outcome].variant}
                                             className={cn(
-                                              "capitalize text-[10px] px-1.5 py-0 h-5",
-                                              outcomeClasses[event.outcome]
+                                              "capitalize text-10 px-1.5 py-0 h-5",
+                                              outcomeBadges[event.outcome].className
                                             )}
                                           >
                                             {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}

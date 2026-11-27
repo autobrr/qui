@@ -26,27 +26,34 @@ const (
 )
 
 type flagsTorrent struct {
-	flags    [3]bool // has_tracker_warning, has_tracker_error, has_other_announce_error
+	flags    [3]bool
 	addedOn  int64
 	trackers []qbt.TorrentTracker
 }
 
-// flagsRig is a qBittorrent 5.2 stub. Each test sets the torrents, their
-// announce flags, and the tracker lists that torrents/info returns.
 type flagsRig struct {
 	sm   *SyncManager
 	sink *mockSyncEventSink
 
 	mu       sync.Mutex
 	torrents map[string]*flagsTorrent
-	trackers map[string][]string // sync/maindata trackers map
-	missing  map[string]bool     // hashes that torrents/info leaves out
-	requests [][]string          // the hashes of each torrents/info request; nil means no hash filter
-	failFrom int                 // when > 0, torrents/info request number failFrom and later fail
+	trackers map[string][]string
+	missing  map[string]bool
+	requests [][]string
+	failFrom int
 	rid      int
 }
 
 func newFlagsRig(t *testing.T) *flagsRig {
+	t.Helper()
+	rig := newFlagsRigAt(t, "2.15.1")
+	client, err := rig.sm.clientPool.GetClient(t.Context(), 1)
+	require.NoError(t, err)
+	require.True(t, client.Supports(CapAnnounceFlags))
+	return rig
+}
+
+func newFlagsRigAt(t *testing.T, webAPI string) *flagsRig {
 	t.Helper()
 
 	added := time.Now().Add(-2 * time.Hour).Unix()
@@ -79,7 +86,7 @@ func newFlagsRig(t *testing.T) *flagsRig {
 		case "/api/v2/auth/login":
 			_, _ = io.WriteString(w, "Ok.")
 		case "/api/v2/app/webapiVersion":
-			_, _ = io.WriteString(w, "2.15.1")
+			_, _ = io.WriteString(w, webAPI)
 		case "/api/v2/sync/maindata":
 			rig.rid++
 			torrents := make(map[string]map[string]any, len(rig.torrents))
@@ -112,6 +119,13 @@ func newFlagsRig(t *testing.T) *flagsRig {
 				out = append(out, map[string]any{"hash": hash, "added_on": tor.addedOn, "trackers": tor.trackers})
 			}
 			_ = json.MarshalWrite(w, out)
+		case "/api/v2/torrents/trackers":
+			tor, ok := rig.torrents[r.URL.Query().Get("hash")]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_ = json.MarshalWrite(w, tor.trackers)
 		default:
 			http.NotFound(w, r)
 		}
@@ -121,15 +135,12 @@ func newFlagsRig(t *testing.T) *flagsRig {
 	client, err := NewClientWithTimeout(1, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
-	require.True(t, client.Supports(CapAnnounceFlags))
 
 	rig.sm = NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
 	rig.sm.SetSyncEventSink(rig.sink)
 	return rig
 }
 
-// pass syncs MainData, as the loop's read does when the cache is stale,
-// runs one health pass, and returns the torrents/info requests it sent.
 func (rig *flagsRig) pass(t *testing.T) [][]string {
 	t.Helper()
 	client, err := rig.sm.clientPool.GetClient(t.Context(), 1)
@@ -186,7 +197,6 @@ func TestFlagsPassFetchesTorrentsWhoseFlagsChanged(t *testing.T) {
 		healthy := rig.torrents[flagsHashHealthy]
 		healthy.flags = [3]bool{false, false, true}
 		healthy.trackers = []qbt.TorrentTracker{{Url: "https://ok.example.invalid/announce", Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"}}
-		// A changed flag on a flagged torrent also needs new details.
 		errored := rig.torrents[flagsHashError]
 		errored.flags = [3]bool{false, true, true}
 		errored.trackers = []qbt.TorrentTracker{{Url: "https://error.example.invalid/announce", Status: qbt.TrackerStatusUnreachable}}
@@ -210,8 +220,6 @@ func TestFlagsPassDropsClearedTorrentsWithoutFetch(t *testing.T) {
 	require.Equal(t, map[string]TrackerHealth{flagsHashError: TrackerHealthError}, rig.health(t))
 }
 
-// The flags do not change when only the tracker message changes, so a flagged
-// torrent gets new details after trackerHealthDetailMaxAge.
 func TestFlagsPassRefetchesFlaggedTorrentsAfterMaxAge(t *testing.T) {
 	t.Parallel()
 
@@ -226,8 +234,6 @@ func TestFlagsPassRefetchesFlaggedTorrentsAfterMaxAge(t *testing.T) {
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashError])
 }
 
-// A flagged torrent that torrents/info leaves out, for example one deleted
-// after the sync, must not fall back to a fetch of the whole library.
 func TestFlagsPassNeverFetchesWholeLibrary(t *testing.T) {
 	t.Parallel()
 
@@ -241,8 +247,6 @@ func TestFlagsPassNeverFetchesWholeLibrary(t *testing.T) {
 	require.Equal(t, map[string]TrackerHealth{flagsHashError: TrackerHealthError}, rig.health(t))
 }
 
-// The one-hour grace for a new torrent is checked on each pass, not only when
-// details are fetched.
 func TestFlagsPassRecomputesUnregisteredGraceEachPass(t *testing.T) {
 	t.Parallel()
 
@@ -279,8 +283,6 @@ func TestFlagsPassNotifiesOnlyWhenHealthChanged(t *testing.T) {
 	require.Len(t, rig.sink.getTrackerHealthUpdates(), 3, "a new tracker domain publishes")
 }
 
-// Tracker domains come from the sync/maindata trackers map, so a torrent counts
-// under each of its trackers without a fetch of its details.
 func TestFlagsPassMapsDomainsFromMainData(t *testing.T) {
 	t.Parallel()
 
@@ -293,8 +295,6 @@ func TestFlagsPassMapsDomainsFromMainData(t *testing.T) {
 	require.Equal(t, map[string]struct{}{"down.example.invalid": {}}, mapping.HashToDomains[flagsHashDown])
 }
 
-// The tracker conditions of automations read every tracker URL from MainData,
-// with no request to qBittorrent.
 func TestTrackerURLsReadsMainData(t *testing.T) {
 	t.Parallel()
 
@@ -316,8 +316,6 @@ func TestTrackerURLsReadsMainData(t *testing.T) {
 	require.Empty(t, rig.requests, "no torrents/info request")
 }
 
-// A tracker edit in qui keeps the flags, so the next pass must fetch the
-// details of the edited torrent again.
 func TestFlagsPassRefetchesEditedTorrents(t *testing.T) {
 	t.Parallel()
 
@@ -336,11 +334,6 @@ func TestFlagsPassRefetchesEditedTorrents(t *testing.T) {
 	require.Empty(t, rig.pass(t), "the edit is handled once")
 }
 
-// Automations with a tracker status or message condition need the details of
-// every torrent. On qBittorrent 5.2+ they come in requests that name their
-// hashes, never in one request for the whole library. A rule can run every
-// minute, so later runs fetch only the torrents whose flags changed or that
-// qui edited.
 func TestTrackerDetailsFetchesByHashOnFlagsVersions(t *testing.T) {
 	t.Parallel()
 
@@ -377,15 +370,12 @@ func TestTrackerDetailsFetchesByHashOnFlagsVersions(t *testing.T) {
 	require.Equal(t, [][]string{{flagsHashHealthy}}, requests, "an edit fetches that torrent")
 }
 
-// A torrent without tracker data matches a negated tracker condition, so an
-// automation run must not see a partial fetch as complete.
 func TestTrackerDetailsReportsPartialFetch(t *testing.T) {
 	t.Parallel()
 
 	rig := newFlagsRig(t)
 	torrents := []*qbt.Torrent{{Hash: flagsHashDown}, {Hash: flagsHashHealthy}}
 	rig.set(func() {
-		// 101 torrents need two requests.
 		for i := range 99 {
 			hash := fmt.Sprintf("%040x", i+0xf000)
 			rig.torrents[hash] = &flagsTorrent{trackers: rig.torrents[flagsHashHealthy].trackers}
@@ -398,15 +388,11 @@ func TestTrackerDetailsReportsPartialFetch(t *testing.T) {
 	require.Error(t, err)
 }
 
-// A pass that fails part way keeps what it fetched, so the next pass asks only
-// for the rest. Without this, a large first pass that times out starts over
-// on every pass.
 func TestFlagsPassKeepsProgressAfterFailure(t *testing.T) {
 	t.Parallel()
 
 	rig := newFlagsRig(t)
 	rig.set(func() {
-		// 101 flagged torrents need two requests.
 		for i := range 99 {
 			hash := fmt.Sprintf("%040x", i+0xf000)
 			rig.torrents[hash] = &flagsTorrent{flags: [3]bool{false, false, true}, trackers: rig.torrents[flagsHashDown].trackers}

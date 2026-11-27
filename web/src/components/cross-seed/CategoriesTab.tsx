@@ -31,7 +31,6 @@ interface CategoriesFormState {
   inheritSourceTags: boolean
 }
 
-// Exactly one category mode is active; priority when the flags disagree: custom > indexer > affix > reuse.
 function categoryModeOf(settings: CrossSeedAutomationSettings): CategoryMode {
   if (settings.useCustomCategory) return "custom"
   if (settings.useCategoryFromIndexer) return "indexer"
@@ -84,7 +83,6 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
         <CardDescription>{t("rules.tabDescriptions.categories")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Categories */}
         <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{t("rules.categories.title")}</p>
@@ -99,7 +97,7 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
               <RadioGroupItem value="reuse" id="category-reuse" className="mt-0.5" />
               <div className="space-y-0.5 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <Label htmlFor="category-reuse" className="font-medium cursor-pointer">{t("rules.categories.reuseCategory")}</Label>
+                  <Label htmlFor="category-reuse" className="cursor-pointer">{t("rules.categories.reuseCategory")}</Label>
                   <FieldHelp>{t("rules.categories.reuseCategoryHelp")}</FieldHelp>
                 </div>
                 <p className="text-xs text-muted-foreground">{t("rules.categories.reuseCategoryDescription")}</p>
@@ -109,7 +107,7 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
               <RadioGroupItem value="affix" id="category-affix" className="mt-0.5" />
               <div className="space-y-0.5 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <Label htmlFor="category-affix" className="font-medium cursor-pointer">{t("rules.categories.categoryAffix")}</Label>
+                  <Label htmlFor="category-affix" className="cursor-pointer">{t("rules.categories.categoryAffix")}</Label>
                   <FieldHelp>{t("rules.categories.categoryAffixHelp")}</FieldHelp>
                 </div>
                 <p className="text-xs text-muted-foreground">{t("rules.categories.categoryAffixDescription")}</p>
@@ -145,7 +143,7 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
               <RadioGroupItem value="indexer" id="category-indexer" className="mt-0.5" />
               <div className="space-y-0.5 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <Label htmlFor="category-indexer" className="font-medium cursor-pointer">{t("rules.categories.indexerCategory")}</Label>
+                  <Label htmlFor="category-indexer" className="cursor-pointer">{t("rules.categories.indexerCategory")}</Label>
                   <FieldHelp>{t("rules.categories.indexerCategoryHelp")}</FieldHelp>
                 </div>
                 <p className="text-xs text-muted-foreground">{t("rules.categories.indexerCategoryDescription")}</p>
@@ -155,7 +153,7 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
               <RadioGroupItem value="custom" id="category-custom" className="mt-0.5" />
               <div className="space-y-0.5 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <Label htmlFor="category-custom" className="font-medium cursor-pointer">{t("rules.categories.customCategory")}</Label>
+                  <Label htmlFor="category-custom" className="cursor-pointer">{t("rules.categories.customCategory")}</Label>
                   <FieldHelp>{t("rules.categories.customCategoryHelp")}</FieldHelp>
                 </div>
                 <p className="text-xs text-muted-foreground">{t("rules.categories.customCategoryDescription")}</p>
@@ -187,7 +185,6 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
           </RadioGroup>
         </div>
 
-        {/* Tagging */}
         <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm font-medium leading-none">{t("rules.tagging.title")}</p>
@@ -195,7 +192,7 @@ export function CategoriesTab({ settings }: { settings: CrossSeedAutomationSetti
           </div>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5">
-              <Label htmlFor="inherit-source-tags" className="font-medium">{t("rules.tagging.inheritSourceTags")}</Label>
+              <Label htmlFor="inherit-source-tags">{t("rules.tagging.inheritSourceTags")}</Label>
               <FieldHelp>{t("rules.tagging.inheritSourceTagsDescription")}</FieldHelp>
             </div>
             <Switch

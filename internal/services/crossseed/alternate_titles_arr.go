@@ -1,0 +1,55 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package crossseed
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+
+	"github.com/autobrr/qui/internal/services/arr"
+)
+
+type arrAlternateTitles struct {
+	arr          *arr.Service
+	contentTypes []arr.ContentType
+}
+
+func NewArrAlternateTitles(service *arr.Service) []AlternateTitleSource {
+	return []AlternateTitleSource{
+		arrAlternateTitles{arr: service, contentTypes: []arr.ContentType{arr.ContentTypeTV, arr.ContentTypeAnime}},
+		arrAlternateTitles{arr: service, contentTypes: []arr.ContentType{arr.ContentTypeMovie}},
+	}
+}
+
+func (a arrAlternateTitles) Changed() <-chan struct{} {
+	return a.arr.InstancesChanged()
+}
+
+func (a arrAlternateTitles) AlternateTitles(ctx context.Context, held HeldRelease) (AlternateTitles, error) {
+	contentType := mapContentTypeToARR(held.ContentType)
+	if !slices.Contains(a.contentTypes, contentType) {
+		return AlternateTitles{}, nil
+	}
+	result, err := a.arr.LookupExternalIDs(ctx, held.TorrentName, contentType)
+	if errors.Is(err, arr.ErrTitleUnanswered) {
+		return AlternateTitles{Requested: true}, fmt.Errorf("look up the alternate titles of %s: %w: %w", contentType, ErrTitleUnanswered, err)
+	}
+	if err != nil {
+		return AlternateTitles{Requested: true}, fmt.Errorf("look up the alternate titles of %s: %w", contentType, err)
+	}
+	if result == nil {
+		return AlternateTitles{}, nil
+	}
+	answer := AlternateTitles{Titles: result.Titles, Seasons: result.TitleSeasons, Requested: !result.FromCache || refetched(result), Incomplete: result.Incomplete}
+	if result.FromCache && refetched(result) && result.Incomplete {
+		return answer, fmt.Errorf("look up the alternate titles of %s: no instance answered, so the cached answer stays", contentType)
+	}
+	return answer, nil
+}
+
+func refetched(cached *arr.ExternalIDsResult) bool {
+	return cached.IDs != nil && (!cached.TitlesKnown || !cached.EpisodeMapKnown)
+}

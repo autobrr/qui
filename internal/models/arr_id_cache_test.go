@@ -15,25 +15,13 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// forceNonUTCLocal points time.Local at a fixed non-UTC zone for the duration of
-// the test, reproducing a home server whose system clock is not UTC. CI runners
-// default to UTC, which is the exact configuration that hid #1961, so without this
-// the regression would stay invisible. These tests must not call t.Parallel():
-// time.Local is process-global, but Go runs non-parallel tests sequentially before
-// any parallel ones resume, so a non-parallel test owns time.Local while it runs.
 func forceNonUTCLocal(t *testing.T) {
 	t.Helper()
 	original := time.Local
-	// -06:00, no DST; any non-UTC offset triggers the original lexical-comparison flip.
 	time.Local = time.FixedZone("test-non-utc", -6*60*60)
 	t.Cleanup(func() { time.Local = original })
 }
 
-// TestArrIDCacheStore_GetReturnsLiveEntryInNonUTCTimezone is the #1961 guard: Set
-// stored expires_at in local time while Get compared it against CURRENT_TIMESTAMP
-// (UTC). In any non-UTC zone the lexical comparison of the two string formats
-// flipped, so Get returned sql.ErrNoRows for a freshly written, unexpired entry —
-// silently disabling the cache. After the fix both sides use a UTC time.Time.
 func TestArrIDCacheStore_GetReturnsLiveEntryInNonUTCTimezone(t *testing.T) {
 	forceNonUTCLocal(t)
 
@@ -45,14 +33,12 @@ func TestArrIDCacheStore_GetReturnsLiveEntryInNonUTCTimezone(t *testing.T) {
 	require.NoError(t, store.Set(ctx, "title-hash", "tv", nil, ids, false, time.Hour))
 
 	entry, err := store.Get(ctx, "title-hash", "tv")
-	require.NoError(t, err) // pre-fix in non-UTC: "sql: no rows in result set"
+	require.NoError(t, err)
 	require.NotNil(t, entry)
 	require.Equal(t, *ids, entry.ExternalIDs)
 	require.False(t, entry.IsNegative)
 }
 
-// TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone covers expiry and cleanup
-// outside UTC. Get excludes expired entries, and cleanup removes only those entries.
 func TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone(t *testing.T) {
 	forceNonUTCLocal(t)
 
@@ -63,7 +49,6 @@ func TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone(t *testing.T) {
 	require.NoError(t, store.Set(ctx, "live", "tv", nil, nil, false, time.Hour))
 	require.NoError(t, store.Set(ctx, "stale", "movie", nil, nil, false, -time.Hour))
 
-	// The already-expired entry must be unretrievable via Get even before cleanup runs.
 	_, err := store.Get(ctx, "stale", "movie")
 	require.ErrorIs(t, err, sql.ErrNoRows)
 
@@ -75,16 +60,11 @@ func TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, removed)
 
-	// The live entry is the survivor and is still retrievable.
 	entry, err := store.Get(ctx, "live", "tv")
 	require.NoError(t, err)
 	require.NotNil(t, entry)
 }
 
-// TestArrIDCacheStore_GetReturnsNegativeEntryInNonUTCTimezone confirms negative
-// cache entries (a remembered "not found", with no external IDs) round-trip in a
-// non-UTC zone too — they take the same UTC-normalized expiry path as positive
-// entries, and a negative hit is what spares the upstream ARR a repeat lookup.
 func TestArrIDCacheStore_GetReturnsNegativeEntryInNonUTCTimezone(t *testing.T) {
 	forceNonUTCLocal(t)
 
@@ -101,10 +81,6 @@ func TestArrIDCacheStore_GetReturnsNegativeEntryInNonUTCTimezone(t *testing.T) {
 	require.True(t, entry.ExternalIDs.IsEmpty())
 }
 
-// TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive is the #2300 guard:
-// concurrent lookups of the same title can race, and the slower one may resolve
-// nothing. Its negative write must not replace freshly cached IDs, or every
-// search for that title goes ID-less until the negative TTL expires.
 func TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive(t *testing.T) {
 	t.Parallel()
 
@@ -147,7 +123,6 @@ func TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive(t *testing.T) {
 		require.NoError(t, store.Set(ctx, "expired", "movie", nil, ids, false, -time.Minute))
 		require.NoError(t, store.Set(ctx, "expired", "movie", nil, nil, true, time.Hour))
 
-		// The negative entry must replace the expired positive entry.
 		entry, err := store.Get(ctx, "expired", "movie")
 		require.NoError(t, err)
 		require.True(t, entry.IsNegative)
@@ -171,7 +146,7 @@ func TestArrIDCacheStore_EpisodeMapRoundTrip(t *testing.T) {
 	episodeMap := &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}
 
 	t.Run("map stored and read back", func(t *testing.T) {
-		require.NoError(t, store.SetWithTitles(ctx, "mapped", "tv", nil, ids, []string{"Solitude"}, episodeMap, true, false, time.Hour))
+		require.NoError(t, store.SetWithTitles(ctx, "mapped", "tv", nil, ids, []string{"Solitude"}, nil, episodeMap, true, false, time.Hour))
 		entry, err := store.Get(ctx, "mapped", "tv")
 		require.NoError(t, err)
 		require.True(t, entry.HasEpisodeMap)
@@ -179,7 +154,7 @@ func TestArrIDCacheStore_EpisodeMapRoundTrip(t *testing.T) {
 	})
 
 	t.Run("looked and found none sets the flag with nulls", func(t *testing.T) {
-		require.NoError(t, store.SetWithTitles(ctx, "unmapped", "tv", nil, ids, []string{"Solitude"}, nil, true, false, time.Hour))
+		require.NoError(t, store.SetWithTitles(ctx, "unmapped", "tv", nil, ids, []string{"Solitude"}, nil, nil, true, false, time.Hour))
 		entry, err := store.Get(ctx, "unmapped", "tv")
 		require.NoError(t, err)
 		require.True(t, entry.HasEpisodeMap)
@@ -202,4 +177,23 @@ func TestArrIDCacheStore_EpisodeMapRoundTrip(t *testing.T) {
 		require.False(t, entry.HasEpisodeMap)
 		require.Nil(t, entry.EpisodeMap)
 	})
+}
+
+func TestArrIDCacheStore_TitleSeasonsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, "arr-id-cache-title-seasons")
+	store := models.NewArrIDCacheStore(db)
+	ids := &models.ExternalIDs{TVDbID: 471000}
+	titleSeasons := map[string][]int{"kodoku no yado": {2, 3}, "yado specials": {0}}
+
+	require.NoError(t, store.SetWithTitles(ctx, "scoped", "tv", nil, ids, []string{"Solitude", "Kodoku no Yado", "Yado Specials"}, titleSeasons, nil, true, false, time.Hour))
+	require.NoError(t, store.SetWithTitles(ctx, "wide", "tv", nil, ids, []string{"Solitude"}, map[string][]int{}, nil, true, false, time.Hour))
+
+	scoped, err := store.Get(ctx, "scoped", "tv")
+	require.NoError(t, err)
+	require.Equal(t, titleSeasons, scoped.TitleSeasons)
+
+	var stored sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT title_seasons_json FROM arr_id_cache WHERE title_hash = ?", "wide").Scan(&stored))
+	require.False(t, stored.Valid, "a row with no scoped title stores no seasons")
 }

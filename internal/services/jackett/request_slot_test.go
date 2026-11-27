@@ -20,9 +20,6 @@ import (
 	"github.com/autobrr/qui/pkg/releases"
 )
 
-// answer429 sends one request of kind to indexer that the indexer answers
-// with 429 and the given Retry-After header.
-// It returns the end of the Rate-limit cooldown.
 func answer429(t *testing.T, slots *requestSlots, indexer *models.TorznabIndexer, kind requestKind, retryAfter string) time.Time {
 	t.Helper()
 	ticket, _, err := slots.tryAcquire(indexer, kind)
@@ -96,7 +93,7 @@ func TestRequestSlots_GapCountsFromTheAnswer(t *testing.T) {
 			}
 		}()
 
-		time.Sleep(20 * time.Second) // a slow answer
+		time.Sleep(20 * time.Second)
 		synctest.Wait()
 		require.Empty(t, acquired, "a download went while the search was open")
 		answeredAt := time.Now()
@@ -207,8 +204,6 @@ func TestRequestSlots_ShorterCooldownKeepsTheLongerOne(t *testing.T) {
 	})
 }
 
-// stalledRecorder is a database whose writer stays busy: RecordError returns
-// only when its context ends.
 type stalledRecorder struct {
 	calls chan string
 	ended chan error
@@ -276,8 +271,6 @@ func TestWithMinRequestInterval(t *testing.T) {
 	})
 }
 
-// handlerTransport answers in-process, so a test of an indexer client can run
-// in synctest.Test.
 type handlerTransport struct{ handler http.Handler }
 
 func (h handlerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -289,9 +282,6 @@ func (h handlerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return rec.Result(), nil
 }
 
-// indexerStub stands in for a Native indexer and logs the time of each request.
-// A test that uses it must not call t.Parallel, because it replaces
-// http.DefaultTransport, which every indexer client uses.
 type indexerStub struct {
 	mu     sync.Mutex
 	hits   []stubHit
@@ -355,8 +345,6 @@ func (s *indexerStub) times(kind string) []time.Time {
 	return out
 }
 
-// newStubService shares the release parser, because a new one starts a
-// goroutine that never ends, and synctest.Test waits for every goroutine.
 func newStubService(t *testing.T, indexers ...*models.TorznabIndexer) *Service {
 	t.Helper()
 	service := newService(&mockTorznabIndexerStore{indexers: indexers}, releases.DefaultParser)
@@ -364,7 +352,6 @@ func newStubService(t *testing.T, indexers ...*models.TorznabIndexer) *Service {
 	return service
 }
 
-// startSearch runs one queued search on indexer and returns its result.
 func startSearch(t *testing.T, service *Service, indexer *models.TorznabIndexer) <-chan error {
 	t.Helper()
 	done := make(chan error, 1)
@@ -382,7 +369,6 @@ func download(service *Service, indexer *models.TorznabIndexer, pace bool) error
 	return err
 }
 
-// regression: #2735
 func TestDirScanDownloadWaitsForOpenSearch(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		searchOpen := make(chan struct{})
@@ -409,7 +395,6 @@ func TestDirScanDownloadWaitsForOpenSearch(t *testing.T) {
 	})
 }
 
-// regression: #2735
 func TestDirScanDownloadRetryWaitsForRequestGap(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var tries int

@@ -10,13 +10,10 @@ import (
 	"os"
 )
 
-// Run does nothing: only Windows has a Tray.
 func Run(Menu) {}
 
-// Remove does nothing: only Windows has a Tray.
 func Remove() {}
 
-// ShowError prints msg to stderr: only Windows has a Tray build.
 func ShowError(msg string) {
 	fmt.Fprintln(os.Stderr, msg)
 }

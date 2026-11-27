@@ -111,10 +111,6 @@ func mainDataServerState(data *qbt.MainData) *qbt.ServerState {
 	return &stateCopy
 }
 
-// mainDataModeForRequest picks the read mode for a list request. Only a zero
-// lastSync means "never synced", and that cold cache still takes the checked
-// read so the first request fills it. A nil tracker map is not the same signal:
-// a synced instance can simply have no trackers.
 func mainDataModeForRequest(skipFreshData bool, lastSync time.Time) mainDataReadMode {
 	if skipFreshData && !lastSync.IsZero() {
 		return mainDataReadCached
@@ -123,11 +119,6 @@ func mainDataModeForRequest(skipFreshData bool, lastSync time.Time) mainDataRead
 	return mainDataRead
 }
 
-// resolveMainData assembles only the three fields qui reads. GetData and
-// GetDataUnchecked deep-clone the whole torrent map on every call and nothing
-// here reads it; cloning the tracker map instead is free by comparison. A cold
-// cache yields nil fields rather than a nil *MainData, which every consumer
-// already treats the same way.
 func resolveMainData(provider mainDataProvider, mode mainDataReadMode) *qbt.MainData {
 	if provider == nil {
 		return nil
@@ -136,13 +127,8 @@ func resolveMainData(provider mainDataProvider, mode mainDataReadMode) *qbt.Main
 	var trackers map[string][]string
 	switch mode {
 	case mainDataReadCached, mainDataReadFresh:
-		// mainDataReadFresh has already synced, so the cache is current.
 		trackers = provider.GetTrackersUnchecked()
 	case mainDataRead:
-		// The checked getter starts a background refresh of a stale cache and
-		// returns the stale data. On a cold cache it waits for the first sync,
-		// up to one request timeout. Read it first so the getters below see
-		// what that first sync filled in.
 		trackers = provider.GetTrackers()
 	default:
 		return nil

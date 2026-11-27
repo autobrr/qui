@@ -16,40 +16,22 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// categoryVersionTTL is how long an instance's version answer is reused, since
-// reading it costs a request.
 const categoryVersionTTL = time.Minute
 
-// InstanceFolders are the folders qBittorrent saves and downloads into for one
-// instance, in the dialect of its backend. Each list is sorted.
 type InstanceFolders struct {
-	DefaultSavePath string
-	// DownloadPath is "" when it is turned off.
+	DefaultSavePath     string
 	DownloadPath        string
 	CategorySaveFolders []string
-	// DownloadFolders are each category's download folder.
-	DownloadFolders []string
-	// MonitoredFolders are each monitored folder and its custom save path.
-	MonitoredFolders []string
+	DownloadFolders     []string
+	MonitoredFolders    []string
 }
 
-// categoryVersion is what an instance's qBittorrent version says about
-// category folders.
 type categoryVersion struct {
-	// rule is the rule with subcategories on.
-	rule CategoryPathRule
-	// optional: the use_subcategories preference can turn nesting off
-	// (qBittorrent 5.0 and 5.1). 5.2 dropped it and always nests.
+	rule     CategoryPathRule
 	optional bool
 	at       time.Time
 }
 
-// InstanceFolders reads the preferences and the categories from qBittorrent,
-// not from the cache, so a change in its WebUI is seen on the next call. The
-// cache can also name a folder qBittorrent no longer uses: before WebAPI
-// 2.11.10 a partial maindata update never reports a category going back to
-// inherit its download path. It fails rather than return a short list, which
-// would leave a folder qBittorrent saves into to be removed.
 func (sm *SyncManager) InstanceFolders(ctx context.Context, d fsops.PathDialect, instanceID int) (InstanceFolders, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
@@ -70,9 +52,6 @@ func (sm *SyncManager) InstanceFolders(ctx context.Context, d fsops.PathDialect,
 	return instanceFolders(d, prefs, categories, version.ruleFor(prefs))
 }
 
-// CategoryPathRule is the rule an instance's qBittorrent names category
-// folders with under prefs, the same read the caller takes the default save
-// path from.
 func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int, prefs *qbt.AppPreferences) (CategoryPathRule, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
@@ -85,10 +64,6 @@ func (sm *SyncManager) CategoryPathRule(ctx context.Context, instanceID int, pre
 	return version.ruleFor(prefs), nil
 }
 
-// CategorySaveFolder is the folder where qBittorrent saves a torrent of
-// category under automatic management, with the categories read from
-// qBittorrent and prefs the read the caller takes the default save path
-// from. A category that qBittorrent lacks resolves as qBittorrent creates it.
 func (sm *SyncManager) CategorySaveFolder(ctx context.Context, d fsops.PathDialect, instanceID int, prefs *qbt.AppPreferences, category string) (string, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
@@ -105,8 +80,6 @@ func (sm *SyncManager) CategorySaveFolder(ctx context.Context, d fsops.PathDiale
 	return CategorySavePath(d, category, categories, d.Clean(prefs.SavePath), version.ruleFor(prefs)), nil
 }
 
-// ruleFor applies the use_subcategories preference, which turns nesting off
-// on the versions where it is optional.
 func (v categoryVersion) ruleFor(prefs *qbt.AppPreferences) CategoryPathRule {
 	rule := v.rule
 	if v.optional && !prefs.UseSubcategories {
@@ -115,8 +88,6 @@ func (v categoryVersion) ruleFor(prefs *qbt.AppPreferences) CategoryPathRule {
 	return rule
 }
 
-// categoryVersion reuses an instance's version answer for categoryVersionTTL.
-// An error is not kept, so the next call asks again.
 func (sm *SyncManager) categoryVersion(ctx context.Context, client *Client, instanceID int) (categoryVersion, error) {
 	expired := func(_ int, v categoryVersion) bool { return time.Since(v.at) >= categoryVersionTTL }
 	sm.categoryVersionsMu.Lock()
@@ -125,18 +96,12 @@ func (sm *SyncManager) categoryVersion(ctx context.Context, client *Client, inst
 		sm.categoryVersionsMu.Unlock()
 		return v, nil
 	}
-	// An expired entry is never served, so drop them all, which also drops
-	// the entries of instances that no longer ask.
 	maps.DeleteFunc(sm.categoryVersions, expired)
 	sm.categoryVersionsMu.Unlock()
 
-	// A client that keeps syncing skips health checks, so after an in-place
-	// upgrade from 4.6 its cached capabilities would still say "flat".
 	if err := client.RefreshCapabilities(ctx); err != nil {
 		return categoryVersion{}, fmt.Errorf("failed to refresh qBittorrent capabilities: %w", err)
 	}
-	// Read the capabilities before the platform lookup: its app info refresh
-	// reads the version again, and a failed read there makes it unknown.
 	nests := client.Supports(CapCategorySavePathNesting)
 	fileNames := client.Supports(CapCategoryFileNames)
 	optional := nests && !client.Supports(CapSubcategoriesAlwaysEnabled)
@@ -159,8 +124,6 @@ func (sm *SyncManager) categoryVersion(ctx context.Context, client *Client, inst
 	return v, nil
 }
 
-// categoryFolderPlatform returns the build platform when it changes the folder
-// name of a category (qBittorrent 5.3+), and "" before that.
 func categoryFolderPlatform(ctx context.Context, client *Client, fileNames bool) (string, error) {
 	if !fileNames {
 		return "", nil
@@ -173,7 +136,6 @@ func categoryFolderPlatform(ctx context.Context, client *Client, fileNames bool)
 }
 
 func instanceFolders(d fsops.PathDialect, prefs *qbt.AppPreferences, categories map[string]qbt.Category, rule CategoryPathRule) (InstanceFolders, error) {
-	// Without the default save path no inheriting category resolves.
 	f := InstanceFolders{DefaultSavePath: d.Clean(prefs.SavePath)}
 	if f.DefaultSavePath == "." {
 		return InstanceFolders{}, errors.New("qBittorrent reported an empty default save path")
@@ -189,8 +151,6 @@ func instanceFolders(d fsops.PathDialect, prefs *qbt.AppPreferences, categories 
 	}
 	for name := range categories {
 		f.CategorySaveFolders = append(f.CategorySaveFolders, CategorySavePath(d, name, categories, f.DefaultSavePath, rule))
-		// A category can have its own download path, or one under the
-		// global download path even when that is turned off.
 		p, ok := CategoryDownloadPath(d, name, categories, prefs.TempPath, prefs.TempPathEnabled, rule)
 		if !ok {
 			continue
@@ -200,8 +160,6 @@ func instanceFolders(d fsops.PathDialect, prefs *qbt.AppPreferences, categories 
 		}
 		f.DownloadFolders = append(f.DownloadFolders, p)
 	}
-	// qBittorrent refuses a relative monitored folder and resolves a relative
-	// custom save path under the default save path.
 	for dir, target := range prefs.ScanDirs {
 		if dir = d.Clean(dir); d.IsAbs(dir) {
 			f.MonitoredFolders = append(f.MonitoredFolders, dir)

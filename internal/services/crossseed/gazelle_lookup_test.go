@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"testing/synctest"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/systemnotice"
+	"github.com/autobrr/qui/internal/testutil/logbudget"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -29,16 +31,10 @@ const (
 	otherTracker          = "https://tracker.example.invalid/announce"
 )
 
-// gazelleSiteAnswers is what the stub of each RED/OPS site answers.
 type gazelleSiteAnswers map[string]func(ctx context.Context) (*gazellemusic.Match, error)
 
-// newGazelleSeamService builds a service for the search of one music torrent
-// with the tracker tracker. Each RED/OPS site answers with answers; a site
-// with no answer finds no match. No Torznab indexer exists.
 func newGazelleSeamService(t *testing.T, tracker string, settings *models.CrossSeedAutomationSettings, answers gazelleSiteAnswers) *Service {
 	t.Helper()
-	// Not parallel: the test replaces package-level vars. findGazelleMatch
-	// below answers for the sites, so no client sends a request.
 	prevNewClient := newGazelleClient
 	newGazelleClient = func(host, _, apiKey string) (*gazellemusic.Client, error) {
 		return gazellemusic.NewClient(host, "http://127.0.0.1:1", apiKey)
@@ -48,7 +44,6 @@ func newGazelleSeamService(t *testing.T, tracker string, settings *models.CrossS
 		if answer := answers[client.Host()]; answer != nil {
 			return answer(ctx)
 		}
-		// Like the real lookup, a site fails when the search has no time left.
 		return nil, ctx.Err()
 	}
 	t.Cleanup(func() {
@@ -84,22 +79,20 @@ func gazelleStatuses(lookups []GazelleLookup) map[string]string {
 	return out
 }
 
-// A dialog search reports one RED/OPS lookup for each site.
 func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 	match := func(context.Context) (*gazellemusic.Match, error) {
-		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+		return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), QueriedHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}, nil
 	}
 	rejected := func(context.Context) (*gazellemusic.Match, error) {
 		return nil, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied)
 	}
 	tests := []struct {
-		name     string
-		tracker  string
-		settings *models.CrossSeedAutomationSettings
-		answers  gazelleSiteAnswers
-		opts     TorrentSearchOptions
-		want     map[string]string
-		// wantIndexer is the indexer of the one result row, or "" for none.
+		name        string
+		tracker     string
+		settings    *models.CrossSeedAutomationSettings
+		answers     gazelleSiteAnswers
+		opts        TorrentSearchOptions
+		want        map[string]string
 		wantIndexer string
 	}{
 		{
@@ -127,21 +120,21 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 			name:     "a site that the request leaves out is not selected",
 			tracker:  otherTracker,
 			settings: bothGazelleKeys(),
-			opts:     TorrentSearchOptions{GazelleSites: []string{"redacted.sh"}},
+			opts:     TorrentSearchOptions{SitePick: models.SitePick{GazelleSites: []string{"redacted.sh"}}},
 			want:     map[string]string{"redacted.sh": "no_match ", "orpheus.network": "not_asked not_selected"},
 		},
 		{
-			name:     "RED/OPS off is disabled for both sites",
+			name:     "RED/OPS off reports no lookup",
 			tracker:  otherTracker,
 			settings: &models.CrossSeedAutomationSettings{GazelleEnabled: false, RedactedAPIKey: "red-key", OrpheusAPIKey: "ops-key"},
-			want:     map[string]string{"redacted.sh": "not_asked disabled", "orpheus.network": "not_asked disabled"},
+			want:     map[string]string{},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newGazelleSeamService(t, tt.tracker, tt.settings, tt.answers)
 
-			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, tt.opts)
+			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), tt.opts)
 
 			require.NoError(t, err)
 			require.Equal(t, tt.want, gazelleStatuses(resp.GazelleLookups))
@@ -155,9 +148,6 @@ func TestSearchTorrentMatches_GazelleLookups(t *testing.T) {
 	}
 }
 
-// A RED/OPS copy that is not music or books keeps its hash match. The result
-// carries no file-evidence decision, so Add matches it by name.
-// regression: #4219
 func TestSearchTorrentMatches_GazelleHashMatchOutsideMusicAndBooks(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -170,12 +160,12 @@ func TestSearchTorrentMatches_GazelleHashMatchOutsideMusicAndBooks(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newGazelleSeamService(t, redTracker, bothGazelleKeys(), gazelleSiteAnswers{
 				"orpheus.network": func(context.Context) (*gazellemusic.Match, error) {
-					return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+					return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "orpheus.network", TargetHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), QueriedHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}, nil
 				},
 			})
 			svc.syncManager.(*hashFilteringSyncManager).filesByHash[gazelleSeamHash] = tt.files
 
-			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+			resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 
 			require.NoError(t, err)
 			require.Equal(t, "match ", gazelleStatuses(resp.GazelleLookups)["orpheus.network"])
@@ -185,8 +175,6 @@ func TestSearchTorrentMatches_GazelleHashMatchOutsideMusicAndBooks(t *testing.T)
 	}
 }
 
-// A site that does not answer in time fails alone; the other site still
-// answers within the limit of the search.
 func TestSearchTorrentMatches_SlowGazelleSiteTimesOutAlone(t *testing.T) {
 	svc := newGazelleSeamService(t, otherTracker, bothGazelleKeys(), gazelleSiteAnswers{
 		"redacted.sh": func(ctx context.Context) (*gazellemusic.Match, error) {
@@ -196,15 +184,13 @@ func TestSearchTorrentMatches_SlowGazelleSiteTimesOutAlone(t *testing.T) {
 	})
 
 	synctest.Test(t, func(t *testing.T) {
-		resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+		resp, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 
 		require.NoError(t, err)
 		require.Equal(t, map[string]string{"redacted.sh": "failed timed_out", "orpheus.network": "no_match "}, gazelleStatuses(resp.GazelleLookups))
 	})
 }
 
-// A rejected key opens the System notice of that site, and a later answer of
-// the site closes it.
 func TestSearchTorrentMatches_RejectedKeyOpensSystemNotice(t *testing.T) {
 	rejectKey := true
 	svc := newGazelleSeamService(t, redTracker, bothGazelleKeys(), gazelleSiteAnswers{
@@ -218,7 +204,7 @@ func TestSearchTorrentMatches_RejectedKeyOpensSystemNotice(t *testing.T) {
 	notifier := &recordingNotifier{}
 	svc.systemNotices = systemnotice.New(notifier)
 
-	_, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+	_, err := svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 
 	notices := svc.systemNotices.List()
@@ -228,12 +214,11 @@ func TestSearchTorrentMatches_RejectedKeyOpensSystemNotice(t *testing.T) {
 	require.Equal(t, "Orpheus rejected the API key", notifier.Events()[0].Title)
 
 	rejectKey = false
-	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 	require.Empty(t, svc.systemNotices.List(), "an answer of the site closes its notice")
 }
 
-// The notice kind of each site has a title and a fix for the notification.
 func TestKeyRejectedNoticeOfEachSiteHasATitle(t *testing.T) {
 	for _, site := range gazellemusic.Sites() {
 		notifier := &recordingNotifier{}
@@ -244,8 +229,6 @@ func TestKeyRejectedNoticeOfEachSiteHasATitle(t *testing.T) {
 	}
 }
 
-// The settings save closes the notice of a site whose key it checked, cleared,
-// or turned off.
 func TestGazelleKeysSavedClosesNotices(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -292,30 +275,27 @@ func TestGazelleKeysSavedClosesNotices(t *testing.T) {
 	}
 }
 
-// The notification of a completion search holds one RED/OPS line.
 func TestExecuteCompletionSearch_NotificationHasGazelleLine(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key"}
 	svc := newGazelleSeamService(t, "https://home.opsfet.ch/announce", settings, gazelleSiteAnswers{
 		"redacted.sh": func(context.Context) (*gazellemusic.Match, error) {
-			return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "redacted.sh", TargetHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", QueriedHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+			return &gazellemusic.Match{TorrentID: 42, Title: gazelleSeamName, Size: 123, Kind: gazellemusic.MatchHash, Host: "redacted.sh", TargetHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), QueriedHash: mustParseHash(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")}, nil
 		},
 	})
 	notifier := &recordingNotifier{}
 	svc.notifier = notifier
-	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Success: true}, nil
-	}
+	})
 	source := qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: "https://home.opsfet.ch/announce"}
 
 	err := svc.executeCompletionSearch(t.Context(), gazelleSeamInstanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{InstanceID: gazelleSeamInstanceID, Enabled: true})
 
 	require.NoError(t, err)
 	require.Len(t, notifier.Events(), 1)
-	require.Contains(t, notifier.Events()[0].Message, "\nRED/OPS: Redacted match, Orpheus not asked (no API key)")
+	require.Contains(t, strings.Split(notifier.Events()[0].Message, "\n"), "RED/OPS: Redacted match")
 }
 
-// A Library Scan stores one RED/OPS summary for the run, and adds no row for a
-// site that found no match or that the run did not ask.
 func TestSearchRunLoop_StoresGazelleSummary(t *testing.T) {
 	album := "Artist - Album (2024) [WEB FLAC]"
 	film := "Some.Movie.2019.1080p.BluRay.x264-GRP"
@@ -332,9 +312,9 @@ func TestSearchRunLoop_StoresGazelleSummary(t *testing.T) {
 	runSearchLoopToCompletion(t, svc, state)
 
 	want := []models.CrossSeedGazelleSiteSummary{
-		{Site: "redacted.sh", Name: "Redacted", NotAsked: map[string]int{"no_api_key": 2}},
 		{Site: "orpheus.network", Name: "Orpheus", Asked: 1, NotAsked: map[string]int{"not_music": 1}},
 	}
+	require.Equal(t, want, state.run.GazelleSummary)
 	stored, err := svc.automationStore.GetSearchRun(t.Context(), state.run.ID)
 	require.NoError(t, err)
 	require.Equal(t, want, stored.GazelleSummary)
@@ -343,8 +323,6 @@ func TestSearchRunLoop_StoresGazelleSummary(t *testing.T) {
 	}
 }
 
-// In one Library Scan run, a site that rejected the key gets no more requests.
-// Those skips must not open the notice again after the user saved a new key.
 func TestSkippedRejectedSiteDoesNotReopenNotice(t *testing.T) {
 	stubGazelleMatchLookupError(t, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied))
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
@@ -373,10 +351,6 @@ func TestSkippedRejectedSiteDoesNotReopenNotice(t *testing.T) {
 	require.False(t, gazelleRequestsSent(second), "the skip sent no request")
 }
 
-// A client from before a settings save carries the old key. Its first
-// rejection must not open a notice that the save closed.
-//
-// regression: #4126
 func TestOldClientRejectionAfterSaveOpensNoNotice(t *testing.T) {
 	stubGazelleMatchLookupError(t, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied))
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
@@ -397,10 +371,6 @@ func TestOldClientRejectionAfterSaveOpensNoNotice(t *testing.T) {
 	require.Empty(t, svc.systemNotices.List())
 }
 
-// A save that leaves the key alone does not stop a running scan from
-// reporting a rejection of that key.
-//
-// regression: #4126
 func TestUnrelatedSaveKeepsRejectionNotice(t *testing.T) {
 	stubGazelleMatchLookupError(t, fmt.Errorf("%w: invalid token", gazellemusic.ErrAccessDenied))
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
@@ -420,10 +390,6 @@ func TestUnrelatedSaveKeepsRejectionNotice(t *testing.T) {
 	require.Len(t, svc.systemNotices.List(), 1)
 }
 
-// An answer to a client from before a key change does not close the notice
-// of the new key.
-//
-// regression: #4126
 func TestOldClientAnswerKeepsNewKeyNotice(t *testing.T) {
 	stubGazelleMatchLookup(t)
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
@@ -446,9 +412,6 @@ func TestOldClientAnswerKeepsNewKeyNotice(t *testing.T) {
 	require.Len(t, svc.systemNotices.List(), 1, "the old key answered, the new key still fails")
 }
 
-// A key that qui cannot decrypt fails the site without a request.
-//
-// regression: #4126
 func TestUnreadableKeySendsNoRequest(t *testing.T) {
 	source := &qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: redTracker}
 	files := qbt.TorrentFiles{{Name: gazelleSeamName + "/01 - Track.flac", Size: 123}}
@@ -465,10 +428,6 @@ func TestUnreadableKeySendsNoRequest(t *testing.T) {
 	require.False(t, gazelleRequestsSent(lookups))
 }
 
-// The search after the dialog opens reuses the local RED/OPS checks of the
-// plan, so one open and one search export the torrent once.
-//
-// regression: #4126
 func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
 	svc := newGazelleSeamService(t, redTracker, bothGazelleKeys(), nil)
 	svc.gazelleLocalCache = ttlcache.New[string, gazelleLocalResult]()
@@ -480,19 +439,16 @@ func TestSearchAfterPlanReusesLocalChecks(t *testing.T) {
 	plan, err := svc.collectGazellePlan(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], clients)
 	require.NoError(t, err)
 	require.Equal(t, GazelleWillAsk, gazelleLookupOf(t, plan, "orpheus.network").Status)
-	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+	_, err = svc.SearchTorrentMatches(t.Context(), gazelleSeamInstanceID, mustParseHash(t, gazelleSeamHash), TorrentSearchOptions{})
 	require.NoError(t, err)
 
 	require.Equal(t, 1, syncManager.exportCalls)
 
-	// A Library Scan stamps a cooldown from its scope, so it checks again.
-	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], searchScopeFacts{torznabOff: true, gazelleKeys: clients.hosts()}, false)
+	scope := svc.collectSearchScope(t.Context(), gazelleSeamInstanceID, &syncManager.torrents[0], resolvedSitePick{}, searchScopeFacts{gazelleOnly: true, gazelleKeys: clients.hosts()})
 	require.NoError(t, scope.err)
 	require.Equal(t, 2, syncManager.exportCalls)
 }
 
-// The plan of a site whose key rejected notice is open still asks the site,
-// and says that the last answer was a rejection.
 func TestPlanMarksSiteWithOpenRejectedNotice(t *testing.T) {
 	svc := newGazelleSeamService(t, otherTracker, bothGazelleKeys(), nil)
 	svc.systemNotices = systemnotice.New(nil)
@@ -505,4 +461,76 @@ func TestPlanMarksSiteWithOpenRejectedNotice(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"redacted.sh": "will_ask key_rejected", "orpheus.network": "will_ask "}, gazelleStatuses(plan))
+}
+
+var gazelleWords = []string{"RED/OPS", "gazelle", "redacted", "orpheus"}
+
+func TestSearchRunLoop_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
+	name := "Artist - Album (2024) [WEB FLAC]"
+	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 31), Name: name, Progress: 1.0, Size: 123, Tracker: otherTracker}
+	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-gazelle-off", torznabMatchTracker(t, name), torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
+	state.gazelleClients = &gazelleClientSet{off: true}
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{Success: true}, nil
+	})
+
+	logbudget.AssertSilent(t, func() { runSearchLoopToCompletion(t, svc, state) }, gazelleWords...)
+
+	require.Equal(t, 1, state.run.TorrentsWithCrossSeeds, "the Torznab match must be added")
+	require.Empty(t, state.run.GazelleSummary)
+}
+
+func TestExecuteCompletionSearch_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
+	settings := &models.CrossSeedAutomationSettings{GazelleEnabled: false}
+	svc := newGazelleSeamService(t, otherTracker, settings, nil)
+	addMusicIndexer(svc, gazelleSeamInstanceID, gazelleSeamHash, torznabMatchTracker(t, gazelleSeamName))
+	notifier := &recordingNotifier{}
+	svc.notifier = notifier
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{Success: true}, nil
+	})
+	source := qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: otherTracker}
+
+	logbudget.AssertSilent(t, func() {
+		err := svc.executeCompletionSearch(t.Context(), gazelleSeamInstanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{InstanceID: gazelleSeamInstanceID, Enabled: true})
+		require.NoError(t, err)
+	}, gazelleWords...)
+
+	require.Len(t, notifier.Events(), 1, "the Torznab match must be added")
+	require.NotContains(t, notifier.Events()[0].Message, "RED/OPS")
+}
+
+func TestSearchReportFacts_NamesEachGazelleSite(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings *models.CrossSeedAutomationSettings
+		want     []ReportGazelleSite
+	}{
+		{
+			name:     "RED/OPS off",
+			settings: &models.CrossSeedAutomationSettings{GazelleEnabled: false, RedactedAPIKey: "red-key"},
+			want: []ReportGazelleSite{
+				{Site: "redacted.sh", Status: GazelleNotAsked, Reason: "disabled"},
+				{Site: "orpheus.network", Status: GazelleNotAsked, Reason: "disabled"},
+			},
+		},
+		{
+			name:     "one site has no API key",
+			settings: &models.CrossSeedAutomationSettings{GazelleEnabled: true, RedactedAPIKey: "red-key"},
+			want: []ReportGazelleSite{
+				{Site: "redacted.sh", Status: GazelleWillAsk},
+				{Site: "orpheus.network", Status: GazelleNotAsked, Reason: "no_api_key"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newGazelleSeamService(t, otherTracker, tt.settings, nil)
+
+			facts, err := svc.SearchReportFacts(t.Context(), gazelleSeamInstanceID, gazelleSeamHash, TorrentSearchOptions{})
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, facts.SearchScope.GazelleSites)
+		})
+	}
 }

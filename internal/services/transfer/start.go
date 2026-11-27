@@ -5,6 +5,7 @@ package transfer
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -17,25 +18,19 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// Request is the Transfer of one torrent.
 type Request struct {
 	SourceInstanceID int
 	Hash             string
 	TargetInstanceID int
-	// Placement is where the torrent lands. An empty save path is the save
-	// path of the category on the target, or its default save path for no
-	// category. ContentLayout is ignored: the target gets the layout that is
-	// on disk.
-	Placement Placement
-	Options   Options
-	StartedBy StartedBy
-	RuleID    *int
+	Placement        Placement
+	Options          Options
+	StartedBy        StartedBy
+	RuleID           *int
 }
 
-// RefusalError is why qui does not start a Transfer, for the user. It wraps a
-// sentinel such as ErrMoving when a caller must tell the case apart.
 type RefusalError struct {
 	Reason string
 	err    error
@@ -45,11 +40,8 @@ func (r *RefusalError) Error() string { return r.Reason }
 
 func (r *RefusalError) Unwrap() error { return r.err }
 
-// ErrMoving is the refusal of a torrent that qBittorrent is moving, alone or
-// as a member of the group. The Transfer can start once the move ends.
 var ErrMoving = errors.New("qBittorrent is moving this torrent")
 
-// refuse builds a refusal. A %w verb keeps its error for errors.Is.
 func refuse(format string, args ...any) error {
 	err := fmt.Errorf(format, args...)
 	return &RefusalError{Reason: err.Error(), err: errors.Unwrap(err)}
@@ -60,25 +52,18 @@ const (
 	reasonSkipped = "Torrents with skipped files are unsupported"
 )
 
-// planned is the Transfer to record, with the Shared-file group as check
-// read it.
 type planned struct {
-	record *Record
-	group  []*source
-	// stay holds the hashes of the cross-seeds on hardlinks that stay on the
-	// source.
-	stay []string
-	// versions holds those of stay that have the same files as the torrent
-	// of the request. Only a Transfer that a rule starts has them.
-	versions []string
+	record   *Record
+	group    []*source
+	stay     []infohash.Hash
+	versions []infohash.Hash
 }
 
-// check runs the entry checks and plans the Transfer.
 func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
-	hash := strings.ToLower(strings.TrimSpace(req.Hash))
-	if hash == "" {
+	if strings.TrimSpace(req.Hash) == "" {
 		return nil, refuse("Name the torrent to transfer.")
 	}
+	hash, _ := infohash.Parse(req.Hash)
 	if req.SourceInstanceID == req.TargetInstanceID {
 		return nil, refuse("The Transfer source and the Transfer target are the same instance.")
 	}
@@ -102,7 +87,7 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.deps.Store.IsHelper(source.ID, hash) {
+	if s.deps.Store.HelperKind(source.ID, hash) != "" {
 		return nil, refuse("qui added this torrent for a Transfer or a Share.")
 	}
 
@@ -111,7 +96,7 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 		return nil, err
 	}
 	if src == nil {
-		return nil, refuse("%s has no torrent %s.", source.Name, hash)
+		return nil, refuse("%s has no torrent %s.", source.Name, cmp.Or(hash.String(), strings.TrimSpace(req.Hash)))
 	}
 	if err := src.movable(); err != nil {
 		return nil, err
@@ -125,9 +110,9 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	if err != nil {
 		return nil, err
 	}
-	others := make([]string, 0, len(group)-1)
+	others := make([]infohash.Hash, 0, len(group)-1)
 	for _, member := range group[1:] {
-		others = append(others, member.torrent.Hash)
+		others = append(others, member.hash)
 	}
 	versions, err := s.ruleChecks(ctx, req, source, src, stay, others)
 	if err != nil {
@@ -193,10 +178,6 @@ func (s *Service) check(ctx context.Context, req Request) (*planned, error) {
 	}}, nil
 }
 
-// leaveFilesToSource keeps the members of a Transfer with no copy on manual
-// management when the source keeps seeding. The target reads the files of the
-// source then. A target that manages the torrent moves them when the folder
-// of its category changes, and the source would lose them.
 func leaveFilesToSource(members []Member, way Way, after After) {
 	if way != WayNone || after != AfterKeepSeeding {
 		return
@@ -206,10 +187,7 @@ func leaveFilesToSource(members []Member, way Way, after After) {
 	}
 }
 
-// ruleChecks runs the checks that only a Transfer of a rule gets, and returns
-// ErrStays or ErrWaitsForUser when the rule must not start it. versions holds
-// the torrents of stay that have the same files as first.
-func (s *Service) ruleChecks(ctx context.Context, req Request, source *models.Instance, first *source, stay, others []string) (versions []string, err error) {
+func (s *Service) ruleChecks(ctx context.Context, req Request, source *models.Instance, first *source, stay, others []infohash.Hash) (versions []infohash.Hash, err error) {
 	if req.StartedBy != StartedByRule {
 		return nil, nil
 	}
@@ -222,16 +200,11 @@ func (s *Service) ruleChecks(ctx context.Context, req Request, source *models.In
 	return versions, s.waitsForUser(ctx, req, others...)
 }
 
-// alreadyPasses returns ErrStays when a Transfer holds one of versions, the
-// cross-seeds on hardlinks that have the same files and that this Transfer
-// leaves on the source, or the target has one. A rule matches each torrent of
-// such a set, and a Transfer torrent passes the same files for each Transfer
-// that starts.
-func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, versions []string) error {
+func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, versions []infohash.Hash) error {
 	if len(versions) == 0 {
 		return nil
 	}
-	if slices.ContainsFunc(versions, func(hash string) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
+	if slices.ContainsFunc(versions, func(hash infohash.Hash) bool { return s.deps.Store.IsClaimed(sourceID, hash) }) {
 		return ErrStays
 	}
 	_, onTarget, err := s.deps.Sync.HasTorrentByAnyHash(ctx, targetID, versions)
@@ -244,9 +217,7 @@ func (s *Service) alreadyPasses(ctx context.Context, sourceID, targetID int, ver
 	return nil
 }
 
-// waitsForUser returns ErrWaitsForUser for a Transfer that a rule starts when
-// the last Transfer of one of the torrents failed for good.
-func (s *Service) waitsForUser(ctx context.Context, req Request, hashes ...string) error {
+func (s *Service) waitsForUser(ctx context.Context, req Request, hashes ...infohash.Hash) error {
 	if req.StartedBy != StartedByRule {
 		return nil
 	}
@@ -270,7 +241,6 @@ func (s *Service) instance(ctx context.Context, id int) (*models.Instance, error
 	return inst, nil
 }
 
-// supported refuses an instance before qBittorrent 5.1.
 func (s *Service) supported(ctx context.Context, inst *models.Instance) error {
 	client, err := s.deps.Sync.GetClient(ctx, inst.ID)
 	if err != nil {
@@ -282,8 +252,6 @@ func (s *Service) supported(ctx context.Context, inst *models.Instance) error {
 	return nil
 }
 
-// checkWay picks a copy through qui when qui reaches the files of a side on
-// its own disk, and else a Transfer torrent between the clients.
 func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 	from, to := models.FilesystemAccessMode(source), models.FilesystemAccessMode(target)
 	switch forced {
@@ -314,10 +282,6 @@ func checkWay(source, target *models.Instance, forced Way) (Way, error) {
 	return "", refuse("Unknown way: %q.", forced)
 }
 
-// categorySavePath is the folder where the qBittorrent of target saves a
-// torrent of category under automatic management, and its default save path
-// for no category. It also reports whether automatic management is the mode
-// that target gives a new torrent.
 func (s *Service) categorySavePath(ctx context.Context, target *models.Instance, files fsops.Backend, category string) (folder string, automatic bool, err error) {
 	prefs, err := s.deps.Sync.GetAppPreferences(ctx, target.ID)
 	if err != nil {
@@ -333,10 +297,6 @@ func (s *Service) categorySavePath(ctx context.Context, target *models.Instance,
 	return folder, prefs.AutoTmmEnabled, nil
 }
 
-// pathsOf is the path dialect of the save paths of inst: the dialect of its
-// files, or for an instance whose files qui cannot reach, the one that the
-// form of savePath shows. A Windows qBittorrent behind a Linux qui still
-// reports Windows paths.
 func pathsOf(inst *models.Instance, files fsops.Backend, savePath string) fsops.PathDialect {
 	if models.FilesystemAccessMode(inst) == models.FilesystemModeNone {
 		return fsops.ClientPaths(savePath)
@@ -344,8 +304,6 @@ func pathsOf(inst *models.Instance, files fsops.Backend, savePath string) fsops.
 	return files.Paths()
 }
 
-// seesSameFiles reports whether each file of the group, at its place on the
-// target, is the file of the source, as the endpoint module tells it.
 func (s *Service) seesSameFiles(ctx context.Context, source, target *models.Instance, targetFiles fsops.Backend, group []*source, members []Member) bool {
 	srcFiles, err := s.deps.Files.GetBackend(ctx, source.ID)
 	if err != nil {
@@ -367,29 +325,27 @@ func (s *Service) seesSameFiles(ctx context.Context, source, target *models.Inst
 	return true
 }
 
-// source is the torrent on the Transfer source as one fresh read found it.
 type source struct {
+	hash    infohash.Hash
 	torrent qbt.Torrent
 	files   qbt.TorrentFiles
 	export  []byte
 	info    *metainfo.Info
 }
 
-// readSource reads the torrent, its files and its .torrent fresh, and
-// returns nil when the instance does not have the torrent.
-func (s *Service) readSource(ctx context.Context, instanceID int, hash string) (*source, error) {
+func (s *Service) readSource(ctx context.Context, instanceID int, hash infohash.Hash) (*source, error) {
 	torrent, err := s.torrent(ctx, instanceID, hash)
 	if err != nil || torrent == nil {
 		return nil, err
 	}
-	files, err := s.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hash)
+	files, err := s.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hash.String())
 	if err != nil {
 		return nil, fmt.Errorf("read the files of the torrent: %w", err)
 	}
 	if files == nil {
 		return nil, nil
 	}
-	export, _, _, err := s.deps.Sync.ExportTorrent(ctx, instanceID, hash)
+	export, _, _, err := s.deps.Sync.ExportTorrent(ctx, instanceID, hash.String())
 	if err != nil {
 		return nil, fmt.Errorf("export the torrent: %w", err)
 	}
@@ -401,10 +357,10 @@ func (s *Service) readSource(ctx context.Context, instanceID int, hash string) (
 	if err != nil {
 		return nil, fmt.Errorf("decode the exported torrent: %w", err)
 	}
-	return &source{torrent: *torrent, files: *files, export: export, info: &info}, nil
+	id, _ := infohash.Parse(torrent.Hash)
+	return &source{hash: id, torrent: *torrent, files: *files, export: export, info: &info}, nil
 }
 
-// movable refuses a torrent that a Transfer cannot move.
 func (src *source) movable() error {
 	if src.torrent.State == qbt.TorrentStateMoving {
 		return &RefusalError{Reason: fmt.Sprintf("qBittorrent is moving %s. A Transfer can start once the move ends.", src.torrent.Name),
@@ -430,16 +386,12 @@ func (src *source) movable() error {
 	return nil
 }
 
-// torrent reads one torrent from a fresh sync, nil when it is not there.
-func (s *Service) torrent(ctx context.Context, instanceID int, hash string) (*qbt.Torrent, error) {
+func (s *Service) torrent(ctx context.Context, instanceID int, hash infohash.Hash) (*qbt.Torrent, error) {
 	return s.read(ctx, instanceID, hash, true)
 }
 
-// read reads one torrent, nil when it is not there. A read that is not fresh
-// takes the Sync snapshot, and syncs only when that is older than
-// Config.SnapshotAge.
-func (s *Service) read(ctx context.Context, instanceID int, hash string, fresh bool) (*qbt.Torrent, error) {
-	filter := qbittorrent.TorrentRefFilter{Hashes: []string{hash}}
+func (s *Service) read(ctx context.Context, instanceID int, hash infohash.Hash, fresh bool) (*qbt.Torrent, error) {
+	filter := qbittorrent.TorrentRefFilter{Hashes: []infohash.Hash{hash}}
 	var torrents []*qbt.Torrent
 	var err error
 	if fresh {
@@ -457,14 +409,11 @@ func (s *Service) read(ctx context.Context, instanceID int, hash string, fresh b
 	return &t, nil
 }
 
-func (s *Service) has(ctx context.Context, instanceID int, hash string) (bool, error) {
+func (s *Service) has(ctx context.Context, instanceID int, hash infohash.Hash) (bool, error) {
 	torrent, err := s.torrent(ctx, instanceID, hash)
 	return torrent != nil, err
 }
 
-// othersRead reports whether a torrent outside hashes reads their files: on
-// the instance, and on another instance. A torrent that qui could not check
-// counts as read.
 func (s *Service) othersRead(ctx context.Context, instanceID int, hashes []string) (bool, error) {
 	res, err := s.deps.Groups.FindDeleteMatches(ctx, map[int][]string{instanceID: hashes})
 	if err != nil {

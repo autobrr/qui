@@ -5,11 +5,13 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { HttpResponse, http } from "msw"
+import { HttpResponse, delay, http } from "msw"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
+import { _resetProblemReportDraftForTests } from "@/components/problem-reports/draft"
 import { closeProblemReport } from "@/components/problem-reports/open"
 import { ProblemReportButton, ProblemReportDialogRoot, ProblemReportMenuItem } from "@/components/problem-reports/ProblemReportDialog"
+import { SENDER_KEY } from "@/components/problem-reports/sender"
 import { SENT_REPORTS_KEY } from "@/components/problem-reports/sent-reports"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -17,7 +19,14 @@ import "@/i18n"
 import { api } from "@/lib/api"
 import { _resetClientSettingsForTests, parseJsonNumber, readClientSetting, writeClientSetting } from "@/lib/client-settings"
 import { server } from "@/test/msw/server"
-import type { ApplicationInfo, ListedProblemReport, ProblemReportFacts, ProblemReportPayload } from "@/types"
+import type {
+  ApplicationInfo,
+  ListedProblemReport,
+  ProblemReportFacts,
+  ProblemReportPayload,
+  ProblemReportSender,
+  ProblemReportSignInState
+} from "@/types"
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({ toastSuccess: vi.fn(), toastError: vi.fn() }))
 vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }))
@@ -42,11 +51,61 @@ function serve(facts: ProblemReportFacts = baseFacts, info: Partial<ApplicationI
   server.use(
     http.get("*/api/application/info", () => HttpResponse.json(info)),
     http.get("*/api/problem-reports/facts", () => HttpResponse.json(facts)),
+    http.get("*/api/problem-reports/sender", () => HttpResponse.json({ anonymous: true })),
     http.get("*/api/problem-reports", () => HttpResponse.json([]))
   )
 }
 
-/** Answers the list route with reports, and counts its calls. */
+const octocat: ProblemReportSender = { anonymous: false, provider: "github", name: "octocat" }
+const signInURL = "https://bin.getqui.com/report-sign-in/p1"
+
+function serveSender(...senders: ProblemReportSender[]) {
+  let calls = 0
+  server.use(http.get("*/api/problem-reports/sender", () => HttpResponse.json(senders[Math.min(calls++, senders.length - 1)])))
+}
+
+function serveSignIn(states: ProblemReportSignInState[], start: () => Response = () => HttpResponse.json({ url: signInURL })) {
+  const calls = { started: [] as string[], reads: 0, signOuts: 0 }
+  server.use(
+    http.post("*/api/problem-reports/sign-in", async ({ request }) => {
+      calls.started.push(((await request.json()) as { provider: string }).provider)
+      return start()
+    }),
+    http.get("*/api/problem-reports/sign-in", () => HttpResponse.json(states[Math.min(calls.reads++, states.length - 1)])),
+    http.delete("*/api/problem-reports/sign-in", () => {
+      calls.signOuts++
+      return new HttpResponse(null, { status: 204 })
+    })
+  )
+  return calls
+}
+
+function fakePopup() {
+  return { opener: window as Window | null, location: { href: "" }, close: vi.fn() }
+}
+
+function stubPopup() {
+  const popup = fakePopup()
+  const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window)
+  return { popup, open }
+}
+
+function holdSignInStart(urls: string[]) {
+  let releaseFirst = () => {}
+  const heldFirst = new Promise<void>((resolve) => { releaseFirst = resolve })
+  let starts = 0
+  server.use(http.post("*/api/problem-reports/sign-in", async () => {
+    const start = starts++
+    if (start === 0) await heldFirst
+    return HttpResponse.json({ url: urls[start] })
+  }))
+  return { releaseFirst, starts: () => starts }
+}
+
+function openSenderMenu(sender: string) {
+  fireEvent.keyDown(screen.getByRole("button", { name: sender }), { key: "Enter" })
+}
+
 function serveSentReports(reports: ListedProblemReport[]) {
   const calls = { count: 0 }
   server.use(http.get("*/api/problem-reports", () => {
@@ -60,22 +119,24 @@ function withQui(qui: Partial<ProblemReportFacts["qui"]>): ProblemReportFacts {
   return { ...baseFacts, qui: { ...baseFacts.qui, ...qui } }
 }
 
-/** Records each report that reaches the send route, and answers with the next answer, or 201. */
 function serveSend(answers: Response[] = []) {
   const reports: ProblemReportPayload[] = []
+  const senders: ProblemReportSender[] = []
   server.use(http.post("*/api/problem-reports", async ({ request }) => {
-    const report = JSON.parse((await request.formData()).get("report") as string) as ProblemReportPayload
+    const form = await request.formData()
+    const report = JSON.parse(form.get("report") as string) as ProblemReportPayload
     reports.push(report)
+    senders.push(JSON.parse(form.get("sender") as string) as ProblemReportSender)
     return answers[reports.length - 1] ?? HttpResponse.json(
       { id: "r1", submissionId: report.submissionId, title: "t", sentAt: "2026-11-19T09:00:00Z", status: "received", text: report.text },
       { status: 201 }
     )
   }))
-  return reports
+  return { reports, senders }
 }
 
 function mount() {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } })
   render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -112,13 +173,6 @@ function pickLogScope(name: string) {
 }
 
 beforeAll(() => {
-  // jsdom has no ResizeObserver, and the Radix popper of the tooltip measures its anchor with one.
-  vi.stubGlobal("ResizeObserver", class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-  // The Radix select scrolls its picked option into view and captures the pointer, which jsdom lacks.
   Element.prototype.scrollIntoView = () => {}
   Element.prototype.hasPointerCapture = () => false
   Element.prototype.releasePointerCapture = () => {}
@@ -129,8 +183,11 @@ afterEach(() => {
   cleanup()
   toastSuccess.mockReset()
   toastError.mockReset()
+  vi.restoreAllMocks()
+  vi.useRealTimers()
   localStorage.clear()
   _resetClientSettingsForTests()
+  _resetProblemReportDraftForTests()
 })
 
 describe("Problem report entry point", () => {
@@ -213,7 +270,6 @@ describe("ProblemReportDialog", () => {
 
     const { textField, sendButton } = await openDialog()
     fireEvent.click(screen.getByRole("button", { name: "Details" }))
-    // regression: #4288
     expect(screen.getByText(new RegExp(`Browser: ${escapeRegExp(navigator.userAgent)}`))).not.toBeNull()
     fireEvent.change(textField, { target: { value: "Torrents vanish" } })
     fireEvent.click(sendButton())
@@ -226,10 +282,9 @@ describe("ProblemReportDialog", () => {
     expect(report.text).toBe("Torrents vanish")
     expect(report.startedFrom).toBe("menu")
     expect(report.submissionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
-    expect(report.logs).toEqual({ scope: "warnings", lines: ["WRN disk almost full"] })
+    expect(report.logs).toEqual({ scope: "all", lines: ["DBG sync done", "INF started", "WRN disk almost full"] })
     expect(report.qui).toEqual(baseFacts.qui)
     expect(report.instances).toEqual(baseFacts.instances)
-    // regression: #4288
     expect(report.browser.userAgent).toBe(navigator.userAgent)
     expect(report.browser).toEqual({
       route: window.location.pathname,
@@ -242,11 +297,11 @@ describe("ProblemReportDialog", () => {
   })
 
   it.each([
-    ["Everything recent", { scope: "all", lines: baseFacts.logs.all }],
+    ["Warnings and errors", { scope: "warnings", lines: baseFacts.logs.warnings }],
     ["Leave out", { scope: "none", lines: [] }],
   ])("sends the log lines of the scope %s", async (option, logs) => {
     serve()
-    const reports = serveSend()
+    const { reports } = serveSend()
     mount()
 
     const { textField, sendButton } = await openDialog()
@@ -273,7 +328,7 @@ describe("ProblemReportDialog", () => {
 
   it("names a newer release above Send and lets the user send anyway", async () => {
     serve(withQui({ version: "1.30.0", newerRelease: { version: "v1.36.0", url: "https://github.com/autobrr/qui/releases/tag/v1.36.0" } }))
-    const reports = serveSend()
+    const { reports } = serveSend()
     mount()
 
     const { textField, sendButton } = await openDialog()
@@ -342,10 +397,9 @@ describe("ProblemReportDialog", () => {
     expect(toastSuccess).not.toHaveBeenCalled()
   })
 
-  // regression: #4288
   it("retries a refused report with the same submission id", async () => {
     serve()
-    const reports = serveSend([
+    const { reports } = serveSend([
       HttpResponse.json({ error: "anonymous_full" }, { status: 429 }),
       HttpResponse.json({ error: "Problem reports are off in the qui config." }, { status: 403 }),
     ])
@@ -362,7 +416,6 @@ describe("ProblemReportDialog", () => {
     expect(reports[1].submissionId).toBe(reports[0].submissionId)
   })
 
-  // regression: #4288
   it("keeps a newer report open when an earlier Send succeeds after its dialog closed", async () => {
     serve()
     let answer: (response: Response) => void = () => {}
@@ -386,6 +439,520 @@ describe("ProblemReportDialog", () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Report sent"))
     expect(screen.queryByRole("dialog")).not.toBeNull()
     expect(second.textField.value).toBe("Another problem")
+  })
+})
+
+describe("Draft", () => {
+  it("keeps the text and the log choice across a close and a reopen", async () => {
+    serve()
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    pickLogScope("Warnings and errors")
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+
+    const second = await openDialog()
+
+    expect(second.textField.value).toBe("Torrents vanish")
+    expect(screen.getByRole("combobox", { name: "Log lines to include" }).textContent).toBe("Warnings and errors")
+  })
+
+  it("clears the draft after a successful Send", async () => {
+    serve()
+    serveSend()
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    pickLogScope("Warnings and errors")
+    fireEvent.click(first.sendButton())
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+
+    const second = await openDialog()
+
+    expect(second.textField.value).toBe("")
+    expect(screen.getByRole("combobox", { name: "Log lines to include" }).textContent).toBe("Everything recent")
+  })
+
+  it("sends a second Send of the same draft with the same submission id, also after a close and a reopen", async () => {
+    serve()
+    const { reports } = serveSend([HttpResponse.json({ error: "unavailable" }, { status: 502 })])
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(first.sendButton())
+    await screen.findByRole("alert")
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const second = await openDialog()
+    fireEvent.click(second.sendButton())
+
+    await waitFor(() => expect(reports).toHaveLength(2))
+    expect(reports[1].submissionId).toBe(reports[0].submissionId)
+    expect(reports[1].text).toBe("Torrents vanish")
+  })
+
+  it("sends a draft from an earlier page load with its submission id", async () => {
+    const submissionId = "0b6f8a52-3c1e-4d7a-9f20-5e8c1b2a4d6f"
+    localStorage.setItem("qui-problem-report-draft", JSON.stringify({
+      text: "Torrents vanish",
+      logScope: "none",
+      attempt: { submissionId, text: "Torrents vanish", logScope: "none" },
+    }))
+    serve()
+    const { reports } = serveSend()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    expect(textField.value).toBe("Torrents vanish")
+    fireEvent.click(sendButton())
+
+    await waitFor(() => expect(reports).toHaveLength(1))
+    expect(reports[0].submissionId).toBe(submissionId)
+    expect(reports[0].logs).toEqual({ scope: "none", lines: [] })
+  })
+
+  it("after a 429 anonymous_full, shows the draft on top of Sent reports as Not sent, and its Delete clears the draft", async () => {
+    serve()
+    serveSend([HttpResponse.json({ error: "anonymous_full" }, { status: 429 })])
+    serveSentReports([listed({ id: "r1", title: "Uploads stall" })])
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    expect(screen.getByRole("button", { name: /^Sent reports/ })).not.toBeNull()
+    fireEvent.change(textField, { target: { value: "Torrents vanish\nafter a restart" } })
+    fireEvent.click(sendButton())
+    await screen.findByRole("alert")
+    fireEvent.click(screen.getByRole("button", { name: /^Sent reports/ }))
+
+    const rows = Array.from((await screen.findByRole("list")).querySelectorAll("li"))
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Torrents vanishNot sent",
+      expect.stringContaining("Uploads stallReceived"),
+    ])
+    fireEvent.click(rows[0].querySelector("button") as HTMLButtonElement)
+
+    await waitFor(() => expect(screen.queryByText("Torrents vanish")).toBeNull())
+    expect(screen.getByText("Uploads stall")).not.toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Back to report" }))
+    expect((screen.getByRole("textbox", { name: "Your report" }) as HTMLTextAreaElement).value).toBe("")
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("makes a new submission id when the text or the log choice changes after a failed Send", async () => {
+    serve()
+    const { reports } = serveSend([
+      HttpResponse.json({ error: "unavailable" }, { status: 502 }),
+      HttpResponse.json({ error: "unavailable" }, { status: 502 }),
+      HttpResponse.json({ error: "unavailable" }, { status: 502 }),
+    ])
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(sendButton().disabled).toBe(false))
+    fireEvent.change(textField, { target: { value: "Torrents vanish after a restart" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(reports).toHaveLength(2))
+    await waitFor(() => expect(sendButton().disabled).toBe(false))
+    pickLogScope("Leave out")
+    fireEvent.click(sendButton())
+
+    await waitFor(() => expect(reports).toHaveLength(3))
+    expect(new Set(reports.map((report) => report.submissionId)).size).toBe(3)
+  })
+
+  it("shows no Not sent draft while its Send runs", async () => {
+    serve()
+    let answer: (response: Response) => void = () => {}
+    server.use(http.post("*/api/problem-reports", () => new Promise<Response>((resolve) => { answer = resolve })))
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(sendButton().disabled).toBe(true))
+
+    expect(screen.queryByRole("button", { name: /^Sent reports/ })).toBeNull()
+    answer(HttpResponse.json({ error: "unavailable" }, { status: 502 }))
+    expect(await screen.findByRole("button", { name: /^Sent reports/ })).not.toBeNull()
+  })
+
+  it("shows Sent reports with the Not sent draft while no report was sent", async () => {
+    serve()
+    serveSend([HttpResponse.json({ error: "anonymous_full" }, { status: 429 })])
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    expect(screen.queryByRole("button", { name: /^Sent reports/ })).toBeNull()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    expect(screen.queryByRole("button", { name: /^Sent reports/ })).toBeNull()
+    fireEvent.click(sendButton())
+    await screen.findByRole("alert")
+    fireEvent.click(screen.getByRole("button", { name: /^Sent reports/ }))
+
+    const rows = Array.from((await screen.findByRole("list")).querySelectorAll("li"))
+    expect(rows.map((row) => row.textContent)).toEqual(["Torrents vanishNot sent"])
+  })
+
+  it("keeps a text that the user changed while an earlier Send ran, and sends it as a new report", async () => {
+    serve()
+    let answer: (response: Response) => void = () => {}
+    const reports: ProblemReportPayload[] = []
+    server.use(http.post("*/api/problem-reports", async ({ request }) => {
+      reports.push(JSON.parse((await request.formData()).get("report") as string) as ProblemReportPayload)
+      if (reports.length > 1) return HttpResponse.json({ id: "r2" }, { status: 201 })
+      return new Promise<Response>((resolve) => { answer = resolve })
+    }))
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(first.sendButton())
+    await waitFor(() => expect(reports).toHaveLength(1))
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const second = await openDialog()
+    fireEvent.change(second.textField, { target: { value: "Torrents vanish after a restart" } })
+    answer(HttpResponse.json({ id: "r1" }, { status: 201 }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
+
+    expect(second.textField.value).toBe("Torrents vanish after a restart")
+    fireEvent.click(second.sendButton())
+    await waitFor(() => expect(reports).toHaveLength(2))
+    expect(reports[1].text).toBe("Torrents vanish after a restart")
+    expect(reports[1].submissionId).not.toBe(reports[0].submissionId)
+  })
+
+  it("shows the draft that another tab stored while the dialog was closed", async () => {
+    serve()
+    mount()
+
+    const first = await openDialog()
+    fireEvent.change(first.textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    storeDraftFromAnotherTab({ text: "Uploads stall", logScope: "all" })
+
+    const second = await openDialog()
+
+    expect(second.textField.value).toBe("Uploads stall")
+  })
+
+  it("keeps a draft that another tab changed when a Send from a closed dialog succeeds", async () => {
+    serve()
+    let answer: (response: Response) => void = () => {}
+    server.use(http.post("*/api/problem-reports", () => new Promise<Response>((resolve) => { answer = resolve })))
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(sendButton().disabled).toBe(true))
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    const stored = JSON.parse(localStorage.getItem("qui-problem-report-draft") as string) as { attempt: unknown }
+    storeDraftFromAnotherTab({ text: "Torrents vanish after a restart", logScope: "all", attempt: stored.attempt })
+    answer(HttpResponse.json({ id: "r1" }, { status: 201 }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1))
+
+    expect(JSON.parse(localStorage.getItem("qui-problem-report-draft") as string)).toEqual({ text: "Torrents vanish after a restart", logScope: "all" })
+  })
+})
+
+function storeDraftFromAnotherTab(draft: object) {
+  localStorage.setItem("qui-problem-report-draft", JSON.stringify(draft))
+  window.dispatchEvent(new StorageEvent("storage", { key: "qui-problem-report-draft" }))
+}
+
+describe("Sender", () => {
+  it("opens the sign-in page in a popup, waits while it is pending, and then sends as the name", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    serve()
+    serveSender({ anonymous: true }, { anonymous: false, provider: "discord", name: "wumpus" })
+    const signIn = serveSignIn([{ state: "pending" }, { state: "done" }])
+    const { senders } = serveSend()
+    const { popup, open } = stubPopup()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+
+    expect(open).toHaveBeenCalledTimes(1)
+    await screen.findByRole("button", { name: "Waiting for Discord" })
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    expect(signIn.started).toEqual(["discord"])
+    expect(popup.location.href).toBe(signInURL)
+    expect(popup.opener).toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+
+    await screen.findByRole("button", { name: "wumpus" })
+    expect(screen.getByText(/^The maintainers see your Discord name \(wumpus\) and may contact you\./)).not.toBeNull()
+    expect(signIn.reads).toBe(2)
+
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(senders).toEqual([{ anonymous: false, provider: "discord", name: "wumpus" }]))
+  })
+
+  it.each<[string, ProblemReportSignInState, string]>([
+    [
+      "a Discord account outside the autobrr server",
+      { state: "refused", reason: "discord_not_member" },
+      "Your Discord account is not in the autobrr Discord server. Join the server and sign in again, sign in with GitHub, or send anonymously.",
+    ],
+    ["another refusal", { state: "refused", reason: "account_too_new" }, "Sign-in refused: account_too_new"],
+    ["a sign-in that expired", { state: "expired" }, "Sign-in expired. Sign in again."],
+  ])("for %s, says why the sign-in ended and stays Anonymous", async (_name, state, message) => {
+    serve()
+    serveSignIn([state])
+    stubPopup()
+    mount()
+
+    const { textField } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe(message)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(textField.value).toBe("Torrents vanish")
+  })
+
+  it("closes the popup and says so when brrbin cannot start a sign-in", async () => {
+    serve()
+    const signIn = serveSignIn([], () => HttpResponse.json({ error: "unavailable" }, { status: 502 }))
+    const { popup } = stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe("brrbin cannot sign you in right now. Try again later.")
+    expect(popup.close).toHaveBeenCalledTimes(1)
+    expect(popup.location.href).toBe("")
+    expect(signIn.reads).toBe(0)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+  })
+
+  it("starts no sign-in and says so when the browser blocks the popup", async () => {
+    serve()
+    const signIn = serveSignIn([])
+    vi.spyOn(window, "open").mockReturnValue(null)
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Your browser blocked the sign-in window. Allow pop-ups for qui, then sign in again.")
+    expect(signIn.started).toEqual([])
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+  })
+
+  it("keeps watching a pending sign-in when the browser blocks the popup of another one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    serve()
+    serveSender({ anonymous: true }, octocat)
+    const signIn = serveSignIn([{ state: "pending" }, { state: "done" }])
+    const { open } = stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    open.mockReturnValue(null)
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+    await screen.findByRole("alert")
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+
+    await screen.findByRole("button", { name: "octocat" })
+    expect(signIn.started).toEqual(["github"])
+  })
+
+  it("reads the sender again when the user comes back to the tab, as another tab can sign in or out", async () => {
+    serve()
+    serveSender({ anonymous: true }, octocat)
+    mount()
+
+    await openDialog()
+    await screen.findByText(/^Anonymous: no name, no account\./)
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"))
+    })
+
+    await screen.findByRole("button", { name: "octocat" })
+    expect(screen.getByText(/^The maintainers see your GitHub name \(octocat\) and may contact you\./)).not.toBeNull()
+  })
+
+  it("stops a pending sign-in when the user picks Anonymous", async () => {
+    serve()
+    const signIn = serveSignIn([{ state: "pending" }])
+    stubPopup()
+    mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(signIn.reads).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Anonymous" }))
+
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+  })
+
+  it("closes the popup and stays Anonymous when the sign-in starts after the user picked Anonymous", async () => {
+    serve()
+    const signIn = serveSignIn([{ state: "pending" }])
+    const start = holdSignInStart([signInURL])
+    const { popup } = stubPopup()
+    const queryClient = mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(start.starts()).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Anonymous" }))
+    await screen.findByRole("button", { name: "Anonymous" })
+    await waitFor(() => expect(signIn.signOuts).toBe(1))
+
+    start.releaseFirst()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+
+    expect(popup.location.href).toBe("")
+    expect(popup.close).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(signIn.reads).toBe(0)
+  })
+
+  it("closes the popup of a sign-in that a newer sign-in replaced, and waits for the newer one", async () => {
+    serve()
+    serveSignIn([{ state: "pending" }])
+    const discordURL = "https://bin.getqui.com/report-sign-in/p2"
+    const start = holdSignInStart([signInURL, discordURL])
+    const first = fakePopup()
+    const second = fakePopup()
+    vi.spyOn(window, "open").mockReturnValueOnce(first as unknown as Window).mockReturnValueOnce(second as unknown as Window)
+    const queryClient = mount()
+
+    await openDialog()
+    openSenderMenu("Anonymous")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with GitHub" }))
+    await waitFor(() => expect(start.starts()).toBe(1))
+    openSenderMenu("Waiting for GitHub")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign in with Discord" }))
+    await waitFor(() => expect(second.location.href).toBe(discordURL))
+
+    start.releaseFirst()
+    await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+
+    expect(first.location.href).toBe("")
+    expect(first.close).toHaveBeenCalledTimes(1)
+    expect(second.close).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Waiting for Discord" })).not.toBeNull()
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("signs out and sends as Anonymous again", async () => {
+    serve()
+    serveSender(octocat)
+    const signIn = serveSignIn([])
+    const { senders } = serveSend()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    openSenderMenu("octocat")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }))
+
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+    expect(screen.getByText(/^Anonymous: no name, no account\./)).not.toBeNull()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+    await waitFor(() => expect(senders).toEqual([{ anonymous: true }]))
+  })
+
+  it("stays Anonymous after a sign-out when a sender read from before it answers later", async () => {
+    serve()
+    let releaseRead = () => {}
+    const heldRead = new Promise<void>((resolve) => { releaseRead = resolve })
+    let reads = 0
+    server.use(http.get("*/api/problem-reports/sender", async () => {
+      if (++reads === 2) await heldRead
+      return HttpResponse.json(octocat)
+    }))
+    const signIn = serveSignIn([])
+    const queryClient = mount()
+
+    await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    act(() => {
+      window.dispatchEvent(new Event("visibilitychange"))
+    })
+    await waitFor(() => expect(reads).toBe(2))
+    openSenderMenu("octocat")
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }))
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(signIn.signOuts).toBe(1)
+
+    releaseRead()
+    await waitFor(() => expect(queryClient.getQueryState(SENDER_KEY)?.fetchStatus).toBe("idle"))
+
+    expect(screen.getByRole("button", { name: "Anonymous" })).not.toBeNull()
+    expect(screen.getByText(/^Anonymous: no name, no account\./)).not.toBeNull()
+  })
+
+  it("sends as Anonymous while qui has not answered which sender it holds", async () => {
+    serve()
+    server.use(http.get("*/api/problem-reports/sender", async () => {
+      await delay("infinite")
+    }))
+    const { senders } = serveSend()
+    mount()
+
+    const { textField, sendButton } = await openDialog()
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+
+    await waitFor(() => expect(senders).toEqual([{ anonymous: true }]))
+  })
+
+  it("when brrbin rejects the sign-in on Send, says that it ended, keeps the text, and keeps the user on the page", async () => {
+    serve()
+    serveSender(octocat, { anonymous: true })
+    serveSend([HttpResponse.json({ error: "token_rejected" }, { status: 409 })])
+    mount()
+    const page = window.location.href
+
+    const { textField, sendButton } = await openDialog()
+    await screen.findByRole("button", { name: "octocat" })
+    fireEvent.change(textField, { target: { value: "Torrents vanish" } })
+    fireEvent.click(sendButton())
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Your sign-in ended. Sign in again, then send.")
+    await screen.findByRole("button", { name: "Anonymous" })
+    expect(textField.value).toBe("Torrents vanish")
+    expect(screen.queryByRole("dialog")).not.toBeNull()
+    expect(window.location.href).toBe(page)
   })
 })
 
@@ -475,7 +1042,6 @@ describe("Sent reports", () => {
     }
   })
 
-  // regression: #4302
   it("keeps a newer seen time that another browser stored when Sent reports shows older statuses", async () => {
     serve()
     serveSentReports([listed({ id: "r1", title: "Uploads stall", status: "issue", issue: { number: 4321, url: issueURL, closed: false }, statusChangedAt: "2026-11-19T10:00:00Z" })])
@@ -557,7 +1123,6 @@ describe("Sent reports", () => {
     expect(screen.getByText("Torrents vanish")).not.toBeNull()
   })
 
-  // regression: #4302
   it("keeps a deleted row gone when a list that Sent reports asked for during the Delete answers later", async () => {
     serve()
     const rows = [listed({ id: "r2", title: "Uploads stall" }), listed({ id: "r1", title: "Torrents vanish" })]
@@ -565,7 +1130,6 @@ describe("Sent reports", () => {
     const heldList = new Promise<void>((resolve) => { releaseList = resolve })
     let lists = 0
     server.use(http.get("*/api/problem-reports", async () => {
-      // The third list, from the second open of Sent reports, read its rows before the Delete ended.
       if (++lists === 3) await heldList
       return HttpResponse.json(rows)
     }))

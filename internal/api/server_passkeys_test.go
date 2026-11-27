@@ -28,14 +28,16 @@ import (
 const (
 	pathPasskey  = "abc123xyz"
 	queryPasskey = "querypasskey7"
+	seedPasskey  = "seedpasskey9"
 	pathOrigin   = "https://tracker.example.invalid"
 	queryOrigin  = "https://query.example.invalid"
+	seedOrigin   = "https://seed.example.invalid"
 	pathTracker  = pathOrigin + "/" + pathPasskey + "/announce"
+	stubHashA    = "aaa0000000000000000000000000000000000000"
+	stubHashB    = "bbb0000000000000000000000000000000000000"
 	queryTracker = queryOrigin + "/announce?passkey=" + queryPasskey
 )
 
-// newQBittorrentStub answers as a qBittorrent with two torrents on one content
-// path, each with a passkey in another place of its announce URL.
 func newQBittorrentStub(t *testing.T) *httptest.Server {
 	t.Helper()
 	torrent := func(name, tracker string, addedOn int) map[string]any {
@@ -50,10 +52,10 @@ func newQBittorrentStub(t *testing.T) *httptest.Server {
 		"/api/v2/sync/maindata": map[string]any{
 			"rid": 1, "full_update": true,
 			"torrents": map[string]any{
-				"aaa": torrent("aaa", pathTracker, 2),
-				"bbb": torrent("bbb", queryTracker, 1),
+				stubHashA: torrent("aaa", pathTracker, 2),
+				stubHashB: torrent("bbb", queryTracker, 1),
 			},
-			"trackers": map[string]any{pathTracker: []string{"aaa"}, queryTracker: []string{"bbb"}},
+			"trackers": map[string]any{pathTracker: []string{stubHashA}, queryTracker: []string{stubHashB}},
 		},
 		"/api/v2/app/preferences":     map[string]any{"add_trackers_enabled": true, "add_trackers": pathTracker + "\n\n" + queryTracker},
 		"/api/v2/app/buildInfo":       map[string]any{},
@@ -61,7 +63,7 @@ func newQBittorrentStub(t *testing.T) *httptest.Server {
 		"/api/v2/torrents/categories": map[string]any{},
 		"/api/v2/torrents/tags":       []string{},
 		"/api/v2/torrentcreator/status": []map[string]any{
-			{"taskID": "task", "status": "Finished", "trackers": []string{pathTracker, queryTracker}},
+			{"taskID": "task", "status": "Finished", "trackers": []string{pathTracker, queryTracker}, "urlSeeds": []string{seedOrigin + "/" + seedPasskey + "/file"}},
 		},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +78,7 @@ func newQBittorrentStub(t *testing.T) *httptest.Server {
 			_, _ = io.WriteString(w, "Ok.")
 			return
 		case "/api/v2/torrents/trackers":
-			rows := map[string]string{"aaa": pathTracker, "bbb": queryTracker}
+			rows := map[string]string{stubHashA: pathTracker, stubHashB: queryTracker}
 			_ = json.MarshalWrite(w, []map[string]any{
 				{"url": "** [DHT] **", "status": 0},
 				{"url": rows[strings.ToLower(r.URL.Query().Get("hash"))], "status": 2},
@@ -102,7 +104,7 @@ type passkeyRig struct {
 
 func newPasskeyRig(t *testing.T) *passkeyRig {
 	t.Helper()
-	deps := newTestDependencies(t)
+	deps, authDB := newTestDependenciesWithDB(t)
 	db := testdb.NewMigratedSQLite(t, "api-passkeys")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -119,8 +121,8 @@ func newPasskeyRig(t *testing.T) *passkeyRig {
 	run := &models.BackupRun{InstanceID: instance.ID, Kind: models.BackupRunKindManual, Status: models.BackupRunStatusSuccess, RequestedBy: "test", RequestedAt: time.Now()}
 	require.NoError(t, backupStore.CreateRun(t.Context(), run))
 	require.NoError(t, backupStore.InsertItems(t.Context(), run.ID, []models.BackupItem{
-		{TorrentHash: "aaa", Name: "aaa", Category: new("snapshot"), SizeBytes: 100},
-		{TorrentHash: "bbb", Name: "bbb", Category: new("snapshot"), SizeBytes: 100},
+		{TorrentHash: stubHashA, Name: "aaa", Category: new("snapshot"), SizeBytes: 100},
+		{TorrentHash: stubHashB, Name: "bbb", Category: new("snapshot"), SizeBytes: 100},
 	}))
 
 	deps.InstanceStore = instanceStore
@@ -134,7 +136,7 @@ func newPasskeyRig(t *testing.T) *passkeyRig {
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
-	rig := &passkeyRig{permissionRig: &permissionRig{deps: deps, url: srv.URL}, instanceID: instance.ID, runID: run.ID}
+	rig := &passkeyRig{permissionRig: &permissionRig{deps: deps, authDB: authDB, url: srv.URL}, instanceID: instance.ID, runID: run.ID}
 	rig.cookie = rig.sessionCookie(t)
 	return rig
 }
@@ -166,8 +168,6 @@ func (rig *passkeyRig) fetch(t *testing.T, method, path, key, body string, cooki
 	return resp.StatusCode, string(raw)
 }
 
-// streamInit opens a stream and returns the data of its init frame. The stream
-// stays open until ctx ends.
 func (rig *passkeyRig) streamInit(ctx context.Context, t *testing.T, limit int, key string, cookie *http.Cookie, expression string) string {
 	t.Helper()
 	filters, err := json.Marshal(qbittorrent.FilterOptions{Expr: expression})
@@ -211,15 +211,15 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 		name, method, path, body string
 		passkeys, origins        []string
 	}{
-		{"torrent trackers, passkey in the path", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents/aaa/trackers", id), "", []string{pathPasskey}, []string{pathOrigin, "** [DHT] **"}},
-		{"torrent trackers, passkey in the query", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents/bbb/trackers", id), "", []string{queryPasskey}, []string{queryOrigin, "** [DHT] **"}},
+		{"torrent trackers, passkey in the path", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents/%s/trackers", id, stubHashA), "", []string{pathPasskey}, []string{pathOrigin, "** [DHT] **"}},
+		{"torrent trackers, passkey in the query", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents/%s/trackers", id, stubHashB), "", []string{queryPasskey}, []string{queryOrigin, "** [DHT] **"}},
 		{"instance trackers", http.MethodGet, fmt.Sprintf("/api/instances/%d/trackers", id), "", both, bothOrigins},
 		{"torrent list", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrents", id), "", both, bothOrigins},
 		{"cross-instance list", http.MethodGet, fmt.Sprintf("/api/torrents/cross-instance?instanceIds=%d", id), "", both, bothOrigins},
-		{"local matches, passkey in the query", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/aaa/local-matches", id), "", []string{queryPasskey}, []string{queryOrigin}},
-		{"local matches, passkey in the path", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/bbb/local-matches", id), "", []string{pathPasskey}, []string{pathOrigin}},
-		{"delete check", http.MethodPost, fmt.Sprintf("/api/instances/%d/torrents/delete-cross-seeds", id), `{"hashes":["aaa"],"action":"delete","deleteFiles":true}`, []string{queryPasskey}, []string{queryOrigin}},
-		{"torrent creator status", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrent-creator/status", id), "", both, bothOrigins},
+		{"local matches, passkey in the query", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/%s/local-matches", id, stubHashA), "", []string{queryPasskey}, []string{queryOrigin}},
+		{"local matches, passkey in the path", http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/%s/local-matches", id, stubHashB), "", []string{pathPasskey}, []string{pathOrigin}},
+		{"delete check", http.MethodPost, fmt.Sprintf("/api/instances/%d/torrents/delete-cross-seeds", id), `{"hashes":["` + stubHashA + `"],"action":"delete","deleteFiles":true}`, []string{queryPasskey}, []string{queryOrigin}},
+		{"torrent creator status", http.MethodGet, fmt.Sprintf("/api/instances/%d/torrent-creator/status", id), "", []string{pathPasskey, queryPasskey, seedPasskey}, []string{pathOrigin, queryOrigin, seedOrigin}},
 		{"preferences", http.MethodGet, fmt.Sprintf("/api/instances/%d/preferences", id), "", both, bothOrigins},
 		{"restore preview", http.MethodPost, fmt.Sprintf("/api/instances/%d/backups/runs/%d/restore/preview", id, rig.runID), `{"mode":"overwrite"}`, both, bothOrigins},
 	} {
@@ -233,7 +233,6 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 				require.Contains(t, body, origin)
 			}
 
-			// After the read key, so that the read key cannot have changed a cached row.
 			for name, request := range map[string]struct {
 				key    string
 				cookie *http.Cookie
@@ -263,15 +262,13 @@ func TestReadKeyGetsNoTrackerPasskey(t *testing.T) {
 
 	t.Run("a key with only Cross-seed: read gets no passkey from local matches", func(t *testing.T) {
 		key := rig.key(t, models.Permission{Area: models.AreaCrossSeed, Level: models.LevelRead})
-		status, body := rig.fetch(t, http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/aaa/local-matches", id), key, "", nil)
+		status, body := rig.fetch(t, http.MethodGet, fmt.Sprintf("/api/cross-seed/torrents/%d/%s/local-matches", id, stubHashA), key, "", nil)
 		require.Equal(t, http.StatusOK, status, body)
 		require.NotContains(t, body, queryPasskey)
 		require.Contains(t, body, queryOrigin)
 	})
 }
 
-// The list rows of a read key hide the passkeys, and the torrents of the Sync
-// snapshot, which every reader shares, keep their tracker URLs.
 func TestReadKeyListLeavesTheSyncSnapshotWhole(t *testing.T) {
 	rig := newPasskeyRig(t)
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
@@ -285,7 +282,7 @@ func TestReadKeyListLeavesTheSyncSnapshotWhole(t *testing.T) {
 	require.NoError(t, err)
 	snapshot := client.SyncOwner().SnapshotUnchecked()
 	require.NotNil(t, snapshot)
-	for hash, tracker := range map[string]string{"aaa": pathTracker, "bbb": queryTracker} {
+	for hash, tracker := range map[string]string{stubHashA: pathTracker, stubHashB: queryTracker} {
 		torrent, ok := snapshot.Torrent(hash)
 		require.True(t, ok, hash)
 		require.Equal(t, tracker, torrent.Tracker, hash)
@@ -299,7 +296,7 @@ func TestMagnetFieldNeedsTorrentsWrite(t *testing.T) {
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
 	writeKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelWrite})
 	path := fmt.Sprintf("/api/instances/%d/torrents/field", rig.instanceID)
-	field := func(name string) string { return `{"field":"` + name + `","hashes":["aaa"]}` }
+	field := func(name string) string { return `{"field":"` + name + `","hashes":["` + stubHashA + `"]}` }
 
 	status, body := rig.fetch(t, http.MethodPost, path, readKey, field("magnet_uri"), nil)
 	require.Equal(t, http.StatusForbidden, status)
@@ -318,8 +315,6 @@ func TestMagnetFieldNeedsTorrentsWrite(t *testing.T) {
 	require.Contains(t, body, pathPasskey)
 }
 
-// A subscriber that joins a group gets the retained frame of the group, so the
-// test runs each order of a read key and a session on the same stream.
 func TestStreamKeepsPasskeysFromReadKey(t *testing.T) {
 	rig := newPasskeyRig(t)
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})
@@ -354,7 +349,6 @@ func TestStreamKeepsPasskeysFromReadKey(t *testing.T) {
 	})
 }
 
-// regression: #3852
 func TestReadKeyCannotFilterTrackerPasskeys(t *testing.T) {
 	rig := newPasskeyRig(t)
 	readKey := rig.key(t, models.Permission{Area: models.AreaTorrents, Level: models.LevelRead})

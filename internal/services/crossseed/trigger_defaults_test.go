@@ -47,9 +47,6 @@ func TestDefaultsFor(t *testing.T) {
 		return d
 	}
 
-	// The second fixture turns the shared flags off. Across both fixtures each
-	// auto-resume setting has its own on/off pattern, so a Trigger that reads
-	// the wrong one fails.
 	sharedOff := &models.CrossSeedAutomationSettings{SkipAutoResumeRSS: true, SkipAutoResumeSeededSearch: true}
 
 	tests := []struct {
@@ -69,7 +66,6 @@ func TestDefaultsFor(t *testing.T) {
 		})},
 		{triggerSeededSearch, settings, shared(triggerDefaults{addTags: []string{"seeded"}})},
 		{triggerCompletion, settings, shared(triggerDefaults{addTags: []string{"completion"}})},
-		// Interactive apply: seeded search auto-resume, no tags, no source filters.
 		{triggerInteractiveApply, settings, shared(triggerDefaults{})},
 
 		{triggerRSS, sharedOff, triggerDefaults{skipAutoResume: true}},
@@ -114,12 +110,10 @@ func failingSettings(context.Context) (*models.CrossSeedAutomationSettings, erro
 	return nil, errSettingsUnavailable
 }
 
-// newInteractiveApplyService returns a service with one cached search result for
-// instance 1, hash "source", and the requests that reach CrossSeed.
 func newInteractiveApplyService(t *testing.T, loader func(context.Context) (*models.CrossSeedAutomationSettings, error)) (*Service, *[]*CrossSeedRequest) {
 	t.Helper()
 	sync := newEpisodeSyncManager()
-	sync.torrents[1] = []qbt.Torrent{{Hash: "source", Name: "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA", Progress: 1}}
+	sync.torrents[1] = []qbt.Torrent{{Hash: fakeHash("source"), Name: "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA", Progress: 1}}
 	var captured []*CrossSeedRequest
 	service := &Service{
 		syncManager:              sync,
@@ -127,12 +121,12 @@ func newInteractiveApplyService(t *testing.T, loader func(context.Context) (*mod
 		searchResultCache:        ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc:      func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 		automationSettingsLoader: loader,
-		crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 			captured = append(captured, req)
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
-	service.cacheSearchResults(1, "source", []TorrentSearchResult{{
+	service.cacheSearchResults(1, fakeHash("source"), []TorrentSearchResult{{
 		Indexer: "Indexer", IndexerID: 9, Title: "Harbor.Signal.2026.1080p.WEB-DL.H.264-GROUP",
 		DownloadURL: "https://example.invalid/a.torrent", GUID: "guid",
 	}})
@@ -155,10 +149,10 @@ func TestSettingsReadFailureAddsNothing(t *testing.T) {
 		service := &Service{
 			notifier:                 notifier,
 			automationSettingsLoader: failingSettings,
-			crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				captured = req
 				return &CrossSeedResponse{Success: true}, nil
-			},
+			}),
 		}
 
 		_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
@@ -180,7 +174,7 @@ func TestSettingsReadFailureAddsNothing(t *testing.T) {
 		service, captured := newInteractiveApplyService(t, failingSettings)
 
 		withAdder(service)
-		_, err := service.ApplyTorrentSearchResults(t.Context(), 1, "source", interactiveApplyRequest(true, nil))
+		_, err := service.ApplyTorrentSearchResults(t.Context(), 1, mustParseHash(t, "c0de000000000000000000000000000000000001"), interactiveApplyRequest(true, nil))
 		require.ErrorIs(t, err, errSettingsUnavailable)
 		assert.Empty(t, *captured)
 	})
@@ -205,7 +199,7 @@ func TestInteractiveApplyOverrides(t *testing.T) {
 			service, captured := newInteractiveApplyService(t, loader)
 
 			withAdder(service)
-			_, err := service.ApplyTorrentSearchResults(t.Context(), 1, "source", tt.req)
+			_, err := service.ApplyTorrentSearchResults(t.Context(), 1, mustParseHash(t, "c0de000000000000000000000000000000000001"), tt.req)
 			require.NoError(t, err)
 			require.Len(t, *captured, 1)
 			got := (*captured)[0]
@@ -233,10 +227,10 @@ func TestWebhookCategoryAndStartPausedDefaults(t *testing.T) {
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{}, nil
 				},
-				crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+				injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 					captured = req
 					return &CrossSeedResponse{Success: true}, nil
-				},
+				}),
 			}
 			tt.req.TorrentData = "ZGF0YQ=="
 
@@ -249,8 +243,6 @@ func TestWebhookCategoryAndStartPausedDefaults(t *testing.T) {
 	}
 }
 
-// A RED/OPS match keeps the indexer name of older versions for its category
-// and link folder.
 func TestRequestKeepsGazellePlacementName(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{UseCategoryFromIndexer: true}
 	svc := &Service{}

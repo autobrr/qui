@@ -57,8 +57,6 @@ func TestShareStartRoute(t *testing.T) {
 	})
 }
 
-// newShareRig builds the router on a Share service whose database the test
-// fills through the returned store.
 func newShareRig(t *testing.T) (*permissionRig, *share.Store, *transfer.Store) {
 	t.Helper()
 	db := testdb.NewMigratedSQLite(t, "api-shares")
@@ -88,8 +86,8 @@ func TestShareListAndRemoveRoutes(t *testing.T) {
 	created := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 	add := func(helperHash string, state share.State, reason string, endedAt time.Time) int64 {
 		sh := &share.Share{
-			InstanceID: 1, Hash: "aaaa", Name: "Show.S01.1080p-GRP", Files: []string{"Show.S01E01.mkv"}, Size: 200,
-			HelperHash: helperHash, Tracker: share.TrackerOwn,
+			InstanceID: 1, Hash: labelHash(t, "aaaa"), Name: "Show.S01.1080p-GRP", Files: []string{"Show.S01E01.mkv"}, Size: 200,
+			HelperHash: labelHash(t, helperHash), Tracker: share.TrackerOwn,
 			OwnerSecret: "owner", RecipientSecret: "recipient", TorrentFile: []byte("d8:announce0:e"),
 			EndAtFirstDownload: true, ExpiresAt: created.Add(7 * 24 * time.Hour), State: state, EndReason: reason, CreatedAt: created,
 			EndedAt: endedAt, Downloaded: 50, Uploaded: 60,
@@ -110,7 +108,7 @@ func TestShareListAndRemoveRoutes(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(body), &list))
 	require.Len(t, list, 2)
 	require.Equal(t, map[string]any{
-		"id": float64(ended), "instanceId": float64(1), "hash": "aaaa", "name": "Show.S01.1080p-GRP", "size": float64(200),
+		"id": float64(ended), "instanceId": float64(1), "hash": strings.Repeat("a", 40), "name": "Show.S01.1080p-GRP", "size": float64(200),
 		"tracker": "own", "endAtFirstDownload": true, "firstDownloaderOnly": false, "state": "ended",
 		"endReason": "The Share expired.", "endReasonCode": "expired",
 		"createdAt": "2026-11-01T12:00:00Z", "expiresAt": "2026-11-08T12:00:00Z", "endedAt": "2026-11-01T13:00:00Z",
@@ -181,8 +179,8 @@ func TestShareSettingsRoutes(t *testing.T) {
 
 	created := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 	require.NoError(t, store.Create(t.Context(), &share.Share{
-		InstanceID: 1, Hash: "aaaa", Name: "Show.S01.1080p-GRP", Files: []string{"Show.S01E01.mkv"}, Size: 200,
-		HelperHash: strings.Repeat("b", 40), Tracker: share.TrackerOwn, OwnerSecret: "owner", RecipientSecret: "recipient",
+		InstanceID: 1, Hash: labelHash(t, "aaaa"), Name: "Show.S01.1080p-GRP", Files: []string{"Show.S01E01.mkv"}, Size: 200,
+		HelperHash: labelHash(t, "bbbb"), Tracker: share.TrackerOwn, OwnerSecret: "owner", RecipientSecret: "recipient",
 		TorrentFile: []byte("d8:announce0:e"), ExpiresAt: created.Add(7 * 24 * time.Hour), State: share.StateActive, CreatedAt: created,
 	}))
 	status, body = rig.sendBody(t, http.MethodPut, "/api/shares/settings", "", cookie,

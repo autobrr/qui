@@ -6,8 +6,14 @@ package logstream
 import (
 	"bytes"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
+)
+
+const (
+	maxLineBytes  = 64 << 10
+	truncatedMark = "... [truncated]"
 )
 
 type SwitchableWriter struct {
@@ -38,7 +44,7 @@ func (sw *SwitchableWriter) Write(p []byte) (n int, err error) {
 
 	n, err = target.w.Write(p)
 	if err != nil {
-		return n, err //nolint:wrapcheck // io.Writer interface compliance
+		return n, err
 	}
 
 	if sw.hub != nil {
@@ -64,13 +70,18 @@ func (sw *SwitchableWriter) captureLine(p []byte) {
 			line = line[:len(line)-1]
 		}
 		if line != "" {
-			sw.hub.Write(line)
+			sw.hub.Write(capLine(line))
 		}
 	}
 }
 
-// Swap atomically replaces the underlying writer and returns the old closer (if any).
-// The caller is responsible for closing the returned closer after the swap.
+func capLine(line string) string {
+	if len(line) <= maxLineBytes {
+		return line
+	}
+	return strings.ToValidUTF8(line[:maxLineBytes-len(truncatedMark)], "") + truncatedMark
+}
+
 func (sw *SwitchableWriter) Swap(newWriter io.Writer, newCloser io.Closer) io.Closer {
 	old := sw.target.Swap(&writerWithCloser{w: newWriter, closer: newCloser})
 	if old != nil {

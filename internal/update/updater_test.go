@@ -206,6 +206,7 @@ func newInstallFixture(t *testing.T) installFixture {
 	certificate, key := generateECDSACertificate(t)
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "qui")
+	//nolint:gosec // G306: the fixture stands for an installed binary, which is executable
 	require.NoError(t, os.WriteFile(binary, []byte("qui 1.30.0"), 0o700))
 
 	source := &fakeSource{releases: []fakeRelease{
@@ -247,7 +248,6 @@ func TestInstallSwapsToRequestedTagAndKeepsBackup(t *testing.T) {
 	require.NoError(t, os.WriteFile(older, []byte("qui 1.29.0"), 0o600))
 	require.NoError(t, os.WriteFile(unrelated, []byte("keep"), 0o600))
 
-	// The source also has v1.32.0; the dialog showed v1.31.0, so that is what installs.
 	result, err := f.updater.Install(t.Context(), "v1.31.0")
 	require.NoError(t, err)
 
@@ -338,9 +338,7 @@ func TestInstallReportsBackupCheckFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1.31.0", result.Version)
 	require.Empty(t, result.RollbackCommand)
-	// The real cause, not "not found": the backup may exist.
 	require.Equal(t, "stat "+backup+": permission denied", result.BackupError)
-	// Without the new backup, the older one is the only way back.
 	require.FileExists(t, older)
 }
 
@@ -358,6 +356,7 @@ func TestInstallReportsReleaseWithoutAssetForThisPlatform(t *testing.T) {
 func withTray(t *testing.T, f installFixture, archive map[string][]byte) string {
 	t.Helper()
 	tray := filepath.Join(f.dir, "qui-tray")
+	//nolint:gosec // G306: the fixture stands for an installed binary, which is executable
 	require.NoError(t, os.WriteFile(tray, []byte("qui-tray 1.30.0"), 0o700))
 	f.source.releases[1] = signedArchiveRelease(t, f.key, 2, "1.31.0", archive)
 	return tray
@@ -421,13 +420,10 @@ func TestInstallReportsSiblingSwapFailure(t *testing.T) {
 	require.ErrorIs(t, err, ErrSwap)
 	require.ErrorContains(t, err, tray)
 
-	// The running binary is already replaced; the sibling keeps its old version.
 	requireFile(t, f.binary, "qui 1.31.0")
 	requireFile(t, tray, "qui-tray 1.30.0")
 }
 
-// Only a missing sibling means a single-binary install. Any other stat error
-// could hide a sibling that stays on the old version.
 func TestInstallReportsSiblingStatFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a symlink loop")
@@ -441,8 +437,6 @@ func TestInstallReportsSiblingStatFailure(t *testing.T) {
 	require.ErrorContains(t, err, tray)
 }
 
-// A failed sibling swap does not restart qui, so the user can retry. The
-// retry must keep the backup of the version that still runs.
 func TestInstallRetryKeepsBackupOfRunningVersion(t *testing.T) {
 	f := newInstallFixture(t)
 	tray := withTray(t, f, map[string][]byte{"qui": []byte("qui 1.31.0")})
@@ -464,8 +458,6 @@ func TestShellQuoteKeepsPathLiteral(t *testing.T) {
 	require.Equal(t, `'/opt/$qui/`+"`id`"+`/it'\''s qui'`, shellQuote("/opt/$qui/`id`/it's qui"))
 }
 
-// A Windows release holds the MSI next to the zip. Self-update must take the
-// zip, because go-selfupdate cannot unpack an MSI (ADR 0013).
 func TestWindowsSelfUpdateTakesTheZipNotTheMSI(t *testing.T) {
 	certificate, _ := generateECDSACertificate(t)
 	validator, err := newReleaseValidator(certificate)

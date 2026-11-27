@@ -32,7 +32,6 @@ func NewPreferencesHandler(syncManager *qbittorrent.SyncManager) *PreferencesHan
 	}
 }
 
-// GetPreferences returns the preference catalog view of the instance preferences.
 func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -44,7 +43,6 @@ func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Reque
 	h.respondWithView(w, r, instanceID, "preferences:get")
 }
 
-// UpdatePreferences writes the changed preference keys and returns the new view.
 func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -76,7 +74,6 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 	h.respondWithView(w, r, instanceID, "preferences:getUpdated")
 }
 
-// SendTestEmail asks qBittorrent to send a test email. Success means that qBittorrent queued it.
 func (h *PreferencesHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -101,7 +98,6 @@ func (h *PreferencesHandler) SendTestEmail(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetNetworkBinding returns the network interfaces and addresses that qBittorrent can bind to.
 func (h *PreferencesHandler) GetNetworkBinding(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -120,10 +116,7 @@ func (h *PreferencesHandler) GetNetworkBinding(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(binding); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode network binding")
-	}
+	RespondJSON(w, r, http.StatusOK, binding)
 }
 
 func (h *PreferencesHandler) respondWithView(w http.ResponseWriter, r *http.Request, instanceID int, operation string) {
@@ -145,10 +138,7 @@ func (h *PreferencesHandler) respondWithView(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(view); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode preference view")
-	}
+	RespondJSON(w, r, http.StatusOK, view)
 }
 
 func hideTrackerPreferences(view []prefcatalog.Field) error {
@@ -171,7 +161,6 @@ func hideTrackerPreferences(view []prefcatalog.Field) error {
 	return nil
 }
 
-// GetAlternativeSpeedLimitsMode returns the current alternative speed limits mode
 func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -190,15 +179,9 @@ func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled}); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode alternative speed limits mode response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"enabled": enabled})
 }
 
-// ToggleAlternativeSpeedLimits toggles alternative speed limits on/off
 func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
 	if err != nil {
@@ -216,7 +199,6 @@ func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter,
 		return
 	}
 
-	// Return the new state
 	enabled, err := h.syncManager.GetAlternativeSpeedLimitsMode(r.Context(), instanceID)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "preferences:getAltSpeeds") {
@@ -227,10 +209,5 @@ func (h *PreferencesHandler) ToggleAlternativeSpeedLimits(w http.ResponseWriter,
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled}); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to encode toggle response")
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	RespondJSON(w, r, http.StatusOK, map[string]bool{"enabled": enabled})
 }

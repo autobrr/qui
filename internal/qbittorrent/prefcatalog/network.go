@@ -12,8 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// BindingInterface is one network interface that qBittorrent can bind to. The
-// interface with the value "" is "Any interface", with the addresses of all interfaces.
 type BindingInterface struct {
 	Name      string           `json:"name"`
 	Value     string           `json:"value"`
@@ -21,15 +19,11 @@ type BindingInterface struct {
 	Addresses []BindingAddress `json:"addresses"`
 }
 
-// BindingAddress is one IP address of a network interface.
 type BindingAddress struct {
 	Address   string `json:"address"`
 	Available bool   `json:"available"`
 }
 
-// NetworkBinding returns "Any interface" and the interfaces that qBittorrent lists,
-// each with its addresses. A saved interface or a saved address that qBittorrent
-// does not list is in the result with Available false, so that the dropdown keeps it.
 func NetworkBinding(ctx context.Context, client *qbt.Client, prefs qbt.AppPreferences) ([]BindingInterface, error) {
 	listed, err := client.GetNetworkInterfacesCtx(ctx)
 	if err != nil {
@@ -60,12 +54,10 @@ func NetworkBinding(ctx context.Context, client *qbt.Client, prefs qbt.AppPrefer
 	savedInterface := prefs.CurrentNetworkInterface
 	i := slices.IndexFunc(interfaces, func(iface BindingInterface) bool { return iface.Value == savedInterface })
 	if i < 0 {
-		// qBittorrent 4.6 and later send the readable name of the saved interface.
 		interfaces = append(interfaces, BindingInterface{Name: cmp.Or(prefs.CurrentInterfaceName, savedInterface), Value: savedInterface, Addresses: []BindingAddress{}})
 		i = len(interfaces) - 1
 	}
 
-	// "", 0.0.0.0, and :: are all addresses, all IPv4 addresses, and all IPv6 addresses.
 	savedAddress := prefs.CurrentInterfaceAddress
 	isAddress := savedAddress != "" && savedAddress != "0.0.0.0" && savedAddress != "::"
 	if isAddress && !slices.ContainsFunc(interfaces[i].Addresses, func(address BindingAddress) bool { return address.Address == savedAddress }) {

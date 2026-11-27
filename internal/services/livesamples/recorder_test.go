@@ -17,8 +17,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
-// fakePool holds the speeds that the pool gives at its last successful sync.
-// A failed sync leaves SyncedAt where it was, as the real pool does.
 type fakePool struct {
 	mu     sync.Mutex
 	speeds map[int]qbittorrent.SyncedSpeed
@@ -39,8 +37,6 @@ func (p *fakePool) sync(instanceID int, up, down int64) {
 	p.speeds[instanceID] = qbittorrent.SyncedSpeed{InstanceID: instanceID, SyncedAt: time.Now(), Up: up, Down: down}
 }
 
-// syncTimeOnly moves the sync time before the speeds of that sync reach the
-// cache, as the real pool does for a moment after each sync.
 func (p *fakePool) syncTimeOnly(instanceID int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -63,7 +59,6 @@ func (p *fakePool) remove(instanceID int) {
 	delete(p.speeds, instanceID)
 }
 
-// run starts a recorder over pool and stops it at the end of the test.
 func run(t *testing.T, pool *fakePool) *Recorder {
 	t.Helper()
 	recorder := newRecorder(pool)
@@ -80,7 +75,6 @@ func run(t *testing.T, pool *fakePool) *Recorder {
 	return recorder
 }
 
-// samplesOf returns the samples of one instance as offsets from start.
 func samplesOf(window Window, instanceID int, start time.Time) [][3]int64 {
 	for _, instance := range window.Instances {
 		if instance.InstanceID != instanceID {
@@ -95,7 +89,6 @@ func samplesOf(window Window, instanceID int, start time.Time) [][3]int64 {
 	return nil
 }
 
-// wait moves the fake clock by d and lets the recorder take its ticks.
 func wait(d time.Duration) {
 	time.Sleep(d)
 	synctest.Wait()
@@ -109,7 +102,6 @@ func TestRecorderTakesOneSampleForEachSuccessfulSync(t *testing.T) {
 
 		pool.sync(1, 3_743_000, 10)
 		wait(2 * time.Second)
-		// No new sync: the recorder takes no sample.
 		wait(3 * time.Second)
 		pool.sync(1, 2_000_000, 20)
 		wait(2 * time.Second)
@@ -135,7 +127,6 @@ func TestRecorderTakesZeroSpeedsOfAnIdleInstanceThatSyncs(t *testing.T) {
 	})
 }
 
-// regression: #4141
 func TestRecorderDropsSamplesOlderThanTheWindowAndForgetsAnInstanceWithNone(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
@@ -145,7 +136,6 @@ func TestRecorderDropsSamplesOlderThanTheWindowAndForgetsAnInstanceWithNone(t *t
 		pool.sync(1, 100, 0)
 		pool.sync(2, 200, 0)
 		wait(time.Minute)
-		// Instance 2 fails each sync from here on, so its sync time stays.
 		pool.sync(1, 101, 0)
 		wait(windowLength - time.Minute + time.Second)
 
@@ -155,7 +145,6 @@ func TestRecorderDropsSamplesOlderThanTheWindowAndForgetsAnInstanceWithNone(t *t
 	})
 }
 
-// regression: #4141
 func TestRecorderTakesNoSampleWhileASyncFails(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
@@ -164,11 +153,9 @@ func TestRecorderTakesNoSampleWhileASyncFails(t *testing.T) {
 
 		pool.sync(1, 100, 0)
 		wait(2 * time.Second)
-		// Failed syncs: the sync time does not move.
 		wait(10 * time.Second)
 		pool.sync(1, 300, 0)
 		wait(2 * time.Second)
-		// A removed client gives no new sample, and its old samples stay until they age out.
 		pool.remove(1)
 		wait(2 * time.Second)
 
@@ -176,7 +163,6 @@ func TestRecorderTakesNoSampleWhileASyncFails(t *testing.T) {
 	})
 }
 
-// regression: #4192
 func TestRecorderTakesTheSpeedsThatReachTheCacheAfterTheSyncTime(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()

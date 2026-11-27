@@ -53,7 +53,6 @@ func TestRideOnSyncs(t *testing.T) {
 	}
 }
 
-// newWriteRig is a sync manager over a qBittorrent stub that holds hashA and accepts each write.
 func newWriteRig(t *testing.T) *SyncManager {
 	t.Helper()
 
@@ -120,8 +119,6 @@ func TestHintMainDataRefreshSetsNoWriteTime(t *testing.T) {
 func TestReadInstanceTorrentsRidesOnTrackerHealthSyncs(t *testing.T) {
 	t.Parallel()
 
-	// The go-qbittorrent and qui sync managers start cache goroutines that never
-	// end, so they must not start inside the bubble.
 	qbtClient := qbt.NewClient(qbt.Config{Host: "http://qbt.example.invalid"})
 	client := &Client{
 		Client:            qbtClient,

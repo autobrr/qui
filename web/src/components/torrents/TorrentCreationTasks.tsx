@@ -29,10 +29,10 @@ interface TorrentCreationTasksProps {
 }
 
 const STATUS_COLORS: Record<TorrentCreationStatus, string> = {
-  Queued: "bg-yellow-500 p-1",
-  Running: "bg-blue-500 p-1",
-  Finished: "bg-green-500 p-1",
-  Failed: "bg-red-500 p-1",
+  Queued: "bg-warning text-background p-1",
+  Running: "bg-info text-background p-1",
+  Finished: "bg-success text-background p-1",
+  Failed: "bg-destructive text-background p-1",
 }
 
 const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
@@ -42,12 +42,22 @@ const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
   Failed: <XCircle className="h-4 w-4" />,
 }
 
+const STATUS_LABEL_KEYS: Record<TorrentCreationStatus, string> = {
+  Queued: "creationTasks.statusLabels.Queued",
+  Running: "creationTasks.statusLabels.Running",
+  Finished: "creationTasks.statusLabels.Finished",
+  Failed: "creationTasks.statusLabels.Failed",
+}
+
+function statusLabelKey(status: TorrentCreationStatus): string {
+  return Object.hasOwn(STATUS_LABEL_KEYS, status) ? STATUS_LABEL_KEYS[status] : "common:status.unknown"
+}
+
 export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) {
   const { t } = useTranslation("torrents")
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
-  // Keep table responsive while tasks run and ease off polling once queue clears
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["torrent-creation-tasks", instanceId],
     queryFn: () => api.getTorrentCreationTasks(instanceId),
@@ -96,14 +106,12 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
 
   return (
     <div>
-      {/* Mobile/Tablet Card Layout */}
       <div className="lg:hidden space-y-3 p-4">
         {tasks.map((task) => (
           <div
             key={task.taskID}
             className="border rounded-lg p-4 space-y-3 bg-card"
           >
-            {/* Header with source and status */}
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0 space-y-1">
                 <Tooltip>
@@ -114,15 +122,15 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   </TooltipTrigger>
                   <TooltipContent>{task.sourcePath}</TooltipContent>
                 </Tooltip>
-                <div className="flex flex-wrap gap-2items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
-                      {t(`creationTasks.statusLabels.${task.status}`, task.status)}
+                      {t(statusLabelKey(task.status))}
                     </span>
                   </Badge>
                   {task.private && (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline">
                       {t("creationTasks.private")}
                     </Badge>
                   )}
@@ -130,7 +138,6 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
               </div>
             </div>
 
-            {/* Progress bar for running tasks */}
             {task.status === "Running" && task.progress !== undefined && (
               <div className="space-y-1.5">
                 <Progress value={task.progress} className="h-2" />
@@ -140,14 +147,12 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
               </div>
             )}
 
-            {/* Error message */}
             {task.errorMessage && (
               <div className="text-xs text-destructive break-words">
                 {task.errorMessage}
               </div>
             )}
 
-            {/* Footer with date and actions */}
             <div className="flex items-center justify-between gap-3 pt-2 border-t">
               <div className="text-xs text-muted-foreground">
                 {formatDate(new Date(task.timeAdded))}
@@ -177,7 +182,6 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
         ))}
       </div>
 
-      {/* Desktop Table Layout */}
       <div className="hidden lg:block">
         <Table>
           <TableHeader>
@@ -198,7 +202,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                       {task.sourcePath.split("/").pop() || task.sourcePath}
                     </TruncatedText>
                     {task.private && (
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline">
                         {t("creationTasks.private")}
                       </Badge>
                     )}
@@ -211,7 +215,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
-                      {t(`creationTasks.statusLabels.${task.status}`, task.status)}
+                      {t(statusLabelKey(task.status))}
                     </span>
                   </Badge>
                 </TableCell>

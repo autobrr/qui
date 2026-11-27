@@ -8,13 +8,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// ExternalIDs represents the external IDs resolved from ARR instances
 type ExternalIDs struct {
 	IMDbID   string `json:"imdb_id,omitempty"`
 	TMDbID   int    `json:"tmdb_id,omitempty"`
@@ -22,70 +22,56 @@ type ExternalIDs struct {
 	TVMazeID int    `json:"tvmaze_id,omitempty"`
 }
 
-// IsEmpty returns true if no IDs are set
 func (e *ExternalIDs) IsEmpty() bool {
 	return e.IMDbID == "" && e.TMDbID == 0 && e.TVDbID == 0 && e.TVMazeID == 0
 }
 
-// EpisodeMap is the Sonarr-sourced (season, episode, absolute) triple for the one
-// episode a release name resolves to. It lets a seasoned and an absolute-numbered
-// release count as the same episode.
 type EpisodeMap struct {
 	Season   int `json:"season"`
 	Episode  int `json:"episode"`
 	Absolute int `json:"absolute"`
 }
 
-// ArrIDCacheEntry represents a cached ID lookup result
 type ArrIDCacheEntry struct {
-	ID            int64       `json:"id"`
-	TitleHash     string      `json:"title_hash"`
-	ContentType   string      `json:"content_type"`
-	ArrInstanceID *int        `json:"arr_instance_id,omitempty"`
-	ExternalIDs   ExternalIDs `json:"external_ids"`
-	Titles        []string    `json:"titles,omitempty"`
-	HasTitles     bool        `json:"has_titles"`
-	EpisodeMap    *EpisodeMap `json:"episode_map,omitempty"`
-	// HasEpisodeMap reports that the row was written by a lookup that read the
-	// episode map. A positive row without it predates the map and refetches once.
-	HasEpisodeMap bool      `json:"has_episode_map"`
-	IsNegative    bool      `json:"is_negative"`
-	CachedAt      time.Time `json:"cached_at"`
-	ExpiresAt     time.Time `json:"expires_at"`
+	ID            int64            `json:"id"`
+	TitleHash     string           `json:"title_hash"`
+	ContentType   string           `json:"content_type"`
+	ArrInstanceID *int             `json:"arr_instance_id,omitempty"`
+	ExternalIDs   ExternalIDs      `json:"external_ids"`
+	Titles        []string         `json:"titles,omitempty"`
+	TitleSeasons  map[string][]int `json:"title_seasons,omitempty"`
+	HasTitles     bool             `json:"has_titles"`
+	EpisodeMap    *EpisodeMap      `json:"episode_map,omitempty"`
+	HasEpisodeMap bool             `json:"has_episode_map"`
+	IsNegative    bool             `json:"is_negative"`
+	CachedAt      time.Time        `json:"cached_at"`
+	ExpiresAt     time.Time        `json:"expires_at"`
 }
 
-// ArrIDCacheStore manages the ARR ID cache in the database
 type ArrIDCacheStore struct {
 	db dbinterface.Querier
 }
 
-// NewArrIDCacheStore creates a new ArrIDCacheStore
 func NewArrIDCacheStore(db dbinterface.Querier) *ArrIDCacheStore {
 	return &ArrIDCacheStore{db: db}
 }
 
-// ComputeTitleHash computes a SHA256 hash of the normalized title for cache lookup
 func ComputeTitleHash(title string) string {
 	normalized := normalizeLowerTrim(title)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])
 }
 
-// Get retrieves a cached ID entry if it exists and hasn't expired.
-//
-// Expiry is compared against a bound time rather than CURRENT_TIMESTAMP: SQLite
-// compares the text, and CURRENT_TIMESTAMP has a different text form than a
-// bound time.Time (#1961).
 func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string) (*ArrIDCacheEntry, error) {
 	query := `
 		SELECT id, title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json,
-			episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, cached_at, expires_at
+			title_seasons_json, episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, cached_at, expires_at
 		FROM arr_id_cache
 		WHERE title_hash = ? AND content_type = ? AND expires_at > ?
 	`
 
 	var entry ArrIDCacheEntry
-	var imdbID, titlesJSON *string
+	var imdbID, titlesJSON, titleSeasonsJSON *string
 	var tmdbID, tvdbID, tvmazeID, mapSeason, mapEpisode, mapAbsolute *int
 	var mapKnown, isNegative int
 
@@ -99,6 +85,7 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 		&tvdbID,
 		&tvmazeID,
 		&titlesJSON,
+		&titleSeasonsJSON,
 		&mapSeason,
 		&mapEpisode,
 		&mapAbsolute,
@@ -108,10 +95,9 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 		&entry.ExpiresAt,
 	)
 	if err != nil {
-		return nil, err // Returns sql.ErrNoRows if not found
+		return nil, err
 	}
 
-	// Map nullable fields to ExternalIDs
 	if imdbID != nil {
 		entry.ExternalIDs.IMDbID = *imdbID
 	}
@@ -130,6 +116,11 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 			return nil, fmt.Errorf("failed to decode arr id cache titles: %w", err)
 		}
 	}
+	if titleSeasonsJSON != nil {
+		if err := jsonv2.Unmarshal([]byte(*titleSeasonsJSON), &entry.TitleSeasons); err != nil {
+			return nil, fmt.Errorf("failed to decode arr id cache title seasons: %w", err)
+		}
+	}
 	entry.HasEpisodeMap = SQLiteIntToBool(mapKnown)
 	if mapSeason != nil && mapEpisode != nil && mapAbsolute != nil {
 		entry.EpisodeMap = &EpisodeMap{Season: *mapSeason, Episode: *mapEpisode, Absolute: *mapAbsolute}
@@ -139,25 +130,15 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 	return &entry, nil
 }
 
-// Set creates or updates a cache entry (upsert) without titles or an episode map,
-// recording neither as known. The service uses it for negative rows.
 func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, isNegative bool, ttl time.Duration) error {
-	return s.SetWithTitles(ctx, titleHash, contentType, arrInstanceID, ids, nil, nil, false, isNegative, ttl)
+	return s.SetWithTitles(ctx, titleHash, contentType, arrInstanceID, ids, nil, nil, nil, false, isNegative, ttl)
 }
 
-// SetWithTitles creates or updates a cache entry from a full lookup result with the
-// ARR title aliases recorded as known. episodeMapKnown records that the lookup read
-// the episode map (nil when it found none); a parse that never answered leaves it
-// false so the row refetches.
-// A negative write never replaces a live positive row: concurrent lookups of the
-// same title can race, and a slower no-ID result must not hide freshly resolved
-// IDs for the negative TTL (#2300). Positive writes always win.
-func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, episodeMap *EpisodeMap, episodeMapKnown, isNegative bool, ttl time.Duration) error {
+func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, titleSeasons map[string][]int, episodeMap *EpisodeMap, episodeMapKnown, isNegative bool, ttl time.Duration) error {
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl)
 
-	// Prepare nullable values
-	var imdbID, titlesJSON *string
+	var imdbID, titlesJSON, titleSeasonsJSON *string
 	var tmdbID, tvdbID, tvmazeID, mapSeason, mapEpisode, mapAbsolute *int
 
 	if episodeMap != nil {
@@ -185,11 +166,19 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 		titlesValue := string(encodedTitles)
 		titlesJSON = &titlesValue
 	}
+	if len(titleSeasons) > 0 {
+		encodedSeasons, err := jsonv2.Marshal(titleSeasons)
+		if err != nil {
+			return fmt.Errorf("failed to encode arr id cache title seasons: %w", err)
+		}
+		seasonsValue := string(encodedSeasons)
+		titleSeasonsJSON = &seasonsValue
+	}
 
 	query := `
 		INSERT INTO arr_id_cache (title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json,
-			episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			title_seasons_json, episode_map_season, episode_map_episode, episode_map_absolute, episode_map_known, is_negative, cached_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(title_hash, content_type) DO UPDATE SET
 			arr_instance_id = excluded.arr_instance_id,
 			imdb_id = excluded.imdb_id,
@@ -197,12 +186,13 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 			tvdb_id = excluded.tvdb_id,
 			tvmaze_id = excluded.tvmaze_id,
 			titles_json = excluded.titles_json,
+			title_seasons_json = excluded.title_seasons_json,
 			episode_map_season = excluded.episode_map_season,
 			episode_map_episode = excluded.episode_map_episode,
 			episode_map_absolute = excluded.episode_map_absolute,
 			episode_map_known = excluded.episode_map_known,
 			is_negative = excluded.is_negative,
-			cached_at = CURRENT_TIMESTAMP,
+			cached_at = excluded.cached_at,
 			expires_at = excluded.expires_at
 		WHERE excluded.is_negative = 0
 			OR arr_id_cache.is_negative = 1
@@ -210,7 +200,7 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 	`
 
 	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, titlesJSON,
-		mapSeason, mapEpisode, mapAbsolute, BoolToSQLite(episodeMapKnown), BoolToSQLite(isNegative), expiresAt, now)
+		titleSeasonsJSON, mapSeason, mapEpisode, mapAbsolute, BoolToSQLite(episodeMapKnown), BoolToSQLite(isNegative), now, expiresAt, now)
 	if err != nil {
 		return fmt.Errorf("failed to set arr id cache entry: %w", err)
 	}
@@ -218,9 +208,7 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 	return nil
 }
 
-// CleanupExpired removes all expired cache entries
 func (s *ArrIDCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
-	// Compare against a bound time rather than CURRENT_TIMESTAMP; see Get (#1961).
 	query := `DELETE FROM arr_id_cache WHERE expires_at <= ?`
 
 	result, err := s.db.ExecContext(ctx, query, time.Now().UTC())

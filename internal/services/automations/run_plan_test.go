@@ -15,16 +15,14 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
-// planTestRun evaluates the rules on in-memory torrents and builds the Run plan.
 func planTestRun(t *testing.T, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection) runPlan {
 	t.Helper()
 	return planTestRunWith(t, &Service{}, torrents, rules, deletions, nil)
 }
 
-// planTestRunWith takes the cross-seeds from sharing: the torrents that share files with
-// each torrent.
 func planTestRunWith(t *testing.T, svc *Service, torrents []qbt.Torrent, rules []*models.Automation, deletions *deletionSelection, sharing map[string][]string) runPlan {
 	t.Helper()
 	evalCtx := &EvalContext{SameInstanceContentByHash: sharing}
@@ -56,7 +54,6 @@ func planTestRule(id int, conditions *models.ActionConditions) *models.Automatio
 	return &models.Automation{ID: id, Name: "rule", Enabled: true, TrackerPattern: "*", Conditions: conditions}
 }
 
-// A torrent that already has the target limit gets no call.
 func TestRunPlan_SpeedLimitsSkipTorrentsOnTarget(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "a", Tags: "x", UpLimit: 0, DlLimit: 2048 * 1024},
@@ -73,8 +70,6 @@ func TestRunPlan_SpeedLimitsSkipTorrentsOnTarget(t *testing.T) {
 	require.Equal(t, map[string]ruleRef{"b": {id: 7, name: "rule"}}, plan.downloadLimits.rules)
 }
 
-// A torrent whose share limits already equal the target gets no call. Each limit keeps the
-// rule that set it.
 func TestRunPlan_ShareLimitsSkipTorrentsOnTarget(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "on-target", Tags: "x", RatioLimit: 2, SeedingTimeLimit: 60, InactiveSeedingTimeLimit: -2},
@@ -96,8 +91,6 @@ func TestRunPlan_ShareLimitsSkipTorrentsOnTarget(t *testing.T) {
 	require.Equal(t, map[string]ruleRef{"seeding-differs": {id: 2, name: "rule"}}, plan.shareLimits.seedingRules)
 }
 
-// A rule that sets the share action or the mode does not replace the rule that set the ratio
-// or the seeding time of the same torrent.
 func TestRunPlan_ShareLimitsKeepEachRule(t *testing.T) {
 	torrents := []qbt.Torrent{{
 		Hash: "a", Tags: "x", RatioLimit: 1, SeedingTimeLimit: 30, InactiveSeedingTimeLimit: -2,
@@ -176,7 +169,6 @@ func TestRunPlan_AutoManagementByTarget(t *testing.T) {
 	require.Equal(t, map[string]ruleRef{"off": {id: 1, name: "rule"}, "on": {id: 2, name: "rule"}}, plan.autoManage.rules)
 }
 
-// A full tag action adds its tag to the matches and removes it from the other torrents.
 func TestRunPlan_Tags(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "match", Tags: "x"},
@@ -211,8 +203,6 @@ func TestRunPlan_ExternalProgram(t *testing.T) {
 	require.Equal(t, []pendingProgramExec{{hash: "a", torrent: torrent, programID: 9, ruleID: 5, ruleName: "rule"}}, plan.programs)
 }
 
-// A torrent in the Deletion selection and a claimed Delete trigger get no other Action, also
-// when the delete of the trigger was blocked.
 func TestRunPlan_DeletionSelectionGetsNoOtherAction(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "deleted", State: qbt.TorrentStateUploading},
@@ -237,36 +227,39 @@ func TestRunPlan_DeletionSelectionGetsNoOtherAction(t *testing.T) {
 	require.Same(t, deletions, plan.deletions)
 }
 
-// fakeTargetLookup answers with the torrents in onTarget, and fails for the hashes in fail.
-// A slow lookup answers no check before the context of the check ends, as a target
-// behind a lost connection does.
 type fakeTargetLookup struct {
 	onTarget map[string]bool
 	fail     map[string]bool
 	slow     bool
 }
 
-func (f fakeTargetLookup) HasTorrentByAnyHash(ctx context.Context, _ int, hashes []string) (*qbt.Torrent, bool, error) {
+func (f fakeTargetLookup) HasTorrentByAnyHash(ctx context.Context, _ int, hashes []infohash.Hash) (*qbt.Torrent, bool, error) {
 	if f.slow {
 		<-ctx.Done()
 		return nil, false, ctx.Err()
 	}
-	if f.fail[hashes[0]] {
+	if f.fail[hashes[0].String()] {
 		return nil, false, errors.New("target offline")
 	}
-	return nil, f.onTarget[hashes[0]], nil
+	return nil, f.onTarget[hashes[0].String()], nil
 }
 
 func TestRunPlan_ExportMarks(t *testing.T) {
+	const (
+		checkFailedHash = "1111111111111111111111111111111111111111"
+		noCategoryHash  = "2222222222222222222222222222222222222222"
+		onTargetHash    = "3333333333333333333333333333333333333333"
+		readyHash       = "4444444444444444444444444444444444444444"
+	)
 	torrents := []qbt.Torrent{
-		{Hash: "ready", Tags: "x", Category: "tv"},
-		{Hash: "on-target", Tags: "x", Category: "tv"},
-		{Hash: "check-failed", Tags: "x", Category: "tv"},
-		{Hash: "no-category", Tags: "x"},
+		{Hash: readyHash, Tags: "x", Category: "tv"},
+		{Hash: onTargetHash, Tags: "x", Category: "tv"},
+		{Hash: checkFailedHash, Tags: "x", Category: "tv"},
+		{Hash: noCategoryHash, Tags: "x"},
 	}
 	action := &models.ExportToInstanceAction{Enabled: true, TargetInstanceID: 2, SavePath: "{{.Category}}", Condition: tagsContain("x")}
 	rule := planTestRule(8, &models.ActionConditions{ExportToInstance: action})
-	svc := &Service{targetLookup: fakeTargetLookup{onTarget: map[string]bool{"on-target": true}, fail: map[string]bool{"check-failed": true}}}
+	svc := &Service{targetLookup: fakeTargetLookup{onTarget: map[string]bool{onTargetHash: true}, fail: map[string]bool{checkFailedHash: true}}}
 
 	plan := planTestRunWith(t, svc, torrents, []*models.Automation{rule}, nil, nil)
 	byHash := make(map[string]pendingExportToInstance, len(plan.exports))
@@ -276,17 +269,16 @@ func TestRunPlan_ExportMarks(t *testing.T) {
 		byHash[export.hash] = export
 	}
 	require.Len(t, byHash, 4)
-	require.Equal(t, exportReady, byHash["ready"].mark)
-	require.Equal(t, "tv", byHash["ready"].resolvedSavePath)
-	require.Empty(t, byHash["ready"].failureReason)
-	require.Equal(t, exportAlreadyOnTarget, byHash["on-target"].mark)
-	require.Equal(t, exportCheckFailed, byHash["check-failed"].mark)
-	require.Equal(t, "Failed to check target instance: target offline", byHash["check-failed"].failureReason)
-	require.Equal(t, exportSavePathUnresolved, byHash["no-category"].mark)
-	require.Equal(t, "Save path template resolution failed", byHash["no-category"].failureReason)
+	require.Equal(t, exportReady, byHash[readyHash].mark)
+	require.Equal(t, "tv", byHash[readyHash].resolvedSavePath)
+	require.Empty(t, byHash[readyHash].failureReason)
+	require.Equal(t, exportAlreadyOnTarget, byHash[onTargetHash].mark)
+	require.Equal(t, exportCheckFailed, byHash[checkFailedHash].mark)
+	require.Equal(t, "Failed to check target instance: target offline", byHash[checkFailedHash].failureReason)
+	require.Equal(t, exportSavePathUnresolved, byHash[noCategoryHash].mark)
+	require.Equal(t, "Save path template resolution failed", byHash[noCategoryHash].failureReason)
 }
 
-// sharedFiles marks each pair of hashes as cross-seeds that share files.
 func sharedFiles(pairs ...[2]string) map[string][]string {
 	sharing := make(map[string][]string)
 	for _, pair := range pairs {
@@ -296,8 +288,6 @@ func sharedFiles(pairs ...[2]string) map[string][]string {
 	return sharing
 }
 
-// A move takes the cross-seeds of each torrent along, with the rule of the torrent. A
-// torrent the run deletes stays out.
 func TestRunPlan_MoveTakesCrossSeeds(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Tags: "x", SavePath: "/old"},
@@ -314,8 +304,6 @@ func TestRunPlan_MoveTakesCrossSeeds(t *testing.T) {
 	require.Equal(t, map[string]ruleRef{"trigger": ref, "cross-seed": ref}, plan.move.rules)
 }
 
-// groupTestRule matches only the torrents on the tracker groupTestTracker, so a group member
-// on another tracker comes in only through the group.
 func groupTestRule(id int, conditions *models.ActionConditions) *models.Automation {
 	rule := planTestRule(id, conditions)
 	rule.TrackerPattern = "a.test"
@@ -327,8 +315,6 @@ const (
 	memberTestTracker = "https://b.test/announce"
 )
 
-// A move with a group takes the other members along, with the rule of the torrent. A member
-// already at the path stays out.
 func TestRunPlan_MoveTakesGroupMembers(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Tracker: groupTestTracker, SavePath: "/old", ContentPath: "/old/show"},
@@ -346,7 +332,6 @@ func TestRunPlan_MoveTakesGroupMembers(t *testing.T) {
 	require.Equal(t, map[string]ruleRef{"trigger": ref, "member": ref}, plan.move.rules)
 }
 
-// planFilesReader answers with the file list of each hash.
 type planFilesReader map[string]qbt.TorrentFiles
 
 func (f planFilesReader) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -363,8 +348,10 @@ func (planFilesReader) GetCachedInstanceTorrents(context.Context, int) ([]qbitto
 	return nil, nil
 }
 
-// Two torrents directly in one save path have the same content path, so the group needs the
-// file lists to show that they share files.
+func (planFilesReader) GetTorrentRefs(context.Context, int, qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error) {
+	return nil, nil
+}
+
 func TestRunPlan_MoveGroupInSharedSavePathChecksFiles(t *testing.T) {
 	triggerFiles := qbt.TorrentFiles{{Name: "show.mkv", Size: 100}}
 	for _, tc := range []struct {
@@ -391,8 +378,6 @@ func TestRunPlan_MoveGroupInSharedSavePathChecksFiles(t *testing.T) {
 	}
 }
 
-// A category change with includeCrossSeeds takes the cross-seeds along, with the rule of the
-// torrent. A cross-seed already in the category stays out.
 func TestRunPlan_CategoryTakesCrossSeeds(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Tags: "x", Category: "tv"},
@@ -411,8 +396,6 @@ func TestRunPlan_CategoryTakesCrossSeeds(t *testing.T) {
 	require.Equal(t, map[string]ruleRef{"trigger": ref, "cross-seed": ref}, plan.category.rules)
 }
 
-// A category change with a group takes the other members along, with the rule of the
-// torrent. A rule without an ID changes only its own torrent.
 func TestRunPlan_CategoryTakesGroupMembers(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "trigger", Tracker: groupTestTracker, Category: "tv", SavePath: "/data", ContentPath: "/data/show"},
