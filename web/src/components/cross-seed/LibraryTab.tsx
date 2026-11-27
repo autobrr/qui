@@ -32,7 +32,7 @@ import {
 import { APIError, api } from "@/lib/api"
 import { crossSeedRouteText, normalizeStringList, parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import { libraryRunState } from "@/lib/run-state"
-import { sitePickChange, sitePickForSave, sitePickSelected, useSitePickOptions } from "@/lib/site-pick"
+import { redOpsOnlyPick, redOpsPickWithoutKey, sitePickChange, sitePickForSave, sitePickSelected, useSitePickOptions } from "@/lib/site-pick"
 import type {
   CrossSeedGazelleLookupReason,
   CrossSeedGazelleSiteSummary,
@@ -140,7 +140,6 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(searchSettings.cooldownMinutes ?? MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
   const [seededSearchTags, setSeededSearchTags] = useState<string[]>(settings.seededSearchTags)
   const [skipAutoResume, setSkipAutoResume] = useState(settings.skipAutoResumeSeededSearch)
-  const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(searchSettings.torznabEnabled)
   const [skipIndividualEpisodes, setSkipIndividualEpisodes] = useState(searchSettings.skipIndividualEpisodes)
   const [maxAddedAgeDays, setMaxAddedAgeDays] = useState(searchSettings.maxAddedAgeDays)
   const [scheduleEnabled, setScheduleEnabled] = useState(searchSettings.scheduleEnabled)
@@ -196,7 +195,6 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
         cooldownMinutes: searchCooldownMinutes,
         maxAddedAgeDays,
         skipIndividualEpisodes,
-        torznabEnabled: seededSearchTorznabEnabled,
         scheduleEnabled,
         scheduleIntervalHours,
         scheduleMaxSearches,
@@ -269,12 +267,18 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
   const gazelleSavedHasOpsKey = Boolean((settings.orpheusApiKey ?? "").trim())
   const gazelleSavedHasRedKey = Boolean((settings.redactedApiKey ?? "").trim())
   const gazelleSavedConfigured = gazelleSavedEnabled && (gazelleSavedHasOpsKey || gazelleSavedHasRedKey)
-  const sitePick = useSitePickOptions("library", { torznabOn: seededSearchTorznabEnabled })
+  const sitePick = useSitePickOptions("library")
   const hasEnabledIndexers = sitePick.indexers.length > 0
   const gazelleSavedFullyConfigured = sitePick.sites.length > 0 && sitePick.sites.every(site => site.active)
 
-  const seededSearchNeedsGazelle = !seededSearchTorznabEnabled && !gazelleSavedConfigured
-  const seededSearchGazelleOnlyRun = !seededSearchTorznabEnabled && gazelleSavedConfigured
+  const seededSearchOptions = sitePick.optionsFor(searchSitePick)
+  const seededSearchSelected = sitePickSelected(searchSitePick, seededSearchOptions, sitePick.sites)
+  const seededSearchPick = sitePickForSave(searchSitePick, seededSearchOptions, sitePick.sites)
+  const seededSearchHasOptions = seededSearchOptions.length > 0
+
+  const seededSearchRedOpsOnly = redOpsOnlyPick(seededSearchPick)
+  const seededSearchNeedsGazelle = sitePick.loaded && redOpsPickWithoutKey(seededSearchPick, sitePick.sites)
+  const seededSearchGazelleOnlyRun = seededSearchRedOpsOnly && !seededSearchNeedsGazelle
 
   const runState = libraryRunState({
     hasInstance: Boolean(searchInstanceId),
@@ -285,27 +289,14 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     hasSearchSource: hasEnabledIndexers || gazelleSavedConfigured,
     scheduledRun: activeSearchRun?.kind === "scheduled",
   }, t)
-  const seededSearchIntervalMinimum = seededSearchTorznabEnabled ? MIN_SEEDED_SEARCH_INTERVAL_SECONDS : MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
+  const seededSearchIntervalMinimum = seededSearchRedOpsOnly ? MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS : MIN_SEEDED_SEARCH_INTERVAL_SECONDS
 
-  useEffect(() => {
-    setSearchIntervalSeconds(prev => (prev < seededSearchIntervalMinimum ? seededSearchIntervalMinimum : prev))
-  }, [seededSearchIntervalMinimum])
-
-  const seededSearchOptions = sitePick.optionsFor(searchSitePick)
-  const seededSearchSelected = sitePickSelected(searchSitePick, seededSearchOptions, sitePick.sites)
-  const seededSearchPick = sitePickForSave(searchSitePick, seededSearchOptions, sitePick.sites)
-  const seededSearchHasOptions = seededSearchOptions.length > 0
-
-  const seededSearchIndexerPlaceholder = !seededSearchTorznabEnabled
-    ? t(gazelleSavedConfigured ? "scan.indexers.placeholderTorznabDisabledGazelleOnly" : "scan.indexers.placeholderTorznabDisabledEnableGazelle")
-    : t(seededSearchHasOptions ? "scan.indexers.placeholderAllEnabled" : "scan.indexers.placeholderNoTorznabConfigured")
+  const seededSearchIndexerPlaceholder = t(seededSearchHasOptions ? "scan.indexers.placeholderAllEnabled" : "scan.indexers.placeholderNoTorznabConfigured")
 
   const seededSearchIndexerHelpText = (() => {
     const count = seededSearchSelected.length
-    if (!seededSearchTorznabEnabled && !gazelleSavedConfigured) return t("scan.indexers.helpTorznabDisabledEnableGazelle")
     if (!seededSearchHasOptions) return t("scan.indexers.helpNoTorznabConfigured")
     if (count > 0) return t("scan.indexers.helpSelectedQueried", { count })
-    if (!seededSearchTorznabEnabled) return t("scan.indexers.helpTorznabDisabledGazelleCheck")
     return t(gazelleSavedConfigured ? "scan.indexers.helpAllEnabledNonOpsRedQueried" : "scan.indexers.helpAllEnabledTorznabQueried")
   })()
 
@@ -320,7 +311,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     if (red) return t("scan.gazelleStatus.enabledRedMissingOps")
     return t("scan.gazelleStatus.enabledKeysMissing")
   }, [settings, t])
-  const seededSearchIntervalPresets = seededSearchGazelleOnlyRun ? [10, 30, 60] : [60, 120, 300]
+  const seededSearchIntervalPresets = seededSearchRedOpsOnly ? [10, 30, 60] : [60, 120, 300]
 
   const seededSearchFlowSummary = seededSearchSelected.length > 0 ? t("overview.seededSearch.pickedDescription") : gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? t("overview.seededSearch.gazelleFullDescription") : t("overview.seededSearch.gazellePartialDescription")) : t("overview.seededSearch.noGazelleDescription")
 
@@ -375,9 +366,7 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
       instanceId: searchInstanceId,
       ...searchFilters,
       intervalSeconds: searchIntervalSeconds,
-      indexerIds: seededSearchTorznabEnabled ? seededSearchPick.indexerIds : [],
-      gazelleSites: seededSearchPick.gazelleSites,
-      disableTorznab: !seededSearchTorznabEnabled,
+      ...seededSearchPick,
       cooldownMinutes: searchCooldownMinutes,
       skipIndividualEpisodes,
       maxAddedAgeDays,
@@ -523,15 +512,9 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <Label>
-                {gazelleSavedConfigured ? t("scan.indexersAndRedOps") : t("scan.torznabIndexers")}
-              </Label>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="library-torznab-enabled" className="text-xs font-normal text-muted-foreground">{t("scan.torznab")}</Label>
-                <Switch id="library-torznab-enabled" checked={seededSearchTorznabEnabled} onCheckedChange={value => setSeededSearchTorznabEnabled(!!value)} />
-              </div>
-            </div>
+            <Label>
+              {gazelleSavedConfigured ? t("scan.indexersAndRedOps") : t("scan.torznabIndexers")}
+            </Label>
             <MultiSelect
               options={seededSearchOptions}
               selected={seededSearchSelected}

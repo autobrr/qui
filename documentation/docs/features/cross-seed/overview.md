@@ -68,9 +68,8 @@ Library Scan searches other trackers for torrents you already seed. Configure it
 - **Source instance**: The qBittorrent instance to scan.
 - **Include categories/tags**: qui scans only torrents that match these filters. Leave them empty to scan all torrents.
 - **Exclude categories/tags**: qui never searches a torrent that matches these filters, in a manual run or in a scheduled run. For example, exclude a `no-cross-seed` category or a `no-cs` tag. These are the same pickers that RSS, webhook, and completion use.
-- **Interval**: The delay between torrents. If Torznab is on, the minimum is 60 seconds. If Torznab is off, the minimum is 5 seconds. Set 10 seconds or more for Gazelle-only runs.
-- **Indexers**: The Torznab indexers and the OPS/RED sites that the scan asks. Leave it empty to ask all of them, or pick only OPS/RED sites to ask no Torznab indexer.
-- **Torznab**: The switch beside the indexers. If you turn it off, qui asks only the OPS/RED APIs: the OPS/RED sites that you picked, or both when you picked none. qui saves the switch with the other settings, and the switch applies to manual runs and to scheduled runs.
+- **Interval**: The delay between torrents. The minimum is 60 seconds. If you pick only OPS/RED sites, the minimum is 5 seconds. Set 10 seconds or more for OPS/RED-only runs.
+- **Indexers**: The Torznab indexers and the OPS/RED sites that the scan asks. Leave it empty to ask every enabled Torznab indexer and each OPS/RED site with an API key. Pick only OPS/RED sites to ask no Torznab indexer. The pick applies to manual runs and to scheduled runs.
 - **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records a Torznab cooldown after an indexer completes its search. If you enable Gazelle, qui records a cooldown when it sends a lookup or local checks find nothing to look up. If the search fails before a lookup, qui can try the torrent in the next run.
 - **Max age for repeat searches**: An indexer that already searched a torrent does not search it again after this many days. 0 turns off this rule.
 - **Skip individual episodes**: The run does not search single TV episodes. If [automatic assembly](./season-packs.md#automatic-assembly) is on, groups of episodes still start season pack searches.
@@ -103,7 +102,8 @@ If a scheduled run cannot start, qui tries again every hour. It sends one failur
 
 If the saved settings make a run impossible, qui also opens the System notice "Library Scan schedule cannot run". These settings cause the notice:
 
-- Torznab is off, and no RED or OPS API key is set.
+- The settings pick only Torznab indexers, and no Torznab indexer is enabled.
+- The settings pick only OPS/RED sites, and no picked site has an API key.
 - No indexer is enabled.
 - The instance in the saved settings does not exist.
 

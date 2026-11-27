@@ -84,13 +84,10 @@
       "count": 1
     },
     "qui/no-direct-effect": {
-      "count": 2
+      "count": 1
     },
     "shadcn/no-arbitrary-values": {
       "count": 5
-    },
-    "shadcn/no-restyle": {
-      "count": 3
     }
   },
   "src/components/cross-seed/MatchingTab.tsx": {

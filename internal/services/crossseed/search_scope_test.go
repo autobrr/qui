@@ -103,23 +103,28 @@ func TestDecideSearchScope(t *testing.T) {
 			want:  scopeWant{skipReason: "all eligible indexers within cooldown"},
 		},
 		{
-			name:  "torznab off asks only RED/OPS",
-			facts: searchScopeFacts{torznabOff: true, sites: everySite(1), sourceSite: red, gazelleKeys: bothKeys},
+			name:  "a run that resolves no Torznab indexer asks only RED/OPS",
+			facts: searchScopeFacts{gazelleOnly: true, sites: everySite(1), sourceSite: red, gazelleKeys: bothKeys},
 			want:  scopeWant{asks: []string{ops}, skipReason: "no eligible indexers"},
 		},
 		{
-			name:  "torznab off without a key for the target site skips and starts no cooldown",
-			facts: searchScopeFacts{torznabOff: true, sourceSite: red, gazelleKeys: []string{red}},
+			name:  "a RED/OPS-only pick without a key for the target site skips and starts no cooldown",
+			facts: searchScopeFacts{gazelleOnly: true, sourceSite: red, gazelleKeys: []string{red}},
 			want:  scopeWant{skipReason: "no RED/OPS API key for the target site"},
 		},
 		{
-			name:    "torznab off without any RED/OPS key is an error",
-			facts:   searchScopeFacts{torznabOff: true, sourceSite: red},
-			wantErr: "torznab disabled but gazelle not configured",
+			name:    "a RED/OPS-only pick without any RED/OPS key is an error",
+			facts:   searchScopeFacts{gazelleOnly: true, sourceSite: red},
+			wantErr: "none of them has a usable API key",
 		},
 		{
-			name:  "torznab off with RED/OPS in cooldown asks nothing",
-			facts: searchScopeFacts{torznabOff: true, skipGazelle: true, sourceSite: red, gazelleKeys: bothKeys},
+			name:    "a pick of only RED with only an OPS key is an error",
+			facts:   searchScopeFacts{gazelleOnly: true, sites: pickedSites(models.SitePick{GazelleSites: []string{red}}), sourceSite: ops, gazelleKeys: []string{ops}},
+			wantErr: "none of them has a usable API key",
+		},
+		{
+			name:  "a RED/OPS-only pick with RED/OPS in cooldown asks nothing",
+			facts: searchScopeFacts{gazelleOnly: true, skipGazelle: true, sourceSite: red, gazelleKeys: bothKeys},
 			want:  scopeWant{skipReason: "no eligible indexers"},
 		},
 		{
@@ -285,8 +290,8 @@ func TestDecideSearchScope(t *testing.T) {
 			want:  scopeWant{torznab: []int{1}, asks: []string{red}, reasons: map[string]GazelleLookupReason{ops: GazelleReasonAlreadySeeded}},
 		},
 		{
-			name:  "torznab off with each site seeded in the instance starts the cooldown",
-			facts: searchScopeFacts{torznabOff: true, sourceSite: red, gazelleKeys: bothKeys, gazelleLocalSeeded: []string{ops}},
+			name:  "a RED/OPS-only pick with each site seeded in the instance starts the cooldown",
+			facts: searchScopeFacts{gazelleOnly: true, sourceSite: red, gazelleKeys: bothKeys, gazelleLocalSeeded: []string{ops}},
 			want:  scopeWant{skipReason: "no eligible indexers", reasons: map[string]GazelleLookupReason{red: GazelleReasonSourceSite, ops: GazelleReasonAlreadySeeded}, cooldown: true},
 		},
 		{
@@ -451,7 +456,6 @@ func newTorznabSearchRunFixture(t *testing.T, dbName, trackerURL string, torrent
 		torrents:    []qbt.Torrent{torrent},
 		filesByHash: map[string]qbt.TorrentFiles{torrent.Hash: files},
 	})
-	state.opts.DisableTorznab = false
 	state.resolvedTorznabIndexerIDs = []int{1}
 	addMusicIndexer(svc, state.opts.InstanceID, torrent.Hash, trackerURL)
 	return svc, state

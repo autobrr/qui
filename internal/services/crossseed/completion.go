@@ -735,7 +735,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 			cacheMode = jackett.CacheModeBypass
 		}
 	}
-	sites := s.resolveSitePick(ctx, pick, false, gazelleClients.hosts())
+	sites := s.resolveSitePick(ctx, pick, gazelleClients.hosts())
 	scope := s.collectSearchScope(ctx, instanceID, torrent, sites, searchScopeFacts{
 		gazelleOff:  gazelleClients.disabled(),
 		gazelleKeys: gazelleClients.hosts(),

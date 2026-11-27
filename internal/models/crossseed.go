@@ -171,7 +171,6 @@ type CrossSeedSearchSettings struct {
 	CooldownMinutes        int       `json:"cooldownMinutes"`
 	MaxAddedAgeDays        int       `json:"maxAddedAgeDays"`
 	SkipIndividualEpisodes bool      `json:"skipIndividualEpisodes"`
-	TorznabEnabled         bool      `json:"torznabEnabled"`
 	ScheduleEnabled        bool      `json:"scheduleEnabled"`
 	ScheduleIntervalHours  int       `json:"scheduleIntervalHours"`
 	ScheduleMaxSearches    int       `json:"scheduleMaxSearches"`
@@ -191,7 +190,6 @@ func DefaultCrossSeedSearchSettings() *CrossSeedSearchSettings {
 		IndexerIDs:        []int{}, GazelleSites: []string{},
 		IntervalSeconds:       60,
 		CooldownMinutes:       720,
-		TorznabEnabled:        true,
 		ScheduleIntervalHours: 24,
 		ScheduleMaxSearches:   400,
 		ScheduleMaxAgeDays:    14,
@@ -1021,7 +1019,7 @@ func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearc
 	query := `
 		SELECT instance_id, categories, tags, exclude_categories, exclude_tags, indexer_ids, gazelle_sites,
 		       interval_seconds, cooldown_minutes, max_added_age_days,
-		       skip_individual_episodes, torznab_enabled, schedule_enabled,
+		       skip_individual_episodes, schedule_enabled,
 		       schedule_interval_hours, schedule_max_searches, schedule_max_age_days,
 		       created_at, updated_at
 		FROM cross_seed_search_settings
@@ -1033,7 +1031,7 @@ func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearc
 	var settings CrossSeedSearchSettings
 	var instanceID sql.NullInt64
 	var categoriesJSON, tagsJSON, excludeCategoriesJSON, excludeTagsJSON, indexersJSON, gazelleJSON sql.NullString
-	var skipIndividualEpisodes, torznabEnabled, scheduleEnabled int
+	var skipIndividualEpisodes, scheduleEnabled int
 	var createdAt, updatedAt sql.NullTime
 
 	if err := row.Scan(
@@ -1048,7 +1046,6 @@ func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearc
 		&settings.CooldownMinutes,
 		&settings.MaxAddedAgeDays,
 		&skipIndividualEpisodes,
-		&torznabEnabled,
 		&scheduleEnabled,
 		&settings.ScheduleIntervalHours,
 		&settings.ScheduleMaxSearches,
@@ -1087,7 +1084,6 @@ func (s *CrossSeedStore) GetSearchSettings(ctx context.Context) (*CrossSeedSearc
 	}
 	settings.SitePick = settings.Clean()
 	settings.SkipIndividualEpisodes = SQLiteIntToBool(skipIndividualEpisodes)
-	settings.TorznabEnabled = SQLiteIntToBool(torznabEnabled)
 	settings.ScheduleEnabled = SQLiteIntToBool(scheduleEnabled)
 
 	if createdAt.Valid {
@@ -1139,9 +1135,9 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 		INSERT INTO cross_seed_search_settings (
 			id, instance_id, categories, tags, exclude_categories, exclude_tags, indexer_ids, gazelle_sites,
 			interval_seconds, cooldown_minutes, max_added_age_days,
-			skip_individual_episodes, torznab_enabled, schedule_enabled,
+			skip_individual_episodes, schedule_enabled,
 			schedule_interval_hours, schedule_max_searches, schedule_max_age_days
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			instance_id = excluded.instance_id,
 			categories = excluded.categories,
@@ -1154,7 +1150,6 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 			cooldown_minutes = excluded.cooldown_minutes,
 			max_added_age_days = excluded.max_added_age_days,
 			skip_individual_episodes = excluded.skip_individual_episodes,
-			torznab_enabled = excluded.torznab_enabled,
 			schedule_enabled = excluded.schedule_enabled,
 			schedule_interval_hours = excluded.schedule_interval_hours,
 			schedule_max_searches = excluded.schedule_max_searches,
@@ -1174,7 +1169,6 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 		settings.CooldownMinutes,
 		settings.MaxAddedAgeDays,
 		BoolToSQLite(settings.SkipIndividualEpisodes),
-		BoolToSQLite(settings.TorznabEnabled),
 		BoolToSQLite(settings.ScheduleEnabled),
 		settings.ScheduleIntervalHours,
 		settings.ScheduleMaxSearches,

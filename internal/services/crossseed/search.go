@@ -97,9 +97,9 @@ func (s *Service) prepareManualSearch(ctx context.Context, instanceID int, hash 
 	if err != nil {
 		return nil, err
 	}
-	sites := s.resolveSitePick(ctx, opts.SitePick, opts.DisableTorznab, gazelleClients.hosts())
+	sites := s.resolveSitePick(ctx, opts.SitePick, gazelleClients.hosts())
 	scope := s.collectSearchScope(ctx, instanceID, sourceTorrent, sites, searchScopeFacts{
-		torznabOff:       opts.DisableTorznab,
+		gazelleOnly:      redOpsOnlyPick(opts.SitePick),
 		skipGazelle:      opts.SkipGazelle,
 		gazelleOff:       gazelleClients.disabled(),
 		gazelleKeys:      gazelleClients.hosts(),

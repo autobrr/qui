@@ -1872,7 +1872,6 @@ class ApiClient {
     excludeCategories: string[]
     excludeTags: string[]
     intervalSeconds: number
-    disableTorznab?: boolean
     cooldownMinutes: number
     skipIndividualEpisodes?: boolean
     maxAddedAgeDays?: number

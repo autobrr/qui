@@ -152,6 +152,7 @@ func TestFolderCleanupSpecTable(t *testing.T) {
 				tc.qbt(e, snap)
 				e.run(snap)
 				e.requireTree(append(tc.present, "torrents", "media"), tc.absent)
+				require.Zero(t, e.view.refreshes.Load(), "a clean with nothing left to wait for asks qBittorrent for no sync")
 			})
 		})
 	}

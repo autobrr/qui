@@ -185,7 +185,6 @@ type searchSettingsPatchRequest struct {
 	CooldownMinutes        *int        `json:"cooldownMinutes,omitempty"`
 	MaxAddedAgeDays        *int        `json:"maxAddedAgeDays,omitempty"`
 	SkipIndividualEpisodes *bool       `json:"skipIndividualEpisodes,omitempty"`
-	TorznabEnabled         *bool       `json:"torznabEnabled,omitempty"`
 	ScheduleEnabled        *bool       `json:"scheduleEnabled,omitempty"`
 	ScheduleIntervalHours  *int        `json:"scheduleIntervalHours,omitempty"`
 	ScheduleMaxSearches    *int        `json:"scheduleMaxSearches,omitempty"`
@@ -204,7 +203,6 @@ func (r searchSettingsPatchRequest) isEmpty() bool {
 		r.CooldownMinutes == nil &&
 		r.MaxAddedAgeDays == nil &&
 		r.SkipIndividualEpisodes == nil &&
-		r.TorznabEnabled == nil &&
 		r.ScheduleEnabled == nil &&
 		r.ScheduleIntervalHours == nil &&
 		r.ScheduleMaxSearches == nil &&
@@ -519,7 +517,6 @@ type searchRunRequest struct {
 	ExcludeTags       []string `json:"excludeTags"`
 	IntervalSeconds   int      `json:"intervalSeconds"`
 	models.SitePick
-	DisableTorznab         bool `json:"disableTorznab"`
 	CooldownMinutes        int  `json:"cooldownMinutes"`
 	SkipIndividualEpisodes bool `json:"skipIndividualEpisodes"`
 	MaxAddedAgeDays        int  `json:"maxAddedAgeDays"`
@@ -693,7 +690,6 @@ type torrentSearchRequest struct {
 	GazelleSites           []string `json:"gazelle_sites,omitempty"`
 	FindIndividualEpisodes bool     `json:"find_individual_episodes,omitempty"`
 	CacheMode              string   `json:"cache_mode,omitempty"`
-	DisableTorznab         bool     `json:"disable_torznab,omitempty"`
 }
 
 func (r torrentSearchRequest) options() crossseed.TorrentSearchOptions {
@@ -703,7 +699,6 @@ func (r torrentSearchRequest) options() crossseed.TorrentSearchOptions {
 		SitePick:               models.SitePick{IndexerIDs: r.IndexerIDs, GazelleSites: r.GazelleSites},
 		FindIndividualEpisodes: r.FindIndividualEpisodes,
 		CacheMode:              r.CacheMode,
-		DisableTorznab:         r.DisableTorznab,
 	}
 }
 
@@ -1362,7 +1357,6 @@ func (h *CrossSeedHandler) PatchSearchSettings(w http.ResponseWriter, r *http.Re
 		CooldownMinutes:        patch.CooldownMinutes,
 		MaxAddedAgeDays:        patch.MaxAddedAgeDays,
 		SkipIndividualEpisodes: patch.SkipIndividualEpisodes,
-		TorznabEnabled:         patch.TorznabEnabled,
 		ScheduleEnabled:        patch.ScheduleEnabled,
 		ScheduleIntervalHours:  patch.ScheduleIntervalHours,
 		ScheduleMaxSearches:    patch.ScheduleMaxSearches,
@@ -1397,7 +1391,6 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		ExcludeTags:            req.ExcludeTags,
 		IntervalSeconds:        req.IntervalSeconds,
 		SitePick:               req.SitePick,
-		DisableTorznab:         req.DisableTorznab,
 		CooldownMinutes:        req.CooldownMinutes,
 		SkipIndividualEpisodes: req.SkipIndividualEpisodes,
 		MaxAddedAgeDays:        req.MaxAddedAgeDays,

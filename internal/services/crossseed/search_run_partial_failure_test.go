@@ -80,7 +80,7 @@ func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilte
 	require.NoError(t, err)
 	state := &searchRunState{
 		run:  run,
-		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true},
+		opts: SearchRunOptions{InstanceID: instance.ID},
 	}
 	state.gazelleClients = clients
 
