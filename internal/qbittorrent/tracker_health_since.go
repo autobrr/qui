@@ -73,6 +73,10 @@ func (sm *SyncManager) loadUnregisteredSince(ctx context.Context, instanceID int
 
 	sm.trackerHealthMu.Lock()
 	state := sm.sinceFor(instanceID)
+	if state.loaded {
+		sm.trackerHealthMu.Unlock()
+		return
+	}
 	state.loaded = true
 	state.stored = maps.Clone(rows)
 	maps.DeleteFunc(rows, func(hash string, _ time.Time) bool {

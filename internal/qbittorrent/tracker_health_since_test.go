@@ -25,15 +25,24 @@ type fakeSinceStore struct {
 	failDelete bool
 	puts       int
 	deletes    int
+	listed     chan<- struct{}
+	release    <-chan struct{}
 }
 
 func (f *fakeSinceStore) ListUnregisteredSince(context.Context, int) (map[string]time.Time, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.failList {
+		f.mu.Unlock()
 		return nil, errors.New("database is locked")
 	}
-	return maps.Clone(f.rows), nil
+	rows, listed, release := maps.Clone(f.rows), f.listed, f.release
+	f.listed, f.release = nil, nil
+	f.mu.Unlock()
+	if listed != nil {
+		listed <- struct{}{}
+		<-release
+	}
+	return rows, nil
 }
 
 func (f *fakeSinceStore) PutUnregisteredSince(_ context.Context, _ int, since map[string]time.Time) error {
@@ -459,4 +468,32 @@ func TestUnregisteredSinceRestartsWhenTheFreshReadSeesAStop(t *testing.T) {
 	rig.sm.trackerHealthDetailMaxAge = 0
 	rig.pass(t)
 	rig.requireSince(t, rig.now, "the wait starts again with the first verdict after the start")
+}
+
+func TestUnregisteredSinceKeepsTheTimesOfANewerLoadOverAnOlderOne(t *testing.T) {
+	t.Parallel()
+
+	rig := newSinceRig(t, "2.15.1")
+	rig.now = rig.now.Add(-time.Hour)
+	listed, release := make(chan struct{}), make(chan struct{})
+	rig.store.rows = map[string]time.Time{flagsHashDown: rig.now.Add(-time.Minute)}
+	rig.store.listed, rig.store.release = listed, release
+	older := make(chan struct{})
+	go func() {
+		defer close(older)
+		rig.sm.loadUnregisteredSince(t.Context(), 1)
+	}()
+	<-listed
+
+	rig.answer(qbt.TrackerStatusOK, "")
+	rig.pass(t)
+	rig.requireNoSince(t, "a working tracker ends the time")
+	close(release)
+	<-older
+
+	rig.now = rig.now.Add(time.Minute)
+	rig.answer(qbt.TrackerStatusNotWorking, "Unregistered torrent")
+	rig.sm.trackerHealthDetailMaxAge = 0
+	rig.pass(t)
+	rig.requireSince(t, rig.now, "the older load brings back no time")
 }
