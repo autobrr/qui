@@ -551,7 +551,7 @@ func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			return &CrossSeedResponse{
 				Success:         true,
 				titleRescueUsed: true,
@@ -561,7 +561,7 @@ func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing
 					{Success: true, Message: "Added via hardlink mode - pooled completion pending", partialPoolPending: true},
 				},
 			}, nil
-		},
+		}),
 	}
 
 	result, err := service.executeCrossSeedSearchAttempt(
@@ -588,7 +588,7 @@ func TestBoundAnnouncementStopsAfterPartialPoolRegistrationFailure(t *testing.T)
 	manual := "qBittorrent added torrent, but pooled registration failed; torrent remains stopped for manual intervention"
 	calls := 0
 	service := &Service{
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			calls++
 			if calls == 1 {
 				return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{
@@ -602,7 +602,7 @@ func TestBoundAnnouncementStopsAfterPartialPoolRegistrationFailure(t *testing.T)
 				Status:     "exists",
 				Message:    "torrent already exists",
 			}}}, nil
-		},
+		}),
 	}
 
 	response, err := service.invokeBoundAnnouncementMatches(t.Context(), []boundAnnouncementMatch{

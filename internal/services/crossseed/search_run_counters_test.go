@@ -50,10 +50,10 @@ func TestApplyEnsembleSearchResults_AddAfterFailureCountsAsAdded(t *testing.T) {
 		return []byte("torrent"), nil
 	}
 	applies := 0
-	service.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		applies++
 		return &CrossSeedResponse{Success: applies > 1}, nil
-	}
+	})
 
 	key := ensembleGroupKey{normalizedTitle: service.stringNormalizer.Normalize("Show Title"), season: 1}
 	group := &qbt.Torrent{Hash: ensembleSeasonPseudoHash(key), Name: "Show Title S01", Progress: 1.0}

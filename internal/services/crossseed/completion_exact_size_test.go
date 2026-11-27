@@ -103,10 +103,10 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
 		},
-		crossSeedInvoker: func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
 			captured = request
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 
 	err := service.executeCompletionSearch(t.Context(), instanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{

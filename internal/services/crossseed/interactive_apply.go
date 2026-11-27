@@ -179,7 +179,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 			payload.FindIndividualEpisodes = req.FindIndividualEpisodes
 			payload.SearchDecision = cachedResult.SearchDecision.bindSource(instanceID, sourceID)
 
-			resp, err := s.invokeCrossSeed(ctx, payload)
+			resp, err := s.injection.CrossSeed(ctx, payload)
 			if err != nil {
 				resultChan <- selectionResult{idx, TorrentSearchAddResult{
 					Title:   title,

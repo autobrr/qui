@@ -284,9 +284,9 @@ func TestExecuteCompletionSearch_NotificationHasGazelleLine(t *testing.T) {
 	})
 	notifier := &recordingNotifier{}
 	svc.notifier = notifier
-	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Success: true}, nil
-	}
+	})
 	source := qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: "https://home.opsfet.ch/announce"}
 
 	err := svc.executeCompletionSearch(t.Context(), gazelleSeamInstanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{InstanceID: gazelleSeamInstanceID, Enabled: true})
@@ -470,9 +470,9 @@ func TestSearchRunLoop_GazelleOffSaysNothingAboutREDOPS(t *testing.T) {
 	torrent := qbt.Torrent{Hash: fmt.Sprintf("%040x", 31), Name: name, Progress: 1.0, Size: 123, Tracker: otherTracker}
 	svc, state := newTorznabSearchRunFixture(t, "crossseed-runloop-gazelle-off", torznabMatchTracker(t, name), torrent, qbt.TorrentFiles{{Name: name + "/01 - Track.flac", Size: 123}})
 	state.gazelleClients = &gazelleClientSet{off: true}
-	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Success: true}, nil
-	}
+	})
 
 	logbudget.AssertSilent(t, func() { runSearchLoopToCompletion(t, svc, state) }, gazelleWords...)
 
@@ -486,9 +486,9 @@ func TestExecuteCompletionSearch_GazelleOffSaysNothingAboutREDOPS(t *testing.T) 
 	addMusicIndexer(svc, gazelleSeamInstanceID, gazelleSeamHash, torznabMatchTracker(t, gazelleSeamName))
 	notifier := &recordingNotifier{}
 	svc.notifier = notifier
-	svc.crossSeedInvoker = func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+	svc.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Success: true}, nil
-	}
+	})
 	source := qbt.Torrent{Hash: gazelleSeamHash, Name: gazelleSeamName, Size: 123, Progress: 1, Tracker: otherTracker}
 
 	logbudget.AssertSilent(t, func() {

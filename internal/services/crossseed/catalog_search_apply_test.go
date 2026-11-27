@@ -121,6 +121,7 @@ func catalogReplay(t *testing.T, sourceBytes, targetBytes []byte, host, mode str
 	total := sourceFilesTotalSize(sourceMeta.Files)
 	instance := &models.Instance{ID: 1, Name: "catalog", HasLocalFilesystemAccess: true, HardlinkBaseDir: filepath.Join(temp, "links"), UseHardlinks: mode == "hardlink", UseReflinks: mode == "reflink"}
 	svc, base, candidate := newRenameOnlyService(t, instance, sourceMeta.HashV1.String(), sourceMeta.Name, sourceMeta.Files, targetMeta.HashV1.String(), targetMeta.Files)
+	svc.injection = svc
 	source := candidate.Torrents[0]
 	source.Size, source.TotalSize = total, total
 	source.Tracker = "https://flacsfor.me/announce"

@@ -121,10 +121,10 @@ func newInteractiveApplyService(t *testing.T, loader func(context.Context) (*mod
 		searchResultCache:        ttlcache.New[string, cachedTorrentSearchResults](),
 		torrentDownloadFunc:      func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 		automationSettingsLoader: loader,
-		crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 			captured = append(captured, req)
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 	service.cacheSearchResults(1, fakeHash("source"), []TorrentSearchResult{{
 		Indexer: "Indexer", IndexerID: 9, Title: "Harbor.Signal.2026.1080p.WEB-DL.H.264-GROUP",
@@ -149,10 +149,10 @@ func TestSettingsReadFailureAddsNothing(t *testing.T) {
 		service := &Service{
 			notifier:                 notifier,
 			automationSettingsLoader: failingSettings,
-			crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				captured = req
 				return &CrossSeedResponse{Success: true}, nil
-			},
+			}),
 		}
 
 		_, err := service.AutobrrApply(t.Context(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
@@ -227,10 +227,10 @@ func TestWebhookCategoryAndStartPausedDefaults(t *testing.T) {
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{}, nil
 				},
-				crossSeedInvoker: func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+				injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 					captured = req
 					return &CrossSeedResponse{Success: true}, nil
-				},
+				}),
 			}
 			tt.req.TorrentData = "ZGF0YQ=="
 
