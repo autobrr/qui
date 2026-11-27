@@ -20,7 +20,6 @@ import (
 	"github.com/autobrr/go-cache/ttlcache"
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/autobrr/rls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
@@ -40,6 +39,7 @@ import (
 	"github.com/autobrr/qui/internal/services/systemnotice"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/infohash"
+	"github.com/autobrr/qui/pkg/sharedextents"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -170,8 +170,8 @@ type Service struct {
 	gazelleNoticeMu          sync.Mutex
 	gazelleKeyGens           map[string]uint64
 
-	externalProgramStore   *models.ExternalProgramStore
-	externalProgramService *externalprograms.Service
+	externalProgramStore *models.ExternalProgramStore
+	programRunner        programRunner
 
 	completionStore *models.InstanceCrossSeedCompletionStore
 
@@ -225,7 +225,6 @@ type Service struct {
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
 	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	postInjectionHook       func(context.Context, int, []string)
 	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
 
 	settler *Settler
@@ -233,8 +232,6 @@ type Service struct {
 	aligner *Aligner
 
 	partialPool *partialPoolCoordinator
-
-	seasonPackEpisodeTotalLookup func(context.Context, string, *rls.Release) (int, []string, bool)
 
 	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error)
 	metadataCredentialLoader    func(ctx context.Context) (apiKey, pin string, err error)
@@ -305,7 +302,6 @@ func NewService(
 		notifier:                      notifier,
 		systemNotices:                 systemNotices,
 		externalProgramStore:          externalProgramStore,
-		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
 		seasonPackRunStore:            seasonPackRunStore,
@@ -325,6 +321,13 @@ func NewService(
 		metadataCredentialLoader:      metadataCredentialLoader,
 		metadataService:               metadata.NewService("", ""),
 		activityPublisher:             activity.NopPublisher{},
+		analyzeMediaFile:              analyzeMediaFile,
+	}
+	if externalProgramService != nil {
+		svc.programRunner = externalProgramService
+	}
+	if sharedextents.Supported {
+		svc.filesShareAllocation = sharedextents.FilesShareAllocation
 	}
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)

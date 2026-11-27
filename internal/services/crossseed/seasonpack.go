@@ -226,7 +226,7 @@ func (s *Service) readSeasonPackTorrent(prep *seasonPackPrep, torrentData string
 }
 
 func (s *Service) lookUpSeason(ctx context.Context, prep *seasonPackPrep) {
-	season := s.seasonPackSeasonLookup(ctx, prep.packName, prep.packRelease)
+	season := s.lookupSeasonPackEpisodeTotal(ctx, prep.packName, prep.packRelease)
 	prep.aliasTitles, prep.sonarrAnswers = season.titles, season.fromSonarr
 	prep.totalEpisodes = max(len(prep.packEpisodes), season.total)
 	if prep.totalEpisodes == 0 {
@@ -1057,17 +1057,6 @@ type seasonLookup struct {
 	total      int
 	titles     []string
 	fromSonarr bool
-}
-
-func (s *Service) seasonPackSeasonLookup(ctx context.Context, torrentName string, packRelease *rls.Release) seasonLookup {
-	if lookup := s.seasonPackEpisodeTotalLookup; lookup != nil {
-		total, titles, ok := lookup(ctx, torrentName, packRelease)
-		if !ok {
-			total = 0
-		}
-		return seasonLookup{total: total, titles: titles}
-	}
-	return s.lookupSeasonPackEpisodeTotal(ctx, torrentName, packRelease)
 }
 
 func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName string, packRelease *rls.Release) seasonLookup {
