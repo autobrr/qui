@@ -22,7 +22,7 @@ qui integrates with autobrr through webhook endpoints. When autobrr announces a 
 6. qui reads the actual size from the torrent file and repeats the match against the current local torrents
 
 :::note
-Right after qui starts, an instance reconnects, or you change your category mapping rules, qui rebuilds this in-memory list. That takes a few seconds on a large library. A check during that window answers `404`, and RSS automation picks up any missed release later.
+Right after qui starts, an instance reconnects, or you change your category mapping rules, qui rebuilds this in-memory list. That takes a few seconds on a large library. A check during that window answers `404`. RSS automation can still pick up a missed release later, if it watches that indexer and the release is still in the feed at its next run.
 :::
 
 ## Setup
@@ -126,7 +126,7 @@ Use autobrr's **Retry** block to handle `202 Accepted` responses:
 
 Add autobrr's qBittorrent download client through [qui's reverse proxy](../reverse-proxy.md#autobrr) instead of connecting straight to qBittorrent.
 
-A torrent added through qui's proxy shows up in qui within about 200 ms. If another tracker announces the same release a second later, qui sees the torrent, returns `202 Accepted` while it finishes, and then matches it. A torrent added straight to qBittorrent can be missed in its first 2 seconds, because qui syncs an instance at most every 2 seconds.
+A torrent added through qui's proxy shows up in qui within about 2 seconds. qui syncs the instance 200 ms after the add, but at most once every 2 seconds. If another tracker announces the same release after that, qui sees the torrent, returns `202 Accepted` while it finishes, and then matches it. qui sees a torrent added straight to qBittorrent only at its next sync of that instance. A check that finds the data of an instance older than 2 seconds starts a sync, but answers from the data it has. With the web UI closed and no recent check, the next sync can be up to a minute away, so an announce of that release in that time gets `404`.
 
 ### Test the External filter
 

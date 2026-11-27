@@ -23,7 +23,7 @@ The webhook flow below is one of two triggers. The second trigger is [Automatic 
    - If Sonarr cannot resolve the show, qui falls back to metadata providers: TVDB when configured, then TVMaze.
    - If the request includes torrent data, qui never uses a total lower than the playable episode count inside the pack torrent.
 6. qui responds with:
-   - `200 OK`: coverage meets the threshold, ready to apply. On `/api/cross-seed/webhook/check`, the response includes a `seasonPack` object (`instanceId`, `matchedEpisodes`, `totalEpisodes`, `coverage`, `thresholdSkipped`).
+   - `200 OK`: coverage meets the threshold, ready to apply. On `/api/cross-seed/webhook/check`, a response from season-pack assembly includes a `seasonPack` object (`instanceId`, `matchedEpisodes`, `totalEpisodes`, `coverage`, `thresholdSkipped`). A direct match has no `seasonPack` object.
    - `404 Not Found`: local coverage is too low, the release is not a season pack, or the feature is disabled
 7. If qui returns `200 OK`, autobrr sends the torrent file to `/api/cross-seed/apply` (or `/api/cross-seed/season-pack/apply` with a separate filter).
 8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent. qui never links a local episode file if its size or release details differ from the pack file. qui treats that episode as missing and downloads it instead. If these demotions drop coverage below the threshold, the apply fails as `drifted`.
@@ -366,7 +366,7 @@ Then check qui:
 
 - Open **Cross-Seed > Season packs**, turn on all status chips, and find the row for the torrent name.
 - Check the phase (`check` or `apply`), status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode.
-- If the row is missing, autobrr failed to reach qui or used the wrong endpoint or API key. Confirm this with `/api/cross-seed/season-pack/runs?limit=20`.
+- If the row is missing and qui started, reconnected an instance, or got new category mapping rules a few seconds before the announce, qui was still building its list of held titles. It answered `404` without a season-pack check, so it wrote no row. Otherwise, autobrr failed to reach qui or used the wrong endpoint or API key. Confirm this with `/api/cross-seed/season-pack/runs?limit=20`.
 
 For deeper logs, set:
 
