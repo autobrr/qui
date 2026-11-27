@@ -1086,7 +1086,7 @@ func (s *Service) staleSearchWork(ctx context.Context, state *searchRunState, to
 		}
 	}
 
-	if len(state.gazelleClients.hosts()) > 0 {
+	if state.sitePick().asksGazelle(state.gazelleClients.hosts()) {
 		last, found, err := s.newestSearchHistory(ctx, state.opts.InstanceID, hashes)
 		if err != nil {
 			return candidateStaleWork{}, err
