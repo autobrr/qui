@@ -322,7 +322,9 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 				"ep1": {{Name: "Show.Title.S01E01.1080p.WEB.H264-GRP.mkv", Size: 1 << 30}},
 			}
 
-			var downloads int
+			torznab := newTorznabServer(t, 10)
+			packTorrent := createTestTorrent(t, "Show.Title.S01.1080p.WEB.H264-GRP", []string{"Show.Title.S01E01.1080p.WEB.H264-GRP.mkv"}, 16384)
+			packURL := torznab.serve("pack.torrent", packTorrent)
 			service := &Service{
 				instanceStore: &episodeInstanceStore{
 					instances: map[int]*models.Instance{
@@ -332,10 +334,7 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 				syncManager:      sync,
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
-				torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-					downloads++
-					return []byte("torrent"), nil
-				},
+				jackettService:   torznab.jackett,
 			}
 			injection := newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: false}, nil
@@ -353,7 +352,7 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 				Indexer:     "Example",
 				IndexerID:   10,
 				Title:       "Show.Title.S01.1080p.WEB.H264-GRP",
-				DownloadURL: "https://example.invalid/pack.torrent",
+				DownloadURL: packURL,
 				GUID:        "guid-pack",
 				Size:        3 << 30,
 			}
@@ -367,11 +366,11 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 			}
 			require.Len(t, requests, wantRequests, "CrossSeed invocation mismatch")
 			for _, request := range requests {
-				require.Equal(t, base64.StdEncoding.EncodeToString([]byte("torrent")), request.TorrentData, "the Injection gets the downloaded pack")
+				require.Equal(t, base64.StdEncoding.EncodeToString(packTorrent), request.TorrentData, "the Injection gets the downloaded pack")
 				require.Equal(t, []int{instanceID}, request.TargetInstanceIDs)
 				require.True(t, request.FindIndividualEpisodes)
 			}
-			require.Equal(t, tt.wantDownloads, downloads, "torrent download count mismatch")
+			require.Len(t, torznab.downloads(), tt.wantDownloads, "torrent download count mismatch")
 			if tt.wantLastMessage != "" {
 				require.NotEmpty(t, run.Results)
 				require.Equal(t, tt.wantLastMessage, run.Results[len(run.Results)-1].Message)
@@ -473,11 +472,10 @@ func TestProcessAutomationCandidate_PackFailCooldownSkipsDownload(t *testing.T) 
 			require.NoError(t, service.automationStore.UpsertSearchHistory(
 				ctx, instanceID, seasonPackFailKey(packTitle), time.Now().UTC().Add(-tt.stampAge)))
 
-			var downloads int
-			service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-				downloads++
-				return []byte("torrent"), nil
-			}
+			torznab := newTorznabServer(t, 10)
+			packTorrent := createTestTorrent(t, packTitle, []string{"Show.Title.S01E01.1080p.WEB.H264-GRP.mkv"}, 16384)
+			packURL := torznab.serve("pack.torrent", packTorrent)
+			service.jackettService = torznab.jackett
 			injection := newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 				return &CrossSeedResponse{Success: false}, nil
 			})
@@ -493,14 +491,14 @@ func TestProcessAutomationCandidate_PackFailCooldownSkipsDownload(t *testing.T) 
 				Indexer:     "Example",
 				IndexerID:   10,
 				Title:       packTitle,
-				DownloadURL: "https://example.invalid/pack.torrent",
+				DownloadURL: packURL,
 				GUID:        "guid-pack",
 				Size:        3 << 30,
 			}
 
 			status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 			require.NoError(t, err)
-			require.Equal(t, tt.wantDownloads, downloads, "torrent download count mismatch")
+			require.Len(t, torznab.downloads(), tt.wantDownloads, "torrent download count mismatch")
 			requests := injection.Requests()
 			wantRequests := 0
 			if tt.wantInvoked {
@@ -508,7 +506,7 @@ func TestProcessAutomationCandidate_PackFailCooldownSkipsDownload(t *testing.T) 
 			}
 			require.Len(t, requests, wantRequests, "CrossSeed invocation mismatch")
 			for _, request := range requests {
-				require.Equal(t, base64.StdEncoding.EncodeToString([]byte("torrent")), request.TorrentData, "the Injection gets the downloaded pack")
+				require.Equal(t, base64.StdEncoding.EncodeToString(packTorrent), request.TorrentData, "the Injection gets the downloaded pack")
 				require.Equal(t, []int{instanceID}, request.TargetInstanceIDs)
 				require.True(t, request.FindIndividualEpisodes)
 			}

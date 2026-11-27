@@ -41,11 +41,8 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	var captured *CrossSeedRequest
 	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
@@ -67,12 +64,12 @@ func TestProcessAutomationCandidateBindsExactSize(t *testing.T) {
 		FindIndividualEpisodes:       true,
 	}, nil, jackett.SearchResult{
 		Indexer: "synthetic", IndexerID: 1, Title: resultName, Size: size,
-		DownloadURL: "https://example.invalid/download.torrent", GUID: "rss-item",
+		DownloadURL: torznab.url("download.torrent"), GUID: "rss-item",
 	}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
-	require.Equal(t, 1, downloadCalls)
+	require.Len(t, torznab.downloads(), 1)
 	require.NotNil(t, captured)
 	require.Equal(t, []int{instanceID}, captured.TargetInstanceIDs)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
@@ -118,12 +115,9 @@ func TestProcessAutomationCandidateExactSizeFallbackRequiresPositiveEqualSizes(t
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
-			downloadCalls := 0
 			crossSeedCalls := 0
-			service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-				downloadCalls++
-				return []byte("torrent"), nil
-			}
+			torznab := newTorznabServer(t, 1)
+			service.jackettService = torznab.jackett
 			service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				crossSeedCalls++
 				return nil, nil
@@ -131,10 +125,10 @@ func TestProcessAutomationCandidateExactSizeFallbackRequiresPositiveEqualSizes(t
 
 			_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs: []int{instanceID},
-			}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: tt.reportedSz}, AutomationRunOptions{}, nil)
+			}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: tt.reportedSz}, AutomationRunOptions{}, nil)
 
 			require.NoError(t, err)
-			require.Zero(t, downloadCalls)
+			require.Empty(t, torznab.downloads())
 			require.Zero(t, crossSeedCalls)
 			require.Zero(t, sync.lookups)
 		})
@@ -157,7 +151,8 @@ func TestProcessAutomationCandidateStrict(t *testing.T) {
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	var captured *CrossSeedRequest
 	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
@@ -166,7 +161,7 @@ func TestProcessAutomationCandidateStrict(t *testing.T) {
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{instanceID},
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: torrentName, Size: size}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: torrentName, Size: size}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, captured)
@@ -216,12 +211,9 @@ func TestProcessAutomationCandidateRecheck(t *testing.T) {
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
 			}
-			downloadCalls := 0
 			crossSeedCalls := 0
-			service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-				downloadCalls++
-				return []byte("torrent"), nil
-			}
+			torznab := newTorznabServer(t, 1)
+			service.jackettService = torznab.jackett
 			service.injection = newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 				crossSeedCalls++
 				return nil, nil
@@ -238,10 +230,10 @@ func TestProcessAutomationCandidateRecheck(t *testing.T) {
 				TargetInstanceIDs:     []int{instanceID},
 				RescueTitleMismatches: tt.rescueTitles,
 				SkipRecheck:           true,
-			}, nil, jackett.SearchResult{Indexer: "synthetic", Title: tt.announcement, Size: size}, AutomationRunOptions{}, nil)
+			}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: tt.announcement, Size: size}, AutomationRunOptions{}, nil)
 
 			require.NoError(t, err)
-			require.Zero(t, downloadCalls)
+			require.Empty(t, torznab.downloads())
 			require.Zero(t, crossSeedCalls)
 		})
 	}
@@ -311,12 +303,9 @@ func TestFindRSSAnnouncementMatchesPrefersCodecFallbackOverTitleRescue(t *testin
 	require.False(t, searchDecisionRequiresVerification(matches[0].decision))
 	require.Equal(t, title.Hash, matches[1].torrent.Hash)
 
-	downloadCalls := 0
 	var captured *CrossSeedRequest
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
@@ -326,10 +315,10 @@ func TestFindRSSAnnouncementMatchesPrefersCodecFallbackOverTitleRescue(t *testin
 		TargetInstanceIDs:     []int{instanceID},
 		RescueTitleMismatches: true,
 		SkipRecheck:           true,
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, downloadCalls)
+	require.Len(t, torznab.downloads(), 1)
 	require.NotNil(t, captured)
 	require.Equal(t, mustParseHash(t, codec.Hash), captured.SearchDecision.SourceHash)
 	require.False(t, searchDecisionRequiresVerification(captured.SearchDecision))
@@ -351,19 +340,16 @@ func TestProcessAutomationCandidateExactSizeSourceFilters(t *testing.T) {
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:          []int{instanceID},
 		RSSSourceExcludeCategories: []string{"excluded"},
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
-	require.Zero(t, downloadCalls)
+	require.Empty(t, torznab.downloads())
 }
 
 func TestFindRSSAnnouncementMatchesIncludesOnlyConfiguredCategoryAndTag(t *testing.T) {
@@ -417,21 +403,18 @@ func TestProcessAutomationCandidateDuplicate(t *testing.T) {
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 
 	status, returnedHash, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{instanceID},
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size, InfoHashV1: hash}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size, InfoHashV1: hash}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 	require.NotNil(t, returnedHash)
 	require.Equal(t, hash, *returnedHash)
-	require.Zero(t, downloadCalls)
+	require.Empty(t, torznab.downloads())
 }
 
 func TestProcessAutomationCandidateDuplicateComment(t *testing.T) {
@@ -451,19 +434,16 @@ func TestProcessAutomationCandidateDuplicateComment(t *testing.T) {
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 
 	status, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{instanceID},
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size, GUID: commentURL}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size, GUID: commentURL}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
-	require.Zero(t, downloadCalls)
+	require.Empty(t, torznab.downloads())
 }
 
 func TestProcessAutomationCandidateExactSizeDoesNotReuseDifferentReportedSize(t *testing.T) {
@@ -482,23 +462,20 @@ func TestProcessAutomationCandidateExactSizeDoesNotReuseDifferentReportedSize(t 
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	service.injection = newInjectionStandIn(func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Success: true, Status: "added"}}}, nil
 	})
 	autoCtx := &automationContext{candidateCache: make(map[string]*FindCandidatesResponse)}
 	settings := &models.CrossSeedAutomationSettings{TargetInstanceIDs: []int{instanceID}}
 
-	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, settings, autoCtx, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, settings, autoCtx, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 	require.NoError(t, err)
-	_, _, err = service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, settings, autoCtx, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size + 1}, AutomationRunOptions{}, nil)
+	_, _, err = service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, settings, autoCtx, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size + 1}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, downloadCalls)
+	require.Len(t, torznab.downloads(), 1)
 }
 
 func TestProcessAutomationCandidateBindsRecheckDecision(t *testing.T) {
@@ -517,7 +494,8 @@ func TestProcessAutomationCandidateBindsRecheckDecision(t *testing.T) {
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	var captured *CrossSeedRequest
 	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		captured = req
@@ -526,7 +504,7 @@ func TestProcessAutomationCandidateBindsRecheckDecision(t *testing.T) {
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{instanceID},
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, captured)
@@ -559,11 +537,8 @@ func TestProcessAutomationCandidateExactSizeAcrossInstances(t *testing.T) {
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	var requests []*CrossSeedRequest
 	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		requests = append(requests, req)
@@ -572,10 +547,10 @@ func TestProcessAutomationCandidateExactSizeAcrossInstances(t *testing.T) {
 
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{firstInstanceID, secondInstanceID},
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, downloadCalls)
+	require.Len(t, torznab.downloads(), 1)
 	require.Len(t, requests, 2)
 	require.Equal(t, []int{firstInstanceID}, requests[0].TargetInstanceIDs)
 	require.Equal(t, mustParseHash(t, first.Hash), requests[0].SearchDecision.SourceHash)
@@ -602,11 +577,8 @@ func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	var sourceHashes []string
 	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		sourceHashes = append(sourceHashes, req.SearchDecision.SourceHash.String())
@@ -620,11 +592,11 @@ func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t
 	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:     []int{instanceID},
 		RescueTitleMismatches: true,
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
-	require.Equal(t, 1, downloadCalls)
+	require.Len(t, torznab.downloads(), 1)
 	require.Equal(t, []string{high.Hash, lower.Hash}, sourceHashes)
 	require.Equal(t, 1, run.CrossSeedsAdded)
 	require.Len(t, run.Results, 1)
@@ -679,7 +651,8 @@ func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 
 	added := func(id int, name string) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: id, InstanceName: name, Success: true, Status: "added"}}}, nil
@@ -715,7 +688,7 @@ func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T
 
 			status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
 				TargetInstanceIDs: []int{firstInstanceID, secondInstanceID},
-			}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+			}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -757,11 +730,8 @@ func TestProcessAutomationCandidateExactSizeSkipRecheckKeepsSafeInstances(t *tes
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	var requests []*CrossSeedRequest
 	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		requests = append(requests, req)
@@ -771,10 +741,10 @@ func TestProcessAutomationCandidateExactSizeSkipRecheckKeepsSafeInstances(t *tes
 	_, _, err := service.processAutomationCandidate(context.Background(), &models.CrossSeedRun{}, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs: []int{safeInstanceID, hardInstanceID},
 		SkipRecheck:       true,
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, downloadCalls)
+	require.Len(t, torznab.downloads(), 1)
 	require.Len(t, requests, 1)
 	require.Equal(t, []int{safeInstanceID}, requests[0].TargetInstanceIDs)
 	require.False(t, searchDecisionRequiresVerification(requests[0].SearchDecision))
@@ -800,21 +770,18 @@ func TestProcessAutomationCandidateExactSizeInfohashPrecheckGroupsSourcesByInsta
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	run := &models.CrossSeedRun{}
 
 	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:     []int{instanceID},
 		RescueTitleMismatches: true,
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size, InfoHashV1: hash}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size, InfoHashV1: hash}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
-	require.Zero(t, downloadCalls)
+	require.Empty(t, torznab.downloads())
 	require.Len(t, run.Results, 1)
 	require.Equal(t, "exists", run.Results[0].Status)
 }
@@ -839,21 +806,18 @@ func TestProcessAutomationCandidateExactSizeCommentPrecheckGroupsSourcesByInstan
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	downloadCalls := 0
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-		downloadCalls++
-		return []byte("torrent"), nil
-	}
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	run := &models.CrossSeedRun{}
 
 	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:     []int{instanceID},
 		RescueTitleMismatches: true,
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size, GUID: commentURL}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size, GUID: commentURL}, AutomationRunOptions{}, nil)
 
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
-	require.Zero(t, downloadCalls)
+	require.Empty(t, torznab.downloads())
 	require.Len(t, run.Results, 1)
 	require.Equal(t, "exists", run.Results[0].Status)
 }
@@ -877,7 +841,8 @@ func TestProcessAutomationCandidateExactSizeNoMatchThenErrorFailsInstance(t *tes
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
+	torznab := newTorznabServer(t, 1)
+	service.jackettService = torznab.jackett
 	service.injection = newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		if req.SearchDecision.SourceHash.Is(first.Hash) {
 			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instanceID, Status: "no_match"}}}, nil
@@ -889,7 +854,7 @@ func TestProcessAutomationCandidateExactSizeNoMatchThenErrorFailsInstance(t *tes
 	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
 		TargetInstanceIDs:     []int{instanceID},
 		RescueTitleMismatches: true,
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	}, nil, jackett.SearchResult{Indexer: "synthetic", IndexerID: 1, DownloadURL: torznab.url("item.torrent"), Title: resultName, Size: size}, AutomationRunOptions{}, nil)
 
 	require.Error(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
@@ -999,24 +964,21 @@ func TestProcessAutomationCandidateWaitsForMovingSource(t *testing.T) {
 				},
 			}
 			service.injection = service
-			downloads := 0
-			service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-				downloads++
-				return torrentBytes, nil
-			}
+			torznab := newTorznabServer(t, 1)
+			service.jackettService = torznab.jackett
 			service.settler = idleSettler(service.syncManager)
 			withAdder(service)
 
 			settings := &models.CrossSeedAutomationSettings{TargetInstanceIDs: []int{instanceID}}
 			item := jackett.SearchResult{
 				Indexer: "synthetic", IndexerID: 1, Title: feedName, Size: size,
-				DownloadURL: "https://example.invalid/download.torrent", GUID: "rss-item",
+				DownloadURL: torznab.serve("download.torrent", torrentBytes), GUID: "rss-item",
 			}
 
 			status, _, err := service.processAutomationCandidate(t.Context(), &models.CrossSeedRun{}, settings, nil, item, AutomationRunOptions{}, nil)
 			require.NoError(t, err)
 			require.Equal(t, models.CrossSeedFeedItemStatusSkipped, status)
-			require.Zero(t, downloads)
+			require.Empty(t, torznab.downloads())
 			require.Empty(t, sync.addOptions)
 
 			moved := &fake.all[instanceID][0]

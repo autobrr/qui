@@ -235,7 +235,6 @@ type Service struct {
 	injection             injector
 	completionSearch      completionSearcher
 	seasonPackAdd         seasonPackAdder
-	torrentDownloadFunc   func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	seasonPackLinkCreator func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
 	filesShareAllocation  func(sourcePath, candidatePath string) (bool, error)
 

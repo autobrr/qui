@@ -655,9 +655,6 @@ func (s *Service) downloadTorrent(ctx context.Context, req jackett.TorrentDownlo
 	if s.jackettService != nil {
 		return s.jackettService.DownloadTorrent(ctx, req)
 	}
-	if s.torrentDownloadFunc != nil {
-		return s.torrentDownloadFunc(ctx, req)
-	}
 	return nil, errors.New("torznab search is not configured")
 }
 

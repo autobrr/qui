@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
@@ -115,11 +114,12 @@ func newInteractiveApplyService(t *testing.T, loader func(context.Context) (*mod
 	sync := newEpisodeSyncManager()
 	sync.torrents[1] = []qbt.Torrent{{Hash: fakeHash("source"), Name: "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA", Progress: 1}}
 	var captured []*CrossSeedRequest
+	torznab := newTorznabServer(t, 9)
 	service := &Service{
 		syncManager:              sync,
 		releaseCache:             NewReleaseCache(),
 		searchResultCache:        ttlcache.New[string, cachedTorrentSearchResults](),
-		torrentDownloadFunc:      func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
+		jackettService:           torznab.jackett,
 		automationSettingsLoader: loader,
 		injection: newInjectionStandIn(func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 			captured = append(captured, req)
@@ -128,7 +128,7 @@ func newInteractiveApplyService(t *testing.T, loader func(context.Context) (*mod
 	}
 	service.cacheSearchResults(1, fakeHash("source"), []TorrentSearchResult{{
 		Indexer: "Indexer", IndexerID: 9, Title: "Harbor.Signal.2026.1080p.WEB-DL.H.264-GROUP",
-		DownloadURL: "https://example.invalid/a.torrent", GUID: "guid",
+		DownloadURL: torznab.url("a.torrent"), GUID: "guid",
 	}})
 	return service, &captured
 }
