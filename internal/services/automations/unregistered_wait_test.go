@@ -80,6 +80,8 @@ func TestDeleteWaitDecidesWhichUnregisteredTorrentsADeleteRuleTakes(t *testing.T
 		{name: "a stored rule on State unregistered with no wait waits 7 days", rules: []*models.Automation{waitDeleteRule(1, nil,
 			&models.RuleCondition{Field: FieldState, Operator: models.OperatorEqual, Value: "unregistered"})},
 			wantDeleted: []string{"old"}, wantWaiting: []string{"fresh", "down"}},
+		{name: "a rule with no wait lists no torrent as waiting", rules: []*models.Automation{waitDeleteRule(1, new(0), unregisteredIs("true"))},
+			wantDeleted: []string{"fresh", "old"}, wantWaiting: []string{}},
 		{name: "a negated read never deletes a waiting torrent", rules: []*models.Automation{waitDeleteRule(1, nil,
 			&models.RuleCondition{Field: FieldIsUnregistered, Operator: models.OperatorEqual, Value: "true", Negate: true})},
 			wantDeleted: []string{"fine"}, wantWaiting: []string{}},
