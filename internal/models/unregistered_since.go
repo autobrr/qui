@@ -93,8 +93,8 @@ func (s *UnregisteredSinceStore) inTx(ctx context.Context, write func(tx dbinter
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
+	defer func() { _ = tx.Rollback() }()
 	if err := write(tx); err != nil {
-		_ = tx.Rollback()
 		return err
 	}
 	if err := tx.Commit(); err != nil {

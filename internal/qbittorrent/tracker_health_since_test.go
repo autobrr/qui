@@ -22,6 +22,8 @@ type fakeSinceStore struct {
 	failList   bool
 	failPut    bool
 	failDelete bool
+	puts       int
+	deletes    int
 }
 
 func (f *fakeSinceStore) ListUnregisteredSince(context.Context, int) (map[string]time.Time, error) {
@@ -36,6 +38,7 @@ func (f *fakeSinceStore) ListUnregisteredSince(context.Context, int) (map[string
 func (f *fakeSinceStore) PutUnregisteredSince(_ context.Context, _ int, since map[string]time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.puts++
 	if f.failPut {
 		return errors.New("database is locked")
 	}
@@ -49,6 +52,7 @@ func (f *fakeSinceStore) PutUnregisteredSince(_ context.Context, _ int, since ma
 func (f *fakeSinceStore) DeleteUnregisteredSince(_ context.Context, _ int, hashes []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.deletes++
 	if f.failDelete {
 		return errors.New("database is locked")
 	}
@@ -443,4 +447,25 @@ func TestUnregisteredSinceKeepsTheTimeWhenFlagsClearWithoutAWorkingTracker(t *te
 
 func fetched(requests [][]string, hash string) bool {
 	return slices.ContainsFunc(requests, func(hashes []string) bool { return slices.Contains(hashes, hash) })
+}
+
+func TestUnregisteredSinceEndsWhenTheFreshReadFindsAWorkingTracker(t *testing.T) {
+	t.Parallel()
+
+	for _, webAPI := range []string{"2.15.1", "2.11.4"} {
+		t.Run(webAPI, func(t *testing.T) {
+			t.Parallel()
+			rig := newSinceRig(t, webAPI)
+			rig.pass(t)
+			rig.requireSince(t, rig.now, "the verdict starts the time")
+
+			rig.now = rig.now.Add(time.Hour)
+			rig.answer(qbt.TrackerStatusOK, "")
+			still, err := rig.sm.StillUnregistered(t.Context(), 1, []string{flagsHashDown})
+			require.NoError(t, err)
+			require.Zero(t, still.Len(), "the fresh read keeps the torrent")
+			rig.requireNoSince(t, "a working tracker in the fresh read restarts the wait before the next pass")
+			require.NotContains(t, rig.health(t), flagsHashDown, "the snapshot no longer says unregistered")
+		})
+	}
 }

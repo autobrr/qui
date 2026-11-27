@@ -55,6 +55,10 @@ func announceURLSecrets(announceURLs []string) []string {
 		for _, values := range u.Query() {
 			add(values...)
 		}
+		for pair := range strings.SplitSeq(u.RawQuery, "&") {
+			_, value, _ := strings.Cut(pair, "=")
+			add(value)
+		}
 		add(u.Fragment)
 	}
 	slices.SortFunc(parts, func(a, b string) int { return cmp.Or(cmp.Compare(len(b), len(a)), strings.Compare(a, b)) })

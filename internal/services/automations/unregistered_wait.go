@@ -127,12 +127,9 @@ func allGroupMembersMatchWaited(members []string, torrentByHash map[string]*qbt.
 
 func (s *Service) confirmVerdictClaims(ctx context.Context, instanceID int, claims []deletionClaim, sel *deletionSelection, in deletionSelectionInput) []deletionClaim {
 	waited := in.evalCtx.waited
-	checks := func(claim deletionClaim) bool {
-		return ruleReadsVerdict(claim.rule) && waited.UnregisteredNow(claim.hash)
-	}
 	var hashes []string
 	for _, claim := range claims {
-		if checks(claim) {
+		if conditionReadsVerdict(claim.rule.Conditions.Delete.Condition) && waited.UnregisteredNow(claim.hash) {
 			hashes = append(hashes, claim.hash)
 		}
 	}
@@ -149,12 +146,29 @@ func (s *Service) confirmVerdictClaims(ctx context.Context, instanceID int, clai
 			Msg("automations: skipped the deletes of unregistered torrents, the fresh tracker read failed")
 		still = infohash.NewSet()
 	}
+	cleared := infohash.NewSet()
+	for _, hash := range infohash.ParseAll(hashes) {
+		if !still.Has(hash) {
+			cleared.Add(hash)
+		}
+	}
+	if cleared.Len() == 0 {
+		return claims
+	}
+	in.evalCtx.waited = waited.Without(cleared)
+	in.evalCtx.health = in.evalCtx.waited.Raw()
+	clearedTorrents := make(map[string]*qbt.Torrent, cleared.Len())
+	for _, torrent := range in.torrents {
+		if hash, err := infohash.Parse(torrent.Hash); err == nil && cleared.Has(hash) {
+			clearedTorrents[torrent.Hash] = torrent
+		}
+	}
 
 	dropped := 0
 	kept := claims[:0]
 	for _, claim := range claims {
 		hash, _ := infohash.Parse(claim.hash)
-		if checks(claim) && !still.Has(hash) {
+		if cleared.Has(hash) && !claimStillMatches(claim, clearedTorrents[claim.hash], in) {
 			delete(sel.triggers, claim.hash)
 			if stats := getOrCreateRuleStats(in.stats, claim.rule); stats != nil {
 				stats.DeleteApplied--
@@ -171,6 +185,17 @@ func (s *Service) confirmVerdictClaims(ctx context.Context, instanceID int, clai
 			Msg("automations: skipped the deletes of torrents that are no longer unregistered")
 	}
 	return kept
+}
+
+func claimStillMatches(claim deletionClaim, torrent *qbt.Torrent, in deletionSelectionInput) bool {
+	if torrent == nil {
+		return false
+	}
+	enterRule(in.evalCtx, claim.rule, in.torrents, in.scope)
+	due, marked := deleteWaitOf(claim.rule, in.evalCtx.waited).match(in.evalCtx, claim.hash, func() bool {
+		return shouldDeleteTorrent(claim.rule, torrent, in.evalCtx)
+	})
+	return due && marked
 }
 
 func (sel *deletionSelection) dropDeletedWaits() {

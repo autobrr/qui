@@ -42,18 +42,30 @@ func (sm *SyncManager) beginTrackersRead(instanceID int, owner *syncowner.Owner,
 	}
 }
 
-func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, seen seenTrackers) {
+func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, seen ...seenTrackers) {
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil || !client.Supports(CapTrackerHealth) {
 		return
 	}
+	index := NewHashIndex(syncManager.SnapshotUnchecked())
+	changed := false
+	for _, one := range seen {
+		changed = sm.applyOneSeen(client, index, instanceID, one) || changed
+	}
+	if changed {
+		sm.storeUnregisteredSince(ctx, instanceID)
+		sm.notifyTrackerHealthUpdated(instanceID)
+	}
+}
+
+func (sm *SyncManager) applyOneSeen(client *Client, index HashIndex, instanceID int, seen seenTrackers) bool {
 	id, err := infohash.Parse(seen.hash)
 	if err != nil {
-		return
+		return false
 	}
-	torrent, ok := NewHashIndex(syncManager.SnapshotUnchecked()).Torrent(id)
+	torrent, ok := index.Torrent(id)
 	if !ok || announceFlagsOf(torrent) != seen.flags {
-		return
+		return false
 	}
 
 	trackers := seen.trackers
@@ -65,7 +77,7 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 			cache.mu.Lock()
 			if prev, ok := cache.byHash[seen.hash]; ok && seen.at.Before(prev.fetchedAt) {
 				cache.mu.Unlock()
-				return
+				return false
 			}
 			if cache.byHash == nil {
 				cache.byHash = make(map[string]trackerDetail)
@@ -78,7 +90,7 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 		passAt := sm.trackerHealthPassAt[instanceID]
 		sm.trackerHealthMu.RUnlock()
 		if seen.at.Before(passAt) {
-			return
+			return false
 		}
 	}
 
@@ -87,10 +99,7 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 	if by >= 0 {
 		reason = &unregisteredRow{trackers: trackers, by: by}
 	}
-	if sm.setTrackerHealth(instanceID, torrent, trackers, health, reason, seen.at) {
-		sm.storeUnregisteredSince(ctx, instanceID)
-		sm.notifyTrackerHealthUpdated(instanceID)
-	}
+	return sm.setTrackerHealth(instanceID, torrent, trackers, health, reason, seen.at)
 }
 
 func (sm *SyncManager) setTrackerHealth(instanceID int, torrent *qbt.Torrent, trackers []qbt.TorrentTracker, health TrackerHealth, reason *unregisteredRow, at time.Time) bool {

@@ -330,25 +330,35 @@ func NewTrackerHealthSnapshotWithSince(byHash map[string]TrackerHealth, since ma
 }
 
 func (sm *SyncManager) StillUnregistered(ctx context.Context, instanceID int, hashes []string) (*infohash.Set, error) {
-	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, owner, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
 	now := sm.healthNow()
+	index := NewHashIndex(owner.SnapshotUnchecked())
 	still := infohash.NewSet()
+	var recovered []seenTrackers
 	for chunk := range slices.Chunk(hashes, trackerDetailChunkSize) {
 		rows, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{Hashes: chunk, IncludeTrackers: true})
 		if err != nil {
 			return nil, err
 		}
 		for i := range rows {
-			if trackerHealthOf(&rows[i], rows[i].Trackers, now) != TrackerHealthUnregistered {
+			hash, err := infohash.Parse(rows[i].Hash)
+			if err != nil {
 				continue
 			}
-			if hash, err := infohash.Parse(rows[i].Hash); err == nil {
+			if trackerHealthOf(&rows[i], rows[i].Trackers, now) == TrackerHealthUnregistered {
 				still.Add(hash)
+				continue
+			}
+			if torrent, ok := index.Torrent(hash); ok {
+				recovered = append(recovered, seenTrackers{hash: torrent.Hash, flags: announceFlagsOf(torrent), trackers: rows[i].Trackers, at: now})
 			}
 		}
+	}
+	if len(recovered) > 0 {
+		sm.applySeenTrackers(ctx, instanceID, recovered...)
 	}
 	return still, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type reading uint8
@@ -20,6 +21,7 @@ const (
 
 type Reader struct {
 	snapshot *qbittorrent.TrackerHealthSnapshot
+	cleared  *infohash.Set
 	reading  reading
 	wait     time.Duration
 	now      time.Time
@@ -34,6 +36,9 @@ func (r Reader) Known() bool {
 }
 
 func (r Reader) Is(hash string, health qbittorrent.TrackerHealth) bool {
+	if isCleared(r.cleared, hash) {
+		return false
+	}
 	if health != qbittorrent.TrackerHealthUnregistered {
 		return r.snapshot.Health(hash) == health
 	}
@@ -54,6 +59,7 @@ func (r Reader) due(hash string) bool {
 
 type Waited struct {
 	snapshot *qbittorrent.TrackerHealthSnapshot
+	cleared  *infohash.Set
 	now      time.Time
 }
 
@@ -61,27 +67,40 @@ func ForDelete(snapshot *qbittorrent.TrackerHealthSnapshot, now time.Time) Waite
 	return Waited{snapshot: snapshot, now: now}
 }
 
+func (w Waited) Without(cleared *infohash.Set) Waited {
+	w.cleared = cleared
+	return w
+}
+
+func isCleared(cleared *infohash.Set, hash string) bool {
+	if cleared == nil || cleared.Len() == 0 {
+		return false
+	}
+	parsed, err := infohash.Parse(hash)
+	return err == nil && cleared.Has(parsed)
+}
+
 func (w Waited) Loaded() bool {
 	return w.snapshot.UnregisteredSinceLoaded()
 }
 
 func (w Waited) Raw() Reader {
-	return Raw(w.snapshot)
+	return Reader{snapshot: w.snapshot, cleared: w.cleared}
 }
 
 func (w Waited) Marked() Reader {
-	return Reader{snapshot: w.snapshot, reading: readMarked, now: w.now}
+	return Reader{snapshot: w.snapshot, cleared: w.cleared, reading: readMarked, now: w.now}
 }
 
 func (w Waited) Due(wait time.Duration) Reader {
 	if wait <= 0 {
 		return w.Raw()
 	}
-	return Reader{snapshot: w.snapshot, reading: readDue, wait: wait, now: w.now}
+	return Reader{snapshot: w.snapshot, cleared: w.cleared, reading: readDue, wait: wait, now: w.now}
 }
 
 func (w Waited) Marks(hash string) bool {
-	return marks(w.snapshot, hash)
+	return !isCleared(w.cleared, hash) && marks(w.snapshot, hash)
 }
 
 func marks(snapshot *qbittorrent.TrackerHealthSnapshot, hash string) bool {
@@ -90,7 +109,7 @@ func marks(snapshot *qbittorrent.TrackerHealthSnapshot, hash string) bool {
 }
 
 func (w Waited) UnregisteredNow(hash string) bool {
-	return w.snapshot.Health(hash) == qbittorrent.TrackerHealthUnregistered
+	return !isCleared(w.cleared, hash) && w.snapshot.Health(hash) == qbittorrent.TrackerHealthUnregistered
 }
 
 func (w Waited) DueAt(hash string, wait time.Duration) time.Time {

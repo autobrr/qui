@@ -4,6 +4,9 @@
 package models_test
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -11,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -75,4 +79,40 @@ func runUnregisteredSinceStore(t *testing.T, db *database.DB) {
 	others, err = store.ListUnregisteredSince(ctx, second.ID)
 	require.NoError(t, err)
 	require.Empty(t, others)
+}
+
+type failingCommitDB struct {
+	*database.DB
+}
+
+func (db failingCommitDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	tx, err := db.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return failingCommitTx{TxQuerier: tx}, nil
+}
+
+type failingCommitTx struct {
+	dbinterface.TxQuerier
+}
+
+func (failingCommitTx) Commit() error {
+	return errors.New("database is locked")
+}
+
+func TestUnregisteredSinceStoreFreesTheWriterAfterAFailedCommit(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "unregistered-since-commit")
+	instances, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instances.Create(t.Context(), "first", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	at := time.Date(2026, 11, 20, 9, 30, 15, 0, time.UTC)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	failing := models.NewUnregisteredSinceStore(failingCommitDB{DB: db})
+	require.ErrorContains(t, failing.PutUnregisteredSince(ctx, instance.ID, map[string]time.Time{"ab": at}), "database is locked")
+	require.ErrorContains(t, failing.DeleteUnregisteredSince(ctx, instance.ID, []string{"ab"}), "database is locked")
+	require.NoError(t, models.NewUnregisteredSinceStore(db).PutUnregisteredSince(ctx, instance.ID, map[string]time.Time{"cd": at}))
 }
