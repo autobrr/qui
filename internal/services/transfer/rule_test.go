@@ -36,7 +36,7 @@ func TestPreviewTellsTheWayAndTheSize(t *testing.T) {
 	require.Equal(t, transfer.WaySFTP, preview.Way)
 	require.Equal(t, int64(70), preview.Bytes, "the cross-seed and the episode read the same 70 bytes")
 	require.Len(t, preview.Members, 3)
-	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+	require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	unfinished, err := r.store.Unfinished(t.Context())
 	require.NoError(t, err)
 	require.Empty(t, unfinished)
@@ -92,7 +92,7 @@ func TestARulePassesTheFilesOfHardlinkedCrossSeedsOnce(t *testing.T) {
 	r.svc.Wake()
 	r.svc.Wait()
 	require.Equal(t, transfer.StateDone, r.get(first.ID).State)
-	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+	require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	_, err = r.svc.Start(t.Context(), crossSeed)
 	require.ErrorIs(t, err, transfer.ErrStays, "the target has the first torrent of the set")
 

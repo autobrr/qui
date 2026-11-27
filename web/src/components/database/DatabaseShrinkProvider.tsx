@@ -3,43 +3,22 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useEffect, useRef, type ReactNode } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { RestartOverlay } from "@/components/settings/RestartOverlay"
-import { DatabaseShrinkContext, databaseShrinkQueryKey, type DatabaseShrinkContextValue } from "@/hooks/useDatabaseShrink"
+import { DatabaseShrinkContext, databaseShrinkQuery, databaseShrinkQueryKey, type DatabaseShrinkContextValue } from "@/hooks/useDatabaseShrink"
 import { useSelfUpdate } from "@/hooks/useSelfUpdate"
 import { systemNoticesQueryKey } from "@/hooks/useSystemNotices"
-import { api } from "@/lib/api"
-import { formatBytes } from "@/lib/utils"
 
 export function DatabaseShrinkProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation("common")
   const queryClient = useQueryClient()
   const { shrink, pending, overlay } = useSelfUpdate()
 
-  const statusQuery = useQuery({ queryKey: databaseShrinkQueryKey, queryFn: () => api.getDatabaseShrink() })
-  const result = statusQuery.data?.result
-  const dismissResult = useMutation({
-    mutationFn: () => api.dismissDatabaseShrinkResult(),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: databaseShrinkQueryKey }),
-  })
-  const { mutate: dismiss } = dismissResult
-  const shownResult = useRef<typeof result>(undefined)
-  useEffect(() => {
-    if (!result) {
-      shownResult.current = undefined
-      return
-    }
-    if (result === shownResult.current) {
-      return
-    }
-    shownResult.current = result
-    toast.success(t("databaseShrink.done", { before: formatBytes(result.beforeBytes), after: formatBytes(result.afterBytes) }), { duration: 15_000 })
-    dismiss()
-  }, [result, dismiss, t])
+  useQuery(databaseShrinkQuery)
 
   const value: DatabaseShrinkContextValue = {
     pending,

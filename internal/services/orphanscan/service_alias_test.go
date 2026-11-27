@@ -493,13 +493,13 @@ func linkedPeerFixture(t *testing.T, f *modeFixture, path func(string) string, r
 	torrents, files := sync.getAllTorrents, sync.getTorrentFilesBatch
 	sync.getAllTorrents = func(ctx context.Context, id int) ([]qbt.Torrent, error) {
 		if id == 2 {
-			return []qbt.Torrent{{Hash: "peer", SavePath: path(filepath.Join(root, rel)), State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{{Hash: hPeer, SavePath: path(filepath.Join(root, rel)), State: qbt.TorrentStatePausedUp}}, nil
 		}
 		return torrents(ctx, id)
 	}
 	sync.getTorrentFilesBatch = func(ctx context.Context, id int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 		if id == 2 {
-			return map[string]qbt.TorrentFiles{"peer": {{Name: "movie.mkv", Size: 1}}}, nil
+			return map[string]qbt.TorrentFiles{hPeer: {{Name: "movie.mkv", Size: 1}}}, nil
 		}
 		return files(ctx, id, hashes)
 	}
@@ -559,14 +559,14 @@ func TestExecuteScan_KeepsFilesOfAPeerBehindASymlink(t *testing.T) {
 				sync.getAllTorrents = func(ctx context.Context, id int) ([]qbt.Torrent, error) {
 					list, err := torrents(ctx, id)
 					if id == 1 {
-						list = append(list, qbt.Torrent{Hash: "twin", SavePath: twin, State: qbt.TorrentStatePausedUp})
+						list = append(list, qbt.Torrent{Hash: hTwin, SavePath: twin, State: qbt.TorrentStatePausedUp})
 					}
 					return list, err
 				}
 				sync.getTorrentFilesBatch = func(ctx context.Context, id int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 					m, err := files(ctx, id, hashes)
-					if id == 1 && slices.Contains(hashes, "twin") {
-						m["twin"] = qbt.TorrentFiles{{Name: "keep.mkv", Size: 1}}
+					if id == 1 && slices.Contains(hashes, hTwin) {
+						m[hTwin] = qbt.TorrentFiles{{Name: "keep.mkv", Size: 1}}
 					}
 					return m, err
 				}

@@ -95,7 +95,7 @@ func countAtSentinel(ctx context.Context, t *testing.T, db *database.DB) int {
 func baseFile() CachedFile {
 	return CachedFile{
 		InstanceID:      1,
-		TorrentHash:     "guard-hash",
+		TorrentHash:     testHash("guard-hash"),
 		FileIndex:       0,
 		Name:            "season.pack/episode.mkv",
 		Size:            1 << 30,
@@ -156,9 +156,9 @@ func testUpsertFilesWritesChangedRows(t *testing.T, open testDBOpener) {
 
 				require.Zero(t, countAtSentinel(ctx, t, db), "changed %s should have been written", tt.name)
 
-				batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+				batch, err := repo.GetFilesBatch(ctx, 1, []string{testHash("guard-hash")})
 				require.NoError(t, err)
-				stored := batch["guard-hash"]
+				stored := batch[testHash("guard-hash")]
 				require.Len(t, stored, 1)
 				require.Equal(t, changed.Name, stored[0].Name)
 				require.Equal(t, changed.Size, stored[0].Size)
@@ -206,9 +206,9 @@ func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{baseFile()}, nil))
 			require.Zero(t, countAtSentinel(ctx, t, db), "null-to-value should have been written")
 
-			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+			batch, err := repo.GetFilesBatch(ctx, 1, []string{testHash("guard-hash")})
 			require.NoError(t, err)
-			stored := batch["guard-hash"]
+			stored := batch[testHash("guard-hash")]
 			require.Len(t, stored, 1)
 			require.Equal(t, new(true), stored[0].IsSeed)
 		})
@@ -228,9 +228,9 @@ func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 			require.NoError(t, repo.UpsertCache(ctx, []CachedFile{nullSeed}, nil))
 			require.Zero(t, countAtSentinel(ctx, t, db), "value-to-null should have been written")
 
-			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
+			batch, err := repo.GetFilesBatch(ctx, 1, []string{testHash("guard-hash")})
 			require.NoError(t, err)
-			stored := batch["guard-hash"]
+			stored := batch[testHash("guard-hash")]
 			require.Len(t, stored, 1)
 			require.Nil(t, stored[0].IsSeed)
 		})
@@ -389,7 +389,7 @@ func testCacheFilesBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 						Availability: float32(v + 1),
 					}
 				}
-				batches[v][fmt.Sprintf("overlap-hash-%d", h)] = files
+				batches[v][testHash(fmt.Sprintf("overlap-hash-%d", h))] = files
 			}
 		}
 
@@ -407,7 +407,7 @@ func testUpsertSyncInfoBatchConcurrentOverlap(t *testing.T, open testDBOpener) {
 
 		hashes := make(map[string]struct{}, 20)
 		for h := range 20 {
-			hashes[fmt.Sprintf("overlap-hash-%d", h)] = struct{}{}
+			hashes[testHash(fmt.Sprintf("overlap-hash-%d", h))] = struct{}{}
 		}
 
 		require.NoError(t, runOverlapping(ctx, 4, 10, func(ctx context.Context, _, _ int) error {

@@ -264,7 +264,7 @@ func TestTransferRetriesATemporaryFailureAfterAnHour(t *testing.T) {
 	require.Equal(t, transfer.FailureTemporary, record.FailureClass, record.FailureReason)
 	require.Equal(t, clock.Add(time.Hour), record.RetryAt)
 	require.True(t, record.FinishedAt.IsZero())
-	require.True(t, r.store.IsClaimed(r.source.ID, s.hash))
+	require.True(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	require.Equal(t, contents(s, showName), tree(t, r.dstDir), "the copy stays")
 	require.True(t, r.src.Has(s.hash))
 	require.False(t, r.src.Stopped(s.hash))
@@ -302,7 +302,7 @@ func TestTransferNeverRetriesAPermanentFailure(t *testing.T) {
 	require.Equal(t, "The check on homelab failed 1 of 5 pieces: 3.", record.FailureReason, "pieces 0, 1, 2 and 4 passed")
 	require.True(t, record.RetryAt.IsZero())
 	require.False(t, record.FinishedAt.IsZero())
-	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+	require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	require.Empty(t, tree(t, r.dstDir))
 	r.requireNoHelpers(record)
 
@@ -383,7 +383,7 @@ func TestTransferFailsWhenAnInstanceIsDeleted(t *testing.T) {
 		require.Contains(t, record.FailureReason, "was deleted")
 		require.Empty(t, tree(t, r.dstDir), "qui removes what it wrote on the target")
 		require.Equal(t, before, sent(r.src))
-		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	})
 	t.Run("the target", func(t *testing.T) {
 		r := newRig(t)
@@ -423,7 +423,7 @@ func TestTransferStopsWhenAnEndpointChanges(t *testing.T) {
 	require.Zero(t, moved.Requests(), "qui sends nothing to the new address")
 	require.NotEmpty(t, tree(t, r.dstDir), "qui removes nothing there")
 	require.True(t, r.src.Has(s.hash))
-	require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+	require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 }
 
 func (r *rig) moveTheCrossSeedInstance() (show, int64, *qbtstub.Server) {
@@ -624,7 +624,7 @@ func TestTransferCancel(t *testing.T) {
 		record := r.get(id)
 		require.Equal(t, transfer.StateCancelled, record.State)
 		require.False(t, record.FinishedAt.IsZero())
-		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 		require.Empty(t, tree(t, r.dstDir))
 		require.True(t, r.src.Has(s.hash))
 		require.False(t, r.src.Stopped(s.hash))
@@ -728,7 +728,7 @@ func TestTransferCancel(t *testing.T) {
 		require.Empty(t, tree(t, r.dstDir))
 		require.True(t, r.src.Has(s.hash))
 		require.False(t, r.src.Stopped(s.hash))
-		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	})
 	t.Run("a Transfer that waits for its retry", func(t *testing.T) {
 		r := newRig(t)
@@ -747,7 +747,7 @@ func TestTransferCancel(t *testing.T) {
 		require.Empty(t, tree(t, r.dstDir), "qui removes the files that it placed")
 		require.False(t, r.dst.Has(s.hash))
 		require.True(t, r.src.Has(s.hash))
-		require.False(t, r.store.IsClaimed(r.source.ID, s.hash))
+		require.False(t, r.store.IsClaimed(r.source.ID, mustParse(t, s.hash)))
 	})
 }
 

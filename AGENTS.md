@@ -29,6 +29,7 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | A struct, not `map[string]any` | `make lint-ratchet` (`mapany`) |
 | Read the link count and file identity of a local path through the local fsops backend (`internal/fsops/local/identity_*.go`) | forbidigo (`Stat_t`/`Statx_t` `Nlink`, `Ino`), `TestIdentity_HardlinkedFileReadsTwoLinksOnEveryRead`, `TestGetHardlinkIndex_FailedIdentityReadLeavesNoScope` |
 | A torrent hash is an `infohash.Hash`, parsed where it enters qui. Look a torrent up through `qbittorrent.HashIndex`, and fold no hash case inline | forbidigo (`SyncSnapshot.Torrent`), `make lint-ratchet` (`hashcase`), the `infohash` tests |
+| Dedupe torrent hashes with `infohash.Unique` or `infohash.UniqueStrings`, and keep a set of them in an `infohash.Set` | forbidigo (`uniqueHashes`, `distinctHashes`), `make lint-ratchet` (`hashset`) |
 | No DEBUG or INFO line about an off feature | `make lint-ratchet` (`offlog`) |
 | A line that fires on each request, tick, or torrent goes at TRACE | `TestWebhookCheckWritesDebugOnlyForAMatchOrNearMiss` and `TestSeasonPackCheckWritesNoDebugLineWithoutMatch` for the checks that autobrr calls on each announce, `logbudget.AssertFlat` for loops over torrents. Other paths: judgment |
 | A code file stays under 20,000 bytes | `make lint-ratchet` (`.file-size.json`) |
@@ -40,6 +41,8 @@ Each repeated mistake gets a rule and, where it can, a check that fails on it. W
 | UI text goes through i18n keys, with no dead keys | `pnpm check:i18n` |
 | Each endpoint is in the OpenAPI spec | `TestAllEndpointsDocumented`, `make test-openapi` |
 | No response gives a stored credential, and only a backup download, which needs `Backups: write`, gives a tracker passkey to an API key without `Torrents: write` (ADR 0040) | `TestReadKeyGetsNoPlantedSecret` reads each route that a key with only read Permissions reaches (ADR 0087). A secret that its rig does not plant: judgment |
+| A workflow job that runs code from a fork or a pull request head has no write permission and no stored secret | `TestNoJobRunsForkCodeWithWriteAccessOrASecret` |
+| A route reads at most 1 MiB of a request body before sign-in | `TestRoutesReadAtMostOneMiBOfABodyWithoutSignIn` |
 | The feature map lists each route and dialog with steps | `make check-feature-map` |
 | The match corpus only grows | the Match corpus workflow |
 | A maintainer approves a moved starting commit, a looser benchmark limit, a changed workload, or a removed benchmark (ADR 0093) | the Benchmark approval workflow |

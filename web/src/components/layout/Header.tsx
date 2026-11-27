@@ -561,6 +561,7 @@ export function Header({ sidebarIconOnly = false, sidebarHidden = false, sidebar
                       <p className="font-semibold">{t("header.smartSearchTitle")}</p>
                       <ul className="space-y-1 ml-2">
                         <li>• <strong>{t("header.smartSearchGlob")}</strong> {t("header.smartSearchGlobExamples")}</li>
+                        <li>• <strong>{t("header.smartSearchExclude")}</strong> {t("header.smartSearchExcludeExamples")}</li>
                         <li>• <strong>{t("header.smartSearchFuzzy")}</strong> {t("header.smartSearchFuzzyExample")}</li>
                         <li>• {t("header.smartSearchDots")}</li>
                         <li>• {t("header.smartSearchFields")}</li>

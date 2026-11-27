@@ -72,10 +72,18 @@ type job struct {
 	meter          *meter
 }
 
+func (j *job) memberHashes() []infohash.Hash {
+	out := make([]infohash.Hash, len(j.rec.Members))
+	for i := range j.rec.Members {
+		out[i] = j.rec.Members[i].Hash
+	}
+	return out
+}
+
 func (j *job) hashes() []string {
 	out := make([]string, len(j.rec.Members))
 	for i := range j.rec.Members {
-		out[i] = j.rec.Members[i].Hash
+		out[i] = j.rec.Members[i].Hash.String()
 	}
 	return out
 }
@@ -371,7 +379,7 @@ func (j *job) checkSource(ctx context.Context) error {
 		return err
 	}
 	for _, p := range j.parts {
-		i := slices.IndexFunc(torrents, func(t *qbt.Torrent) bool { return strings.EqualFold(t.Hash, p.Hash) })
+		i := slices.IndexFunc(torrents, func(t *qbt.Torrent) bool { return p.Hash.Is(t.Hash) })
 		if i < 0 {
 			return sourceGone("it left the source")
 		}
@@ -384,7 +392,7 @@ func (j *job) checkSource(ctx context.Context) error {
 		case torrent.Progress < 1:
 			return sourceChanged("qBittorrent checked it and found pieces that are missing")
 		}
-		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash)
+		files, err := j.svc.deps.Sync.GetTorrentFiles(qbittorrent.WithForceFilesRefresh(ctx), j.source.ID, p.Hash.String())
 		if err != nil {
 			return temporary("qui cannot read the files of the torrent on %s: %v", j.source.Name, err)
 		}
@@ -404,7 +412,7 @@ func (j *job) checkedSource(ctx context.Context) ([]*qbt.Torrent, error) {
 		if err := j.pause(ctx, poll); err != nil {
 			return nil, err
 		}
-		torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: infohash.ParseAll(j.hashes())})
+		torrents, err := j.svc.deps.Sync.GetTorrentRefsFresh(ctx, j.source.ID, qbittorrent.TorrentRefFilter{Hashes: j.memberHashes()})
 		if err != nil {
 			return nil, temporary("qui cannot read the torrents on %s: %v", j.source.Name, err)
 		}
@@ -527,7 +535,7 @@ func (j *job) notify(ctx context.Context, eventType notifications.EventType) {
 		Type:        eventType,
 		InstanceID:  j.rec.SourceInstanceID,
 		TorrentName: first.Name,
-		TorrentHash: first.Hash,
+		TorrentHash: first.Hash.String(),
 		Message:     strings.Join(lines, "\n"),
 	}
 	if j.source != nil {

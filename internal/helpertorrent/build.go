@@ -13,13 +13,15 @@ import (
 
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
+
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 var ErrV2Unsupported = errors.New("v2 and hybrid torrents are unsupported")
 
 type Helper struct {
 	TorrentFile   []byte
-	InfoHash      string
+	InfoHash      infohash.Hash
 	ContentLayout string
 }
 
@@ -110,9 +112,10 @@ func Build(torrent []byte, fileNames []string, salt string) (Helper, error) {
 	if err != nil {
 		return Helper{}, fmt.Errorf("encode torrent: %w", err)
 	}
+	hash, _ := infohash.Parse(metainfo.HashBytes(infoBytes).HexString())
 	return Helper{
 		TorrentFile:   torrentFile,
-		InfoHash:      metainfo.HashBytes(infoBytes).HexString(),
+		InfoHash:      hash,
 		ContentLayout: layout,
 	}, nil
 }

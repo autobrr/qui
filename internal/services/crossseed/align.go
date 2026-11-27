@@ -43,7 +43,7 @@ func (s *Service) alignCrossSeed(
 	if addPlan != nil && len(addPlan.filePairs) > 0 {
 		return s.alignCatalogFiles(ctx, instanceID, torrentHash, torrentHashV2, addPlan)
 	}
-	hashes := uniqueHashes(torrentHash, torrentHashV2)
+	hashes := infohash.NewSet(torrentHash, torrentHashV2).Hashes()
 	hashLabel := ""
 	if len(hashes) > 0 {
 		hashLabel = hashes[0].String()
@@ -207,7 +207,7 @@ func (s *Service) alignCrossSeed(
 }
 
 func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int, hashes []infohash.Hash, timeout time.Duration) string {
-	hashes = uniqueHashes(hashes...)
+	hashes = infohash.NewSet(hashes...).Hashes()
 	if len(hashes) == 0 {
 		return ""
 	}

@@ -130,3 +130,21 @@ func TestLoggerRedactsProxyAPIKeyPath(t *testing.T) {
 	require.NotContains(t, logLine, proxyAPIKey)
 	require.Contains(t, logLine, `"url":"/proxy/REDACTED/api/v2/torrents/info"`)
 }
+
+func TestLoggerWritesAShortUserAgent(t *testing.T) {
+	var buf bytes.Buffer
+	handler := Logger(zerolog.New(&buf).Level(zerolog.DebugLevel))(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil)
+	req.Header.Set("User-Agent", "qui-test/"+strings.Repeat("a", 1<<20))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	var decoded struct {
+		UserAgent string `json:"user_agent"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &decoded))
+	require.Len(t, decoded.UserAgent, 512)
+	require.Equal(t, "qui-test/"+strings.Repeat("a", 503), decoded.UserAgent)
+}

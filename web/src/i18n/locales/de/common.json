@@ -187,6 +187,8 @@
     "smartSearchTitle": "Funktionen der intelligenten Suche:",
     "smartSearchGlob": "Glob-Muster:",
     "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchExclude": "Treffer ausblenden:",
+    "smartSearchExcludeExamples": "-x265, -*.mkv",
     "smartSearchFuzzy": "Unscharfe Suche:",
     "smartSearchFuzzyExample": "\"breaking bad\" findet \"Breaking.Bad\"",
     "smartSearchDots": "Verarbeitet Punkte, Unterstriche und Klammern",

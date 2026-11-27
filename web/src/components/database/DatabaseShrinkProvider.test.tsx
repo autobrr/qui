@@ -58,4 +58,36 @@ describe("DatabaseShrinkProvider", () => {
     await waitFor(() => expect(dismissals).toBe(2))
     expect(toast.success).toHaveBeenCalledTimes(2)
   })
+
+  it("shows no toast for a fetch that a refetch cancels", async () => {
+    const status: DatabaseShrinkStatus = { ...base, result: { beforeBytes: 300, afterBytes: 100 } }
+    const gates: Array<() => void> = []
+    let dismissals = 0
+    server.use(
+      http.get("*/api/database/shrink", async () => {
+        await new Promise<void>((resolve) => gates.push(resolve))
+        return HttpResponse.json(status)
+      }),
+      http.delete("*/api/database/shrink/result", () => {
+        dismissals++
+        return new HttpResponse(null, { status: 204 })
+      })
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    queryClient.setQueryData<DatabaseShrinkStatus>(databaseShrinkQueryKey, base)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DatabaseShrinkProvider>{null}</DatabaseShrinkProvider>
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => expect(gates).toHaveLength(1))
+    void queryClient.invalidateQueries({ queryKey: databaseShrinkQueryKey })
+    await waitFor(() => expect(gates).toHaveLength(2))
+    gates.forEach((open) => open())
+
+    await waitFor(() => expect(dismissals).toBe(1))
+    await waitFor(() => expect(queryClient.getQueryData<DatabaseShrinkStatus>(databaseShrinkQueryKey)?.result).toBeDefined())
+    expect(toast.success).toHaveBeenCalledTimes(1)
+  })
 })

@@ -302,7 +302,7 @@ func (s *Server) recheck(t *Torrent) {
 }
 
 func (s *Server) filePrio(w http.ResponseWriter, param func(string) string) {
-	t, ok := s.torrents[strings.ToLower(param("hash"))]
+	t, ok := s.torrent(param("hash"))
 	if !ok || t.add == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return

@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,6 +22,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/torrentadd"
 	"github.com/autobrr/qui/internal/services/sharetracker"
 	"github.com/autobrr/qui/internal/services/transfer"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 const keepEnded = 30 * 24 * time.Hour
@@ -72,7 +72,7 @@ type Service struct {
 
 type torrentKey struct {
 	instanceID int
-	hash       string
+	hash       infohash.Hash
 }
 
 type live struct {
@@ -175,7 +175,7 @@ func (s *Service) refresh(ctx context.Context) error {
 		key := torrentKey{sh.InstanceID, sh.Hash}
 		s.active[key] = append(s.active[key], sh.ID)
 		if sh.Tracker == TrackerOwn {
-			infoHash, err := infoHashOf(sh.HelperHash)
+			infoHash, err := infoHashOf(sh.HelperHash.String())
 			if err != nil {
 				log.Debug().Err(err).Int64("share", sh.ID).Msg("share: the Share torrent has no valid infohash")
 				invalid++
@@ -284,8 +284,4 @@ func infoHashOf(hexHash string) ([20]byte, error) {
 		return [20]byte{}, fmt.Errorf("infohash %q is not 40 hex digits", hexHash)
 	}
 	return [20]byte(b), nil
-}
-
-func lower(hash string) string {
-	return strings.ToLower(strings.TrimSpace(hash))
 }
