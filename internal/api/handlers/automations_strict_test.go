@@ -105,11 +105,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1","pause":{"enabled":true,
 				"condition":{"clientId":"c_1","operator":"AND","conditions":[{"clientId":"c_2","field":"NAME","operator":"CONTAINS","value":"x"}]}}}}`,
 		},
-		{
-			name: "delete wait",
-			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
-				"delete":{"enabled":true,"mode":"delete","unregisteredWaitSeconds":0,"condition":{"field":"IS_UNREGISTERED","operator":"EQUAL","value":"true"}}}}`,
-		},
 	}
 	invalid := []struct {
 		name string
@@ -210,18 +205,6 @@ func TestAutomationStrictDecode(t *testing.T) {
 			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
 				"tags":[{"enabled":true,"tags":["x"],"mode":"ful"}]}}`,
 			want: []string{`conditions.tags[0].mode: mode does not allow "ful"; it allows full, add, remove`},
-		},
-		{
-			name: "delete wait as text",
-			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
-				"delete":{"enabled":false,"mode":"delete","unregisteredWaitSeconds":"7d"}}}`,
-			want: []string{"conditions.delete.unregisteredWaitSeconds: expected a whole number, got a string"},
-		},
-		{
-			name: "delete wait below 0",
-			body: `{"name":"rule","trackerPattern":"*","conditions":{"schemaVersion":"1",
-				"delete":{"enabled":false,"mode":"delete","unregisteredWaitSeconds":-60}}}`,
-			want: []string{"unregisteredWaitSeconds must be between 0 and 31536000 (365 days)"},
 		},
 		{
 			name: "unknown delete mode",

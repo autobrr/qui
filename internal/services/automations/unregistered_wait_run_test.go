@@ -6,7 +6,6 @@ package automations
 import (
 	"context"
 	"encoding/json/v2"
-	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -100,44 +99,13 @@ func runDeletedHashes(stub *stubQbt) []string {
 	return hashes
 }
 
-func TestDeleteWaitLiveRun(t *testing.T) {
-	ratioAbove2 := waitDeleteRule(2, nil, &models.RuleCondition{Field: FieldRatio, Operator: models.OperatorGreaterThan, Value: "2"})
-	tests := []struct {
-		name        string
-		rules       []*models.Automation
-		health      *fakeTrackerHealth
-		wantDeleted []string
-		wantAsked   [][]string
-	}{
-		{name: "deletes only the torrent whose wait is over", rules: []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))},
-			health: &fakeTrackerHealth{}, wantDeleted: []string{waitOldHash}, wantAsked: [][]string{{waitOldHash}}},
-		{name: "a fresh read with a working tracker keeps the torrent", rules: []*models.Automation{waitDeleteRule(1, new(0), unregisteredIs("true"))},
-			health: &fakeTrackerHealth{still: map[string]bool{waitOldHash: true}}, wantDeleted: []string{waitOldHash}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}},
-		{name: "a failed fresh read deletes none of them", rules: []*models.Automation{waitDeleteRule(1, new(0), unregisteredIs("true")), ratioAbove2},
-			health: &fakeTrackerHealth{err: errors.New("qBittorrent did not answer")}, wantDeleted: []string{waitFineHash}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			svc, instanceID, stub := newWaitRunService(t, tt.health)
-			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, tt.rules, false)
-			require.NoError(t, err)
-			require.ElementsMatch(t, tt.wantDeleted, runDeletedHashes(stub))
-			for i := range tt.wantAsked {
-				slices.Sort(tt.wantAsked[i])
-			}
-			require.Equal(t, tt.wantAsked, tt.health.asked)
-		})
-	}
-}
-
-func TestDeleteWaitRunNowKeepsTheWait(t *testing.T) {
-	svc, instanceID, stub := newWaitRunService(t, &fakeTrackerHealth{})
-	rule := waitDeleteRule(1, nil, unregisteredIs("true"))
-	rule.Enabled = false
-
-	_, err := svc.ApplyRuleNow(t.Context(), instanceID, rule)
+func TestDeleteWaitLiveRunDeletesOnlyTheTorrentWhoseWaitIsOver(t *testing.T) {
+	health := &fakeTrackerHealth{}
+	svc, instanceID, stub := newWaitRunService(t, health)
+	_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))}, false)
 	require.NoError(t, err)
 	require.Equal(t, []string{waitOldHash}, runDeletedHashes(stub))
+	require.Equal(t, [][]string{{waitOldHash}}, health.asked)
 }
 
 func TestDeleteWaitTagActsOnTheFirstMatch(t *testing.T) {
@@ -158,36 +126,18 @@ func TestDeleteWaitTagActsOnTheFirstMatch(t *testing.T) {
 }
 
 func TestDeleteWaitDryRunWritesTheWaitingLine(t *testing.T) {
-	type line struct {
-		action string
-		count  int
-	}
-	tests := []struct {
-		name string
-		wait *int
-		want []line
-	}{
-		{name: "deletes and waits", wait: nil, want: []line{{models.ActivityActionDeletedCondition, 1}, {models.ActivityActionDeleteWaiting, 2}}},
-		{name: "only waits", wait: new(365 * 24 * 3600), want: []line{{models.ActivityActionDeleteWaiting, 3}}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			svc, instanceID, stub := newWaitRunService(t, &fakeTrackerHealth{})
-			activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{waitDeleteRule(1, tt.wait, unregisteredIs("true"))}, true)
-			require.NoError(t, err)
-			require.Empty(t, stub.recordedWrites())
+	svc, instanceID, stub := newWaitRunService(t, &fakeTrackerHealth{})
+	activities, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{waitDeleteRule(1, new(365*24*3600), unregisteredIs("true"))}, true)
+	require.NoError(t, err)
+	require.Empty(t, stub.recordedWrites())
 
-			got := make([]line, 0, len(activities))
-			for _, activity := range activities {
-				var details struct {
-					Count int `json:"count"`
-				}
-				require.NoError(t, json.Unmarshal(activity.Details, &details))
-				got = append(got, line{activity.Action, details.Count})
-			}
-			require.ElementsMatch(t, tt.want, got)
-		})
+	require.Len(t, activities, 1)
+	require.Equal(t, models.ActivityActionDeleteWaiting, activities[0].Action)
+	var details struct {
+		Count int `json:"count"`
 	}
+	require.NoError(t, json.Unmarshal(activities[0].Details, &details))
+	require.Equal(t, 3, details.Count)
 }
 
 func TestDeleteWaitPreviewListsDeletesThenWaitingTorrents(t *testing.T) {

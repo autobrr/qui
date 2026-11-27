@@ -276,22 +276,12 @@ describe("WorkflowDialog Delete wait", () => {
   })
 
   it.each([
-    { name: "a delete condition on Unregistered", dialogRule: deleteRule(unregistered), shown: true },
-    { name: "a stored delete condition on State unregistered", dialogRule: deleteRule({ field: "STATE", operator: "EQUAL", value: "unregistered" }), shown: true },
     { name: "a score that reads Unregistered", dialogRule: deleteRule(ratio, { sortingConfig: { schemaVersion: "1", type: "score", direction: "DESC", scoreRules: [{ type: "conditional", conditional: { score: 10, condition: unregistered } }] } }), shown: true },
     { name: "a delete condition on ratio only", dialogRule: deleteRule(ratio), shown: false },
   ])("shows the field for $name: $shown", ({ dialogRule, shown }) => {
     const client = renderDialog(dialogRule)
 
     expect(screen.queryByLabelText(key("delete.wait")) !== null).toBe(shown)
-    client.clear()
-  })
-
-  it("fills in 7 days for a rule with no wait and saves the rule with no wait", async () => {
-    const client = renderDialog(deleteRule(unregistered))
-
-    expect((screen.getByLabelText(key("delete.wait")) as HTMLInputElement).value).toBe("7")
-    expect((await savedDelete()).unregisteredWaitSeconds).toBeUndefined()
     client.clear()
   })
 

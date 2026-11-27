@@ -22,11 +22,11 @@ func newTwoUnregisteredRig(t *testing.T) *sinceRig {
 	return rig
 }
 
-func requireUnregisteredBy(t *testing.T, rig *sinceRig, hash string) {
+func requireUnregisteredBy(t *testing.T, rig *sinceRig, hash, host string) {
 	t.Helper()
 	tracker, ok := rig.sm.GetTrackerHealthSnapshot(1).UnregisteredBy(hash)
 	require.True(t, ok, "%s keeps the tracker that said unregistered", hash)
-	require.Equal(t, "Unregistered torrent", tracker.Message)
+	require.Equal(t, UnregisteredTracker{Host: host, Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"}, tracker)
 }
 
 func TestTrackersReadNamesTheUnregisteredTrackerAndKeepsTheOthers(t *testing.T) {
@@ -38,12 +38,12 @@ func TestTrackersReadNamesTheUnregisteredTrackerAndKeepsTheOthers(t *testing.T) 
 	rig.readTrackers(t, flagsHashDown)
 	_, ok := rig.sm.GetTrackerHealthSnapshot(1).UnregisteredBy(flagsHashDown)
 	require.False(t, ok, "a working tracker names no unregistered tracker")
-	requireUnregisteredBy(t, rig, flagsHashError)
+	requireUnregisteredBy(t, rig, flagsHashError, "error.example.invalid")
 
 	rig.answer(qbt.TrackerStatusNotWorking, "Unregistered torrent")
 	rig.readTrackers(t, flagsHashDown)
-	requireUnregisteredBy(t, rig, flagsHashDown)
-	requireUnregisteredBy(t, rig, flagsHashError)
+	requireUnregisteredBy(t, rig, flagsHashDown, "down.example.invalid")
+	requireUnregisteredBy(t, rig, flagsHashError, "error.example.invalid")
 }
 
 func TestTrackersReadThatChangesNothingKeepsTheSnapshot(t *testing.T) {

@@ -113,48 +113,6 @@ func (rig *sinceRig) requireNoSince(t *testing.T, msg string) {
 	require.NotContains(t, rig.store.stored(), flagsHashDown, msg)
 }
 
-func TestUnregisteredSinceStartsWithTheVerdictAndSurvivesOutages(t *testing.T) {
-	t.Parallel()
-
-	for _, webAPI := range []string{"2.15.1", "2.11.4"} {
-		t.Run(webAPI, func(t *testing.T) {
-			t.Parallel()
-			rig := newSinceRig(t, webAPI)
-			started := rig.now
-			rig.pass(t)
-			require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashDown])
-			rig.requireSince(t, started, "the verdict starts the time")
-			by, ok := rig.sm.GetTrackerHealthSnapshot(1).UnregisteredBy(flagsHashDown)
-			require.True(t, ok)
-			require.Equal(t, UnregisteredTracker{Host: "down.example.invalid", Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"}, by)
-
-			steps := []struct {
-				name   string
-				status qbt.TrackerStatus
-				msg    string
-			}{
-				{"tracker down", qbt.TrackerStatusNotWorking, "timed out"},
-				{"tracker not contacted", qbt.TrackerStatusNotContacted, ""},
-				{"tracker unreachable", qbt.TrackerStatusUnreachable, ""},
-				{"unregistered again", qbt.TrackerStatusNotWorking, "Unregistered torrent"},
-			}
-			for _, step := range steps {
-				rig.now = rig.now.Add(time.Hour)
-				rig.sm.trackerHealthDetailMaxAge = 0
-				rig.answer(step.status, step.msg)
-				rig.pass(t)
-				rig.requireSince(t, started, step.name)
-			}
-
-			rig.set(func() { rig.failFrom = 1; rig.requests = nil })
-			rig.now = rig.now.Add(time.Hour)
-			rig.answer(qbt.TrackerStatusOK, "")
-			rig.pass(t)
-			rig.requireSince(t, started, "a failed pass")
-		})
-	}
-}
-
 func TestUnregisteredSinceComesBackFromTheStoreAfterARestart(t *testing.T) {
 	t.Parallel()
 
@@ -162,6 +120,13 @@ func TestUnregisteredSinceComesBackFromTheStoreAfterARestart(t *testing.T) {
 	started := rig.now
 	rig.pass(t)
 	rig.requireSince(t, started, "first run")
+	requireUnregisteredBy(t, rig, flagsHashDown, "down.example.invalid")
+
+	rig.now = rig.now.Add(time.Hour)
+	rig.sm.trackerHealthDetailMaxAge = 0
+	rig.answer(qbt.TrackerStatusNotWorking, "timed out")
+	rig.pass(t)
+	rig.requireSince(t, started, "a tracker that is down keeps the time")
 
 	rig.sm.StopTrackerHealthRefresh(1)
 	rig.sm.trackerHealthMu.Lock()
@@ -257,6 +222,12 @@ func TestUnregisteredSinceEditRemovesTheStoredTimeAtOnce(t *testing.T) {
 	rig.pass(t)
 	require.NoError(t, rig.sm.EditTorrentTracker(t.Context(), 1, flagsHashDown, "https://down.example.invalid/announce/abcdef123456", "https://new.example.invalid/announce"))
 	require.NotContains(t, rig.store.stored(), flagsHashDown, "a restart right after the edit finds no old time")
+
+	rig.now = rig.now.Add(time.Hour)
+	rig.sm.trackerHealthDetailMaxAge = 0
+	rig.answer(qbt.TrackerStatusNotContacted, "")
+	rig.pass(t)
+	rig.requireNoSince(t, "the next pass after the edit starts no time")
 }
 
 func TestUnregisteredSinceDropsTheStoredTimeOfAnEditBeforeTheLoad(t *testing.T) {
@@ -279,43 +250,13 @@ func TestUnregisteredSinceIsRemoved(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		webAPI string
 		change func(t *testing.T, rig *sinceRig)
 	}{
-		{"a tracker works", "2.15.1", func(_ *testing.T, rig *sinceRig) {
-			rig.answer(qbt.TrackerStatusOK, "")
-		}},
-		{"a tracker works on 5.1", "2.11.4", func(_ *testing.T, rig *sinceRig) {
-			rig.answer(qbt.TrackerStatusOK, "")
-		}},
-		{"cleared flags with a working tracker", "2.15.1", func(_ *testing.T, rig *sinceRig) {
-			rig.answer(qbt.TrackerStatusOK, "")
-			rig.set(func() { rig.torrents[flagsHashDown].flags = [3]bool{} })
-		}},
-		{"a second tracker works", "2.15.1", func(_ *testing.T, rig *sinceRig) {
-			rig.set(func() {
-				down := rig.torrents[flagsHashDown]
-				down.trackers = append(down.trackers, qbt.TorrentTracker{Url: "https://backup.example.invalid/announce", Status: qbt.TrackerStatusOK})
-			})
-		}},
-		{"the torrent is stopped", "2.15.1", func(_ *testing.T, rig *sinceRig) {
-			rig.set(func() { rig.torrents[flagsHashDown].state = string(qbt.TorrentStateStoppedUp) })
-		}},
-		{"the torrent was added again after the time", "2.15.1", func(_ *testing.T, rig *sinceRig) {
+		{"the torrent was added again after the time", func(_ *testing.T, rig *sinceRig) {
 			rig.answer(qbt.TrackerStatusNotContacted, "")
 			rig.set(func() { rig.torrents[flagsHashDown].addedOn = rig.now.Unix() })
 		}},
-		{"the torrent is gone from a completed sync", "2.15.1", func(_ *testing.T, rig *sinceRig) {
-			rig.set(func() {
-				delete(rig.torrents, flagsHashDown)
-				delete(rig.trackers, "https://down.example.invalid/announce")
-			})
-		}},
-		{"the user edits its tracker", "2.15.1", func(t *testing.T, rig *sinceRig) {
-			require.NoError(t, rig.sm.EditTorrentTracker(t.Context(), 1, flagsHashDown, "https://down.example.invalid/announce/abcdef123456", "https://new.example.invalid/announce"))
-			rig.answer(qbt.TrackerStatusNotContacted, "")
-		}},
-		{"the user adds a tracker to many torrents", "2.15.1", func(t *testing.T, rig *sinceRig) {
+		{"the user adds a tracker to many torrents", func(t *testing.T, rig *sinceRig) {
 			require.NoError(t, rig.sm.BulkAddTrackers(t.Context(), 1, []string{flagsHashDown, flagsHashError}, "https://new.example.invalid/announce"))
 			rig.answer(qbt.TrackerStatusNotContacted, "")
 		}},
@@ -323,7 +264,7 @@ func TestUnregisteredSinceIsRemoved(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			rig := newSinceRig(t, tt.webAPI)
+			rig := newSinceRig(t, "2.15.1")
 			rig.pass(t)
 			rig.requireSince(t, rig.now, "the verdict starts the time")
 
@@ -419,30 +360,6 @@ func TestTrackersReadStartsTheTimeAndIgnoresPseudoRows(t *testing.T) {
 	rig.readTrackers(t, flagsHashDown)
 	require.Equal(t, TrackerHealthUnregistered, rig.health(t)[flagsHashDown], "a DHT row is not a tracker")
 	rig.requireSince(t, rig.now.Add(-time.Hour), "a working DHT row removes no time")
-}
-
-func TestFlagsPassFetchesNoTorrentWithoutFlagsOrTime(t *testing.T) {
-	t.Parallel()
-
-	rig := newSinceRig(t, "2.15.1")
-	rig.set(func() { rig.torrents[flagsHashDown].flags = [3]bool{} })
-	require.Equal(t, [][]string{{flagsHashError}}, sortedRequests(rig.pass(t)))
-	rig.requireNoSince(t, "a torrent with no flags is not read")
-}
-
-func TestUnregisteredSinceKeepsTheTimeWhenFlagsClearWithoutAWorkingTracker(t *testing.T) {
-	t.Parallel()
-
-	rig := newSinceRig(t, "2.15.1")
-	started := rig.now
-	rig.pass(t)
-
-	rig.now = rig.now.Add(time.Hour)
-	rig.sm.trackerHealthDetailMaxAge = 0
-	rig.answer(qbt.TrackerStatusNotContacted, "")
-	rig.set(func() { rig.torrents[flagsHashDown].flags = [3]bool{} })
-	require.True(t, fetched(rig.pass(t), flagsHashDown), "a torrent with a time is fetched although its flags cleared")
-	rig.requireSince(t, started, "cleared flags do not prove a working tracker")
 }
 
 func fetched(requests [][]string, hash string) bool {

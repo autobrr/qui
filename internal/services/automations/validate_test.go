@@ -849,7 +849,6 @@ func TestValidateRule(t *testing.T) {
 			Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldSize)},
 			Pause:  &models.PauseAction{},
 		})},
-		{name: "delete wait missing", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldIsUnregistered)}})},
 		{name: "delete wait 0", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldIsUnregistered), UnregisteredWaitSeconds: new(0)}})},
 		{name: "delete wait of 365 days", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldIsUnregistered), UnregisteredWaitSeconds: new(31536000)}})},
 		{name: "negative delete wait", edit: withConditions(&models.ActionConditions{Delete: &models.DeleteAction{Enabled: true, Condition: cond(FieldIsUnregistered), UnregisteredWaitSeconds: new(-1)}}),

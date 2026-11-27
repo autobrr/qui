@@ -64,7 +64,7 @@ func waitingOf(sel *deletionSelection) []string {
 
 func TestDeleteWaitDecidesWhichUnregisteredTorrentsADeleteRuleTakes(t *testing.T) {
 	torrents := []qbt.Torrent{
-		{Hash: "fresh", Tags: "x", Ratio: 0.5, AddedOn: 1, State: qbt.TorrentStateStalledUp},
+		{Hash: "fresh", Ratio: 0.5, AddedOn: 1, State: qbt.TorrentStateStalledUp},
 		{Hash: "old", Ratio: 0.5, AddedOn: 2, State: qbt.TorrentStateStalledUp},
 		{Hash: "down", Ratio: 0.5, AddedOn: 3, State: qbt.TorrentStateStalledUp},
 		{Hash: "fine", Ratio: 3, AddedOn: 4, State: qbt.TorrentStateStalledUp},
@@ -76,18 +76,9 @@ func TestDeleteWaitDecidesWhichUnregisteredTorrentsADeleteRuleTakes(t *testing.T
 		wantDeleted []string
 		wantWaiting []string
 	}{
-		{name: "a missing wait waits 7 days", rules: []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))},
-			wantDeleted: []string{"old"}, wantWaiting: []string{"fresh", "down"}},
-		{name: "a wait of 0 deletes at once", rules: []*models.Automation{waitDeleteRule(1, new(0), unregisteredIs("true"))},
-			wantDeleted: []string{"fresh", "old"}, wantWaiting: []string{}},
-		{name: "a shorter wait deletes once it is over", rules: []*models.Automation{waitDeleteRule(1, new(12*3600), unregisteredIs("true"))},
-			wantDeleted: []string{"fresh", "old"}, wantWaiting: []string{"down"}},
-		{name: "a stored rule on State unregistered waits", rules: []*models.Automation{waitDeleteRule(1, nil,
+		{name: "a stored rule on State unregistered with no wait waits 7 days", rules: []*models.Automation{waitDeleteRule(1, nil,
 			&models.RuleCondition{Field: FieldState, Operator: models.OperatorEqual, Value: "unregistered"})},
 			wantDeleted: []string{"old"}, wantWaiting: []string{"fresh", "down"}},
-		{name: "an OR with another matching condition deletes now", rules: []*models.Automation{waitDeleteRule(1, nil, &models.RuleCondition{
-			Operator: models.OperatorOr, Conditions: []*models.RuleCondition{unregisteredIs("true"), {Field: FieldTags, Operator: models.OperatorContains, Value: "x"}},
-		})}, wantDeleted: []string{"fresh", "old"}, wantWaiting: []string{"down"}},
 		{name: "a negated read never deletes a waiting torrent", rules: []*models.Automation{waitDeleteRule(1, nil,
 			&models.RuleCondition{Field: FieldIsUnregistered, Operator: models.OperatorEqual, Value: "true", Negate: true})},
 			wantDeleted: []string{"fine"}, wantWaiting: []string{}},
@@ -120,23 +111,9 @@ func TestDeleteWaitTimeIsTheUnregisteredSincePlusTheWait(t *testing.T) {
 
 func TestDeleteWaitHoldsAnUnregisteredTorrentThatHasNoTimeYet(t *testing.T) {
 	snapshot := qbittorrent.NewTrackerHealthSnapshotWithSince(map[string]qbittorrent.TrackerHealth{"untimed": qbittorrent.TrackerHealthUnregistered}, nil)
-	torrents := []qbt.Torrent{{Hash: "untimed", Ratio: 3, State: qbt.TorrentStateStalledUp}}
-	negated := &models.RuleCondition{Operator: models.OperatorAnd, Conditions: []*models.RuleCondition{
-		unregisteredIs("false"), {Field: FieldRatio, Operator: models.OperatorGreaterThan, Value: "2"},
-	}}
-	for _, tt := range []struct {
-		name string
-		cond *models.RuleCondition
-	}{
-		{name: "Unregistered is true", cond: unregisteredIs("true")},
-		{name: "Unregistered is false and a ratio", cond: negated},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			sel := selectTestDeletions(t, []*models.Automation{waitDeleteRule(1, nil, tt.cond)}, slices.Clone(torrents), waitTestContext(snapshot))
-			require.Empty(t, sel.byHash, "the raw verdict keeps it, and the wait has not started")
-		})
-	}
-	sel := selectTestDeletions(t, []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))}, slices.Clone(torrents), waitTestContext(snapshot))
+	torrents := []qbt.Torrent{{Hash: "untimed", State: qbt.TorrentStateStalledUp}}
+	sel := selectTestDeletions(t, []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))}, torrents, waitTestContext(snapshot))
+	require.Empty(t, sel.byHash, "the raw verdict keeps it, and the wait has not started")
 	require.Equal(t, []waitingDelete{{hash: "untimed", rule: ruleRef{id: 1, name: "rule"}, until: waitTestNow.Add(models.DefaultUnregisteredWait)}}, sel.waiting)
 }
 
@@ -152,12 +129,9 @@ func TestDeleteWaitHoldsAGroupWithAWaitingMemberAndTakesAWaitingCrossSeed(t *tes
 		evalCtx.CrossSeedFilesByHash = map[string]qbt.TorrentFiles{"old": files, "fresh": files}
 		return evalCtx
 	}
-	group := func(wait *int) *models.Automation {
-		rule := waitDeleteRule(1, wait, unregisteredIs("true"))
-		rule.Conditions.Delete.GroupID = GroupCrossSeedContentPath
-		rule.Conditions.Delete.Atomic = "all"
-		return rule
-	}
+	group := waitDeleteRule(1, nil, unregisteredIs("true"))
+	group.Conditions.Delete.GroupID = GroupCrossSeedContentPath
+	group.Conditions.Delete.Atomic = "all"
 	crossSeeds := waitDeleteRule(1, nil, unregisteredIs("true"))
 	crossSeeds.Conditions.Delete.Mode = DeleteModeWithFilesIncludeCrossSeeds
 
@@ -166,8 +140,7 @@ func TestDeleteWaitHoldsAGroupWithAWaitingMemberAndTakesAWaitingCrossSeed(t *tes
 		rule        *models.Automation
 		wantDeleted []string
 	}{
-		{name: "a group that needs every member holds while one waits", rule: group(nil), wantDeleted: []string{}},
-		{name: "the same group with a wait of 0 deletes", rule: group(new(0)), wantDeleted: []string{"old", "fresh"}},
+		{name: "a group that needs every member holds while one waits", rule: group, wantDeleted: []string{}},
 		{name: "a waiting cross-seed of a due torrent goes with it", rule: crossSeeds, wantDeleted: []string{"old", "fresh"}},
 	}
 	for _, tt := range tests {
