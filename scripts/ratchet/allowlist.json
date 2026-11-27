@@ -71,7 +71,6 @@
     "internal/services/crossseed/interactive_apply.go": 1,
     "internal/services/crossseed/library_scan.go": 4,
     "internal/services/crossseed/link_mode.go": 1,
-    "internal/services/crossseed/local_match.go": 1,
     "internal/services/crossseed/manual_assemble.go": 1,
     "internal/services/crossseed/manual_match.go": 1,
     "internal/services/crossseed/matching.go": 2,
