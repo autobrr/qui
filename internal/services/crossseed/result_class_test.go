@@ -111,6 +111,7 @@ func readRSS(t *testing.T, respond crossSeedResponder) string {
 	const name = "Quiet.Meridian.2025.1080p.WEB-DL.H.264-LUMA"
 	instance := &models.Instance{ID: 1, Name: "main", IsActive: true}
 	local := qbt.Torrent{Hash: "local", Name: name, Size: 1024, TotalSize: 1024, Progress: 1}
+	torznab := newTorznabServer(t, 10)
 	service := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
 		syncManager: newFakeSyncManager(instance, []qbt.Torrent{local}, map[string]qbt.TorrentFiles{
@@ -118,15 +119,13 @@ func readRSS(t *testing.T, respond crossSeedResponder) string {
 		}),
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			return []byte("torrent"), nil
-		},
-		injection: newInjectionStandIn(respond),
+		jackettService:   torznab.jackett,
+		injection:        newInjectionStandIn(respond),
 	}
 	run := &models.CrossSeedRun{}
 	status, _, err := service.processAutomationCandidate(t.Context(), run,
 		&models.CrossSeedAutomationSettings{TargetInstanceIDs: []int{instance.ID}}, nil,
-		jackett.SearchResult{Indexer: "Indexer", IndexerID: 10, Title: name, DownloadURL: "https://example.invalid/item.torrent", GUID: "guid", Size: 1024},
+		jackett.SearchResult{Indexer: "Indexer", IndexerID: 10, Title: name, DownloadURL: torznab.url("item.torrent"), GUID: "guid", Size: 1024},
 		AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 	require.NoError(t, err)
 
@@ -146,15 +145,14 @@ func readRSS(t *testing.T, respond crossSeedResponder) string {
 
 func readSearchRun(t *testing.T, respond crossSeedResponder) models.CrossSeedSearchResultStatus {
 	t.Helper()
+	torznab := newTorznabServer(t, 1)
 	service := &Service{
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			return []byte("torrent"), nil
-		},
-		injection: newInjectionStandIn(respond),
+		jackettService: torznab.jackett,
+		injection:      newInjectionStandIn(respond),
 	}
 	result, err := service.executeCrossSeedSearchAttempt(t.Context(), 1, triggerDefaults{},
 		&qbt.Torrent{Hash: fakeHash("source"), Name: "source"},
-		TorrentSearchResult{Indexer: "Indexer", DownloadURL: "https://example.invalid/item.torrent"},
+		TorrentSearchResult{Indexer: "Indexer", IndexerID: 1, DownloadURL: torznab.url("item.torrent")},
 		time.Now())
 	require.NoError(t, err)
 	return result.Status
