@@ -1009,9 +1009,7 @@ func TestCheckSeasonPackWebhook_UsesSeasonTotalLookupWhenAvailable(t *testing.T)
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackEpisodeTotalLookup: func(context.Context, string, *rls.Release) (int, []string, bool) {
-			return 6, nil, true
-		},
+		arrService:               &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{TotalEpisodes: 6}},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2518,9 +2516,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_WithMetadata_ThresholdWorks(t *tes
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 4, nil, true
-		},
+		arrService:               &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{TotalEpisodes: 4}},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2564,9 +2560,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NoMetadata_ReturnsReadyIfMatchesEx
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 0, nil, false
-		},
+		arrService:               &spyARRLookupService{},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2609,9 +2603,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NoMetadata_NoMatches_ReturnsNotRea
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 0, nil, false
-		},
+		arrService:               &spyARRLookupService{},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2652,9 +2644,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_BelowThreshold_ReturnsNotReady(t *
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 10, nil, true
-		},
+		arrService:               &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{TotalEpisodes: 10}},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2697,9 +2687,7 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NilPackEpisodes_DeduplicatesByIden
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
-			return 0, nil, false
-		},
+		arrService:               &spyARRLookupService{},
 	}
 
 	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{

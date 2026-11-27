@@ -169,9 +169,6 @@ func (s *Service) localLinkedMatchType(
 	var filesShareAllocation func(sourcePath, candidatePath string) (bool, error)
 	if matchCtx.sourceLocal && models.FilesystemAccessMode(candidateInstance) == models.FilesystemModeLocal {
 		filesShareAllocation = s.filesShareAllocation
-		if filesShareAllocation == nil && sharedextents.Supported {
-			filesShareAllocation = sharedextents.FilesShareAllocation
-		}
 	}
 	if len(sourceIDs) == 0 && filesShareAllocation == nil {
 		return ""
