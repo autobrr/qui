@@ -13,6 +13,7 @@
     "seededSearch": {
       "gazelleFullDescription": "Gazelle перевіряє RED/OPS для кожного вихідного торента. Torznab запитує вибрані не-OPS/RED індексатори.",
       "gazellePartialDescription": "Gazelle перевіряє налаштовані сайти для кожного вихідного торента. Torznab запитує вибрані індексатори.",
+      "pickedDescription": "Кожен пошук запитує лише вибрані сайти.",
       "noGazelleDescription": "Без Gazelle всі збіги покладаються на Torznab індексатори."
     }
   },
@@ -124,7 +125,7 @@
     "selectAnInstance": "Вибрати екземпляр",
     "addInstanceToSearch": "Додайте екземпляр для пошуку серед торентів, які ви вже роздаєте.",
     "torznabIndexers": "Torznab індексатори",
-    "torznabIndexersNonOpsRed": "Torznab індексатори (не OPS/RED)",
+    "indexersAndRedOps": "Індексатори та сайти RED/OPS",
     "torznab": "Torznab",
     "status": "Статус",
     "currentlyProcessing": "Обробляється зараз:",
@@ -159,21 +160,13 @@
     "indexers": {
       "placeholderTorznabDisabledGazelleOnly": "Torznab вимкнено (лише Gazelle)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab вимкнено (увімкнути Gazelle)",
-      "placeholderAllEnabledNonOpsRed": "Усі ввімкнені не-OPS/RED індексатори (залиште порожнім для всіх)",
       "placeholderAllEnabled": "Усі ввімкнені індексатори (залиште порожнім для всіх)",
-      "placeholderOnlyOpsRedEnabled": "Увімкнено лише OPS/RED (Gazelle)",
       "placeholderNoTorznabConfigured": "Індексатори Torznab не налаштовані",
       "helpTorznabDisabledGazelleCheck": "Torznab вимкнено. Gazelle перевірятиме RED/OPS для кожного вихідного торента.",
       "helpTorznabDisabledEnableGazelle": "Torznab вимкнено. Увімкніть Gazelle (OPS/RED), щоб запустити пошук серед торентів, що роздаються, у режимі лише Gazelle.",
-      "helpOnlyOpsRedEnabled": "Увімкнено лише індексатори Torznab OPS/RED. Torznab тут нічого не робить; Gazelle все ще перевіряє RED/OPS.",
-      "helpNoNonOpsRedTorznab": "Немає не-OPS/RED індексаторів Torznab. Gazelle все ще перевірятиме RED/OPS для кожного вихідного торента.",
       "helpNoTorznabConfigured": "Індексатори Torznab не налаштовані.",
       "helpAllEnabledNonOpsRedQueried": "Буде надіслано запит до всіх увімкнених не-OPS/RED індексаторів Torznab. Gazelle також перевіряє RED/OPS.",
       "helpAllEnabledTorznabQueried": "Буде надіслано запит до всіх увімкнених індексаторів Torznab щодо збігів.",
-      "helpSelectedTorznabQueriedGazelle_one": "Буде надіслано запит лише до {{count}} вибраного індексатора Torznab. Gazelle все ще перевіряє RED/OPS.",
-      "helpSelectedTorznabQueriedGazelle_few": "Буде надіслано запит лише до {{count}} вибраних індексаторів Torznab. Gazelle все ще перевіряє RED/OPS.",
-      "helpSelectedTorznabQueriedGazelle_many": "Буде надіслано запит лише до {{count}} вибраних індексаторів Torznab. Gazelle все ще перевіряє RED/OPS.",
-      "helpSelectedTorznabQueriedGazelle_other": "Буде надіслано запит лише до {{count}} вибраних індексаторів Torznab. Gazelle все ще перевіряє RED/OPS.",
       "helpSelectedQueried_one": "Буде надіслано запит лише до {{count}} вибраного індексатора.",
       "helpSelectedQueried_few": "Буде надіслано запит лише до {{count}} вибраних індексаторів.",
       "helpSelectedQueried_many": "Буде надіслано запит лише до {{count}} вибраних індексаторів.",

@@ -16,6 +16,7 @@ const defaultSearchSettings = vi.hoisted(() => ({
   excludeCategories: [] as string[],
   excludeTags: [] as string[],
   indexerIds: [] as number[],
+  gazelleSites: [] as string[],
   intervalSeconds: 60,
   cooldownMinutes: 720,
   maxAddedAgeDays: 0,
@@ -42,6 +43,7 @@ const mocks = vi.hoisted(() => ({
   searchRuns: [] as unknown[],
   indexers: [] as { id: number; indexer_id: string; name: string; base_url: string; enabled: boolean }[],
   gazelleSites: [] as { site: string; name: string; shortName: string; indexerId: number; active: boolean; replacedIndexerIds: number[] }[],
+  gazelleSitesResponse: null as (() => Promise<never>) | null,
   patchSearch: vi.fn(),
   patchSettings: vi.fn(),
   startRun: vi.fn(),
@@ -82,7 +84,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     getCrossSeedSearchSettings: mocks.getSearchSettings,
     getInstances: () => Promise.resolve(mocks.instances),
     listTorznabIndexers: () => Promise.resolve(mocks.indexers),
-    getCrossSeedGazelleSites: () => Promise.resolve(mocks.gazelleSites),
+    getCrossSeedGazelleSites: () => mocks.gazelleSitesResponse?.() ?? Promise.resolve(mocks.gazelleSites),
     getCrossSeedSearchStatus: () => Promise.resolve(mocks.searchStatus),
     listCrossSeedSearchRuns: () => Promise.resolve(mocks.searchRuns),
     getCategories: () => Promise.resolve({}),
@@ -108,6 +110,7 @@ afterEach(() => {
   mocks.searchStatus = { running: false }
   mocks.indexers = []
   mocks.gazelleSites = []
+  mocks.gazelleSitesResponse = null
   mocks.searchRuns = []
 })
 
@@ -180,7 +183,7 @@ describe("LibraryTab save", () => {
     expect(mocks.patchSettings).not.toHaveBeenCalled()
   })
 
-  it("does not start a Gazelle-only run from a stale OPS/RED-only pick", async () => {
+  it("runs a stale pick of the OPS/RED Torznab indexers as a pick of the OPS/RED sites", async () => {
     Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
     mocks.indexers = [
       { id: 1, indexer_id: "orpheus", name: "OPS", base_url: "https://orpheus.example.invalid", enabled: true },
@@ -195,11 +198,11 @@ describe("LibraryTab save", () => {
     mocks.startRun.mockResolvedValue({ id: 1 })
     renderTab()
 
-    expect(await screen.findByText("scan.indexers.helpAllEnabledNonOpsRedQueried")).toBeTruthy()
+    expect(await screen.findByText(redSite.name)).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
-    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], disableTorznab: false })
+    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], gazelleSites: [redSite.site, opsSite.site], disableTorznab: false })
   })
 
   it("hides the Torznab indexer only of the site that has a key", async () => {
@@ -222,6 +225,40 @@ describe("LibraryTab save", () => {
 
     await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
     expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [1] })
+  })
+
+  it.each([
+    ["has not loaded", () => new Promise<never>(() => {})],
+    ["failed to load", () => Promise.reject(new Error("sites down"))],
+  ])("locks the picker while the list of RED/OPS sites %s", async (_, response) => {
+    Object.assign(mocks.settings, { gazelleEnabled: true, redactedApiKey: "red" })
+    mocks.indexers = [enabledIndexer]
+    mocks.gazelleSitesResponse = response
+    mocks.searchSettings.gazelleSites = [redSite.site]
+    renderTab()
+
+    const picker = (await screen.findByText("scan.indexers.placeholderAllEnabled")).closest("button")
+    expect(picker?.hasAttribute("disabled")).toBe(true)
+  })
+
+  it("lists the RED/OPS sites in the picker and runs a saved RED-only pick with no Torznab indexer", async () => {
+    Object.assign(mocks.settings, { gazelleEnabled: true, orpheusApiKey: "ops", redactedApiKey: "red" })
+    mocks.indexers = [enabledIndexer]
+    mocks.gazelleSites = [
+      { ...redSite, active: true, replacedIndexerIds: [] },
+      { ...opsSite, active: true, replacedIndexerIds: [] },
+    ]
+    mocks.searchSettings.gazelleSites = [redSite.site]
+    mocks.startRun.mockResolvedValue({ id: 1 })
+    renderTab()
+
+    expect(await screen.findByText("scan.indexers.helpSelectedQueried")).toBeTruthy()
+    expect(screen.getByText(redSite.name)).toBeTruthy()
+    expect(screen.getByText("overview.seededSearch.pickedDescription")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "scan.startRun" }))
+
+    await waitFor(() => expect(mocks.startRun).toHaveBeenCalledTimes(1))
+    expect(mocks.startRun.mock.calls[0][0]).toMatchObject({ indexerIds: [], gazelleSites: [redSite.site], disableTorznab: false })
   })
 })
 

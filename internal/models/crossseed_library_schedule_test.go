@@ -44,12 +44,12 @@ func checkLibrarySchedule(t *testing.T, db *database.DB) {
 	require.NoError(t, store.SetLastScheduledSearchRun(ctx, started))
 
 	want := &models.CrossSeedSearchSettings{
-		InstanceID:             &instance.ID,
-		Categories:             []string{"movies"},
-		Tags:                   []string{"keep"},
-		ExcludeCategories:      []string{"no-cross-seed"},
-		ExcludeTags:            []string{"no-cs"},
-		IndexerIDs:             []int{3},
+		InstanceID:        &instance.ID,
+		Categories:        []string{"movies"},
+		Tags:              []string{"keep"},
+		ExcludeCategories: []string{"no-cross-seed"},
+		ExcludeTags:       []string{"no-cs"},
+		IndexerIDs:        []int{3}, GazelleSites: []string{"redacted.sh"},
 		IntervalSeconds:        5,
 		CooldownMinutes:        720,
 		MaxAddedAgeDays:        30,

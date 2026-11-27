@@ -92,6 +92,10 @@ Go code uses a struct, not a `map[string]any` or a `map[string]interface{}`. The
 
 The counter reads one file at a time. It counts a sleep in a function that runs in a bubble but does not call `synctest.Wait`, for example a body that a helper passes to `synctest.Test`. Call `synctest.Wait` after the sleep. It returns once every other goroutine of the bubble has ended or is blocked, for example on a channel or on a timer that has not fired yet. A goroutine can block before its work is done, so a test that checks the result of that work also waits for the result on a channel. The counter does not see a sleep in a file that is not a `_test.go` file.
 
+### Site Picks
+
+A search asks the whole Site pick of its Trigger (ADR 0098). The `sitepick` check in `scripts/ratchet/sitepick.go` counts a literal of `models.SitePick`, or of a type that embeds it, that sets one of `IndexerIDs` and `GazelleSites` without the other. Outside `internal/services/crossseed/search_scope.go`, it also counts a `searchScopeFacts` literal that sets `sites`, and any `resolvedSitePick` literal. It skips `_test.go` files, and `allowlist.json` has no entries for it. forbidigo covers the reads and writes of those fields outside `search_scope.go`, and a read or write of one half of a pick (`IndexerIDs` or `GazelleSites` of `models.SitePick` or of a setting that embeds it) outside `search_scope.go` and `internal/models/`.
+
 ### Suppressed ESLint Rules
 
 `web/eslint-suppressions.json` records the number of reports that each file had when a rule was added. ESLint fails a file that has more reports of the rule, or fewer. Twelve rules have entries:

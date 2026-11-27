@@ -199,6 +199,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 			exclude_categories_json TEXT NOT NULL,
 			exclude_tags_json TEXT NOT NULL,
 			indexer_ids_json TEXT NOT NULL,
+			gazelle_sites_json TEXT NOT NULL DEFAULT '[]',
 			bypass_torznab_cache INTEGER NOT NULL DEFAULT 0,
 			completion_delay_seconds INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL

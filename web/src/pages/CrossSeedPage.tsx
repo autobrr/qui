@@ -18,7 +18,8 @@ import { SectionedPage, type SectionNavGroup } from "@/components/layout/Section
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
-import { useActiveInstances, useCrossSeedSettings, useEnabledIndexers } from "@/hooks/useCrossSeedSettings"
+import { useActiveInstances, useCrossSeedSettings } from "@/hooks/useCrossSeedSettings"
+import { useSitePickSources } from "@/lib/site-pick"
 import { Link } from "@tanstack/react-router"
 import { AlertTriangle } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -35,7 +36,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const { data: settings } = useCrossSeedSettings()
   const { instances } = useActiveInstances()
-  const hasEnabledIndexers = useEnabledIndexers().length > 0
+  const hasEnabledIndexers = useSitePickSources("rss").indexers.length > 0
   const automationEnabled = settings?.enabled ?? false
   const navGroups: SectionNavGroup<CrossSeedTab>[] = CROSS_SEED_NAV_GROUPS.map(group => ({
     label: "labelKey" in group ? t(group.labelKey) : undefined,

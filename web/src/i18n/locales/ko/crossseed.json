@@ -13,6 +13,7 @@
     "seededSearch": {
       "gazelleFullDescription": "Gazelle은 모든 소스 토렌트에 대해 RED/OPS를 확인합니다. Torznab은 선택한 OPS/RED 이외의 인덱서를 쿼리합니다.",
       "gazellePartialDescription": "Gazelle은 모든 소스 토렌트에 대해 구성된 사이트를 확인합니다. Torznab은 선택한 인덱서를 쿼리합니다.",
+      "pickedDescription": "각 검색은 선택한 사이트에만 요청합니다.",
       "noGazelleDescription": "Gazelle 없이는 모든 일치가 Torznab 인덱서에 의존합니다."
     }
   },
@@ -124,7 +125,7 @@
     "selectAnInstance": "인스턴스 선택",
     "addInstanceToSearch": "이미 시드 중인 토렌트를 검색하려면 인스턴스를 추가하세요.",
     "torznabIndexers": "Torznab 인덱서",
-    "torznabIndexersNonOpsRed": "Torznab 인덱서(OPS/RED 제외)",
+    "indexersAndRedOps": "인덱서 및 RED/OPS 사이트",
     "torznab": "Torznab",
     "status": "상태",
     "currentlyProcessing": "현재 처리 중:",
@@ -156,18 +157,13 @@
     "indexers": {
       "placeholderTorznabDisabledGazelleOnly": "Torznab 비활성화됨(Gazelle 전용)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab 비활성화됨(Gazelle 활성화 필요)",
-      "placeholderAllEnabledNonOpsRed": "활성화된 모든 비-OPS/RED 인덱서(모두 선택 시 비워둠)",
       "placeholderAllEnabled": "활성화된 모든 인덱서(모두 선택 시 비워둠)",
-      "placeholderOnlyOpsRedEnabled": "OPS/RED만 활성화됨(Gazelle)",
       "placeholderNoTorznabConfigured": "구성된 Torznab 인덱서 없음",
       "helpTorznabDisabledGazelleCheck": "Torznab이 비활성화되었습니다. Gazelle이 모든 소스 토렌트에 대해 RED/OPS를 확인합니다.",
       "helpTorznabDisabledEnableGazelle": "Torznab이 비활성화되었습니다. Gazelle 전용 모드에서 시드 중인 토렌트 검색을 실행하려면 Gazelle(OPS/RED)을 활성화하십시오.",
-      "helpOnlyOpsRedEnabled": "OPS/RED Torznab 인덱서만 활성화되었습니다. 여기서는 Torznab이 사용되지 않으며 Gazelle이 RED/OPS를 계속 확인합니다.",
-      "helpNoNonOpsRedTorznab": "비-OPS/RED Torznab 인덱서가 없습니다. Gazelle이 모든 소스 토렌트에 대해 RED/OPS를 계속 확인합니다.",
       "helpNoTorznabConfigured": "구성된 Torznab 인덱서가 없습니다.",
       "helpAllEnabledNonOpsRedQueried": "활성화된 모든 비-OPS/RED Torznab 인덱서를 쿼리합니다. Gazelle도 RED/OPS를 확인합니다.",
       "helpAllEnabledTorznabQueried": "활성화된 모든 Torznab 인덱서에서 일치 항목을 쿼리합니다.",
-      "helpSelectedTorznabQueriedGazelle_other": "선택된 Torznab 인덱서 {{count}}개만 쿼리합니다. Gazelle은 계속 RED/OPS를 확인합니다.",
       "helpSelectedQueried_other": "선택된 인덱서 {{count}}개만 쿼리합니다."
     },
     "gazelleStatus": {

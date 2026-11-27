@@ -115,6 +115,12 @@ linters:
         - pattern: ^crossseed\.(decideSearchScope|decideTorznabIndexers|decideGazelleSites|withoutGazelleTorznabIndexers|Service\.(resolveTorznabIndexerIDs|gazelleTorznabIndexers|contentFilterFacts|collectGazelleFacts|gazelleLocalFacts))$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
           msg: ask the Search scope module in internal/services/crossseed/search_scope.go (ADR 0029)
+        - pattern: ^crossseed\.(searchScopeFacts\.sites|resolvedSitePick\.(pick|indexerIDs|torznabErr|gazelleTorznabIndexers))$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: a search asks the whole Site pick; pass the stored models.SitePick of the setting to Service.resolveSitePick and collectSearchScope in internal/services/crossseed/search_scope.go (ADR 0098)
+        - pattern: ^models\.(SitePick|CrossSeedSearchSettings|InstanceCrossSeedCompletionSettings)\.(IndexerIDs|GazelleSites)$
+          pkg: ^github\.com/autobrr/qui/internal/models$
+          msg: a search asks the whole Site pick; pass the stored models.SitePick of the setting to Service.resolveSitePick and collectSearchScope in internal/services/crossseed/search_scope.go (ADR 0098)
         - pattern: ^gazellemusic\.(siteTable|KnownTrackers|TrackerToSite)$
           pkg: ^github\.com/autobrr/qui/internal/services/crossseed/gazellemusic$
           msg: read the RED/OPS sites through the site table in internal/services/crossseed/gazellemusic/sites.go
@@ -319,6 +325,12 @@ linters:
         linters:
           - forbidigo
         text: Search scope module
+
+      # Only the Search scope module turns a Site pick into scope facts (ADR 0098).
+      - path: internal/services/crossseed/search_scope\.go$|internal/models/|_test\.go$
+        linters:
+          - forbidigo
+        text: whole Site pick
 
       # Only the torrent search module matches a Torrent search (ADR 0097).
       - path: internal/qbittorrent/torrent_search\.go$|_test\.go$

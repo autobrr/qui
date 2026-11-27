@@ -13,6 +13,7 @@
     "seededSearch": {
       "gazelleFullDescription": "Gazelle verifica RED/OPS per ogni torrent di origine. Torznab interroga gli indexer non-OPS/RED selezionati.",
       "gazellePartialDescription": "Gazelle verifica i siti configurati per ogni torrent di origine. Torznab interroga gli indexer selezionati.",
+      "pickedDescription": "Ogni ricerca interroga solo i siti selezionati.",
       "noGazelleDescription": "Senza Gazelle, ogni corrispondenza si basa sugli indexer Torznab."
     }
   },
@@ -124,7 +125,7 @@
     "selectAnInstance": "Seleziona un'istanza",
     "addInstanceToSearch": "Aggiungi un'istanza per cercare i torrent che già distribuisci.",
     "torznabIndexers": "Indexer Torznab",
-    "torznabIndexersNonOpsRed": "Indexer Torznab (non-OPS/RED)",
+    "indexersAndRedOps": "Indexer e siti RED/OPS",
     "torznab": "Torznab",
     "status": "Stato",
     "currentlyProcessing": "In elaborazione:",
@@ -157,19 +158,13 @@
     "indexers": {
       "placeholderTorznabDisabledGazelleOnly": "Torznab disabilitato (solo Gazelle)",
       "placeholderTorznabDisabledEnableGazelle": "Torznab disabilitato (abilita Gazelle)",
-      "placeholderAllEnabledNonOpsRed": "Tutti gli indexer non OPS/RED abilitati (lasciare vuoto per tutti)",
       "placeholderAllEnabled": "Tutti gli indexer abilitati (lasciare vuoto per tutti)",
-      "placeholderOnlyOpsRedEnabled": "Solo OPS/RED abilitati (Gazelle)",
       "placeholderNoTorznabConfigured": "Nessun indexer Torznab configurato",
       "helpTorznabDisabledGazelleCheck": "Torznab disabilitato. Gazelle controllerà RED/OPS per ogni torrent sorgente.",
       "helpTorznabDisabledEnableGazelle": "Torznab disabilitato. Abilita Gazelle (OPS/RED) per eseguire la ricerca di torrent in distribuzione in modalità solo Gazelle.",
-      "helpOnlyOpsRedEnabled": "Solo gli indexer Torznab OPS/RED sono abilitati. Torznab non contribuisce in questa fase; Gazelle continua a controllare RED/OPS.",
-      "helpNoNonOpsRedTorznab": "Nessun indexer Torznab non OPS/RED. Gazelle controllerà RED/OPS per ogni torrent sorgente.",
       "helpNoTorznabConfigured": "Nessun indexer Torznab configurato.",
       "helpAllEnabledNonOpsRedQueried": "Tutti gli indexer Torznab non OPS/RED abilitati verranno interrogati. Gazelle controlla anche RED/OPS.",
       "helpAllEnabledTorznabQueried": "Tutti gli indexer Torznab abilitati verranno interrogati.",
-      "helpSelectedTorznabQueriedGazelle_one": "Solo {{count}} indexer Torznab selezionato verrà interrogato. Gazelle continua a controllare RED/OPS.",
-      "helpSelectedTorznabQueriedGazelle_other": "Solo {{count}} indexer Torznab selezionati verranno interrogati. Gazelle continua a controllare RED/OPS.",
       "helpSelectedQueried_one": "Solo {{count}} indexer selezionato verrà interrogato.",
       "helpSelectedQueried_other": "Solo {{count}} indexer selezionati verranno interrogati."
     },

@@ -125,7 +125,7 @@ func (s *Service) startScheduledSearchRun(ctx context.Context, settings *models.
 		ExcludeCategories:      settings.ExcludeCategories,
 		ExcludeTags:            settings.ExcludeTags,
 		IntervalSeconds:        settings.IntervalSeconds,
-		IndexerIDs:             settings.IndexerIDs,
+		SitePick:               settings.SitePick,
 		DisableTorznab:         !settings.TorznabEnabled,
 		CooldownMinutes:        settings.CooldownMinutes,
 		RequestedBy:            "schedule",

@@ -44,6 +44,9 @@ func main() {
 	if got[hashCaseLinter], err = hashCaseCounts(); err != nil {
 		fail(err)
 	}
+	if got[sitePickLinter], err = sitePickCounts(); err != nil {
+		fail(err)
+	}
 	if got[hashSetLinter], err = hashSetCounts(); err != nil {
 		fail(err)
 	}
