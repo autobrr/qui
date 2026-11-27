@@ -158,3 +158,25 @@ func TestTheShapeChecksNameEachFault(t *testing.T) {
 		})
 	}
 }
+
+type FixtureChild struct {
+	*FixtureChild
+	URL string
+}
+
+type fixtureFamily struct {
+	Child FixtureChild
+}
+
+func TestTheShapeChecksStopAtATypeThatEmbedsItself(t *testing.T) {
+	r := &recorder{}
+	enc := secrets.NewEncoder(secrets.NewShape(secrets.TrackerPasskey, func(f fixtureFamily) fixtureFamily {
+		f.Child.URL = secrets.Origin(f.Child.URL)
+		return f
+	}))
+
+	checkHidesEveryString(r, enc)
+	checkLeavesSourceWhole(r, enc)
+
+	assert.Empty(t, r.reports)
+}

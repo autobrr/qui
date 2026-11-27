@@ -135,7 +135,7 @@ func (f *filler) fillFields(v reflect.Value, p place) {
 		fv := v.Field(i)
 		if field.Anonymous && jsonName == "" {
 			if embedded := promotedStruct(fv); embedded.IsValid() {
-				f.fillFields(embedded, p)
+				f.fillPromoted(embedded, p)
 				continue
 			}
 		}
@@ -143,6 +143,16 @@ func (f *filler) fillFields(v reflect.Value, p place) {
 			f.enter(fv, p.field(field.Name))
 		}
 	}
+}
+
+func (f *filler) fillPromoted(v reflect.Value, p place) {
+	t := v.Type()
+	if f.onPath[t] {
+		return
+	}
+	f.onPath[t] = true
+	defer delete(f.onPath, t)
+	f.fillFields(v, p)
 }
 
 func promotedStruct(fv reflect.Value) reflect.Value {
