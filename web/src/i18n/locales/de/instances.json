@@ -1285,6 +1285,7 @@
         "remoteNotAvailable": "Nicht verfügbar auf Remote-Instanzen",
         "wait": "Löschwartezeit",
         "waitHelp": "Wie lange ein Torrent nicht registriert sein muss, bevor diese Regel ihn löscht. 0 löscht ihn beim ersten Treffer.",
+        "waitLocked": "Um eine andere Wartezeit festzulegen, ändere die Bedingung auf Unregistriert.",
         "waitUnit": "Einheit der Löschwartezeit"
       },
       "move": {

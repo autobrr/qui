@@ -42,6 +42,7 @@ type flagsRig struct {
 	missing  map[string]bool
 	requests [][]string
 	failFrom int
+	failSync bool
 	rid      int
 }
 
@@ -89,6 +90,10 @@ func newFlagsRigAt(t *testing.T, webAPI string) *flagsRig {
 		case "/api/v2/app/webapiVersion":
 			_, _ = io.WriteString(w, webAPI)
 		case "/api/v2/sync/maindata":
+			if rig.failSync {
+				http.Error(w, "busy", http.StatusServiceUnavailable)
+				return
+			}
 			rig.rid++
 			torrents := make(map[string]map[string]any, len(rig.torrents))
 			for hash, tor := range rig.torrents {

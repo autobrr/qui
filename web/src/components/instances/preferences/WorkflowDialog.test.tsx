@@ -304,6 +304,17 @@ describe("WorkflowDialog Delete wait", () => {
   })
 
   it.each([
+    { name: "a stored State unregistered rule", condition: { field: "STATE", operator: "EQUAL", value: "unregistered" } satisfies RuleCondition, locked: true },
+    { name: "an Unregistered rule", condition: unregistered, locked: false },
+  ])("locks the field at 7 days for $name: $locked", ({ condition, locked }) => {
+    const client = renderDialog(deleteRule(condition))
+
+    const field = screen.getByLabelText(key("delete.wait")) as HTMLInputElement
+    expect([field.value, field.disabled, screen.queryByText(key("delete.waitLocked")) !== null]).toEqual(["7", locked, locked])
+    client.clear()
+  })
+
+  it.each([
     { name: "a stored wait of 0", stored: 0, typed: undefined, want: 0 },
     { name: "2 days", stored: undefined, typed: "2", want: 2 * 24 * 3600 },
     { name: "an empty field, which means the default", stored: 3600, typed: "", want: undefined },

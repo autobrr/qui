@@ -679,8 +679,9 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	}
 
 	sm.loadUnregisteredSince(refreshCtx, instanceID)
-	torrents := snapshotTorrents(syncManager.Snapshot())
-	synced := !syncManager.LastSuccessfulSyncTime().IsZero()
+	snapshot := syncManager.Snapshot()
+	torrents := snapshotTorrents(snapshot)
+	synced := snapshot != nil
 	mainData := resolveMainData(syncManager, mainDataReadCached)
 
 	if !client.Supports(CapTrackerHealth) {

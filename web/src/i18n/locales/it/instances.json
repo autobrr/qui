@@ -1285,6 +1285,7 @@
         "remoteNotAvailable": "Non disponibile sulle istanze remote",
         "wait": "Attesa prima dell'eliminazione",
         "waitHelp": "Per quanto tempo un torrent deve risultare non registrato prima che questa regola lo elimini. 0 lo elimina alla prima corrispondenza.",
+        "waitLocked": "Per impostare un'altra attesa, cambia la condizione in Non registrato.",
         "waitUnit": "Unità dell'attesa prima dell'eliminazione"
       },
       "move": {

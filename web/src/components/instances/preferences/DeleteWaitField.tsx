@@ -23,9 +23,10 @@ function unitOf(seconds: number | null): number {
 interface DeleteWaitFieldProps {
   seconds: number | null
   onChange: (seconds: number | null) => void
+  locked: boolean
 }
 
-export function DeleteWaitField({ seconds, onChange }: DeleteWaitFieldProps) {
+export function DeleteWaitField({ seconds, onChange, locked }: DeleteWaitFieldProps) {
   const { t } = useTranslation("instances")
   const [unit, setUnit] = useState(() => unitOf(seconds))
 
@@ -50,11 +51,12 @@ export function DeleteWaitField({ seconds, onChange }: DeleteWaitFieldProps) {
           step="any"
           inputMode="decimal"
           value={shown}
+          disabled={locked}
           placeholder={String(DEFAULT_DELETE_WAIT_SECONDS / unit)}
           onChange={(e) => change(e.target.value, unit)}
           className="h-8 w-24 text-xs"
         />
-        <Select value={String(unit)} onValueChange={(value) => change(shown, Number(value))}>
+        <Select value={String(unit)} disabled={locked} onValueChange={(value) => change(shown, Number(value))}>
           <SelectTrigger className="h-8 w-24 text-xs" aria-label={t("preferences.workflowDialog.delete.waitUnit")}>
             <SelectValue />
           </SelectTrigger>
@@ -64,6 +66,7 @@ export function DeleteWaitField({ seconds, onChange }: DeleteWaitFieldProps) {
           </SelectContent>
         </Select>
       </div>
+      {locked && <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.delete.waitLocked")}</p>}
     </div>
   )
 }

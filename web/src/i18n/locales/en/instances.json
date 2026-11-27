@@ -1285,6 +1285,7 @@
         "remoteNotAvailable": "Not available on remote instances",
         "wait": "Delete wait",
         "waitHelp": "How long a torrent must be unregistered before this rule deletes it. 0 deletes it on the first match.",
+        "waitLocked": "To set another wait, change the condition to Unregistered.",
         "waitUnit": "Delete wait unit"
       },
       "move": {

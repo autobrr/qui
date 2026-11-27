@@ -237,7 +237,7 @@ The State field matches these status buckets:
 | `checkingResumeData` | Checking resume data |
 | `moving` | Moving files |
 | `missingFiles` | Files not found |
-| `unregistered` | Tracker reports unregistered |
+| `unregistered` | Tracker reports unregistered (older form). New rules cannot pick it, and qui refuses saves that add it or change a rule that has it. Existing rules still run, and you can rename them or turn them on or off. Use the **Unregistered** condition instead. |
 
 `tracker_down` and `tracker_error` require qBittorrent 5.1+ (Web API 2.11.4+). On older instances, the query builder disables these values.
 
@@ -356,8 +356,8 @@ When you edit workflows, qui provides immediate feedback for delete, category, a
 - When conditions and actions change, the **Live impact preview** in the workflow dialog updates.
 - It shows the current **impacted count** and a preview list of matching torrents.
 - For category and tag rules, the preview summary splits direct matches and cross-seed expansions.
-- For delete rules, the preview counts torrents deleting now and waiting torrents in one list, deletes first. When torrents wait, a **Deletes** column shows **Now**, **After \<date and time\>**, or **When the tracker answers unregistered** (wait over, tracker not answering unregistered now). Its CSV export includes every row and a **Deletes** column (`Now` or the ISO time).
-- The save or enable confirmation dialog shows both counts, showing the waiting count instead of "No torrents currently match" when nothing deletes now.
+- For delete rules, the **Live impact preview** counts and lists only the torrents the rule deletes now. When torrents wait, it adds one sentence under the list, such as "2 unregistered torrents are inside their Delete wait, so this rule does not delete them yet." It does not list the waiting torrents.
+- The save or enable confirmation dialog for a delete rule shows both counts, and shows the waiting count instead of "No torrents currently match" when nothing deletes now. It lists the torrents that delete now first, then the waiting torrents, in one list. When torrents wait, a **Deletes** column shows **Now**, **After \<date and time\>**, or **When the tracker answers unregistered** (the wait is over, but the tracker does not answer unregistered now). Its CSV export holds every row and a **Deletes** column (`Now` or the ISO time).
 - A delete dry run writes a "Waiting to delete" line with the waiting count to the activity log next to the delete line. "No match" appears only when nothing matches or waits.
 
 When you save an enabled delete, category, or tag workflow in the workflow dialog, qui opens a confirmation dialog that loads the same preview. In the workflow list, this dialog opens when you flip the switch. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to save at once. If **Dry run** is off, an enabled workflow acts on every matching torrent on its next run. If **Dry run** is on, the workflow writes the result to automation activity and does not change the torrents.
@@ -589,7 +589,7 @@ Delete rules reading `Unregistered` wait before deleting so a tracker mistake do
 | `0` | Off; deletes on the first match |
 | Range | 0 to 365 days (`31536000`); qui refuses other values |
 
-The editor shows **Delete wait** (hours or days, set to 7 days) only for rules reading `Unregistered`, `State` with `unregistered` (an older stored form), or a conditional score rule using either. Existing rules wait 7 days. Rules on other fields only (ratio, tags, raw Tracker message) do not wait.
+The editor shows **Delete wait** (hours or days, set to 7 days) only for rules reading **Unregistered**, **State** with `unregistered` (an older stored form), or a conditional score rule using either. It locks **Delete wait** at 7 days for rules using **State** with `unregistered`; change the condition to **Unregistered** to set another wait. Existing rules wait 7 days. Rules on other fields only (ratio, tags, raw Tracker message) do not wait.
 
 - **Unregistered since:** qui stores in its database when it first sees a torrent as unregistered. Restarts of qui or qBittorrent and tracker downtime do not move it. It starts over when a tracker works again (DHT, PeX, and LSD do not count), the torrent stops, you edit its trackers in qui, or it leaves the client.
 - **Live check:** Past its wait, a torrent whose tracker is down waits until the tracker answers unregistered again. Before a live delete, qui re-reads those trackers from qBittorrent and keeps working torrents. If that read fails, qui skips those deletes until the next run; other delete rules (ratio) still delete.

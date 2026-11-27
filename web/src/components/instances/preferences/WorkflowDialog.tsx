@@ -67,7 +67,7 @@ import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { usableFreeSpaceSourceType } from "@/lib/free-space-source"
-import { conditionReadsVerdict, DEFAULT_DELETE_WAIT_SECONDS, previewRowCount } from "@/lib/delete-wait"
+import { conditionReadsStateUnregistered, conditionReadsVerdict, DEFAULT_DELETE_WAIT_SECONDS, previewRowCount } from "@/lib/delete-wait"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, ALLOWANCE_DECIMAL_UNITS, allowanceInputOf, firstActionCondition, freeSpaceSourceOf, getSwitchedOffActions, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, type ActionType, type SwitchedOffActions, type TrackerMatchMode } from "@/lib/workflow-utils"
@@ -3786,6 +3786,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         {formReadsVerdict(formState) && (
                           <DeleteWaitField
                             seconds={formState.exprDeleteWaitSeconds}
+                            locked={conditionReadsStateUnregistered(formState.actionCondition)}
                             onChange={exprDeleteWaitSeconds => setFormState(prev => ({ ...prev, exprDeleteWaitSeconds }))}
                           />
                         )}

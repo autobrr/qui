@@ -1322,6 +1322,7 @@
         "remoteNotAvailable": "Není dostupné pro vzdálené instance",
         "wait": "Čekání před smazáním",
         "waitHelp": "Jak dlouho musí být torrent neregistrovaný, než ho toto pravidlo smaže. 0 ho smaže při první shodě.",
+        "waitLocked": "Jinou dobu čekání nastavíte, když podmínku změníte na Neregistrované.",
         "waitUnit": "Jednotka čekání před smazáním"
       },
       "move": {

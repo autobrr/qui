@@ -360,6 +360,10 @@ func TestUnregisteredSinceKeepsRowsBeforeTheFirstSync(t *testing.T) {
 	rig.sm.storeUnregisteredSince(t.Context(), 1)
 	require.Equal(t, map[string]time.Time{flagsHashDown: old}, rig.store.stored(), "a pass before the first sync removes no row")
 
+	rig.set(func() { rig.failSync = true })
+	rig.sm.refreshTrackerHealthCounts(t.Context(), 1)
+	require.Equal(t, map[string]time.Time{flagsHashDown: old}, rig.store.stored(), "a refresh while the first sync fails removes no row")
+
 	rig.sm.applyTrackerHealthRefreshResult(1, nil, nil, nil, true, rig.now, true)
 	rig.sm.storeUnregisteredSince(t.Context(), 1)
 	require.Empty(t, rig.store.stored(), "a completed sync without the torrent removes its row")

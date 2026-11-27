@@ -1279,6 +1279,7 @@
         "remoteNotAvailable": "Non disponible sur les instances distantes",
         "wait": "Délai de suppression",
         "waitHelp": "Durée pendant laquelle un torrent doit être non enregistré avant que cette règle le supprime. 0 le supprime dès la première correspondance.",
+        "waitLocked": "Pour définir un autre délai, remplacez la condition par Non enregistré.",
         "waitUnit": "Unité du délai de suppression"
       },
       "move": {
