@@ -24,7 +24,6 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/go-chi/chi/v5"
-	kgzip "github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
 	"github.com/rs/zerolog/log"
 	"github.com/ulikunitz/xz"
@@ -135,12 +134,6 @@ func copyStreamToFile(src io.Reader, destPath string) error {
 type BackupsHandler struct {
 	service *backups.Service
 }
-
-type nopCloser struct {
-	io.Writer
-}
-
-func (nopCloser) Close() error { return nil }
 
 func NewBackupsHandler(service *backups.Service) *BackupsHandler {
 	return &BackupsHandler{service: service}
@@ -422,202 +415,24 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	manifest, err := h.service.LoadManifest(r.Context(), runID)
+	archive, err := h.service.LoadArchive(r.Context(), run)
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, "Failed to load backup manifest")
 		return
 	}
 
-	format := r.URL.Query().Get("format")
-	if format == "" {
-		format = "zip"
-	}
-	supportedFormats := map[string]bool{
-		"zip":     true,
-		"tar.gz":  true,
-		"tar.zst": true,
-		"tar.br":  true,
-		"tar.xz":  true,
-		"tar":     true,
-	}
-	if !supportedFormats[format] {
+	format, err := backups.ParseArchiveFormat(r.URL.Query().Get("format"))
+	if err != nil {
 		RespondError(w, http.StatusBadRequest, "Unsupported format. Supported: zip, tar.gz, tar.zst, tar.br, tar.xz, tar")
 		return
 	}
 
-	var contentType, extension string
-	switch format {
-	case "zip":
-		contentType = "application/zip"
-		extension = "zip"
-	case "tar.gz":
-		contentType = "application/gzip"
-		extension = "tar.gz"
-	case "tar.zst":
-		contentType = "application/zstd"
-		extension = "tar.zst"
-	case "tar.br":
-		contentType = "application/x-brotli"
-		extension = "tar.br"
-	case "tar.xz":
-		contentType = "application/x-xz"
-		extension = "tar.xz"
-	case "tar":
-		contentType = "application/x-tar"
-		extension = "tar"
-	}
-
-	manifestData, err := json.MarshalIndent(manifest, "", "  ") //nolint:forbidigo // a file inside the backup archive, which shows passkeys by ADR 0040
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to marshal manifest")
-		return
-	}
-
-	filename := fmt.Sprintf("qui-backup_instance-%d_%s_%s.%s", instanceID, strings.ToLower(string(run.Kind)), run.RequestedAt.Format("2006-01-02_15-04-05"), extension)
-	w.Header().Set("Content-Type", contentType)
+	filename := fmt.Sprintf("qui-backup_instance-%d_%s_%s.%s", instanceID, strings.ToLower(string(run.Kind)), run.RequestedAt.Format("2006-01-02_15-04-05"), format.Extension())
+	w.Header().Set("Content-Type", format.ContentType())
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 
-	if format == "zip" {
-		zipWriter := zip.NewWriter(w)
-		defer zipWriter.Close()
-
-		manifestHeader := &zip.FileHeader{
-			Name:   "manifest.json",
-			Method: zip.Deflate,
-		}
-		manifestHeader.Modified = run.RequestedAt
-		manifestWriter, err := zipWriter.CreateHeader(manifestHeader)
-		if err != nil {
-			log.Error().Err(err).Int64("runID", runID).Msg("Failed to create manifest entry in streaming ZIP")
-			return
-		}
-		if _, err := manifestWriter.Write(manifestData); err != nil {
-			log.Error().Err(err).Int64("runID", runID).Msg("Failed to write manifest in streaming ZIP")
-			return
-		}
-
-		for _, item := range manifest.Items {
-			if item.TorrentBlob == "" {
-				continue
-			}
-
-			torrentPath := h.service.ResolveBackupPath(item.TorrentBlob)
-			if torrentPath == "" {
-				continue
-			}
-			file, err := os.Open(torrentPath)
-			if err != nil {
-				continue
-			}
-
-			header := &zip.FileHeader{
-				Name:   item.ArchivePath,
-				Method: zip.Deflate,
-			}
-			header.Modified = run.RequestedAt
-
-			writer, err := zipWriter.CreateHeader(header)
-			if err != nil {
-				file.Close()
-				log.Error().Err(err).Int64("runID", runID).Str("path", item.ArchivePath).Msg("Failed to create zip entry")
-				return
-			}
-
-			if _, err := io.Copy(writer, file); err != nil {
-				file.Close()
-				log.Error().Err(err).Int64("runID", runID).Str("path", item.ArchivePath).Msg("Failed to write torrent to zip")
-				return
-			}
-
-			file.Close()
-		}
-
-		if err := zipWriter.Close(); err != nil {
-			log.Error().Err(err).Int64("runID", runID).Msg("Failed to finalize zip")
-			return
-		}
-	} else {
-		var compressor io.WriteCloser
-		var err error
-		switch format {
-		case "tar.gz":
-			compressor, err = kgzip.NewWriterLevel(w, kgzip.DefaultCompression)
-		case "tar.zst":
-			compressor, err = zstd.NewWriter(w)
-		case "tar.br":
-			compressor = brotli.NewWriter(w)
-		case "tar.xz":
-			compressor, err = xz.NewWriter(w)
-		case "tar":
-			compressor = &nopCloser{w}
-		default:
-			RespondError(w, http.StatusInternalServerError, "Unsupported format")
-			return
-		}
-		if err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to create compressor")
-			return
-		}
-		defer compressor.Close()
-
-		tarWriter := tar.NewWriter(compressor)
-		defer tarWriter.Close()
-
-		manifestHeader := &tar.Header{
-			Name:    "manifest.json",
-			Size:    int64(len(manifestData)),
-			Mode:    0644,
-			ModTime: run.RequestedAt,
-		}
-		if err := tarWriter.WriteHeader(manifestHeader); err != nil {
-			log.Error().Err(err).Int64("runID", runID).Msg("Failed to write manifest header in streaming TAR")
-			return
-		}
-		if _, err := tarWriter.Write(manifestData); err != nil {
-			log.Error().Err(err).Int64("runID", runID).Msg("Failed to write manifest in streaming TAR")
-			return
-		}
-
-		for _, item := range manifest.Items {
-			if item.TorrentBlob == "" {
-				continue
-			}
-
-			torrentPath := h.service.ResolveBackupPath(item.TorrentBlob)
-			if torrentPath == "" {
-				continue
-			}
-			file, err := os.Open(torrentPath)
-			if err != nil {
-				continue
-			}
-
-			stat, err := file.Stat()
-			if err != nil {
-				file.Close()
-				continue
-			}
-
-			header := &tar.Header{
-				Name:    item.ArchivePath,
-				Size:    stat.Size(),
-				Mode:    0644,
-				ModTime: run.RequestedAt,
-			}
-			if err := tarWriter.WriteHeader(header); err != nil {
-				file.Close()
-				log.Error().Err(err).Int64("runID", runID).Str("path", item.ArchivePath).Msg("Failed to write tar header")
-				return
-			}
-
-			if _, err := io.Copy(tarWriter, file); err != nil {
-				file.Close()
-				log.Error().Err(err).Int64("runID", runID).Str("path", item.ArchivePath).Msg("Failed to write torrent to tar")
-				return
-			}
-
-			file.Close()
-		}
+	if err := archive.Write(w, format); err != nil {
+		log.Error().Err(err).Int64("runID", runID).Str("format", string(format)).Msg("Failed to stream backup archive")
 	}
 }
 

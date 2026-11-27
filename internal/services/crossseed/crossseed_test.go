@@ -2271,14 +2271,14 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 		},
 	}
 
-	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{
 			Success: true,
 			Results: []InstanceCrossSeedResult{
 				{InstanceID: instance2ID, InstanceName: "Instance2", Success: true, Status: "added"},
 			},
 		}, nil
-	}
+	})
 
 	settings := &models.CrossSeedAutomationSettings{
 		RSSAutomationTags: []string{"cross-seed"},
@@ -2351,14 +2351,14 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 		},
 	}
 
-	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+	service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 		return &CrossSeedResponse{
 			Success: true,
 			Results: []InstanceCrossSeedResult{
 				{InstanceID: instance1ID, InstanceName: "Instance1", Success: true, Status: "added"},
 			},
 		}, nil
-	}
+	})
 
 	settings := &models.CrossSeedAutomationSettings{
 		RSSAutomationTags: []string{"cross-seed"},
@@ -2937,7 +2937,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 			}
 
 			var captured *CrossSeedRequest
-			service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				captured = req
 				return &CrossSeedResponse{
 					Success: true,
@@ -2945,7 +2945,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 						{InstanceID: instanceID, InstanceName: "TestInstance", Success: true, Status: "added"},
 					},
 				}, nil
-			}
+			})
 
 			run := &models.CrossSeedRun{}
 			result := jackett.SearchResult{
@@ -3182,7 +3182,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			}
 
 			var captured *CrossSeedRequest
-			service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+			service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
 				captured = req
 				return &CrossSeedResponse{
 					Success: true,
@@ -3190,7 +3190,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 						{InstanceID: instanceID, InstanceName: "TestInstance", Success: true, Status: "added"},
 					},
 				}, nil
-			}
+			})
 
 			defaults := triggerDefaults{sourceFilter: sourceFilter{tt.opts.Categories, tt.opts.Tags, tt.opts.ExcludeCategories, tt.opts.ExcludeTags}}
 			torrent := &qbt.Torrent{

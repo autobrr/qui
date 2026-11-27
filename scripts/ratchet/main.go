@@ -50,6 +50,9 @@ func main() {
 	if got[hashSetLinter], err = hashSetCounts(); err != nil {
 		fail(err)
 	}
+	if got[testHookLinter], err = testHookCounts(); err != nil {
+		fail(err)
+	}
 	offLines, err := offLogLines()
 	if err != nil {
 		fail(err)

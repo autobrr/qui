@@ -178,6 +178,9 @@ linters:
         - pattern: ^\(?\*?handlers\.CrossSeedHandler\)?\.(SeasonPackCheck|SeasonPackApply)$
           pkg: ^github\.com/autobrr/qui/internal/api/handlers$
           msg: the season pack endpoints are a frozen adapter; put season pack work in the webhook check and apply in internal/services/crossseed/webhook_season_pack.go and seasonpack.go (ADR 0094)
+        - pattern: ^\(?\*?crossseed\.Service\)?\.CrossSeed$
+          pkg: ^github\.com/autobrr/qui/internal/services/crossseed$
+          msg: a Trigger reaches the Injection through the required part Service.injection, which the constructor fills (ADR 0099)
         - pattern: ^models\.(NewTransferHistoryStore|TransferHistoryStore\.\w+)$
           pkg: ^github\.com/autobrr/qui/internal/models$
           msg: only the Transfer history module in internal/services/transferhistory calls the history store
@@ -298,6 +301,11 @@ linters:
         linters:
           - forbidigo
         text: only the files that the migration has not reached ask the old Permission question
+
+      - path: ^internal/api/handlers/crossseed_manual\.go$|_test\.go$
+        linters:
+          - forbidigo
+        text: a Trigger reaches the Injection through the required part
 
       # The local backend owns the read of link count and file identity.
       - path: internal/fsops/local/identity_

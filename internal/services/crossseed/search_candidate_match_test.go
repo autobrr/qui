@@ -1733,9 +1733,9 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 	result := TorrentSearchResult{
 		Indexer:     "Indexer",
@@ -1819,9 +1819,9 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
 		},
-		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 	result := TorrentSearchResult{
 		Indexer:     "Indexer",
@@ -1929,10 +1929,10 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
 			captured = request
 			return &CrossSeedResponse{Success: true}, nil
-		},
+		}),
 	}
 	match := TorrentSearchResult{
 		Indexer:     "Indexer",
@@ -1971,10 +1971,10 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			return []byte("torrent"), nil
 		},
-		crossSeedInvoker: func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
+		injection: newInjectionStandIn(func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
 			require.Equal(t, searchCandidateClassTitleRescue, request.SearchDecision.Class)
 			return &CrossSeedResponse{Success: true, titleRescueUsed: true}, nil
-		},
+		}),
 	}
 
 	result, err := service.executeCrossSeedSearchAttempt(
@@ -2453,6 +2453,7 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
 		stringNormalizer:    stringutils.NewDefaultNormalizer(),
 	}
+	service.injection = service
 
 	search := func(titles []string) *TorrentSearchResponse {
 		arrLookup.result.Titles = append([]string(nil), titles...)

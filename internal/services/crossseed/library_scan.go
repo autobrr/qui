@@ -1462,7 +1462,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, instanceID 
 	request := defaults.request(base64.StdEncoding.EncodeToString(data), match.Indexer)
 	request.TargetInstanceIDs = []int{instanceID}
 	request.SearchDecision = match.SearchDecision.bindSource(instanceID, parseHash(torrent.Hash))
-	resp, err := s.invokeCrossSeed(ctx, request)
+	resp, err := s.injection.CrossSeed(ctx, request)
 	if err != nil {
 		result.Status = models.CrossSeedSearchResultStatusFailed
 		result.Message = fmt.Sprintf("cross-seed failed: %v", err)
