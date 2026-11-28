@@ -1971,6 +1971,9 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, requested
 
 	var folders FolderCleanupBatch
 	if action == "deleteWithFiles" {
+		if err := refuseHelperTargets(sm.helperKinds(instanceID), targets); err != nil {
+			return err
+		}
 		folders = sm.PrepareFolderCleanup(ctx, instanceID, FolderCleanupOp{Kind: FolderCleanupDelete, Hashes: targetHashes})
 	}
 

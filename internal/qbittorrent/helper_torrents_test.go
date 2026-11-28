@@ -5,7 +5,11 @@ package qbittorrent
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,4 +81,66 @@ func TestATaggedTorrentWithoutARegistryRowIsNoHelper(t *testing.T) {
 
 	require.NoError(t, sm.DeleteTorrents(t.Context(), 1, []string{hashB}, true, DeleteActor{Kind: DeleteActorUser}))
 	require.NoFileExists(t, filepath.Join(root, hashB, "Show.S01E01.mkv"))
+}
+
+func TestDeleteWithFilesRefusesAHybridHelperTorrentByOtherHash(t *testing.T) {
+	t.Parallel()
+	const (
+		hybridV1 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+		hybridV2 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2"
+	)
+	root := t.TempDir()
+	stub := qbtstub.New(t, root)
+	stub.Add(qbtstub.Torrent{
+		Hash: hybridV1, InfohashV1: hybridV1, InfohashV2: hybridV2,
+		Name: "Show.S01E01-GRP", SavePath: filepath.Join(root, hybridV1),
+		Layout: qbtstub.NoRootFolder, Files: []string{"Show.S01E01.mkv"},
+	})
+	client, err := NewClientWithTimeout(1, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(client.optimisticUpdates.Close)
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
+
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+	sm.SetHelperTorrents(fakeHelpers{hybridV1: "transfer"})
+
+	err = sm.DeleteTorrents(t.Context(), 1, []string{hybridV2}, true, DeleteActor{Kind: DeleteActorUser})
+	require.ErrorIs(t, err, ErrHelperTorrentFiles)
+	require.Zero(t, stub.Calls("torrents/delete"))
+	require.FileExists(t, filepath.Join(root, hybridV1, "Show.S01E01.mkv"))
+
+	sm.SetHelperTorrents(fakeHelpers{hybridV2: "transfer"})
+	require.ErrorIs(t, sm.RefuseHelperFiles(t.Context(), 1, []string{"all"}), ErrHelperTorrentFiles)
+
+	unsynced, err := NewClientWithTimeout(1, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(unsynced.optimisticUpdates.Close)
+	smFresh := NewSyncManager(&ClientPool{clients: map[int]*Client{1: unsynced}, creationLocks: map[int]*sync.Mutex{}}, nil)
+	smFresh.SetHelperTorrents(fakeHelpers{hybridV1: "transfer"})
+	require.ErrorIs(t, smFresh.RefuseHelperFiles(t.Context(), 1, []string{hybridV2}), ErrHelperTorrentFiles)
+
+	var failSync atomic.Bool
+	badSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.11.4"))
+		case "/api/v2/sync/maindata":
+			if failSync.Load() {
+				http.Error(w, "boom", http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true}`))
+		default:
+			_, _ = w.Write([]byte("Ok."))
+		}
+	}))
+	t.Cleanup(badSrv.Close)
+	down, err := NewClientWithTimeout(1, badSrv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(down.optimisticUpdates.Close)
+	require.NoError(t, down.SyncOwner().Sync(t.Context()))
+	failSync.Store(true)
+	smDown := NewSyncManager(&ClientPool{clients: map[int]*Client{1: down}, creationLocks: map[int]*sync.Mutex{}}, nil)
+	smDown.SetHelperTorrents(fakeHelpers{hybridV1: "transfer"})
+	require.Error(t, smDown.RefuseHelperFiles(t.Context(), 1, []string{hybridV2}))
 }

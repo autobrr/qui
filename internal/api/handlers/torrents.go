@@ -84,23 +84,119 @@ func (h *TorrentsHandler) SetHeldTorrents(held heldTorrents) {
 
 var bulkActionMoves = []string{"delete", "deleteWithFiles", "setLocation", "setCategory", "toggleAutoTMM"}
 
-func (h *TorrentsHandler) respondIfHeld(w http.ResponseWriter, instanceID int, hashes ...string) bool {
+func (h *TorrentsHandler) respondIfHeld(ctx context.Context, w http.ResponseWriter, instanceID int, hashes ...string) bool {
 	if h.held == nil {
 		return false
 	}
+	heldErr, verifyErr := h.checkHeld(ctx, instanceID, hashes)
+	if heldErr != nil {
+		RespondError(w, http.StatusConflict, heldErr.Error())
+		return true
+	}
+	if verifyErr != nil {
+		if respondIfInstanceDisabled(w, verifyErr, instanceID, "torrents:holdCheck") {
+			return true
+		}
+		RespondError(w, http.StatusServiceUnavailable, "Unable to verify whether a Transfer or Share holds this torrent")
+		return true
+	}
+	return false
+}
+
+func (h *TorrentsHandler) checkHeld(ctx context.Context, instanceID int, hashes []string) (heldErr, verifyErr error) {
+	parsed := make([]infohash.Hash, 0, len(hashes))
 	for _, list := range hashes {
 		for raw := range strings.SplitSeq(list, "|") {
-			hash, err := infohash.Parse(raw)
-			if err != nil {
+			hash, parseErr := infohash.Parse(raw)
+			if parseErr != nil {
 				continue
 			}
 			if err := h.held.Hold(instanceID, hash); err != nil {
-				RespondError(w, http.StatusConflict, err.Error())
-				return true
+				return err, nil
+			}
+			parsed = append(parsed, hash)
+		}
+	}
+	if len(parsed) == 0 || h.contentResolver == nil {
+		return nil, nil
+	}
+
+	filter := qbittorrent.TorrentRefFilter{Hashes: parsed, WithHelperTorrents: true}
+	torrents, err := h.contentResolver.GetTorrentRefs(ctx, instanceID, filter)
+	if err == nil {
+		if holdErr := h.torrentsHeldError(instanceID, torrents); holdErr != nil {
+			return holdErr, nil
+		}
+		parsed = unresolvedInfohashes(parsed, torrents)
+		if len(parsed) == 0 {
+			return nil, nil
+		}
+	}
+
+	if h.syncManager != nil {
+		fresh, freshErr := h.syncManager.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{
+			Hashes:             parsed,
+			WithHelperTorrents: true,
+		})
+		if freshErr != nil {
+			return nil, freshErr
+		}
+		if holdErr := h.torrentsHeldError(instanceID, fresh); holdErr != nil {
+			return holdErr, nil
+		}
+		parsed = unresolvedInfohashes(parsed, fresh)
+		err = nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(parsed) > 0 {
+		return nil, errors.New("requested torrent hash could not be resolved")
+	}
+	return nil, nil
+}
+
+func (h *TorrentsHandler) torrentsHeldError(instanceID int, torrents []*qbt.Torrent) error {
+	for _, torrent := range torrents {
+		if err := h.torrentHeldError(instanceID, torrent); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func unresolvedInfohashes(requested []infohash.Hash, resolved []*qbt.Torrent) []infohash.Hash {
+	var missing []infohash.Hash
+	for _, hash := range requested {
+		if !slices.ContainsFunc(resolved, func(t *qbt.Torrent) bool { return torrentHasHash(t, hash) }) {
+			missing = append(missing, hash)
+		}
+	}
+	return missing
+}
+
+func torrentHasHash(t *qbt.Torrent, hash infohash.Hash) bool {
+	if t == nil {
+		return false
+	}
+	return hash.Is(t.Hash) || hash.Is(t.InfohashV1) || hash.Is(t.InfohashV2)
+}
+
+func (h *TorrentsHandler) torrentHeldError(instanceID int, torrent *qbt.Torrent) error {
+	if torrent == nil {
+		return nil
+	}
+	for _, raw := range [3]string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
+		if raw == "" {
+			continue
+		}
+		if candidate, parseErr := infohash.Parse(raw); parseErr == nil {
+			if holdErr := h.held.Hold(instanceID, candidate); holdErr != nil {
+				return holdErr
 			}
 		}
 	}
-	return false
+	return nil
 }
 
 func truncateExpr(expr string, maxLen int) string {
@@ -1304,7 +1400,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 
 	if slices.Contains(bulkActionMoves, req.Action) {
 		for _, targetInstanceID := range targetInstanceIDs {
-			if h.respondIfHeld(w, targetInstanceID, targetsByInstance[targetInstanceID]...) {
+			if h.respondIfHeld(r.Context(), w, targetInstanceID, targetsByInstance[targetInstanceID]...) {
 				return
 			}
 		}
@@ -2042,7 +2138,7 @@ func (h *TorrentsHandler) RenameTorrent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if h.respondIfHeld(w, instanceID, hash) {
+	if h.respondIfHeld(r.Context(), w, instanceID, hash) {
 		return
 	}
 
@@ -2086,7 +2182,7 @@ func (h *TorrentsHandler) RenameTorrentFile(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if h.respondIfHeld(w, instanceID, hash) {
+	if h.respondIfHeld(r.Context(), w, instanceID, hash) {
 		return
 	}
 
@@ -2130,7 +2226,7 @@ func (h *TorrentsHandler) RenameTorrentFolder(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if h.respondIfHeld(w, instanceID, hash) {
+	if h.respondIfHeld(r.Context(), w, instanceID, hash) {
 		return
 	}
 

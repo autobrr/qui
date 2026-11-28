@@ -37,25 +37,93 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 	if helpers == nil || helpers.HelperKinds(instanceID) == nil {
 		return nil
 	}
-	if len(hashes) == 1 && hashes[0] == "all" {
+	allTorrents := len(hashes) == 1 && hashes[0] == "all"
+	if allTorrents {
 		torrents, err := sm.GetTorrentRefsFresh(ctx, instanceID, TorrentRefFilter{WithHelperTorrents: true})
 		if err != nil {
 			return fmt.Errorf("read the torrents of instance %d: %w", instanceID, err)
 		}
-		hashes = make([]string, 0, len(torrents))
-		for _, torrent := range torrents {
-			hashes = append(hashes, torrent.Hash)
-		}
+		kinds := helpers.HelperKinds(instanceID)
+		return refuseHelperTargets(kinds, torrents)
 	}
 	kinds := helpers.HelperKinds(instanceID)
-	if kinds == nil {
+	if len(kinds) == 0 {
 		return nil
 	}
-	if i := slices.IndexFunc(hashes, func(hash string) bool {
-		id, err := infohash.Parse(hash)
-		return err == nil && kinds[id.String()] != ""
-	}); i >= 0 {
-		return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, hashes[i])
+	parsed := make([]infohash.Hash, 0, len(hashes))
+	for _, raw := range hashes {
+		id, err := infohash.Parse(raw)
+		if err != nil {
+			continue
+		}
+		if kinds[id.String()] != "" {
+			return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, raw)
+		}
+		parsed = append(parsed, id)
+	}
+	if len(parsed) == 0 {
+		return nil
+	}
+	torrents, err := sm.GetTorrentRefs(ctx, instanceID, TorrentRefFilter{
+		Hashes:             parsed,
+		WithHelperTorrents: true,
+	})
+	if err == nil {
+		if herr := refuseHelperTargets(kinds, torrents); herr != nil {
+			return herr
+		}
+		parsed = unresolvedHelperHashes(parsed, torrents)
+		if len(parsed) == 0 {
+			return nil
+		}
+	}
+	fresh, freshErr := sm.GetTorrentRefsFresh(ctx, instanceID, TorrentRefFilter{
+		Hashes:             parsed,
+		WithHelperTorrents: true,
+	})
+	if freshErr != nil {
+		return fmt.Errorf("read the torrents of instance %d: %w", instanceID, freshErr)
+	}
+	return refuseHelperTargets(kinds, fresh)
+}
+
+func unresolvedHelperHashes(requested []infohash.Hash, resolved []*qbt.Torrent) []infohash.Hash {
+	seen := infohash.NewSet()
+	for _, t := range resolved {
+		if t == nil {
+			continue
+		}
+		for _, raw := range [3]string{t.Hash, t.InfohashV1, t.InfohashV2} {
+			if id, err := infohash.Parse(raw); err == nil {
+				seen.Add(id)
+			}
+		}
+	}
+	var missing []infohash.Hash
+	for _, id := range requested {
+		if !seen.Has(id) {
+			missing = append(missing, id)
+		}
+	}
+	return missing
+}
+
+func refuseHelperTargets(kinds map[string]string, targets []*qbt.Torrent) error {
+	if len(kinds) == 0 {
+		return nil
+	}
+	for _, torrent := range targets {
+		if torrent == nil {
+			continue
+		}
+		for _, raw := range [3]string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
+			if raw == "" {
+				continue
+			}
+			if id, err := infohash.Parse(raw); err == nil && kinds[id.String()] != "" {
+				return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, torrent.Hash)
+			}
+		}
 	}
 	return nil
 }
