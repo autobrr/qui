@@ -291,7 +291,7 @@ jobs:
       - name: Create the app token for the rls-review mention
         id: app-token
         continue-on-error: true
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           app-id: ${{ vars.RATCHET_APP_ID }}
           private-key: ${{ secrets.RATCHET_APP_PRIVATE_KEY }}

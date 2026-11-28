@@ -106,7 +106,7 @@ jobs:
           path: web/dist
 
       - name: Set up Go
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7.1.0
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -196,7 +196,7 @@ jobs:
         run: tar -czf web-dist.tar.gz -C . web/dist
 
       - name: Set up Go
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7.1.0
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -471,7 +471,7 @@ jobs:
         run: mkdir -p web/dist && touch web/dist/.gitkeep
 
       - name: Set up Go
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7.1.0
         with:
           go-version-file: go.mod
           cache: true
@@ -518,7 +518,7 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7.1.0
         with:
           go-version-file: go.mod
           cache: false
