@@ -156,6 +156,7 @@ func TestInjectHardlinkTreeOnRemoteInstance(t *testing.T) {
 		{name: "no hardlink support falls back when set", fallback: true, hardlinkErr: noExtension, wantMode: injectModeRegular, wantSave: "/data/lib", wantAdded: true},
 		{name: "no hardlink support fails when fallback is off", hardlinkErr: noExtension, wantErr: noExtension.Error()},
 		{name: "a lost connection during the create never falls back", fallback: true, hardlinkErr: fmt.Errorf("link: %w", fsops.ErrConnectionLost), wantErr: fsops.ErrConnectionLost.Error()},
+		{name: "a failed cleanup never falls back", fallback: true, hardlinkErr: fmt.Errorf("link: %w", hardlinktree.ErrRollbackFailed), wantErr: "a partial link tree can remain in " + linkRoot},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
