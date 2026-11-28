@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/testdb"
+	"github.com/autobrr/qui/pkg/infohash"
 )
 
 type fakeUnregistered struct {
@@ -53,6 +55,29 @@ func (f fakeUnregisteredSource) unregisteredOf(instanceID int) unregisteredReade
 	return f[instanceID]
 }
 
+func (f fakeUnregisteredSource) torrentsOf(context.Context, int) torrentResolver {
+	return listedHashes{}
+}
+
+type listedHashes struct{}
+
+func (listedHashes) Torrents(hashes []infohash.Hash) []*qbt.Torrent {
+	torrents := make([]*qbt.Torrent, len(hashes))
+	for i, hash := range hashes {
+		torrents[i] = &qbt.Torrent{Hash: hash.String()}
+	}
+	return torrents
+}
+
+type liveTorrents struct {
+	fakeUnregisteredSource
+	live syncUnregisteredSource
+}
+
+func (l liveTorrents) torrentsOf(ctx context.Context, instanceID int) torrentResolver {
+	return l.live.torrentsOf(ctx, instanceID)
+}
+
 func warningHash(n int) string {
 	return fmt.Sprintf("%040x", n)
 }
@@ -79,6 +104,31 @@ func TestUnregisteredDeleteWarning_SelectAllCountsTheWholeFilterPastOnePage(t *t
 	since[oldest] = now.Add(-3 * 24 * time.Hour)
 	excluded := warningHash(1)
 
+	handler, instanceID := newUnregisteredWarningHandler(t, torrents)
+	handler.unregistered = liveTorrents{
+		fakeUnregisteredSource: fakeUnregisteredSource{instanceID: {host: "tracker.example.invalid", health: health, since: since}},
+		live:                   syncUnregisteredSource{syncManager: handler.syncManager},
+	}
+	req := newTorrentFieldRequest(t, instanceID, map[string]any{
+		"selectAll":     true,
+		"filters":       map[string]any{"categories": []string{"tv"}},
+		"excludeHashes": []string{excluded},
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetUnregisteredDeleteWarning(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var warning UnregisteredDeleteWarning
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &warning))
+	require.Equal(t, inFilter-2, warning.Count)
+	require.True(t, warning.Since.Equal(since[warningHash(inFilter-1)]), "since %s", warning.Since)
+	require.Equal(t, []UnregisteredWarningTracker{{Host: "tracker.example.invalid", Count: inFilter - 2}}, warning.Trackers)
+}
+
+func newUnregisteredWarningHandler(t *testing.T, torrents []qbt.Torrent) (*TorrentsHandler, int) {
+	t.Helper()
+
 	maindata := map[string]qbt.Torrent{}
 	for _, torrent := range torrents {
 		maindata[torrent.Hash] = torrent
@@ -104,23 +154,33 @@ func TestUnregisteredDeleteWarning_SelectAllCountsTheWholeFilterPastOnePage(t *t
 	require.NoError(t, err)
 	testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{instance.ID: newStaleCachedClient(t, srv.URL, torrents)})
 
-	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
-	handler.unregistered = fakeUnregisteredSource{instance.ID: {host: "tracker.example.invalid", health: health, since: since}}
-	req := newTorrentFieldRequest(t, instance.ID, map[string]any{
-		"selectAll":     true,
-		"filters":       map[string]any{"categories": []string{"tv"}},
-		"excludeHashes": []string{excluded},
-	})
+	return NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil), instance.ID
+}
 
-	rec := httptest.NewRecorder()
-	handler.GetUnregisteredDeleteWarning(rec, req)
+func TestUnregisteredDeleteWarning_CountsATorrentPickedByAnyOfItsHashesOnce(t *testing.T) {
+	t.Parallel()
 
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	var warning UnregisteredDeleteWarning
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &warning))
-	require.Equal(t, inFilter-2, warning.Count)
-	require.True(t, warning.Since.Equal(since[warningHash(inFilter-1)]), "since %s", warning.Since)
-	require.Equal(t, []UnregisteredWarningTracker{{Host: "tracker.example.invalid", Count: inFilter - 2}}, warning.Trackers)
+	v1 := warningHash(1)
+	v2 := fmt.Sprintf("%064x", 2)
+	handler, instanceID := newUnregisteredWarningHandler(t, []qbt.Torrent{{Name: "Hybrid", Hash: v1, InfohashV1: v1, InfohashV2: v2, AddedOn: 1000}})
+	handler.unregistered = liveTorrents{
+		fakeUnregisteredSource: fakeUnregisteredSource{instanceID: {
+			host:   "tracker.example.invalid",
+			health: map[string]qbittorrent.TrackerHealth{v1: qbittorrent.TrackerHealthUnregistered},
+			since:  map[string]time.Time{v1: time.Now().Add(-time.Hour)},
+		}},
+		live: syncUnregisteredSource{syncManager: handler.syncManager},
+	}
+
+	for _, hashes := range [][]string{{v2}, {v1, v2}} {
+		rec := httptest.NewRecorder()
+		handler.GetUnregisteredDeleteWarning(rec, newTorrentFieldRequest(t, instanceID, map[string]any{"hashes": hashes}))
+
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var warning UnregisteredDeleteWarning
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &warning))
+		require.Equal(t, 1, warning.Count, "hashes %v", hashes)
+	}
 }
 
 func TestRecentlyUnregistered(t *testing.T) {
@@ -194,7 +254,7 @@ func TestRecentlyUnregistered(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, recentlyUnregistered(source, tt.selection, now))
+			require.Equal(t, tt.want, recentlyUnregistered(t.Context(), source, tt.selection, now))
 		})
 	}
 }

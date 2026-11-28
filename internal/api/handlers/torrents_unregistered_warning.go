@@ -5,12 +5,14 @@ package handlers
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"net/http"
 	"slices"
 	"strconv"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -37,8 +39,13 @@ type unregisteredReader interface {
 	UnregisteredSinceLoaded() bool
 }
 
+type torrentResolver interface {
+	Torrents(hashes []infohash.Hash) []*qbt.Torrent
+}
+
 type unregisteredSource interface {
 	unregisteredOf(instanceID int) unregisteredReader
+	torrentsOf(ctx context.Context, instanceID int) torrentResolver
 }
 
 type syncUnregisteredSource struct {
@@ -49,12 +56,16 @@ func (s syncUnregisteredSource) unregisteredOf(instanceID int) unregisteredReade
 	return s.syncManager.GetTrackerHealthSnapshot(instanceID)
 }
 
+func (s syncUnregisteredSource) torrentsOf(ctx context.Context, instanceID int) torrentResolver {
+	return qbittorrent.NewHashIndex(s.syncManager.InstanceSnapshot(ctx, instanceID))
+}
+
 func (h *TorrentsHandler) GetUnregisteredDeleteWarning(w http.ResponseWriter, r *http.Request) {
 	_, targetsByInstance, ok := h.decodeTorrentSelection(w, r)
 	if !ok {
 		return
 	}
-	RespondJSON(w, r, http.StatusOK, recentlyUnregistered(h.unregistered, targetsByInstance, time.Now()))
+	RespondJSON(w, r, http.StatusOK, recentlyUnregistered(r.Context(), h.unregistered, targetsByInstance, time.Now()))
 }
 
 func (h *TorrentsHandler) decodeTorrentSelection(w http.ResponseWriter, r *http.Request) (int, map[int][]string, bool) {
@@ -84,7 +95,7 @@ func (h *TorrentsHandler) decodeTorrentSelection(w http.ResponseWriter, r *http.
 	return instanceID, targetsByInstance, ok
 }
 
-func recentlyUnregistered(source unregisteredSource, targetsByInstance map[int][]string, now time.Time) UnregisteredDeleteWarning {
+func recentlyUnregistered(ctx context.Context, source unregisteredSource, targetsByInstance map[int][]string, now time.Time) UnregisteredDeleteWarning {
 	warning := UnregisteredDeleteWarning{Trackers: []UnregisteredWarningTracker{}}
 	byHost := make(map[string]int)
 	for instanceID, hashes := range targetsByInstance {
@@ -92,8 +103,13 @@ func recentlyUnregistered(source unregisteredSource, targetsByInstance map[int][
 		if !health.UnregisteredSinceLoaded() {
 			continue
 		}
-		for _, hash := range infohash.Unique(hashes) {
-			key := hash.String()
+		counted := make(map[*qbt.Torrent]bool)
+		for _, torrent := range source.torrentsOf(ctx, instanceID).Torrents(infohash.Unique(hashes)) {
+			if torrent == nil || counted[torrent] {
+				continue
+			}
+			counted[torrent] = true
+			key := torrent.Hash
 			if health.Health(key) != qbittorrent.TrackerHealthUnregistered {
 				continue
 			}
