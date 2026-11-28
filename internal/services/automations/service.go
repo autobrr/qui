@@ -1901,7 +1901,7 @@ func (s *Service) applyRules(ctx context.Context, instanceID int, rules []*model
 	exportResults := s.executeExportToInstance(ctx, instanceID, s.reserveExports(plan.exports))
 
 	deleteActivity := func(hash string, pending selectedDeletion, action, outcome, reason string) *models.AutomationActivity {
-		detailsJSON, _ := json.Marshal(struct {
+		detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // strings, bools, a tracker status, and a time that qui stamped cannot fail to encode
 			DeleteMode   string             `json:"deleteMode"`
 			FilesKept    bool               `json:"filesKept"`
 			IsTrigger    bool               `json:"isTrigger"`
