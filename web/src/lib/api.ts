@@ -1812,7 +1812,7 @@ class ApiClient {
     return this.request<CrossSeedBlocklistEntry[]>(`/cross-seed/blocklist${suffix}`)
   }
 
-  async addCrossSeedBlocklist(payload: { instanceId: number; infoHash: string; note?: string }): Promise<CrossSeedBlocklistEntry> {
+  async addCrossSeedBlocklist(payload: { instanceId: number; infoHash: string; note?: string; torrentName?: string }): Promise<CrossSeedBlocklistEntry> {
     return this.request<CrossSeedBlocklistEntry>("/cross-seed/blocklist", {
       method: "POST",
       body: JSON.stringify(payload),

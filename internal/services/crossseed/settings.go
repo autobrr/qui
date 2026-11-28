@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -98,23 +99,23 @@ func (s *Service) ListBlocklist(ctx context.Context, instanceID int) ([]*models.
 	return s.blocklistStore.List(ctx, instanceID)
 }
 
-func (s *Service) UpsertBlocklistEntry(ctx context.Context, instanceID int, hash infohash.Hash, note string) (*models.CrossSeedBlocklistEntry, error) {
+func (s *Service) UpsertBlocklistEntry(ctx context.Context, instanceID int, hash infohash.Hash, note, name string) (*models.CrossSeedBlocklistEntry, error) {
 	if s.blocklistStore == nil {
 		return nil, errors.New("blocklist store unavailable")
 	}
-	return s.blocklistStore.Upsert(ctx, instanceID, hash, note, s.blockedTorrent(ctx, instanceID, hash))
+	return s.blocklistStore.Upsert(ctx, instanceID, hash, note, s.blockedTorrent(ctx, instanceID, hash, name))
 }
 
 type torrentLabels interface {
 	TorrentLabel(ctx context.Context, instanceID int, hash infohash.Hash) qbittorrent.TorrentLabel
 }
 
-func (s *Service) blockedTorrent(ctx context.Context, instanceID int, hash infohash.Hash) models.BlockedTorrent {
-	if s.torrentLabels == nil {
-		return models.BlockedTorrent{}
+func (s *Service) blockedTorrent(ctx context.Context, instanceID int, hash infohash.Hash, name string) models.BlockedTorrent {
+	var label qbittorrent.TorrentLabel
+	if s.torrentLabels != nil {
+		label = s.torrentLabels.TorrentLabel(ctx, instanceID, hash)
 	}
-	label := s.torrentLabels.TorrentLabel(ctx, instanceID, hash)
-	return models.BlockedTorrent{Name: label.Name, Tracker: label.TrackerDomain}
+	return models.BlockedTorrent{Name: cmp.Or(label.Name, name), Tracker: label.TrackerDomain}
 }
 
 func (s *Service) DeleteBlocklistEntry(ctx context.Context, instanceID int, infoHash infohash.Hash) error {

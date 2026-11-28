@@ -523,9 +523,10 @@ type searchRunRequest struct {
 }
 
 type CrossSeedBlocklistRequest struct {
-	InstanceID int    `json:"instanceId"`
-	InfoHash   string `json:"infoHash"`
-	Note       string `json:"note"`
+	InstanceID  int    `json:"instanceId"`
+	InfoHash    string `json:"infoHash"`
+	Note        string `json:"note"`
+	TorrentName string `json:"torrentName"`
 }
 
 func NewCrossSeedHandler(
@@ -1286,7 +1287,7 @@ func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	created, err := h.service.UpsertBlocklistEntry(r.Context(), payload.InstanceID, hash, strings.TrimSpace(payload.Note))
+	created, err := h.service.UpsertBlocklistEntry(r.Context(), payload.InstanceID, hash, strings.TrimSpace(payload.Note), payload.TorrentName)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to add cross-seed blocklist entry")
 		RespondError(w, http.StatusInternalServerError, "Failed to add blocklist entry")

@@ -502,6 +502,6 @@ describe("CrossSeedDialog routed adds", () => {
 
     fireEvent.click(getByRole("button", { name: `crossSeedDialog.blockFor ${name}` }))
 
-    await waitFor(() => expect(block).toHaveBeenCalledWith({ instanceId, infoHash: "abc" }))
+    await waitFor(() => expect(block).toHaveBeenCalledWith({ instanceId, infoHash: "abc", torrentName: "Cedar.Harbor.S01E01" }))
   })
 })

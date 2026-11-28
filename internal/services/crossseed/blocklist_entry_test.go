@@ -34,19 +34,24 @@ func TestUpsertBlocklistEntrySavesTheTorrentNameAndTrackerDomain(t *testing.T) {
 		hash: {Name: "Quiet.Harbor.S01.1080p.WEB-DL-NOGRP", TrackerDomain: "tracker.example.invalid"},
 	}}
 
-	entry, err := svc.UpsertBlocklistEntry(ctx, instance.ID, hash, "")
+	entry, err := svc.UpsertBlocklistEntry(ctx, instance.ID, hash, "", "Search.Result.Title-GRP")
 	require.NoError(t, err)
 	require.Equal(t, models.BlockedTorrent{Name: "Quiet.Harbor.S01.1080p.WEB-DL-NOGRP", Tracker: "tracker.example.invalid"}, entry.BlockedTorrent)
 
 	svc.torrentLabels = fakeTorrentLabels{}
-	entry, err = svc.UpsertBlocklistEntry(ctx, instance.ID, hash, "bad files")
+	entry, err = svc.UpsertBlocklistEntry(ctx, instance.ID, hash, "bad files", "")
 	require.NoError(t, err)
 	require.Equal(t, "bad files", entry.Note)
 	require.Equal(t, models.BlockedTorrent{Name: "Quiet.Harbor.S01.1080p.WEB-DL-NOGRP", Tracker: "tracker.example.invalid"}, entry.BlockedTorrent, "a block after the torrent is gone keeps the name and tracker")
 
 	svc.torrentLabels = nil
 	other := mustParseHash(t, "2222222222222222222222222222222222222222")
-	entry, err = svc.UpsertBlocklistEntry(ctx, instance.ID, other, "")
+	entry, err = svc.UpsertBlocklistEntry(ctx, instance.ID, other, "", "")
 	require.NoError(t, err)
 	require.Zero(t, entry.BlockedTorrent)
+
+	failed := mustParseHash(t, "3333333333333333333333333333333333333333")
+	entry, err = svc.UpsertBlocklistEntry(ctx, instance.ID, failed, "", "Paper.Lanterns.2019.720p.BluRay-FAKEGRP")
+	require.NoError(t, err)
+	require.Equal(t, models.BlockedTorrent{Name: "Paper.Lanterns.2019.720p.BluRay-FAKEGRP"}, entry.BlockedTorrent, "a block of a torrent the instance lacks keeps the name the caller gives")
 }

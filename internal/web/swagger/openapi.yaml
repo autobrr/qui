@@ -11917,6 +11917,9 @@ components:
           type: string
         note:
           type: string
+        torrentName:
+          type: string
+          description: Name to save when the instance does not have the torrent
 
     CrossSeedRouteRow:
       type: object
