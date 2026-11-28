@@ -8491,7 +8491,7 @@ paths:
       tags:
         - Orphan Scan
       summary: Trigger orphan scan
-      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID. A preview_ready run from a scan of a remote instance that did not read every file's identity (`identityComplete` false) cannot be confirmed, so the new scan cancels it instead of returning 409.
+      description: Start a manual orphan file scan for an instance. Returns immediately with the run ID. A preview_ready run that did not read every file's identity (`identityComplete` false) cannot be confirmed, so the new scan cancels it instead of returning 409.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -13517,7 +13517,7 @@ components:
         filesystemMode:
           type: string
           enum: [none, local, remote]
-          description: How qui reached the instance's files when this run scanned them. Deletion is refused for runs whose mode no longer matches the instance, and for `remote` runs without `identityComplete` or whose SSH endpoint changed since the scan.
+          description: How qui reached the instance's files when this run scanned them. Deletion is refused for runs whose mode no longer matches the instance, for runs without `identityComplete`, or for `remote` runs whose SSH endpoint changed since the scan.
         identityComplete:
           type: boolean
           description: True when the scan read a file identity for every regular file it listed or protected. A `remote` run can be deleted only when it is true, since without identity a second path to a torrent's file looks like an orphan.

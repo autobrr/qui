@@ -817,6 +817,7 @@
       "close": "Close",
       "deleteItems": "Delete",
       "remoteDeleteUnavailable": "This scan cannot delete, because the remote instance does not report file identity or the scan could not read it for every file. Export the list to remove the files on the server yourself.",
+      "localDeleteUnavailable": "This scan cannot delete, because the scan could not read file identity for every file (for example, due to unreadable folders or permissions). Export the list or fix folder permissions and run a new scan.",
       "statusLabels": {
         "pending": "Pending",
         "deleted": "Deleted",
