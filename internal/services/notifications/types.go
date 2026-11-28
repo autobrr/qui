@@ -57,7 +57,7 @@ var eventDefinitions = []EventDefinition{
 	{Type: EventCrossSeedCompletionFailed, Label: "Cross-seed completion search failed", Description: "A completion search run fails."},
 	{Type: EventCrossSeedWebhookSucceeded, Label: "Cross-seed webhook torrent added", Description: "A webhook apply adds one or more torrents."},
 	{Type: EventCrossSeedWebhookFailed, Label: "Cross-seed webhook failed", Description: "A webhook check or apply fails."},
-	{Type: EventAutomationsActionsApplied, Label: "Automations actions applied", Description: "Automation rules applied actions (summary counts and samples; only when actions occur)."},
+	{Type: EventAutomationsActionsApplied, Label: "Automations actions applied", Description: "Automation rules applied actions or torrents started to wait for a delete (summary counts and samples; only when actions occur or torrents start to wait)."},
 	{Type: EventAutomationsRunFailed, Label: "Automations run failed", Description: "Automation rules failed to run for an instance (system error)."},
 	{Type: EventTransferFailed, Label: "Transfer failed", Description: "A Transfer that you or a rule started fails."},
 	{Type: EventTransferFinished, Label: "Transfer finished", Description: "A Transfer that you or a rule started moves its torrents to the target."},
