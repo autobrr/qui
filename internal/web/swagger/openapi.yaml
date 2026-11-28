@@ -4089,13 +4089,13 @@ paths:
         - Instances
       summary: List the torrents that wait for a delete
       description: |
-        Lists the Pending deletes of the instance, grouped by automation, in the order of the automations. A Pending delete is a torrent that the delete condition of an enabled automation matches through the Unregistered verdict, and that the automation does not delete yet because the torrent has not been unregistered for the Unregistered wait of its Delete action. The live run of each automation stores these torrents.
+        Lists the Pending deletes of the instance, grouped by Automation rule, in the order of the rules. A Pending delete is a torrent that the delete condition of an enabled rule matches through the Unregistered verdict, and that the rule does not delete yet because the torrent has not been unregistered for the Unregistered wait of its Delete action. The live run of each rule stores these torrents. Between two runs, the list leaves out a stored torrent that has left the wait: a tracker works again, the torrent stopped, or it is gone.
         The name, the tracker, and the message come from the live data of the instance. They are empty until qui has loaded the torrent and its tracker health after a restart. The message is cleaned: it holds no URL and no part of an announce URL of the torrent.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
         '200':
-          description: The torrents that wait for a delete, by automation
+          description: The torrents that wait for a delete, by Automation rule
           content:
             application/json:
               schema:
@@ -4118,7 +4118,7 @@ paths:
                           type: string
                         torrents:
                           type: array
-                          description: The torrents of the automation, the first delete first.
+                          description: The torrents of the rule, the first delete first.
                           items:
                             type: object
                             required:
@@ -4144,14 +4144,14 @@ paths:
                               unregisteredSince:
                                 type: integer
                                 format: int64
-                                description: Unix time from which qui has seen the torrent as unregistered.
+                                description: Unix time from which qui has seen the torrent as unregistered. Until qui has loaded the tracker health after a restart, this is the time that the last run stored.
                               deletesAt:
                                 type: integer
                                 format: int64
-                                description: Unix time at which the Unregistered wait of the automation ends.
+                                description: Unix time at which the Unregistered wait of the rule ends.
                               awaitsTracker:
                                 type: boolean
-                                description: True when the wait is over but no tracker reports the torrent as unregistered now. The automation deletes the torrent when a tracker reports it as unregistered again.
+                                description: True when the wait is over but no tracker reports the torrent as unregistered now. The rule deletes the torrent when a tracker reports it as unregistered again.
         '400':
           description: Invalid instance ID
           content:
@@ -4160,6 +4160,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: The torrents that wait for a delete could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The automations service is not available
           content:
             application/json:
               schema:

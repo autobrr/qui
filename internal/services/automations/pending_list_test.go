@@ -59,7 +59,7 @@ func TestPendingDeleteListGivesEachWaitingTorrentWithItsTrackerAndTimeOfDelete(t
 	group := list.Rules[0]
 	require.Equal(t, rule.ID, group.RuleID)
 	require.Equal(t, "Clean unregistered", group.RuleName)
-	require.Len(t, group.Torrents, 4)
+	require.Len(t, group.Torrents, 3)
 	for _, torrent := range group.Torrents {
 		require.NotContains(t, torrent.Message, listPasskey)
 	}
@@ -72,9 +72,7 @@ func TestPendingDeleteListGivesEachWaitingTorrentWithItsTrackerAndTimeOfDelete(t
 			UnregisteredSince: waitTestNow.Add(-8 * 24 * time.Hour).Unix(), DeletesAt: waitTestNow.Add(-6 * 24 * time.Hour).Unix(), AwaitsTracker: true},
 		{Hash: waitFreshHash, Name: "Some.Show.S01E01.1080p.WEB-GRP", Tracker: "fresh.example.invalid",
 			UnregisteredSince: waitTestNow.Add(-24 * time.Hour).Unix(), DeletesAt: waitTestNow.Add(24 * time.Hour).Unix()},
-		{Hash: listGoneHash,
-			UnregisteredSince: waitTestNow.Add(-time.Hour).Unix(), DeletesAt: waitTestNow.Add(47 * time.Hour).Unix()},
-	}, []PendingDeleteTorrent{group.Torrents[0], group.Torrents[1], fresh, group.Torrents[3]})
+	}, []PendingDeleteTorrent{group.Torrents[0], group.Torrents[1], fresh})
 	require.Contains(t, group.Torrents[2].Message, "Unregistered torrent")
 }
 
@@ -86,4 +84,29 @@ func TestPendingDeleteListIsEmptyWithoutStoredRows(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, list.Rules)
 	require.Empty(t, list.Rules)
+}
+
+func TestPendingDeleteListReadsTheWaitFromTheLiveVerdictBeforeTheNextRun(t *testing.T) {
+	rig := newPendingRig(t, listTorrents)
+	rule := rig.createRule(waitDeleteRule(0, nil, unregisteredIs("true")))
+	rig.setHealth(map[string]qbittorrent.TrackerHealth{
+		waitFreshHash: qbittorrent.TrackerHealthUnregistered,
+	}, map[string]time.Time{
+		waitFreshHash: waitTestNow.Add(-time.Hour),
+	})
+	rig.seed(rule.ID, map[string]time.Time{
+		waitFreshHash: waitTestNow.Add(-72 * time.Hour),
+		waitDownHash:  waitTestNow.Add(-72 * time.Hour),
+	})
+
+	list, err := rig.svc.ListPendingDeletes(t.Context(), rig.instanceID)
+	require.NoError(t, err)
+
+	require.Len(t, list.Rules, 1)
+	require.Len(t, list.Rules[0].Torrents, 1)
+	restarted := list.Rules[0].Torrents[0]
+	require.Equal(t, waitFreshHash, restarted.Hash)
+	require.Equal(t, waitTestNow.Add(-time.Hour).Unix(), restarted.UnregisteredSince)
+	require.Equal(t, waitTestNow.Add(47*time.Hour).Unix(), restarted.DeletesAt)
+	require.False(t, restarted.AwaitsTracker)
 }

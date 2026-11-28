@@ -70,10 +70,16 @@ func (s *Service) ListPendingDeletes(ctx context.Context, instanceID int) (*Pend
 		wait := deleteWaitOf(rule, waited).wait
 		group := PendingDeleteGroup{RuleID: rule.ID, RuleName: rule.Name, Torrents: make([]PendingDeleteTorrent, 0, len(ruleRows))}
 		for _, row := range ruleRows {
-			deletesAt := row.UnregisteredSince.Add(wait)
+			since := row.UnregisteredSince
+			if live, timed := waited.Since(row.Hash); timed {
+				since = live
+			} else if waited.Loaded() && !waited.UnregisteredNow(row.Hash) {
+				continue
+			}
+			deletesAt := since.Add(wait)
 			entry := PendingDeleteTorrent{
 				Hash:              row.Hash,
-				UnregisteredSince: row.UnregisteredSince.Unix(),
+				UnregisteredSince: since.Unix(),
 				DeletesAt:         deletesAt.Unix(),
 				AwaitsTracker:     !now.Before(deletesAt) && !waited.UnregisteredNow(row.Hash),
 			}

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
@@ -10,7 +11,10 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import type { PendingDeleteTorrent } from "@/types"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+
+const PAGE_SIZE = 200
 
 interface PendingDeletesDialogProps {
   open: boolean
@@ -37,6 +41,17 @@ export function PendingDeletesDialog({ open, onOpenChange, ruleName, torrents }:
   const { formatTimestamp } = useDateTimeFormatters()
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
+  const [limit, setLimit] = useState(PAGE_SIZE)
+  const displayNames = useMemo(() => {
+    const byDomain = new Map<string, string>()
+    for (const customization of trackerCustomizations ?? []) {
+      for (const domain of customization.domains) {
+        byDomain.set(domain.toLowerCase(), customization.displayName)
+      }
+    }
+    return byDomain
+  }, [trackerCustomizations])
+  const shown = torrents.slice(0, limit)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -62,18 +77,16 @@ export function PendingDeletesDialog({ open, onOpenChange, ruleName, torrents }:
                   </tr>
                 </thead>
                 <tbody>
-                  {torrents.map((torrent) => {
-                    const trackerCustom = torrent.tracker ? trackerCustomizations?.find(c =>
-                      c.domains.some(d => d.toLowerCase() === torrent.tracker.toLowerCase())
-                    ) : undefined
+                  {shown.map((torrent) => {
+                    const displayName = displayNames.get(torrent.tracker.toLowerCase())
                     return (
                       <tr key={torrent.hash} className="border-b last:border-0 hover:bg-muted/30">
                         <td className="p-2">
                           {torrent.tracker ? (
                             <div className="flex items-center gap-1.5">
                               <TrackerIconImage tracker={torrent.tracker} trackerIcons={trackerIcons} />
-                              <TruncatedText className="max-w-[120px]" tooltipContent={trackerCustom?.displayName ? torrent.tracker : undefined}>
-                                {trackerCustom?.displayName ?? torrent.tracker}
+                              <TruncatedText className="max-w-[120px]" tooltipContent={displayName ? torrent.tracker : undefined}>
+                                {displayName ?? torrent.tracker}
                               </TruncatedText>
                             </div>
                           ) : <span className="text-muted-foreground">-</span>}
@@ -96,6 +109,14 @@ export function PendingDeletesDialog({ open, onOpenChange, ruleName, torrents }:
                 </tbody>
               </table>
             </div>
+            {torrents.length > shown.length && (
+              <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
+                <span>{t("preferences.workflowPreview.andMoreTorrents", { count: torrents.length - shown.length })}</span>
+                <Button size="sm" variant="secondary" onClick={() => setLimit(limit + PAGE_SIZE)}>
+                  {t("preferences.workflowPreview.loadMore")}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </DialogContent>

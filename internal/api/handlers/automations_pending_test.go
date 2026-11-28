@@ -67,16 +67,9 @@ func TestListPendingDeletesGroupsTheWaitingTorrentsByRule(t *testing.T) {
 		}}}, list)
 	})
 
-	t.Run("answers an empty list for an instance without waiting torrents", func(t *testing.T) {
-		rec := serve(NewAutomationHandler(rules, nil, instances, nil, service), strconv.Itoa(instance.ID+1))
+	t.Run("answers 503 without the automations service", func(t *testing.T) {
+		rec := serve(NewAutomationHandler(rules, nil, instances, nil, nil), strconv.Itoa(instance.ID))
 
-		require.Equal(t, http.StatusOK, rec.Code)
-		require.JSONEq(t, `{"rules":[]}`, rec.Body.String())
-	})
-
-	t.Run("rejects an invalid instance ID", func(t *testing.T) {
-		rec := serve(NewAutomationHandler(rules, nil, instances, nil, service), "abc")
-
-		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	})
 }

@@ -7,8 +7,6 @@ import (
 	"net/http"
 
 	"github.com/rs/zerolog/log"
-
-	"github.com/autobrr/qui/internal/services/automations"
 )
 
 func (h *AutomationHandler) ListPendingDeletes(w http.ResponseWriter, r *http.Request) {
@@ -17,7 +15,7 @@ func (h *AutomationHandler) ListPendingDeletes(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if h.service == nil {
-		RespondJSON(w, r, http.StatusOK, automations.PendingDeleteList{Rules: []automations.PendingDeleteGroup{}})
+		RespondError(w, http.StatusServiceUnavailable, "Automations service not available")
 		return
 	}
 	list, err := h.service.ListPendingDeletes(r.Context(), instanceID)
