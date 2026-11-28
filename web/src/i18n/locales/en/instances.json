@@ -1285,6 +1285,7 @@
         "remoteNotAvailable": "Not available on remote instances",
         "wait": "Unregistered for at least",
         "waitHelp": "The rule deletes a torrent only once it has been unregistered this long. 0 deletes it on the first match.",
+        "rawTrackerHint": "This condition deletes on the first match. Only the Unregistered condition waits before it deletes.",
         "waitLocked": "To set another time, change the condition to Unregistered.",
         "waitUnit": "Unregistered time unit"
       },

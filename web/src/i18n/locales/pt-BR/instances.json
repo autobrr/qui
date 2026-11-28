@@ -1285,6 +1285,7 @@
         "remoteNotAvailable": "Indisponível em instâncias remotas",
         "wait": "Não registrado há pelo menos",
         "waitHelp": "A regra só exclui um torrent quando ele está não registrado há esse tempo. 0 exclui na primeira correspondência.",
+        "rawTrackerHint": "Esta condição exclui na primeira correspondência. Só a condição Não Registrado espera antes de excluir.",
         "waitLocked": "Para definir outro tempo, mude a condição para Não Registrado.",
         "waitUnit": "Unidade do tempo sem registro"
       },
