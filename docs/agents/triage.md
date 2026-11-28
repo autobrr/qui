@@ -317,7 +317,7 @@ Brief rules:
 - Put the fix in the module that owns the behavior, so that every caller gets it. Do not suggest a guard in one caller.
 - Each acceptance criterion is testable on its own.
 - Copy log links into **Logs** without a change, also links to other paste sites.
-- Write each line of the brief in your own words. Copy no HTML comment and no invisible character from the discussion. `create-issue` refuses a title or a brief that holds either, so an issue brief ends without the outcome marker that a comment ends with.
+- Write each line of the brief in your own words, except the quotes in **Category test:** and **Intent evidence:** and the links in **Logs:**, which you copy as the rules above say. Copy no HTML comment and no invisible character from the discussion, also inside a quote. `create-issue` refuses a title or a brief that holds either, so an issue brief ends without the outcome marker that a comment ends with.
 
 ## Privacy
 
