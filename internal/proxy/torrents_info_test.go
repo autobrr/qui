@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -32,7 +33,7 @@ func TestTorrentsInfoFiltersLikeQBittorrent(t *testing.T) {
 			"aa":{"name":"A","state":"stalledUP","category":"movies","tags":"keep","progress":1},
 			"bb":{"name":"B","state":"downloading","category":"","tags":"","progress":0.5},
 			"cc":{"name":"C","state":"stalledUP","category":"movies/extra","tags":"","progress":1}}}`
-	handler, instanceID := newInfoTestHandler(t, mainData)
+	handler, instanceID, _ := newInfoTestHandler(t, mainData)
 
 	for _, tc := range []struct {
 		query string
@@ -69,7 +70,7 @@ func TestTorrentsInfoFiltersLikeQBittorrent(t *testing.T) {
 	}
 }
 
-func newInfoTestHandler(t *testing.T, mainData string) (*Handler, int) {
+func newInfoTestHandler(t *testing.T, mainData string) (*Handler, int, string) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -94,20 +95,23 @@ func newInfoTestHandler(t *testing.T, mainData string) (*Handler, int) {
 	require.NoError(t, err)
 	instance, err := instanceStore.Create(t.Context(), "test", srv.URL, "", "", nil, nil, false, nil)
 	require.NoError(t, err)
+	keys := models.NewClientAPIKeyStore(db)
+	key, _, err := keys.Create(t.Context(), "sonarr", instance.ID)
+	require.NoError(t, err)
 	pool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 10*time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
 	client, err := pool.GetClient(t.Context(), instance.ID)
 	require.NoError(t, err)
 	require.NoError(t, client.SyncOwner().Sync(t.Context()))
-	return NewHandler(pool, nil, instanceStore, qbittorrent.NewSyncManager(pool, nil), nil, nil, "/"), instance.ID
+	return NewHandler(pool, keys, instanceStore, qbittorrent.NewSyncManager(pool, nil), nil, nil, "/"), instance.ID, key
 }
 
 func TestProxyListsKeepTheAnnounceURL(t *testing.T) {
 	t.Parallel()
 
 	const announce = "https://tracker.example.invalid/abc123xyz/announce"
-	handler, instanceID := newInfoTestHandler(t, `{"rid":1,"full_update":true,
+	handler, instanceID, _ := newInfoTestHandler(t, `{"rid":1,"full_update":true,
 		"torrents":{"aa":{"name":"A","state":"stalledUP","progress":1,"tracker":"`+announce+`"}}}`)
 	request := func(path string) *http.Request {
 		ctx := context.WithValue(t.Context(), ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "sonarr", InstanceID: instanceID})
@@ -156,29 +160,25 @@ func TestTorrentSearchWithoutLimitReturnsAllTorrents(t *testing.T) {
 	}
 	b.WriteString(`}}`)
 
-	handler, instanceID := newInfoTestHandler(t, b.String())
-	request := func(path string) *http.Request {
-		ctx := context.WithValue(t.Context(), ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "sonarr", InstanceID: instanceID})
-		ctx = context.WithValue(ctx, InstanceIDContextKey, instanceID)
-		return httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
-	}
-	decodeSearch := func(t *testing.T, rec *httptest.ResponseRecorder) (response struct {
+	handler, _, key := newInfoTestHandler(t, b.String())
+	router := chi.NewRouter()
+	handler.Routes(router)
+	search := func(t *testing.T, query string) (response struct {
 		Torrents []struct{} `json:"torrents"`
 		Total    int        `json:"total"`
 		HasMore  bool       `json:"hasMore"`
 	}) {
 		t.Helper()
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/proxy/"+key+"/api/v2/torrents/search"+query, nil))
+		require.Equal(t, http.StatusOK, rec.Code)
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
 		return response
 	}
 
 	t.Run("omitted limit returns every matching torrent", func(t *testing.T) {
 		t.Parallel()
-		rec := httptest.NewRecorder()
-		handler.handleTorrentSearch(rec, request("/api/v2/torrents/search"))
-		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-
-		response := decodeSearch(t, rec)
+		response := search(t, "")
 		require.Len(t, response.Torrents, total)
 		require.Equal(t, total, response.Total)
 		require.False(t, response.HasMore)
@@ -186,11 +186,7 @@ func TestTorrentSearchWithoutLimitReturnsAllTorrents(t *testing.T) {
 
 	t.Run("explicit limit still paginates", func(t *testing.T) {
 		t.Parallel()
-		rec := httptest.NewRecorder()
-		handler.handleTorrentSearch(rec, request("/api/v2/torrents/search?limit=25"))
-		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-
-		response := decodeSearch(t, rec)
+		response := search(t, "?limit=25")
 		require.Len(t, response.Torrents, 25)
 		require.Equal(t, total, response.Total)
 		require.True(t, response.HasMore)
