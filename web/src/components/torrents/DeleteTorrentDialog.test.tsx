@@ -169,4 +169,45 @@ describe("DeleteTorrentDialog", () => {
     fireEvent.click(screen.getByText("Show affected torrents"))
     expect(screen.getByText("Second")).not.toBeNull()
   })
+  it("warns about torrents that qui first saw as unregistered less than 2 days ago, and keeps Delete enabled", () => {
+    renderDialog({
+      count: 340,
+      isAllSelected: true,
+      previewTorrents: torrents,
+      unregisteredWarning: {
+        count: 312,
+        since: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        trackers: [
+          { host: "tracker.example.invalid", count: 300 },
+          { host: "other.example.invalid", count: 9 },
+          { host: "third.example.invalid", count: 1 },
+          { host: "fourth.example.invalid", count: 1 },
+          { host: "fifth.example.invalid", count: 1 },
+        ],
+      },
+    })
+
+    expect(screen.getByText("Recently unregistered")).not.toBeNull()
+    expect(screen.getByText("qui first saw 312 of the 340 torrents as unregistered less than 2 days ago.")).not.toBeNull()
+    expect(screen.getByText("Earliest: 3 hours ago")).not.toBeNull()
+    expect(screen.getByText("tracker.example.invalid: 300 torrents")).not.toBeNull()
+    expect(screen.getByText("other.example.invalid: 9 torrents")).not.toBeNull()
+    expect(screen.getByText("third.example.invalid: 1 torrent")).not.toBeNull()
+    expect(screen.queryByText(/fourth\.example\.invalid/)).toBeNull()
+    expect(screen.getByText("and 2 more trackers")).not.toBeNull()
+    expect(screen.getByRole("button", { name: "Delete 340 torrents" }).hasAttribute("disabled")).toBe(false)
+  })
+
+  it("says all when every torrent of the selection is recent", () => {
+    renderDialog({ count: 1, unregisteredWarning: { count: 1, since: new Date().toISOString(), trackers: [{ host: "tracker.example.invalid", count: 1 }] } })
+
+    expect(screen.getByText("qui first saw this torrent as unregistered less than 2 days ago.")).not.toBeNull()
+    expect(screen.getByRole("button", { name: "Delete" }).hasAttribute("disabled")).toBe(false)
+  })
+
+  it("shows no warning without an answer", () => {
+    renderDialog({ count: 2, previewTorrents: torrents.slice(0, 2) })
+
+    expect(screen.queryByText("Recently unregistered")).toBeNull()
+  })
 })

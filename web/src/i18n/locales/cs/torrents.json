@@ -164,6 +164,22 @@
     "hideAffected": "Skrýt ovlivněné torrenty",
     "more": "+ {{count}} dalších"
   },
+  "unregisteredWarning": {
+    "title": "Nedávno neregistrované",
+    "all_one": "qui poprvé vidělo tento torrent jako neregistrovaný před méně než 2 dny.",
+    "all_few": "qui poprvé vidělo všechny {{count}} torrenty jako neregistrované před méně než 2 dny.",
+    "all_other": "qui poprvé vidělo všech {{count}} torrentů jako neregistrované před méně než 2 dny.",
+    "some_one": "qui poprvé vidělo {{matched}} z {{count}} torrentu jako neregistrované před méně než 2 dny.",
+    "some_few": "qui poprvé vidělo {{matched}} ze {{count}} torrentů jako neregistrované před méně než 2 dny.",
+    "some_other": "qui poprvé vidělo {{matched}} z {{count}} torrentů jako neregistrované před méně než 2 dny.",
+    "earliest": "Nejdříve: {{since}}",
+    "tracker_one": "{{host}}: {{count}} torrent",
+    "tracker_few": "{{host}}: {{count}} torrenty",
+    "tracker_other": "{{host}}: {{count}} torrentů",
+    "moreTrackers_one": "a {{count}} další tracker",
+    "moreTrackers_few": "a {{count}} další trackery",
+    "moreTrackers_other": "a {{count}} dalších trackerů"
+  },
   "recheckDialog": {
     "title": "Vynutit opětovné ověření {{count}} torrent(y)?",
     "description": "Vynutí qBittorrent opětovně ověřit všechny části vybraných torrentů. Tento proces může trvat nějakou dobu a torrenty budou dočasně pozastaveny.",

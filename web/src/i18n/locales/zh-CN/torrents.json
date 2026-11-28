@@ -156,6 +156,14 @@
     "hideAffected": "隐藏受影响的种子",
     "more": "+ {{count}} 更多"
   },
+  "unregisteredWarning": {
+    "title": "最近才未注册",
+    "all_other": "qui 在不到 2 天前首次发现全部 {{count}} 个种子未注册。",
+    "some_other": "qui 在不到 2 天前首次发现 {{count}} 个种子中有 {{matched}} 个未注册。",
+    "earliest": "最早：{{since}}",
+    "tracker_other": "{{host}}：{{count}} 个种子",
+    "moreTrackers_other": "以及另外 {{count}} 个 Tracker"
+  },
   "recheckDialog": {
     "title": "强制重新校验 {{count}} 个种子？",
     "description": "这将强制 qBittorrent 重新校验所选种子的所有分块。此过程可能需要一些时间，并会临时暂停种子。",

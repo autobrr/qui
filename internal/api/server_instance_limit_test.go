@@ -175,17 +175,18 @@ func TestRoutesThatSpanInstancesRefuseInstanceLimit(t *testing.T) {
 	key := rig.limitedKey(t, 1)
 
 	spansInstances := map[routeKey]struct{}{
-		{http.MethodGet, "/api/instances/{instanceID}/cross-seed/status"}:            {},
-		{http.MethodGet, "/api/torrents/cross-instance"}:                             {},
-		{http.MethodPost, "/api/torrents/export"}:                                    {},
-		{http.MethodPut, "/api/instances/order"}:                                     {},
-		{http.MethodPost, "/api/instances/{instanceID}/torrents/delete-cross-seeds"}: {},
-		{http.MethodGet, "/api/live-samples"}:                                        {},
-		{http.MethodGet, "/api/transfer-history/status"}:                             {},
-		{http.MethodPut, "/api/transfer-history/settings"}:                           {},
-		{http.MethodDelete, "/api/transfer-history"}:                                 {},
-		{http.MethodGet, "/api/database/shrink"}:                                     {},
-		{http.MethodDelete, "/api/database/shrink/result"}:                           {},
+		{http.MethodGet, "/api/instances/{instanceID}/cross-seed/status"}:              {},
+		{http.MethodGet, "/api/torrents/cross-instance"}:                               {},
+		{http.MethodPost, "/api/torrents/export"}:                                      {},
+		{http.MethodPut, "/api/instances/order"}:                                       {},
+		{http.MethodPost, "/api/instances/{instanceID}/torrents/delete-cross-seeds"}:   {},
+		{http.MethodPost, "/api/instances/{instanceID}/torrents/unregistered-warning"}: {},
+		{http.MethodGet, "/api/live-samples"}:                                          {},
+		{http.MethodGet, "/api/transfer-history/status"}:                               {},
+		{http.MethodPut, "/api/transfer-history/settings"}:                             {},
+		{http.MethodDelete, "/api/transfer-history"}:                                   {},
+		{http.MethodGet, "/api/database/shrink"}:                                       {},
+		{http.MethodDelete, "/api/database/shrink/result"}:                             {},
 	}
 	var refused int
 	walkAPIRoutes(t, rig.permissionRig, func(route routeKey, path string) {
