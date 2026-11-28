@@ -1336,6 +1336,7 @@
         "remoteNotAvailable": "Není dostupné pro vzdálené instance",
         "wait": "Neregistrované alespoň",
         "waitHelp": "Pravidlo smaže torrent, až když je tak dlouho neregistrovaný. 0 ho smaže při první shodě.",
+        "rawTrackerHint": "Tato podmínka maže při první shodě. Před smazáním čeká jen podmínka Neregistrované.",
         "waitLocked": "Jinou dobu nastavíte, když podmínku změníte na Neregistrované.",
         "waitUnit": "Jednotka doby bez registrace"
       },

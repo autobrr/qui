@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { AutomationPreviewResult, RuleCondition } from "@/types"
+import type { AutomationPreviewResult, ConditionField, RuleCondition } from "@/types"
 
 export const DEFAULT_DELETE_WAIT_SECONDS = 2 * 24 * 3600
 export const MAX_DELETE_WAIT_SECONDS = 365 * 24 * 3600
+export const RAW_TRACKER_FIELDS = ["TRACKER_STATUS", "TRACKER_MESSAGE"] as const satisfies readonly ConditionField[]
 
 function isStateUnregistered(condition: RuleCondition): boolean {
   return condition.field === "STATE" && condition.value?.trim().toLowerCase() === "unregistered"

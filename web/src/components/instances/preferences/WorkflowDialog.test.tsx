@@ -342,6 +342,26 @@ describe("WorkflowDialog Delete wait", () => {
   })
 })
 
+describe("WorkflowDialog raw tracker hint", () => {
+  const message: RuleCondition = { field: "TRACKER_MESSAGE", operator: "CONTAINS", value: "unregistered" }
+  const status: RuleCondition = { field: "TRACKER_STATUS", operator: "EQUAL", value: "tracker_error" }
+  const ratio: RuleCondition = { field: "RATIO", operator: "GREATER_THAN", value: "2" }
+  const nested: RuleCondition = { operator: "AND", conditions: [ratio, { operator: "OR", conditions: [ratio, status] }] }
+  const withConditions = (conditions: Omit<Automation["conditions"], "schemaVersion">): Automation => ({ ...rule, conditions: { schemaVersion: "1", ...conditions } })
+
+  it.each([
+    { name: "a delete rule on Tracker message", dialogRule: withConditions({ delete: { enabled: true, mode: "delete", condition: message } }), hints: 1 },
+    { name: "a delete rule on Tracker status in a nested group", dialogRule: withConditions({ delete: { enabled: true, mode: "delete", condition: nested } }), hints: 1 },
+    { name: "a delete rule on ratio only", dialogRule: withConditions({ delete: { enabled: true, mode: "delete", condition: ratio } }), hints: 0 },
+    { name: "a tag rule on Tracker message", dialogRule: withConditions({ tags: [{ enabled: true, tags: ["dead"], mode: "add", condition: message }] }), hints: 0 },
+  ])("shows $hints hints for $name", ({ dialogRule, hints }) => {
+    const client = renderDialog(dialogRule)
+
+    expect(screen.queryAllByText(key("delete.rawTrackerHint"))).toHaveLength(hints)
+    client.clear()
+  })
+})
+
 describe("WorkflowDialog Transfer to Instance", () => {
   const renderRule = (conditions: Automation["conditions"]) => {
     mocks.instancesQuery.data = [{ id: 1, name: "Source", capabilities: noCapabilities }, { id: 2, name: "Archive", capabilities: noCapabilities }]
