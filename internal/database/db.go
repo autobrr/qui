@@ -415,9 +415,10 @@ func (t *Tx) promoteStatementsToCache() {
 }
 
 const (
-	defaultBusyTimeout       = 5 * time.Second
-	defaultBusyTimeoutMillis = int(defaultBusyTimeout / time.Millisecond)
-	connectionSetupTimeout   = 5 * time.Second
+	defaultBusyTimeout           = 5 * time.Second
+	defaultBusyTimeoutMillis     = int(defaultBusyTimeout / time.Millisecond)
+	connectionSetupTimeout       = 5 * time.Second
+	sqliteConnectionSetupTimeout = 30 * time.Second
 
 	startupCheckpointWarnAfter = 3 * time.Second
 )
@@ -426,20 +427,24 @@ const sqliteTimeParams = "_timezone=UTC&_time_format=sqlite"
 
 type pragmaExecFn func(ctx context.Context, stmt string) error
 
+func runSQLiteConnectionHook(dsn string, exec pragmaExecFn) error {
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteConnectionSetupTimeout)
+	defer cancel()
+
+	return applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		if err := exec(ctx, stmt); err != nil {
+			return fmt.Errorf("connection hook exec %q: %w", stmt, err)
+		}
+		return nil
+	}, isReadOnlyDSN(dsn))
+}
+
 func init() {
 	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
-		ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
-		defer cancel()
-
-		readOnly := isReadOnlyDSN(dsn)
-
-		return applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+		return runSQLiteConnectionHook(dsn, func(ctx context.Context, stmt string) error {
 			_, err := conn.ExecContext(ctx, stmt, nil)
-			if err != nil {
-				return fmt.Errorf("connection hook exec %q: %w", stmt, err)
-			}
-			return nil
-		}, readOnly)
+			return err
+		})
 	})
 }
 
@@ -545,7 +550,7 @@ func New(databasePath string) (*DB, error) {
 	writerConn.SetConnMaxLifetime(0)
 	log.Debug().Msg("Writer connection opened with single connection")
 
-	ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteConnectionSetupTimeout)
 	defer cancel()
 	if err := applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
 		_, execErr := writerConn.ExecContext(ctx, stmt)
@@ -577,7 +582,7 @@ func New(databasePath string) (*DB, error) {
 	readerPool.SetConnMaxLifetime(0)
 	log.Debug().Msg("Reader pool opened in read-only mode")
 
-	ctx2, cancel2 := context.WithTimeout(context.Background(), connectionSetupTimeout)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), sqliteConnectionSetupTimeout)
 	defer cancel2()
 	if err := applyConnectionPragmas(ctx2, func(ctx context.Context, stmt string) error {
 		_, execErr := readerPool.ExecContext(ctx, stmt)

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -175,6 +176,20 @@ func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
 		return nil
 	}, true))
 	require.NotContains(t, statementsRO, "PRAGMA journal_mode = WAL", "read-only connections must not attempt to set journal_mode")
+}
+
+func TestSQLiteConnectionHookGivesUpOnAHungPragma(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		err := runSQLiteConnectionHook("test.db", func(ctx context.Context, stmt string) error {
+			if stmt == "PRAGMA synchronous = NORMAL" {
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			return nil
+		})
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorContains(t, err, "PRAGMA synchronous = NORMAL")
+	})
 }
 
 type columnSpec struct {

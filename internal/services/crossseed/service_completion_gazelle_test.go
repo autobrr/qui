@@ -252,6 +252,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 
 		releaseCache: NewReleaseCache(),
 	}
+	svc.completionSearch = svc
 
 	svc.HandleTorrentCompletion(context.Background(), 1, src)
 
