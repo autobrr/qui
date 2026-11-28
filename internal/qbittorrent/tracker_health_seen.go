@@ -112,7 +112,8 @@ func (sm *SyncManager) setTrackerHealth(instanceID int, torrent *qbt.Torrent, tr
 	}
 	hash := torrent.Hash
 	sinceChanged := sm.advanceOneUnregisteredSince(instanceID, torrent, trackers, health, at)
-	if snapshot.Health(hash) == health && !sinceChanged {
+	before, _ := snapshot.UnregisteredBy(hash)
+	if snapshot.Health(hash) == health && !sinceChanged && (reason == nil || unregisteredTrackerOf(reason.trackers, reason.by) == before) {
 		return false
 	}
 	byHash := make(map[string]TrackerHealth, len(snapshot.byHash)+1)

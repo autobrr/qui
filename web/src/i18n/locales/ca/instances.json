@@ -1370,6 +1370,11 @@
       "selectedTags_one": "Només es tindrà en compte {{count}} etiqueta seleccionada.",
       "selectedTags_other": "Només es tindran en compte {{count}} etiquetes seleccionades."
     },
+    "unregisteredDeleteFacts": {
+      "since": "No registrat des del {{time}}",
+      "tracker": "Tracker: {{host}}",
+      "message": "Missatge: {{message}}"
+    },
     "activityRunDialog": {
       "run": "execució",
       "dryRunNote": "Execució de prova: no s'ha aplicat cap canvi.",

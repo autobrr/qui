@@ -949,6 +949,11 @@
         "saveFailed": "Falha ao salvar as configurações"
       }
     },
+    "unregisteredDeleteFacts": {
+      "since": "Não registrado desde {{time}}",
+      "tracker": "Tracker: {{host}}",
+      "message": "Mensagem: {{message}}"
+    },
     "activityRunDialog": {
       "run": "execução",
       "dryRunNote": "Simulação: nenhuma alteração foi realizada.",

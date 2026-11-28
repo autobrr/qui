@@ -127,6 +127,13 @@ func (w Waited) Since(hash string) (time.Time, bool) {
 	return w.snapshot.UnregisteredSince(hash)
 }
 
+func (w Waited) UnregisteredBy(hash string) (qbittorrent.UnregisteredTracker, bool) {
+	if isCleared(w.cleared, hash) {
+		return qbittorrent.UnregisteredTracker{}, false
+	}
+	return w.snapshot.UnregisteredBy(hash)
+}
+
 func (w Waited) DueAt(hash string, wait time.Duration) time.Time {
 	since, timed := w.snapshot.UnregisteredSince(hash)
 	if !timed {

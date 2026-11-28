@@ -93,6 +93,7 @@ import i18n from "../../../i18n"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { DeletePreviewCounts } from "./DeletePreviewCounts"
+import { UnregisteredDeleteFacts } from "./UnregisteredDeleteFacts"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
 import { RunWorkflowNowDialog, type RunWorkflowNowTarget } from "./RunWorkflowNowDialog"
@@ -1348,6 +1349,10 @@ export function WorkflowsOverview() {
                                       <div className="text-xs bg-muted/40 p-2 rounded">
                                         <span>{event.reason}</span>
                                       </div>
+                                    )}
+
+                                    {event.details?.unregistered && (
+                                      <UnregisteredDeleteFacts facts={event.details.unregistered} />
                                     )}
 
                                     {(event.details || event.ruleName) && (

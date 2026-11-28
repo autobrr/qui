@@ -603,6 +603,8 @@ The activity log gets a **Wait started** line when a live run of an enabled dele
 
 For a rule with **Notify** on, the **Automations actions applied** notification also reports the torrents that start to wait: their count, the rule and its wait, the trackers with the most torrents, and up to 3 names. qui sends it when they start to wait, and not again while they wait or when they leave the wait.
 
+When a rule on **Unregistered** deletes a torrent that is unregistered, its activity row and its log line show what qui knows of since when it saw the torrent as unregistered, and the host, status, and message of the tracker that said so, with URLs and the announce passkey removed from the message. A cross-seed, hardlink copy, or group member that the rule deletes with it shows none of this.
+
 In the modes `deleteWithFilesPreserveCrossSeeds` and `deleteWithFilesIncludeCrossSeeds`, qui also checks the other active instances with local filesystem access. Two instances can save into one folder on one disk. If a torrent on another instance uses the same file on disk as the torrent that the rule deletes, qui removes the torrent and keeps the files. In include mode, qui keeps the files of the whole group. A rule never deletes a torrent on another instance.
 
 If an instance with local filesystem access is offline, qui cannot check it. These two modes then keep the files of each torrent that they delete, and the log names the offline instance. qui ignores an instance that you turned off in qui. `deleteWithFiles` does not check other instances. The [Cross-Seed overview](./cross-seed/overview.md) tells what qui finds across instances and what it misses.
