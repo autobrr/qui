@@ -37,6 +37,9 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 	orRatioGroup := waitDeleteRule(1, new(0), &models.RuleCondition{Operator: models.OperatorOr, Conditions: []*models.RuleCondition{unregisteredIs("true"), ratioBelow("1")}})
 	orRatioGroup.Conditions.Delete.GroupID = GroupCrossSeedContentPath
 	orRatioGroup.Conditions.Delete.Atomic = "all"
+	orNotDown := waitDeleteRule(1, nil, &models.RuleCondition{Operator: models.OperatorOr, Conditions: []*models.RuleCondition{
+		unregisteredIs("true"), {Field: FieldState, Operator: models.OperatorNotEqual, Value: "tracker_down"},
+	}})
 	notUnregisteredGroup := waitDeleteRule(2, new(0), &models.RuleCondition{Operator: models.OperatorAnd, Conditions: []*models.RuleCondition{unregisteredIs("false"), ratioBelow("1")}})
 	notUnregisteredGroup.Conditions.Delete.GroupID = GroupCrossSeedContentPath
 	notUnregisteredGroup.Conditions.Delete.Atomic = "all"
@@ -62,6 +65,11 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 		{name: "a stop through qui during the run restarts the wait that the read still sees as unregistered", rules: []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))},
 			after:       func(_ map[string]qbittorrent.TrackerHealth, since map[string]time.Time) { delete(since, waitOldHash) },
 			wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash}}, wantSkipped: 1},
+		{name: "a due torrent whose tracker turns down during the run is kept by a condition on another state", rules: []*models.Automation{orNotDown},
+			after: func(health map[string]qbittorrent.TrackerHealth, _ map[string]time.Time) {
+				health[waitOldHash] = qbittorrent.TrackerHealthDown
+			},
+			still: map[string]bool{waitFreshHash: true}, wantDeleted: []string{waitFreshHash}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 1, wantSkipped: 1},
 		{name: "a group that needs every member holds when the read clears one", rules: []*models.Automation{group}, still: map[string]bool{waitOldHash: true},
 			wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 1, wantSkipped: 1},
 		{name: "the same group deletes when the read confirms both", rules: []*models.Automation{group},

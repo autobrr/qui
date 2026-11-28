@@ -36,11 +36,11 @@ func (r Reader) Known() bool {
 }
 
 func (r Reader) Is(hash string, health qbittorrent.TrackerHealth) bool {
-	if isCleared(r.cleared, hash) {
-		return false
-	}
 	if health != qbittorrent.TrackerHealthUnregistered {
 		return r.snapshot.Health(hash) == health
+	}
+	if isCleared(r.cleared, hash) {
+		return false
 	}
 	switch r.reading {
 	case readMarked:
