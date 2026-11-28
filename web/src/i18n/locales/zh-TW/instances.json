@@ -727,6 +727,15 @@
       "waitsUntil": "{{time}} 之後",
       "waitsForTracker": "當 Tracker 再次回報未註冊時"
     },
+    "pendingDeletes": {
+      "count_other": "{{count}} 個等待中",
+      "title": "等待刪除：{{name}}",
+      "description": "時間到後，此規則會刪除每個種子，除非 Tracker 恢復正常或種子已停止。",
+      "message": "Tracker 訊息",
+      "unregisteredSince": "未註冊起始時間",
+      "nextRun": "下次執行時",
+      "empty": "沒有種子在等待此規則。"
+    },
     "orphanScanOverview": {
       "title": "孤立項目掃描",
       "noInstancesDescription": "未配置實例。請在設定中新增實例以使用此服務。",

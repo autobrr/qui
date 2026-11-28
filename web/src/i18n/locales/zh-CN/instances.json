@@ -727,6 +727,15 @@
       "waitsUntil": "{{time}} 之后",
       "waitsForTracker": "当 Tracker 再次返回未注册时"
     },
+    "pendingDeletes": {
+      "count_other": "{{count}} 个等待中",
+      "title": "等待删除：{{name}}",
+      "description": "时间到后，此规则会删除每个种子，除非 Tracker 恢复正常或种子已停止。",
+      "message": "Tracker 消息",
+      "unregisteredSince": "未注册起始时间",
+      "nextRun": "下次运行时",
+      "empty": "没有种子在等待此规则。"
+    },
     "orphanScanOverview": {
       "title": "孤立项目扫描",
       "noInstancesDescription": "未配置实例。请在设置中添加实例以使用此服务。",

@@ -4,12 +4,12 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
-import type { Automation, AutomationActivity } from "@/types"
+import type { Automation, AutomationActivity, PendingDeleteList } from "@/types"
 
 import { WorkflowsOverview } from "./WorkflowsOverview"
 
@@ -18,17 +18,34 @@ const mocks = vi.hoisted(() => ({
   trackerData: { data: undefined },
   rules: [] as Automation[],
   activity: [] as AutomationActivity[],
+  pendingDeletes: { rules: [] } as PendingDeleteList,
+  incognitoMode: [false, () => {}] as [boolean, () => void],
+  nextPendingDeletes: null as Promise<PendingDeleteList> | null,
+  updates: 0,
+  rulesReads: 0,
 }))
 
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => mocks.instances }))
+vi.mock("@/lib/incognito", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/incognito")>(),
+  useIncognitoMode: () => mocks.incognitoMode,
+}))
 vi.mock("@/contexts/SyncStreamContext", () => ({ useActivityStream: () => {} }))
 vi.mock("@/hooks/useTrackerCustomizations", () => ({ useTrackerCustomizations: () => mocks.trackerData }))
 vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => mocks.trackerData }))
 vi.mock("@/components/ui/json-editor", () => ({ JsonEditor: () => null, preloadJsonEditor: () => Promise.resolve() }))
 vi.mock("@/lib/api", () => ({
   api: {
-    listAutomations: () => Promise.resolve(mocks.rules),
+    listAutomations: () => {
+      mocks.rulesReads++
+      return Promise.resolve(mocks.rules)
+    },
     getAutomationActivity: () => Promise.resolve(mocks.activity),
+    getPendingDeletes: () => mocks.nextPendingDeletes ?? Promise.resolve(mocks.pendingDeletes),
+    updateAutomation: () => {
+      mocks.updates++
+      return Promise.resolve(mocks.rules[0])
+    },
   },
 }))
 
@@ -37,6 +54,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
   mocks.rules = []
   mocks.activity = []
+  mocks.pendingDeletes = { rules: [] }
+  mocks.incognitoMode = [false, () => {}]
+  mocks.nextPendingDeletes = null
+  mocks.updates = 0
+  mocks.rulesReads = 0
 })
 
 function transferRule(overrides: Partial<Automation>): Automation {
@@ -66,7 +88,90 @@ async function renderOverview() {
   fireEvent.click(await screen.findByRole("button", { name: /seedbox/ }))
 }
 
+function deleteRule(overrides: Partial<Automation>): Automation {
+  return {
+    id: 4, instanceId: 1, name: "Clean unregistered", trackerPattern: "*", enabled: true, dryRun: false, notify: false, sortOrder: 1,
+    conditions: { schemaVersion: "1", delete: { enabled: true, mode: "delete", condition: { field: "IS_UNREGISTERED", operator: "EQUAL", value: "true" } } },
+    ...overrides,
+  }
+}
+
 describe("WorkflowsOverview", () => {
+  it("shows the count of waiting torrents only on the delete rule that has them", async () => {
+    mocks.rules = [deleteRule({ id: 4 }), deleteRule({ id: 5, name: "Clean ratio", sortOrder: 2 })]
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [
+      { hash: "aaaa1111", name: "Show.S01.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false },
+      { hash: "bbbb2222", name: "Film.2020.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false },
+    ] }] }
+    await renderOverview()
+
+    const badge = await screen.findByRole("button", { name: "2 waiting" })
+    expect(badge.closest(".grid")?.textContent).toContain("Clean unregistered")
+    expect(screen.getAllByText(/waiting$/)).toHaveLength(1)
+  })
+
+  it("lists the waiting torrents of a rule with what happens next", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 10, 28, 12))
+    const now = Date.UTC(2026, 10, 28, 12) / 1000
+    mocks.rules = [deleteRule({})]
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [
+      { hash: "aaaa1111", name: "", tracker: "", message: "", unregisteredSince: now - 3 * 86400, deletesAt: now - 86400, awaitsTracker: true },
+      { hash: "bbbb2222", name: "Film.2020.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: now - 3600, deletesAt: now + 47 * 3600, awaitsTracker: false },
+      { hash: "cccc3333", name: "", tracker: "", message: "", unregisteredSince: now - 3600, deletesAt: now + 47 * 3600, awaitsTracker: true },
+    ] }] }
+    await renderOverview()
+
+    fireEvent.click(await screen.findByRole("button", { name: "3 waiting" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog.textContent).toContain("This rule deletes each torrent when its time is up, unless a tracker works again or the torrent is stopped.")
+    const rows = Array.from(dialog.querySelectorAll("tbody tr")).map(row => Array.from(row.querySelectorAll("td")).map(cell => cell.textContent))
+    expect(rows).toHaveLength(3)
+    expect(rows[0][1]).toBe("aaaa1111")
+    expect(rows[0][4]).toBe("When the tracker answers unregistered")
+    expect(rows[1][0]).toContain("tracker.example.invalid")
+    expect(rows[1].slice(1, 3)).toEqual(["Film.2020.1080p-GRP", "Unregistered torrent"])
+    expect(rows[1][4]).toMatch(/^After /)
+    expect(rows[2][4]).toBe(rows[1][4])
+  })
+
+  it("keeps the count while it reads the waiting torrents again after a rule is saved", async () => {
+    const waiting = (hash: string) => ({ hash, name: "", tracker: "", message: "", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false })
+    mocks.rules = [deleteRule({})]
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [waiting("aaaa1111")] }] }
+    await renderOverview()
+    await screen.findByRole("button", { name: "1 waiting" })
+
+    let answer: (list: PendingDeleteList) => void = () => {}
+    mocks.nextPendingDeletes = new Promise<PendingDeleteList>((resolve) => { answer = resolve })
+    fireEvent.click(screen.getByRole("switch"))
+
+    await waitFor(() => expect(mocks.updates).toBe(1))
+    await waitFor(() => expect(mocks.rulesReads).toBe(2))
+    expect(screen.getByRole("button", { name: "1 waiting" })).toBeTruthy()
+    await act(async () => answer({ rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [waiting("aaaa1111"), waiting("bbbb2222")] }] }))
+    expect(await screen.findByRole("button", { name: "2 waiting" })).toBeTruthy()
+  })
+
+  it("hides the name and the tracker of each waiting torrent in incognito mode", async () => {
+    mocks.incognitoMode = [true, () => {}]
+    mocks.rules = [deleteRule({})]
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [
+      { hash: "bbbb2222", name: "Film.2020.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false },
+      { hash: "cccc3333", name: "", tracker: "", message: "", unregisteredSince: 1, deletesAt: 3, awaitsTracker: false },
+    ] }] }
+    await renderOverview()
+
+    fireEvent.click(await screen.findByRole("button", { name: "2 waiting" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog.querySelectorAll("tbody tr")).toHaveLength(2)
+    expect(dialog.textContent).not.toContain("Film.2020.1080p-GRP")
+    expect(dialog.textContent).not.toContain("cccc3333")
+    expect(dialog.textContent).not.toContain("tracker.example.invalid")
+    expect(dialog.querySelectorAll("tbody td")[2].textContent).toBe("Tracker message hidden in incognito mode")
+  })
+
   it("shows whether each torrent of a live Transfer started", async () => {
     mocks.activity = [
       transferActivity({ id: 1, hash: "aaaa1111", torrentName: "Show.S01.1080p-GRP" }),

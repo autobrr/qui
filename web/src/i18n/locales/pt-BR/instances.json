@@ -749,6 +749,16 @@
       "waitsUntil": "Após {{time}}",
       "waitsForTracker": "Quando o tracker responder não registrado de novo"
     },
+    "pendingDeletes": {
+      "count_one": "{{count}} aguardando",
+      "count_other": "{{count}} aguardando",
+      "title": "Aguardando exclusão: {{name}}",
+      "description": "Esta regra exclui cada torrent quando o tempo dele acaba, a menos que um tracker volte a funcionar ou o torrent seja parado.",
+      "message": "Mensagem do tracker",
+      "unregisteredSince": "Não registrado desde",
+      "nextRun": "Na próxima execução",
+      "empty": "Nenhum torrent aguarda esta regra."
+    },
     "orphanScanOverview": {
       "title": "Varredura de Órfãos",
       "noInstancesDescription": "Nenhuma instância configurada.",

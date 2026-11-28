@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { JsonEditor } from "@/components/ui/json-editor"
 import { api } from "@/lib/api"
-import { parseImportJSON, toEditInput, toExportFormat, toExportJSON } from "@/lib/workflow-utils"
+import { invalidateWorkflows, parseImportJSON, toEditInput, toExportFormat, toExportJSON } from "@/lib/workflow-utils"
 import type { Automation } from "@/types"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Loader2, Save } from "lucide-react"
@@ -37,7 +37,7 @@ export function WorkflowJsonEditDialog({ rule, onOpenChange }: WorkflowJsonEditD
     mutationFn: (payload: ReturnType<typeof toEditInput>) => api.updateAutomation(rule.instanceId, rule.id, payload),
     onSuccess: (updated) => {
       toast.success(t("preferences.workflowsOverview.toast.updatedWorkflow", { name: updated.name }))
-      void queryClient.invalidateQueries({ queryKey: ["automations", rule.instanceId] })
+      invalidateWorkflows(queryClient, rule.instanceId)
       onOpenChange(false)
     },
     onError: (error) => {
