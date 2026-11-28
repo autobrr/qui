@@ -62,7 +62,7 @@ func TestListPendingDeletesGroupsTheWaitingTorrentsByRule(t *testing.T) {
 		require.Equal(t, automations.PendingDeleteList{Rules: []automations.PendingDeleteGroup{{
 			RuleID: rule.ID, RuleName: "Clean unregistered", Torrents: []automations.PendingDeleteTorrent{
 				{Hash: "2222222222222222222222222222222222222222", UnregisteredSince: old.Unix(), DeletesAt: old.Unix() + wait, AwaitsTracker: true},
-				{Hash: "1111111111111111111111111111111111111111", UnregisteredSince: fresh.Unix(), DeletesAt: fresh.Unix() + wait},
+				{Hash: "1111111111111111111111111111111111111111", UnregisteredSince: fresh.Unix(), DeletesAt: fresh.Unix() + wait, AwaitsTracker: true},
 			},
 		}}}, list)
 	})

@@ -4151,7 +4151,7 @@ paths:
                                 description: Unix time at which the Unregistered wait of the rule ends.
                               awaitsTracker:
                                 type: boolean
-                                description: True when the wait is over but no tracker reports the torrent as unregistered now. The rule deletes the torrent when a tracker reports it as unregistered again.
+                                description: True when no tracker reports the torrent as unregistered now. Once deletesAt has passed, the rule deletes the torrent only when a tracker reports it as unregistered again.
         '400':
           description: Invalid instance ID
           content:

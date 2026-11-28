@@ -104,20 +104,22 @@ describe("WorkflowsOverview", () => {
     mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [
       { hash: "aaaa1111", name: "", tracker: "", message: "", unregisteredSince: now - 3 * 86400, deletesAt: now - 86400, awaitsTracker: true },
       { hash: "bbbb2222", name: "Film.2020.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: now - 3600, deletesAt: now + 47 * 3600, awaitsTracker: false },
+      { hash: "cccc3333", name: "", tracker: "", message: "", unregisteredSince: now - 3600, deletesAt: now + 47 * 3600, awaitsTracker: true },
     ] }] }
     await renderOverview()
 
-    fireEvent.click(await screen.findByRole("button", { name: "2 waiting" }))
+    fireEvent.click(await screen.findByRole("button", { name: "3 waiting" }))
 
     const dialog = await screen.findByRole("dialog")
     expect(dialog.textContent).toContain("This rule deletes each torrent when its time is up, unless a tracker works again or the torrent is stopped.")
     const rows = Array.from(dialog.querySelectorAll("tbody tr")).map(row => Array.from(row.querySelectorAll("td")).map(cell => cell.textContent))
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(3)
     expect(rows[0][1]).toBe("aaaa1111")
     expect(rows[0][4]).toBe("When the tracker answers unregistered")
     expect(rows[1][0]).toContain("tracker.example.invalid")
     expect(rows[1].slice(1, 3)).toEqual(["Film.2020.1080p-GRP", "Unregistered torrent"])
     expect(rows[1][4]).toMatch(/^After /)
+    expect(rows[2][4]).toBe(rows[1][4])
   })
 
   it("reads the waiting torrents again when a rule of the instance is saved", async () => {
@@ -139,14 +141,16 @@ describe("WorkflowsOverview", () => {
     mocks.rules = [deleteRule({})]
     mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [
       { hash: "bbbb2222", name: "Film.2020.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false },
+      { hash: "cccc3333", name: "", tracker: "", message: "", unregisteredSince: 1, deletesAt: 3, awaitsTracker: false },
     ] }] }
     await renderOverview()
 
-    fireEvent.click(await screen.findByRole("button", { name: "1 waiting" }))
+    fireEvent.click(await screen.findByRole("button", { name: "2 waiting" }))
 
     const dialog = await screen.findByRole("dialog")
-    expect(dialog.querySelectorAll("tbody tr")).toHaveLength(1)
+    expect(dialog.querySelectorAll("tbody tr")).toHaveLength(2)
     expect(dialog.textContent).not.toContain("Film.2020.1080p-GRP")
+    expect(dialog.textContent).not.toContain("cccc3333")
     expect(dialog.textContent).not.toContain("tracker.example.invalid")
     expect(dialog.querySelectorAll("tbody td")[2].textContent).toBe("Tracker message hidden in incognito mode")
   })

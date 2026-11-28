@@ -91,12 +91,14 @@ func TestPendingDeleteListReadsTheWaitFromTheLiveVerdictBeforeTheNextRun(t *test
 	rule := rig.createRule(waitDeleteRule(0, nil, unregisteredIs("true")))
 	rig.setHealth(map[string]qbittorrent.TrackerHealth{
 		waitFreshHash: qbittorrent.TrackerHealthUnregistered,
+		waitOldHash:   qbittorrent.TrackerHealthUnregistered,
 	}, map[string]time.Time{
 		waitFreshHash: waitTestNow.Add(-time.Hour),
 	})
 	rig.seed(rule.ID, map[string]time.Time{
 		waitFreshHash: waitTestNow.Add(-72 * time.Hour),
 		waitDownHash:  waitTestNow.Add(-72 * time.Hour),
+		waitOldHash:   waitTestNow.Add(-72 * time.Hour),
 	})
 
 	list, err := rig.svc.ListPendingDeletes(t.Context(), rig.instanceID)
@@ -109,4 +111,24 @@ func TestPendingDeleteListReadsTheWaitFromTheLiveVerdictBeforeTheNextRun(t *test
 	require.Equal(t, waitTestNow.Add(-time.Hour).Unix(), restarted.UnregisteredSince)
 	require.Equal(t, waitTestNow.Add(47*time.Hour).Unix(), restarted.DeletesAt)
 	require.False(t, restarted.AwaitsTracker)
+}
+
+func TestPendingDeleteListMarksATorrentThatNoTrackerCallsUnregisteredBeforeItsTimeIsUp(t *testing.T) {
+	rig := newPendingRig(t, listTorrents)
+	rule := rig.createRule(waitDeleteRule(0, nil, unregisteredIs("true")))
+	rig.setHealth(map[string]qbittorrent.TrackerHealth{
+		waitDownHash: qbittorrent.TrackerHealthDown,
+	}, map[string]time.Time{
+		waitDownHash: waitTestNow.Add(-time.Hour),
+	})
+	rig.seed(rule.ID, map[string]time.Time{waitDownHash: waitTestNow.Add(-time.Hour)})
+
+	list, err := rig.svc.ListPendingDeletes(t.Context(), rig.instanceID)
+	require.NoError(t, err)
+
+	require.Len(t, list.Rules, 1)
+	require.Len(t, list.Rules[0].Torrents, 1)
+	down := list.Rules[0].Torrents[0]
+	require.Equal(t, waitTestNow.Add(47*time.Hour).Unix(), down.DeletesAt)
+	require.True(t, down.AwaitsTracker)
 }

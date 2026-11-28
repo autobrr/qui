@@ -28,11 +28,11 @@ function PendingDeleteWhen({ torrent }: { torrent: PendingDeleteTorrent }) {
   const { t } = useTranslation("instances")
   const { formatTimestamp } = useDateTimeFormatters()
 
-  if (torrent.awaitsTracker) {
-    return <span className="text-xs text-muted-foreground whitespace-nowrap">{t("preferences.workflowPreview.waitsForTracker")}</span>
-  }
   if (torrent.deletesAt * 1000 > Date.now()) {
     return <span className="text-xs text-muted-foreground whitespace-nowrap">{t("preferences.workflowPreview.waitsUntil", { time: formatTimestamp(torrent.deletesAt) })}</span>
+  }
+  if (torrent.awaitsTracker) {
+    return <span className="text-xs text-muted-foreground whitespace-nowrap">{t("preferences.workflowPreview.waitsForTracker")}</span>
   }
   return <span className="text-xs text-destructive whitespace-nowrap">{t("preferences.pendingDeletes.nextRun")}</span>
 }
@@ -81,7 +81,7 @@ export function PendingDeletesDialog({ open, onOpenChange, ruleName, torrents }:
                 <tbody>
                   {shown.map((torrent) => {
                     const tracker = incognitoMode && torrent.tracker ? getLinuxTrackerDomain(torrent.tracker) : torrent.tracker
-                    const name = incognitoMode && torrent.name ? getLinuxIsoName(torrent.hash) : torrent.name
+                    const name = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
                     const displayName = incognitoMode ? undefined : displayNames.get(tracker.toLowerCase())
                     return (
                       <tr key={torrent.hash} className="border-b last:border-0 hover:bg-muted/30">

@@ -61,7 +61,6 @@ func (s *Service) ListPendingDeletes(ctx context.Context, instanceID int) (*Pend
 	}
 	torrents := s.pendingTorrents(ctx, instanceID, rows)
 	waited := s.waitedNow(instanceID)
-	now := s.now()
 	for _, rule := range rules {
 		ruleRows := byRule[rule.ID]
 		if len(ruleRows) == 0 {
@@ -73,15 +72,14 @@ func (s *Service) ListPendingDeletes(ctx context.Context, instanceID int) (*Pend
 			since := row.UnregisteredSince
 			if live, timed := waited.Since(row.Hash); timed {
 				since = live
-			} else if waited.Loaded() && !waited.UnregisteredNow(row.Hash) {
+			} else if waited.Loaded() {
 				continue
 			}
-			deletesAt := since.Add(wait)
 			entry := PendingDeleteTorrent{
 				Hash:              row.Hash,
 				UnregisteredSince: since.Unix(),
-				DeletesAt:         deletesAt.Unix(),
-				AwaitsTracker:     !now.Before(deletesAt) && !waited.UnregisteredNow(row.Hash),
+				DeletesAt:         since.Add(wait).Unix(),
+				AwaitsTracker:     !waited.UnregisteredNow(row.Hash),
 			}
 			if torrent := torrents[row.Hash]; torrent != nil {
 				entry.Name = torrent.Name
