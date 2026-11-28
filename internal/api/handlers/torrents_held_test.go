@@ -144,14 +144,14 @@ func newHybridHeldHandler(t *testing.T) (*TorrentsHandler, int, *[]string) {
 	t.Helper()
 
 	const (
-		claimedV1 = "1111111111111111111111111111111111111111"
-		claimedV2 = "1111111111111111111111111111111111111111222222222222222222222222"
-		helperV1  = "3333333333333333333333333333333333333333"
-		helperV2  = "3333333333333333333333333333333333333333444444444444444444444444"
-		revClaim1 = "5555555555555555555555555555555555555555"
-		revClaim2 = "5555555555555555555555555555555555555555666666666666666666666666"
-		revHelp1  = "7777777777777777777777777777777777777777"
-		revHelp2  = "7777777777777777777777777777777777777777888888888888888888888888"
+		claimedV1 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+		claimedV2 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2"
+		helperV1  = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+		helperV2  = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3d4d4d4d4d4d4d4d4d4d4d4d4"
+		revClaim1 = "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5"
+		revClaim2 = "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5f6f6f6f6f6f6f6f6f6f6f6f6"
+		revHelp1  = "1212121212121212121212121212121212121212"
+		revHelp2  = "1212121212121212121212121212121212121212343434343434343434343434"
 		freeHash  = "9999999999999999999999999999999999999999"
 	)
 
@@ -232,13 +232,12 @@ func TestBulkAction_RefusesDeleteAndMoveOfHeldHybridTorrentsByOtherHash(t *testi
 		hash   string
 		reason string
 	}{
-		{"claimed v1 requested by v2", "1111111111111111111111111111111111111111222222222222222222222222", "a Transfer holds this torrent"},
-		{"claimed v1 requested by uppercase v2", "1111111111111111111111111111111111111111222222222222222222222222", "a Transfer holds this torrent"},
-		{"helper v1 requested by v2", "3333333333333333333333333333333333333333444444444444444444444444", "qui added this torrent for a Transfer or a Share"},
-		{"claimed v2 requested by v1", "5555555555555555555555555555555555555555", "a Transfer holds this torrent"},
-		{"helper v2 requested by v1", "7777777777777777777777777777777777777777", "qui added this torrent for a Transfer or a Share"},
+		{"claimed v1 requested by v2", "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2", "a Transfer holds this torrent"},
+		{"claimed v1 requested by uppercase v2", "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1B2B2B2B2B2B2B2B2B2B2B2B2", "a Transfer holds this torrent"},
+		{"helper v1 requested by v2", "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3d4d4d4d4d4d4d4d4d4d4d4d4", "qui added this torrent for a Transfer or a Share"},
+		{"claimed v2 requested by v1", "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5", "a Transfer holds this torrent"},
+		{"helper v2 requested by v1", "1212121212121212121212121212121212121212", "qui added this torrent for a Transfer or a Share"},
 	}
-	variants[1].hash = strings.ToUpper(variants[1].hash)
 
 	for actionName, payload := range actions {
 		t.Run(actionName, func(t *testing.T) {
@@ -271,10 +270,10 @@ func TestRenameRefusesHeldHybridTorrentsByOtherHash(t *testing.T) {
 		"folder":  {func(h *TorrentsHandler) http.HandlerFunc { return h.RenameTorrentFolder }, map[string]any{"oldPath": "a", "newPath": "b"}},
 	}
 	otherHashes := []string{
-		"1111111111111111111111111111111111111111222222222222222222222222",
-		"3333333333333333333333333333333333333333444444444444444444444444",
-		"5555555555555555555555555555555555555555",
-		"7777777777777777777777777777777777777777",
+		"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2",
+		"c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3d4d4d4d4d4d4d4d4d4d4d4d4",
+		"e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+		"1212121212121212121212121212121212121212",
 	}
 	for name, rename := range renames {
 		t.Run(name, func(t *testing.T) {
@@ -289,4 +288,96 @@ func TestRenameRefusesHeldHybridTorrentsByOtherHash(t *testing.T) {
 			require.Empty(t, *mutated, "no qBittorrent rename should run for refused held hybrid torrents")
 		})
 	}
+}
+
+func TestRespondIfHeld_RefreshesEmptySnapshotOrStopsUnresolvedAliases(t *testing.T) {
+	t.Parallel()
+
+	const (
+		claimedV1 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+		claimedV2 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2"
+	)
+
+	t.Run("fresh sync reveals held hybrid torrent when cached snapshot is empty", func(t *testing.T) {
+		t.Parallel()
+
+		db := testdb.NewMigratedSQLite(t, "torrents-hybrid-fresh")
+		instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+		require.NoError(t, err)
+		clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = clientPool.Close() })
+
+		var mu sync.Mutex
+		var deleted []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/sync/maindata":
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"` + claimedV1 + `":{"name":"ClaimedHybrid","hash":"` + claimedV1 + `","infohash_v1":"` + claimedV1 + `","infohash_v2":"` + claimedV2 + `"}}}`))
+				return
+			case "/api/v2/torrents/delete":
+				mu.Lock()
+				deleted = append(deleted, r.URL.Path)
+				mu.Unlock()
+			}
+			_, _ = w.Write([]byte("Ok."))
+		}))
+		t.Cleanup(srv.Close)
+
+		instance, err := instanceStore.Create(t.Context(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
+		require.NoError(t, err)
+		testutil.SetUnexportedField(t, clientPool, "clients", map[int]*qbittorrent.Client{
+			instance.ID: newStaleCachedClient(t, srv.URL, nil),
+		})
+
+		store, err := transfer.NewStore(t.Context(), db)
+		require.NoError(t, err)
+		require.NoError(t, store.Create(t.Context(), &transfer.Record{
+			Kind: transfer.KindTransfer, State: "copying", StartedBy: transfer.StartedByUser,
+			SourceInstanceID: instance.ID, TargetInstanceID: instance.ID + 1,
+			Members: []transfer.Member{{Hash: heldHash(t, claimedV1), SourceSavePath: "/src", TargetInstanceID: instance.ID + 1}},
+		}))
+
+		handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore, nil)
+		handler.SetHeldTorrents(store)
+
+		rec := httptest.NewRecorder()
+		handler.BulkAction(rec, newTorrentFieldRequest(t, instance.ID, map[string]any{
+			"action": "delete",
+			"hashes": []string{claimedV2},
+		}))
+
+		require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		require.Contains(t, rec.Body.String(), "a Transfer holds this torrent")
+		require.Empty(t, deleted)
+	})
+
+	t.Run("unresolved alias fails closed before downstream retries", func(t *testing.T) {
+		t.Parallel()
+
+		db := testdb.NewMigratedSQLite(t, "torrents-hybrid-unresolved")
+		store, err := transfer.NewStore(t.Context(), db)
+		require.NoError(t, err)
+		require.NoError(t, store.Create(t.Context(), &transfer.Record{
+			Kind: transfer.KindTransfer, State: "copying", StartedBy: transfer.StartedByUser,
+			SourceInstanceID: 1, TargetInstanceID: 2,
+			Members: []transfer.Member{{Hash: heldHash(t, claimedV1), SourceSavePath: "/src", TargetInstanceID: 2}},
+		}))
+
+		deleter := &recordingDeleter{}
+		handler := &TorrentsHandler{
+			deleter:         deleter,
+			contentResolver: &mockContentResolver{},
+		}
+		handler.SetHeldTorrents(store)
+
+		rec := httptest.NewRecorder()
+		handler.BulkAction(rec, newTorrentFieldRequest(t, 1, map[string]any{
+			"action": "delete",
+			"hashes": []string{claimedV2},
+		}))
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
+		require.Empty(t, deleter.deleteFiles)
+	})
 }

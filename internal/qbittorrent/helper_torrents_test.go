@@ -78,3 +78,30 @@ func TestATaggedTorrentWithoutARegistryRowIsNoHelper(t *testing.T) {
 	require.NoError(t, sm.DeleteTorrents(t.Context(), 1, []string{hashB}, true, DeleteActor{Kind: DeleteActorUser}))
 	require.NoFileExists(t, filepath.Join(root, hashB, "Show.S01E01.mkv"))
 }
+
+func TestDeleteWithFilesRefusesAHybridHelperTorrentByOtherHash(t *testing.T) {
+	t.Parallel()
+	const (
+		hybridV1 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+		hybridV2 = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1b2b2b2b2b2b2b2b2b2b2b2b2"
+	)
+	root := t.TempDir()
+	stub := qbtstub.New(t, root)
+	stub.Add(qbtstub.Torrent{
+		Hash: hybridV1, InfohashV1: hybridV1, InfohashV2: hybridV2,
+		Name: "Show.S01E01-GRP", SavePath: filepath.Join(root, hybridV1),
+		Layout: qbtstub.NoRootFolder, Files: []string{"Show.S01E01.mkv"},
+	})
+	client, err := NewClientWithTimeout(1, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(client.optimisticUpdates.Close)
+	require.NoError(t, client.SyncOwner().Sync(t.Context()))
+
+	sm := NewSyncManager(&ClientPool{clients: map[int]*Client{1: client}}, nil)
+	sm.SetHelperTorrents(fakeHelpers{hybridV1: "transfer"})
+
+	err = sm.DeleteTorrents(t.Context(), 1, []string{hybridV2}, true, DeleteActor{Kind: DeleteActorUser})
+	require.ErrorIs(t, err, ErrHelperTorrentFiles)
+	require.Zero(t, stub.Calls("torrents/delete"))
+	require.FileExists(t, filepath.Join(root, hybridV1, "Show.S01E01.mkv"))
+}

@@ -37,7 +37,8 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 	if helpers == nil || helpers.HelperKinds(instanceID) == nil {
 		return nil
 	}
-	if len(hashes) == 1 && hashes[0] == "all" {
+	allTorrents := len(hashes) == 1 && hashes[0] == "all"
+	if allTorrents {
 		torrents, err := sm.GetTorrentRefsFresh(ctx, instanceID, TorrentRefFilter{WithHelperTorrents: true})
 		if err != nil {
 			return fmt.Errorf("read the torrents of instance %d: %w", instanceID, err)
@@ -56,6 +57,36 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 		return err == nil && kinds[id.String()] != ""
 	}); i >= 0 {
 		return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, hashes[i])
+	}
+	if !allTorrents && len(hashes) > 0 {
+		if torrents, err := sm.GetTorrentRefs(ctx, instanceID, TorrentRefFilter{
+			Hashes:             infohash.ParseAll(hashes),
+			WithHelperTorrents: true,
+		}); err == nil {
+			if err := refuseHelperTargets(kinds, torrents); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func refuseHelperTargets(kinds map[string]string, targets []*qbt.Torrent) error {
+	if len(kinds) == 0 {
+		return nil
+	}
+	for _, torrent := range targets {
+		if torrent == nil {
+			continue
+		}
+		for _, raw := range [3]string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
+			if raw == "" {
+				continue
+			}
+			if id, err := infohash.Parse(raw); err == nil && kinds[id.String()] != "" {
+				return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, torrent.Hash)
+			}
+		}
 	}
 	return nil
 }

@@ -88,14 +88,22 @@ func (h *TorrentsHandler) respondIfHeld(ctx context.Context, w http.ResponseWrit
 	if h.held == nil {
 		return false
 	}
-	if err := h.heldError(ctx, instanceID, hashes); err != nil {
-		RespondError(w, http.StatusConflict, err.Error())
+	heldErr, verifyErr := h.checkHeld(ctx, instanceID, hashes)
+	if heldErr != nil {
+		RespondError(w, http.StatusConflict, heldErr.Error())
+		return true
+	}
+	if verifyErr != nil {
+		if respondIfInstanceDisabled(w, verifyErr, instanceID, "torrents:holdCheck") {
+			return true
+		}
+		RespondError(w, http.StatusServiceUnavailable, "Unable to verify whether a Transfer or Share holds this torrent")
 		return true
 	}
 	return false
 }
 
-func (h *TorrentsHandler) heldError(ctx context.Context, instanceID int, hashes []string) error {
+func (h *TorrentsHandler) checkHeld(ctx context.Context, instanceID int, hashes []string) (heldErr, verifyErr error) {
 	parsed := make([]infohash.Hash, 0, len(hashes))
 	for _, list := range hashes {
 		for raw := range strings.SplitSeq(list, "|") {
@@ -103,29 +111,75 @@ func (h *TorrentsHandler) heldError(ctx context.Context, instanceID int, hashes 
 			if parseErr != nil {
 				continue
 			}
-			if holdErr := h.held.Hold(instanceID, hash); holdErr != nil {
-				return holdErr
+			if err := h.held.Hold(instanceID, hash); err != nil {
+				return err, nil
 			}
 			parsed = append(parsed, hash)
 		}
 	}
 	if len(parsed) == 0 || h.contentResolver == nil {
-		return nil
+		return nil, nil
 	}
-	torrents, err := h.contentResolver.GetTorrentRefs(ctx, instanceID, qbittorrent.TorrentRefFilter{
-		Hashes:             parsed,
-		WithHelperTorrents: true,
-	})
+
+	filter := qbittorrent.TorrentRefFilter{Hashes: parsed, WithHelperTorrents: true}
+	torrents, err := h.contentResolver.GetTorrentRefs(ctx, instanceID, filter)
+	if err == nil {
+		if holdErr := h.torrentsHeldError(instanceID, torrents); holdErr != nil {
+			return holdErr, nil
+		}
+		parsed = unresolvedInfohashes(parsed, torrents)
+		if len(parsed) == 0 {
+			return nil, nil
+		}
+	}
+
+	if h.syncManager != nil {
+		fresh, freshErr := h.syncManager.GetTorrentRefsFresh(ctx, instanceID, qbittorrent.TorrentRefFilter{
+			Hashes:             parsed,
+			WithHelperTorrents: true,
+		})
+		if freshErr != nil {
+			return nil, freshErr
+		}
+		if holdErr := h.torrentsHeldError(instanceID, fresh); holdErr != nil {
+			return holdErr, nil
+		}
+		parsed = unresolvedInfohashes(parsed, fresh)
+		err = nil
+	}
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to resolve torrent hashes for hold check")
-		return nil
+		return nil, err
 	}
+	if len(parsed) > 0 {
+		return nil, errors.New("requested torrent hash could not be resolved")
+	}
+	return nil, nil
+}
+
+func (h *TorrentsHandler) torrentsHeldError(instanceID int, torrents []*qbt.Torrent) error {
 	for _, torrent := range torrents {
-		if holdErr := h.torrentHeldError(instanceID, torrent); holdErr != nil {
-			return holdErr
+		if err := h.torrentHeldError(instanceID, torrent); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func unresolvedInfohashes(requested []infohash.Hash, resolved []*qbt.Torrent) []infohash.Hash {
+	var missing []infohash.Hash
+	for _, hash := range requested {
+		if !slices.ContainsFunc(resolved, func(t *qbt.Torrent) bool { return torrentHasHash(t, hash) }) {
+			missing = append(missing, hash)
+		}
+	}
+	return missing
+}
+
+func torrentHasHash(t *qbt.Torrent, hash infohash.Hash) bool {
+	if t == nil {
+		return false
+	}
+	return hash.Is(t.Hash) || hash.Is(t.InfohashV1) || hash.Is(t.InfohashV2)
 }
 
 func (h *TorrentsHandler) torrentHeldError(instanceID int, torrent *qbt.Torrent) error {
