@@ -509,6 +509,10 @@
       "original": "Originale: {{domain}}",
       "programLabel": "Programma: {{name}}",
       "ruleLabel": "Regola: {{name}}",
+      "waitEndedCauses": {
+        "stopped": "Fermato: {{count}}",
+        "trackerWorks": "Tracker di nuovo funzionante o tracker modificati: {{count}}"
+      },
       "trackers": "{{count}} tracker",
       "trackers_other": "{{count}} tracker",
       "limit": "Limite",
@@ -559,7 +563,9 @@
         "exportToInstance": "Esporta nell'istanza",
         "transferToInstance": "Trasferisci a un'istanza",
         "ruleSkipped": "Regola non eseguita",
-        "deleteWaiting": "In attesa di eliminazione"
+        "deleteWaiting": "In attesa di eliminazione",
+        "unregisteredWaitStarted": "Attesa iniziata",
+        "unregisteredWaitEnded": "Attesa terminata"
       },
       "shareLimit": {
         "global": "Globale",
@@ -616,7 +622,11 @@
         "transferredDryRun_one": "{{count}} torrent verrebbe trasferito",
         "transferredDryRun_other": "{{count}} torrent verrebbero trasferiti",
         "deleteWaiting_one": "{{count}} torrent attenderebbe l'eliminazione",
-        "deleteWaiting_other": "{{count}} torrent attenderebbero l'eliminazione"
+        "deleteWaiting_other": "{{count}} torrent attenderebbero l'eliminazione",
+        "unregisteredWaitStarted_one": "{{count}} torrent ha iniziato ad attendere l'eliminazione",
+        "unregisteredWaitStarted_other": "{{count}} torrent hanno iniziato ad attendere l'eliminazione",
+        "unregisteredWaitEnded_one": "{{count}} torrent non attende più l'eliminazione",
+        "unregisteredWaitEnded_other": "{{count}} torrent non attendono più l'eliminazione"
       },
       "deleteDialog": {
         "title": "Elimina regola",
@@ -982,7 +992,9 @@
         "exported_to_instance": "Esporta verso l'istanza",
         "transferred_to_instance": "Trasferisci a un'istanza",
         "rule_skipped": "Regola non eseguita",
-        "delete_waiting": "Simulazione (in attesa di eliminazione)"
+        "delete_waiting": "Simulazione (in attesa di eliminazione)",
+        "unregistered_wait_started": "Attesa di eliminazione iniziata",
+        "unregistered_wait_ended": "Non più in attesa di eliminazione"
       }
     },
     "reannounceOverview": {

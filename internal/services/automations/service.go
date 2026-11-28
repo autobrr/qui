@@ -652,6 +652,7 @@ type Service struct {
 	transferHolds     map[string]time.Time
 	clock             func() time.Time
 	trackerHealth     trackerHealthSource
+	pendingDeletes    pendingDeleteStore
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
@@ -842,7 +843,11 @@ func (s *Service) ApplyRuleNow(ctx context.Context, instanceID int, rule *models
 
 	liveRule := *rule
 	liveRule.Enabled = true
-	activities, err := s.applyRulesForInstance(context.WithoutCancel(ctx), instanceID, true, []*models.Automation{&liveRule}, false)
+	kind := runRecorded
+	if !rule.Enabled {
+		kind = runUnrecorded
+	}
+	activities, err := s.applyRules(context.WithoutCancel(ctx), instanceID, []*models.Automation{&liveRule}, true, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -1583,7 +1588,24 @@ var ActionRunOrder = []string{
 	"transferToInstance",
 }
 
+type runKind uint8
+
+const (
+	runRecorded runKind = iota
+	runUnrecorded
+	runDry
+)
+
 func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, force bool, rules []*models.Automation, dryRun bool) ([]*models.AutomationActivity, error) {
+	kind := runRecorded
+	if dryRun {
+		kind = runDry
+	}
+	return s.applyRules(ctx, instanceID, rules, force, kind)
+}
+
+func (s *Service) applyRules(ctx context.Context, instanceID int, rules []*models.Automation, force bool, kind runKind) ([]*models.AutomationActivity, error) {
+	dryRun := kind == runDry
 	if len(rules) == 0 {
 		return nil, nil
 	}
@@ -1659,6 +1681,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	eligibleRules, skipped := s.skipRulesWithUnknownFields(ctx, instanceID, eligibleRules, now)
 	skipActivities := s.recordRuleSkips(ctx, instanceID, skipped, force, dryRun)
 	if len(torrents) == 0 || len(eligibleRules) == 0 {
+		if kind == runRecorded {
+			skipActivities = append(skipActivities, s.recordPendingDeletes(ctx, instanceID, pendingCompare{rules: eligibleRules, waited: s.waitedNow(instanceID)})...)
+		}
 		return skipActivities, nil
 	}
 
@@ -1895,6 +1920,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:       detailsJSON,
 		}
 	}
+	undeleted := infohash.NewSet()
 	for _, group := range deletes {
 		actor := qbittorrent.DeleteActor{Kind: qbittorrent.DeleteActorAutomation, RuleName: group.rule.name}
 		deleteFiles, modeErr := deleteFilesForMode(group.mode)
@@ -1907,6 +1933,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				log.Warn().Err(err).Int("instanceID", instanceID).Str("action", group.mode).Int("count", len(batch)).Strs("hashes", batch).Msg("automations: delete failed")
 
 				for _, hash := range batch {
+					if parsed, err := infohash.Parse(hash); err == nil {
+						undeleted.Add(parsed)
+					}
 					if pending, ok := deletions.byHash[hash]; ok {
 						activity := deleteActivity(hash, pending, models.ActivityActionDeleteFailed, models.ActivityOutcomeFailed, err.Error())
 						summary.recordActivity(activity, 1)
@@ -1955,6 +1984,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 			}
 		}
+	}
+
+	var waitActivities []*models.AutomationActivity
+	if kind == runRecorded {
+		waitActivities = s.recordPendingDeletes(ctx, instanceID, pendingCompare{rules: eligibleRules, selection: deletions, undeleted: undeleted, torrentByHash: torrentByHash, scope: scope, waited: evalCtx.waited})
 	}
 
 	if len(plan.transfers) > 0 {
@@ -2024,7 +2058,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		defer cancel()
 	}
 	s.notifyAutomationSummary(notifyCtx, instanceID, summary, eligibleRules)
-	return append(summary.activities, skipActivities...), nil
+	return slices.Concat(summary.activities, skipActivities, waitActivities), nil
 }
 
 func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary, rules []*models.Automation) {

@@ -160,6 +160,18 @@
     "hideAffected": "Betroffene Torrents ausblenden",
     "more": "+ {{count}} weitere"
   },
+  "unregisteredWarning": {
+    "title": "Erst seit Kurzem nicht registriert",
+    "all_one": "qui hat diesen Torrent vor weniger als 2 Tagen zum ersten Mal als nicht registriert gesehen.",
+    "all_other": "qui hat alle {{count}} Torrents vor weniger als 2 Tagen zum ersten Mal als nicht registriert gesehen.",
+    "some_one": "qui hat {{matched}} von {{count}} Torrent vor weniger als 2 Tagen zum ersten Mal als nicht registriert gesehen.",
+    "some_other": "qui hat {{matched}} von {{count}} Torrents vor weniger als 2 Tagen zum ersten Mal als nicht registriert gesehen.",
+    "earliest": "Frühestens: {{since}}",
+    "tracker_one": "{{host}}: {{count}} Torrent",
+    "tracker_other": "{{host}}: {{count}} Torrents",
+    "moreTrackers_one": "und {{count}} weiterer Tracker",
+    "moreTrackers_other": "und {{count}} weitere Tracker"
+  },
   "recheckDialog": {
     "title": "Neuprüfung von {{count}} Torrent(s) erzwingen?",
     "description": "Dadurch wird qBittorrent gezwungen, alle Teile der ausgewählten Torrents neu zu prüfen. Dieser Vorgang kann einige Zeit dauern und pausiert die Torrents vorübergehend.",

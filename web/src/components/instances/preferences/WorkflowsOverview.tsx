@@ -175,6 +175,8 @@ function formatAction(action: AutomationActivity["action"]): string {
     transferred_to_instance: "transferToInstance",
     dry_run_no_match: "dryRun",
     delete_waiting: "deleteWaiting",
+    unregistered_wait_started: "unregisteredWaitStarted",
+    unregistered_wait_ended: "unregisteredWaitEnded",
     rule_skipped: "ruleSkipped",
   }
   const key = actionKeys[action]
@@ -307,6 +309,8 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "auto_managed",
   "moved",
   "exported_to_instance",
+  "unregistered_wait_started",
+  "unregistered_wait_ended",
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
@@ -823,6 +827,8 @@ export function WorkflowsOverview() {
     transferred_to_instance: "bg-chart-2/10 border-chart-2/20",
     dry_run_no_match: "bg-muted text-muted-foreground border-muted-foreground/30",
     delete_waiting: "bg-muted text-muted-foreground border-muted-foreground/30",
+    unregistered_wait_started: "bg-warning/10 text-warning border-warning/20",
+    unregistered_wait_ended: "bg-muted text-muted-foreground border-muted-foreground/30",
     rule_skipped: "bg-warning/10 text-warning border-warning/20",
   }
 
@@ -896,7 +902,8 @@ export function WorkflowsOverview() {
               if (activitySearchTerm) {
                 const nameMatch = e.torrentName?.toLowerCase().includes(activitySearchTerm)
                 const hashMatch = e.hash.toLowerCase().includes(activitySearchTerm)
-                const ruleMatch = e.ruleName?.toLowerCase().includes(activitySearchTerm)
+                const ruleMatch = [e.ruleName, ...(e.details?.rules ?? []).map((rule) => rule.name)]
+                  .some((name) => name?.toLowerCase().includes(activitySearchTerm))
                 if (!nameMatch && !hashMatch && !ruleMatch) return false
               }
               return true
@@ -1255,6 +1262,14 @@ export function WorkflowsOverview() {
                                           <span className="font-medium text-sm block">
                                             {t("preferences.workflowsOverview.summary.deleteWaiting", { count: event.details?.count ?? 0 })}
                                           </span>
+                                        ) : event.action === "unregistered_wait_started" ? (
+                                          <span className="font-medium text-sm block">
+                                            {t("preferences.workflowsOverview.summary.unregisteredWaitStarted", { count: event.details?.count ?? 0 })}
+                                          </span>
+                                        ) : event.action === "unregistered_wait_ended" ? (
+                                          <span className="font-medium text-sm block">
+                                            {t("preferences.workflowsOverview.summary.unregisteredWaitEnded", { count: event.details?.count ?? 0 })}
+                                          </span>
                                         ) : event.action === "dry_run_no_match" ? (
                                           <span className="font-medium text-sm block">
                                             {t("preferences.workflowsOverview.noDryRunMatches")}
@@ -1411,6 +1426,25 @@ export function WorkflowsOverview() {
                                             </div>
                                           )
                                         })()}
+                                        {(event.action === "unregistered_wait_started" || event.action === "unregistered_wait_ended") && (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {event.details?.rules?.map((rule) => (
+                                              <Badge key={rule.id} variant="outline" size="sm">
+                                                {rule.name} ({rule.count})
+                                              </Badge>
+                                            ))}
+                                            {(event.details?.causes?.stopped ?? 0) > 0 && (
+                                              <Badge variant="outline" size="sm">
+                                                {t("preferences.workflowsOverview.waitEndedCauses.stopped", { count: event.details?.causes?.stopped })}
+                                              </Badge>
+                                            )}
+                                            {(event.details?.causes?.trackerWorks ?? 0) > 0 && (
+                                              <Badge variant="outline" size="sm">
+                                                {t("preferences.workflowsOverview.waitEndedCauses.trackerWorks", { count: event.details?.causes?.trackerWorks })}
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        )}
                                         {event.action === "category_changed" && event.details?.categories && (() => {
                                           const categories = Object.entries(event.details.categories as Record<string, number>)
 

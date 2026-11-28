@@ -39,6 +39,11 @@ const ActivityActionTransferredToInstance = "transferred_to_instance"
 const ActivityActionDeleteWaiting = "delete_waiting"
 
 const (
+	ActivityActionUnregisteredWaitStarted = "unregistered_wait_started"
+	ActivityActionUnregisteredWaitEnded   = "unregistered_wait_ended"
+)
+
+const (
 	ActivityOutcomeSuccess = "success"
 	ActivityOutcomeFailed  = "failed"
 	ActivityOutcomeDryRun  = "dry-run"
@@ -96,7 +101,16 @@ func (s *AutomationActivityStore) insert(ctx context.Context, activity *Automati
 	if s == nil || s.db == nil || activity == nil {
 		return 0, nil
 	}
+	return insertActivity(ctx, s.db, activity)
+}
 
+type activityWriter interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	dbinterface.DialectProvider
+}
+
+func insertActivity(ctx context.Context, db activityWriter, activity *AutomationActivity) (int, error) {
 	var detailsStr sql.NullString
 	if len(activity.Details) > 0 {
 		detailsStr = sql.NullString{String: string(activity.Details), Valid: true}
@@ -107,8 +121,8 @@ func (s *AutomationActivityStore) insert(ctx context.Context, activity *Automati
 		ruleID = sql.NullInt64{Int64: int64(*activity.RuleID), Valid: true}
 	}
 
-	if dbinterface.DialectOf(s.db) != "postgres" {
-		res, err := s.db.ExecContext(ctx, `
+	if dbinterface.DialectOf(db) != "postgres" {
+		res, err := db.ExecContext(ctx, `
 		INSERT INTO automation_activity
 			(instance_id, hash, torrent_name, tracker_domain, action, rule_id, rule_name, outcome, reason, details)
 		VALUES
@@ -126,7 +140,7 @@ func (s *AutomationActivityStore) insert(ctx context.Context, activity *Automati
 	}
 
 	var id int
-	err := s.db.QueryRowContext(ctx, `
+	err := db.QueryRowContext(ctx, `
 		INSERT INTO automation_activity
 			(instance_id, hash, torrent_name, tracker_domain, action, rule_id, rule_name, outcome, reason, details)
 		VALUES

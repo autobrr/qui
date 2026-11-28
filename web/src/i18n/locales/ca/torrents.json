@@ -160,6 +160,18 @@
     "hideAffected": "Amaga els torrents afectats",
     "more": "+ {{count}} més"
   },
+  "unregisteredWarning": {
+    "title": "No registrats fa poc",
+    "all_one": "qui va veure aquest torrent com a no registrat per primera vegada fa menys de 2 dies.",
+    "all_other": "qui va veure tots els {{count}} torrents com a no registrats per primera vegada fa menys de 2 dies.",
+    "some_one": "qui va veure {{matched}} de {{count}} torrent com a no registrat per primera vegada fa menys de 2 dies.",
+    "some_other": "qui va veure {{matched}} dels {{count}} torrents com a no registrats per primera vegada fa menys de 2 dies.",
+    "earliest": "El primer: {{since}}",
+    "tracker_one": "{{host}}: {{count}} torrent",
+    "tracker_other": "{{host}}: {{count}} torrents",
+    "moreTrackers_one": "i {{count}} tracker més",
+    "moreTrackers_other": "i {{count}} trackers més"
+  },
   "recheckDialog": {
     "title": "Vols forçar la comprovació de {{count}} torrent(s)?",
     "description": "Això forçarà qBittorrent a tornar a comprovar totes les peces dels torrents seleccionats. Aquest procés pot trigar una estona i aturarà els torrents temporalment.",

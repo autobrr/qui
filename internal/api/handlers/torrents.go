@@ -70,6 +70,7 @@ type TorrentsHandler struct {
 	archiveExporter   torrentArchiveExporter
 	deleteMatches     deleteMatchFinder
 	deleter           torrentDeleter
+	unregistered      unregisteredSource
 	installPaths      installPaths
 	held              heldTorrents
 }
@@ -147,6 +148,7 @@ func NewTorrentsHandler(syncManager *qbittorrent.SyncManager, jackettService *ja
 		archiveExporter: syncManager,
 		deleteMatches:   crossSeedService,
 		deleter:         syncManager,
+		unregistered:    syncUnregisteredSource{syncManager: syncManager},
 	}
 	if jackettService != nil {
 		h.torrentDownloader = jackettService
@@ -1404,29 +1406,7 @@ func (h *TorrentsHandler) resolveTorrentSelection(w http.ResponseWriter, r *http
 }
 
 func (h *TorrentsHandler) GetDeleteCrossSeeds(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
-		return
-	}
-
-	var req BulkActionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-	normalizedInstanceIDs, instanceIDsErr := normalizeInstanceIDs(req.InstanceIDs)
-	if instanceIDsErr != nil {
-		RespondError(w, http.StatusBadRequest, instanceIDsErr.Error())
-		return
-	}
-	req.InstanceIDs = normalizedInstanceIDs
-	if message := torrentSelectionError(instanceID, req); message != "" {
-		RespondError(w, http.StatusBadRequest, message)
-		return
-	}
-
-	targetsByInstance, ok := h.resolveTorrentSelection(w, r, instanceID, req)
+	instanceID, targetsByInstance, ok := h.decodeTorrentSelection(w, r)
 	if !ok {
 		return
 	}

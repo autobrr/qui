@@ -509,6 +509,10 @@
       "original": "Original: {{domain}}",
       "programLabel": "Programa: {{name}}",
       "ruleLabel": "Regra: {{name}}",
+      "waitEndedCauses": {
+        "stopped": "Parado: {{count}}",
+        "trackerWorks": "Tracker voltou a funcionar ou trackers editados: {{count}}"
+      },
       "trackers": "{{count}} tracker",
       "trackers_other": "{{count}} trackers",
       "limit": "Limite",
@@ -559,7 +563,9 @@
         "exportToInstance": "Exportar",
         "transferToInstance": "Transferir para instância",
         "ruleSkipped": "Regra não executada",
-        "deleteWaiting": "Aguardando exclusão"
+        "deleteWaiting": "Aguardando exclusão",
+        "unregisteredWaitStarted": "Espera iniciada",
+        "unregisteredWaitEnded": "Espera encerrada"
       },
       "shareLimit": {
         "global": "Global",
@@ -616,7 +622,11 @@
         "transferredDryRun_one": "{{count}} torrent seria transferido",
         "transferredDryRun_other": "{{count}} torrents seriam transferidos",
         "deleteWaiting_one": "{{count}} torrent aguardaria a exclusão",
-        "deleteWaiting_other": "{{count}} torrents aguardariam a exclusão"
+        "deleteWaiting_other": "{{count}} torrents aguardariam a exclusão",
+        "unregisteredWaitStarted_one": "{{count}} torrent começou a aguardar a exclusão",
+        "unregisteredWaitStarted_other": "{{count}} torrents começaram a aguardar a exclusão",
+        "unregisteredWaitEnded_one": "{{count}} torrent não aguarda mais a exclusão",
+        "unregisteredWaitEnded_other": "{{count}} torrents não aguardam mais a exclusão"
       },
       "deleteDialog": {
         "title": "Excluir Regra",
@@ -982,7 +992,9 @@
         "exported_to_instance": "Exportado",
         "transferred_to_instance": "Transferir para instância",
         "rule_skipped": "Regra não executada",
-        "delete_waiting": "Simulação (aguardando exclusão)"
+        "delete_waiting": "Simulação (aguardando exclusão)",
+        "unregistered_wait_started": "Começou a aguardar exclusão",
+        "unregistered_wait_ended": "Não aguarda mais exclusão"
       }
     },
     "reannounceOverview": {

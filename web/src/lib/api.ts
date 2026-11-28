@@ -134,6 +134,7 @@ import type {
   TorrentFilters,
   TorrentProperties,
   TorrentResponse,
+  TorrentSelection,
   TorrentTracker,
   TorznabIndexer,
   TorznabIndexerFormData,
@@ -152,6 +153,7 @@ import type {
   ThemeSlot,
   ThemeSlots,
   UncheckedInstance,
+  UnregisteredDeleteWarning,
   User,
   VersionInfo,
   SystemNotice,
@@ -1365,17 +1367,16 @@ class ApiClient {
     return toLocalCrossSeedMatches(raw)
   }
 
+  async getUnregisteredDeleteWarning(instanceId: number, selection: TorrentSelection, signal?: AbortSignal): Promise<UnregisteredDeleteWarning> {
+    return this.request<UnregisteredDeleteWarning>(
+      `/instances/${instanceId}/torrents/unregistered-warning`,
+      { method: "POST", body: JSON.stringify({ ...selection, filters: serializeFilters(selection.filters) }), signal }
+    )
+  }
+
   async getDeleteCrossSeeds(
     instanceId: number,
-    selection: {
-      targets?: Array<{ instanceId: number; hash: string }>
-      selectAll?: boolean
-      filters?: TorrentFilters
-      search?: string
-      excludeHashes?: string[]
-      excludeTargets?: Array<{ instanceId: number; hash: string }>
-      instanceIds?: number[]
-    },
+    selection: TorrentSelection,
     signal?: AbortSignal
   ): Promise<{ matches: LocalCrossSeedMatch[]; uncheckedInstances: UncheckedInstance[] }> {
     const raw = await this.request<RawLocalMatchesResponse & {

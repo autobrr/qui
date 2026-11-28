@@ -664,6 +664,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.With(torrents.Read).Post("/check-duplicates", torrentsHandler.CheckDuplicates)
 						r.With(torrents.Write).Post("/bulk-action", torrentsHandler.BulkAction)
 						r.With(allInstances, torrents.Read).Post("/delete-cross-seeds", torrentsHandler.GetDeleteCrossSeeds)
+						r.With(allInstances, torrents.Read).Post("/unregistered-warning", torrentsHandler.GetUnregisteredDeleteWarning)
 						r.With(torrents.Write).Post("/add-peers", torrentsHandler.AddPeers)
 						r.With(torrents.Write).Post("/ban-peers", torrentsHandler.BanPeers)
 						r.With(torrents.Read).Post("/field", torrentsHandler.GetTorrentField)

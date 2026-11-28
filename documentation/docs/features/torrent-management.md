@@ -86,7 +86,7 @@ qui replaces the URL on every torrent of the instance that has exactly the curre
 The menu entry is gray when the instance is read-only or qBittorrent is older than 4.1.5.
 
 :::warning
-If an automation removes unregistered torrents, disable it before you change the URL. Until the tracker accepts the new passkey, qBittorrent can report every torrent of that tracker as unregistered. A rule with the default [Unregistered wait](./automations.md#unregistered-wait) holds these deletes for 2 days. A rule with a wait of 0 or a rule on the raw tracker message removes all of them on its next run, and a manual delete removes them at once. Enable the automation again when the torrents show a working tracker status.
+If an automation removes unregistered torrents, disable it before you change the URL. Until the tracker accepts the new passkey, qBittorrent can report every torrent of that tracker as unregistered. A rule with the default [Unregistered wait](./automations.md#unregistered-wait) holds these deletes for 2 days. A rule with a wait of 0 or a rule on the raw tracker message removes all of them on its next run, and a manual delete removes them at once. The delete dialog warns when the selection holds torrents that qui first saw as unregistered less than 2 days ago, but it does not stop the delete. Enable the automation again when the torrents show a working tracker status.
 :::
 
 ## Saved filter views

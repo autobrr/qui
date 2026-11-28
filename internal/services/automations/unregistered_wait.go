@@ -208,6 +208,7 @@ func claimStillMatches(claim deletionClaim, torrent *qbt.Torrent, in deletionSel
 }
 
 func (sel *deletionSelection) dropDeletedWaits() {
+	sel.marked = slices.Clone(sel.waiting)
 	sel.waiting = slices.DeleteFunc(sel.waiting, func(w waitingDelete) bool {
 		_, deleted := sel.byHash[w.hash]
 		return deleted

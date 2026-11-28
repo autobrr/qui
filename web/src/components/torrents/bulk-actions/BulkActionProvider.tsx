@@ -15,6 +15,7 @@ import {
 import { useTorrentSelectionContext, useTorrentSelectionSummary } from "@/contexts/TorrentSelectionContext"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useUnregisteredDeleteWarning } from "@/hooks/useUnregisteredDeleteWarning"
 import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlocklist"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
@@ -130,6 +131,12 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
   )
 
   const isDeleteOpen = dialog.name === "delete"
+  const unregisteredWarning = useUnregisteredDeleteWarning({
+    open: isDeleteOpen,
+    instanceId,
+    torrents: actionTarget.previewTorrents,
+    selectAll: actionTarget.kind === "selectAll" ? actionTarget.selectAll : undefined,
+  })
   const resetCrossSeedWarning = crossSeedWarning.reset
   useEffect(() => {
     if (!isDeleteOpen) resetCrossSeedWarning()
@@ -366,6 +373,7 @@ export function BulkActionProvider({ children }: { children: ReactNode }) {
         blockCrossSeeds={blockCrossSeeds}
         onBlockCrossSeedsChange={setBlockCrossSeeds}
         crossSeedWarning={crossSeedWarning}
+        unregisteredWarning={unregisteredWarning}
         onConfirm={confirmDelete}
         isPending={isPending}
         isAllSelected={actionTarget.kind === "selectAll"}

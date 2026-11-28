@@ -509,6 +509,10 @@
       "original": "Původní: {{domain}}",
       "programLabel": "Program: {{name}}",
       "ruleLabel": "Pravidlo: {{name}}",
+      "waitEndedCauses": {
+        "stopped": "Zastaveno: {{count}}",
+        "trackerWorks": "Tracker opět funguje nebo byly upraveny trackery: {{count}}"
+      },
       "trackers": "{{count}} trackerů",
       "trackers_other": "{{count}} trackerů",
       "limit": "Limit",
@@ -560,7 +564,9 @@
         "exportToInstance": "Exportovat do instance",
         "transferToInstance": "Přenést do instance",
         "ruleSkipped": "Pravidlo nespuštěno",
-        "deleteWaiting": "Čeká na smazání"
+        "deleteWaiting": "Čeká na smazání",
+        "unregisteredWaitStarted": "Čekání začalo",
+        "unregisteredWaitEnded": "Čekání skončilo"
       },
       "shareLimit": {
         "global": "Globální",
@@ -636,7 +642,13 @@
         "transferredDryRun_other": "{{count}} torrentů by bylo přeneseno",
         "deleteWaiting_one": "{{count}} torrent by čekal na smazání",
         "deleteWaiting_few": "{{count}} torrenty by čekaly na smazání",
-        "deleteWaiting_other": "{{count}} torrentů by čekalo na smazání"
+        "deleteWaiting_other": "{{count}} torrentů by čekalo na smazání",
+        "unregisteredWaitStarted_one": "{{count}} torrent začal čekat na smazání",
+        "unregisteredWaitStarted_few": "{{count}} torrenty začaly čekat na smazání",
+        "unregisteredWaitStarted_other": "{{count}} torrentů začalo čekat na smazání",
+        "unregisteredWaitEnded_one": "{{count}} torrent už nečeká na smazání",
+        "unregisteredWaitEnded_few": "{{count}} torrenty už nečekají na smazání",
+        "unregisteredWaitEnded_other": "{{count}} torrentů už nečeká na smazání"
       },
       "deleteDialog": {
         "title": "Smazat pravidlo",
@@ -1018,7 +1030,9 @@
         "exported_to_instance": "Exportováno do instance",
         "transferred_to_instance": "Přenést do instance",
         "rule_skipped": "Pravidlo nespuštěno",
-        "delete_waiting": "Zkušební běh (čeká na smazání)"
+        "delete_waiting": "Zkušební běh (čeká na smazání)",
+        "unregistered_wait_started": "Začal čekat na smazání",
+        "unregistered_wait_ended": "Už nečeká na smazání"
       }
     },
     "reannounceOverview": {

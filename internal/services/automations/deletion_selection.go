@@ -87,6 +87,8 @@ type deletionSelection struct {
 	triggers    map[string]struct{}
 	failedRules map[int]error
 	waiting     []waitingDelete
+	marked      []waitingDelete
+	due         []pendingKey
 	notLoaded   []int
 }
 
@@ -250,6 +252,7 @@ func claimDeleteTriggers(rule *models.Automation, in deletionSelectionInput, sel
 			countNotMet()
 			continue
 		}
+		sel.due = append(sel.due, pendingKey{ruleID: rule.ID, hash: torrent.Hash})
 		if ledger.projects() {
 			readAhead.ask(in.torrents, i, inScope)
 			if !ledger.count(*torrent, in.crossSeeds, in.evalCtx) {

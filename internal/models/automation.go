@@ -487,7 +487,13 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 		sortingConfigJSON = sql.NullString{String: string(data), Valid: true}
 	}
 
-	res, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.ExecContext(ctx, `
 		UPDATE automations
 		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, dry_run = ?, notify = ?, sort_order = ?, interval_seconds = ?, free_space_source = ?, sorting_config = ?
 		WHERE id = ? AND instance_id = ?
@@ -501,6 +507,14 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	}
 	if rows == 0 {
 		return nil, sql.ErrNoRows
+	}
+	if !automation.KeepsPendingDeletes() {
+		if err := removeRulePendingDeletes(ctx, tx, automation.ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 
 	return s.Get(ctx, automation.InstanceID, automation.ID)

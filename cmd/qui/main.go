@@ -808,6 +808,7 @@ func (app *Application) runServer() {
 	automationService.SetActivityPublisher(activityHub)
 	automationService.SetCrossSeedRoutes(crossSeedRoutes)
 	automationService.SetClaimedTorrents(transfers)
+	automationService.SetPendingDeleteStore(models.NewPendingDeleteStore(db))
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)

@@ -18,11 +18,12 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } f
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
+import { RecentlyUnregisteredWarning } from "./RecentlyUnregisteredWarning"
 import type { CrossSeedWarningResult } from "@/hooks/useCrossSeedWarning"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useRef, type MouseEvent } from "react"
 import { useTranslation } from "react-i18next"
-import type { Torrent } from "@/types"
+import type { Torrent, UnregisteredDeleteWarning } from "@/types"
 import { AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
@@ -45,6 +46,7 @@ interface DeleteTorrentDialogProps {
   blockCrossSeeds: boolean
   onBlockCrossSeedsChange: (checked: boolean) => void
   crossSeedWarning?: CrossSeedWarningResult | null
+  unregisteredWarning?: UnregisteredDeleteWarning | null
   onConfirm: (event: MouseEvent<HTMLButtonElement>) => void
   isPending?: boolean
   isAllSelected?: boolean
@@ -67,6 +69,7 @@ export function DeleteTorrentDialog({
   blockCrossSeeds,
   onBlockCrossSeedsChange,
   crossSeedWarning,
+  unregisteredWarning = null,
   onConfirm,
   isPending,
   isAllSelected = false,
@@ -98,6 +101,7 @@ export function DeleteTorrentDialog({
   const changeOpen = (next: boolean) => isPending || onOpenChange(next)
   const body = (
     <>
+      <RecentlyUnregisteredWarning warning={unregisteredWarning} total={count} />
       {isLarge && (
         <div className="flex gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
@@ -192,12 +196,12 @@ export function DeleteTorrentDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={changeOpen}>
-      <AlertDialogContent className="sm:max-w-2xl">
+      <AlertDialogContent className="sm:max-w-2xl max-h-[90dvh] flex flex-col">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
-        {body}
+        <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-[minmax(0,1fr)] content-start gap-4 overflow-y-auto">{body}</div>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isPending}>{t("deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={onConfirm} disabled={isPending}>

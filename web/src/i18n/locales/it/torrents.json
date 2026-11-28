@@ -160,6 +160,18 @@
     "hideAffected": "Nascondi i torrent interessati",
     "more": "+ {{count}} altri"
   },
+  "unregisteredWarning": {
+    "title": "Non registrati da poco",
+    "all_one": "qui ha visto questo torrent come non registrato per la prima volta meno di 2 giorni fa.",
+    "all_other": "qui ha visto tutti i {{count}} torrent come non registrati per la prima volta meno di 2 giorni fa.",
+    "some_one": "qui ha visto {{matched}} di {{count}} torrent come non registrato per la prima volta meno di 2 giorni fa.",
+    "some_other": "qui ha visto {{matched}} dei {{count}} torrent come non registrati per la prima volta meno di 2 giorni fa.",
+    "earliest": "Il primo: {{since}}",
+    "tracker_one": "{{host}}: {{count}} torrent",
+    "tracker_other": "{{host}}: {{count}} torrent",
+    "moreTrackers_one": "e {{count}} altro tracker",
+    "moreTrackers_other": "e altri {{count}} tracker"
+  },
   "recheckDialog": {
     "title": "Forzare la riverifica di {{count}} torrent?",
     "description": "Questo forzerà qBittorrent a riverificare tutti i pezzi dei torrent selezionati. Questo processo può richiedere del tempo e metterà temporaneamente in pausa i torrent.",
