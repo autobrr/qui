@@ -30,6 +30,12 @@ func TestHealthResponses(t *testing.T) {
 			require.Equal(t, http.StatusOK, response.Code)
 			require.Equal(t, "application/json", response.Header().Get("Content-Type"))
 			require.JSONEq(t, `{"status":"`+tt.status+`"}`, response.Body.String())
+
+			headResponse := httptest.NewRecorder()
+			tt.handle(headResponse, httptest.NewRequest(http.MethodHead, tt.path, nil))
+			require.Equal(t, http.StatusOK, headResponse.Code)
+			require.Equal(t, "application/json", headResponse.Header().Get("Content-Type"))
+			require.Empty(t, headResponse.Body.String())
 		})
 	}
 }

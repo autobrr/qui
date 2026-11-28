@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"sort"
 	"strings"
@@ -479,4 +481,29 @@ func TestOpenStopsWhenPortIsInUse(t *testing.T) {
 	}
 	err = s.open(nil)
 	require.ErrorIs(t, err, errAddrInUse)
+}
+
+func TestHealthEndpointsSupportHead(t *testing.T) {
+	server := NewServer(newTestDependencies(t))
+	router, err := server.Handler()
+	require.NoError(t, err)
+
+	testServer := httptest.NewServer(router)
+	t.Cleanup(testServer.Close)
+
+	for _, path := range []string{"/health", "/healthz/readiness", "/healthz/liveness"} {
+		t.Run(path, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodHead, testServer.URL+path, nil)
+			require.NoError(t, err)
+			res, err := testServer.Client().Do(req)
+			require.NoError(t, err)
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, res.StatusCode)
+			require.Equal(t, "application/json", res.Header.Get("Content-Type"))
+			require.Empty(t, body)
+		})
+	}
 }
