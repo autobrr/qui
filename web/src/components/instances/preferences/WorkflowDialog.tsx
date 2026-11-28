@@ -70,7 +70,7 @@ import { usableFreeSpaceSourceType } from "@/lib/free-space-source"
 import { conditionReadsStateUnregistered, conditionReadsVerdict, DEFAULT_DELETE_WAIT_SECONDS, previewRowCount, RAW_TRACKER_FIELDS } from "@/lib/delete-wait"
 import { isMovePathServerError, isVisiblyRelativeMovePath } from "@/lib/move-path"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, ALLOWANCE_DECIMAL_UNITS, allowanceInputOf, firstActionCondition, freeSpaceSourceOf, getSwitchedOffActions, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, type ActionType, type SwitchedOffActions, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { ACTION_LABEL_KEYS, ACTION_RUN_ORDER, ALLOWANCE_DECIMAL_UNITS, allowanceInputOf, firstActionCondition, freeSpaceSourceOf, getSwitchedOffActions, getTrackerMatchMode, getTrackerTokens, hasMixedActionConditions, invalidateWorkflows, type ActionType, type SwitchedOffActions, type TrackerMatchMode } from "@/lib/workflow-utils"
 import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import { BYTES_PER_UNIT, unitLabel } from "@/lib/unit-format"
 import type {
@@ -1997,7 +1997,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     onSuccess: () => {
       toast.success(t("preferences.workflowDialog.toast.workflowSaved", { action: rule ? "updated" : "created" }))
       onOpenChange(false)
-      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+      invalidateWorkflows(queryClient, instanceId)
       onSuccess?.()
     },
     onError: (error) => {

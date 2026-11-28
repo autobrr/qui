@@ -4,7 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   activity: [] as AutomationActivity[],
   pendingDeletes: { rules: [] } as PendingDeleteList,
   incognitoMode: [false, () => {}] as [boolean, () => void],
+  nextPendingDeletes: null as Promise<PendingDeleteList> | null,
+  updates: 0,
+  rulesReads: 0,
 }))
 
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => mocks.instances }))
@@ -33,9 +36,16 @@ vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => mocks.tracker
 vi.mock("@/components/ui/json-editor", () => ({ JsonEditor: () => null, preloadJsonEditor: () => Promise.resolve() }))
 vi.mock("@/lib/api", () => ({
   api: {
-    listAutomations: () => Promise.resolve(mocks.rules),
+    listAutomations: () => {
+      mocks.rulesReads++
+      return Promise.resolve(mocks.rules)
+    },
     getAutomationActivity: () => Promise.resolve(mocks.activity),
-    getPendingDeletes: () => Promise.resolve(mocks.pendingDeletes),
+    getPendingDeletes: () => mocks.nextPendingDeletes ?? Promise.resolve(mocks.pendingDeletes),
+    updateAutomation: () => {
+      mocks.updates++
+      return Promise.resolve(mocks.rules[0])
+    },
   },
 }))
 
@@ -46,6 +56,9 @@ afterEach(() => {
   mocks.activity = []
   mocks.pendingDeletes = { rules: [] }
   mocks.incognitoMode = [false, () => {}]
+  mocks.nextPendingDeletes = null
+  mocks.updates = 0
+  mocks.rulesReads = 0
 })
 
 function transferRule(overrides: Partial<Automation>): Automation {
@@ -64,9 +77,9 @@ function transferActivity(overrides: Partial<AutomationActivity>): AutomationAct
   }
 }
 
-async function renderOverview(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+async function renderOverview() {
   render(
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <TooltipProvider>
         <WorkflowsOverview />
       </TooltipProvider>
@@ -122,17 +135,21 @@ describe("WorkflowsOverview", () => {
     expect(rows[2][4]).toBe(rows[1][4])
   })
 
-  it("reads the waiting torrents again when a rule of the instance is saved", async () => {
+  it("keeps the count while it reads the waiting torrents again after a rule is saved", async () => {
     const waiting = (hash: string) => ({ hash, name: "", tracker: "", message: "", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false })
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     mocks.rules = [deleteRule({})]
     mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [waiting("aaaa1111")] }] }
-    await renderOverview(queryClient)
+    await renderOverview()
     await screen.findByRole("button", { name: "1 waiting" })
 
-    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [waiting("aaaa1111"), waiting("bbbb2222")] }] }
-    await act(() => queryClient.invalidateQueries({ queryKey: ["automations", 1] }))
+    let answer: (list: PendingDeleteList) => void = () => {}
+    mocks.nextPendingDeletes = new Promise<PendingDeleteList>((resolve) => { answer = resolve })
+    fireEvent.click(screen.getByRole("switch"))
 
+    await waitFor(() => expect(mocks.updates).toBe(1))
+    await waitFor(() => expect(mocks.rulesReads).toBe(2))
+    expect(screen.getByRole("button", { name: "1 waiting" })).toBeTruthy()
+    await act(async () => answer({ rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [waiting("aaaa1111"), waiting("bbbb2222")] }] }))
     expect(await screen.findByRole("button", { name: "2 waiting" })).toBeTruthy()
   })
 

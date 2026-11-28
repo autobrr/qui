@@ -60,8 +60,10 @@ import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib
 import {
   fromImportFormat,
   getRuleTagActions,
+  invalidateWorkflows,
   loadWorkflowNames,
   parseImportJSON,
+  pendingDeletesQueryKey,
   toCopyInput,
   toDuplicateInput,
   toExportFormat,
@@ -85,7 +87,7 @@ import {
   verticalListSortingStrategy
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { keepPreviousData, useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Braces, Clock, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
@@ -394,7 +396,7 @@ export function WorkflowsOverview() {
       toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.reorderFailed"))
     },
     onSettled: (_, __, { instanceId }) => {
-      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+      invalidateWorkflows(queryClient, instanceId)
     },
   })
 
@@ -450,7 +452,7 @@ export function WorkflowsOverview() {
       api.deleteAutomation(instanceId, ruleId),
     onSuccess: (_, { instanceId }) => {
       toast.success(t("preferences.workflowsOverview.toast.workflowDeleted"))
-      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+      invalidateWorkflows(queryClient, instanceId)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.deleteAutomationFailed"))
@@ -461,7 +463,7 @@ export function WorkflowsOverview() {
     mutationFn: ({ instanceId, rule }: { instanceId: number; rule: Automation }) =>
       api.updateAutomation(instanceId, rule.id, { ...rule, enabled: !rule.enabled }),
     onSuccess: (_, { instanceId }) => {
-      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+      invalidateWorkflows(queryClient, instanceId)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.toggleRuleFailed"))
@@ -549,7 +551,7 @@ export function WorkflowsOverview() {
     mutationFn: ({ instanceId, payload }: { instanceId: number; payload: Parameters<typeof api.createAutomation>[1] }) =>
       api.createAutomation(instanceId, payload),
     onSuccess: (_, { instanceId }) => {
-      void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+      invalidateWorkflows(queryClient, instanceId)
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.createFailed"))
@@ -789,11 +791,9 @@ export function WorkflowsOverview() {
   })
 
   const pendingDeleteQueries = useQueries({
-    queries: activeInstances.map((instance, index) => ({
-      queryKey: ["automation-activity", instance.id, "pending-deletes", rulesQueries[index]?.dataUpdatedAt],
+    queries: activeInstances.map((instance) => ({
+      queryKey: pendingDeletesQueryKey(instance.id),
       queryFn: () => api.getPendingDeletes(instance.id),
-      enabled: rulesQueries[index]?.isSuccess === true,
-      placeholderData: keepPreviousData,
       staleTime: 5000,
     })),
   })
