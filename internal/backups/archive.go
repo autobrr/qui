@@ -18,6 +18,7 @@ import (
 	"github.com/andybalholm/brotli"
 	kgzip "github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
+	"github.com/rs/zerolog/log"
 	"github.com/ulikunitz/xz"
 
 	"github.com/autobrr/qui/internal/models"
@@ -81,6 +82,7 @@ func (f ArchiveFormat) Extension() string {
 
 type Archive struct {
 	service      *Service
+	runID        int64
 	modTime      time.Time
 	manifest     *Manifest
 	manifestJSON []byte
@@ -95,7 +97,7 @@ func (s *Service) LoadArchive(ctx context.Context, run *models.BackupRun) (*Arch
 	if err != nil {
 		return nil, fmt.Errorf("marshal manifest: %w", err)
 	}
-	return &Archive{service: s, modTime: run.RequestedAt, manifest: manifest, manifestJSON: manifestJSON}, nil
+	return &Archive{service: s, runID: run.ID, modTime: run.RequestedAt, manifest: manifest, manifestJSON: manifestJSON}, nil
 }
 
 type archiveEntryWriter interface {
@@ -126,35 +128,40 @@ func (a *Archive) writeEntries(ew archiveEntryWriter) error {
 		return fmt.Errorf("write manifest: %w", err)
 	}
 
+	skipped := 0
 	for _, item := range a.manifest.Items {
-		file, size, ok := a.openTorrent(item.TorrentBlob)
-		if !ok {
+		if item.TorrentBlob == "" {
 			continue
 		}
-		err := ew.add(item.ArchivePath, size, file)
+		file, size, err := a.openTorrent(item.TorrentBlob)
+		if err != nil {
+			skipped++
+			log.Debug().Err(err).Int64("runID", a.runID).Str("hash", item.Hash).Str("archivePath", item.ArchivePath).Msg("Left a torrent file out of the backup archive")
+			continue
+		}
+		err = ew.add(item.ArchivePath, size, file)
 		file.Close()
 		if err != nil {
 			return fmt.Errorf("write %s: %w", item.ArchivePath, err)
 		}
 	}
+	if skipped > 0 {
+		log.Warn().Int64("runID", a.runID).Int("skipped", skipped).Int("items", len(a.manifest.Items)).Msg("Backup archive is missing torrent files")
+	}
 	return nil
 }
 
-func (a *Archive) openTorrent(blob string) (*os.File, int64, bool) {
-	torrentPath := a.service.ResolveBackupPath(blob)
-	if torrentPath == "" {
-		return nil, 0, false
-	}
-	file, err := os.Open(torrentPath)
+func (a *Archive) openTorrent(blob string) (*os.File, int64, error) {
+	file, err := os.Open(a.service.ResolveBackupPath(blob))
 	if err != nil {
-		return nil, 0, false
+		return nil, 0, err
 	}
 	stat, err := file.Stat()
 	if err != nil {
 		file.Close()
-		return nil, 0, false
+		return nil, 0, err
 	}
-	return file, stat.Size(), true
+	return file, stat.Size(), nil
 }
 
 type nopWriteCloser struct {
