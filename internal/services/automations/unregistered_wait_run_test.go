@@ -178,7 +178,7 @@ func TestDeleteWaitPreviewListsDeletesThenWaitingTorrents(t *testing.T) {
 	require.Zero(t, result.Examples[0].WaitsUntil)
 	for _, row := range result.Examples[1:] {
 		since := map[string]time.Time{waitFreshHash: waitTestNow.Add(-24 * time.Hour), waitDownHash: waitTestNow.Add(-8 * 24 * time.Hour)}[row.Hash]
-		require.Equal(t, since.Add(7*24*time.Hour).Unix(), row.WaitsUntil)
+		require.Equal(t, since.Add(2*24*time.Hour).Unix(), row.WaitsUntil)
 	}
 
 	page, err := svc.PreviewDeleteRule(t.Context(), instanceID, rule, 1, 2, "")

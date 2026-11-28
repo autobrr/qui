@@ -5,7 +5,7 @@
 
 import type { AutomationPreviewResult, RuleCondition } from "@/types"
 
-export const DEFAULT_DELETE_WAIT_SECONDS = 7 * 24 * 3600
+export const DEFAULT_DELETE_WAIT_SECONDS = 2 * 24 * 3600
 export const MAX_DELETE_WAIT_SECONDS = 365 * 24 * 3600
 
 function isStateUnregistered(condition: RuleCondition): boolean {
