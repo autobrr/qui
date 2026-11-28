@@ -173,6 +173,20 @@ func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, back
 		return nil
 	}
 	d := backend.Paths()
+	snaps, noRoot := newFolderSnapshots(instanceID, d, torrents, move)
+	if len(noRoot) > 0 {
+		sm.fillNoRootFiles(ctx, instanceID, noRoot, snaps)
+	}
+
+	if batch, ok := backend.(fsops.BatchStater); ok {
+		markContentBatch(ctx, instanceID, batch, d, snaps)
+		return snaps
+	}
+	markContentEach(ctx, instanceID, backend, snaps)
+	return snaps
+}
+
+func newFolderSnapshots(instanceID int, d fsops.PathDialect, torrents []*qbt.Torrent, move bool) ([]folderSnapshot, []string) {
 	snaps := make([]folderSnapshot, len(torrents))
 	var noRoot []string
 	for i, t := range torrents {
@@ -184,30 +198,28 @@ func (sm *SyncManager) snapshotFolders(ctx context.Context, instanceID int, back
 			noRoot = append(noRoot, t.Hash)
 		}
 	}
+	return snaps, noRoot
+}
 
-	if len(noRoot) > 0 {
-		files, err := sm.GetTorrentFilesBatch(ctx, instanceID, noRoot)
-		if err != nil {
-			log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: file lists unavailable")
-		}
-		for i := range snaps {
-			if snaps[i].Layout != layoutNoRootFolder {
-				continue
-			}
-			list := files[snaps[i].Hash]
-			names := make([]string, len(list))
-			for j := range list {
-				names[j] = list[j].Name
-			}
-			snaps[i].Files = names
-		}
+func (sm *SyncManager) fillNoRootFiles(ctx context.Context, instanceID int, noRoot []string, snaps []folderSnapshot) {
+	files, err := sm.GetTorrentFilesBatch(ctx, instanceID, noRoot)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("folder cleanup: file lists unavailable")
 	}
-
-	if batch, ok := backend.(fsops.BatchStater); ok {
-		markContentBatch(ctx, instanceID, batch, d, snaps)
-		return snaps
+	for i := range snaps {
+		if snaps[i].Layout != layoutNoRootFolder {
+			continue
+		}
+		list := files[snaps[i].Hash]
+		names := make([]string, len(list))
+		for j := range list {
+			names[j] = list[j].Name
+		}
+		snaps[i].Files = names
 	}
+}
 
+func markContentEach(ctx context.Context, instanceID int, backend fsops.Backend, snaps []folderSnapshot) {
 	type marked struct {
 		i       int
 		snap    folderSnapshot
@@ -260,7 +272,6 @@ collect:
 		log.Info().Err(ctx.Err()).Int("instanceID", instanceID).Int("torrents", len(snaps)-checked).
 			Msg("folder cleanup: content not checked in time, leaving these torrents' folders to orphan scan")
 	}
-	return snaps
 }
 
 func markContentBatch(ctx context.Context, instanceID int, batch fsops.BatchStater, d fsops.PathDialect, snaps []folderSnapshot) {
