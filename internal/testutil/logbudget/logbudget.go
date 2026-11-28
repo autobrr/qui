@@ -9,6 +9,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"io"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -37,9 +39,16 @@ func (l Lines) Message(msg string) int {
 
 func Count(t testing.TB, fn func()) Lines {
 	t.Helper()
+	return CountWhere(t, func(string) bool { return true }, fn)
+}
+
+func CountWhere(t testing.TB, keep func(text string) bool, fn func()) Lines {
+	t.Helper()
 	lines := make(Lines)
 	for _, entry := range record(t, fn) {
-		lines[Line{Level: entry.Level, Message: entry.Message}]++
+		if keep(entry.text) {
+			lines[Line{Level: entry.Level, Message: entry.Message}]++
+		}
 	}
 	return lines
 }
@@ -50,23 +59,28 @@ type entry struct {
 	text    string
 }
 
+var output = &switchWriter{w: os.Stderr}
+
+func init() {
+	log.Logger = zerolog.New(output).With().Timestamp().Logger()
+}
+
 func record(t testing.TB, fn func()) []entry {
 	t.Helper()
-	previousLogger, previousLevel := log.Logger, zerolog.GlobalLevel()
-	defer func() {
-		log.Logger = previousLogger
-		zerolog.SetGlobalLevel(previousLevel)
+	var out bytes.Buffer
+	previousLevel := zerolog.GlobalLevel()
+	previous := output.swap(&out)
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	func() {
+		defer func() {
+			output.swap(previous)
+			zerolog.SetGlobalLevel(previousLevel)
+		}()
+		fn()
 	}()
 
-	var out lockedBuffer
-	zerolog.SetGlobalLevel(zerolog.TraceLevel)
-	log.Logger = zerolog.New(&out).Level(zerolog.TraceLevel)
-	fn()
-
-	out.mu.Lock()
-	defer out.mu.Unlock()
 	var entries []entry
-	scanner := bufio.NewScanner(&out.buf)
+	scanner := bufio.NewScanner(&out)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for scanner.Scan() {
 		line := entry{text: scanner.Text()}
@@ -115,13 +129,21 @@ func AssertFlat(t testing.TB, small, large Lines) {
 	}
 }
 
-type lockedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
+type switchWriter struct {
+	mu sync.Mutex
+	w  io.Writer
 }
 
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
+func (s *switchWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
+}
+
+func (s *switchWriter) swap(w io.Writer) io.Writer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous := s.w
+	s.w = w
+	return previous
 }

@@ -558,7 +558,8 @@
         "dryRun": "Dry-run",
         "exportToInstance": "Export to instance",
         "transferToInstance": "Transfer to instance",
-        "ruleSkipped": "Rule not run"
+        "ruleSkipped": "Rule not run",
+        "deleteWaiting": "Waiting to delete"
       },
       "shareLimit": {
         "global": "Global",
@@ -613,7 +614,9 @@
         "exportFailed_one": "{{count}} torrent failed to export",
         "exportFailed_other": "{{count}} torrents failed to export",
         "transferredDryRun_one": "{{count}} torrent would be transferred",
-        "transferredDryRun_other": "{{count}} torrents would be transferred"
+        "transferredDryRun_other": "{{count}} torrents would be transferred",
+        "deleteWaiting_one": "{{count}} torrent would wait to be deleted",
+        "deleteWaiting_other": "{{count}} torrents would wait to be deleted"
       },
       "deleteDialog": {
         "title": "Delete Rule",
@@ -730,7 +733,11 @@
       "exportCSV": "Export CSV",
       "saveWithoutPreview": "Save without preview",
       "previewFailed": "Preview failed: {{error}}",
-      "skipPreviewHint": "The rule still acts on every matching torrent on its next run. You can save without waiting for the preview."
+      "skipPreviewHint": "The rule still acts on every matching torrent on its next run. You can save without waiting for the preview.",
+      "deletes": "Deletes",
+      "deletesNow": "Now",
+      "waitsUntil": "After {{time}}",
+      "waitsForTracker": "When the tracker answers unregistered"
     },
     "orphanScanOverview": {
       "title": "Orphan Scan",
@@ -974,7 +981,8 @@
         "dry_run_no_match": "Dry-run (no match)",
         "exported_to_instance": "Export to instance",
         "transferred_to_instance": "Transfer to instance",
-        "rule_skipped": "Rule not run"
+        "rule_skipped": "Rule not run",
+        "delete_waiting": "Dry-run (waiting to delete)"
       }
     },
     "reannounceOverview": {
@@ -1274,7 +1282,11 @@
         "includeHardlinkedCopies": "Include hardlinked copies",
         "includeHardlinkedCopiesDescription": "Also delete torrents that share the same underlying files via hardlinks. Only includes hardlinks fully inside qBittorrent; never follows hardlinks outside.",
         "localAccessRequired": "Requires \"Local Filesystem Access\" to be enabled in instance settings.",
-        "remoteNotAvailable": "Not available on remote instances"
+        "remoteNotAvailable": "Not available on remote instances",
+        "wait": "Unregistered for at least",
+        "waitHelp": "The rule deletes a torrent only once it has been unregistered this long. 0 deletes it on the first match.",
+        "waitLocked": "To set another time, change the condition to Unregistered.",
+        "waitUnit": "Unregistered time unit"
       },
       "move": {
         "newSavePath": "New save path",
@@ -1391,7 +1403,9 @@
         "state": "State",
         "addedOn": "Added On",
         "path": "Path",
-        "score": "Score"
+        "score": "Score",
+        "deletes": "Deletes",
+        "deletesNow": "Now"
       },
       "footer": {
         "enabled": "Enabled",
@@ -1415,7 +1429,9 @@
         "and": "and",
         "crossSeeds": "{{count}} cross-seed",
         "crossSeeds_other": "{{count}} cross-seeds",
-        "toCategory": "to category"
+        "toCategory": "to category",
+        "waitingSummary_one": "{{count}} torrent has not been unregistered long enough, so this rule does not delete it yet.",
+        "waitingSummary_other": "{{count}} torrents have not been unregistered long enough, so this rule does not delete them yet."
       },
       "enableDryRunPrompt": {
         "title": "Enable dry run?",
@@ -1471,7 +1487,8 @@
           "noMatches": "No matches",
           "exportedToInstance": "Export to instance",
           "transferredToInstance": "Transfer to instance",
-          "ruleSkipped": "Rule not run"
+          "ruleSkipped": "Rule not run",
+          "deleteWaiting": "Waiting to delete"
         },
         "actionFallback": "Unknown action ({{action}})",
         "summary": {
@@ -1490,7 +1507,9 @@
           "noMatches": "No torrents matched this dry-run",
           "impacted": "{{count}} torrent impacted",
           "impacted_other": "{{count}} torrents impacted",
-          "completed": "Dry-run completed"
+          "completed": "Dry-run completed",
+          "deleteWaiting_one": "{{count}} torrent would wait to be deleted",
+          "deleteWaiting_other": "{{count}} torrents would wait to be deleted"
         }
       },
       "toast": {

@@ -95,23 +95,38 @@ var trackerDownStatuses = []string{
 }
 
 func trackerHealthOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now time.Time) TrackerHealth {
+	health, _ := trackerVerdictOf(torrent, trackers, now)
+	return health
+}
+
+func trackerVerdictOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now time.Time) (TrackerHealth, int) {
 	if torrent == nil || len(trackers) == 0 {
-		return ""
+		return "", -1
 	}
 
 	graceOver := torrent.AddedOn <= 0 || now.Sub(time.Unix(torrent.AddedOn, 0)) >= time.Hour
 	var working, updating, unregistered, down, failed, pending bool
-	for _, tracker := range trackers {
+	unregisteredBy := -1
+	noteUnregistered := func(i int) {
+		if !unregistered && TrackerMessageMatchesUnregistered(trackers[i].Message) {
+			unregistered = true
+			unregisteredBy = i
+		}
+	}
+	for i, tracker := range trackers {
+		if pseudoTrackerRow(tracker.Url) {
+			continue
+		}
 		switch tracker.Status {
 		case qbt.TrackerStatusDisabled:
 		case qbt.TrackerStatusOK:
 			working = true
 		case qbt.TrackerStatusUpdating:
 			updating = true
-			unregistered = unregistered || TrackerMessageMatchesUnregistered(tracker.Message)
+			noteUnregistered(i)
 		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
 			failed = true
-			unregistered = unregistered || TrackerMessageMatchesUnregistered(tracker.Message)
+			noteUnregistered(i)
 			down = down || ((!unregistered || !graceOver) && TrackerMessageMatchesDown(tracker.Message))
 		case qbt.TrackerStatusUnreachable:
 			failed = true
@@ -123,15 +138,15 @@ func trackerHealthOf(torrent *qbt.Torrent, trackers []qbt.TorrentTracker, now ti
 
 	switch {
 	case working:
-		return ""
+		return "", -1
 	case unregistered && graceOver:
-		return TrackerHealthUnregistered
+		return TrackerHealthUnregistered, unregisteredBy
 	case down && !updating:
-		return TrackerHealthDown
+		return TrackerHealthDown, -1
 	case failed && !updating && !pending && !unregistered:
-		return TrackerHealthError
+		return TrackerHealthError, -1
 	}
-	return ""
+	return "", -1
 }
 
 var trackerAuthErrorStatuses = []string{

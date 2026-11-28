@@ -44,7 +44,7 @@ export function workflowSaveFlowReducer(state: WorkflowSaveFlow, event: Workflow
         step: "previewing",
         preview: {
           status: "loaded",
-          result: { ...result, examples: [...result.examples, ...event.result.examples], totalMatches: event.result.totalMatches },
+          result: { ...result, examples: [...result.examples, ...event.result.examples], totalMatches: event.result.totalMatches, waitingCount: event.result.waitingCount },
         },
       }
     }

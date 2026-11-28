@@ -558,7 +558,8 @@
         "dryRun": "Simulação (Dry-run)",
         "exportToInstance": "Exportar",
         "transferToInstance": "Transferir para instância",
-        "ruleSkipped": "Regra não executada"
+        "ruleSkipped": "Regra não executada",
+        "deleteWaiting": "Aguardando exclusão"
       },
       "shareLimit": {
         "global": "Global",
@@ -613,7 +614,9 @@
         "exportFailed_one": "{{count}} falha ao exportar",
         "exportFailed_other": "{{count}} falhas ao exportar",
         "transferredDryRun_one": "{{count}} torrent seria transferido",
-        "transferredDryRun_other": "{{count}} torrents seriam transferidos"
+        "transferredDryRun_other": "{{count}} torrents seriam transferidos",
+        "deleteWaiting_one": "{{count}} torrent aguardaria a exclusão",
+        "deleteWaiting_other": "{{count}} torrents aguardariam a exclusão"
       },
       "deleteDialog": {
         "title": "Excluir Regra",
@@ -730,7 +733,11 @@
       "exportCSV": "Exportar CSV",
       "saveWithoutPreview": "Salvar sem pré-visualização",
       "previewFailed": "Falha na pré-visualização: {{error}}",
-      "skipPreviewHint": "A regra ainda age em todos os torrents correspondentes na próxima execução. Você pode salvar sem esperar pela pré-visualização."
+      "skipPreviewHint": "A regra ainda age em todos os torrents correspondentes na próxima execução. Você pode salvar sem esperar pela pré-visualização.",
+      "deletes": "Exclusão",
+      "deletesNow": "Agora",
+      "waitsUntil": "Após {{time}}",
+      "waitsForTracker": "Quando o tracker responder não registrado de novo"
     },
     "orphanScanOverview": {
       "title": "Varredura de Órfãos",
@@ -974,7 +981,8 @@
         "dry_run_no_match": "Simulação (Sem correspondência)",
         "exported_to_instance": "Exportado",
         "transferred_to_instance": "Transferir para instância",
-        "rule_skipped": "Regra não executada"
+        "rule_skipped": "Regra não executada",
+        "delete_waiting": "Simulação (aguardando exclusão)"
       }
     },
     "reannounceOverview": {
@@ -1274,7 +1282,11 @@
         "includeHardlinkedCopies": "Incluir cópias com hardlink",
         "includeHardlinkedCopiesDescription": "Também exclui torrents que compartilham os mesmos arquivos via hardlinks. Considera apenas hardlinks totalmente dentro do qBittorrent; nunca segue hardlinks externos.",
         "localAccessRequired": "Requer que \"Acesso ao Sistema de Arquivos Local\" esteja ativado nas configurações da instância.",
-        "remoteNotAvailable": "Indisponível em instâncias remotas"
+        "remoteNotAvailable": "Indisponível em instâncias remotas",
+        "wait": "Não registrado há pelo menos",
+        "waitHelp": "A regra só exclui um torrent quando ele está não registrado há esse tempo. 0 exclui na primeira correspondência.",
+        "waitLocked": "Para definir outro tempo, mude a condição para Não Registrado.",
+        "waitUnit": "Unidade do tempo sem registro"
       },
       "move": {
         "newSavePath": "Aonde salvar o arquivo agora?",
@@ -1391,7 +1403,9 @@
         "state": "Status",
         "addedOn": "Adicionado",
         "path": "Caminho",
-        "score": "Pts"
+        "score": "Pts",
+        "deletes": "Exclusão",
+        "deletesNow": "Agora"
       },
       "footer": {
         "enabled": "Ativado",
@@ -1415,7 +1429,9 @@
         "and": "+",
         "crossSeeds": "{{count}} cross-seed atrelado",
         "crossSeeds_other": "{{count}} cross-seeds atrelados",
-        "toCategory": "em direção à categoria"
+        "toCategory": "em direção à categoria",
+        "waitingSummary_one": "{{count}} torrent ainda não está não registrado há tempo suficiente, então esta regra ainda não o exclui.",
+        "waitingSummary_other": "{{count}} torrents ainda não estão não registrados há tempo suficiente, então esta regra ainda não os exclui."
       },
       "enableDryRunPrompt": {
         "title": "Ativar simulação?",
@@ -1471,7 +1487,8 @@
           "noMatches": "Nenhuma correspondência",
           "exportedToInstance": "Exportar",
           "transferredToInstance": "Transferir para instância",
-          "ruleSkipped": "Regra não executada"
+          "ruleSkipped": "Regra não executada",
+          "deleteWaiting": "Aguardando exclusão"
         },
         "actionFallback": "Ação desconhecida ({{action}})",
         "summary": {
@@ -1490,7 +1507,9 @@
           "noMatches": "0 resultados afetados.",
           "impacted": "{{count}} sofreu impacto",
           "impacted_other": "{{count}} sofreram impacto",
-          "completed": "Simulação Pronta"
+          "completed": "Simulação Pronta",
+          "deleteWaiting_one": "{{count}} torrent aguardaria a exclusão",
+          "deleteWaiting_other": "{{count}} torrents aguardariam a exclusão"
         }
       },
       "toast": {

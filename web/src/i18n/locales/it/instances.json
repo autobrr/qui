@@ -558,7 +558,8 @@
         "dryRun": "Dry run",
         "exportToInstance": "Esporta nell'istanza",
         "transferToInstance": "Trasferisci a un'istanza",
-        "ruleSkipped": "Regola non eseguita"
+        "ruleSkipped": "Regola non eseguita",
+        "deleteWaiting": "In attesa di eliminazione"
       },
       "shareLimit": {
         "global": "Globale",
@@ -613,7 +614,9 @@
         "exportFailed_one": "Esportazione di {{count}} torrent non riuscita",
         "exportFailed_other": "Esportazione di {{count}} torrent non riuscita",
         "transferredDryRun_one": "{{count}} torrent verrebbe trasferito",
-        "transferredDryRun_other": "{{count}} torrent verrebbero trasferiti"
+        "transferredDryRun_other": "{{count}} torrent verrebbero trasferiti",
+        "deleteWaiting_one": "{{count}} torrent attenderebbe l'eliminazione",
+        "deleteWaiting_other": "{{count}} torrent attenderebbero l'eliminazione"
       },
       "deleteDialog": {
         "title": "Elimina regola",
@@ -730,7 +733,11 @@
       "exportCSV": "Esporta CSV",
       "saveWithoutPreview": "Salva senza anteprima",
       "previewFailed": "Anteprima non riuscita: {{error}}",
-      "skipPreviewHint": "La regola agirà comunque su ogni torrent corrispondente alla prossima esecuzione. Puoi salvare senza attendere l'anteprima."
+      "skipPreviewHint": "La regola agirà comunque su ogni torrent corrispondente alla prossima esecuzione. Puoi salvare senza attendere l'anteprima.",
+      "deletes": "Eliminazione",
+      "deletesNow": "Ora",
+      "waitsUntil": "Dopo {{time}}",
+      "waitsForTracker": "Quando il tracker risponde di nuovo non registrato"
     },
     "orphanScanOverview": {
       "title": "Scansione orfani",
@@ -974,7 +981,8 @@
         "dry_run_no_match": "Simulazione (nessuna corrispondenza)",
         "exported_to_instance": "Esporta verso l'istanza",
         "transferred_to_instance": "Trasferisci a un'istanza",
-        "rule_skipped": "Regola non eseguita"
+        "rule_skipped": "Regola non eseguita",
+        "delete_waiting": "Simulazione (in attesa di eliminazione)"
       }
     },
     "reannounceOverview": {
@@ -1274,7 +1282,11 @@
         "includeHardlinkedCopies": "Includi le copie con hardlink",
         "includeHardlinkedCopiesDescription": "Elimina anche i torrent che condividono gli stessi file sottostanti tramite hardlink. Include solo gli hardlink completamente interni a qBittorrent; non segue mai gli hardlink esterni.",
         "localAccessRequired": "Richiede che l'\"Accesso al filesystem locale\" sia abilitato nelle impostazioni dell'istanza.",
-        "remoteNotAvailable": "Non disponibile sulle istanze remote"
+        "remoteNotAvailable": "Non disponibile sulle istanze remote",
+        "wait": "Non registrato da almeno",
+        "waitHelp": "La regola elimina un torrent solo quando risulta non registrato da questo tempo. 0 lo elimina alla prima corrispondenza.",
+        "waitLocked": "Per impostare un altro tempo, cambia la condizione in Non registrato.",
+        "waitUnit": "Unità del tempo senza registrazione"
       },
       "move": {
         "newSavePath": "Nuovo percorso di salvataggio",
@@ -1391,7 +1403,9 @@
         "state": "Stato",
         "addedOn": "Aggiunto il",
         "path": "Percorso",
-        "score": "Punteggio"
+        "score": "Punteggio",
+        "deletes": "Eliminazione",
+        "deletesNow": "Ora"
       },
       "footer": {
         "enabled": "Abilitato",
@@ -1415,7 +1429,9 @@
         "and": "e",
         "crossSeeds": "{{count}} cross-seed",
         "crossSeeds_other": "{{count}} cross-seed",
-        "toCategory": "nella categoria"
+        "toCategory": "nella categoria",
+        "waitingSummary_one": "{{count}} torrent non risulta ancora non registrato da abbastanza tempo, quindi questa regola non lo elimina ancora.",
+        "waitingSummary_other": "{{count}} torrent non risultano ancora non registrati da abbastanza tempo, quindi questa regola non li elimina ancora."
       },
       "enableDryRunPrompt": {
         "title": "Abilitare la simulazione (dry run)?",
@@ -1471,7 +1487,8 @@
           "noMatches": "Nessuna corrispondenza",
           "exportedToInstance": "Esporta verso istanza",
           "transferredToInstance": "Trasferisci a un'istanza",
-          "ruleSkipped": "Regola non eseguita"
+          "ruleSkipped": "Regola non eseguita",
+          "deleteWaiting": "In attesa di eliminazione"
         },
         "actionFallback": "Azione sconosciuta ({{action}})",
         "summary": {
@@ -1490,7 +1507,9 @@
           "noMatches": "Nessun torrent ha corrisposto a questa simulazione",
           "impacted": "{{count}} torrent interessato",
           "impacted_other": "{{count}} torrent interessati",
-          "completed": "Simulazione completata"
+          "completed": "Simulazione completata",
+          "deleteWaiting_one": "{{count}} torrent attenderebbe l'eliminazione",
+          "deleteWaiting_other": "{{count}} torrent attenderebbero l'eliminazione"
         }
       },
       "toast": {

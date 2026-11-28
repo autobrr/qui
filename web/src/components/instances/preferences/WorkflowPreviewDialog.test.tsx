@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 
 vi.mock("react-i18next", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-i18next")>()
@@ -12,13 +12,19 @@ vi.mock("react-i18next", async (importOriginal) => {
     ...actual,
     useTranslation: () => ({
       t: (key: string, opts?: Record<string, unknown>) =>
-        opts && "error" in opts ? `${key}:${String(opts.error)}` : key,
+        opts && "error" in opts ? `${key}:${String(opts.error)}` : opts && "time" in opts ? `${key}:${String(opts.time)}` : key,
       i18n: { t: (key: string) => key },
     }),
   }
 })
 vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => ({ data: undefined }) }))
 vi.mock("@/hooks/useTrackerCustomizations", () => ({ useTrackerCustomizations: () => ({ data: undefined }) }))
+const formatters = vi.hoisted(() => ({ formatTimestamp: (timestamp: number) => `at ${timestamp}` }))
+vi.mock("@/lib/utils", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/utils")>(),
+  formatBytes: (bytes: number) => `${bytes} B`,
+}))
+vi.mock("@/hooks/useDateTimeFormatters", () => ({ useDateTimeFormatters: () => formatters }))
 
 import { WorkflowPreviewDialog } from "@/components/instances/preferences/WorkflowPreviewDialog"
 
@@ -72,6 +78,33 @@ describe("WorkflowPreviewDialog", () => {
     render(<WorkflowPreviewDialog {...baseProps} onConfirm={() => {}} preview={preview} />)
 
     expect(screen.getByText("queryBuilder.ruleSkip")).toBeTruthy()
+  })
+
+  const row = (hash: string, waitsUntil?: number) => ({
+    name: hash, hash, size: 1, ratio: 1, seedingTime: 1, tracker: "tracker.example", category: "", tags: "", state: "stalledUP", addedOn: 1,
+    uploaded: 0, downloaded: 0, numSeeds: 0, numComplete: 0, numLeechs: 0, numIncomplete: 0, progress: 1, availability: 0,
+    timeActive: 0, lastActivity: 0, completionOn: 0, totalSize: 1, waitsUntil,
+  })
+
+  it("says for each row whether the rule deletes it now or when its wait ends", () => {
+    const preview = { totalMatches: 1, waitingCount: 3, examples: [row("due"), row("waiting", 4102444800), row("tracker down", 1)] }
+    render(<WorkflowPreviewDialog {...baseProps} onConfirm={() => {}} preview={preview} onExport={() => {}} />)
+
+    const cells = screen.getAllByRole("row").slice(1).map(tr => within(tr).getAllByRole("cell")).map(td => [td[1].textContent, td[5].textContent])
+    expect(cells).toEqual([
+      ["due", "preferences.workflowPreview.deletesNow"],
+      ["waiting", "preferences.workflowPreview.waitsUntil:at 4102444800"],
+      ["tracker down", "preferences.workflowPreview.waitsForTracker"],
+    ])
+    expect(screen.getByText("preferences.workflowPreview.andMoreTorrents")).toBeTruthy()
+    expect(screen.getByText("preferences.workflowPreview.exportCSV")).toBeTruthy()
+  })
+
+  it("shows no deletes column when no torrent waits", () => {
+    render(<WorkflowPreviewDialog {...baseProps} onConfirm={() => {}} preview={{ totalMatches: 1, examples: [row("due")] }} />)
+
+    expect(screen.getByText("due")).toBeTruthy()
+    expect(screen.queryByText("preferences.workflowPreview.deletes")).toBeNull()
   })
 
   it("keeps the dialog open with the error when the preview fails", () => {

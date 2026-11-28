@@ -94,6 +94,7 @@ type stubQbt struct {
 	fileReads        int
 	trackers         string
 	trackerInfo      string
+	syncsSinceWrite  int
 }
 
 func newStubQbt(t *testing.T, torrents string) *stubQbt {
@@ -121,6 +122,7 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/v2/sync/maindata":
 		s.mu.Lock()
 		torrents, trackers := s.torrents, s.trackers
+		s.syncsSinceWrite++
 		s.mu.Unlock()
 		if trackers != "" {
 			trackers = `,"trackers":` + trackers
@@ -162,6 +164,7 @@ func (s *stubQbt) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.writes = append(s.writes, stubWrite{path: path, form: r.Form})
+		s.syncsSinceWrite = 0
 		if path == "torrents/add" && s.torrentsAfterAdd != "" {
 			s.torrents = s.torrentsAfterAdd
 		}
@@ -177,6 +180,12 @@ func (s *stubQbt) recordedWrites() []stubWrite {
 }
 
 func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) (*Service, *database.DB, []int) {
+	t.Helper()
+	svc, db, instanceIDs, _ := newStubServiceWithPool(t, crossMatcher, stubs...)
+	return svc, db, instanceIDs
+}
+
+func newStubServiceWithPool(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) (*Service, *database.DB, []int, *qbittorrent.ClientPool) {
 	t.Helper()
 
 	db := testdb.NewMigratedSQLite(t, t.Name())
@@ -202,7 +211,7 @@ func newStubService(t *testing.T, crossMatcher CrossMatcher, stubs ...*stubQbt) 
 	syncManager := qbittorrent.NewSyncManager(clientPool, nil)
 
 	svc := NewService(Config{ApplyTimeout: DefaultConfig().ApplyTimeout}, instanceStore, models.NewAutomationStore(db), models.NewAutomationActivityStore(db), nil, syncManager, nil, nil, crossMatcher, fsops.NewPool(instanceStore, localbackend.NewBackend()))
-	return svc, db, instanceIDs
+	return svc, db, instanceIDs, clientPool
 }
 
 func parityDeleteRule(mode string, cond *models.RuleCondition) *models.Automation {

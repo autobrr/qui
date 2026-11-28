@@ -83,13 +83,20 @@ lock = threading.Lock()
 rid = 0
 counts = Counter()
 FULL = None
+FLAGS = tuple(int(x) for x in API.split(".")) >= (2, 15, 1)
+unregistered = set()
+flag_changes = set()
+deleted = []
+removed = []
 
 
 def tracker_rows(t):
     rows = [{"url": u, "status": 0, "tier": -1, "num_peers": 0, "num_seeds": 0, "num_leeches": 0,
              "num_downloaded": 0, "msg": "This torrent is private"} for u in ("** [DHT] **", "** [PeX] **", "** [LSD] **")]
-    rows.append({"url": t["tracker"], "status": 2, "tier": 0, "num_peers": 3, "num_seeds": t["num_complete"],
-                 "num_leeches": t["num_incomplete"], "num_downloaded": 12, "msg": ""})
+    bad = t["infohash_v1"] in unregistered
+    rows.append({"url": t["tracker"], "status": 4 if bad else 2, "tier": 0, "num_peers": 0 if bad else 3,
+                 "num_seeds": t["num_complete"], "num_leeches": t["num_incomplete"], "num_downloaded": 12,
+                 "msg": "Unregistered torrent" if bad else ""})
     return rows
 
 
@@ -112,16 +119,51 @@ def maindata(req_rid):
                 FULL = {"full_update": True, "torrents": torrents, "categories": categories, "tags": TAGS,
                         "trackers": tracker_map, "server_state": server_state}
             FULL["rid"] = rid
+            if FLAGS:
+                for h, t in torrents.items():
+                    t["has_tracker_error"] = h in unregistered
+                    t["has_tracker_warning"] = False
+                    t["has_other_announce_error"] = False
             return json.dumps(FULL).encode()
         changed = {}
-        for h in rnd.sample(order, min(len(order), max(1, COUNT // 200))):
+        for h in flag_changes:
+            if h in torrents:
+                changed[h] = {"has_tracker_error": h in unregistered} if FLAGS else {}
+        flag_changes.clear()
+        for h in rnd.sample(order, min(len(order), max(1, len(order) // 200))):
             t = torrents[h]
             t["upspeed"] = rnd.randrange(500_000)
             t["uploaded"] += t["upspeed"]
             t["last_activity"] = int(time.time())
-            changed[h] = {"upspeed": t["upspeed"], "uploaded": t["uploaded"], "last_activity": t["last_activity"]}
-        return json.dumps({"rid": rid, "torrents": changed,
+            changed.setdefault(h, {}).update(upspeed=t["upspeed"], uploaded=t["uploaded"], last_activity=t["last_activity"])
+        gone = removed[:]
+        removed.clear()
+        return json.dumps({"rid": rid, "torrents": changed, "torrents_removed": gone,
                            "server_state": {"up_info_speed": rnd.randrange(10**7)}}).encode()
+
+
+def set_answer(answer, count):
+    with lock:
+        picked = set(order[-count:]) if count else set()
+        before = set(unregistered)
+        unregistered.difference_update(picked)
+        if answer == "unregistered":
+            unregistered.update(picked)
+        flag_changes.update(before ^ unregistered)
+        return sorted(picked)
+
+
+def delete(hashes):
+    with lock:
+        for h in hashes:
+            if torrents.pop(h, None) is not None:
+                order.remove(h)
+                unregistered.discard(h)
+                deleted.append(h)
+                removed.append(h)
+                for hs in tracker_map.values():
+                    if h in hs:
+                        hs.remove(h)
 
 
 STATIC = {
@@ -168,6 +210,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/_counts":
             self.send(json.dumps(counts, indent=1).encode())
             return
+        if path == "/_tracker":
+            self.send(json.dumps(set_answer(p.get("answer", "working"), int(p.get("count", 0)))).encode())
+            return
+        if path == "/_deleted":
+            self.send(json.dumps(deleted).encode())
+            return
         counts[path] += 1
         if path == "/api/v2/auth/login":
             self.send(b"Ok.", [("Set-Cookie", "SID=stub; Path=/")])
@@ -190,6 +238,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/v2/torrents/trackers":
             t = torrents.get(p.get("hash", ""))
             self.send(json.dumps(tracker_rows(t) if t else []).encode())
+        elif path == "/api/v2/torrents/delete":
+            delete([h for h in p.get("hashes", "").split("|") if h])
+            self.send(b"")
         elif path == "/api/v2/torrents/files":
             self.send(json.dumps(files(p.get("hash", ""))).encode())
         elif path == "/api/v2/torrents/properties":

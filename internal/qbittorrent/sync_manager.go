@@ -342,16 +342,23 @@ type DuplicateTorrentMatch struct {
 }
 
 type TrackerHealthSnapshot struct {
-	byHash map[string]TrackerHealth
-	counts map[TrackerHealth]int
+	byHash         map[string]TrackerHealth
+	counts         map[TrackerHealth]int
+	unregisteredBy map[string]unregisteredRow
+	since          map[string]time.Time
+	sinceLoaded    bool
 }
 
 func NewTrackerHealthSnapshot(byHash map[string]TrackerHealth) *TrackerHealthSnapshot {
+	return newTrackerHealthSnapshot(byHash, nil, nil, true)
+}
+
+func newTrackerHealthSnapshot(byHash map[string]TrackerHealth, unregisteredBy map[string]unregisteredRow, since map[string]time.Time, sinceLoaded bool) *TrackerHealthSnapshot {
 	counts := make(map[TrackerHealth]int, 3)
 	for _, health := range byHash {
 		counts[health]++
 	}
-	return &TrackerHealthSnapshot{byHash: byHash, counts: counts}
+	return &TrackerHealthSnapshot{byHash: byHash, counts: counts, unregisteredBy: unregisteredBy, since: since, sinceLoaded: sinceLoaded}
 }
 
 func (s *TrackerHealthSnapshot) Health(hash string) TrackerHealth {
@@ -428,6 +435,10 @@ type SyncManager struct {
 	trackerHealthDetailMaxAge time.Duration
 	trackerHealthFlagged      map[int]*trackerDetails
 	automationTrackerDetails  map[int]*trackerDetails
+	trackerHealthSince        map[int]*unregisteredSince
+	trackerHealthNow          func() time.Time
+	sinceStore                atomic.Pointer[UnregisteredSinceStore]
+	sinceStoreMu              sync.Mutex
 
 	validatedTrackerMu      sync.RWMutex
 	validatedTrackerMapping map[int]*ValidatedTrackerMapping
@@ -486,6 +497,8 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 		trackerHealthDetailMaxAge: 10 * time.Minute,
 		trackerHealthFlagged:      make(map[int]*trackerDetails),
 		automationTrackerDetails:  make(map[int]*trackerDetails),
+		trackerHealthSince:        make(map[int]*unregisteredSince),
+		trackerHealthNow:          time.Now,
 		validatedTrackerMapping:   make(map[int]*ValidatedTrackerMapping),
 		trackerDisplayNameCache:   ttlcache.New[string, map[string]string](ttlcache.SetDefaultTTL(60 * time.Second)),
 	}
@@ -666,7 +679,10 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		return
 	}
 
-	torrents := snapshotTorrents(syncManager.Snapshot())
+	sm.loadUnregisteredSince(refreshCtx, instanceID)
+	snapshot := syncManager.Snapshot()
+	torrents := snapshotTorrents(snapshot)
+	synced := snapshot != nil
 	mainData := resolveMainData(syncManager, mainDataReadCached)
 
 	if !client.Supports(CapTrackerHealth) {
@@ -684,7 +700,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	var details TrackerLookup
 	var fetchErr error
 	if client.Supports(CapAnnounceFlags) {
-		details, fetchErr = sm.hydrateTrackerDetails(refreshCtx, client, sm.trackerDetailsFor(sm.trackerHealthFlagged, instanceID), torrents, true)
+		details, fetchErr = sm.hydrateTrackerDetails(refreshCtx, client, sm.trackerDetailsFor(sm.trackerHealthFlagged, instanceID), torrents, flaggedOrUnregisteredSince(sm.unregisteredSinceHashes(instanceID)))
 	} else {
 		details, fetchErr = client.refreshTrackers(refreshCtx, torrents)
 	}
@@ -711,25 +727,35 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		return
 	}
 
-	if sm.applyTrackerHealthRefreshResult(instanceID, torrents, details, mainData, started, client.Supports(CapAnnounceFlags)) {
+	changed := sm.applyTrackerHealthRefreshResult(instanceID, torrents, details, mainData, synced, started, client.Supports(CapAnnounceFlags))
+	sm.storeUnregisteredSince(ctx, instanceID)
+	if changed {
 		sm.notifyTrackerHealthUpdated(instanceID)
 	}
 }
 
-func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents []*qbt.Torrent, details TrackerLookup, mainData *qbt.MainData, started time.Time, fetchedByHash bool) bool {
-	now := time.Now()
+func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents []*qbt.Torrent, details TrackerLookup, mainData *qbt.MainData, synced bool, started time.Time, fetchedByHash bool) bool {
+	now := sm.healthNow()
 	byHash := make(map[string]TrackerHealth)
+	unregisteredBy := make(map[string]unregisteredRow)
 	for _, torrent := range torrents {
-		if health := trackerHealthOf(torrent, details.Trackers(torrent.Hash), now); health != "" {
+		trackers := details.Trackers(torrent.Hash)
+		health, by := trackerVerdictOf(torrent, trackers, now)
+		if health != "" {
 			byHash[torrent.Hash] = health
 		}
+		if by >= 0 {
+			unregisteredBy[torrent.Hash] = unregisteredRow{trackers: trackers, by: by}
+		}
 	}
-	snapshot := NewTrackerHealthSnapshot(byHash)
 	mapping := sm.trackerMappingFromMainData(torrents, mainData)
 
 	sm.trackerHealthMu.Lock()
+	sm.advanceUnregisteredSince(instanceID, torrents, details, byHash, synced, started, now)
+	state := sm.sinceFor(instanceID)
+	snapshot := newTrackerHealthSnapshot(byHash, unregisteredBy, state.times, state.loaded)
 	previous := sm.trackerHealthCache[instanceID]
-	healthChanged := previous == nil || !maps.Equal(previous.byHash, byHash)
+	healthChanged := previous == nil || !maps.Equal(previous.byHash, byHash) || !maps.Equal(previous.since, snapshot.since) || previous.sinceLoaded != snapshot.sinceLoaded
 	sm.trackerHealthCache[instanceID] = snapshot
 	sm.trackerHealthPassAt[instanceID] = started
 	sm.trackerHealthMu.Unlock()
@@ -771,34 +797,8 @@ func (sm *SyncManager) GetTrackerHealthSnapshot(instanceID int) *TrackerHealthSn
 	return sm.trackerHealthCache[instanceID]
 }
 
-func (sm *SyncManager) clearTrackerHealthAndRefetch(instanceID int, hashes []string) {
-	sm.trackerHealthMu.Lock()
-	for _, cache := range []*trackerDetails{sm.trackerHealthFlagged[instanceID], sm.automationTrackerDetails[instanceID]} {
-		if cache == nil {
-			continue
-		}
-		if cache.edited == nil {
-			cache.edited = make(map[string]struct{}, len(hashes))
-		}
-		for _, hash := range hashes {
-			cache.edited[hash] = struct{}{}
-		}
-	}
-
-	snapshot := sm.trackerHealthCache[instanceID]
-	changed := snapshot != nil && slices.ContainsFunc(hashes, func(hash string) bool { return snapshot.byHash[hash] != "" })
-	if changed {
-		byHash := maps.Clone(snapshot.byHash)
-		for _, hash := range hashes {
-			delete(byHash, hash)
-		}
-		sm.trackerHealthCache[instanceID] = NewTrackerHealthSnapshot(byHash)
-	}
-	sm.trackerHealthMu.Unlock()
-
-	if changed {
-		sm.notifyTrackerHealthUpdated(instanceID)
-	}
+func (sm *SyncManager) clearTrackerHealthAndRefetch(ctx context.Context, instanceID int, hashes []string) {
+	sm.forgetTrackerHealth(ctx, instanceID, hashes, true)
 }
 
 func (sm *SyncManager) getValidatedTrackerMapping(instanceID int) *ValidatedTrackerMapping {
@@ -1996,6 +1996,9 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, requested
 	switch action {
 	case "pause":
 		err = client.PauseCtx(ctx, canonicalHashes)
+		if err == nil {
+			sm.forgetTrackerHealth(ctx, instanceID, canonicalHashes, false)
+		}
 	case "resume":
 		err = client.ResumeCtx(ctx, canonicalHashes)
 	case "delete":
@@ -2003,7 +2006,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, requested
 		sm.noteDelete(instanceID, canonicalHashes, actor)
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, false)
 		if err == nil {
-			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
+			sm.clearTrackerHealthAndRefetch(ctx, instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			for _, hash := range targetHashes {
 				if invalidateErr := sm.InvalidateFileCache(ctx, instanceID, hash); invalidateErr != nil {
@@ -2018,7 +2021,7 @@ func (sm *SyncManager) bulkAction(ctx context.Context, instanceID int, requested
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		if err == nil {
 			folders.Queue()
-			sm.clearTrackerHealthAndRefetch(instanceID, canonicalHashes)
+			sm.clearTrackerHealthAndRefetch(ctx, instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			for _, hash := range targetHashes {
 				if invalidateErr := sm.InvalidateFileCache(ctx, instanceID, hash); invalidateErr != nil {
@@ -3544,7 +3547,7 @@ func (sm *SyncManager) TrackerDetails(ctx context.Context, instanceID int, torre
 
 	if client.Supports(CapAnnounceFlags) {
 		cache := sm.trackerDetailsFor(sm.automationTrackerDetails, instanceID)
-		lookup, err := sm.hydrateTrackerDetails(ctx, client, cache, torrents, false)
+		lookup, err := sm.hydrateTrackerDetails(ctx, client, cache, torrents, nil)
 		if err != nil {
 			return lookup, fmt.Errorf("fetch tracker details: %w", err)
 		}
@@ -4439,7 +4442,7 @@ func (sm *SyncManager) EditTorrentTracker(ctx context.Context, instanceID int, h
 			sm.updateTrackerMappingForEdit(instanceID, hash, oldDomain, newDomain)
 		}
 
-		sm.clearTrackerHealthAndRefetch(instanceID, []string{hash})
+		sm.clearTrackerHealthAndRefetch(ctx, instanceID, []string{hash})
 		return nil
 	})
 }
@@ -4464,7 +4467,7 @@ func (sm *SyncManager) AddTorrentTrackers(ctx context.Context, instanceID int, h
 			}
 		}
 
-		sm.clearTrackerHealthAndRefetch(instanceID, []string{hash})
+		sm.clearTrackerHealthAndRefetch(ctx, instanceID, []string{hash})
 		return nil
 	})
 }
@@ -4488,7 +4491,7 @@ func (sm *SyncManager) RemoveTorrentTrackers(ctx context.Context, instanceID int
 			}
 		}
 
-		sm.clearTrackerHealthAndRefetch(instanceID, []string{hash})
+		sm.clearTrackerHealthAndRefetch(ctx, instanceID, []string{hash})
 		return nil
 	})
 }
@@ -4540,7 +4543,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 			}
 		}
 
-		sm.clearTrackerHealthAndRefetch(instanceID, updatedHashes)
+		sm.clearTrackerHealthAndRefetch(ctx, instanceID, updatedHashes)
 		return nil
 	})
 }
@@ -4580,7 +4583,7 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 			}
 		}
 
-		sm.clearTrackerHealthAndRefetch(instanceID, successfulHashes)
+		sm.clearTrackerHealthAndRefetch(ctx, instanceID, successfulHashes)
 		return nil
 	})
 }
@@ -4620,7 +4623,7 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 			}
 		}
 
-		sm.clearTrackerHealthAndRefetch(instanceID, successfulHashes)
+		sm.clearTrackerHealthAndRefetch(ctx, instanceID, successfulHashes)
 		return nil
 	})
 }
