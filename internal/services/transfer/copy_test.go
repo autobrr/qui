@@ -110,8 +110,30 @@ func TestTransferCopiesManySmallFilesAtOnce(t *testing.T) {
 	require.LessOrEqual(t, r.ssh.MaxInFlight(), 128, "at most 128 files are read at once")
 }
 
+func TestTransferPushKeepsWritesInFlight(t *testing.T) {
+	r := newRigOn(t, onDisk, overSFTP, func(c *transfer.Config) {
+		c.ReadBytes = transfer.DefaultConfig().ReadBytes
+		c.FlushBytes = 4 << 20
+	})
+	r.dstSSH.SetFsync(true)
+	const size = 4<<20 + 3
+	s := newSeason(t, size)
+	r.seed(s)
+	r.dstSSH.SetLatency(2 * time.Millisecond)
+
+	record := r.run(r.request(s))
+
+	require.Equal(t, transfer.StateDone, record.State, record.FailureReason)
+	require.Equal(t, contents(s, showName), tree(t, r.dstDir))
+	require.Equal(t, allPieces(size/packPiece+1), record.Members[0].ProvenPieces)
+	require.GreaterOrEqual(t, r.dstSSH.MaxInFlight(), 8, "the writes of a push overlap")
+}
+
 func TestTransferResumesACopyInSeveralRanges(t *testing.T) {
-	r := newRig(t, fastCopy)
+	r := newRig(t, func(c *transfer.Config) {
+		c.ReadBytes = 1 << 20
+		c.FlushBytes = 256 << 10
+	})
 	const size = 4<<20 + 3
 	s := newSeason(t, size)
 	r.seed(s)
