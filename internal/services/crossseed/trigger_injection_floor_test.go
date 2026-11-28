@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -224,9 +225,11 @@ func triggerConstants(t *testing.T) []triggerConstant {
 			}
 		}
 	}
-	pkg, err := new(types.Config).Check("triggers", fset, []*ast.File{{Name: ast.NewIdent("triggers"), Decls: decls}}, nil)
-	require.NoError(t, err)
-	triggerType := pkg.Scope().Lookup("trigger").Type()
+	config := types.Config{Error: func(error) {}}
+	pkg, _ := config.Check("triggers", fset, []*ast.File{{Name: ast.NewIdent("triggers"), Decls: decls}}, nil)
+	declared := pkg.Scope().Lookup("trigger")
+	require.NotNil(t, declared, "no trigger type in the package")
+	triggerType := declared.Type()
 	var constants []triggerConstant
 	for _, name := range pkg.Scope().Names() {
 		c, ok := pkg.Scope().Lookup(name).(*types.Const)
@@ -242,17 +245,11 @@ func triggerConstants(t *testing.T) []triggerConstant {
 }
 
 func declaresTrigger(gen *ast.GenDecl) bool {
-	for _, spec := range gen.Specs {
-		switch spec := spec.(type) {
-		case *ast.TypeSpec:
-			if spec.Name.Name == "trigger" {
-				return true
-			}
-		case *ast.ValueSpec:
-			if ident, ok := spec.Type.(*ast.Ident); ok && ident.Name == "trigger" {
-				return true
-			}
-		}
+	if gen.Tok == token.CONST {
+		return true
 	}
-	return false
+	return slices.ContainsFunc(gen.Specs, func(spec ast.Spec) bool {
+		typeSpec, ok := spec.(*ast.TypeSpec)
+		return ok && typeSpec.Name.Name == "trigger"
+	})
 }
