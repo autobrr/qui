@@ -93,7 +93,7 @@ jobs:
 
       - name: Set up Go
         if: steps.pick.outputs.file
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7.1.0
         with:
           go-version-file: go.mod
           # The tests run code from the agent and write to GOCACHE. A saved cache
@@ -237,7 +237,7 @@ jobs:
 
       - name: Create the app token
         id: app-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           app-id: ${{ vars.RATCHET_APP_ID }}
           private-key: ${{ secrets.RATCHET_APP_PRIVATE_KEY }}
