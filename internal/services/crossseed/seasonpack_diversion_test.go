@@ -393,7 +393,7 @@ func TestMaybeDivertSeasonPack_RecordsFailCooldown(t *testing.T) {
 		{"drifted cools", "drifted", false, true},
 		{"layout_mismatch cools", "layout_mismatch", false, true},
 		{"already_exists cools", "already_exists", false, true},
-		{"invalid_torrent does not cool", "invalid_torrent", false, false},
+		{"invalid_torrent cools", "invalid_torrent", false, true},
 		{"applied does not cool", "applied", true, false},
 	}
 
@@ -433,6 +433,7 @@ func TestMaybeDivertSeasonPack_RecordsFailCooldown(t *testing.T) {
 			_, found, err := service.automationStore.GetLatestSearchHistory(ctx, seasonPackFailKey(packName))
 			require.NoError(t, err)
 			require.Equal(t, tt.wantCooldown, found, "cooldown stamp presence mismatch")
+			require.Equal(t, tt.reason == "invalid_torrent", response.seasonPackPermanentFail)
 		})
 	}
 }

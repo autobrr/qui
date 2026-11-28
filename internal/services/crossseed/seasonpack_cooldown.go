@@ -41,18 +41,65 @@ func (s *Service) seasonPackFailCooldownActive(ctx context.Context, torrentName 
 	return found && time.Since(last) < cooldown
 }
 
-func (s *Service) recordSeasonPackFailCooldown(ctx context.Context, torrentName string, response *CrossSeedResponse) {
-	key := seasonPackFailKey(torrentName)
-	if s.automationStore == nil || key == "" {
+func (s *Service) hasActiveSeasonPackFailCooldown(ctx context.Context, cooldown time.Duration, names ...string) bool {
+	for _, name := range names {
+		if name != "" && s.seasonPackFailCooldownActive(ctx, name, cooldown) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) resolveSeasonPackCooldownInstanceID(ctx context.Context, req *CrossSeedRequest, response *CrossSeedResponse) int {
+	if response != nil {
+		for i := range response.Results {
+			if response.Results[i].InstanceID > 0 {
+				return response.Results[i].InstanceID
+			}
+		}
+	}
+	if req != nil {
+		for _, id := range req.TargetInstanceIDs {
+			if id > 0 {
+				return id
+			}
+		}
+	}
+	if s.instanceStore != nil {
+		if instances, err := s.instanceStore.List(ctx); err == nil {
+			for _, inst := range instances {
+				if inst != nil && inst.ID > 0 {
+					return inst.ID
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func (s *Service) recordSeasonPackFailCooldown(ctx context.Context, req *CrossSeedRequest, torrentName string, response *CrossSeedResponse) {
+	if s.automationStore == nil {
 		return
 	}
-	for i := range response.Results {
-		if response.Results[i].InstanceID <= 0 {
-			continue
-		}
-		if err := s.automationStore.UpsertSearchHistory(ctx, response.Results[i].InstanceID, key, time.Now().UTC()); err != nil {
+	instanceID := s.resolveSeasonPackCooldownInstanceID(ctx, req, response)
+	if instanceID <= 0 {
+		return
+	}
+
+	now := time.Now().UTC()
+	primaryKey := seasonPackFailKey(torrentName)
+	if primaryKey != "" {
+		if err := s.automationStore.UpsertSearchHistory(ctx, instanceID, primaryKey, now); err != nil {
 			log.Debug().Err(err).Str("torrentName", torrentName).Msg("failed to record season pack failure cooldown")
 		}
-		return
+	}
+
+	if req != nil && req.sourceTitle != "" {
+		sourceKey := seasonPackFailKey(req.sourceTitle)
+		if sourceKey != "" && sourceKey != primaryKey {
+			if err := s.automationStore.UpsertSearchHistory(ctx, instanceID, sourceKey, now); err != nil {
+				log.Debug().Err(err).Str("sourceTitle", req.sourceTitle).Msg("failed to record season pack failure cooldown")
+			}
+		}
 	}
 }

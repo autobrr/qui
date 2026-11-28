@@ -35,16 +35,19 @@ type CrossSeedRequest struct {
 	SkipPieceBoundarySafetyCheck bool     `json:"skip_piece_boundary_safety_check,omitempty"`
 	ManualTargetHash             string   `json:"manual_target_hash,omitempty"`
 
-	sourceFilter   sourceFilter
-	SearchDecision searchDecisionProvenance `json:"-"`
+	sourceFilter              sourceFilter
+	SearchDecision            searchDecisionProvenance `json:"-"`
+	sourceTitle               string
+	respectSeasonPackCooldown bool
 }
 
 type CrossSeedResponse struct {
-	Success         bool                      `json:"success"`
-	Results         []InstanceCrossSeedResult `json:"results"`
-	TorrentInfo     *TorrentInfo              `json:"torrent_info,omitempty"`
-	titleRescueUsed bool
-	seasonPackTried bool
+	Success                 bool                      `json:"success"`
+	Results                 []InstanceCrossSeedResult `json:"results"`
+	TorrentInfo             *TorrentInfo              `json:"torrent_info,omitempty"`
+	titleRescueUsed         bool
+	seasonPackTried         bool
+	seasonPackPermanentFail bool
 }
 
 type InstanceCrossSeedResult struct {
