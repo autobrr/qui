@@ -178,7 +178,7 @@ func newPendingDiff(in pendingCompare, rules map[int]*models.Automation, cleared
 }
 
 func (d *pendingDiff) compare(row models.PendingDelete) {
-	if _, clear := d.cleared[row.RuleID]; clear {
+	if _, cleared := d.cleared[row.RuleID]; cleared {
 		d.change.Remove = append(d.change.Remove, row)
 		return
 	}
@@ -338,8 +338,9 @@ func torrentStopped(torrent *qbt.Torrent) bool {
 	switch torrent.State {
 	case qbt.TorrentStatePausedUp, qbt.TorrentStatePausedDl, qbt.TorrentStateStoppedUp, qbt.TorrentStateStoppedDl:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 func withinASecond(a, b time.Time) bool {
