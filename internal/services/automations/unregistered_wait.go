@@ -146,21 +146,26 @@ func (s *Service) confirmVerdictClaims(ctx context.Context, instanceID int, clai
 			Msg("automations: skipped the deletes of unregistered torrents, the fresh tracker read failed")
 		still = infohash.NewSet()
 	}
-	cleared := infohash.NewSet()
-	for _, hash := range infohash.ParseAll(hashes) {
+	current := waited.Reload(source.GetTrackerHealthSnapshot(instanceID))
+	cleared, recheck := infohash.NewSet(), infohash.NewSet()
+	for _, value := range hashes {
+		hash, _ := infohash.Parse(value)
 		if !still.Has(hash) {
 			cleared.Add(hash)
+			recheck.Add(hash)
+		} else if waited.Moved(value, current) {
+			recheck.Add(hash)
 		}
 	}
-	if cleared.Len() == 0 {
+	in.evalCtx.waited = current.Without(cleared)
+	in.evalCtx.health = in.evalCtx.waited.Raw()
+	if recheck.Len() == 0 {
 		return claims
 	}
-	in.evalCtx.waited = waited.Without(cleared)
-	in.evalCtx.health = in.evalCtx.waited.Raw()
-	clearedTorrents := make(map[string]*qbt.Torrent, cleared.Len())
+	recheckTorrents := make(map[string]*qbt.Torrent, recheck.Len())
 	for _, torrent := range in.torrents {
-		if hash, err := infohash.Parse(torrent.Hash); err == nil && cleared.Has(hash) {
-			clearedTorrents[torrent.Hash] = torrent
+		if hash, err := infohash.Parse(torrent.Hash); err == nil && recheck.Has(hash) {
+			recheckTorrents[torrent.Hash] = torrent
 		}
 	}
 
@@ -168,7 +173,7 @@ func (s *Service) confirmVerdictClaims(ctx context.Context, instanceID int, clai
 	kept := claims[:0]
 	for _, claim := range claims {
 		hash, _ := infohash.Parse(claim.hash)
-		if cleared.Has(hash) && !claimStillMatches(claim, clearedTorrents[claim.hash], in) {
+		if recheck.Has(hash) && !claimStillMatches(claim, recheckTorrents[claim.hash], in) {
 			delete(sel.triggers, claim.hash)
 			if stats := getOrCreateRuleStats(in.stats, claim.rule); stats != nil {
 				stats.DeleteApplied--

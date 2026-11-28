@@ -35,21 +35,27 @@ const waitRunTorrents = `{
 }`
 
 type fakeTrackerHealth struct {
-	snapshot *qbittorrent.TrackerHealthSnapshot
-	still    map[string]bool
-	err      error
+	snapshot  *qbittorrent.TrackerHealthSnapshot
+	afterRead *qbittorrent.TrackerHealthSnapshot
+	still     map[string]bool
+	err       error
 
 	mu    sync.Mutex
 	asked [][]string
 }
 
 func (f *fakeTrackerHealth) GetTrackerHealthSnapshot(int) *qbittorrent.TrackerHealthSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.snapshot
 }
 
 func (f *fakeTrackerHealth) StillUnregistered(_ context.Context, _ int, hashes []string) (*infohash.Set, error) {
 	f.mu.Lock()
 	f.asked = append(f.asked, slices.Sorted(slices.Values(hashes)))
+	if f.afterRead != nil {
+		f.snapshot = f.afterRead
+	}
 	f.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err

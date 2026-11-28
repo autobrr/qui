@@ -45,6 +45,7 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 		name        string
 		rules       []*models.Automation
 		working     string
+		after       func(health map[string]qbittorrent.TrackerHealth, since map[string]time.Time)
 		still       map[string]bool
 		err         error
 		wantDeleted []string
@@ -52,6 +53,15 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 		wantApplied int
 		wantSkipped int
 	}{
+		{name: "a tracker edit during the run restarts the wait that the read still sees as unregistered", rules: []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))},
+			after: func(health map[string]qbittorrent.TrackerHealth, since map[string]time.Time) {
+				delete(health, waitOldHash)
+				delete(since, waitOldHash)
+			},
+			wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash}}, wantSkipped: 1},
+		{name: "a stop through qui during the run restarts the wait that the read still sees as unregistered", rules: []*models.Automation{waitDeleteRule(1, nil, unregisteredIs("true"))},
+			after:       func(_ map[string]qbittorrent.TrackerHealth, since map[string]time.Time) { delete(since, waitOldHash) },
+			wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash}}, wantSkipped: 1},
 		{name: "a group that needs every member holds when the read clears one", rules: []*models.Automation{group}, still: map[string]bool{waitOldHash: true},
 			wantDeleted: []string{}, wantAsked: [][]string{{waitOldHash, waitFreshHash}}, wantApplied: 1, wantSkipped: 1},
 		{name: "the same group deletes when the read confirms both", rules: []*models.Automation{group},
@@ -75,6 +85,11 @@ func TestDeleteWaitFreshReadHoldsOnlyTheDeletesThatNeedTheVerdict(t *testing.T) 
 			delete(since, tt.working)
 			snapshot := qbittorrent.NewTrackerHealthSnapshotWithSince(health, since)
 			source := &fakeTrackerHealth{snapshot: snapshot, still: tt.still, err: tt.err}
+			if tt.after != nil {
+				health, since = maps.Clone(health), maps.Clone(since)
+				tt.after(health, since)
+				source.afterRead = qbittorrent.NewTrackerHealthSnapshotWithSince(health, since)
+			}
 			evalCtx := &EvalContext{waited: verdict.ForDelete(snapshot, waitTestNow)}
 			evalCtx.health = evalCtx.waited.Raw()
 			evalCtx.SameInstanceContentByHash = sharingByContentPath(torrents)

@@ -72,6 +72,17 @@ func (w Waited) Without(cleared *infohash.Set) Waited {
 	return w
 }
 
+func (w Waited) Reload(snapshot *qbittorrent.TrackerHealthSnapshot) Waited {
+	w.snapshot = snapshot
+	return w
+}
+
+func (w Waited) Moved(hash string, current Waited) bool {
+	before, had := w.snapshot.UnregisteredSince(hash)
+	after, has := current.snapshot.UnregisteredSince(hash)
+	return had != has || !before.Equal(after) || w.snapshot.Health(hash) != current.snapshot.Health(hash)
+}
+
 func isCleared(cleared *infohash.Set, hash string) bool {
 	if cleared == nil || cleared.Len() == 0 {
 		return false
