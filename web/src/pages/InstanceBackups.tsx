@@ -81,6 +81,12 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
 import { api } from "@/lib/api"
+import {
+  formatChangeValue,
+  getRestoreSummaryCounts,
+  humanizeChangeField,
+  mergeExcludedRows
+} from "@/lib/backup-restore"
 import { formatBytes } from "@/lib/utils"
 import type {
   BackupCategorySnapshot,
@@ -284,6 +290,7 @@ export function InstanceBackups() {
   const [importFile, setImportFile] = useState<File | null>(null)
 
   const backupHistoryRef = useRef<HTMLDivElement>(null)
+  const restorePlanReqRef = useRef(0)
 
   const { data: manifest, isLoading: manifestLoading } = useBackupManifest(instanceId ?? 0, manifestRunId, {
     enabled: supportsTorrentExport && !!instanceId,
@@ -656,23 +663,26 @@ export function InstanceBackups() {
   const loadRestorePlan = async (
     mode: RestoreMode,
     run: BackupRun,
-    excludeHashes: string[] = restoreExcludedHashes,
     options?: { reset?: boolean }
   ) => {
+    const reqId = ++restorePlanReqRef.current
     setRestorePlanLoading(true)
     setRestorePlanError(null)
     if (options?.reset) {
       setRestorePlan(null)
     }
     try {
-      const payloadExclude = excludeHashes.length > 0 ? excludeHashes : undefined
-      const plan = await previewRestore.mutateAsync({ runId: run.id, mode, excludeHashes: payloadExclude })
+      const plan = await previewRestore.mutateAsync({ runId: run.id, mode })
+      if (reqId !== restorePlanReqRef.current) return
       setRestorePlan(plan)
     } catch (error) {
+      if (reqId !== restorePlanReqRef.current) return
       const message = error instanceof Error ? error.message : t("backups.restore.failedToLoadPlan")
       setRestorePlanError(message)
     } finally {
-      setRestorePlanLoading(false)
+      if (reqId === restorePlanReqRef.current) {
+        setRestorePlanLoading(false)
+      }
     }
   }
 
@@ -688,7 +698,7 @@ export function InstanceBackups() {
     setRestorePlanError(null)
     setRestoreExcludedHashes([])
     setRestoreDialogOpen(true)
-    await loadRestorePlan("incremental", run, [], { reset: true })
+    await loadRestorePlan("incremental", run, { reset: true })
   }
 
   const handleRestoreModeChange = async (value: string) => {
@@ -697,7 +707,7 @@ export function InstanceBackups() {
     setRestoreMode(nextMode)
     setRestoreResult(null)
     setRestoreExcludedHashes([])
-    await loadRestorePlan(nextMode, restoreTargetRun, [], { reset: true })
+    await loadRestorePlan(nextMode, restoreTargetRun, { reset: true })
   }
 
   const handleExcludeTorrent = async (hash: string, meta: ExcludedTorrentMeta) => {
@@ -740,6 +750,7 @@ export function InstanceBackups() {
 
   const handleExecuteRestore = async () => {
     if (!restoreTargetRun) return
+    const reqId = restorePlanReqRef.current
     try {
       const result = await executeRestore.mutateAsync({
         runId: restoreTargetRun.id,
@@ -750,21 +761,29 @@ export function InstanceBackups() {
         skipHashCheck: restoreSkipHashCheck,
         autoResumeVerified: restoreSkipHashCheck ? restoreAutoResume : false,
       })
-      setRestoreResult(result)
-      setRestorePlan(result.plan)
-      setRestorePlanError(null)
-      const message = restoreDryRun ? t("backups.restore.dryRunCompleted") : t("backups.restore.executed")
-      toast.success(message)
+      if (reqId === restorePlanReqRef.current) {
+        setRestoreResult(result)
+        setRestorePlan(prev => (restoreDryRun ? mergeExcludedRows(result.plan, prev, restoreExcludedHashes) : result.plan))
+        setRestorePlanError(null)
+      }
+      if (!restoreDryRun || reqId === restorePlanReqRef.current) {
+        const message = restoreDryRun ? t("backups.restore.dryRunCompleted") : t("backups.restore.executed")
+        toast.success(message)
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("backups.restore.failedToExecute")
-      toast.error(message)
+      if (!restoreDryRun || reqId === restorePlanReqRef.current) {
+        const message = error instanceof Error ? error.message : t("backups.restore.failedToExecute")
+        toast.error(message)
+      }
     }
   }
 
   const closeRestoreDialog = () => {
+    restorePlanReqRef.current += 1
     setRestoreDialogOpen(false)
     setRestoreTargetRun(null)
     setRestorePlan(null)
+    setRestorePlanLoading(false)
     setRestorePlanError(null)
     setRestoreResult(null)
     setRestoreExcludedHashes([])
@@ -774,6 +793,8 @@ export function InstanceBackups() {
     previewRestore.reset()
     executeRestore.reset()
   }
+
+  const restoreCounts = restoreResult ? getRestoreSummaryCounts(restoreResult) : null
 
   const instancePicker = hasSupportedInstances && (
     <Select
@@ -1014,7 +1035,7 @@ export function InstanceBackups() {
                 <Select
                   value={restoreMode}
                   onValueChange={handleRestoreModeChange}
-                  disabled={restorePlanLoading || !restoreTargetRun}
+                  disabled={restorePlanLoading || executeRestore.isPending || !restoreTargetRun}
                 >
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder={t("backups.restore.selectMode")} />
@@ -1119,7 +1140,7 @@ export function InstanceBackups() {
                   variant="ghost"
                   size="sm"
                   onClick={handleResetExcluded}
-                  disabled={restorePlanLoading}
+                  disabled={restorePlanLoading || executeRestore.isPending}
                 >
                   <Undo2 className="mr-2 h-4 w-4" /> {t("backups.restore.reincludeAll")}
                 </Button>
@@ -1127,8 +1148,8 @@ export function InstanceBackups() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun, restoreExcludedHashes)}
-                disabled={restorePlanLoading || !restoreTargetRun}
+                onClick={() => restoreTargetRun && loadRestorePlan(restoreMode, restoreTargetRun)}
+                disabled={restorePlanLoading || executeRestore.isPending || !restoreTargetRun}
               >
                 <ListChecks className="mr-2 h-4 w-4" /> {t("backups.restore.refreshPlan")}
               </Button>
@@ -1482,7 +1503,7 @@ export function InstanceBackups() {
             )}
           </div>
 
-          {restoreResult && (
+          {restoreResult && restoreCounts && (
             <div className="rounded-md border p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-sm font-semibold">{t("backups.restore.lastExecution")}</h4>
@@ -1495,19 +1516,19 @@ export function InstanceBackups() {
                 <div>
                   <p className="font-medium">{t("backups.restore.categories")}</p>
                   <p className="text-xs text-muted-foreground">
-                    +{countItems(restoreResult.applied.categories.created)} / Δ{countItems(restoreResult.applied.categories.updated)} / −{countItems(restoreResult.applied.categories.deleted)}
+                    +{restoreCounts.categories.created} / Δ{restoreCounts.categories.updated} / −{restoreCounts.categories.deleted}
                   </p>
                 </div>
                 <div>
                   <p className="font-medium">{t("backups.restore.tags")}</p>
                   <p className="text-xs text-muted-foreground">
-                    +{countItems(restoreResult.applied.tags.created)} / −{countItems(restoreResult.applied.tags.deleted)}
+                    +{restoreCounts.tags.created} / −{restoreCounts.tags.deleted}
                   </p>
                 </div>
                 <div>
                   <p className="font-medium">{t("backups.restore.torrents")}</p>
                   <p className="text-xs text-muted-foreground">
-                    +{countItems(restoreResult.applied.torrents.added)} / Δ{countItems(restoreResult.applied.torrents.updated)} / −{countItems(restoreResult.applied.torrents.deleted)}
+                    +{restoreCounts.torrents.added} / Δ{restoreCounts.torrents.updated} / −{restoreCounts.torrents.deleted}
                   </p>
                 </div>
               </div>
@@ -1974,36 +1995,6 @@ export function InstanceBackups() {
       </Dialog>
     </Page>
   )
-}
-
-function humanizeChangeField(field: string): string {
-  const mappings: Record<string, string> = {
-    sizeBytes: "Size",
-    infohash_v1: "Infohash v1",
-    infohash_v2: "Infohash v2",
-  }
-  if (mappings[field]) return mappings[field]
-  return field
-    .replace(/_/g, " ")
-    .replace(/([A-Z])/g, " $1")
-    .trim()
-    .replace(/^./, char => char.toUpperCase())
-}
-
-function formatChangeValue(value: unknown): string {
-  if (value === null || value === undefined) return "—"
-  if (Array.isArray(value)) {
-    return value.length > 0 ? value.map(item => formatChangeValue(item)).join(", ") : "—"
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    return trimmed === "" ? "—" : trimmed
-  }
-  return String(value)
-}
-
-function countItems<T>(items?: T[] | null): number {
-  return items?.length ?? 0
 }
 
 function buildLastSuccessMap(runs: BackupRun[]): Partial<Record<BackupRunKind, Date>> {
