@@ -55,6 +55,14 @@ func (t *testTx) Rollback() error {
 	return t.Tx.Rollback()
 }
 
+func (t *testTx) Dialect() string {
+	return "sqlite"
+}
+
+func (q *testQuerier) Dialect() string {
+	return "sqlite"
+}
+
 func (q *testQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
 	tx, err := q.DB.BeginTx(ctx, opts)
 	if err != nil {

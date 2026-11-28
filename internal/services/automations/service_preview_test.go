@@ -16,8 +16,20 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
+type testDBTx struct {
+	*sql.Tx
+}
+
+func (testDBTx) Dialect() string {
+	return "sqlite"
+}
+
 type testDBQuerier struct {
 	db *sql.DB
+}
+
+func (q *testDBQuerier) Dialect() string {
+	return "sqlite"
 }
 
 func (q *testDBQuerier) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
@@ -37,7 +49,7 @@ func (q *testDBQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbint
 	if err != nil {
 		return nil, err
 	}
-	return tx, nil
+	return &testDBTx{Tx: tx}, nil
 }
 
 func TestPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T) {

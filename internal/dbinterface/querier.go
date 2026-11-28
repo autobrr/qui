@@ -10,42 +10,39 @@ import (
 	"strings"
 )
 
-type TxQuerier interface {
+type DialectProvider interface {
+	Dialect() string
+}
+
+type queryExecutor interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+type TxQuerier interface {
+	queryExecutor
+	DialectProvider
 	Commit() error
 	Rollback() error
 }
 
 type Querier interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	queryExecutor
+	DialectProvider
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (TxQuerier, error)
-}
-
-type dialectProvider interface {
-	Dialect() string
 }
 
 type deferForeignKeysTx interface {
 	DeferForeignKeyChecks(ctx context.Context) error
 }
 
-func DialectOf(q any) string {
-	if q == nil {
-		return "sqlite"
-	}
-	provider, ok := q.(dialectProvider)
-	if !ok {
-		return "sqlite"
-	}
-	dialect := strings.TrimSpace(provider.Dialect())
+func DialectOf(q DialectProvider) string {
+	dialect := strings.ToLower(strings.TrimSpace(q.Dialect()))
 	if dialect == "" {
-		return "sqlite"
+		panic("dbinterface.DialectOf: empty dialect")
 	}
-	return strings.ToLower(dialect)
+	return dialect
 }
 
 func DeferForeignKeyChecks(ctx context.Context, tx TxQuerier) error {

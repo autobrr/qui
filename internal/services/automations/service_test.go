@@ -1920,6 +1920,10 @@ type mockQuerier struct {
 	activities []*models.AutomationActivity
 }
 
+func (m *mockQuerier) Dialect() string {
+	return "sqlite"
+}
+
 func (m *mockQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
 	return nil
 }

@@ -20,8 +20,20 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
+type testTx struct {
+	*sql.Tx
+}
+
+func (testTx) Dialect() string {
+	return "sqlite"
+}
+
 type testQuerier struct {
 	db *sql.DB
+}
+
+func (q *testQuerier) Dialect() string {
+	return "sqlite"
 }
 
 func (q *testQuerier) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
@@ -37,7 +49,11 @@ func (q *testQuerier) QueryContext(ctx context.Context, query string, args ...an
 }
 
 func (q *testQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
-	return q.db.BeginTx(ctx, opts)
+	tx, err := q.db.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &testTx{Tx: tx}, nil
 }
 
 func openTestDB(t *testing.T) *sql.DB {

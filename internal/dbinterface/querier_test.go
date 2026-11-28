@@ -52,3 +52,47 @@ func TestBuildQueryWithPlaceholders(t *testing.T) {
 		})
 	}
 }
+
+type stubDialectProvider string
+
+func (s stubDialectProvider) Dialect() string {
+	return string(s)
+}
+
+func TestDialectOf(t *testing.T) {
+	t.Run("normalizes non-empty dialects", func(t *testing.T) {
+		tests := []struct {
+			name string
+			in   DialectProvider
+			want string
+		}{
+			{name: "postgres", in: stubDialectProvider("postgres"), want: "postgres"},
+			{name: "trimmed uppercase postgres", in: stubDialectProvider("  POSTGRES  "), want: "postgres"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if got := DialectOf(tt.in); got != tt.want {
+					t.Fatalf("DialectOf(%q) = %q, want %q", tt.in, got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("panics on nil querier instead of defaulting to sqlite", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected DialectOf(nil) to panic, but it returned")
+			}
+		}()
+		_ = DialectOf(nil)
+	})
+
+	t.Run("panics on blank dialect instead of defaulting to sqlite", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected DialectOf(\"   \") to panic, but it returned")
+			}
+		}()
+		_ = DialectOf(stubDialectProvider("   "))
+	})
+}
