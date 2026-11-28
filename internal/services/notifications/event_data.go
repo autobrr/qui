@@ -39,12 +39,14 @@ type AutomationRuleSummary struct {
 	RuleName string                    `json:"rule_name"`
 	Applied  int                       `json:"applied"`
 	Failed   int                       `json:"failed"`
+	Waiting  int                       `json:"waiting,omitzero"`
 	Actions  []AutomationActionSummary `json:"actions,omitempty"`
 }
 
 type AutomationsEventData struct {
 	Applied int                     `json:"applied"`
 	Failed  int                     `json:"failed"`
+	Waiting int                     `json:"waiting"`
 	Rules   []AutomationRuleSummary `json:"rules,omitempty"`
 	Samples []string                `json:"samples,omitempty"`
 }

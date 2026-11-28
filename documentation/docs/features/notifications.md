@@ -43,7 +43,7 @@ Notes:
 | `cross_seed_completion_failed` | Completion search run fails. |
 | `cross_seed_webhook_succeeded` | Webhook apply adds one or more torrents. No-op checks and applies do not notify. |
 | `cross_seed_webhook_failed` | Webhook check or apply fails. |
-| `automations_actions_applied` | Automation rules apply actions (summary counts and samples, only if actions occur). |
+| `automations_actions_applied` | Automation rules apply actions, or torrents start to wait for a delete (summary counts and samples, only if actions occur or torrents start to wait). The waiting torrents have their own count, apart from the applied count: **Waiting to delete** in the message and `waiting` in the Notifiarr data. |
 | `automations_run_failed` | Automation rules fail to run for an instance (system error). |
 | `system_notice` | A fault in qui needs an action from you. qui sends it one time when the notice opens, for example "Recording stopped" when qui cannot write the transfer history, "Shrink failed" when qui cannot shrink the database file, "Low disk" when the disk of the SQLite database has little free space, "Redacted rejected the API key" and "Orpheus rejected the API key" when a cross-seed search gets a refusal from that site, or "Library Scan schedule cannot run" when the saved Library settings make a scheduled run impossible. The message gives the cause and the fix. |
 
