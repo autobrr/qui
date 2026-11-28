@@ -57,6 +57,7 @@ type Torrent struct {
 	Private      bool
 	NoMetadata   bool
 	AddedOn      int64
+	CompletionOn int64
 	Uploaded     int64
 	Peers        []qbt.TorrentPeer
 	Moving       bool
@@ -594,7 +595,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			row := map[string]any{"name": t.Name, "save_path": t.SavePath, "download_path": t.DownloadPath,
 				"content_path": s.contentPath(content), "category": t.Category, "auto_tmm": t.AutoTMM,
 				"progress": progress, "infohash_v1": t.InfohashV1, "infohash_v2": t.InfohashV2,
-				"tags": strings.Join(t.Tags, ", "), "added_on": t.AddedOn, "uploaded": t.Uploaded}
+				"tags": strings.Join(t.Tags, ", "), "added_on": t.AddedOn, "completion_on": t.CompletionOn, "uploaded": t.Uploaded}
 			if state != "" {
 				row["state"] = state
 			}
@@ -658,6 +659,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			rows = append(rows, qbt.Torrent{Hash: h, Name: t.Name, SavePath: t.SavePath})
 		}
 		writeJSON(w, rows)
+	case "torrents/properties":
+		if t, ok := s.torrent(param("hash")); ok {
+			writeJSON(w, qbt.TorrentProperties{Hash: t.Hash, Name: t.Name, SavePath: t.SavePath, DownloadPath: t.DownloadPath})
+			return
+		}
+		http.NotFound(w, r)
 	case "torrents/files":
 		if t, ok := s.torrent(param("hash")); ok {
 			writeJSON(w, s.apiFiles(t))
