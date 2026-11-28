@@ -503,14 +503,11 @@ export function LeafCondition({
             </SelectContent>
           </Select>
           <Tooltip>
-            <TooltipTrigger asChild openOnTap>
-              <button
-                type="button"
-                className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                aria-label={t("queryBuilder.aboutGroupSelectionAriaLabel")}
-              >
-                <Info className="size-3.5" />
-              </button>
+            <TooltipTrigger
+              className="inline-flex items-center text-muted-foreground hover:text-foreground"
+              aria-label={t("queryBuilder.aboutGroupSelectionAriaLabel")}
+            >
+              <Info className="size-3.5" />
             </TooltipTrigger>
             <TooltipContent className="max-w-[320px]">
               <p>
@@ -692,14 +689,11 @@ export function LeafCondition({
               </SelectContent>
             </Select>
             <Tooltip>
-              <TooltipTrigger asChild openOnTap>
-                <button
-                  type="button"
-                  className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                  aria-label={t("queryBuilder.aboutHardlinkScopeAriaLabel")}
-                >
-                  <Info className="size-3.5" />
-                </button>
+              <TooltipTrigger
+                className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                aria-label={t("queryBuilder.aboutHardlinkScopeAriaLabel")}
+              >
+                <Info className="size-3.5" />
               </TooltipTrigger>
               <TooltipContent className="max-w-[320px]">
                 <p>

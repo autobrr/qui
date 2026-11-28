@@ -1763,14 +1763,11 @@ const FilterSidebarComponent = ({
             <div className="flex items-center gap-2 min-w-0">
               <h3 className="font-semibold">{t("filterSidebar.title")}</h3>
               <Tooltip>
-                <TooltipTrigger asChild openOnTap>
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-foreground"
-                    aria-label={t("filterSidebar.filterSelectionTips")}
-                  >
-                    <Info className="h-4 w-4" />
-                  </button>
+                <TooltipTrigger
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label={t("filterSidebar.filterSelectionTips")}
+                >
+                  <Info className="h-4 w-4" />
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start" className="max-w-[220px]">
                   {t("filterSidebar.filterTips")}

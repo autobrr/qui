@@ -547,14 +547,11 @@ export function Header({ sidebarIconOnly = false, sidebarHidden = false, sidebar
                   </Tooltip>
                 )}
                 <Tooltip>
-                  <TooltipTrigger asChild openOnTap>
-                    <button
-                      type="button"
-                      className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
-                      onClick={(e) => e.preventDefault()}
-                    >
-                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
+                  <TooltipTrigger
+                    className="p-1 hover:bg-muted rounded-sm transition-colors hidden sm:block"
+                    onClick={(e) => e.preventDefault()}
+                  >
+                    <Info className="h-3.5 w-3.5 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <div className="space-y-2 text-xs">

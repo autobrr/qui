@@ -139,7 +139,9 @@ const TooltipTrigger = React.forwardRef<
     onKeyDown?.(event)
   }, [registerPointerType, onKeyDown])
 
-  const triggerProps = props.asChild ? props : { type: "button" as const, ...props }
+  const triggerProps = props.asChild
+    ? props
+    : { type: "button" as const, ...props, className: cn("cursor-default", props.className) }
 
   if (context.isTouchDevice) {
     return (
