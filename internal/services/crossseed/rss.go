@@ -652,11 +652,10 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	if candidateCount == 0 && seasonPackDivertible && s.seasonPackFailCooldownActive(ctx, result.Title, minSearchCooldownMinutes*time.Minute) {
 		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
-			InstanceName: result.Indexer,
-			IndexerName:  result.Indexer,
-			Success:      false,
-			Status:       "skipped",
-			Message:      "Season pack diversion recently failed for " + result.Title + "; waiting out cooldown",
+			IndexerName: result.Indexer,
+			Success:     false,
+			Status:      "skipped",
+			Message:     "Season pack diversion recently failed for " + result.Title + "; waiting out cooldown",
 		})
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
@@ -671,11 +670,10 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	if candidateCount == 0 && !seasonPackDivertible {
 		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
-			InstanceName: result.Indexer,
-			IndexerName:  result.Indexer,
-			Success:      false,
-			Status:       "no_match",
-			Message:      "No matching torrents for " + result.Title,
+			IndexerName: result.Indexer,
+			Success:     false,
+			Status:      "no_match",
+			Message:     "No matching torrents for " + result.Title,
 		})
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
@@ -691,11 +689,10 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		if candidateCount == 0 {
 			run.CandidatesSkipped++
 			run.Results = append(run.Results, models.CrossSeedRunResult{
-				InstanceName: result.Indexer,
-				IndexerName:  result.Indexer,
-				Success:      false,
-				Status:       "skipped_recheck",
-				Message:      "RSS exact-size match requires a recheck but SkipRecheck is enabled",
+				IndexerName: result.Indexer,
+				Success:     false,
+				Status:      "skipped_recheck",
+				Message:     "RSS exact-size match requires a recheck but SkipRecheck is enabled",
 			})
 			return models.CrossSeedFeedItemStatusSkipped, nil, nil
 		}
@@ -710,11 +707,10 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 			dryRunMessage = "Dry run: season pack could be assembled from local episodes"
 		}
 		run.Results = append(run.Results, models.CrossSeedRunResult{
-			InstanceName: result.Indexer,
-			IndexerName:  result.Indexer,
-			Success:      true,
-			Status:       "dry-run",
-			Message:      dryRunMessage,
+			IndexerName: result.Indexer,
+			Success:     true,
+			Status:      "dry-run",
+			Message:     dryRunMessage,
 		})
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
@@ -875,11 +871,10 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	if len(resp.Results) == 0 {
 		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
-			InstanceName: result.Indexer,
-			IndexerName:  result.Indexer,
-			Success:      false,
-			Status:       "no_result",
-			Message:      "Cross-seed returned no actionable instances for " + result.Title,
+			IndexerName: result.Indexer,
+			Success:     false,
+			Status:      "no_result",
+			Message:     "Cross-seed returned no actionable instances for " + result.Title,
 		})
 		return itemStatus, infoHash, nil
 	}

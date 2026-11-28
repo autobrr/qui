@@ -269,3 +269,85 @@ func TestApplyReplyEncodesClassBesideUnchangedStatus(t *testing.T) {
 		{"instance_id":4,"instance_name":"new","success":false,"status":"a_status_with_no_table_entry","class":"failed"}
 	]}]}`, string(encoded))
 }
+
+func TestProcessAutomationCandidate_NonInstanceResultsLeaveInstanceNameEmpty(t *testing.T) {
+	t.Parallel()
+
+	const matchedTitle = "Quiet.Meridian.2025.1080p.WEB-DL.H.264-LUMA"
+	instance := &models.Instance{ID: 1, Name: "main", IsActive: true}
+	local := qbt.Torrent{Hash: "local", Name: matchedTitle, Size: 1024, TotalSize: 1024, Progress: 1}
+
+	tests := []struct {
+		name             string
+		title            string
+		dryRun           bool
+		respond          crossSeedResponder
+		wantStatus       string
+		wantInstanceName string
+		wantIndexerName  string
+	}{
+		{
+			name:             "no_match",
+			title:            "Unmatched.Release.2025.1080p.WEB-DL.H.264-OTHER",
+			wantStatus:       "no_match",
+			wantInstanceName: "",
+			wantIndexerName:  "TrackerA",
+		},
+		{
+			name:             "dry-run",
+			title:            matchedTitle,
+			dryRun:           true,
+			wantStatus:       "dry-run",
+			wantInstanceName: "",
+			wantIndexerName:  "TrackerA",
+		},
+		{
+			name:             "no_result",
+			title:            matchedTitle,
+			respond:          func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) { return &CrossSeedResponse{}, nil },
+			wantStatus:       "no_result",
+			wantInstanceName: "",
+			wantIndexerName:  "TrackerA",
+		},
+		{
+			name:  "added keeps instance and indexer",
+			title: matchedTitle,
+			respond: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+				return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: 1, InstanceName: "main", Success: true, Status: "added"}}}, nil
+			},
+			wantStatus:       "added",
+			wantInstanceName: "main",
+			wantIndexerName:  "TrackerA",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+				syncManager: newFakeSyncManager(instance, []qbt.Torrent{local}, map[string]qbt.TorrentFiles{
+					local.Hash: {{Name: matchedTitle + ".mkv", Size: 1024}},
+				}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+					return []byte("torrent"), nil
+				},
+				crossSeedInvoker: tt.respond,
+			}
+
+			run := &models.CrossSeedRun{}
+			_, _, err := service.processAutomationCandidate(t.Context(), run,
+				&models.CrossSeedAutomationSettings{TargetInstanceIDs: []int{instance.ID}}, nil,
+				jackett.SearchResult{Indexer: "TrackerA", IndexerID: 10, Title: tt.title, DownloadURL: "https://example.invalid/item.torrent", GUID: "guid", Size: 1024},
+				AutomationRunOptions{DryRun: tt.dryRun}, map[int]jackett.EnabledIndexerInfo{})
+			require.NoError(t, err)
+			require.Len(t, run.Results, 1)
+			require.Equal(t, tt.wantStatus, run.Results[0].Status)
+			require.Equal(t, tt.wantInstanceName, run.Results[0].InstanceName)
+			require.Equal(t, tt.wantIndexerName, run.Results[0].IndexerName)
+		})
+	}
+}

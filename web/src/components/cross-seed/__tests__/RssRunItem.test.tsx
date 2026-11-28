@@ -144,4 +144,46 @@ describe("RSSRunItem", () => {
     expect(container.textContent).toContain("backend detail")
     expect(container.textContent).toContain("crossseed:route.foundOnRoutedTo:lib->seeds")
   })
+
+  it("renders only the indexer badge once for non-instance results", () => {
+    const { container } = renderWithTooltips(
+      <RSSRunItem
+        run={makeRun({
+          status: "success",
+          results: [
+            { instanceId: 0, instanceName: "", indexerName: "TrackerA", success: false, status: "no_match", message: "No matching torrents for Cedar.Harbor.S01E01" },
+            { instanceId: 0, instanceName: "TrackerB", indexerName: "TrackerB", success: false, status: "no_match", message: "No matching torrents for Cedar.Harbor.S01E02" },
+            { instanceId: 0, instanceName: "", indexerName: "TrackerC", success: true, status: "dry-run", message: "Dry run: 1 viable candidates" },
+            { instanceId: 0, instanceName: "TrackerD", indexerName: "TrackerD", success: true, status: "dry-run", message: "Dry run: 1 viable candidates" },
+          ],
+        })}
+        formatDateValue={() => "just now"}
+      />
+    )
+    fireEvent.click(container.querySelector("[aria-expanded]")!)
+
+    expect(screen.getAllByText("TrackerA")).toHaveLength(1)
+    expect(screen.getAllByText("TrackerB")).toHaveLength(1)
+    expect(screen.getAllByText("TrackerC")).toHaveLength(1)
+    expect(screen.getAllByText("TrackerD")).toHaveLength(1)
+    const badges = Array.from(container.querySelectorAll("[data-slot=badge]")).map(el => el.textContent)
+    expect(badges).not.toContain("")
+  })
+
+  it("keeps both instance and indexer badges when an instance result has an instanceId", () => {
+    const { container } = renderWithTooltips(
+      <RSSRunItem
+        run={makeRun({
+          status: "success",
+          results: [
+            { instanceId: 1, instanceName: "TrackerA", indexerName: "TrackerA", success: true, status: "added", matchedTorrentName: "Cedar.Harbor.S01E01" },
+          ],
+        })}
+        formatDateValue={() => "just now"}
+      />
+    )
+    fireEvent.click(container.querySelector("[aria-expanded]")!)
+
+    expect(screen.getAllByText("TrackerA")).toHaveLength(2)
+  })
 })
