@@ -245,60 +245,20 @@ func stateOrder(rows []*qbt.Torrent, health func(int) TrackerHealth, desc bool, 
 	}
 }
 
+type trackerSortKey struct {
+	hasDomain   bool
+	displayName string
+	domain      string
+	normalized  string
+	hash        string
+}
+
 func (sm *SyncManager) trackerOrder(rows []*qbt.Torrent, desc bool, tie func(a, b int) int) func(a, b int) int {
 	displayNameMap := sm.getTrackerDisplayNameMap()
 
-	type trackerSortKey struct {
-		hasDomain   bool
-		displayName string
-		domain      string
-		normalized  string
-		hash        string
-	}
-
 	keys := make([]trackerSortKey, len(rows))
 	for i, torrent := range rows {
-		key := &keys[i]
-		key.hash = torrent.Hash
-
-		addCandidate := func(candidate string) {
-			candidate = strings.TrimSpace(candidate)
-			if candidate == "" {
-				return
-			}
-
-			lowerCandidate := strings.ToLower(candidate)
-			if key.normalized == "" {
-				key.normalized = lowerCandidate
-			}
-
-			domain := strings.ToLower(sm.ExtractDomainFromURL(candidate))
-			if domain == "" || domain == "unknown" {
-				return
-			}
-
-			key.hasDomain = true
-			key.domain = domain
-			if customName, ok := displayNameMap[domain]; ok {
-				key.displayName = strings.ToLower(customName)
-			} else {
-				key.displayName = domain
-			}
-		}
-
-		addCandidate(torrent.Tracker)
-		if !key.hasDomain {
-			for _, tracker := range torrent.Trackers {
-				addCandidate(tracker.Url)
-				if key.hasDomain {
-					break
-				}
-			}
-		}
-
-		if key.normalized == "" {
-			key.normalized = key.hash
-		}
+		keys[i] = sm.trackerSortKeyFor(torrent, displayNameMap)
 	}
 
 	return func(a, b int) int {
@@ -324,6 +284,48 @@ func (sm *SyncManager) trackerOrder(rows []*qbt.Torrent, desc bool, tie func(a, 
 			return tie(a, b)
 		}
 		return flipIf(desc, result)
+	}
+}
+
+func (sm *SyncManager) trackerSortKeyFor(torrent *qbt.Torrent, displayNameMap map[string]string) trackerSortKey {
+	key := trackerSortKey{hash: torrent.Hash}
+
+	sm.addTrackerCandidate(&key, torrent.Tracker, displayNameMap)
+	for _, tracker := range torrent.Trackers {
+		if key.hasDomain {
+			break
+		}
+		sm.addTrackerCandidate(&key, tracker.Url, displayNameMap)
+	}
+
+	if key.normalized == "" {
+		key.normalized = key.hash
+	}
+	return key
+}
+
+func (sm *SyncManager) addTrackerCandidate(key *trackerSortKey, candidate string, displayNameMap map[string]string) {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return
+	}
+
+	lowerCandidate := strings.ToLower(candidate)
+	if key.normalized == "" {
+		key.normalized = lowerCandidate
+	}
+
+	domain := strings.ToLower(sm.ExtractDomainFromURL(candidate))
+	if domain == "" || domain == "unknown" {
+		return
+	}
+
+	key.hasDomain = true
+	key.domain = domain
+	if customName, ok := displayNameMap[domain]; ok {
+		key.displayName = strings.ToLower(customName)
+	} else {
+		key.displayName = domain
 	}
 }
 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { FreeSpaceSourceType } from "@/types/automation"
+import type { FreeSpaceSourceType } from "@/types"
 
 export function usableFreeSpaceSourceType(
   type: FreeSpaceSourceType,
