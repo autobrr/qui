@@ -509,6 +509,10 @@
       "original": "Оригінал: {{domain}}",
       "programLabel": "Програма: {{name}}",
       "ruleLabel": "Правило: {{name}}",
+      "waitEndedCauses": {
+        "stopped": "Зупинено: {{count}}",
+        "trackerWorks": "Трекер знову працює або трекери змінено: {{count}}"
+      },
       "trackers": "{{count}} трекер",
       "trackers_other": "{{count}} трекерів",
       "limit": "Ліміт",
@@ -561,7 +565,9 @@
         "exportToInstance": "Експорт в екземпляр",
         "transferToInstance": "Перенести до екземпляра",
         "ruleSkipped": "Правило не запущено",
-        "deleteWaiting": "Очікує видалення"
+        "deleteWaiting": "Очікує видалення",
+        "unregisteredWaitStarted": "Очікування почалося",
+        "unregisteredWaitEnded": "Очікування завершилося"
       },
       "shareLimit": {
         "global": "Глобальний",
@@ -656,7 +662,15 @@
         "deleteWaiting_one": "{{count}} торент очікував би видалення",
         "deleteWaiting_few": "{{count}} торенти очікували б видалення",
         "deleteWaiting_many": "{{count}} торентів очікували б видалення",
-        "deleteWaiting_other": "{{count}} торента очікували б видалення"
+        "deleteWaiting_other": "{{count}} торента очікували б видалення",
+        "unregisteredWaitStarted_one": "{{count}} торент почав очікувати видалення",
+        "unregisteredWaitStarted_few": "{{count}} торенти почали очікувати видалення",
+        "unregisteredWaitStarted_many": "{{count}} торентів почали очікувати видалення",
+        "unregisteredWaitStarted_other": "{{count}} торента почали очікувати видалення",
+        "unregisteredWaitEnded_one": "{{count}} торент більше не очікує видалення",
+        "unregisteredWaitEnded_few": "{{count}} торенти більше не очікують видалення",
+        "unregisteredWaitEnded_many": "{{count}} торентів більше не очікують видалення",
+        "unregisteredWaitEnded_other": "{{count}} торента більше не очікують видалення"
       },
       "deleteDialog": {
         "title": "Видалити правило",
@@ -1042,7 +1056,9 @@
         "exported_to_instance": "Експорт в екземпляр",
         "transferred_to_instance": "Перенести до екземпляра",
         "rule_skipped": "Правило не запущено",
-        "delete_waiting": "Тестовий запуск (очікує видалення)"
+        "delete_waiting": "Тестовий запуск (очікує видалення)",
+        "unregistered_wait_started": "Почав очікувати видалення",
+        "unregistered_wait_ended": "Більше не очікує видалення"
       }
     },
     "reannounceOverview": {

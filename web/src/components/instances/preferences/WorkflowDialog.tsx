@@ -154,6 +154,8 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   transferred_to_instance: "preferences.workflowDialog.dryRun.actions.transferredToInstance",
   dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
   delete_waiting: "preferences.workflowDialog.dryRun.actions.deleteWaiting",
+  unregistered_wait_started: "preferences.activityRunDialog.actionLabels.unregistered_wait_started",
+  unregistered_wait_ended: "preferences.activityRunDialog.actionLabels.unregistered_wait_ended",
   rule_skipped: "preferences.workflowDialog.dryRun.actions.ruleSkipped",
 }
 

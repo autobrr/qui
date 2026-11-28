@@ -509,6 +509,10 @@
       "original": "原始：{{domain}}",
       "programLabel": "程序：{{name}}",
       "ruleLabel": "规则：{{name}}",
+      "waitEndedCauses": {
+        "stopped": "已停止：{{count}}",
+        "trackerWorks": "Tracker 恢复正常或 Tracker 已编辑：{{count}}"
+      },
       "trackers": "{{count}} 个 Tracker",
       "trackers_other": "{{count}} 个 Tracker",
       "limit": "限制",
@@ -558,7 +562,9 @@
         "exportToInstance": "导出到实例",
         "transferToInstance": "传输到实例",
         "ruleSkipped": "规则未运行",
-        "deleteWaiting": "等待删除"
+        "deleteWaiting": "等待删除",
+        "unregisteredWaitStarted": "开始等待",
+        "unregisteredWaitEnded": "结束等待"
       },
       "shareLimit": {
         "global": "全局",
@@ -596,7 +602,9 @@
         "exportedDryRun_other": "将导出 {{count}} 个种子",
         "exportFailed_other": "{{count}} 个种子导出失败",
         "transferredDryRun_other": "将传输 {{count}} 个种子",
-        "deleteWaiting_other": "{{count}} 个种子将等待删除"
+        "deleteWaiting_other": "{{count}} 个种子将等待删除",
+        "unregisteredWaitStarted_other": "{{count}} 个种子开始等待删除",
+        "unregisteredWaitEnded_other": "{{count}} 个种子不再等待删除"
       },
       "deleteDialog": {
         "title": "删除规则",
@@ -952,7 +960,9 @@
         "exported_to_instance": "导出到实例",
         "transferred_to_instance": "传输到实例",
         "rule_skipped": "规则未运行",
-        "delete_waiting": "模拟运行（等待删除）"
+        "delete_waiting": "模拟运行（等待删除）",
+        "unregistered_wait_started": "开始等待删除",
+        "unregistered_wait_ended": "不再等待删除"
       }
     },
     "reannounceOverview": {

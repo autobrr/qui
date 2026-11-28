@@ -90,6 +90,27 @@ describe("WorkflowsOverview", () => {
     expect(screen.getByText(actionLabel).parentElement?.textContent).toBe(`${actionLabel}Failed`)
   })
 
+  it("shows the torrents that start and end the wait of a delete rule, with the rule and the cause", async () => {
+    mocks.activity = [
+      transferActivity({ id: 1, action: "unregistered_wait_started", ruleId: undefined, ruleName: undefined,
+        details: { count: 3, rules: [{ id: 4, name: "Clean unregistered", count: 3 }] } }),
+      transferActivity({ id: 2, action: "unregistered_wait_ended", ruleId: undefined, ruleName: undefined,
+        details: { count: 2, causes: { stopped: 1, trackerWorks: 1 }, rules: [{ id: 4, name: "Clean unregistered", count: 2 }] } }),
+    ]
+    await renderOverview()
+
+    const started = await screen.findByText("3 torrents started waiting to be deleted")
+    const ended = screen.getByText("2 torrents no longer wait to be deleted")
+    const startedRow = started.closest("[role=button]")
+    const endedRow = ended.closest("[role=button]")
+    expect(startedRow?.textContent).toContain("Wait started")
+    expect(startedRow?.textContent).toContain("Clean unregistered (3)")
+    expect(startedRow?.textContent).not.toContain("Removed")
+    expect(endedRow?.textContent).toContain("Wait ended")
+    expect(endedRow?.textContent).toContain("Stopped: 1")
+    expect(endedRow?.textContent).toContain("Tracker works again or trackers edited: 1")
+  })
+
   it("shows no All torrents badge for a Transfer rule with a condition", async () => {
     mocks.rules = [transferRule({
       conditions: {

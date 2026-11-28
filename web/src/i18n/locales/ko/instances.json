@@ -509,6 +509,10 @@
       "original": "원본: {{domain}}",
       "programLabel": "프로그램: {{name}}",
       "ruleLabel": "규칙: {{name}}",
+      "waitEndedCauses": {
+        "stopped": "중지됨: {{count}}",
+        "trackerWorks": "트래커 정상화 또는 트래커 편집: {{count}}"
+      },
       "trackers": "트래커 {{count}}개",
       "trackers_other": "트래커 {{count}}개",
       "limit": "제한",
@@ -558,7 +562,9 @@
         "exportToInstance": "인스턴스로 내보내기",
         "transferToInstance": "인스턴스로 전송",
         "ruleSkipped": "규칙 실행 안 됨",
-        "deleteWaiting": "삭제 대기 중"
+        "deleteWaiting": "삭제 대기 중",
+        "unregisteredWaitStarted": "대기 시작",
+        "unregisteredWaitEnded": "대기 종료"
       },
       "shareLimit": {
         "global": "전역",
@@ -596,7 +602,9 @@
         "exportedDryRun_other": "토렌트 {{count}}개 내보낼 예정",
         "exportFailed_other": "토렌트 {{count}}개 내보내기 실패",
         "transferredDryRun_other": "토렌트 {{count}}개 전송 예정",
-        "deleteWaiting_other": "토렌트 {{count}}개가 삭제 대기 상태가 됩니다"
+        "deleteWaiting_other": "토렌트 {{count}}개가 삭제 대기 상태가 됩니다",
+        "unregisteredWaitStarted_other": "토렌트 {{count}}개가 삭제 대기를 시작했습니다",
+        "unregisteredWaitEnded_other": "토렌트 {{count}}개가 더 이상 삭제를 기다리지 않습니다"
       },
       "deleteDialog": {
         "title": "규칙 삭제",
@@ -952,7 +960,9 @@
         "exported_to_instance": "인스턴스로 내보내기",
         "transferred_to_instance": "인스턴스로 전송",
         "rule_skipped": "규칙 실행 안 됨",
-        "delete_waiting": "모의 실행(삭제 대기 중)"
+        "delete_waiting": "모의 실행(삭제 대기 중)",
+        "unregistered_wait_started": "삭제 대기 시작",
+        "unregistered_wait_ended": "삭제 대기 종료"
       }
     },
     "reannounceOverview": {

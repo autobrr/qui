@@ -509,6 +509,10 @@
       "original": "Original: {{domain}}",
       "programLabel": "Programm: {{name}}",
       "ruleLabel": "Regel: {{name}}",
+      "waitEndedCauses": {
+        "stopped": "Gestoppt: {{count}}",
+        "trackerWorks": "Tracker funktioniert wieder oder Tracker bearbeitet: {{count}}"
+      },
       "trackers": "{{count}} Tracker",
       "trackers_other": "{{count}} Tracker",
       "limit": "Limit",
@@ -559,7 +563,9 @@
         "exportToInstance": "In Instanz exportieren",
         "transferToInstance": "An Instanz übertragen",
         "ruleSkipped": "Regel nicht ausgeführt",
-        "deleteWaiting": "Wartet auf Löschung"
+        "deleteWaiting": "Wartet auf Löschung",
+        "unregisteredWaitStarted": "Wartezeit begonnen",
+        "unregisteredWaitEnded": "Wartezeit beendet"
       },
       "shareLimit": {
         "global": "Global",
@@ -616,7 +622,11 @@
         "transferredDryRun_one": "{{count}} Torrent würde übertragen",
         "transferredDryRun_other": "{{count}} Torrents würden übertragen",
         "deleteWaiting_one": "{{count}} Torrent würde auf die Löschung warten",
-        "deleteWaiting_other": "{{count}} Torrents würden auf die Löschung warten"
+        "deleteWaiting_other": "{{count}} Torrents würden auf die Löschung warten",
+        "unregisteredWaitStarted_one": "{{count}} Torrent wartet jetzt auf die Löschung",
+        "unregisteredWaitStarted_other": "{{count}} Torrents warten jetzt auf die Löschung",
+        "unregisteredWaitEnded_one": "{{count}} Torrent wartet nicht mehr auf die Löschung",
+        "unregisteredWaitEnded_other": "{{count}} Torrents warten nicht mehr auf die Löschung"
       },
       "deleteDialog": {
         "title": "Regel löschen",
@@ -982,7 +992,9 @@
         "exported_to_instance": "Export zur Instanz",
         "transferred_to_instance": "An Instanz übertragen",
         "rule_skipped": "Regel nicht ausgeführt",
-        "delete_waiting": "Probelauf (wartet auf Löschung)"
+        "delete_waiting": "Probelauf (wartet auf Löschung)",
+        "unregistered_wait_started": "Wartet jetzt auf Löschung",
+        "unregistered_wait_ended": "Wartet nicht mehr auf Löschung"
       }
     },
     "reannounceOverview": {

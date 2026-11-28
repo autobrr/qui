@@ -54,6 +54,8 @@ const ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = {
   transferred_to_instance: "preferences.activityRunDialog.actionLabels.transferred_to_instance",
   dry_run_no_match: "preferences.activityRunDialog.actionLabels.dry_run_no_match",
   delete_waiting: "preferences.activityRunDialog.actionLabels.delete_waiting",
+  unregistered_wait_started: "preferences.activityRunDialog.actionLabels.unregistered_wait_started",
+  unregistered_wait_ended: "preferences.activityRunDialog.actionLabels.unregistered_wait_ended",
   rule_skipped: "preferences.activityRunDialog.actionLabels.rule_skipped",
 }
 
