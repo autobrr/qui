@@ -361,7 +361,7 @@
   },
   "src/components/instances/preferences/WorkflowDialog.tsx": {
     "@typescript-eslint/consistent-type-assertions": {
-      "count": 16
+      "count": 15
     },
     "@typescript-eslint/no-non-null-assertion": {
       "count": 7

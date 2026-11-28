@@ -152,12 +152,12 @@ func TestApplyRules_SendsActionsInRunOrder(t *testing.T) {
 		require.True(t, ok, "write %q has no run order key", write.path)
 		requestKeys = append(requestKeys, key)
 	}
-	synchronous := slices.DeleteFunc(slices.Clone(actionRunOrder), func(key string) bool {
+	synchronous := slices.DeleteFunc(slices.Clone(ActionRunOrder), func(key string) bool {
 		return key == "externalProgram" || key == "exportToInstance" || key == "transferToInstance"
 	})
 	require.Equal(t, synchronous, collapse(requestKeys), "write requests out of run order")
 
-	require.Equal(t, actionRunOrder, collapse(activityKeysByID(t, db, instanceIDs[0])), "activity rows out of run order")
+	require.Equal(t, ActionRunOrder, collapse(activityKeysByID(t, db, instanceIDs[0])), "activity rows out of run order")
 }
 
 func TestApplyRulesDryRun_ReportsActionsInRunOrder(t *testing.T) {
@@ -178,7 +178,7 @@ func TestApplyRulesDryRun_ReportsActionsInRunOrder(t *testing.T) {
 		require.True(t, ok, "activity action %q has no run order key", activity.Action)
 		keys = append(keys, key)
 	}
-	require.Equal(t, actionRunOrder, collapse(keys))
+	require.Equal(t, ActionRunOrder, collapse(keys))
 }
 
 func TestApplyRules_DeleteDropsTheTorrentsOwnActions(t *testing.T) {

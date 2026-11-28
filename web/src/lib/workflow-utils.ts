@@ -5,7 +5,7 @@
 
 import { api } from "@/lib/api"
 import { BYTES_PER_UNIT } from "@/lib/unit-format"
-import type { Automation, AutomationInput, ActionConditions, FreeSpaceSource, RuleCondition, SortingConfig } from "@/types"
+import { ACTION_RUN_ORDER as GENERATED_ACTION_RUN_ORDER, type Automation, type AutomationInput, type ActionConditions, type FreeSpaceSource, type RuleCondition, type SortingConfig } from "@/types"
 import type { QueryClient } from "@tanstack/react-query"
 
 // i18n-namespace: instances
@@ -97,22 +97,7 @@ export interface WorkflowExport {
 
 export type WorkflowImport = WorkflowExport & Record<string, unknown>
 
-export const ACTION_RUN_ORDER = [
-  "speedLimits",
-  "shareLimits",
-  "pause",
-  "resume",
-  "recheck",
-  "reannounce",
-  "autoManagement",
-  "tag",
-  "category",
-  "move",
-  "externalProgram",
-  "exportToInstance",
-  "delete",
-  "transferToInstance",
-] as const satisfies readonly ActionType[]
+export const ACTION_RUN_ORDER = GENERATED_ACTION_RUN_ORDER satisfies readonly ActionType[]
 
 const DEFAULT_INTERVAL_SECONDS = 900
 
