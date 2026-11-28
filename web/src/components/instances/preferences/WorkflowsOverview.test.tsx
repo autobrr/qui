@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import "@/i18n"
-import type { Automation, AutomationActivity } from "@/types"
+import type { Automation, AutomationActivity, PendingDeleteList } from "@/types"
 
 import { WorkflowsOverview } from "./WorkflowsOverview"
 
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   trackerData: { data: undefined },
   rules: [] as Automation[],
   activity: [] as AutomationActivity[],
+  pendingDeletes: { rules: [] } as PendingDeleteList,
 }))
 
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => mocks.instances }))
@@ -29,6 +30,7 @@ vi.mock("@/lib/api", () => ({
   api: {
     listAutomations: () => Promise.resolve(mocks.rules),
     getAutomationActivity: () => Promise.resolve(mocks.activity),
+    getPendingDeletes: () => Promise.resolve(mocks.pendingDeletes),
   },
 }))
 
@@ -37,6 +39,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   mocks.rules = []
   mocks.activity = []
+  mocks.pendingDeletes = { rules: [] }
 })
 
 function transferRule(overrides: Partial<Automation>): Automation {
@@ -66,7 +69,51 @@ async function renderOverview() {
   fireEvent.click(await screen.findByRole("button", { name: /seedbox/ }))
 }
 
+function deleteRule(overrides: Partial<Automation>): Automation {
+  return {
+    id: 4, instanceId: 1, name: "Clean unregistered", trackerPattern: "*", enabled: true, dryRun: false, notify: false, sortOrder: 1,
+    conditions: { schemaVersion: "1", delete: { enabled: true, mode: "delete", condition: { field: "IS_UNREGISTERED", operator: "EQUAL", value: "true" } } },
+    ...overrides,
+  }
+}
+
 describe("WorkflowsOverview", () => {
+  it("shows the count of waiting torrents only on the delete rule that has them", async () => {
+    mocks.rules = [deleteRule({ id: 4 }), deleteRule({ id: 5, name: "Clean ratio", sortOrder: 2 })]
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [
+      { hash: "aaaa1111", name: "Show.S01.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false },
+      { hash: "bbbb2222", name: "Film.2020.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false },
+    ] }] }
+    await renderOverview()
+
+    const badge = await screen.findByRole("button", { name: "2 waiting" })
+    expect(badge.closest(".grid")?.textContent).toContain("Clean unregistered")
+    expect(screen.getAllByText(/waiting$/)).toHaveLength(1)
+  })
+
+  it("lists the waiting torrents of a rule with what happens next", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 10, 28, 12))
+    const now = Date.UTC(2026, 10, 28, 12) / 1000
+    mocks.rules = [deleteRule({})]
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [
+      { hash: "aaaa1111", name: "", tracker: "", message: "", unregisteredSince: now - 3 * 86400, deletesAt: now - 86400, awaitsTracker: true },
+      { hash: "bbbb2222", name: "Film.2020.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: now - 3600, deletesAt: now + 47 * 3600, awaitsTracker: false },
+    ] }] }
+    await renderOverview()
+
+    fireEvent.click(await screen.findByRole("button", { name: "2 waiting" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog.textContent).toContain("This rule deletes each torrent when its time is up, unless a tracker works again or the torrent is stopped.")
+    const rows = Array.from(dialog.querySelectorAll("tbody tr")).map(row => Array.from(row.querySelectorAll("td")).map(cell => cell.textContent))
+    expect(rows).toHaveLength(2)
+    expect(rows[0][1]).toBe("aaaa1111")
+    expect(rows[0][4]).toBe("When the tracker answers unregistered")
+    expect(rows[1][0]).toContain("tracker.example.invalid")
+    expect(rows[1].slice(1, 3)).toEqual(["Film.2020.1080p-GRP", "Unregistered torrent"])
+    expect(rows[1][4]).toMatch(/^After /)
+  })
+
   it("shows whether each torrent of a live Transfer started", async () => {
     mocks.activity = [
       transferActivity({ id: 1, hash: "aaaa1111", torrentName: "Show.S01.1080p-GRP" }),

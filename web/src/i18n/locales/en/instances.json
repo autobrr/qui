@@ -749,6 +749,16 @@
       "waitsUntil": "After {{time}}",
       "waitsForTracker": "When the tracker answers unregistered"
     },
+    "pendingDeletes": {
+      "count_one": "{{count}} waiting",
+      "count_other": "{{count}} waiting",
+      "title": "Waiting to delete: {{name}}",
+      "description": "This rule deletes each torrent when its time is up, unless a tracker works again or the torrent is stopped.",
+      "message": "Tracker message",
+      "unregisteredSince": "Unregistered since",
+      "nextRun": "On the next run",
+      "empty": "No torrents wait for this rule."
+    },
     "orphanScanOverview": {
       "title": "Orphan Scan",
       "noInstancesDescription": "No instances configured. Add one in Settings to use this service.",

@@ -771,6 +771,18 @@
       "waitsUntil": "Po {{time}}",
       "waitsForTracker": "Až tracker znovu odpoví neregistrovaný"
     },
+    "pendingDeletes": {
+      "count_one": "{{count}} čeká",
+      "count_few": "{{count}} čekají",
+      "count_many": "{{count}} čeká",
+      "count_other": "{{count}} čeká",
+      "title": "Čeká na smazání: {{name}}",
+      "description": "Toto pravidlo smaže každý torrent, až jeho čas vyprší, pokud tracker znovu nezačne fungovat nebo se torrent nezastaví.",
+      "message": "Zpráva trackeru",
+      "unregisteredSince": "Neregistrovaný od",
+      "nextRun": "Při dalším spuštění",
+      "empty": "Na toto pravidlo nečeká žádný torrent."
+    },
     "orphanScanOverview": {
       "title": "Vyhledání sirotků",
       "noInstancesDescription": "Žádné instance nenastaveny. Přidejte jednu v Nastavení pro použití této služby.",

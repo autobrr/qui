@@ -727,6 +727,15 @@
       "waitsUntil": "{{time}} 이후",
       "waitsForTracker": "트래커가 다시 등록되지 않음으로 응답할 때"
     },
+    "pendingDeletes": {
+      "count_other": "{{count}}개 대기 중",
+      "title": "삭제 대기 중: {{name}}",
+      "description": "이 규칙은 시간이 다 되면 각 토렌트를 삭제합니다. 단, 트래커가 다시 작동하거나 토렌트가 중지되면 삭제하지 않습니다.",
+      "message": "트래커 메시지",
+      "unregisteredSince": "등록되지 않은 시점",
+      "nextRun": "다음 실행 시",
+      "empty": "이 규칙에서 대기 중인 토렌트가 없습니다."
+    },
     "orphanScanOverview": {
       "title": "고아 항목 스캔",
       "noInstancesDescription": "구성된 인스턴스가 없습니다. 이 서비스를 사용하려면 설정에서 인스턴스를 추가하세요.",

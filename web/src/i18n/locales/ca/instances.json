@@ -505,6 +505,16 @@
       "waitsUntil": "Després de {{time}}",
       "waitsForTracker": "Quan el tracker torni a respondre no registrat"
     },
+    "pendingDeletes": {
+      "count_one": "{{count}} en espera",
+      "count_other": "{{count}} en espera",
+      "title": "Pendent d'eliminar: {{name}}",
+      "description": "Aquesta regla elimina cada torrent quan se li acaba el temps, tret que un tracker torni a funcionar o el torrent s'aturi.",
+      "message": "Missatge del tracker",
+      "unregisteredSince": "Sense registrar des de",
+      "nextRun": "A la propera execució",
+      "empty": "Cap torrent espera aquesta regla."
+    },
     "workflowsOverview": {
       "title": "Workflows",
       "tooltip": "Regles d'automatització basades en condicions. Accions: límits de velocitat, límits de compartició, aturar, reprendre, eliminar, etiquetar i canviar de categoria.\nFes coincidir els torrents per tracker, categoria, etiqueta, ràtio, temps de sembra, mida i molt més.\nTé en compte els cross-seed i els hardlinks: elimina o mou amb seguretat sense perdre els fitxers compartits.",

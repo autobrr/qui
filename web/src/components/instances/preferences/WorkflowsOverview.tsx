@@ -67,7 +67,7 @@ import {
   toExportFormat,
   toExportJSON
 } from "@/lib/workflow-utils"
-import type { Automation, AutomationActivity, AutomationPreviewResult, AutomationPreviewTorrent, InstanceResponse, PreviewView, RuleCondition } from "@/types"
+import type { Automation, AutomationActivity, AutomationPreviewResult, AutomationPreviewTorrent, InstanceResponse, PendingDeleteGroup, PreviewView, RuleCondition } from "@/types"
 import type { DragEndEvent } from "@dnd-kit/core"
 import {
   DndContext,
@@ -93,6 +93,7 @@ import i18n from "../../../i18n"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { DeletePreviewCounts } from "./DeletePreviewCounts"
+import { PendingDeletesDialog } from "./PendingDeletesDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
 import { RunWorkflowNowDialog, type RunWorkflowNowTarget } from "./RunWorkflowNowDialog"
@@ -410,6 +411,7 @@ export function WorkflowsOverview() {
   const [clearDaysMap, setClearDaysMap] = useState<Record<number, string>>({})
   const [displayLimitMap, setDisplayLimitMap] = useState<Record<number, number>>({})
   const [activityRunDialog, setActivityRunDialog] = useState<{ instanceId: number; activity: AutomationActivity } | null>(null)
+  const [pendingDeletesDialog, setPendingDeletesDialog] = useState<{ instanceId: number; ruleId: number; ruleName: string } | null>(null)
 
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
@@ -786,6 +788,19 @@ export function WorkflowsOverview() {
     })),
   })
 
+  const pendingDeleteQueries = useQueries({
+    queries: activeInstances.map((instance) => ({
+      queryKey: ["automation-activity", instance.id, "pending-deletes"],
+      queryFn: () => api.getPendingDeletes(instance.id),
+      staleTime: 5000,
+    })),
+  })
+
+  const pendingDeletesOf = (instanceId: number, ruleId: number): PendingDeleteGroup | undefined => {
+    const index = activeInstances.findIndex((instance) => instance.id === instanceId)
+    return pendingDeleteQueries[index]?.data?.rules.find((group) => group.ruleId === ruleId)
+  }
+
   const handleDeleteOldActivity = async (instanceId: number, days: number) => {
     try {
       const result = await api.deleteAutomationActivity(instanceId, days)
@@ -1018,6 +1033,8 @@ export function WorkflowsOverview() {
                                     onCopyToInstance={(targetId) => handleCopyToInstance(rule, targetId)}
                                     onEditJson={() => setJsonEdit(rule)}
                                     onExport={() => handleExport(rule)}
+                                    pendingDeleteCount={rule.enabled && !rule.dryRun && rule.conditions?.delete?.enabled ? pendingDeletesOf(instance.id, rule.id)?.torrents.length ?? 0 : 0}
+                                    onShowPendingDeletes={() => setPendingDeletesDialog({ instanceId: instance.id, ruleId: rule.id, ruleName: rule.name })}
                                     disableDrag={sortedRules.length < 2 || reorderRules.isPending}
                                   />
                                 )
@@ -1573,6 +1590,19 @@ export function WorkflowsOverview() {
         />
       )}
 
+      {pendingDeletesDialog && (
+        <PendingDeletesDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingDeletesDialog(null)
+            }
+          }}
+          ruleName={pendingDeletesDialog.ruleName}
+          torrents={pendingDeletesOf(pendingDeletesDialog.instanceId, pendingDeletesDialog.ruleId)?.torrents ?? []}
+        />
+      )}
+
       <RunWorkflowNowDialog target={runNowTarget} onClose={() => setRunNowTarget(null)} />
 
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
@@ -1730,6 +1760,8 @@ interface RulePreviewProps {
   onCopyToInstance: (targetInstanceId: number) => void
   onEditJson: () => void
   onExport: () => void
+  pendingDeleteCount: number
+  onShowPendingDeletes: () => void
 }
 
 interface SortableRulePreviewProps extends Omit<RulePreviewProps, "dragHandle"> {
@@ -1749,6 +1781,8 @@ function SortableRulePreview({
   onCopyToInstance,
   onEditJson,
   onExport,
+  pendingDeleteCount,
+  onShowPendingDeletes,
   disableDrag,
 }: SortableRulePreviewProps) {
   const { t } = useTranslation("instances")
@@ -1785,6 +1819,8 @@ function SortableRulePreview({
         onCopyToInstance={onCopyToInstance}
         onEditJson={onEditJson}
         onExport={onExport}
+        pendingDeleteCount={pendingDeleteCount}
+        onShowPendingDeletes={onShowPendingDeletes}
         dragHandle={(
           <Button
             type="button"
@@ -1822,6 +1858,8 @@ function RulePreview({
   onCopyToInstance,
   onEditJson,
   onExport,
+  pendingDeleteCount,
+  onShowPendingDeletes,
 }: RulePreviewProps) {
   const { t } = useTranslation("instances")
   const trackers = parseTrackerDomains(rule)
@@ -1936,6 +1974,14 @@ function RulePreview({
           <Badge variant="outline" className="text-10 px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
             {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? t("preferences.workflowsOverview.xsSafe"): rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? t("preferences.workflowsOverview.plusXs"): rule.conditions.delete.mode === "deleteWithFiles"? t("preferences.workflowsOverview.plusFiles"): ""}
+          </Badge>
+        )}
+        {pendingDeleteCount > 0 && (
+          <Badge asChild variant="warning" size="sm" className="cursor-pointer">
+            <button type="button" onClick={onShowPendingDeletes}>
+              <Clock className="h-3 w-3" />
+              {t("preferences.pendingDeletes.count", { count: pendingDeleteCount })}
+            </button>
           </Badge>
         )}
         {tagActions.some((action) => action.enabled) && (

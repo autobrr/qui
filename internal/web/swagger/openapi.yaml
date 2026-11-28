@@ -4083,6 +4083,88 @@ paths:
         '500':
           description: Failed to delete transfer history
 
+  /api/instances/{instanceID}/automations/pending-deletes:
+    get:
+      tags:
+        - Instances
+      summary: List the torrents that wait for a delete
+      description: |
+        Lists the Pending deletes of the instance, grouped by automation, in the order of the automations. A Pending delete is a torrent that the delete condition of an enabled automation matches through the Unregistered verdict, and that the automation does not delete yet because the torrent has not been unregistered for the Unregistered wait of its Delete action. The live run of each automation stores these torrents.
+        The name, the tracker, and the message come from the live data of the instance. They are empty until qui has loaded the torrent and its tracker health after a restart. The message is cleaned: it holds no URL and no part of an announce URL of the torrent.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: The torrents that wait for a delete, by automation
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - rules
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - ruleId
+                        - ruleName
+                        - torrents
+                      properties:
+                        ruleId:
+                          type: integer
+                        ruleName:
+                          type: string
+                        torrents:
+                          type: array
+                          description: The torrents of the automation, the first delete first.
+                          items:
+                            type: object
+                            required:
+                              - hash
+                              - name
+                              - tracker
+                              - message
+                              - unregisteredSince
+                              - deletesAt
+                              - awaitsTracker
+                            properties:
+                              hash:
+                                type: string
+                              name:
+                                type: string
+                                description: Empty until qui has loaded the torrent.
+                              tracker:
+                                type: string
+                                description: Host of the tracker that reported the torrent as unregistered, or of the current tracker of the torrent. Empty until qui has loaded the torrent and its tracker health.
+                              message:
+                                type: string
+                                description: The cleaned message of the tracker that reported the torrent as unregistered. Empty while no tracker reports it.
+                              unregisteredSince:
+                                type: integer
+                                format: int64
+                                description: Unix time from which qui has seen the torrent as unregistered.
+                              deletesAt:
+                                type: integer
+                                format: int64
+                                description: Unix time at which the Unregistered wait of the automation ends.
+                              awaitsTracker:
+                                type: boolean
+                                description: True when the wait is over but no tracker reports the torrent as unregistered now. The automation deletes the torrent when a tracker reports it as unregistered again.
+        '400':
+          description: Invalid instance ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The torrents that wait for a delete could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/instances/{instanceID}/automations/{ruleID}/apply:
     post:
       tags:

@@ -1463,6 +1463,8 @@ qui sets **Unregistered** when no tracker of the torrent works and the message o
 
 A torrent with two trackers can match while it still works. If one tracker says unregistered and the other tracker is down, the torrent matches until the other tracker works again. On qBittorrent 5.1, the torrent can also match for a short time while the working tracker sends an announce. Because the wait resets when a tracker works again, the default Unregistered wait protects these torrents from immediate removal.
 
+On the Workflows page, a delete rule with torrents that wait shows a count such as **3 waiting**. Click it to list each torrent with its tracker, the message of the tracker, **Unregistered since**, and when the rule deletes it, or "When the tracker answers unregistered" for a torrent whose wait is over while its tracker is down.
+
 Run a dry run before you turn on the rule.
 
 ### Maintain minimum free space

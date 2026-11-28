@@ -743,6 +743,16 @@
       "waitsUntil": "Après le {{time}}",
       "waitsForTracker": "Quand le tracker répond de nouveau « non enregistré »"
     },
+    "pendingDeletes": {
+      "count_one": "{{count}} en attente",
+      "count_other": "{{count}} en attente",
+      "title": "En attente de suppression : {{name}}",
+      "description": "Cette règle supprime chaque torrent à la fin de son délai, sauf si un tracker fonctionne de nouveau ou si le torrent est arrêté.",
+      "message": "Message du tracker",
+      "unregisteredSince": "Non enregistré depuis",
+      "nextRun": "À la prochaine exécution",
+      "empty": "Aucun torrent n'attend pour cette règle."
+    },
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",
       "noInstancesDescription": "Aucune instance configurée. Ajoutez-en une dans les paramètres.",

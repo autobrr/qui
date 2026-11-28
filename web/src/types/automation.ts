@@ -459,6 +459,26 @@ export interface AutomationPreviewResult {
   warnings?: string[]
 }
 
+export interface PendingDeleteTorrent {
+  hash: string
+  name: string
+  tracker: string
+  message: string
+  unregisteredSince: number
+  deletesAt: number
+  awaitsTracker: boolean
+}
+
+export interface PendingDeleteGroup {
+  ruleId: number
+  ruleName: string
+  torrents: PendingDeleteTorrent[]
+}
+
+export interface PendingDeleteList {
+  rules: PendingDeleteGroup[]
+}
+
 export interface RegexValidationError {
   path: string
   message: string
