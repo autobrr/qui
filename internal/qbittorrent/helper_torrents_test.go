@@ -112,7 +112,6 @@ func TestDeleteWithFilesRefusesAHybridHelperTorrentByOtherHash(t *testing.T) {
 	sm.SetHelperTorrents(fakeHelpers{hybridV2: "transfer"})
 	require.ErrorIs(t, sm.RefuseHelperFiles(t.Context(), 1, []string{"all"}), ErrHelperTorrentFiles)
 
-	// Unsynced client forces GetTorrentRefsFresh and still refuses by alternate hash.
 	unsynced, err := NewClientWithTimeout(1, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(unsynced.optimisticUpdates.Close)
@@ -120,7 +119,6 @@ func TestDeleteWithFilesRefusesAHybridHelperTorrentByOtherHash(t *testing.T) {
 	smFresh.SetHelperTorrents(fakeHelpers{hybridV1: "transfer"})
 	require.ErrorIs(t, smFresh.RefuseHelperFiles(t.Context(), 1, []string{hybridV2}), ErrHelperTorrentFiles)
 
-	// A failing fresh sync fails closed when helpers exist on the instance.
 	var failSync atomic.Bool
 	badSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

@@ -88,11 +88,20 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 }
 
 func unresolvedHelperHashes(requested []infohash.Hash, resolved []*qbt.Torrent) []infohash.Hash {
+	seen := infohash.NewSet()
+	for _, t := range resolved {
+		if t == nil {
+			continue
+		}
+		for _, raw := range [3]string{t.Hash, t.InfohashV1, t.InfohashV2} {
+			if id, err := infohash.Parse(raw); err == nil {
+				seen.Add(id)
+			}
+		}
+	}
 	var missing []infohash.Hash
 	for _, id := range requested {
-		if !slices.ContainsFunc(resolved, func(t *qbt.Torrent) bool {
-			return t != nil && (id.Is(t.Hash) || id.Is(t.InfohashV1) || id.Is(t.InfohashV2))
-		}) {
+		if !seen.Has(id) {
 			missing = append(missing, id)
 		}
 	}
