@@ -4,11 +4,13 @@
 package automations
 
 import (
+	"bytes"
 	"encoding/json/v2"
 	"testing"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -136,4 +138,35 @@ func TestDeleteRowOfACrossSeedRecordsNoTrackerFactsWhenAnotherRuleClaimsItAsUnre
 
 	require.Equal(t, 1, sel.byHash["b"].rule.id)
 	require.Nil(t, sel.byHash["b"].unregistered)
+}
+
+func TestDeleteLogLineCarriesTheTrackerFieldsOnlyWithATracker(t *testing.T) {
+	since := waitTestNow.Add(-8 * 24 * time.Hour)
+	tests := []struct {
+		name  string
+		facts *unregisteredFacts
+		want  map[string]any
+	}{
+		{name: "no facts", facts: nil, want: map[string]any{}},
+		{name: "only the time", facts: &unregisteredFacts{Since: since}, want: map[string]any{"unregisteredSince": since.Format(time.RFC3339)}},
+		{
+			name:  "a tracker",
+			facts: &unregisteredFacts{Since: since, Host: "tracker.example.invalid", Status: qbt.TrackerStatusNotWorking, Message: "Unregistered torrent"},
+			want: map[string]any{
+				"unregisteredSince": since.Format(time.RFC3339), "trackerHost": "tracker.example.invalid",
+				"trackerStatus": float64(qbt.TrackerStatusNotWorking), "trackerMessage": "Unregistered torrent",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			logger := zerolog.New(&out)
+			logger.Info().Func(selectedDeletion{unregistered: tt.facts}.logUnregistered).Send()
+			got := map[string]any{}
+			require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+			delete(got, "level")
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
