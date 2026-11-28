@@ -310,7 +310,7 @@ func (in pendingCompare) storedVerdict(hash string, due bool) storedVerdict {
 	if _, timed := in.waited.Since(hash); !timed {
 		return endWait
 	}
-	if due {
+	if due || (in.selection != nil && in.selection.isClaimed(hash)) {
 		return keepRow
 	}
 	if in.scope != nil {

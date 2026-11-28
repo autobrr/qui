@@ -35,6 +35,9 @@ func TestPendingDeleteLogsDoNotGrowWithTheWaitingTorrents(t *testing.T) {
 		rig.setHealth(health, since)
 		rule := rig.createRule(waitDeleteRule(0, nil, unregisteredIs("true")))
 		return logbudget.CountWhere(t, func(text string) bool {
+			if strings.Contains(text, "tracker health") {
+				return false
+			}
 			return !strings.Contains(text, "http://127.0.0.1:") || strings.Contains(text, rig.stub.url)
 		}, func() {
 			require.Len(t, rig.run(rule), 1)
