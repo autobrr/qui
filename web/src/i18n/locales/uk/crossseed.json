@@ -521,28 +521,39 @@
     "atLeast": "Має бути принаймні {{min}}"
   },
   "blocklist": {
-    "title": "Чорний список Cross-Seed",
     "noInstancesDescription": "Додайте екземпляри для керування заблокованими крос-сід інфохешами.",
-    "description": "Запобігайте ін'єкції певних інфохешів для кожного екземпляра окремо.",
     "instanceLabel": "Екземпляр",
-    "selectInstance": "Вибрати екземпляр",
     "infohashLabel": "Інфохеш",
     "infohashPlaceholder": "наприклад, 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "Примітка (необов'язково)",
     "notePlaceholder": "Чому цей хеш заблоковано?",
-    "add": "Додати",
-    "blockedHashes": "Заблоковані хеші",
-    "blockedHashesDescription": "Записи застосовуються лише до вибраного екземпляра.",
-    "noBlockedInfohashes": "Немає заблокованих інфохешів.",
-    "tableInfohash": "Інфохеш",
-    "tableNote": "Примітка",
-    "tableAdded": "Додано",
-    "removeAriaLabel": "Видалити {{hash}} з чорного списку",
+    "sectionTitle": "Заблоковані торенти",
+    "sectionDescription": "Cross-seed ніколи не додає ці торенти до цього екземпляра.",
+    "blockHash": "Заблокувати хеш",
+    "emptyTitle": "Немає заблокованих торентів",
+    "emptyDescription": "Заблокуйте cross-seed у результатах пошуку чи в діалозі видалення, або додайте хеш тут.",
+    "blockedAt": "Заблоковано {{date}}",
+    "copyHash": "Копіювати хеш",
+    "remove": "Вилучити",
+    "removeDialog": {
+      "title": "Вилучити зі списку блокування?",
+      "description": "Cross-seed знову може додати {{name}} до {{instance}}."
+    },
+    "addDialog": {
+      "title": "Заблокувати хеш",
+      "description": "Cross-seed ніколи не додає торент із цим хешем до екземпляра.",
+      "submit": "Заблокувати"
+    },
+    "editDialog": {
+      "title": "Редагувати нотатку",
+      "save": "Зберегти"
+    },
     "toast": {
       "addedToBlocklist": "Додано до чорного списку",
       "removedFromBlocklist": "Видалено з чорного списку",
-      "selectAnInstance": "Виберіть екземпляр",
-      "invalidInfohash": "Інфохеш має містити 40 або 64 шістнадцяткові символи"
+      "invalidInfohash": "Інфохеш має містити 40 або 64 шістнадцяткові символи",
+      "noteSaved": "Нотатку збережено",
+      "hashCopied": "Хеш скопійовано"
     }
   },
   "routeConfirm": {

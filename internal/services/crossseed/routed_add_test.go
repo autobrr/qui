@@ -530,7 +530,7 @@ func TestRoutedAddAppliesOnlyTheCrossSeedInstanceBlocklist(t *testing.T) {
 			if blockedOn == "lib" {
 				instanceID = r.source.ID
 			}
-			_, err := r.svc.blocklistStore.Upsert(t.Context(), instanceID, mustParseHash(t, adderV1), "")
+			_, err := r.svc.blocklistStore.Upsert(t.Context(), instanceID, mustParseHash(t, adderV1), "", models.BlockedTorrent{})
 			require.NoError(t, err)
 
 			result := r.add(nil, nil, nil)

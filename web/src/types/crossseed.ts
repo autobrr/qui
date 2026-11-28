@@ -235,6 +235,8 @@ export interface CrossSeedBlocklistEntry {
   instanceId: number
   infoHash: string
   note?: string
+  torrentName?: string
+  tracker?: string
   createdAt: string
 }
 

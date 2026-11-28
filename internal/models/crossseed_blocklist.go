@@ -17,10 +17,16 @@ import (
 )
 
 type CrossSeedBlocklistEntry struct {
-	InstanceID int       `json:"instanceId"`
-	InfoHash   string    `json:"infoHash"`
-	Note       string    `json:"note,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
+	InstanceID int    `json:"instanceId"`
+	InfoHash   string `json:"infoHash"`
+	Note       string `json:"note,omitempty"`
+	BlockedTorrent
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type BlockedTorrent struct {
+	Name    string `json:"torrentName,omitempty"`
+	Tracker string `json:"tracker,omitempty"`
 }
 
 type CrossSeedBlocklistStore struct {
@@ -33,7 +39,7 @@ func NewCrossSeedBlocklistStore(db dbinterface.Querier) *CrossSeedBlocklistStore
 
 func (s *CrossSeedBlocklistStore) List(ctx context.Context, instanceID int) ([]*CrossSeedBlocklistEntry, error) {
 	query := `
-		SELECT instance_id, infohash, note, created_at
+		SELECT instance_id, infohash, note, torrent_name, tracker, created_at
 		FROM cross_seed_blocklist
 	`
 	args := []any{}
@@ -52,7 +58,7 @@ func (s *CrossSeedBlocklistStore) List(ctx context.Context, instanceID int) ([]*
 	var entries []*CrossSeedBlocklistEntry
 	for rows.Next() {
 		var entry CrossSeedBlocklistEntry
-		if err := rows.Scan(&entry.InstanceID, &entry.InfoHash, &entry.Note, &entry.CreatedAt); err != nil {
+		if err := rows.Scan(&entry.InstanceID, &entry.InfoHash, &entry.Note, &entry.Name, &entry.Tracker, &entry.CreatedAt); err != nil {
 			return nil, err
 		}
 		entries = append(entries, &entry)
@@ -66,20 +72,20 @@ func (s *CrossSeedBlocklistStore) List(ctx context.Context, instanceID int) ([]*
 
 func (s *CrossSeedBlocklistStore) Get(ctx context.Context, instanceID int, hash infohash.Hash) (*CrossSeedBlocklistEntry, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT instance_id, infohash, note, created_at
+		SELECT instance_id, infohash, note, torrent_name, tracker, created_at
 		FROM cross_seed_blocklist
 		WHERE instance_id = ? AND infohash = ?
 	`, instanceID, hash.String())
 
 	var entry CrossSeedBlocklistEntry
-	if err := row.Scan(&entry.InstanceID, &entry.InfoHash, &entry.Note, &entry.CreatedAt); err != nil {
+	if err := row.Scan(&entry.InstanceID, &entry.InfoHash, &entry.Note, &entry.Name, &entry.Tracker, &entry.CreatedAt); err != nil {
 		return nil, err
 	}
 
 	return &entry, nil
 }
 
-func (s *CrossSeedBlocklistStore) Upsert(ctx context.Context, instanceID int, hash infohash.Hash, note string) (*CrossSeedBlocklistEntry, error) {
+func (s *CrossSeedBlocklistStore) Upsert(ctx context.Context, instanceID int, hash infohash.Hash, note string, torrent BlockedTorrent) (*CrossSeedBlocklistEntry, error) {
 	if instanceID <= 0 {
 		return nil, errors.New("instanceID must be positive")
 	}
@@ -89,11 +95,14 @@ func (s *CrossSeedBlocklistStore) Upsert(ctx context.Context, instanceID int, ha
 	note = strings.TrimSpace(note)
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO cross_seed_blocklist (instance_id, infohash, note)
-		VALUES (?, ?, ?)
+		INSERT INTO cross_seed_blocklist (instance_id, infohash, note, torrent_name, tracker)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id, infohash)
-		DO UPDATE SET note = excluded.note
-	`, instanceID, hash.String(), note)
+		DO UPDATE SET
+			note = excluded.note,
+			torrent_name = CASE WHEN excluded.torrent_name <> '' THEN excluded.torrent_name ELSE cross_seed_blocklist.torrent_name END,
+			tracker = CASE WHEN excluded.tracker <> '' THEN excluded.tracker ELSE cross_seed_blocklist.tracker END
+	`, instanceID, hash.String(), note, strings.TrimSpace(torrent.Name), strings.TrimSpace(torrent.Tracker))
 	if err != nil {
 		return nil, err
 	}

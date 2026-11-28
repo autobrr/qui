@@ -42,7 +42,7 @@ func blocklistWithPack(t *testing.T, torrentData string) *models.CrossSeedBlockl
 	require.NoError(t, err)
 
 	store := models.NewCrossSeedBlocklistStore(db)
-	_, err = store.Upsert(ctx, instance.ID, meta.HashV1, "")
+	_, err = store.Upsert(ctx, instance.ID, meta.HashV1, "", models.BlockedTorrent{})
 	require.NoError(t, err)
 	return store
 }

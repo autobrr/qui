@@ -154,6 +154,7 @@ func effectiveTorznabCrossSeedSearchLimit(limit int) int {
 type Service struct {
 	instanceStore             instanceProvider
 	syncManager               qbittorrentSync
+	torrentLabels             torrentLabels
 	helpers                   helperTorrents
 	filesManager              *filesmanager.Service
 	mediaIDCacheStore         mediaIDCache
@@ -346,6 +347,7 @@ func NewService(
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
 	if syncManager != nil {
+		svc.torrentLabels = syncManager
 		syncManager.SetFilesChangedHandler(svc.forgetLocalRead)
 		svc.copyGroups = newCopyGroupsJob(svc, syncManager)
 	}

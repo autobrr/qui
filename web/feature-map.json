@@ -464,6 +464,7 @@
     },
     "web/src/components/kit/ConfirmDialog.tsx#ConfirmDialog": {
       "routes": [
+        "/_authenticated/cross-seed",
         "/_authenticated/search",
         "/_authenticated/settings",
         "/_authenticated/transfers"
@@ -472,6 +473,7 @@
     },
     "web/src/components/kit/Editor.tsx#Editor": {
       "routes": [
+        "/_authenticated/cross-seed",
         "/_authenticated/settings"
       ],
       "steps": []

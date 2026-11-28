@@ -494,28 +494,39 @@
     "atLeast": "最少为 {{min}}"
   },
   "blocklist": {
-    "title": "辅种屏蔽列表",
     "noInstancesDescription": "添加实例以管理已屏蔽的辅种 infohash。",
-    "description": "按实例阻止特定 infohash 的注入。",
     "instanceLabel": "实例",
-    "selectInstance": "选择实例",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "例如 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "备注（可选）",
     "notePlaceholder": "为什么要屏蔽此哈希？",
-    "add": "添加",
-    "blockedHashes": "已屏蔽的哈希",
-    "blockedHashesDescription": "条目仅应用于所选实例。",
-    "noBlockedInfohashes": "没有已屏蔽的 infohash。",
-    "tableInfohash": "Infohash",
-    "tableNote": "备注",
-    "tableAdded": "添加时间",
-    "removeAriaLabel": "从屏蔽列表中移除 {{hash}}",
+    "sectionTitle": "已屏蔽的种子",
+    "sectionDescription": "交叉做种永远不会把这些种子添加到此实例。",
+    "blockHash": "屏蔽哈希",
+    "emptyTitle": "没有已屏蔽的种子",
+    "emptyDescription": "可在搜索结果或删除对话框中屏蔽交叉做种，或在此添加哈希。",
+    "blockedAt": "屏蔽于 {{date}}",
+    "copyHash": "复制哈希",
+    "remove": "移除",
+    "removeDialog": {
+      "title": "从屏蔽列表中移除？",
+      "description": "交叉做种可以再次把 {{name}} 添加到 {{instance}}。"
+    },
+    "addDialog": {
+      "title": "屏蔽哈希",
+      "description": "交叉做种永远不会把带有此哈希的种子添加到该实例。",
+      "submit": "屏蔽"
+    },
+    "editDialog": {
+      "title": "编辑备注",
+      "save": "保存"
+    },
     "toast": {
       "addedToBlocklist": "已添加到屏蔽列表",
       "removedFromBlocklist": "已从屏蔽列表移除",
-      "selectAnInstance": "请选择一个实例",
-      "invalidInfohash": "Infohash 必须为 40 或 64 个十六进制字符"
+      "invalidInfohash": "Infohash 必须为 40 或 64 个十六进制字符",
+      "noteSaved": "备注已保存",
+      "hashCopied": "哈希已复制"
     }
   },
   "routeConfirm": {

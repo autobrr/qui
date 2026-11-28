@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   listBlocklist: vi.fn(() => Promise.resolve([])),
   addBlocklist: vi.fn(() => Promise.resolve({})),
+  emptyQuery: { data: undefined },
 }))
 
 vi.mock("react-i18next", async (importOriginal) => ({
@@ -20,6 +21,8 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 vi.mock("@/hooks/useDateTimeFormatters", () => ({
   useDateTimeFormatters: () => ({ formatDate: (date: Date) => date.toISOString() }),
 }))
+vi.mock("@/hooks/useTrackerCustomizations", () => ({ useTrackerCustomizations: () => mocks.emptyQuery }))
+vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => mocks.emptyQuery }))
 vi.mock("@/lib/api", () => ({
   api: {
     listCrossSeedBlocklist: mocks.listBlocklist,
@@ -28,6 +31,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import type { Instance } from "@/types"
 import { BlocklistTab } from "../BlocklistTab"
 
@@ -35,6 +39,12 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
+
+function blockHash(hash: string) {
+  fireEvent.click(screen.getByText("blocklist.blockHash"))
+  fireEvent.change(screen.getByPlaceholderText("blocklist.infohashPlaceholder"), { target: { value: hash } })
+  fireEvent.click(screen.getByText("blocklist.addDialog.submit"))
+}
 
 const alpha = { id: 1, name: "alpha" } as Instance
 const beta = { id: 2, name: "beta" } as Instance
@@ -53,8 +63,7 @@ describe("BlocklistTab instance", () => {
       </QueryClientProvider>
     )
 
-    fireEvent.change(document.getElementById("blocklist-infohash")!, { target: { value: "a".repeat(40) } })
-    fireEvent.click(screen.getByText("blocklist.add"))
+    blockHash("a".repeat(40))
 
     await waitFor(() => expect(mocks.addBlocklist).toHaveBeenCalledTimes(1))
     expect(mocks.addBlocklist.mock.calls[0]).toEqual([{ instanceId: 1, infoHash: "a".repeat(40), note: undefined }])
@@ -74,10 +83,31 @@ describe("BlocklistTab instance", () => {
       </QueryClientProvider>
     )
 
-    fireEvent.change(document.getElementById("blocklist-infohash")!, { target: { value: "b".repeat(40) } })
-    fireEvent.click(screen.getByText("blocklist.add"))
+    blockHash("b".repeat(40))
 
     await waitFor(() => expect(mocks.addBlocklist).toHaveBeenCalledTimes(1))
     expect(mocks.addBlocklist.mock.calls[0]).toEqual([{ instanceId: 2, infoHash: "b".repeat(40), note: undefined }])
+  })
+})
+
+describe("BlocklistTab note", () => {
+  it("saves a new note for the hash of the row it opens", async () => {
+    const entry = { instanceId: 1, infoHash: "c".repeat(40), torrentName: "Quiet.Harbor.S01.1080p.WEB-DL-NOGRP", note: "old", createdAt: "2026-11-28T19:59:57Z" }
+    mocks.listBlocklist.mockImplementationOnce(() => Promise.resolve([entry] as never[]))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <BlocklistTab instances={[alpha]} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByText(entry.torrentName))
+    fireEvent.change(screen.getByDisplayValue("old"), { target: { value: "bad files" } })
+    fireEvent.click(screen.getByText("blocklist.editDialog.save"))
+
+    await waitFor(() => expect(mocks.addBlocklist).toHaveBeenCalledTimes(1))
+    expect(mocks.addBlocklist.mock.calls[0]).toEqual([{ instanceId: 1, infoHash: entry.infoHash, note: "bad files" }])
   })
 })

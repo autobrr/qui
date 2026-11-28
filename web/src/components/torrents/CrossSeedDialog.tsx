@@ -342,7 +342,7 @@ const CrossSeedDialogComponent = ({
     }
   }, [decisionTrace, sourceTorrent?.name, torrent?.name, indexerNameMap, gazelleLookups, t, toastPosition])
 
-  const handleBlockInfoHash = useCallback(async (instanceId: number, infoHash: string) => {
+  const handleBlockInfoHash = useCallback(async (instanceId: number, infoHash: string, torrentName: string) => {
     if (instanceId <= 0) {
       toast.error(t("crossSeedDialog.missingInstance"), { position: toastPosition })
       return
@@ -350,7 +350,7 @@ const CrossSeedDialogComponent = ({
     const pendingKey = getBlocklistPendingKey(instanceId, infoHash)
     setBlocklistPendingKeys(prev => new Set(prev).add(pendingKey))
     try {
-      await api.addCrossSeedBlocklist({ instanceId, infoHash })
+      await api.addCrossSeedBlocklist({ instanceId, infoHash, torrentName })
       toast.success(t("crossSeedDialog.addedToBlocklist"), { position: toastPosition })
     } catch (error) {
       const message = error instanceof Error ? error.message : t("crossSeedDialog.addedToBlocklist")
@@ -402,7 +402,7 @@ const CrossSeedDialogComponent = ({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => handleBlockInfoHash(blockInstanceId, infoHash)}
+                  onClick={() => handleBlockInfoHash(blockInstanceId, infoHash, outcome.torrentName || outcome.title)}
                   disabled={isBlocking}
                   aria-label={`${t("crossSeedDialog.blockFor")} ${blockInstanceName}`}
                   className="relative ml-auto h-8 px-3 text-xs after:absolute after:inset-x-0 after:-inset-y-1.5 sm:h-7 sm:px-2 sm:after:hidden sideways:h-8 sideways:px-3 sideways:after:block"

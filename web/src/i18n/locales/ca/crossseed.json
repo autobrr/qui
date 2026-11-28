@@ -503,28 +503,39 @@
     "atLeast": "Ha de ser com a mínim {{min}}"
   },
   "blocklist": {
-    "title": "Llista de bloqueig de cross-seed",
     "noInstancesDescription": "Afegeix instàncies per gestionar els infohash de cross-seed bloquejats.",
-    "description": "Evita que s'injectin determinats infohash, instància per instància.",
     "instanceLabel": "Instància",
-    "selectInstance": "Selecciona una instància",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "p. ex. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "Nota (opcional)",
     "notePlaceholder": "Per què està bloquejat aquest hash?",
-    "add": "Afegeix",
-    "blockedHashes": "Hash bloquejats",
-    "blockedHashesDescription": "Les entrades s'apliquen només a la instància seleccionada.",
-    "noBlockedInfohashes": "No hi ha cap infohash bloquejat.",
-    "tableInfohash": "Infohash",
-    "tableNote": "Nota",
-    "tableAdded": "Afegit",
-    "removeAriaLabel": "Suprimeix {{hash}} de la llista de bloqueig",
+    "sectionTitle": "Torrents bloquejats",
+    "sectionDescription": "El cross-seed no afegeix mai aquests torrents a aquesta instància.",
+    "blockHash": "Bloqueja un hash",
+    "emptyTitle": "Cap torrent bloquejat",
+    "emptyDescription": "Bloqueja un cross-seed des dels resultats de la cerca o del diàleg d'eliminació, o afegeix-hi un hash.",
+    "blockedAt": "Bloquejat el {{date}}",
+    "copyHash": "Copia el hash",
+    "remove": "Elimina",
+    "removeDialog": {
+      "title": "Vols eliminar-lo de la llista de bloqueig?",
+      "description": "El cross-seed pot tornar a afegir {{name}} a {{instance}}."
+    },
+    "addDialog": {
+      "title": "Bloqueja un hash",
+      "description": "El cross-seed no afegeix mai el torrent amb aquest hash a la instància.",
+      "submit": "Bloqueja"
+    },
+    "editDialog": {
+      "title": "Edita la nota",
+      "save": "Desa"
+    },
     "toast": {
       "addedToBlocklist": "S'ha afegit a la llista de bloqueig",
       "removedFromBlocklist": "S'ha suprimit de la llista de bloqueig",
-      "selectAnInstance": "Selecciona una instància",
-      "invalidInfohash": "L'infohash ha de tenir 40 o 64 caràcters hexadecimals"
+      "invalidInfohash": "L'infohash ha de tenir 40 o 64 caràcters hexadecimals",
+      "noteSaved": "Nota desada",
+      "hashCopied": "Hash copiat"
     }
   },
   "routeConfirm": {

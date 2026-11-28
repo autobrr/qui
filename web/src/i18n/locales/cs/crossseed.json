@@ -513,28 +513,39 @@
     "atLeast": "Musí být alespoň {{min}}"
   },
   "blocklist": {
-    "title": "Blokované hashe křížového sdílení",
     "noInstancesDescription": "Přidejte instance pro správu blokovaných křížových sdílení hashů.",
-    "description": "Zabránět konkrétním hashům křížového sdílení v injekci na základě instance.",
     "instanceLabel": "Instance",
-    "selectInstance": "Vybrat instanci",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "např. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "Poznámka (volitelné)",
     "notePlaceholder": "Proč je tento hash blokován?",
-    "add": "Přidat",
-    "blockedHashes": "Blokované hashe",
-    "blockedHashesDescription": "Blokované hashe se použijí pouze pro vybranou instanci.",
-    "noBlockedInfohashes": "Žádné blokované hashe.",
-    "tableInfohash": "Infohash",
-    "tableNote": "Poznámka",
-    "tableAdded": "Přidáno",
-    "removeAriaLabel": "Odstranit {{hash}} z blokovaných hashů",
+    "sectionTitle": "Blokované torrenty",
+    "sectionDescription": "Cross-seed tyto torrenty do této instance nikdy nepřidá.",
+    "blockHash": "Blokovat hash",
+    "emptyTitle": "Žádné blokované torrenty",
+    "emptyDescription": "Zablokujte cross-seed z výsledků hledání nebo z dialogu mazání, nebo sem přidejte hash.",
+    "blockedAt": "Blokováno {{date}}",
+    "copyHash": "Kopírovat hash",
+    "remove": "Odebrat",
+    "removeDialog": {
+      "title": "Odebrat z blokovaného seznamu?",
+      "description": "Cross-seed může {{name}} znovu přidat do {{instance}}."
+    },
+    "addDialog": {
+      "title": "Blokovat hash",
+      "description": "Cross-seed torrent s tímto hashem do instance nikdy nepřidá.",
+      "submit": "Blokovat"
+    },
+    "editDialog": {
+      "title": "Upravit poznámku",
+      "save": "Uložit"
+    },
     "toast": {
       "addedToBlocklist": "Přidáno do blokovaných hashů",
       "removedFromBlocklist": "Odstraněno z blokovaných hashů",
-      "selectAnInstance": "Vybrat instanci",
-      "invalidInfohash": "Infohash musí být 40 nebo 64 hex znaků"
+      "invalidInfohash": "Infohash musí být 40 nebo 64 hex znaků",
+      "noteSaved": "Poznámka uložena",
+      "hashCopied": "Hash zkopírován"
     }
   },
   "routeConfirm": {
