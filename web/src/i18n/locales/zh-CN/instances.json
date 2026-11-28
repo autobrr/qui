@@ -1252,10 +1252,10 @@
         "includeHardlinkedCopiesDescription": "同时删除通过硬链接共享相同底层文件的种子。仅包含完全在 qBittorrent 内部的硬链接；绝不跟踪外部硬链接。",
         "localAccessRequired": "需要在实例设置中启用\"本地文件系统访问\"。",
         "remoteNotAvailable": "远程实例不可用",
-        "wait": "删除等待",
-        "waitHelp": "种子必须保持未注册多长时间，此规则才会删除它。0 表示首次匹配时即删除。",
-        "waitLocked": "要设置其他等待时间，请将条件改为未注册。",
-        "waitUnit": "删除等待单位"
+        "wait": "未注册至少",
+        "waitHelp": "种子未注册达到此时长后，此规则才会删除它。0 表示首次匹配时即删除。",
+        "waitLocked": "要设置其他时长，请将条件改为未注册。",
+        "waitUnit": "未注册时长单位"
       },
       "move": {
         "newSavePath": "新保存路径",
@@ -1399,7 +1399,7 @@
         "crossSeeds": "{{count}} 个辅种",
         "crossSeeds_other": "{{count}} 个辅种",
         "toCategory": "到分类",
-        "waitingSummary_other": "{{count}} 个未注册的种子仍在删除等待期内，此规则暂不删除它们。"
+        "waitingSummary_other": "{{count}} 个种子未注册的时间还不够长，此规则暂不删除它们。"
       },
       "enableDryRunPrompt": {
         "title": "启用模拟运行？",

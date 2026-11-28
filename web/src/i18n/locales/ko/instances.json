@@ -1252,10 +1252,10 @@
         "includeHardlinkedCopiesDescription": "하드링크를 통해 동일한 기본 파일을 공유하는 토렌트도 삭제합니다. qBittorrent 내부의 하드링크만 포함하며, 외부 하드링크는 따르지 않습니다.",
         "localAccessRequired": "인스턴스 설정에서 \"로컬 파일시스템 접근\"이 활성화되어 있어야 합니다.",
         "remoteNotAvailable": "원격 인스턴스에서는 사용할 수 없음",
-        "wait": "삭제 대기",
-        "waitHelp": "이 규칙이 토렌트를 삭제하기 전에 토렌트가 등록되지 않음 상태로 있어야 하는 시간입니다. 0이면 처음 일치할 때 삭제합니다.",
-        "waitLocked": "다른 대기 시간을 설정하려면 조건을 등록되지 않음으로 바꾸세요.",
-        "waitUnit": "삭제 대기 단위"
+        "wait": "등록되지 않은 최소 기간",
+        "waitHelp": "토렌트가 이 기간 이상 등록되지 않음 상태여야 이 규칙이 삭제합니다. 0이면 처음 일치할 때 삭제합니다.",
+        "waitLocked": "다른 기간을 설정하려면 조건을 등록되지 않음으로 바꾸세요.",
+        "waitUnit": "등록되지 않은 기간 단위"
       },
       "move": {
         "newSavePath": "새 저장 경로",
@@ -1399,7 +1399,7 @@
         "crossSeeds": "cross-seed {{count}}개",
         "crossSeeds_other": "cross-seed {{count}}개",
         "toCategory": "다음 카테고리로",
-        "waitingSummary_other": "등록되지 않은 토렌트 {{count}}개가 아직 삭제 대기 중이므로 이 규칙은 아직 삭제하지 않습니다."
+        "waitingSummary_other": "토렌트 {{count}}개는 등록되지 않은 기간이 아직 부족하므로 이 규칙은 아직 삭제하지 않습니다."
       },
       "enableDryRunPrompt": {
         "title": "모의 실행을 활성화하시겠습니까?",

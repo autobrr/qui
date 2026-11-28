@@ -1283,10 +1283,10 @@
         "includeHardlinkedCopiesDescription": "Elimina anche i torrent che condividono gli stessi file sottostanti tramite hardlink. Include solo gli hardlink completamente interni a qBittorrent; non segue mai gli hardlink esterni.",
         "localAccessRequired": "Richiede che l'\"Accesso al filesystem locale\" sia abilitato nelle impostazioni dell'istanza.",
         "remoteNotAvailable": "Non disponibile sulle istanze remote",
-        "wait": "Attesa prima dell'eliminazione",
-        "waitHelp": "Per quanto tempo un torrent deve risultare non registrato prima che questa regola lo elimini. 0 lo elimina alla prima corrispondenza.",
-        "waitLocked": "Per impostare un'altra attesa, cambia la condizione in Non registrato.",
-        "waitUnit": "Unità dell'attesa prima dell'eliminazione"
+        "wait": "Non registrato da almeno",
+        "waitHelp": "La regola elimina un torrent solo quando risulta non registrato da questo tempo. 0 lo elimina alla prima corrispondenza.",
+        "waitLocked": "Per impostare un altro tempo, cambia la condizione in Non registrato.",
+        "waitUnit": "Unità del tempo senza registrazione"
       },
       "move": {
         "newSavePath": "Nuovo percorso di salvataggio",
@@ -1430,8 +1430,8 @@
         "crossSeeds": "{{count}} cross-seed",
         "crossSeeds_other": "{{count}} cross-seed",
         "toCategory": "nella categoria",
-        "waitingSummary_one": "{{count}} torrent non registrato è ancora nella sua attesa prima dell'eliminazione, quindi questa regola non lo elimina ancora.",
-        "waitingSummary_other": "{{count}} torrent non registrati sono ancora nella loro attesa prima dell'eliminazione, quindi questa regola non li elimina ancora."
+        "waitingSummary_one": "{{count}} torrent non risulta ancora non registrato da abbastanza tempo, quindi questa regola non lo elimina ancora.",
+        "waitingSummary_other": "{{count}} torrent non risultano ancora non registrati da abbastanza tempo, quindi questa regola non li elimina ancora."
       },
       "enableDryRunPrompt": {
         "title": "Abilitare la simulazione (dry run)?",

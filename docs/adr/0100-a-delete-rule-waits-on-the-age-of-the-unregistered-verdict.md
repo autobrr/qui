@@ -5,7 +5,7 @@ date: 2026-11-27
 
 # A delete rule waits on the age of the unregistered verdict
 
-A tracker can report healthy torrents as unregistered by mistake. In November 2026 one tracker did, and a delete rule removed about 330 torrents in 35 minutes. qui therefore keeps the time from which it has seen each torrent as unregistered, and a delete rule chooses a torrent for that verdict only after the Delete wait of the rule, 7 days by default. A working tracker, a stop of the torrent, or an edit of its trackers starts the time over.
+A tracker can report healthy torrents as unregistered by mistake. In November 2026 one tracker did, and a delete rule removed about 330 torrents in 35 minutes. qui therefore keeps the time from which it has seen each torrent as unregistered, and a delete rule chooses a torrent for that verdict only after the Unregistered wait of the rule, 7 days by default. A working tracker, a stop of the torrent, or an edit of its trackers starts the time over.
 
 The time belongs to the verdict and not to the rule. The verdict is the fact that a tracker can take back, one time serves every rule and the warning in the manual delete dialog, and a rule that does not read the verdict stays as it was. A rule deletes a torrent only when its condition matches both while the torrent counts as unregistered for as long as it has a time, and while it counts as unregistered only once the wait is over and a tracker says so now. The wait therefore never makes a rule delete a torrent that it would keep with the verdict of today.
 

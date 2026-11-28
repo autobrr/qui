@@ -1320,10 +1320,10 @@
         "includeHardlinkedCopiesDescription": "Také smazat torrenty, které sdílí stejné podkladové soubory přes hardlinky. Zahrnuje pouze hardlinky plně uvnitř qBittorrentu; nikdy neřídí hardlinky mimo.",
         "localAccessRequired": "Vyžaduje \"Místní přístup k souborovému systému\" pro povolení v nastavení instance.",
         "remoteNotAvailable": "Není dostupné pro vzdálené instance",
-        "wait": "Čekání před smazáním",
-        "waitHelp": "Jak dlouho musí být torrent neregistrovaný, než ho toto pravidlo smaže. 0 ho smaže při první shodě.",
-        "waitLocked": "Jinou dobu čekání nastavíte, když podmínku změníte na Neregistrované.",
-        "waitUnit": "Jednotka čekání před smazáním"
+        "wait": "Neregistrované alespoň",
+        "waitHelp": "Pravidlo smaže torrent, až když je tak dlouho neregistrovaný. 0 ho smaže při první shodě.",
+        "waitLocked": "Jinou dobu nastavíte, když podmínku změníte na Neregistrované.",
+        "waitUnit": "Jednotka doby bez registrace"
       },
       "move": {
         "newSavePath": "Nová cesta uložení",
@@ -1467,9 +1467,9 @@
         "crossSeeds": "{{count}} křížové sdílení",
         "crossSeeds_other": "{{count}} křížová sdílení",
         "toCategory": "do kategorie",
-        "waitingSummary_one": "{{count}} neregistrovaný torrent je ještě v čekání před smazáním, takže ho toto pravidlo zatím nesmaže.",
-        "waitingSummary_few": "{{count}} neregistrované torrenty jsou ještě v čekání před smazáním, takže je toto pravidlo zatím nesmaže.",
-        "waitingSummary_other": "{{count}} neregistrovaných torrentů je ještě v čekání před smazáním, takže je toto pravidlo zatím nesmaže."
+        "waitingSummary_one": "{{count}} torrent ještě není neregistrovaný dost dlouho, takže ho toto pravidlo zatím nesmaže.",
+        "waitingSummary_few": "{{count}} torrenty ještě nejsou neregistrované dost dlouho, takže je toto pravidlo zatím nesmaže.",
+        "waitingSummary_other": "{{count}} torrentů ještě není neregistrovaných dost dlouho, takže je toto pravidlo zatím nesmaže."
       },
       "enableDryRunPrompt": {
         "title": "Povolit simulaci?",

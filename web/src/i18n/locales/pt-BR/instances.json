@@ -1283,10 +1283,10 @@
         "includeHardlinkedCopiesDescription": "Também exclui torrents que compartilham os mesmos arquivos via hardlinks. Considera apenas hardlinks totalmente dentro do qBittorrent; nunca segue hardlinks externos.",
         "localAccessRequired": "Requer que \"Acesso ao Sistema de Arquivos Local\" esteja ativado nas configurações da instância.",
         "remoteNotAvailable": "Indisponível em instâncias remotas",
-        "wait": "Espera para excluir",
-        "waitHelp": "Por quanto tempo um torrent precisa estar não registrado antes que esta regra o exclua. 0 exclui na primeira correspondência.",
-        "waitLocked": "Para definir outra espera, mude a condição para Não Registrado.",
-        "waitUnit": "Unidade da espera para excluir"
+        "wait": "Não registrado há pelo menos",
+        "waitHelp": "A regra só exclui um torrent quando ele está não registrado há esse tempo. 0 exclui na primeira correspondência.",
+        "waitLocked": "Para definir outro tempo, mude a condição para Não Registrado.",
+        "waitUnit": "Unidade do tempo sem registro"
       },
       "move": {
         "newSavePath": "Aonde salvar o arquivo agora?",
@@ -1430,8 +1430,8 @@
         "crossSeeds": "{{count}} cross-seed atrelado",
         "crossSeeds_other": "{{count}} cross-seeds atrelados",
         "toCategory": "em direção à categoria",
-        "waitingSummary_one": "{{count}} torrent não registrado ainda está na espera para excluir, então esta regra ainda não o exclui.",
-        "waitingSummary_other": "{{count}} torrents não registrados ainda estão na espera para excluir, então esta regra ainda não os exclui."
+        "waitingSummary_one": "{{count}} torrent ainda não está não registrado há tempo suficiente, então esta regra ainda não o exclui.",
+        "waitingSummary_other": "{{count}} torrents ainda não estão não registrados há tempo suficiente, então esta regra ainda não os exclui."
       },
       "enableDryRunPrompt": {
         "title": "Ativar simulação?",

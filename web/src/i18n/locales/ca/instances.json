@@ -933,10 +933,10 @@
         "includeHardlinkedCopiesDescription": "Elimina també els torrents que comparteixen els mateixos fitxers subjacents mitjançant hardlinks. Només inclou els hardlinks que són del tot dins de qBittorrent; mai no segueix els hardlinks de fora.",
         "localAccessRequired": "Cal tenir activat l'«Accés al sistema de fitxers local» a la configuració de la instància.",
         "remoteNotAvailable": "No disponible en instàncies remotes",
-        "wait": "Espera abans d'eliminar",
-        "waitHelp": "Quant de temps ha d'estar no registrat un torrent abans que aquesta regla l'elimini. 0 l'elimina a la primera coincidència.",
-        "waitLocked": "Per definir una altra espera, canvia la condició a No registrat.",
-        "waitUnit": "Unitat de l'espera abans d'eliminar"
+        "wait": "No registrat durant almenys",
+        "waitHelp": "La regla només elimina un torrent quan porta aquest temps sense registrar. 0 l'elimina a la primera coincidència.",
+        "waitLocked": "Per definir un altre temps, canvia la condició a No registrat.",
+        "waitUnit": "Unitat del temps sense registrar"
       },
       "move": {
         "newSavePath": "Camí de desada nou",
@@ -1085,8 +1085,8 @@
         "crossSeeds": "{{count}} cross-seed",
         "crossSeeds_other": "{{count}} cross-seed",
         "toCategory": "a la categoria",
-        "waitingSummary_one": "{{count}} torrent no registrat encara és dins la seva espera abans d'eliminar, així que aquesta regla encara no l'elimina.",
-        "waitingSummary_other": "{{count}} torrents no registrats encara són dins la seva espera abans d'eliminar, així que aquesta regla encara no els elimina."
+        "waitingSummary_one": "{{count}} torrent encara no porta prou temps sense registrar, així que aquesta regla encara no l'elimina.",
+        "waitingSummary_other": "{{count}} torrents encara no porten prou temps sense registrar, així que aquesta regla encara no els elimina."
       },
       "customGroup": {
         "title": "Afegeix un grup personalitzat",

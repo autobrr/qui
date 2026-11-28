@@ -1277,10 +1277,10 @@
         "includeHardlinkedCopiesDescription": "Supprime également les torrents partageant les mêmes fichiers par des liens physiques.",
         "localAccessRequired": "Requiert l'activation de l'accès au système de fichiers local.",
         "remoteNotAvailable": "Non disponible sur les instances distantes",
-        "wait": "Délai de suppression",
-        "waitHelp": "Durée pendant laquelle un torrent doit être non enregistré avant que cette règle le supprime. 0 le supprime dès la première correspondance.",
-        "waitLocked": "Pour définir un autre délai, remplacez la condition par Non enregistré.",
-        "waitUnit": "Unité du délai de suppression"
+        "wait": "Non enregistré depuis au moins",
+        "waitHelp": "La règle supprime un torrent seulement une fois qu'il est non enregistré depuis cette durée. 0 le supprime dès la première correspondance.",
+        "waitLocked": "Pour définir une autre durée, remplacez la condition par Non enregistré.",
+        "waitUnit": "Unité de la durée sans enregistrement"
       },
       "move": {
         "newSavePath": "Nouveau chemin de sauvegarde",
@@ -1424,8 +1424,8 @@
         "crossSeeds": "{{count}} cross-seed",
         "crossSeeds_other": "{{count}} cross-seeds",
         "toCategory": "vers la catégorie",
-        "waitingSummary_one": "{{count}} torrent non enregistré est encore dans son délai de suppression, cette règle ne le supprime donc pas encore.",
-        "waitingSummary_other": "{{count}} torrents non enregistrés sont encore dans leur délai de suppression, cette règle ne les supprime donc pas encore."
+        "waitingSummary_one": "{{count}} torrent n'est pas encore non enregistré depuis assez longtemps, cette règle ne le supprime donc pas encore.",
+        "waitingSummary_other": "{{count}} torrents ne sont pas encore non enregistrés depuis assez longtemps, cette règle ne les supprime donc pas encore."
       },
       "enableDryRunPrompt": {
         "title": "Activer la simulation (dry run) ?",

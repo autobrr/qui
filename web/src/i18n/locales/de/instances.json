@@ -1283,10 +1283,10 @@
         "includeHardlinkedCopiesDescription": "Löscht auch Torrents, die sich dieselben zugrunde liegenden Dateien per Hardlink teilen. Bezieht nur Hardlinks vollständig innerhalb von qBittorrent ein; folgt niemals Hardlinks nach außen.",
         "localAccessRequired": "Erfordert, dass \"Local Filesystem Access\" in den Instanz-Einstellungen aktiviert ist.",
         "remoteNotAvailable": "Nicht verfügbar auf Remote-Instanzen",
-        "wait": "Löschwartezeit",
-        "waitHelp": "Wie lange ein Torrent nicht registriert sein muss, bevor diese Regel ihn löscht. 0 löscht ihn beim ersten Treffer.",
-        "waitLocked": "Um eine andere Wartezeit festzulegen, ändere die Bedingung auf Unregistriert.",
-        "waitUnit": "Einheit der Löschwartezeit"
+        "wait": "Nicht registriert für mindestens",
+        "waitHelp": "Die Regel löscht einen Torrent erst, wenn er so lange nicht registriert ist. 0 löscht ihn beim ersten Treffer.",
+        "waitLocked": "Um eine andere Dauer festzulegen, ändere die Bedingung auf Unregistriert.",
+        "waitUnit": "Einheit der Dauer ohne Registrierung"
       },
       "move": {
         "newSavePath": "Neuer Speicherpfad",
@@ -1430,8 +1430,8 @@
         "crossSeeds": "{{count}} Cross-Seed",
         "crossSeeds_other": "{{count}} Cross-Seeds",
         "toCategory": "in Kategorie",
-        "waitingSummary_one": "{{count}} nicht registrierter Torrent ist noch in seiner Löschwartezeit, daher löscht diese Regel ihn noch nicht.",
-        "waitingSummary_other": "{{count}} nicht registrierte Torrents sind noch in ihrer Löschwartezeit, daher löscht diese Regel sie noch nicht."
+        "waitingSummary_one": "{{count}} Torrent ist noch nicht lange genug nicht registriert, daher löscht diese Regel ihn noch nicht.",
+        "waitingSummary_other": "{{count}} Torrents sind noch nicht lange genug nicht registriert, daher löscht diese Regel sie noch nicht."
       },
       "enableDryRunPrompt": {
         "title": "Probelauf aktivieren?",

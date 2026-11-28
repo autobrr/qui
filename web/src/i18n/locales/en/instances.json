@@ -1283,10 +1283,10 @@
         "includeHardlinkedCopiesDescription": "Also delete torrents that share the same underlying files via hardlinks. Only includes hardlinks fully inside qBittorrent; never follows hardlinks outside.",
         "localAccessRequired": "Requires \"Local Filesystem Access\" to be enabled in instance settings.",
         "remoteNotAvailable": "Not available on remote instances",
-        "wait": "Delete wait",
-        "waitHelp": "How long a torrent must be unregistered before this rule deletes it. 0 deletes it on the first match.",
-        "waitLocked": "To set another wait, change the condition to Unregistered.",
-        "waitUnit": "Delete wait unit"
+        "wait": "Unregistered for at least",
+        "waitHelp": "The rule deletes a torrent only once it has been unregistered this long. 0 deletes it on the first match.",
+        "waitLocked": "To set another time, change the condition to Unregistered.",
+        "waitUnit": "Unregistered time unit"
       },
       "move": {
         "newSavePath": "New save path",
@@ -1430,8 +1430,8 @@
         "crossSeeds": "{{count}} cross-seed",
         "crossSeeds_other": "{{count}} cross-seeds",
         "toCategory": "to category",
-        "waitingSummary_one": "{{count}} unregistered torrent is inside its Delete wait, so this rule does not delete it yet.",
-        "waitingSummary_other": "{{count}} unregistered torrents are inside their Delete wait, so this rule does not delete them yet."
+        "waitingSummary_one": "{{count}} torrent has not been unregistered long enough, so this rule does not delete it yet.",
+        "waitingSummary_other": "{{count}} torrents have not been unregistered long enough, so this rule does not delete them yet."
       },
       "enableDryRunPrompt": {
         "title": "Enable dry run?",
