@@ -8,8 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"reflect"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -34,6 +32,11 @@ type fileStandardInfo struct {
 	_              [2]byte
 }
 
+type fileAttributeTagInfo struct {
+	FileAttributes uint32
+	ReparseTag     uint32
+}
+
 func lstatPath(path string) (*fsops.LstatInfo, error) {
 	fi, err := os.Lstat(path)
 	return identify(fi, err, path, false)
@@ -51,7 +54,7 @@ func lstatEntry(path string, d fs.DirEntry, wantID bool) (*fsops.LstatInfo, erro
 	}
 	info := statFields(fi, path, false)
 	if wantID && info.Mode.IsRegular() {
-		info.FileID, info.Nlinks, info.FileIDErr = pathIdentity(path, isSymlink(fi))
+		info.FileID, info.Nlinks, info.FileIDErr = pathIdentity(path, fi)
 	}
 	return info, nil
 }
@@ -75,7 +78,7 @@ func identify(fi os.FileInfo, err error, path string, follow bool) (*fsops.Lstat
 	}
 	info := statFields(fi, path, follow)
 	if hasIdentity(info) {
-		info.FileID, info.Nlinks, info.FileIDErr = pathIdentity(path, isSymlink(fi))
+		info.FileID, info.Nlinks, info.FileIDErr = pathIdentity(path, fi)
 	}
 	return info, nil
 }
@@ -89,17 +92,40 @@ func rootIdentity(r *os.Root, name string) (hardlink.FileID, uint64, error) {
 	return handleIdentity(windows.Handle(f.Fd()))
 }
 
-func pathIdentity(path string, symlink bool) (hardlink.FileID, uint64, error) {
+func openIdentityHandle(fi os.FileInfo, pathp *uint16) (windows.Handle, error) {
+	shareMode := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE | windows.FILE_SHARE_DELETE)
+	baseFlags := uint32(windows.FILE_FLAG_BACKUP_SEMANTICS)
+	if isSymlink(fi) {
+		return windows.CreateFile(pathp, fileReadAttributes, shareMode, nil, windows.OPEN_EXISTING, baseFlags|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	}
+	if fi != nil && !fi.IsDir() && fi.Mode()&os.ModeIrregular != 0 {
+		h, err := windows.CreateFile(pathp, fileReadAttributes, shareMode, nil, windows.OPEN_EXISTING, baseFlags|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+		if err != nil {
+			return 0, err
+		}
+		var tagInfo fileAttributeTagInfo
+		tagErr := windows.GetFileInformationByHandleEx(
+			h,
+			windows.FileAttributeTagInfo,
+			(*byte)(unsafe.Pointer(&tagInfo)),
+			uint32(unsafe.Sizeof(tagInfo)),
+		)
+		if tagErr == nil &&
+			tagInfo.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 &&
+			tagInfo.ReparseTag == windows.IO_REPARSE_TAG_MOUNT_POINT {
+			return h, nil
+		}
+		_ = windows.CloseHandle(h)
+	}
+	return windows.CreateFile(pathp, fileReadAttributes, shareMode, nil, windows.OPEN_EXISTING, baseFlags, 0)
+}
+
+func pathIdentity(path string, fi os.FileInfo) (hardlink.FileID, uint64, error) {
 	pathp, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return hardlink.FileID{}, 0, err
 	}
-	attrs := uint32(windows.FILE_FLAG_BACKUP_SEMANTICS)
-	if symlink {
-		attrs |= windows.FILE_FLAG_OPEN_REPARSE_POINT
-	}
-	shareMode := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE | windows.FILE_SHARE_DELETE)
-	h, err := windows.CreateFile(pathp, fileReadAttributes, shareMode, nil, windows.OPEN_EXISTING, attrs, 0)
+	h, err := openIdentityHandle(fi, pathp)
 	if err != nil {
 		return hardlink.FileID{}, 0, err
 	}
@@ -146,18 +172,5 @@ func legacyFileID(h windows.Handle, idErr error) (hardlink.FileID, uint64, error
 }
 
 func isSymlink(fi os.FileInfo) bool {
-	attrs, ok := fi.Sys().(*syscall.Win32FileAttributeData)
-	if !ok || attrs == nil {
-		return false
-	}
-	if attrs.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
-		return false
-	}
-	v := reflect.Indirect(reflect.ValueOf(fi))
-	reserved0Field := v.FieldByName("Reserved0")
-	if !reserved0Field.IsValid() {
-		return false
-	}
-	reserved0 := reserved0Field.Uint()
-	return reserved0 == syscall.IO_REPARSE_TAG_SYMLINK || reserved0 == 0xA0000003
+	return fi != nil && fi.Mode()&os.ModeSymlink != 0
 }
