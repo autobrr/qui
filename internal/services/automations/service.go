@@ -1901,12 +1901,15 @@ func (s *Service) applyRules(ctx context.Context, instanceID int, rules []*model
 	exportResults := s.executeExportToInstance(ctx, instanceID, s.reserveExports(plan.exports))
 
 	deleteActivity := func(hash string, pending selectedDeletion, action, outcome, reason string) *models.AutomationActivity {
-		detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // strings, bools, a tracker status, and a time that qui stamped cannot fail to encode
+		detailsJSON, err := json.Marshal(struct {
 			DeleteMode   string             `json:"deleteMode"`
 			FilesKept    bool               `json:"filesKept"`
 			IsTrigger    bool               `json:"isTrigger"`
 			Unregistered *unregisteredFacts `json:"unregistered,omitempty"`
 		}{pending.deleteMode, pending.filesKept(), pending.trigger, pending.unregistered})
+		if err != nil {
+			log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("automations: could not encode the delete details")
+		}
 		torrent := torrentByHash[hash]
 		return &models.AutomationActivity{
 			InstanceID:    instanceID,
