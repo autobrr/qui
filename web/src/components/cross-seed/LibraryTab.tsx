@@ -46,7 +46,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, Clock, History, Loader2, Rocket, XCircle } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -160,23 +160,6 @@ function LibraryCard({ settings, searchSettings, instances }: LibraryCardProps) 
     enabled: !!searchInstanceId,
     refetchInterval: searchRunsRefetchInterval,
   })
-
-  const activeSearchInstanceIdRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    const isRunning = searchStatus?.running ?? false
-    const activeInstanceId = searchStatus?.run?.instanceId
-
-    if (isRunning && activeInstanceId != null) {
-      activeSearchInstanceIdRef.current = activeInstanceId
-      return
-    }
-
-    if (activeSearchInstanceIdRef.current != null && activeSearchInstanceIdRef.current === searchInstanceId) {
-      void refetchSearchRuns()
-    }
-    activeSearchInstanceIdRef.current = null
-  }, [refetchSearchRuns, searchInstanceId, searchStatus?.running, searchStatus?.run?.instanceId])
 
   const searchInstanceIds = useMemo(() => searchInstanceId ? [searchInstanceId] : [], [searchInstanceId])
   const { data: searchMetadata } = useAggregatedInstanceMetadata(searchInstanceIds)
