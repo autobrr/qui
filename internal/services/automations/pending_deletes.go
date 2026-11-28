@@ -48,6 +48,7 @@ type pendingCompare struct {
 	scope         *ruleScope
 	waited        verdict.Waited
 	claimed       func(hash string) bool
+	summary       *automationSummary
 }
 
 type waitRuleCount struct {
@@ -74,7 +75,7 @@ type waitEndedDetails struct {
 
 type waitLine struct {
 	byRule map[int]int
-	hashes []string
+	keys   []pendingKey
 }
 
 func (l *waitLine) add(key pendingKey) {
@@ -82,7 +83,15 @@ func (l *waitLine) add(key pendingKey) {
 		l.byRule = make(map[int]int)
 	}
 	l.byRule[key.ruleID]++
-	l.hashes = append(l.hashes, key.hash)
+	l.keys = append(l.keys, key)
+}
+
+func (l *waitLine) hashes() []string {
+	hashes := make([]string, 0, len(l.keys))
+	for _, key := range l.keys {
+		hashes = append(hashes, key.hash)
+	}
+	return infohash.UniqueStrings(hashes)
 }
 
 func (l *waitLine) ruleCounts(rules map[int]*models.Automation) []waitRuleCount {
@@ -166,7 +175,19 @@ func (s *Service) recordPendingDeletes(ctx context.Context, instanceID int, in p
 			s.activityRuns.Put(activity.ID, instanceID, buildRunItemsFromHashes(lines[i].hashes, in.torrentByHash, in.scope))
 		}
 	}
+	in.reportStarted(diff.started.keys, rules)
 	return diff.change.Activities
+}
+
+func (in pendingCompare) reportStarted(keys []pendingKey, rules map[int]*models.Automation) {
+	if in.summary == nil {
+		return
+	}
+	for _, key := range keys {
+		rule := rules[key.ruleID]
+		torrent := in.torrentByHash[key.hash]
+		in.summary.addWaiting(rule, deleteWaitOf(rule, in.waited).wait, key.hash, waitingTorrent{name: torrent.Name, tracker: in.scope.tracker(torrent)})
+	}
 }
 
 func newPendingDiff(in pendingCompare, rules map[int]*models.Automation) *pendingDiff {
@@ -227,16 +248,16 @@ func (d *pendingDiff) start(now time.Time) {
 
 func (d *pendingDiff) lines() []waitActivity {
 	var lines []waitActivity
-	if len(d.started.hashes) > 0 {
-		hashes := infohash.UniqueStrings(d.started.hashes)
+	if len(d.started.keys) > 0 {
+		hashes := d.started.hashes()
 		lines = append(lines, waitActivity{
 			action:  models.ActivityActionUnregisteredWaitStarted,
 			details: waitStartedDetails{Count: len(hashes), Rules: d.started.ruleCounts(d.rules)},
 			hashes:  hashes,
 		})
 	}
-	if len(d.ended.hashes) > 0 {
-		hashes := infohash.UniqueStrings(d.ended.hashes)
+	if len(d.ended.keys) > 0 {
+		hashes := d.ended.hashes()
 		lines = append(lines, waitActivity{
 			action:  models.ActivityActionUnregisteredWaitEnded,
 			details: waitEndedDetails{Count: len(hashes), Causes: d.causes, Rules: d.ended.ruleCounts(d.rules)},
