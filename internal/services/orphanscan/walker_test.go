@@ -1086,4 +1086,38 @@ func TestScanWalker_FileWithoutAKeyMarksIdentityIncomplete(t *testing.T) {
 			t.Fatal("a torrent file recordInUse cannot key must mark identity incomplete")
 		}
 	})
+
+	t.Run("unreadable child folder in walkScanRootWithUnitFilter marks identity incomplete", func(t *testing.T) {
+		t.Parallel()
+
+		tfm := NewTorrentFileMap(fsops.HostPaths)
+		keys := newFileKeys()
+		backend := &fakeWalkBackend{
+			Backend: local.NewBackend(),
+			entries: []fsops.WalkEntry{{Path: filepath.Join(root, "locked"), Err: fs.ErrPermission}},
+		}
+		if _, _, _, err := walkScanRootWithUnitFilter(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), 0, 0, nil, backend, instance, false, keys); err != nil {
+			t.Fatalf("walkScanRootWithUnitFilter: %v", err)
+		}
+		if !keys.incomplete {
+			t.Fatal("an unreadable child folder must mark identity incomplete")
+		}
+	})
+
+	t.Run("unreadable child folder in recordInUse marks identity incomplete", func(t *testing.T) {
+		t.Parallel()
+
+		tfm := NewTorrentFileMap(fsops.HostPaths)
+		keys := newFileKeys()
+		backend := &fakeWalkBackend{
+			Backend: local.NewBackend(),
+			entries: []fsops.WalkEntry{{Path: filepath.Join(root, "locked"), Err: fs.ErrPermission}},
+		}
+		if err := recordInUse(t.Context(), root, newTestProtected(t, fsops.HostPaths, nil, tfm), backend, instance, keys); err != nil {
+			t.Fatalf("recordInUse: %v", err)
+		}
+		if !keys.incomplete {
+			t.Fatal("an unreadable child folder in recordInUse must mark identity incomplete")
+		}
+	})
 }

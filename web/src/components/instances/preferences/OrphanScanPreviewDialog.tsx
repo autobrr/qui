@@ -62,7 +62,7 @@ export function OrphanScanPreviewDialog({
 
   const run = runQuery.data
   const totalItems = run?.filesFound ?? 0
-  const deleteUnavailable = run?.filesystemMode === "remote" && !run.identityComplete
+  const deleteUnavailable = Boolean(run && !run.identityComplete)
   const hasMore = files.length < totalItems
 
   const totalSize = useMemo(() => {
@@ -227,7 +227,11 @@ export function OrphanScanPreviewDialog({
         </div>
 
         {deleteUnavailable && (
-          <p className="text-sm text-muted-foreground">{t("preferences.orphanScanPreview.remoteDeleteUnavailable")}</p>
+          <p className="text-sm text-muted-foreground">
+            {run?.filesystemMode === "remote"
+              ? t("preferences.orphanScanPreview.remoteDeleteUnavailable")
+              : t("preferences.orphanScanPreview.localDeleteUnavailable")}
+          </p>
         )}
 
         <DialogFooter className="mt-4 sm:justify-between">

@@ -182,8 +182,8 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET status = 'canceled'
 		WHERE instance_id = ? AND status = 'preview_ready' AND files_found > 0
-		  AND filesystem_mode = ? AND identity_complete = 0
-	`, instanceID, string(FilesystemModeRemote)); err != nil {
+		  AND identity_complete = 0
+	`, instanceID); err != nil {
 		return 0, fmt.Errorf("cancel unconfirmable orphan scan preview: %w", err)
 	}
 
@@ -484,10 +484,10 @@ func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID
 		WHERE instance_id = ?
 		  AND (status IN ('pending', 'scanning', 'deleting')
 		       OR (status = 'preview_ready' AND files_found > 0
-		           AND NOT (filesystem_mode = ? AND identity_complete = 0)))
+		           AND identity_complete != 0))
 		ORDER BY started_at DESC
 		LIMIT 1
-	`, instanceID, string(FilesystemModeRemote))
+	`, instanceID)
 
 	return s.scanRun(row)
 }

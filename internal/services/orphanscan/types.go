@@ -24,13 +24,13 @@ var ErrFilesystemModeChanged = errors.New("filesystem access changed since the s
 
 const FilesystemModeChangedMessage = "Filesystem access for this instance changed since the scan. Run a new scan before deleting."
 
-const RemoteNoIdentityMessage = "This remote instance can delete orphan files only when it reports file identity and the scan read it for every file. The preview is kept."
+const RemoteNoIdentityMessage = "Deletion is disabled because this scan could not read file identity for every file (for example, due to unreadable folders or remote filesystem limitations). The preview is kept."
 
 const AutoCleanupNoIdentityMessage = "Automatic cleanup did not run, because this remote instance does not report file identity or the scan could not read it for every file. Review the preview instead."
 
 const AutoCleanupSkippedMessage = "Automatic cleanup did not run."
 
-const IdentityIncompleteMessage = "This preview cannot be deleted, because the scan did not read a file identity for every file. The remote server's find failed or was refused, a folder held more entries than find lists at once, files changed while it ran, or the walk stopped early. Without an identity for every file, a second path to a torrent's file can look like an orphan. Export the list, or run a new scan."
+const IdentityIncompleteMessage = "This preview cannot be deleted, because the scan did not read a file identity for every file. A folder may be unreadable due to permissions, the remote server's find may have failed or been refused, a folder held more entries than find lists at once, files changed while it ran, or the walk stopped early. Without an identity for every file, a second path to a torrent's file can look like an orphan. Export the list, or run a new scan."
 
 const ScanModeChangedMessage = "Filesystem access for this instance changed during the scan. Run a new scan."
 

@@ -343,13 +343,64 @@ func TestRunCanDelete(t *testing.T) {
 		{"remote with identity on the exec tier", remote(true, "qui@box:22"), exec, true},
 		{"remote with identity on the sftp tier", remote(true, "qui@box:22"), sftp, false},
 		{"remote walk that missed an identity", remote(false, "qui@box:22"), exec, false},
-		{"local without complete identity", &models.OrphanScanRun{FilesystemMode: models.FilesystemModeLocal}, exec, true},
+		{"local without complete identity", &models.OrphanScanRun{FilesystemMode: models.FilesystemModeLocal}, exec, false},
+		{"local with complete identity", &models.OrphanScanRun{FilesystemMode: models.FilesystemModeLocal, IdentityComplete: true}, exec, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, runCanDelete(tc.run, tc.caps))
 		})
 	}
+}
+
+type unreadableChildBackend struct {
+	fsops.Backend
+}
+
+func (b unreadableChildBackend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	in, err := b.Backend.WalkDir(ctx, root, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan fsops.WalkEntry, 1)
+	go func() {
+		defer close(out)
+		for e := range in {
+			out <- e
+		}
+		out <- fsops.WalkEntry{Path: filepath.Join(root, "locked"), Err: fs.ErrPermission}
+	}()
+	return out, nil
+}
+
+func TestConfirmDeletion_LocalRunWithIncompleteIdentityIsRefused(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-local-unreadable-refuse", models.FilesystemModeLocal, nil)
+	f.svc.backendPool = fsops.NewPoolWithRemote(f.instance, unreadableChildBackend{Backend: countingBackend{Backend: newTestBackend(), removes: f.removes}}, nil)
+
+	run := f.scan(t, "manual")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.False(t, run.IdentityComplete)
+	require.Contains(t, run.ErrorMessage, IdentityIncompleteMessage)
+
+	require.ErrorIs(t, f.svc.ConfirmDeletion(t.Context(), 1, run.ID), fsops.ErrNotCapable)
+	require.Equal(t, "preview_ready", f.run(t, run.ID).Status)
+	f.requireNothingDeleted(t)
+}
+
+func TestMaybeAutoCleanup_LocalRunWithIncompleteIdentityKeepsBothWarnings(t *testing.T) {
+	t.Parallel()
+
+	f := newModeFixture(t, "orphanscan-local-unreadable-autoclean", models.FilesystemModeLocal, nil)
+	f.svc.backendPool = fsops.NewPoolWithRemote(f.instance, unreadableChildBackend{Backend: countingBackend{Backend: newTestBackend(), removes: f.removes}}, nil)
+
+	run := f.scan(t, "scheduled")
+	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	require.False(t, run.IdentityComplete)
+	require.Equal(t, IdentityIncompleteMessage+"\n\n"+AutoCleanupSkippedMessage, run.ErrorMessage)
+	f.requireNothingDeleted(t)
+	f.requireNoFailureEvent(t)
 }
 
 func TestConfirmDeletion_RemoteRunFromBeforeTheColumnsKeepsItsPreview(t *testing.T) {

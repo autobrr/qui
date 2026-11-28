@@ -107,6 +107,23 @@ it("keeps Delete disabled for a remote run without complete identity, says why i
   expect(confirmMutation.mutate).not.toHaveBeenCalled()
 })
 
+it("keeps Delete disabled for a local run without complete identity and says why inline", () => {
+  runQuery.data.filesystemMode = "local"
+  runQuery.data.identityComplete = false
+  const { getByRole } = render(
+    <TooltipProvider>
+      <OrphanScanPreviewDialog open onOpenChange={() => {}} instanceId={1} runId={1} />
+    </TooltipProvider>
+  )
+
+  const deleteButton = getByRole("button", { name: "preferences.orphanScanPreview.deleteItems" })
+  expect(deleteButton.hasAttribute("disabled")).toBe(true)
+  expect(document.body.textContent).toContain("preferences.orphanScanPreview.localDeleteUnavailable")
+  expect(document.body.textContent).not.toContain("preferences.orphanScanPreview.remoteDeleteUnavailable")
+  fireEvent.click(deleteButton)
+  expect(confirmMutation.mutate).not.toHaveBeenCalled()
+})
+
 it("offers Delete for a local run without the remote note", () => {
   const { getByRole } = render(
     <TooltipProvider>
