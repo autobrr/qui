@@ -2165,7 +2165,7 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 		err:     nil,
 	}
 
-	downloadCalled := false
+	torznab := newTorznabServer(t, 10)
 	service := &Service{
 		instanceStore: &infohashTestInstanceStore{
 			instances: map[int]*models.Instance{
@@ -2176,10 +2176,7 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 		syncManager:      sync,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled = true
-			return []byte("torrent"), nil
-		},
+		jackettService:   torznab.jackett,
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
@@ -2192,7 +2189,7 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 		Indexer:              "Example",
 		IndexerID:            10,
 		Title:                torrentName,
-		DownloadURL:          "https://example.invalid/download.torrent",
+		DownloadURL:          torznab.url("download.torrent"),
 		GUID:                 "guid-1",
 		Size:                 1024,
 		InfoHashV1:           testHash,
@@ -2208,7 +2205,7 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 	assert.Equal(t, testHash, *returnedHash)
 	assert.Equal(t, 1, run.CandidatesSkipped, "one candidate skipped, whatever the instance count")
 	assert.Len(t, run.Results, 2, "one exists result per instance")
-	assert.False(t, downloadCalled, "should NOT download torrent when it exists on all instances")
+	assert.Empty(t, torznab.downloads(), "should NOT download torrent when it exists on all instances")
 }
 
 func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t *testing.T) {
@@ -2254,7 +2251,7 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 		err:     nil,
 	}
 
-	downloadCalled := false
+	torznab := newTorznabServer(t, 10)
 	service := &Service{
 		instanceStore: &infohashTestInstanceStore{
 			instances: map[int]*models.Instance{
@@ -2265,10 +2262,7 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 		syncManager:      sync,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled = true
-			return []byte("torrent"), nil
-		},
+		jackettService:   torznab.jackett,
 	}
 
 	service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -2290,7 +2284,7 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 		Indexer:              "Example",
 		IndexerID:            10,
 		Title:                torrentName,
-		DownloadURL:          "https://example.invalid/download.torrent",
+		DownloadURL:          torznab.url("download.torrent"),
 		GUID:                 "guid-1",
 		Size:                 1024,
 		InfoHashV1:           testHash,
@@ -2301,7 +2295,7 @@ func TestProcessAutomationCandidate_ProceedsWhenInfohashExistsOnSomeInstances(t 
 	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 
 	require.NoError(t, err)
-	assert.True(t, downloadCalled, "should download torrent when not all instances have it")
+	assert.Equal(t, []string{"download.torrent"}, torznab.downloads(), "should download torrent when not all instances have it")
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 }
 
@@ -2335,7 +2329,7 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 		err:     errors.New("connection refused"),
 	}
 
-	downloadCalled := false
+	torznab := newTorznabServer(t, 10)
 	service := &Service{
 		instanceStore: &infohashTestInstanceStore{
 			instances: map[int]*models.Instance{
@@ -2345,10 +2339,7 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 		syncManager:      sync,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled = true
-			return []byte("torrent"), nil
-		},
+		jackettService:   torznab.jackett,
 	}
 
 	service.injection = newInjectionStandIn(func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -2370,7 +2361,7 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 		Indexer:              "Example",
 		IndexerID:            10,
 		Title:                torrentName,
-		DownloadURL:          "https://example.invalid/download.torrent",
+		DownloadURL:          torznab.url("download.torrent"),
 		GUID:                 "guid-1",
 		Size:                 1024,
 		InfoHashV1:           testHash,
@@ -2381,7 +2372,7 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
 
 	require.NoError(t, err)
-	assert.True(t, downloadCalled, "should download torrent when hash check fails")
+	assert.Equal(t, []string{"download.torrent"}, torznab.downloads(), "should download torrent when hash check fails")
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 }
 
@@ -2501,7 +2492,7 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 		err:     context.Canceled,
 	}
 
-	downloadCalled := false
+	torznab := newTorznabServer(t, 10)
 	service := &Service{
 		instanceStore: &infohashTestInstanceStore{
 			instances: map[int]*models.Instance{
@@ -2511,10 +2502,7 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 		syncManager:      sync,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled = true
-			return []byte("torrent"), nil
-		},
+		jackettService:   torznab.jackett,
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
@@ -2527,7 +2515,7 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 		Indexer:              "Example",
 		IndexerID:            10,
 		Title:                torrentName,
-		DownloadURL:          "https://example.invalid/download.torrent",
+		DownloadURL:          torznab.url("download.torrent"),
 		GUID:                 "guid-1",
 		Size:                 1024,
 		InfoHashV1:           testHash,
@@ -2542,7 +2530,7 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
 	assert.Equal(t, 1, run.CandidatesFailed, "should increment TorrentsFailed on context cancellation")
-	assert.False(t, downloadCalled, "should NOT download torrent when context is canceled")
+	assert.Empty(t, torznab.downloads(), "should NOT download torrent when context is canceled")
 }
 
 func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing.T) {
@@ -2575,7 +2563,7 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 		err:     context.DeadlineExceeded,
 	}
 
-	downloadCalled := false
+	torznab := newTorznabServer(t, 10)
 	service := &Service{
 		instanceStore: &infohashTestInstanceStore{
 			instances: map[int]*models.Instance{
@@ -2585,10 +2573,7 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 		syncManager:      sync,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled = true
-			return []byte("torrent"), nil
-		},
+		jackettService:   torznab.jackett,
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
@@ -2601,7 +2586,7 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 		Indexer:              "Example",
 		IndexerID:            10,
 		Title:                torrentName,
-		DownloadURL:          "https://example.invalid/download.torrent",
+		DownloadURL:          torznab.url("download.torrent"),
 		GUID:                 "guid-1",
 		Size:                 1024,
 		InfoHashV1:           testHash,
@@ -2616,7 +2601,7 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
 	assert.Equal(t, 1, run.CandidatesFailed, "should increment TorrentsFailed on context deadline exceeded")
-	assert.False(t, downloadCalled, "should NOT download torrent when context deadline exceeded")
+	assert.Empty(t, torznab.downloads(), "should NOT download torrent when context deadline exceeded")
 }
 
 func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
@@ -2645,7 +2630,7 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 		strings.ToLower(torrentHash): {SavePath: "/downloads"},
 	}
 
-	downloadCalled := false
+	torznab := newTorznabServer(t, 10)
 	service := &Service{
 		instanceStore: &infohashTestInstanceStore{
 			instances: map[int]*models.Instance{
@@ -2655,10 +2640,7 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 		syncManager:      sync,
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			downloadCalled = true
-			return []byte("torrent"), nil
-		},
+		jackettService:   torznab.jackett,
 	}
 
 	settings := &models.CrossSeedAutomationSettings{
@@ -2671,7 +2653,7 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 		Indexer:              "Example",
 		IndexerID:            10,
 		Title:                torrentName,
-		DownloadURL:          "https://example.invalid/download.torrent",
+		DownloadURL:          torznab.url("download.torrent"),
 		GUID:                 commentURL,
 		Size:                 1024,
 		InfoHashV1:           "",
@@ -2685,7 +2667,7 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 	assert.Nil(t, returnedHash, "should not return hash for comment URL match")
 	assert.Equal(t, 1, run.CandidatesSkipped, "should skip for instance with matching comment")
-	assert.False(t, downloadCalled, "should NOT download torrent when comment URL matches")
+	assert.Empty(t, torznab.downloads(), "should NOT download torrent when comment URL matches")
 }
 
 func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
@@ -2922,6 +2904,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 				},
 			}
 
+			torznab := newTorznabServer(t, 1)
 			service := &Service{
 				instanceStore: &fakeInstanceStore{
 					instances: map[int]*models.Instance{
@@ -2931,9 +2914,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 				syncManager:      sync,
 				releaseCache:     NewReleaseCache(),
 				stringNormalizer: stringutils.NewDefaultNormalizer(),
-				torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-					return []byte("torrent"), nil
-				},
+				jackettService:   torznab.jackett,
 			}
 
 			var captured *CrossSeedRequest
@@ -2952,7 +2933,7 @@ func TestProcessAutomationCandidate_RespectsRSSSourceFilters(t *testing.T) {
 				Indexer:     "TestIndexer",
 				IndexerID:   1,
 				Title:       "Test.Movie.2025.1080p.BluRay-GROUP",
-				DownloadURL: "https://example.invalid/download.torrent",
+				DownloadURL: torznab.url("download.torrent"),
 				GUID:        "guid-1",
 				Size:        1024,
 			}
@@ -3173,12 +3154,11 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			torrentData := createTorrentData()
+			torznab := newTorznabServer(t, 1)
+			torznab.serve("download.torrent", createTorrentData())
 
 			service := &Service{
-				torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-					return torrentData, nil
-				},
+				jackettService: torznab.jackett,
 			}
 
 			var captured *CrossSeedRequest
@@ -3203,7 +3183,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 				Indexer:     "TestIndexer",
 				IndexerID:   1,
 				Title:       "Test.Movie.2025.1080p.BluRay-GROUP",
-				DownloadURL: "https://example.invalid/download.torrent",
+				DownloadURL: torznab.url("download.torrent"),
 				GUID:        "guid-1",
 				Size:        1024,
 			}

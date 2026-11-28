@@ -209,7 +209,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
-	err = s.invokeCompletionSearch(ctx, instanceID, readyTorrent, settings, completionSettings)
+	err = s.completionSearch.executeCompletionSearch(ctx, instanceID, readyTorrent, settings, completionSettings)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -694,19 +694,6 @@ func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, has
 	}
 
 	return result, nil
-}
-
-func (s *Service) invokeCompletionSearch(
-	ctx context.Context,
-	instanceID int,
-	torrent *qbt.Torrent,
-	settings *models.CrossSeedAutomationSettings,
-	completionSettings *models.InstanceCrossSeedCompletionSettings,
-) error {
-	if s.completionSearchInvoker != nil {
-		return s.completionSearchInvoker(ctx, instanceID, torrent, settings, completionSettings)
-	}
-	return s.executeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
 }
 
 func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings, completionSettings *models.InstanceCrossSeedCompletionSettings) error {

@@ -82,6 +82,14 @@ type injector interface {
 	CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 }
 
+type completionSearcher interface {
+	executeCompletionSearch(ctx context.Context, instanceID int, torrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings, completionSettings *models.InstanceCrossSeedCompletionSettings) error
+}
+
+type seasonPackAdder interface {
+	applySeasonPack(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error)
+}
+
 type qbittorrentSync interface {
 	GetTorrentRefs(ctx context.Context, instanceID int, filter qbittorrent.TorrentRefFilter) ([]*qbt.Torrent, error)
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
@@ -224,12 +232,11 @@ type Service struct {
 
 	backendPool atomic.Value
 
-	injection               injector
-	seasonPackApplier       func(ctx context.Context, req seasonPackRequest) (*seasonPackApplyResult, error)
-	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
+	injection             injector
+	completionSearch      completionSearcher
+	seasonPackAdd         seasonPackAdder
+	seasonPackLinkCreator func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	filesShareAllocation  func(sourcePath, candidatePath string) (bool, error)
 
 	settler *Settler
 	adder   *Adder
@@ -334,6 +341,8 @@ func NewService(
 		svc.filesShareAllocation = sharedextents.FilesShareAllocation
 	}
 	svc.injection = svc
+	svc.completionSearch = svc
+	svc.seasonPackAdd = svc
 	svc.adder = NewAdder(syncManager, blocklistStore, settler, svc.ResumeBudgetBytes, svc.RunExternalProgram)
 	svc.aligner = NewAligner(syncManager)
 	if syncManager != nil {
@@ -356,6 +365,8 @@ func (s *Service) MetricsCollectors() []prometheus.Collector { return s.metrics.
 func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
 	svc := &Service{automationStore: automationStore}
 	svc.injection = svc
+	svc.completionSearch = svc
+	svc.seasonPackAdd = svc
 	svc.partialPool = &partialPoolCoordinator{
 		automationStore: automationStore,
 		settings:        svc.GetAutomationSettings,

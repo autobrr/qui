@@ -6,8 +6,8 @@
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import { GAZELLE_SITES_KEY } from "@/lib/site-pick"
-import type { Category, CrossSeedAutomationSettingsPatch } from "@/types"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { Category, CrossSeedAutomationSettingsPatch, CrossSeedSearchStatus } from "@/types"
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -63,12 +63,27 @@ export function usePatchCrossSeedSettings() {
   })
 }
 
+const CROSS_SEED_SEARCH_STATUS_KEY = ["cross-seed", "search-status"] as const
+
+function runningInstanceId(status: CrossSeedSearchStatus | undefined): number | undefined {
+  return status?.running ? status.run?.instanceId : undefined
+}
+
+export const crossSeedSearchStatusQuery = queryOptions({
+  queryKey: CROSS_SEED_SEARCH_STATUS_KEY,
+  queryFn: async ({ client, signal }) => {
+    const endedInstanceId = runningInstanceId(client.getQueryData<CrossSeedSearchStatus>(CROSS_SEED_SEARCH_STATUS_KEY))
+    const status = await api.getCrossSeedSearchStatus()
+    if (endedInstanceId != null && runningInstanceId(status) == null && !signal.aborted) {
+      void client.invalidateQueries({ queryKey: ["cross-seed", "search-runs", endedInstanceId] })
+    }
+    return status
+  },
+  refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
+})
+
 export function useCrossSeedSearchStatus() {
-  return useQuery({
-    queryKey: ["cross-seed", "search-status"],
-    queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
-  })
+  return useQuery(crossSeedSearchStatusQuery)
 }
 
 export function useActiveInstances() {
