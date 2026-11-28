@@ -21,7 +21,7 @@ import {
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ConditionGroup, parseDropZoneID } from "./ConditionGroup";
-import type { DisabledField, DisabledStateValue } from "./constants";
+import type { DisabledField, DisabledStateValue, FieldHint } from "./constants";
 
 export interface GroupOption {
   id: string
@@ -37,6 +37,7 @@ interface QueryBuilderProps {
   categoryOptions?: Array<{ label: string; value: string }>;
   disabledFields?: DisabledField[];
   disabledStateValues?: DisabledStateValue[];
+  fieldHints?: FieldHint[];
   groupOptions?: GroupOption[];
 }
 
@@ -48,6 +49,7 @@ export function QueryBuilder({
   categoryOptions,
   disabledFields,
   disabledStateValues,
+  fieldHints,
   groupOptions,
 }: QueryBuilderProps) {
   const { t } = useTranslation("automations");
@@ -242,6 +244,7 @@ export function QueryBuilder({
           categoryOptions={categoryOptions}
           disabledFields={disabledFields}
           disabledStateValues={disabledStateValues}
+          fieldHints={fieldHints}
           groupOptions={groupOptions}
         />
       </div>

@@ -1285,6 +1285,7 @@
         "remoteNotAvailable": "Nicht verfügbar auf Remote-Instanzen",
         "wait": "Nicht registriert für mindestens",
         "waitHelp": "Die Regel löscht einen Torrent erst, wenn er so lange nicht registriert ist. 0 löscht ihn beim ersten Treffer.",
+        "rawTrackerHint": "Diese Bedingung löscht beim ersten Treffer. Nur die Bedingung Unregistriert wartet vor dem Löschen.",
         "waitLocked": "Um eine andere Dauer festzulegen, ändere die Bedingung auf Unregistriert.",
         "waitUnit": "Einheit der Dauer ohne Registrierung"
       },

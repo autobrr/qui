@@ -1279,6 +1279,7 @@
         "remoteNotAvailable": "Non disponible sur les instances distantes",
         "wait": "Non enregistré depuis au moins",
         "waitHelp": "La règle supprime un torrent seulement une fois qu'il est non enregistré depuis cette durée. 0 le supprime dès la première correspondance.",
+        "rawTrackerHint": "Cette condition supprime dès la première correspondance. Seule la condition Non enregistré attend avant de supprimer.",
         "waitLocked": "Pour définir une autre durée, remplacez la condition par Non enregistré.",
         "waitUnit": "Unité de la durée sans enregistrement"
       },
