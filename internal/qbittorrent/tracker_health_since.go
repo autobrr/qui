@@ -374,6 +374,17 @@ func NewTrackerHealthSnapshotWithSince(byHash map[string]TrackerHealth, since ma
 	return newTrackerHealthSnapshot(byHash, nil, since, true)
 }
 
+func NewTrackerHealthSnapshotWithTrackers(byHash map[string]TrackerHealth, since map[string]time.Time, trackers map[string][]qbt.TorrentTracker) *TrackerHealthSnapshot {
+	unregisteredBy := make(map[string]unregisteredRow, len(trackers))
+	for hash, rows := range trackers {
+		by := slices.IndexFunc(rows, func(tracker qbt.TorrentTracker) bool { return TrackerMessageMatchesUnregistered(tracker.Message) })
+		if by >= 0 {
+			unregisteredBy[hash] = unregisteredRow{trackers: rows, by: by}
+		}
+	}
+	return newTrackerHealthSnapshot(byHash, unregisteredBy, since, true)
+}
+
 func (sm *SyncManager) StillUnregistered(ctx context.Context, instanceID int, hashes []string) (*infohash.Set, error) {
 	client, owner, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
