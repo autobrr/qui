@@ -36,6 +36,7 @@ func TestAllowedHostsAdmission(t *testing.T) {
 		{"login", "POST", "/api/auth/login", "attacker.test", "127.0.0.1:1234", 400},
 		{"preflight", "OPTIONS", "/api/auth/me", "attacker.test", "127.0.0.1:1234", 400},
 		{"local health", "GET", "/health", "attacker.test", "127.0.0.1:1234", 200},
+		{"local health HEAD", "HEAD", "/health", "attacker.test", "127.0.0.1:1234", 200},
 		{"IPv6 health outside IP list", "GET", "/healthz/liveness", "attacker.test", "[::1]:1234", 200},
 		{"encoded health with unlisted host", "GET", "/%68ealth", "attacker.test", "127.0.0.1:1234", 400},
 		{"encoded health outside IP list", "GET", "/%68ealth", "localhost", "[::1]:1234", 403},

@@ -9311,6 +9311,15 @@ paths:
                   status:
                     type: string
                     example: "ok"
+    head:
+      tags:
+        - System
+      summary: Health check (headers only)
+      description: Check if the API is healthy and responding without returning a body
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
 
   /healthz/readiness:
     get:
@@ -9324,6 +9333,17 @@ paths:
           description: Service ready
         '503':
           description: Service not ready
+    head:
+      tags:
+        - System
+      summary: Readiness probe (headers only)
+      description: Check if the service and its dependencies are ready to receive traffic without returning a body
+      security: []
+      responses:
+        '200':
+          description: Service ready
+        '503':
+          description: Service not ready
 
   /healthz/liveness:
     get:
@@ -9331,6 +9351,15 @@ paths:
         - System
       summary: Liveness probe
       description: Simple liveness check to confirm the service is running
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+    head:
+      tags:
+        - System
+      summary: Liveness probe (headers only)
+      description: Simple liveness check to confirm the service is running without returning a body
       security: []
       responses:
         '200':
