@@ -31,7 +31,7 @@ func main() {
 	files, err := outputs(".")
 	for path, out := range files {
 		if err == nil {
-			err = os.WriteFile(filepath.FromSlash(path), out, 0o644) //nolint:gosec // docs and frontend source files
+			err = os.WriteFile(filepath.FromSlash(path), out, 0o600)
 		}
 	}
 	if err != nil {
