@@ -183,16 +183,30 @@ func TestArchiveWriteStreamsTheTorrentFiles(t *testing.T) {
 }
 
 func TestArchiveWriteLogsTheTorrentFilesItLeavesOut(t *testing.T) {
-	fx := newArchiveFixture(t, map[string][]byte{"torrents/aa/aa/aaaa.torrent": []byte("d4:infod4:name4:abcdee")})
-	archive, err := fx.service.LoadArchive(t.Context(), fx.run)
-	require.NoError(t, err)
+	blob := []byte("d4:infod4:name4:abcdee")
+	tests := []struct {
+		name    string
+		blobs   map[string][]byte
+		entries int
+		lines   int
+	}{
+		{"each stored file opens", map[string][]byte{"torrents/aa/aa/aaaa.torrent": blob, "torrents/bb/bb/bbbb.torrent": blob}, 3, 0},
+		{"one stored file is missing", map[string][]byte{"torrents/aa/aa/aaaa.torrent": blob}, 2, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newArchiveFixture(t, tc.blobs)
+			archive, err := fx.service.LoadArchive(t.Context(), fx.run)
+			require.NoError(t, err)
 
-	var body bytes.Buffer
-	lines := logbudget.Count(t, func() {
-		require.NoError(t, archive.Write(&body, ArchiveZip))
-	})
+			var body bytes.Buffer
+			lines := logbudget.Count(t, func() {
+				require.NoError(t, archive.Write(&body, ArchiveZip))
+			})
 
-	require.Len(t, readZipEntries(t, body.Bytes()), 2)
-	require.Equal(t, 1, lines[logbudget.Line{Level: "debug", Message: "Left a torrent file out of the backup archive"}])
-	require.Equal(t, 1, lines[logbudget.Line{Level: "warn", Message: "Backup archive is missing torrent files"}])
+			require.Len(t, readZipEntries(t, body.Bytes()), tc.entries)
+			require.Equal(t, tc.lines, lines[logbudget.Line{Level: "debug", Message: "Left a torrent file out of the backup archive"}])
+			require.Equal(t, tc.lines, lines[logbudget.Line{Level: "warn", Message: "Backup archive is missing torrent files"}])
+		})
+	}
 }
