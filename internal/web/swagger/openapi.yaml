@@ -3164,6 +3164,110 @@ paths:
           description: A file list or a link check could not be read
         '503':
           description: Not all instances of the unified scope could be read
+  /api/instances/{instanceID}/torrents/unregistered-warning:
+    post:
+      tags:
+        - Torrents
+      summary: Count the selected torrents that turned unregistered in the last 2 days
+      description: Counts the torrents of the selection that the tracker reports as unregistered now and that qui first saw as unregistered less than 2 days ago (Unregistered since). The delete dialog shows a warning when the count is above 0. The 2 days are fixed. The time is when qui first saw the verdict, not when the tracker removed the torrent, so after an upgrade it starts at the first run of the version that keeps it. An unregistered torrent with no stored time counts as seen now. An instance adds nothing until qui has loaded its stored times, about a minute after a start. The request takes the selection of a bulk action, so a selectAll request counts every torrent of the filter in one call. In the unified scope (instanceID 0), `targets` is required when addressing torrents by hash. The route only reads, and a delete does not need it.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Specific torrent hashes to count. In the unified scope, hashes without targets are rejected.
+                targets:
+                  type: array
+                  description: Explicit instance and hash pairs.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+                selectAll:
+                  type: boolean
+                  description: Count all torrents that match the filters, search, and exclusions.
+                instanceIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Instances of the unified scope.
+                filters:
+                  type: object
+                  description: Filter criteria used when selectAll is true.
+                search:
+                  type: string
+                  description: Search query used when selectAll is true.
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude when selectAll is true.
+                excludeTargets:
+                  type: array
+                  description: Instance and hash pairs to exclude when selectAll is true.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+      responses:
+        '200':
+          description: The torrents of the selection that turned unregistered in the last 2 days.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    description: Number of selected torrents that are unregistered now and that qui first saw as unregistered less than 2 days ago.
+                  since:
+                    type: string
+                    format: date-time
+                    description: The earliest time at which qui first saw one of these torrents as unregistered. Absent when count is 0.
+                  trackers:
+                    type: array
+                    description: The tracker that reported each counted torrent as unregistered, by host, with the most torrents first.
+                    items:
+                      type: object
+                      required:
+                        - host
+                        - count
+                      properties:
+                        host:
+                          type: string
+                        count:
+                          type: integer
+                required:
+                  - count
+                  - trackers
+        '400':
+          description: Invalid selection
+        '409':
+          description: Instance is disabled
+        '500':
+          description: The torrents of the selection could not be read
+        '503':
+          description: Not all instances of the unified scope could be read
   /api/instances/{instanceID}/torrents/add-peers:
     post:
       tags:

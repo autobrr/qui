@@ -160,6 +160,18 @@
     "hideAffected": "Hide affected torrents",
     "more": "+ {{count}} more"
   },
+  "unregisteredWarning": {
+    "title": "Recently unregistered",
+    "all_one": "qui first saw this torrent as unregistered less than 2 days ago.",
+    "all_other": "qui first saw all {{count}} torrents as unregistered less than 2 days ago.",
+    "some_one": "qui first saw {{matched}} of the {{count}} torrent as unregistered less than 2 days ago.",
+    "some_other": "qui first saw {{matched}} of the {{count}} torrents as unregistered less than 2 days ago.",
+    "earliest": "Earliest: {{since}}",
+    "tracker_one": "{{host}}: {{count}} torrent",
+    "tracker_other": "{{host}}: {{count}} torrents",
+    "moreTrackers_one": "and {{count}} more tracker",
+    "moreTrackers_other": "and {{count}} more trackers"
+  },
   "recheckDialog": {
     "title": "Force Recheck {{count}} torrent(s)?",
     "description": "This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.",

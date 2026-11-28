@@ -156,6 +156,14 @@
     "hideAffected": "隱藏受影響的種子",
     "more": "+ {{count}} 更多"
   },
+  "unregisteredWarning": {
+    "title": "最近才未註冊",
+    "all_other": "qui 在不到 2 天前首次發現全部 {{count}} 個種子未註冊。",
+    "some_other": "qui 在不到 2 天前首次發現 {{count}} 個種子中有 {{matched}} 個未註冊。",
+    "earliest": "最早：{{since}}",
+    "tracker_other": "{{host}}：{{count}} 個種子",
+    "moreTrackers_other": "以及另外 {{count}} 個 Tracker"
+  },
   "recheckDialog": {
     "title": "強制重新檢查 {{count}} 個種子？",
     "description": "這將強制 qBittorrent 重新檢查所選種子的所有分塊。此過程可能需要一些時間，並會臨時暫停種子。",

@@ -6,6 +6,22 @@
 import type { QBittorrentAppInfo } from "./app"
 import type { InstanceError } from "./instances"
 
+export interface TorrentSelection {
+  targets?: Array<{ instanceId: number; hash: string }>
+  selectAll?: boolean
+  filters?: TorrentFilters
+  search?: string
+  excludeHashes?: string[]
+  excludeTargets?: Array<{ instanceId: number; hash: string }>
+  instanceIds?: number[]
+}
+
+export interface UnregisteredDeleteWarning {
+  count: number
+  since?: string
+  trackers: Array<{ host: string; count: number }>
+}
+
 export interface TorrentTracker {
   url: string
   status: number

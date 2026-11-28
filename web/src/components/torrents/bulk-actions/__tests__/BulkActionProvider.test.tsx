@@ -9,7 +9,7 @@ import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/api", () => ({
-  api: { bulkAction: vi.fn(), getDeleteCrossSeeds: vi.fn(), addCrossSeedBlocklist: vi.fn(), renameTorrent: vi.fn(), getTorrents: vi.fn() },
+  api: { bulkAction: vi.fn(), getDeleteCrossSeeds: vi.fn(), getUnregisteredDeleteWarning: vi.fn(), addCrossSeedBlocklist: vi.fn(), renameTorrent: vi.fn(), getTorrents: vi.fn() },
 }))
 
 vi.mock("sonner", () => ({
@@ -155,6 +155,7 @@ beforeEach(() => {
   resetPendingListRefetchesForTests()
   localStorage.clear()
   mockedApi.bulkAction.mockResolvedValue(undefined as never)
+  mockedApi.getUnregisteredDeleteWarning.mockResolvedValue({ count: 0, trackers: [] })
 })
 
 afterEach(() => {
@@ -738,6 +739,60 @@ function confirmDialog(name: string, ...args: unknown[]) {
 }
 
 const CROSS_INSTANCE_FACTS = { ...LIST_FACTS, isCrossInstance: true, categories: { movies: { name: "movies", savePath: "/m" }, tv: { name: "tv", savePath: "/t" } }, tags: ["one", "two"], allowSubcategories: true }
+
+describe("bulk action module - recently unregistered warning", () => {
+  function deleteButton(label: string) {
+    const button = Array.from(document.body.querySelectorAll("button")).find(b => b.textContent === label)
+    if (!button) throw new Error(`no button ${label}`)
+    return button
+  }
+
+  it("asks once for the Select all scope when Delete opens, shows the counts, and keeps Delete enabled", async () => {
+    mockedApi.getUnregisteredDeleteWarning.mockResolvedValue({
+      count: 312,
+      since: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      trackers: [{ host: "tracker.example.invalid", count: 312 }],
+    })
+    const filters = makeFilters({ status: ["unregistered"] })
+    const { result } = renderModule({ actionTarget: selectAll(340, { filters }, ["a", "b"]) })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await flush()
+
+    expect(mockedApi.getUnregisteredDeleteWarning.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ selectAll: true, filters }), expect.anything()]])
+    expect(document.body.textContent).toContain("unregisteredWarning.some/340")
+    expect(document.body.textContent).toContain("unregisteredWarning.tracker/312")
+    expect(deleteButton("deleteDialog.deleteCount/340").disabled).toBe(false)
+
+    await findCrossSeeds([crossSeedMatch({ hash: "x1" })])
+    await flush()
+    expect(mockedApi.getUnregisteredDeleteWarning).toHaveBeenCalledTimes(1)
+
+    await confirmDelete("deleteDialog.deleteCount/341")
+    expect(mockedApi.bulkAction).toHaveBeenCalled()
+  })
+
+  it("shows no warning and keeps Delete enabled when the request fails", async () => {
+    mockedApi.getUnregisteredDeleteWarning.mockRejectedValue(new Error("boom"))
+    const { result } = renderModule({ actionTarget: ticks("h1", "h2") })
+
+    act(() => result.current.pick({ action: "delete" }))
+    await flush()
+
+    expect(mockedApi.getUnregisteredDeleteWarning.mock.calls).toEqual([[INSTANCE_ID, { targets: [{ instanceId: INSTANCE_ID, hash: "h1" }, { instanceId: INSTANCE_ID, hash: "h2" }] }, expect.anything()]])
+    expect(document.body.textContent).not.toContain("unregisteredWarning")
+    expect(deleteButton("deleteDialog.delete").disabled).toBe(false)
+    await confirmDelete()
+    expect(mockedApi.bulkAction.mock.calls).toEqual([[INSTANCE_ID, expect.objectContaining({ action: "delete", hashes: ["h1", "h2"] })]])
+  })
+
+  it("asks nothing while Delete is closed", async () => {
+    const { result } = renderModule({ actionTarget: ticks("h1") })
+    act(() => result.current.pick({ action: "setTags" }))
+    await flush()
+    expect(mockedApi.getUnregisteredDeleteWarning).not.toHaveBeenCalled()
+  })
+})
 
 describe("bulk action module - dialogs with values", () => {
   it("updates the tags in two steps, the removal first, then closes and names the count", async () => {

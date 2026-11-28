@@ -18,6 +18,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { useTorrentDetailTab } from "@/hooks/useTorrentDetailTab"
 import { useQueueLimits } from "@/hooks/usePreferenceValues"
+import { useUnregisteredDeleteWarning } from "@/hooks/useUnregisteredDeleteWarning"
 import { api } from "@/lib/api"
 import { getMatchTypeLabel, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { DEFAULT_FILE_SORT } from "@/lib/file-tree"
@@ -41,6 +42,7 @@ import { scheduleTorrentListRefetches } from "./bulk-actions/bulk-action-request
 import { CategoryTagBadges } from "./details/CategoryTagBadges"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackersTable, WebSeedsTable } from "./details"
 import { PeerClientIcon } from "./details/PeerClientIcon"
+import { RecentlyUnregisteredWarning } from "./RecentlyUnregisteredWarning"
 import { MobileDetailsHeader, MobileInfoBlock, MobileInfoGroup, MobileInfoRow, MobilePane, MobilePeerRow, MobileSectionTitle, MobileTrackerList, MobileWebSeedList } from "./details/MobileDetails"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
@@ -114,6 +116,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
   const [showDeleteCurrentDialog, setShowDeleteCurrentDialog] = useState(false)
   const [deleteCurrentFiles, setDeleteCurrentFiles] = useState(false)
+  const currentTorrents = useMemo(() => torrent ? [torrent] : [], [torrent])
+  const unregisteredWarning = useUnregisteredDeleteWarning({ open: showDeleteCurrentDialog, instanceId, torrents: currentTorrents })
   const [showEditTrackerDialog, setShowEditTrackerDialog] = useState(false)
   const [trackerToEdit, setTrackerToEdit] = useState<TorrentTracker | null>(null)
   const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
@@ -838,6 +842,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <RecentlyUnregisteredWarning warning={unregisteredWarning} total={1} />
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="delete-current-files"

@@ -334,7 +334,7 @@ The rule removes an episode once its [Unregistered wait](../automations.md#unreg
 The action deletes only the files of the episode torrent. The pack keeps its data. qui makes the hardlinks or reflinks of the pack before it adds the pack, and a pack that you downloaded has its own copy. With hardlinks or reflinks, the rule frees little or no disk space.
 
 :::warning
-Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change. The Unregistered wait holds these deletes for 2 days by default. A rule with a wait of 0 or a rule on the raw tracker message removes them on its next run, and a manual delete removes them at once.
+Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change. The Unregistered wait holds these deletes for 2 days by default. A rule with a wait of 0 or a rule on the raw tracker message removes them on its next run, and a manual delete removes them at once. The delete dialog warns when the selection holds torrents that qui first saw as unregistered less than 2 days ago, but it does not stop the delete.
 :::
 
 ## Instance selection
