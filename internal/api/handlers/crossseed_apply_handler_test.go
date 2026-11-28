@@ -30,7 +30,6 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/testutil"
-	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/infohash"
 )
 
@@ -235,9 +234,6 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 			SeasonPackEnabled:           true,
 			SeasonPackCoverageThreshold: 1,
 		}, nil
-	})
-	testutil.SetUnexportedField(t, svc, "seasonPackLinkCreator", func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-		return &fsops.TreeCreateResult{}, nil
 	})
 
 	handler := &CrossSeedHandler{service: svc}

@@ -311,6 +311,7 @@ The `/runs` endpoint accepts an optional `limit` query parameter (default 20, ma
 When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` that points to the linked tree
+- Puts the linked tree in its folder with the same rule as every other add, so two packs with the same name never share a folder. See [Isolation folders](./link-directories.md#isolation-folders).
 - Applies the **Cross-seed tags** configured in **Cross-Seed > Season packs**
 - Adds incomplete packs in a paused state, attempts an automatic recheck, and queues automatic resume on a best-effort basis. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. If the recheck reports far fewer bytes, or a hardlinked file fails the recheck on a piece it does not share with a pending file, the torrent remains paused for manual review.
 - Resolves the category in this order:

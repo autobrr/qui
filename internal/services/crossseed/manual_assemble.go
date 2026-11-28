@@ -103,12 +103,16 @@ func (s *Service) ApplyManualAssemble(ctx context.Context, req *ManualAssembleRe
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, "", inst.ID, receiverID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil
 	}
-	if err := s.createSeasonPackTree(ctx, planned.build, resp.LinkMode); err != nil {
+	if err := createSeasonPackTree(ctx, planned.build); err != nil {
 		resp.Ready, resp.Reason, resp.Message = false, "link_failed", err.Error()
+		if errors.Is(err, errLayoutMismatch) {
+			resp.Reason = "layout_mismatch"
+		}
 		s.recordApplyRun(ctx, prep.meta.Name, resp.Reason, resp.Message, inst.ID, receiverID, resp.MatchedEpisodes, resp.TotalEpisodes, resp.Coverage, resp.LinkMode)
 		return resp, nil //nolint:nilerr // resp reports the link failure as link_failed
 	}
-	resp.Destination, _ = seasonPackSavePath(planned.route, planned.build)
+	tree := planned.build.tree
+	resp.Destination, _ = seasonPackSavePath(planned.route, planned.build.backend.Paths(), tree.BaseDir, tree.SavePath)
 	result, err := s.addSeasonPack(ctx, prep, inst, planned.route, check, planned.build, planned.episodes, req.Category, req.Tags, resp.LinkMode, prep.meta.Name)
 	if err != nil {
 		return nil, err
@@ -288,7 +292,9 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	if plan != nil {
 		resp.LinkedBytes = plan.linkedBytes
 		resp.MissingBytes = plan.totalBytes - plan.linkedBytes
-		resp.Destination, _ = seasonPackSavePath(route, plan)
+		if plan.plan != nil {
+			resp.Destination, _ = seasonPackSavePath(route, plan.backend.Paths(), plan.plan.BaseDir, plan.plan.SavePath)
+		}
 	}
 	if planErr != nil {
 		resp.Reason, resp.Message = "layout_mismatch", planErr.Error()

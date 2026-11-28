@@ -23,7 +23,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
-	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
 type seasonPackRig struct {
@@ -140,12 +139,7 @@ func TestRoutedSeasonPackUsesTheBaseFolderOfTheRetry(t *testing.T) {
 	r := newSeasonPackRig(t, false)
 	first := filepath.Join(filepath.Dir(r.links), "first")
 	r.updateSource(&models.InstanceUpdateParams{HardlinkBaseDir: new(first + "," + r.links)})
-	r.svc.seasonPackLinkCreator = func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-		if strings.HasPrefix(plan.RootDir, first) {
-			return &fsops.TreeCreateResult{}, crossDeviceLinkError(plan.RootDir)
-		}
-		return local.NewBackend().HardlinkTree(ctx, plan)
-	}
+	r.svc.SetBackendPool(fsops.NewPool(r.instances, &faultyLinkBackend{Backend: local.NewBackend(), crossDevice: []string{first}}))
 
 	resp := r.apply()
 
@@ -266,9 +260,7 @@ func TestRoutedSeasonPackStopsWhenTheCrossSeedInstanceIsUnavailable(t *testing.T
 
 func TestRoutedSeasonPackLinkErrorFailsWithItsStatus(t *testing.T) {
 	r := newSeasonPackRig(t, false)
-	r.svc.seasonPackLinkCreator = func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-		return &fsops.TreeCreateResult{}, errors.New("link refused")
-	}
+	r.svc.SetBackendPool(fsops.NewPool(r.instances, &faultyLinkBackend{Backend: local.NewBackend(), createErr: errors.New("link refused")}))
 
 	resp := r.apply()
 

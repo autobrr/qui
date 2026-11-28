@@ -9,7 +9,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/fs"
 	"iter"
 	"path"
 	"path/filepath"
@@ -26,9 +25,8 @@ import (
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseedroute"
-	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/infohash"
-	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -85,16 +83,14 @@ type seasonPackLocalFile struct {
 }
 
 type seasonPackPlanBuild struct {
-	plan              *hardlinktree.TreePlan
-	created           *fsops.TreeCreateResult
+	plan              *linktree.TreePlan
+	tree              *linktree.Tree
 	backend           fsops.Backend
-	packDir           string
-	baseDir           string
+	links             []linktree.Link
 	materializedPaths map[string]struct{}
 	linkedBytes       int64
 	totalBytes        int64
 	totalFiles        int
-	nextBaseDir       func() (*seasonPackPlanBuild, error)
 }
 
 type seasonPackMatchOptions struct {
@@ -451,11 +447,11 @@ func seasonPackRouteReason(status string) string {
 	return status
 }
 
-func seasonPackSavePath(route *candidateRoute, build *seasonPackPlanBuild) (string, bool) {
+func seasonPackSavePath(route *candidateRoute, d fsops.PathDialect, baseDir, savePath string) (string, bool) {
 	if route == nil {
-		return build.plan.RootDir, true
+		return savePath, true
 	}
-	return crossseedroute.ToCrossSeed(build.backend.Paths(), route.rows, build.baseDir, build.plan.RootDir)
+	return crossseedroute.ToCrossSeed(d, route.rows, baseDir, savePath)
 }
 
 func (s *Service) addSeasonPack(
@@ -464,19 +460,20 @@ func (s *Service) addSeasonPack(
 ) (*seasonPackApplyResult, error) {
 	receiverID := route.receiverOf(inst.ID)
 	fail := func(reason, cause, message string) (*seasonPackApplyResult, error) {
-		if rollbackErr := rollbackSeasonPackTree(ctx, planBuild.backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
+		if rollbackErr := planBuild.tree.Rollback(ctx); rollbackErr != nil {
 			log.Warn().Err(rollbackErr).Str("torrentName", torrentName).Msg("season pack: failed to rollback after add failure")
 		}
 		s.recordApplyRun(ctx, torrentName, reason, cause, inst.ID, receiverID, len(episodes), prep.totalEpisodes, float64(len(episodes))/float64(prep.totalEpisodes), linkMode)
 		return &seasonPackApplyResult{reason: reason, message: message, instanceID: inst.ID}, nil
 	}
-	savePath, mapped := seasonPackSavePath(route, planBuild)
+	tree, d := planBuild.tree, planBuild.backend.Paths()
+	savePath, mapped := seasonPackSavePath(route, d, tree.BaseDir, tree.SavePath)
 	if !mapped {
-		message := "the cross-seed route has no row for base folder " + planBuild.baseDir
+		message := "the cross-seed route has no row for base folder " + tree.BaseDir
 		return fail("link_failed", message, message)
 	}
 	if route != nil {
-		if status, message := s.checkVisible(ctx, route, planBuild.backend.Paths(), planBuild.baseDir, planBuild.plan.Files[0].TargetPath); status != "" {
+		if status, message := s.checkVisible(ctx, route, d, tree.BaseDir, tree.Files[0].LinkPath); status != "" {
 			return fail(seasonPackRouteReason(status), message, message)
 		}
 	}
@@ -591,7 +588,7 @@ func (s *Service) assembleSeasonPack(
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := s.createSeasonPackTree(ctx, planBuild, linkMode); err != nil {
+	if err := createSeasonPackTree(ctx, planBuild); err != nil {
 		return nil, nil, err
 	}
 	return planBuild, episodes, nil
@@ -631,34 +628,30 @@ func (s *Service) planSeasonPack(
 		}
 	}
 
-	selectedBaseDir, retryDirs, err := selectSeasonPackBaseDir(ctx, backend, inst.HardlinkBaseDir, localFiles)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	buildForDir := func(baseDir string) (*seasonPackPlanBuild, error) {
-		destDir := s.seasonPackDestDir(ctx, d, inst, presetName, baseDir, prep.torrentBytes, indexer)
-		build, err := s.matcher().buildSeasonPackPlan(d, prep.meta.Files, prep.meta.Name, destDir, localFiles)
-		if err != nil {
-			return nil, err
-		}
-		build.backend, build.baseDir = backend, baseDir
-		return build, nil
-	}
-	planBuild, err := buildForDir(selectedBaseDir)
+	planBuild, err := s.matcher().buildSeasonPackPlan(prep.meta.Files, localFiles)
 	if err != nil {
 		return nil, episodes, err
 	}
-	sourcePaths := seasonPackSourcePaths(localFiles)
-	planBuild.nextBaseDir = func() (*seasonPackPlanBuild, error) {
-		for len(retryDirs) > 0 {
-			dir := retryDirs[0]
-			retryDirs = retryDirs[1:]
-			if ok, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dir, sourcePaths); err == nil && ok {
-				return buildForDir(dir)
-			}
-		}
-		return nil, nil
+	planBuild.backend = backend
+	cfg, _ := linktree.ConfigOf(inst)
+	var trackerFolder string
+	if cfg.Preset == linktree.PresetByTracker {
+		trackerFolder = linktree.TrackerFolderName(ctx, s.trackerCustomizationStore, ParseTorrentAnnounceDomain(prep.torrentBytes), indexer)
+	}
+	torrentFiles := make([]string, 0, len(prep.meta.Files))
+	for _, f := range prep.meta.Files {
+		torrentFiles = append(torrentFiles, f.Name)
+	}
+	planBuild.plan, err = linktree.Plan(ctx, linktree.Request{
+		Backend:        backend,
+		Config:         cfg,
+		TrackerFolder:  trackerFolder,
+		InstanceFolder: presetName,
+		Torrent:        linktree.Torrent{InfoHash: collectHashes(prep.meta)[0].String(), Name: prep.meta.Name, Files: torrentFiles},
+		Links:          planBuild.links,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", errLayoutMismatch, err)
 	}
 	facts := seasonPackFacts(prep, planBuild)
 	if facts.Verdict().Refused {
@@ -676,150 +669,16 @@ func (s *Service) planSeasonPack(
 	return planBuild, episodes, nil
 }
 
-func (s *Service) createSeasonPackTree(ctx context.Context, planBuild *seasonPackPlanBuild, linkMode string) error {
-	backend := planBuild.backend
-	createFn := s.seasonPackLinkCreator
-	if createFn == nil {
-		createFn = backend.HardlinkTree
-		if linkMode == "reflink" {
-			createFn = backend.ReflinkTree
-		}
-	}
-	for {
-		created, err := createFn(ctx, planBuild.plan)
-		if err == nil {
-			planBuild.created = created
-			return nil
-		}
-		if rollbackErr := rollbackSeasonPackTree(ctx, backend, created, planBuild.packDir); rollbackErr != nil {
-			return fmt.Errorf("link_failed: %w", errors.Join(err, fmt.Errorf("rollback failed: %w", rollbackErr)))
-		}
-		if !isCrossDeviceLinkError(err) || errors.Is(err, hardlinktree.ErrRollbackFailed) || planBuild.nextBaseDir == nil {
-			return fmt.Errorf("link_failed: %w", err)
-		}
-		next, buildErr := planBuild.nextBaseDir()
-		if buildErr != nil {
-			return fmt.Errorf("link_failed: %w", errors.Join(err, buildErr))
-		}
-		if next == nil {
-			return fmt.Errorf("link_failed: %w", err)
-		}
-		log.Warn().Err(err).Str("rootDir", planBuild.plan.RootDir).Msg("cross-device season pack link, trying the next base dir")
-		next.nextBaseDir = planBuild.nextBaseDir
-		*planBuild = *next
-	}
-}
-
-func (s *Service) seasonPackDestDir(ctx context.Context, d fsops.PathDialect, inst *models.Instance, instanceName, baseDir string, torrentBytes []byte, indexer string) string {
-	switch inst.HardlinkDirPreset {
-	case "by-tracker":
-		incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
-		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, &CrossSeedRequest{IndexerName: indexer})
-		return d.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
-	case "by-instance":
-		return d.Join(baseDir, pathutil.SanitizePathSegment(instanceName))
-	default:
-		return baseDir
-	}
-}
-
-func selectSeasonPackBaseDir(ctx context.Context, backend fsops.Backend, configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, []string, error) {
-	dirs := parseSeasonPackBaseDirs(configuredDirs)
-	if len(dirs) == 0 {
-		return "", nil, fmt.Errorf("%w: hardlink base dir not configured", errLayoutMismatch)
-	}
-
-	sourcePaths := seasonPackSourcePaths(localFiles)
-	if len(sourcePaths) == 0 {
-		return "", nil, fmt.Errorf("%w: no resolved episode files for base dir selection", errLayoutMismatch)
-	}
-
-	var lastErr error
-	ranked := rankBaseDirs(backend.Paths(), dirs, sourcePaths[0])
-	for i, dir := range ranked {
-		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dir, sourcePaths)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if matchesAllSources {
-			return dir, ranked[i+1:], nil
-		}
-	}
-
-	if lastErr != nil {
-		return "", nil, fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, lastErr)
-	}
-	return "", nil, fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
-}
-
-func seasonPackSourcePaths(localFiles map[episodeIdentity]seasonPackLocalFile) []string {
-	sourcePaths := make([]string, 0, len(localFiles))
-	for _, localFile := range localFiles {
-		if localFile.sourcePath != "" {
-			sourcePaths = append(sourcePaths, localFile.sourcePath)
-		}
-	}
-	sort.Strings(sourcePaths)
-	return sourcePaths
-}
-
-func seasonPackBaseDirMatchesAllSources(ctx context.Context, backend fsops.Backend, dir string, sourcePaths []string) (bool, error) {
-	filesystemDir := dir
-	info, err := backend.Stat(ctx, filesystemDir)
-	if errors.Is(err, fs.ErrNotExist) {
-		filesystemDir = nearestExistingParent(ctx, backend, dir)
-		info, err = backend.Stat(ctx, filesystemDir)
+func createSeasonPackTree(ctx context.Context, planBuild *seasonPackPlanBuild) error {
+	tree, err := planBuild.plan.Create(ctx)
+	if failure, ok := errors.AsType[*linktree.Error](err); ok && failure.Kind == linktree.NoBaseDir {
+		return fmt.Errorf("%w: %w", errLayoutMismatch, err)
 	}
 	if err != nil {
-		return false, fmt.Errorf("failed to inspect directory %s: %w", dir, err)
+		return fmt.Errorf("link_failed: %w", err)
 	}
-	if !info.IsDir {
-		return false, fmt.Errorf("base path %s is not a directory", dir)
-	}
-
-	for _, sourcePath := range sourcePaths {
-		sameFS, err := backend.SameFilesystem(ctx, sourcePath, filesystemDir)
-		if err != nil && errors.Is(err, fs.ErrNotExist) {
-			existingParent := nearestExistingParent(ctx, backend, sourcePath)
-			if existingParent != "" {
-				sameFS, err = backend.SameFilesystem(ctx, existingParent, filesystemDir)
-			}
-		}
-		if err != nil {
-			return false, fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
-		}
-		if !sameFS {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
-func nearestExistingParent(ctx context.Context, backend fsops.Backend, path string) string {
-	d := backend.Paths()
-	for dir := d.Dir(path); dir != "." && dir != ""; dir = d.Dir(dir) {
-		if _, err := backend.Stat(ctx, dir); err == nil {
-			return dir
-		}
-		next := d.Dir(dir)
-		if next == dir {
-			break
-		}
-	}
-	return ""
-}
-
-func parseSeasonPackBaseDirs(configuredDirs string) []string {
-	parts := strings.Split(configuredDirs, ",")
-	dirs := make([]string, 0, len(parts))
-	for _, part := range parts {
-		dir := strings.TrimSpace(part)
-		if dir != "" {
-			dirs = append(dirs, dir)
-		}
-	}
-	return dirs
+	planBuild.tree = tree
+	return nil
 }
 
 func (s *Service) failApply(
@@ -1498,24 +1357,8 @@ func firstMatchedEpisodeCategory(episodes map[episodeIdentity]episodeMatch) stri
 	return ""
 }
 
-func (m matcher) buildSeasonPackPlan(
-	d fsops.PathDialect,
-	packFiles qbt.TorrentFiles,
-	packName string,
-	destDir string,
-	localFiles map[episodeIdentity]seasonPackLocalFile,
-) (*seasonPackPlanBuild, error) {
-	packDir, ok := safeSeasonPackJoin(d, destDir, packName)
-	if !ok {
-		return nil, fmt.Errorf("%w: invalid pack root path %q", errLayoutMismatch, packName)
-	}
-	plan := &hardlinktree.TreePlan{
-		RootDir: destDir,
-		Files:   make([]hardlinktree.FilePlan, 0, len(packFiles)),
-	}
+func (m matcher) buildSeasonPackPlan(packFiles qbt.TorrentFiles, localFiles map[episodeIdentity]seasonPackLocalFile) (*seasonPackPlanBuild, error) {
 	build := &seasonPackPlanBuild{
-		plan:              plan,
-		packDir:           packDir,
 		materializedPaths: make(map[string]struct{}, len(packFiles)),
 		totalFiles:        len(packFiles),
 	}
@@ -1531,24 +1374,15 @@ func (m matcher) buildSeasonPackPlan(
 		if !ok {
 			continue
 		}
-
-		filePlan, err := hardlinktree.BuildSingleFilePlan(d, plan.RootDir, pf.Name, localFile.sourcePath)
-		if err != nil {
-			return nil, fmt.Errorf("%w: invalid pack target path %q: %w", errLayoutMismatch, pf.Name, err)
-		}
-		plan.Files = append(plan.Files, filePlan.Files...)
+		build.links = append(build.links, linktree.Link{TorrentPath: pf.Name, SourcePath: localFile.sourcePath})
 		build.materializedPaths[pf.Name] = struct{}{}
 		build.linkedBytes += pf.Size
 	}
 
-	if len(plan.Files) == 0 {
+	if len(build.links) == 0 {
 		return nil, fmt.Errorf("%w: no pack files could be mapped to local episodes", errLayoutMismatch)
 	}
-
-	sort.Slice(plan.Files, func(i, j int) bool {
-		return plan.Files[i].TargetPath < plan.Files[j].TargetPath
-	})
-
+	slices.SortFunc(build.links, func(a, b linktree.Link) int { return cmp.Compare(a.TorrentPath, b.TorrentPath) })
 	return build, nil
 }
 
@@ -1580,23 +1414,6 @@ func safeSeasonPackJoin(d fsops.PathDialect, rootDir, relativePath string) (stri
 	}
 
 	return candidatePath, true
-}
-
-func rollbackSeasonPackTree(ctx context.Context, backend fsops.Backend, created *fsops.TreeCreateResult, packDir string) error {
-	ctx = context.WithoutCancel(ctx)
-	var errs []error
-	if err := backend.RemoveTree(ctx, created); err != nil {
-		errs = append(errs, err)
-	}
-
-	if packDir != "" {
-		if err := backend.Remove(ctx, packDir, fsops.RemoveOptions{}); err != nil &&
-			!errors.Is(err, fs.ErrNotExist) &&
-			!fsops.IsDirNotEmpty(err) {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
 }
 
 func selectWinner(matches []seasonPackCoverage, threshold float64) *seasonPackCoverage {

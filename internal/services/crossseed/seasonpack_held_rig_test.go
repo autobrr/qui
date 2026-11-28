@@ -35,6 +35,7 @@ const (
 type packRig struct {
 	*heldRig
 	links string
+	media string
 }
 
 type packService struct {
@@ -45,7 +46,7 @@ type packService struct {
 
 func newPackRig(t *testing.T, root string, libraries ...*heldLibrary) *packRig {
 	t.Helper()
-	rig := &packRig{heldRig: newHeldRig(t, libraries...), links: filepath.Join(root, "links")}
+	rig := &packRig{heldRig: newHeldRig(t, libraries...), links: filepath.Join(root, "links"), media: filepath.Join(root, "media")}
 	for id := range rig.instances {
 		rig.linkTo(id)
 	}

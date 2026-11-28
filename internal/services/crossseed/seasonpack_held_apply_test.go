@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,21 +21,15 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent/syncowner"
 	"github.com/autobrr/qui/internal/services/arr"
-	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
 type packApplyService struct {
 	packService
-	adds  *adderFake
-	links []*hardlinktree.TreePlan
+	adds *adderFake
 }
 
 func (r *packRig) applying(svc packService) *packApplyService {
 	apply := &packApplyService{packService: svc}
-	apply.seasonPackLinkCreator = func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-		apply.links = append(apply.links, plan)
-		return &fsops.TreeCreateResult{}, nil
-	}
 	apply.SetBackendPool(fsops.NewPool(r.store, local.NewBackend()))
 	apply.adds = withLinkAdder(apply.Service)
 	return apply
@@ -47,12 +42,31 @@ func (p *packApplyService) apply(t *testing.T, name, torrentData string) *Season
 	return resp
 }
 
-func (p *packApplyService) linked() []string {
+func (r *packRig) takeLinked(t *testing.T) []string {
+	t.Helper()
+	media, err := os.ReadDir(r.media)
+	require.NoError(t, err)
 	var sources []string
-	for _, plan := range p.links {
-		for _, file := range plan.Files {
-			sources = append(sources, file.SourcePath)
+	err = filepath.WalkDir(r.links, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || !entry.Type().IsRegular() {
+			return err
 		}
+		link, err := os.Stat(path)
+		require.NoError(t, err)
+		for _, file := range media {
+			source := filepath.Join(r.media, file.Name())
+			if info, err := os.Stat(source); err == nil && os.SameFile(info, link) {
+				sources = append(sources, source)
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	require.NoError(t, err)
+	if info, err := os.Stat(r.links); err == nil && info.IsDir() {
+		require.NoError(t, os.RemoveAll(r.links))
 	}
 	return sources
 }
@@ -60,11 +74,13 @@ func (p *packApplyService) linked() []string {
 func packLibraryOnDisk(t *testing.T, root string, torrents []qbt.Torrent) *heldLibrary {
 	t.Helper()
 	media := filepath.Join(root, "media")
+	require.NoError(t, os.MkdirAll(media, 0o755))
 	files := map[string]qbt.TorrentFiles{}
 	for i := range torrents {
 		file := torrents[i].Name + ".mkv"
 		torrents[i].SavePath = media
 		torrents[i].ContentPath = filepath.Join(media, file)
+		require.NoError(t, os.WriteFile(torrents[i].ContentPath, nil, 0o600))
 		files[torrents[i].Hash] = qbt.TorrentFiles{{Name: file, Size: packLocalFileSize}}
 	}
 	return serveHeldLibrary(t, torrents, files)
@@ -100,10 +116,8 @@ func TestSeasonPackApplyEndsAsWithTheFullScan(t *testing.T) {
 			require.NoError(t, os.WriteFile(r.links, nil, 0o600))
 			r.linkTo(1)
 		}},
-		{name: "link failed", held: torrents, reason: "link_failed", set: func(_ *testing.T, _ *packRig, svc *packApplyService) {
-			svc.seasonPackLinkCreator = func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-				return &fsops.TreeCreateResult{}, errors.New("no space left")
-			}
+		{name: "link failed", held: torrents, reason: "link_failed", set: func(_ *testing.T, r *packRig, svc *packApplyService) {
+			svc.SetBackendPool(fsops.NewPool(r.store, &faultyLinkBackend{Backend: local.NewBackend(), createErr: errors.New("no space left")}))
 		}},
 		{name: "skipped recheck", held: torrents[:3], reason: "skipped_recheck", set: func(_ *testing.T, r *packRig, _ *packApplyService) {
 			r.settings.SkipRecheck = true
@@ -122,13 +136,15 @@ func TestSeasonPackApplyEndsAsWithTheFullScan(t *testing.T) {
 				tt.set(t, rig, held)
 			}
 
-			want, got := full.apply(t, packShow, torrent), held.apply(t, packShow, torrent)
+			want := full.apply(t, packShow, torrent)
+			fullLinked := rig.takeLinked(t)
+			got := held.apply(t, packShow, torrent)
 
 			require.Equal(t, tt.applied, got.Applied, got.Message)
 			require.Equal(t, tt.reason, got.Reason, got.Message)
 			require.Equal(t, want, got)
 			require.Equal(t, full.takeRuns(), held.takeRuns())
-			require.ElementsMatch(t, full.linked(), held.linked())
+			require.ElementsMatch(t, fullLinked, rig.takeLinked(t))
 			require.Equal(t, full.adds.added, held.adds.added)
 			require.Equal(t, full.sonarr.seasonCalls, held.sonarr.seasonCalls)
 		})
@@ -143,9 +159,9 @@ func packAliasSources() []string {
 	return names
 }
 
-func requireLinked(t *testing.T, svc *packApplyService, files []string) {
+func requireLinked(t *testing.T, rig *packRig, files []string) {
 	t.Helper()
-	linked := svc.linked()
+	linked := rig.takeLinked(t)
 	for i := range linked {
 		linked[i] = filepath.Base(linked[i])
 	}
@@ -172,7 +188,7 @@ func TestSeasonPackApplyLinksWhatTheCheckCountsThroughAnAlternateTitle(t *testin
 
 			require.True(t, resp.Applied, resp.Message)
 			require.Equal(t, 4, resp.MatchedEpisodes)
-			requireLinked(t, held, packAliasSources())
+			requireLinked(t, rig, packAliasSources())
 		})
 	}
 }
@@ -213,7 +229,7 @@ func TestSeasonPackApplySurvivesARebuildBetweenCoverageAndAssembly(t *testing.T)
 
 			require.True(t, resp.Applied, "%s: %s", resp.Reason, resp.Message)
 			require.Equal(t, 2, calls)
-			require.Len(t, held.linked(), 4)
+			require.Len(t, rig.takeLinked(t), 4)
 		})
 	}
 }
@@ -243,5 +259,5 @@ func TestSeasonPackApplyAssemblesWhileABlockedInstanceRebuilds(t *testing.T) {
 
 	require.True(t, resp.Applied, "%s: %s", resp.Reason, resp.Message)
 	require.Equal(t, 1, resp.InstanceID)
-	requireLinked(t, held, packAliasSources())
+	requireLinked(t, rig, packAliasSources())
 }

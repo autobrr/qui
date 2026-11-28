@@ -4,11 +4,9 @@
 package crossseed
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"path"
-	"slices"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -379,40 +377,6 @@ func linkCategorySavePath(d fsops.PathDialect, tree *linktree.Tree, route *candi
 		return presetDir
 	}
 	return normalizePath(presetDir)
-}
-
-func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTrackerDomain string, req *CrossSeedRequest) string {
-	var customizations []*models.TrackerCustomization
-	if s.trackerCustomizationStore != nil {
-		if customs, err := s.trackerCustomizationStore.List(ctx); err == nil {
-			customizations = customs
-		}
-	}
-
-	indexerName := ""
-	if req.IndexerName != "" {
-		indexerName = req.IndexerName
-	}
-
-	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
-}
-
-func rankBaseDirs(d fsops.PathDialect, dirs []string, source string) []string {
-	ranked := slices.Clone(dirs)
-	slices.SortStableFunc(ranked, func(a, b string) int {
-		return cmp.Compare(sharedPathComponents(d, b, source), sharedPathComponents(d, a, source))
-	})
-	return ranked
-}
-
-func sharedPathComponents(d fsops.PathDialect, a, b string) int {
-	aParts := strings.Split(d.Clean(a), d.Separator())
-	bParts := strings.Split(d.Clean(b), d.Separator())
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
-		n++
-	}
-	return n
 }
 
 func safeTorrentRelativeFilePath(name string) (string, bool) {

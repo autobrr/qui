@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,7 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
-	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -54,7 +54,14 @@ type blockedPackFixture struct {
 	runs        *stubSeasonPackRunStore
 	packName    string
 	torrentData string
-	treeCalls   int
+	linkDir     string
+}
+
+func (f *blockedPackFixture) treeEntries(t *testing.T) []os.DirEntry {
+	t.Helper()
+	entries, err := os.ReadDir(f.linkDir)
+	require.NoError(t, err)
+	return entries
 }
 
 func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
@@ -78,6 +85,7 @@ func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
 	mediaDir := t.TempDir()
 	episodeTorrents := make([]qbt.Torrent, 0, len(packFiles))
 	for i, file := range packFiles {
+		require.NoError(t, os.WriteFile(filepath.Join(mediaDir, file), []byte("episode"), 0o600))
 		episodeTorrents = append(episodeTorrents, qbt.Torrent{
 			Hash: fmt.Sprintf("e%02d", i+1), Name: strings.TrimSuffix(file, ".mkv"), ContentPath: filepath.Join(mediaDir, file), Progress: 1.0,
 		})
@@ -94,6 +102,7 @@ func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
 		runs:        &stubSeasonPackRunStore{},
 		packName:    packName,
 		torrentData: torrentData,
+		linkDir:     inst.HardlinkBaseDir,
 	}
 	f.svc = &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
@@ -108,10 +117,6 @@ func newBlockedPackFixture(t *testing.T, blocked bool) *blockedPackFixture {
 			}, nil
 		},
 		seasonPackRunStore: f.runs,
-		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-			f.treeCalls++
-			return &fsops.TreeCreateResult{}, nil
-		},
 	}
 	f.svc.seasonPackAdd = f.svc
 	if blocked {
@@ -139,7 +144,7 @@ func TestApplySeasonPackWebhook_SkipsBlocklistedPack(t *testing.T) {
 			}
 			require.False(t, resp.Applied)
 			require.Equal(t, "blocked", resp.Reason)
-			require.Zero(t, f.treeCalls, "a blocked pack must not build a link tree")
+			require.Empty(t, f.treeEntries(t), "a blocked pack must not build a link tree")
 			require.Empty(t, f.adds.added)
 			require.Len(t, f.runs.runs, 1)
 			require.Equal(t, "blocked", f.runs.runs[0].Reason)
@@ -162,7 +167,7 @@ func TestCrossSeed_SeasonPackDiversionHonorsBlocklist(t *testing.T) {
 
 			require.Equal(t, !blocked, resp.Success)
 			if blocked {
-				require.Zero(t, f.treeCalls, "a blocked pack must not build a link tree")
+				require.Empty(t, f.treeEntries(t), "a blocked pack must not build a link tree")
 				require.Empty(t, f.adds.added)
 			} else {
 				require.Len(t, f.adds.added, 1)
@@ -283,7 +288,7 @@ func TestApplySeasonPackWebhook_BlocklistReadFails(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "blocklist_check_failed", resp.Reason)
 	require.Equal(t, "failed to check cross-seed blocklist on instance 1: sql: database is closed", resp.Message)
-	require.Zero(t, f.treeCalls, "a failed check must not build a link tree")
+	require.Empty(t, f.treeEntries(t), "a failed check must not build a link tree")
 	require.Empty(t, f.adds.added)
 	require.Len(t, f.runs.runs, 1)
 	require.Equal(t, "blocklist_check_failed", f.runs.runs[0].Reason)
