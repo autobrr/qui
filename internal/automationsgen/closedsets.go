@@ -24,6 +24,7 @@ import (
 const (
 	closedSetsPath  = "web/src/types/closed-sets.generated.ts"
 	activityPackage = "internal/services/activity"
+	modelsPackage   = "internal/models"
 )
 
 type closedSet struct {
@@ -108,6 +109,15 @@ func closedSets(root string) ([]closedSet, error) {
 	if err != nil {
 		return nil, err
 	}
+	modelsDir := filepath.Join(root, filepath.FromSlash(modelsPackage))
+	actions, err := readTypedConstants(modelsDir, "ActivityAction")
+	if err != nil {
+		return nil, err
+	}
+	outcomes, err := readTypedConstants(modelsDir, "ActivityOutcome")
+	if err != nil {
+		return nil, err
+	}
 	operators := make([]string, len(operatorDocs))
 	for i, o := range operatorDocs {
 		operators[i] = string(o.op)
@@ -118,6 +128,8 @@ func closedSets(root string) ([]closedSet, error) {
 	}
 	sets := []closedSet{
 		{"ActivityEventKind", kinds},
+		{"AutomationActivityAction", actions},
+		{"AutomationActivityOutcome", outcomes},
 		{"ConditionField", fields},
 		{"ConditionOperator", operators},
 	}

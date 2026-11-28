@@ -13,7 +13,6 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/services/externalprograms"
 )
 
 const (
@@ -45,21 +44,21 @@ var writeActionKeys = map[string]string{
 	"torrents/delete":            "delete",
 }
 
-var activityActionKeys = map[string]string{
-	models.ActivityActionSpeedLimitsChanged:        "speedLimits",
-	models.ActivityActionShareLimitsChanged:        "shareLimits",
-	models.ActivityActionPaused:                    "pause",
-	models.ActivityActionResumed:                   "resume",
-	models.ActivityActionRechecked:                 "recheck",
-	models.ActivityActionReannounced:               "reannounce",
-	models.ActivityActionAutoManaged:               "autoManagement",
-	models.ActivityActionTagsChanged:               "tag",
-	models.ActivityActionCategoryChanged:           "category",
-	models.ActivityActionMoved:                     "move",
-	externalprograms.ActivityActionExternalProgram: "externalProgram",
-	models.ActivityActionExportedToInstance:        "exportToInstance",
-	models.ActivityActionDeletedCondition:          "delete",
-	models.ActivityActionTransferredToInstance:     "transferToInstance",
+var activityActionKeys = map[models.ActivityAction]string{
+	models.ActivityActionSpeedLimitsChanged:    "speedLimits",
+	models.ActivityActionShareLimitsChanged:    "shareLimits",
+	models.ActivityActionPaused:                "pause",
+	models.ActivityActionResumed:               "resume",
+	models.ActivityActionRechecked:             "recheck",
+	models.ActivityActionReannounced:           "reannounce",
+	models.ActivityActionAutoManaged:           "autoManagement",
+	models.ActivityActionTagsChanged:           "tag",
+	models.ActivityActionCategoryChanged:       "category",
+	models.ActivityActionMoved:                 "move",
+	models.ActivityActionExternalProgram:       "externalProgram",
+	models.ActivityActionExportedToInstance:    "exportToInstance",
+	models.ActivityActionDeletedCondition:      "delete",
+	models.ActivityActionTransferredToInstance: "transferToInstance",
 }
 
 func collapse(keys []string) []string {
@@ -125,7 +124,7 @@ func activityKeysByID(t *testing.T, db *database.DB, instanceID int) []string {
 
 	var keys []string
 	for rows.Next() {
-		var action string
+		var action models.ActivityAction
 		require.NoError(t, rows.Scan(&action))
 		key, ok := activityActionKeys[action]
 		require.True(t, ok, "activity action %q has no run order key", action)
@@ -244,7 +243,7 @@ func TestApplyRulesDryRun_RulesSeeStartOfRunTorrent(t *testing.T) {
 	activities, err := svc.applyRulesForInstance(t.Context(), instanceIDs[0], true, rules, true)
 	require.NoError(t, err)
 
-	details := map[string]map[string]json.RawMessage{}
+	details := map[models.ActivityAction]map[string]json.RawMessage{}
 	for _, activity := range activities {
 		var d map[string]json.RawMessage
 		require.NoError(t, json.Unmarshal(activity.Details, &d))

@@ -26,8 +26,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-const ActivityActionExternalProgram = "external_program"
-
 const (
 	defaultMaxRunningPrograms = 8
 	maxWaitingPrograms        = 1000
@@ -530,7 +528,7 @@ func (s *Service) logActivity(
 		InstanceID:  instanceID,
 		Hash:        torrent.Hash,
 		TorrentName: torrent.Name,
-		Action:      ActivityActionExternalProgram,
+		Action:      models.ActivityActionExternalProgram,
 		RuleID:      ruleID,
 		RuleName:    ruleName,
 		Outcome:     outcome,

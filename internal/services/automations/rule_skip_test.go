@@ -53,7 +53,7 @@ func deletedHashes(stub *stubQbt) []string {
 	return hashes
 }
 
-func requireSkipEntry(t *testing.T, activities []*models.AutomationActivity, outcome, field, requires string) {
+func requireSkipEntry(t *testing.T, activities []*models.AutomationActivity, outcome models.ActivityOutcome, field, requires string) {
 	t.Helper()
 	require.Len(t, activities, 1)
 	require.Equal(t, models.ActivityActionRuleSkipped, activities[0].Action)

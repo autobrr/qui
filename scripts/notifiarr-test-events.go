@@ -499,8 +499,8 @@ func buildFixtures() []fixture {
 							Applied:  2,
 							Failed:   1,
 							Actions: []notifications.AutomationActionSummary{
-								{Action: models.ActivityActionDeletedRatio, Label: "Deleted torrent (ratio rule)", Applied: 2, Failed: 0},
-								{Action: models.ActivityActionDeleteFailed, Label: "Delete failed", Applied: 0, Failed: 1},
+								{Action: string(models.ActivityActionDeletedRatio), Label: "Deleted torrent (ratio rule)", Applied: 2, Failed: 0},
+								{Action: string(models.ActivityActionDeleteFailed), Label: "Delete failed", Applied: 0, Failed: 1},
 							},
 						},
 						{
@@ -509,7 +509,7 @@ func buildFixtures() []fixture {
 							Applied:  2,
 							Failed:   0,
 							Actions: []notifications.AutomationActionSummary{
-								{Action: models.ActivityActionTagsChanged, Label: "Tags updated", Applied: 2, Failed: 0},
+								{Action: string(models.ActivityActionTagsChanged), Label: "Tags updated", Applied: 2, Failed: 0},
 							},
 						},
 					},

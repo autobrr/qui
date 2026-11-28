@@ -54,7 +54,7 @@ func tagCondition(tag string) *models.RuleCondition {
 }
 
 type stepActivityView struct {
-	Action  string
+	Action  models.ActivityAction
 	Details string
 	Items   []ActivityRunTorrent
 }

@@ -108,7 +108,7 @@ func (m sharedFilesMatcher) OpenCrossMatchSession(ctx context.Context, instanceI
 func dryRunActivityHashes(t *testing.T, svc *Service, instanceID int, activities []*models.AutomationActivity) map[string][]string {
 	t.Helper()
 
-	actions := map[string]string{
+	actions := map[models.ActivityAction]string{
 		models.ActivityActionMoved:            "move",
 		models.ActivityActionCategoryChanged:  "category",
 		models.ActivityActionTagsChanged:      "tag",

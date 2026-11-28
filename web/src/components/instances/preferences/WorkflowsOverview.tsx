@@ -157,7 +157,7 @@ function formatSpeedLimitCompact(kiB: number): string {
 }
 
 function formatAction(action: AutomationActivity["action"]): string {
-  const actionKeys: Record<string, string> = {
+  const actionKeys: Record<AutomationActivity["action"], string> = {
     deleted_ratio: "ratioLimit",
     deleted_seeding: "seedingTime",
     deleted_unregistered: "unregistered",

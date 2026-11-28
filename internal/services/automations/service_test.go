@@ -1517,7 +1517,7 @@ func TestExecuteExternalProgramsFromAutomation_NilServiceWithActivityStore(t *te
 
 	assert.Equal(t, "abc123", mockDB.activities[0].Hash)
 	assert.Equal(t, "Test Torrent 1", mockDB.activities[0].TorrentName)
-	assert.Equal(t, "external_program", mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityActionExternalProgram, mockDB.activities[0].Action)
 	assert.Equal(t, models.ActivityOutcomeFailed, mockDB.activities[0].Outcome)
 	assert.Contains(t, mockDB.activities[0].Reason, "not configured")
 
@@ -1934,9 +1934,9 @@ func (m *mockQuerier) ExecContext(_ context.Context, query string, args ...any) 
 			InstanceID:  args[0].(int),
 			Hash:        args[1].(string),
 			TorrentName: args[2].(string),
-			Action:      args[4].(string),
+			Action:      models.ActivityAction(args[4].(string)),
 			RuleName:    args[6].(string),
-			Outcome:     args[7].(string),
+			Outcome:     models.ActivityOutcome(args[7].(string)),
 			Reason:      args[8].(string),
 		}
 		if details, ok := args[9].(sql.NullString); ok && details.Valid {

@@ -24,6 +24,42 @@ export const ACTIVITY_EVENT_KIND_VALUES = [
 ] as const
 export type ActivityEventKind = (typeof ACTIVITY_EVENT_KIND_VALUES)[number]
 
+export const AUTOMATION_ACTIVITY_ACTION_VALUES = [
+  "deleted_ratio",
+  "deleted_seeding",
+  "deleted_unregistered",
+  "deleted_condition",
+  "delete_failed",
+  "limit_failed",
+  "tags_changed",
+  "category_changed",
+  "speed_limits_changed",
+  "share_limits_changed",
+  "paused",
+  "resumed",
+  "rechecked",
+  "reannounced",
+  "moved",
+  "auto_managed",
+  "external_program",
+  "exported_to_instance",
+  "dry_run_no_match",
+  "rule_skipped",
+  "transferred_to_instance",
+  "delete_waiting",
+  "unregistered_wait_started",
+  "unregistered_wait_ended",
+] as const
+export type AutomationActivityAction = (typeof AUTOMATION_ACTIVITY_ACTION_VALUES)[number]
+
+export const AUTOMATION_ACTIVITY_OUTCOME_VALUES = [
+  "success",
+  "failed",
+  "dry-run",
+  "skipped",
+] as const
+export type AutomationActivityOutcome = (typeof AUTOMATION_ACTIVITY_OUTCOME_VALUES)[number]
+
 export const CONDITION_FIELD_VALUES = [
   "ADDED_ON",
   "ADDED_ON_AGE",
