@@ -73,11 +73,11 @@ function PreferenceTabs({ instanceId, instance, defaultTab }: { instanceId: numb
     <Tabs defaultValue={defaultTab ?? "instance"} className="flex w-full min-h-0 flex-1 flex-col">
       <div className="relative shrink-0">
         <TabsList className="flex w-full justify-start overflow-x-auto h-11 sm:h-9">
-          <TabsTrigger value="instance" className="flex items-center gap-1.5 shrink-0">
+          <TabsTrigger value="instance" className={cn("flex items-center gap-1.5 shrink-0", tabs.length === 0 && "flex-none")}>
             <Server className="h-4 w-4" />
             <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.instance")}</span>
           </TabsTrigger>
-          <TabsTrigger value="ssh" className="flex items-center gap-1.5 shrink-0">
+          <TabsTrigger value="ssh" className={cn("flex items-center gap-1.5 shrink-0", tabs.length === 0 && "flex-none")}>
             <KeyRound className="h-4 w-4" />
             <span className="text-xs sm:text-sm">{t("preferences.dialog.tabs.ssh")}</span>
           </TabsTrigger>
