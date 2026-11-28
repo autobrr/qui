@@ -926,6 +926,11 @@
         "saveFailed": "설정을 저장하지 못했습니다"
       }
     },
+    "unregisteredDeleteFacts": {
+      "since": "{{time}}부터 등록되지 않음",
+      "tracker": "트래커: {{host}}",
+      "message": "메시지: {{message}}"
+    },
     "activityRunDialog": {
       "run": "실행",
       "dryRunNote": "모의 실행: 변경 사항이 적용되지 않았습니다.",

@@ -926,6 +926,11 @@
         "saveFailed": "儲存設定失敗"
       }
     },
+    "unregisteredDeleteFacts": {
+      "since": "自 {{time}} 起未註冊",
+      "tracker": "Tracker：{{host}}",
+      "message": "訊息：{{message}}"
+    },
     "activityRunDialog": {
       "run": "執行",
       "dryRunNote": "模擬執行：未應用任何更改。",

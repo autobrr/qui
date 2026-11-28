@@ -35,6 +35,7 @@ type selectedDeletion struct {
 	trigger      bool
 	hardlinkCopy bool
 	logMsg       string
+	unregistered *unregisteredFacts
 }
 
 func deleteFilesForMode(mode string) (bool, error) {
@@ -179,6 +180,7 @@ func (s *Service) selectDeletions(ctx context.Context, instanceID int, in deleti
 			continue
 		}
 		s.expandDeleteTrigger(ctx, instanceID, in, sel, *triggerTorrents[claim.hash], claim.rule, includedCrossSeeds, rejectedGroups)
+		sel.recordUnregistered(claim, evalCtx.waited)
 	}
 	sel.dropDeletedWaits()
 	return sel

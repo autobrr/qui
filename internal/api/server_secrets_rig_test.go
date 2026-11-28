@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -80,20 +81,9 @@ func (rig *secretsRig) plant(name string, audience secretAudience) string {
 	return value
 }
 
-const (
-	stubTorrentJSON = `{"name":"NAME","hash":"HASH","state":"uploading","added_on":1,"size":100,"total_size":100,"progress":1,` +
-		`"save_path":"/data","content_path":"/data/Show.S01","tracker":"TRACKER","magnet_uri":"magnet:?xt=urn:btih:HASH&tr=ESCAPED",` +
-		`"trackers":[{"url":"TRACKER"}]}`
-)
-
-func stubTorrent(hash, name, tracker string) string {
-	return strings.NewReplacer("HASH", hash, "NAME", name, "TRACKER", tracker, "ESCAPED", url.QueryEscape(tracker)).Replace(stubTorrentJSON)
-}
-
 func (rig *secretsRig) qBittorrentResponses() map[string]string {
-	pathTracker := "https://tracker.example.invalid/" + rig.plant("announce path passkey", shownWithTorrentsWrite) + "/announce"
+	pathTracker := "https://tracker.example.invalid/" + rig.plant("announce path key", shownWithTorrentsWrite) + "/announce"
 	queryTracker := "https://query.example.invalid/announce?passkey=" + rig.plant("announce query passkey", shownWithTorrentsWrite)
-	first, second := stubTorrent(stubHashA, stubReleaseName, pathTracker), stubTorrent(stubHashB, "bbb", queryTracker)
 	feedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed key", shownWithTorrentsWrite) + "/feed.xml"
 	feedNamedByURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed name key", shownWithTorrentsWrite) + "/feed.xml"
 	goneFeedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS rule feed key", shownWithTorrentsWrite) + "/gone.xml"
@@ -122,22 +112,15 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 			`"Same code A":{"uid":"{4}","url":"https://rss.example.invalid/feed/61522.xml","title":""` + articles(`[]`) + `},` +
 			`"Same code B":{"uid":"{5}","url":"https://rss.example.invalid/feed/135103.xml","title":""` + articles(`[]`) + `}}`
 	}
-	trackerRow := func(tracker, msg string) string {
-		return `[{"url":"** [DHT] **","status":0},{"url":"` + tracker + `","status":2,"msg":"` + msg + `"}]`
-	}
 	preferences := `{"add_trackers_enabled":true,"add_trackers":"` + pathTracker + `\n\n` + queryTracker + `","save_path":"/data",` +
 		`"proxy_password":"` + rig.plant("proxy password", shownToNobody) + `","mail_notification_password":"` + rig.plant("email password", shownToNobody) + `"}`
 	creationTasks := `[{"taskID":"task","status":"Finished","trackers":["` + pathTracker + `","` + queryTracker + `"],` +
 		`"urlSeeds":["https://seed.example.invalid/` + rig.plant("creation task web seed passkey", shownWithTorrentsWrite) + `/file"]}]`
-	return map[string]string{
-		"/api/v2/app/webapiVersion": "2.16.0",
-		"/api/v2/app/version":       "v5.2.0",
-		"/api/v2/auth/login":        "Ok.",
-		"/api/v2/sync/maindata": `{"rid":1,"full_update":true,"torrents":{"` + stubHashA + `":` + first + `,"` + stubHashB + `":` + second + `},` +
-			`"trackers":{"` + pathTracker + `":["` + stubHashA + `"],"` + queryTracker + `":["` + stubHashB + `"]},"server_state":{"connection_status":"connected"}}`,
-		"/api/v2/torrents/info":                   `[` + first + `,` + second + `]`,
-		"/api/v2/torrents/trackers?" + stubHashA:  trackerRow(pathTracker, rig.trackerMessage(pathTracker)),
-		"/api/v2/torrents/trackers?" + stubHashB:  trackerRow(queryTracker, ""),
+	responses := map[string]string{
+		"/api/v2/app/webapiVersion":               "2.16.0",
+		"/api/v2/app/version":                     "v5.2.0",
+		"/api/v2/auth/login":                      "Ok.",
+		"/api/v2/torrents/delete":                 "",
 		"/api/v2/app/preferences":                 preferences,
 		"/api/v2/app/buildInfo":                   `{}`,
 		"/api/v2/app/defaultSavePath":             `/data`,
@@ -161,6 +144,8 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/rss/matchingArticles": `{"Feed":["Show.S01 https://rss.example.invalid/t/1?key=` + rig.plant("RSS article title key", shownWithTorrentsWrite) + `"],` +
 			`"` + feedNamedByURL + `":["Show.S01"]}`,
 	}
+	maps.Copy(responses, rig.stubTorrentResponses(pathTracker, queryTracker))
+	return responses
 }
 
 func (rig *secretsRig) startQBittorrent(t *testing.T) *httptest.Server {
@@ -271,7 +256,7 @@ func newSecretsRig(t *testing.T) *secretsRig {
 	deps.OrphanScanStore = models.NewOrphanScanStore(db)
 	deps.OrphanScanService = orphanscan.NewService(orphanscan.DefaultConfig(), deps.InstanceStore, deps.OrphanScanStore, deps.SyncManager, nil, deps.BackendPool)
 	deps.AutomationActivityStore = models.NewAutomationActivityStore(db)
-	deps.AutomationService = automations.NewService(automations.Config{}, deps.InstanceStore, deps.AutomationStore, deps.AutomationActivityStore,
+	deps.AutomationService = automations.NewService(automations.Config{ApplyTimeout: automations.DefaultConfig().ApplyTimeout}, deps.InstanceStore, deps.AutomationStore, deps.AutomationActivityStore,
 		deps.TrackerCustomizationStore, deps.SyncManager, nil, nil, nil, deps.BackendPool)
 
 	basicUser := "basic"
@@ -326,6 +311,8 @@ func newSecretsRig(t *testing.T) *secretsRig {
 
 	_, err = deps.DiscScanStore.Create(ctx, instance.ID, stubHashA, "/data/Show.S01", "/data/Show.S01")
 	require.NoError(t, err)
+
+	rig.plantUnregisteredDelete(t, db, instance.ID)
 
 	_, err = deps.OrphanScanStore.CreateRunIfNoActive(ctx, instance.ID, "manual")
 	require.NoError(t, err)

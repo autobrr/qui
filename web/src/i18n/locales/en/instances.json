@@ -959,6 +959,11 @@
         "saveFailed": "Failed to save settings"
       }
     },
+    "unregisteredDeleteFacts": {
+      "since": "Unregistered since {{time}}",
+      "tracker": "Tracker: {{host}}",
+      "message": "Message: {{message}}"
+    },
     "activityRunDialog": {
       "run": "run",
       "dryRunNote": "Dry run: no changes were applied.",

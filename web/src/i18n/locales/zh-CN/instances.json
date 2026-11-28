@@ -926,6 +926,11 @@
         "saveFailed": "保存设置失败"
       }
     },
+    "unregisteredDeleteFacts": {
+      "since": "自 {{time}} 起未注册",
+      "tracker": "Tracker：{{host}}",
+      "message": "消息：{{message}}"
+    },
     "activityRunDialog": {
       "run": "运行",
       "dryRunNote": "模拟运行：未应用任何更改。",

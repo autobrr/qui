@@ -953,6 +953,11 @@
         "saveFailed": "Échec de l'enregistrement des paramètres"
       }
     },
+    "unregisteredDeleteFacts": {
+      "since": "Non enregistré depuis le {{time}}",
+      "tracker": "Tracker : {{host}}",
+      "message": "Message : {{message}}"
+    },
     "activityRunDialog": {
       "run": "run",
       "dryRunNote": "Simulation : aucune modification appliquée.",
