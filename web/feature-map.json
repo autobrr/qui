@@ -410,6 +410,16 @@
       ],
       "steps": []
     },
+    "web/src/components/instances/preferences/PendingDeletesDialog.tsx#PendingDeletesDialog": {
+      "routes": [
+        "/_authenticated/automations"
+      ],
+      "steps": [
+        "Open /automations?tab=workflows and click the name of an instance.",
+        "On an enabled delete rule with the condition \"Unregistered is true\" whose torrents wait, click the \"N waiting\" badge in the row of the rule.",
+        "The dialog lists each waiting torrent with its tracker, the message of the tracker, Unregistered since, and when the rule deletes it. Close it with the X or Escape."
+      ]
+    },
     "web/src/components/instances/preferences/ReannounceEnableWarning.tsx#ReannounceEnableWarningDialog": {
       "routes": [
         "/_authenticated/automations"

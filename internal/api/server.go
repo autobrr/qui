@@ -735,6 +735,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.With(automations.Read).Post("/preview", automationsHandler.PreviewDeleteRule)
 						r.With(automations.Read).Post("/validate-regex", automationsHandler.ValidateRegex)
 						r.With(automations.Read).Get("/activity", automationsHandler.ListActivity)
+						r.With(automations.Read).Get("/pending-deletes", automationsHandler.ListPendingDeletes)
 						r.With(automations.Read).Get("/activity/{activityId}", automationsHandler.GetActivityRun)
 						r.With(automations.Write).Delete("/activity", automationsHandler.DeleteActivity)
 

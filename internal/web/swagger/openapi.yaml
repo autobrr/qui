@@ -4083,6 +4083,94 @@ paths:
         '500':
           description: Failed to delete transfer history
 
+  /api/instances/{instanceID}/automations/pending-deletes:
+    get:
+      tags:
+        - Instances
+      summary: List the torrents that wait for a delete
+      description: |
+        Lists the Pending deletes of the instance, grouped by Automation rule, in the order of the rules. A Pending delete is a torrent that the delete condition of an enabled rule matches through the Unregistered verdict, and that the rule does not delete yet because the torrent has not been unregistered for the Unregistered wait of its Delete action. The live run of each rule stores these torrents. Between two runs, the list leaves out a stored torrent that has left the wait: a tracker works again, the torrent stopped, or it is gone.
+        The name, the tracker, and the message come from the live data of the instance. They are empty until qui has loaded the torrent and its tracker health after a restart. The message is cleaned: it holds no URL and no part of an announce URL of the torrent.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: The torrents that wait for a delete, by Automation rule
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - rules
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - ruleId
+                        - ruleName
+                        - torrents
+                      properties:
+                        ruleId:
+                          type: integer
+                        ruleName:
+                          type: string
+                        torrents:
+                          type: array
+                          description: The torrents of the rule, the first delete first.
+                          items:
+                            type: object
+                            required:
+                              - hash
+                              - name
+                              - tracker
+                              - message
+                              - unregisteredSince
+                              - deletesAt
+                              - awaitsTracker
+                            properties:
+                              hash:
+                                type: string
+                              name:
+                                type: string
+                                description: Empty until qui has loaded the torrent.
+                              tracker:
+                                type: string
+                                description: Host of the tracker that reported the torrent as unregistered, or of the current tracker of the torrent. Empty until qui has loaded the torrent and its tracker health.
+                              message:
+                                type: string
+                                description: The cleaned message of the tracker that reported the torrent as unregistered. Empty while no tracker reports it.
+                              unregisteredSince:
+                                type: integer
+                                format: int64
+                                description: Unix time from which qui has seen the torrent as unregistered. Until qui has loaded the tracker health after a restart, this is the time that the last run stored.
+                              deletesAt:
+                                type: integer
+                                format: int64
+                                description: Unix time at which the Unregistered wait of the rule ends.
+                              awaitsTracker:
+                                type: boolean
+                                description: True when no tracker reports the torrent as unregistered now. Once deletesAt has passed, the rule deletes the torrent only when a tracker reports it as unregistered again.
+        '400':
+          description: Invalid instance ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: The torrents that wait for a delete could not be read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: The automations service is not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/instances/{instanceID}/automations/{ruleID}/apply:
     post:
       tags:

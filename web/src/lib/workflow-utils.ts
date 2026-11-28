@@ -150,6 +150,15 @@ export function getTrackerMatchMode(tokens: string[]): TrackerMatchMode {
   return hasExclude ? "exclude" : "include"
 }
 
+export function pendingDeletesQueryKey(instanceId: number) {
+  return ["automation-activity", instanceId, "pending-deletes"] as const
+}
+
+export function invalidateWorkflows(queryClient: QueryClient, instanceId: number) {
+  void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
+  void queryClient.invalidateQueries({ queryKey: pendingDeletesQueryKey(instanceId) })
+}
+
 export async function loadWorkflowNames(queryClient: QueryClient, instanceId: number): Promise<string[]> {
   const rules = await queryClient.ensureQueryData({
     queryKey: ["automations", instanceId],

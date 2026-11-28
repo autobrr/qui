@@ -29,6 +29,7 @@ import type {
   AutomationInput,
   AutomationPreviewInput,
   AutomationPreviewResult,
+  PendingDeleteList,
   BackupManifest,
   BackupRun,
   BackupRunsResponse,
@@ -2192,6 +2193,10 @@ class ApiClient {
   async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
     const query = typeof limit === "number" ? `?limit=${limit}` : ""
     return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)
+  }
+
+  async getPendingDeletes(instanceId: number): Promise<PendingDeleteList> {
+    return this.request<PendingDeleteList>(`/instances/${instanceId}/automations/pending-deletes`)
   }
 
   async getAutomationActivityRun(
