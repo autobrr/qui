@@ -902,7 +902,8 @@ export function WorkflowsOverview() {
               if (activitySearchTerm) {
                 const nameMatch = e.torrentName?.toLowerCase().includes(activitySearchTerm)
                 const hashMatch = e.hash.toLowerCase().includes(activitySearchTerm)
-                const ruleMatch = e.ruleName?.toLowerCase().includes(activitySearchTerm)
+                const ruleMatch = [e.ruleName, ...(e.details?.rules ?? []).map((rule) => rule.name)]
+                  .some((name) => name?.toLowerCase().includes(activitySearchTerm))
                 if (!nameMatch && !hashMatch && !ruleMatch) return false
               }
               return true

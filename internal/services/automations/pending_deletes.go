@@ -7,7 +7,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"maps"
+	"errors"
 	"slices"
 	"time"
 
@@ -107,7 +107,6 @@ const (
 type pendingDiff struct {
 	in      pendingCompare
 	rules   map[int]*models.Automation
-	cleared map[int]struct{}
 	current map[pendingKey]time.Time
 	due     map[pendingKey]struct{}
 	change  models.PendingDeleteChange
@@ -121,8 +120,8 @@ func (s *Service) recordPendingDeletes(ctx context.Context, instanceID int, in p
 	if s.pendingDeletes == nil {
 		return nil
 	}
-	rules, cleared := in.comparedRules()
-	if len(rules) == 0 && len(cleared) == 0 {
+	rules := in.comparedRules()
+	if len(rules) == 0 {
 		return nil
 	}
 	stored, err := s.pendingDeletes.ListPendingDeletes(ctx, instanceID)
@@ -134,7 +133,7 @@ func (s *Service) recordPendingDeletes(ctx context.Context, instanceID int, in p
 		in.claimed = s.claimed.ClaimCheck(instanceID)
 	}
 
-	diff := newPendingDiff(in, rules, cleared)
+	diff := newPendingDiff(in, rules)
 	for _, row := range stored {
 		diff.compare(row)
 	}
@@ -155,7 +154,10 @@ func (s *Service) recordPendingDeletes(ctx context.Context, instanceID int, in p
 		})
 	}
 
-	if err := s.pendingDeletes.ApplyPendingDeletes(ctx, instanceID, diff.change); err != nil {
+	if err := s.pendingDeletes.ApplyPendingDeletes(ctx, instanceID, diff.change); errors.Is(err, models.ErrPendingDeleteRuleChanged) {
+		log.Debug().Int("instanceID", instanceID).Msg("automations: a rule changed during the run, so the torrents that wait for a delete are compared again on the next run")
+		return nil
+	} else if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to store the torrents that wait for a delete")
 		return nil
 	}
@@ -167,21 +169,17 @@ func (s *Service) recordPendingDeletes(ctx context.Context, instanceID int, in p
 	return diff.change.Activities
 }
 
-func newPendingDiff(in pendingCompare, rules map[int]*models.Automation, cleared map[int]struct{}) *pendingDiff {
+func newPendingDiff(in pendingCompare, rules map[int]*models.Automation) *pendingDiff {
 	due := make(map[pendingKey]struct{})
 	if in.selection != nil {
 		for _, key := range in.selection.due {
 			due[key] = struct{}{}
 		}
 	}
-	return &pendingDiff{in: in, rules: rules, cleared: cleared, current: in.currentPending(rules), due: due, counted: infohash.NewSet()}
+	return &pendingDiff{in: in, rules: rules, current: in.currentPending(rules), due: due, counted: infohash.NewSet()}
 }
 
 func (d *pendingDiff) compare(row models.PendingDelete) {
-	if _, cleared := d.cleared[row.RuleID]; cleared {
-		d.change.Remove = append(d.change.Remove, row)
-		return
-	}
 	if _, compared := d.rules[row.RuleID]; !compared {
 		return
 	}
@@ -218,8 +216,7 @@ func (d *pendingDiff) endWait(key pendingKey) {
 }
 
 func (d *pendingDiff) start(now time.Time) {
-	for _, key := range slices.SortedFunc(maps.Keys(d.current), comparePendingKeys) {
-		since := d.current[key]
+	for key, since := range d.current {
 		if since.IsZero() {
 			since = now
 		}
@@ -255,15 +252,10 @@ type waitActivity struct {
 	hashes  []string
 }
 
-func (in pendingCompare) comparedRules() (compared map[int]*models.Automation, cleared map[int]struct{}) {
-	compared = make(map[int]*models.Automation)
-	cleared = make(map[int]struct{})
+func (in pendingCompare) comparedRules() map[int]*models.Automation {
+	compared := make(map[int]*models.Automation)
 	for _, rule := range in.rules {
-		if !rule.KeepsPendingDeletes() {
-			cleared[rule.ID] = struct{}{}
-			continue
-		}
-		if deleteWaitOf(rule, in.waited).blocked() {
+		if !rule.KeepsPendingDeletes() || deleteWaitOf(rule, in.waited).blocked() {
 			continue
 		}
 		if in.selection != nil {
@@ -273,7 +265,7 @@ func (in pendingCompare) comparedRules() (compared map[int]*models.Automation, c
 		}
 		compared[rule.ID] = rule
 	}
-	return compared, cleared
+	return compared
 }
 
 func (in pendingCompare) deleted(hash string) bool {
@@ -296,7 +288,10 @@ func (in pendingCompare) currentPending(rules map[int]*models.Automation) map[pe
 		if _, compared := rules[waiting.rule.id]; !compared || in.deleted(waiting.hash) {
 			continue
 		}
-		since, _ := in.waited.Since(waiting.hash)
+		since, timed := in.waited.Since(waiting.hash)
+		if !timed && !in.waited.UnregisteredNow(waiting.hash) {
+			continue
+		}
 		current[pendingKey{ruleID: waiting.rule.id, hash: waiting.hash}] = since
 	}
 	return current
@@ -323,11 +318,6 @@ func (in pendingCompare) storedVerdict(hash string, due bool) storedVerdict {
 			return keepRow
 		}
 	}
-	if in.selection != nil {
-		if _, failedDelete := in.selection.byHash[hash]; failedDelete {
-			return keepRow
-		}
-	}
 	return removeRow
 }
 
@@ -345,8 +335,4 @@ func torrentStopped(torrent *qbt.Torrent) bool {
 
 func withinASecond(a, b time.Time) bool {
 	return a.Sub(b).Abs() < time.Second
-}
-
-func comparePendingKeys(a, b pendingKey) int {
-	return cmp.Or(a.ruleID-b.ruleID, cmp.Compare(a.hash, b.hash))
 }

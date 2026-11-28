@@ -101,9 +101,9 @@ func runPendingDeleteStore(t *testing.T, db *database.DB) {
 			removed = append(removed, models.PendingDelete{RuleID: ruleA.ID, Hash: fmt.Sprintf("%040x", i)})
 		}
 	}
+	require.NoError(t, store.ApplyPendingDeletes(ctx, first.ID, models.PendingDeleteChange{Remove: removed}))
 	require.NoError(t, store.ApplyPendingDeletes(ctx, first.ID, models.PendingDeleteChange{
-		Put:    []models.PendingDelete{{RuleID: ruleA.ID, Hash: fmt.Sprintf("%040x", 5), UnregisteredSince: later}},
-		Remove: removed,
+		Put: []models.PendingDelete{{RuleID: ruleA.ID, Hash: fmt.Sprintf("%040x", 5), UnregisteredSince: later}},
 	}))
 	rows, err = store.ListPendingDeletes(ctx, first.ID)
 	require.NoError(t, err)

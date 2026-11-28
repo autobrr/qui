@@ -111,6 +111,20 @@ describe("WorkflowsOverview", () => {
     expect(endedRow?.textContent).toContain("Tracker works again or trackers edited: 1")
   })
 
+  it("finds the wait lines of a rule when the search names the rule", async () => {
+    mocks.activity = [
+      transferActivity({ id: 1, action: "unregistered_wait_started", ruleId: undefined, ruleName: undefined,
+        details: { count: 3, rules: [{ id: 4, name: "Clean unregistered", count: 3 }] } }),
+      transferActivity({ id: 2, hash: "aaaa1111", torrentName: "Show.S01.1080p-GRP" }),
+    ]
+    await renderOverview()
+
+    await screen.findByText("Show.S01.1080p-GRP")
+    fireEvent.change(screen.getByPlaceholderText("Filter by name, hash, or rule..."), { target: { value: "clean unreg" } })
+    expect(screen.getByText("3 torrents started waiting to be deleted")).toBeTruthy()
+    expect(screen.queryByText("Show.S01.1080p-GRP")).toBeNull()
+  })
+
   it("shows no All torrents badge for a Transfer rule with a condition", async () => {
     mocks.rules = [transferRule({
       conditions: {

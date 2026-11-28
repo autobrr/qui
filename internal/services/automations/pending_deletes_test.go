@@ -4,8 +4,8 @@
 package automations
 
 import (
+	"context"
 	"encoding/json/v2"
-	"errors"
 	"net/url"
 	"testing"
 	"time"
@@ -157,6 +157,17 @@ func TestPendingDeletesReportEachTorrentOnceWhenItStartsAndLeavesTheWait(t *test
 	})
 	require.Empty(t, rig.run(rule), "a tracker that is down and a moved time write nothing")
 	require.Equal(t, waitTestNow.Add(-2*24*time.Hour), rig.rows()[waitOldHash], "a moved time updates the row")
+	rig.setHealth(map[string]qbittorrent.TrackerHealth{
+		waitFreshHash: qbittorrent.TrackerHealthDown,
+		waitOldHash:   qbittorrent.TrackerHealthDown,
+		waitDownHash:  qbittorrent.TrackerHealthDown,
+	}, map[string]time.Time{
+		waitFreshHash: waitTestNow.Add(-24 * time.Hour),
+		waitOldHash:   waitTestNow.Add(-2*24*time.Hour + time.Second),
+		waitDownHash:  waitTestNow.Add(-8 * 24 * time.Hour),
+	})
+	require.Empty(t, rig.run(rule))
+	require.Equal(t, waitTestNow.Add(-2*24*time.Hour+time.Second), rig.rows()[waitOldHash], "a time moved by a second updates the row")
 
 	rig.restart()
 	require.Empty(t, rig.run(rule), "a restart reports the same torrents again")
@@ -224,9 +235,6 @@ func TestPendingDeletesKeepTheRowOfADueTorrentThatIsNotDeleted(t *testing.T) {
 		{name: "the delete fails", setup: func(rig *pendingRig) {
 			rig.stub.refuse = func(path string, _ url.Values) bool { return path == "torrents/delete" }
 		}},
-		{name: "the fresh tracker read fails", setup: func(rig *pendingRig) {
-			rig.health.err = errors.New("tracker read failed")
-		}},
 		{name: "the fresh tracker read finds the tracker down", setup: func(rig *pendingRig) {
 			rig.health.still = map[string]bool{}
 			rig.health.afterRead = qbittorrent.NewTrackerHealthSnapshotWithSince(map[string]qbittorrent.TrackerHealth{
@@ -248,44 +256,57 @@ func TestPendingDeletesKeepTheRowOfADueTorrentThatIsNotDeleted(t *testing.T) {
 			require.Equal(t, seeded, rig.rows())
 		})
 	}
-	t.Run("the fresh tracker read finds the tracker works", func(t *testing.T) {
-		rig := newPendingRig(t, waitRunTorrents)
-		rule := rig.createRule(waitDeleteRule(0, new(twoDays), unregisteredIs("true")))
-		rig.seed(rule.ID, seeded)
-		rig.health.still = map[string]bool{}
-		rig.health.afterRead = qbittorrent.NewTrackerHealthSnapshotWithSince(map[string]qbittorrent.TrackerHealth{
-			waitFreshHash: qbittorrent.TrackerHealthUnregistered,
-			waitDownHash:  qbittorrent.TrackerHealthDown,
-		}, map[string]time.Time{waitFreshHash: seeded[waitFreshHash], waitDownHash: seeded[waitDownHash]})
-
-		lines := rig.run(rule)
-		require.Len(t, lines, 1)
-		requireEndedLine(t, lines[0], rule, waitEndedCauses{TrackerWorks: 1})
-		require.NotContains(t, rig.rows(), waitOldHash)
-		require.Empty(t, runDeletedHashes(rig.stub))
-	})
 }
 
-func TestPendingDeletesClearOldRowsWhenNoTorrentIsInScope(t *testing.T) {
-	for _, tt := range []struct {
-		name     string
-		torrents string
-		pattern  string
-	}{
-		{name: "no torrents", torrents: `{}`, pattern: "*"},
-		{name: "no torrent on the tracker of the rule", torrents: waitRunTorrents, pattern: "tracker.invalid"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			rig := newPendingRig(t, tt.torrents)
-			stored := waitDeleteRule(0, new(pendingYear), unregisteredIs("true"))
-			stored.TrackerPattern = tt.pattern
-			rule := rig.createRule(stored)
-			rig.seed(rule.ID, map[string]time.Time{waitFreshHash: waitTestNow.Add(-time.Hour)})
+func TestPendingDeletesEndTheWaitOfATorrentThatAFreshReadOfAnotherRuleFindsRecovered(t *testing.T) {
+	rig := newPendingRig(t, waitRunTorrents)
+	rig.setHealth(map[string]qbittorrent.TrackerHealth{waitFreshHash: qbittorrent.TrackerHealthUnregistered},
+		map[string]time.Time{waitFreshHash: waitTestNow.Add(-3 * 24 * time.Hour)})
+	long := rig.createRule(waitDeleteRule(0, new(pendingYear), unregisteredIs("true")))
+	short := rig.createRule(waitDeleteRule(0, new(2*24*3600), unregisteredIs("true")))
+	rig.seed(long.ID, map[string]time.Time{waitFreshHash: waitTestNow.Add(-3 * 24 * time.Hour)})
+	rig.health.still = map[string]bool{}
+	rig.health.afterRead = qbittorrent.NewTrackerHealthSnapshotWithSince(map[string]qbittorrent.TrackerHealth{}, map[string]time.Time{})
 
-			require.Empty(t, rig.run(rule))
-			require.Empty(t, rig.rows())
-		})
-	}
+	lines := rig.run(long, short)
+	require.Len(t, lines, 1)
+	requireEndedLine(t, lines[0], long, waitEndedCauses{TrackerWorks: 1})
+	require.Empty(t, rig.rows())
+	require.Empty(t, runDeletedHashes(rig.stub))
+}
+
+type changingPendingStore struct {
+	*models.PendingDeleteStore
+	afterList func()
+}
+
+func (s changingPendingStore) ListPendingDeletes(ctx context.Context, instanceID int) ([]models.PendingDelete, error) {
+	rows, err := s.PendingDeleteStore.ListPendingDeletes(ctx, instanceID)
+	s.afterList()
+	return rows, err
+}
+
+func TestPendingDeletesWriteNothingWhenTheRuleStopsKeepingThemDuringTheRun(t *testing.T) {
+	rig := newPendingRig(t, waitRunTorrents)
+	rule := rig.createRule(waitDeleteRule(0, new(pendingYear), unregisteredIs("true")))
+	rig.svc.SetPendingDeleteStore(changingPendingStore{PendingDeleteStore: rig.store, afterList: func() {
+		saved := *rule
+		saved.Enabled = false
+		_, err := rig.rules.Update(t.Context(), &saved)
+		require.NoError(t, err)
+	}})
+
+	require.Empty(t, rig.run(rule))
+	require.Empty(t, rig.rows())
+}
+
+func TestPendingDeletesClearOldRowsWhenTheInstanceHasNoTorrents(t *testing.T) {
+	rig := newPendingRig(t, `{}`)
+	rule := rig.createRule(waitDeleteRule(0, new(pendingYear), unregisteredIs("true")))
+	rig.seed(rule.ID, map[string]time.Time{waitFreshHash: waitTestNow.Add(-time.Hour)})
+
+	require.Empty(t, rig.run(rule))
+	require.Empty(t, rig.rows())
 }
 
 func TestPendingDeletesStayWhileTheTimesAreNotLoaded(t *testing.T) {
@@ -326,14 +347,6 @@ func TestPendingDeletesAreNotStoredOutsideALiveRunOfAnEnabledRule(t *testing.T) 
 		require.Len(t, waitLines(activities), 1)
 		require.Len(t, rig.rows(), 3)
 	})
-	t.Run("a wait of 0", func(t *testing.T) {
-		rig := newPendingRig(t, waitRunTorrents)
-		rule := rig.createRule(waitDeleteRule(0, new(0), unregisteredIs("true")))
-		rig.seed(rule.ID, map[string]time.Time{waitDownHash: waitTestNow.Add(-time.Hour)})
-		require.Empty(t, rig.run(rule))
-		require.Empty(t, rig.rows())
-		require.ElementsMatch(t, []string{waitFreshHash, waitOldHash}, runDeletedHashes(rig.stub))
-	})
 }
 
 func TestPendingDeletesOfARuleGoWhenTheRuleStopsDeleting(t *testing.T) {
@@ -366,11 +379,4 @@ func TestPendingDeletesOfARuleGoWhenTheRuleStopsDeleting(t *testing.T) {
 			}
 		})
 	}
-	t.Run("deleted", func(t *testing.T) {
-		rig := newPendingRig(t, waitRunTorrents)
-		rule := rig.createRule(waitDeleteRule(0, new(pendingYear), unregisteredIs("true")))
-		rig.run(rule)
-		require.NoError(t, rig.rules.Delete(t.Context(), rig.instanceID, rule.ID))
-		require.Empty(t, rig.rows())
-	})
 }

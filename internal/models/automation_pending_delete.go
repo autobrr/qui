@@ -5,6 +5,8 @@ package models
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -30,8 +32,10 @@ type PendingDeleteChange struct {
 	Activities []*AutomationActivity
 }
 
+var ErrPendingDeleteRuleChanged = errors.New("a rule of the pending deletes no longer keeps them")
+
 func (c PendingDeleteChange) IsEmpty() bool {
-	return len(c.Put) == 0 && len(c.Remove) == 0 && len(c.Activities) == 0
+	return len(c.Put) == 0 && len(c.Remove) == 0
 }
 
 type PendingDeleteStore struct {
@@ -78,17 +82,14 @@ func (s *PendingDeleteStore) ApplyPendingDeletes(ctx context.Context, instanceID
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := requireRulesKeepPendingDeletes(ctx, tx, change); err != nil {
+		return err
+	}
 	if err := putPendingDeletes(ctx, tx, instanceID, change.Put); err != nil {
 		return err
 	}
 	if err := removePendingDeletes(ctx, tx, change.Remove); err != nil {
 		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM automation_pending_deletes
-		WHERE rule_id IN (SELECT id FROM automations WHERE instance_id = ? AND (enabled = 0 OR dry_run = 1))
-	`, instanceID); err != nil {
-		return fmt.Errorf("remove pending deletes of rules that do not delete: %w", err)
 	}
 	ids := make([]int, len(change.Activities))
 	for i, activity := range change.Activities {
@@ -101,6 +102,46 @@ func (s *PendingDeleteStore) ApplyPendingDeletes(ctx context.Context, instanceID
 	}
 	for i, activity := range change.Activities {
 		activity.ID = ids[i]
+	}
+	return nil
+}
+
+func requireRulesKeepPendingDeletes(ctx context.Context, tx dbinterface.TxQuerier, change PendingDeleteChange) error {
+	ruleIDs := make(map[int]struct{})
+	for _, row := range slices.Concat(change.Put, change.Remove) {
+		ruleIDs[row.RuleID] = struct{}{}
+	}
+	args := make([]any, 0, len(ruleIDs))
+	for ruleID := range ruleIDs {
+		args = append(args, ruleID)
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT enabled, dry_run, conditions FROM automations WHERE id IN (`+
+		strings.TrimSuffix(strings.Repeat("?,", len(args)), ",")+`)`, args...)
+	if err != nil {
+		return fmt.Errorf("read the rules of pending deletes: %w", err)
+	}
+	defer rows.Close()
+	keeping := 0
+	for rows.Next() {
+		var enabled, dryRun int
+		var conditionsJSON string
+		if err := rows.Scan(&enabled, &dryRun, &conditionsJSON); err != nil {
+			return fmt.Errorf("scan the rule of a pending delete: %w", err)
+		}
+		var conditions ActionConditions
+		if err := json.Unmarshal([]byte(conditionsJSON), &conditions); err != nil {
+			return fmt.Errorf("read the conditions of the rule of a pending delete: %w", err)
+		}
+		rule := Automation{Enabled: SQLiteIntToBool(enabled), DryRun: SQLiteIntToBool(dryRun), Conditions: &conditions}
+		if rule.KeepsPendingDeletes() {
+			keeping++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read the rules of pending deletes: %w", err)
+	}
+	if keeping != len(ruleIDs) {
+		return ErrPendingDeleteRuleChanged
 	}
 	return nil
 }
