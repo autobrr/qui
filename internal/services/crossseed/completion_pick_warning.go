@@ -39,13 +39,17 @@ func (w *completionPickWarnings) clear(instanceID int) {
 
 func (s *Service) logCompletionPickWithoutKey(instanceID int, torrent *qbt.Torrent, pick models.SitePick, clients *gazelleClientSet) {
 	state := fmt.Sprintf("%v|%v|%t", pick.Clean(), clients.hosts(), clients.disabled())
+	reason, fix := "none of them has a usable API key", "add a RED/OPS API key in the Gazelle (OPS/RED) settings, or pick other sites in the completion settings"
+	if clients.disabled() {
+		reason, fix = "RED/OPS is off", "turn on RED/OPS in the Gazelle (OPS/RED) settings, or pick other sites in the completion settings"
+	}
 	event := log.Trace()
 	if s.completionPickWarnings.first(instanceID, state) {
-		event = log.Warn().Str("fix", "add a RED/OPS API key in the Gazelle (OPS/RED) settings, or pick other sites in the completion settings")
+		event = log.Warn().Str("fix", fix)
 	}
 	event.
 		Int("instanceID", instanceID).
 		Str("hash", torrent.Hash).
 		Str("name", torrent.Name).
-		Msg("[CROSSSEED-COMPLETION] Skipping completion searches: the Site pick asks only RED/OPS sites, and none of them has a usable API key")
+		Msg("[CROSSSEED-COMPLETION] Skipping completion searches: the Site pick asks only RED/OPS sites, and " + reason)
 }

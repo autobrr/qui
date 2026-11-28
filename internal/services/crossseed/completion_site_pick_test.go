@@ -63,15 +63,19 @@ func TestExecuteCompletionSearch_AsksTheSitesOfTheSitePick(t *testing.T) {
 	}
 }
 
-const completionPickWithoutKeyLine = "[CROSSSEED-COMPLETION] Skipping completion searches: the Site pick asks only RED/OPS sites, and none of them has a usable API key"
+const (
+	completionPickWithoutKeyLine = "[CROSSSEED-COMPLETION] Skipping completion searches: the Site pick asks only RED/OPS sites, and none of them has a usable API key"
+	completionPickRedOpsOffLine  = "[CROSSSEED-COMPLETION] Skipping completion searches: the Site pick asks only RED/OPS sites, and RED/OPS is off"
+)
 
 func TestExecuteCompletionSearch_RedOpsOnlyPickWithoutAUsableKeyWarnsOnce(t *testing.T) {
 	tests := []struct {
 		name     string
 		settings func(*models.CrossSeedAutomationSettings)
+		line     string
 	}{
-		{name: "the picked site has no API key", settings: func(s *models.CrossSeedAutomationSettings) { s.RedactedAPIKey = "" }},
-		{name: "RED/OPS is off", settings: func(s *models.CrossSeedAutomationSettings) { s.GazelleEnabled = false }},
+		{name: "the picked site has no API key", settings: func(s *models.CrossSeedAutomationSettings) { s.RedactedAPIKey = "" }, line: completionPickWithoutKeyLine},
+		{name: "RED/OPS is off with a stored key", settings: func(s *models.CrossSeedAutomationSettings) { s.GazelleEnabled = false }, line: completionPickRedOpsOffLine},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -87,8 +91,8 @@ func TestExecuteCompletionSearch_RedOpsOnlyPickWithoutAUsableKeyWarnsOnce(t *tes
 				}
 			})
 
-			require.Equal(t, 1, lines[logbudget.Line{Level: "warn", Message: completionPickWithoutKeyLine}], "one warning for three completed torrents")
-			require.Equal(t, 2, lines[logbudget.Line{Level: "trace", Message: completionPickWithoutKeyLine}])
+			require.Equal(t, 1, lines[logbudget.Line{Level: "warn", Message: tc.line}], "one warning for three completed torrents")
+			require.Equal(t, 2, lines[logbudget.Line{Level: "trace", Message: tc.line}])
 			require.Zero(t, asks.redAPI.Load()+asks.opsAPI.Load()+asks.musicTorznab.Load()+asks.redTorznab.Load(), "no site may be asked")
 		})
 	}
@@ -107,7 +111,7 @@ func TestExecuteCompletionSearch_RedOpsOnlyPickWithoutAUsableKeyWarnsAgainAfterA
 		lines := logbudget.Count(t, func() {
 			require.NoError(t, service.executeCompletionSearch(t.Context(), 1, source, settings, redOnlyCompletion()))
 		})
-		return lines[logbudget.Line{Level: "warn", Message: completionPickWithoutKeyLine}]
+		return lines[logbudget.Line{Level: "warn", Message: completionPickWithoutKeyLine}] + lines[logbudget.Line{Level: "warn", Message: completionPickRedOpsOffLine}]
 	}
 
 	require.Equal(t, 1, warnings(settings), "the first completed torrent warns")
