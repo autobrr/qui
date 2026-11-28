@@ -1013,6 +1013,11 @@
         "saveFailed": "Не вдалося зберегти налаштування"
       }
     },
+    "unregisteredDeleteFacts": {
+      "since": "Незареєстрований з {{time}}",
+      "tracker": "Трекер: {{host}}",
+      "message": "Повідомлення: {{message}}"
+    },
     "activityRunDialog": {
       "run": "запуск",
       "dryRunNote": "Тестовий запуск: без змін.",

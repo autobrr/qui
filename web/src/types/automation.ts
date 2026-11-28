@@ -386,8 +386,16 @@ export interface AutomationActivity {
     paths?: Record<string, number>
     rules?: { id: number; name: string; count: number }[]
     causes?: { stopped: number; trackerWorks: number }
+    unregistered?: AutomationUnregisteredFacts
   }
   createdAt: string
+}
+
+export interface AutomationUnregisteredFacts {
+  since?: string
+  host?: string
+  status?: number
+  message?: string
 }
 
 export interface AutomationActivityRunItem {

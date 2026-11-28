@@ -987,6 +987,11 @@
         "saveFailed": "Selhalo uložení nastavení"
       }
     },
+    "unregisteredDeleteFacts": {
+      "since": "Neregistrovaný od {{time}}",
+      "tracker": "Tracker: {{host}}",
+      "message": "Zpráva: {{message}}"
+    },
     "activityRunDialog": {
       "run": "spustit",
       "dryRunNote": "Testovací spuštění: žádné změny nebyly použity.",

@@ -1838,7 +1838,7 @@ func (s *Service) applyRules(ctx context.Context, instanceID int, rules []*model
 
 	for _, hash := range deletions.order {
 		pending := deletions.byHash[hash]
-		log.Info().Str("hash", hash).Str("name", torrentByHash[hash].Name).Bool("isTrigger", pending.trigger).Str("reason", "condition matched").Bool("filesKept", pending.filesKept()).Msg(pending.logMsg)
+		log.Info().Str("hash", hash).Str("name", torrentByHash[hash].Name).Bool("isTrigger", pending.trigger).Str("reason", "condition matched").Bool("filesKept", pending.filesKept()).Func(pending.logUnregistered).Msg(pending.logMsg)
 	}
 	if !dryRun {
 		s.startSkipWindow(instanceID, deletions.order, now)
@@ -1901,11 +1901,12 @@ func (s *Service) applyRules(ctx context.Context, instanceID int, rules []*model
 	exportResults := s.executeExportToInstance(ctx, instanceID, s.reserveExports(plan.exports))
 
 	deleteActivity := func(hash string, pending selectedDeletion, action, outcome, reason string) *models.AutomationActivity {
-		detailsJSON, _ := json.Marshal(struct { //nolint:errchkjson // string and bool fields cannot fail to encode
-			DeleteMode string `json:"deleteMode"`
-			FilesKept  bool   `json:"filesKept"`
-			IsTrigger  bool   `json:"isTrigger"`
-		}{pending.deleteMode, pending.filesKept(), pending.trigger})
+		detailsJSON, _ := json.Marshal(struct {
+			DeleteMode   string             `json:"deleteMode"`
+			FilesKept    bool               `json:"filesKept"`
+			IsTrigger    bool               `json:"isTrigger"`
+			Unregistered *unregisteredFacts `json:"unregistered,omitempty"`
+		}{pending.deleteMode, pending.filesKept(), pending.trigger, pending.unregistered})
 		torrent := torrentByHash[hash]
 		return &models.AutomationActivity{
 			InstanceID:    instanceID,

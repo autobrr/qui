@@ -90,6 +90,21 @@ describe("WorkflowsOverview", () => {
     expect(screen.getByText(actionLabel).parentElement?.textContent).toBe(`${actionLabel}Failed`)
   })
 
+  it("shows what the tracker said on the row of a torrent that a rule deleted as unregistered", async () => {
+    mocks.activity = [
+      transferActivity({ hash: "aaaa1111", torrentName: "Show.S01.1080p-GRP", action: "deleted_condition",
+        details: { deleteMode: "delete", filesKept: true, unregistered: {
+          since: "2026-01-01T09:00:00Z", host: "tracker.example.invalid", status: 4, message: "Unregistered torrent",
+        } } }),
+    ]
+    await renderOverview()
+
+    await screen.findByText("Show.S01.1080p-GRP")
+    expect(screen.getByText(/^Unregistered since /)).not.toBeNull()
+    expect(screen.getByText("Tracker: tracker.example.invalid").parentElement?.textContent).toBe("Tracker: tracker.example.invalidError")
+    expect(screen.getByText("Message: Unregistered torrent")).not.toBeNull()
+  })
+
   it("shows the torrents that start and end the wait of a delete rule, with the rule and the cause", async () => {
     mocks.activity = [
       transferActivity({ id: 1, action: "unregistered_wait_started", ruleId: undefined, ruleName: undefined,
