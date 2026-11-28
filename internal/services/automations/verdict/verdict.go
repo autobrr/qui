@@ -123,6 +123,10 @@ func (w Waited) UnregisteredNow(hash string) bool {
 	return !isCleared(w.cleared, hash) && w.snapshot.Health(hash) == qbittorrent.TrackerHealthUnregistered
 }
 
+func (w Waited) Since(hash string) (time.Time, bool) {
+	return w.snapshot.UnregisteredSince(hash)
+}
+
 func (w Waited) DueAt(hash string, wait time.Duration) time.Time {
 	since, timed := w.snapshot.UnregisteredSince(hash)
 	if !timed {

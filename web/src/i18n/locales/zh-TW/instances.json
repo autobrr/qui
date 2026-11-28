@@ -509,6 +509,10 @@
       "original": "原始：{{domain}}",
       "programLabel": "程式：{{name}}",
       "ruleLabel": "規則：{{name}}",
+      "waitEndedCauses": {
+        "stopped": "已停止：{{count}}",
+        "trackerWorks": "Tracker 恢復正常或 Tracker 已編輯：{{count}}"
+      },
       "trackers": "{{count}} 個 Tracker",
       "trackers_other": "{{count}} 個 Tracker",
       "limit": "限制",
@@ -558,7 +562,9 @@
         "exportToInstance": "匯出到實例",
         "transferToInstance": "傳輸到實例",
         "ruleSkipped": "規則未執行",
-        "deleteWaiting": "等待刪除"
+        "deleteWaiting": "等待刪除",
+        "unregisteredWaitStarted": "開始等待",
+        "unregisteredWaitEnded": "結束等待"
       },
       "shareLimit": {
         "global": "全域",
@@ -596,7 +602,9 @@
         "exportedDryRun_other": "將匯出 {{count}} 個種子",
         "exportFailed_other": "{{count}} 個種子匯出失敗",
         "transferredDryRun_other": "將傳輸 {{count}} 個種子",
-        "deleteWaiting_other": "{{count}} 個種子將等待刪除"
+        "deleteWaiting_other": "{{count}} 個種子將等待刪除",
+        "unregisteredWaitStarted_other": "{{count}} 個種子開始等待刪除",
+        "unregisteredWaitEnded_other": "{{count}} 個種子不再等待刪除"
       },
       "deleteDialog": {
         "title": "刪除規則",
@@ -952,7 +960,9 @@
         "exported_to_instance": "匯出到實例",
         "transferred_to_instance": "傳輸到實例",
         "rule_skipped": "規則未執行",
-        "delete_waiting": "模擬執行（等待刪除）"
+        "delete_waiting": "模擬執行（等待刪除）",
+        "unregistered_wait_started": "開始等待刪除",
+        "unregistered_wait_ended": "不再等待刪除"
       }
     },
     "reannounceOverview": {

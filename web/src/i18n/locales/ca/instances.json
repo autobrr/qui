@@ -550,6 +550,10 @@
       "original": "Original: {{domain}}",
       "programLabel": "Programa: {{name}}",
       "ruleLabel": "Regla: {{name}}",
+      "waitEndedCauses": {
+        "stopped": "Aturat: {{count}}",
+        "trackerWorks": "El tracker torna a funcionar o s'han editat els trackers: {{count}}"
+      },
       "trackers": "{{count}} tracker",
       "trackers_other": "{{count}} trackers",
       "limit": "Límit",
@@ -598,7 +602,9 @@
         "exportToInstance": "Exporta a una instància",
         "transferToInstance": "Transfereix a una instància",
         "ruleSkipped": "Regla no executada",
-        "deleteWaiting": "Pendent d'eliminar"
+        "deleteWaiting": "Pendent d'eliminar",
+        "unregisteredWaitStarted": "Espera iniciada",
+        "unregisteredWaitEnded": "Espera acabada"
       },
       "shareLimit": {
         "global": "Global",
@@ -655,7 +661,11 @@
         "transferredDryRun_one": "{{count}} torrent es transferiria",
         "transferredDryRun_other": "{{count}} torrents es transferirien",
         "deleteWaiting_one": "{{count}} torrent esperaria a ser eliminat",
-        "deleteWaiting_other": "{{count}} torrents esperarien a ser eliminats"
+        "deleteWaiting_other": "{{count}} torrents esperarien a ser eliminats",
+        "unregisteredWaitStarted_one": "{{count}} torrent ha començat a esperar per ser eliminat",
+        "unregisteredWaitStarted_other": "{{count}} torrents han començat a esperar per ser eliminats",
+        "unregisteredWaitEnded_one": "{{count}} torrent ja no espera per ser eliminat",
+        "unregisteredWaitEnded_other": "{{count}} torrents ja no esperen per ser eliminats"
       },
       "deleteDialog": {
         "title": "Elimina la regla",
@@ -1403,7 +1413,9 @@
         "exported_to_instance": "Exporta a una instància",
         "transferred_to_instance": "Transfereix a una instància",
         "rule_skipped": "Regla no executada",
-        "delete_waiting": "Execució de prova (pendent d'eliminar)"
+        "delete_waiting": "Execució de prova (pendent d'eliminar)",
+        "unregistered_wait_started": "Ha començat a esperar per eliminar",
+        "unregistered_wait_ended": "Ja no espera per eliminar"
       }
     },
     "orphanScanOverview": {

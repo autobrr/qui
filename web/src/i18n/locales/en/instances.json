@@ -509,6 +509,10 @@
       "original": "Original: {{domain}}",
       "programLabel": "Program: {{name}}",
       "ruleLabel": "Rule: {{name}}",
+      "waitEndedCauses": {
+        "stopped": "Stopped: {{count}}",
+        "trackerWorks": "Tracker works again or trackers edited: {{count}}"
+      },
       "trackers": "{{count}} tracker",
       "trackers_other": "{{count}} trackers",
       "limit": "Limit",
@@ -559,7 +563,9 @@
         "exportToInstance": "Export to instance",
         "transferToInstance": "Transfer to instance",
         "ruleSkipped": "Rule not run",
-        "deleteWaiting": "Waiting to delete"
+        "deleteWaiting": "Waiting to delete",
+        "unregisteredWaitStarted": "Wait started",
+        "unregisteredWaitEnded": "Wait ended"
       },
       "shareLimit": {
         "global": "Global",
@@ -616,7 +622,11 @@
         "transferredDryRun_one": "{{count}} torrent would be transferred",
         "transferredDryRun_other": "{{count}} torrents would be transferred",
         "deleteWaiting_one": "{{count}} torrent would wait to be deleted",
-        "deleteWaiting_other": "{{count}} torrents would wait to be deleted"
+        "deleteWaiting_other": "{{count}} torrents would wait to be deleted",
+        "unregisteredWaitStarted_one": "{{count}} torrent started waiting to be deleted",
+        "unregisteredWaitStarted_other": "{{count}} torrents started waiting to be deleted",
+        "unregisteredWaitEnded_one": "{{count}} torrent no longer waits to be deleted",
+        "unregisteredWaitEnded_other": "{{count}} torrents no longer wait to be deleted"
       },
       "deleteDialog": {
         "title": "Delete Rule",
@@ -982,7 +992,9 @@
         "exported_to_instance": "Export to instance",
         "transferred_to_instance": "Transfer to instance",
         "rule_skipped": "Rule not run",
-        "delete_waiting": "Dry-run (waiting to delete)"
+        "delete_waiting": "Dry-run (waiting to delete)",
+        "unregistered_wait_started": "Started waiting to delete",
+        "unregistered_wait_ended": "No longer waiting to delete"
       }
     },
     "reannounceOverview": {
