@@ -99,7 +99,7 @@
   },
   "completion": {
     "title": "On completion",
-    "description": "Tags and auto-resume for cross-seeds that the search after a completed download adds. Turn the search on per instance below."
+    "description": "Tags and auto-resume for cross-seeds added by on-completion searches. Enable per instance below."
   },
   "sourceCard": {
     "crossSeedTags": "Cross-seed tags",
