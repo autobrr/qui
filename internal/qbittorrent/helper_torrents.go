@@ -43,32 +43,60 @@ func (sm *SyncManager) RefuseHelperFiles(ctx context.Context, instanceID int, ha
 		if err != nil {
 			return fmt.Errorf("read the torrents of instance %d: %w", instanceID, err)
 		}
-		hashes = make([]string, 0, len(torrents))
-		for _, torrent := range torrents {
-			hashes = append(hashes, torrent.Hash)
-		}
+		kinds := helpers.HelperKinds(instanceID)
+		return refuseHelperTargets(kinds, torrents)
 	}
 	kinds := helpers.HelperKinds(instanceID)
-	if kinds == nil {
+	if len(kinds) == 0 {
 		return nil
 	}
-	if i := slices.IndexFunc(hashes, func(hash string) bool {
-		id, err := infohash.Parse(hash)
-		return err == nil && kinds[id.String()] != ""
-	}); i >= 0 {
-		return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, hashes[i])
+	parsed := make([]infohash.Hash, 0, len(hashes))
+	for _, raw := range hashes {
+		id, err := infohash.Parse(raw)
+		if err != nil {
+			continue
+		}
+		if kinds[id.String()] != "" {
+			return fmt.Errorf("%w: %s", ErrHelperTorrentFiles, raw)
+		}
+		parsed = append(parsed, id)
 	}
-	if !allTorrents && len(hashes) > 0 {
-		if torrents, err := sm.GetTorrentRefs(ctx, instanceID, TorrentRefFilter{
-			Hashes:             infohash.ParseAll(hashes),
-			WithHelperTorrents: true,
-		}); err == nil {
-			if err := refuseHelperTargets(kinds, torrents); err != nil {
-				return err
-			}
+	if len(parsed) == 0 {
+		return nil
+	}
+	torrents, err := sm.GetTorrentRefs(ctx, instanceID, TorrentRefFilter{
+		Hashes:             parsed,
+		WithHelperTorrents: true,
+	})
+	if err == nil {
+		if herr := refuseHelperTargets(kinds, torrents); herr != nil {
+			return herr
+		}
+		parsed = unresolvedHelperHashes(parsed, torrents)
+		if len(parsed) == 0 {
+			return nil
 		}
 	}
-	return nil
+	fresh, freshErr := sm.GetTorrentRefsFresh(ctx, instanceID, TorrentRefFilter{
+		Hashes:             parsed,
+		WithHelperTorrents: true,
+	})
+	if freshErr != nil {
+		return fmt.Errorf("read the torrents of instance %d: %w", instanceID, freshErr)
+	}
+	return refuseHelperTargets(kinds, fresh)
+}
+
+func unresolvedHelperHashes(requested []infohash.Hash, resolved []*qbt.Torrent) []infohash.Hash {
+	var missing []infohash.Hash
+	for _, id := range requested {
+		if !slices.ContainsFunc(resolved, func(t *qbt.Torrent) bool {
+			return t != nil && (id.Is(t.Hash) || id.Is(t.InfohashV1) || id.Is(t.InfohashV2))
+		}) {
+			missing = append(missing, id)
+		}
+	}
+	return missing
 }
 
 func refuseHelperTargets(kinds map[string]string, targets []*qbt.Torrent) error {

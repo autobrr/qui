@@ -5,7 +5,11 @@ package qbittorrent
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -104,4 +108,41 @@ func TestDeleteWithFilesRefusesAHybridHelperTorrentByOtherHash(t *testing.T) {
 	require.ErrorIs(t, err, ErrHelperTorrentFiles)
 	require.Zero(t, stub.Calls("torrents/delete"))
 	require.FileExists(t, filepath.Join(root, hybridV1, "Show.S01E01.mkv"))
+
+	sm.SetHelperTorrents(fakeHelpers{hybridV2: "transfer"})
+	require.ErrorIs(t, sm.RefuseHelperFiles(t.Context(), 1, []string{"all"}), ErrHelperTorrentFiles)
+
+	// Unsynced client forces GetTorrentRefsFresh and still refuses by alternate hash.
+	unsynced, err := NewClientWithTimeout(1, stub.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(unsynced.optimisticUpdates.Close)
+	smFresh := NewSyncManager(&ClientPool{clients: map[int]*Client{1: unsynced}, creationLocks: map[int]*sync.Mutex{}}, nil)
+	smFresh.SetHelperTorrents(fakeHelpers{hybridV1: "transfer"})
+	require.ErrorIs(t, smFresh.RefuseHelperFiles(t.Context(), 1, []string{hybridV2}), ErrHelperTorrentFiles)
+
+	// A failing fresh sync fails closed when helpers exist on the instance.
+	var failSync atomic.Bool
+	badSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.11.4"))
+		case "/api/v2/sync/maindata":
+			if failSync.Load() {
+				http.Error(w, "boom", http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true}`))
+		default:
+			_, _ = w.Write([]byte("Ok."))
+		}
+	}))
+	t.Cleanup(badSrv.Close)
+	down, err := NewClientWithTimeout(1, badSrv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	require.NoError(t, err)
+	t.Cleanup(down.optimisticUpdates.Close)
+	require.NoError(t, down.SyncOwner().Sync(t.Context()))
+	failSync.Store(true)
+	smDown := NewSyncManager(&ClientPool{clients: map[int]*Client{1: down}, creationLocks: map[int]*sync.Mutex{}}, nil)
+	smDown.SetHelperTorrents(fakeHelpers{hybridV1: "transfer"})
+	require.Error(t, smDown.RefuseHelperFiles(t.Context(), 1, []string{hybridV2}))
 }
