@@ -415,9 +415,7 @@ func (sm *SyncManager) StillUnregistered(ctx context.Context, instanceID int, ha
 				}
 			}
 		}
-		if len(seen) > 0 {
-			sm.applySeenTrackers(ctx, instanceID, seen...)
-		}
+		sm.applySeenTrackers(ctx, instanceID, seen...)
 		if len(stopped) > 0 {
 			sm.forgetTrackerHealth(ctx, instanceID, stopped, false)
 		}

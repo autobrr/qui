@@ -15,6 +15,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/logbudget"
 )
 
 const (
@@ -86,9 +87,13 @@ func TestDeleteRowRecordsWhatTheTrackerSaidOnlyForAnUnregisteredTriggerOfARuleTh
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, instanceID, _ := newWaitRunService(t, &fakeTrackerHealth{snapshot: factsSnapshot()})
-			_, err := svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{tt.rule}, false)
+			var err error
+			lines := logbudget.Count(t, func() {
+				_, err = svc.applyRulesForInstance(t.Context(), instanceID, true, []*models.Automation{tt.rule}, false)
+			})
 			require.NoError(t, err)
 			require.Equal(t, tt.want, deleteRowFacts(t, svc, instanceID))
+			require.Zero(t, lines.Message("automations: could not encode the delete details"))
 		})
 	}
 }
