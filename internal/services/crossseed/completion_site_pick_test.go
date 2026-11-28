@@ -37,6 +37,7 @@ func TestExecuteCompletionSearch_AsksTheSitesOfTheSitePick(t *testing.T) {
 	}{
 		{name: "an empty pick asks every site", pick: models.SitePick{}, redAPI: true, opsAPI: true, musicTorznab: true},
 		{name: "a RED-only pick asks RED through the API and no Torznab indexer", pick: models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{red}}, redAPI: true},
+		{name: "a RED and OPS pick asks both through the API and no Torznab indexer", pick: models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{ops, red}}, redAPI: true, opsAPI: true},
 		{name: "a Torznab-only pick asks no RED/OPS site", pick: models.SitePick{IndexerIDs: []int{7}, GazelleSites: []string{}}, musicTorznab: true},
 		{name: "a pick of the RED Torznab indexer that the RED key replaces asks RED through the API", pick: models.SitePick{IndexerIDs: []int{8}, GazelleSites: []string{ops}}, redAPI: true, opsAPI: true},
 		{name: "a migrated pick asks every RED/OPS site beside its Torznab indexers", pick: models.SitePick{IndexerIDs: []int{7}, GazelleSites: []string{ops, red}}, redAPI: true, opsAPI: true, musicTorznab: true},
@@ -57,6 +58,34 @@ func TestExecuteCompletionSearch_AsksTheSitesOfTheSitePick(t *testing.T) {
 			require.Equal(t, tc.opsAPI, asks.opsAPI.Load() > 0, "OPS API")
 			require.Equal(t, tc.musicTorznab, asks.musicTorznab.Load() > 0, "music Torznab indexer")
 			require.Equal(t, tc.redTorznab, asks.redTorznab.Load() > 0, "RED Torznab indexer")
+		})
+	}
+}
+
+func TestExecuteCompletionSearch_RedOpsOnlyPickWithoutAUsableKeyFailsWithThePickReason(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings func(*models.CrossSeedAutomationSettings)
+	}{
+		{name: "the picked site has no API key", settings: func(s *models.CrossSeedAutomationSettings) { s.RedactedAPIKey = "" }},
+		{name: "RED/OPS is off", settings: func(s *models.CrossSeedAutomationSettings) { s.GazelleEnabled = false }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			asks := &sitePickAsks{}
+			service, source, settings := newCompletionSitePickRig(t, asks)
+			tc.settings(settings)
+			_, err := service.automationStore.UpsertSettings(t.Context(), settings)
+			require.NoError(t, err)
+
+			err = service.executeCompletionSearch(t.Context(), 1, source, settings, &models.InstanceCrossSeedCompletionSettings{
+				InstanceID: 1,
+				Enabled:    true,
+				SitePick:   models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{"redacted.sh"}},
+			})
+
+			require.ErrorIs(t, err, errGazellePickNoKey)
+			require.Zero(t, asks.redAPI.Load()+asks.opsAPI.Load()+asks.musicTorznab.Load()+asks.redTorznab.Load(), "no site may be asked")
 		})
 	}
 }

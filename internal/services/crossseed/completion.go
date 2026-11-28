@@ -724,6 +724,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 	sites := s.resolveSitePick(ctx, pick, gazelleClients.hosts())
 	scope := s.collectSearchScope(ctx, instanceID, torrent, sites, searchScopeFacts{
+		gazelleOnly: redOpsOnlyPick(pick),
 		gazelleOff:  gazelleClients.disabled(),
 		gazelleKeys: gazelleClients.hosts(),
 	})
