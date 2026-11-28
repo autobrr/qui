@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 
@@ -84,8 +84,6 @@ func (rig *secretsRig) plant(name string, audience secretAudience) string {
 func (rig *secretsRig) qBittorrentResponses() map[string]string {
 	pathTracker := "https://tracker.example.invalid/" + rig.plant("announce path key", shownWithTorrentsWrite) + "/announce"
 	queryTracker := "https://query.example.invalid/announce?passkey=" + rig.plant("announce query passkey", shownWithTorrentsWrite)
-	unregisteredRows, workingRows := stubTrackerRows(pathTracker, qbt.TrackerStatusNotWorking, rig.trackerMessage(pathTracker)), stubTrackerRows(queryTracker, qbt.TrackerStatusOK, "")
-	first, second := stubTorrent(stubHashA, stubReleaseName, pathTracker, unregisteredRows, true), stubTorrent(stubHashB, "bbb", queryTracker, workingRows, false)
 	feedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed key", shownWithTorrentsWrite) + "/feed.xml"
 	feedNamedByURL := "https://rss.example.invalid/rss/" + rig.plant("RSS feed name key", shownWithTorrentsWrite) + "/feed.xml"
 	goneFeedURL := "https://rss.example.invalid/rss/" + rig.plant("RSS rule feed key", shownWithTorrentsWrite) + "/gone.xml"
@@ -118,15 +116,10 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		`"proxy_password":"` + rig.plant("proxy password", shownToNobody) + `","mail_notification_password":"` + rig.plant("email password", shownToNobody) + `"}`
 	creationTasks := `[{"taskID":"task","status":"Finished","trackers":["` + pathTracker + `","` + queryTracker + `"],` +
 		`"urlSeeds":["https://seed.example.invalid/` + rig.plant("creation task web seed passkey", shownWithTorrentsWrite) + `/file"]}]`
-	return map[string]string{
-		"/api/v2/app/webapiVersion": "2.16.0",
-		"/api/v2/app/version":       "v5.2.0",
-		"/api/v2/auth/login":        "Ok.",
-		"/api/v2/sync/maindata": `{"rid":1,"full_update":true,"torrents":{"` + stubHashA + `":` + first + `,"` + stubHashB + `":` + second + `},` +
-			`"trackers":{"` + pathTracker + `":["` + stubHashA + `"],"` + queryTracker + `":["` + stubHashB + `"]},"server_state":{"connection_status":"connected"}}`,
-		"/api/v2/torrents/info":                   `[` + first + `,` + second + `]`,
-		"/api/v2/torrents/trackers?" + stubHashA:  unregisteredRows,
-		"/api/v2/torrents/trackers?" + stubHashB:  workingRows,
+	responses := map[string]string{
+		"/api/v2/app/webapiVersion":               "2.16.0",
+		"/api/v2/app/version":                     "v5.2.0",
+		"/api/v2/auth/login":                      "Ok.",
 		"/api/v2/torrents/delete":                 "",
 		"/api/v2/app/preferences":                 preferences,
 		"/api/v2/app/buildInfo":                   `{}`,
@@ -151,6 +144,8 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/rss/matchingArticles": `{"Feed":["Show.S01 https://rss.example.invalid/t/1?key=` + rig.plant("RSS article title key", shownWithTorrentsWrite) + `"],` +
 			`"` + feedNamedByURL + `":["Show.S01"]}`,
 	}
+	maps.Copy(responses, rig.stubTorrentResponses(pathTracker, queryTracker))
+	return responses
 }
 
 func (rig *secretsRig) startQBittorrent(t *testing.T) *httptest.Server {
