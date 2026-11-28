@@ -12,6 +12,35 @@ read_body() {
   [[ -n "$body" ]] || die "$1 body is empty: pass it on stdin with <<'EOF'"
 }
 
+refuse_hidden_text() {
+  local found
+  found=$(perl -CSA -e '
+    my ($title, $body) = @ARGV;
+    my @parts = (["the title", $title]);
+    my $n = 0;
+    push @parts, ["line " . ++$n . " of the brief", $_] for split /\n/, $body;
+    for my $part (@parts) {
+      my ($where, $text) = @$part;
+      my (@kinds, %points);
+      push @kinds, "an HTML comment (<!--)" if $text =~ /<!--/;
+      for my $c ($text =~ /([\p{Cf}\x{FE00}-\x{FE0F}\x{E0000}-\x{E007F}\x{E0100}-\x{E01EF}])/g) {
+        my $kind = $c =~ /[\x{FE00}-\x{FE0F}\x{E0100}-\x{E01EF}]/ ? "a variation selector"
+          : $c =~ /[\x{E0000}-\x{E007F}]/ ? "a Unicode tag character"
+          : $c =~ /\p{Bidi_Control}/ ? "a bidirectional control"
+          : "a zero-width or other invisible character";
+        my $point = sprintf "U+%04X", ord $c;
+        push @kinds, $kind unless $points{$kind};
+        push @{$points{$kind}}, $point unless grep { $_ eq $point } @{$points{$kind} // []};
+      }
+      @kinds = map { $points{$_} ? "$_ (" . join(", ", @{$points{$_}}) . ")" : $_ } @kinds;
+      print "  $where: ", join(", ", @kinds), "\n" if @kinds;
+    }
+  ' -- "$1" "$2")
+  [[ -z "$found" ]] || die "the title or the brief holds text that GitHub does not show:
+$found
+Write the title and the brief again in your own words, without that text, and run create-issue again."
+}
+
 ALLOWED_OPS="${DISCUSSION_WRITE_ALLOWED_OPS:-add-label,remove-label}"
 op_allowed() {
   case ",${ALLOWED_OPS}," in
@@ -84,6 +113,7 @@ case "$cmd" in
     [[ "$state" == ready-for-agent || "$state" == ready-for-human ]] || die "create-issue state must be ready-for-agent or ready-for-human"
     [[ -n "$title" ]] || die "create-issue title must not be empty"
     read_body create-issue
+    refuse_hidden_text "$title" "$body"
     record --arg state "$state" --arg title "$title" --arg body "$body"$'\n\n'"From discussion #$NUMBER" \
       '{op: "create-issue", state: $state, title: $title, body: $body, labels: $ARGS.positional}' --args "$@"
     echo "https://github.com/autobrr/qui/issues/99999"
