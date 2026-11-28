@@ -85,6 +85,7 @@ type automationSummary struct {
 	sampleSeen       map[string]struct{}
 	tagSampleSeen    map[string]struct{}
 	activities       []*models.AutomationActivity
+	waitingTorrents  map[string]waitingTorrent
 }
 
 type automationRuleSummary struct {
@@ -93,6 +94,8 @@ type automationRuleSummary struct {
 	applied  int
 	failed   int
 	actions  map[string]*automationActionCounts
+	wait     time.Duration
+	waiting  []string
 }
 
 type automationActionCounts struct {
@@ -109,6 +112,7 @@ func newAutomationSummary() *automationSummary {
 		tagRemovedByName: make(map[string]int),
 		sampleSeen:       make(map[string]struct{}),
 		tagSampleSeen:    make(map[string]struct{}),
+		waitingTorrents:  make(map[string]waitingTorrent),
 	}
 }
 
@@ -130,7 +134,7 @@ func (s *automationSummary) hasActivity() bool {
 	if s == nil {
 		return false
 	}
-	return s.applied > 0 || s.failed > 0
+	return s.applied > 0 || s.failed > 0 || len(s.waitingTorrents) > 0
 }
 
 func (s *automationSummary) message() string {
@@ -141,6 +145,7 @@ func (s *automationSummary) message() string {
 	if s.failed > 0 {
 		lines = append(lines, fmt.Sprintf("Failed: %d", s.failed))
 	}
+	lines = append(lines, s.waitingLines()...)
 	if formatted := formatActionCounts(s.appliedByAction, 3); formatted != "" {
 		lines = append(lines, "Top actions: "+formatted)
 	}
@@ -207,28 +212,13 @@ func (s *automationSummary) addRuleAction(activity *models.AutomationActivity, c
 		return
 	}
 
-	ruleName := normalizeRuleName(activity.RuleID, activity.RuleName)
 	ruleID := 0
 	if activity.RuleID != nil {
 		ruleID = *activity.RuleID
 	}
-	if ruleID <= 0 && ruleName == "" {
+	rule := s.ruleSummary(ruleID, activity.RuleName)
+	if rule == nil {
 		return
-	}
-
-	key := ruleName
-	if ruleID > 0 {
-		key = fmt.Sprintf("%d:%s", ruleID, ruleName)
-	}
-
-	rule, ok := s.rules[key]
-	if !ok {
-		rule = &automationRuleSummary{
-			ruleID:   ruleID,
-			ruleName: ruleName,
-			actions:  make(map[string]*automationActionCounts),
-		}
-		s.rules[key] = rule
 	}
 
 	action := strings.TrimSpace(activity.Action)
@@ -252,6 +242,29 @@ func (s *automationSummary) addRuleAction(activity *models.AutomationActivity, c
 	}
 }
 
+func (s *automationSummary) ruleSummary(ruleID int, ruleName string) *automationRuleSummary {
+	ruleName = normalizeRuleName(intPtrForRule(ruleID), ruleName)
+	if ruleID <= 0 && ruleName == "" {
+		return nil
+	}
+
+	key := ruleName
+	if ruleID > 0 {
+		key = fmt.Sprintf("%d:%s", ruleID, ruleName)
+	}
+
+	rule, ok := s.rules[key]
+	if !ok {
+		rule = &automationRuleSummary{
+			ruleID:   ruleID,
+			ruleName: ruleName,
+			actions:  make(map[string]*automationActionCounts),
+		}
+		s.rules[key] = rule
+	}
+	return rule
+}
+
 func (s *automationSummary) ruleTotalsByName() map[string]int {
 	if s == nil || len(s.rules) == 0 {
 		return nil
@@ -263,7 +276,7 @@ func (s *automationSummary) ruleTotalsByName() map[string]int {
 			continue
 		}
 		name := normalizeRuleName(intPtrForRule(rule.ruleID), rule.ruleName)
-		if name == "" {
+		if name == "" || len(rule.actions) == 0 {
 			continue
 		}
 		out[name] += rule.applied + rule.failed
@@ -376,22 +389,7 @@ func sortedCountItems(counts map[string]int) []countItem {
 }
 
 func formatActionCounts(counts map[string]int, limit int) string {
-	items := sortedCountItems(counts)
-	if len(items) == 0 {
-		return ""
-	}
-
-	maxItems := limit
-	if maxItems <= 0 || maxItems > len(items) {
-		maxItems = len(items)
-	}
-
-	parts := make([]string, 0, maxItems)
-	for i := 0; i < maxItems; i++ {
-		label := automationActionLabel(items[i].key)
-		parts = append(parts, fmt.Sprintf("%s=%d", label, items[i].count))
-	}
-	return strings.Join(parts, "; ")
+	return formatCounts(counts, limit, automationActionLabel)
 }
 
 func formatRuleCounts(counts map[string]int, limit int) string {
@@ -1988,7 +1986,7 @@ func (s *Service) applyRules(ctx context.Context, instanceID int, rules []*model
 
 	var waitActivities []*models.AutomationActivity
 	if kind == runRecorded {
-		waitActivities = s.recordPendingDeletes(ctx, instanceID, pendingCompare{rules: eligibleRules, selection: deletions, undeleted: undeleted, torrentByHash: torrentByHash, scope: scope, waited: evalCtx.waited})
+		waitActivities = s.recordPendingDeletes(ctx, instanceID, pendingCompare{rules: eligibleRules, selection: deletions, undeleted: undeleted, torrentByHash: torrentByHash, scope: scope, waited: evalCtx.waited, summary: summary})
 	}
 
 	if len(plan.transfers) > 0 {
@@ -2089,6 +2087,7 @@ func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, s
 		Automations: &notifications.AutomationsEventData{
 			Applied: notifiedSummary.applied,
 			Failed:  notifiedSummary.failed,
+			Waiting: len(notifiedSummary.waitingTorrents),
 			Rules:   buildAutomationRuleSummaries(notifiedSummary),
 			Samples: append([]string(nil), notifiedSummary.sampleTorrents...),
 		},
@@ -2137,7 +2136,7 @@ func buildAutomationRuleSummaries(summary *automationSummary) []notifications.Au
 		items = append(items, ruleItem{
 			key:   key,
 			rule:  rule,
-			total: rule.applied + rule.failed,
+			total: rule.applied + rule.failed + len(rule.waiting),
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -2180,6 +2179,7 @@ func buildAutomationRuleSummaries(summary *automationSummary) []notifications.Au
 			RuleName: normalizeRuleName(intPtrForRule(rule.ruleID), rule.ruleName),
 			Applied:  rule.applied,
 			Failed:   rule.failed,
+			Waiting:  len(rule.waiting),
 			Actions:  actions,
 		})
 	}
@@ -2273,6 +2273,11 @@ func buildNotifiedAutomationSummary(summary *automationSummary, rules []*models.
 			applied:  rule.applied,
 			failed:   rule.failed,
 			actions:  make(map[string]*automationActionCounts, len(rule.actions)),
+			wait:     rule.wait,
+			waiting:  rule.waiting,
+		}
+		for _, hash := range rule.waiting {
+			filtered.waitingTorrents[hash] = summary.waitingTorrents[hash]
 		}
 
 		for action, counts := range rule.actions {

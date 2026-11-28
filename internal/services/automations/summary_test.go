@@ -6,10 +6,12 @@ package automations
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 func TestAutomationSummaryMessageDoesNotDuplicateTopFailures(t *testing.T) {
@@ -251,4 +253,73 @@ func TestInheritRuleRefForMoveGroupIncludesExpandedMembers(t *testing.T) {
 
 	counts := buildRuleCountsFromHashes([]string{"trigger-hash", "member-hash"}, moveRuleByHash)
 	require.Equal(t, 2, counts[ruleRef{id: 77, name: "Grouped move"}])
+}
+
+func TestNotifyAutomationSummaryCountsWaitingTorrentsApartFromApplied(t *testing.T) {
+	t.Parallel()
+
+	ruleID := 7
+	waitingRule := &models.Automation{ID: ruleID, Name: "Clean unregistered"}
+	tests := []struct {
+		name        string
+		notify      bool
+		applied     int
+		wantApplied int
+		wantMessage []string
+		notInLines  []string
+	}{
+		{
+			name:        "a run with no applied action and new pending deletes",
+			notify:      true,
+			wantMessage: []string{"Applied: 0", "Waiting to delete: 4", "Waiting rules: Clean unregistered=4 (wait 2d)", "Waiting trackers: tracker-a.test=3; tracker-b.test=1", "Waiting samples: Alpha.Show.S01E01-GRP; Beta.Show.S01E02-GRP; Delta.Film.2024-GRP"},
+			notInLines:  []string{"Rules: Clean unregistered"},
+		},
+		{
+			name:        "a run with applied actions and new pending deletes",
+			notify:      true,
+			applied:     1,
+			wantApplied: 1,
+			wantMessage: []string{"Applied: 1", "Waiting to delete: 4", "Rules: Clean unregistered"},
+		},
+		{name: "a rule with Notify off", notify: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			summary := newAutomationSummary()
+			if tt.applied > 0 {
+				summary.recordActivity(&models.AutomationActivity{RuleID: &ruleID, RuleName: waitingRule.Name, Action: models.ActivityActionDeletedCondition, Outcome: models.ActivityOutcomeSuccess, TorrentName: "Epsilon.Film.2023-GRP"}, tt.applied)
+			}
+			summary.addWaiting(waitingRule, 48*time.Hour, "h1", waitingTorrent{name: "Delta.Film.2024-GRP", tracker: "tracker-a.test"})
+			summary.addWaiting(waitingRule, 48*time.Hour, "h2", waitingTorrent{name: "Beta.Show.S01E02-GRP", tracker: "tracker-a.test"})
+			summary.addWaiting(waitingRule, 48*time.Hour, "h3", waitingTorrent{name: "Gamma.Show.S02E01-GRP", tracker: "tracker-a.test"})
+			summary.addWaiting(waitingRule, 48*time.Hour, "h4", waitingTorrent{name: "Alpha.Show.S01E01-GRP", tracker: "tracker-b.test"})
+
+			notifier := &automationRecordingNotifier{}
+			s := &Service{notifier: notifier}
+			s.notifyAutomationSummary(t.Context(), 1, summary, []*models.Automation{{ID: ruleID, Notify: tt.notify}})
+
+			events := notifier.Events()
+			if !tt.notify {
+				require.Empty(t, events)
+				return
+			}
+			require.Len(t, events, 1)
+			event := events[0]
+			require.Equal(t, notifications.EventAutomationsActionsApplied, event.Type)
+			require.Equal(t, tt.wantApplied, event.Automations.Applied)
+			require.Equal(t, 4, event.Automations.Waiting)
+			require.Len(t, event.Automations.Rules, 1)
+			require.Equal(t, 4, event.Automations.Rules[0].Waiting)
+			require.Equal(t, tt.wantApplied, event.Automations.Rules[0].Applied)
+			lines := strings.Split(event.Message, "\n")
+			for _, want := range tt.wantMessage {
+				require.Contains(t, lines, want)
+			}
+			for _, unwanted := range tt.notInLines {
+				require.NotContains(t, lines, unwanted)
+			}
+		})
+	}
 }
