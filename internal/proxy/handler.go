@@ -1310,10 +1310,6 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		order = "desc"
 	}
 
-	if limit == 0 {
-		limit = 100000
-	}
-
 	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
