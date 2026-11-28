@@ -127,6 +127,7 @@ func (s *automationSummary) add(action models.ActivityAction, outcome models.Act
 	case models.ActivityOutcomeFailed:
 		s.failed += count
 		s.failedByAction[action] += count
+	case models.ActivityOutcomeDryRun, models.ActivityOutcomeSkipped:
 	}
 }
 
@@ -239,6 +240,7 @@ func (s *automationSummary) addRuleAction(activity *models.AutomationActivity, c
 	case models.ActivityOutcomeFailed:
 		rule.failed += count
 		counts.failed += count
+	case models.ActivityOutcomeDryRun, models.ActivityOutcomeSkipped:
 	}
 }
 
