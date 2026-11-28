@@ -85,10 +85,10 @@ export const CONDITION_FIELDS = {
   STATE: { type: "enum", operators: ["EQUAL", "NOT_EQUAL"], values: ["downloading", "uploading", "completed", "stopped", "active", "inactive", "running", "stalled", "stalled_uploading", "stalled_downloading", "errored", "tracker_down", "tracker_error", "checking", "checkingResumeData", "moving", "missingFiles"], sort: "text" },
   SUPER_SEEDING: { type: "boolean", operators: ["EQUAL", "NOT_EQUAL"], values: ["true", "false"] },
   SYSTEM_DAY: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], sort: "number" },
-  SYSTEM_DAY_OF_WEEK: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], sort: "number" },
-  SYSTEM_HOUR: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], sort: "number" },
-  SYSTEM_MINUTE: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], sort: "number" },
-  SYSTEM_MONTH: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], sort: "number" },
+  SYSTEM_DAY_OF_WEEK: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], wrapsBetween: true, sort: "number" },
+  SYSTEM_HOUR: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], wrapsBetween: true, sort: "number" },
+  SYSTEM_MINUTE: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], wrapsBetween: true, sort: "number" },
+  SYSTEM_MONTH: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], wrapsBetween: true, sort: "number" },
   SYSTEM_YEAR: { type: "integer", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], sort: "number" },
   TAGS: { type: "string", operators: ["EQUAL", "NOT_EQUAL", "CONTAINS", "NOT_CONTAINS", "STARTS_WITH", "ENDS_WITH", "MATCHES"], sort: "text" },
   TIME_ACTIVE: { type: "integer", unit: "seconds", operators: ["EQUAL", "NOT_EQUAL", "GREATER_THAN", "GREATER_THAN_OR_EQUAL", "LESS_THAN", "LESS_THAN_OR_EQUAL", "BETWEEN"], sort: "number" },
@@ -111,5 +111,6 @@ export const CONDITION_FIELDS = {
   // A field of the instance capabilities response, or an instance capability.
   requires?: keyof InstanceCapabilities | "read" | "trustedIdentity"
   legacy?: boolean
+  wrapsBetween?: boolean
   sort?: "number" | "text"
 }>

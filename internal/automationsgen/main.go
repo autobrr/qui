@@ -28,15 +28,11 @@ const (
 )
 
 func main() {
-	out, err := generate(".")
-	if err == nil {
-		err = os.WriteFile(filepath.FromSlash(referencePath), out, 0o644) //nolint:gosec // docs source file
-	}
-	if err == nil {
-		err = os.WriteFile(filepath.FromSlash(fieldsPath), generateFields(), 0o644) //nolint:gosec // frontend source file
-	}
-	if err == nil {
-		err = os.WriteFile(filepath.FromSlash(permissionAreasPath), generatePermissionAreas(), 0o644) //nolint:gosec // frontend source file
+	files, err := outputs(".")
+	for path, out := range files {
+		if err == nil {
+			err = os.WriteFile(filepath.FromSlash(path), out, 0o600)
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "automationsgen:", err)
@@ -44,29 +40,51 @@ func main() {
 	}
 }
 
-var keyValues = map[string][]string{
-	"RuleCondition.groupId":                automations.BuiltinGroupIDs,
-	"GroupingConfig.defaultGroupId":        automations.BuiltinGroupIDs,
-	"GroupDefinition.keys":                 automations.GroupKeys,
-	"GroupDefinition.ambiguousPolicy":      automations.GroupAmbiguousPolicies,
-	"DeleteAction.mode":                    automations.DeleteModes,
-	"DeleteAction.groupId":                 automations.BuiltinGroupIDs,
-	"DeleteAction.atomic":                  {"all"},
-	"TagAction.mode":                       automations.TagModes,
-	"CategoryAction.groupId":               automations.BuiltinGroupIDs,
-	"MoveAction.groupId":                   automations.BuiltinGroupIDs,
-	"MoveAction.atomic":                    {"all"},
-	"ShareLimitsAction.shareLimitAction":   automations.ShareLimitActions,
-	"ShareLimitsAction.shareLimitsMode":    automations.ShareLimitsModes,
-	"ExportToInstanceAction.contentLayout": automations.ContentLayouts,
-	"TransferToInstanceAction.after":       automations.TransferAfters,
-	"TransferToInstanceAction.way":         automations.TransferWays,
-	"SortingConfig.field":                  conditionFieldNames(automations.FieldSpec.Sortable),
-	"FieldMultiplierScoreRule.field":       conditionFieldNames(automations.FieldSpec.Scorable),
-	"FreeSpaceSource.type":                 {string(models.FreeSpaceSourceQBittorrent), string(models.FreeSpaceSourcePath), string(models.FreeSpaceSourceQbitPath), string(models.FreeSpaceSourceAllowance)},
-	"SortingConfig.type":                   {string(models.SortingTypeSimple), string(models.SortingTypeScore)},
-	"SortingConfig.direction":              {string(models.SortDirectionASC), string(models.SortDirectionDESC)},
-	"ScoreRule.type":                       {string(models.ScoreRuleTypeFieldMultiplier), string(models.ScoreRuleTypeConditional)},
+func outputs(root string) (map[string][]byte, error) {
+	reference, err := generate(root)
+	if err != nil {
+		return nil, err
+	}
+	closedSets, err := generateClosedSets(root)
+	if err != nil {
+		return nil, err
+	}
+	return map[string][]byte{
+		referencePath:       reference,
+		fieldsPath:          generateFields(),
+		permissionAreasPath: generatePermissionAreas(),
+		closedSetsPath:      closedSets,
+	}, nil
+}
+
+type keyList struct {
+	values []string
+	tsName string
+}
+
+var keyValues = map[string]keyList{
+	"RuleCondition.groupId":                {automations.BuiltinGroupIDs, ""},
+	"GroupingConfig.defaultGroupId":        {automations.BuiltinGroupIDs, ""},
+	"GroupDefinition.keys":                 {automations.GroupKeys, "GroupKey"},
+	"GroupDefinition.ambiguousPolicy":      {automations.GroupAmbiguousPolicies, "GroupAmbiguousPolicy"},
+	"DeleteAction.mode":                    {automations.DeleteModes, "DeleteMode"},
+	"DeleteAction.groupId":                 {automations.BuiltinGroupIDs, ""},
+	"DeleteAction.atomic":                  {[]string{"all"}, ""},
+	"TagAction.mode":                       {automations.TagModes, "TagMode"},
+	"CategoryAction.groupId":               {automations.BuiltinGroupIDs, ""},
+	"MoveAction.groupId":                   {automations.BuiltinGroupIDs, ""},
+	"MoveAction.atomic":                    {[]string{"all"}, ""},
+	"ShareLimitsAction.shareLimitAction":   {automations.ShareLimitActions, "ShareLimitAction"},
+	"ShareLimitsAction.shareLimitsMode":    {automations.ShareLimitsModes, "ShareLimitsMode"},
+	"ExportToInstanceAction.contentLayout": {automations.ContentLayouts, "ContentLayout"},
+	"TransferToInstanceAction.after":       {automations.TransferAfters, "TransferAfter"},
+	"TransferToInstanceAction.way":         {automations.TransferWays, "TransferWayChoice"},
+	"SortingConfig.field":                  {conditionFieldNames(automations.FieldSpec.Sortable), ""},
+	"FieldMultiplierScoreRule.field":       {conditionFieldNames(automations.FieldSpec.Scorable), ""},
+	"FreeSpaceSource.type":                 {[]string{string(models.FreeSpaceSourceQBittorrent), string(models.FreeSpaceSourcePath), string(models.FreeSpaceSourceQbitPath), string(models.FreeSpaceSourceAllowance)}, "FreeSpaceSourceType"},
+	"SortingConfig.type":                   {[]string{string(models.SortingTypeSimple), string(models.SortingTypeScore)}, "SortingType"},
+	"SortingConfig.direction":              {[]string{string(models.SortDirectionASC), string(models.SortDirectionDESC)}, "SortDirection"},
+	"ScoreRule.type":                       {[]string{string(models.ScoreRuleTypeFieldMultiplier), string(models.ScoreRuleTypeConditional)}, "ScoreRuleType"},
 }
 
 var operatorDocs = []struct {
@@ -254,7 +272,7 @@ func (g *generator) structSection(t reflect.Type, path, title, intro string) err
 		key := t.Name() + "." + name
 		values := ""
 		if v, ok := keyValues[key]; ok {
-			values = codeList(v)
+			values = codeList(v.values)
 			g.used[key] = true
 		}
 		g.line(fmt.Sprintf("| %s | %s | %s | %s |", code(name), typeName, values, g.markdown(doc)))
@@ -374,6 +392,9 @@ export const CONDITION_FIELDS = {
 		if spec.Legacy {
 			props = append(props, "legacy: true")
 		}
+		if field.WrapsBetween() {
+			props = append(props, "wrapsBetween: true")
+		}
 		switch {
 		case spec.Sort.Number != nil:
 			props = append(props, `sort: "number"`)
@@ -390,6 +411,7 @@ export const CONDITION_FIELDS = {
   // A field of the instance capabilities response, or an instance capability.
   requires?: keyof InstanceCapabilities | "read" | "trustedIdentity"
   legacy?: boolean
+  wrapsBetween?: boolean
   sort?: "number" | "text"
 }>
 `)

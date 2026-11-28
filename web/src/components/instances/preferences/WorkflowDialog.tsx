@@ -87,7 +87,18 @@ import type {
   RuleCondition,
   ScoreRule,
   ConditionField,
-  SortingConfig
+  ContentLayout,
+  DeleteMode,
+  FreeSpaceSourceType,
+  GroupAmbiguousPolicy,
+  GroupKey,
+  ScoreRuleType,
+  ShareLimitAction,
+  ShareLimitsMode,
+  SortDirection,
+  SortingConfig,
+  SortingType,
+  TagMode
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Info, Loader2, Plus, X } from "lucide-react"
@@ -348,8 +359,6 @@ interface FormConditionalScoreRule {
   score: number | string
 }
 
-type ScoreRuleType = "field_multiplier" | "conditional"
-
 interface FormScoreRule {
   id: number
   type: ScoreRuleType
@@ -359,7 +368,7 @@ interface FormScoreRule {
 
 type TagActionForm = {
   tags: string[]
-  mode: "full" | "add" | "remove"
+  mode: TagMode
   includeCrossSeeds: boolean
   deleteFromClient: boolean
   useTrackerAsTag: boolean
@@ -416,14 +425,14 @@ type FormState = {
   exprRatioLimitValue?: number
   exprSeedingTimeMode: "no_change" | "global" | "unlimited" | "custom"
   exprSeedingTimeValue?: number
-  exprShareLimitAction: string
-  exprShareLimitsMode: string
-  exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+  exprShareLimitAction: ShareLimitAction | "default"
+  exprShareLimitsMode: ShareLimitsMode | "default"
+  exprDeleteMode: DeleteMode
   exprIncludeHardlinks: boolean
   exprDeleteGroupId: string
   exprDeleteAtomic: "all" | ""
   exprDeleteWaitSeconds: number | null
-  exprFreeSpaceSourceType: "qbittorrent" | "path" | "qbitPath" | "allowance"
+  exprFreeSpaceSourceType: FreeSpaceSourceType
   exprFreeSpaceSourcePath: string
   exprFreeSpaceAllowance: string
   exprFreeSpaceAllowanceUnit: number
@@ -432,9 +441,9 @@ type FormState = {
   exprIncludeCrossSeeds: boolean
   exprCategoryGroupId: string
   exprBlockIfCrossSeedInCategories: string[]
-  sortingType: "default" | "simple" | "score"
+  sortingType: "default" | SortingType
   simpleSortField: ConditionField
-  sortDirection: "ASC" | "DESC"
+  sortDirection: SortDirection
   scoreRules: FormScoreRule[]
   exprMovePath: string
   exprMoveBlockIfCrossSeed: boolean
@@ -448,7 +457,7 @@ type FormState = {
   exprExportTags: string
   exprExportPaused: boolean
   exprExportSkipChecking: boolean
-  exprExportContentLayout: "" | "Original" | "Subfolder" | "NoSubfolder"
+  exprExportContentLayout: "" | ContentLayout
   transferToInstanceEnabled: boolean
   exprTransfer: TransferFormValue
 }
@@ -624,8 +633,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const movePathInputRef = useRef<HTMLInputElement>(null)
   const [showAddCustomGroup, setShowAddCustomGroup] = useState(false)
   const [newGroupId, setNewGroupId] = useState("")
-  const [newGroupKeys, setNewGroupKeys] = useState<string[]>([])
-  const [newGroupAmbiguousPolicy, setNewGroupAmbiguousPolicy] = useState<"verify_overlap" | "skip" | "">("")
+  const [newGroupKeys, setNewGroupKeys] = useState<GroupKey[]>([])
+  const [newGroupAmbiguousPolicy, setNewGroupAmbiguousPolicy] = useState<GroupAmbiguousPolicy | "">("")
   const [newGroupMinOverlap, setNewGroupMinOverlap] = useState("90")
   const previewPageSize = 25
   const livePreviewPageSize = 5
@@ -925,8 +934,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprRatioLimitValue: number | undefined
         let exprSeedingTimeMode: FormState["exprSeedingTimeMode"] = "no_change"
         let exprSeedingTimeValue: number | undefined
-        let exprShareLimitAction = "default"
-        let exprShareLimitsMode = "default"
+        let exprShareLimitAction: FormState["exprShareLimitAction"] = "default"
+        let exprShareLimitsMode: FormState["exprShareLimitsMode"] = "default"
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
         let exprIncludeHardlinks = false
         let exprFreeSpaceSourceType: FormState["exprFreeSpaceSourceType"] = "qbittorrent"
@@ -939,7 +948,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprBlockIfCrossSeedInCategories: string[] = []
         let sortingType: FormState["sortingType"] = "default"
         let simpleSortField: ConditionField = "ADDED_ON"
-        let sortDirection: "ASC" | "DESC" = "ASC"
+        let sortDirection: SortDirection = "ASC"
         let scoreRules: FormScoreRule[] = []
         let exprMovePath = ""
         let exprMoveBlockIfCrossSeed = false
@@ -1021,9 +1030,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprSeedingTimeValue = seedTime.value
 
             const rawAction = conditions.shareLimits.shareLimitAction
-            exprShareLimitAction = rawAction !== undefined && rawAction !== "" ? rawAction : "default"
+            exprShareLimitAction = rawAction || "default"
             const rawMode = conditions.shareLimits.shareLimitsMode
-            exprShareLimitsMode = rawMode !== undefined && rawMode !== "" ? rawMode : "default"
+            exprShareLimitsMode = rawMode || "default"
           }
           if (conditions.pause?.enabled) {
             pauseEnabled = true
@@ -2232,7 +2241,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   </div>
                   <Select
                     value={formState.sortingType}
-                    onValueChange={(val: "default" | "simple" | "score") => setFormState(prev => ({ ...prev, sortingType: val }))}
+                    onValueChange={(val: FormState["sortingType"]) => setFormState(prev => ({ ...prev, sortingType: val }))}
                   >
                     <SelectTrigger className="w-[180px]">
                       <SelectValue />
@@ -2968,7 +2977,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <Label size="sm">{t("preferences.workflowDialog.shareLimitAction.label")}</Label>
                               <Select
                                 value={formState.exprShareLimitAction}
-                                onValueChange={(value: string) => setFormState(prev => ({
+                                onValueChange={(value: FormState["exprShareLimitAction"]) => setFormState(prev => ({
                                   ...prev,
                                   exprShareLimitAction: value,
                                 }))}
@@ -2991,7 +3000,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <Label size="sm">{t("preferences.workflowDialog.shareLimitsMode.label")}</Label>
                               <Select
                                 value={formState.exprShareLimitsMode}
-                                onValueChange={(value: string) => setFormState(prev => ({
+                                onValueChange={(value: FormState["exprShareLimitsMode"]) => setFormState(prev => ({
                                   ...prev,
                                   exprShareLimitsMode: value,
                                 }))}
@@ -4345,7 +4354,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               <Select
                 value={newGroupAmbiguousPolicy || AMBIGUOUS_POLICY_NONE_VALUE}
                 onValueChange={(value) => setNewGroupAmbiguousPolicy(
-                  value === AMBIGUOUS_POLICY_NONE_VALUE ? "" : value as "verify_overlap" | "skip"
+                  value === AMBIGUOUS_POLICY_NONE_VALUE ? "" : value as GroupAmbiguousPolicy
                 )}
               >
                 <SelectTrigger className="h-8 text-xs">
@@ -4402,7 +4411,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
                 const groupDef: GroupDefinition = {
                   id: newGroupId,
-                  keys: newGroupKeys as string[],
+                  keys: newGroupKeys,
                   ambiguousPolicy: newGroupAmbiguousPolicy || undefined,
                   minFileOverlapPercent: newGroupAmbiguousPolicy === "verify_overlap" ? parseInt(newGroupMinOverlap, 10) : undefined,
                 }

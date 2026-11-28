@@ -51,7 +51,6 @@
     "internal/backups/service.go": 3,
     "internal/models/automation.go": 2,
     "internal/qbittorrent/sync_manager.go": 6,
-    "internal/qbittorrent/torrent_sort.go": 1,
     "internal/services/arr/service.go": 1,
     "internal/services/automations/evaluator.go": 2,
     "internal/services/automations/grouping.go": 1,

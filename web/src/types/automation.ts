@@ -3,119 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-export type ConditionField =
-  | "NAME"
-  | "HASH"
-  | "INFOHASH_V1"
-  | "INFOHASH_V2"
-  | "MAGNET_URI"
-  | "CATEGORY"
-  | "TAGS"
-  | "SAVE_PATH"
-  | "CONTENT_PATH"
-  | "DOWNLOAD_PATH"
-  | "CREATED_BY"
-  | "TRACKERS"
-  | "CONTENT_TYPE"
-  | "EFFECTIVE_NAME"
-  | "RLS_SOURCE"
-  | "RLS_RESOLUTION"
-  | "RLS_CODEC"
-  | "RLS_HDR"
-  | "RLS_AUDIO"
-  | "RLS_CHANNELS"
-  | "RLS_GROUP"
-  | "RLS_YEAR"
-  | "STATE"
-  | "TRACKER"
-  | "TRACKER_STATUS"
-  | "TRACKER_MESSAGE"
-  | "COMMENT"
-  | "SIZE"
-  | "TOTAL_SIZE"
-  | "COMPLETED"
-  | "DOWNLOADED"
-  | "DOWNLOADED_SESSION"
-  | "UPLOADED"
-  | "UPLOADED_SESSION"
-  | "AMOUNT_LEFT"
-  | "FREE_SPACE"
-  | "ADDED_ON"
-  | "COMPLETION_ON"
-  | "LAST_ACTIVITY"
-  | "SEEN_COMPLETE"
-  | "ETA"
-  | "REANNOUNCE"
-  | "SEEDING_TIME"
-  | "TIME_ACTIVE"
-  | "MAX_SEEDING_TIME"
-  | "MAX_INACTIVE_SEEDING_TIME"
-  | "SEEDING_TIME_LIMIT"
-  | "INACTIVE_SEEDING_TIME_LIMIT"
-  | "ADDED_ON_AGE"
-  | "COMPLETION_ON_AGE"
-  | "LAST_ACTIVITY_AGE"
-  | "SYSTEM_HOUR"
-  | "SYSTEM_MINUTE"
-  | "SYSTEM_DAY_OF_WEEK"
-  | "SYSTEM_DAY"
-  | "SYSTEM_MONTH"
-  | "SYSTEM_YEAR"
-  | "RATIO"
-  | "RATIO_LIMIT"
-  | "MAX_RATIO"
-  | "UPLOADED_OVER_SIZE"
-  | "PROGRESS"
-  | "AVAILABILITY"
-  | "POPULARITY"
-  | "DL_SPEED"
-  | "UP_SPEED"
-  | "DL_LIMIT"
-  | "UP_LIMIT"
-  | "NUM_SEEDS"
-  | "NUM_LEECHS"
-  | "NUM_COMPLETE"
-  | "NUM_INCOMPLETE"
-  | "TRACKERS_COUNT"
-  | "PRIORITY"
-  | "GROUP_SIZE"
-  | "PRIVATE"
-  | "AUTO_MANAGED"
-  | "FIRST_LAST_PIECE_PRIO"
-  | "FORCE_START"
-  | "SEQUENTIAL_DOWNLOAD"
-  | "SUPER_SEEDING"
-  | "IS_UNREGISTERED"
-  | "HAS_MISSING_FILES"
-  | "HAS_SKIPPED_FILES"
-  | "IS_GROUPED"
-  | "EXISTS_ON_OTHER_INSTANCE"
-  | "SEEDING_ON_OTHER_INSTANCE"
-  | "EXISTS_ON_SAME_INSTANCE"
-  | "CROSS_SEED_TAGS"
-  | "SEEDING_ON_SAME_INSTANCE"
-  | "SEASON_PACK_STATUS"
-  | "SEASON_PACK_STATUS_ANY_INSTANCE"
-  | "HARDLINK_SCOPE"
-  | "HARDLINK_SCOPE_CROSS"
-
-export type ConditionOperator =
-  | "AND"
-  | "OR"
-  | "EQUAL"
-  | "NOT_EQUAL"
-  | "CONTAINS"
-  | "NOT_CONTAINS"
-  | "STARTS_WITH"
-  | "ENDS_WITH"
-  | "GREATER_THAN"
-  | "GREATER_THAN_OR_EQUAL"
-  | "LESS_THAN"
-  | "LESS_THAN_OR_EQUAL"
-  | "BETWEEN"
-  | "MATCHES"
-  | "EXISTS_IN"
-  | "CONTAINS_IN"
+import type {
+  ConditionField,
+  ConditionOperator,
+  ContentLayout,
+  DeleteMode,
+  GroupAmbiguousPolicy,
+  GroupKey,
+  ShareLimitAction,
+  ShareLimitsMode,
+  SortDirection,
+  TagMode,
+  TransferAfter,
+  TransferWayChoice
+} from "./closed-sets.generated"
 
 export interface RuleCondition {
   clientId?: string
@@ -141,8 +42,8 @@ export interface ShareLimitsAction {
   enabled: boolean
   ratioLimit?: number
   seedingTimeMinutes?: number
-  shareLimitAction?: string
-  shareLimitsMode?: string
+  shareLimitAction?: ShareLimitAction
+  shareLimitsMode?: ShareLimitsMode
   condition?: RuleCondition
 }
 
@@ -173,8 +74,8 @@ export interface AutoManagementAction {
 
 export interface GroupDefinition {
   id: string
-  keys: string[]
-  ambiguousPolicy?: "verify_overlap" | "skip"
+  keys: GroupKey[]
+  ambiguousPolicy?: GroupAmbiguousPolicy
   minFileOverlapPercent?: number
 }
 
@@ -185,7 +86,7 @@ export interface GroupingConfig {
 
 export interface DeleteAction {
   enabled: boolean
-  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+  mode?: DeleteMode
   includeHardlinks?: boolean
   groupId?: string
   atomic?: "all"
@@ -196,7 +97,7 @@ export interface DeleteAction {
 export interface TagAction {
   enabled: boolean
   tags: string[]
-  mode: "full" | "add" | "remove"
+  mode: TagMode
   includeCrossSeeds?: boolean
   deleteFromClient?: boolean
   useTrackerAsTag?: boolean
@@ -236,7 +137,7 @@ export interface ExportToInstanceAction {
   tags?: string[]
   paused?: boolean
   skipChecking?: boolean
-  contentLayout?: string
+  contentLayout?: ContentLayout
   condition?: RuleCondition
 }
 
@@ -246,9 +147,9 @@ export interface TransferToInstanceAction {
   savePath: string
   category?: string
   tags?: string[]
-  after?: "removeWithFiles" | "keepFiles" | "keepSeeding"
+  after?: TransferAfter
   leaveStopped?: boolean
-  way?: "auto" | "copy" | "bittorrent"
+  way?: TransferWayChoice
   condition?: RuleCondition
 }
 
@@ -278,10 +179,6 @@ export type FreeSpaceSource =
   | { type: "allowance"; path: string; allowanceBytes: number }
   | { type: "qbitPath"; path: string }
 
-export type FreeSpaceSourceType = FreeSpaceSource["type"]
-
-export type ScoreRuleType = "field_multiplier" | "conditional"
-
 export interface FieldMultiplierScoreRule {
   field: ConditionField
   multiplier: number
@@ -301,12 +198,12 @@ export type SortingConfig =
     schemaVersion: string
     type: "simple"
     field: ConditionField
-    direction: "ASC" | "DESC"
+    direction: SortDirection
   }
   | {
     schemaVersion: string
     type: "score"
-    direction: "ASC" | "DESC"
+    direction: SortDirection
     scoreRules: ScoreRule[]
   }
 

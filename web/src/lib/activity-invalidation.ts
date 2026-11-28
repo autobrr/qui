@@ -4,43 +4,27 @@
  */
 
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
-import type { ActivityEvent } from "@/types"
+import type { ActivityEvent, ActivityEventKind } from "@/types"
+
+const ACTIVITY_REFRESH: Record<ActivityEventKind, (event: ActivityEvent) => QueryKey[]> = {
+  "backup.run": ({ instanceId: id }) => id ? [["instance-backups", id]] : [["instance-backups"]],
+  "dirscan.run": ({ resourceId }) => resourceId ? [["dir-scan", "directory", Number(resourceId)]] : [["dir-scan"]],
+  "orphanscan.run": ({ instanceId: id }) => id ? [["orphan-scan", id]] : [["orphan-scan"]],
+  "discscan.run": ({ instanceId: id }) => id ? [["disc-scans", id]] : [["disc-scans"]],
+  "crossseed.status": () => [["cross-seed", "status"]],
+  "crossseed.search": () => [["cross-seed", "search-status"], ["cross-seed", "search-runs"]],
+  "reannounce.activity": ({ instanceId: id }) => id ? [["instance-reannounce-activity", id]] : [["instance-reannounce-activity"]],
+  "automation.activity": ({ instanceId: id }) => id ? [["automation-activity", id]] : [["automation-activity"]],
+  "indexer.activity": () => [["indexer-activity"]],
+  "search.history": () => [["searchHistory"]],
+  "tracker.icons": () => [["tracker-icons"]],
+  "theme.settings": () => [["theme-settings"]],
+  "theme.custom": () => [["custom-themes"]],
+  "client.settings": () => [["client-settings"]],
+}
 
 export function activityQueryKeys(event: ActivityEvent): QueryKey[] {
-  const id = event.instanceId
-
-  switch (event.kind) {
-    case "backup.run":
-      return id ? [["instance-backups", id]] : [["instance-backups"]]
-    case "dirscan.run":
-      return event.resourceId ? [["dir-scan", "directory", Number(event.resourceId)]] : [["dir-scan"]]
-    case "orphanscan.run":
-      return id ? [["orphan-scan", id]] : [["orphan-scan"]]
-    case "discscan.run":
-      return id ? [["disc-scans", id]] : [["disc-scans"]]
-    case "crossseed.status":
-      return [["cross-seed", "status"]]
-    case "crossseed.search":
-      return [["cross-seed", "search-status"], ["cross-seed", "search-runs"]]
-    case "reannounce.activity":
-      return id ? [["instance-reannounce-activity", id]] : [["instance-reannounce-activity"]]
-    case "automation.activity":
-      return id ? [["automation-activity", id]] : [["automation-activity"]]
-    case "indexer.activity":
-      return [["indexer-activity"]]
-    case "search.history":
-      return [["searchHistory"]]
-    case "tracker.icons":
-      return [["tracker-icons"]]
-    case "theme.settings":
-      return [["theme-settings"]]
-    case "theme.custom":
-      return [["custom-themes"]]
-    case "client.settings":
-      return [["client-settings"]]
-    default:
-      return []
-  }
+  return Object.hasOwn(ACTIVITY_REFRESH, event.kind) ? ACTIVITY_REFRESH[event.kind](event) : []
 }
 
 export function invalidateForActivity(queryClient: QueryClient, event: ActivityEvent): void {

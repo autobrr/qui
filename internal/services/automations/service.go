@@ -1569,7 +1569,7 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 	return nil
 }
 
-var actionRunOrder = []string{
+var ActionRunOrder = []string{
 	"speedLimits",
 	"shareLimits",
 	"pause",
