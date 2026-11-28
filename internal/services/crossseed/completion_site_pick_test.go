@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
+	"github.com/autobrr/qui/internal/testutil/logbudget"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -62,7 +63,9 @@ func TestExecuteCompletionSearch_AsksTheSitesOfTheSitePick(t *testing.T) {
 	}
 }
 
-func TestExecuteCompletionSearch_RedOpsOnlyPickWithoutAUsableKeyFailsWithThePickReason(t *testing.T) {
+const completionPickWithoutKeyLine = "[CROSSSEED-COMPLETION] Skipping completion searches: the Site pick asks only RED/OPS sites, and none of them has a usable API key"
+
+func TestExecuteCompletionSearch_RedOpsOnlyPickWithoutAUsableKeyWarnsOnce(t *testing.T) {
 	tests := []struct {
 		name     string
 		settings func(*models.CrossSeedAutomationSettings)
@@ -78,16 +81,50 @@ func TestExecuteCompletionSearch_RedOpsOnlyPickWithoutAUsableKeyFailsWithThePick
 			_, err := service.automationStore.UpsertSettings(t.Context(), settings)
 			require.NoError(t, err)
 
-			err = service.executeCompletionSearch(t.Context(), 1, source, settings, &models.InstanceCrossSeedCompletionSettings{
-				InstanceID: 1,
-				Enabled:    true,
-				SitePick:   models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{"redacted.sh"}},
+			lines := logbudget.Count(t, func() {
+				for range 3 {
+					require.NoError(t, service.executeCompletionSearch(t.Context(), 1, source, settings, redOnlyCompletion()))
+				}
 			})
 
-			require.ErrorIs(t, err, errGazellePickNoKey)
+			require.Equal(t, 1, lines[logbudget.Line{Level: "warn", Message: completionPickWithoutKeyLine}], "one warning for three completed torrents")
+			require.Equal(t, 2, lines[logbudget.Line{Level: "trace", Message: completionPickWithoutKeyLine}])
 			require.Zero(t, asks.redAPI.Load()+asks.opsAPI.Load()+asks.musicTorznab.Load()+asks.redTorznab.Load(), "no site may be asked")
 		})
 	}
+}
+
+func TestExecuteCompletionSearch_RedOpsOnlyPickWithoutAUsableKeyWarnsAgainAfterAChange(t *testing.T) {
+	asks := &sitePickAsks{}
+	service, source, settings := newCompletionSitePickRig(t, asks)
+	keyed := *settings
+	settings.RedactedAPIKey = ""
+	_, err := service.automationStore.UpsertSettings(t.Context(), settings)
+	require.NoError(t, err)
+	off := *settings
+	off.GazelleEnabled = false
+	warnings := func(settings *models.CrossSeedAutomationSettings) int {
+		lines := logbudget.Count(t, func() {
+			require.NoError(t, service.executeCompletionSearch(t.Context(), 1, source, settings, redOnlyCompletion()))
+		})
+		return lines[logbudget.Line{Level: "warn", Message: completionPickWithoutKeyLine}]
+	}
+
+	require.Equal(t, 1, warnings(settings), "the first completed torrent warns")
+	require.Equal(t, 0, warnings(settings), "the same settings warn no more")
+	_, err = service.automationStore.UpsertSettings(t.Context(), &keyed)
+	require.NoError(t, err)
+	require.Equal(t, 0, warnings(&keyed), "a usable key runs the search")
+	require.Positive(t, asks.redAPI.Load(), "the RED key must be asked")
+	_, err = service.automationStore.UpsertSettings(t.Context(), settings)
+	require.NoError(t, err)
+	require.Equal(t, 1, warnings(settings), "losing the key again after a search warns again")
+	require.Equal(t, 1, warnings(&off), "turning RED/OPS off is a new reason to warn")
+}
+
+func redOnlyCompletion() *models.InstanceCrossSeedCompletionSettings {
+	redOnly := models.SitePick{IndexerIDs: []int{}, GazelleSites: []string{"redacted.sh"}}
+	return &models.InstanceCrossSeedCompletionSettings{InstanceID: 1, Enabled: true, SitePick: redOnly}
 }
 
 func newCompletionSitePickRig(t *testing.T, asks *sitePickAsks) (*Service, *qbt.Torrent, *models.CrossSeedAutomationSettings) {

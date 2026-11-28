@@ -728,9 +728,14 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		gazelleOff:  gazelleClients.disabled(),
 		gazelleKeys: gazelleClients.hosts(),
 	})
+	if errors.Is(scope.err, errGazellePickNoKey) {
+		s.logCompletionPickWithoutKey(instanceID, torrent, pick, gazelleClients)
+		return nil
+	}
 	if scope.err != nil {
 		return scope.err
 	}
+	s.completionPickWarnings.clear(instanceID)
 	if len(scope.torznabIndexerIDs) == 0 && !scope.asksGazelle() {
 		logCompletionGazelleLookups(instanceID, torrent, scope.gazelle)
 		log.Debug().

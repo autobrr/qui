@@ -226,6 +226,7 @@ type Service struct {
 	completionTimeout      time.Duration
 	completionRetryDelay   time.Duration
 	completionMaxAttempts  int
+	completionPickWarnings completionPickWarnings
 
 	seasonPackRunStore seasonPackRunCreator
 	seasonPackApplies  seasonPackApplies
