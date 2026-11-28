@@ -98,7 +98,7 @@ func TestTryMatchAndInject_PreAddCheck(t *testing.T) {
 			if tt.blockHash != nil {
 				hash, parseErr := infohash.Parse(tt.blockHash(parsed))
 				require.NoError(t, parseErr)
-				_, err = blocklist.Upsert(ctx, instance.ID, hash, "")
+				_, err = blocklist.Upsert(ctx, instance.ID, hash, "", models.BlockedTorrent{})
 				require.NoError(t, err)
 			}
 			if tt.blocklistErr {

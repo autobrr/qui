@@ -200,6 +200,8 @@ Use the per-instance blocklist to stop qui from injecting specific infohashes ag
 - **Manage**: Cross-Seed page → Blocklist tab
 - **Quick add**: Delete dialog checkbox (appears only for torrents tagged `cross-seed`)
 
+Each entry shows the torrent name and tracker of the torrent when you blocked it, so you can see later what you blocked. qui saves them only when the torrent was on the instance at that moment. A hash you add by hand for a torrent that the instance does not have shows only the hash. Select an entry to change its note.
+
 The blocklist applies to these add paths:
 
 - Cross-seed applies from search, RSS, completion, autobrr, and a manual match with one target

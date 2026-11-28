@@ -503,28 +503,39 @@
     "atLeast": "Must be at least {{min}}"
   },
   "blocklist": {
-    "title": "Cross-Seed Blocklist",
     "noInstancesDescription": "Add instances to manage blocked cross-seed infohashes.",
-    "description": "Prevent specific infohashes from being injected on a per-instance basis.",
     "instanceLabel": "Instance",
-    "selectInstance": "Select instance",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "e.g. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "Note (optional)",
     "notePlaceholder": "Why is this hash blocked?",
-    "add": "Add",
-    "blockedHashes": "Blocked Hashes",
-    "blockedHashesDescription": "Entries are applied only to the selected instance.",
-    "noBlockedInfohashes": "No blocked infohashes.",
-    "tableInfohash": "Infohash",
-    "tableNote": "Note",
-    "tableAdded": "Added",
-    "removeAriaLabel": "Remove {{hash}} from blocklist",
+    "sectionTitle": "Blocked torrents",
+    "sectionDescription": "Cross-seed never adds these torrents to this instance.",
+    "blockHash": "Block a hash",
+    "emptyTitle": "No blocked torrents",
+    "emptyDescription": "Block a cross-seed from the search results or the delete dialog, or add a hash here.",
+    "blockedAt": "Blocked {{date}}",
+    "copyHash": "Copy hash",
+    "remove": "Remove",
+    "removeDialog": {
+      "title": "Remove from the blocklist?",
+      "description": "Cross-seed can add {{name}} to {{instance}} again."
+    },
+    "addDialog": {
+      "title": "Block a hash",
+      "description": "Cross-seed never adds the torrent with this hash to the instance.",
+      "submit": "Block"
+    },
+    "editDialog": {
+      "title": "Edit note",
+      "save": "Save"
+    },
     "toast": {
       "addedToBlocklist": "Added to blocklist",
       "removedFromBlocklist": "Removed from blocklist",
-      "selectAnInstance": "Select an instance",
-      "invalidInfohash": "Infohash must be 40 or 64 hex characters"
+      "invalidInfohash": "Infohash must be 40 or 64 hex characters",
+      "noteSaved": "Note saved",
+      "hashCopied": "Hash copied"
     }
   },
   "routeConfirm": {

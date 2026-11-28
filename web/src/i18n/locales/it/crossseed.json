@@ -503,28 +503,39 @@
     "atLeast": "Deve essere almeno {{min}}"
   },
   "blocklist": {
-    "title": "Blocklist Cross-Seed",
     "noInstancesDescription": "Aggiungi istanze per gestire gli infohash cross-seed bloccati.",
-    "description": "Impedisci l'iniezione di infohash specifici per ogni singola istanza.",
     "instanceLabel": "Istanza",
-    "selectInstance": "Seleziona istanza",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "es. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "Nota (facoltativa)",
     "notePlaceholder": "Perché questo hash è bloccato?",
-    "add": "Aggiungi",
-    "blockedHashes": "Hash bloccati",
-    "blockedHashesDescription": "Le voci vengono applicate solo all'istanza selezionata.",
-    "noBlockedInfohashes": "Nessun infohash bloccato.",
-    "tableInfohash": "Infohash",
-    "tableNote": "Nota",
-    "tableAdded": "Aggiunto",
-    "removeAriaLabel": "Rimuovi {{hash}} dalla blocklist",
+    "sectionTitle": "Torrent bloccati",
+    "sectionDescription": "Il cross-seed non aggiunge mai questi torrent a questa istanza.",
+    "blockHash": "Blocca un hash",
+    "emptyTitle": "Nessun torrent bloccato",
+    "emptyDescription": "Blocca un cross-seed dai risultati di ricerca o dalla finestra di eliminazione, oppure aggiungi qui un hash.",
+    "blockedAt": "Bloccato il {{date}}",
+    "copyHash": "Copia hash",
+    "remove": "Rimuovi",
+    "removeDialog": {
+      "title": "Rimuovere dalla blocklist?",
+      "description": "Il cross-seed può aggiungere di nuovo {{name}} a {{instance}}."
+    },
+    "addDialog": {
+      "title": "Blocca un hash",
+      "description": "Il cross-seed non aggiunge mai il torrent con questo hash all'istanza.",
+      "submit": "Blocca"
+    },
+    "editDialog": {
+      "title": "Modifica nota",
+      "save": "Salva"
+    },
     "toast": {
       "addedToBlocklist": "Aggiunto alla blocklist",
       "removedFromBlocklist": "Rimosso dalla blocklist",
-      "selectAnInstance": "Seleziona un'istanza",
-      "invalidInfohash": "L'infohash deve avere 40 o 64 caratteri esadecimali"
+      "invalidInfohash": "L'infohash deve avere 40 o 64 caratteri esadecimali",
+      "noteSaved": "Nota salvata",
+      "hashCopied": "Hash copiato"
     }
   },
   "routeConfirm": {

@@ -705,7 +705,7 @@ func adderBlocklist(t *testing.T, hash string) (*models.CrossSeedBlocklistStore,
 
 	store := models.NewCrossSeedBlocklistStore(db)
 	if hash != "" {
-		_, err = store.Upsert(t.Context(), instance.ID, mustParseHash(t, hash), "")
+		_, err = store.Upsert(t.Context(), instance.ID, mustParseHash(t, hash), "", models.BlockedTorrent{})
 		require.NoError(t, err)
 	}
 	return store, db
@@ -746,7 +746,7 @@ func adderRoutes(t *testing.T, db *database.DB, link adderLink) *crossseedroute.
 		require.NoError(t, err)
 	}
 	if link.blocked {
-		_, err = models.NewCrossSeedBlocklistStore(db).Upsert(ctx, linked.ID, mustParseHash(t, adderV1), "")
+		_, err = models.NewCrossSeedBlocklistStore(db).Upsert(ctx, linked.ID, mustParseHash(t, adderV1), "", models.BlockedTorrent{})
 		require.NoError(t, err)
 	}
 	store := models.NewCrossSeedRouteStore(db)

@@ -503,28 +503,39 @@
     "atLeast": "Muss mindestens {{min}} sein"
   },
   "blocklist": {
-    "title": "Cross-Seed-Blocklist",
     "noInstancesDescription": "Füge Instanzen hinzu, um blockierte Cross-Seed-Infohashes zu verwalten.",
-    "description": "Verhindere, dass bestimmte Infohashes pro Instanz injiziert werden.",
     "instanceLabel": "Instanz",
-    "selectInstance": "Instanz auswählen",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "z. B. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "Notiz (optional)",
     "notePlaceholder": "Warum ist dieser Hash blockiert?",
-    "add": "Hinzufügen",
-    "blockedHashes": "Blockierte Hashes",
-    "blockedHashesDescription": "Einträge gelten nur für die ausgewählte Instanz.",
-    "noBlockedInfohashes": "Keine blockierten Infohashes.",
-    "tableInfohash": "Infohash",
-    "tableNote": "Notiz",
-    "tableAdded": "Hinzugefügt",
-    "removeAriaLabel": "{{hash}} aus der Blocklist entfernen",
+    "sectionTitle": "Gesperrte Torrents",
+    "sectionDescription": "Cross-Seed fügt diese Torrents dieser Instanz nie hinzu.",
+    "blockHash": "Hash sperren",
+    "emptyTitle": "Keine gesperrten Torrents",
+    "emptyDescription": "Sperre einen Cross-Seed in den Suchergebnissen oder im Löschdialog, oder füge hier einen Hash hinzu.",
+    "blockedAt": "Gesperrt {{date}}",
+    "copyHash": "Hash kopieren",
+    "remove": "Entfernen",
+    "removeDialog": {
+      "title": "Von der Sperrliste entfernen?",
+      "description": "Cross-Seed kann {{name}} wieder zu {{instance}} hinzufügen."
+    },
+    "addDialog": {
+      "title": "Hash sperren",
+      "description": "Cross-Seed fügt den Torrent mit diesem Hash der Instanz nie hinzu.",
+      "submit": "Sperren"
+    },
+    "editDialog": {
+      "title": "Notiz bearbeiten",
+      "save": "Speichern"
+    },
     "toast": {
       "addedToBlocklist": "Zur Blocklist hinzugefügt",
       "removedFromBlocklist": "Aus der Blocklist entfernt",
-      "selectAnInstance": "Wähle eine Instanz",
-      "invalidInfohash": "Infohash muss 40 oder 64 Hex-Zeichen lang sein"
+      "invalidInfohash": "Infohash muss 40 oder 64 Hex-Zeichen lang sein",
+      "noteSaved": "Notiz gespeichert",
+      "hashCopied": "Hash kopiert"
     }
   },
   "routeConfirm": {

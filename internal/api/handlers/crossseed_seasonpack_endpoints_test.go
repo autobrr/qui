@@ -130,7 +130,7 @@ func seasonPackApplyCases(t *testing.T) []seasonPackEndpointCase {
 			r.servers[1].Add(qbtstub.Torrent{Hash: endpointHash(t, pack), Name: endpointPack, SavePath: filepath.Join(r.root, "lib"), Layout: qbtstub.RootFolder, Files: []string{"a.mkv"}})
 		}},
 		seasonPackEndpointCase{name: "blocked", held: held, total: 4, torrent: pack, setup: func(r *seasonPackEndpointRig) {
-			_, err := r.blocklist.Upsert(r.t.Context(), 1, endpointInfoHash(t, pack), "")
+			_, err := r.blocklist.Upsert(r.t.Context(), 1, endpointInfoHash(t, pack), "", models.BlockedTorrent{})
 			require.NoError(r.t, err)
 		}},
 		seasonPackEndpointCase{name: "existing check fails", held: held, total: 4, torrent: pack, fail: func(r *seasonPackEndpointRig) { r.sync.hasErr = errors.New("instance offline") }},

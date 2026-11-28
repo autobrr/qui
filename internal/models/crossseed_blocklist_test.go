@@ -30,7 +30,7 @@ func TestCrossSeedBlocklistStore_UpsertListDelete(t *testing.T) {
 	hash, err := infohash.Parse(raw)
 	require.NoError(t, err)
 
-	entry, err := store.Upsert(ctx, instance.ID, hash, "  bad files ")
+	entry, err := store.Upsert(ctx, instance.ID, hash, "  bad files ", models.BlockedTorrent{})
 	require.NoError(t, err)
 	assert.Equal(t, strings.ToLower(raw), entry.InfoHash)
 	assert.Equal(t, "bad files", entry.Note)

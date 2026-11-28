@@ -494,28 +494,39 @@
     "atLeast": "最少為 {{min}}"
   },
   "blocklist": {
-    "title": "輔種封鎖清單",
     "noInstancesDescription": "新增實例以管理已封鎖的輔種 infohash。",
-    "description": "按實例阻止特定 infohash 的注入。",
     "instanceLabel": "實例",
-    "selectInstance": "選擇實例",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "例如 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "備註（可選）",
     "notePlaceholder": "為什麼要封鎖此雜湊？",
-    "add": "新增",
-    "blockedHashes": "已封鎖的雜湊",
-    "blockedHashesDescription": "條目僅應用於所選實例。",
-    "noBlockedInfohashes": "沒有已封鎖的 infohash。",
-    "tableInfohash": "Infohash",
-    "tableNote": "備註",
-    "tableAdded": "新增時間",
-    "removeAriaLabel": "從封鎖清單中移除 {{hash}}",
+    "sectionTitle": "已封鎖的種子",
+    "sectionDescription": "交叉做種永遠不會把這些種子加入此實例。",
+    "blockHash": "封鎖雜湊",
+    "emptyTitle": "沒有已封鎖的種子",
+    "emptyDescription": "可在搜尋結果或刪除對話框中封鎖交叉做種，或在此加入雜湊。",
+    "blockedAt": "封鎖於 {{date}}",
+    "copyHash": "複製雜湊",
+    "remove": "移除",
+    "removeDialog": {
+      "title": "從封鎖清單中移除？",
+      "description": "交叉做種可以再次把 {{name}} 加入 {{instance}}。"
+    },
+    "addDialog": {
+      "title": "封鎖雜湊",
+      "description": "交叉做種永遠不會把帶有此雜湊的種子加入該實例。",
+      "submit": "封鎖"
+    },
+    "editDialog": {
+      "title": "編輯備註",
+      "save": "儲存"
+    },
     "toast": {
       "addedToBlocklist": "已新增到封鎖清單",
       "removedFromBlocklist": "已從封鎖清單移除",
-      "selectAnInstance": "請選擇一個實例",
-      "invalidInfohash": "Infohash 必須為 40 或 64 個十六進位制字元"
+      "invalidInfohash": "Infohash 必須為 40 或 64 個十六進位制字元",
+      "noteSaved": "備註已儲存",
+      "hashCopied": "雜湊已複製"
     }
   },
   "routeConfirm": {

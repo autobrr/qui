@@ -494,28 +494,39 @@
     "atLeast": "최소 {{min}} 이상이어야 합니다"
   },
   "blocklist": {
-    "title": "Cross-Seed 차단 목록",
     "noInstancesDescription": "차단된 cross-seed infohash를 관리하려면 인스턴스를 추가하세요.",
-    "description": "인스턴스별로 특정 infohash가 주입되지 않도록 방지합니다.",
     "instanceLabel": "인스턴스",
-    "selectInstance": "인스턴스 선택",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "예: 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "메모(선택 사항)",
     "notePlaceholder": "이 해시가 차단된 이유는 무엇인가요?",
-    "add": "추가",
-    "blockedHashes": "차단된 해시",
-    "blockedHashesDescription": "항목은 선택한 인스턴스에만 적용됩니다.",
-    "noBlockedInfohashes": "차단된 infohash가 없습니다.",
-    "tableInfohash": "Infohash",
-    "tableNote": "메모",
-    "tableAdded": "추가됨",
-    "removeAriaLabel": "차단 목록에서 {{hash}} 제거",
+    "sectionTitle": "차단된 토렌트",
+    "sectionDescription": "크로스 시드는 이 토렌트들을 이 인스턴스에 추가하지 않습니다.",
+    "blockHash": "해시 차단",
+    "emptyTitle": "차단된 토렌트 없음",
+    "emptyDescription": "검색 결과나 삭제 대화 상자에서 크로스 시드를 차단하거나, 여기에서 해시를 추가하세요.",
+    "blockedAt": "{{date}}에 차단됨",
+    "copyHash": "해시 복사",
+    "remove": "제거",
+    "removeDialog": {
+      "title": "차단 목록에서 제거할까요?",
+      "description": "크로스 시드가 {{name}}을(를) {{instance}}에 다시 추가할 수 있습니다."
+    },
+    "addDialog": {
+      "title": "해시 차단",
+      "description": "크로스 시드는 이 해시의 토렌트를 인스턴스에 추가하지 않습니다.",
+      "submit": "차단"
+    },
+    "editDialog": {
+      "title": "메모 편집",
+      "save": "저장"
+    },
     "toast": {
       "addedToBlocklist": "차단 목록에 추가됨",
       "removedFromBlocklist": "차단 목록에서 제거됨",
-      "selectAnInstance": "인스턴스 선택",
-      "invalidInfohash": "Infohash는 16진수 40자 또는 64자여야 합니다"
+      "invalidInfohash": "Infohash는 16진수 40자 또는 64자여야 합니다",
+      "noteSaved": "메모 저장됨",
+      "hashCopied": "해시 복사됨"
     }
   },
   "routeConfirm": {

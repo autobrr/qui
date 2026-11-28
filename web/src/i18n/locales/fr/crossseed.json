@@ -503,28 +503,39 @@
     "atLeast": "Doit être d'au moins {{min}}"
   },
   "blocklist": {
-    "title": "Liste de blocage Cross-Seed",
     "noInstancesDescription": "Ajoutez des instances pour gérer les infohash bloqués.",
-    "description": "Empêchez des infohash spécifiques d'être injectés par instance.",
     "instanceLabel": "Instance",
-    "selectInstance": "Sélectionner une instance",
     "infohashLabel": "Infohash",
     "infohashPlaceholder": "ex. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
     "noteLabel": "Note (optionnelle)",
     "notePlaceholder": "Pourquoi ce hash est-il bloqué ?",
-    "add": "Ajouter",
-    "blockedHashes": "Hash bloqués",
-    "blockedHashesDescription": "Les entrées ne sont appliquées qu'à l'instance sélectionnée.",
-    "noBlockedInfohashes": "Aucun infohash bloqué.",
-    "tableInfohash": "Infohash",
-    "tableNote": "Note",
-    "tableAdded": "Ajouté",
-    "removeAriaLabel": "Supprimer {{hash}} de la liste de blocage",
+    "sectionTitle": "Torrents bloqués",
+    "sectionDescription": "Le cross-seed n'ajoute jamais ces torrents à cette instance.",
+    "blockHash": "Bloquer un hash",
+    "emptyTitle": "Aucun torrent bloqué",
+    "emptyDescription": "Bloquez un cross-seed depuis les résultats de recherche ou la fenêtre de suppression, ou ajoutez un hash ici.",
+    "blockedAt": "Bloqué le {{date}}",
+    "copyHash": "Copier le hash",
+    "remove": "Retirer",
+    "removeDialog": {
+      "title": "Retirer de la liste de blocage ?",
+      "description": "Le cross-seed peut de nouveau ajouter {{name}} à {{instance}}."
+    },
+    "addDialog": {
+      "title": "Bloquer un hash",
+      "description": "Le cross-seed n'ajoute jamais le torrent avec ce hash à l'instance.",
+      "submit": "Bloquer"
+    },
+    "editDialog": {
+      "title": "Modifier la note",
+      "save": "Enregistrer"
+    },
     "toast": {
       "addedToBlocklist": "Ajouté à la liste de blocage",
       "removedFromBlocklist": "Supprimé de la liste de blocage",
-      "selectAnInstance": "Sélectionnez une instance",
-      "invalidInfohash": "L'infohash doit faire 40 ou 64 caractères hexadécimaux"
+      "invalidInfohash": "L'infohash doit faire 40 ou 64 caractères hexadécimaux",
+      "noteSaved": "Note enregistrée",
+      "hashCopied": "Hash copié"
     }
   },
   "routeConfirm": {
