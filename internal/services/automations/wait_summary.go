@@ -74,7 +74,7 @@ func (s *automationSummary) waitingRules() string {
 	return strings.Join(parts, "; ")
 }
 
-func formatCounts(counts map[string]int, limit int, label func(string) string) string {
+func formatCounts[K ~string](counts map[K]int, limit int, label func(K) string) string {
 	items := sortedCountItems(counts)
 	items = items[:min(len(items), limit)]
 	parts := make([]string, 0, len(items))

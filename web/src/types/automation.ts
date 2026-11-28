@@ -4,6 +4,8 @@
  */
 
 import type {
+  AutomationActivityAction,
+  AutomationActivityOutcome,
   ConditionField,
   ConditionOperator,
   ContentLayout,
@@ -257,10 +259,10 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "transferred_to_instance" | "dry_run_no_match" | "delete_waiting" | "unregistered_wait_started" | "unregistered_wait_ended" | "rule_skipped"
+  action: AutomationActivityAction
   ruleId?: number
   ruleName?: string
-  outcome: "success" | "failed" | "dry-run" | "skipped"
+  outcome: AutomationActivityOutcome
   reason?: string
   details?: {
     ratio?: number

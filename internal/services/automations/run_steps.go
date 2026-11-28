@@ -76,8 +76,8 @@ func (r *stepRun) write(hashes []string, send func(batch []string) error) []stri
 }
 
 type stepActivity struct {
-	action  string
-	outcome string
+	action  models.ActivityAction
+	outcome models.ActivityOutcome
 	hash    string
 	reason  string
 	details any
@@ -90,7 +90,7 @@ type stepActivity struct {
 func (r *stepRun) record(ctx context.Context, a stepActivity) {
 	detailsJSON, err := json.Marshal(a.details)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", r.instanceID).Str("action", a.action).Msg("automations: failed to marshal activity details")
+		log.Warn().Err(err).Int("instanceID", r.instanceID).Str("action", string(a.action)).Msg("automations: failed to marshal activity details")
 		return
 	}
 	outcome := a.outcome
@@ -120,7 +120,7 @@ func (r *stepRun) record(ctx context.Context, a stepActivity) {
 	}
 	activityID, err := r.s.activityStore.CreateWithID(ctx, activity)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", r.instanceID).Str("action", a.action).Msg("automations: failed to record activity")
+		log.Warn().Err(err).Int("instanceID", r.instanceID).Str("action", string(a.action)).Msg("automations: failed to record activity")
 		return
 	}
 	if r.dryRun {
@@ -134,7 +134,7 @@ func (r *stepRun) record(ctx context.Context, a stepActivity) {
 	}
 }
 
-func (r *stepRun) recordCount(ctx context.Context, action string, hashes []string, rules map[string]ruleRef) {
+func (r *stepRun) recordCount(ctx context.Context, action models.ActivityAction, hashes []string, rules map[string]ruleRef) {
 	if len(hashes) == 0 {
 		return
 	}
@@ -262,7 +262,7 @@ func (r *stepRun) shareLimits(ctx context.Context, plan *runPlan) {
 	})
 }
 
-func (r *stepRun) bulk(ctx context.Context, action, done, activityAction string, planned plannedTorrents) {
+func (r *stepRun) bulk(ctx context.Context, action, done string, activityAction models.ActivityAction, planned plannedTorrents) {
 	accepted := r.write(planned.hashes, func(batch []string) error {
 		err := r.s.syncManager.BulkAction(ctx, r.instanceID, batch, action)
 		if err != nil {

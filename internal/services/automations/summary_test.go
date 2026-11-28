@@ -86,13 +86,13 @@ func TestBuildAutomationRuleSummariesGroupsActionsByRule(t *testing.T) {
 			}
 		}
 
-		require.Equal(t, "Deleted torrent (ratio rule)", actions[models.ActivityActionDeletedRatio].label)
-		require.Equal(t, 2, actions[models.ActivityActionDeletedRatio].applied)
-		require.Equal(t, 0, actions[models.ActivityActionDeletedRatio].failed)
+		require.Equal(t, "Deleted torrent (ratio rule)", actions[string(models.ActivityActionDeletedRatio)].label)
+		require.Equal(t, 2, actions[string(models.ActivityActionDeletedRatio)].applied)
+		require.Equal(t, 0, actions[string(models.ActivityActionDeletedRatio)].failed)
 
-		require.Equal(t, "Delete failed", actions[models.ActivityActionDeleteFailed].label)
-		require.Equal(t, 0, actions[models.ActivityActionDeleteFailed].applied)
-		require.Equal(t, 1, actions[models.ActivityActionDeleteFailed].failed)
+		require.Equal(t, "Delete failed", actions[string(models.ActivityActionDeleteFailed)].label)
+		require.Equal(t, 0, actions[string(models.ActivityActionDeleteFailed)].applied)
+		require.Equal(t, 1, actions[string(models.ActivityActionDeleteFailed)].failed)
 	}
 	require.True(t, ratioRuleFound)
 }

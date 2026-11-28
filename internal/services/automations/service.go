@@ -48,7 +48,7 @@ const freeSpaceDeleteCooldown = 5 * time.Minute
 
 const logMsgRemoveTorrentWithFiles = "automations: removing torrent with files"
 
-var automationActionLabels = map[string]string{
+var automationActionLabels = map[models.ActivityAction]string{
 	models.ActivityActionDeletedRatio:        "Deleted torrent (ratio rule)",
 	models.ActivityActionDeletedSeeding:      "Deleted torrent (seeding rule)",
 	models.ActivityActionDeletedUnregistered: "Deleted torrent (unregistered)",
@@ -74,8 +74,8 @@ var automationActionLabels = map[string]string{
 type automationSummary struct {
 	applied          int
 	failed           int
-	appliedByAction  map[string]int
-	failedByAction   map[string]int
+	appliedByAction  map[models.ActivityAction]int
+	failedByAction   map[models.ActivityAction]int
 	rules            map[string]*automationRuleSummary
 	tagAddedByName   map[string]int
 	tagRemovedByName map[string]int
@@ -93,7 +93,7 @@ type automationRuleSummary struct {
 	ruleName string
 	applied  int
 	failed   int
-	actions  map[string]*automationActionCounts
+	actions  map[models.ActivityAction]*automationActionCounts
 	wait     time.Duration
 	waiting  []string
 }
@@ -105,8 +105,8 @@ type automationActionCounts struct {
 
 func newAutomationSummary() *automationSummary {
 	return &automationSummary{
-		appliedByAction:  make(map[string]int),
-		failedByAction:   make(map[string]int),
+		appliedByAction:  make(map[models.ActivityAction]int),
+		failedByAction:   make(map[models.ActivityAction]int),
 		rules:            make(map[string]*automationRuleSummary),
 		tagAddedByName:   make(map[string]int),
 		tagRemovedByName: make(map[string]int),
@@ -116,7 +116,7 @@ func newAutomationSummary() *automationSummary {
 	}
 }
 
-func (s *automationSummary) add(action, outcome string, count int) {
+func (s *automationSummary) add(action models.ActivityAction, outcome models.ActivityOutcome, count int) {
 	if s == nil || count <= 0 {
 		return
 	}
@@ -221,7 +221,7 @@ func (s *automationSummary) addRuleAction(activity *models.AutomationActivity, c
 		return
 	}
 
-	action := strings.TrimSpace(activity.Action)
+	action := models.ActivityAction(strings.TrimSpace(string(activity.Action)))
 	if action == "" {
 		action = "unknown"
 	}
@@ -258,7 +258,7 @@ func (s *automationSummary) ruleSummary(ruleID int, ruleName string) *automation
 		rule = &automationRuleSummary{
 			ruleID:   ruleID,
 			ruleName: ruleName,
-			actions:  make(map[string]*automationActionCounts),
+			actions:  make(map[models.ActivityAction]*automationActionCounts),
 		}
 		s.rules[key] = rule
 	}
@@ -284,7 +284,7 @@ func (s *automationSummary) ruleTotalsByName() map[string]int {
 	return out
 }
 
-func (s *automationSummary) recordRuleCounts(action string, outcome string, counts map[ruleRef]int) {
+func (s *automationSummary) recordRuleCounts(action models.ActivityAction, outcome models.ActivityOutcome, counts map[ruleRef]int) {
 	if s == nil || len(counts) == 0 {
 		return
 	}
@@ -365,19 +365,19 @@ func (s *automationSummary) addSample(list *[]string, value string, limit int) {
 	*list = append(*list, trimmed)
 }
 
-type countItem struct {
-	key   string
+type countItem[K ~string] struct {
+	key   K
 	count int
 }
 
-func sortedCountItems(counts map[string]int) []countItem {
+func sortedCountItems[K ~string](counts map[K]int) []countItem[K] {
 	if len(counts) == 0 {
 		return nil
 	}
 
-	items := make([]countItem, 0, len(counts))
+	items := make([]countItem[K], 0, len(counts))
 	for key, count := range counts {
-		items = append(items, countItem{key: key, count: count})
+		items = append(items, countItem[K]{key: key, count: count})
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].count == items[j].count {
@@ -388,7 +388,7 @@ func sortedCountItems(counts map[string]int) []countItem {
 	return items
 }
 
-func formatActionCounts(counts map[string]int, limit int) string {
+func formatActionCounts(counts map[models.ActivityAction]int, limit int) string {
 	return formatCounts(counts, limit, automationActionLabel)
 }
 
@@ -430,11 +430,11 @@ func formatTagCounts(added map[string]int, removed map[string]int, limit int) st
 	return strings.Join(parts, "; ")
 }
 
-func automationActionLabel(action string) string {
+func automationActionLabel(action models.ActivityAction) string {
 	if label, ok := automationActionLabels[action]; ok {
 		return label
 	}
-	return strings.ReplaceAll(action, "_", " ")
+	return strings.ReplaceAll(string(action), "_", " ")
 }
 
 func normalizeRuleName(ruleID *int, ruleName string) string {
@@ -1898,7 +1898,7 @@ func (s *Service) applyRules(ctx context.Context, instanceID int, rules []*model
 
 	exportResults := s.executeExportToInstance(ctx, instanceID, s.reserveExports(plan.exports))
 
-	deleteActivity := func(hash string, pending selectedDeletion, action, outcome, reason string) *models.AutomationActivity {
+	deleteActivity := func(hash string, pending selectedDeletion, action models.ActivityAction, outcome models.ActivityOutcome, reason string) *models.AutomationActivity {
 		detailsJSON, err := json.Marshal(struct {
 			DeleteMode   string             `json:"deleteMode"`
 			FilesKept    bool               `json:"filesKept"`
@@ -2163,7 +2163,7 @@ func buildAutomationRuleSummaries(summary *automationSummary) []notifications.Au
 				continue
 			}
 			actions = append(actions, notifications.AutomationActionSummary{
-				Action:  action,
+				Action:  string(action),
 				Label:   automationActionLabel(action),
 				Applied: counts.applied,
 				Failed:  counts.failed,
@@ -2283,7 +2283,7 @@ func buildNotifiedAutomationSummary(summary *automationSummary, rules []*models.
 			ruleName: rule.ruleName,
 			applied:  rule.applied,
 			failed:   rule.failed,
-			actions:  make(map[string]*automationActionCounts, len(rule.actions)),
+			actions:  make(map[models.ActivityAction]*automationActionCounts, len(rule.actions)),
 			wait:     rule.wait,
 			waiting:  rule.waiting,
 		}
@@ -3278,7 +3278,7 @@ func (s *Service) recordDryRunActivities(
 
 	r := &stepRun{s: s, instanceID: instanceID, torrentByHash: torrentByHash, scope: scope, dryRun: true}
 	r.runSteps(ctx, &plan)
-	createActivity := func(action string, details map[string]any, buildItems func() []ActivityRunTorrent) {
+	createActivity := func(action models.ActivityAction, details map[string]any, buildItems func() []ActivityRunTorrent) {
 		r.record(ctx, stepActivity{action: action, details: details, items: buildItems})
 	}
 
@@ -3291,7 +3291,7 @@ func (s *Service) recordDryRunActivities(
 		}
 		for programID, hashes := range hashesByProgram {
 			unique := infohash.UniqueStrings(hashes)
-			createActivity(externalprograms.ActivityActionExternalProgram, map[string]any{"programId": programID, "count": len(unique)}, func() []ActivityRunTorrent {
+			createActivity(models.ActivityActionExternalProgram, map[string]any{"programId": programID, "count": len(unique)}, func() []ActivityRunTorrent {
 				return buildRunItemsFromHashes(unique, torrentByHash, scope)
 			})
 		}
@@ -3601,7 +3601,7 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 					InstanceID:  instanceID,
 					Hash:        exec.hash,
 					TorrentName: exec.torrent.Name,
-					Action:      externalprograms.ActivityActionExternalProgram,
+					Action:      models.ActivityActionExternalProgram,
 					RuleID:      &ruleID,
 					RuleName:    exec.ruleName,
 					Outcome:     models.ActivityOutcomeFailed,

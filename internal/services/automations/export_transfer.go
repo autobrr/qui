@@ -62,7 +62,7 @@ func (s *Service) exportOnTransfers(ctx context.Context, sourceInstanceID int, e
 	s.sendExportActivity(ctx, ch, exportActivity(sourceInstanceID, exec, cmp.Or(res.TrackerDomain, exec.trackerDomain), outcome, res.Failure))
 }
 
-func exportActivity(sourceInstanceID int, exec pendingExportToInstance, trackerDomain, outcome, reason string) *models.AutomationActivity {
+func exportActivity(sourceInstanceID int, exec pendingExportToInstance, trackerDomain string, outcome models.ActivityOutcome, reason string) *models.AutomationActivity {
 	details, _ := json.Marshal(struct { //nolint:errchkjson // int and string fields cannot fail to encode
 		Count            int    `json:"count"`
 		SavePath         string `json:"savePath"`

@@ -12,42 +12,47 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
+type ActivityAction string
+
 const (
-	ActivityActionDeletedRatio        = "deleted_ratio"
-	ActivityActionDeletedSeeding      = "deleted_seeding"
-	ActivityActionDeletedUnregistered = "deleted_unregistered"
-	ActivityActionDeletedCondition    = "deleted_condition"
-	ActivityActionDeleteFailed        = "delete_failed"
-	ActivityActionLimitFailed         = "limit_failed"
-	ActivityActionTagsChanged         = "tags_changed"
-	ActivityActionCategoryChanged     = "category_changed"
-	ActivityActionSpeedLimitsChanged  = "speed_limits_changed"
-	ActivityActionShareLimitsChanged  = "share_limits_changed"
-	ActivityActionPaused              = "paused"
-	ActivityActionResumed             = "resumed"
-	ActivityActionRechecked           = "rechecked"
-	ActivityActionReannounced         = "reannounced"
-	ActivityActionMoved               = "moved"
-	ActivityActionAutoManaged         = "auto_managed"
-	ActivityActionExportedToInstance  = "exported_to_instance"
-	ActivityActionDryRunNoMatch       = "dry_run_no_match"
-	ActivityActionRuleSkipped         = "rule_skipped"
+	ActivityActionDeletedRatio        ActivityAction = "deleted_ratio"
+	ActivityActionDeletedSeeding      ActivityAction = "deleted_seeding"
+	ActivityActionDeletedUnregistered ActivityAction = "deleted_unregistered"
+	ActivityActionDeletedCondition    ActivityAction = "deleted_condition"
+	ActivityActionDeleteFailed        ActivityAction = "delete_failed"
+	ActivityActionLimitFailed         ActivityAction = "limit_failed"
+	ActivityActionTagsChanged         ActivityAction = "tags_changed"
+	ActivityActionCategoryChanged     ActivityAction = "category_changed"
+	ActivityActionSpeedLimitsChanged  ActivityAction = "speed_limits_changed"
+	ActivityActionShareLimitsChanged  ActivityAction = "share_limits_changed"
+	ActivityActionPaused              ActivityAction = "paused"
+	ActivityActionResumed             ActivityAction = "resumed"
+	ActivityActionRechecked           ActivityAction = "rechecked"
+	ActivityActionReannounced         ActivityAction = "reannounced"
+	ActivityActionMoved               ActivityAction = "moved"
+	ActivityActionAutoManaged         ActivityAction = "auto_managed"
+	ActivityActionExternalProgram     ActivityAction = "external_program"
+	ActivityActionExportedToInstance  ActivityAction = "exported_to_instance"
+	ActivityActionDryRunNoMatch       ActivityAction = "dry_run_no_match"
+	ActivityActionRuleSkipped         ActivityAction = "rule_skipped"
 )
 
-const ActivityActionTransferredToInstance = "transferred_to_instance"
+const ActivityActionTransferredToInstance ActivityAction = "transferred_to_instance"
 
-const ActivityActionDeleteWaiting = "delete_waiting"
+const ActivityActionDeleteWaiting ActivityAction = "delete_waiting"
 
 const (
-	ActivityActionUnregisteredWaitStarted = "unregistered_wait_started"
-	ActivityActionUnregisteredWaitEnded   = "unregistered_wait_ended"
+	ActivityActionUnregisteredWaitStarted ActivityAction = "unregistered_wait_started"
+	ActivityActionUnregisteredWaitEnded   ActivityAction = "unregistered_wait_ended"
 )
 
+type ActivityOutcome string
+
 const (
-	ActivityOutcomeSuccess = "success"
-	ActivityOutcomeFailed  = "failed"
-	ActivityOutcomeDryRun  = "dry-run"
-	ActivityOutcomeSkipped = "skipped"
+	ActivityOutcomeSuccess ActivityOutcome = "success"
+	ActivityOutcomeFailed  ActivityOutcome = "failed"
+	ActivityOutcomeDryRun  ActivityOutcome = "dry-run"
+	ActivityOutcomeSkipped ActivityOutcome = "skipped"
 )
 
 type AutomationActivity struct {
@@ -56,10 +61,10 @@ type AutomationActivity struct {
 	Hash          string          `json:"hash"`
 	TorrentName   string          `json:"torrentName,omitempty"`
 	TrackerDomain string          `json:"trackerDomain,omitempty"`
-	Action        string          `json:"action"`
+	Action        ActivityAction  `json:"action"`
 	RuleID        *int            `json:"ruleId,omitempty"`
 	RuleName      string          `json:"ruleName,omitempty"`
-	Outcome       string          `json:"outcome"`
+	Outcome       ActivityOutcome `json:"outcome"`
 	Reason        string          `json:"reason,omitempty"`
 	Details       json.RawMessage `json:"details,omitempty"`
 	CreatedAt     time.Time       `json:"createdAt"`
@@ -127,8 +132,8 @@ func insertActivity(ctx context.Context, db activityWriter, activity *Automation
 			(instance_id, hash, torrent_name, tracker_domain, action, rule_id, rule_name, outcome, reason, details)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, activity.InstanceID, activity.Hash, activity.TorrentName, activity.TrackerDomain, activity.Action,
-			ruleID, activity.RuleName, activity.Outcome, activity.Reason, detailsStr)
+	`, activity.InstanceID, activity.Hash, activity.TorrentName, activity.TrackerDomain, string(activity.Action),
+			ruleID, activity.RuleName, string(activity.Outcome), activity.Reason, detailsStr)
 		if err != nil {
 			return 0, err
 		}
@@ -146,8 +151,8 @@ func insertActivity(ctx context.Context, db activityWriter, activity *Automation
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
-	`, activity.InstanceID, activity.Hash, activity.TorrentName, activity.TrackerDomain, activity.Action,
-		ruleID, activity.RuleName, activity.Outcome, activity.Reason, detailsStr).Scan(&id)
+	`, activity.InstanceID, activity.Hash, activity.TorrentName, activity.TrackerDomain, string(activity.Action),
+		ruleID, activity.RuleName, string(activity.Outcome), activity.Reason, detailsStr).Scan(&id)
 	if err != nil {
 		return 0, err
 	}

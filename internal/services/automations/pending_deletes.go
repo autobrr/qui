@@ -151,7 +151,7 @@ func (s *Service) recordPendingDeletes(ctx context.Context, instanceID int, in p
 	for _, line := range lines {
 		detailsJSON, err := json.Marshal(line.details)
 		if err != nil {
-			log.Warn().Err(err).Int("instanceID", instanceID).Str("action", line.action).Msg("automations: failed to marshal activity details")
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("action", string(line.action)).Msg("automations: failed to marshal activity details")
 			return nil
 		}
 		diff.change.Activities = append(diff.change.Activities, &models.AutomationActivity{
@@ -268,7 +268,7 @@ func (d *pendingDiff) lines() []waitActivity {
 }
 
 type waitActivity struct {
-	action  string
+	action  models.ActivityAction
 	details any
 	hashes  []string
 }
