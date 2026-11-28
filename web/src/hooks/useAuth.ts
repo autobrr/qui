@@ -9,6 +9,16 @@ import type { User } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 
+export const SETUP_COMPLETED_KEY = "qui-setup-completed"
+
+export function markSetupCompleted(): void {
+  try {
+    sessionStorage.setItem(SETUP_COMPLETED_KEY, "1")
+  } catch {
+    return
+  }
+}
+
 export function useAuth() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -35,7 +45,12 @@ export function useAuth() {
       api.setup(username, password),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
+      queryClient.setQueryData(["setup-required"], false)
+      queryClient.setQueryData(["setup-required-page"], false)
+      queryClient.invalidateQueries({ queryKey: ["setup-required"] })
+      queryClient.invalidateQueries({ queryKey: ["setup-required-page"] })
       queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+      markSetupCompleted()
       navigateAfterAuth(navigate)
     },
   })
