@@ -362,6 +362,8 @@ func (s *Service) processLinkMode(
 			level, what = zerolog.WarnLevel, "filesystem does not support "+mode.name
 		case linktree.InvalidPlan:
 			message, handle, what = fmt.Sprintf("Failed to build %s plan: %v", mode.name, treeErr.Err), handlePlanError, planFailed
+		case linktree.ConnectionLost:
+			handle = linkError
 		default:
 			if shouldWarnForReflinkCreateError(treeErr.Err) {
 				level = zerolog.WarnLevel
@@ -369,6 +371,7 @@ func (s *Service) processLinkMode(
 		}
 		if treeErr.Partial {
 			message += "; a partial link tree can remain in " + treeErr.Dir
+			handle = linkError
 		}
 		if errors.Is(treeErr.Err, hardlinktree.ErrTargetExists) {
 			handle = handleMaterializationError

@@ -308,7 +308,7 @@ func (i *Injector) prepareInjection(
 		return tree.SavePath, tree.Kind.String(), tree, nil
 	}
 
-	if failure, ok := errors.AsType[*linktree.Error](linkErr); !instance.FallbackToRegularMode || (ok && failure.Kind == linktree.ConnectionLost) {
+	if failure, ok := errors.AsType[*linktree.Error](linkErr); !instance.FallbackToRegularMode || (ok && (failure.Kind == linktree.ConnectionLost || failure.Partial)) {
 		return "", "", nil, linkErr
 	}
 
