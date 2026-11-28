@@ -22,7 +22,6 @@ import (
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -70,74 +69,6 @@ func TestResolveSeasonPackSourcePath_RejectsEscapingRelativePaths(t *testing.T) 
 	require.Empty(t, resolveSeasonPackSourcePath(fsops.HostPaths, "/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "subdir/../../escape.mkv"))
 }
 
-func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
-	rootDir := filepath.Join(t.TempDir(), "pack")
-	plannedFile := filepath.Join(rootDir, "Show.S01E01.1080p.WEB.x264-GRP.mkv")
-	unrelatedFile := filepath.Join(rootDir, "unrelated.txt")
-	require.NoError(t, os.MkdirAll(rootDir, 0o755))
-	require.NoError(t, os.WriteFile(plannedFile, []byte("planned"), 0o600))
-	require.NoError(t, os.WriteFile(unrelatedFile, []byte("keep"), 0o600))
-
-	err := rollbackSeasonPackTree(context.Background(), local.NewBackend(), &fsops.TreeCreateResult{
-		Files: []string{plannedFile},
-	}, rootDir)
-
-	require.NoError(t, err)
-	require.NoFileExists(t, plannedFile)
-	require.FileExists(t, unrelatedFile)
-	require.DirExists(t, rootDir)
-}
-
-func TestRollbackSeasonPackTree_RunsUnderCancelledContext(t *testing.T) {
-	rootDir := filepath.Join(t.TempDir(), "pack")
-	plannedFile := filepath.Join(rootDir, "Show.S01E01.1080p.WEB.x264-GRP.mkv")
-	require.NoError(t, os.MkdirAll(rootDir, 0o755))
-	require.NoError(t, os.WriteFile(plannedFile, []byte("planned"), 0o600))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := rollbackSeasonPackTree(ctx, local.NewBackend(), &fsops.TreeCreateResult{
-		Files: []string{plannedFile},
-	}, rootDir)
-
-	require.NoError(t, err)
-	require.NoFileExists(t, plannedFile)
-	require.NoDirExists(t, rootDir)
-}
-
-func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
-	for _, name := range []string{
-		"../Show.S01E01.1080p.WEB.x264-GRP.mkv",
-		"/Show.S01E01.1080p.WEB.x264-GRP.mkv",
-		`\Show.S01E01.1080p.WEB.x264-GRP.mkv`,
-		"C:/Show.S01E01.1080p.WEB.x264-GRP.mkv",
-		"//server/share/Show.S01E01.1080p.WEB.x264-GRP.mkv",
-		`Show.S01\Show.S01E01.1080p.WEB.x264-GRP.mkv`,
-		"Show.S01//Show.S01E01.1080p.WEB.x264-GRP.mkv",
-	} {
-		t.Run(name, func(t *testing.T) {
-			localFiles := map[episodeIdentity]seasonPackLocalFile{
-				{series: 1, episode: 1}: {
-					sourcePath: "/media/Show.S01E01.1080p.WEB.x264-GRP.mkv",
-					size:       10,
-					packFile:   name,
-				},
-			}
-			_, err := matcher{}.buildSeasonPackPlan(
-				fsops.HostPaths,
-				qbt.TorrentFiles{{Name: name, Size: 10}},
-				"Show.S01.1080p.WEB.x264-GRP",
-				t.TempDir(),
-				localFiles,
-			)
-
-			require.ErrorIs(t, err, errLayoutMismatch)
-			require.ErrorContains(t, err, "invalid pack target path")
-		})
-	}
-}
-
 func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	matcher := matcher{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
@@ -183,20 +114,17 @@ func TestBuildSeasonPackPlan_LinksOnlyVerifiedFiles(t *testing.T) {
 	}
 
 	build, err := matcher{}.buildSeasonPackPlan(
-		fsops.HostPaths,
 		qbt.TorrentFiles{
 			{Name: packDir + "Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 10},
 			{Name: packDir + "Show.S01E02.1080p.WEB.x264-GRP.mkv", Size: 10},
 			{Name: packDir + "Show.S01E03.1080p.WEB.x264-GRP.mkv", Size: 10},
 		},
-		"Show.S01.1080p.WEB.x264-GRP",
-		t.TempDir(),
 		localFiles,
 	)
 
 	require.NoError(t, err)
-	require.Len(t, build.plan.Files, 1)
-	require.Contains(t, build.plan.Files[0].TargetPath, "S01E01")
+	require.Len(t, build.links, 1)
+	require.Contains(t, build.links[0].TorrentPath, "S01E01")
 	require.True(t, build.hasPendingFiles())
 	require.Len(t, build.materializedPaths, 1)
 	require.Equal(t, int64(10), build.linkedBytes)
@@ -243,17 +171,12 @@ func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t
 		seasonPackSyncManager: &seasonPackSyncManager{fakeSyncManager: baseSM},
 	}
 
-	var capturedPlan *hardlinktree.TreePlan
 	svc := &Service{
 		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-			capturedPlan = plan
-			return &fsops.TreeCreateResult{}, nil
-		},
 	}
 
 	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
@@ -266,10 +189,8 @@ func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t
 
 	require.NoError(t, err)
 	require.True(t, resp.Applied)
-	require.NotNil(t, capturedPlan)
-	require.Equal(t, selectedBaseDir, capturedPlan.RootDir)
-	require.Equal(t, capturedPlan.RootDir, adds.added[0]["savepath"])
-	require.Equal(t, filepath.Join(selectedBaseDir, fix.packName), filepath.Dir(capturedPlan.Files[0].TargetPath))
+	require.Equal(t, selectedBaseDir, adds.added[0]["savepath"])
+	require.FileExists(t, filepath.Join(selectedBaseDir, fix.packName, fix.packFiles[0]))
 }
 
 func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFails(t *testing.T) {
@@ -479,6 +400,9 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 		map[int]*models.Instance{inst.ID: inst},
 	)
 	baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
+	for _, files := range baseSM.files {
+		require.NoError(t, os.WriteFile(filepath.Join(mediaDir, files[0].Name), []byte("episode"), 0o600))
+	}
 	sm := &seasonPackRegressionSyncManager{
 		seasonPackSyncManager: &seasonPackSyncManager{fakeSyncManager: baseSM},
 	}
@@ -488,18 +412,9 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-			require.NotEmpty(t, plan.Files)
-			require.NoError(t, os.MkdirAll(filepath.Dir(plan.Files[0].TargetPath), 0o755))
-			require.NoError(t, os.WriteFile(plan.Files[0].TargetPath, []byte("partial"), 0o600))
-			return &fsops.TreeCreateResult{
-				Files: []string{plan.Files[0].TargetPath},
-				Dirs:  []string{filepath.Dir(plan.Files[0].TargetPath)},
-			}, errors.New("link creator failed")
-		},
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, &faultyLinkBackend{Backend: local.NewBackend(), createErr: errors.New("link creator failed")}))
 	withLinkAdder(svc)
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
@@ -652,10 +567,10 @@ func TestSeasonPack_LinksSeededEpisodeRangeFile(t *testing.T) {
 				matched, packFiles, &packRelease, packName, settings, nil, nil)
 			require.NoError(t, err)
 
-			build, err := m.buildSeasonPackPlan(fsops.HostPaths, packFiles, packName, t.TempDir(), localFiles)
+			build, err := m.buildSeasonPackPlan(packFiles, localFiles)
 			require.NoError(t, err)
-			require.Len(t, build.plan.Files, 1)
-			require.Contains(t, build.plan.Files[0].TargetPath, episodes)
+			require.Len(t, build.links, 1)
+			require.Contains(t, build.links[0].TorrentPath, episodes)
 		})
 	}
 }

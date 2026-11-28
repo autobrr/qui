@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
-	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/linktree"
 	"github.com/autobrr/qui/pkg/infohash"
 )
@@ -45,8 +44,6 @@ func TestPathDialect_CategoryAndSeasonPackDirs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			eachDialect(t, tt.hostToo, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
-				s := &Service{}
-				instance := &models.Instance{Name: "qbt1", HardlinkDirPreset: tt.preset}
 				presetDir := conv(tt.wantCategory)
 
 				wantCategory := normalizePath(tt.wantCategory)
@@ -54,30 +51,6 @@ func TestPathDialect_CategoryAndSeasonPackDirs(t *testing.T) {
 					wantCategory = conv(tt.wantCategory)
 				}
 				require.Equal(t, wantCategory, linkCategorySavePath(d, &linktree.Tree{BaseDir: conv(tt.baseDir), PresetDir: presetDir}, nil))
-
-				require.Equal(t, conv(tt.wantCategory), s.seasonPackDestDir(t.Context(), d, instance, instance.Name, conv(tt.baseDir), nil, "Tracker"))
-			})
-		})
-	}
-}
-
-func TestPathDialect_SharedPathComponents(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		a, b    string
-		want    int
-		hostToo bool
-	}{
-		{a: "/data/a/b", b: "/data/a/b/x", want: 4, hostToo: true},
-		{a: "/data/a", b: "/data/b/x", want: 2, hostToo: true},
-		{a: `/data/a\b`, b: "/data/a/b/x", want: 2},
-	}
-	for _, tt := range tests {
-		t.Run(tt.a, func(t *testing.T) {
-			t.Parallel()
-			eachDialect(t, tt.hostToo, func(t *testing.T, d fsops.PathDialect, conv func(string) string) {
-				require.Equal(t, tt.want, sharedPathComponents(d, conv(tt.a), conv(tt.b)))
 			})
 		})
 	}

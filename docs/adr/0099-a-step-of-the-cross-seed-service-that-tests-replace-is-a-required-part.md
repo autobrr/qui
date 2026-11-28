@@ -24,5 +24,5 @@ Production code now has no branch on a field that only test code sets. A step th
 - One table test has a row for each Trigger and fails when a Trigger has none.
 - A test Service that is built by hand without a required part crashes at first use.
 - The Service holds a reference to itself until #4639.
-- Two hooks stay on the allowlist of the ratchet: the settings read (#4640) and the season pack link create (#4138).
+- One hook stays on the allowlist of the ratchet: the settings read (#4640).
 - A change that adds a nil-checked field that only tests set, or that removes a row of the table test, reverses this decision and needs a new ADR.

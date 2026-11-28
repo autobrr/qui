@@ -340,6 +340,20 @@ func TestLinkTree(t *testing.T) {
 			},
 		},
 		{
+			name: "a refusal in the first base dir stops the walk",
+			edit: func(t *testing.T, e *testEnv, req *Request) {
+				req.Config.BaseDirs = []string{e.baseA, e.baseB}
+				require.NoError(t, os.MkdirAll(filepath.Join(e.baseA, "Show.S01"), 0o755))
+				stranger := filepath.Join(e.baseA, "Show.S01--deadbeef", "Show.S01")
+				require.NoError(t, os.MkdirAll(stranger, 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(stranger, "e2.mkv"), []byte("stranger"), 0o600))
+			},
+			wantFail: TargetExists,
+			check: func(t *testing.T, e *testEnv, _ *TreePlan, _ *Tree) {
+				requireMissing(t, e.baseB)
+			},
+		},
+		{
 			name: "a cross-device error moves the tree to the next base dir",
 			edit: func(_ *testing.T, e *testEnv, req *Request) {
 				req.Config.BaseDirs = []string{e.baseA, e.baseB}

@@ -91,10 +91,7 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			packMeta, err := ParseTorrentMetadataWithInfo(packBytes)
 			require.NoError(t, err)
 			programs := runProgramAfterAdd(svc, qbt.Torrent{Hash: packMeta.HashV1.String()})
-			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
-			if mode == "reflink" {
-				svc.seasonPackLinkCreator = local.NewBackend().HardlinkTree
-			}
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, &faultyLinkBackend{Backend: local.NewBackend(), reflink: true}))
 			req := &ManualAssembleRequest{InstanceID: 1, TorrentData: torrentData, TargetHashes: []string{"e01", "e02", "e03"}, Category: "chosen", Tags: []string{"chosen"}}
 			preview, err := svc.CheckManualAssemble(t.Context(), req)
 			require.NoError(t, err)

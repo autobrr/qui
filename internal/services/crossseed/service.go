@@ -37,7 +37,6 @@ import (
 	"github.com/autobrr/qui/internal/services/metadata"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/systemnotice"
-	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/infohash"
 	"github.com/autobrr/qui/pkg/sharedextents"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -232,11 +231,10 @@ type Service struct {
 
 	backendPool atomic.Value
 
-	injection             injector
-	completionSearch      completionSearcher
-	seasonPackAdd         seasonPackAdder
-	seasonPackLinkCreator func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	filesShareAllocation  func(sourcePath, candidatePath string) (bool, error)
+	injection            injector
+	completionSearch     completionSearcher
+	seasonPackAdd        seasonPackAdder
+	filesShareAllocation func(sourcePath, candidatePath string) (bool, error)
 
 	settler *Settler
 	adder   *Adder

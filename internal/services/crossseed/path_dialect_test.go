@@ -5,18 +5,18 @@ package crossseed
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -82,10 +82,17 @@ func (b *slashBackend) device(p string) string {
 	return ""
 }
 
+func (b *slashBackend) exists(p string) bool {
+	_, isDir := b.dirs[p]
+	_, isFile := b.files[p]
+	return isDir || isFile
+}
+
 func (b *slashBackend) SameFilesystem(_ context.Context, p1, p2 string) (bool, error) {
-	_, isDir := b.dirs[p1]
-	if _, isFile := b.files[p1]; !isFile && !isDir {
-		return false, &fs.PathError{Op: "stat", Path: p1, Err: fs.ErrNotExist}
+	for _, p := range []string{p1, p2} {
+		if !b.exists(p) {
+			return false, &fs.PathError{Op: "stat", Path: p, Err: fs.ErrNotExist}
+		}
 	}
 	dev := b.device(p1)
 	return dev != "" && dev == b.device(p2), nil
@@ -309,117 +316,60 @@ func TestPathDialect_ManualMatchPreviewMapsTheRoute(t *testing.T) {
 	require.Equal(t, "/seeds-data/seeds", got)
 }
 
-func TestPathDialect_SelectSeasonPackBaseDirWalksSlashParents(t *testing.T) {
-	t.Parallel()
-
-	backend := newSlashBackend([]string{"/data"}, "/data/tv/ep.mkv")
-	backend.dirs["/data/hl"] = struct{}{}
-
-	got, _, err := selectSeasonPackBaseDir(t.Context(), backend, "/data/hl/new",
-		map[episodeIdentity]seasonPackLocalFile{{series: 1, episode: 1}: {sourcePath: "/data/tv/ep.mkv"}})
-
-	require.NoError(t, err)
-	require.Equal(t, "/data/hl/new", got)
-	require.Contains(t, backend.stats, "/data/hl")
-}
-
-func TestSelectSeasonPackBaseDir_RanksBySharedPrefix(t *testing.T) {
-	t.Parallel()
-
-	backend := newSlashBackend([]string{"/data"}, "/data/tv/ep.mkv")
-	backend.dirs["/data/tv/hl"] = struct{}{}
-	backend.dirs["/mnt/hl"] = struct{}{}
-
-	got, rest, err := selectSeasonPackBaseDir(t.Context(), backend, "/data/hl/new, /mnt/hl, /data/tv/hl",
-		map[episodeIdentity]seasonPackLocalFile{{series: 1, episode: 1}: {sourcePath: "/data/tv/ep.mkv"}})
-
-	require.NoError(t, err)
-	require.Equal(t, "/data/tv/hl", got)
-	require.Equal(t, []string{"/data/hl/new", "/mnt/hl"}, rest)
-}
-
 func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testing.T) {
 	tests := []struct {
 		name        string
-		firstErr    error
 		manual      bool
-		oldPackDir  bool
 		allFail     bool
-		fails       int
-		baseDirs    string
 		wantApplied bool
-		wantRoots   []string
 	}{
-		{name: "cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
-		{name: "other error", firstErr: &os.LinkError{Op: "link", Err: syscall.EACCES}, wantRoots: []string{"/data/tv/hl"}},
-		{name: "cross-device with failed creator rollback", firstErr: fmt.Errorf("%w (%w: %w)", &os.LinkError{Op: "link", Err: syscall.EXDEV}, hardlinktree.ErrRollbackFailed, fs.ErrPermission), wantRoots: []string{"/data/tv/hl"}},
-		{name: "cross-device with files already in the pack dir", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, oldPackDir: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
-		{name: "every base dir cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, allFail: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
-		{name: "manual assemble cross-device", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, manual: true, wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2"}},
-		{name: "cross-device twice", firstErr: &os.LinkError{Op: "link", Err: syscall.EXDEV}, fails: 2, baseDirs: "/data/tv/hl, /data/usb/hl, /data/hl2, /data/hl3", wantApplied: true, wantRoots: []string{"/data/tv/hl", "/data/hl2", "/data/hl3"}},
+		{name: "cross-device", wantApplied: true},
+		{name: "manual assemble cross-device", manual: true, wantApplied: true},
+		{name: "every base dir cross-device", allFail: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fix := newSeasonPackFixture(t)
-			baseDirs := tt.baseDirs
-			if baseDirs == "" {
-				baseDirs = "/data/tv/hl, /data/usb/hl, /data/hl2"
-			}
+			root := t.TempDir()
+			first, second := filepath.Join(root, "hl1"), filepath.Join(root, "hl2")
 			inst := &models.Instance{
-				ID: 1, Name: "SlashInst", IsActive: true, HasLocalFilesystemAccess: true, UseHardlinks: true,
-				HardlinkBaseDir: baseDirs,
+				ID: 1, Name: "Test", IsActive: true, HasLocalFilesystemAccess: true, UseHardlinks: true,
+				HardlinkBaseDir: first + ", " + second,
 			}
 			hashes := []string{"e01", "e02", "e03", "e04"}
-			sources := make([]string, 0, len(fix.packFiles))
+			files := seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
 			torrents := make([]qbt.Torrent, 0, len(fix.packFiles))
 			for i, fileName := range fix.packFiles {
-				source := "/data/tv/" + fileName
-				sources = append(sources, source)
-				torrents = append(torrents, qbt.Torrent{Hash: hashes[i], Name: strings.TrimSuffix(fileName, path.Ext(fileName)), ContentPath: source, Progress: 1.0})
+				source := filepath.Join(root, "tv", fileName)
+				require.NoError(t, os.MkdirAll(filepath.Dir(source), 0o755))
+				require.NoError(t, os.WriteFile(source, make([]byte, files[hashes[i]][0].Size), 0o600))
+				torrents = append(torrents, qbt.Torrent{Hash: hashes[i], Name: strings.TrimSuffix(fileName, filepath.Ext(fileName)), ContentPath: source, Progress: 1.0})
 			}
-			backend := newSlashBackend([]string{"/data/usb", "/data"}, sources...)
-			backend.dirs["/data/tv/hl"] = struct{}{}
-			backend.dirs["/data/usb/hl"] = struct{}{}
-			backend.dirs["/data/hl2"] = struct{}{}
-			backend.dirs["/data/hl3"] = struct{}{}
-
 			baseSM := newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: torrents}, map[int]*models.Instance{inst.ID: inst})
-			baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
-			sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
-			var roots []string
-			var failed int
+			baseSM.files = files
+			crossDevice := []string{first}
+			if tt.allFail {
+				crossDevice = append(crossDevice, second)
+			}
 			s := &Service{
 				instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
-				syncManager:              sm,
+				syncManager:              &seasonPackSyncManager{fakeSyncManager: baseSM},
 				releaseCache:             NewReleaseCache(),
 				automationSettingsLoader: defaultSettings(true, 0.75),
-				seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-					roots = append(roots, plan.RootDir)
-					if len(roots) <= max(tt.fails, 1) || tt.allFail {
-						failed++
-						if tt.oldPackDir {
-							for dir := path.Dir(plan.Files[0].TargetPath); dir != plan.RootDir; dir = path.Dir(dir) {
-								backend.dirs[dir] = struct{}{}
-							}
-						}
-						return &fsops.TreeCreateResult{Created: 1}, tt.firstErr
-					}
-					return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
-				},
+				seasonPackRunStore:       &stubSeasonPackRunStore{},
 			}
 			s.settler = idleSettler(s.syncManager)
 			adds := withLinkAdder(s)
-			s.SetBackendPool(fsops.NewPool(s.instanceStore, backend))
+			s.SetBackendPool(fsops.NewPool(s.instanceStore, &faultyLinkBackend{Backend: local.NewBackend(), crossDevice: crossDevice}))
 
 			if tt.manual {
-				backend.size = baseSM.files["e01"][0].Size
 				resp, err := s.ApplyManualAssemble(t.Context(), &ManualAssembleRequest{
 					InstanceID: inst.ID, TorrentData: fix.torrentData, TargetHashes: hashes,
 				})
 				require.NoError(t, err)
 				require.True(t, resp.Applied, "%+v", resp)
-				require.Equal(t, tt.wantRoots, roots)
-				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], resp.Destination, "the response names the dir that was used")
+				require.Equal(t, second, resp.Destination, "the response names the dir that was used")
+				require.NoDirExists(t, filepath.Join(first, fix.packName))
 				return
 			}
 			resp, err := s.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
@@ -430,13 +380,14 @@ func TestApplySeasonPackWebhook_RetriesNextBaseDirAfterCrossDeviceError(t *testi
 
 			require.NoError(t, err)
 			require.Equal(t, tt.wantApplied, resp.Applied, "%+v", resp)
-			require.Equal(t, tt.wantRoots, roots)
-			require.Equal(t, failed, backend.removed, "each partial tree is rolled back")
+			require.NoDirExists(t, filepath.Join(first, fix.packName), "the partial tree is rolled back")
 			if tt.wantApplied {
-				require.Equal(t, tt.wantRoots[len(tt.wantRoots)-1], adds.added[0]["savepath"])
+				require.Equal(t, second, adds.added[0]["savepath"])
+				require.FileExists(t, filepath.Join(second, fix.packName, fix.packFiles[0]))
 			} else {
 				require.Equal(t, "link_failed", resp.Reason)
 				require.Empty(t, adds.added)
+				require.NoDirExists(t, filepath.Join(second, fix.packName))
 			}
 		})
 	}
@@ -452,6 +403,7 @@ func TestPathDialect_SeasonPackPlan(t *testing.T) {
 	}{
 		{name: "by-tracker", preset: "by-tracker", baseDir: "/data/hl", wantRoot: "/data/hl/tracker.example.com", wantDir: "/data/hl/tracker.example.com"},
 		{name: "flat double slash", preset: "flat", baseDir: "//data/hl", wantDir: "/data/hl"},
+		{name: "missing base dir under a slash parent", preset: "flat", baseDir: "/data/hl/new", wantDir: "/data/hl/new"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

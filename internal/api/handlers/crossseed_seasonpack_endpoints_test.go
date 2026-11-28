@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -16,11 +15,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/testutil"
 	"github.com/autobrr/qui/internal/testutil/qbtstub"
-	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/pathutil"
 )
 
 var updateSeasonPackEndpoints = flag.Bool("update-season-pack-endpoints", false, "rewrite the season pack endpoint fixtures in testdata")
@@ -152,9 +149,10 @@ func seasonPackApplyCases(t *testing.T) []seasonPackEndpointCase {
 			require.NoError(r.t, os.WriteFile(r.links, nil, 0o600))
 		}},
 		seasonPackEndpointCase{name: "link fails", held: held, total: 4, torrent: pack, setup: func(r *seasonPackEndpointRig) {
-			testutil.SetUnexportedField(r.t, r.svc, "seasonPackLinkCreator", func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
-				return nil, errors.New("disk full")
-			})
+			hashed := filepath.Join(r.links, pathutil.HashedIsolationFolder(endpointHash(t, pack), endpointPack), endpointPack)
+			require.NoError(r.t, os.MkdirAll(filepath.Join(r.links, endpointPack), 0o755))
+			require.NoError(r.t, os.MkdirAll(hashed, 0o755))
+			require.NoError(r.t, os.WriteFile(filepath.Join(hashed, endpointEpisodes(1)[0]+".mkv"), []byte("another torrent"), 0o600))
 		}},
 		seasonPackEndpointCase{name: "recheck skipped", held: endpointEpisodes(3), total: 4, torrent: pack, setup: func(r *seasonPackEndpointRig) { r.settings.SkipRecheck = true }},
 		seasonPackEndpointCase{name: "add fails", held: held, total: 4, torrent: pack, fail: func(r *seasonPackEndpointRig) { r.sync.addErr = errors.New("add rejected") }},
