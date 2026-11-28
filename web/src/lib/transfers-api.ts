@@ -4,12 +4,11 @@
  */
 
 import { apiRequest } from "@/lib/api"
+import type { TransferAfter, TransferWayChoice } from "@/types"
 
 export type TransferKind = "transfer" | "export"
 export type TransferWay = "sftp" | "local" | "none" | "bittorrent"
 export type TransferState = "waiting" | "copying" | "checking" | "finishing" | "done" | "failed" | "cancelled"
-export type TransferAfter = "removeWithFiles" | "keepFiles" | "keepSeeding"
-export type TransferWayChoice = "auto" | "copy" | "bittorrent"
 export type TransferFilter = "all" | "active" | "waiting" | "finished" | "failed"
 export type TransferBulkAction = "retry" | "cancel" | "remove"
 

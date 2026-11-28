@@ -3,11 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
-
 import {
-  ACTION_RUN_ORDER,
   allowanceInputOf,
   freeSpaceSourceOf,
   fromImportFormat,
@@ -340,19 +336,6 @@ describe("toExportJSON", () => {
       conditions,
     }
     expect(toExportJSON(data)).toBe("{\n  \"name\": \"x\",\n  \"trackerPattern\": \"*\",\n  \"conditions\": {\n    \"schemaVersion\": \"1\"\n  }\n}")
-  })
-})
-
-describe("ACTION_RUN_ORDER", () => {
-  it("matches the backend's actionRunOrder", () => {
-    const source = readFileSync(resolve(import.meta.dirname, "../../../../internal/services/automations/service.go"), "utf8")
-
-    const slice = source.match(/^var actionRunOrder = \[\]string\{\n([^}]*)\}/m)
-    expect(slice).not.toBeNull()
-    const goKeys = [...slice![1].matchAll(/^\t"(\w+)",$/gm)].map(m => m[1])
-
-    expect(goKeys.length).toBeGreaterThan(0)
-    expect([...ACTION_RUN_ORDER]).toEqual(goKeys)
   })
 })
 

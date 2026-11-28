@@ -5,32 +5,13 @@
 
 import { describe, expect, it, vi } from "vitest"
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
-import type { ActivityEvent } from "@/types"
+import { ACTIVITY_EVENT_KIND_VALUES, type ActivityEvent } from "@/types"
 import {
   ACTIVITY_FEATURE_PREFIXES,
   activityQueryKeys,
   invalidateAllActivity,
   invalidateForActivity
 } from "@/lib/activity-invalidation"
-
-const ALL_KINDS_MAP = {
-  "backup.run": true,
-  "dirscan.run": true,
-  "orphanscan.run": true,
-  "discscan.run": true,
-  "crossseed.status": true,
-  "crossseed.search": true,
-  "reannounce.activity": true,
-  "automation.activity": true,
-  "indexer.activity": true,
-  "search.history": true,
-  "tracker.icons": true,
-  "theme.settings": true,
-  "theme.custom": true,
-  "client.settings": true,
-} satisfies Record<ActivityEvent["kind"], true>
-
-const ALL_KINDS = Object.keys(ALL_KINDS_MAP) as ActivityEvent["kind"][]
 
 function isPrefixOf(prefix: QueryKey, key: QueryKey): boolean {
   return prefix.length <= key.length && prefix.every((segment, i) => segment === key[i])
@@ -116,7 +97,7 @@ describe("invalidateAllActivity", () => {
   })
 
   it("covers the key family of every activity kind", () => {
-    for (const kind of ALL_KINDS) {
+    for (const kind of ACTIVITY_EVENT_KIND_VALUES) {
       const keys = activityQueryKeys(ev({ kind }))
       expect(keys.length).toBeGreaterThan(0)
       for (const key of keys) {
