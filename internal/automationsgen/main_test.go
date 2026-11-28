@@ -13,14 +13,10 @@ import (
 
 func TestGeneratedFilesAreCurrent(t *testing.T) {
 	root := filepath.Join("..", "..")
-	reference, err := generate(root)
+	files, err := outputs(root)
 	require.NoError(t, err)
 
-	for path, want := range map[string][]byte{
-		referencePath:       reference,
-		fieldsPath:          generateFields(),
-		permissionAreasPath: generatePermissionAreas(),
-	} {
+	for path, want := range files {
 		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
 		require.NoError(t, err)
 		require.Equal(t, string(want), string(got), "%s is stale, run `make generate`", path)

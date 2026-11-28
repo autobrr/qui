@@ -4,6 +4,7 @@
  */
 
 export * from "./common"
+export * from "./closed-sets.generated"
 export * from "./auth"
 export * from "./app"
 export * from "./instances"

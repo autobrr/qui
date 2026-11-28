@@ -4,15 +4,8 @@
  */
 
 import type { TFunction } from "i18next";
-import type { AutomationRuleSkip, ConditionField, ConditionOperator } from "@/types";
+import { CONDITION_FIELD_VALUES, type AutomationRuleSkip, type ConditionField, type ConditionOperator } from "@/types";
 import { CONDITION_FIELDS } from "./fields.generated";
-
-export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set<ConditionField>([
-  "SYSTEM_HOUR",
-  "SYSTEM_MINUTE",
-  "SYSTEM_DAY_OF_WEEK",
-  "SYSTEM_MONTH",
-]);
 
 export { CONDITION_FIELDS };
 
@@ -32,6 +25,8 @@ export const SORT_FIELDS: ReadonlySet<ConditionField> = new Set((Object.keys(CON
   .filter((field) => sortKind(field) !== undefined && !field.startsWith("SYSTEM_")));
 
 export const SCORE_FIELDS: ReadonlySet<ConditionField> = new Set([...SORT_FIELDS].filter((field) => sortKind(field) === "number"));
+
+export const WRAPPING_BETWEEN_FIELDS: ReadonlySet<ConditionField> = new Set(CONDITION_FIELD_VALUES.filter((field) => "wrapsBetween" in CONDITION_FIELDS[field]));
 
 export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope" | "seasonPackStatus";
 

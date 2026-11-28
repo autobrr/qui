@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TransferAfter, TransferRequest, TransferWayChoice } from "@/lib/transfers-api"
+import type { TransferRequest } from "@/lib/transfers-api"
+import type { TransferAfter, TransferWayChoice } from "@/types"
 
 export interface TransferFormValue {
   targetInstanceId: number | null
