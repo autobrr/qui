@@ -76,9 +76,7 @@ func (s *automationSummary) waitingRules() string {
 
 func formatCounts(counts map[string]int, limit int, label func(string) string) string {
 	items := sortedCountItems(counts)
-	if limit > 0 {
-		items = items[:min(len(items), limit)]
-	}
+	items = items[:min(len(items), limit)]
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		parts = append(parts, fmt.Sprintf("%s=%d", label(item.key), item.count))

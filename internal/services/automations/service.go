@@ -2254,18 +2254,25 @@ func buildNotifiedAutomationSummary(summary *automationSummary, rules []*models.
 	}
 
 	filtered := newAutomationSummary()
-	totalRules := 0
+	actionRules := 0
 	notifiedRules := 0
+	notifiedActionRules := 0
 
 	for key, rule := range summary.rules {
 		if rule == nil {
 			continue
 		}
-		totalRules++
+		hasActions := len(rule.actions) > 0
+		if hasActions {
+			actionRules++
+		}
 		if !notifyByRuleID[rule.ruleID] {
 			continue
 		}
 		notifiedRules++
+		if hasActions {
+			notifiedActionRules++
+		}
 
 		clonedRule := &automationRuleSummary{
 			ruleID:   rule.ruleID,
@@ -2301,7 +2308,7 @@ func buildNotifiedAutomationSummary(summary *automationSummary, rules []*models.
 		return nil
 	}
 
-	if notifiedRules == totalRules {
+	if notifiedActionRules == actionRules {
 		filtered.sampleTorrents = append([]string(nil), summary.sampleTorrents...)
 		filtered.sampleErrors = append([]string(nil), summary.sampleErrors...)
 		filtered.tagSamples = append([]string(nil), summary.tagSamples...)

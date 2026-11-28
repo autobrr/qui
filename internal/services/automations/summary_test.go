@@ -323,3 +323,81 @@ func TestNotifyAutomationSummaryCountsWaitingTorrentsApartFromApplied(t *testing
 		})
 	}
 }
+
+func TestNotifyAutomationSummaryKeepsActionDetailsWhenASilentRuleOnlyHasWaitingTorrents(t *testing.T) {
+	t.Parallel()
+
+	moveRuleID := 1
+	summary := newAutomationSummary()
+	summary.recordActivity(&models.AutomationActivity{RuleID: &moveRuleID, RuleName: "Move rule", Action: models.ActivityActionMoved, Outcome: models.ActivityOutcomeFailed, TorrentName: "Some.Film.2024-GRP", Reason: "permission denied"}, 1)
+	summary.addWaiting(&models.Automation{ID: 2, Name: "Silent delete"}, 48*time.Hour, "h1", waitingTorrent{name: "Other.Show.S01E01-GRP", tracker: "tracker-a.test"})
+
+	notifier := &automationRecordingNotifier{}
+	s := &Service{notifier: notifier}
+	s.notifyAutomationSummary(t.Context(), 1, summary, []*models.Automation{{ID: moveRuleID, Notify: true}, {ID: 2, Notify: false}})
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, "permission denied", events[0].ErrorMessage)
+	require.Contains(t, events[0].Message, "Some.Film.2024-GRP")
+	require.Zero(t, events[0].Automations.Waiting)
+	require.NotContains(t, events[0].Message, "Other.Show.S01E01-GRP")
+}
+
+func TestNotifyAutomationSummarySendsNothingForARuleWithOnlySkippedActivity(t *testing.T) {
+	t.Parallel()
+
+	ruleID := 1
+	summary := newAutomationSummary()
+	summary.recordActivity(&models.AutomationActivity{RuleID: &ruleID, RuleName: "Rule", Action: models.ActivityActionMoved, Outcome: models.ActivityOutcomeSkipped}, 1)
+
+	notifier := &automationRecordingNotifier{}
+	s := &Service{notifier: notifier}
+	s.notifyAutomationSummary(t.Context(), 1, summary, []*models.Automation{{ID: ruleID, Notify: true}})
+
+	require.Empty(t, notifier.Events())
+}
+
+func TestBuildAutomationRuleSummariesOrdersRulesByAppliedFailedAndWaitingTorrents(t *testing.T) {
+	t.Parallel()
+
+	failedRuleID := 1
+	summary := newAutomationSummary()
+	summary.recordActivity(&models.AutomationActivity{RuleID: &failedRuleID, RuleName: "Failed three", Action: models.ActivityActionMoved, Outcome: models.ActivityOutcomeFailed}, 3)
+	for _, hash := range []string{"a", "b"} {
+		summary.addWaiting(&models.Automation{ID: 2, Name: "Waiting two"}, time.Hour, hash, waitingTorrent{})
+	}
+	for _, hash := range []string{"c", "d", "e", "f"} {
+		summary.addWaiting(&models.Automation{ID: 3, Name: "Waiting four"}, time.Hour, hash, waitingTorrent{})
+	}
+
+	rules := buildAutomationRuleSummaries(summary)
+	names := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		names = append(names, rule.RuleName)
+	}
+	require.Equal(t, []string{"Waiting four", "Failed three", "Waiting two"}, names)
+}
+
+func TestAutomationSummaryWaitingLinesListOnlyWhatTheWaitingTorrentsHave(t *testing.T) {
+	t.Parallel()
+
+	moveRuleID := 1
+	summary := newAutomationSummary()
+	summary.recordActivity(&models.AutomationActivity{RuleID: &moveRuleID, RuleName: "Move rule", Action: models.ActivityActionMoved, Outcome: models.ActivityOutcomeSuccess}, 1)
+	summary.addWaiting(&models.Automation{ID: 2, Name: "Delete rule"}, 90*time.Minute, "h1", waitingTorrent{})
+
+	require.Equal(t, []string{"Waiting to delete: 1", "Waiting rules: Delete rule=1 (wait 90m)"}, summary.waitingLines())
+}
+
+func TestAutomationSummaryWaitingTrackersListTheTopThree(t *testing.T) {
+	t.Parallel()
+
+	summary := newAutomationSummary()
+	rule := &models.Automation{ID: 1, Name: "Delete rule"}
+	for i, tracker := range []string{"a.test", "a.test", "a.test", "b.test", "b.test", "c.test", "d.test"} {
+		summary.addWaiting(rule, 48*time.Hour, string(rune('h'+i)), waitingTorrent{tracker: tracker})
+	}
+
+	require.Contains(t, summary.waitingLines(), "Waiting trackers: a.test=3; b.test=2; c.test=1")
+}
