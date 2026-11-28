@@ -141,8 +141,6 @@
   "testhook": {
     "internal/qbittorrent/sync_manager.go": 3,
     "internal/services/automations/transfer_rule.go": 1,
-    "internal/services/crossseed/completion.go": 1,
-    "internal/services/crossseed/find_and_add.go": 1,
     "internal/services/crossseed/partial_pool.go": 3,
     "internal/services/crossseed/seasonpack.go": 1,
     "internal/services/crossseed/service.go": 1,

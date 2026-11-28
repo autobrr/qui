@@ -138,7 +138,18 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 			settings := models.DefaultCrossSeedAutomationSettings()
 			settings.SeasonPackAutomationEnabled = tt.automationEnabled
 
-			var diverted *seasonPackRequest
+			seasonPackAdd := newSeasonPackAddStandIn(func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
+				if !tt.applied {
+					return &seasonPackApplyResult{reason: "below_threshold"}, nil
+				}
+				return &seasonPackApplyResult{
+					applied:    true,
+					instanceID: instance.ID,
+					matched:    1,
+					total:      3,
+					coverage:   1.0 / 3.0,
+				}, nil
+			})
 			svc := &Service{
 				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{1: instance}},
 				syncManager:      newFakeSyncManager(instance, tt.libraryTorrents, tt.libraryFiles),
@@ -147,19 +158,7 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return settings, nil
 				},
-				seasonPackApplier: func(_ context.Context, req seasonPackRequest) (*seasonPackApplyResult, error) {
-					diverted = &req
-					if !tt.applied {
-						return &seasonPackApplyResult{reason: "below_threshold"}, nil
-					}
-					return &seasonPackApplyResult{
-						applied:    true,
-						instanceID: instance.ID,
-						matched:    1,
-						total:      3,
-						coverage:   1.0 / 3.0,
-					}, nil
-				},
+				seasonPackAdd: seasonPackAdd,
 			}
 
 			withLinkAdder(svc)
@@ -175,10 +174,12 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 			})
 			require.NoError(t, err)
 
+			requests := seasonPackAdd.Requests()
 			if !tt.wantDiverted {
-				require.Nil(t, diverted, "season pack apply should not have been invoked")
+				require.Empty(t, requests, "season pack apply should not have been invoked")
 			} else {
-				require.NotNil(t, diverted, "season pack apply should have been invoked")
+				require.Len(t, requests, 1, "season pack apply should have been invoked")
+				diverted := requests[0]
 				require.Equal(t, packName, diverted.name)
 				require.Equal(t, packB64, diverted.torrentData)
 				require.Equal(t, []int{instance.ID}, diverted.instanceIDs)
@@ -202,6 +203,9 @@ func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 	settings := models.DefaultCrossSeedAutomationSettings()
 	settings.SeasonPackAutomationEnabled = true
 
+	seasonPackAdd := newSeasonPackAddStandIn(func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
+		return &seasonPackApplyResult{applied: true, instanceID: 1, matched: 2, total: 3}, nil
+	})
 	svc := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{
 			1: {ID: 1, Name: "main"},
@@ -209,9 +213,7 @@ func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
 		},
-		seasonPackApplier: func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
-			return &seasonPackApplyResult{applied: true, instanceID: 1, matched: 2, total: 3}, nil
-		},
+		seasonPackAdd: seasonPackAdd,
 	}
 
 	response := &CrossSeedResponse{
@@ -219,7 +221,17 @@ func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
 			{InstanceID: 2, InstanceName: "other", Success: false, Status: "no_match"},
 		},
 	}
-	svc.maybeDivertSeasonPack(context.Background(), &CrossSeedRequest{}, "Show.Title.S01.1080p.WEB.H264-GRP", response)
+	svc.maybeDivertSeasonPack(context.Background(), &CrossSeedRequest{TorrentData: "cGFjaw==", TargetInstanceIDs: []int{1, 2}, IndexerName: "tracker"}, "Show.Title.S01.1080p.WEB.H264-GRP", response)
+
+	requests := seasonPackAdd.Requests()
+	require.Len(t, requests, 1)
+	require.Equal(t, seasonPackRequest{
+		name:        "Show.Title.S01.1080p.WEB.H264-GRP",
+		torrentData: "cGFjaw==",
+		instanceIDs: []int{1, 2},
+		indexer:     "tracker",
+		autonomous:  true,
+	}, requests[0])
 
 	require.True(t, response.Success)
 	require.Len(t, response.Results, 2)
@@ -236,6 +248,9 @@ func TestMaybeDivertSeasonPack_NamesTheCrossSeedInstance(t *testing.T) {
 	settings := models.DefaultCrossSeedAutomationSettings()
 	settings.SeasonPackAutomationEnabled = true
 
+	seasonPackAdd := newSeasonPackAddStandIn(func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
+		return &seasonPackApplyResult{applied: true, instanceID: 1, addedInstanceID: 2, matched: 3, total: 3}, nil
+	})
 	svc := &Service{
 		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{
 			1: {ID: 1, Name: "main"},
@@ -244,13 +259,21 @@ func TestMaybeDivertSeasonPack_NamesTheCrossSeedInstance(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
 		},
-		seasonPackApplier: func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
-			return &seasonPackApplyResult{applied: true, instanceID: 1, addedInstanceID: 2, matched: 3, total: 3}, nil
-		},
+		seasonPackAdd: seasonPackAdd,
 	}
 
 	response := &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: 1, InstanceName: "main", Status: "no_match"}}}
-	svc.maybeDivertSeasonPack(context.Background(), &CrossSeedRequest{}, "Show.Title.S01.1080p.WEB.H264-GRP", response)
+	svc.maybeDivertSeasonPack(context.Background(), &CrossSeedRequest{TorrentData: "cGFjaw==", TargetInstanceIDs: []int{1, 2}, IndexerName: "tracker"}, "Show.Title.S01.1080p.WEB.H264-GRP", response)
+
+	requests := seasonPackAdd.Requests()
+	require.Len(t, requests, 1)
+	require.Equal(t, seasonPackRequest{
+		name:        "Show.Title.S01.1080p.WEB.H264-GRP",
+		torrentData: "cGFjaw==",
+		instanceIDs: []int{1, 2},
+		indexer:     "tracker",
+		autonomous:  true,
+	}, requests[0])
 
 	require.Len(t, response.Results, 1)
 	result := response.Results[0]
@@ -385,16 +408,27 @@ func TestMaybeDivertSeasonPack_RecordsFailCooldown(t *testing.T) {
 			service.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 				return settings, nil
 			}
-			service.seasonPackApplier = func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
+			seasonPackAdd := newSeasonPackAddStandIn(func(context.Context, seasonPackRequest) (*seasonPackApplyResult, error) {
 				return &seasonPackApplyResult{applied: tt.applied, reason: tt.reason, instanceID: instanceID}, nil
-			}
+			})
+			service.seasonPackAdd = seasonPackAdd
 
 			response := &CrossSeedResponse{
 				Results: []InstanceCrossSeedResult{
 					{InstanceID: instanceID, InstanceName: "Test", Success: false, Status: "no_match"},
 				},
 			}
-			service.maybeDivertSeasonPack(ctx, &CrossSeedRequest{}, packName, response)
+			service.maybeDivertSeasonPack(ctx, &CrossSeedRequest{TorrentData: "cGFjaw==", TargetInstanceIDs: []int{instanceID}, IndexerName: "tracker"}, packName, response)
+
+			requests := seasonPackAdd.Requests()
+			require.Len(t, requests, 1)
+			require.Equal(t, seasonPackRequest{
+				name:        packName,
+				torrentData: "cGFjaw==",
+				instanceIDs: []int{instanceID},
+				indexer:     "tracker",
+				autonomous:  true,
+			}, requests[0])
 
 			_, found, err := service.automationStore.GetLatestSearchHistory(ctx, seasonPackFailKey(packName))
 			require.NoError(t, err)
