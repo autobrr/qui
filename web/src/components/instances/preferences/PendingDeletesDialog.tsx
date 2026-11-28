@@ -103,7 +103,7 @@ export function PendingDeletesDialog({ open, onOpenChange, ruleName, torrents }:
                           )}
                         </td>
                         <td className="p-2 max-w-[280px]">
-                          <TruncatedText className="block text-muted-foreground">{torrent.message || "-"}</TruncatedText>
+                          <TruncatedText className="block text-muted-foreground">{incognitoMode && torrent.message ? t("torrents:detailsPanel.trackerMessageHidden") : torrent.message || "-"}</TruncatedText>
                         </td>
                         <td className="p-2 text-muted-foreground whitespace-nowrap">{formatTimestamp(torrent.unregisteredSince)}</td>
                         <td className="p-2"><PendingDeleteWhen torrent={torrent} /></td>

@@ -4,7 +4,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -64,9 +64,9 @@ function transferActivity(overrides: Partial<AutomationActivity>): AutomationAct
   }
 }
 
-async function renderOverview() {
+async function renderOverview(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WorkflowsOverview />
       </TooltipProvider>
@@ -120,6 +120,20 @@ describe("WorkflowsOverview", () => {
     expect(rows[1][4]).toMatch(/^After /)
   })
 
+  it("reads the waiting torrents again when a rule of the instance is saved", async () => {
+    const waiting = (hash: string) => ({ hash, name: "", tracker: "", message: "", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    mocks.rules = [deleteRule({})]
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [waiting("aaaa1111")] }] }
+    await renderOverview(queryClient)
+    await screen.findByRole("button", { name: "1 waiting" })
+
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [waiting("aaaa1111"), waiting("bbbb2222")] }] }
+    await act(() => queryClient.invalidateQueries({ queryKey: ["automations", 1] }))
+
+    expect(await screen.findByRole("button", { name: "2 waiting" })).toBeTruthy()
+  })
+
   it("hides the name and the tracker of each waiting torrent in incognito mode", async () => {
     mocks.incognitoMode = [true, () => {}]
     mocks.rules = [deleteRule({})]
@@ -134,6 +148,7 @@ describe("WorkflowsOverview", () => {
     expect(dialog.querySelectorAll("tbody tr")).toHaveLength(1)
     expect(dialog.textContent).not.toContain("Film.2020.1080p-GRP")
     expect(dialog.textContent).not.toContain("tracker.example.invalid")
+    expect(dialog.querySelectorAll("tbody td")[2].textContent).toBe("Tracker message hidden in incognito mode")
   })
 
   it("shows whether each torrent of a live Transfer started", async () => {

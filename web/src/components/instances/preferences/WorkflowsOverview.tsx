@@ -85,7 +85,7 @@ import {
   verticalListSortingStrategy
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Braces, Clock, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
@@ -789,9 +789,11 @@ export function WorkflowsOverview() {
   })
 
   const pendingDeleteQueries = useQueries({
-    queries: activeInstances.map((instance) => ({
-      queryKey: ["automation-activity", instance.id, "pending-deletes"],
+    queries: activeInstances.map((instance, index) => ({
+      queryKey: ["automation-activity", instance.id, "pending-deletes", rulesQueries[index]?.dataUpdatedAt],
       queryFn: () => api.getPendingDeletes(instance.id),
+      enabled: rulesQueries[index]?.isSuccess === true,
+      placeholderData: keepPreviousData,
       staleTime: 5000,
     })),
   })
