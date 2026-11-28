@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
 import { useActivityStream } from "@/contexts/SyncStreamContext"
+import { crossSeedSearchStatusQuery } from "@/hooks/useCrossSeedSettings"
 import { api } from "@/lib/api"
 
 export type CrossSeedInstanceState = Record<number, {
@@ -43,9 +44,7 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceStateResult {
   })
 
   const searchStatusQuery = useQuery({
-    queryKey: ["cross-seed", "search-status"],
-    queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
+    ...crossSeedSearchStatusQuery,
     staleTime: 3_000,
   })
 

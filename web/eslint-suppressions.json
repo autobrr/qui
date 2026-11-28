@@ -83,9 +83,6 @@
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1
     },
-    "qui/no-direct-effect": {
-      "count": 1
-    },
     "shadcn/no-arbitrary-values": {
       "count": 5
     }
