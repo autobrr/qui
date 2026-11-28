@@ -15,7 +15,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import type { DisabledField, DisabledStateValue } from "./constants";
+import type { DisabledField, DisabledStateValue, FieldHint } from "./constants";
 import { DropZone } from "./DropZone";
 import { LeafCondition } from "./LeafCondition";
 import type { GroupOption } from "./QueryBuilder";
@@ -30,6 +30,7 @@ interface ConditionGroupProps {
   categoryOptions?: Array<{ label: string; value: string }>;
   disabledFields?: DisabledField[];
   disabledStateValues?: DisabledStateValue[];
+  fieldHints?: FieldHint[];
   groupOptions?: GroupOption[];
 }
 
@@ -58,6 +59,7 @@ export function ConditionGroup({
   categoryOptions,
   disabledFields,
   disabledStateValues,
+  fieldHints,
   groupOptions,
 }: ConditionGroupProps) {
   const { t } = useTranslation("automations");
@@ -157,6 +159,7 @@ export function ConditionGroup({
         categoryOptions={categoryOptions}
         disabledFields={disabledFields}
         disabledStateValues={disabledStateValues}
+        fieldHints={fieldHints}
         groupOptions={groupOptions}
       />
     );
@@ -237,6 +240,7 @@ export function ConditionGroup({
                     categoryOptions={categoryOptions}
                     disabledFields={disabledFields}
                     disabledStateValues={disabledStateValues}
+                    fieldHints={fieldHints}
                     groupOptions={groupOptions}
                   />
                 ) : (
@@ -249,6 +253,7 @@ export function ConditionGroup({
                     categoryOptions={categoryOptions}
                     disabledFields={disabledFields}
                     disabledStateValues={disabledStateValues}
+                    fieldHints={fieldHints}
                     groupOptions={groupOptions}
                   />
                 )}

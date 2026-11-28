@@ -38,6 +38,7 @@ import {
   getTranslatedSeasonPackStatuses,
   getTranslatedTrackerStatuses,
   type DisabledField,
+  type FieldHint,
   type DisabledStateValue
 } from "./constants";
 import { DisabledOption } from "./DisabledOption";
@@ -116,6 +117,7 @@ interface LeafConditionProps {
   categoryOptions?: Array<{ label: string; value: string }>;
   disabledFields?: DisabledField[];
   disabledStateValues?: DisabledStateValue[];
+  fieldHints?: FieldHint[];
   groupOptions?: GroupOption[];
 }
 
@@ -128,6 +130,7 @@ export function LeafCondition({
   categoryOptions,
   disabledFields,
   disabledStateValues,
+  fieldHints,
   groupOptions,
 }: LeafConditionProps) {
   const { t } = useTranslation("automations");
@@ -148,6 +151,7 @@ export function LeafCondition({
   const isGroupingField = isGroupingConditionField(condition.field);
   const availableGroupOptions = (groupOptions && groupOptions.length > 0)? groupOptions: [{ id: DEFAULT_GROUP_ID, label: t("queryBuilder.defaultGroupLabel") }];
   const groupIdValue = condition.groupId || DEFAULT_GROUP_ID;
+  const fieldHint = fieldHints?.find(h => h.field === condition.field);
 
   const [durationUnit, setDurationUnit] = useState<number>(() =>
     detectDurationUnit(parseFloat(condition.value ?? "0") || 0)
@@ -909,6 +913,9 @@ export function LeafCondition({
       >
         <X className="size-4" />
       </Button>
+      {fieldHint && (
+        <p className="order-last basis-full text-xs text-muted-foreground">{fieldHint.hint}</p>
+      )}
     </div>
   );
 }

@@ -138,6 +138,11 @@ export interface DisabledStateValue {
   reason: string
 }
 
+export interface FieldHint {
+  field: ConditionField
+  hint: string
+}
+
 export const FIELD_REQUIREMENTS: Partial<Record<ConditionField, CapabilityKey>> = Object.fromEntries(
   Object.entries(CONDITION_FIELDS).flatMap(([field, spec]) =>
     "requires" in spec ? [[field, spec.requires]] : []

@@ -935,6 +935,7 @@
         "remoteNotAvailable": "No disponible en instàncies remotes",
         "wait": "No registrat durant almenys",
         "waitHelp": "La regla només elimina un torrent quan porta aquest temps sense registrar. 0 l'elimina a la primera coincidència.",
+        "rawTrackerHint": "Aquesta condició elimina a la primera coincidència. Només la condició No registrat espera abans d'eliminar.",
         "waitLocked": "Per definir un altre temps, canvia la condició a No registrat.",
         "waitUnit": "Unitat del temps sense registrar"
       },
