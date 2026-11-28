@@ -557,7 +557,8 @@
         "dryRun": "模拟运行",
         "exportToInstance": "导出到实例",
         "transferToInstance": "传输到实例",
-        "ruleSkipped": "规则未运行"
+        "ruleSkipped": "规则未运行",
+        "deleteWaiting": "等待删除"
       },
       "shareLimit": {
         "global": "全局",
@@ -594,7 +595,8 @@
         "exported_other": "已导出 {{count}} 个种子",
         "exportedDryRun_other": "将导出 {{count}} 个种子",
         "exportFailed_other": "{{count}} 个种子导出失败",
-        "transferredDryRun_other": "将传输 {{count}} 个种子"
+        "transferredDryRun_other": "将传输 {{count}} 个种子",
+        "deleteWaiting_other": "{{count}} 个种子将等待删除"
       },
       "deleteDialog": {
         "title": "删除规则",
@@ -711,7 +713,11 @@
       "exportCSV": "导出 CSV",
       "saveWithoutPreview": "跳过预览并保存",
       "previewFailed": "预览失败：{{error}}",
-      "skipPreviewHint": "规则在下次运行时仍会作用于每个匹配的种子。您可以不等待预览直接保存。"
+      "skipPreviewHint": "规则在下次运行时仍会作用于每个匹配的种子。您可以不等待预览直接保存。",
+      "deletes": "删除",
+      "deletesNow": "立即",
+      "waitsUntil": "{{time}} 之后",
+      "waitsForTracker": "当 Tracker 再次返回未注册时"
     },
     "orphanScanOverview": {
       "title": "孤立项目扫描",
@@ -945,7 +951,8 @@
         "dry_run_no_match": "模拟运行（无匹配）",
         "exported_to_instance": "导出到实例",
         "transferred_to_instance": "传输到实例",
-        "rule_skipped": "规则未运行"
+        "rule_skipped": "规则未运行",
+        "delete_waiting": "模拟运行（等待删除）"
       }
     },
     "reannounceOverview": {
@@ -1244,7 +1251,11 @@
         "includeHardlinkedCopies": "包含硬链接副本",
         "includeHardlinkedCopiesDescription": "同时删除通过硬链接共享相同底层文件的种子。仅包含完全在 qBittorrent 内部的硬链接；绝不跟踪外部硬链接。",
         "localAccessRequired": "需要在实例设置中启用\"本地文件系统访问\"。",
-        "remoteNotAvailable": "远程实例不可用"
+        "remoteNotAvailable": "远程实例不可用",
+        "wait": "未注册至少",
+        "waitHelp": "种子未注册达到此时长后，此规则才会删除它。0 表示首次匹配时即删除。",
+        "waitLocked": "要设置其他时长，请将条件改为未注册。",
+        "waitUnit": "未注册时长单位"
       },
       "move": {
         "newSavePath": "新保存路径",
@@ -1361,7 +1372,9 @@
         "state": "状态",
         "addedOn": "添加时间",
         "path": "路径",
-        "score": "得分"
+        "score": "得分",
+        "deletes": "删除",
+        "deletesNow": "立即"
       },
       "footer": {
         "enabled": "已启用",
@@ -1385,7 +1398,8 @@
         "and": "和",
         "crossSeeds": "{{count}} 个辅种",
         "crossSeeds_other": "{{count}} 个辅种",
-        "toCategory": "到分类"
+        "toCategory": "到分类",
+        "waitingSummary_other": "{{count}} 个种子未注册的时间还不够长，此规则暂不删除它们。"
       },
       "enableDryRunPrompt": {
         "title": "启用模拟运行？",
@@ -1441,7 +1455,8 @@
           "noMatches": "无匹配",
           "exportedToInstance": "导出到实例",
           "transferredToInstance": "传输到实例",
-          "ruleSkipped": "规则未运行"
+          "ruleSkipped": "规则未运行",
+          "deleteWaiting": "等待删除"
         },
         "actionFallback": "未知操作（{{action}}）",
         "summary": {
@@ -1460,7 +1475,8 @@
           "noMatches": "此次模拟运行没有种子匹配",
           "impacted": "{{count}} 个种子受影响",
           "impacted_other": "{{count}} 个种子受影响",
-          "completed": "模拟运行完成"
+          "completed": "模拟运行完成",
+          "deleteWaiting_other": "{{count}} 个种子将等待删除"
         }
       },
       "toast": {

@@ -36,6 +36,8 @@ const (
 
 const ActivityActionTransferredToInstance = "transferred_to_instance"
 
+const ActivityActionDeleteWaiting = "delete_waiting"
+
 const (
 	ActivityOutcomeSuccess = "success"
 	ActivityOutcomeFailed  = "failed"

@@ -845,7 +845,7 @@ func tagActionHasTags(tagAction *models.TagAction) bool {
 }
 
 func tagActionMissesTrackerHealth(tagAction *models.TagAction, evalCtx *EvalContext) bool {
-	return ConditionUsesField(tagAction.Condition, FieldIsUnregistered) && (evalCtx == nil || evalCtx.TrackerHealth == nil)
+	return ConditionUsesField(tagAction.Condition, FieldIsUnregistered) && (evalCtx == nil || !evalCtx.health.Known())
 }
 
 func processTagAction(rule *models.Automation, tagAction *models.TagAction, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, crossSeeds *crossSeedGroups) bool {

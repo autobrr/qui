@@ -499,7 +499,11 @@
       "exportCSV": "Exporta a CSV",
       "saveWithoutPreview": "Desa sense previsualitzar",
       "previewFailed": "Ha fallat la previsualització: {{error}}",
-      "skipPreviewHint": "La regla actuarà igualment sobre tots els torrents coincidents a la propera execució. Pots desar-la sense esperar la previsualització."
+      "skipPreviewHint": "La regla actuarà igualment sobre tots els torrents coincidents a la propera execució. Pots desar-la sense esperar la previsualització.",
+      "deletes": "Eliminació",
+      "deletesNow": "Ara",
+      "waitsUntil": "Després de {{time}}",
+      "waitsForTracker": "Quan el tracker torni a respondre no registrat"
     },
     "workflowsOverview": {
       "title": "Workflows",
@@ -593,7 +597,8 @@
         "dryRun": "Execució de prova",
         "exportToInstance": "Exporta a una instància",
         "transferToInstance": "Transfereix a una instància",
-        "ruleSkipped": "Regla no executada"
+        "ruleSkipped": "Regla no executada",
+        "deleteWaiting": "Pendent d'eliminar"
       },
       "shareLimit": {
         "global": "Global",
@@ -648,7 +653,9 @@
         "exportFailed_one": "No s'ha pogut exportar {{count}} torrent",
         "exportFailed_other": "No s'han pogut exportar {{count}} torrents",
         "transferredDryRun_one": "{{count}} torrent es transferiria",
-        "transferredDryRun_other": "{{count}} torrents es transferirien"
+        "transferredDryRun_other": "{{count}} torrents es transferirien",
+        "deleteWaiting_one": "{{count}} torrent esperaria a ser eliminat",
+        "deleteWaiting_other": "{{count}} torrents esperarien a ser eliminats"
       },
       "deleteDialog": {
         "title": "Elimina la regla",
@@ -925,7 +932,11 @@
         "includeHardlinkedCopies": "Inclou-hi les còpies amb hardlink",
         "includeHardlinkedCopiesDescription": "Elimina també els torrents que comparteixen els mateixos fitxers subjacents mitjançant hardlinks. Només inclou els hardlinks que són del tot dins de qBittorrent; mai no segueix els hardlinks de fora.",
         "localAccessRequired": "Cal tenir activat l'«Accés al sistema de fitxers local» a la configuració de la instància.",
-        "remoteNotAvailable": "No disponible en instàncies remotes"
+        "remoteNotAvailable": "No disponible en instàncies remotes",
+        "wait": "No registrat durant almenys",
+        "waitHelp": "La regla només elimina un torrent quan porta aquest temps sense registrar. 0 l'elimina a la primera coincidència.",
+        "waitLocked": "Per definir un altre temps, canvia la condició a No registrat.",
+        "waitUnit": "Unitat del temps sense registrar"
       },
       "move": {
         "newSavePath": "Camí de desada nou",
@@ -1053,7 +1064,9 @@
         "state": "Estat",
         "addedOn": "Data d'addició",
         "path": "Camí",
-        "score": "Puntuació"
+        "score": "Puntuació",
+        "deletes": "Eliminació",
+        "deletesNow": "Ara"
       },
       "preview": {
         "confirmDeleteRule": "Confirma la regla d'eliminació",
@@ -1071,7 +1084,9 @@
         "and": "i",
         "crossSeeds": "{{count}} cross-seed",
         "crossSeeds_other": "{{count}} cross-seed",
-        "toCategory": "a la categoria"
+        "toCategory": "a la categoria",
+        "waitingSummary_one": "{{count}} torrent encara no porta prou temps sense registrar, així que aquesta regla encara no l'elimina.",
+        "waitingSummary_other": "{{count}} torrents encara no porten prou temps sense registrar, així que aquesta regla encara no els elimina."
       },
       "customGroup": {
         "title": "Afegeix un grup personalitzat",
@@ -1122,7 +1137,8 @@
           "noMatches": "Cap coincidència",
           "exportedToInstance": "Exporta a una instància",
           "transferredToInstance": "Transfereix a una instància",
-          "ruleSkipped": "Regla no executada"
+          "ruleSkipped": "Regla no executada",
+          "deleteWaiting": "Pendent d'eliminar"
         },
         "actionFallback": "Acció desconeguda ({{action}})",
         "summary": {
@@ -1141,7 +1157,9 @@
           "noMatches": "Cap torrent no ha coincidit amb aquesta execució de prova",
           "impacted": "{{count}} torrent afectat",
           "impacted_other": "{{count}} torrents afectats",
-          "completed": "S'ha completat l'execució de prova"
+          "completed": "S'ha completat l'execució de prova",
+          "deleteWaiting_one": "{{count}} torrent esperaria a ser eliminat",
+          "deleteWaiting_other": "{{count}} torrents esperarien a ser eliminats"
         }
       },
       "toast": {
@@ -1383,7 +1401,8 @@
         "dry_run_no_match": "Execució de prova (cap coincidència)",
         "exported_to_instance": "Exporta a una instància",
         "transferred_to_instance": "Transfereix a una instància",
-        "rule_skipped": "Regla no executada"
+        "rule_skipped": "Regla no executada",
+        "delete_waiting": "Execució de prova (pendent d'eliminar)"
       }
     },
     "orphanScanOverview": {

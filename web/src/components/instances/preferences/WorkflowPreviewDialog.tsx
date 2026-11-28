@@ -22,6 +22,7 @@ import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { previewRowCount } from "@/lib/delete-wait"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
@@ -31,6 +32,7 @@ import { useTranslation } from "react-i18next"
 import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DeleteWhenCell } from "./DeletePreviewCounts"
 
 interface WorkflowPreviewDialogProps {
   open: boolean
@@ -276,7 +278,9 @@ export function WorkflowPreviewDialog({
   const { t: tTorrents } = useTranslation("torrents")
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
-  const hasMore = !!preview && preview.examples.length < preview.totalMatches
+  const rowCount = preview ? previewRowCount(preview) : 0
+  const hasMore = !!preview && preview.examples.length < rowCount
+  const showDeleteWhen = !!preview?.waitingCount
   const showScoreColumn = showScore && !!preview?.examples.some(t => t.score !== undefined && t.score !== null)
   const dynamicColumns = useMemo(
     () => createDynamicColumns(
@@ -381,6 +385,7 @@ export function WorkflowPreviewDialog({
                     <th className="text-right p-2 font-medium bg-muted">{t("preferences.workflowPreview.size")}</th>
                     <th className="text-right p-2 font-medium bg-muted">{t("preferences.workflowPreview.ratio")}</th>
                     <th className="text-right p-2 font-medium bg-muted">{t("preferences.workflowPreview.seedTime")}</th>
+                    {showDeleteWhen && <th className="text-left p-2 font-medium bg-muted">{t("preferences.workflowPreview.deletes")}</th>}
                     {showScoreColumn && <th className="text-right p-2 font-medium bg-muted">{t("preferences.workflowPreview.score")}</th>}
                     {visibleDynamicColumns.map(col => (
                       <th
@@ -438,6 +443,7 @@ export function WorkflowPreviewDialog({
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {formatDurationCompact(torrent.seedingTime)}
                         </td>
+                        {showDeleteWhen && <td className="p-2"><DeleteWhenCell waitsUntil={torrent.waitsUntil} /></td>}
                         {showScoreColumn && (
                           <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                             {torrent.score !== undefined && torrent.score !== null ? torrent.score.toFixed(2) : "-"}
@@ -464,7 +470,7 @@ export function WorkflowPreviewDialog({
             </div>
             {hasMore && (
               <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
-                <span>{t("preferences.workflowPreview.andMoreTorrents", { count: preview.totalMatches - preview.examples.length })}</span>
+                <span>{t("preferences.workflowPreview.andMoreTorrents", { count: rowCount - preview.examples.length })}</span>
                 {onLoadMore && (
                   <Button
                     size="sm"
@@ -485,7 +491,7 @@ export function WorkflowPreviewDialog({
 
         <AlertDialogFooter className="mt-4 sm:justify-between">
           <div>
-            {onExport && preview && preview.totalMatches > 0 && (
+            {onExport && rowCount > 0 && (
               <Button
                 type="button"
                 variant="outline"

@@ -11,6 +11,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/automations/verdict"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -1251,10 +1252,10 @@ func TestEvaluateCondition_EmptyGroup(t *testing.T) {
 func TestEvaluateCondition_IsUnregistered_WithContext(t *testing.T) {
 	cond := &RuleCondition{Field: FieldIsUnregistered, Operator: OperatorEqual, Value: "true"}
 	ctx := &EvalContext{
-		TrackerHealth: qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{
+		health: verdict.Raw(qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{
 			"unregistered": qbittorrent.TrackerHealthUnregistered,
 			"down":         qbittorrent.TrackerHealthDown,
-		}),
+		})),
 	}
 
 	if !EvaluateConditionWithContext(cond, qbt.Torrent{Hash: "unregistered"}, ctx, 0) {
@@ -1300,7 +1301,7 @@ func TestProcessRuleForTorrent_TagSkipsWithoutTrackerHealth(t *testing.T) {
 
 	stats = &ruleRunStats{}
 	state = newState()
-	ctx := &EvalContext{TrackerHealth: qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{})}
+	ctx := &EvalContext{health: verdict.Raw(qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{}))}
 	processRuleForTorrent(rule, torrent, state, ctx, nil, nil, stats, nil)
 	if stats.TagSkippedMissingTrackerHealth != 0 || state.tagActions["unregistered"] != "remove" {
 		t.Fatalf("expected the tag rule to run with a snapshot, got skips=%d actions=%v", stats.TagSkippedMissingTrackerHealth, state.tagActions)
@@ -1321,7 +1322,7 @@ func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 
 	t.Run("matches when the snapshot says tracker down", func(t *testing.T) {
 		ctx := &EvalContext{
-			TrackerHealth: qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{"hash1": qbittorrent.TrackerHealthDown}),
+			health: verdict.Raw(qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{"hash1": qbittorrent.TrackerHealthDown})),
 		}
 		got := EvaluateConditionWithContext(cond, torrent, ctx, 0)
 		if !got {
@@ -1351,7 +1352,7 @@ func TestEvaluateCondition_StateTrackerError_WithContext(t *testing.T) {
 
 	t.Run("matches when the snapshot says tracker error", func(t *testing.T) {
 		ctx := &EvalContext{
-			TrackerHealth: qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{"hash1": qbittorrent.TrackerHealthError}),
+			health: verdict.Raw(qbittorrent.NewTrackerHealthSnapshot(map[string]qbittorrent.TrackerHealth{"hash1": qbittorrent.TrackerHealthError})),
 		}
 		got := EvaluateConditionWithContext(cond, torrent, ctx, 0)
 		if !got {

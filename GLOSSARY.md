@@ -78,6 +78,7 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Tracker health**: qui's verdict on the trackers of one torrent: healthy, unregistered, tracker down, or tracker error. _Avoid_: tracker status.
 - **Tracker status**: The status that qBittorrent reports for one tracker of a torrent, such as working, not working, or updating. _Avoid_: tracker health.
 - **Grace hour**: The first hour after a torrent is added. During it, qui shows no unregistered label, but it can still show tracker down. _Avoid_: grace period.
+- **Unregistered since**: The time from which qui has seen a torrent as unregistered with no working tracker, stop, or tracker edit in between. A tracker that is down, a restart of qui, and a restart of qBittorrent do not move it. _Avoid_: first seen, unregistered age.
 
 ## Themes
 
@@ -221,6 +222,8 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Projected freed bytes**: The estimated space that the deletes of one rule recover in one run. A Shared file counts one time. Each rule counts only its own deletes. _Avoid_: Actual freed space.
 - **Projected free space**: The free space of the source of a rule at the start of the run, plus the Projected freed bytes of the rule. A FREE_SPACE Condition reads it. A sort on FREE_SPACE reads the free space at the start. _Avoid_: Current free space.
 - **Season pack status**: What `SEASON_PACK_STATUS` reports for one torrent: `pack` for a season pack, `packed` for an episode that a season pack of the same release covers, `unpacked` for an episode with no such pack, empty when the name has no season or more than one season. "Same release" means title, season, cut, other markers, language markers, resolution, source, codec, audio, channels, HDR, and group all match. _Avoid_: Packed status, pack coverage.
+- **Unregistered wait**: How long a torrent must be unregistered before an Automation rule chooses it for the unregistered verdict. Each Delete action has one, 2 days when the rule sets none. _Avoid_: grace period (the Grace hour is a different thing), quarantine, Delete wait.
+- **Pending delete**: A torrent with an Unregistered since that the delete condition of a rule matches, and that the rule does not delete yet because its Unregistered wait is not over or no tracker confirms the verdict now. It leaves this state when its Unregistered since is removed. _Avoid_: quarantined torrent, queued delete.
 
 ## Disc reports
 

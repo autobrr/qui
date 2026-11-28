@@ -28,7 +28,7 @@ func (sm *SyncManager) beginTrackersRead(instanceID int, owner *syncowner.Owner,
 	if !ok {
 		return func([]qbt.TorrentTracker) {}
 	}
-	flags, at := announceFlagsOf(torrent), time.Now()
+	flags, at := announceFlagsOf(torrent), sm.healthNow()
 
 	return func(trackers []qbt.TorrentTracker) {
 		sm.trackerHealthMu.RLock()
@@ -42,30 +42,42 @@ func (sm *SyncManager) beginTrackersRead(instanceID int, owner *syncowner.Owner,
 	}
 }
 
-func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, seen seenTrackers) {
+func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, seen ...seenTrackers) {
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil || !client.Supports(CapTrackerHealth) {
 		return
 	}
+	index := NewHashIndex(syncManager.SnapshotUnchecked())
+	changed := false
+	for _, one := range seen {
+		changed = sm.applyOneSeen(client, index, instanceID, one) || changed
+	}
+	if changed {
+		sm.storeUnregisteredSince(ctx, instanceID)
+		sm.notifyTrackerHealthUpdated(instanceID)
+	}
+}
+
+func (sm *SyncManager) applyOneSeen(client *Client, index HashIndex, instanceID int, seen seenTrackers) bool {
 	id, err := infohash.Parse(seen.hash)
 	if err != nil {
-		return
+		return false
 	}
-	torrent, ok := NewHashIndex(syncManager.SnapshotUnchecked()).Torrent(id)
+	torrent, ok := index.Torrent(id)
 	if !ok || announceFlagsOf(torrent) != seen.flags {
-		return
+		return false
 	}
 
 	trackers := seen.trackers
 	if client.Supports(CapAnnounceFlags) {
-		if seen.flags == (announceFlags{}) {
+		if seen.flags == (announceFlags{}) && !sm.hasUnregisteredSince(instanceID, seen.hash) {
 			trackers = nil
 		} else {
 			cache := sm.trackerDetailsFor(sm.trackerHealthFlagged, instanceID)
 			cache.mu.Lock()
 			if prev, ok := cache.byHash[seen.hash]; ok && seen.at.Before(prev.fetchedAt) {
 				cache.mu.Unlock()
-				return
+				return false
 			}
 			if cache.byHash == nil {
 				cache.byHash = make(map[string]trackerDetail)
@@ -78,30 +90,47 @@ func (sm *SyncManager) applySeenTrackers(ctx context.Context, instanceID int, se
 		passAt := sm.trackerHealthPassAt[instanceID]
 		sm.trackerHealthMu.RUnlock()
 		if seen.at.Before(passAt) {
-			return
+			return false
 		}
 	}
 
-	if sm.setTrackerHealth(instanceID, seen.hash, trackerHealthOf(torrent, trackers, seen.at)) {
-		sm.notifyTrackerHealthUpdated(instanceID)
+	health, by := trackerVerdictOf(torrent, trackers, seen.at)
+	var reason *unregisteredRow
+	if by >= 0 {
+		reason = &unregisteredRow{trackers: trackers, by: by}
 	}
+	return sm.setTrackerHealth(instanceID, torrent, trackers, health, reason, seen.at)
 }
 
-func (sm *SyncManager) setTrackerHealth(instanceID int, hash string, health TrackerHealth) bool {
+func (sm *SyncManager) setTrackerHealth(instanceID int, torrent *qbt.Torrent, trackers []qbt.TorrentTracker, health TrackerHealth, reason *unregisteredRow, at time.Time) bool {
 	sm.trackerHealthMu.Lock()
 	defer sm.trackerHealthMu.Unlock()
 
 	snapshot := sm.trackerHealthCache[instanceID]
-	if snapshot == nil || snapshot.Health(hash) == health {
+	if snapshot == nil {
+		return false
+	}
+	hash := torrent.Hash
+	sinceChanged := sm.advanceOneUnregisteredSince(instanceID, torrent, trackers, health, at)
+	if snapshot.Health(hash) == health && !sinceChanged {
 		return false
 	}
 	byHash := make(map[string]TrackerHealth, len(snapshot.byHash)+1)
 	maps.Copy(byHash, snapshot.byHash)
+	unregisteredBy := maps.Clone(snapshot.unregisteredBy)
+	delete(unregisteredBy, hash)
 	if health == "" {
 		delete(byHash, hash)
 	} else {
 		byHash[hash] = health
 	}
-	sm.trackerHealthCache[instanceID] = NewTrackerHealthSnapshot(byHash)
+	if reason != nil {
+		if unregisteredBy == nil {
+			unregisteredBy = make(map[string]unregisteredRow, 1)
+		}
+		unregisteredBy[hash] = *reason
+	}
+	state := sm.sinceFor(instanceID)
+	sm.trackerHealthCache[instanceID] = newTrackerHealthSnapshot(byHash, unregisteredBy, state.times, state.loaded)
 	return true
 }

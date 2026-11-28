@@ -329,10 +329,12 @@ To remove these episode torrents automatically, make an [automation](../automati
 - Condition: `Season pack status` is `packed`. This matches only when a pack of the same release is in the client. See [Season pack status](../automations.md#season-pack-status).
 - Action: Remove with files (preserve cross-seeds).
 
+The rule removes an episode once its [Unregistered wait](../automations.md#unregistered-wait) is over, 2 days by default after qui first saw it as unregistered. Set **Unregistered for at least** to 0 to remove it on the first match.
+
 The action deletes only the files of the episode torrent. The pack keeps its data. qui makes the hardlinks or reflinks of the pack before it adds the pack, and a pack that you downloaded has its own copy. With hardlinks or reflinks, the rule frees little or no disk space.
 
 :::warning
-Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change.
+Keep the `Season pack status` condition in the rule. It limits the rule to episodes that a pack already covers. Without it, the rule removes every torrent that the tracker reports as unregistered. That happens to all torrents of a tracker during an outage or after a passkey change. The Unregistered wait holds these deletes for 2 days by default. A rule with a wait of 0 or a rule on the raw tracker message removes them on its next run, and a manual delete removes them at once.
 :::
 
 ## Instance selection

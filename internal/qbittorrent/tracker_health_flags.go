@@ -57,7 +57,7 @@ func (sm *SyncManager) trackerDetailsFor(caches map[int]*trackerDetails, instanc
 	return cache
 }
 
-func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client, cache *trackerDetails, torrents []*qbt.Torrent, flaggedOnly bool) (TrackerLookup, error) {
+func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client, cache *trackerDetails, torrents []*qbt.Torrent, wants func(*qbt.Torrent, announceFlags) bool) (TrackerLookup, error) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	sm.trackerHealthMu.Lock()
@@ -65,12 +65,12 @@ func (sm *SyncManager) hydrateTrackerDetails(ctx context.Context, client *Client
 	cache.edited = nil
 	sm.trackerHealthMu.Unlock()
 
-	now := time.Now()
+	now := sm.healthNow()
 	next := make(map[string]trackerDetail, len(cache.byHash))
 	var stale []string
 	for _, torrent := range torrents {
 		flags := announceFlagsOf(torrent)
-		if flaggedOnly && flags == (announceFlags{}) {
+		if wants != nil && !wants(torrent, flags) {
 			continue
 		}
 		hash := torrent.Hash
@@ -117,4 +117,11 @@ func fetchTrackerDetails(ctx context.Context, client *Client, hashes []string) (
 		}
 	}
 	return fetched, nil
+}
+
+func flaggedOrUnregisteredSince(since map[string]time.Time) func(*qbt.Torrent, announceFlags) bool {
+	return func(torrent *qbt.Torrent, flags announceFlags) bool {
+		_, has := since[torrent.Hash]
+		return flags != (announceFlags{}) || has
+	}
 }

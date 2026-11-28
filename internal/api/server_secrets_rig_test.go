@@ -122,8 +122,8 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 			`"Same code A":{"uid":"{4}","url":"https://rss.example.invalid/feed/61522.xml","title":""` + articles(`[]`) + `},` +
 			`"Same code B":{"uid":"{5}","url":"https://rss.example.invalid/feed/135103.xml","title":""` + articles(`[]`) + `}}`
 	}
-	trackerRow := func(tracker string) string {
-		return `[{"url":"** [DHT] **","status":0},{"url":"` + tracker + `","status":2}]`
+	trackerRow := func(tracker, msg string) string {
+		return `[{"url":"** [DHT] **","status":0},{"url":"` + tracker + `","status":2,"msg":"` + msg + `"}]`
 	}
 	preferences := `{"add_trackers_enabled":true,"add_trackers":"` + pathTracker + `\n\n` + queryTracker + `","save_path":"/data",` +
 		`"proxy_password":"` + rig.plant("proxy password", shownToNobody) + `","mail_notification_password":"` + rig.plant("email password", shownToNobody) + `"}`
@@ -136,8 +136,8 @@ func (rig *secretsRig) qBittorrentResponses() map[string]string {
 		"/api/v2/sync/maindata": `{"rid":1,"full_update":true,"torrents":{"` + stubHashA + `":` + first + `,"` + stubHashB + `":` + second + `},` +
 			`"trackers":{"` + pathTracker + `":["` + stubHashA + `"],"` + queryTracker + `":["` + stubHashB + `"]},"server_state":{"connection_status":"connected"}}`,
 		"/api/v2/torrents/info":                   `[` + first + `,` + second + `]`,
-		"/api/v2/torrents/trackers?" + stubHashA:  trackerRow(pathTracker),
-		"/api/v2/torrents/trackers?" + stubHashB:  trackerRow(queryTracker),
+		"/api/v2/torrents/trackers?" + stubHashA:  trackerRow(pathTracker, rig.trackerMessage(pathTracker)),
+		"/api/v2/torrents/trackers?" + stubHashB:  trackerRow(queryTracker, ""),
 		"/api/v2/app/preferences":                 preferences,
 		"/api/v2/app/buildInfo":                   `{}`,
 		"/api/v2/app/defaultSavePath":             `/data`,

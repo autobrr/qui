@@ -701,6 +701,10 @@ func (h *AutomationHandler) handleDeletePreview(w http.ResponseWriter, r *http.R
 		previewView = "needed"
 	}
 	result, err := h.service.PreviewDeleteRule(r.Context(), instanceID, automation, limit, offset, previewView)
+	if errors.Is(err, automations.ErrUnregisteredSinceNotLoaded) {
+		RespondError(w, http.StatusServiceUnavailable, err.Error()+". Try again in a minute.")
+		return
+	}
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview delete rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")

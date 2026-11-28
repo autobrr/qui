@@ -247,6 +247,101 @@ describe("WorkflowDialog action order", () => {
   })
 })
 
+describe("WorkflowDialog Delete wait", () => {
+  const unregistered: RuleCondition = { field: "IS_UNREGISTERED", operator: "EQUAL", value: "true" }
+  const ratio: RuleCondition = { field: "RATIO", operator: "GREATER_THAN", value: "2" }
+  const deleteRule = (condition: RuleCondition, extra: Partial<Automation> = {}, unregisteredWaitSeconds?: number): Automation => ({
+    ...rule,
+    conditions: { schemaVersion: "1", delete: { enabled: true, mode: "deleteWithFiles", condition, unregisteredWaitSeconds } },
+    ...extra,
+  })
+  const settle = () => act(() => vi.advanceTimersByTimeAsync(1100))
+  const savedDelete = async () => {
+    fireEvent.change(screen.getByLabelText(key("nameLabel")), { target: { value: "Renamed" } })
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await settle()
+    expect(mocks.save).toHaveBeenCalledTimes(1)
+    return mocks.save.mock.calls[0][2].conditions.delete
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    mocks.save.mockResolvedValue(rule)
+    mocks.preview.mockResolvedValue({ totalMatches: 0, examples: [] })
+    mocks.validateRegex.mockResolvedValue({ valid: true, errors: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it.each([
+    { name: "a score that reads Unregistered", dialogRule: deleteRule(ratio, { sortingConfig: { schemaVersion: "1", type: "score", direction: "DESC", scoreRules: [{ type: "conditional", conditional: { score: 10, condition: unregistered } }] } }), shown: true },
+    { name: "a delete condition on ratio only", dialogRule: deleteRule(ratio), shown: false },
+  ])("shows the field for $name: $shown", ({ dialogRule, shown }) => {
+    const client = renderDialog(dialogRule)
+
+    expect(screen.queryByLabelText(key("delete.wait")) !== null).toBe(shown)
+    client.clear()
+  })
+
+  it("renames a stored State unregistered rule without a change to its conditions", async () => {
+    const legacy: RuleCondition = { field: "STATE", operator: "EQUAL", value: "unregistered" }
+    const client = renderDialog(deleteRule(legacy))
+
+    expect(await savedDelete()).toEqual({ enabled: true, mode: "deleteWithFiles", condition: legacy })
+    client.clear()
+  })
+
+  it.each([
+    { name: "a stored State unregistered rule", condition: { field: "STATE", operator: "EQUAL", value: "unregistered" } satisfies RuleCondition, locked: true },
+    { name: "an Unregistered rule", condition: unregistered, locked: false },
+  ])("locks the field at 2 days for $name: $locked", ({ condition, locked }) => {
+    const client = renderDialog(deleteRule(condition))
+
+    const field = screen.getByLabelText(key("delete.wait")) as HTMLInputElement
+    expect([field.value, field.disabled, screen.queryByText(key("delete.waitLocked")) !== null]).toEqual(["2", locked, locked])
+    client.clear()
+  })
+
+  it.each([
+    { name: "a stored wait of 0", stored: 0, typed: undefined, want: 0 },
+    { name: "3 days", stored: undefined, typed: "3", want: 3 * 24 * 3600 },
+    { name: "an empty field, which means the default", stored: 3600, typed: "", want: undefined },
+  ])("saves $name", async ({ stored, typed, want }) => {
+    const client = renderDialog(deleteRule(unregistered, {}, stored))
+
+    if (typed !== undefined) fireEvent.change(screen.getByLabelText(key("delete.wait")), { target: { value: typed } })
+    expect((await savedDelete()).unregisteredWaitSeconds).toBe(want)
+    client.clear()
+  })
+
+  it("shows a stored wait of 36 hours in hours", () => {
+    const client = renderDialog(deleteRule(unregistered, {}, 36 * 3600))
+
+    expect((screen.getByLabelText(key("delete.wait")) as HTMLInputElement).value).toBe("36")
+    client.clear()
+  })
+
+  it("lists only the torrents the rule deletes now under the live count, and counts the waiting ones apart", async () => {
+    mocks.preview.mockResolvedValue({ totalMatches: 1, waitingCount: 1, examples: [{ name: "Due.Show.S01E01", hash: "a" }, { name: "Waiting.Show.S01E02", hash: "b", waitsUntil: 4102444800 }] })
+    const client = renderDialog(deleteRule(unregistered))
+    await settle()
+
+    expect(screen.getByText("Due.Show.S01E01")).toBeTruthy()
+    expect(screen.queryByText("Waiting.Show.S01E02")).toBeNull()
+    expect(screen.getByText(key("preview.waitingSummary"))).toBeTruthy()
+    client.clear()
+  })
+
+  it("saves no wait for a rule that does not read the verdict", async () => {
+    const client = renderDialog(deleteRule(ratio, {}, 3600))
+
+    expect(await savedDelete()).not.toHaveProperty("unregisteredWaitSeconds", expect.anything())
+    client.clear()
+  })
+})
+
 describe("WorkflowDialog Transfer to Instance", () => {
   const renderRule = (conditions: Automation["conditions"]) => {
     mocks.instancesQuery.data = [{ id: 1, name: "Source", capabilities: noCapabilities }, { id: 2, name: "Archive", capabilities: noCapabilities }]

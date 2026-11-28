@@ -28,6 +28,7 @@ const (
 type flagsTorrent struct {
 	flags    [3]bool
 	addedOn  int64
+	state    string
 	trackers []qbt.TorrentTracker
 }
 
@@ -41,6 +42,7 @@ type flagsRig struct {
 	missing  map[string]bool
 	requests [][]string
 	failFrom int
+	failSync bool
 	rid      int
 }
 
@@ -88,6 +90,10 @@ func newFlagsRigAt(t *testing.T, webAPI string) *flagsRig {
 		case "/api/v2/app/webapiVersion":
 			_, _ = io.WriteString(w, webAPI)
 		case "/api/v2/sync/maindata":
+			if rig.failSync {
+				http.Error(w, "busy", http.StatusServiceUnavailable)
+				return
+			}
 			rig.rid++
 			torrents := make(map[string]map[string]any, len(rig.torrents))
 			for hash, tor := range rig.torrents {
@@ -98,6 +104,7 @@ func newFlagsRigAt(t *testing.T, webAPI string) *flagsRig {
 					"has_tracker_warning":      tor.flags[0],
 					"has_tracker_error":        tor.flags[1],
 					"has_other_announce_error": tor.flags[2],
+					"state":                    tor.state,
 				}
 			}
 			_ = json.MarshalWrite(w, map[string]any{"rid": rig.rid, "full_update": true, "torrents": torrents, "trackers": rig.trackers})
@@ -116,9 +123,11 @@ func newFlagsRigAt(t *testing.T, webAPI string) *flagsRig {
 				if rig.missing[hash] || (hashes != nil && !slices.Contains(hashes, hash)) {
 					continue
 				}
-				out = append(out, map[string]any{"hash": hash, "added_on": tor.addedOn, "trackers": tor.trackers})
+				out = append(out, map[string]any{"hash": hash, "added_on": tor.addedOn, "state": tor.state, "trackers": tor.trackers})
 			}
 			_ = json.MarshalWrite(w, out)
+		case "/api/v2/torrents/editTracker", "/api/v2/torrents/addTrackers", "/api/v2/torrents/removeTrackers", "/api/v2/torrents/stop", "/api/v2/torrents/start":
+			_, _ = io.WriteString(w, "Ok.")
 		case "/api/v2/torrents/trackers":
 			tor, ok := rig.torrents[r.URL.Query().Get("hash")]
 			if !ok {
@@ -325,7 +334,7 @@ func TestFlagsPassRefetchesEditedTorrents(t *testing.T) {
 	require.Equal(t, TrackerHealthDown, rig.health(t)[flagsHashDown])
 	require.Equal(t, 1, rig.sm.GetTrackerHealthSnapshot(1).Count(TrackerHealthDown))
 
-	rig.sm.clearTrackerHealthAndRefetch(1, []string{flagsHashDown})
+	rig.sm.clearTrackerHealthAndRefetch(t.Context(), 1, []string{flagsHashDown})
 	require.Empty(t, rig.health(t)[flagsHashDown], "the edit drops the label at once")
 	require.Zero(t, rig.sm.GetTrackerHealthSnapshot(1).Count(TrackerHealthDown), "the edit drops the count at once")
 
@@ -365,7 +374,7 @@ func TestTrackerDetailsFetchesByHashOnFlagsVersions(t *testing.T) {
 	_, requests = hydrate(announceFlags{})
 	require.Equal(t, [][]string{{flagsHashDown}}, requests, "a flag change fetches that torrent")
 
-	rig.sm.clearTrackerHealthAndRefetch(1, []string{flagsHashHealthy})
+	rig.sm.clearTrackerHealthAndRefetch(t.Context(), 1, []string{flagsHashHealthy})
 	_, requests = hydrate(announceFlags{})
 	require.Equal(t, [][]string{{flagsHashHealthy}}, requests, "an edit fetches that torrent")
 }

@@ -52,6 +52,7 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import { previewRowCount } from "@/lib/delete-wait"
 import { downloadBlob, toCsv, type CsvColumn } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { formatSpeedWithUnit } from "@/lib/speedUnits"
@@ -91,6 +92,7 @@ import { useTranslation } from "react-i18next"
 import i18n from "../../../i18n"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
+import { DeletePreviewCounts } from "./DeletePreviewCounts"
 import { WorkflowDialog } from "./WorkflowDialog"
 import { WorkflowJsonEditDialog } from "./WorkflowJsonEditDialog"
 import { RunWorkflowNowDialog, type RunWorkflowNowTarget } from "./RunWorkflowNowDialog"
@@ -172,6 +174,7 @@ function formatAction(action: AutomationActivity["action"]): string {
     exported_to_instance: "exportToInstance",
     transferred_to_instance: "transferToInstance",
     dry_run_no_match: "dryRun",
+    delete_waiting: "deleteWaiting",
     rule_skipped: "ruleSkipped",
   }
   const key = actionKeys[action]
@@ -526,6 +529,7 @@ export function WorkflowsOverview() {
             ...prev.preview,
             examples: [...prev.preview.examples, ...preview.examples],
             totalMatches: preview.totalMatches,
+            waitingCount: preview.waitingCount,
           },
         }
       })
@@ -701,6 +705,7 @@ export function WorkflowsOverview() {
     { header: t("preferences.workflowDialog.csv.state"), accessor: item => item.state },
     { header: t("preferences.workflowDialog.csv.addedOn"), accessor: item => item.addedOn },
     { header: t("preferences.workflowDialog.csv.path"), accessor: item => item.contentPath ?? "" },
+    ...(enableConfirm?.rule.conditions?.delete?.enabled ? [{ header: t("preferences.workflowDialog.csv.deletes"), accessor: (item: AutomationPreviewTorrent) => item.waitsUntil ? new Date(item.waitsUntil * 1000).toISOString() : t("preferences.workflowDialog.csv.deletesNow") }] : []),
   ]
 
   const handleExportPreviewCsv = async () => {
@@ -711,7 +716,7 @@ export function WorkflowsOverview() {
       const pageSize = 500
       const allItems: AutomationPreviewTorrent[] = []
       let offset = 0
-      const total = enableConfirm.preview.totalMatches
+      const total = previewRowCount(enableConfirm.preview)
 
       while (allItems.length < total) {
         const result = await api.previewAutomation(enableConfirm.instanceId, {
@@ -817,6 +822,7 @@ export function WorkflowsOverview() {
     exported_to_instance: "bg-chart-2/10 border-chart-2/20",
     transferred_to_instance: "bg-chart-2/10 border-chart-2/20",
     dry_run_no_match: "bg-muted text-muted-foreground border-muted-foreground/30",
+    delete_waiting: "bg-muted text-muted-foreground border-muted-foreground/30",
     rule_skipped: "bg-warning/10 text-warning border-warning/20",
   }
 
@@ -1245,6 +1251,10 @@ export function WorkflowsOverview() {
                                           <span className="font-medium text-sm block">
                                             {t("preferences.workflowsOverview.summary.transferredDryRun", { count: event.details?.count ?? 0 })}
                                           </span>
+                                        ) : event.action === "delete_waiting" ? (
+                                          <span className="font-medium text-sm block">
+                                            {t("preferences.workflowsOverview.summary.deleteWaiting", { count: event.details?.count ?? 0 })}
+                                          </span>
                                         ) : event.action === "dry_run_no_match" ? (
                                           <span className="font-medium text-sm block">
                                             {t("preferences.workflowsOverview.noDryRunMatches")}
@@ -1563,7 +1573,7 @@ export function WorkflowsOverview() {
           enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): enableConfirm && isTagRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableTagRule"): t("preferences.workflowsOverview.enableDeleteRule")
         }
         description={
-          enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
+          enableConfirm?.preview && previewRowCount(enableConfirm.preview) > 0 ? (
             enableConfirm && isCategoryRule(enableConfirm.rule) ? (
               <>
                 <p>
@@ -1589,9 +1599,7 @@ export function WorkflowsOverview() {
               </>
             ) : (
               <>
-                <p className="text-destructive font-medium">
-                  {t("preferences.workflowDialog.preview.deleteEnabledSummary", { name: enableConfirm.rule.name, count: enableConfirm.preview.totalMatches })}
-                </p>
+                <DeletePreviewCounts preview={enableConfirm.preview} enabled name={enableConfirm.rule.name} />
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
             )
