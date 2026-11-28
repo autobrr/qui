@@ -214,6 +214,9 @@ func TestOrphanScan_TriggerReplacesOnlyARemotePreview(t *testing.T) {
 	require.NoError(t, err)
 	store := models.NewOrphanScanStore(db)
 	service := orphanscan.NewService(orphanscan.DefaultConfig(), instances, store, nil, nil, nil)
+	// The database is registered first, so this cleanup runs before it closes:
+	// a failed scan can still read from the store after it changes status.
+	t.Cleanup(service.WaitForRuns)
 	hub, events := newActivityHub(t)
 	service.SetActivityPublisher(hub)
 	router := newOrphanScanRouter(NewOrphanScanHandler(store, instances, service))
