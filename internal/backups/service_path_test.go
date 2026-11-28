@@ -4,8 +4,12 @@
 package backups
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,4 +162,95 @@ func TestBackupDirDefaultsUnderDataDir(t *testing.T) {
 	require.Equal(t, filepath.Join(dataDir, "backups", "torrents"), svc.cacheDir)
 	assert.Equal(t, filepath.Join(dataDir, "backups", "torrents", "ab", "x.torrent"),
 		svc.ResolveBackupPath("backups/torrents/ab/x.torrent"))
+}
+
+func toGitBashDrivePath(t *testing.T, winPath string) string {
+	t.Helper()
+	vol := filepath.VolumeName(winPath)
+	require.Len(t, vol, 2)
+	return "/" + strings.ToLower(vol[:1]) + filepath.ToSlash(winPath[2:])
+}
+
+// regression: #4309
+func TestWindowsGitBashBackupRootConsistency(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific Git Bash drive path test")
+	}
+
+	t.Run("normalizes Git Bash BackupDir and DataDir in NewService on Windows", func(t *testing.T) {
+		realBackupRoot := t.TempDir()
+		realDataDir := t.TempDir()
+
+		svcBackup := NewService(nil, nil, Config{WorkerCount: 1, BackupDir: toGitBashDrivePath(t, realBackupRoot)}, nil)
+		svcData := NewService(nil, nil, Config{WorkerCount: 1, DataDir: toGitBashDrivePath(t, realDataDir)}, nil)
+
+		assert.Equal(t, filepath.Clean(realBackupRoot), filepath.Clean(svcBackup.root))
+		assert.Equal(t, filepath.Join(realBackupRoot, "torrents"), filepath.Clean(svcBackup.cacheDir))
+		assert.Equal(t, filepath.Join(realBackupRoot, "torrents", "ab", "x.torrent"),
+			filepath.Clean(svcBackup.ResolveBackupPath("backups/torrents/ab/x.torrent")))
+
+		assert.Equal(t, filepath.Join(realDataDir, "backups"), filepath.Clean(svcData.root))
+		assert.Equal(t, filepath.Join(realDataDir, "backups", "torrents"), filepath.Clean(svcData.cacheDir))
+		assert.Equal(t, filepath.Join(realDataDir, "backups", "torrents", "ab", "x.torrent"),
+			filepath.Clean(svcData.ResolveBackupPath("backups/torrents/ab/x.torrent")))
+	})
+
+	t.Run("ImportManifestFromDir, resolveBasePaths, and ResolveBackupPath agree on Git Bash root", func(t *testing.T) {
+		realRoot := t.TempDir()
+		gitBashRoot := toGitBashDrivePath(t, realRoot)
+
+		db := setupTestBackupDB(t)
+		instanceID := insertTestInstance(t, db, "win-gitbash")
+		store := models.NewBackupStore(db)
+		svc := NewService(store, nil, Config{WorkerCount: 1, BackupDir: gitBashRoot}, nil)
+
+		require.Equal(t, filepath.Clean(realRoot), filepath.Clean(svc.root))
+		require.Equal(t, filepath.Join(realRoot, "torrents"), filepath.Clean(svc.cacheDir))
+
+		srcDir := t.TempDir()
+		srcTorrent := filepath.Join(srcDir, "sample.torrent")
+		torrentBytes := []byte("d8:announce22:http://tracker.invalid4:infod6:lengthi1e4:name6:sample12:piece lengthi16384e6:pieces20:01234567890123456789ee")
+		require.NoError(t, os.WriteFile(srcTorrent, torrentBytes, 0o600))
+
+		const hash = "0123456789abcdef0123456789abcdef01234567"
+		manifest := Manifest{
+			InstanceID:   instanceID,
+			Kind:         string(models.BackupRunKindManual),
+			GeneratedAt:  time.Now().UTC(),
+			TorrentCount: 1,
+			Items: []ManifestItem{
+				{
+					Hash:        hash,
+					Name:        "sample",
+					ArchivePath: "torrents/sample.torrent",
+					TorrentBlob: "backups/torrents/01/sample.torrent",
+					SizeBytes:   int64(len(torrentBytes)),
+				},
+			},
+		}
+		manifestData, err := json.Marshal(manifest)
+		require.NoError(t, err)
+
+		run, err := svc.ImportManifestFromDir(
+			context.Background(),
+			instanceID,
+			manifestData,
+			"tester",
+			map[string]string{"torrents/sample.torrent": srcTorrent},
+		)
+		require.NoError(t, err)
+		require.NotNil(t, run)
+
+		baseDir, _, err := svc.resolveBasePaths(context.Background(), nil, instanceID)
+		require.NoError(t, err)
+		assert.Equal(t, filepath.Join(realRoot, "win-gitbash"), filepath.Clean(baseDir))
+
+		items, err := store.ListItems(context.Background(), run.ID)
+		require.NoError(t, err)
+		require.Len(t, items, 1)
+		require.NotNil(t, items[0].TorrentBlobPath)
+		resolvedBlob := svc.ResolveBackupPath(*items[0].TorrentBlobPath)
+		assert.FileExists(t, resolvedBlob)
+		assert.True(t, strings.HasPrefix(strings.ToLower(resolvedBlob), strings.ToLower(filepath.Clean(realRoot))))
+	})
 }

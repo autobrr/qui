@@ -183,6 +183,34 @@ func TestBackupDirResolution(t *testing.T) {
 				return configPath, envDir, envDir
 			},
 		},
+		// regression: #4309
+		{
+			name: "git_bash_drive_backup_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				content := testConfigContent + "backupDir = \"/d/qui-backups\"\n"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				expected := "/d/qui-backups"
+				if runtime.GOOS == "windows" {
+					expected = `D:\qui-backups`
+				}
+				return configPath, "", expected
+			},
+		},
+		// regression: #4309
+		{
+			name: "git_bash_drive_data_dir_fallback",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				content := testConfigContent + "dataDir = \"/e/qui-data\"\n"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				expected := filepath.Join("/e/qui-data", "backups")
+				if runtime.GOOS == "windows" {
+					expected = `E:\qui-data\backups`
+				}
+				return configPath, "", expected
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -16,7 +16,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -33,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
@@ -161,9 +161,11 @@ func NewService(store *models.BackupStore, reader backupReader, cfg Config, noti
 		cfg.ExportThrottle = 100 * time.Millisecond
 	}
 
-	root := strings.TrimSpace(cfg.BackupDir)
-	if root == "" && strings.TrimSpace(cfg.DataDir) != "" {
-		root = filepath.Join(cfg.DataDir, "backups")
+	root := pathutil.NormalizeWindowsDrivePath(strings.TrimSpace(cfg.BackupDir))
+	if root == "" {
+		if dataDir := pathutil.NormalizeWindowsDrivePath(strings.TrimSpace(cfg.DataDir)); dataDir != "" {
+			root = filepath.Join(dataDir, "backups")
+		}
 	}
 
 	cacheDir := ""
@@ -1607,11 +1609,6 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 
 func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, manifestData []byte, requestedBy string, torrentPaths map[string]string) (*models.BackupRun, error) {
 	rootDir := s.root
-
-	if runtime.GOOS == "windows" && strings.HasPrefix(rootDir, "/c/") {
-		rootDir = "C:" + strings.ReplaceAll(strings.TrimPrefix(rootDir, "/c"), "/", "\\")
-		log.Info().Str("normalizedBackupDir", rootDir).Msg("Normalized backup directory for Windows")
-	}
 
 	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("torrentPaths", len(torrentPaths)).Str("backupDir", rootDir).Msg("Starting manifest import from dir")
 
