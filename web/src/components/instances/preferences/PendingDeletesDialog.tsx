@@ -10,6 +10,7 @@ import { TruncatedText } from "@/components/ui/truncated-text"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
+import { getLinuxIsoName, getLinuxTrackerDomain, useIncognitoMode } from "@/lib/incognito"
 import type { PendingDeleteTorrent } from "@/types"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -42,6 +43,7 @@ export function PendingDeletesDialog({ open, onOpenChange, ruleName, torrents }:
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const [limit, setLimit] = useState(PAGE_SIZE)
+  const [incognitoMode] = useIncognitoMode()
   const displayNames = useMemo(() => {
     const byDomain = new Map<string, string>()
     for (const customization of trackerCustomizations ?? []) {
@@ -78,22 +80,24 @@ export function PendingDeletesDialog({ open, onOpenChange, ruleName, torrents }:
                 </thead>
                 <tbody>
                   {shown.map((torrent) => {
-                    const displayName = displayNames.get(torrent.tracker.toLowerCase())
+                    const tracker = incognitoMode && torrent.tracker ? getLinuxTrackerDomain(torrent.tracker) : torrent.tracker
+                    const name = incognitoMode && torrent.name ? getLinuxIsoName(torrent.hash) : torrent.name
+                    const displayName = incognitoMode ? undefined : displayNames.get(tracker.toLowerCase())
                     return (
                       <tr key={torrent.hash} className="border-b last:border-0 hover:bg-muted/30">
                         <td className="p-2">
-                          {torrent.tracker ? (
+                          {tracker ? (
                             <div className="flex items-center gap-1.5">
-                              <TrackerIconImage tracker={torrent.tracker} trackerIcons={trackerIcons} />
-                              <TruncatedText className="max-w-[120px]" tooltipContent={displayName ? torrent.tracker : undefined}>
-                                {displayName ?? torrent.tracker}
+                              <TrackerIconImage tracker={tracker} trackerIcons={trackerIcons} />
+                              <TruncatedText className="max-w-[120px]" tooltipContent={displayName ? tracker : undefined}>
+                                {displayName ?? tracker}
                               </TruncatedText>
                             </div>
                           ) : <span className="text-muted-foreground">-</span>}
                         </td>
                         <td className="p-2 max-w-[280px]">
-                          {torrent.name ? (
-                            <TruncatedText className="block">{torrent.name}</TruncatedText>
+                          {name ? (
+                            <TruncatedText className="block">{name}</TruncatedText>
                           ) : (
                             <TruncatedText className="block font-mono text-xs text-muted-foreground">{torrent.hash}</TruncatedText>
                           )}

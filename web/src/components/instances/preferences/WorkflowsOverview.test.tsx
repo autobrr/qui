@@ -19,9 +19,14 @@ const mocks = vi.hoisted(() => ({
   rules: [] as Automation[],
   activity: [] as AutomationActivity[],
   pendingDeletes: { rules: [] } as PendingDeleteList,
+  incognitoMode: [false, () => {}] as [boolean, () => void],
 }))
 
 vi.mock("@/hooks/useInstances", () => ({ useInstances: () => mocks.instances }))
+vi.mock("@/lib/incognito", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/incognito")>(),
+  useIncognitoMode: () => mocks.incognitoMode,
+}))
 vi.mock("@/contexts/SyncStreamContext", () => ({ useActivityStream: () => {} }))
 vi.mock("@/hooks/useTrackerCustomizations", () => ({ useTrackerCustomizations: () => mocks.trackerData }))
 vi.mock("@/hooks/useTrackerIcons", () => ({ useTrackerIcons: () => mocks.trackerData }))
@@ -40,6 +45,7 @@ afterEach(() => {
   mocks.rules = []
   mocks.activity = []
   mocks.pendingDeletes = { rules: [] }
+  mocks.incognitoMode = [false, () => {}]
 })
 
 function transferRule(overrides: Partial<Automation>): Automation {
@@ -112,6 +118,22 @@ describe("WorkflowsOverview", () => {
     expect(rows[1][0]).toContain("tracker.example.invalid")
     expect(rows[1].slice(1, 3)).toEqual(["Film.2020.1080p-GRP", "Unregistered torrent"])
     expect(rows[1][4]).toMatch(/^After /)
+  })
+
+  it("hides the name and the tracker of each waiting torrent in incognito mode", async () => {
+    mocks.incognitoMode = [true, () => {}]
+    mocks.rules = [deleteRule({})]
+    mocks.pendingDeletes = { rules: [{ ruleId: 4, ruleName: "Clean unregistered", torrents: [
+      { hash: "bbbb2222", name: "Film.2020.1080p-GRP", tracker: "tracker.example.invalid", message: "Unregistered torrent", unregisteredSince: 1, deletesAt: 2, awaitsTracker: false },
+    ] }] }
+    await renderOverview()
+
+    fireEvent.click(await screen.findByRole("button", { name: "1 waiting" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog.querySelectorAll("tbody tr")).toHaveLength(1)
+    expect(dialog.textContent).not.toContain("Film.2020.1080p-GRP")
+    expect(dialog.textContent).not.toContain("tracker.example.invalid")
   })
 
   it("shows whether each torrent of a live Transfer started", async () => {
