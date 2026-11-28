@@ -15,13 +15,22 @@ func NewHealthHandler() *HealthHandler {
 }
 
 func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
-	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+	respondHealth(w, r, "ok")
 }
 
 func (h *HealthHandler) HandleReady(w http.ResponseWriter, r *http.Request) {
-	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "ready"})
+	respondHealth(w, r, "ready")
 }
 
 func (h *HealthHandler) HandleLiveness(w http.ResponseWriter, r *http.Request) {
-	RespondJSON(w, r, http.StatusOK, map[string]string{"status": "alive"})
+	respondHealth(w, r, "alive")
+}
+
+func respondHealth(w http.ResponseWriter, r *http.Request, status string) {
+	if r.Method == http.MethodHead {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	RespondJSON(w, r, http.StatusOK, map[string]string{"status": status})
 }

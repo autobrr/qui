@@ -863,8 +863,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	}
 
 	compressed.Get("/health", healthHandler.HandleHealth)
+	compressed.Head("/health", healthHandler.HandleHealth)
 	compressed.Get("/healthz/readiness", healthHandler.HandleReady)
+	compressed.Head("/healthz/readiness", healthHandler.HandleReady)
 	compressed.Get("/healthz/liveness", healthHandler.HandleLiveness)
+	compressed.Head("/healthz/liveness", healthHandler.HandleLiveness)
 
 	apiMount := "/api"
 	if baseURL != "/" {
